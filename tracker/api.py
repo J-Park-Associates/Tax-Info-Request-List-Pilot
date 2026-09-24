@@ -311,6 +311,11 @@ HAND_OVER_LABEL = "File under another return"
 #: is being picked is a return and then one of that return's requests.
 HAND_OVER_RETURN_LABEL = "The return that takes it"
 HAND_OVER_REQUEST_LABEL = "Under which request"
+#: What the app says once a document has been filed under another return
+#: (decision 132): where it went, and that the row here is gone - released,
+#: nothing about it kept in this return. Filled by the page with the
+#: label and the request the reply carries.
+HANDED_OVER_LINE = "Filed under {label} ({identifier}); nothing about it stays here"
 #: What stands in for the members of a household nobody has typed any for.
 #: The warning must still say who will see the documents, and "nobody typed
 #: yet" is the honest answer - the tracker cannot see Drive's sharing.
@@ -656,7 +661,10 @@ def _vocab() -> dict:
                           # that return's requests.
                           "hand_over": HAND_OVER_LABEL,
                           "hand_over_return": HAND_OVER_RETURN_LABEL,
-                          "hand_over_request": HAND_OVER_REQUEST_LABEL},
+                          "hand_over_request": HAND_OVER_REQUEST_LABEL,
+                          # And what the page says once it is done
+                          # (decision 132): the row here is released.
+                          "handed_over": HANDED_OVER_LINE},
         # Every word tracker.review gives the card, from the module that
         # owns it: what is said when the evidence suggests nothing, the one
         # separator between an identifier and what follows it (the reason
@@ -1491,7 +1499,11 @@ def _cmd_scan(argv: list[str]) -> dict:
     households are judged, locked and filed into here exactly as the
     scheduled pass does it: without the walk the same trial balance would
     file under the co-owned LLC on the schedule and park at home on Run
-    now, which is two definitions of a pass and one of them wrong.
+    now, which is two definitions of a pass and one of them wrong. Since
+    decision 132 the pass cannot be called without the walk at all: a root
+    that cannot be walked is refused by the runner in one sentence
+    (``tracker.runner.NO_PRACTICE``), which is this reply's ``error``, and
+    nothing is sorted.
     """
     engagement = _engagement_dir(argv)
     household_dir = household_of(engagement)
@@ -2206,8 +2218,9 @@ def _hand_over(engagement: Path, original: str, target: Path, identifier: str, *
     nothing routes outside it, and a person extends it in the household's
     editor rather than by naming a folder here. The re-scan afterwards is
     the **target's** - it is the return that gained a document - and this
-    return's own row is terminal, so nothing about it changed that a scan
-    would see.
+    return's own row is released (decision 132): it held a parked
+    document, which no request's status counted, so nothing about it
+    changed that a scan would see.
     """
     fed = _fed_returns(engagement)
     label = fed.get(target)
@@ -2253,7 +2266,8 @@ def _cmd_assign(argv: list[str]) -> dict:
     identifier names a request of that return, the original moves where it
     must rest - under the household the return lives in - the working copy
     is made there, the parked copy here goes, and this return's row is
-    closed as handed over. The target must be a return this drop folder
+    released (decision 132): nothing about it stays here, and the journal
+    says which return took it. The target must be a return this drop folder
     feeds, own or fed (:data:`NOT_FED`); nothing routes outside the feed
     list. Without it, everything below is as it has always been.
 

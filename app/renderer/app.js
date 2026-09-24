@@ -732,7 +732,8 @@ async function fileHandOver() {
     $("handover-modal").classList.add("hidden");
     render(result.state);
     const a = result.handed_over;
-    const notes = [`${a.original_name} filed as ${a.filed_as} under ${a.label}`];
+    const notes = [`${a.original_name}: ${fill(vocab.review_labels.handed_over,
+      { label: a.label, identifier: a.identifier })}`];
     if (a.left_in_review) notes.push(a.left_in_review);
     if (a.scan_note) notes.push(a.scan_note);
     banner(notes.join(". ") + ".", a.left_in_review || a.scan_note ? "warn" : "ok");

@@ -271,6 +271,6 @@ jobs alone accounting for more than 65% of that despite already being gated.
   moment it's approved, when the work allows it — every push to `main` runs
   the Windows pair unconditionally.
 - This is a process/cost convention governing how commits and PRs are made,
-  not a change to what the software does — it does not need a Fable SPEC.
+  not a change to what the software does — it does not need a SPEC.
 
 Set by Jason on 2026-09-22.

@@ -159,7 +159,9 @@ from pathlib import Path
 from tracker import ledger, reasons, store
 from tracker.content_check import RETIRED_CACHE_FILENAME, ContentCache
 from tracker.fsio import TEMP_SUFFIX
+from tracker.households import household_returns
 from tracker.layout import (
+    CLIENTS_TREE,
     MAX_PATH_LENGTH,
     PATH_TOO_LONG,
     deepest_path_length,
@@ -170,6 +172,8 @@ from tracker.layout import (
     location_of,
     lock_order_key,
     originals_of,
+    private_household_dir,
+    root_of,
     year_of,
 )
 from tracker.layout import (
@@ -276,13 +280,6 @@ NOT_REQUESTED = "Not Requested"
 #: nothing is moved, and a person decides. A copy dragged back is filed
 #: again on the next pass.
 FILE_MOVED = "File Moved"
-#: A parked document a person handed to a return this drop folder feeds
-#: (decision 129). **Terminal for the return it leaves**, like a duplicate:
-#: the document is the other return's now, recorded there as that person's
-#: own filing, and its original has moved under the household that return
-#: lives in. It is not offered in the queue, not counted in it, and nothing
-#: hands it back automatically - a person unfiles it there, where it now is.
-HANDED_OVER = "Handed Over"
 
 #: What a Duplicate row says, by what the earlier row holding the bytes is.
 #: A parked document has a working copy with a name, so saying "already
@@ -297,16 +294,6 @@ DUPLICATE_OF_MOVED = "identical to {name}; its working copy {copy} is not where 
 #: for a file nobody can find. Chosen by the absence of the name, whatever
 #: the row's decision.
 DUPLICATE_OF_UNCOPIED = "identical to {name}; that row has no working copy"
-#: And of a row that handed the document to another return (decision 129).
-#: A handed-over row keeps no working copy to name, so "that row has no
-#: working copy" was all a person got of a document somebody had
-#: deliberately filed elsewhere. This says where it went instead, in the
-#: hand-over's own words - the label and the request, cut before the
-#: ``; was:`` that quotes what the row said before.
-DUPLICATE_OF_HANDED_OVER = "identical to {name}; {handed}"
-#: Where that sentence is cut: :data:`HANDED_OVER_BY_PERSON` and then the
-#: old reason, so everything before this is the hand-over itself.
-_WAS_PREFIX = "; was: "
 #: A re-send of bytes a person set aside: the earlier decision, quoted whole
 #: (it carries the date and the note), and the fact. Decision 76 amended.
 RESENT_AFTER_SET_ASIDE = "set aside as not requested ({earlier}); the client sent it again"
@@ -317,11 +304,13 @@ ASSIGNED_BY_PERSON = "assigned by a person"
 DISMISSED_BY_PERSON = "not requested, by a person"
 #: Reason prefix on index rows a person sent back to REVIEW_DIR_NAME.
 UNFILED_BY_PERSON = "unfiled by a person"
-#: What the row a hand-over closes says (decision 129): which return took
-#: the document, by its label, and under which request. A label, never a
-#: member of the other household - the record names folders and returns and
-#: no person outside the firm.
-HANDED_OVER_BY_PERSON = "handed over to {label} ({identifier}) by a person"
+#: What the journal line that releases a row says (decision 132): which
+#: return took the document, by its label, and under which request. A
+#: label, never a member of any household - the record names folders and
+#: returns and no person outside the firm. The row itself is gone from the
+#: index; this sentence is the ``reason`` of the ``released`` line, and the
+#: runner's log says it when a recovery finishes a release.
+RELEASED_TO = "released to {label} ({identifier}) by a person"
 
 #: The decisions that leave a document waiting in ``REVIEW_DIR_NAME`` for a
 #: person, and which a person may therefore act on: one nobody has looked at
@@ -331,9 +320,9 @@ HANDED_OVER_BY_PERSON = "handed over to {label} ({identifier}) by a person"
 #: which the two lookups take as ``accepting`` from the action that offers
 #: them - keep it here and send it to review - and which ``dismiss`` does
 #: not, because setting a request aside says nothing about a file nobody
-#: can find (decision 76). Neither is a ``HANDED_OVER`` row (decision 129):
-#: it is terminal here, the document is another return's, and there is
-#: nothing left in this one to act on.
+#: can find (decision 76). A document a person filed under another return
+#: leaves no row here at all (decision 132), so there is nothing of it
+#: left in this queue to act on.
 _PARKED = (NEEDS_REVIEW, NOT_REQUESTED)
 
 #: How candidate identifiers are joined in the Candidates cell. The record
@@ -702,7 +691,6 @@ _LEDGER_EVENT_FOR = {
     DUPLICATE: ledger.DUPLICATE,
     NOT_REQUESTED: ledger.PARKED,
     FILE_MOVED: ledger.COPY_MOVED,
-    HANDED_OVER: ledger.HANDED_OVER_BY_PERSON_EVENT,
 }
 
 
@@ -847,7 +835,7 @@ def _intend(
     then: str = "",
     was: str = "",
     also: list[dict] | None = None,
-    also_in: dict[str, list[dict]] | None = None,
+    reason: str = "",
 ) -> None:
     """Write down what this decision is about to do, before it does it.
 
@@ -873,19 +861,22 @@ def _intend(
     killed run had already moved is sorted as a stray on the next pass,
     dated that day.
 
-    ``was`` is the identity the row is leaving, where the decision moves
-    the original and so re-keys the row (decision 129's hand-over is the
-    one that does). It travels here for the reason the row does: a
-    recovery has to write the row event the decision would have written,
-    and one without it would leave the record holding the row twice.
+    ``was`` is the identity the row is leaving, where a decision re-keys
+    the row. It travels here for the reason the row does: a recovery has
+    to write the row event the decision would have written, and one
+    without it would leave the record holding the row twice. No writer
+    passes one since decision 132 took the hand-over's re-key away; the
+    shape and the recovery's reading of it stay.
 
-    ``also_in`` is the half of the decision that belongs in **another
-    return's** record (decision 129): a hand-over to a return this drop
-    folder feeds closes a row here and opens one there, and both halves go
-    down here, before either is written, so a kill between them leaves the
-    whole decision on the record for the next pass to finish.
+    **A release is written even with nothing to move** (decision 132). A
+    hand-over is two intents in two records, and the one here - ``then``
+    :data:`tracker.ledger.RELEASED` - is what lets this household's own
+    pass finish its half after a kill, whether or not there was a parked
+    copy to remove. ``reason`` is the sentence the release will say.
+    Nothing here ever writes into another return's record: each record's
+    half of a decision is that record's own intent.
     """
-    if not ops:
+    if not ops and then != ledger.RELEASED:
         return
     event = ledger.new(ledger.MOVING, **{
         ledger.KEY_KEY: key, ledger.OPS_KEY: ops, ledger.DECIDED_BY_KEY: by,
@@ -898,9 +889,8 @@ def _intend(
         event[ledger.EVENT_KEY_AFTER] = then
     if also:
         event[ledger.ALSO_KEY] = list(also)
-    if also_in:
-        event[ledger.ALSO_IN_KEY] = {str(where): list(events)
-                                     for where, events in also_in.items()}
+    if reason:
+        event[ledger.REASON_KEY] = reason
     store.record(store.connect(), engagement_dir, event)
 
 
@@ -1779,8 +1769,52 @@ def _finish_the_ops(
             return _TAKEN, op
         if not source.is_file() or (digest and _the_bytes(source) != digest):
             return _LOST, op
+        if kind == ledger.OP_MOVE and _claimed_where_it_lies(engagement_dir, source):
+            return _LOST, op
         _do_op(engagement_dir, op, cache=cache)
     return _FINISHED, None
+
+
+def _claimed_where_it_lies(engagement_dir: Path, source: Path) -> bool:
+    """Whether an original this return's recovery would move out of
+    **another household's** year folder is recorded there now (decision
+    132). Returns False for a source in this return's own household.
+
+    A person's hand-over is two intents in two records, and one window
+    between them needs a person: the taking return's filing is written
+    down, the machine dies, a person trims the feed, and the dropping
+    household's own pass runs first. It releases its row, and the
+    original - still in its folder, named by no row - is sorted again
+    there, under a new row of that household's own. The bytes are where
+    the filing intent said they would be, but they are no longer that
+    decision's to move: another record has decided on them since. So they
+    count as gone to this intent, which is parked for a person with
+    decision 119's own sentence, and the document stays where its own
+    household's record says it is. A read and nothing else: no lock of the
+    other household is taken and nothing is written there.
+    """
+    root = root_of(engagement_dir)
+    try:
+        household = Path(os.path.relpath(source, root / CLIENTS_TREE)).parts[0]
+    except (ValueError, IndexError):
+        return False
+    if household in ("..", household_name_of(engagement_dir)):
+        return False
+    conn = store.connect()
+    for folder in household_returns(private_household_dir(root, household)):
+        try:
+            # A row whose release is still open is going, not staying: its
+            # own pass finishes the release, and it claims nothing.
+            going = {str(intent.get(ledger.KEY_KEY)) for intent in store.open_intents(conn, folder)
+                     if intent.get(ledger.EVENT_KEY_AFTER) == ledger.RELEASED}
+            if any(one.pbc_location and ledger_key(one) not in going
+                   and locate(folder, one.pbc_location) == source
+                   for one in read_index(folder)):
+                return True
+        except Exception as exc:      # a record this pass cannot read claims nothing it can prove
+            log.warning("Could not read %s to see whether it holds %s: %s",
+                        folder.name, source.name, exc)
+    return False
 
 
 def _a_copy_to_act_on(
@@ -1819,58 +1853,6 @@ def _a_copy_to_act_on(
                   entry.original_name, entry.pbc_location, exc)
         return entry.prepared_location
     return prepared_location(review_dir, parked.name)
-
-
-#: What a pass says when one decision has a row for a return whose lock it
-#: does not hold - a feed a person took away between the decision and the
-#: recovery. The intent stays open and nothing is half-written: the pass
-#: that holds both finishes it.
-INTERRUPTED_ELSEWHERE = ("an interrupted decision also has a row for {location}, whose lock this "
-                         "run does not hold; a pass that holds both finishes it")
-
-
-def _also_in_the_other_record(engagement_dir: Path, intent: dict, conn) -> str:
-    """Write the half of one decision that belongs in another return's
-    record. Returns the location it could not write in, or "".
-
-    **One decision, two records** (decision 129). A hand-over to a return
-    this drop folder feeds closes a row here and opens one there, and both
-    halves are written down in the intent before either is written, so a
-    kill anywhere leaves the decision recoverable. This is the second half
-    being written - live, by the hand-over itself, and again by any
-    recovery that finds the intent still open.
-
-    **Idempotent by the row itself**, not by its key: landed means the
-    target's current row under that key *is* the row this decision
-    carries. A key is a location, and a location comes free again - an
-    original of the same name filed there once and removed by hand leaves
-    the row behind, pointed at nothing (decision 109), and the next
-    filing is handed the same name and so the same key. Asking only
-    whether the key is held would then call this decision landed, close
-    the home row as handed over and leave the taking return with the
-    stale row and a working copy no row names. A row event under a key
-    the record already holds is that row's next version, exactly as the
-    pass's own filing writes one when a name is reused.
-
-    Written *before* the row that closes the intent here, because that row
-    closes it: a kill between the two would otherwise leave nothing open
-    and a document with no row in the return that has it.
-    """
-    for location, events in (intent.get(ledger.ALSO_IN_KEY) or {}).items():
-        target = locate(engagement_dir, str(location))
-        listed = [dict(one) for one in events or []]
-        if not listed:
-            continue
-        if not lock_is_held(target):
-            return str(location)
-        ensure(target)
-        current = {ledger_key(one): entry_to_json(one) for one in read_index(target)}
-        rows = [one for one in listed if one.get(ledger.EVENT_KEY) in ledger.ROW_EVENTS]
-        if rows and all(current.get(str(one.get(ledger.KEY_KEY))) == one.get(ledger.ROW_KEY)
-                        for one in rows):
-            continue                 # the decision already landed there
-        store.record(conn, target, *listed)
-    return ""
 
 
 def _finish_interrupted_moves(
@@ -1927,18 +1909,25 @@ def _finish_interrupted_moves(
             ), True))
             continue                 # the move stays open; the next pass looks again
         entry = entry_from_json(row)
+        if outcome == _FINISHED and intent.get(ledger.EVENT_KEY_AFTER) == ledger.RELEASED:
+            # This record's half of a hand-over (decision 132): the parked
+            # copy is gone - removed now, or already - so the row is
+            # released, in the words the person's click would have written.
+            # Nothing of the other record is read or written here: its half
+            # is its own intent, finished by its own pass.
+            store.record(conn, engagement_dir, ledger.new(ledger.RELEASED, **{
+                ledger.KEY_KEY: key,
+                ledger.REASON_KEY: str(intent.get(ledger.REASON_KEY) or ""),
+            }))
+            rows_recorded = True
+            log.warning("Finished the interrupted release of %s from the record",
+                        entry.original_name)
+            continue
         if outcome == _FINISHED:
-            # The other record's half first, because the row below closes
-            # this intent (decision 129).
-            elsewhere = _also_in_the_other_record(engagement_dir, intent, conn)
-            if elsewhere:
-                attention.append(FileError(entry.original_name, INTERRUPTED_ELSEWHERE.format(
-                    location=elsewhere), True))
-                continue             # the move stays open; a pass holding both finishes it
             # The identity the row is leaving travels with the intent
-            # where the decision moved the original (decision 129), so the
-            # row the recovery writes re-keys exactly as the decision's own
-            # would have and the record does not end holding it twice.
+            # where a decision re-keyed the row, so the row the recovery
+            # writes re-keys exactly as the decision's own would have and
+            # the record does not end holding it twice.
             leaving = str(intent.get(ledger.WAS_KEY) or "")
             events = [ledger.new(str(intent.get(ledger.EVENT_KEY_AFTER) or ledger.PARKED),
                                  **{ledger.KEY_KEY: key, ledger.ROW_KEY: row,
@@ -2062,9 +2051,9 @@ class _ReturnRun:
 def file_household_drops(
     inbox: Path | str,
     originals_dir: Path | str,
-    returns: Sequence[Path],
     *,
-    home: Sequence[Path] | None = None,
+    own: Sequence[Path],
+    fed: Sequence[Path] = (),
     today: dt.date | None = None,
     dry_run: bool = False,
 ) -> dict[Path, FileReport]:
@@ -2079,11 +2068,14 @@ def file_household_drops(
     accept parks in the first accepting return naming them all; a drop
     none accepts parks in the first return by order.
 
-    **The feed list** (decision 129). ``returns`` is what this drop folder
-    feeds - the household's own open-year returns and the return lines a
-    person extended it to in other households - and ``home`` is the own
-    ones. Nothing routes outside that list, and nothing is ever inferred
-    into it. A document filed to a fed return **moves a second time**, out
+    **The feed list** (decisions 129 and 132). What this drop folder feeds
+    is two named lists: ``own``, the household's own open-year returns, and
+    ``fed``, the return lines a person extended it to in other households.
+    One fact said once - a caller cannot hand in a "home" that is not part
+    of what is fed. Nothing routes outside the two lists, and nothing is
+    ever inferred into them. The returns are judged in the order they are
+    handed in, own first: that is the order the bytes are asked of the
+    records in, because the record closest to the drop decides. A document filed to a fed return **moves a second time**, out
     of this household's year folder into that return's, as the first step
     of the filing: the original rests under the household its return lives
     in, seen by exactly that folder's sharing. A document that parks parks
@@ -2109,18 +2101,18 @@ def file_household_drops(
     inbox, originals_dir = Path(inbox), Path(originals_dir)
     today = today or dt.date.today()
     stamp = today.isoformat()
-    runs = [_prepare_return(Path(folder), stamp, dry_run=dry_run) for folder in returns]
+    runs = [_prepare_return(Path(folder), stamp, dry_run=dry_run) for folder in [*own, *fed]]
     if not runs:
         return {}
-    # Which of them are this household's own, and what a filing into one
-    # of the others says (decision 129). The household is the client
-    # folder's own name - ``<root>/<clients tree>/<household>/<year>`` -
-    # so the sentence names the folder the document was dropped in and
-    # nothing has to be carried down for it.
-    own = {Path(folder) for folder in (returns if home is None else home)}
+    # Which of them are this household's own - the list each came from -
+    # and what a filing into one of the others says (decision 129). The
+    # household is the client folder's own name -
+    # ``<root>/<clients tree>/<household>/<year>`` - so the sentence names
+    # the folder the document was dropped in and nothing has to be carried
+    # down for it.
     dropped_in = originals_dir.parent.name
-    for run in runs:
-        run.home = run.engagement_dir in own
+    for position, run in enumerate(runs):
+        run.home = position < len(own)
         run.dropped_in = "" if run.home else DROPPED_ELSEWHERE.format(household=dropped_in)
     first = next((run for run in runs if run.home), runs[0])
 
@@ -2475,7 +2467,7 @@ def _sort_all(
             log.warning("Preserved %s but could not read it back: %s", drop.name, exc)
 
         try:
-            run, entry = _decide_across(drop, original, digest, size_kb, stamp, runs)
+            run, entry = _decide_across(drop, original, digest, size_kb, stamp, runs, first)
         except Exception as exc:  # the original is safe; say so and go on
             log.exception("Could not file %s", drop.name)
             run = first
@@ -2615,7 +2607,8 @@ def _by_the_name(
 
 
 def _decide_across(
-    drop: Path, original: Path, digest: str, size_kb: float, stamp: str, runs: list[_ReturnRun]
+    drop: Path, original: Path, digest: str, size_kb: float, stamp: str, runs: list[_ReturnRun],
+    first: _ReturnRun,
 ) -> tuple[_ReturnRun, IndexEntry]:
     """Which of the household's returns this one preserved original belongs
     to, and the row that says so.
@@ -2623,14 +2616,13 @@ def _decide_across(
     In order (decisions 125 and 128):
 
     - **the bytes first.** Every return's record is asked whether it
-      already holds them, in order, and the first that does decides - by
-      decision 111's rule, in its own record. The content hash identifies;
-      the earlier decision decides. A row that **handed the document over**
-      is the one exception (decision 129): it holds the bytes but no
-      longer the document, so it yields to any other record holding them,
-      and only where every holder handed it over - the feed since trimmed,
-      the taking return out of this pass's reach - does it decide, and
-      then it says where the document went;
+      already holds them, in the order the runs were handed in - own
+      returns first, then fed - and the first that does decides, by
+      decision 111's rule, in its own record: the record closest to the
+      drop decides. The content hash identifies; the earlier decision
+      decides. There is no exception (decision 132): a document a person
+      filed under another return leaves no row here, so a record holding
+      the bytes holds the document;
     - **then the requests.** The document is read **once**
       (:func:`tracker.router.read_once`) and that one reading is routed
       against every return's list, in order, so a two-return household
@@ -2650,10 +2642,9 @@ def _decide_across(
     if digest:
         holders = [run for run in runs if digest in run.known]
         if holders:
-            # Own returns first, as they are handed in; a handed-over row
-            # steps aside for any holder that still has the document.
-            run = next((one for one in holders if one.known[digest].decision != HANDED_OVER),
-                       next((one for one in holders if one.home), holders[0]))
+            # Own returns first, as they are handed in (decision 132's
+            # second order; the locks were taken in the global one).
+            run = holders[0]
             return run, _sort_one(drop, original, digest, size_kb, stamp, run, runs)
 
     # One reading, however many returns judge it (decision 128). A dry run
@@ -2662,11 +2653,11 @@ def _decide_across(
     reading = read_once(judged)
     # What the reading cost, kept for the run's summary (decision 127). One
     # reading serves every return that judges it (decision 128), so it is
-    # recorded once, against the pass's first own return - the run that
-    # already speaks for this household's inbox. It is recorded after the
-    # fact and changes nothing: a slow document is read to the end, and
-    # then said.
-    runs[0].report.timed(drop.name, reading.seconds)
+    # recorded once, against the pass's first own return (``first``, the
+    # run the inbox's own notes ride) - the run that already speaks for
+    # this household's inbox. It is recorded after the fact and changes
+    # nothing: a slow document is read to the end, and then said.
+    first.report.timed(drop.name, reading.seconds)
     routed = [(run, route_file(judged, run.items, reading=reading,
                                digest=digest, cache=run.cache, pdf_cache=run.context.pdf_cache))
               for run in runs]
@@ -2769,10 +2760,9 @@ class _SortContext:
 
 def _plan_working_copy(
     item: RequestItem, drop: Path, original: Path, digest: str, run: _SortContext,
-    *, source: Path | None = None,
-) -> tuple[str, dict | None]:
+) -> tuple[str, Path | None]:
     """Where one working copy of a preserved original goes in one request's
-    folder, and the copy that will put it there.
+    folder, and the file the copy will make there.
 
     The copy is made from ``original`` - the file in the client's folder
     for the year, never the drop - under the canonical name for that row,
@@ -2787,13 +2777,11 @@ def _plan_working_copy(
     between them is finished from the record rather than guessed at.
 
     One call per request: decision 94 files a page that carries several
-    forms under each of them, and each folder numbers its own names.
-
-    ``source`` is where the copy will be **made from** when that is not
-    where the original is now: a filing into a return in another household
-    moves the original into that household's year folder first (decision
-    129), so the copy's own step names the place it will have moved to,
-    while the reuse check above still reads the file that is there.
+    forms under each of them, and each folder numbers its own names. The
+    copy itself is :func:`_file_into`'s to write down and make, from where
+    the original will rest - which, for a return in another household, is
+    not where it is now (decision 129) - while the reuse check here reads
+    the file that is there.
     """
     dest_folder = request_folder(item, run.assigned, run.prepared_dir)
     if dest_folder not in run.reserved:
@@ -2809,13 +2797,11 @@ def _plan_working_copy(
     existing = _existing_copy(dest_folder, original, digest)
     if existing is not None:
         return prepared_location(dest_folder, existing.name), None
-    return (prepared_location(dest_folder, filed_as),
-            _op(run.engagement_dir, ledger.OP_COPY, source or original,
-                dest_folder / filed_as, digest))
+    return prepared_location(dest_folder, filed_as), dest_folder / filed_as
 
 
 def _carry_out(entry: IndexEntry, ops: list[dict], then: str, run: _SortContext) -> None:
-    """Write down what this drop's copies will be, then make them.
+    """Write down what this drop's parked copy will be, then make it.
 
     The intent carries the row this pass will record at the end of it and
     the event it will be recorded as, so a pass killed between the copy and
@@ -2849,6 +2835,55 @@ def _rests_at(run: _ReturnRun, original: Path) -> Path:
     return folder / original.name if run.context.dry_run else _unique_path(folder, original.name)
 
 
+def _file_into(
+    target: Path,
+    original: Path,
+    digest: str,
+    *,
+    resting: Path,
+    copies: Sequence[Path],
+    row: IndexEntry,
+    then: str,
+    by: str,
+    also: Sequence[dict] = (),
+    cache: ContentCache | None = None,
+    dry_run: bool = False,
+) -> None:
+    """File one original into ``target`` - the one shape of a filing, the
+    pass's and a person's alike (decision 132).
+
+    Given the return that takes the document, the original where it is now,
+    where it must rest (``originals_of(target)/<a unique name>`` where the
+    household differs, the same place where it does not), the working
+    copies still to be made and the row the caller composed, it writes the
+    intent in **the target's own record**, keyed on the row's final
+    location, with the operations ``[move original -> resting]`` (absent
+    where the original already rests there) ``+ [copy resting -> each
+    working copy]``, the event that will complete it (``then``:
+    ``filed`` for the pass, ``assigned_by_person`` for a person) and the
+    same-record events that travel with it (``also``: the keyword and the
+    spelling a person's filing teaches) - and then does the operations.
+
+    **Nothing here knows about a home return.** That is the point: a
+    filing into a return in another household is that return's filing,
+    finished from its record by any pass that holds its lock, whoever
+    decided it. Nothing writes into another return's record, ever. The row
+    itself is the caller's to record - the pass in the target run's one
+    transaction, a person's call at once - and :func:`_existing_copy` and
+    :func:`_unique_path` have already chosen the names, so a filing into a
+    name a vanished original left behind is that row's next version.
+    """
+    ops = ([] if resting == original
+           else [_op(target, ledger.OP_MOVE, original, resting, digest)])
+    ops += [_op(target, ledger.OP_COPY, resting, copy, digest) for copy in copies]
+    if dry_run or not ops:
+        return
+    _intend(target, ledger_key(row), ops, by=by, row=entry_to_json(row), then=then,
+            also=list(also))
+    for op in ops:
+        _do_op(target, op, cache=cache)
+
+
 def _file_it(
     drop: Path, original: Path, digest: str, size_kb: float, stamp: str,
     run: _ReturnRun, routing, item: RequestItem, *, refiled: str = "", resent: str = "",
@@ -2875,15 +2910,9 @@ def _file_it(
     """
     context = run.context
     resting = _rests_at(run, original)
-    # The move first, then the copies from where it will have moved to:
-    # a step may stand on the one before it, and the recovery finishes
-    # them in this order by bytes (decision 119).
-    moving = ([] if resting == original
-              else [_op(run.engagement_dir, ledger.OP_MOVE, original, resting, digest)])
     wanted = [item] + [context.by_id[i] for i in routing.also if i in context.by_id]
-    planned = [_plan_working_copy(one, drop, original, digest, context, source=resting)
-               for one in wanted]
-    locations = [location for location, _op_for_it in planned]
+    planned = [_plan_working_copy(one, drop, original, digest, context) for one in wanted]
+    locations = [location for location, _copy in planned]
     entry = IndexEntry(
         received=stamp, original_name=drop.name, size_kb=size_kb,
         digest=digest, identifier=item.identifier,
@@ -2895,8 +2924,13 @@ def _file_it(
         evidence=format_evidence(routing.evidence_record),
         also_filed=_CANDIDATE_SEP.join(locations[1:]),
     )
-    _carry_out(entry, moving + [op for _location, op in planned if op is not None],
-               ledger.FILED, context)
+    # The move first, then the copies from where it will have moved to:
+    # a step may stand on the one before it, and the recovery finishes
+    # them in this order by bytes (decision 119).
+    _file_into(run.engagement_dir, original, digest, resting=resting,
+               copies=[copy for _location, copy in planned if copy is not None],
+               row=entry, then=ledger.FILED, by=ledger.BY_PASS,
+               cache=run.cache, dry_run=context.dry_run)
     run.report.filed.append(entry)
     return entry
 
@@ -2956,10 +2990,7 @@ def _sort_one(
     holds these bytes, and that row's decision says what this arrival is.
     A re-send whose earlier row was filed and whose copy is gone is filed
     again; one a person set aside is routed afresh against that return's
-    list; anything else is a duplicate of the row that holds it - and
-    where that row handed the document to another return (decision 129),
-    the duplicate says so rather than reporting a working copy that was
-    never missing.
+    list; anything else is a duplicate of the row that holds it.
 
     Both roads that route afresh are name-checked before they file
     (decision 128): a W-2 set aside the day the list had no row for it and
@@ -3005,22 +3036,12 @@ def _sort_one(
         # working copy to name at all - decision 17's failure row - says
         # that instead, whatever its decision, rather than ending on the
         # word "as" with nothing after it.
-        if earlier.decision == HANDED_OVER:
-            # A document this return handed to another (decision 129), sent
-            # again while that return is out of this pass's reach. There is
-            # no copy here to name and never will be, so the row says where
-            # the document went - the hand-over's own sentence, cut before
-            # the reason it quoted.
-            words = DUPLICATE_OF_HANDED_OVER
-            said = words.format(name=earlier.original_name,
-                                handed=earlier.reason.split(_WAS_PREFIX)[0])
-        else:
-            words = (
-                DUPLICATE_OF_UNCOPIED if not earlier.filed_as else
-                {FILED: DUPLICATE_OF_FILED, NEEDS_REVIEW: DUPLICATE_OF_PARKED,
-                 FILE_MOVED: DUPLICATE_OF_MOVED}[earlier.decision]
-            )
-            said = words.format(name=earlier.original_name, copy=earlier.filed_as)
+        words = (
+            DUPLICATE_OF_UNCOPIED if not earlier.filed_as else
+            {FILED: DUPLICATE_OF_FILED, NEEDS_REVIEW: DUPLICATE_OF_PARKED,
+             FILE_MOVED: DUPLICATE_OF_MOVED}[earlier.decision]
+        )
+        said = words.format(name=earlier.original_name, copy=earlier.filed_as)
         entry = IndexEntry(
             received=stamp, original_name=drop.name, size_kb=size_kb,
             digest=digest, identifier=earlier.identifier,
@@ -3433,9 +3454,10 @@ def assign_review_file(
 
 @dataclass(frozen=True, slots=True)
 class HandedOver:
-    """What handing one parked document to another return did (decision 129)."""
+    """What handing one parked document to another return did (decisions 129
+    and 132)."""
 
-    entry: IndexEntry            # the row this return keeps: terminal, Handed Over
+    entry: IndexEntry            # the row this return held, as it was; released now
     target_entry: IndexEntry     # the row the return that took it now holds
     target: Path                 # that return's folder
     label: str                   # and how it is named to a person
@@ -3461,30 +3483,39 @@ def hand_over(
     today: dt.date | None = None,
     lock_held: bool = False,
 ) -> HandedOver:
-    """Hand one parked document to a return this drop folder feeds, as one
-    decision written down before any of it happens.
+    """Hand one parked document to a return this drop folder feeds - two
+    intents in two records, each finished by its own household's pass
+    (decision 132, reshaping decision 129's queue half).
 
-    **The cross-return hand-over** (decision 129, the queue's half of it).
     A household's inbox feeds its own returns and the return lines a person
-    extended it to, and until now a parked row could be filed only under
-    its home return's requests. This files it under a request of **any**
-    return the drop folder feeds - own or fed - in one decision:
+    extended it to, and a parked row can be filed under a request of **any**
+    of them, own or fed. Under both locks, taken in the one global order
+    (``layout.lock_order_key``; ``lock_held`` is for a caller that already
+    has both), in the order that costs least under a kill:
 
-    1. the original moves where it must rest, under the household the
-       taking return lives in, when that is another household (it does not
-       move at all inside one);
-    2. the working copy is made in that return's request folder;
-    3. the parked copy here goes;
-    4. this return's row is closed as :data:`HANDED_OVER` - terminal, like
-       a duplicate - and the taking return's row is written as the
-       person's own filing, dated their day.
+    1. **the release intent, in this record**: remove the parked copy
+       (only where it is there and still holds the row's bytes - otherwise
+       it is left and said, ``left_in_review``), then release the row. It
+       carries the row unchanged so a recovery can name the document, and
+       the sentence the release will say; never the original, never the
+       other record's half;
+    2. **the filing intent, in the taking return's record**, through
+       :func:`_file_into` - the pass's own shape: the original moves where
+       it must rest (under the household the taking return lives in; not at
+       all within one household) and the working copy is made there;
+    3. the taking return's row, the person's own filing dated their day,
+       with the keyword and the spelling it taught - closing step 2;
+    4. the parked copy here goes, and the row is **released**: it leaves
+       the index, and the journal line says which return took it
+       (:data:`RELEASED_TO`) - closing step 1.
 
-    All four are one intent, keyed on this row, with the taking return's
-    events carried in it (``ledger.ALSO_IN_KEY``), so a kill between any
-    two of them is finished from the record and the decision lands exactly
-    once. Both locks are held throughout, taken in the one global order
-    (``layout.lock_order_key``) so two passes can never take them the
-    other way round; ``lock_held`` is for a caller that already has both.
+    **Why the release is written first.** A kill after step 1 alone leaves
+    one open intent, here, that this household's own pass finishes with no
+    other lock: the row is released and the original, still in this
+    household's year folder and named by no row, is a stray the pass sorts
+    again - one click is the whole cost. The other way round, a kill
+    between the two would leave a parked row here whose original the taking
+    return's recovery moves away.
 
     ``keyword`` and ``spelling`` teach the **taking** return, because that
     is the return the document is being filed in and the one that will see
@@ -3513,7 +3544,6 @@ def hand_over(
             raise FilingError(f"{identifier} is {override_label(item)}; clear the override first")
 
         entries = read_index(home_return)
-        before = {ledger_key(e): entry_to_json(e) for e in entries}
         position = find_parked(entries, original)
         entry = entries[position]
         _refuse_if_stale(home_return, entry, seq)
@@ -3542,9 +3572,6 @@ def hand_over(
         moving_it = household_of(target_return) != household_of(home_return)
         resting = (_unique_path(originals_of(target_return), source.name)
                    if moving_it else source)
-        ops: list[dict] = []
-        if moving_it:
-            ops.append(_op(home_return, ledger.OP_MOVE, source, resting, digest))
 
         target_prepared = target_return / PREPARED_DIR_NAME
         dest_folder = request_folder(item, assign_folders(target_prepared, list(items)),
@@ -3554,8 +3581,6 @@ def hand_over(
         existing = _existing_copy(dest_folder, source, digest)
         filed_as = existing.name if existing is not None else prepared_name_for(
             item, extension_of(source), taken)
-        if existing is None:
-            ops.append(_op(home_return, ledger.OP_COPY, resting, dest_folder / filed_as, digest))
 
         # The parked copy here goes: the document is the other return's
         # now, and two copies of it in two queues would be two documents
@@ -3564,9 +3589,10 @@ def hand_over(
         # filing leaves one.
         parked = locate(home_return, entry.prepared_location) if entry.prepared_location else None
         left_in_review = ""
+        releasing: list[dict] = []
         if parked is not None and parked.is_file() and not is_cloud_placeholder(parked):
             if sha256_of(parked) == digest:
-                ops.append(_op(home_return, ledger.OP_REMOVE, parked, digest=digest))
+                releasing.append(_op(home_return, ledger.OP_REMOVE, parked, digest=digest))
             else:
                 left_in_review = (
                     f"the parked copy {entry.prepared_location} no longer holds the bytes this "
@@ -3593,19 +3619,7 @@ def hand_over(
             # return does not have, so they do not travel with the row.
             candidates="", evidence="", also_filed="",
         )
-        home_entry = replace(
-            entry,
-            identifier="",
-            prepared_location="",
-            pbc_location=location_of(home_return, resting),
-            decision=HANDED_OVER,
-            reason=HANDED_OVER_BY_PERSON.format(label=label, identifier=item.identifier)
-                   + _WAS_PREFIX + entry.reason,
-            also_filed="",
-        )
-        entries[position] = home_entry
-        was = ledger_key(entry)
-        new_key = ledger_key(home_entry)
+        released = RELEASED_TO.format(label=label, identifier=item.identifier)
 
         keyword = keyword.strip()
         note = ""
@@ -3617,26 +3631,28 @@ def hand_over(
         spelled, said, spelling_note = _taught_spelling(target_return, spelling)
         taught += spelled
 
-        # Both halves written down before either is done, and the taking
-        # return's events named by the location this record can find it
-        # at - one relative path, as every path a record holds is.
-        where = location_of(home_return, target_return)
-        also_in = {where: [_ledger_event(ledger.ASSIGNED_BY_PERSON, target_entry), *taught]}
-        _intend(home_return, new_key, ops, by=ledger.BY_PERSON,
-                row=entry_to_json(home_entry), then=ledger.HANDED_OVER_BY_PERSON_EVENT,
-                was=was, also_in=also_in)
-        for op in ops:
-            _do_op(home_return, op)
+        # 1. This record's half, written down first: the release.
+        home_key = ledger_key(entry)
+        _intend(home_return, home_key, releasing, by=ledger.BY_PERSON,
+                row=entry_to_json(entry), then=ledger.RELEASED, reason=released)
+        # 2. The taking return's half, in its own record, in the pass's
+        # own shape - and its operations.
+        _file_into(target_return, source, digest, resting=resting,
+                   copies=[] if existing is not None else [dest_folder / filed_as],
+                   row=target_entry, then=ledger.ASSIGNED_BY_PERSON, by=ledger.BY_PERSON,
+                   also=taught)
+        # 3. The taking return's row, which closes its intent.
         conn = store.connect()
-        # The other record first: the row below closes this intent, and a
-        # kill between the two would leave the taking return holding a
-        # document no row of its own names.
-        _also_in_the_other_record(home_return, {ledger.ALSO_IN_KEY: also_in}, conn)
-        _record(home_return, before, entries,
-                moved={new_key: was} if new_key != was else {},
-                decided={new_key: ledger.HANDED_OVER_BY_PERSON_EVENT})
+        store.record(conn, target_return,
+                     _ledger_event(ledger.ASSIGNED_BY_PERSON, target_entry), *taught)
+        # 4. This return's operation, then the release, which closes its own.
+        for op in releasing:
+            _do_op(home_return, op)
+        store.record(conn, home_return, ledger.new(ledger.RELEASED, **{
+            ledger.KEY_KEY: home_key, ledger.REASON_KEY: released,
+        }))
     return HandedOver(
-        entry=home_entry, target_entry=target_entry, target=target_return, label=label,
+        entry=entry, target_entry=target_entry, target=target_return, label=label,
         moved_original=moving_it, keyword=keyword if not note else "", keyword_note=note,
         spelling=said, spelling_note=spelling_note, left_in_review=left_in_review,
         overrode_shortlist=overrode,
@@ -4341,7 +4357,7 @@ if __name__ == "__main__":
                 locks.enter_context(engagement_lock(folder))
         else:
             locks.enter_context(_nothing())
-        reports = file_household_drops(inbox_of(asked), originals_of(asked), every,
+        reports = file_household_drops(inbox_of(asked), originals_of(asked), own=every,
                                        dry_run=ns.dry_run)
     head = "Would sort" if ns.dry_run else "Sorted"
     failed = False

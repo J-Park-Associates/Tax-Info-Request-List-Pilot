@@ -1591,6 +1591,7 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
         "hand_over": api.HAND_OVER_LABEL,
         "hand_over_return": api.HAND_OVER_RETURN_LABEL,
         "hand_over_request": api.HAND_OVER_REQUEST_LABEL,
+        "handed_over": api.HANDED_OVER_LINE,
     }
     assert vocab["default_extensions"] == ", ".join(DEFAULT_EXTENSIONS)
     assert "carried_sheet" not in vocab
@@ -3038,8 +3039,7 @@ def test_assign_with_a_target_refuses_an_unfed_return_and_hands_over_to_a_fed_on
     """Nothing routes outside the feed list: a target this drop folder does
     not feed is refused by name, and a target it does feed takes the
     document - the original moving under the household that return lives
-    in, and the row here closing as handed over."""
-    from tracker.filer import HANDED_OVER
+    in, and the row here released (decision 132): nothing of it stays."""
     from tracker.layout import originals_of
     father, llc = two_households(capsys, demo_root)
     parked, seq = a_parked_document(capsys, father)
@@ -3062,7 +3062,7 @@ def test_assign_with_a_target_refuses_an_unfed_return_and_hands_over_to_a_fed_on
     assert code == 0, payload
     assert payload["handed_over"]["moved_original"] is True
     assert payload["handed_over"]["identifier"] == "B01"
-    assert [e.decision for e in read_index(father)] == [HANDED_OVER]
+    assert read_index(father) == []
     [taken] = read_index(llc)
     assert taken.decision == FILED and taken.identifier == "B01"
     assert (originals_of(llc) / "notice.pdf").is_file()
@@ -3123,7 +3123,7 @@ def test_the_renderer_types_none_of_the_feed_words(capsys, demo_root):
     for word in (api.FEEDS_LABEL, api.FEEDS_HELP, api.FEEDS_LINE, api.FED_BY_LINE,
                  api.ADD_FEED_LABEL, api.FEED_WARNING, api.RETURN_WARNING,
                  api.HAND_OVER_LABEL, api.HAND_OVER_RETURN_LABEL, api.HAND_OVER_REQUEST_LABEL,
-                 api.NOBODY_TYPED, api.NOT_FED):
+                 api.NOBODY_TYPED, api.NOT_FED, api.HANDED_OVER_LINE):
         assert f'"{word}"' not in js and f"'{word}'" not in js, word
         assert word not in html, word
     words = api._vocab()
@@ -3138,3 +3138,34 @@ def test_the_renderer_types_none_of_the_feed_words(capsys, demo_root):
     # the moment either was reworded for its own screen.
     assert words["review_labels"]["hand_over_return"] == api.HAND_OVER_RETURN_LABEL
     assert words["review_labels"]["hand_over_request"] == api.HAND_OVER_REQUEST_LABEL
+    # And what the page says once a document has gone (decision 132): the
+    # row here is released, in the API's words, filled with the reply's
+    # label and request.
+    assert words["review_labels"]["handed_over"] == api.HANDED_OVER_LINE
+    assert "vocab.review_labels.handed_over" in js
+
+
+def test_a_pass_cannot_be_run_without_the_practice(capsys, demo_root, monkeypatch):
+    """*Run now* on a root that cannot be walked is refused in the runner's
+    one sentence, which is the run's ``error`` in the reply - and nothing
+    is sorted (decision 132). Before, the pass fed nothing in silence and
+    the button and the schedule could disagree about what the inbox was
+    for."""
+    from tests.samples import text_pdf
+    from tracker.registry import RegistryError
+    from tracker.runner import NO_PRACTICE
+
+    father, _llc = two_households(capsys, demo_root)
+    text_pdf(inbox_of(father) / "tb.pdf", ["Trial balance as of December 31 2025", TEST_CLIENT])
+
+    def unwalkable(root):
+        raise RegistryError(f"{root} cannot be walked")
+
+    monkeypatch.setattr(api, "discover_engagements", unwalkable)
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(father))
+
+    assert code == 0, payload
+    assert payload["run"]["error"] == NO_PRACTICE
+    assert payload["run"]["filed"] == 0
+    assert (inbox_of(father) / "tb.pdf").is_file()      # nothing was sorted
+    assert read_index(father) == []

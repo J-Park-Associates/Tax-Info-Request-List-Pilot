@@ -21,7 +21,7 @@ from tests.conftest import make_engagement, seed_index
 from tests.samples import DEMO_ITEMS, PRIOR_YEAR, SCRATCH_PEOPLE, YEAR, build_samples
 from tracker import ledger, store
 from tracker.filer import NEEDS_REVIEW, IndexEntry, read_index
-from tracker.layout import household_of, inbox_of, originals_of
+from tracker.layout import household_of, inbox_of, originals_of, root_of
 from tracker.manifest import (
     EngagementInfo,
     Override,
@@ -133,6 +133,9 @@ def a_pass(engagement, **kwargs):
     and the claims below are about the run it hands back for the return
     they named.
     """
+    # A pass needs the practice (decision 132): the walk of the root this
+    # return sits under, as the scheduled job hands it.
+    kwargs.setdefault("registry", discover_engagements(root_of(engagement.path)))
     runs = run_household(household_of(engagement.path), [engagement], **kwargs)
     return next(run for run in runs if run.engagement.path == engagement.path)
 
@@ -1220,7 +1223,7 @@ def test_the_household_pass_takes_every_open_returns_lock_in_name_order_and_rele
 
     monkeypatch.setattr(runner_module, "engagement_lock", watched)
     runs = run_household(household, [personal, business], today=FRIDAY,
-                         reminders=REMINDERS_NEVER)
+                         reminders=REMINDERS_NEVER, registry=discover_engagements(tmp_path))
 
     assert taken == ["1040 - John Park", "1120S - Park Landscaping"]
     assert taken == sorted(taken, key=str.lower)
@@ -1244,7 +1247,7 @@ def test_a_lock_held_on_one_return_skips_the_whole_household_and_touches_nothing
     (business.path / LOCK_FILENAME).write_text(f"pid={os.getpid()}", encoding="utf-8")
 
     runs = run_household(household, [personal, business], today=FRIDAY,
-                         reminders=REMINDERS_NEVER)
+                         reminders=REMINDERS_NEVER, registry=discover_engagements(tmp_path))
 
     assert all(run.skipped.startswith("another run is still going") for run in runs)
     assert all(run.filed == 0 for run in runs)
@@ -1276,7 +1279,8 @@ def test_two_open_years_sort_nothing_and_say_so_on_every_return(tmp_path, sample
                                 return_name="1040 - John Park", scaffold=False)
     every = [personal, business, engagement_from(next_year)]
 
-    runs = run_household(household, every, today=FRIDAY, reminders=REMINDERS_NEVER)
+    runs = run_household(household, every, today=FRIDAY, reminders=REMINDERS_NEVER,
+                         registry=discover_engagements(tmp_path))
 
     said = TWO_OPEN_YEARS.format(years="2025, 2026")
     assert all(said in run.warnings for run in runs)
@@ -1291,7 +1295,8 @@ def test_two_open_years_sort_nothing_and_say_so_on_every_return(tmp_path, sample
     # A person retires the year in the editor, and the next pass sorts.
     edit_details(next_year, active=False)
     runs = run_household(household, [personal, business, engagement_from(next_year)],
-                         today=FRIDAY, reminders=REMINDERS_NEVER)
+                         today=FRIDAY, reminders=REMINDERS_NEVER,
+                         registry=discover_engagements(tmp_path))
     assert not any(said in run.warnings for run in runs)
     assert sum(run.filed for run in runs) == 1
 
@@ -1467,3 +1472,138 @@ def test_the_dropping_households_pass_says_what_it_filed_into_a_fed_return(tmp_p
     assert FILED_INTO_FED.format(n=1, label=fed.label) in run.warnings
     [row] = read_index(fed.path)
     assert row.decision == FILED and row.identifier == "B01"
+
+
+def test_a_pass_cannot_be_run_without_the_practice(tmp_path, samples):
+    """There is one way to call a pass (decision 132): the practice is
+    required, so *Run now* and the schedule cannot differ by construction.
+    Left out, the call does not run; handed ``None`` - a root that could
+    not be walked - every run says so in one sentence and nothing is
+    sorted, scanned or written."""
+    from tracker.runner import NO_PRACTICE
+
+    personal, _fed = a_fed_household(tmp_path, samples,
+                                     drops=(f"W-2 John Smith {YEAR}.pdf",))
+    household = household_of(personal.path)
+
+    with pytest.raises(TypeError, match="registry"):
+        run_household(household, [personal], today=FRIDAY, reminders=REMINDERS_NEVER)
+    [run] = run_household(household, [personal], today=FRIDAY, reminders=REMINDERS_NEVER,
+                          registry=None)
+
+    assert run.error == NO_PRACTICE and not run.ok
+    assert run.filed == 0
+    assert (inbox_of(personal.path) / f"W-2 John Smith {YEAR}.pdf").is_file()
+    assert read_index(personal.path) == []
+
+
+def test_a_feed_list_the_pass_cannot_read_is_said_on_every_own_return(tmp_path, samples):
+    """A household whose own record is there and will not read feeds only
+    its own returns this pass - and says so on every one of them (decision
+    132), exactly as a feed that resolves to nothing is said. Silence about
+    a route is the thing the feed list forbids."""
+    from tracker.layout import private_household_dir
+    from tracker.runner import FEEDS_UNREAD
+
+    personal, [fed] = a_fed_household(tmp_path, samples,
+                                      drops=(f"W-2 John Smith {YEAR}.pdf",))
+    registry = discover_engagements(tmp_path)
+    household = household_of(personal.path)
+    journal = ledger.path_for(private_household_dir(tmp_path, "Park Family"))
+    with open(journal, "ab") as handle:              # a line that is not an event
+        handle.write(b"this is not a line of the record\n")
+
+    [run] = run_household(household, [personal], today=FRIDAY, reminders=REMINDERS_NEVER,
+                          registry=registry)
+
+    unread = [w for w in run.warnings if w.startswith(FEEDS_UNREAD.split("(")[0])]
+    assert len(unread) == 1 and unread[0].endswith(FEEDS_UNREAD.split(")")[-1])
+    assert run.filed == 1                              # its own returns were fed
+    assert read_index(fed.path) == []                  # and nothing else
+
+
+def test_a_cross_fed_document_is_on_no_list_of_the_dropping_households_readme_and_a_parked_one_is_its_own(
+        tmp_path, samples):
+    """F-4, ruled by decision 132: the README in the drop folder is read by
+    everyone shared on the dropping household, and a document filed into
+    another household's return is seen only by that folder's sharing. So
+    the dropping client's README carries neither the document's own name
+    nor the firm's name for it; the household that holds it lists it as its
+    own. A document parked at home is the dropping household's, in its own
+    record, until a person decides. (Decision 130 extends this claim to the
+    received list once there is one.)"""
+    from tests.samples import SCRATCH_CLIENT, text_pdf
+    from tracker.filer import FILED, NEEDS_REVIEW
+    from tracker.scaffold import README_NAME
+
+    personal, [fed] = a_fed_household(tmp_path, samples)
+    text_pdf(inbox_of(personal.path) / "trial balance.pdf",
+             [f"Trial balance as of December 31 {YEAR}", SCRATCH_CLIENT])
+    text_pdf(inbox_of(personal.path) / "unnamed w2.pdf",
+             [f"Form W-2 Wage and Tax Statement {YEAR}"])
+    household = household_of(personal.path)
+
+    [run] = run_household(household, [personal], today=FRIDAY, reminders=REMINDERS_NEVER,
+                          registry=discover_engagements(tmp_path))
+
+    assert run.ok
+    [filed] = read_index(fed.path)
+    assert filed.decision == FILED and filed.original_name == "trial balance.pdf"
+    [parked] = read_index(personal.path)
+    assert parked.decision == NEEDS_REVIEW and parked.original_name == "unnamed w2.pdf"
+    readme = (inbox_of(personal.path) / README_NAME).read_text(encoding="utf-8")
+    assert "trial balance.pdf" not in readme
+    assert "Trial Balance" not in readme
+    assert "Aaa Holdings" not in readme
+
+
+def test_in_a_household_a_slow_reading_is_said_once_on_the_first_own_returns_line(
+        tmp_path, samples, monkeypatch):
+    """SPEC-127.1 §9.2, folded in with decision 132: a reading is the
+    household's cost, paid once in the dropping household's pass, and said
+    once - on the line of the household's first own return (``first``, the
+    run the inbox's own notes ride), never on each return that judged it and
+    never cut short. Nothing about it reaches the record."""
+    import time
+
+    from tests.test_content_check import photo
+    from tracker.filer import FILED
+    from tracker.records import entry_to_json
+    from tracker.runner import SLOW_READING_NOTE
+
+    personal, business = a_household(tmp_path, samples,
+                                      drops=(f"W-2 John Smith {YEAR}.pdf",))
+    photo(inbox_of(personal.path) / "A photo.png", words="Trial balance")
+    monkeypatch.setattr(runner_module, "SLOW_READING_SECONDS", 0.05)
+    # The business's own name is on the page, as it is on a real trial
+    # balance: the request is named (decision 128).
+    [entity] = load_engagement_info(business.path).people
+
+    def a_slow_reader(path):
+        time.sleep(0.2)
+        return f"Trial balance as of December 31 {YEAR} {entity.name}"
+
+    monkeypatch.setattr("tracker.content_check._ocr_image", a_slow_reader)
+
+    report = run_registry(discover_engagements(tmp_path), today=FRIDAY,
+                          reminders=REMINDERS_NEVER)
+
+    first = next(run for run in report.runs if run.engagement.path == personal.path)
+    other = next(run for run in report.runs if run.engagement.path == business.path)
+    [row] = [one for one in read_index(business.path) if one.original_name == "A photo.png"]
+    assert row.decision == FILED and row.identifier == "B01"     # nothing was cut short
+    assert first.filed == 1                                      # the W-2, read after it
+    assert first.slowest[0][0] == "A photo.png"                  # the slow one, not the last
+    name, seconds = first.slowest[0]
+    note = SLOW_READING_NOTE.format(name=name, seconds=seconds)
+    assert first.summary().count(note) == 1
+    assert "slow reading" not in other.summary()
+    assert [one for run in (first, other) for one, _s in run.slowest].count("A photo.png") == 1
+    # Seconds are a fact about the machine and the pass, not the document.
+    assert "seconds" not in entry_to_json(row)
+    [event] = [e for e in ledger.read_events(business.path)
+               if e[ledger.EVENT_KEY] == ledger.FILED
+               and e[ledger.ROW_KEY]["original_name"] == "A photo.png"]
+    assert "seconds" not in event and "seconds" not in event[ledger.ROW_KEY]
+    assert all("seconds" not in stored for stored in store.documents(store.connect(),
+                                                                     business.path))

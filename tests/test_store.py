@@ -173,7 +173,7 @@ def test_opening_a_file_that_is_not_there_creates_the_schema(tmp_path):
 
     conn = store.open(path)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 9
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 10
         tables = {row[0] for row in conn.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table'")}
         assert tables == {"engagements", "requests", "statuses", "learned_keywords",
@@ -195,16 +195,17 @@ def test_a_store_at_a_version_this_code_does_not_know_is_refused_by_name(tmp_pat
     assert str(path) in str(raised.value) and str(store.SCHEMA_VERSION + 1) in str(raised.value)
 
 
-def test_a_version_eight_store_is_refused_and_rebuilt(tmp_path):
+def test_a_version_nine_store_is_refused_and_rebuilt(tmp_path):
     """Decision 107 added the verdict cache's two tables; a file from before
     it has no ``verdicts`` table, and is refused by the same sentence a
     version-1 file was - delete it and rebuild, nothing is lost.
 
     And so is a file at the version before this one, whatever that is
-    today: decision 129 put the household's feed list in ``engagements``,
-    and a version-8 file has no column for it. It travels in the
-    ``household_changed`` lines, so a rebuild from the journals puts every
-    feed back.
+    today: decision 132 changed the fold rather than a column - a
+    ``released`` line takes a row out of the index - and a version-9 file
+    folded by the old code may hold ``Handed Over`` rows this version never
+    produces. Rebuilt from the journals, the retired lines fold as the
+    releases they meant.
     """
     path = tmp_path / "app" / store.STORE_FILENAME
     for version in (2, store.SCHEMA_VERSION - 1):
@@ -1197,3 +1198,72 @@ def test_the_check_names_a_move_the_two_sides_do_not_agree_is_open(conn, root, e
     build(conn, root, engagement)                    # and a rebuild puts it back
     assert said(conn, root, engagement) == []
     assert store.open_intents(conn, engagement) == [open_move]
+
+
+def test_the_two_retired_names_read_once_and_are_never_written(conn, root, by_hand):
+    """Decision 132 retired two things decision 129 wrote. A journal from
+    before it may carry a ``handed_over_by_person`` line: it is read, folded
+    as the release it meant - the row goes, under both the identity it
+    re-keyed to and the one it left - and never written again. An intent
+    carrying the other record's half (``also_in``) is refused by name: its
+    second half is nothing this version can write, and recovering it as if
+    it had none would finish half a decision."""
+    build(conn, root, by_hand)
+    elsewhere = "../../../../Clients/Park & Lee LLC/2025/w2.pdf"
+    handed = {ledger.EVENT_KEY: ledger.HANDED_OVER_BY_PERSON_EVENT, ledger.AT_KEY: ledger.stamp(),
+              ledger.KEY_KEY: elsewhere, ledger.WAS_KEY: A_ROW_ORIGINAL,
+              ledger.ROW_KEY: a_row(decision="Handed Over", pbc_location=elsewhere)}
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, ledger.new(ledger.PARKED, key=A_ROW_ORIGINAL, row=a_row()))
+        ledger._write_line(ledger.path_for(by_hand), handed)       # as 129 wrote it
+    store.sync(conn, root, by_hand)
+
+    assert ledger.replay(ledger.read_events(by_hand)).rows == {}
+    assert store.documents(conn, by_hand) == []
+    assert store.check(conn, root, by_hand) == []
+
+    # Never written: not by the journal, not by the store.
+    with pytest.raises(ledger.LedgerError, match="retired"):
+        ledger.new(ledger.HANDED_OVER_BY_PERSON_EVENT, key=elsewhere)
+    with engagement_lock(by_hand):
+        with pytest.raises(store.StoreError, match="retired"):
+            store.record(conn, by_hand, handed)
+    assert ledger.HANDED_OVER_BY_PERSON_EVENT not in ledger.ROW_EVENTS
+
+    # And an intent with the other record's half is refused by that name.
+    moving = ledger.new(ledger.MOVING, **{
+        ledger.KEY_KEY: A_ROW_ORIGINAL, ledger.DECIDED_BY_KEY: ledger.BY_PERSON,
+        ledger.OPS_KEY: [], ledger.ROW_KEY: a_row(), store.ALSO_IN: {"../x": []}})
+    with engagement_lock(by_hand):
+        ledger._write_line(ledger.path_for(by_hand), moving)
+    with pytest.raises(store.StoreError, match=repr(store.ALSO_IN)):
+        store.sync(conn, root, by_hand)
+
+
+def test_a_released_line_takes_the_row_out_and_closes_its_intent_in_both_folds(
+        conn, root, by_hand):
+    """The fold decision 132 adds: ``released`` carries a key and a reason
+    and no row, removes the row under that key from the index and closes
+    the intent the key had open - in the journal's fold and the store's
+    alike, which ``check`` holds the two to. A release carrying a row is a
+    line this version refuses."""
+    build(conn, root, by_hand)
+    release = ledger.new(ledger.MOVING, **{
+        ledger.KEY_KEY: A_ROW_ORIGINAL, ledger.DECIDED_BY_KEY: ledger.BY_PERSON,
+        ledger.OPS_KEY: [], ledger.ROW_KEY: a_row(), ledger.EVENT_KEY_AFTER: ledger.RELEASED,
+        ledger.REASON_KEY: "released to X (B01) by a person"})
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, ledger.new(ledger.PARKED, key=A_ROW_ORIGINAL, row=a_row()))
+        store.record(conn, by_hand, release)
+        assert store.open_intents(conn, by_hand) == [release]
+        store.record(conn, by_hand, ledger.new(ledger.RELEASED, **{
+            ledger.KEY_KEY: A_ROW_ORIGINAL, ledger.REASON_KEY: "released to X (B01) by a person"}))
+
+    folded = ledger.replay(ledger.read_events(by_hand))
+    assert folded.rows == {} and folded.intents == {}
+    assert store.documents(conn, by_hand) == [] and store.open_intents(conn, by_hand) == []
+    assert store.check(conn, root, by_hand) == []
+    with engagement_lock(by_hand):
+        with pytest.raises(store.StoreError, match="carries no row"):
+            store.record(conn, by_hand, ledger.new(ledger.RELEASED, **{
+                ledger.KEY_KEY: A_ROW_ORIGINAL, ledger.ROW_KEY: a_row()}))

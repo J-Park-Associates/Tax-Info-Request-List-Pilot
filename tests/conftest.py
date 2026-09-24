@@ -251,17 +251,19 @@ def sort_all(returns, *, home=None, today=None, dry_run: bool = False):
     sort - a second would find nothing left to do. The first return's
     household is the one whose inbox is sorted; ``home`` names that
     household's **own** returns when the list also holds returns it feeds
-    (decision 129), and the locks are taken in the one global order, as
-    the pass takes them.
+    (decision 129) - handed down as the two lists the sort takes since
+    decision 132, own and fed, in the order they are listed here - and
+    the locks are taken in the one global order, as the pass takes them.
     """
     folders = [Path(one) for one in returns]
+    own = folders if home is None else [one for one in folders if one in set(map(Path, home))]
     with ExitStack() as locks:
         if not dry_run:
             for folder in sorted(folders, key=lock_order_key):
                 locks.enter_context(engagement_lock(folder))
         return file_household_drops(
-            inbox_of(folders[0]), originals_of(folders[0]), folders,
-            home=None if home is None else [Path(one) for one in home],
+            inbox_of(folders[0]), originals_of(folders[0]),
+            own=own, fed=[one for one in folders if one not in own],
             today=today, dry_run=dry_run,
         )
 

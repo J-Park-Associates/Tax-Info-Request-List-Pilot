@@ -129,9 +129,9 @@ person types.
   return lines in other households; nothing is ever inferred into that list,
   and a document nobody may file waits for a person in the household it was
   dropped in. A parked document can be filed under a request of any return
-  the folder feeds — one decision that moves the original where it must
-  rest, makes the working copy there, and closes the row here as *Handed
-  Over*. Every feed added, and every return added to a household, is warned
+  the folder feeds — it moves the original where it must rest, makes the
+  working copy there, and releases the row here: nothing about the document
+  stays in the household that dropped it (decision 132). Every feed added, and every return added to a household, is warned
   about in the same breath: whoever is on that folder will see what is
   filed under it.
 - **Catalog changes affect every future engagement.** Edit

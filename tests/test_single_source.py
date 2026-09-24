@@ -1054,3 +1054,29 @@ def test_the_feed_editor_picks_a_return_by_index_and_never_takes_a_value_apart()
     # And no separator a source file cannot show: a raw NUL in this file is
     # what made the earlier bug read as a space to everything that looked.
     assert chr(0) not in js
+
+
+def test_the_pass_and_the_hand_over_file_into_another_household_through_one_function():
+    """Decision 132: one act, one shape. A filing into a return - by the
+    pass or by a person's hand-over - is that return's filing, written down
+    and carried out by ``filer._file_into`` and nothing else, so the two
+    roads cannot drift apart again. Decision 129's second machinery is gone
+    from the package: nothing carries another record's half of a decision
+    (the one place that names the retired key is the store's refusal of
+    it), no ``Handed Over`` decision, no sentence cut at a ``_WAS_PREFIX``."""
+    filer = read("tracker/filer.py")
+    calls = re.findall(r"\b_file_into\(", filer)
+    assert len(calls) == 3                          # the definition and its two callers
+    assert len(re.findall(r"^def _file_into\(", filer, re.M)) == 1
+    body = lambda name: re.search(rf"^def {name}\(.*?(?=^def )", filer, re.S | re.M).group(0)  # noqa: E731
+    assert "_file_into(" in body("_file_it") and "_file_into(" in body("hand_over")
+
+    tracker = {path.name: path.read_text(encoding="utf-8")
+               for path in (REPO / "tracker").glob("*.py")}
+    for name, text in tracker.items():
+        assert not re.search(r"\bHANDED_OVER\b", text), name
+        assert "_WAS_PREFIX" not in text and "ALSO_IN_KEY" not in text, name
+        assert "_also_in_the_other_record" not in text and "INTERRUPTED_ELSEWHERE" not in text, name
+        assert "DUPLICATE_OF_HANDED_OVER" not in text, name
+    assert sum(text.count('"also_in"') for text in tracker.values()) == 1
+    assert 'ALSO_IN = "also_in"' in tracker["store.py"]

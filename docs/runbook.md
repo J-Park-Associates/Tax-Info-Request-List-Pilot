@@ -257,7 +257,10 @@ What the tracker does and does not do:
 - The document is judged against every return the drop folder feeds, its own
   and the fed ones together: the request lists accept, the name on the page
   confirms or vetoes, and exactly one return is left or the document waits
-  for a person **in the household it was dropped in**.
+  for a person **in the household it was dropped in**. Where a document
+  has come before, the records are asked for its bytes with the household's
+  own returns first and the fed ones after: the record closest to the drop
+  decides.
 - A feed is a **return line**, not a return: the household and the return's
   name, the name it keeps every year. Roll Forward carries nothing about
   feeds, and a line the other household has retired is said on the card
@@ -277,16 +280,15 @@ Adding a return to a household is warned about too: everyone with access to
 the folder will see that return's documents.
 
 A parked document can be filed under a request of any return the drop folder
-feeds — *File under another return*, in the queue. It is one decision: the
-original moves where it must rest, the working copy is made in that return's
-request folder, the copy waiting here goes, and the row here closes as
-*Handed Over*. Nothing hands it back; if it went to the wrong return, unfile
-it **there**, where it now is.
+feeds — *File under another return*, in the queue. The original moves where it
+must rest, the working copy is made in that return's request folder, the copy
+waiting here goes, and the row here is released: nothing about it stays in
+this household; the journal says which return took it; if it went to the
+wrong return, unfile it *there*.
 
-If a feed is trimmed while one of those hand-overs is only half made — the
-machine died mid-decision — the home return refuses every action in its queue
-and says so on every pass, until somebody puts that feed back for one pass
-and lets it finish.
+If the machine dies in the middle of one of these, each household's next pass
+finishes its own half; the queue of a return with a half-finished decision
+refuses actions until that pass has run, as it does for any interrupted move.
 
 ### Rolling a household into the next year
 

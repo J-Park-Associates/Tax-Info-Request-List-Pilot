@@ -418,6 +418,21 @@ TWO_OPEN_YEARS = ("two years are open in this household ({years}); nothing is so
 #: household's own returns, in the warnings: the channel the unresolved
 #: feed already speaks through.
 FILED_INTO_FED = "{n} document(s) filed into {label} from this drop folder"
+#: What every one of a household's own returns is warned with when its
+#: own record - the one holding the feed list - is there and will not read
+#: (decision 132). The pass goes on with the household's own returns, and
+#: says so: a route the pass cannot read is never skipped in silence.
+#: Discovery's misfit list covers a household *without* a record; this is
+#: one whose record is there and refuses to parse.
+FEEDS_UNREAD = ("this drop folder's record could not be read ({error}); it feeds only its own "
+                "returns this pass")
+#: What a pass handed no practice to walk says, on every return it was
+#: asked about, and does nothing else (decision 132). The feed list is
+#: resolved against the practice, and a pass that cannot honour the feed
+#: list is a second definition of a pass - which is how *Run now* and the
+#: schedule came to disagree once. So there is one way to call a pass.
+NO_PRACTICE = ("the practice could not be walked, so this household's feed list cannot be "
+               "resolved; nothing was sorted or scanned this pass")
 
 
 def run_household(
@@ -429,7 +444,7 @@ def run_household(
     dry_run: bool = False,
     reminders: str = REMINDERS_AUTO,
     weekday: int = DRAFT_WEEKDAY,
-    registry: object | None = None,
+    registry: object,
 ) -> list[EngagementRun]:
     """One pass over a whole household: sort its one inbox across every
     return it feeds, then scan, draft and draw each of its own returns.
@@ -445,7 +460,12 @@ def run_household(
     the co-owned business, the adult daughter's return a parent relays -
     and those returns are judged, locked and filed into exactly like the
     household's own; ``registry`` is the walk the feeds are resolved
-    against, and without one only the household's own returns are fed.
+    against (a :class:`tracker.registry.Registry`, or anything with its
+    ``engagements`` and ``households``). **It is required** (decision 132):
+    a pass that could be called without the practice silently fed nothing,
+    which is how *Run now* and the schedule once disagreed; a ``None`` -
+    a root that could not be walked - is refused with one sentence
+    (:data:`NO_PRACTICE`) on every run, and nothing is touched.
     The locks - its own and every fed one - are taken in the **one global
     order** (``layout.lock_order_key``: the household's folder name, then
     the return's, without case) before anything is read, so two processes
@@ -465,6 +485,10 @@ def run_household(
     # Stamped before anything is touched, so a return that fails its
     # pre-checks still says when it was last looked at.
     runs = [EngagementRun(engagement=one, last_pass=dt.datetime.now()) for one in returns]
+    if registry is None:
+        for run in runs:
+            run.error = NO_PRACTICE
+        return runs
     working = [run for run in runs if _worth_a_pass(run)]
     if not working:
         return runs
@@ -486,7 +510,7 @@ def run_household(
     # (decision 129), resolved to this year's returns; a line that answers
     # to nothing is said on every one of the household's own returns.
     fed: list[Engagement] = []
-    if sorting and registry is not None:
+    if sorting:
         fed, unresolved = _feeds_of(household, years[0], registry)
         for run in working:
             run.warnings.extend(unresolved)
@@ -542,14 +566,15 @@ def _feeds_of(household: Path, year: int, registry: object) -> tuple[list[Engage
     pass needs the label, because a filing into a fed return is reported
     on the dropping household's own run by the name a person reads.
 
-    A household whose own record cannot be read feeds nothing but its own:
-    the problem is said elsewhere, and a feed nobody can prove is a route
-    nothing should take.
+    A household whose own record cannot be read feeds nothing but its own
+    - a feed nobody can prove is a route nothing should take - and **says
+    so** (decision 132, :data:`FEEDS_UNREAD`), on every own return, exactly
+    as a feed that resolves to nothing is said.
     """
     try:
         feeds = load_household_info(household).feeds
-    except Exception:
-        return [], []
+    except Exception as exc:
+        return [], [FEEDS_UNREAD.format(error=f"{exc.__class__.__name__}: {exc}")]
     if not feeds:
         return [], []
     found, said = resolve_feeds(household, feeds, year, registry)
@@ -579,9 +604,9 @@ def _sort_step(household: Path, sorting: list[EngagementRun], fed: list[Engageme
     # (``tracker.registry.NAME_DISAGREES``), never renamed.
     year = sorting[0].engagement.tax_year
     originals = originals_dir_for(root_of(first), household.name, year)
-    own = [run.engagement.path for run in sorting]
     reports = file_household_drops(
-        inbox_of(first), originals, [*own, *(one.path for one in fed)], home=own,
+        inbox_of(first), originals,
+        own=[run.engagement.path for run in sorting], fed=[one.path for one in fed],
         today=today, dry_run=dry_run,
     )
     sorting[0].warnings.extend(
