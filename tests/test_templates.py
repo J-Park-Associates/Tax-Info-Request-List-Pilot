@@ -359,6 +359,31 @@ def test_every_catalog_row_has_a_legal_short_title_within_the_limit_and_unique_p
     # Two of the owner's names, to hold the list to the one he approved.
     first = {i.identifier: i.short_title for i in template_items("1040")}
     assert first["A01"] == "W-2" and first["C01"] == "1098 Mortgage"
-    # A per-issuer K-1 row has none of its own: its Document derives it.
-    issuer = item_from_spec(issuer_row("F02", "ABC Partners LLC"))
-    assert issuer.short_title == "" and issuer.short_name == "Schedule K-1 - ABC"
+
+
+def test_a_k1_issuer_row_is_short_named_by_its_issuer():
+    """Decision 144, the owner's Q-B (2026-09-24): a per-issuer K-1 row's
+    short name is ``K-1`` and the issuer, cut to twenty characters at a
+    whole word - not the first twenty of its Document, which kept at most
+    five letters of the issuer ("Schedule K-1") and none of Ashford's. The
+    Document the client reads keeps the whole name; the row's folder takes
+    the short one; a preparer's own row still derives from its title."""
+    from tracker.manifest import item_from_fields, short_title_problem
+    from tracker.scaffold import folder_name_for
+
+    cases = {
+        "Ashford Holdings, L.P.": "K-1 Ashford Holdings",
+        "Birch Lane Partners": "K-1 Birch Lane",
+        "ABC Partners LLC": "K-1 ABC Partners LLC",
+        "A/B: Co": "K-1 A-B- Co",
+    }
+    for entity, short in cases.items():
+        row = item_from_spec(issuer_row("F02", entity))
+        assert row.short_title == short, entity
+        assert short_title_problem(row.short_title) == ""
+    ashford = item_from_spec(issuer_row("F02", "Ashford Holdings, L.P."))
+    assert ashford.document == "Schedule K-1 - Ashford Holdings LP"
+    assert folder_name_for(ashford) == "F02 - K-1 Ashford Holdings"
+    # The same words typed as a preparer's own row: derived from the title.
+    own = item_from_fields({"identifier": "X01", "document": ashford.document}, where="Row 1")
+    assert own.short_title == "" and own.short_name == "Schedule K-1"

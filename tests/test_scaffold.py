@@ -308,10 +308,9 @@ def test_a_readme_the_client_side_holds_does_not_stop_the_scaffold(engagement, m
 def test_each_issuer_gets_its_own_client_folder(tmp_path):
     """An issuer row is an ordinary row, so there is one folder per issuing
     entity (decision 93). Since decision 144 the folder is named by the
-    row's short name, which an issuer row derives from its Document - the
-    first twenty characters at a whole word, so a long entity name is cut
-    or, where its first word does not fit, left out - while the Document
-    the client reads keeps the entity's whole name."""
+    row's short name, ``K-1`` and the issuer cut to twenty characters at a
+    whole word (the owner's Q-B), while the Document the client reads keeps
+    the entity's whole name."""
     from tracker.templates import issuer_row, item_from_spec
 
     rows = [item_from_spec(issuer_row("F02", "Ashford Holdings, L.P.")),
@@ -319,7 +318,7 @@ def test_each_issuer_gets_its_own_client_folder(tmp_path):
     eng = make_engagement(tmp_path, rows)
 
     names = {f.name for f in (eng / PREPARED_DIR_NAME).iterdir() if f.is_dir()}
-    assert {"F02 - Schedule K-1", "F03 - Schedule K-1 - Birch"} <= names
+    assert {"F02 - K-1 Ashford Holdings", "F03 - K-1 Birch Lane"} <= names
     assert [row.document for row in rows] == ["Schedule K-1 - Ashford Holdings LP",
                                               "Schedule K-1 - Birch Lane Partners"]
 
