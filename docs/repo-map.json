@@ -2468,7 +2468,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "56a0057e4b4d7f41",
+      "sha256": "3b3a710081bef580",
       "lines": 408,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -2827,8 +2827,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "254c5adc480a6e0c",
-      "lines": 4375,
+      "sha256": "a1549671994867e2",
+      "lines": 4439,
       "exports": [
         "HOUSEHOLD",
         "LONG_ROW_OVER",
@@ -2865,6 +2865,7 @@
         "test_a_parked_file_the_evidence_says_nothing_about_is_offered_nothing",
         "test_a_pass_cannot_be_run_without_the_practice",
         "test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_below_the_floor",
+        "test_a_rename_carries_duplicates_and_parked_candidates_that_name_it",
         "test_a_rename_carries_its_documents",
         "test_a_request_list_problem_is_a_json_error_not_a_traceback",
         "test_a_resend_after_a_dismissal_is_triaged_and_its_row_carries_the_set_aside_sentence",

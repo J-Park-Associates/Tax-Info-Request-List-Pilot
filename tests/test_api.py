@@ -4251,6 +4251,70 @@ def test_a_rename_carries_its_documents(capsys, demo_root, tmp_path):
     assert not store.open_intents(store.connect(), engagement)
 
 
+def test_a_rename_carries_duplicates_and_parked_candidates_that_name_it(
+        capsys, demo_root, tmp_path, monkeypatch):
+    """Rows with nothing to move still follow a rename (decision 160, the
+    review's gap): a Duplicate row that names the request, and a parked
+    row with the request among its candidates, name the new identifier
+    afterwards - the parked row's evidence cell too, where it round-trips.
+    Each gets its own intent in the rename's one write, so a rename a run
+    was killed in is finished for them by the next pass as well; and a
+    rename that runs through carries them the same way."""
+    import tracker.filer as filer
+    from tests.samples import PRIOR_YEAR, YEAR
+    from tracker.filer import DUPLICATE
+
+    engagement = sample_engagement(capsys, demo_root, tmp_path, f"W-2 John Smith {YEAR}.pdf",
+                                   f"W-2 John Smith {YEAR} - Copy.pdf",
+                                   f"W-2 Jane Smith {PRIOR_YEAR} - old.pdf")
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+
+    def rows(state):
+        return {e["original_name"]: e for e in state["index"]}
+
+    before = rows(payload["state"])
+    duplicate = next(e for e in before.values() if e["decision"] == DUPLICATE)
+    parked = next(e for e in before.values() if e["decision"] == NEEDS_REVIEW)
+    assert duplicate["identifier"] == "A01" and duplicate["prepared_location"] == ""
+    assert parked["candidates"] == ["A01"] and list(parked["evidence"]) == ["A01"]
+
+    def follows(state, identifier):
+        now = rows(state)
+        assert now[duplicate["original_name"]]["identifier"] == identifier
+        assert now[parked["original_name"]]["candidates"] == [identifier]
+        assert list(now[parked["original_name"]]["evidence"]) == [identifier]
+        assert now[parked["original_name"]]["evidence"][identifier] == parked["evidence"]["A01"]
+        assert now[parked["original_name"]]["decision"] == NEEDS_REVIEW
+
+    # Killed at its one move: every row's intent is already written.
+    real = filer._do_op
+
+    def killed(engagement_dir, op, **kwargs):
+        raise PermissionError("held open by another program")
+
+    monkeypatch.setattr(filer, "_do_op", killed)
+    code, payload = run(capsys, "rename", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"from": "A01", "to": "A1"})
+    assert code == 1, payload
+    open_keys = {intent[ledger.KEY_KEY] for intent in store.open_intents(store.connect(), engagement)}
+    assert {duplicate["pbc_location"], parked["pbc_location"]} <= open_keys
+    monkeypatch.setattr(filer, "_do_op", real)
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    assert not store.open_intents(store.connect(), engagement)
+    follows(payload["state"], "A1")
+
+    # And a rename that runs through carries them the same way.
+    code, payload = run(capsys, "rename", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"from": "A1", "to": "A01"})
+    assert code == 0, payload
+    follows(payload["state"], "A01")
+    closed = [e[ledger.KEY_KEY] for e in ledger.read_events(engagement)
+              if e[ledger.EVENT_KEY] == ledger.RENAMED_BY_PERSON]
+    assert closed.count(duplicate["pbc_location"]) == 2 and closed.count(parked["pbc_location"]) == 2
+
+
 def test_an_interrupted_rename_leaves_no_empty_old_folder(capsys, demo_root, tmp_path, monkeypatch):
     """A rename whose second move fails is on the record from its first
     write, and the next pass finishes it (decision 119). That pass also
