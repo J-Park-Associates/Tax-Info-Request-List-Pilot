@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 130,
+    "nodes": 132,
     "edges": 818,
-    "reused": 73
+    "reused": 104
   },
   "node_types": [
     "artifact",
@@ -2474,8 +2474,8 @@
       "id": "CLAUDE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "8d200de7b5bc268a",
-      "lines": 281,
+      "sha256": "922832d3c9322bbf",
+      "lines": 227,
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
     },
@@ -2513,6 +2513,13 @@
       "notes": "Decision 74. Owned by tools/backtest.py; `record` writes it and `check` fails a report below it. It ships with no agreement recorded, and `check` then says plainly that the owner has not yet run the backtest at the office and exits 0 - an unknown baseline is never reported as a met one. It holds a number and a date and nothing a client could be read out of."
     },
     {
+      "id": "docs/local-update-2026-09-25.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "fd1d60311df0599d",
+      "lines": 82
+    },
+    {
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
@@ -2538,6 +2545,13 @@
       "lines": 585,
       "role": "The storage plan in prose: the three words (the record, the ledger, the store) and what each means, why the journal syncs with the engagement folder and the database does not, the journal-then-apply order, the schema table, the edit as the event the rules travel in, rebuild as recovery, the check as the gate, what each of the four stages took away, and (decision 107) why the verdict cache is in the store and not in the record.",
       "notes": "Written with decision 101 and finished with 104. It is the page to read before touching storage. The migrations of decisions 102 and 103, which it described step by step, are gone from the tree and from this page; the History section says they existed and where their reading copy is."
+    },
+    {
+      "id": "docs/tools.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "d764a0decef20ba6",
+      "lines": 94
     },
     {
       "id": "docs/vocab-coverage.json",

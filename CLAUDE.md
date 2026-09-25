@@ -6,13 +6,17 @@ index and validate what arrives, and draft the chase emails a person sends.
 
 ## Start here, do not re-scan the repo
 
-**Read [`docs/repo-map.md`](docs/repo-map.md) first.** It is the repository
-knowledge graph: every module, what it is for, what it imports, what tests
-cover it, which runtime artifacts it reads and writes, and the rules that cut
-across the code. Reading it costs one file instead of fifty, and it carries
-judgment that grepping cannot recover — why the router refuses to guess, why
-the request list lives in the record and is edited only in the app, which
-import cycle is deliberate.
+**Use the repository map, one node at a time.** [`docs/repo-map.md`](docs/repo-map.md)
+is the repository knowledge graph: every module, what it is for, what it
+imports, what tests cover it, which runtime artifacts it reads and writes, and
+the rules that cut across the code. It carries judgment that grepping cannot
+recover — why the router refuses to guess, why the request list lives in the
+record and is edited only in the app, which import cycle is deliberate.
+
+It is also very large, so do not read it whole by default. Look up the nodes
+for the files the task touches with `show` (below); read the whole page only
+for work that cuts across the system, such as a layer move or a
+repository-wide review.
 
 Confirm it is current before trusting it:
 
@@ -90,93 +94,16 @@ Never edit `docs/repo-map.json` or `docs/repo-map.md` — both are generated, an
 both say so at the top. `tests/test_repo_map.py::test_the_committed_map_is_current`
 fails if the committed map has drifted, so the suite catches a forgotten update.
 
-## The vocabulary coverage report
+## The routing tools
 
-[`docs/vocab-coverage.md`](docs/vocab-coverage.md) is the map's counterpart
-for the routing rules: which keyword in each catalog is reached by which IRS
-form in `tests/irs/` or reconstructed case in `tests/test_catalog.py`, and
-which keywords nothing in the suite defends. `tools/vocab_report.py`
-generates it from the catalog, the matcher and the suite; it is committed
-and checked by hash, like the map:
-
-```
-python tools/vocab_report.py check      # exit 0 = current, 1 = an input changed (names it)
-python tools/vocab_report.py build      # rebuild after changing a keyword, a case or the matcher
-python tools/vocab_report.py show 1040  # one catalog, row by row
-```
-
-Read its headline lists before changing a keyword: an unreached keyword has
-no test to say when it starts misfiling. Rebuild it in the same commit as a
-catalog, matcher or case change; `tests/test_vocab_report.py` fails on a
-stale one. Every case in `tests/test_catalog.py` carries the decision that
-introduced it, so `python -m pytest -k d67` runs decision 67's whole history
-before a rule it touched is trusted.
-
-The firm's own redacted documents are the third corpus, and they live
-outside the repository: the environment variable TRACKER_REAL_CORPUS names
-the folder holding them, with an expectations.csv beside them saying, per
-document, which catalog and engagement year it is routed against and the
-identifier it must file under — blank where it must park in
-`00 - Needs Review`. `tests/test_real_corpus.py` routes every row of that
-file the way the IRS forms are routed, and the coverage report reads the
-same documents, when the variable is set; both skip when it is not, so a
-machine without a corpus (CI, a fresh clone) is green. They are never
-committed, redacted or not: client documents do not enter the repo, and a
-report built with them names files the firm's clients can be read out of,
-so `check` refuses one.
-
-The catalog is not the only vocabulary in the field. When a person files a
-parked document they may type a keyword, and it is recorded against that one
-engagement's request — invisible to every other engagement and to the
-catalog the suite tests, and laid over the row's own `Any Keywords` by every
-reader. A word that turns out not to be distinctive is taken back in the
-app's editor, per engagement, as one `keyword_unlearned` event that both
-folds know and `store.check()` compares (decision 113); the firm-wide
-vocabulary is still `tracker/templates.py` and still changes only by a
-commit. `tools/learned_keywords.py` is the season's list of
-them: it walks every engagement under the clients root, compares each request
-row's keywords against the catalog rows carrying the same identifier and
-document, and groups what is left by row with the number of engagements that
-typed it. It only reads — no lock, no write-back — and it prints no client
-folder name unless it is asked for one, so a keyword several engagements had
-to be taught separately can be promoted into `tracker/templates.py`, where
-the suite defends it. It can run each candidate over the IRS forms in
-`tests/irs/` first, and marks the ones that would misfile a form the suite
-already places.
-
-## The backtest: the firm's own documents score the router
-
-[`docs/backtest-baseline.json`](docs/backtest-baseline.json) holds one
-number — how often the router files the firm's own already-sorted
-documents where a person filed them — and `tools/backtest.py` measures it.
-The blank IRS and state forms in `tests/irs/` and the typed cases are paperwork nobody sent;
-the documents a client actually sent sit on the office file server, sorted
-by hand over years, and they are the only corpus that can say whether the
-routing rules work on real mail. The tool routes them against the shipped
-catalogs and reports the agreement, the confusions (expected this row,
-filed that one), the per-row table, the parked and no-text shares, and the
-time each document took. Each document is routed through a hard link under
-one neutral name (`NEUTRAL_STEM`), so the client's own file naming never
-reaches the router with the document: nothing is filed on a name (decision
-92), but a name still leaves evidence for the person reviewing, and what
-is scored — and written down — should be the rules, not the firm's naming.
-
-```
-python tools/backtest.py collect <folder> --catalog 1040 --year 2025 --out <file>   # a skeleton expectations file for a person to fill in
-python tools/backtest.py run <folder> --out <report>    # route the corpus, score it, time it
-python tools/backtest.py record --report <report>       # make that report's agreement the baseline
-python tools/backtest.py check --report <report>        # exit 1 when the report is below the baseline
-```
-
-The corpus, its expectations.csv and the report are the firm's: they never
-enter the repository, and the tool refuses to write either file into the
-tree. Nothing identifying comes back either — the report and the console
-carry counts, catalog identifiers and a document's row number in the
-expectations file, never a file name, never a folder name below the corpus
-root, never a word of a document. The baseline ships unrecorded and `check`
-says so plainly rather than passing quietly: an unknown baseline is not a
-met one. Once the owner has run the backtest at the office and recorded it,
-no routing change may lower that number.
+The vocabulary coverage report (`docs/vocab-coverage.md`, `tools/vocab_report.py`),
+the season's learned keywords (`tools/learned_keywords.py`) and the backtest
+against the firm's own documents (`tools/backtest.py`,
+`docs/backtest-baseline.json`) are described in [`docs/tools.md`](docs/tools.md).
+Read it before changing a catalog keyword, a typed case or the matcher, and
+rebuild the vocabulary report in the same commit as any of those
+(`python tools/vocab_report.py build`; `tests/test_vocab_report.py` fails on a
+stale one). No routing change may lower the recorded backtest baseline.
 
 ## The standing rules
 
@@ -213,8 +140,9 @@ and no other, and lists every folder that does not fit with one sentence,
 left alone. There is no migration and no importer.
 
 `docs/ROADMAP.md` holds the decision log — the record of *why* things that
-look arbitrary are the way they are. Read it before changing behaviour that
-seems odd; the odd choice is usually load-bearing.
+look arbitrary are the way they are. Before changing behaviour that seems
+odd, search it for the decision number or the topic and read those rows;
+the odd choice is usually load-bearing. It is too large to read whole.
 
 [`docs/runbook.md`](docs/runbook.md) is the same system from the operator's
 side, written for a person rather than an agent: which machine runs the
@@ -222,6 +150,18 @@ schedule and why only one may, what someone does each morning and on the
 draft day, what every index reason and validation note means, and how the
 firm moves to another machine. Change how any of that behaves and the
 runbook is part of the change.
+
+## How work flows here
+
+Nothing is built without a written SPEC. **Claude Opus 5.5 designs, writes the
+SPEC, builds, and reviews** (set by Jason on 2026-09-25, replacing the earlier
+Fable-designs / Opus-builds / Fable-reviews split; decision-log rows that
+name Fable are history and stay as written). Use high effort for design,
+SPEC writing and review, and default effort for building to an approved
+SPEC. The review is a separate session or agent that did not build the
+change, so the work is not grading itself. Jason owns every decision; the
+claude.ai Project records his decisions in the Drive thread (folder
+Handoffs), and each work session ends with a CODE UPDATE there.
 
 ## Working on this repo
 
@@ -279,3 +219,9 @@ jobs alone accounting for more than 65% of that despite already being gated.
   not a change to what the software does — it does not need a SPEC.
 
 Set by Jason on 2026-09-22.
+
+## One-time task for the office computer (2026-09-25)
+
+The next Claude Code session on the office computer does
+[`docs/local-update-2026-09-25.md`](docs/local-update-2026-09-25.md) first,
+then deletes that file and this section in one commit.
