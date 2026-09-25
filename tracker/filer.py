@@ -2537,6 +2537,7 @@ def _finish_interrupted_moves(
         return []
     attention: list[FileError] = []
     rows_recorded = False
+    renamed_from: set[Path] = set()
     for intent in intents:
         key = str(intent.get(ledger.KEY_KEY) or "")
         row = intent.get(ledger.ROW_KEY)
@@ -2574,6 +2575,10 @@ def _finish_interrupted_moves(
             events += list(intent.get(ledger.ALSO_KEY) or [])
             store.record(conn, engagement_dir, *events)
             rows_recorded = True
+            if intent.get(ledger.EVENT_KEY_AFTER) == ledger.RENAMED_BY_PERSON:
+                renamed_from.update(locate(engagement_dir, op[ledger.FROM_KEY]).parent
+                                    for op in intent.get(ledger.OPS_KEY) or []
+                                    if op.get(ledger.OP_KEY) == ledger.OP_MOVE)
             log.warning("Finished the interrupted %s of %s from the record",
                         intent.get(ledger.EVENT_KEY_AFTER), entry.original_name)
             continue
@@ -2591,6 +2596,7 @@ def _finish_interrupted_moves(
             Path(op.get(ledger.TO_KEY) or entry.original_name).name, sentence, True))
         log.warning("An interrupted step on %s could not be finished: %s",
                     entry.original_name, sentence)
+    _remove_emptied_request_folders(engagement_dir, renamed_from)
     if rows_recorded:
         fresh = read_index(engagement_dir)
         entries[:] = fresh
@@ -5639,6 +5645,37 @@ def restore_working_copy(
 # ------------------------------------------------------------------ rename ----
 
 
+def _remove_emptied_request_folders(engagement_dir: Path, folders) -> list[Path]:
+    """Remove each of ``folders`` that a rename emptied, and nothing else
+    (decision 160).
+
+    A request folder directly under the return's ``PREPARED_DIR_NAME`` -
+    never the review folder, never anything in the client's tree, where the
+    originals are - and only when it holds nothing at all: a folder with a
+    file in it, recorded or not, is somebody's and stays. Both the rename
+    and the recovery that finishes an interrupted one come here, so the old
+    folder of a rename a run was killed in does not stay behind as a folder
+    no request names. Best effort: a folder that cannot be removed is a log
+    line, never a failed pass. Returns the files left in the folders kept.
+    """
+    prepared = (engagement_dir / PREPARED_DIR_NAME).resolve()
+    left: list[Path] = []
+    for folder in sorted(set(folders)):
+        try:
+            if folder.resolve().parent != prepared or folder.name.casefold() == REVIEW_DIR_NAME.casefold():
+                continue
+            if not folder.is_dir():
+                continue
+            inside = sorted(folder.iterdir())
+            if inside:
+                left.extend(inside)
+            else:
+                folder.rmdir()
+        except OSError as exc:
+            log.warning("Could not tidy %s after the rename: %s", folder, exc)
+    return left
+
+
 def documents_by_request(engagement_dir: Path | str,
                          items: Sequence[RequestItem] | None = None) -> dict[str, int]:
     """How many filed documents each request holds, keyed without case
@@ -5864,16 +5901,8 @@ def rename_request(
         _record(engagement_dir, before, entries,
                 decided={ledger_key(one): ledger.RENAMED_BY_PERSON for one in renamed_entries})
 
-        left: list[str] = []
-        for folder in folders:
-            try:
-                remaining = sorted(child.name for child in folder.iterdir())
-                if remaining:
-                    left.extend(f"{location_of(engagement_dir, folder)}/{name}" for name in remaining)
-                else:
-                    folder.rmdir()
-            except OSError as exc:
-                log.warning("Could not tidy %s after the rename: %s", folder, exc)
+        left = [location_of(engagement_dir, one)
+                for one in _remove_emptied_request_folders(engagement_dir, folders)]
         now_head = list_head(engagement_dir)
         rows = sum(1 for entry in entries
                    if entry.identifier and identifier_key(entry.identifier) == identifier_key(new))

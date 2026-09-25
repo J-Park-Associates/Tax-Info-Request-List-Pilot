@@ -472,8 +472,9 @@ UNKNOWN_COLUMN = "Row {n}: '{key}' is not a column this version knows; close the
 #: folder no request names, and the letter and the README would ask the
 #: client again. The rename carries them; unfiling them frees the request.
 HOLDS_DOCUMENTS = ("{identifier} holds {n} filed document(s), so a save cannot take it off the list "
-                   "or give it another identifier: use Rename below the list, which moves its "
-                   "documents with it, or unfile its documents first")
+                   "or give it another identifier: to stop asking for it, set it Not Applicable "
+                   "instead of removing it; to change its identifier, use Rename below the list, "
+                   "which moves its documents with it")
 #: The editor's rename (decision 160): its fold's title, the sentence under
 #: it, the two boxes' labels, its button, and what it says once done. It
 #: lands at once, on its own - not part of Save - so the rows typed and not
@@ -1828,9 +1829,12 @@ def _cmd_edit(argv: list[str]) -> dict:
         if key not in ENGAGEMENT_EDITABLE:
             raise ManifestError(f"'{key}' is not edited here")
     info = _info_from_spec(details, carry=load_engagement_info(engagement), blank_clears=True)
-    _refuse_taking_away_documents(engagement, recorded, items)
     _refuse_a_changed_row_past_the_limit(engagement, items)
-    saved = save_rules(engagement, items, info, head=head)
+    # The documents-held check reads the index, which a pass writes: it
+    # runs inside the save's own lock, so a filing cannot land between it
+    # and the write (decision 160).
+    saved = save_rules(engagement, items, info, head=head,
+                       check=lambda: _refuse_taking_away_documents(engagement, recorded, items))
     _refresh_readmes(engagement)
     state = _state(engagement)
     return {
@@ -1883,7 +1887,9 @@ def _refuse_taking_away_documents(engagement: Path, recorded: list[dict], items:
     """Refuse a save that would take a request holding filed documents off
     the list (decision 160, the audit's D-7): the first such request, by
     name and count (:data:`HOLDS_DOCUMENTS`). Compared without case, so a
-    respelling by case alone keeps the request and is saved."""
+    respelling by case alone keeps the request and is saved. Called by
+    ``manifest.save_rules`` under the engagement lock, after the list's
+    version is checked - so ``recorded`` is the list as it still stands."""
     kept = {identifier_key(item.identifier) for item in items}
     held = documents_by_request(engagement, [item_from_record(rule) for rule in recorded])
     for rule in recorded:

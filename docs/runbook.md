@@ -155,7 +155,8 @@ documents keeps its identifier through a save: changing `A01` to `A1` in
 the list, or deleting the row, and pressing **Save** is refused with a
 sentence naming the request and how many documents it holds - saved, the
 documents would be left in a folder no request names, and the letter and
-the client's README would ask for them again. To change the identifier,
+the client's README would ask for them again. To stop asking for such a
+request, set it **Not Applicable** rather than deleting it. To change the identifier,
 open **Rename a request** below the list, pick the request, type the new
 identifier and press **Rename**: its folder in `Prepared`, every working
 copy in it and every row of the index move to the new identifier at once,
@@ -164,7 +165,9 @@ is lost; save it afterwards as usual. A change of **case** alone (`C01` to
 `c01`) is the same request everywhere and is simply saved. A rename is
 refused while a copy of the request's is not where the record put it -
 put it back or send it to review first. A file in the old folder that no
-row names is left where it is, and the editor names it.
+row names is left where it is, and the editor names it. If a rename is
+interrupted (a copy held open by another program), the next pass finishes
+it and removes the old folder once it is empty.
 
 **Save refused: "the list changed since you opened it".** Someone saved
 the list - in the app on another machine, or through the review queue

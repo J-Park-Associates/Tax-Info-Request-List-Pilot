@@ -4251,6 +4251,98 @@ def test_a_rename_carries_its_documents(capsys, demo_root, tmp_path):
     assert not store.open_intents(store.connect(), engagement)
 
 
+def test_an_interrupted_rename_leaves_no_empty_old_folder(capsys, demo_root, tmp_path, monkeypatch):
+    """A rename whose second move fails is on the record from its first
+    write, and the next pass finishes it (decision 119). That pass also
+    removes the request's old folder once it is empty - so no "folder
+    matches no request" warning is left behind - and never a folder with
+    anything in it (decision 160, the designer's ruling on the build)."""
+    import tracker.filer as filer
+    from tracker.filer import RENAME_UNFINISHED
+
+    engagement, _ = _filed_documents(capsys, demo_root, tmp_path)
+    prepared = engagement / PREPARED_DIR_NAME
+    real = filer._do_op
+    calls = {"n": 0}
+
+    def the_second_move_fails(engagement_dir, op, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise PermissionError("held open by another program")
+        return real(engagement_dir, op, **kwargs)
+
+    monkeypatch.setattr(filer, "_do_op", the_second_move_fails)
+    code, payload = run(capsys, "rename", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"from": "A01", "to": "A1"})
+    assert code == 1 and payload["error"].startswith(RENAME_UNFINISHED.split("{name}")[0].format(
+        old="A01", new="A1"))
+    assert store.open_intents(store.connect(), engagement)
+    assert [child.name for child in prepared.iterdir() if child.name.startswith("A01")] == ["A01 - W-2"]
+
+    monkeypatch.setattr(filer, "_do_op", real)
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    assert not store.open_intents(store.connect(), engagement)
+    assert not [child for child in prepared.iterdir() if child.name.startswith("A01")]
+    assert not [w for w in payload["run"]["warnings"] if "matches no request" in w], payload["run"]["warnings"]
+    filed = [e for e in payload["state"]["index"] if e["decision"] == FILED and e["identifier"] == "A1"]
+    assert len(filed) == 2 and all((engagement / e["prepared_location"]).is_file() for e in filed)
+
+    # A folder with anything in it is never removed, and nothing outside
+    # the return's Prepared folder is ever looked at.
+    kept = prepared / "Z9 - Kept"
+    kept.mkdir()
+    (kept / "notes.txt").write_text("a person's note", encoding="utf-8")
+    empty_elsewhere = inbox_of(engagement) / "empty"
+    empty_elsewhere.mkdir()
+    left = filer._remove_emptied_request_folders(engagement, [kept, empty_elsewhere])
+    assert left == [kept / "notes.txt"] and kept.is_dir() and empty_elsewhere.is_dir()
+    empty_elsewhere.rmdir()
+
+
+def test_a_filing_racing_a_save_is_seen_under_the_lock(capsys, demo_root, tmp_path, monkeypatch):
+    """The documents-held check runs inside the save's engagement lock, in
+    the same critical section as the write (decision 160, the designer's
+    ruling on the build). A pass that files the 1098 into C01 after the
+    editor sent a list without C01, and before the save takes the lock, is
+    seen: the save is refused and C01 stays."""
+    from tests.samples import YEAR
+    from tracker.locking import lock_is_held
+
+    engagement = sample_engagement(capsys, demo_root, tmp_path, f"W-2 John Smith {YEAR}.pdf")
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    state = payload["state"]
+    assert not [e for e in state["index"] if e["identifier"] == "C01"]
+    samples = tmp_path / "samples"
+    before_the_lock = api._refuse_a_changed_row_past_the_limit
+
+    def a_pass_files_first(folder, items):
+        # Outside the lock: the 1098 arrives and the household's sort files it.
+        assert not lock_is_held(folder)
+        (inbox_of(folder) / "Form 1098 Mortgage Interest.pdf").write_bytes(
+            (samples / "Form 1098 Mortgage Interest.pdf").read_bytes())
+        from tests.conftest import sort
+        sort(folder)
+        return before_the_lock(folder, items)
+
+    seen_under = []
+    real_check = api._refuse_taking_away_documents
+
+    def the_check(folder, recorded, items):
+        seen_under.append(lock_is_held(folder))
+        return real_check(folder, recorded, items)
+
+    monkeypatch.setattr(api, "_refuse_a_changed_row_past_the_limit", a_pass_files_first)
+    monkeypatch.setattr(api, "_refuse_taking_away_documents", the_check)
+    without_c01 = [rule for rule in _rows_of(state) if rule["identifier"] != "C01"]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": without_c01, "engagement": {}, "head": state["list_head"]})
+    assert code == 1 and payload["error"] == api.HOLDS_DOCUMENTS.format(identifier="C01", n=1)
+    assert seen_under == [True]
+    assert "C01" in [rule["identifier"] for rule in payload_of_state(capsys, engagement)["rules"]]
+
+
 def test_a_case_only_change_reads_the_same_in_the_readme_and_the_letter(capsys, demo_root, tmp_path):
     """C01 holds the filed 1098. Respelling it c01 is the same request
     everywhere (decision 160, the audit's D-8): the save needs no rename,

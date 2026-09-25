@@ -1359,6 +1359,7 @@ def save_rules(
     *,
     lock_held: bool = False,
     head: str | None = None,
+    check=None,
 ) -> RulesSaved:
     """Record a person's edit of the list and the details as one event.
 
@@ -1388,6 +1389,11 @@ def save_rules(
     other save can land between the check and the write. ``None`` is the
     machine's own save - the rollover's retirement of a return - which acts
     on the list as it finds it under the lock and carries no view.
+
+    ``check`` is called with no arguments under the same lock, after the
+    version and before the diff: the caller's refusal that has to read
+    what the lock guards (the API's documents-held check, decision 160),
+    so a filing cannot land between the check and the write.
     """
     from contextlib import nullcontext
 
@@ -1401,6 +1407,8 @@ def save_rules(
         conn = _the_record(folder)
         if head is not None:
             refuse_a_stale_list(conn, folder, head)
+        if check is not None:
+            check()
         held = store.rules(conn, folder) or []
         first = not store.has_rules_event(conn, folder)
         # Diffed by the identifier's exact spelling, because that is how
