@@ -163,16 +163,19 @@ and it is the answer to that one: a person put the copy back where the
 record put it, whatever the click found — the bytes moved home, copied
 home from the client's original, already home, or refused a home holding
 a different file and sent to review instead. One name again, because the
-row the line carries says which. `renamed_by_person` is decision 160's and
-the newest of them: a person gave a request another identifier with the
-editor's Rename, and the row names the new one - its working copies moved
-into the request's renamed folder under renamed names, or, for a row with
-no copy there, only the identifier it names changed. The `rules_changed`
-that renames the request and one `moving` intent per row are written first,
-in one write, and each `renamed_by_person` closes one intent. `answer_withdrawn_by_person` is decision 146's: a person marked a request
-missing again that a consolidated statement filed under another request was
-answering, and the row it carries is the statement's with that request taken
-off its `answers` column - nothing moves on disk. The rest of the names are not row events and fold their own
+row the line carries says which. `renamed_by_person` is decision 160's: a
+person gave a request another identifier with the editor's Rename, and the
+row names the new one - its working copies moved into the request's renamed
+folder under renamed names, or, for a row with no copy there, only the
+identifier it names changed, in its `answers` column too where a
+consolidated statement answers the request (decision 146). The
+`rules_changed` that renames the request and one `moving` intent per row
+are written first, in one write, and each `renamed_by_person` closes one
+intent. `answer_withdrawn_by_person` is decision 146's and the newest of
+them: a person marked a request missing again that a consolidated statement
+filed under another request was answering, and the row it carries is the
+statement's with that request taken off its `answers` column - nothing
+moves on disk. The rest of the names are not row events and fold their own
 way: `scanned` (the statuses), `keyword_learned`, `rules_changed`,
 `drafted`, `draft_approved`, `moving`, `move_abandoned` and
 `household_changed`, and the retired

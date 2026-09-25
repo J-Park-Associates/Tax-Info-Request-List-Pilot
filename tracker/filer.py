@@ -5779,6 +5779,11 @@ def documents_by_request(engagement_dir: Path | str,
     gives it another identifier (decision 160, the audit's D-7): the
     index, not the status, because the index is the record of what was
     filed and a status is only as fresh as the last scan.
+
+    A request a consolidated statement answers through its Also Answers
+    cell (decision 146) holds that statement too, once per statement, even
+    with no copy of its own (SPEC-146 R-2): the client has sent it, so a
+    save may not drop it - a person marks it missing again first.
     """
     folder = Path(engagement_dir)
     items = load_manifest(folder) if items is None else list(items)
@@ -5789,6 +5794,8 @@ def documents_by_request(engagement_dir: Path | str,
                 if identifier:
                     key = identifier_key(identifier)
                     held[key] = held.get(key, 0) + 1
+            for key in dict.fromkeys(identifier_key(one) for one, _sections in entry.answered):
+                held[key] = held.get(key, 0) + 1
     return held
 
 
@@ -5858,7 +5865,10 @@ def rename_request(
     gives it) takes the new identifier at its front, every working copy in
     it moves into the renamed folder under a name that does too, and every
     index row that names the request, or a copy in its folder, names the
-    new one.
+    new one - in its Also Answers cell too, where a consolidated statement
+    filed under another request answers this one (decision 146, SPEC-146
+    R-1), so the answer and its sections carry and a killed rename finishes
+    it from the row its intent holds.
 
     **One act, finished forward** (decision 119). Checked first, under the
     lock: no move open, the list the version the person's editor was
@@ -5933,7 +5943,18 @@ def rename_request(
                     and format_evidence(record) == entry.evidence:
                 evidence = format_evidence({new if identifier_key(one) == identifier_key(old) else one: found
                                             for one, found in record.items()})
-            if not (mapped or names_it or candidates != entry.candidate_list or evidence != entry.evidence):
+            # The Also Answers cell names the request too (decision 146 over
+            # 160, SPEC-146 R-1): a consolidated statement filed under another
+            # request that answers this one answers it under its new name,
+            # each answer keeping its sections - or the request reads Missing
+            # again and the letter asks for what the client already sent.
+            answered = entry.answered
+            answers = entry.answers
+            if any(identifier_key(one) == identifier_key(old) for one, _sections in answered):
+                answers = format_answers([(new if identifier_key(one) == identifier_key(old) else one,
+                                           sections) for one, sections in answered])
+            if not (mapped or names_it or candidates != entry.candidate_list
+                    or evidence != entry.evidence or answers != entry.answers):
                 continue
             if mapped and entry.decision == FILE_MOVED:
                 raise FilingError(RENAME_COPY_MOVED.format(name=entry.original_name, old=old))
@@ -5962,6 +5983,7 @@ def rename_request(
                 candidates=_CANDIDATE_SEP.join(candidates) if candidates != entry.candidate_list
                 else entry.candidates,
                 evidence=evidence,
+                answers=answers,
             )
             entries[position] = renamed
             renamed_entries.append(renamed)

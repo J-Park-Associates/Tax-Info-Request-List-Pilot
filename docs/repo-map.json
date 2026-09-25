@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 130,
     "edges": 806,
-    "reused": 104
+    "reused": 102
   },
   "node_types": [
     "artifact",
@@ -515,8 +515,8 @@
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "235cae96772618b8",
-      "lines": 6063,
+      "sha256": "6e8cc9bcdb95aa00",
+      "lines": 6085,
       "cli": "python -m tracker.filer",
       "exports": [
         "ALREADY_SPELLED",
@@ -2532,8 +2532,8 @@
       "id": "docs/storage.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "551da890a0f0b7b3",
-      "lines": 582,
+      "sha256": "56092771ac5ad35b",
+      "lines": 585,
       "role": "The storage plan in prose: the three words (the record, the ledger, the store) and what each means, why the journal syncs with the engagement folder and the database does not, the journal-then-apply order, the schema table, the edit as the event the rules travel in, rebuild as recovery, the check as the gate, what each of the four stages took away, and (decision 107) why the verdict cache is in the store and not in the record.",
       "notes": "Written with decision 101 and finished with 104. It is the page to read before touching storage. The migrations of decisions 102 and 103, which it described step by step, are gone from the tree and from this page; the History section says they existed and where their reading copy is."
     },
@@ -2855,8 +2855,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "eb47a83f68cd1389",
-      "lines": 4468,
+      "sha256": "7712d1d3fd7bd2e0",
+      "lines": 4603,
       "exports": [
         "HOUSEHOLD",
         "LONG_ROW_OVER",
@@ -2895,6 +2895,8 @@
         "test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_below_the_floor",
         "test_a_rename_carries_duplicates_and_parked_candidates_that_name_it",
         "test_a_rename_carries_its_documents",
+        "test_a_rename_carries_what_a_consolidated_statement_answers",
+        "test_a_request_answered_only_by_a_statement_cannot_be_deleted_by_a_save",
         "test_a_request_list_problem_is_a_json_error_not_a_traceback",
         "test_a_resend_after_a_dismissal_is_triaged_and_its_row_carries_the_set_aside_sentence",
         "test_a_review_command_with_no_seq_is_refused_and_a_stale_one_names_the_newer_decision",
