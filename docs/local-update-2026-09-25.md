@@ -95,25 +95,42 @@ Per the same guide, also remove from any local prompt:
   declines those. (Asking for the *reasons behind a design* in a SPEC or a
   docstring is fine; that is not the same thing.)
 
-## Step 5 — install the Figma plugin globally
+## Step 5 — install the Figma plugin for this project only
 
-Jason wants the Figma plugin available in every project on this computer.
-A cloud session installed it on 2026-09-25, but that container was
-temporary, and its network policy refused the connection to
-`mcp.figma.com`. Run:
+Jason needs Figma for the design system redesign in Step 6, and only now
+and then after that. It must **not** be installed globally (user scope),
+where it would load in every project. A cloud session tried it on
+2026-09-25, but that container was temporary, and its network policy
+refused the connection to `mcp.figma.com`.
+
+From this repository's folder, run:
 
 ```
 claude plugin marketplace add anthropics/claude-plugins-official
-claude plugin install figma@claude-plugins-official --scope user
+claude plugin install figma@claude-plugins-official --scope local
 claude plugin list
 ```
 
-`claude plugin list` must show `figma@claude-plugins-official` with
-scope `user` and status enabled. Restart Claude Code so the plugin loads.
-Then check that its connection to Figma works: sign in to Figma when asked,
-and have a read-only Figma tool answer. If the connection still fails, give
-Jason the exact error, skip Step 6, and do not install a different Figma
-tool as a workaround.
+`--scope local` records the plugin in this folder's
+`.claude\settings.local.json`, for Jason on this computer only. The
+repository ignores `.claude/`, so it is never committed and no other
+project or person gets it. `claude plugin list` must show
+`figma@claude-plugins-official` with scope `local` and status enabled, and
+no `user` scope entry. If an earlier user-scope install exists, remove it
+with `claude plugin uninstall figma@claude-plugins-official --scope user`.
+
+Restart Claude Code so the plugin loads. Then check that its connection to
+Figma works: sign in to Figma when asked, and have a read-only Figma tool
+answer. If the connection still fails, give Jason the exact error, skip
+Step 6, and do not install a different Figma tool as a workaround.
+
+Tell Jason how to switch it off between uses and back on when he needs it,
+without reinstalling:
+
+```
+claude plugin disable figma@claude-plugins-official --scope local
+claude plugin enable figma@claude-plugins-official --scope local
+```
 
 ## Step 6 — start the design system redesign (SPEC first)
 
@@ -175,7 +192,7 @@ and confirm the location with Jason before reading anything else in it.
 ## Step 7 — report
 
 Tell Jason, in plain English, which files changed and what changed in each,
-whether the Figma plugin is installed and connected, and where the design
+whether the Figma plugin is installed for this project only and connected, and where the design
 system SPEC is saved and whether he approved it. Record the same list in the
 next CODE UPDATE in Handoffs, naming the SPEC as the document the redesign
 continues from. Then delete this file and the "One-time task for the office
