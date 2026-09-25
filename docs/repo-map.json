@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 130,
-    "edges": 791,
-    "reused": 104
+    "edges": 792,
+    "reused": 0
   },
   "node_types": [
     "artifact",
@@ -2398,15 +2398,15 @@
       "id": "constraints.txt",
       "type": "doc",
       "layer": "docs",
-      "sha256": "0ec38f1776b236ee",
+      "sha256": "50b90e8bd64628d2",
       "lines": 41
     },
     {
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "415fe1c21d620a33",
-      "lines": 404,
+      "sha256": "219ac912daf4738b",
+      "lines": 405,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -2483,7 +2483,7 @@
       "id": "requirements.txt",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ee829115a915db9a",
+      "sha256": "83a77e9d4456c3f2",
       "lines": 25,
       "role": "Runtime and dev dependencies, pinned exactly (a guard refuses a range); the optional OCR extras are documented here too.",
       "notes": "requirements-build.txt adds the pinned freezer on top for Build App.bat; api_entry.spec is the committed freeze and app/package-lock.json the committed Electron install, so a build is made from the commit rather than from whatever was current that day (decision 46). olefile (decision 143) reads an Outlook .msg; pinned here and in constraints.txt, and frozen by the portable build."
@@ -2525,7 +2525,7 @@
       "id": "pkg:pypdf",
       "type": "package",
       "layer": "external",
-      "pin": "6.7.4 (requirements.txt)"
+      "pin": "6.19.0 (requirements.txt)"
     },
     {
       "id": "pkg:pypdfium2",
@@ -2664,9 +2664,10 @@
       "id": "tests/child_readers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "1b1914ddf99e1489",
-      "lines": 91,
+      "sha256": "a4c269d2d18ccf36",
+      "lines": 105,
       "exports": [
+        "a_pdf_open_that_never_finishes",
         "a_photo_open_that_never_finishes",
         "a_reader_that_dies_on_a_crash",
         "a_reader_that_starts_a_reader_of_its_own",
@@ -2994,14 +2995,15 @@
       "id": "tests/test_build.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "986c121c287dbae7",
-      "lines": 267,
+      "sha256": "9021e66591e71db7",
+      "lines": 299,
       "exports": [
         "BUILD_SCRIPT",
         "BUILD_WORKFLOW",
         "CONSTRAINTS",
         "FROZEN_HEADING",
         "GATE_WORKFLOW",
+        "PYPDF_ADVISORIES_FIXED_IN",
         "REPO",
         "commands",
         "constraints",
@@ -3016,6 +3018,7 @@
         "test_the_build_fails_when_a_frozen_version_differs_from_the_constraints",
         "test_the_build_workflow_is_never_run_per_commit",
         "test_the_build_workflow_runs_the_repositorys_own_build_script",
+        "test_the_pinned_pypdf_is_at_least_the_advisories_fix",
         "test_the_smoke_checks_drive_the_frozen_entry_by_the_flags_the_code_owns",
         "test_the_smoke_checks_pass_the_environment_the_electron_shell_passes",
         "test_the_workflow_skips_the_prompts_through_the_switch_the_script_reads",
@@ -3028,7 +3031,8 @@
         "GATE_WORKFLOW": "'gate.yml'",
         "BUILD_SCRIPT": "'Build App.bat'",
         "CONSTRAINTS": "'constraints.txt'",
-        "FROZEN_HEADING": "'Python packages frozen'"
+        "FROZEN_HEADING": "'Python packages frozen'",
+        "PYPDF_ADVISORIES_FIXED_IN": "(6, 16, 1)"
       },
       "role": "Guards what only the build workflow could otherwise discover ten minutes into a release: that it runs the batch file the repository owns rather than a copy of the build, that the switch it sets is the one that batch file reads, that the flags it fires at the frozen executable are flags tracker/runner.py declares, that it passes the two environment variables tracker/settings.py names, and that both workflows quote the one interpreter pyproject.toml writes down.",
       "notes": "Decision 78. It also asserts the fixture: a scratch root is one engagement discovery finds and a whole dry pass walks, because a smoke check over an empty folder proves only that discovery does not crash. Nothing here can prove the package runs - only the Windows runner can. Decision 137 (M5): constraints.txt pins the whole tree the portable build freezes; the suite holds requirements*.txt to it, \"Build App.bat\" to installing with -c constraints.txt, and every BUILD-INFO.txt under build-portable/dist to freezing nothing else."
@@ -3124,10 +3128,11 @@
       "id": "tests/test_content_check.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "1f6536c716d1d497",
-      "lines": 2082,
+      "sha256": "4ef8df40f88c8a91",
+      "lines": 2137,
       "exports": [
         "A_PASS_READING",
+        "BOMB_REFUSED",
         "CRASHED",
         "STOPPED",
         "STOP_IN_TESTS",
@@ -3190,6 +3195,7 @@
         "test_a_verdict_is_served_from_the_store_and_the_document_read_once",
         "test_a_verdict_read_back_from_the_store_brings_its_evidence",
         "test_a_verdict_row_at_another_cache_version_is_ignored_and_dropped_on_save",
+        "test_an_open_test_that_never_returns_is_stopped",
         "test_any_keywords",
         "test_cache_prune",
         "test_csv_extraction",
@@ -3226,6 +3232,7 @@
         "STOP_IN_TESTS": "5.0",
         "STOPPED": "'The reader stopped after 1 minute on this file. A person reads it.'",
         "CRASHED": "'The reader could not read this file (it stopped unexpectedly). A person reads it.'",
+        "BOMB_REFUSED": "'Maximum page tree entry limit reached'",
         "A_PASS_READING": "'\\nimport sys\\nfrom pathlib import Path\\nsys.path[:0] = [sys.argv[3]]\\nfrom tests import child_readers\\nfrom tracker import content_check\\ncontent_check._CHILD_READER = child_readers.a_reader_that_starts_a_reader_of_its_own\\nif sys.argv[2] == \"lifeline\":\\n    content_check._kill_on_close_job = lambda pid: None\\ncontent_check.extract_bounded(Path(sys.argv[1]))\\n'"
       }
     },
@@ -5482,6 +5489,12 @@
     {
       "from": "tests/child_readers.py",
       "to": "tracker/content_check.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/child_readers.py",
+      "to": "tracker/validators.py",
       "type": "exercises",
       "source": "derived"
     },

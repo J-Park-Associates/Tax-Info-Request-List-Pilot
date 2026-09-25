@@ -1426,6 +1426,8 @@ STOP_IN_TESTS = 5.0
 #: What a reading stopped at a stop under a minute says.
 STOPPED = "The reader stopped after 1 minute on this file. A person reads it."
 CRASHED = "The reader could not read this file (it stopped unexpectedly). A person reads it."
+#: What pypdf (decision 153, 6.19.0) says of 150's page-tree bomb, refusing it itself.
+BOMB_REFUSED = "Maximum page tree entry limit reached"
 
 
 @pytest.fixture
@@ -1818,10 +1820,14 @@ def page_tree_bomb(path, depth: int = 40):
 def test_a_page_tree_bomb_cannot_stall_the_pass(tmp_path, a_short_stop):
     """The review of decision 150's blocker: tier 2's open test - pypdf
     counting a PDF's pages - ran in the pass's own process, and a page
-    tree of a few kilobytes counts to a trillion. The open test now runs in
-    the reading's child, beside the reading: the pass finishes, the bomb
-    parks with the stop's sentence, the next document files, and the
-    scanner's open test is the same kept verdict, starting no child."""
+    tree of a few kilobytes counted to a trillion. The open test now runs
+    in the reading's child, beside the reading, and since decision 153
+    pypdf (6.16.1 on) refuses the bomb itself, in seconds: the pass
+    finishes well inside the stop, the bomb parks as an unreadable PDF
+    with pypdf's limit named, the next document files, and the scanner's
+    open test gives the same refusal, in seconds, each time it asks. The
+    stop's own bound on the open test, and its kept verdict, are claimed
+    without pypdf, by test_an_open_test_that_never_returns_is_stopped."""
     import time
     from pathlib import Path
 
@@ -1844,9 +1850,11 @@ def test_a_page_tree_bomb_cannot_stall_the_pass(tmp_path, a_short_stop):
                           reminders=REMINDERS_NEVER)
     took = time.monotonic() - started
 
-    assert took < STOP_IN_TESTS + 90                     # the pass finished
+    assert took < 60                                     # the pass finished, in seconds
     rows = {row.original_name: row for row in read_index(engagement)}
-    assert rows["bomb.pdf"].reason == STOPPED            # parked, on the stop's sentence
+    assert rows["bomb.pdf"].identifier == ""             # parked, refused by pypdf itself
+    assert BOMB_REFUSED in rows["bomb.pdf"].reason
+    assert rows["bomb.pdf"].reason != STOPPED            # not by the stop
     assert rows["w2.pdf"].identifier == "A01"            # and the next document filed
     assert [run.filed for run in report.runs] == [1]
     assert no_child_left()
@@ -1854,12 +1862,59 @@ def test_a_page_tree_bomb_cannot_stall_the_pass(tmp_path, a_short_stop):
     # The scanner's open test: the child's verdict, kept by the fingerprint.
     bomb = page_tree_bomb(tmp_path / "loose bomb.pdf")
     cache = ContentCache()
-    assert content_check.open_verdict(bomb, cache) == STOPPED
+    started = time.monotonic()
+    verdict = content_check.open_verdict(bomb, cache)
+    assert time.monotonic() - started < STOP_IN_TESTS    # seconds, not the stop
+    assert verdict.startswith("not a readable PDF") and BOMB_REFUSED in verdict
+    # Not kept: pdfium cannot load the bomb either, so the reading beside
+    # the refusal is OCR's transient failure, and a transient reading is
+    # never kept. The next ask opens it again - in seconds, to the same
+    # refusal.
+    from tracker.validators import check_file
+    started = time.monotonic()
+    refused = check_file(bomb, w2, open_test=lambda path: content_check.open_verdict(Path(path), cache))
+    assert time.monotonic() - started < STOP_IN_TESTS
+    assert not refused.ok and refused.reason == verdict
+    assert no_child_left()
+
+
+def test_an_open_test_that_never_returns_is_stopped(tmp_path, a_short_stop):
+    """Decision 153: pypdf now refuses 150's page-tree bomb before the stop
+    comes, so the open test's own bound gets a claim no library upgrade
+    can remove. A PDF whose open test never returns - pypdf's open blocked
+    for ever inside the child, the reading untouched - is ended at the
+    (patched) stop: the router parks it on the stop's sentence, the child
+    and everything it started are gone, and the scanner's open test is the
+    same kept verdict."""
+    import time
+    from pathlib import Path
+
+    import tracker.content_check as content_check
+    from tests import child_readers
+    from tests.conftest import named_page
+    from tests.test_scanner import text_pdf as page_pdf
+    from tracker.router import route_file
+    from tracker.validators import check_file
+
+    a_short_stop.setattr(content_check, "_CHILD_READER", child_readers.a_pdf_open_that_never_finishes)
+    pdf = page_pdf(tmp_path / "w2.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
+    rules = item(allowed_extensions=("pdf",), required_keywords=("W-2",), min_size_kb=0)
+
+    started = time.monotonic()
+    routed = route_file(pdf, [rules])
+    took = time.monotonic() - started
+
+    assert child_readers.reached(pdf, "pdf-open").is_file()       # stopped inside the open test
+    assert not child_readers.reached(pdf, "text-layer").exists()
+    assert STOP_IN_TESTS <= took < STOP_IN_TESTS + 45
+    assert routed.identifier is None and routed.reason == STOPPED
+    assert no_child_left()
+
+    cache = ContentCache()
+    assert content_check.open_verdict(pdf, cache) == STOPPED
     a_short_stop.setattr(content_check, "_read_in_a_child",
                          lambda *a, **k: pytest.fail("a kept open test was made again"))
-    assert content_check.open_verdict(bomb, cache) == STOPPED
-    from tracker.validators import check_file
-    refused = check_file(bomb, w2, open_test=lambda path: content_check.open_verdict(Path(path), cache))
+    refused = check_file(pdf, rules, open_test=lambda path: content_check.open_verdict(Path(path), cache))
     assert not refused.ok and refused.reason == STOPPED
     assert no_child_left()
 

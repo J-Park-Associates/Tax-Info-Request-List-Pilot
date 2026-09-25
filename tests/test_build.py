@@ -248,6 +248,38 @@ def test_the_build_fails_when_a_frozen_version_differs_from_the_constraints():
         assert drift(frozen, pinned) == [], info
 
 
+# ------------------------------------- decision 153: pypdf past its advisories ----
+
+#: The highest first-patched version among the pypdf advisories Dependabot
+#: raised on 6.7.4 (every one a denial of service on a hostile PDF).
+PYPDF_ADVISORIES_FIXED_IN = (6, 16, 1)
+
+
+def _resolved_pins(rel: str) -> dict[str, str]:
+    """A requirements file's pins with its ``-r`` includes followed, as pip reads it."""
+    pins: dict[str, str] = {}
+    for line in read(rel).splitlines():
+        included = re.match(r"\s*-r\s+(\S+)", line)
+        if included:
+            pins.update(_resolved_pins(included.group(1)))
+    pins.update(_pins(read(rel).splitlines()))
+    return pins
+
+
+def test_the_pinned_pypdf_is_at_least_the_advisories_fix():
+    """Decision 153: the tier-2 open test parses a client's PDF with pypdf,
+    and 6.7.4 had 56 open advisories - infinite loops and runaway memory on
+    a hostile file. The source and the frozen build must agree on one pypdf
+    (decision 137), and that pypdf must be at or past the release that
+    closes them all, so a later downgrade fails here."""
+    pins = {rel: _resolved_pins(rel).get("pypdf")
+            for rel in ("requirements.txt", "requirements-build.txt", CONSTRAINTS)}
+    assert len(set(pins.values())) == 1, pins
+    version = pins[CONSTRAINTS]
+    assert version, pins
+    assert tuple(int(part) for part in version.split(".")[:3]) >= PYPDF_ADVISORIES_FIXED_IN, version
+
+
 def test_every_action_the_workflows_run_is_pinned_by_commit():
     """Decision 137 (B3): an action named by tag runs whatever code the tag
     names on the day - a tag can be moved. Every action a workflow takes

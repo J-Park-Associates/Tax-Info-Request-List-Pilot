@@ -69,6 +69,20 @@ def a_photo_open_that_never_finishes(path: Path, *, ocr: bool = True):
     return content_check.open_and_read(path, ocr=ocr)
 
 
+def a_pdf_open_that_never_finishes(path: Path, *, ocr: bool = True):
+    """The open test and the reading, with the open test's pypdf open of a
+    PDF blocked for ever (decision 153). The bomb 150 proved the stop with
+    is now refused by pypdf itself, so this is the open test's bound with
+    no library in the claim: whatever the next pypdf refuses, a PDF whose
+    open never returns is still ended at the stop. Only ``validators``'
+    ``PdfReader`` - the open test's - blocks; the reading reads with
+    pdfplumber and pdfium, never pypdf."""
+    from tracker import validators
+
+    validators.PdfReader = lambda *_args, **_kwargs: _never_finishes(path, "pdf-open")
+    return content_check.open_and_read(path, ocr=ocr)
+
+
 def a_reader_that_dies_on_a_crash(path: Path, *, ocr: bool = True):
     """The real reading, except that a file named for a crash ends the
     process on the spot - no exception, no answer, as pdfium does."""
