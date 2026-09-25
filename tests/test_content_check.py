@@ -2135,3 +2135,32 @@ def test_a_photo_the_open_test_cannot_finish_is_stopped(tmp_path, in_a_child):
     refused = check_file(photo, rules, open_test=lambda path: content_check.open_verdict(Path(path), cache))
     assert not refused.ok and refused.reason == STOPPED
     assert no_child_left()
+
+
+# ------------------------------------------------ decision 146 -------------
+
+
+@pytest.mark.parametrize("lines, carries", [
+    (["Charles Schwab", "2025 Consolidated Form 1099", "Form 1099-DIV Dividends and Distributions",
+      "Form 1099-INT Interest Income", "Form 1099-B Proceeds From Broker and Barter Exchange Transactions"],
+     True),
+    (["Form 1099-B Proceeds From Broker and Barter Exchange Transactions 2025", "1d Proceeds 24,318.55"], True),
+    (["Vanguard Brokerage Services", "2025 Consolidated Form 1099 - Account 8812-4455",
+      "Form 1099-INT   Interest Income", "Form 1099-DIV   Dividends and Distributions"], False),
+    (["Harborline Savings Bank", "Consolidated Statement December 2025",
+      "Form 1099-INT Interest Income 2025"], False),
+    (["Your 2025 Consolidated Form 1099 is now available online.",
+      "Log in to view your Form 1099-B and Form 1099-DIV."], False),
+    (["2025 Individual Income Tax Organizer - Investment Income",
+      "Form 1099-B - Proceeds From Broker and Barter Exchange Transactions",
+      "Form 1099-DIV - Dividends and Distributions"], False),
+], ids=["d146-consolidated", "d146-loose-1099b", "d146-int-div-only", "d146-bank",
+        "d146-notice", "d146-organizer"])
+def test_a_1099b_section_is_read_as_a_form_label_not_as_the_word_consolidated(lines, carries):
+    """d146. The predicate reads the 1099-B the way a ``1099-b`` keyword is
+    read - named in its own right in the title, or the page's own number -
+    so a notice that mentions it and a checklist that lists it carry none,
+    and "consolidated" decides nothing either way."""
+    from tracker.content_check import carries_a_1099b_section
+
+    assert carries_a_1099b_section("\n".join(lines)) is carries

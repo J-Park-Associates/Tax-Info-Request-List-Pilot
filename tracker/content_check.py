@@ -868,6 +868,40 @@ def own_forms(text: str) -> set[str] | None:
     return None
 
 
+#: The form whose section makes a statement a broker's (decision 146):
+#: ``1099-B``, keyed the way :func:`form_key` keys a mention.
+BROKER_FORM = "1099b"
+
+
+def carries_a_1099b_section(text: str) -> bool:
+    """Whether ``text`` carries a 1099-B section - which is what makes a
+    broker's consolidated 1099 a brokerage statement (decision 146).
+
+    **Not the word "consolidated".** A bank's "Consolidated Statement", the
+    consolidated-return blanks and a broker's "your Consolidated Form 1099
+    is available" email all say it, and none of them is a brokerage
+    statement. What a consolidated statement with a 1099-B section has and
+    a bank's combined 1099-INT and 1099-DIV page does not is the 1099-B,
+    read as a form label exactly the way a ``1099-b`` keyword is read
+    (:func:`_one_says_where`): named in its own right in the title
+    (``_title_forms``, which keeps every 1099 variant a consolidated
+    statement names because they are one family), or as the page's own
+    dominant number. So this is true of a page exactly when a row asking
+    for ``1099-b`` could be accepted *because of* the 1099-B - a checklist
+    that lists it (a menu names nothing in its title) and a notice that
+    only mentions it are not. A statement with only interest and dividend
+    sections carries none and still files with the 1099-INT/DIV row: what
+    decides is the 1099-B section, not who issued the statement.
+
+    It says what the page carries and nothing more. Which request the page
+    then files under is :mod:`tracker.router`'s: exactly one of the rows
+    that accepted it must have been accepted because of the 1099-B, or it
+    parks.
+    """
+    low = text.lower()
+    return BROKER_FORM in _title_forms(low) or BROKER_FORM in dominant_forms(text)
+
+
 def self_named_forms(text: str) -> tuple[str, ...]:
     """Every form ``text`` prints its *own* name on, first mention first.
 

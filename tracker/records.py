@@ -266,6 +266,53 @@ def identifier_key(identifier: str) -> str:
 #: other working copies in Also Filed.
 CANDIDATE_SEP = ", "
 
+#: How the Also Answers cell (decision 146) sets one answered request apart
+#: from the next, and brackets the sections that answered it:
+#: ``A02 (1099-int, 1099-div); A04 (1099-misc)``. A request's identifier
+#: never holds a bracket or a semicolon, and a section is the row's own
+#: keyword - a catalog word, never a word of the document - so the cell
+#: reads back exactly as it was written.
+ANSWER_SEP = "; "
+_ANSWER = re.compile(r"^\s*([^()]+?)\s*(?:\((.*)\))?\s*$")
+
+#: One request a consolidated statement answers without a copy (decision
+#: 146): its identifier, and the sections of the statement that answer it -
+#: the row's own form-number keywords that accepted the statement, such as
+#: ``("1099-int", "1099-div")``. Empty where the row accepted it on a phrase
+#: that names no form; it is answered all the same, by one section.
+Answer = tuple[str, tuple[str, ...]]
+
+
+def format_answers(answers: tuple[Answer, ...] | list[Answer]) -> str:
+    """The Also Answers cell, written from the answers a routing carried."""
+    return ANSWER_SEP.join(
+        f"{identifier} ({CANDIDATE_SEP.join(sections)})" if sections else identifier
+        for identifier, sections in answers
+    )
+
+
+def parse_answers(text: str) -> tuple[Answer, ...]:
+    """The Also Answers cell read back, exactly as :func:`format_answers`
+    wrote it; lenient, as :func:`parse_evidence` is, about a part it cannot
+    read."""
+    found: list[Answer] = []
+    for part in (text or "").split(ANSWER_SEP.strip()):
+        match = _ANSWER.match(part)
+        if not match or not match.group(1).strip():
+            continue
+        sections = tuple(s.strip() for s in (match.group(2) or "").split(CANDIDATE_SEP.strip())
+                         if s.strip())
+        found.append((match.group(1).strip(), sections))
+    return tuple(found)
+
+
+def answer_count(answer: Answer) -> int:
+    """How many documents one answer counts toward its request: one per
+    section that answered it, and one where a phrase did (decision 146,
+    the owner's rule that a consolidated statement satisfies what each
+    statement inside it would on its own)."""
+    return max(1, len(answer[1]))
+
 
 @dataclass(frozen=True, slots=True)
 class IndexEntry:
@@ -314,6 +361,24 @@ class IndexEntry:
     #: one location per row and every reader that holds an original to its
     #: fingerprint reads an attachment unchanged.
     container: str = ""
+    #: The other requests this one document answers without a copy of its
+    #: own (decision 146, the owner's answer to 146-Q): a broker's
+    #: consolidated statement files whole under the request its 1099-B
+    #: asks for, and each other asked request on the return that one of its
+    #: sections would satisfy alone counts it as received. Written by
+    #: :func:`format_answers` - the request and the sections that answered
+    #: it - and read by the status, the letter and the client's received
+    #: list through :attr:`answered`, so all of them read the one cell.
+    #: Nothing is copied: one original, one working copy, one folder. A
+    #: person takes one request back out of it by marking that request
+    #: missing again. Empty on every other row, which is every row written
+    #: before decision 146.
+    answers: str = ""
+
+    @property
+    def answered(self) -> tuple[Answer, ...]:
+        """The Also Answers cell read back (:func:`parse_answers`)."""
+        return parse_answers(self.answers)
 
     @property
     def candidate_list(self) -> list[str]:
@@ -370,6 +435,7 @@ INDEX_LAYOUT: dict[str, tuple[str, int]] = {
     "evidence": ("Evidence", 50),
     "also_filed": ("Also Filed", 40),
     "container": ("Came Inside", 30),
+    "answers": ("Also Answers", 30),
 }
 assert tuple(INDEX_LAYOUT) == tuple(f.name for f in fields(IndexEntry))
 INDEX_COLUMNS = tuple(header for header, _ in INDEX_LAYOUT.values())
@@ -450,6 +516,11 @@ class ReceivedLine:
     label: str
     day: dt.date | None
     identifier: str
+    #: The label of the request whose consolidated statement answered this
+    #: one without a copy (decision 146), said after the date as
+    #: ``reasons.IN_CONSOLIDATED`` says it; empty on every document that
+    #: was filed under this request itself.
+    inside: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -511,6 +582,13 @@ class Routing:
     #: reading is cut short for being slow, and a routing is what it is
     #: whether the reading took a tenth of a second or a minute.
     seconds: float = 0.0
+    #: The other requests a consolidated statement answers without a copy
+    #: (decision 146): each asked row on the return that accepted the
+    #: statement beside the one it filed under, with the sections that
+    #: answered it. Never a filing - ``filed_to`` does not name them, and
+    #: nothing is copied into their folders - and empty on every other
+    #: decision.
+    answers: tuple[Answer, ...] = ()
 
     @property
     def routed(self) -> bool:

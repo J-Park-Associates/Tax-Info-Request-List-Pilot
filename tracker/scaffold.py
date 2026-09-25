@@ -80,7 +80,7 @@ from tracker.manifest import (
     load_engagement_info,
     load_manifest,
 )
-from tracker.reasons import GOOGLE_EXPORT_HINT
+from tracker.reasons import GOOGLE_EXPORT_HINT, IN_CONSOLIDATED
 from tracker.records import Received, ReceivedLine
 from tracker.validators import google_stub_examples
 
@@ -557,6 +557,8 @@ def _received_lines(returns: Sequence[_ReturnLine], received: Received) -> list[
         lines.append(one.return_name)
         for line in sorted(mine, key=lambda one: (one.day is None, one.day or 0, one.label)):
             said = f"{RECEIVED_WORD} {day_text(line.day)}" if line.day else RECEIVED_WORD
+            if line.inside:
+                said = f"{said}, {IN_CONSOLIDATED.format(row=line.inside)}"
             lines.append(f"  {line.label}  {said}")
     waiting = [one for one in received.under_review if one.count > 0]
     if waiting:

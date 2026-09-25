@@ -226,8 +226,8 @@ changes nothing:
   107 is refused by name; delete it and run `rebuild` — nothing is lost,
   the ledgers are what it is made of, and the first pass after it reads
   every document once to fill the verdict cache the database also keeps.
-- **Once, when decision 137 lands** (and again at decisions 142 and 143,
-  `user_version` 13 and 14). Its database is a new version
+- **Once, when decision 137 lands** (and again at decisions 142, 143, 144 and 146,
+  `user_version` 13 to 16). Its database is a new version
   (`user_version` 12), so the `tracker.db` already on the machine is refused
   by name. Delete it and run `rebuild` as above. The rebuild itself takes
   minutes; what takes longer is the **first pass after it**, which reads
@@ -767,7 +767,8 @@ became, and — when it was not filed — why not.
 | `filer.ASSIGNED_BY_PERSON` | Someone filed it with **File it**, on the date shown, and what the rules had said is kept after it. | Nothing. This is the audit trail. |
 | `router.UNMATCHED` | No request on this manifest accepted it. | File it to the right request, or add the request. |
 | `reasons.SHOWS_ITS_FORM_NUMBER` / `reasons.NAME_POINTS_AT` | No request accepted it, but the page shows the **form number** of the request(s) named — in its title, or as the form its first page is about, beside another of that request's own words — most often a scan whose reading lost one of the phrases the request asks for; or, where the page shows none, the file's **name** points at a request, and the sentence says "file name" instead. Those requests are the card's shortlist, never a filing, and the client's reminder is held for them rather than asking for what they sent (decision 140). | Open it: if it is that request's document, file it there; if not, file it where it belongs or set it aside, and the reminder is released. |
-| `router.AMBIGUOUS` | More than one request accepted it. | Pick the right one. |
+| `router.AMBIGUOUS` | More than one request accepted it. A broker's consolidated 1099 no longer parks here when exactly one request accepted it because of its 1099-B section (decision 146, below); two requests asking for a 1099-B, or none, and it still does. | Pick the right one. |
+| `reasons.FILED_WHOLE` / `reasons.ALSO_ANSWERS` | A broker's consolidated 1099 (decision 146): several requests accepted it, and exactly one - E01 on a 1040, B01 on a 1041 - was accepted because of its 1099-B section, so it filed whole there, one copy in one folder. The Also Answers column names every other asked request one of its sections answers (a 1099-INT/DIV row, a 1099-MISC row) and the sections that did; each of those requests reads Received with `reasons.IN_CONSOLIDATED` in its notes, counting one document per section - so a 1099-INT/DIV row asking for three is Partial after one statement with interest and dividend sections - and the letter does not ask for them. A statement with only interest and dividend sections is not a brokerage statement and files under the 1099-INT/DIV row as before. | Nothing. If the statement does not in fact carry what one of those requests needs, press **Mark … missing** beside it in the app's filed list: the statement stays where it is, that request comes off, and the letter asks for it again. |
 | `router.CONTESTED_PREFIX` | It looks like a named request but failed one of that request's own rules — last year's W-2, say. | Read the named rule. Usually it is the wrong year or the wrong client. |
 | `router.OCR_ONLY` | A scan or a photo with no text layer; OCR read it, but only loosely enough to guess. | Confirm what it is and file it. |
 | `reasons.NO_READABLE_TEXT` | Nothing in the file could be read at all — a scan or a photo with no OCR on this machine, an image-only PDF, an empty sheet. Nothing was matched against anything, so this is not "matched no request". | Open it and file it, or install OCR (§6, step 5). The shortlist shows what its **file name** suggests; the document decides. |

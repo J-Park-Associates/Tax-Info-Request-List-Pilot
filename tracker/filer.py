@@ -247,6 +247,7 @@ from tracker.records import (
     as_pattern,
     entry_from_json,
     entry_to_json,
+    format_answers,
     format_evidence,
     identifier_key,
     is_a_spelling,
@@ -362,6 +363,11 @@ ASSIGNED_BY_PERSON = "assigned by a person"
 DISMISSED_BY_PERSON = "not requested, by a person"
 #: Reason prefix on index rows a person sent back to REVIEW_DIR_NAME.
 UNFILED_BY_PERSON = "unfiled by a person"
+#: What a consolidated statement's row says when a person marks one of the
+#: requests it answered missing again (decision 146): appended to the
+#: Reason, so the row keeps why it was filed and says what the person took
+#: back, when, and why if they said.
+MARKED_MISSING = "{identifier} marked missing again by a person on {date}{note}"
 #: What the journal line that releases a row says (decision 132): which
 #: return took the document, by its label, and under which request. A
 #: label, never a member of any household - the record names folders and
@@ -1064,7 +1070,9 @@ def received_for(returns: Sequence) -> Received:
       document satisfied, under the request's own label - the words the
       client read under *REQUESTED, NOT YET RECEIVED* - and never the
       client's file name or the firm's working name. A request no longer on
-      the list reads :data:`OTHER_DOCUMENT`.
+      the list reads :data:`OTHER_DOCUMENT`. Each request the row's Also
+      Answers cell names (decision 146) is Received too, said as inside the
+      statement's own request (``reasons.IN_CONSOLIDATED``).
     - ``Needs Review`` is **Under Review**, counted by the day it arrived and
       never named: its only name is the client's own.
     - ``Duplicate``, ``Not Requested`` and anything else is not shown.
@@ -1100,6 +1108,19 @@ def received_for(returns: Sequence) -> Received:
                                               label=item.label if item else OTHER_DOCUMENT,
                                               day=day,
                                               identifier=item.identifier if item else ""))
+                # A consolidated statement answers other asked requests
+                # without a copy (decision 146): each is received, said as
+                # inside the statement's own request. A request no longer
+                # on the list is not said at all - "Other document" would be
+                # a second line for the one document the line above names.
+                # Joined without case, as the line above (decision 160).
+                host = requests.get(identifier_key(entry.identifier))
+                for identifier, _sections in entry.answered:
+                    item = requests.get(identifier_key(identifier))
+                    if item is not None:
+                        lines.append(ReceivedLine(return_path=folder, label=item.label,
+                                                  day=day, identifier=item.identifier,
+                                                  inside=host.label if host else OTHER_DOCUMENT))
             elif entry.decision == NEEDS_REVIEW:
                 waiting[day] = waiting.get(day, 0) + 1
     return Received(
@@ -2585,7 +2606,7 @@ def _finish_interrupted_moves(
         sentence = _the_trouble(engagement_dir, entry, op, outcome)
         parked, copy_said = _a_copy_to_act_on(engagement_dir, entry, cache)
         new_entry = replace(
-            entry, decision=NEEDS_REVIEW, identifier="", also_filed="",
+            entry, decision=NEEDS_REVIEW, identifier="", also_filed="", answers="",
             prepared_location=parked,
             reason="; ".join(part for part in (
                 _without_moved_sentence(entry.reason), sentence, copy_said) if part),
@@ -4161,6 +4182,10 @@ def _file_it(
         evidence=format_evidence(routing.evidence_record),
         also_filed=_CANDIDATE_SEP.join(locations[1:]),
         container=context.container,
+        # Decision 146: the asked requests a consolidated statement answers
+        # without a copy, as the routing named them - each still on this
+        # return's list, since the routing was this list's.
+        answers=format_answers([one for one in routing.answers if one[0] in context.by_id]),
     )
     # The move first, then the copies from where it will have moved to:
     # a step may stand on the one before it, and the recovery finishes
@@ -4932,7 +4957,7 @@ def hand_over(
             # The candidates and the evidence were this return's request
             # list judging the page; they name identifiers the taking
             # return does not have, so they do not travel with the row.
-            candidates="", evidence="", also_filed="",
+            candidates="", evidence="", also_filed="", answers="",
         )
         released = RELEASED_TO.format(label=label, identifier=item.identifier)
 
@@ -5275,7 +5300,7 @@ def unfile_document(
             decision=NEEDS_REVIEW,
             reason=(f"{UNFILED_BY_PERSON} on {today.isoformat()}{_said(note)}; was: {entry.reason}"
                     + (f"; {past_reader}" if past_reader else "")),
-            also_filed="",
+            also_filed="", answers="",
         )
         entries[position] = new_entry
         _intend(engagement_dir, ledger_key(new_entry), ops, by=ledger.BY_PERSON,
@@ -5310,6 +5335,72 @@ def unfile_document(
         entry=new_entry, moved_working_copy=still_the_rows, left_filed=left_filed,
         scan_note=_rescan(engagement_dir, today),
     )
+
+
+@dataclass(frozen=True, slots=True)
+class MarkedMissingResult:
+    """What marking one answered request missing again did."""
+
+    entry: IndexEntry            # the statement's row, rewritten
+    identifier: str              # the request marked missing again
+    scan_note: str = ""          # why the re-scan did not land, when it did not
+
+
+def mark_missing_again(
+    engagement_dir: Path | str,
+    original: str,
+    identifier: str,
+    note: str = "",
+    *,
+    today: dt.date | None = None,
+    seq: int | None = None,
+) -> MarkedMissingResult:
+    """Take one request off what a consolidated statement answers (decision
+    146, the owner's answer to 146-Q: "a person can still mark it missing").
+
+    ``original`` names the statement's row the way :func:`unfile_document`
+    takes it, and ``identifier`` the request on its Also Answers cell that
+    the statement does not in fact answer - a consolidated statement whose
+    interest section lacks what the preparer needs, say. The row keeps its
+    filing, its copy and every other answer; only that request comes off,
+    and the Reason says who took it off and when. Nothing moves on disk,
+    because nothing was ever copied for an answer.
+
+    One ``answer_withdrawn_by_person`` line, a row event, so the store
+    rebuilt from the journal and ``store check`` agree with the person.
+    Then the re-scan, as unfiling does it, so the request reads what its
+    own folder holds - Missing, most often, with the regression note that
+    says it was Received - and the letter asks for it again from the next
+    draft on. A request the row does not answer is refused by name, and so
+    is a row somebody re-filed since the person saw it (``seq``, decision
+    112).
+    """
+    engagement_dir = Path(engagement_dir)
+    today = today or dt.date.today()
+    wanted = identifier.strip()
+    with engagement_lock(engagement_dir):
+        ensure(engagement_dir)
+        _refuse_if_a_move_is_open(engagement_dir)
+        entries = read_index(engagement_dir)
+        before = {ledger_key(e): entry_to_json(e) for e in entries}
+        position = find_filed(entries, original, accepting=(FILE_MOVED,))
+        entry = entries[position]
+        _refuse_if_stale(engagement_dir, entry, seq)
+        answered = entry.answered
+        kept = [one for one in answered if identifier_key(one[0]) != identifier_key(wanted)]
+        if len(kept) == len(answered):
+            raise FilingError(f"{entry.original_name} does not answer {wanted}")
+        new_entry = replace(
+            entry,
+            answers=format_answers(kept),
+            reason="; ".join(part for part in (entry.reason, MARKED_MISSING.format(
+                identifier=wanted, date=today.isoformat(), note=_said(note))) if part),
+        )
+        entries[position] = new_entry
+        _record(engagement_dir, before, entries,
+                decided={ledger_key(new_entry): ledger.ANSWER_WITHDRAWN_BY_PERSON})
+    return MarkedMissingResult(entry=new_entry, identifier=wanted,
+                               scan_note=_rescan(engagement_dir, today))
 
 
 def _rescan(engagement_dir: Path, today: dt.date) -> str:
@@ -5556,7 +5647,7 @@ def restore_working_copy(
             if past_reader:
                 sentence = f"{sentence}; {past_reader}"
             new_entry = replace(
-                entry, decision=NEEDS_REVIEW, identifier="", also_filed="",
+                entry, decision=NEEDS_REVIEW, identifier="", also_filed="", answers="",
                 prepared_location=prepared_location(review_dir, parked.name),
                 reason=f"{_without_moved_sentence(entry.reason)}; {sentence}",
             )

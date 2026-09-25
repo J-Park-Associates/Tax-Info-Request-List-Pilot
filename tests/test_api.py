@@ -659,6 +659,34 @@ def test_unfile_sends_a_filed_document_back_for_review_and_the_status_with_it(ca
     assert payload["state"]["summary"]["received"] == 0
 
 
+def test_mark_missing_takes_one_request_off_a_consolidated_statement(capsys, demo_root):
+    """d146. The app's button: the filed statement's row names the requests
+    it answers, and marking one missing again leaves the statement filed,
+    re-scans, and hands back the state with that request outstanding."""
+    from tests.test_filer import _consolidated_return
+
+    engagement = _consolidated_return(demo_root)
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    [filed] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
+    assert filed["identifier"] == "E01" and filed["answered"] == ["A02", "A04"]
+
+    code, payload = run(capsys, "mark-missing", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": filed["pbc_location"], "identifier": "A02",
+                               "seq": filed["seq"]})
+    assert code == 0, payload
+    assert payload["marked_missing"]["identifier"] == "A02"
+    [filed] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
+    assert filed["answered"] == ["A04"]
+    a02 = next(i for i in payload["state"]["items"] if i["identifier"] == "A02")
+    assert a02["status"] == Status.MISSING
+
+    code, payload = run(capsys, "mark-missing", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": filed["pbc_location"], "identifier": "A02",
+                               "seq": filed["seq"]})
+    assert code == 1 and "does not answer A02" in payload["error"]
+
+
 def test_unfile_refuses_what_is_not_filed(capsys, demo_root, tmp_path):
     engagement = sample_engagement(capsys, demo_root, tmp_path, "nothing")
     code, payload = run(capsys, "unfile", api.ENGAGEMENT_FLAG, str(engagement),
@@ -1642,6 +1670,7 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
         "dismissed_heading": api.DISMISSED_HEADING, "file": api.FILE_LABEL,
         "file_anyway": api.FILE_ANYWAY_LABEL,
         "unfile": api.UNFILE_LABEL, "unfile_note": api.UNFILE_NOTE_HINT,
+        "mark_missing": api.MARK_MISSING_LABEL, "also_answers": api.ALSO_ANSWERS_LABEL,
         "filed_heading": api.FILED_HEADING,
         "suggested": api.SUGGESTED_HEADING, "other_requests": api.OTHER_REQUESTS_HEADING,
         "restore": api.RESTORE_LABEL, "keep": api.KEEP_LABEL,

@@ -250,7 +250,13 @@ ENV_STORE = "TRACKER_STORE"
 #: the journals like every version before it - the field travels in the
 #: ``rules_changed`` lines, and a line written before it existed reads as
 #: blank, which derives the short name from the document title.
-SCHEMA_VERSION = 15
+#: Version 16 (decision 146) added ``answers`` to ``documents``: the other
+#: requests a broker's consolidated statement answers without a copy, and
+#: the sections that answered each. A version-15 file has no such column,
+#: so it is refused, deleted and rebuilt from the journals like every
+#: version before it - the field travels in the row events, and a row
+#: written before it existed reads as answering nothing.
+SCHEMA_VERSION = 16
 
 #: What a row of ``engagements`` holds the record of: one return, or one
 #: household (decision 125). Both are folders with a journal, keyed by

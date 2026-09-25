@@ -998,7 +998,35 @@ function renderUnfileList(state) {
         "aria-label": vocab.review_labels.unfile_note,
       }),
       el("button", { className: "btn r-unfile" }, vocab.review_labels.unfile),
+      // Decision 146: a consolidated statement answers other requests
+      // without a copy; each can be marked missing again from here.
+      e.answered.length ? el("span", { className: "r-why" }, vocab.review_labels.also_answers) : null,
+      ...e.answered.map((identifier) =>
+        el("button", { className: "btn btn-small r-withdraw", dataset: { identifier } },
+          fill(vocab.review_labels.mark_missing, { identifier }))),
     )));
+}
+
+// The statement stays filed; only the one request comes off what it
+// answers, and the re-scan puts that request back to what its folder holds.
+async function withdrawAnswer(btn) {
+  const li = btn.closest("li");
+  btn.disabled = true;
+  try {
+    const result = await call(withEng("mark-missing"), {
+      original: li.dataset.original,
+      identifier: btn.dataset.identifier,
+      note: typed(li, ".r-note"),
+      seq: Number(li.dataset.seq),
+    });
+    render(result.state);
+    const m = result.marked_missing;
+    const notes = [`${m.original_name}: ${m.reason}`];
+    if (m.scan_note) notes.push(m.scan_note);
+    banner(notes.join(". ") + ".", m.scan_note ? "warn" : "ok");
+  } catch (err) {
+    await refused(err, btn);
+  }
 }
 
 // Nothing is deleted and nothing is moved: the row is rewritten, so the
@@ -2697,6 +2725,8 @@ $("dismissed-list").addEventListener("click", (e) => {
 $("filed-list").addEventListener("click", (e) => {
   const btn = e.target.closest(".r-unfile");
   if (btn) unfileDocument(btn.closest("li"));
+  const withdraw = e.target.closest(".r-withdraw");
+  if (withdraw) withdrawAnswer(withdraw);
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {

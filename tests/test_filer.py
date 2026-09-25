@@ -6603,3 +6603,174 @@ def test_the_intake_returns_fit_under_the_real_root():
     assert refused == 0
     every, deepest_every = _intake_refusals(asked_every_row=True)
     print(f"every row asked: {every} of 39 refused, deepest {deepest_every}")
+
+
+# ------------------------------------------------ decision 146's claims ----
+# A broker's consolidated 1099 files whole under the row its 1099-B asks
+# for, and counts as received for every other asked row one of its sections
+# would satisfy on its own (the owner's answer to 146-Q). One file, one
+# folder, nothing copied; the status, the letter, the client's received
+# list, a rebuilt store and ``store check`` all read the filed row's Also
+# Answers cell. Every case here is d146.
+
+SCHWAB_146 = "\n".join([
+    "Charles Schwab", "2025 Consolidated Form 1099", "Form 1099-DIV Dividends and Distributions",
+    "Form 1099-INT Interest Income", "Form 1099-B Proceeds From Broker and Barter Exchange Transactions",
+    "Form 1099-MISC Miscellaneous Information", "Realized Gain and Loss",
+])
+
+
+def _consolidated_return(tmp_path, *, int_div_expected=2):
+    """A 1040 on the shipped catalog, the Schwab statement dropped, sorted
+    and scanned. A02 expects two statements here: the consolidated one
+    carries two of them, its 1099-INT and its 1099-DIV."""
+    from tracker.manifest import validated
+    from tracker.scanner import scan_engagement
+    from tracker.templates import template_items
+
+    items = [replace(i, min_size_kb=0,
+                     expected_count=int_div_expected if i.identifier == "A02" else i.expected_count)
+             for i in validated(template_items("1040", year=2025))]
+    engagement = make_engagement(tmp_path, items)
+    drop(engagement, "Schwab 2025 1099.pdf", SCHWAB_146)
+    sort(engagement, today=DAY1)
+    scan_engagement(engagement, today=DAY1)
+    return engagement
+
+
+def _status(engagement, identifier):
+    return next(i for i in load_manifest(engagement) if i.identifier == identifier)
+
+
+def test_the_statement_answers_the_int_div_row_and_the_letter_does_not_ask_for_it(tmp_path):
+    """d146, claim 6. E01 holds the one copy; A02 (its interest and dividend
+    sections) and A04 (its miscellaneous section) read Received, each saying
+    it is in E01's consolidated statement, and neither folder holds a file.
+    The letter asks for none of them, the client's received list shows each
+    beside the statement's request, and a store rebuilt from the journal
+    agrees with the live one."""
+    from tracker.filer import received_for
+    from tracker.layout import root_of
+    from tracker.manifest import Status
+    from tracker.reasons import IN_CONSOLIDATED
+    from tracker.reminder import draft_reminder
+    from tracker.scaffold import write_readme
+
+    engagement = _consolidated_return(tmp_path)
+    [row] = [r for r in read_index(engagement) if r.decision == FILED]
+    assert row.identifier == "E01" and row.also_filed == ""
+    assert row.answers == "A02 (1099-int, 1099-div); A04 (1099-misc)"
+
+    prepared = engagement / PREPARED_DIR_NAME
+    copies = [p for p in prepared.rglob("*.pdf") if REVIEW_DIR_NAME not in p.parts]
+    assert len(copies) == 1 and copies[0].parent.name.startswith("E01")
+
+    for identifier, count in (("E01", 1), ("A02", 2), ("A04", 1)):
+        item = _status(engagement, identifier)
+        assert item.status == Status.RECEIVED, (identifier, item.validation_notes)
+        assert item.file_count == count
+    assert IN_CONSOLIDATED.format(row="E01") in _status(engagement, "A02").validation_notes
+    assert IN_CONSOLIDATED.format(row="E01") in _status(engagement, "A04").validation_notes
+
+    draft = draft_reminder(engagement, today=DAY1)
+    assert not {"E01", "A02", "A04"} & set(draft.asked)
+    assert not {"E01", "A02", "A04"} & {flag.item.identifier for flag in draft.held}
+
+    received = received_for([engagement])
+    inside = {line.identifier: line.inside for line in received.lines}
+    e01 = _status(engagement, "E01").label
+    assert inside == {"E01": "", "A02": e01, "A04": e01}
+    household = engagement.parents[1]
+    text = write_readme(household, received).read_text(encoding="utf-8")
+    assert IN_CONSOLIDATED.format(row=e01) in text
+
+    root = root_of(engagement)
+    live = store.connect()
+    assert store.check(live, root, engagement) == []
+    db = os.environ[store.ENV_STORE]
+    store.close()
+    os.unlink(db)
+    fresh = store.connect()
+    store.rebuild_engagement(fresh, root, engagement)
+    assert [r.answers for r in read_index(engagement) if r.decision == FILED] == [row.answers]
+    assert _status(engagement, "A02").status == Status.RECEIVED
+    assert store.check(fresh, root, engagement) == []
+
+
+def test_a_statement_counts_as_the_statements_inside_it_and_no_more(tmp_path):
+    """d146. The owner's words: a consolidated statement satisfies what each
+    statement inside it would. A02 asking for three is answered by two - the
+    1099-INT and the 1099-DIV - so it reads Partial and the letter asks for
+    the one still to come, exactly as it would after a loose 1099-INT and a
+    loose 1099-DIV."""
+    from tracker.manifest import Status
+    from tracker.reminder import draft_reminder
+
+    engagement = _consolidated_return(tmp_path, int_div_expected=3)
+    item = _status(engagement, "A02")
+    assert item.status == Status.PARTIAL and item.file_count == 2
+    assert "A02" in draft_reminder(engagement, today=DAY1).asked
+    assert _status(engagement, "A04").status == Status.RECEIVED
+
+
+def test_a_person_can_still_mark_that_row_missing(tmp_path):
+    """d146, claim 6. A person marks A02 missing again: the statement stays
+    filed under E01 with its copy where it is, A02 comes off its Also
+    Answers cell on the record (one answer_withdrawn_by_person line), A02
+    goes back to Missing with the regression note, the letter asks for it
+    again, and A04 is still answered. Asking twice is refused by name, and
+    a rebuilt store agrees with the person."""
+    from tracker.filer import MARKED_MISSING, mark_missing_again, received_for
+    from tracker.layout import root_of
+    from tracker.manifest import Status
+    from tracker.reminder import draft_reminder
+    from tracker.scanner import REGRESSION_NOTE
+
+    engagement = _consolidated_return(tmp_path)
+    copies_before = sorted((engagement / PREPARED_DIR_NAME).rglob("*.pdf"))
+
+    result = mark_missing_again(engagement, "Schwab 2025 1099.pdf", "A02",
+                                note="no interest detail", today=DAY2)
+    assert result.scan_note == ""
+    [row] = [r for r in read_index(engagement) if r.decision == FILED]
+    assert row.identifier == "E01" and row.answers == "A04 (1099-misc)"
+    assert row.reason.endswith(MARKED_MISSING.format(
+        identifier="A02", date=DAY2.isoformat(), note=" (no interest detail)"))
+    assert len(events_named(engagement, ledger.ANSWER_WITHDRAWN_BY_PERSON)) == 1
+    assert sorted((engagement / PREPARED_DIR_NAME).rglob("*.pdf")) == copies_before
+
+    a02 = _status(engagement, "A02")
+    assert a02.status == Status.MISSING
+    assert a02.validation_notes.startswith(REGRESSION_NOTE.split(" {date}")[0].format(
+        status=Status.RECEIVED))
+    assert _status(engagement, "A04").status == Status.RECEIVED
+    assert _status(engagement, "E01").status == Status.RECEIVED
+    assert "A02" in draft_reminder(engagement, today=DAY2).asked
+    assert "A02" not in {line.identifier for line in received_for([engagement]).lines}
+
+    with pytest.raises(FilingError, match="does not answer A02"):
+        mark_missing_again(engagement, "Schwab 2025 1099.pdf", "A02", today=DAY2)
+
+    root = root_of(engagement)
+    db = os.environ[store.ENV_STORE]
+    store.close()
+    os.unlink(db)
+    fresh = store.connect()
+    store.rebuild_engagement(fresh, root, engagement)
+    assert [r.answers for r in read_index(engagement) if r.decision == FILED] == ["A04 (1099-misc)"]
+    assert store.check(fresh, root, engagement) == []
+
+
+def test_unfiling_the_statement_takes_its_answers_with_it(tmp_path):
+    """d146. The answers are the filed row's: unfile the statement and its
+    row parks with no answers, so A02 and A04 go back to what their own
+    folders hold rather than staying Received on a document in review."""
+    from tracker.filer import unfile_document
+    from tracker.manifest import Status
+
+    engagement = _consolidated_return(tmp_path)
+    unfile_document(engagement, "Schwab 2025 1099.pdf", today=DAY2)
+    [row] = read_index(engagement)
+    assert row.decision == NEEDS_REVIEW and row.answers == ""
+    assert _status(engagement, "A02").status == Status.MISSING
+    assert _status(engagement, "A04").status == Status.MISSING

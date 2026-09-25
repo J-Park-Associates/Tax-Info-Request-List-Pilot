@@ -381,7 +381,7 @@ _DECISION_67 = [
 _DECISION_68 = [
     # Round eleven. A broker's consolidated 1099 is one family's document: the
     # interest-and-dividend one files, the one with a 1099-B is the rows' own
-    # tie. A receipt row keys on receipt wording, not on a pledge, a thank-you
+    # tie - until decision 146, which files it whole under E01. A receipt row keys on receipt wording, not on a pledge, a thank-you
     # or the firm's own letter; a church's giving statement is a receipt. A
     # state voucher is an estimated tax record; an FSA statement is not a
     # childcare provider's statement.
@@ -398,7 +398,7 @@ _DECISION_68 = [
         "Charles Schwab", "2025 Consolidated Form 1099", "Form 1099-DIV Dividends and Distributions",
         "Form 1099-INT Interest Income", "Form 1099-B Proceeds From Broker and Barter Exchange Transactions",
         "Form 1099-MISC Miscellaneous Information", "Realized Gain and Loss",
-    ], None),
+    ], "E01"),      # parked as the rows' tie until decision 146 filed it whole under its 1099-B's row
     ("1040", "pledge acknowledgment.pdf", [
         "State University Foundation", "We gratefully acknowledge your pledge of 10,000.00, payable over five years.",
         "First installment due January 2026.",
@@ -856,7 +856,7 @@ _DECISION_73 = [
         "Charles Schwab", "2025 Consolidated Form 1099", "Form 1099-DIV Dividends and Distributions",
         "Form 1099-INT Interest Income", "Form 1099-B Proceeds From Broker and Barter Exchange Transactions",
         "Form 1099-MISC Miscellaneous Information", "Realized Gain and Loss",
-    ], None),
+    ], "B01"),      # the B01/B02 tie until decision 146: B01 is the row its 1099-B asks for
     ("1041", "fax cover then 1099-R.pdf", [
         "FAX COVER SHEET", "To: J Park & Associates From: Jane Smith Date: 02/01/2026 Pages: 3",
         "Re: Forms 1099-INT and 1099-DIV, plus a 1098 - for my 2025 return", "",
@@ -1807,6 +1807,38 @@ _DECISION_141 = [
     ], None),
 ]
 
+# Decision 146: a broker's consolidated 1099 carries a 1099-B section and
+# files whole under the one row accepted because of it - E01 on a 1040, B01
+# on a 1041 - however it titles itself. A bank's statement that says
+# "consolidated", and a broker's notice that the statement is ready, are
+# not it.
+_DECISION_146 = [
+    ("1040", "Fidelity tax information statement.pdf", [
+        "Fidelity Investments", "2025 Tax Information Statement", "Account Z12-345678",
+        "Form 1099-DIV Dividends and Distributions 2025", "1a Total ordinary dividends 812.00",
+        "Form 1099-INT Interest Income 2025", "1 Interest income 40.00",
+        "Form 1099-B Proceeds From Broker and Barter Exchange Transactions 2025", "1d Proceeds 24,318.55",
+    ], "E01"),
+    ("1041", "Fidelity tax information statement.pdf", [
+        "Fidelity Investments", "2025 Tax Information Statement", "Account Z12-345678",
+        "Form 1099-DIV Dividends and Distributions 2025", "1a Total ordinary dividends 812.00",
+        "Form 1099-INT Interest Income 2025", "1 Interest income 40.00",
+        "Form 1099-B Proceeds From Broker and Barter Exchange Transactions 2025", "1d Proceeds 24,318.55",
+    ], "B01"),
+    ("1040", "composite 1099 with interest and a B.pdf", [
+        "2025 Form 1099 Composite", "Form 1099-INT Interest Income", "Form 1099-B Proceeds From Broker",
+    ], "E01"),
+    ("1040", "bank consolidated statement.pdf", [
+        "Harborline Savings Bank", "Consolidated Statement December 2025",
+        "Form 1099-INT Interest Income 2025", "1 Interest income 12.00",
+    ], "A02"),
+    ("1040", "consolidated 1099 is ready.pdf", [
+        "From: Schwab Alerts", "Subject: Your tax documents are ready",
+        "Your 2025 Consolidated Form 1099 is now available online.",
+        "Log in to view your Form 1099-B and Form 1099-DIV.",
+    ], None),
+]
+
 # The Schedule C sheet: the client's own workbook, in the shape the firm's
 # organizer worksheet has - a 1099-NEC named in a cell, which the 1099-NEC
 # row cannot take (it asks for a PDF or a CSV), beside the expense lines.
@@ -1848,7 +1880,7 @@ CASES = [
         (62, _DECISION_62), (63, _DECISION_63), (65, _DECISION_65), (66, _DECISION_66),
         (67, _DECISION_67), (68, _DECISION_68), (69, _DECISION_69), (73, _DECISION_73),
         (85, _DECISION_85), (90, _DECISION_90), (93, _DECISION_93), (94, _DECISION_94),
-        (141, _DECISION_141),
+        (141, _DECISION_141), (146, _DECISION_146),
     )
     for case in block
 ]

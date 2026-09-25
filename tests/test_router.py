@@ -269,18 +269,19 @@ def test_a_page_naming_two_forms_never_files_on_a_third_and_the_miss_path_agrees
 
 
 def test_ambiguous_match_goes_to_review(tmp_path):
-    """A combined 1099 that satisfies two rows is a person's decision."""
-    both = RequestItem(
-        identifier="E01", document="Brokerage Year-End",
-        allowed_extensions=("pdf",), min_size_kb=0, any_keywords=("1099-b",),
+    """A document two rows accept on their looser words is a person's
+    decision. Until decision 146 the example was a composite with a 1099-B
+    section, which now files whole under the row its 1099-B asks for
+    (below); two rows that both ask for its 1099-INT are still a tie."""
+    savings = RequestItem(
+        identifier="B09", document="Savings Interest",
+        allowed_extensions=("pdf",), min_size_kb=0, any_keywords=("1099-int",),
     )
-    # A composite prints each form's title on its own line; "1099-INT and
-    # 1099-B" in one sentence would be a document talking about both.
-    f = text_pdf(tmp_path / "combined.pdf", "Form 1099-INT Interest Income 2025\nForm 1099-B Proceeds From Broker 2025")
-    routing = route_file(f, [INT_DIV, both])
+    f = text_pdf(tmp_path / "combined.pdf", "Form 1099-INT Interest Income 2025" + NL + "Form 1099-DIV Dividends 2025")
+    routing = route_file(f, [INT_DIV, savings])
     assert routing.identifier is None
     assert routing.reason.startswith(AMBIGUOUS)
-    assert set(routing.candidates) == {"A02", "E01"}
+    assert set(routing.candidates) == {"A02", "B09"}
 
 
 def test_not_applicable_rows_never_receive_files(tmp_path):
@@ -1051,3 +1052,144 @@ def test_a_form_number_said_only_deep_is_not_shown(tmp_path):
     assert _says_where(text, "W-2") == ("deep", 2), "the premise: said, and deep"
     routing = _read_by_ocr(tmp_path, "scan0003.pdf", text, items)
     assert routing.reason == UNMATCHED and routing.evidence_record == {}
+
+
+# ------------------------------------------------ decision 146's claims ----
+# A broker's consolidated 1099 carries a 1099-B section beside its 1099-INT,
+# 1099-DIV and 1099-MISC ones. It files whole under the one row that
+# accepted it because of the 1099-B, and answers the other asked rows that
+# accepted it, without a copy. Every case below is d146.
+
+SCHWAB_D146 = NL.join([
+    "Charles Schwab", "2025 Consolidated Form 1099", "Form 1099-DIV Dividends and Distributions",
+    "Form 1099-INT Interest Income", "Form 1099-B Proceeds From Broker and Barter Exchange Transactions",
+    "Form 1099-MISC Miscellaneous Information", "Realized Gain and Loss",
+])
+VANGUARD_D146 = NL.join([
+    "Vanguard Brokerage Services", "2025 Consolidated Form 1099 - Account 8812-4455",
+    "Form 1099-INT   Interest Income", "Form 1099-DIV   Dividends and Distributions",
+    "1 Interest income 1,240.00", "1a Total ordinary dividends 3,400.00",
+])
+
+
+def _catalog(form):
+    from dataclasses import replace
+
+    from tracker.manifest import validated
+    from tracker.templates import template_items
+
+    return [replace(i, min_size_kb=0) for i in validated(template_items(form, year=2025))]
+
+
+def test_a_consolidated_1099_with_a_b_section_files_whole_to_the_brokerage_row(tmp_path):
+    """d146. Until decision 146 this parked as "matched more than one request
+    (A02, A04, E01)". It files once, under E01, and names A02 and A04 as the
+    rows its interest, dividend and miscellaneous sections answer - with the
+    row's own keywords as the sections, and no copy."""
+    from tracker.reasons import ALSO_ANSWERS, FILED_WHOLE
+
+    routing = route_file(text_pdf(tmp_path / "schwab.pdf", SCHWAB_D146), _catalog("1040"))
+    assert routing.identifier == "E01" and routing.filed_to == ("E01",)
+    assert routing.also == ()
+    assert routing.answers == (("A02", ("1099-int", "1099-div")), ("A04", ("1099-misc",)))
+    assert routing.reason == (FILED_WHOLE.format(filed="E01") + "; "
+                              + ALSO_ANSWERS.format(listed="A02, A04"))
+    assert routing.candidates == ("E01", "A02", "A04")
+    assert set(routing.evidence_record) == {"E01", "A02", "A04"}
+
+
+def test_a_consolidated_1099_with_only_int_and_div_still_files_a02(tmp_path):
+    """d146. Decision 68's case, unchanged: a statement with interest and
+    dividend sections and no 1099-B carries no brokerage section, so it is
+    the 1099-INT/DIV row's, whoever issued it, and answers nothing."""
+    routing = route_file(text_pdf(tmp_path / "vanguard.pdf", VANGUARD_D146), _catalog("1040"))
+    assert routing.identifier == "A02" and routing.answers == ()
+
+
+@pytest.mark.parametrize("name, lines", [
+    ("bank consolidated statement.pdf", [
+        "Harborline Savings Bank", "Consolidated Statement December 2025",
+        "Form 1099-INT Interest Income 2025", "1 Interest income 12.00",
+    ]),
+    ("consolidated 1099 notice.pdf", [
+        "From: Schwab Alerts", "Subject: Your tax documents are ready",
+        "Your 2025 Consolidated Form 1099 is now available online.",
+        "Log in to view your Form 1099-B and Form 1099-DIV.",
+    ]),
+    ("forms ready notice.pdf", [
+        "Your 2025 Forms 1099-B and 1099-DIV are now available", "Log in at schwab.com to view them.",
+    ]),
+    ("organizer investment page.pdf", [
+        "2025 Individual Income Tax Organizer - Investment Income",
+        "Form 1099-B - Proceeds From Broker and Barter Exchange Transactions",
+        "Form 1099-DIV - Dividends and Distributions",
+        "Please list every brokerage account below.  Broker  Account number",
+    ]),
+], ids=["d146-bank", "d146-notice", "d146-ready", "d146-organizer"])
+def test_a_bank_consolidated_statement_or_a_notice_email_is_not_a_brokerage_statement(tmp_path, name, lines):
+    """d146. The word "consolidated" decides nothing, and neither does a
+    1099-B that a notice or a checklist only mentions: a bank's consolidated
+    statement is its 1099-INT (A02), and the notices and the organizer page
+    file under no row at all - never E01 as the statement."""
+    from tracker.content_check import carries_a_1099b_section
+
+    text = NL.join(lines)
+    routing = route_file(text_pdf(tmp_path / name, text), _catalog("1040"))
+    assert routing.identifier != "E01" and routing.answers == ()
+    assert not carries_a_1099b_section(text)
+    if name.startswith("bank"):
+        assert routing.identifier == "A02"
+    else:
+        assert routing.identifier is None
+
+
+def test_two_rows_explained_by_1099b_still_park(tmp_path):
+    """d146. Nothing is guessed: a preparer's own second row that also asks
+    for the 1099-B makes two rows accepted because of it, and the statement
+    parks as the rows' tie, exactly as before - and so does a list whose
+    only 1099-B row is set aside, where no row is."""
+    from dataclasses import replace
+
+    crypto = RequestItem(identifier="E09", document="Crypto 1099-B", period="TY2025",
+                         allowed_extensions=("pdf",), min_size_kb=0, any_keywords=("1099-b",))
+    f = text_pdf(tmp_path / "schwab.pdf", SCHWAB_D146)
+    two = route_file(f, _catalog("1040") + [crypto])
+    assert two.identifier is None and two.reason.startswith(AMBIGUOUS)
+    assert {"E01", "E09"} <= set(two.candidates) and two.answers == ()
+
+    none = [replace(i, manual_override=Override.NOT_APPLICABLE, override_reason="no brokerage")
+            if i.identifier == "E01" else i for i in _catalog("1040")]
+    parked = route_file(f, none)
+    assert parked.identifier is None and parked.reason.startswith(AMBIGUOUS)
+    assert set(parked.candidates) == {"A02", "A04"}
+
+
+def test_the_1041_files_it_to_b01_and_the_realized_gain_tie_resolves_there(tmp_path):
+    """d146. On a 1041 the row that asks for the 1099-B is B01 (1099s for the
+    trust's accounts); B02 accepted the statement on "realized gain and
+    loss", a phrase, not the form. The d73 tie resolves to B01, and B02 is
+    answered by the statement with no form section named."""
+    routing = route_file(text_pdf(tmp_path / "schwab.pdf", SCHWAB_D146), _catalog("1041"))
+    assert routing.identifier == "B01"
+    assert routing.answers == (("B02", ()),)
+
+
+def test_a_consolidated_1099_read_by_ocr_is_never_filed_on_its_looser_words(tmp_path):
+    """d146. Decision 50 stands: OCR's reading of the any-keywords is a lead
+    for a person, and the tie-break is never read over it."""
+    routing = _read_by_ocr(tmp_path, "scan0007.pdf", SCHWAB_D146, _catalog("1040"))
+    assert routing.identifier is None and routing.reason.startswith(OCR_ONLY)
+    assert routing.answers == ()
+
+
+def test_a_row_nobody_asked_for_is_never_answered(tmp_path):
+    """d146. The statement answers the *asked* rows (decision 142): an
+    unticked A04 still accepted it and is still a candidate, but nobody is
+    waiting on it, so it is not recorded as answered."""
+    from dataclasses import replace
+
+    items = [replace(i, asked=False) if i.identifier == "A04" else i for i in _catalog("1040")]
+    routing = route_file(text_pdf(tmp_path / "schwab.pdf", SCHWAB_D146), items)
+    assert routing.identifier == "E01"
+    assert routing.answers == (("A02", ("1099-int", "1099-div")),)
+    assert "A04" in routing.candidates
