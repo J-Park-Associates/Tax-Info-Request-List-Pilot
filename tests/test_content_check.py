@@ -1903,18 +1903,23 @@ def test_a_drop_the_reader_could_not_start_on_is_routed_next_pass(tmp_path, in_a
     assert no_child_left()
 
 
-def test_a_resent_file_the_reader_could_not_start_on_waits_for_the_next_pass(tmp_path, in_a_child):
+def test_a_resent_file_the_reader_could_not_start_on_waits_for_the_next_pass(
+        tmp_path, in_a_child, monkeypatch):
     """The final review's note. The re-send road reads again too: a W-2
     already on record whose working copy was deleted by hand, sent again,
     goes through ``_sort_one`` - the digest is known - and must be read
     before it is filed again. Pass 1's reader cannot start: no new row,
     nothing re-filed, no working copy made, one warning; the re-send rests
-    in the year's folder. Pass 2's reader works: it is filed again."""
+    in the year's folder. Pass 2's reader works: it is filed again. (Since
+    decision 157 a deleted copy is made again from its original first; the
+    re-file road is the one a copy takes while its original cannot be read,
+    as here - the first W-2's original still syncing.)"""
     import tracker.content_check as content_check
+    import tracker.filer as filer_module
     from tests.conftest import named_page
     from tests.test_scanner import text_pdf as page_pdf
     from tracker.filer import read_index
-    from tracker.layout import inbox_of, originals_of
+    from tracker.layout import inbox_of, locate, originals_of
     from tracker.registry import discover_engagements
     from tracker.runner import REMINDERS_NEVER, run_registry
 
@@ -1928,6 +1933,9 @@ def test_a_resent_file_the_reader_could_not_start_on_waits_for_the_next_pass(tmp
     [filed] = read_index(engagement)
     prepared = engagement / filed.prepared_location
     prepared.unlink()                                      # the working copy, deleted by hand
+    syncing = locate(engagement, filed.pbc_location)
+    real = filer_module.is_cloud_placeholder
+    monkeypatch.setattr(filer_module, "is_cloud_placeholder", lambda p: p == syncing or real(p))
 
     page_pdf(inbox_of(engagement) / "w2 again.pdf", page)  # the same document, sent again
     with pytest.MonkeyPatch.context() as broken:           # the machine is broken

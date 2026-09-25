@@ -2258,6 +2258,55 @@ def test_the_renderer_types_none_of_the_moved_cards_words(capsys, demo_root):
             assert word not in text, (rel, word)
 
 
+def test_the_moved_card_offers_mark_missing_on_a_row_whose_copy_and_original_are_both_gone(
+    capsys, demo_root, tmp_path,
+):
+    """d157, ruling B6. A mislaid copy whose original is gone too has nothing
+    to put back, keep or send to review, so the state says so (``gone``,
+    with the row's own request) and the card offers the one answer left:
+    **Mark ... missing**, the ``mark-missing`` command with the row's own
+    identifier. Pressed, the row leaves the card, its request reads Missing
+    and the next draft asks the client for it."""
+    from tracker.layout import locate
+    from tracker.reminder import draft_reminder
+
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "Form 1098 Mortgage Interest.pdf")
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    [filed] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
+    (engagement / filed["prepared_location"]).unlink()
+    locate(engagement, filed["pbc_location"]).unlink()
+
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    [moved] = payload["state"]["moved"]
+    assert moved["gone"] is True and moved["now"] is None
+    assert moved["identifier"] == filed["identifier"]
+    assert filed["identifier"] not in draft_reminder(engagement).asked
+
+    code, payload = run(capsys, "mark-missing", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": moved["pbc_location"], "identifier": moved["identifier"],
+                               "seq": moved["seq"]})
+
+    assert code == 0, payload
+    assert payload["marked_missing"]["identifier"] == filed["identifier"]
+    assert payload["state"]["moved"] == []
+    status = {i["identifier"]: i["status"] for i in payload["state"]["items"]}
+    assert status[filed["identifier"]] == Status.MISSING
+    assert filed["identifier"] in draft_reminder(engagement).asked
+
+    # The card draws that answer, and only that answer, on such a row - with
+    # the API's own label, wired to the same command as the filed list's.
+    js = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(
+        encoding="utf-8")
+    moved_row = js[js.index("function movedRow("):js.index("async function restoreMoved(")]
+    gone_branch = moved_row[moved_row.index("if (m.gone)"):moved_row.index("\n  }\n")]
+    assert "vocab.review_labels.mark_missing" in gone_branch and "r-withdraw" in gone_branch
+    assert "r-restore" not in gone_branch and "r-review" not in gone_branch
+    listener = js[js.index('$("moved-list").addEventListener'):]
+    assert "withdrawAnswer(" in listener[:listener.index("});")]
+
+
 # ------------------------------------------------- the reminder card (d118) ----
 # The app shows the week's draft, moves it up and down the ladder without
 # touching the file, copies it and approves it. Nothing sends.

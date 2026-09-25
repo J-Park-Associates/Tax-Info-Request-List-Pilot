@@ -30,7 +30,11 @@ person is told are one sentence apart. :data:`INTERRUPTED_MOVE` and
 :data:`INTERRUPTED_MOVE_LOST` (decision 119) are of that kind too: the
 filer's recovery writes them onto the row it could not finish as decided,
 and the scanner says them of the request the file was going to be a
-copy for.
+copy for. So are decision 157's three: :data:`COPY_MISSING`,
+:data:`COPY_AND_ORIGINAL_GONE` and :data:`ANSWER_NOT_COUNTED` are what the
+scanner says of a request whose working copy the record claims and the
+firm cannot count - read off the rows the sweep left, every one of them
+firm-side, so a missing copy is never by itself a letter to the client.
 
 And not every sentence here is a cause at all. :data:`NAMES_SEVERAL_FORMS`
 is what the index says when a document *was* filed - under several
@@ -328,6 +332,49 @@ COPY_CHANGED = Reason(
     firm_note="a working copy here no longer holds the bytes the record filed; a person "
               "here looks - never the client",
 )
+#: A path the record claims for this request's working copy holds nothing,
+#: and the pass did not make it again (decision 157, ruling B9): the
+#: original could not be read this pass (still syncing, or refused), or
+#: the copy could not be written. A missing copy is never a client ask by
+#: itself - the firm holds the client's original, and the next pass makes
+#: the copy from it - so this is firm-side, and only a person's Mark
+#: missing turns it into one.
+COPY_MISSING = Reason(
+    "copy-missing",
+    "the working copy {listed} is missing; it is made again from the original when the "
+    "original can be read",
+    "is made again from the original when the original can be read", firm_side=True,
+    firm_note="a working copy here is missing and is made again from the client's original "
+              "when it can be read; a person here looks if it stays - never the client",
+)
+#: This request's working copy is gone and so is the client's original - or
+#: the original holds other bytes now (decision 157, ruling B5). Nothing
+#: can be made again and nothing is guessed, so the request is held here,
+#: firm-side, until a person looks: it replaces ``FILE_MOVED``'s
+#: put-it-back wording, because there is nothing to put back. A person's
+#: Mark missing on the row is what asks the client again.
+COPY_AND_ORIGINAL_GONE = Reason(
+    "copy-and-original-gone",
+    "the copy and the original of {listed} are both gone; a person should look",
+    "are both gone; a person should look", firm_side=True,
+    firm_note="the working copy and the client's original are both gone; a person here "
+              "looks, and marks it missing if the client should send it again - never the "
+              "client until then",
+)
+#: A consolidated statement (decision 146) answers this request, and the
+#: statement's own working copy is not counted - it is missing, it is not
+#: the one the record filed, it is not where the record put it, or it and
+#: its original are both gone (decision 157, ruling B9, from 146's restack
+#: review). An answer is only as good as the document that gives it, so
+#: this request is not counted Received either: it is held here, naming
+#: the statement and why. A copy made again heals it in the same pass.
+ANSWER_NOT_COUNTED = Reason(
+    "answer-not-counted",
+    "{listed} is not counted, so neither is its answer for this request; a person should look",
+    "so neither is its answer for this request", firm_side=True,
+    firm_note="the consolidated statement that answers this request has no working copy the "
+              "firm can count; a person here looks - never the client",
+)
 
 #: A run died between one of its file operations and the record of them,
 #: and what it was about to do could not be finished as it was decided
@@ -589,7 +636,8 @@ ALL: tuple[Reason, ...] = (
     UNCHECKABLE_TYPE, NO_TEXT_LAYER, NO_TEXT_AFTER_OCR, OCR_FAILED, NO_READABLE_TEXT,
     ISSUER_NOT_NAMED, SHOWS_ITS_FORM_NUMBER, NAME_POINTS_AT,
     NAME_NOT_ON_PAGE, NAMES_ANOTHER_RETURN, NO_PEOPLE_ON_FILE, UNNAMED_ACROSS_HOUSEHOLDS,
-    OPENED_NOT_ACROSS, FILE_MOVED, COPY_CHANGED, INTERRUPTED_MOVE, INTERRUPTED_MOVE_LOST,
+    OPENED_NOT_ACROSS, FILE_MOVED, COPY_CHANGED, COPY_MISSING, COPY_AND_ORIGINAL_GONE,
+    ANSWER_NOT_COUNTED, INTERRUPTED_MOVE, INTERRUPTED_MOVE_LOST,
     READING_STOPPED, READING_CRASHED, READER_UNAVAILABLE, PENDING_SYNC, VANISHED,
 )
 

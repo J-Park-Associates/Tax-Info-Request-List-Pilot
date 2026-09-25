@@ -272,7 +272,11 @@ RENAMED_BY_PERSON = "renamed_by_person"
 #: statement's, with that request taken off its Also Answers cell and the
 #: person's sentence on its Reason; nothing moves on disk. A row event, so
 #: a store rebuilt from the journal and ``store check`` both hold the
-#: statement to what the person said.
+#: statement to what the person said. Since decision 157 the same line
+#: says a person marked a row's **own** request missing, on a row whose
+#: working copy and original are both gone: the row it carries names no
+#: working copy and answers nothing any more, so it stops counting and the
+#: next letter asks the client for the document.
 ANSWER_WITHDRAWN_BY_PERSON = "answer_withdrawn_by_person"
 #: A row preserved without its bytes was tied to them by a later pass.
 BYTES_RECORDED = "bytes_recorded"
@@ -284,6 +288,20 @@ BYTES_RECORDED = "bytes_recorded"
 #: copy said once rather than a vocabulary of drags. Nothing was moved to
 #: learn it and nothing is moved because of it.
 COPY_MOVED = "copy_moved"
+#: A working copy that had gone from where the record put it, whose bytes
+#: were nowhere else in the firm's folder, was made again from the row's
+#: own original, proved against the row's fingerprint (decision 157). The
+#: pass writes it, and so does a person's Put it back on a deleted copy -
+#: the same function, the same sentence on the row - with a ``moving``
+#: intent before the copy, like every other decision that touches a file.
+#: The client is never asked for a document the firm can make again.
+COPY_REMADE = "copy_remade"
+#: A drop in the inbox was a row's own original coming back - its bytes,
+#: the one row whose recorded original was no longer where the row said -
+#: and it was moved back to that exact place (decision 157). No new row is
+#: written: this line carries the row it went home to, with one sentence
+#: added, and closes the ``moving`` intent the move was written down in.
+ORIGINAL_RETURNED = "original_returned"
 #: The statuses one scan applied. Appended only when something changed, so a
 #: quiet pass appends nothing at all.
 SCANNED = "scanned"
@@ -396,7 +414,7 @@ ROW_EVENTS = frozenset({
     PRESERVED, FILED, PARKED, DUPLICATE, OPENED, ASSIGNED_BY_PERSON, DISMISSED_BY_PERSON,
     UNFILED_BY_PERSON, RESTORED_BY_PERSON, RENAMED_BY_PERSON, ANSWER_WITHDRAWN_BY_PERSON,
     BYTES_RECORDED,
-    COPY_MOVED, IMPORTED,
+    COPY_MOVED, COPY_REMADE, ORIGINAL_RETURNED, IMPORTED,
 })
 #: The events that take a row out of the index by its key (decision 132):
 #: the release, and the retired hand-over it replaced.

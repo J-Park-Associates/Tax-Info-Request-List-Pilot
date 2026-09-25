@@ -51,6 +51,14 @@ Status policy (docs/ROADMAP.md decision log):
   firm-side, on the row and on the run's warnings, so its Missing is never
   a client ask. Until decision 155 the newcomer was counted and kept
   whatever status it earned.
+- **A missing copy is never a client ask by itself** (decision 157). The
+  filer's sweep makes a gone working copy again from its original before
+  this reads anything; one it could not make this pass reads Missing with
+  ``reasons.COPY_MISSING``, one whose original is gone too with
+  ``reasons.COPY_AND_ORIGINAL_GONE``, and a request answered by a
+  consolidated statement whose own copy is not counted is not counted
+  either (``reasons.ANSWER_NOT_COUNTED``). All three are firm-side: only a
+  person's Mark missing puts the document back on the letter.
 
 Strictly read-only where the client's files are concerned: the scanner
 reads the prepared copies and writes only the record, the verdict cache in
@@ -274,10 +282,54 @@ def _interrupted(engagement_dir: Path, rows: list[IndexEntry]) -> dict[Path, str
     return found
 
 
-def _answered(rows: list[IndexEntry]) -> dict[str, list[tuple[str, int]]]:
+#: Why a consolidated statement's answers are not counted (decision 157,
+#: ruling B9): what is wrong with the statement's own working copy, said
+#: inside ``reasons.ANSWER_NOT_COUNTED`` beside the statement's request.
+ANSWER_WHY_MISSING = "its working copy is missing"
+ANSWER_WHY_CHANGED = "its working copy is not the one the record filed"
+ANSWER_WHY_NOWHERE = "its working copy is nowhere under the firm's folder"
+ANSWER_WHY_BOTH_GONE = "its working copy and its original are both gone"
+#: How the statement is named in that sentence: its request, and why.
+ANSWERED_BY = "{row}'s consolidated statement ({why})"
+
+
+def _host_not_counted(engagement_dir: Path, row: IndexEntry, cache: ContentCache) -> str:
+    """Why this consolidated statement's own working copy is not counted,
+    or ``""`` when it is (decision 157, ruling B9, from 146's restack
+    review, finding 2): an answer is only as good as the document that gives
+    it, so the requests it answers follow it.
+
+    Not counted: the copy is gone (the pass could not make it again), holds
+    other bytes (decision 155), is nowhere under the firm's folder, or is
+    gone with its original. Counted: here and the row's bytes, still
+    syncing (a placeholder is Pending Sync, never gone), or where a person
+    dragged it (decision 109 - the firm still holds it, and the row's own
+    request says so). A row recorded without its bytes (decision 65) has
+    nothing to be proved against, and counts as it always did.
+    """
+    from tracker.filer import FILE_MOVED, both_gone, moved_to
+
+    if not row.digest or not row.prepared_location:
+        return ""
+    if row.decision == FILE_MOVED:
+        if both_gone(row):
+            return ANSWER_WHY_BOTH_GONE
+        return "" if moved_to(row) else ANSWER_WHY_NOWHERE
+    home = locate(engagement_dir, row.prepared_location)
+    if is_cloud_placeholder(home):
+        return ""
+    if not home.is_file():
+        return ANSWER_WHY_MISSING
+    return "" if cache.digest_of(home) == row.digest else ANSWER_WHY_CHANGED
+
+
+def _answered(
+    engagement_dir: Path, rows: list[IndexEntry], cache: ContentCache,
+) -> dict[str, list[tuple[str, int, str]]]:
     """Which requests a filed consolidated statement answers without a copy
-    (decision 146), by request: the request it filed under, and how many
-    documents it counts for - one per section that answered.
+    (decision 146), by request: the request it filed under, how many
+    documents it counts for - one per section that answered - and why it
+    does not count, ``""`` while it does (decision 157).
 
     Read off each filed row's Also Answers cell (``IndexEntry.answered``)
     and off nothing else, so the status, the letter (which reads the
@@ -285,17 +337,21 @@ def _answered(rows: list[IndexEntry]) -> dict[str, list[tuple[str, int]]]:
     which reads the same cell) cannot disagree. A row counts while the
     record calls it received - Filed, or File Moved, whose own request the
     sweep already tells the firm about (decision 109) - which is the rule
-    the received list keeps too. Keyed without case, as a status is.
+    the received list keeps too, and **while its own working copy is
+    counted** (:func:`_host_not_counted`, decision 157): a request answered
+    by a statement the firm cannot open is held for a person, never
+    Received on it. Keyed without case, as a status is.
     """
     from tracker.filer import FILE_MOVED, FILED
 
-    found: dict[str, list[tuple[str, int]]] = {}
+    found: dict[str, list[tuple[str, int, str]]] = {}
     for row in rows:
-        if row.decision not in (FILED, FILE_MOVED) or not row.identifier:
+        if row.decision not in (FILED, FILE_MOVED) or not row.identifier or not row.answered:
             continue
+        why = _host_not_counted(engagement_dir, row, cache)
         for answer in row.answered:
             found.setdefault(identifier_key(answer[0]), []).append(
-                (row.identifier, answer_count(answer)))
+                (row.identifier, answer_count(answer), why))
     return found
 
 
@@ -353,7 +409,7 @@ def _scan_item(
     claimed: dict[Path, IndexEntry] | None = None,
     excluded: frozenset[Path] = frozenset(),
     interrupted: dict[Path, str] | None = None,
-    answered: list[tuple[str, int]] | tuple = (),
+    answered: list[tuple[str, int, str]] | tuple = (),
     mine: Callable[[Path], bool] = lambda _path: False,
 ) -> StatusUpdate:
     """Run tiers 1-3 for one manifest row and resolve its status.
@@ -394,9 +450,20 @@ def _scan_item(
     request's own files are, and is said on the row
     (``reasons.IN_CONSOLIDATED``). No file of this request's is read for
     it - the statement was read, and accepted by this row's own rules,
-    when it was routed.
+    when it was routed. One whose own working copy is not counted counts
+    nothing here either, and says so, firm-side
+    (``reasons.ANSWER_NOT_COUNTED``, decision 157).
+
+    **A missing copy is never a client ask by itself** (decision 157,
+    ruling B9). A copy the record put under this request's name that is
+    gone - one the pass could not make again this time, its original still
+    syncing or unreadable - leaves the request Missing with
+    ``reasons.COPY_MISSING``; one whose original is gone too says
+    ``reasons.COPY_AND_ORIGINAL_GONE`` rather than decision 110's
+    put-it-back wording. Both are firm-side, so the letter holds off until
+    a person marks the document missing.
     """
-    from tracker.filer import FILE_MOVED, moved_to, prepared_location
+    from tracker.filer import FILE_MOVED, both_gone, moved_to, prepared_location
 
     claimed = claimed or {}
     interrupted = interrupted or {}
@@ -452,7 +519,7 @@ def _scan_item(
                 seen.add(digest)
                 distinct.append(path)
         valid = distinct
-    count = len(valid) + sum(n for _filed, n in answered)
+    count = len(valid) + sum(n for _filed, n, why in answered if not why)
 
     failures = [f"{f.path.name}: {f.reason}" for f in tier2_failed]
     failures += [f"{path.name}: {reason}" for path, reason in content_failed]
@@ -466,21 +533,32 @@ def _scan_item(
         facts.append(ACCEPTED_NOTE.format(n=by_person))
     if duplicates:
         facts.append(DUPLICATES_NOTE.format(n=duplicates))
-    for filed in dict.fromkeys(filed for filed, _n in answered):
+    for filed in dict.fromkeys(filed for filed, _n, why in answered if not why):
         facts.append(reasons.IN_CONSOLIDATED.format(row=filed))
+    for filed, why in dict.fromkeys((filed, why) for filed, _n, why in answered if why):
+        facts.append(reasons.ANSWER_NOT_COUNTED.format(
+            listed=ANSWERED_BY.format(row=filed, why=why)))
     # What the record says about this request's own copies, before the
     # failures, so the note's cut can never take a firm-side marker off the
     # end and turn the row into a client ask. Neither is a failure: a row
     # whose copy was dragged away leaves the request Missing, truthfully,
     # and a file that passes the rules is counted whoever put it there.
     for path, row in claimed.items():
-        if (row.decision == FILE_MOVED and mine(path)
-                and not _the_rows_copy_is_here(path, row, cache)):
+        if not mine(path):
+            continue
+        listed = prepared_location(path.parent, path.name)
+        if row.decision == FILE_MOVED and not _the_rows_copy_is_here(path, row, cache):
+            if both_gone(row):
+                facts.append(reasons.COPY_AND_ORIGINAL_GONE.format(
+                    listed=f"{row.original_name} ({listed})"))
+                continue
             now = moved_to(row)
             facts.append(reasons.FILE_MOVED.format(listed="{} -> {}".format(
-                prepared_location(path.parent, path.name),
-                now or f"nowhere under {PREPARED_DIR_NAME}",
+                listed, now or f"nowhere under {PREPARED_DIR_NAME}",
             )))
+        elif row.decision != FILE_MOVED and not path.exists():
+            # Decision 157, B9: the pass makes it again when it can.
+            facts.append(reasons.COPY_MISSING.format(listed=listed))
     for path, sentence in interrupted.items():
         if mine(path) and path.exists():
             facts.append(sentence)
@@ -720,7 +798,7 @@ def scan_engagement(
         claimed = _claimed_paths(engagement_dir, rows)
         excluded = _wandered(engagement_dir, rows)
         interrupted = _interrupted(engagement_dir, rows)
-        answered = _answered(rows)
+        answered = _answered(engagement_dir, rows, cache)
         updates = {
             item.identifier: _scan_item(
                 item, assigned[item.identifier], cache, today, pdf_cache, accepted=accepted,

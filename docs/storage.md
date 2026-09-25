@@ -146,7 +146,7 @@ and their fold **is** the index: `preserved`, `filed`, `parked`,
 `duplicate`, `assigned_by_person`, `dismissed_by_person`,
 `unfiled_by_person`, `restored_by_person`, `renamed_by_person`,
 `answer_withdrawn_by_person`,
-`bytes_recorded`, `copy_moved`
+`bytes_recorded`, `copy_moved`, `copy_remade`, `original_returned`
 and the `imported` line a seeded row carries. `released` is not among them
 and is decision 132's: a person filed a parked document under a request of
 another return this drop folder feeds, so the row here is released — it
@@ -171,11 +171,18 @@ identifier it names changed, in its `answers` column too where a
 consolidated statement answers the request (decision 146). The
 `rules_changed` that renames the request and one `moving` intent per row
 are written first, in one write, and each `renamed_by_person` closes one
-intent. `answer_withdrawn_by_person` is decision 146's and the newest of
-them: a person marked a request missing again that a consolidated statement
-filed under another request was answering, and the row it carries is the
-statement's with that request taken off its `answers` column - nothing
-moves on disk. The rest of the names are not row events and fold their own
+intent. `answer_withdrawn_by_person` is decision 146's: a person marked a request
+missing again that a consolidated statement filed under another request
+was answering, and the row it carries is the statement's with that request
+taken off its `answers` column - nothing moves on disk. Since decision 157
+it also says a person marked a row's own request missing on a row whose
+working copy and original are both gone: the row it carries names no
+working copy and answers nothing. `copy_remade` and `original_returned`
+are decision 157's and the newest: the pass (or a person's Put it back)
+made a gone working copy again from the row's own original, and a row's own
+original came back into the inbox and was moved to the place the row
+names, with no new row. Each closes the `moving` intent written before it,
+and both fold like every other row event - no column, no schema change. The rest of the names are not row events and fold their own
 way: `scanned` (the statuses), `keyword_learned`, `rules_changed`,
 `drafted`, `draft_approved`, `moving`, `move_abandoned` and
 `household_changed`, and the retired

@@ -482,6 +482,18 @@ function renderMoved(state) {
 
 function movedRow(m, choices) {
   const where = m.now || vocab.review_labels.moved_nowhere;
+  // Decision 157: a copy whose original is gone too has nothing to put
+  // back, keep or send to review - each would refuse - so the one answer
+  // offered is the person's Mark missing on the row's own request, which
+  // puts the document back on the client's letter.
+  if (m.gone) {
+    return el("li", { dataset: { original: m.pbc_location, seq: m.seq } },
+      el("span", { className: "r-name" }, m.original_name),
+      el("span", { className: "r-why" }, `${m.home} → ${where}`),
+      m.identifier && el("button", { className: "btn r-withdraw", dataset: { identifier: m.identifier } },
+        fill(vocab.review_labels.mark_missing, { identifier: m.identifier })),
+    );
+  }
   return el("li", { dataset: { original: m.pbc_location, seq: m.seq } },
     el("span", { className: "r-name" }, m.original_name),
     el("span", { className: "r-why" }, `${m.home} → ${where}`),
@@ -2693,6 +2705,8 @@ $("moved-list").addEventListener("click", (e) => {
   if (keep) keepMoved(keep.closest("li"));
   const send = e.target.closest(".r-review");
   if (send) reviewMoved(send.closest("li"));
+  const withdraw = e.target.closest(".r-withdraw");
+  if (withdraw) withdrawAnswer(withdraw);
 });
 $("review-list").addEventListener("click", (e) => {
   const file = e.target.closest(".r-file");
