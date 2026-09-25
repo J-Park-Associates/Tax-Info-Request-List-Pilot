@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 130,
     "edges": 803,
-    "reused": 96
+    "reused": 104
   },
   "node_types": [
     "artifact",
@@ -3574,8 +3574,8 @@
       "id": "tests/test_fsio.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "200f06e9601869e2",
-      "lines": 138,
+      "sha256": "335fe2f4b98cf783",
+      "lines": 142,
       "exports": [
         "REPO",
         "test_a_copy_that_does_not_prove_never_takes_the_name",

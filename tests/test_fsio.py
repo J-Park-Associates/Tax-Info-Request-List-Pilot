@@ -101,7 +101,11 @@ def test_every_writer_flushes_its_bytes_to_the_disk_before_the_swap(tmp_path, mo
         source.write_bytes(b"{}")
         fsio_module.copy_atomically(source, target)
     monkeypatch.undo()
-    assert said[-2:] == ["fsync", "replace"] and target.read_bytes() == b"{}"
+    # The temp is flushed immediately before the swap. On POSIX the folder
+    # is flushed after it too (``_fsync_folder``), so the swap need not be
+    # the last call - only the flush before it is the claim.
+    swap = max(i for i, call in enumerate(said) if call == "replace")
+    assert swap > 0 and said[swap - 1] == "fsync" and target.read_bytes() == b"{}"
 
 
 def test_a_copy_that_does_not_prove_never_takes_the_name(tmp_path):
