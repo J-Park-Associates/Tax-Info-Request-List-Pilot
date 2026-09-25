@@ -1412,6 +1412,12 @@ function applyVocabulary() {
   $("ed-paste-title").textContent = vocab.editor.paste;
   $("ed-paste-hint").textContent = vocab.editor.paste_hint;
   $("ed-paste-btn").textContent = vocab.editor.paste;
+  $("ed-rename-title").textContent = vocab.editor.rename_title;
+  $("ed-rename-hint").textContent = vocab.editor.rename_hint;
+  $("ed-rename-from").setAttribute("aria-label", vocab.editor.rename_from);
+  $("ed-rename-to").setAttribute("aria-label", vocab.editor.rename_to);
+  $("ed-rename-to").placeholder = vocab.editor.rename_to;
+  $("ed-rename-btn").textContent = vocab.editor.rename;
   $("ed-cancel").textContent = vocab.editor.cancel;
   $("ed-save").textContent = vocab.editor.save;
   const cards = document.querySelectorAll("#assurances .assure div");
@@ -2403,9 +2409,48 @@ async function openEditor() {
   labelPeopleBlock("ep-head", "ep-help", "ep-add");
   renderPeople("ep-people", editorPeople, () => {});
   renderEditorRows();
+  renameChoices();
   $("ed-paste").value = "";
   editorNote("", "ok");
   $("editor").classList.remove("hidden");
+}
+
+// The requests the rename can act on: the list as the record holds it,
+// which is what the rename is checked against (decision 160).
+function renameChoices() {
+  $("ed-rename-from").replaceChildren(...((editorState && editorState.rules) || [])
+    .map((rule) => el("option", { value: rule.identifier }, rule.identifier)));
+  $("ed-rename-to").value = "";
+}
+
+// A request given another identifier, its documents moved with it: one
+// act, recorded at once and not part of Save (decision 160). The editor
+// keeps what the person typed and not saved - the renamed row takes its
+// new identifier in place - and adopts the list's version the rename left,
+// which the API checked against the one this editor opened on first.
+async function renameRequest() {
+  const from = $("ed-rename-from").value;
+  const to = $("ed-rename-to").value.trim();
+  if (!from || !to) return;
+  const btn = $("ed-rename-btn");
+  btn.disabled = true;
+  try {
+    const result = await call(withEng("rename"), { from, to, head: editorState.list_head });
+    const renamed = result.renamed;
+    editorState = { ...result.state, list_head: renamed.head };
+    for (const row of editorRows) if (row.identifier === renamed.old) row.identifier = renamed.new;
+    renderEditorRows();
+    renameChoices();
+    render(result.state);
+    const lines = [fill(vocab.editor.renamed_note, renamed)];
+    if (renamed.left.length) lines.push(fill(vocab.editor.rename_left_note, { left: renamed.left.join(", ") }));
+    if (renamed.scan_note) lines.push(renamed.scan_note);
+    editorNote(lines.join("\n"), renamed.left.length || renamed.scan_note ? "warn" : "ok");
+  } catch (err) {
+    editorNote(err.message, "err");
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 function closeEditor() {
@@ -2460,9 +2505,12 @@ async function saveEditor() {
   const btn = $("ed-save");
   btn.disabled = true;
   try {
+    // The version of the list this editor opened on (decision 160): a save
+    // made after another window's is refused rather than taking it back.
     const result = await call(withEng("edit"), {
       items: editorRows,
       engagement: engagementFromFields(),
+      head: editorState.list_head,
     });
     render(result.state);
     closeEditor();
@@ -2595,6 +2643,7 @@ $("ed-paste-btn").addEventListener("click", () => {
   const added = pasteRows($("ed-paste").value);
   if (added) $("ed-paste").value = "";
 });
+$("ed-rename-btn").addEventListener("click", renameRequest);
 $("ed-save").addEventListener("click", saveEditor);
 $("ed-cancel").addEventListener("click", closeEditor);
 $("editor").addEventListener("click", (e) => {

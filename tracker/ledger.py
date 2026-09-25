@@ -256,6 +256,16 @@ HANDED_OVER_BY_PERSON_EVENT = "handed_over_by_person"
 #: :data:`COPY_MOVED` stays what it is - the machine noticing - and this is
 #: the person answering.
 RESTORED_BY_PERSON = "restored_by_person"
+#: A person gave a request another identifier with the rename action, and
+#: the row names it by its new one (decision 160): the working copies it
+#: holds under the request moved into the request's renamed folder under
+#: renamed names, or - for a row with no copy there, a duplicate of one -
+#: only the identifier it names changed. The ``rules_changed`` that renames
+#: the request and one :data:`MOVING` intent per row are written first, in
+#: one write, and each of these closes one intent; so a rename a run was
+#: killed in the middle of is finished by the next pass like any other
+#: person's decision, and recorded as this.
+RENAMED_BY_PERSON = "renamed_by_person"
 #: A row preserved without its bytes was tied to them by a later pass.
 BYTES_RECORDED = "bytes_recorded"
 #: The pass found this row's working copy somewhere other than where the
@@ -376,7 +386,7 @@ MIGRATED = "migrated"
 #: The events that carry a whole index row. Their fold is the index.
 ROW_EVENTS = frozenset({
     PRESERVED, FILED, PARKED, DUPLICATE, OPENED, ASSIGNED_BY_PERSON, DISMISSED_BY_PERSON,
-    UNFILED_BY_PERSON, RESTORED_BY_PERSON, BYTES_RECORDED,
+    UNFILED_BY_PERSON, RESTORED_BY_PERSON, RENAMED_BY_PERSON, BYTES_RECORDED,
     COPY_MOVED, IMPORTED,
 })
 #: The events that take a row out of the index by its key (decision 132):

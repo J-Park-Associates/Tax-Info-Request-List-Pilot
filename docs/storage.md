@@ -141,7 +141,7 @@ statuses by status.
 The events that carry a whole index row are `tracker.ledger.ROW_EVENTS`,
 and their fold **is** the index: `preserved`, `filed`, `parked`,
 `duplicate`, `assigned_by_person`, `dismissed_by_person`,
-`unfiled_by_person`, `restored_by_person`,
+`unfiled_by_person`, `restored_by_person`, `renamed_by_person`,
 `bytes_recorded`, `copy_moved`
 and the `imported` line a seeded row carries. `released` is not among them
 and is decision 132's: a person filed a parked document under a request of
@@ -154,12 +154,18 @@ wrote is retired: read as a release of its key, never written. `copy_moved` is d
 the record last said — away from its request folder, away again, or back
 where it belongs — and the row the line carries says which. One name in
 either direction, because the fold is the same fold whichever way the
-copy went. `restored_by_person` is decision 110's and the newest of them,
+copy went. `restored_by_person` is decision 110's,
 and it is the answer to that one: a person put the copy back where the
 record put it, whatever the click found — the bytes moved home, copied
 home from the client's original, already home, or refused a home holding
 a different file and sent to review instead. One name again, because the
-row the line carries says which. The rest of the names are not row events and fold their own
+row the line carries says which. `renamed_by_person` is decision 160's and
+the newest of them: a person gave a request another identifier with the
+editor's Rename, and the row names the new one - its working copies moved
+into the request's renamed folder under renamed names, or, for a row with
+no copy there, only the identifier it names changed. The `rules_changed`
+that renames the request and one `moving` intent per row are written first,
+in one write, and each `renamed_by_person` closes one intent. The rest of the names are not row events and fold their own
 way: `scanned` (the statuses), `keyword_learned`, `rules_changed`,
 `drafted`, `draft_approved`, `moving`, `move_abandoned` and
 `household_changed`, and the retired

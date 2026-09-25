@@ -71,6 +71,7 @@ from tracker.manifest import (
     issuer_short_title,
     item_from_fields,
     item_from_record,
+    list_head,
     load_engagement_info,
     load_manifest,
     save_rules,
@@ -346,6 +347,11 @@ def _through_the_record(values, status, ctx):
 
 
 def _api(ctx, *argv, stdin=None) -> dict:
+    """One API command, as the app sends it. An ``edit`` carries the list's
+    version the way the editor does (decision 160): the one ``state`` would
+    have handed out now, unless the call names its own."""
+    if stdin is not None and argv[0] == "edit" and "head" not in stdin:
+        stdin = {**stdin, "head": list_head(argv[argv.index(api.ENGAGEMENT_FLAG) + 1])}
     if stdin is not None:
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr("sys.stdin", io.StringIO(json.dumps(stdin)))
@@ -615,3 +621,67 @@ def test_the_api_hands_out_rules_it_reads_back_unchanged(ctx):
         assert {row["identifier"]: row["allowed_extensions"] for row in opened}["B01"] == ANY_EXTENSION
         saved = _api(ctx, "edit", api.ENGAGEMENT_FLAG, str(folder), stdin={"items": opened, "engagement": {}})
         assert saved["saved"]["recorded"] is False, saved["saved"]
+
+
+def test_a_save_without_a_column_keeps_its_recorded_value(ctx):
+    """A row saved without a column keeps what the record holds for it
+    (decision 160, the audit's E2) - for every column of ``RULE_FIELDS``,
+    read from 145's list as the test runs, each away from its default.
+
+    An older window or build sends its rows without the columns added since
+    it was built. Each such column used to take its default, and the save
+    journalled that as a change nobody made: a short name (decision 144)
+    blanked, a row the firm set not asked (decision 142) asked again and
+    back in the client's letter. Absent means unchanged, as it already did
+    for the engagement's details. ``row`` is the position the save numbers
+    from the list's order, and ``date_pattern_derived`` travels with the
+    date pattern it describes: left out beside the pattern the record
+    holds, the pattern is still the derived one. ``identifier`` is the one
+    column that cannot be left out: it is what a sent row is matched to its
+    recorded row by.
+
+    One row per column, each with that one column left out, and one real
+    change on the companion so the save records an event.
+    """
+    rows = [COMPANION]
+    targets = {}
+    for n, column in enumerate(records.RULE_FIELDS, start=1):
+        if column == "identifier":
+            continue            # the key a sent row is matched to its recorded row by
+        values = {**full_row(), "identifier": f"C{n:02}"}
+        rows.append(_item(values))
+        targets[f"C{n:02}"] = column
+    folder = _new_return(ctx, rows)
+    state = _api(ctx, "state", api.ENGAGEMENT_FLAG, str(folder))
+    before = {rule["identifier"]: rule for rule in state["rules"]}
+    sent = []
+    for rule in state["rules"]:
+        rule = dict(rule)
+        if rule["identifier"] in targets:
+            del rule[targets[rule["identifier"]]]
+        elif rule["identifier"] == COMPANION.identifier:
+            rule["expected_count"] = rule["expected_count"] + 1
+        sent.append(rule)
+    saved = _api(ctx, "edit", api.ENGAGEMENT_FLAG, str(folder), stdin={"items": sent, "engagement": {}})
+    assert saved["saved"]["changed"] == [COMPANION.identifier], saved["saved"]
+    after = {rule["identifier"]: rule for rule in saved["state"]["rules"]}
+    for identifier, column in targets.items():
+        assert after[identifier] == before[identifier], f"{column} left out of {identifier}"
+
+
+def test_a_save_with_a_column_this_version_does_not_know_is_refused(ctx):
+    """A row carrying a key that is no column of ``RULE_FIELDS`` is a newer
+    window's row, or a mistake: refused by row and key, and nothing is
+    recorded (decision 160)."""
+    folder = _new_return(ctx, [COMPANION])
+    state = _api(ctx, "state", api.ENGAGEMENT_FLAG, str(folder))
+    before = ledger.path_for(folder).read_bytes()
+    rows = [{**state["rules"][0], "column_from_a_newer_build": "x"}]
+    with ctx.monkeypatch.context() as mp:
+        mp.setattr("sys.stdin", io.StringIO(json.dumps(
+            {"items": rows, "engagement": {}, "head": list_head(folder)})))
+        code = api.main(["edit", api.ENGAGEMENT_FLAG, str(folder)])
+    payload = json.loads(ctx.capsys.readouterr().out)
+    assert code == 1
+    assert payload["error"] == api.UNKNOWN_COLUMN.format(n=1, key="column_from_a_newer_build")
+    assert ledger.path_for(folder).read_bytes() == before

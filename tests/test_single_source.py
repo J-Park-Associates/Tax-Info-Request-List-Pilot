@@ -143,6 +143,84 @@ def test_the_shell_runs_only_commands_the_api_has():
     assert "sandbox: true" in main_js and "setWindowOpenHandler" in main_js
 
 
+#: The Electron module main.js is run against in the claim below: an app that
+#: answers the single-instance lock as told, and a window that records being
+#: brought forward. Every other part of the shell is left real.
+_ELECTRON_STUB = r"""
+const Module = require("module");
+const seen = { asked: false, quit: 0, windows: 0, restored: 0, focused: 0, events: [] };
+const handlers = {};
+const win = {
+  isMinimized: () => true,
+  restore() { seen.restored += 1; },
+  focus() { seen.focused += 1; },
+  loadFile() {},
+  webContents: { setWindowOpenHandler() {}, on() {} },
+};
+const opened = [];
+class BrowserWindow {
+  constructor() { seen.windows += 1; opened.push(win); return win; }
+  static getAllWindows() { return opened; }
+}
+const electron = {
+  app: {
+    isPackaged: false,
+    requestSingleInstanceLock() { seen.asked = true; return process.argv[3] === "first"; },
+    quit() { seen.quit += 1; },
+    on(name, fn) { seen.events.push(name); handlers[name] = fn; },
+    whenReady: () => Promise.resolve(),
+  },
+  BrowserWindow, ipcMain: { handle() {} }, shell: {}, dialog: {},
+};
+const load = Module._load;
+Module._load = function (request, ...rest) {
+  return request === "electron" ? electron : load.call(this, request, ...rest);
+};
+require(process.argv[2]);
+setImmediate(() => {
+  if (handlers["second-instance"]) handlers["second-instance"]();
+  process.stdout.write(JSON.stringify(seen));
+});
+"""
+
+
+def test_the_app_opens_one_window(tmp_path):
+    """A second launch of the app brings the first window forward and opens
+    none of its own (decision 160, the audit's B-4): two windows were two
+    editors, and the second's save silently reverted the first's.
+
+    The real ``main.js``, run by node against a stand-in for Electron that
+    answers the single-instance lock: held by this launch, it opens its one
+    window and answers a second launch by restoring and focusing it; held
+    by another, it quits before any window is made. Skipped where node is
+    not on PATH (CI installs it)."""
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        import pytest
+
+        pytest.skip("node is not on PATH (CI installs it)")
+    harness = tmp_path / "one_window.js"
+    harness.write_text(_ELECTRON_STUB, encoding="utf-8", newline="\n")
+
+    def launch(which: str) -> dict:
+        done = subprocess.run([node, str(harness), str(REPO / "app" / "main.js"), which],
+                              capture_output=True, text=True, encoding="utf-8", timeout=60,
+                              check=False)
+        assert done.returncode == 0, done.stderr
+        return json.loads(done.stdout)
+
+    first = launch("first")
+    assert first["asked"] and first["windows"] == 1 and first["quit"] == 0
+    assert "second-instance" in first["events"]
+    assert first["restored"] == 1 and first["focused"] == 1   # the second launch, answered
+    second = launch("second")
+    assert second["asked"] and second["quit"] == 1
+    assert second["windows"] == 0 and "second-instance" not in second["events"]
+
+
 def test_the_renderer_builds_the_page_from_data_not_html():
     js = read("app/renderer/app.js")
     html = read("app/renderer/index.html")
