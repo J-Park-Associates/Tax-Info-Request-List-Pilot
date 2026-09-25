@@ -9,9 +9,9 @@ from tracker import reasons
 from tracker.manifest import RequestItem
 from tracker.validators import (
     IMAGE_EXTENSIONS,
-    _extension_allowed,
     check_file,
     check_folder,
+    extension_allowed,
     is_cloud_placeholder,
     is_ignored,
     iter_candidate_files,
@@ -187,9 +187,9 @@ def test_an_image_is_accepted_by_every_request_that_accepts_a_pdf_and_by_none_th
     assert not check_file(write_pdf(tmp_path / "ok.pdf"), named).ok
 
     for extension in IMAGE_EXTENSIONS:               # the whole list, one rule
-        assert _extension_allowed(extension, ("pdf",)), extension
-        assert not _extension_allowed(extension, ("xlsx", "csv")), extension
-    assert not _extension_allowed("bmp", ("pdf",))   # not every image is on the list
+        assert extension_allowed(extension, ("pdf",)), extension
+        assert not extension_allowed(extension, ("xlsx", "csv")), extension
+    assert not extension_allowed("bmp", ("pdf",))   # not every image is on the list
 
 
 def test_a_file_pillow_cannot_open_is_refused_as_an_unreadable_image(tmp_path):

@@ -69,6 +69,13 @@ Guarantees:
   and the README says "drop it anywhere", so a file that lands straight in
   the year's folder is treated as a drop that has already been preserved: it is
   filed and indexed in place, never ignored.
+- **A file from a subfolder of the drop keeps its name, and its row keeps
+  the subfolder** (decision 147). The year's folder is flat (decision 125): a file from a
+  subfolder moves in under its own name, and its row says which subfolder
+  it came from. It is numbered ``(n)`` only where another file has that
+  name - on the disk, or on a row that still names it - and the inbox is
+  read top level first, so the file the client put at the top keeps it.
+  A name a deleted original left is never handed to a different file.
 - **A re-send is judged by the earlier row's decision** (decision 111). The
   content hash says *which* row already holds those bytes; what the re-send
   becomes is that row's decision to say. A filed row whose working copy is no
@@ -161,9 +168,10 @@ import logging
 import os
 import re
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass, field, replace
+from functools import partial
 from pathlib import Path
 
 from tracker import containers, ledger, reasons, store
@@ -920,40 +928,145 @@ def _move_whole(source: Path, target: Path, *, within: Path) -> None:
 _AN_EXTENSION = re.compile(r"\.[A-Za-z0-9]{1,10}")
 
 
-def _unique_path(folder: Path, name: str, *, room: int | None = None) -> Path:
-    """A free path in ``folder`` for ``name``, never overwriting anything.
+def _unique_path(
+    folder: Path, name: str, *, room: int | None = None, spare: int = 0,
+    recorded: Mapping[Path, str] | None = None, digest: str | Callable[[], str | None] = "",
+    reuse: bool = False, claimed: set[Path] | None = None,
+) -> Path:
+    """A free path in ``folder`` for ``name``, never overwriting anything -
+    **the one numbering function** (decision 147): an original out of the
+    inbox, its second move into another household (:func:`_rests_at`), a
+    person's hand-over, a review copy and what is taken out of an email or a
+    zip (:func:`_take_out`) are all named here.
 
     ``room`` is how many characters the file name may take (decision 131):
     the stem is cut from its end to fit, keeping the extension and the
     numbered suffix, down to one character; below that, :class:`NoRoom`
     with :data:`REVIEW_NO_ROOM` - every caller that passes a room is naming
-    a review copy. ``None`` is no limit. Only ever a copy's name - an
-    original is moved under its own name, uncut, always.
+    a copy. ``None`` is no limit. Only ever a copy's name - an original is
+    moved under its own name, uncut, always. ``spare`` is room kept beside
+    the name for the temporary name an atomic write passes through; it is
+    taken off ``room`` and counted in what :class:`NoRoom` reports.
 
     A suffix that is not an extension - ``Scan 2026.01.15 from the phone``
     has ``.15 from the phone`` for one - is no promise the pass's floor
     made, and keeping it whole could leave no room at all: with a room, such
     a name is cut as one stem, whatever its dots (decision 131's review, F4).
+    A cut or a number never makes a device's name (decision 137, L6); the
+    name as given is the caller's, and is never refused for being one.
+
+    **A name is taken if the disk holds it, or a row still names it**
+    (decision 147, ruling 9; audit F-1). ``recorded`` is every place the
+    household-year's rows name as an original's resting place, each with
+    that row's bytes (:func:`_on_record`), and every path an open intent
+    will still write to, with none (:func:`_taken_names`). A client who deletes ``W2.pdf``
+    from the year's folder and drops a corrected ``W2.pdf`` would otherwise
+    have the new file take the old row's identity, and the old row would
+    vanish from every reader. One exception, left exactly as it was: where
+    the incoming bytes (``digest``) are that row's own, it is the original
+    coming back and it rests under its own name. ``digest`` may be a
+    function, asked only when a recorded name is met - the inbox move
+    hashes its drop only then, since it is hashed where it rests anyway.
+    A row with no fingerprint is nobody's (decision 65): its name stays
+    taken.
+
+    ``reuse`` is decision 143's: a file already at a name holding these
+    very bytes is that name (a pass killed after writing it). ``claimed``
+    is the names this caller has handed out already, skipped.
     """
     stem, suffix = Path(name).stem, Path(name).suffix
     if room is not None and suffix and not _AN_EXTENSION.fullmatch(suffix):
         stem, suffix = name, ""
+    fits = None if room is None else room - spare
+    asked: list[str | None] = []
+
+    def incoming() -> str | None:
+        if not asked:
+            asked.append(digest() if callable(digest) else digest)
+        return asked[0]
+
     counter = 1
     while True:
         fitted: str | None = _named(stem, counter, suffix)
-        if room is not None and len(fitted) > room:
+        if fits is not None and len(fitted) > fits:
             cuts = (stem[:keep].rstrip(". ") for keep in range(len(stem) - 1, 0, -1))
             fitted = next((_named(cut, counter, suffix) for cut in cuts
-                           if cut and len(_named(cut, counter, suffix)) <= room), None)
+                           if cut and len(_named(cut, counter, suffix)) <= fits), None)
             if fitted is None:
-                length = len(str(folder / _named(stem[:1], counter, suffix)))
+                length = len(str(folder / _named(stem[:1], counter, suffix))) + spare
                 limit = len(str(folder)) + 1 + room
                 raise NoRoom(length, limit, suffix, sentence=REVIEW_NO_ROOM.format(
                     name=name, length=length, limit=limit, ext=_kind_of(suffix)))
         target = folder / fitted
-        if not target.exists():
-            return target
         counter += 1
+        if (claimed is not None and target in claimed) or (fitted != name and is_reserved_name(fitted)):
+            continue
+        if target.exists():
+            if reuse and target.is_file() and _digest_or_none(target) == incoming():
+                return target
+            continue
+        if recorded and target in recorded:
+            held = recorded[target]
+            if not held or held != incoming():
+                continue
+        return target
+
+
+def _on_record(engagements: Iterable[tuple[Path, Iterable[IndexEntry]]]) -> dict[Path, str]:
+    """Every place these returns' rows name as an original's resting place
+    (``pbc_location``), with that row's bytes - **the union** the pass
+    reads the year's folder against (decision 125): a file one return's row
+    holds is never another return's stray, and a name one return's row
+    holds is never another file's (decision 147, ruling 9)."""
+    return {
+        locate(engagement_dir, entry.pbc_location): entry.digest
+        for engagement_dir, entries in engagements
+        for entry in entries if entry.pbc_location
+    }
+
+
+def _taken_names(recorded: dict[Path, str], intended: Iterable[Path]) -> dict[Path, str]:
+    """``recorded`` with every path an open intent will write to added, as
+    a name no bytes can claim back (decision 147): the one union
+    :func:`_unique_path` is handed, rows and open intents together."""
+    return {**recorded, **dict.fromkeys(intended, "")}
+
+
+def _taken_in_the_year(first: _ReturnRun, runs: list[_ReturnRun]) -> dict[Path, str]:
+    """Every name the pass's own household-year holds (decision 147, ruling
+    9 and the review's N-1): the rows of **every** return of that year -
+    the pass's own rows as they stand now, and the record's for a return
+    the pass left out, one marked inactive while another of the same year
+    is still worked - and every path an open intent will write to."""
+    held = {run.engagement_dir: run.entries for run in runs}
+    return _taken_names(_year_on_record(first.engagement_dir, held), first.context.intended)
+
+
+def _year_on_record(engagement_dir: Path, held: Mapping[Path, list[IndexEntry]]) -> dict[Path, str]:
+    """:func:`_on_record` for every return of ``engagement_dir``'s
+    household-year: the rows in ``held`` for the returns the caller holds
+    them for, the record's own for the rest - so a return the caller does
+    not hold, one left out of the pass as inactive or one in a household
+    the caller is not sorting, still counts. For every name a row could
+    hold: the inbox move and what is taken out of a zip
+    (:func:`_taken_in_the_year`), a filing's second move (decision 129) and
+    a person's hand-over (decision 132). Read only; no lock is taken, and a
+    return whose record cannot be read names nothing.
+    """
+    engagement_dir = Path(engagement_dir)
+    year = engagement_dir.parent
+    returns = [folder for folder in household_returns(household_of(engagement_dir))
+               if folder.parent == year]
+    pairs: list[tuple[Path, Iterable[IndexEntry]]] = []
+    for folder in dict.fromkeys([*returns, *held]):
+        if folder in held:
+            pairs.append((folder, held[folder]))
+            continue
+        try:
+            pairs.append((folder, read_index(folder)))
+        except Exception as exc:      # a record nobody can read names nothing it can prove
+            log.warning("Could not read %s's rows: %s", folder.name, exc)
+    return _on_record(pairs)
 
 
 # ------------------------------------------------------------------ index ----
@@ -1644,17 +1757,48 @@ def iter_drops(inbox: Path) -> list[Path]:
     folder in still gets it sorted. Since decision 125 the originals rest
     in the year's folder in the client tree, not inside this one, so there
     is nothing here to exclude but the note the firm wrote.
+
+    **In the inbox's own order** (decision 147, ruling 3): the files at the
+    top first, then each subfolder in name order, a folder's own files
+    before its subfolders'. The year's folder is flat (decision 125), so
+    two files of one name from two places meet there, and the one moved
+    second is the one numbered. A plain sort of the paths made that the
+    sort's accident - on Windows a path compares case-folded, and
+    ``Scans/W2.pdf`` came before ``W2.pdf`` - so the file the client put
+    at the top lost its name to one from a subfolder. Names are compared
+    case-folded, the same on Windows and POSIX, with the exact path last
+    so two names differing only in case still come in one order.
     """
     if not inbox.is_dir():
         return []
     drops = []
-    for path in sorted(inbox.rglob("*")):
+    for path in inbox.rglob("*"):
         if not path.is_file() or is_ignored(path) or _through_a_link(path, inbox) or not _storable(path):
             continue
         if path == inbox / README_NAME:
             continue
         drops.append(path)
-    return drops
+    return sorted(drops, key=lambda path: _inbox_order(path, inbox))
+
+
+def _inbox_order(path: Path, inbox: Path) -> tuple[tuple[str, ...], str, str]:
+    """Where a drop comes in :func:`iter_drops`' order: by the folders
+    below the inbox it sits in - none first, and a folder before its own
+    subfolders, since a tuple sorts before every tuple it begins - then by
+    its name."""
+    below = path.relative_to(inbox)
+    return tuple(part.casefold() for part in below.parent.parts), below.name.casefold(), below.as_posix()
+
+
+def _subfolder_of(drop: Path, inbox: Path) -> str:
+    """The client's subfolder a drop sits in, below the inbox, the way the
+    client sees it in Explorer (``Bank statements\\2025``); ``""`` for a
+    drop at the top of the inbox (decision 147, ruling 4)."""
+    try:
+        below = drop.parent.relative_to(inbox)
+    except ValueError:
+        return ""
+    return "\\".join(below.parts)
 
 
 def _storable(path: Path) -> bool:
@@ -1767,11 +1911,7 @@ def unrecorded_in_pbc(
     sorted like a drop, where it lies, exactly as decision 23 has always
     sorted one.
     """
-    recorded = {
-        locate(engagement_dir, entry.pbc_location)
-        for engagement_dir, entries in engagements
-        for entry in entries if entry.pbc_location
-    }
+    recorded = _on_record(engagements)
     return [
         path for path in iter_candidate_files(originals_dir)
         if path not in recorded
@@ -2663,6 +2803,16 @@ CONTESTED_BETWEEN_RETURNS = "accepted by requests in more than one return ({list
 #: where it came from in exactly those words.
 DROPPED_ELSEWHERE = "dropped in {household}"
 
+#: What a row says about a file the client dropped inside a subfolder of
+#: the inbox (decision 147, ruling 4): the year's folder is flat (decision
+#: 125), so the subfolder is gone from the file's resting name, and the
+#: record keeps it here - the path below the inbox, the way the client sees
+#: it in Explorer. Firm-side: the record's, never a sentence put to the
+#: client. **Accepted limit** (decision 119): the inbox move writes no
+#: intent, so a pass killed between the move and the row leaves a stray the
+#: next pass files where it lies, without this sentence.
+CAME_FROM_SUBFOLDER = "came from the client's subfolder '{folder}'"
+
 
 @dataclass(slots=True)
 class _ReturnRun:
@@ -2798,6 +2948,9 @@ def file_household_drops(
     strays = (unrecorded_in_pbc(originals_dir, [(r.engagement_dir, r.entries) for r in runs])
               if originals_dir.is_dir() else [])
     spoken_for = _spoken_for_by_an_open_intent(runs)
+    intended = frozenset(_spoken_for_by_an_open_intent(runs, ends=(ledger.TO_KEY,)))
+    for run in runs:
+        run.context.intended = intended
     strays = [path for path in strays if path not in spoken_for]
     if strays:
         left = [path for path in strays if _named_by_another_records_intent(path, runs)]
@@ -2870,9 +3023,11 @@ def file_household_drops(
     return {run.engagement_dir: run.report for run in runs}
 
 
-def _spoken_for_by_an_open_intent(runs: list[_ReturnRun]) -> set[Path]:
+def _spoken_for_by_an_open_intent(
+    runs: list[_ReturnRun], ends: tuple[str, ...] = (ledger.FROM_KEY, ledger.TO_KEY),
+) -> set[Path]:
     """Every file a move this pass could not finish still names, at either
-    end, across all the returns it holds.
+    end (or only at the ``ends`` asked for), across all the returns it holds.
 
     A cross-household filing moves the original a second time (decision
     129), and between the two halves of that move the file is in the
@@ -2882,13 +3037,18 @@ def _spoken_for_by_an_open_intent(runs: list[_ReturnRun]) -> set[Path]:
     file would then look like a stray of the household it is still sitting
     in and be sorted a second time. It is not a stray: it is spoken for,
     by a decision the record already holds.
+
+    Its targets alone (``ends=(TO_KEY,)``) are names an open intent will
+    write to, and no new file is given one (decision 147): a drop resting
+    there would carry the waiting filing's key, and its row would close
+    that filing with a different document's.
     """
     conn = store.connect()
     held: set[Path] = set()
     for run in runs:
         for intent in store.open_intents(conn, run.engagement_dir):
             for op in intent.get(ledger.OPS_KEY) or []:
-                for key in (ledger.FROM_KEY, ledger.TO_KEY):
+                for key in ends:
                     location = op.get(key)
                     if location:
                         held.add(locate(run.engagement_dir, str(location)))
@@ -3168,6 +3328,7 @@ def _sort_all(
     another household's person works.
     """
     dry_run = first.context.dry_run
+    inbox = inbox_of(first.engagement_dir)
     for drop, already_filed in (
         [(d, False) for d in drops] + [(p, True) for p in strays]
     ):
@@ -3191,12 +3352,21 @@ def _sort_all(
         # is a rename and decision 23 finishes it whichever side of a kill
         # it falls on - an original in that folder with no row is sorted
         # where it lies - so no intent is written for it.
+        #
+        # It keeps its own name unless another file has it - on the disk, or
+        # on a row of any of the household's returns (decision 147): a name
+        # a deleted original left is still that row's, unless these are its
+        # very bytes coming back. The drop is hashed here only when such a
+        # name is met; it is hashed where it rests below either way.
         if already_filed or dry_run:
             original = drop if already_filed else originals_dir / drop.name
         else:
             try:
-                original = _unique_path(originals_dir, drop.name)
-                _move_whole(drop, original, within=inbox_of(first.engagement_dir))
+                original = _unique_path(
+                    originals_dir, drop.name,
+                    recorded=_taken_in_the_year(first, runs),
+                    digest=partial(_digest_or_none, drop))
+                _move_whole(drop, original, within=inbox)
             except OSError as exc:
                 first.report.errors.append(FileError(
                     drop.name,
@@ -3233,6 +3403,10 @@ def _sort_all(
         opening = (containers.is_container(drop.name) and bool(digest)
                    and not any(digest in run.known for run in runs)
                    and not too_large_reason(recorded_at))
+        subfolder = "" if already_filed else _subfolder_of(drop, inbox)
+        came_from = CAME_FROM_SUBFOLDER.format(folder=subfolder) if subfolder else ""
+        for run in runs:
+            run.context.came_from = came_from
         try:
             if opening:
                 _open_container(drop, original, recorded_at, digest, size_kb, stamp, runs, first)
@@ -3255,14 +3429,16 @@ def _sort_all(
                 digest=digest, identifier="",
                 prepared_location="", pbc_location=location_of(run.engagement_dir, original),
                 decision=NEEDS_REVIEW,
-                reason=(
+                reason="; ".join(part for part in (
                     f"could not be filed ({exc.__class__.__name__}: {exc}); "
                     f"original preserved in {location_of(run.engagement_dir, original)} - "
-                    f"file it by hand"
-                ),
+                    f"file it by hand", came_from) if part),
             )
             run.report.errors.append(FileError(drop.name, entry.reason, False))
             run.report.review.append(entry)
+        finally:
+            for one in runs:
+                one.context.came_from = ""
 
         run.entries.append(entry)
         if entry.decision != DUPLICATE and digest:
@@ -3339,8 +3515,8 @@ def _opened_folder(home: _ReturnRun, original: Path, runs: list[_ReturnRun]) -> 
         counter += 1
 
 
-def _take_out(folder: Path, attachment: containers.Attachment,
-              claimed: set[Path]) -> tuple[Path, str]:
+def _take_out(folder: Path, attachment: containers.Attachment, claimed: set[Path], *,
+              recorded: Mapping[Path, str] | None = None) -> tuple[Path, str]:
     """Write one attachment into its container's folder, whole or not at
     all, and say where and what bytes (decision 143).
 
@@ -3349,41 +3525,23 @@ def _take_out(folder: Path, attachment: containers.Attachment,
     used. A file already there holding these very bytes is reused - a pass
     killed after writing it opens the container again - and one holding
     other bytes is kept, the new one taking the next number: nothing found
-    there is ever overwritten.
+    there is ever overwritten. Named by the one numbering function
+    (:func:`_unique_path`, decision 147), so a name a row still names
+    (``recorded``) is taken here too, unless these are that row's bytes.
     """
     data = attachment.data
     digest = hashlib.sha256(data).hexdigest()
-    name = attachment.name
-    stem, suffix = Path(name).stem, Path(name).suffix
+    suffix = Path(attachment.name).suffix
     if suffix and not _AN_EXTENSION.fullmatch(suffix):
-        stem, suffix = name, ""
-    limit = limit_for(suffix)
-    room = limit - len(str(folder)) - 1 - _TEMP_ROOM
+        suffix = ""
     folder.mkdir(parents=True, exist_ok=True)
-    counter = 1
-    while True:
-        fitted: str | None = _named(stem, counter, suffix)
-        if len(fitted) > room:
-            cuts = (stem[:keep].rstrip(". ") for keep in range(len(stem) - 1, 0, -1))
-            fitted = next((_named(cut, counter, suffix) for cut in cuts
-                           if cut and len(_named(cut, counter, suffix)) <= room), None)
-            if fitted is None:
-                length = len(str(folder / _named(stem[:1], counter, suffix))) + _TEMP_ROOM
-                raise NoRoom(length, limit, suffix, sentence=REVIEW_NO_ROOM.format(
-                    name=name, length=length, limit=limit, ext=_kind_of(suffix)))
-        target = folder / fitted
-        counter += 1
-        # A cut or a number never makes a device's name (decision 137, L6).
-        if target in claimed or is_reserved_name(fitted):
-            continue
-        if target.exists():
-            if target.is_file() and _digest_or_none(target) == digest:
-                claimed.add(target)
-                return target, digest
-            continue
+    target = _unique_path(folder, attachment.name, room=limit_for(suffix) - len(str(folder)) - 1,
+                          spare=_TEMP_ROOM, recorded=recorded, digest=digest, reuse=True,
+                          claimed=claimed)
+    if not target.exists():
         write_bytes_atomically(target, data)
-        claimed.add(target)
-        return target, digest
+    claimed.add(target)
+    return target, digest
 
 
 def _open_container(
@@ -3437,19 +3595,24 @@ def _open_container(
         log.warning("Left %s for the next pass: the opener could not start", drop.name)
         return
     dry_run = home.context.dry_run
+    # The container's own row says the subfolder it came from (decision
+    # 147); the attachments' rows do not - each attachment's decision
+    # clears it, so it is read here, before any of them.
+    came_from = home.context.came_from
     at = {id(run): location_of(run.engagement_dir, original) for run in runs}
     folder = _opened_folder(home, original, runs)
     claimed: set[Path] = set()
     taken: list[tuple[containers.Attachment, Path, str]] = []
+    in_the_year = {} if dry_run else _taken_in_the_year(home, runs)
     for one in opened.attachments:
         if dry_run:
             taken.append((one, folder / one.name, hashlib.sha256(one.data).hexdigest()))
         else:
-            taken.append((one, *_take_out(folder, one, claimed)))
+            taken.append((one, *_take_out(folder, one, claimed, recorded=in_the_year)))
     entry = IndexEntry(
         received=stamp, original_name=drop.name, size_kb=size_kb, digest=digest,
         identifier="", prepared_location="", pbc_location=at[id(home)], decision=OPENED,
-        reason=_opened_sentence(opened),
+        reason="; ".join(part for part in (_opened_sentence(opened), came_from) if part),
     )
     home.opened[ledger_key(entry)] = {
         ledger.ATTACHMENTS_KEY: [
@@ -3463,8 +3626,7 @@ def _open_container(
         home.report.opened.append(entry)
         _keep(home, entry, digest)
         return
-    named = {locate(run.engagement_dir, row.pbc_location)
-             for run in runs for row in run.entries if row.pbc_location}
+    named = _on_record((run.engagement_dir, run.entries) for run in runs)
     waiting = [one.name for one, path, sha in taken
                if path not in named
                and not _decide_attachment(one, path, sha, stamp, runs, first, at)]
@@ -3510,8 +3672,10 @@ def _decide_attachment(
     """
     size_kb = round(len(attachment.data) / 1024, 1)
     named = path.with_name(attachment.name)
+    outer = {id(run): run.context.came_from for run in runs}
     for run in runs:
         run.context.container = at[id(run)]
+        run.context.came_from = ""
     try:
         if attachment.parks and not any(digest in run.known and _may_hold(run) for run in runs):
             run, entry = first, _park_it(named, path, digest, size_kb, stamp, first,
@@ -3537,6 +3701,7 @@ def _decide_attachment(
     finally:
         for one in runs:
             one.context.container = ""
+            one.context.came_from = outer[id(one)]
     _keep(run, entry, digest)
     return True
 
@@ -3993,6 +4158,19 @@ class _SortContext:
     #: or a duplicate, and the intent written before it - names its
     #: container, and a recovery records the row the decision would have.
     container: str = ""
+    #: :data:`CAME_FROM_SUBFOLDER`, said, for a drop that came out of a
+    #: subfolder of the inbox (decision 147), and ``""`` for any other. Set
+    #: on every run around that drop's decision and cleared after it, as
+    #: ``container`` is, so the row every road writes - filed, parked, a
+    #: duplicate or the container's own - carries it, and so does the intent
+    #: written before it. Cleared around an attachment's decision: what came
+    #: out of a zip did not come out of the subfolder, the zip did.
+    came_from: str = ""
+    #: Every path an open intent of the household's pass will still write
+    #: to (decision 147, the designer's ruling on deviation 3), read once
+    #: per pass after recovery and set on every run: a name taken as a
+    #: row's resting place is, for :func:`_taken_names`.
+    intended: frozenset[Path] = frozenset()
 
 
 def _plan_working_copy(
@@ -4068,7 +4246,7 @@ def _carry_out(entry: IndexEntry, ops: list[dict], then: str, run: _SortContext)
         _do_op(run.engagement_dir, op, cache=run.cache)
 
 
-def _rests_at(run: _ReturnRun, original: Path) -> Path:
+def _rests_at(run: _ReturnRun, original: Path, digest: str) -> Path:
     """Where this return's filing leaves the original.
 
     Where it is, for the household's own returns: an original moves once,
@@ -4077,12 +4255,18 @@ def _rests_at(run: _ReturnRun, original: Path) -> Path:
     folder further (decision 129): the original must rest under the
     household its return lives in, seen by exactly that folder's sharing,
     so it moves a second time - and that move is the first step of the
-    filing, written down before it happens like every other.
+    filing, written down before it happens like every other. Its name
+    there is chosen as the inbox move's is: a name the disk holds, or a row
+    of that household-year still names, is taken unless ``digest`` is that
+    row's own (decision 147, ruling 9).
     """
     if not run.dropped_in:
         return original
     folder = originals_of(run.engagement_dir)
-    return folder / original.name if run.context.dry_run else _unique_path(folder, original.name)
+    if run.context.dry_run:
+        return folder / original.name
+    return _unique_path(folder, original.name, digest=digest, recorded=_taken_names(
+        _year_on_record(run.engagement_dir, {run.engagement_dir: run.entries}), run.context.intended))
 
 
 def _file_into(
@@ -4120,8 +4304,10 @@ def _file_into(
     decided it. Nothing writes into another return's record, ever. The row
     itself is the caller's to record - the pass in the target run's one
     transaction, a person's call at once - and :func:`_existing_copy` and
-    :func:`_unique_path` have already chosen the names, so a filing into a
-    name a vanished original left behind is that row's next version.
+    :func:`_unique_path` have already chosen the names. A name a vanished
+    original left behind is still its row's (decision 147, ruling 9), so a
+    different document never lands on it and never becomes that row's next
+    version; only that row's own bytes coming back do.
     """
     ops = ([] if resting == original
            else [_op(target, ledger.OP_MOVE, original, resting, digest)])
@@ -4171,7 +4357,7 @@ def _file_it(
         context.reserved.clear()
         context.reserved.update(claimed)
         raise
-    resting = _rests_at(run, original)
+    resting = _rests_at(run, original, digest)
     locations = [location for location, _copy in planned]
     entry = IndexEntry(
         received=stamp, original_name=drop.name, size_kb=size_kb,
@@ -4179,7 +4365,8 @@ def _file_it(
         prepared_location=locations[0],
         pbc_location=location_of(run.engagement_dir, resting), decision=FILED,
         reason="; ".join(part for part in
-                         (routing.reason, refiled, resent, confirmed, run.dropped_in) if part),
+                         (routing.reason, refiled, resent, confirmed, run.dropped_in,
+                          context.came_from) if part),
         candidates=_CANDIDATE_SEP.join(routing.candidates),
         evidence=format_evidence(routing.evidence_record),
         also_filed=_CANDIDATE_SEP.join(locations[1:]),
@@ -4255,14 +4442,15 @@ def _park_it(
                                original, review_target, digest))
         context.review_dir.mkdir(parents=True, exist_ok=True)
         review_name = review_target.name
-    reason = "; ".join(part for part in (resent, reason, past_reader) if part)
+    reason = "; ".join(part for part in (resent, reason, context.came_from, past_reader) if part)
     entry = IndexEntry(
         received=stamp, original_name=drop.name, size_kb=size_kb,
         digest=digest, identifier="",
         prepared_location=prepared_location(context.review_dir, review_name),
         pbc_location=location_of(run.engagement_dir, original), decision=NEEDS_REVIEW,
         # The flag first: what a person opening the card should read before
-        # the reason for parking it; a copy past a reader's limit, last.
+        # the reason for parking it; the subfolder it came from (decision
+        # 147) after it; a copy past a reader's limit, last.
         reason=reason,
         candidates=_CANDIDATE_SEP.join(candidates),
         evidence=evidence,
@@ -4354,7 +4542,8 @@ def _sort_one(
             digest=digest, identifier=earlier.identifier,
             prepared_location="",
             pbc_location=location_of(run.engagement_dir, original), decision=DUPLICATE,
-            reason=said, container=context.container,
+            reason="; ".join(part for part in (said, context.came_from) if part),
+            container=context.container,
         )
         run.report.duplicates.append(entry)
         return run, entry
@@ -4909,7 +5098,10 @@ def hand_over(
         # does not move - decision 125's "an original moves once" holds
         # for every filing within a household.
         moving_it = household_of(target_return) != household_of(home_return)
-        resting = (_unique_path(originals_of(target_return), source.name)
+        # Named as the pass names it (decision 147, ruling 9): a name a row
+        # of the taking household-year still names is taken.
+        resting = (_unique_path(originals_of(target_return), source.name, digest=digest,
+                                recorded=_year_on_record(target_return, {}))
                    if moving_it else source)
 
         target_prepared = target_return / PREPARED_DIR_NAME

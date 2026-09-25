@@ -189,6 +189,136 @@ def test_client_subfolders_are_flattened(engagement):
     assert (originals(engagement) / "w2.pdf").exists()
 
 
+# ----------------------------------- a subfolder of the drop (decision 147) ----
+# The year folder stays flat (decision 125): a file from a subfolder of the
+# drop moves in under its own name. It is numbered only where another file
+# has that name, the file at the top of the inbox is the one that keeps it,
+# and the row says which of the client's subfolders the file came from.
+
+def came_from(folder):
+    """The sentence a row gains when its file came out of a subfolder of
+    the drop (decision 147, ruling 4), in the SPEC's own words."""
+    return f"came from the client's subfolder '{folder}'"
+
+
+def test_a_subfolder_file_keeps_its_name_when_nothing_else_has_it(engagement):
+    nested = inbox_of(engagement) / "Bank statements" / "2025"
+    nested.mkdir(parents=True)
+    text_pdf(nested / "w2.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
+
+    [row] = sort(engagement, today=DAY1).filed
+
+    assert [p.name for p in originals(engagement).iterdir()] == ["w2.pdf"]
+    assert row.pbc_location == original_at(engagement, "w2.pdf")
+    assert row.original_name == "w2.pdf"
+    # The path below the inbox, the way the client sees it in Explorer.
+    assert row.reason.endswith("; " + came_from("Bank statements\\2025"))
+    assert read_index(engagement)[0].reason == row.reason          # the record's, not the report's
+
+
+def test_a_different_file_of_the_same_name_is_the_one_numbered_and_the_row_names_its_subfolder(engagement):
+    """``Scans`` sorts before ``W2.pdf`` on Windows and POSIX alike - a
+    case-folded path order and a plain one agree - so the old walk moved
+    the subfolder's copy first and the top-level file was the one
+    numbered. The order is now the inbox's own: top level first."""
+    import hashlib
+
+    top = drop(engagement, "W2.pdf", "Form W-2 Wage and Tax Statement 2025 Employer A")
+    nested = inbox_of(engagement) / "Scans"
+    nested.mkdir()
+    inner = text_pdf(nested / "W2.pdf", named_page("Form W-2 Wage and Tax Statement 2025 Employer B"))
+    top_digest = hashlib.sha256(top.read_bytes()).hexdigest()
+    inner_digest = hashlib.sha256(inner.read_bytes()).hexdigest()
+    assert top_digest != inner_digest
+
+    report = sort(engagement, today=DAY1)
+
+    rows = {row.digest: row for row in report.filed}
+    assert set(rows) == {top_digest, inner_digest}
+    assert rows[top_digest].pbc_location == original_at(engagement, "W2.pdf")
+    assert rows[inner_digest].pbc_location == original_at(engagement, "W2 (2).pdf")
+    assert came_from("Scans") not in rows[top_digest].reason
+    assert rows[inner_digest].reason.endswith("; " + came_from("Scans"))
+    assert rows[inner_digest].original_name == "W2.pdf"           # what the client called it
+
+
+def test_an_identical_copy_from_a_subfolder_is_a_duplicate_as_before(engagement):
+    top = drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    nested = inbox_of(engagement) / "tax stuff"
+    nested.mkdir()
+    (nested / "w2.pdf").write_bytes(top.read_bytes())
+
+    report = sort(engagement, today=DAY1)
+
+    [filed] = report.filed
+    [dup] = report.duplicates
+    assert filed.pbc_location == original_at(engagement, "w2.pdf")
+    assert came_from("tax stuff") not in filed.reason
+    # Both preserved; the copy from the subfolder is the one numbered, and
+    # it is the duplicate it always was (decision 111).
+    assert dup.decision == DUPLICATE
+    assert dup.pbc_location == original_at(engagement, "w2 (2).pdf")
+    assert "identical to w2.pdf" in dup.reason
+    assert dup.reason.endswith("; " + came_from("tax stuff"))
+    assert len(list(prepared(engagement, "A01").iterdir())) == 1
+
+
+def test_the_subfolder_is_removed_once_empty(engagement):
+    nested = inbox_of(engagement) / "a" / "b"
+    nested.mkdir(parents=True)
+    text_pdf(nested / "w2.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
+
+    sort(engagement, today=DAY1)
+
+    assert not (inbox_of(engagement) / "a").exists()
+    assert [p.name for p in inbox_of(engagement).iterdir()] == [README_NAME]
+
+
+def test_a_name_a_deleted_original_left_is_not_reused_for_a_new_drop(engagement):
+    """Audit F-1 (decision 147, ruling 9). The client deletes the wrong W-2
+    from the year's folder and drops the corrected one under the same
+    name. The freed name was reused, the new row took the old row's
+    identity and the old row vanished from every reader; its working copy
+    was then an unrecorded copy for ever. A name a row still names is
+    taken, so the new one rests beside it and the old row goes on saying
+    it is missing - the truthful state."""
+    from tracker.filer import MISSING_IN_PBC, UNRECORDED_COPY
+
+    drop(engagement, "W2.pdf", "Form W-2 Wage and Tax Statement 2025 the wrong one")
+    [first] = sort(engagement, today=DAY1).filed
+    (originals(engagement) / "W2.pdf").unlink()
+    drop(engagement, "W2.pdf", "Form W-2 Wage and Tax Statement 2025 the corrected one")
+
+    [second] = sort(engagement, today=DAY2).filed
+    third = sort(engagement, today=DAY3)
+
+    assert second.pbc_location == original_at(engagement, "W2 (2).pdf")
+    assert second.digest != first.digest
+    rows = read_index(engagement)
+    assert [(r.pbc_location, r.digest) for r in rows] == [
+        (first.pbc_location, first.digest), (second.pbc_location, second.digest)]
+    assert [e.error for e in third.attention] == [
+        MISSING_IN_PBC.format(location=first.pbc_location, received=DAY1.isoformat())]
+    unrecorded = UNRECORDED_COPY.format(location="")      # " is not on the record: ..."
+    assert not any(unrecorded in e.error for e in third.attention + third.errors)
+
+
+def test_the_same_bytes_dropped_back_under_a_deleted_originals_name_rest_under_it(engagement):
+    """Ruling 9's one exception, left exactly as it was: the bytes are that
+    row's own, so it is the original coming back and it rests under its
+    own name. How that is reported is decision 157's, not this one's."""
+    page = drop(engagement, "W2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    body = page.read_bytes()
+    sort(engagement, today=DAY1)
+    (originals(engagement) / "W2.pdf").unlink()
+    (inbox_of(engagement) / "W2.pdf").write_bytes(body)
+
+    sort(engagement, today=DAY2)
+
+    assert [p.name for p in originals(engagement).iterdir()] == ["W2.pdf"]
+    assert (originals(engagement) / "W2.pdf").read_bytes() == body
+
+
 # --------------------------------------------------------------- needs review ----
 
 
@@ -5240,14 +5370,19 @@ def test_a_re_drop_after_the_feed_is_trimmed_is_judged_as_the_households_own_doc
 
 
 @pytest.mark.parametrize("by", ("the pass", "a hand-over"))
-def test_a_filing_into_a_name_a_vanished_original_left_behind_still_writes_the_taking_returns_row(
-        fed, by):
-    """A key is a location, and a location comes free again. An original
+def test_a_filing_never_takes_a_name_a_vanished_original_left_behind(fed, by):
+    """A key is a location, and a location came free again: an original
     filed into the LLC and then removed by hand leaves its row behind,
-    pointed at nothing (decision 109); the next document of that name is
-    handed the same place and so the same key. Whoever files it - the pass
-    or a person - the filing goes through the one function (decision 132),
-    and the row it writes is that row's next version."""
+    pointed at nothing (decision 109), and the next document of that name
+    was handed the same place, so the same key - its row became the old
+    row's next version and the old row vanished from every reader.
+
+    Since decision 147 (ruling 9, audit F-1) a name a row still names is
+    taken. Whoever files it - the pass's second move (decision 129) or a
+    person's hand-over (decision 132) - the name is chosen by the one
+    numbering function against the taking household-year's rows, so the
+    new document rests beside the old name with a row of its own, and the
+    old row goes on saying its original is missing."""
     from tracker.filer import ASSIGNED_BY_PERSON, hand_over
 
     father, llc = fed
@@ -5265,21 +5400,20 @@ def test_a_filing_into_a_name_a_vanished_original_left_behind_still_writes_the_t
         done = hand_over(father, parked.pbc_location, llc, "B01", today=DAY2)
         assert done.moved_original is True
 
-    [taken] = read_index(llc)
-    assert ledger_key(taken) == ledger_key(stale)       # the same place, a new row
+    kept, taken = read_index(llc)
+    assert kept == stale                                # the old row, untouched
+    assert ledger_key(taken) != ledger_key(stale)       # a place, and a row, of its own
     assert taken.digest != stale.digest
     assert taken.decision == FILED and taken.identifier == "B01"
     assert taken.reason.startswith(ASSIGNED_BY_PERSON) == (by == "a hand-over")
-    assert taken.pbc_location == original_at(llc, "notice.pdf")
+    assert taken.pbc_location == original_at(llc, "notice (2).pdf")
     assert read_index(father) == []
     # One original under the household the taking return lives in, and one
     # working copy made by this filing, in the request's folder and named
-    # by the row. The earlier filing's copy is still beside it with no row
-    # naming it any more, which is decision 109's sweep to say on the next
-    # pass - exactly as it is for any name the pass reuses.
-    assert [p.name for p in originals(llc).iterdir()] == ["notice.pdf"]
+    # by its row; the earlier filing's copy is beside it, still its row's.
+    assert [p.name for p in originals(llc).iterdir()] == ["notice (2).pdf"]
     copies = sorted(p.name for p in prepared(llc, "B01").iterdir())
-    assert Path(taken.filed_as).name in copies and len(copies) == 2
+    assert sorted(Path(row.filed_as).name for row in (kept, taken)) == copies
 
 
 # The kill matrix of SPEC-129R §3.4 (decision 132): where the machine dies
@@ -6782,3 +6916,102 @@ def test_unfiling_the_statement_takes_its_answers_with_it(tmp_path):
     assert row.decision == NEEDS_REVIEW and row.answers == ""
     assert _status(engagement, "A02").status == Status.MISSING
     assert _status(engagement, "A04").status == Status.MISSING
+
+
+# ------------- a name a row still names is taken (decision 147, ruling 9) ----
+# The one numbering function counts a name as taken when the disk holds it
+# or a row of the household-year names it as its original's resting place,
+# wherever it is used: the inbox move (above), a filing's second move into
+# another household (decision 129) and a person's hand-over (decision 132)
+# - both in test_a_filing_never_takes_a_name_a_vanished_original_left_behind
+# - and what is taken out of an email or a zip (decision 143).
+
+def test_the_one_numbering_function_takes_a_name_a_row_still_names(tmp_path):
+    from tracker.filer import _unique_path
+
+    folder = tmp_path / "2025"
+    folder.mkdir()
+    gone = folder / "W2.pdf"                                    # a row names it; the file is gone
+    assert _unique_path(folder, "W2.pdf", recorded={gone: "a" * 64}, digest="b" * 64).name == "W2 (2).pdf"
+    # The row's own bytes coming back take their own name, as they always did.
+    assert _unique_path(folder, "W2.pdf", recorded={gone: "a" * 64}, digest="a" * 64) == gone
+    # A row with no fingerprint is nobody's (decision 65): its name stays taken.
+    assert _unique_path(folder, "W2.pdf", recorded={gone: ""}, digest="").name == "W2 (2).pdf"
+    # The digest is asked for only when a recorded name is met.
+    asked = []
+    assert _unique_path(folder, "other.pdf", recorded={gone: "a" * 64},
+                        digest=lambda: asked.append(1) or "a" * 64).name == "other.pdf"
+    assert asked == []
+
+
+def test_an_attachment_is_not_written_under_a_name_a_row_still_names(tmp_path):
+    """Decision 143's attachments are named by the same function: a file a
+    row names and a person removed leaves its name taken, unless these are
+    that row's own bytes."""
+    import hashlib
+
+    from tracker.containers import Attachment
+    from tracker.filer import _take_out
+
+    folder = tmp_path / "_Opened" / "docs"
+    gone = folder / "W2.pdf"
+    new = Attachment("W2.pdf", b"%PDF-1.4 the corrected one")
+    target, _digest = _take_out(folder, new, set(), recorded={gone: "a" * 64})
+    assert target.name == "W2 (2).pdf" and target.read_bytes() == new.data
+    same = Attachment("W2.pdf", b"%PDF-1.4 the row's own")
+    own = hashlib.sha256(same.data).hexdigest()
+    target, _digest = _take_out(folder, same, set(), recorded={gone: own})
+    assert target == gone and gone.read_bytes() == same.data
+
+
+def test_a_name_an_open_intent_will_write_to_is_not_given_to_a_new_drop(fed, monkeypatch):
+    """Decision 147, the designer's ruling on deviation 3. A filing into the
+    LLC is interrupted before its move, and its source is still syncing,
+    so the move stays open and will write the LLC's ``tb.pdf`` once the
+    file is down. A different ``tb.pdf`` the LLC drops meanwhile must not
+    take that name: its row would carry the waiting filing's key and close
+    it, and the move would later meet other bytes there. It rests beside
+    it, and the waiting filing stays open for the next pass."""
+    import tracker.filer as filer_module
+
+    father, llc = fed
+    drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
+    killed_at_the_intent(monkeypatch, ledger.OP_MOVE)
+    with pytest.raises(KeyboardInterrupt):
+        sort_all([father, llc], home=[father], today=DAY1)
+    monkeypatch.undo()
+    [intent] = open_intents(llc)
+    [move] = [op for op in intent[ledger.OPS_KEY] if op[ledger.OP_KEY] == ledger.OP_MOVE]
+    assert locate(llc, move[ledger.TO_KEY]) == originals(llc) / "tb.pdf"
+    waiting = originals(father) / "tb.pdf"
+    real = filer_module.is_cloud_placeholder
+    monkeypatch.setattr(filer_module, "is_cloud_placeholder", lambda p: p == waiting or real(p))
+    drop(llc, "tb.pdf", "Trial balance as of December 31 2025 restated", who="Park & Lee LLC")
+
+    sort_all([llc], today=DAY2)
+
+    assert [p.name for p in originals(llc).iterdir()] == ["tb (2).pdf"]
+    [row] = read_index(llc)
+    assert row.pbc_location == original_at(llc, "tb (2).pdf")
+    assert open_intents(llc) == [intent]                      # still waiting on the sync client
+
+
+def test_a_name_held_only_by_a_return_outside_the_pass_is_not_reused(two_returns):
+    """The review's N-1: ruling 9 says any return of the household-year. A
+    return a pass leaves out - one marked inactive while the 1040 of the
+    same year is still worked - still has its rows, and a name one of them
+    holds after the client deleted the file is not handed to a different
+    drop."""
+    personal, business = two_returns
+    drop(personal, "tb.pdf", "Trial balance as of December 31 2025")
+    sort_all(two_returns, today=DAY1)
+    [held] = read_index(business)
+    (originals(personal) / "tb.pdf").unlink()
+    drop(personal, "tb.pdf", "Form W-2 Wage and Tax Statement 2025")
+
+    sort(personal, returns=[personal], today=DAY2)      # the business return is not in this pass
+
+    assert [p.name for p in originals(personal).iterdir()] == ["tb (2).pdf"]
+    [filed] = read_index(personal)
+    assert filed.pbc_location == original_at(personal, "tb (2).pdf")
+    assert read_index(business) == [held]

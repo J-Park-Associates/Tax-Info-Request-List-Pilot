@@ -192,6 +192,27 @@ def test_the_same_for_a_msg_and_a_zip(engagement, kind):
     assert (originals_of(engagement) / f"forwarded.{kind}").read_bytes() == box_bytes
 
 
+def test_a_zip_in_a_subfolder_of_the_drop_is_flattened_and_only_its_own_row_names_the_subfolder(engagement):
+    """Decision 147, ruling 6: a container in a subfolder is moved like any
+    drop - into the year's folder under its own name - and then opened.
+    The container is what came out of the subfolder, so its row says so;
+    what came out of the container did not, and its rows do not."""
+    nested = inbox_of(engagement) / "From the bank"
+    nested.mkdir()
+    (nested / "docs.zip").write_bytes(a_zip([("w2.pdf", pdf(W2)), ("1098.pdf", pdf(FORM_1098))]))
+
+    sort(engagement, today=DAY1)
+
+    rows = read_index(engagement)
+    [box] = [row for row in rows if row.decision == OPENED]
+    assert box.pbc_location == original_at(engagement, "docs.zip")
+    assert box.reason.endswith("; came from the client's subfolder 'From the bank'")
+    filed = [row for row in rows if row.decision == FILED]
+    assert len(filed) == 2
+    assert not any("subfolder" in row.reason for row in filed)
+    assert not nested.exists()
+
+
 # ------------------------------------------------------------------ claim 3 ----
 
 
