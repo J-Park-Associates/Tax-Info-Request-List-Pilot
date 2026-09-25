@@ -788,3 +788,169 @@ def test_a_name_on_the_record_is_never_longer_than_a_file_name():
 
     kept = safe_name("L" * 1000 + ".pdf", "attachment")
     assert len(kept) == NAME_MAX and kept.endswith(".pdf")
+
+
+# ------------------------------------------ decision 154: opened in the child ----
+#
+# 150 read every document in a child process the pass can stop; 143's three
+# parsers ran in the pass's own process. The opening is now one more job
+# for that child. The stand-ins that block or crash are in
+# tests/child_readers.py, because a patch made here never reaches the child.
+
+
+@pytest.fixture
+def opened_in_a_child(monkeypatch, tmp_path):
+    """Containers opened - and documents read - in a child, as the pass
+    does, with the opener's marks in a folder of the test's own."""
+    import tracker.content_check as content_check
+    from tests import child_readers
+
+    marks = tmp_path / "marks"
+    marks.mkdir()
+    monkeypatch.setattr(content_check, "READ_IN_A_CHILD", True)
+    monkeypatch.setenv(child_readers.MARKS_VARIABLE, str(marks))
+    content_check.readers_that_could_not_start()          # nothing left from another test
+    return monkeypatch
+
+
+def test_a_container_parser_that_never_finishes_is_stopped_and_the_container_parks(
+        engagement, opened_in_a_child):
+    """A defect in olefile, email or zipfile that nobody has found yet would
+    have held the whole pass: the parsers ran in its own process, outside
+    150's stop. The opening now ends at the stop for a file, and the
+    container parks with the stop's sentence - kept by its row, so the
+    next pass does not open it again - with nothing written under the
+    hidden folder of what was taken out, and no child left."""
+    import time
+
+    import tracker.content_check as content_check
+    from tests import child_readers
+    from tests.test_content_check import STOP_IN_TESTS, STOPPED, eventually, no_child_left, running
+
+    opened_in_a_child.setattr(content_check, "READING_STOP_DOCUMENT_SECONDS", STOP_IN_TESTS)
+    opened_in_a_child.setattr(containers, "_CHILD_OPENER",
+                              child_readers.a_container_parser_that_never_finishes)
+    drop_bytes(engagement, "mail.zip", a_zip([("w2.pdf", pdf(W2))]))
+
+    started = time.monotonic()
+    sort(engagement, today=DAY1)
+    took = time.monotonic() - started
+
+    mark = child_readers.opener_reached(Path("mail.zip"), "parser")
+    assert mark.is_file()                                          # stopped inside the parser
+    assert STOP_IN_TESTS <= took < STOP_IN_TESTS + 45
+    [row] = read_index(engagement)
+    assert row.decision == NEEDS_REVIEW and row.reason == STOPPED
+    assert reasons.find(row.reason) is reasons.READING_STOPPED
+    assert row.pbc_location == original_at(engagement, "mail.zip")
+    assert not opened_dir_of(engagement).exists()
+    assert no_child_left()
+    assert eventually(lambda: not running(int(mark.read_text(encoding="utf-8"))))
+
+    opened_in_a_child.setattr(content_check, "in_a_child",
+                              lambda *a, **k: pytest.fail("a parked container was opened again"))
+    sort(engagement, today=DAY2)
+    assert read_index(engagement) == [row]
+
+
+def test_a_container_parser_that_crashes_parks_the_container_not_the_pass(
+        engagement, opened_in_a_child):
+    """A crash in a parser used to end the pass's own process, and every
+    document after the container went unsorted. The child ends instead:
+    the container parks with the failed reading's sentence, and the pass
+    goes on to the loose W-2 dropped beside it."""
+    from tests import child_readers
+    from tests.test_content_check import CRASHED, no_child_left
+
+    opened_in_a_child.setattr(containers, "_CHILD_OPENER", child_readers.a_container_parser_that_crashes)
+    drop_bytes(engagement, "a mail.eml", eml([("1098.pdf", pdf(FORM_1098))]))
+    drop_bytes(engagement, "w2.pdf", pdf(W2))
+
+    done = sort(engagement, today=DAY1)
+
+    assert child_readers.opener_reached(Path("a mail.eml"), "parser").is_file()
+    [parked] = done.review
+    assert parked.original_name == "a mail.eml" and parked.reason == CRASHED
+    assert reasons.find(parked.reason) is reasons.READING_CRASHED
+    [filed] = done.filed
+    assert filed.original_name == "w2.pdf" and filed.identifier == "A01"
+    assert not opened_dir_of(engagement).exists()
+    assert no_child_left()
+
+
+def test_a_container_the_reader_could_not_start_on_is_reopened_next_pass(
+        engagement, opened_in_a_child):
+    """150's rule for a machine fault, applied to the opening: a child that
+    never says "started" is the machine's doing, not the file's, so the
+    container gets no row - a row would make its bytes known and it would
+    never be opened - and nothing is written. It rests in the year's
+    folder as a stray, the pass says it once, and the next pass, on a
+    working machine, opens it and files what it holds."""
+    from tests.test_content_check import _a_reader_only_the_pass_has, no_child_left
+    from tracker import content_check
+    from tracker.registry import discover_engagements
+    from tracker.runner import REMINDERS_NEVER, run_registry
+
+    mail = eml([("w2.pdf", pdf(W2)), ("1098.pdf", pdf(FORM_1098))])
+    drop_bytes(engagement, "mail.eml", mail)
+    root = root_of(engagement)
+
+    with pytest.MonkeyPatch.context() as broken:           # the machine is broken
+        broken.setattr(containers, "_CHILD_OPENER", _a_reader_only_the_pass_has(broken))
+        first = run_registry(discover_engagements(root), today=DAY1, reminders=REMINDERS_NEVER)
+
+    assert read_index(engagement) == []                    # not opened, not recorded
+    assert (originals_of(engagement) / "mail.eml").read_bytes() == mail
+    assert not opened_dir_of(engagement).exists()
+    [warning] = first.warnings
+    assert "could not start on this machine for 1 file(s)" in warning and "mail.eml" in warning
+    assert [run.review for run in first.runs] == [0]
+    assert content_check.readers_that_could_not_start() == []     # said by the pass, once
+    assert no_child_left()
+
+    second = run_registry(discover_engagements(root), today=DAY2, reminders=REMINDERS_NEVER)
+
+    assert second.warnings == []
+    rows = read_index(engagement)
+    [box] = [row for row in rows if row.decision == OPENED]
+    assert box.pbc_location == original_at(engagement, "mail.eml")
+    assert sorted((row.original_name, row.identifier) for row in rows if row.container) == [
+        ("1098.pdf", "C01"), ("w2.pdf", "A01")]
+    assert no_child_left()
+
+
+@pytest.mark.parametrize("name", [
+    "mail.eml", "mail.msg", "mail.zip", "nested.zip", "locked.zip", "broken.msg",
+])
+def test_an_opened_container_gives_the_same_parts_as_in_process(tmp_path, opened_in_a_child, name):
+    """On time, the child hands back exactly what the pass's own process
+    opens: every attachment's name and bytes, in order, each part left
+    inside and why - or, for one that will not open, the same sentence."""
+    from tests.test_content_check import no_child_left
+    from tracker import content_check
+
+    two = [("w2.pdf", pdf(W2)), ("1098.pdf", pdf(FORM_1098))]
+    data = {
+        "mail.eml": lambda: eml(two, inline=[("logo.png", b"\x89PNG" + b"0" * 16)]),
+        "mail.msg": lambda: container_of("msg", two),
+        "mail.zip": lambda: a_zip([two[0], ("sub/1098.pdf", two[1][1]), ("sub/", b"")]),
+        "nested.zip": lambda: a_zip([("mail.eml", eml(two[:1])), ("notes.pdf", b"%PDF notes")]),
+        "locked.zip": locked_zip,
+        "broken.msg": lambda: b"\xd0\xcf\x11\xe0 not a compound file" * 100,
+    }[name]()
+    path = tmp_path / name
+    path.write_bytes(data)
+    spawned = []
+    real = content_check.in_a_child
+    opened_in_a_child.setattr(content_check, "in_a_child",
+                              lambda *a, **k: spawned.append(1) or real(*a, **k))
+    try:
+        expected = open_container(data, path.suffix)
+    except NotOpened as exc:
+        with pytest.raises(NotOpened) as raised:
+            containers.open_bounded(path)
+        assert raised.value.sentence == exc.sentence
+    else:
+        assert expected.attachments and containers.open_bounded(path) == expected
+    assert spawned == [1]
+    assert no_child_left()

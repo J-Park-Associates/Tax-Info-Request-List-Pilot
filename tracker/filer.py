@@ -3226,7 +3226,8 @@ def _open_container(
 
     In order - and the order is the crash story:
 
-    1. **opened in memory** (:func:`tracker.containers.open_container`).
+    1. **opened in memory**, in the reading's child the pass can stop
+       (:func:`tracker.containers.open_bounded`, decision 154).
        One that will not open - locked, damaged, past a limit, or with
        nothing attached - parks whole, with the sentence that says which,
        in the dropping household's own first return.
@@ -3252,10 +3253,18 @@ def _open_container(
     """
     home = first
     try:
-        opened = containers.open_container(recorded_at.read_bytes(), original.suffix)
+        opened = containers.open_bounded(recorded_at)
     except containers.NotOpened as exc:
         _keep(home, _park_it(drop, original, digest, size_kb, stamp, home,
                              reason=exc.sentence, candidates=(), evidence=""), digest)
+        return
+    if opened is None:
+        # The opener's child could not start (decision 154, 150's rule):
+        # the machine's fault, not the file's. Nothing was written and
+        # nothing is recorded; the container rests in the year's folder as
+        # a stray and is opened next pass. The pass's one warning names it.
+        home.reopen.add(_opened_folder(home, original, runs))
+        log.warning("Left %s for the next pass: the opener could not start", drop.name)
         return
     dry_run = home.context.dry_run
     at = {id(run): location_of(run.engagement_dir, original) for run in runs}

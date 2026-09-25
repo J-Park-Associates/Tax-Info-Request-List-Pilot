@@ -1765,6 +1765,13 @@ def abandoned(seconds: float) -> Extraction:
 # The pass and the child talk over multiprocessing's Pipe: a named pipe
 # on Windows, an OS pipe elsewhere, never a socket.
 #
+# Opening an email or a zip is parsing it too (decision 154): olefile, the
+# standard library's email and zipfile, on bytes a client sent. So it is
+# one more job for the same child (in_a_child, the one mechanism), under
+# the stop for a file: tracker.containers.open_bounded hands the child the
+# container, and the child hands back the parts as plain data. The pass
+# writes every attachment, and only once the child has answered.
+#
 # And the child never outlives its pass (the designer's ruling on the
 # build). Task Scheduler's stop, or anything else that kills the pass
 # outright, runs no code of the pass's: two things end the child anyway.
@@ -1895,16 +1902,36 @@ def reading_failed(seconds: float, error: str) -> Extraction:
 
 def _read_in_a_child(path: Path, *, ocr: bool) -> Extraction:
     """Read ``path`` in a child process, waiting at most its stop."""
+    answer, failed = in_a_child(path, _CHILD_READER, ocr=ocr)
+    return failed if failed is not None else answer
+
+
+def in_a_child(path: Path, job, *, stop: float | None = None, **kwargs) -> tuple[object, Extraction | None]:
+    """Run ``job(path, **kwargs)`` in a child process the pass can stop,
+    waiting at most ``stop`` seconds (by default the file's own,
+    :func:`reading_stop_seconds`). The one mechanism for every parse of a
+    client's file (decision 150): the reading, and the opening of an email
+    or a zip (decision 154, :func:`tracker.containers.open_bounded`).
+
+    Gives ``(answer, None)`` on time, ``answer`` being what the job
+    returned, and ``(None, why)`` otherwise, ``why`` the Extraction that
+    says it: the stop (:func:`abandoned`), an end after "started"
+    (:func:`reading_failed`), or a child that never started
+    (:func:`could_not_start`, transient, nothing to keep). ``job`` is a
+    module-level function, handed to the child by reference; what it
+    returns crosses the pipe, so it is plain data.
+    """
     import multiprocessing
 
-    stop = reading_stop_seconds(path)
+    path = Path(path)
+    stop = reading_stop_seconds(path) if stop is None else stop
     context = multiprocessing.get_context("spawn")      # Windows has no fork
     answers, sender = context.Pipe(duplex=False)
     # The lifeline: the child holds the reading end and the pass the only
     # writing end, which closes with the pass however the pass ends.
     lifeline, held = context.Pipe(duplex=False)
     child = context.Process(target=_the_child,
-                            args=(sender, lifeline, _CHILD_READER, str(path), ocr),
+                            args=(sender, lifeline, job, str(path), kwargs),
                             name="tracker-reading", daemon=True)
     started = time.monotonic()
     try:
@@ -1914,12 +1941,12 @@ def _read_in_a_child(path: Path, *, ocr: bool) -> Extraction:
         answers.close()
         held.close()
         log.warning("The reader could not start for %s: %s", path.name, exc)
-        return could_not_start(time.monotonic() - started,
-                               f"{exc.__class__.__name__}: {exc}", path.name)
+        return None, could_not_start(time.monotonic() - started,
+                                     f"{exc.__class__.__name__}: {exc}", path.name)
     finally:
         sender.close()          # the child holds its own end: end-of-file means it is gone
         lifeline.close()
-    job = _kill_on_close_job(child.pid)
+    job_object = _kill_on_close_job(child.pid)
     kind, answer, begun, over = "died", (), False, False
     try:
         while True:
@@ -1940,38 +1967,38 @@ def _read_in_a_child(path: Path, *, ocr: bool) -> Extraction:
         answers.close()
         exit_code = _wait_for(child)
         held.close()
-        _close_job(job)
+        _close_job(job_object)
     seconds = time.monotonic() - started
     if not begun:
         error = ("the reader did not start within the safety stop" if over else
                  f"the reading's process ended with exit code {exit_code} before it started")
         log.warning("The reader could not start for %s: %s", path.name, error)
-        return could_not_start(seconds, error, path.name)
+        return None, could_not_start(seconds, error, path.name)
     if over:
         log.warning("Reading %s stopped at the safety stop (%.0f s)", path.name, stop)
-        return abandoned(seconds)
+        return None, abandoned(seconds)
     if kind == "read":
-        return answer[0]
+        return answer[0], None
     if kind == "failed":
         error, trace = answer
         log.warning("The reader failed on %s: %s", path.name, trace)
-        return reading_failed(seconds, error)
+        return None, reading_failed(seconds, error)
     error = f"the reading's process ended with exit code {exit_code}"
     log.warning("The reader stopped unexpectedly on %s: %s", path.name, error)
-    return reading_failed(seconds, error)
+    return None, reading_failed(seconds, error)
 
 
-def _the_child(sender, lifeline, reader, path: str, ocr: bool) -> None:
-    """The child's whole life: say it started, open and read one file,
-    hand back the reading, exit.
+def _the_child(sender, lifeline, job, path: str, kwargs: dict) -> None:
+    """The child's whole life: say it started, run its one job on one file
+    (open and read it, or open a container), hand back the answer, exit.
 
     On POSIX it leads a process group of its own first, so ending it ends
     whatever it started. It watches its lifeline from a thread of its own
     and ends itself when the pass is gone (:func:`_watch_the_pass`), and an
     answer the pass is no longer there to take ends it the same way.
     "started" goes before anything touches the file: an end before it is
-    the machine's, after it the file's. Anything the reading raises is
-    handed back as words, never left to end the process in silence."""
+    the machine's, after it the file's. Anything the job raises is handed
+    back as words, never left to end the process in silence."""
     import threading
 
     if hasattr(os, "setsid"):
@@ -1981,11 +2008,11 @@ def _the_child(sender, lifeline, reader, path: str, ocr: bool) -> None:
     _answer(sender, ("started",))
     try:
         try:
-            reading = reader(Path(path), ocr=ocr)
+            answer = job(Path(path), **kwargs)
         except BaseException as exc:
             _answer(sender, ("failed", f"{exc.__class__.__name__}: {exc}", traceback.format_exc()))
         else:
-            _answer(sender, ("read", reading))
+            _answer(sender, ("read", answer))
     finally:
         sender.close()
 
