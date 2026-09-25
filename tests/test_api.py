@@ -3405,12 +3405,14 @@ def _a_long_row_return(root, household=HOUSEHOLD):
     canonical copy exactly ``LONG_ROW_OVER`` past the limit: since decision
     144 a row's name in the path is its short name - twenty characters at
     most - so the depth is the folder's, as it is when a root grows, not a
-    hundred-character label's."""
+    hundred-character label's. Since decision 168 the copy sits in
+    Prepared itself, so the depth below the return is one name, not a
+    folder and a name."""
     from tests.conftest import TEST_YEAR
     from tracker.layout import MAX_PATH_LENGTH
     from tracker.manifest import RequestItem
 
-    below = len("/Prepared/B01 - " + "y" * 20 + "/B01 - " + "y" * 20 + ".pdf")
+    below = len("/Prepared/B01 - " + "y" * 20 + ".pdf")
     above = len(str(return_dir_for(Path(root), household, TEST_YEAR, "")))
     pad = MAX_PATH_LENGTH + LONG_ROW_OVER - below - above - len("/1040 - Long ")
     if pad < 1:
@@ -3519,7 +3521,9 @@ def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_bel
 ):
     """The API half: a person's filing into a request with no room for even
     its shortest name comes back as the one error sentence, PATH_NO_ROOM,
-    and nothing has moved."""
+    and nothing has moved. Since decision 168 Prepared is the only folder
+    a copy is in, and it is shallower than the review folder, so a request
+    is left no room only by a period as long as ``Jan 2025 - Dec 2025``."""
     from tests.conftest import named_page, root_for_a_return_of, sort
     from tests.test_scanner import text_pdf
     from tracker.filer import PATH_NO_ROOM
@@ -3527,10 +3531,10 @@ def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_bel
     from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
 
     monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
-    root = root_for_a_return_of(tmp_path, 210)
+    root = root_for_a_return_of(tmp_path, 222)             # Prepared: 231, 28 left for a name
     engagement = make_engagement(root, [RequestItem(
-        identifier="A01", document="W-2 Wage Statements", period="TY2025",
-        allowed_extensions=("pdf",), required_keywords=("W-2",))])
+        identifier="A01", document="W-2 Wage Statements", period="Jan 2025 - Dec 2025",
+        date_pattern=r"(?i)\b2025\b", allowed_extensions=("pdf",), required_keywords=("W-2",))])
     set_clients_root(root)
     text_pdf(inbox_of(engagement) / "note.pdf", named_page("A letter the list does not ask for"))
     sort(engagement)
@@ -3543,8 +3547,8 @@ def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_bel
                         stdin={"original": parked.pbc_location, "identifier": "A01", "seq": seq})
 
     assert code == 1
-    assert payload["error"] == PATH_NO_ROOM.format(length=245 + 1 + len("A01 - TY2025.pdf"), limit=260,
-                                                   ext=".pdf")
+    assert payload["error"] == PATH_NO_ROOM.format(
+        length=231 + 1 + len("A01 - Jan 2025 - Dec 2025.pdf"), limit=260, ext=".pdf")
     assert sorted(str(p) for p in root.rglob("*")) == before
 
 

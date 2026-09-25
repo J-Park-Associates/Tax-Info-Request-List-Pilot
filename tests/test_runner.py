@@ -1817,17 +1817,22 @@ def test_a_return_short_of_room_files_everything_and_is_not_warned(tmp_path):
 
 
 def test_a_return_with_requests_that_cannot_receive_says_how_many(tmp_path):
-    """A request whose folder leaves no room for even its shortest name is
+    """A request that Prepared leaves no room for even its shortest name is
     counted and said: a document for it parks until the root is shorter."""
-    from tests.test_filer import CANONICAL_BELOW, tight_return
-    from tracker.filer import ROOM_PARKS, ROOM_SHORT
+    from tests.conftest import root_for_a_return_of
+    from tests.test_filer import NO_ROOM_RETURN, ROOM_ITEMS, with_the_long_period
+    from tracker.filer import ROOM_PARKS, ROOM_SHORT, room_for
+    from tracker.manifest import load_manifest
 
-    engagement = tight_return(tmp_path, 210 + CANONICAL_BELOW - 260)   # A01's folder: 245
+    engagement = make_engagement(root_for_a_return_of(tmp_path, NO_ROOM_RETURN),
+                                 [with_the_long_period(ROOM_ITEMS[0])])   # Prepared: 231
+    room = room_for(engagement, load_manifest(engagement))
+    assert room.parks == 1 and room.short > 0
 
     [run] = _a_pass_over(engagement)
 
     assert ROOM_PARKS.format(count=1) in run.warnings
-    assert ROOM_SHORT.format(short=24) not in run.warnings        # L-1: the figure is no warning
+    assert ROOM_SHORT.format(short=room.short) not in run.warnings   # L-1: the figure is no warning
     assert not run.skipped and not run.error
 
 

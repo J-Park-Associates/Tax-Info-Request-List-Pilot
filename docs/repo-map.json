@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 130,
     "edges": 812,
-    "reused": 73
+    "reused": 101
   },
   "node_types": [
     "artifact",
@@ -2005,7 +2005,7 @@
         "UNDER_REVIEW_LINE": "'{n} document{s} received {day}'",
         "OTHER_DOCUMENT": "'Other document'"
       },
-      "role": "Turns a return's request list, read from the record, into folders. DECISION 125 - THE HOUSEHOLD'S CLIENT SIDE AND THE RETURN'S FIRM SIDE: scaffold_household() makes the household's folder in the client tree, its one permanent inbox and one folder per open tax year of originals, and lays out folders only (decision 130). DECISION 130 - ONE COMPOSER: write_readme() is the only function that writes the client's _README.txt in that inbox - the steps (README_STEP_2 and README_PHOTO_LINE in Jason's words), REQUESTED, NOT YET RECEIVED per return of the open year (only the asked requests - decision 142 - with no Received line - Jason's decision of 2026-09-23, replacing 124's D-1; NOTHING_OUTSTANDING_LINE when none is left), and WHAT WE HAVE RECEIVED once something has arrived (Received lines per return by request label and day; an Under Review block counted by day, never named) - rendered from a records.Received handed in by tracker.filer.received_for(); it never reads the index (tests/test_layers.py proves it), writes only when the text changed, and with two open years writes nothing, because the pass sorts nothing from an inbox that cannot say which year a document is for. scaffold_engagement() makes the return's Prepared/ and its 00 - Needs Review and nothing else, and lays out its household too, so a return made on its own still has its inbox and its year folder. DECISION 168 - NO FOLDER PER REQUEST: a working copy sits in Prepared itself, named by its request (A01 - W-2 - TY2025.pdf, the short name of decision 144); assign_files() is the one answer to which files are a request's - the files directly in Prepared whose names start with its identifier, the longest at a word boundary (owner_of()) - read by the scanner, the filer, the rename, the API's in_request and the dry-run validator, and it leaves out validators.is_ignored junk, decision 155's temps included. persons_folders() lists every folder inside Prepared other than the review folder: a person's (or a request folder of a return made before 168), where nothing is filed or counted. folder_name_for() and assign_folders() are gone.",
+      "role": "Turns a return's request list, read from the record, into folders. DECISION 125 - THE HOUSEHOLD'S CLIENT SIDE AND THE RETURN'S FIRM SIDE: scaffold_household() makes the household's folder in the client tree, its one permanent inbox and one folder per open tax year of originals, and lays out folders only (decision 130). DECISION 130 - ONE COMPOSER: write_readme() is the only function that writes the client's _README.txt in that inbox - the steps (README_STEP_2 and README_PHOTO_LINE in Jason's words), REQUESTED, NOT YET RECEIVED per return of the open year (only the asked requests - decision 142 - with no Received line - Jason's decision of 2026-09-23, replacing 124's D-1; NOTHING_OUTSTANDING_LINE when none is left), and WHAT WE HAVE RECEIVED once something has arrived (Received lines per return by request label and day; an Under Review block counted by day, never named) - rendered from a records.Received handed in by tracker.filer.received_for(); it never reads the index (tests/test_layers.py proves it), writes only when the text changed, and with two open years writes nothing, because the pass sorts nothing from an inbox that cannot say which year a document is for. scaffold_engagement() makes the return's Prepared/ and its 00 - Needs Review and nothing else, and lays out its household too, so a return made on its own still has its inbox and its year folder. DECISION 168 - NO FOLDER PER REQUEST: a working copy sits in Prepared itself, named by its request (A01 - W-2 - TY2025.pdf, the short name of decision 144); assign_files() is the one answer to which files are a request's - the files directly in Prepared whose names start with its identifier, the longest at a word boundary (owner_of()) - read by the scanner, the filer, the rename, the API's in_request and the dry-run validator, and it leaves out validators.is_ignored junk, decision 155's temps included. persons_folders() lists every folder inside Prepared other than the review folder: a person's (or a request folder of a return made before 168), where nothing is filed or counted. The folder-name function and the folder-assigning one it replaced are gone.",
       "notes": "The folder-name constants it used to own moved to tracker/layout.py with decision 125 - PREPARED_DIR_NAME, REVIEW_DIR_NAME, README_NAME, the two trees and the inbox - and SHARED_DIR_NAME and PBC_DIR_NAME went with the shape they named; this module imports them like everyone else and owns only what it builds (the request list's own file name left with decision 104; there is no such file). Runs on every scheduled pass now, so a row added in the app has its folder by the next run; the README is rewritten only when its text changed. The README contact comes from the engagement's details in the record (firm, else sender) unless given. Decision 61: the README is written whole and a failure to refresh it is a log line, never the end of a pass. Decision 89: the view's own file name lives in tracker/view.py with the module that writes it, as the record's does in tracker/ledger.py - one owner, the writer. Decision 104: it reads through manifest.load_manifest() and manifest.load_engagement_info(), which follow the journal into the store, so it is a reader of tracker.db like every other. Decision 131: the open-year rule (_open_year_of(), read by scaffold_household() and by readme_returns()/write_readme()) retires a prior by discovery's rule - layout.same_return(): the Rolled From path, else its three trailing names - instead of by resolved path only (_resolved is gone), so after the clients root moves a household that has rolled over still reads as one open year and its README is still rewritten. Decision 137 (L6): sanitize_component() never hands back a Windows device name (manifest.WINDOWS_RESERVED_NAMES): it gains a trailing _, so every caller that refuses a changed name refuses it."
     },
     {
@@ -2498,7 +2498,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "f1163ab54aa3be65",
+      "sha256": "dfff8c79ab711ecd",
       "lines": 412,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -2516,7 +2516,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "3552cd361fb817e9",
+      "sha256": "50db493f80775270",
       "lines": 813,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -2857,8 +2857,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "2a2adbcf8092d390",
-      "lines": 4628,
+      "sha256": "bbe459cf8ae9b4e6",
+      "lines": 4632,
       "exports": [
         "HOUSEHOLD",
         "LONG_ROW_OVER",
@@ -4581,8 +4581,8 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6094615ebe7a5397",
-      "lines": 1998,
+      "sha256": "de3716a5bea02b2f",
+      "lines": 2003,
       "exports": [
         "DRAFT_DAY",
         "FRIDAY",
