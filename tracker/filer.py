@@ -958,7 +958,8 @@ def _unique_path(
     **A name is taken if the disk holds it, or a row still names it**
     (decision 147, ruling 9; audit F-1). ``recorded`` is every place the
     household-year's rows name as an original's resting place, each with
-    that row's bytes (:func:`_on_record`). A client who deletes ``W2.pdf``
+    that row's bytes (:func:`_on_record`), and every path an open intent
+    will still write to, with none (:func:`_taken_names`). A client who deletes ``W2.pdf``
     from the year's folder and drops a corrected ``W2.pdf`` would otherwise
     have the new file take the old row's identity, and the old row would
     vanish from every reader. One exception, left exactly as it was: where
@@ -1024,13 +1025,33 @@ def _on_record(engagements: Iterable[tuple[Path, Iterable[IndexEntry]]]) -> dict
     }
 
 
+def _taken_names(recorded: dict[Path, str], intended: Iterable[Path]) -> dict[Path, str]:
+    """``recorded`` with every path an open intent will write to added, as
+    a name no bytes can claim back (decision 147): the one union
+    :func:`_unique_path` is handed, rows and open intents together."""
+    return {**recorded, **dict.fromkeys(intended, "")}
+
+
+def _taken_in_the_year(first: _ReturnRun, runs: list[_ReturnRun]) -> dict[Path, str]:
+    """Every name the pass's own household-year holds (decision 147, ruling
+    9 and the review's N-1): the rows of **every** return of that year -
+    the pass's own rows as they stand now, and the record's for a return
+    the pass left out, one marked inactive while another of the same year
+    is still worked - and every path an open intent will write to."""
+    held = {run.engagement_dir: run.entries for run in runs}
+    return _taken_names(_year_on_record(first.engagement_dir, held), first.context.intended)
+
+
 def _year_on_record(engagement_dir: Path, held: Mapping[Path, list[IndexEntry]]) -> dict[Path, str]:
     """:func:`_on_record` for every return of ``engagement_dir``'s
     household-year: the rows in ``held`` for the returns the caller holds
-    them for, the record's own for the rest. For a name chosen in a
-    household the caller is not sorting - a filing's second move into it
-    (decision 129) and a person's hand-over (decision 132). Read only; no
-    lock is taken, and a return whose record cannot be read names nothing.
+    them for, the record's own for the rest - so a return the caller does
+    not hold, one left out of the pass as inactive or one in a household
+    the caller is not sorting, still counts. For every name a row could
+    hold: the inbox move and what is taken out of a zip
+    (:func:`_taken_in_the_year`), a filing's second move (decision 129) and
+    a person's hand-over (decision 132). Read only; no lock is taken, and a
+    return whose record cannot be read names nothing.
     """
     engagement_dir = Path(engagement_dir)
     year = engagement_dir.parent
@@ -2927,6 +2948,9 @@ def file_household_drops(
     strays = (unrecorded_in_pbc(originals_dir, [(r.engagement_dir, r.entries) for r in runs])
               if originals_dir.is_dir() else [])
     spoken_for = _spoken_for_by_an_open_intent(runs)
+    intended = frozenset(_spoken_for_by_an_open_intent(runs, ends=(ledger.TO_KEY,)))
+    for run in runs:
+        run.context.intended = intended
     strays = [path for path in strays if path not in spoken_for]
     if strays:
         left = [path for path in strays if _named_by_another_records_intent(path, runs)]
@@ -2999,9 +3023,11 @@ def file_household_drops(
     return {run.engagement_dir: run.report for run in runs}
 
 
-def _spoken_for_by_an_open_intent(runs: list[_ReturnRun]) -> set[Path]:
+def _spoken_for_by_an_open_intent(
+    runs: list[_ReturnRun], ends: tuple[str, ...] = (ledger.FROM_KEY, ledger.TO_KEY),
+) -> set[Path]:
     """Every file a move this pass could not finish still names, at either
-    end, across all the returns it holds.
+    end (or only at the ``ends`` asked for), across all the returns it holds.
 
     A cross-household filing moves the original a second time (decision
     129), and between the two halves of that move the file is in the
@@ -3011,13 +3037,18 @@ def _spoken_for_by_an_open_intent(runs: list[_ReturnRun]) -> set[Path]:
     file would then look like a stray of the household it is still sitting
     in and be sorted a second time. It is not a stray: it is spoken for,
     by a decision the record already holds.
+
+    Its targets alone (``ends=(TO_KEY,)``) are names an open intent will
+    write to, and no new file is given one (decision 147): a drop resting
+    there would carry the waiting filing's key, and its row would close
+    that filing with a different document's.
     """
     conn = store.connect()
     held: set[Path] = set()
     for run in runs:
         for intent in store.open_intents(conn, run.engagement_dir):
             for op in intent.get(ledger.OPS_KEY) or []:
-                for key in (ledger.FROM_KEY, ledger.TO_KEY):
+                for key in ends:
                     location = op.get(key)
                     if location:
                         held.add(locate(run.engagement_dir, str(location)))
@@ -3333,7 +3364,7 @@ def _sort_all(
             try:
                 original = _unique_path(
                     originals_dir, drop.name,
-                    recorded=_on_record((run.engagement_dir, run.entries) for run in runs),
+                    recorded=_taken_in_the_year(first, runs),
                     digest=partial(_digest_or_none, drop))
                 _move_whole(drop, original, within=inbox)
             except OSError as exc:
@@ -3572,12 +3603,12 @@ def _open_container(
     folder = _opened_folder(home, original, runs)
     claimed: set[Path] = set()
     taken: list[tuple[containers.Attachment, Path, str]] = []
-    on_record = _on_record((run.engagement_dir, run.entries) for run in runs)
+    in_the_year = {} if dry_run else _taken_in_the_year(home, runs)
     for one in opened.attachments:
         if dry_run:
             taken.append((one, folder / one.name, hashlib.sha256(one.data).hexdigest()))
         else:
-            taken.append((one, *_take_out(folder, one, claimed, recorded=on_record)))
+            taken.append((one, *_take_out(folder, one, claimed, recorded=in_the_year)))
     entry = IndexEntry(
         received=stamp, original_name=drop.name, size_kb=size_kb, digest=digest,
         identifier="", prepared_location="", pbc_location=at[id(home)], decision=OPENED,
@@ -3595,7 +3626,7 @@ def _open_container(
         home.report.opened.append(entry)
         _keep(home, entry, digest)
         return
-    named = on_record
+    named = _on_record((run.engagement_dir, run.entries) for run in runs)
     waiting = [one.name for one, path, sha in taken
                if path not in named
                and not _decide_attachment(one, path, sha, stamp, runs, first, at)]
@@ -4135,6 +4166,11 @@ class _SortContext:
     #: written before it. Cleared around an attachment's decision: what came
     #: out of a zip did not come out of the subfolder, the zip did.
     came_from: str = ""
+    #: Every path an open intent of the household's pass will still write
+    #: to (decision 147, the designer's ruling on deviation 3), read once
+    #: per pass after recovery and set on every run: a name taken as a
+    #: row's resting place is, for :func:`_taken_names`.
+    intended: frozenset[Path] = frozenset()
 
 
 def _plan_working_copy(
@@ -4229,8 +4265,8 @@ def _rests_at(run: _ReturnRun, original: Path, digest: str) -> Path:
     folder = originals_of(run.engagement_dir)
     if run.context.dry_run:
         return folder / original.name
-    return _unique_path(folder, original.name, digest=digest,
-                        recorded=_year_on_record(run.engagement_dir, {run.engagement_dir: run.entries}))
+    return _unique_path(folder, original.name, digest=digest, recorded=_taken_names(
+        _year_on_record(run.engagement_dir, {run.engagement_dir: run.entries}), run.context.intended))
 
 
 def _file_into(

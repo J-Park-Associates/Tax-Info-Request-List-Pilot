@@ -6962,3 +6962,56 @@ def test_an_attachment_is_not_written_under_a_name_a_row_still_names(tmp_path):
     own = hashlib.sha256(same.data).hexdigest()
     target, _digest = _take_out(folder, same, set(), recorded={gone: own})
     assert target == gone and gone.read_bytes() == same.data
+
+
+def test_a_name_an_open_intent_will_write_to_is_not_given_to_a_new_drop(fed, monkeypatch):
+    """Decision 147, the designer's ruling on deviation 3. A filing into the
+    LLC is interrupted before its move, and its source is still syncing,
+    so the move stays open and will write the LLC's ``tb.pdf`` once the
+    file is down. A different ``tb.pdf`` the LLC drops meanwhile must not
+    take that name: its row would carry the waiting filing's key and close
+    it, and the move would later meet other bytes there. It rests beside
+    it, and the waiting filing stays open for the next pass."""
+    import tracker.filer as filer_module
+
+    father, llc = fed
+    drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
+    killed_at_the_intent(monkeypatch, ledger.OP_MOVE)
+    with pytest.raises(KeyboardInterrupt):
+        sort_all([father, llc], home=[father], today=DAY1)
+    monkeypatch.undo()
+    [intent] = open_intents(llc)
+    [move] = [op for op in intent[ledger.OPS_KEY] if op[ledger.OP_KEY] == ledger.OP_MOVE]
+    assert locate(llc, move[ledger.TO_KEY]) == originals(llc) / "tb.pdf"
+    waiting = originals(father) / "tb.pdf"
+    real = filer_module.is_cloud_placeholder
+    monkeypatch.setattr(filer_module, "is_cloud_placeholder", lambda p: p == waiting or real(p))
+    drop(llc, "tb.pdf", "Trial balance as of December 31 2025 restated", who="Park & Lee LLC")
+
+    sort_all([llc], today=DAY2)
+
+    assert [p.name for p in originals(llc).iterdir()] == ["tb (2).pdf"]
+    [row] = read_index(llc)
+    assert row.pbc_location == original_at(llc, "tb (2).pdf")
+    assert open_intents(llc) == [intent]                      # still waiting on the sync client
+
+
+def test_a_name_held_only_by_a_return_outside_the_pass_is_not_reused(two_returns):
+    """The review's N-1: ruling 9 says any return of the household-year. A
+    return a pass leaves out - one marked inactive while the 1040 of the
+    same year is still worked - still has its rows, and a name one of them
+    holds after the client deleted the file is not handed to a different
+    drop."""
+    personal, business = two_returns
+    drop(personal, "tb.pdf", "Trial balance as of December 31 2025")
+    sort_all(two_returns, today=DAY1)
+    [held] = read_index(business)
+    (originals(personal) / "tb.pdf").unlink()
+    drop(personal, "tb.pdf", "Form W-2 Wage and Tax Statement 2025")
+
+    sort(personal, returns=[personal], today=DAY2)      # the business return is not in this pass
+
+    assert [p.name for p in originals(personal).iterdir()] == ["tb (2).pdf"]
+    [filed] = read_index(personal)
+    assert filed.pbc_location == original_at(personal, "tb (2).pdf")
+    assert read_index(business) == [held]
