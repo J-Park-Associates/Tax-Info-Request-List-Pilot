@@ -1071,8 +1071,10 @@ def received_for(returns: Sequence) -> Received:
       client read under *REQUESTED, NOT YET RECEIVED* - and never the
       client's file name or the firm's working name. A request no longer on
       the list reads :data:`OTHER_DOCUMENT`. Each request the row's Also
-      Answers cell names (decision 146) is Received too, said as inside the
-      statement's own request (``reasons.IN_CONSOLIDATED``).
+      Answers cell names (decision 146) is Received too, with the
+      statement's own request as its ``inside``; the client's README says it
+      as included in their consolidated brokerage statement
+      (``reasons.IN_CONSOLIDATED_CLIENT``, Jason's Q-L), naming no request.
     - ``Needs Review`` is **Under Review**, counted by the day it arrived and
       never named: its only name is the client's own.
     - ``Duplicate``, ``Not Requested`` and anything else is not shown.

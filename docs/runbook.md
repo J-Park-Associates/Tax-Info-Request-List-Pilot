@@ -169,6 +169,16 @@ row names is left where it is, and the editor names it. If a rename is
 interrupted (a copy held open by another program), the next pass finishes
 it and removes the old folder once it is empty.
 
+A request that a broker's consolidated statement answers (decision 146) -
+the statement filed under the brokerage request, this request named in its
+**Also Answers** with no copy of its own - is renamed the same way: the
+rename carries it in the statement's Also Answers too, so it stays
+Received under its new identifier. It also counts as holding that
+statement, so deleting it in a save is refused with the same sentence
+(one filed document: the statement). To delete such a request, first press
+its **Mark ... missing** button (**Mark A04 missing**, say) on the statement
+in the filed list, then delete the row and save.
+
 **Save refused: "the list changed since you opened it".** Someone saved
 the list - in the app on another machine, or through the review queue
 teaching a spelling - after you opened the editor. Nothing you saved was
