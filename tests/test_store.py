@@ -176,7 +176,7 @@ def test_opening_a_file_that_is_not_there_creates_the_schema(tmp_path):
 
     conn = store.open(path)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 15
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 16
         tables = {row[0] for row in conn.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table'")}
         assert tables == {"engagements", "requests", "statuses", "learned_keywords",
@@ -2140,7 +2140,7 @@ def test_a_row_written_without_asked_reads_as_asked(conn, root, by_hand):
 
     build(conn, root, by_hand)
     build(store.connect(), root, by_hand)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 15
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 16
     assert all(row["asked"] is True for row in store.rules(conn, by_hand))
     assert all(item.asked for item in load_manifest(by_hand))
     assert store.check(conn, root, by_hand) == []
@@ -2156,7 +2156,7 @@ def test_a_row_written_without_asked_reads_as_asked(conn, root, by_hand):
 def test_a_row_written_without_a_short_title_reads_as_blank(conn, root, by_hand):
     """Every row a journal holds from before decision 144 has no short
     title, so a line without it folds to blank - which derives the short
-    name from the document title. The store is at version 15, rebuilt
+    name from the document title. The store is at the current version, rebuilt
     from that journal, and agrees with it; the list read back and saved
     unchanged records nothing."""
     events = ledger.read_events(by_hand)
@@ -2169,7 +2169,7 @@ def test_a_row_written_without_a_short_title_reads_as_blank(conn, root, by_hand)
 
     build(conn, root, by_hand)
     build(store.connect(), root, by_hand)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 15
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 16
     assert all(item.short_title == "" for item in load_manifest(by_hand))
     assert all(item.short_name for item in load_manifest(by_hand))
     assert store.check(conn, root, by_hand) == []

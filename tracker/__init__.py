@@ -57,7 +57,9 @@ STANDING_RULES: tuple[tuple[str, str], ...] = (
     ("Nothing is guessed.",
      "A document is filed only when exactly one request accepts it - or, when one document "
      "names several forms as itself, when each of those forms is accepted by exactly one "
-     "request. Ambiguous, contested and unrecognized files go to {review} for a person - "
+     "request, or, when a broker's consolidated statement is accepted by several requests, "
+     "when exactly one of them accepts it for its 1099-B, which then holds the whole "
+     "statement. Ambiguous, contested and unrecognized files go to {review} for a person - "
      "misfiling a tax document is worse than not filing it."),
     ("Nothing is ever sent.",
      "The system drafts client emails and stops. There is no SMTP, no mail client and no "

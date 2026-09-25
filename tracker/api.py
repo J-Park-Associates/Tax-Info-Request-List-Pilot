@@ -32,6 +32,8 @@ Commands:
   assign    file one Needs Review document under a request (a person's call)
   dismiss   record that no request asks for one Needs Review document
   unfile    send one filed document back to Needs Review (a person's call)
+  mark-missing  take one request off what a consolidated statement answers,
+            and re-scan (a person's call, decision 146)
   restore   put one moved working copy back where the record put it
   unlearn   take back a keyword a filing taught one request, and re-scan
   rename    give a request another identifier and move its filed documents
@@ -68,6 +70,7 @@ from tracker.filer import (
     ensure,
     find_parked,
     hand_over,
+    mark_missing_again,
     moved_to,
     read_index,
     refresh_household_readme,
@@ -390,6 +393,10 @@ FILE_LABEL = "File it"
 FILE_ANYWAY_LABEL = "File it anyway"
 UNFILE_LABEL = "Unfile"
 UNFILE_NOTE_HINT = "why it is coming back (optional)"
+#: Decision 146: the button beside each request a filed consolidated
+#: statement answers without a copy, and the words that introduce them.
+MARK_MISSING_LABEL = "Mark {identifier} missing"
+ALSO_ANSWERS_LABEL = "also answers"
 FILED_HEADING = "Filed documents ({n})"
 #: How the picker divides itself: the triaged shortlist first, under the
 #: first heading, then every other request under the second. The two are
@@ -747,6 +754,8 @@ def _vocab() -> dict:
                           "dismissed_heading": DISMISSED_HEADING, "file": FILE_LABEL,
                           "file_anyway": FILE_ANYWAY_LABEL,
                           "unfile": UNFILE_LABEL, "unfile_note": UNFILE_NOTE_HINT,
+                          "mark_missing": MARK_MISSING_LABEL,
+                          "also_answers": ALSO_ANSWERS_LABEL,
                           "filed_heading": FILED_HEADING,
                           "suggested": SUGGESTED_HEADING,
                           "other_requests": OTHER_REQUESTS_HEADING,
@@ -1544,6 +1553,7 @@ def _state(engagement: Path) -> dict:
         # app and nothing else (decision 112).
         "index": [asdict(e) | {"filed_as": e.filed_as, "filed_names": e.filed_names,
                                "candidates": e.candidate_list,
+                               "answered": [identifier for identifier, _ in e.answered],
                                "evidence": _evidence_payload(e),
                                "seq": seqs.get(ledger_key(e))}
                   for e in entries],
@@ -2850,6 +2860,38 @@ def _cmd_unfile(argv: list[str]) -> dict:
     }
 
 
+def _cmd_mark_missing(argv: list[str]) -> dict:
+    """Mark one request missing again that a consolidated statement was
+    answering without a copy (decision 146, the owner's answer to 146-Q).
+
+    JSON spec on stdin: {"original": "<the statement's PBC location or name>",
+                         "identifier": "A02",
+                         "note": "optional",
+                         "seq": <the row's record version, as shown>}
+    The statement stays filed where it is; only that request comes off its
+    Also Answers cell, on the record, and the re-scan puts the request back
+    to what its own folder holds, so the next draft asks for it.
+    """
+    engagement = _engagement_dir(argv)
+    spec = json.loads(sys.stdin.read() or "{}")
+    original = str(spec.get("original", "")).strip()
+    identifier = str(spec.get("identifier", "")).strip()
+    if not original or not identifier:
+        raise ManifestError("Pick the statement and the request to mark missing")
+    result = mark_missing_again(engagement, original, identifier,
+                                str(spec.get("note", "") or ""), seq=_seq_of(spec))
+    _refresh_readmes(engagement)
+    return {
+        "marked_missing": {
+            "original_name": result.entry.original_name,
+            "identifier": result.identifier,
+            "reason": result.entry.reason,
+            "scan_note": result.scan_note,
+        },
+        "state": _state(engagement),
+    }
+
+
 def _cmd_restore(argv: list[str]) -> dict:
     """Put one moved working copy back where the record put it (a person's call).
 
@@ -3239,6 +3281,7 @@ COMMANDS = {
     "propose-spellings": _cmd_propose_spellings,
     "unlearn": _cmd_unlearn,
     "rename": _cmd_rename,
+    "mark-missing": _cmd_mark_missing,
     "unlock": _cmd_unlock,
     "settings": _cmd_settings,
     "set-root": _cmd_set_root,

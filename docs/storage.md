@@ -103,7 +103,7 @@ the rollback that puts a moved file back asks exactly that question.
 
 ## The schema
 
-One file, `PRAGMA user_version = 12` (decision 104 dropped the workbook's
+One file, `PRAGMA user_version = 16` (decision 104 dropped the workbook's
 digest column; decision 107 added the verdict cache's two tables; decision
 116 added the `override_reason` column to `requests`; decision 117 added
 the Filing Deadline to the engagement's details, and a detail is a column
@@ -117,7 +117,10 @@ folder also feeds — into the household's own columns; decision 132 changed
 no column and changed the fold, so that a `released` line takes a row out
 of the index; decision 134 changed no column and changed the key, so that
 two years of one return are never one row; decision 137 added the applied
-chain, `applied_digest`, to `engagements`; a file at an
+chain, `applied_digest`, to `engagements`; decision 142 added the `asked`
+mark to `requests`, decision 143 `container` to `documents`, decision 144
+`short_title` to `requests`, and decision 146 `answers` to `documents` -
+the other requests a consolidated statement answers without a copy; a file at an
 earlier version is refused by name, and is deleted and rebuilt — nothing
 is lost, the journals are what it is made
 of). A file at any other version is refused by name rather than opened
@@ -142,6 +145,7 @@ The events that carry a whole index row are `tracker.ledger.ROW_EVENTS`,
 and their fold **is** the index: `preserved`, `filed`, `parked`,
 `duplicate`, `assigned_by_person`, `dismissed_by_person`,
 `unfiled_by_person`, `restored_by_person`, `renamed_by_person`,
+`answer_withdrawn_by_person`,
 `bytes_recorded`, `copy_moved`
 and the `imported` line a seeded row carries. `released` is not among them
 and is decision 132's: a person filed a parked document under a request of
@@ -159,13 +163,19 @@ and it is the answer to that one: a person put the copy back where the
 record put it, whatever the click found — the bytes moved home, copied
 home from the client's original, already home, or refused a home holding
 a different file and sent to review instead. One name again, because the
-row the line carries says which. `renamed_by_person` is decision 160's and
-the newest of them: a person gave a request another identifier with the
-editor's Rename, and the row names the new one - its working copies moved
-into the request's renamed folder under renamed names, or, for a row with
-no copy there, only the identifier it names changed. The `rules_changed`
-that renames the request and one `moving` intent per row are written first,
-in one write, and each `renamed_by_person` closes one intent. The rest of the names are not row events and fold their own
+row the line carries says which. `renamed_by_person` is decision 160's: a
+person gave a request another identifier with the editor's Rename, and the
+row names the new one - its working copies moved into the request's renamed
+folder under renamed names, or, for a row with no copy there, only the
+identifier it names changed, in its `answers` column too where a
+consolidated statement answers the request (decision 146). The
+`rules_changed` that renames the request and one `moving` intent per row
+are written first, in one write, and each `renamed_by_person` closes one
+intent. `answer_withdrawn_by_person` is decision 146's and the newest of
+them: a person marked a request missing again that a consolidated statement
+filed under another request was answering, and the row it carries is the
+statement's with that request taken off its `answers` column - nothing
+moves on disk. The rest of the names are not row events and fold their own
 way: `scanned` (the statuses), `keyword_learned`, `rules_changed`,
 `drafted`, `draft_approved`, `moving`, `move_abandoned` and
 `household_changed`, and the retired

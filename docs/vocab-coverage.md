@@ -4,7 +4,7 @@
 
 Which keyword is reached by which document: every catalog row's keywords against the IRS forms in `tests/irs/` and the reconstructed cases in `tests/test_catalog.py`, tested with `says()` the way the router and the scanner read. Rebuild with `python tools/vocab_report.py build`; `check` says whether this matches its inputs.
 
-6 catalogs · 107 rows · 371 keywords · **66 unreached** · 2 reached only elsewhere · 11 reached without an expectation · 0 rows without a filing document · 106 IRS forms · 357 cases
+6 catalogs · 107 rows · 371 keywords · **66 unreached** · 2 reached only elsewhere · 11 reached without an expectation · 0 rows without a filing document · 106 IRS forms · 362 cases
 
 A hit reads *document → where the suite files it in this catalog*: **here** is this row, *parks* is Needs Review, another identifier is another row, and `?` means the suite has no expectation for that document in this catalog.
 
@@ -116,8 +116,8 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### A02 — 1099-INT / 1099-DIV - Interest & Dividend Income
 
-- `1099-int` (any) — 1099-INT.pdf (d62) → ?; Schwab consolidated 1099 with a B.pdf (d68) → parks; Vanguard consolidated 1099.pdf (d68) → **here**; Vanguard consolidated 1099.pdf (d68) → ?; Schwab consolidated 1099 with a B.pdf (d73) → ?; broker cover then the 1099-INT.pdf (d73) → **here**; broker cover then the 1099-INT.pdf (d73) → ?; substitute 1099-INT with a dash title.pdf (d73) → **here**; f1099int.pdf → **here**
-- `1099-div` (any) — 1099-DIV.pdf (d66) → **here**; Schwab consolidated 1099 with a B.pdf (d68) → parks; Vanguard consolidated 1099.pdf (d68) → **here**; Vanguard consolidated 1099.pdf (d68) → ?; Schwab consolidated 1099 with a B.pdf (d73) → ?; f1099div.pdf → **here**
+- `1099-int` (any) — 1099-INT.pdf (d62) → ?; Schwab consolidated 1099 with a B.pdf (d68) → E01; Vanguard consolidated 1099.pdf (d68) → **here**; Vanguard consolidated 1099.pdf (d68) → ?; Schwab consolidated 1099 with a B.pdf (d73) → ?; broker cover then the 1099-INT.pdf (d73) → **here**; broker cover then the 1099-INT.pdf (d73) → ?; substitute 1099-INT with a dash title.pdf (d73) → **here**; Fidelity tax information statement.pdf (d146) → E01; Fidelity tax information statement.pdf (d146) → ?; bank consolidated statement.pdf (d146) → **here**; composite 1099 with interest and a B.pdf (d146) → E01; f1099int.pdf → **here**
+- `1099-div` (any) — 1099-DIV.pdf (d66) → **here**; Schwab consolidated 1099 with a B.pdf (d68) → E01; Vanguard consolidated 1099.pdf (d68) → **here**; Vanguard consolidated 1099.pdf (d68) → ?; Schwab consolidated 1099 with a B.pdf (d73) → ?; Fidelity tax information statement.pdf (d146) → E01; Fidelity tax information statement.pdf (d146) → ?; f1099div.pdf → **here**
 - `1099-oid` (any) — f1099oid.pdf → **here**
 
 ### A03 — 1099-NEC - Nonemployee Compensation
@@ -126,8 +126,8 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### A04 — 1099-MISC - Miscellaneous Income
 
-- `1099-misc` (any) — Schwab consolidated 1099 with a B.pdf (d68) → parks; Schwab consolidated 1099 with a B.pdf (d73) → ?; 1099-MISC 2025 Copy B.pdf (d90) → **here**; f1099msc.pdf → **here**
-- `miscellaneous information` (any) — Schwab consolidated 1099 with a B.pdf (d68) → parks; Schwab consolidated 1099 with a B.pdf (d73) → ?; 1099-MISC 2025 Copy B.pdf (d90) → **here**
+- `1099-misc` (any) — Schwab consolidated 1099 with a B.pdf (d68) → E01; Schwab consolidated 1099 with a B.pdf (d73) → ?; 1099-MISC 2025 Copy B.pdf (d90) → **here**; f1099msc.pdf → **here**
+- `miscellaneous information` (any) — Schwab consolidated 1099 with a B.pdf (d68) → E01; Schwab consolidated 1099 with a B.pdf (d73) → ?; 1099-MISC 2025 Copy B.pdf (d90) → **here**
 
 ### A05 — 1099-K - Payment Card & Third-Party Network Transactions
 
@@ -180,10 +180,10 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### E01 — 1099-B / Brokerage Year-End Statements
 
-- `1099-b` (any) — 1099-B.pdf (d62) → ?; Schwab consolidated 1099 with a B.pdf (d68) → parks; 1099-B Copy B.pdf (d73) → **here**; Schwab consolidated 1099 with a B.pdf (d73) → ?
-- `proceeds from broker` (any) — 1099-B.pdf (d62) → ?; Schwab consolidated 1099 with a B.pdf (d68) → parks; 1099-B Copy B.pdf (d73) → **here**; Schwab consolidated 1099 with a B.pdf (d73) → ?
+- `1099-b` (any) — 1099-B.pdf (d62) → ?; Schwab consolidated 1099 with a B.pdf (d68) → **here**; 1099-B Copy B.pdf (d73) → **here**; Schwab consolidated 1099 with a B.pdf (d73) → ?; Fidelity tax information statement.pdf (d146) → **here**; Fidelity tax information statement.pdf (d146) → ?; composite 1099 with interest and a B.pdf (d146) → **here**
+- `proceeds from broker` (any) — 1099-B.pdf (d62) → ?; Schwab consolidated 1099 with a B.pdf (d68) → **here**; 1099-B Copy B.pdf (d73) → **here**; Schwab consolidated 1099 with a B.pdf (d73) → ?; Fidelity tax information statement.pdf (d146) → **here**; Fidelity tax information statement.pdf (d146) → ?; composite 1099 with interest and a B.pdf (d146) → **here**
 - `brokerage statement` (any) — Schwab year-end brokerage statement.pdf (d73) → **here**; trust brokerage year-end statement.pdf (d73) → ?; W-2 1099-INT and a brokerage cover.pdf (d94) → parks
-- `realized gain and loss` (any) — Schwab consolidated 1099 with a B.pdf (d68) → parks; Fidelity realized gain and loss report.pdf (d73) → **here**; Schwab consolidated 1099 with a B.pdf (d73) → ?; Schwab year-end brokerage statement.pdf (d73) → **here**; trust brokerage year-end statement.pdf (d73) → ?
+- `realized gain and loss` (any) — Schwab consolidated 1099 with a B.pdf (d68) → **here**; Fidelity realized gain and loss report.pdf (d73) → **here**; Schwab consolidated 1099 with a B.pdf (d73) → ?; Schwab year-end brokerage statement.pdf (d73) → **here**; trust brokerage year-end statement.pdf (d73) → ?
 - `realized gain/loss` (any) — realized gain loss export.pdf (d85) → **here**; realized gain loss export.pdf (d85) → ?; realized gain loss.xlsx (d85) → **here**
 - `realized gain loss` (any) — realized gain loss report.pdf (d85) → ?; realized gain loss.xlsx (d85) → **here**
 
@@ -302,12 +302,12 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### B01 — 1099s for Trust / Estate Accounts
 
-- `1099-int` (any) — 1099-INT.pdf (d62) → ?; Schwab consolidated 1099 with a B.pdf (d68) → ?; Vanguard consolidated 1099.pdf (d68) → ?; Vanguard consolidated 1099.pdf (d68) → **here**; Schwab consolidated 1099 with a B.pdf (d73) → parks; broker cover then the 1099-INT.pdf (d73) → ?; broker cover then the 1099-INT.pdf (d73) → **here**; substitute 1099-INT with a dash title.pdf (d73) → ?; f1099int.pdf → **here**
-- `1099-div` (any) — 1099-DIV.pdf (d66) → ?; Schwab consolidated 1099 with a B.pdf (d68) → ?; Vanguard consolidated 1099.pdf (d68) → ?; Vanguard consolidated 1099.pdf (d68) → **here**; Schwab consolidated 1099 with a B.pdf (d73) → parks; f1099div.pdf → **here**
-- `1099-b` (any) — 1099-B.pdf (d62) → **here**; Schwab consolidated 1099 with a B.pdf (d68) → ?; 1099-B Copy B.pdf (d73) → ?; Schwab consolidated 1099 with a B.pdf (d73) → parks
+- `1099-int` (any) — 1099-INT.pdf (d62) → ?; Schwab consolidated 1099 with a B.pdf (d68) → ?; Vanguard consolidated 1099.pdf (d68) → ?; Vanguard consolidated 1099.pdf (d68) → **here**; Schwab consolidated 1099 with a B.pdf (d73) → **here**; broker cover then the 1099-INT.pdf (d73) → ?; broker cover then the 1099-INT.pdf (d73) → **here**; substitute 1099-INT with a dash title.pdf (d73) → ?; Fidelity tax information statement.pdf (d146) → ?; Fidelity tax information statement.pdf (d146) → **here**; bank consolidated statement.pdf (d146) → ?; composite 1099 with interest and a B.pdf (d146) → ?; f1099int.pdf → **here**
+- `1099-div` (any) — 1099-DIV.pdf (d66) → ?; Schwab consolidated 1099 with a B.pdf (d68) → ?; Vanguard consolidated 1099.pdf (d68) → ?; Vanguard consolidated 1099.pdf (d68) → **here**; Schwab consolidated 1099 with a B.pdf (d73) → **here**; Fidelity tax information statement.pdf (d146) → ?; Fidelity tax information statement.pdf (d146) → **here**; f1099div.pdf → **here**
+- `1099-b` (any) — 1099-B.pdf (d62) → **here**; Schwab consolidated 1099 with a B.pdf (d68) → ?; 1099-B Copy B.pdf (d73) → ?; Schwab consolidated 1099 with a B.pdf (d73) → **here**; Fidelity tax information statement.pdf (d146) → ?; Fidelity tax information statement.pdf (d146) → **here**; composite 1099 with interest and a B.pdf (d146) → ?
 - `1099-oid` (any) — f1099oid.pdf → **here**
 - `1099-r` (any) — fax cover then 1099-R.pdf (d66) → ?; fax cover then 1099-R.pdf (d73) → **here**; RRB-1099-R.pdf (d141) → ?; SSA-1099.pdf (d141) → ?; f1099r.pdf → **here**
-- `1099-misc` (any) — Schwab consolidated 1099 with a B.pdf (d68) → ?; Schwab consolidated 1099 with a B.pdf (d73) → parks; 1099-MISC 2025 Copy B.pdf (d90) → ?; f1099msc.pdf → **here**
+- `1099-misc` (any) — Schwab consolidated 1099 with a B.pdf (d68) → ?; Schwab consolidated 1099 with a B.pdf (d73) → **here**; 1099-MISC 2025 Copy B.pdf (d90) → ?; f1099msc.pdf → **here**
 - `1099-nec` (any) — 1099-NEC.pdf (d62) → ?; 1099-NEC 2025 Copy B one to a page.pdf (d85) → ?; 1099-NEC Copy B.pdf (d141) → ?; 2025 business income and expense.xlsx (d141) → ?; f1099nec.pdf → **here**; f1099nec_2024.pdf → ?
 - `realized gain/loss` (any) — realized gain loss export.pdf (d85) → ?; realized gain loss export.pdf (d85) → **here**; realized gain loss.xlsx (d85) → ?
 - `realized gain loss` (any) — realized gain loss report.pdf (d85) → **here**; realized gain loss.xlsx (d85) → ?
@@ -315,7 +315,7 @@ Reached, but proven nothing: the cheapest placements to add.
 ### B02 — Brokerage Year-End Statements
 
 - `brokerage statement` (any) — Schwab year-end brokerage statement.pdf (d73) → ?; trust brokerage year-end statement.pdf (d73) → **here**; W-2 1099-INT and a brokerage cover.pdf (d94) → ?
-- `realized gain and loss` (any) — Schwab consolidated 1099 with a B.pdf (d68) → ?; Fidelity realized gain and loss report.pdf (d73) → ?; Schwab consolidated 1099 with a B.pdf (d73) → parks; Schwab year-end brokerage statement.pdf (d73) → ?; trust brokerage year-end statement.pdf (d73) → **here**
+- `realized gain and loss` (any) — Schwab consolidated 1099 with a B.pdf (d68) → ?; Fidelity realized gain and loss report.pdf (d73) → ?; Schwab consolidated 1099 with a B.pdf (d73) → B01; Schwab year-end brokerage statement.pdf (d73) → ?; trust brokerage year-end statement.pdf (d73) → **here**
 
 ### C01 — Distributions to Beneficiaries - Dates & Amounts
 

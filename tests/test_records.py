@@ -245,3 +245,20 @@ def test_as_pattern_reads_a_templates_own_sentence_back():
     # Every word between the placeholders is escaped, so a template that
     # holds a regular expression's own characters is still itself.
     assert re.fullmatch(as_pattern("a (b) c {n}", n=r"\d+"), "a (b) c 12")
+
+
+def test_the_also_answers_cell_reads_back_as_it_was_written():
+    """d146. The requests a consolidated statement answers, and the sections
+    that answered each, survive the cell: one per section, one where a
+    phrase answered, and an empty cell answers nothing."""
+    from tracker.records import answer_count, format_answers, parse_answers
+
+    answers = (("A02", ("1099-int", "1099-div")), ("B02", ()))
+    cell = format_answers(answers)
+    assert cell == "A02 (1099-int, 1099-div); B02"
+    assert parse_answers(cell) == answers
+    assert [answer_count(one) for one in answers] == [2, 1]
+    assert parse_answers("") == () and format_answers(()) == ""
+    assert IndexEntry(received="", original_name="x.pdf", size_kb=1, digest="", identifier="E01",
+                      prepared_location="", pbc_location="", decision="Filed", reason="",
+                      answers=cell).answered == answers

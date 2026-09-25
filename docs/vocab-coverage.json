@@ -362,7 +362,7 @@
         },
         {
          "decision": 68,
-         "expected": null,
+         "expected": "E01",
          "kind": "case",
          "name": "Schwab consolidated 1099 with a B.pdf"
         },
@@ -400,6 +400,29 @@
          "name": "substitute 1099-INT with a dash title.pdf"
         },
         {
+         "decision": 146,
+         "expected": "E01",
+         "kind": "case",
+         "name": "Fidelity tax information statement.pdf"
+        },
+        {
+         "decision": 146,
+         "kind": "case",
+         "name": "Fidelity tax information statement.pdf"
+        },
+        {
+         "decision": 146,
+         "expected": "A02",
+         "kind": "case",
+         "name": "bank consolidated statement.pdf"
+        },
+        {
+         "decision": 146,
+         "expected": "E01",
+         "kind": "case",
+         "name": "composite 1099 with interest and a B.pdf"
+        },
+        {
          "expected": "A02",
          "kind": "irs",
          "name": "f1099int.pdf"
@@ -418,7 +441,7 @@
         },
         {
          "decision": 68,
-         "expected": null,
+         "expected": "E01",
          "kind": "case",
          "name": "Schwab consolidated 1099 with a B.pdf"
         },
@@ -437,6 +460,17 @@
          "decision": 73,
          "kind": "case",
          "name": "Schwab consolidated 1099 with a B.pdf"
+        },
+        {
+         "decision": 146,
+         "expected": "E01",
+         "kind": "case",
+         "name": "Fidelity tax information statement.pdf"
+        },
+        {
+         "decision": 146,
+         "kind": "case",
+         "name": "Fidelity tax information statement.pdf"
         },
         {
          "expected": "A02",
@@ -511,7 +545,7 @@
        "reached_by": [
         {
          "decision": 68,
-         "expected": null,
+         "expected": "E01",
          "kind": "case",
          "name": "Schwab consolidated 1099 with a B.pdf"
         },
@@ -539,7 +573,7 @@
        "reached_by": [
         {
          "decision": 68,
-         "expected": null,
+         "expected": "E01",
          "kind": "case",
          "name": "Schwab consolidated 1099 with a B.pdf"
         },
@@ -1111,7 +1145,7 @@
         },
         {
          "decision": 68,
-         "expected": null,
+         "expected": "E01",
          "kind": "case",
          "name": "Schwab consolidated 1099 with a B.pdf"
         },
@@ -1125,6 +1159,23 @@
          "decision": 73,
          "kind": "case",
          "name": "Schwab consolidated 1099 with a B.pdf"
+        },
+        {
+         "decision": 146,
+         "expected": "E01",
+         "kind": "case",
+         "name": "Fidelity tax information statement.pdf"
+        },
+        {
+         "decision": 146,
+         "kind": "case",
+         "name": "Fidelity tax information statement.pdf"
+        },
+        {
+         "decision": 146,
+         "expected": "E01",
+         "kind": "case",
+         "name": "composite 1099 with interest and a B.pdf"
         }
        ],
        "rule": "any"
@@ -1139,7 +1190,7 @@
         },
         {
          "decision": 68,
-         "expected": null,
+         "expected": "E01",
          "kind": "case",
          "name": "Schwab consolidated 1099 with a B.pdf"
         },
@@ -1153,6 +1204,23 @@
          "decision": 73,
          "kind": "case",
          "name": "Schwab consolidated 1099 with a B.pdf"
+        },
+        {
+         "decision": 146,
+         "expected": "E01",
+         "kind": "case",
+         "name": "Fidelity tax information statement.pdf"
+        },
+        {
+         "decision": 146,
+         "kind": "case",
+         "name": "Fidelity tax information statement.pdf"
+        },
+        {
+         "decision": 146,
+         "expected": "E01",
+         "kind": "case",
+         "name": "composite 1099 with interest and a B.pdf"
         }
        ],
        "rule": "any"
@@ -1185,7 +1253,7 @@
        "reached_by": [
         {
          "decision": 68,
-         "expected": null,
+         "expected": "E01",
          "kind": "case",
          "name": "Schwab consolidated 1099 with a B.pdf"
         },
@@ -2409,7 +2477,7 @@
         },
         {
          "decision": 73,
-         "expected": null,
+         "expected": "B01",
          "kind": "case",
          "name": "Schwab consolidated 1099 with a B.pdf"
         },
@@ -2428,6 +2496,27 @@
          "decision": 73,
          "kind": "case",
          "name": "substitute 1099-INT with a dash title.pdf"
+        },
+        {
+         "decision": 146,
+         "kind": "case",
+         "name": "Fidelity tax information statement.pdf"
+        },
+        {
+         "decision": 146,
+         "expected": "B01",
+         "kind": "case",
+         "name": "Fidelity tax information statement.pdf"
+        },
+        {
+         "decision": 146,
+         "kind": "case",
+         "name": "bank consolidated statement.pdf"
+        },
+        {
+         "decision": 146,
+         "kind": "case",
+         "name": "composite 1099 with interest and a B.pdf"
         },
         {
          "expected": "B01",
@@ -2463,9 +2552,20 @@
         },
         {
          "decision": 73,
-         "expected": null,
+         "expected": "B01",
          "kind": "case",
          "name": "Schwab consolidated 1099 with a B.pdf"
+        },
+        {
+         "decision": 146,
+         "kind": "case",
+         "name": "Fidelity tax information statement.pdf"
+        },
+        {
+         "decision": 146,
+         "expected": "B01",
+         "kind": "case",
+         "name": "Fidelity tax information statement.pdf"
         },
         {
          "expected": "B01",
@@ -2496,9 +2596,25 @@
         },
         {
          "decision": 73,
-         "expected": null,
+         "expected": "B01",
          "kind": "case",
          "name": "Schwab consolidated 1099 with a B.pdf"
+        },
+        {
+         "decision": 146,
+         "kind": "case",
+         "name": "Fidelity tax information statement.pdf"
+        },
+        {
+         "decision": 146,
+         "expected": "B01",
+         "kind": "case",
+         "name": "Fidelity tax information statement.pdf"
+        },
+        {
+         "decision": 146,
+         "kind": "case",
+         "name": "composite 1099 with interest and a B.pdf"
         }
        ],
        "rule": "any"
@@ -2556,7 +2672,7 @@
         },
         {
          "decision": 73,
-         "expected": null,
+         "expected": "B01",
          "kind": "case",
          "name": "Schwab consolidated 1099 with a B.pdf"
         },
@@ -2689,7 +2805,7 @@
         },
         {
          "decision": 73,
-         "expected": null,
+         "expected": "B01",
          "kind": "case",
          "name": "Schwab consolidated 1099 with a B.pdf"
         },
@@ -9169,7 +9285,7 @@
  "counts": {
   "catalogs": 6,
   "documents": {
-   "case": 357,
+   "case": 362,
    "irs": 106
   },
   "keywords": 371,
@@ -9286,11 +9402,11 @@
   "tests/irs/nyit204.pdf": "814ae022406c8d92f91499c3b29f62bd2946039c12ff9c012109c2bfff2643e9",
   "tests/irs/nyit204ip.pdf": "22a4a83ed55ade1db141eaa7721160a589f1ece2a0080b006e8c325040cfc764",
   "tests/irs/nyit204ll.pdf": "2fa553d27d160150080a13d8de4e128b5c5c1c5149cb515811ac3b17a9664044",
-  "tests/test_catalog.py": "572398ba146e14d12f869c158ffda2d954bb88cb5768d092ad75d724caebebbf",
+  "tests/test_catalog.py": "fdd14139a87ad291781907e66f442d7000fc216dc140b44a7a43171357c90b0a",
   "tests/test_irs_forms.py": "2fe13a8d8708d8967ba2b232a24fd81ce0eb515e5527a248b451e5adecb7ae38",
   "tests/test_real_corpus.py": "b2d17daa988c1b8ea2f3fbbd4400ecd6794c275067ff4b81734e7eb46d29db88",
   "tools/vocab_report.py": "a95778b12abfcd410f62487f406483e45a2a72720175245b82531f2039b5397e",
-  "tracker/content_check.py": "d281dfb48d8891a47dda5683d558e0cabe045939c5a53de84896f871e9c0d305",
+  "tracker/content_check.py": "a13b50e2484744a34087095337b71fe2036db4768036b95507b51a333311b7a2",
   "tracker/manifest.py": "b971284e6287ee7d99e47644c2c9bdb87234a5428c8c0a8eab5341bb41ebd0b4",
   "tracker/templates.py": "9c3e0d3e2dd72b25962978db81d82559b5025581020ced7b6b06065e13902db7"
  },

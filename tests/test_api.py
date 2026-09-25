@@ -659,6 +659,34 @@ def test_unfile_sends_a_filed_document_back_for_review_and_the_status_with_it(ca
     assert payload["state"]["summary"]["received"] == 0
 
 
+def test_mark_missing_takes_one_request_off_a_consolidated_statement(capsys, demo_root):
+    """d146. The app's button: the filed statement's row names the requests
+    it answers, and marking one missing again leaves the statement filed,
+    re-scans, and hands back the state with that request outstanding."""
+    from tests.test_filer import _consolidated_return
+
+    engagement = _consolidated_return(demo_root)
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    [filed] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
+    assert filed["identifier"] == "E01" and filed["answered"] == ["A02", "A04"]
+
+    code, payload = run(capsys, "mark-missing", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": filed["pbc_location"], "identifier": "A02",
+                               "seq": filed["seq"]})
+    assert code == 0, payload
+    assert payload["marked_missing"]["identifier"] == "A02"
+    [filed] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
+    assert filed["answered"] == ["A04"]
+    a02 = next(i for i in payload["state"]["items"] if i["identifier"] == "A02")
+    assert a02["status"] == Status.MISSING
+
+    code, payload = run(capsys, "mark-missing", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": filed["pbc_location"], "identifier": "A02",
+                               "seq": filed["seq"]})
+    assert code == 1 and "does not answer A02" in payload["error"]
+
+
 def test_unfile_refuses_what_is_not_filed(capsys, demo_root, tmp_path):
     engagement = sample_engagement(capsys, demo_root, tmp_path, "nothing")
     code, payload = run(capsys, "unfile", api.ENGAGEMENT_FLAG, str(engagement),
@@ -1642,6 +1670,7 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
         "dismissed_heading": api.DISMISSED_HEADING, "file": api.FILE_LABEL,
         "file_anyway": api.FILE_ANYWAY_LABEL,
         "unfile": api.UNFILE_LABEL, "unfile_note": api.UNFILE_NOTE_HINT,
+        "mark_missing": api.MARK_MISSING_LABEL, "also_answers": api.ALSO_ANSWERS_LABEL,
         "filed_heading": api.FILED_HEADING,
         "suggested": api.SUGGESTED_HEADING, "other_requests": api.OTHER_REQUESTS_HEADING,
         "restore": api.RESTORE_LABEL, "keep": api.KEEP_LABEL,
@@ -4362,6 +4391,141 @@ def test_an_interrupted_rename_leaves_no_empty_old_folder(capsys, demo_root, tmp
     left = filer._remove_emptied_request_folders(engagement, [kept, empty_elsewhere])
     assert left == [kept / "notes.txt"] and kept.is_dir() and empty_elsewhere.is_dir()
     empty_elsewhere.rmdir()
+
+
+@pytest.mark.parametrize("only_the_cell", [False, True], ids=["as-routed", "only-the-cell"])
+def test_a_rename_carries_what_a_consolidated_statement_answers(capsys, demo_root, monkeypatch,
+                                                                only_the_cell):
+    """d146 over 160, SPEC-146 R-1. The Schwab statement is filed under E01
+    and answers A02 through its Also Answers cell, with no copy under A02.
+    Renaming A02 to A02X rewrites that cell, sections and all: A02X reads
+    Received with the scanner's in-the-statement note, the letter does not
+    ask for it, the client README says it is received inside the brokerage
+    statement, and marking it missing again takes the new name. A rename
+    killed after its one write is finished by the next pass to the same
+    result, because the statement's row - linked to A02 by that cell alone -
+    has its own intent in the write.
+
+    The router's row also names A02 among its candidates and evidence,
+    which 160's rename already carried; so the claim runs a second time
+    with the statement's row recorded naming A02 in its Also Answers cell
+    alone, through the filer's own writer, and the cell must carry it."""
+    from dataclasses import replace
+
+    import tracker.filer as filer
+    from tests.test_filer import _consolidated_return
+    from tracker.reasons import IN_CONSOLIDATED, IN_CONSOLIDATED_CLIENT
+    from tracker.reminder import draft_reminder
+
+    engagement = _consolidated_return(demo_root)
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    [filed] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
+    assert filed["identifier"] == "E01" and filed["answered"] == ["A02", "A04"]
+    if only_the_cell:
+        from tracker.locking import engagement_lock
+        from tracker.records import entry_to_json, ledger_key
+
+        with engagement_lock(engagement):
+            entries = read_index(engagement)
+            before = {ledger_key(e): entry_to_json(e) for e in entries}
+            entries = [replace(e, candidates="E01", evidence="") if e.decision == FILED else e
+                       for e in entries]
+            filer._record(engagement, before, entries)
+        [row] = [r for r in read_index(engagement) if r.decision == FILED]
+        assert row.candidate_list == ["E01"] and row.evidence == "" and "A02" in row.answers
+
+    def carried(state, new):
+        [row] = [r for r in read_index(engagement) if r.decision == FILED]
+        assert row.identifier == "E01"
+        assert row.answers == f"{new} (1099-int, 1099-div); A04 (1099-misc)"
+        items = {i.identifier: i for i in load_manifest(engagement)}
+        assert "A02" not in items or new == "A02"
+        assert items[new].status == Status.RECEIVED, items[new].validation_notes
+        assert items[new].file_count == 2
+        assert IN_CONSOLIDATED.format(row="E01") in items[new].validation_notes
+        assert new not in draft_reminder(engagement).asked
+        readme = client_readme(engagement)
+        label = items[new].label
+        assert label not in _waiting_in(readme)
+        [said] = [one for one in readme.splitlines() if one.strip().startswith(label)]
+        assert said.endswith(f", {IN_CONSOLIDATED_CLIENT}"), said
+        [shown] = [e for e in state["index"] if e["decision"] == FILED]
+        assert shown["answered"] == [new, "A04"]
+
+    # Killed after the rename's one write: the list and every row's intent
+    # are on the record, and the statement's row is not yet rewritten.
+    real = filer._record
+
+    def killed(*args, **kwargs):
+        raise PermissionError("the run was stopped")
+
+    monkeypatch.setattr(filer, "_record", killed)
+    code, payload = run(capsys, "rename", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"from": "A02", "to": "A02K"})
+    assert code == 1, payload
+    open_keys = {intent[ledger.KEY_KEY] for intent in store.open_intents(store.connect(), engagement)}
+    assert filed["pbc_location"] in open_keys
+    monkeypatch.setattr(filer, "_record", real)
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    assert not store.open_intents(store.connect(), engagement)
+    carried(payload["state"], "A02K")
+
+    # A rename that runs through carries it the same way.
+    code, payload = run(capsys, "rename", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"from": "A02K", "to": "A02X"})
+    assert code == 0, payload
+    assert payload["renamed"]["moved"] == 0
+    carried(payload["state"], "A02X")
+    closed = [e[ledger.KEY_KEY] for e in ledger.read_events(engagement)
+              if e[ledger.EVENT_KEY] == ledger.RENAMED_BY_PERSON]
+    assert closed.count(filed["pbc_location"]) == 2
+
+    # And the person's button takes the new name.
+    [filed] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
+    code, payload = run(capsys, "mark-missing", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": filed["pbc_location"], "identifier": "A02X",
+                               "seq": filed["seq"]})
+    assert code == 0, payload
+    [filed] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
+    assert filed["answered"] == ["A04"]
+    a02x = next(i for i in payload["state"]["items"] if i["identifier"] == "A02X")
+    assert a02x["status"] == Status.MISSING
+
+
+def test_a_request_answered_only_by_a_statement_cannot_be_deleted_by_a_save(capsys, demo_root):
+    """d146 over 160, SPEC-146 R-2. A04 holds no copy: the Schwab statement
+    filed under E01 answers it through its Also Answers cell. A save that
+    takes A04 off the list is refused with decision 160's sentence, and
+    nothing is recorded; once a person marks A04 missing again, the same
+    save goes through."""
+    from tests.test_filer import _consolidated_return
+
+    engagement = _consolidated_return(demo_root)
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    state = payload["state"]
+    [filed] = [e for e in state["index"] if e["decision"] == FILED]
+    assert filed["identifier"] == "E01" and "A04" in filed["answered"]
+    assert not [e for e in state["index"] if e["identifier"] == "A04"]
+
+    before = ledger.path_for(engagement).read_bytes()
+    dropped = [rule for rule in _rows_of(state) if rule["identifier"] != "A04"]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": dropped, "engagement": {}})
+    assert code == 1 and payload["error"] == api.HOLDS_DOCUMENTS.format(identifier="A04", n=1)
+    assert ledger.path_for(engagement).read_bytes() == before
+
+    code, payload = run(capsys, "mark-missing", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": filed["pbc_location"], "identifier": "A04",
+                               "seq": filed["seq"]})
+    assert code == 0, payload
+    state = payload["state"]
+    dropped = [rule for rule in _rows_of(state) if rule["identifier"] != "A04"]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": dropped, "engagement": {}})
+    assert code == 0 and payload["saved"]["removed"] == ["A04"], payload
 
 
 def test_a_filing_racing_a_save_is_seen_under_the_lock(capsys, demo_root, tmp_path, monkeypatch):

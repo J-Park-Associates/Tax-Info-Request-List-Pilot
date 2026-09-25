@@ -159,12 +159,14 @@ from tracker import reasons
 # for one release so `from tracker.router import MULTI_FORM_FAMILIES` still
 # resolves to the same object.
 from tracker.content_check import (
+    BROKER_FORM,
     MULTI_FORM_FAMILIES,  # noqa: F401
     OPEN_TEST_FINGERPRINT,
     ContentCache,
     ContentResult,
     Extraction,
     any_keyword_matched,
+    carries_a_1099b_section,
     contains_keyword,
     evaluate_rules,
     extract_bounded,
@@ -189,6 +191,7 @@ from tracker.records import (
     RULE_REQUIRED,
     WHERE_FIRST_PAGE,
     WHERE_TITLE,
+    Answer,
     Evidence,
     Routing,
     format_evidence,
@@ -228,6 +231,11 @@ SEVERAL_FORMS_UNSORTED = reasons.SEVERAL_FORMS_UNSORTED
 SHOWS_ITS_FORM_NUMBER = reasons.SHOWS_ITS_FORM_NUMBER
 #: The same near miss where only the file's name points at a row.
 NAME_POINTS_AT = reasons.NAME_POINTS_AT
+#: A broker's consolidated 1099 filed whole (decision 146), and the other
+#: asked requests it answers without a copy. Worded once, in
+#: :mod:`tracker.reasons`.
+FILED_WHOLE = reasons.FILED_WHOLE
+ALSO_ANSWERS = reasons.ALSO_ANSWERS
 
 _WORD_SPLIT = re.compile(r"[^a-z0-9]+")
 #: What a file name uses between words, read as spaces; a hyphen stays,
@@ -424,6 +432,55 @@ def _explained_by(evidence: tuple[Evidence, ...], named: set[str]) -> tuple[str,
         if found.rule in (RULE_REQUIRED, RULE_ANY)
         and (key := form_key(found.term)) in named
     ))
+
+
+def _sections(evidence: tuple[Evidence, ...]) -> tuple[str, ...]:
+    """The form sections a row accepted a statement because of: each
+    required or any-keyword that matched and is a form number, as the row
+    spells it (``1099-int``), first match first. A row accepted on a phrase
+    alone has none. The row's own words, never the document's."""
+    return tuple(dict.fromkeys(
+        found.term for found in evidence
+        if found.rule in (RULE_REQUIRED, RULE_ANY) and form_key(found.term) is not None
+    ))
+
+
+def _filed_whole(
+    path: Path, filed: str, accepted: list[str], items: list[RequestItem],
+    record: dict[str, tuple[Evidence, ...]],
+) -> Routing:
+    """Decision 146: a broker's consolidated 1099 files whole under
+    ``filed``, the one row among ``accepted`` that its 1099-B section was
+    accepted by, and answers every other *asked* row that accepted it.
+
+    The other rows ran their own rules over the same document and passed -
+    the same acceptance a loose 1099-INT or 1099-MISC would have to meet -
+    so each is answered by the section it was accepted because of
+    (:func:`_sections`), with no copy made: one file, one folder. A row
+    nobody asked for (decision 142) is not answered, because nobody is
+    waiting on it; it still sees the statement as one of the candidates.
+    The answers travel on the routing, and from there on the filed row's
+    Also Answers cell, which the status, the letter and the client's
+    received list all read.
+    """
+    asked = {item.identifier for item in items if item.asked}
+    answers: tuple[Answer, ...] = tuple(
+        (ident, _sections(record.get(ident, ())))
+        for ident in accepted if ident != filed and ident in asked
+    )
+    reason = FILED_WHOLE.format(filed=filed)
+    if answers:
+        reason = f"{reason}; {ALSO_ANSWERS.format(listed=', '.join(i for i, _ in answers))}"
+    candidates = (filed, *(ident for ident in accepted if ident != filed))
+    return Routing(
+        path=path,
+        identifier=filed,
+        reason=reason,
+        candidates=candidates,
+        evidence=EVIDENCE_CONTENT,
+        evidence_record=_recorded_for(record, candidates),
+        answers=answers,
+    )
 
 
 def _multi_form(
@@ -802,6 +859,24 @@ def _decide(
                 evidence=EVIDENCE_CONTENT,
                 evidence_record=_recorded_for(record, shortlist),
             )
+
+    # A broker's consolidated 1099 (decision 146, the owner's go-live item
+    # 13): it carries a 1099-B section beside its 1099-INT, 1099-DIV and
+    # 1099-MISC ones, so the rows asking for each of them all accept it on
+    # their looser words and it used to park as theirs to settle. It is the
+    # brokerage year-end statement, and it files whole under the one row
+    # that accepted it *because of* the 1099-B (``_explained_by``, keyed on
+    # the evidence and never on an identifier, so it holds on every
+    # catalog and on a preparer's own rows). Two such rows, or none, and it
+    # parks exactly as before: nothing is guessed. Never on OCR's word
+    # (``medium`` is text-layer only; decision 50), never over a row
+    # matched on its required keywords, and after the issuer rule, so a
+    # page that rule parks stays parked.
+    if len(medium) > 1 and not strong and carries_a_1099b_section(words):
+        broker = [ident for ident in medium
+                  if _explained_by(record.get(ident, ()), {BROKER_FORM})]
+        if len(broker) == 1:
+            return _filed_whole(path, broker[0], medium, items, record)
 
     for hits, strength, how in (
         (strong, EVIDENCE_CONTENT, "content matched this request's required keywords"),

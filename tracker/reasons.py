@@ -415,6 +415,26 @@ NAMES_SEVERAL_FORMS = (
 #: look for it. Said inside the router's contested sentence, so a person
 #: reads the shortlist they already know how to read.
 SEVERAL_FORMS_UNSORTED = "it names {n} forms as itself and they do not sort one to a request"
+#: A broker's consolidated 1099 (decision 146): several rows accepted it,
+#: and exactly one was accepted because of its 1099-B section, so the
+#: statement files whole there - one file, one folder, never split.
+#: Plain templates, outside ``ALL``, for the reason the two above are: a
+#: document that filed is not a failure to put to a client.
+FILED_WHOLE = ("carries a 1099-B section and files whole under the one request "
+               "its 1099-B was accepted by ({filed})")
+#: What the same row says of the other asked requests the statement
+#: answers without a copy (decision 146, the owner's answer to 146-Q).
+ALSO_ANSWERS = "it also answers {listed}, with no copy"
+#: What an answered request says it holds, for the firm: the scanner's
+#: note on the request - which the Status Report and the app's filed list
+#: show - and the runbook quote this one sentence, because a person at the
+#: firm needs the row. ``{row}`` is the request the statement filed under.
+IN_CONSOLIDATED = "in {row}'s consolidated statement"
+#: The same answer in the client's words (decision 146, Jason's Q-L): the
+#: client's received list says it after the date, naming no request, no
+#: label and no possessive. "Brokerage" is always true here, because a
+#: statement files whole only when one request accepted its 1099-B section.
+IN_CONSOLIDATED_CLIENT = "included in your consolidated brokerage statement"
 
 # ---- the folder ---------------------------------------------------------------
 

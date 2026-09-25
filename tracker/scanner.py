@@ -80,7 +80,14 @@ from tracker.manifest import (
     summarize,
     with_statuses,
 )
-from tracker.records import IndexEntry, StatusUpdate, as_pattern, identifier_key, status_to_json
+from tracker.records import (
+    IndexEntry,
+    StatusUpdate,
+    answer_count,
+    as_pattern,
+    identifier_key,
+    status_to_json,
+)
 from tracker.scaffold import (
     PREPARED_DIR_NAME,
     REVIEW_DIR_NAME,
@@ -257,6 +264,31 @@ def _interrupted(engagement_dir: Path, rows: list[IndexEntry]) -> dict[Path, str
     return found
 
 
+def _answered(rows: list[IndexEntry]) -> dict[str, list[tuple[str, int]]]:
+    """Which requests a filed consolidated statement answers without a copy
+    (decision 146), by request: the request it filed under, and how many
+    documents it counts for - one per section that answered.
+
+    Read off each filed row's Also Answers cell (``IndexEntry.answered``)
+    and off nothing else, so the status, the letter (which reads the
+    status) and the client's received list (``tracker.filer.received_for``,
+    which reads the same cell) cannot disagree. A row counts while the
+    record calls it received - Filed, or File Moved, whose own request the
+    sweep already tells the firm about (decision 109) - which is the rule
+    the received list keeps too. Keyed without case, as a status is.
+    """
+    from tracker.filer import FILE_MOVED, FILED
+
+    found: dict[str, list[tuple[str, int]]] = {}
+    for row in rows:
+        if row.decision not in (FILED, FILE_MOVED) or not row.identifier:
+            continue
+        for answer in row.answered:
+            found.setdefault(identifier_key(answer[0]), []).append(
+                (row.identifier, answer_count(answer)))
+    return found
+
+
 def _changed_copy_warnings(
     claimed: dict[Path, IndexEntry], folders: set[Path], cache: ContentCache
 ) -> list[str]:
@@ -311,6 +343,7 @@ def _scan_item(
     claimed: dict[Path, IndexEntry] | None = None,
     excluded: frozenset[Path] = frozenset(),
     interrupted: dict[Path, str] | None = None,
+    answered: list[tuple[str, int]] | tuple = (),
 ) -> StatusUpdate:
     """Run tiers 1-3 for one manifest row and resolve its status.
 
@@ -337,6 +370,14 @@ def _scan_item(
     request whose folder holds a copy the power cut in half reads Missing
     with the firm's own note rather than Failed Validation for a file the
     client sent correctly.
+
+    ``answered`` is the consolidated statements filed under another
+    request that answer this one (decision 146, :func:`_answered`): each
+    counts as the documents its sections are, beside whatever this
+    request's own folder holds, and is said on the row
+    (``reasons.IN_CONSOLIDATED``). No file of this request's is read for
+    it - the statement was read, and accepted by this row's own rules,
+    when it was routed.
     """
     from tracker.filer import FILE_MOVED, moved_to, prepared_location
 
@@ -397,7 +438,7 @@ def _scan_item(
                 seen.add(digest)
                 distinct.append(path)
         valid = distinct
-    count = len(valid)
+    count = len(valid) + sum(n for _filed, n in answered)
 
     failures = [f"{f.path.name}: {f.reason}" for f in tier2_failed]
     failures += [f"{path.name}: {reason}" for path, reason in content_failed]
@@ -413,6 +454,8 @@ def _scan_item(
         facts.append(DUPLICATES_NOTE.format(n=duplicates))
     if len(folders) > 1:
         facts.append(FOLDERS_NOTE.format(n=len(folders)))
+    for filed in dict.fromkeys(filed for filed, _n in answered):
+        facts.append(reasons.IN_CONSOLIDATED.format(row=filed))
     # What the record says about this request's own folders, before the
     # failures, so the note's cut can never take a firm-side marker off the
     # end and turn the row into a client ask. Neither is a failure: a row
@@ -474,8 +517,10 @@ def _resolve_status(
 
     A row nobody asked for (decision 142) has no folder until its first
     document is filed, on purpose, so its missing folder is Missing with no
-    note: ``NO_REQUEST_FOLDER`` is a scaffold gap, and there is none."""
-    if not folders:
+    note: ``NO_REQUEST_FOLDER`` is a scaffold gap, and there is none.
+    A request answered by a consolidated statement filed elsewhere
+    (decision 146) needs no folder of its own: nothing is copied into one."""
+    if not folders and not count:
         if item.asked:
             facts.insert(0, reasons.NO_REQUEST_FOLDER.format())
         return Status.MISSING
@@ -649,11 +694,12 @@ def scan_engagement(
         pdf_cache = PdfVerdictCache()     # this scan's; a PDF is parsed once, not once per row
         assigned = assign_folders(prepared_dir, [i.identifier for i in items])
 
-        # The record, read once, for the four things this scan asks of it:
+        # The record, read once, for the five things this scan asks of it:
         # which copies a person filed, which paths the record claims, which
         # file is another row's mislaid copy and so nobody's to count
         # (decision 109), and where a step that died half way left one
-        # (decision 119). The filer's sweep and its recovery decided all of
+        # (decision 119), and which requests a consolidated statement filed
+        # elsewhere answers (decision 146). The filer's sweep and its recovery decided all of
         # them under the same lock earlier in this pass; the scan reads and
         # acts, and writes no row of its own.
         rows = _the_index(engagement_dir)
@@ -661,10 +707,12 @@ def scan_engagement(
         claimed = _claimed_paths(engagement_dir, rows)
         excluded = _wandered(engagement_dir, rows)
         interrupted = _interrupted(engagement_dir, rows)
+        answered = _answered(rows)
         updates = {
             item.identifier: _scan_item(
                 item, assigned[item.identifier], cache, today, pdf_cache, accepted=accepted,
                 claimed=claimed, excluded=excluded, interrupted=interrupted,
+                answered=answered.get(identifier_key(item.identifier), ()),
             )
             for item in items
         }

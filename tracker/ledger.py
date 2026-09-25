@@ -266,6 +266,14 @@ RESTORED_BY_PERSON = "restored_by_person"
 #: killed in the middle of is finished by the next pass like any other
 #: person's decision, and recorded as this.
 RENAMED_BY_PERSON = "renamed_by_person"
+#: A person marked a request missing again that a consolidated statement
+#: filed under another request was answering without a copy (decision 146,
+#: the owner's answer to 146-Q). The row the line carries is the
+#: statement's, with that request taken off its Also Answers cell and the
+#: person's sentence on its Reason; nothing moves on disk. A row event, so
+#: a store rebuilt from the journal and ``store check`` both hold the
+#: statement to what the person said.
+ANSWER_WITHDRAWN_BY_PERSON = "answer_withdrawn_by_person"
 #: A row preserved without its bytes was tied to them by a later pass.
 BYTES_RECORDED = "bytes_recorded"
 #: The pass found this row's working copy somewhere other than where the
@@ -386,7 +394,8 @@ MIGRATED = "migrated"
 #: The events that carry a whole index row. Their fold is the index.
 ROW_EVENTS = frozenset({
     PRESERVED, FILED, PARKED, DUPLICATE, OPENED, ASSIGNED_BY_PERSON, DISMISSED_BY_PERSON,
-    UNFILED_BY_PERSON, RESTORED_BY_PERSON, RENAMED_BY_PERSON, BYTES_RECORDED,
+    UNFILED_BY_PERSON, RESTORED_BY_PERSON, RENAMED_BY_PERSON, ANSWER_WITHDRAWN_BY_PERSON,
+    BYTES_RECORDED,
     COPY_MOVED, IMPORTED,
 })
 #: The events that take a row out of the index by its key (decision 132):
