@@ -375,7 +375,7 @@ def open_test(path: Path) -> str:
     return ""
 
 
-def _extension_allowed(extension: str, allowed: tuple[str, ...]) -> bool:
+def extension_allowed(extension: str, allowed: tuple[str, ...]) -> bool:
     """Whether a row's whitelist takes this file (decision 127).
 
     An image is a scan, so a row that accepts a PDF accepts a photo of the
@@ -384,6 +384,10 @@ def _extension_allowed(extension: str, allowed: tuple[str, ...]) -> bool:
     names an image type itself is taken at its word, and a row listing
     ``xlsx, csv`` alone still refuses a photo with the sentence it always
     refused it with.
+
+    Public since decision 147: the backtest's ``collect`` lists a document
+    wherever the pass would take it by asking this, row by row, rather
+    than keeping a copy of the rule that would drift from it.
     """
     if extension in allowed:
         return True
@@ -413,7 +417,7 @@ def check_file(
     extension = extension_of(path)
     if stub := google_stub_reason(path):
         return FileResult(path=path, ok=False, reason=stub)
-    if item.allowed_extensions and not _extension_allowed(extension, item.allowed_extensions):
+    if item.allowed_extensions and not extension_allowed(extension, item.allowed_extensions):
         return FileResult(
             path=path,
             ok=False,

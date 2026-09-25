@@ -98,7 +98,7 @@ from tracker.manifest import RequestItem  # noqa: E402
 from tracker.router import route_file  # noqa: E402
 from tracker.settings import COLUMN_EXPECTED, EXPECTATIONS_COLUMNS, EXPECTATIONS_FILENAME  # noqa: E402
 from tracker.templates import FORM_TYPES, template_items  # noqa: E402
-from tracker.validators import IMAGE_EXTENSIONS, extension_of, is_ignored  # noqa: E402
+from tracker.validators import IMAGE_EXTENSIONS, extension_allowed, extension_of, is_ignored  # noqa: E402
 
 #: The one number this tool commits: the agreement the firm's own
 #: documents scored the last time a person ran the backtest at the office.
@@ -432,17 +432,20 @@ def print_summary(data: dict, out=None) -> None:
 # ------------------------------------------------------------- collecting ----
 
 
-def accepted_extensions(items: list[RequestItem]) -> set[str] | None:
-    """Every extension the catalog's rows accept; None where a row accepts any."""
-    accepted: set[str] = set()
-    for item in items:
-        if not item.allowed_extensions:
-            return None
-        accepted.update(item.allowed_extensions)
-    return accepted
+def accepted(items: list[RequestItem], extension: str) -> bool:
+    """Whether any of the catalog's rows would take a file of this extension.
+
+    **The pass's own rule, asked row by row** (decision 147):
+    :func:`tracker.validators.extension_allowed`, which takes a photo
+    wherever a row takes a PDF (decision 127), and a row with no whitelist,
+    which takes anything. The union of the rows' extensions, which this
+    used to be, left every photo off the skeleton while the pass filed them.
+    """
+    return any(not item.allowed_extensions or extension_allowed(extension, item.allowed_extensions)
+               for item in items)
 
 
-def collectable(folder: Path, extensions: set[str] | None, skip: set[Path] | None = None) -> list[Path]:
+def collectable(folder: Path, items: list[RequestItem], skip: set[Path] | None = None) -> list[Path]:
     """The documents under ``folder`` a catalog would even look at, in a stable order.
 
     Recursive, because the firm files by request folder and the documents
@@ -456,7 +459,7 @@ def collectable(folder: Path, extensions: set[str] | None, skip: set[Path] | Non
         path for path in folder.rglob("*")
         if path.is_file() and not is_ignored(path)
         and path.name != EXPECTATIONS_FILENAME and path.resolve() not in skip
-        and (extensions is None or extension_of(path) in extensions)
+        and accepted(items, extension_of(path))
     ]
     return sorted(found, key=lambda p: p.relative_to(folder).as_posix())
 
@@ -472,8 +475,7 @@ def write_skeleton(folder: Path, out: Path, catalog: str, year: int) -> int:
         raise BacktestError(f"{out} already exists; a filled-in expectations file is never overwritten")
     if catalog not in CATALOGS:
         raise BacktestError(f"no such catalog: {catalog}; the catalogs are {', '.join(CATALOGS)}")
-    extensions = accepted_extensions(template_items(catalog, year=year))
-    documents = collectable(folder, extensions, skip={out.resolve()})
+    documents = collectable(folder, template_items(catalog, year=year), skip={out.resolve()})
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle, lineterminator="\n")

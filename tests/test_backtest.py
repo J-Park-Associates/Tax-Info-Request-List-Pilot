@@ -254,6 +254,27 @@ def test_collect_writes_only_documents_a_catalog_would_look_at(tmp_path):
     assert write_skeleton(folder, folder / "skeleton.csv", "1040", YEAR) == 2
 
 
+def test_collect_lists_a_photo_wherever_the_pass_accepts_one(tmp_path):
+    """The pass takes a photo wherever a row takes a PDF (decision 127), and
+    ``collect`` listed only the literal union of the rows' extensions - so
+    no photo ever reached a skeleton. It now asks the pass's own rule, row
+    by row (decision 147): every image type the pass reads is listed, and
+    a ``.bmp``, which the pass refuses, still is not."""
+    from tracker.validators import IMAGE_EXTENSIONS
+
+    folder = two_documents(tmp_path)
+    photos = sorted(f"W-2 photo.{extension}" for extension in IMAGE_EXTENSIONS)
+    for name in photos:
+        (folder / CLIENT_FOLDER / name).write_bytes(b"\xff\xd8\xff" + b"J" * 900)
+    (folder / CLIENT_FOLDER / "vacation photo.bmp").write_bytes(b"BM" + b"J" * 900)
+    out = tmp_path / "skeleton.csv"
+
+    assert write_skeleton(folder, out, "1040", YEAR) == 2 + len(photos)
+    listed = {line.split(",")[0] for line in out.read_text(encoding="utf-8").splitlines()[1:]}
+    assert {f"{CLIENT_FOLDER}/{name}" for name in photos} <= listed
+    assert not any(path.endswith(".bmp") for path in listed)
+
+
 # ------------------------------------------------------- the one number ----
 
 
