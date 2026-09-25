@@ -2375,11 +2375,21 @@ def export(conn: sqlite3.Connection, out_dir: Path | str) -> list[Path]:
 
 
 def _write_csv(path: Path, header: list[str], rows) -> None:
-    with path.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.writer(handle, lineterminator="\n")
-        writer.writerow(header)
-        for row in rows:
-            writer.writerow([_as_text(value) for value in row])
+    """One spreadsheet, whole or not written (decision 155): through the
+    one atomic replacement, flushed before it takes the name. Reached at
+    call time - the store imports the record, the journal and the lock and
+    nothing else at load time (decision 101), and this is the one file it
+    writes that is not the database."""
+    from tracker.fsio import atomic_replacement
+
+    with atomic_replacement(path) as temp:
+        with temp.open("w", encoding="utf-8-sig", newline="") as handle:
+            writer = csv.writer(handle, lineterminator="\n")
+            writer.writerow(header)
+            for row in rows:
+                writer.writerow([_as_text(value) for value in row])
+            handle.flush()
+            os.fsync(handle.fileno())
 
 
 # -------------------------------------------------------------------- CLI ----

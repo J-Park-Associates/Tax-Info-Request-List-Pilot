@@ -1505,6 +1505,78 @@ def test_the_readme_and_sync_junk_do_not_hold_the_reminder(tmp_path):
     assert draft.unsorted == 0 and not draft.is_held
 
 
+#: A write killed half way through, in a process of its own: the file whose
+#: name begins with argv[3] gets half its text and then the process dies,
+#: running no clean-up, as a power cut runs none (decision 155).
+A_WRITE_KILLED_HALF_WAY = """
+import os
+import sys
+from pathlib import Path
+sys.path[:0] = [sys.argv[2]]
+real_open = Path.open
+
+def open_(self, mode="r", *args, **kwargs):
+    handle = real_open(self, mode, *args, **kwargs)
+    if "w" in mode and self.name.startswith(sys.argv[3]):
+        real_write = handle.write
+        def half(text):
+            real_write(text[: len(text) // 2])
+            handle.flush()
+            os._exit(9)
+        handle.write = half
+    return handle
+
+Path.open = open_
+folder = Path(sys.argv[1])
+if sys.argv[4] == "draft":
+    from tracker.reminder import draft_reminder, write_draft
+    write_draft(draft_reminder(folder), engagement_dir=folder)
+else:
+    from tracker.filer import refresh_household_readme
+    from tracker.layout import household_of
+    refresh_household_readme(household_of(folder))
+"""
+
+
+def test_the_draft_and_the_readme_are_whole_or_absent_after_a_kill(tmp_path):
+    """Decision 155, A-F5. A draft torn by a power cut failed its own
+    fingerprint and read as a person's edit for good: every week's draft
+    went beside it as ``reminder-draft.NEW.txt``. And the README a client
+    reads is the same kind of file. Each is written whole to a temp and
+    swapped in, so a kill leaves the file as it was - absent, or the last
+    whole one - and never half of the new one."""
+    from tracker.filer import refresh_household_readme
+    from tracker.layout import README_NAME, household_of
+    from tracker.scaffold import scaffold_engagement
+    from tracker.store import close
+
+    folder = engagement(tmp_path, SENDABLE)
+    repo = str(Path(__file__).resolve().parents[1])
+    draft = folder / DRAFT_FILENAME
+
+    def killed(prefix: str, what: str) -> None:
+        close()
+        done = subprocess.run([sys.executable, "-c", A_WRITE_KILLED_HALF_WAY, str(folder), repo,
+                               prefix, what], capture_output=True, text=True, timeout=300)
+        assert done.returncode == 9, done.stderr
+
+    killed(DRAFT_FILENAME, "draft")                  # the first draft ever: absent after
+    assert not draft.exists()
+    assert write_draft(draft_reminder(folder), engagement_dir=folder, preserve_edits=True) == draft
+
+    before = draft.read_bytes()
+    killed(DRAFT_FILENAME, "draft")                  # a rewrite: the last whole one after
+    assert draft.read_bytes() == before
+    assert is_unedited(draft)
+
+    scaffold_engagement(folder)
+    readme = refresh_household_readme(household_of(folder))
+    assert readme is not None and readme.name == README_NAME
+    readme.write_text("an older list\r\n", encoding="utf-8", newline="")
+    killed(README_NAME, "readme")
+    assert readme.read_bytes() == b"an older list\r\n"
+
+
 def test_a_readme_write_left_behind_by_a_crash_does_not_hold_the_reminder(tmp_path):
     """The review of decision 133: the README's atomic write leaves
     ``_README.txt.<pid>.<hex>.tmp`` beside it when it is killed. That is
@@ -1515,7 +1587,7 @@ def test_a_readme_write_left_behind_by_a_crash_does_not_hold_the_reminder(tmp_pa
     folder = engagement(tmp_path, SENDABLE)
     inbox = waiting_in(folder)
     (inbox / README_NAME).write_text("the list", encoding="utf-8")
-    (inbox / f"{README_NAME}.4242.9f1c.tmp").write_text("half a list", encoding="utf-8")
+    (inbox / f"{README_NAME}.4242.9f1c0a2b.tmp").write_text("half a list", encoding="utf-8")
 
     assert draft_reminder(folder).unsorted == 0
 

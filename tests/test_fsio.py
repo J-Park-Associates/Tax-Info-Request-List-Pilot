@@ -66,3 +66,77 @@ def test_fsio_imports_nothing_of_the_package():
         elif isinstance(node, ast.Import):
             reached += [a.name for a in node.names if a.name.split(".")[0] == "tracker"]
     assert reached == [], reached
+
+
+@pytest.mark.parametrize("writer", ["text", "bytes", "copy"])
+def test_every_writer_flushes_its_bytes_to_the_disk_before_the_swap(tmp_path, monkeypatch, writer):
+    """Decision 155, A-F7. NTFS journals the rename and not the data, so a
+    swap made before the bytes were down could leave ``settings.json`` or a
+    README empty after a power cut. The text writer swapped unflushed until
+    155; every writer flushes the temp first now."""
+    import os
+
+    import tracker.fsio as fsio_module
+
+    said: list[str] = []
+    real_fsync, real_replace = os.fsync, os.replace
+
+    def fsync(handle):
+        said.append("fsync")
+        return real_fsync(handle)
+
+    def replace(source, target):
+        said.append("replace")
+        return real_replace(source, target)
+
+    monkeypatch.setattr(fsio_module.os, "fsync", fsync)
+    monkeypatch.setattr(fsio_module.os, "replace", replace)
+    target = tmp_path / "settings.json"
+    if writer == "text":
+        fsio_module.write_text_atomically(target, "{}")
+    elif writer == "bytes":
+        fsio_module.write_bytes_atomically(target, b"{}")
+    else:
+        source = tmp_path / "source.json"
+        source.write_bytes(b"{}")
+        fsio_module.copy_atomically(source, target)
+    monkeypatch.undo()
+    # The temp is flushed immediately before the swap. On POSIX the folder
+    # is flushed after it too (``_fsync_folder``), so the swap need not be
+    # the last call - only the flush before it is the claim.
+    swap = max(i for i, call in enumerate(said) if call == "replace")
+    assert swap > 0 and said[swap - 1] == "fsync" and target.read_bytes() == b"{}"
+
+
+def test_a_copy_that_does_not_prove_never_takes_the_name(tmp_path):
+    """``copy_atomically``'s ``prove`` runs on the temp, before the swap: a
+    copy that came out as something else leaves the target as it was."""
+    from tracker.fsio import copy_atomically
+
+    source, target = tmp_path / "a.pdf", tmp_path / "b.pdf"
+    source.write_bytes(b"%PDF-1.4 whole")
+
+    def refuse(temp):
+        assert temp.read_bytes() == b"%PDF-1.4 whole" and not target.exists()
+        raise ValueError("not the document")
+
+    with pytest.raises(ValueError):
+        copy_atomically(source, target, prove=refuse)
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["a.pdf"]
+
+
+def test_a_temp_beside_a_target_near_the_limit_fits_under_it_and_keeps_its_shape(tmp_path):
+    """A working copy is named to fit Windows's limit (decision 131), and its
+    temp is up to 24 characters longer: given the limit, the target's name
+    inside the temp is cut so the temp fits too, and it is still a temp of
+    the one shape the sweep recognises (decision 155)."""
+    from tracker.fsio import TEMP_NAME, temp_owner
+
+    limit = len(str(tmp_path)) + 60
+    target = tmp_path / ("A01 - W-2 - TY2025" + "x" * (limit - len(str(tmp_path)) - 1 - 22) + ".pdf")
+    assert len(str(target)) == limit
+    temp = temp_path_for(target, limit=limit)
+    assert len(str(temp)) <= limit and temp.parent == target.parent
+    assert TEMP_NAME.fullmatch(temp.name) and temp_owner(temp.name) is not None
+    short = tmp_path / "settings.json"
+    assert temp_path_for(short, limit=limit).name.startswith("settings.json.")   # not cut: it fits

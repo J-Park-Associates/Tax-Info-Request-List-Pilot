@@ -783,7 +783,7 @@ Three more appear as warnings on the run rather than as index rows:
 | `filer.REPLACED_IN_PBC` | The client replaced an original we had already filed; the working copy was made from the earlier file. Said too for a file taken out of an email or a zip that was replaced under its own name in the hidden `_Opened` folder. | Look at both, and re-file if the new one differs. |
 | `filer.UNTIED_IN_PBC` | A row was recorded without its bytes and its working copy no longer matches the original. | Look at it. Nothing is adopted automatically, by design. |
 | `filer.UNRECORDED_OPENED` / `filer.OPENED_CONTAINER_GONE` | A file sits in a hidden `_Opened` folder that no row names, or a container's folder there whose email or zip has no row any more (decision 143). A pass killed half way that the next pass did not finish can leave one; so can a file somebody put there by hand. It is never sorted from there and never deleted. | Look at it. If it is a document the client sent, drop a copy in the client's folder for the year and the next pass sorts it; then delete the stray by hand. |
-| `filer.UNRECORDED_COPY` | A file is sitting in a request folder (or in the review folder) that nothing on the record put there and no row's bytes account for. It **is** counted for that request — what a request has is what its folder holds — but nobody can say where it came from. | Open the app and file it, or take it out and drop it in the client's folder so the next pass sorts and records it. Said every pass until you do. |
+| `filer.UNRECORDED_COPY` | A file is sitting in a request folder (or in the review folder) that nothing on the record put there and no row's bytes account for. It **is** counted for that request — what a request has is what its folder holds — but nobody can say where it came from. It is never a copy the tracker left half made: since decision 155 a copy that fails or is killed part-way (antivirus holding it, a full disk, the power going out) leaves only a temporary file, which nothing counts and the next pass removes. | Open it. If it is a document, file it in the app, or take it out and drop it in the client's folder so the next pass sorts and records it. If it is not a whole document — a partial or broken copy, say one an older version left — delete it by hand; never ask the client for it. Said every pass until you do. |
 
 And since decision 143 the Decision column has a sixth value, for an email
 or a zip the pass opened:
@@ -834,11 +834,15 @@ or put another file in its place.
   note names where it belongs and where it is; §4 is the row it comes
   from. The request reads Missing until the copy is back.
 - `reasons.COPY_CHANGED` — the file in the request's folder is not the one
-  the record filed there. The status is still whatever the files earn, so a
-  replacement that passes the rules leaves the row Received and one that
-  does not is an ordinary regression; either way open it, because nothing
-  on the record says what that file is. It is on the practice page too, so
-  you see it across every engagement at once.
+  the record filed there: its size or its bytes disagree with the
+  client's original. It is **not counted** (decision 155) — a copy torn in
+  half, or another file put in its place, is not the document, whatever
+  rules it passes — so the request reads Missing, and because the note is
+  ours the letter does not ask the client for it. Open it, because nothing
+  on the record says what that file is: put the right copy back (the
+  original is in the client's folder for the year), or file whatever it
+  is properly. It is on the practice page too, so you see it across every
+  engagement at once.
 - `reasons.INTERRUPTED_MOVE` — a step that was putting a working copy in
   this request's folder was interrupted (the machine went off, the power
   went out) and that place now holds a different file. Nothing there was
@@ -923,6 +927,22 @@ holds something else now, nothing there is touched: the document parks in
 Until that pass has run, the app refuses the buttons on that engagement
 with *a run was interrupted here; the next pass finishes it first* - press
 **Run now** on it and they come back.
+
+**And no file the tracker writes is ever half there** (decision 155). A
+working copy, the weekly draft, the client's README, the Status Report
+and the settings are each written to a temporary name beside the real one
+(ending `.tmp`, with the program's process number and a random tag in it)
+and renamed into place only once every byte is on the disk. So a power
+cut, a restart, or antivirus grabbing a new file part-way leaves at worst
+that temporary file and the real one as it was - never half a statement
+under the proper name. The next pass on the household removes those
+temporary files itself, and only its own: the exact shape, left by a
+program that has since stopped, in the firm's folders or beside the
+README, never in the client's folders for the year. You never delete
+one by hand. A working copy of a read-only file the client sent (from a
+CD, or taken out of a zip by Explorer) is made writable, so a person's
+filing or hand-over can always move it; the client's original is left
+exactly as it came.
 
 1. Install Google Drive for desktop on the new machine, sign in with the
    firm account, and wait for the clients folder to finish syncing. Do not

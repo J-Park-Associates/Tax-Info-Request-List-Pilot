@@ -15,6 +15,7 @@ next pass files on.
 
 import datetime as dt
 import os
+import shutil
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -34,7 +35,7 @@ from tracker.filer import (
     read_index,
 )
 from tracker.fsio import TEMP_SUFFIX
-from tracker.layout import inbox_of, locate, location_of, originals_of
+from tracker.layout import household_of, inbox_of, locate, location_of, originals_of, root_of
 from tracker.manifest import (
     RequestItem,
     load_engagement_info,
@@ -1113,7 +1114,7 @@ def test_a_copy_that_fails_half_way_leaves_no_truncated_working_copy(engagement,
     def half(src, dst):
         filer_module.Path(dst).write_bytes(b"%PDF-1.4 half")
         raise OSError(28, "No space left on device")
-    monkeypatch.setattr(filer_module.shutil, "copy2", half)
+    monkeypatch.setattr(shutil, "copy2", half)
     report = sort(engagement, today=DAY1)
     monkeypatch.undo()
     assert len(report.review) == 1 and "No space left" in report.review[0].reason
@@ -1180,7 +1181,7 @@ def test_assigning_reuses_a_copy_an_earlier_attempt_left_and_leaves_no_half_copy
     def half(src, dst):
         filer_module.Path(dst).write_bytes(b"%PDF-1.4 half")
         raise OSError(28, "No space left on device")
-    monkeypatch.setattr(filer_module.shutil, "copy2", half)
+    monkeypatch.setattr(shutil, "copy2", half)
     with pytest.raises(OSError):
         assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
     monkeypatch.undo()
@@ -1385,7 +1386,8 @@ def test_a_cloud_placeholder_is_not_a_link(tmp_path):
     # tag; only a mount point (junction) or a symlink is a link.
     import stat
 
-    from tracker.filer import _LINK_TAGS, _is_link
+    from tracker.fsio import _LINK_TAGS
+    from tracker.fsio import is_link as _is_link
 
     plain = tmp_path / "w2.pdf"
     plain.write_bytes(b"%PDF-1.4")
@@ -1873,7 +1875,7 @@ def test_a_duplicates_reason_of_a_row_with_no_working_copy_says_so(engagement, m
     def truncated(src, dst):
         filer_module.Path(dst).write_bytes(filer_module.Path(src).read_bytes()[:40])
 
-    monkeypatch.setattr(filer_module.shutil, "copy2", truncated)
+    monkeypatch.setattr(shutil, "copy2", truncated)
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     (failed,) = sort(engagement, today=DAY1).review
     monkeypatch.undo()
@@ -2866,7 +2868,7 @@ def test_a_copy_whose_bytes_are_not_the_originals_is_unlinked_and_the_drop_is_co
     def truncated(src, dst):
         filer_module.Path(dst).write_bytes(filer_module.Path(src).read_bytes()[:40])
 
-    monkeypatch.setattr(filer_module.shutil, "copy2", truncated)
+    monkeypatch.setattr(shutil, "copy2", truncated)
     report = sort(engagement, today=DAY1)
     monkeypatch.undo()
 
@@ -3753,10 +3755,217 @@ def test_a_pass_killed_between_the_copy_and_the_record_finishes_without_a_second
     conserved(engagement, before, moves, added=[arrived])
 
 
+# --------------------------------- every write whole or not there (d155) ----
+
+#: A pass run in its own process and killed inside the working copy's copy,
+#: half the bytes down - no clean-up of the pass's runs, as a power cut or
+#: Task Scheduler's stop runs none (decision 155).
+A_PASS_KILLED_MID_COPY = """
+import datetime as dt
+import os
+import shutil
+import sys
+from pathlib import Path
+sys.path[:0] = [sys.argv[2]]
+from tracker import content_check
+content_check.READ_IN_A_CHILD = False
+
+def killed(source, target, *args, **kwargs):
+    data = Path(source).read_bytes()
+    with open(target, "wb") as handle:
+        handle.write(data[: len(data) // 2])
+        handle.flush()
+        os.fsync(handle.fileno())
+    os._exit(9)
+
+shutil.copy2 = killed
+from tests.conftest import sort
+sort(Path(sys.argv[1]), today=dt.date(2026, 7, 1))
+"""
+
+
+def a_household_pass(engagement, today):
+    """One real pass over the household, as the schedule makes it: the sweep
+    first, then the sort, the scan and the page."""
+    from tracker.registry import discover_engagements, engagement_from
+    from tracker.runner import REMINDERS_NEVER, run_household
+
+    [run] = run_household(household_of(engagement), [engagement_from(engagement)],
+                          today=today, reminders=REMINDERS_NEVER,
+                          registry=discover_engagements(root_of(engagement)))
+    return run
+
+
+def test_a_copy_killed_half_way_leaves_no_file_under_the_proper_name(engagement):
+    """Decision 155, A-F1. The pass is killed inside the working copy's copy
+    with half the bytes written. Nothing holds the working copy's name - the
+    half is in a temp no walk reads - and the next pass sweeps the temp,
+    finishes the filing from the intent (decision 119) and copies it whole.
+    Before 155 the half kept the proper name, the row parked, and a person
+    filing it left the half counted."""
+    import subprocess
+
+    original = drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    whole = original.read_bytes()
+    store.close()
+    done = subprocess.run([sys.executable, "-c", A_PASS_KILLED_MID_COPY, str(engagement),
+                           str(Path(__file__).resolve().parents[1])],
+                          capture_output=True, text=True, timeout=300)
+    assert done.returncode == 9, done.stderr
+    a01 = prepared(engagement, "A01")
+    left = sorted(p.name for p in a01.iterdir())
+    assert [name for name in left if not name.endswith(TEMP_SUFFIX)] == []  # nothing under a name
+    assert len(left) == 1 and (a01 / left[0]).stat().st_size == len(whole) // 2
+    assert (originals(engagement) / "w2.pdf").read_bytes() == whole
+    assert open_intents(engagement)
+
+    run = a_household_pass(engagement, DAY2)
+
+    assert not run.error, run.error
+    [row] = read_index(engagement)
+    assert row.decision == FILED and row.received == DAY1.isoformat()
+    assert [p.name for p in a01.iterdir()] == [row.filed_as]                # the temp is gone
+    assert (engagement / row.prepared_location).read_bytes() == whole       # copied whole
+    assert not open_intents(engagement)
+
+
+def test_a_copy_of_a_read_only_original_is_writable_and_the_original_stays_read_only(engagement):
+    """Decision 155, F-2. ``copy2`` carried a read-only original's attribute
+    onto its working copy - a file from a CD, one Explorer took out of a
+    zip - and removing that copy later ("Access is denied") jammed the
+    household every pass. The copy is the firm's and is writable; the
+    original is only read, and stays exactly as the client sent it."""
+    import stat as stat_module
+
+    from tracker.filer import unfile_document
+
+    original = drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    os.chmod(original, stat_module.S_IREAD)
+    try:
+        [filed] = sort(engagement, today=DAY1).filed
+        kept = originals(engagement) / "w2.pdf"
+        copy = engagement / filed.prepared_location
+        assert not os.stat(kept).st_mode & stat_module.S_IWRITE     # the original: untouched
+        assert os.stat(copy).st_mode & stat_module.S_IWRITE         # the copy: writable
+        # And what jammed the household: a step that takes the copy away.
+        unfile_document(engagement, filed.pbc_location, today=DAY2)
+        assert not copy.exists()
+        assert not os.stat(kept).st_mode & stat_module.S_IWRITE
+    finally:
+        for path in (originals(engagement) / "w2.pdf", original):
+            if path.exists():
+                os.chmod(path, stat_module.S_IREAD | stat_module.S_IWRITE)
+
+
+def test_the_trackers_own_temp_files_are_swept_and_nothing_else(engagement):
+    """Decision 155, A-F6. A killed write leaves its temp for ever - one in
+    the client's own Drop folder, counted as "syncing" every pass. The
+    household pass takes away the tracker's own temps and nothing else: the
+    exact shape (``fsio.TEMP_NAME``), older than the pass, left by a
+    process that is gone, and only in the return's folder, the household's
+    ``_Opened``, or beside the README. A client's file is never touched,
+    whatever it is called, and nothing in the year's folder, where the
+    originals rest, is ever looked at."""
+    import subprocess
+    import time
+
+    from tracker.filer import sweep_stranded_temps
+    from tracker.layout import opened_dir_of
+
+    pid = os.getpid()
+    ours = [
+        prepared(engagement, "A01") / f"A01 - W-2 Wage Statements - TY2025.pdf.{pid}.0a1b2c3d.tmp",
+        review_dir(engagement) / f"scan.pdf.{pid}.1b2c3d4e.tmp",
+        engagement / f"Status Report.html.{pid}.2c3d4e5f.tmp",
+        opened_dir_of(engagement) / "statement" / f"page.pdf.{pid}.3d4e5f6a.tmp",
+        inbox_of(engagement) / f"{README_NAME}.{pid}.4e5f6a7b.tmp",
+    ]
+    theirs = [
+        inbox_of(engagement) / "W-2 scan.pdf.tmp",                          # a client's .tmp
+        inbox_of(engagement) / f"photo.jpg.{pid}.5f6a7b8c.tmp",             # the shape, not the README's
+        inbox_of(engagement) / f"{README_NAME.upper()}.{pid}.6a7b8c9d.tmp",  # not the README's name
+        originals(engagement) / f"W2.pdf.{pid}.7b8c9d0e.tmp",               # the year's folder: never
+        prepared(engagement, "A01") / "notes.tmp",                          # not the shape
+        prepared(engagement, "A01") / f"x.pdf.{pid}.8C9D0E1F.tmp",          # not the shape (case)
+        prepared(engagement, "A01") / f"x.pdf.{pid}.8c9d0e.tmp",            # not the shape (length)
+    ]
+    for path in [*ours, *theirs]:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"half")
+
+    # A temp that came to be after the pass started, and one whose writer is
+    # still running, are somebody's write in progress: left.
+    started = time.time() - 60
+    with subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"]) as live:
+        try:
+            alive = engagement / f"view.html.{live.pid}.9d0e1f2a.tmp"
+            alive.write_bytes(b"being written")
+            assert sweep_stranded_temps(household_of(engagement), [engagement],
+                                        started=started) == []
+            assert all(path.exists() for path in [*ours, *theirs, alive])
+            taken = sweep_stranded_temps(household_of(engagement), [engagement],
+                                         started=time.time() + 1)
+            assert sorted(map(str, taken)) == sorted(map(str, ours))
+            assert alive.exists()
+        finally:
+            live.kill()
+
+    assert not any(path.exists() for path in ours)
+    assert all(path.read_bytes() == b"half" for path in theirs)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="junctions are Windows'")
+def test_the_sweep_never_walks_through_a_junction(engagement, tmp_path):
+    """Decision 155's review, FIX 1. A junction under a return's folder or
+    under ``_Opened`` points anywhere - at a client's folder, at another
+    household's - and a temp-shaped file behind it is not this household's
+    to take. The walk asks the one link test the package has
+    (``fsio.is_link``, read from the reparse tag), which every supported
+    Python answers: ``DirEntry.is_junction()`` does not exist on 3.11."""
+    import _winapi
+    import time
+
+    from tracker.filer import sweep_stranded_temps
+    from tracker.fsio import is_link
+    from tracker.layout import opened_dir_of
+
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    behind = elsewhere / f"statement.pdf.{os.getpid()}.0a1b2c3d.tmp"
+    behind.write_bytes(b"somebody else's")
+    opened_dir_of(engagement).mkdir(parents=True, exist_ok=True)
+    links = [prepared(engagement, "A01") / "linked", opened_dir_of(engagement) / "linked"]
+    for link in links:
+        _winapi.CreateJunction(str(elsewhere), str(link))
+    try:
+        assert all(is_link(link) for link in links)
+        taken = sweep_stranded_temps(household_of(engagement), [engagement],
+                                     started=time.time() + 1)
+        assert taken == [] and behind.read_bytes() == b"somebody else's"
+    finally:
+        for link in links:
+            os.rmdir(link)
+
+
+def test_a_pass_sweeps_the_readme_temp_so_the_inbox_is_not_syncing(engagement):
+    """The client-facing half of A-F6: the README's temp in ``Drop files
+    here`` read as one more file syncing every pass. The household pass
+    sweeps it before the inbox is read."""
+    stranded = inbox_of(engagement) / f"{README_NAME}.{os.getpid()}.0f1e2d3c.tmp"
+    stranded.write_text("half a list", encoding="utf-8")
+
+    run = a_household_pass(engagement, DAY1)
+
+    assert not stranded.exists()
+    assert run.waiting == 0 and not run.error, run
+
+
 def test_a_power_loss_mid_copy_leaves_a_truncated_file_that_is_named_and_the_row_parks(
         engagement, monkeypatch):
-    """The wreck of a copy the power cut in half. Nothing at that path is
-    touched - the machine never deletes what it finds - the row parks with
+    """The wreck of a copy the power cut in half - which, since decision 155,
+    only an older build could have left under the proper name (a killed copy
+    leaves its temp now), or a person's own file sitting there. Nothing at
+    that path is touched - the machine never deletes what it finds - the row parks with
     a working copy of its own, the file is named every pass, and the
     request reads Missing with the firm's own note instead of Failed
     Validation for a document the client sent correctly."""

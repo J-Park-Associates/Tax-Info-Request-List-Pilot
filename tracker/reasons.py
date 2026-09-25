@@ -311,13 +311,15 @@ FILE_MOVED = Reason(
               "or sends it to review - never the client",
 )
 #: A path the record claims holds bytes that are not the ones recorded on
-#: the row (decision 109, extending decision 3). The request keeps the
-#: status its files earn - the newcomer may pass every rule - and this says
-#: the file is not the one the record filed there, which no count can say.
+#: the row (decision 109, extending decision 3) - the original's. Since
+#: decision 155 the file is not counted: a copy torn in half, or another
+#: document put in its place, is not the document, whatever rules it
+#: passes. This says so, firm-side, so the request's Missing is never a
+#: client ask.
 COPY_CHANGED = Reason(
     "copy-changed",
-    "the file at {listed} is not the one the record filed there; a person should look "
-    "before trusting it",
+    "the file at {listed} is not the one the record filed there, so it is not counted; a "
+    "person should look",
     "not the one the record filed there", firm_side=True,
     firm_note="a working copy here no longer holds the bytes the record filed; a person "
               "here looks - never the client",

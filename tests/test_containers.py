@@ -954,3 +954,39 @@ def test_an_opened_container_gives_the_same_parts_as_in_process(tmp_path, opened
         assert expected.attachments and containers.open_bounded(path) == expected
     assert spawned == [1]
     assert no_child_left()
+
+
+def test_a_recorded_attachment_named_like_a_temp_survives_the_sweep(engagement):
+    """Decision 155's review, FIX 2. What came out of an email or a zip rests
+    under ``_Opened`` as an original rests in the year's folder, and its
+    own name is the client's: one that happens to have the exact temp shape
+    (``fsio.TEMP_NAME``), older than the pass and naming a process that is
+    gone, is still never taken while a row names it - nor is its working
+    copy, parked under the same name. The same file with no row naming it
+    is a killed write's leftover, and is."""
+    import os
+    import time
+
+    from tracker.filer import sweep_stranded_temps
+    from tracker.fsio import TEMP_NAME
+    from tracker.layout import household_of, opened_dir_of
+
+    odd = f"statement.pdf.{os.getpid()}.0a1b2c3d.tmp"
+    drop_bytes(engagement, "docs.zip", a_zip([(odd, pdf("Form 1098 Mortgage Interest Statement 2025"))]))
+    sort(engagement, today=DAY1)
+    [kept] = [locate(engagement, row.pbc_location) for row in read_index(engagement)
+              if row.pbc_location.endswith(odd)]
+    assert kept.is_file() and TEMP_NAME.fullmatch(kept.name)
+    assert opened_dir_of(engagement) in kept.parents
+    stranger = kept.parent / f"other.pdf.{os.getpid()}.1b2c3d4e.tmp"
+    stranger.write_bytes(kept.read_bytes())
+
+    taken = sweep_stranded_temps(household_of(engagement), [engagement], started=time.time() + 1)
+
+    assert taken == [stranger] and not stranger.exists()
+    assert kept.is_file()                       # a row names it: never taken
+    # Its working copy, parked under the client's own name - the same shape -
+    # is a row's too, and stays (the review's probe found the sweep taking it).
+    [row] = [row for row in read_index(engagement) if row.pbc_location.endswith(odd)]
+    assert row.filed_locations and all(locate(engagement, where).is_file()
+                                       for where in row.filed_locations)

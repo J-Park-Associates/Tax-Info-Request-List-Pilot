@@ -2340,6 +2340,24 @@ class ContentCache:
         self._forgotten_files.discard(key)
         return digest
 
+    def remember_digest(self, file: Path, digest: str) -> None:
+        """Remember ``digest`` for ``file`` as it now stands, without reading it.
+
+        For a file whose bytes were proved under another name a moment ago
+        and renamed to this one (decision 155's working copy: proved on its
+        temp, then swapped in) - the rename keeps the size and the
+        modification time, so the memo is what :meth:`digest_of` would have
+        learned by reading it again. A file that has gone is not remembered.
+        """
+        try:
+            stat = file.stat()
+        except OSError:
+            return
+        key = self._key(file)
+        self._files[key] = {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns, "digest": digest}
+        self._learned_files.add(key)
+        self._forgotten_files.discard(key)
+
     def get(self, file: Path, fingerprint: str) -> ContentResult | None:
         digest = self.digest_of(file)
         return self.get_by_digest(digest, fingerprint) if digest else None

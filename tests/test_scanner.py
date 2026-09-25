@@ -667,11 +667,12 @@ def test_a_moved_copys_request_reads_missing_with_the_firm_side_note_and_the_wan
     assert reasons.find(elsewhere.validation_notes) is None   # not counted, and not refused either
 
 
-def test_a_filed_copy_replaced_by_a_different_passing_file_stays_received_with_copy_changed_and_a_warning(
+def test_a_filed_copy_replaced_by_a_different_passing_file_is_not_counted_and_says_copy_changed(
         engagement):
-    """Decision 3 extended: the status is what the files earn, and the row
-    says the file is not the one the record filed there - which no count
-    can say, because the newcomer passes every rule."""
+    """Decision 3 extended, and decision 155 over decision 109: the row says
+    the file is not the one the record filed there, and the file is not
+    counted - it is not the document, whatever rules it passes. Until 155
+    the newcomer kept the request Received."""
     from tests.conftest import sort
 
     filed = a_filed_pdf(engagement)
@@ -683,17 +684,19 @@ def test_a_filed_copy_replaced_by_a_different_passing_file_stays_received_with_c
     report = scan_engagement(engagement, today=DAY2)
 
     row = report.updates["A01"]
-    assert row.status == Status.RECEIVED and row.file_count == 1
+    assert row.status == Status.MISSING and row.file_count == 0
     assert row.received_date == DAY1
+    assert row.validation_notes.startswith(_regressed_from(DAY1) + REGRESSION_FILES_CHANGED)
     assert reasons.COPY_CHANGED.matches(row.validation_notes)
     assert home.name in row.validation_notes
     assert report.warnings == [
         f"{home.name}: {reasons.COPY_CHANGED.format(listed=home.name)}"
     ]
     assert copy_moved_events(engagement) == []      # nothing moved: the bytes are simply not the row's
+    assert home.is_file()                            # and nothing was touched
 
 
-def test_a_filed_copy_replaced_by_a_failing_file_is_decision_threes_regression_and_says_copy_changed(
+def test_a_filed_copy_replaced_by_a_failing_file_is_not_counted_either_and_says_copy_changed(
         engagement):
     from tests.conftest import sort
 
@@ -706,10 +709,53 @@ def test_a_filed_copy_replaced_by_a_failing_file_is_decision_threes_regression_a
     report = scan_engagement(engagement, today=DAY2)
 
     row = report.updates["A01"]
-    assert row.status == Status.FAILED and row.file_count == 0
+    assert row.status == Status.MISSING and row.file_count == 0
     assert row.validation_notes.startswith(_regressed_from(DAY1) + REGRESSION_FILES_CHANGED)
     assert reasons.COPY_CHANGED.matches(row.validation_notes)
-    assert reasons.WRONG_DOCUMENT.matches(row.validation_notes)   # both facts, on one row
+    # Not the document, so the rules are not run on it: no client ask.
+    assert not reasons.WRONG_DOCUMENT.matches(row.validation_notes)
+
+
+def test_a_copy_that_disagrees_with_its_original_is_not_counted(engagement):
+    """Decision 155, ruling 4: a working copy whose size or digest disagrees
+    with its original at the scan is treated as not there. The shape of it
+    is a CSV statement torn in half - a truncated CSV still passes every
+    rule, so a count would read the request Received on half a statement.
+    It is named in the warnings, firm-side, and the letter does not ask the
+    client for a document the client sent correctly."""
+    from tests.conftest import sort
+    from tracker.filer import assign_review_file, read_index
+    from tracker.reminder import draft_reminder
+
+    statement = inbox_of(engagement) / "chase.csv"
+    lines = ["Chase Bank Statement Dec 2025"]
+    lines += [f"2025-12-{day:02d},deposit,{day}.00" for day in range(1, 29)]
+    statement.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parked = sort(engagement, today=DAY1).review[0]      # A01 takes PDFs; a person files it
+    assign_review_file(engagement, parked.pbc_location, "A01", today=DAY1)
+    [row] = read_index(engagement)
+    home = engagement / row.prepared_location
+    assert home.parent.name.startswith("A01"), row
+    scan_engagement(engagement, today=DAY1)
+    assert statuses(engagement)["A01"].status == Status.RECEIVED
+
+    whole = home.read_bytes()
+    home.write_bytes(whole[: len(whole) // 2])       # the size disagrees with the original
+    report = scan_engagement(engagement, today=DAY2)
+
+    a01 = report.updates["A01"]
+    assert a01.status == Status.MISSING and a01.file_count == 0
+    assert reasons.COPY_CHANGED.matches(a01.validation_notes)
+    assert report.warnings == [f"{home.name}: {reasons.COPY_CHANGED.format(listed=home.name)}"]
+    draft = draft_reminder(engagement)
+    assert "A01" in [flag.item.identifier for flag in draft.needs_attention]
+    assert "A01" not in [line.item.identifier for line in draft.lines]
+
+    home.write_bytes(whole[:-1] + b"X")               # the same size, another digest
+    assert scan_engagement(engagement, today=DAY2).updates["A01"].file_count == 0
+
+    home.write_bytes(whole)                            # the original's bytes again: counted
+    assert scan_engagement(engagement, today=DAY2).updates["A01"].status == Status.RECEIVED
 
 
 def test_an_unrecorded_file_in_a_request_folder_is_counted_and_said(engagement):
