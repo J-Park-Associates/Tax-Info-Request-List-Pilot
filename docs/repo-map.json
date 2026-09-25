@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 132,
     "edges": 818,
-    "reused": 104
+    "reused": 105
   },
   "node_types": [
     "artifact",
@@ -2474,8 +2474,8 @@
       "id": "CLAUDE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "922832d3c9322bbf",
-      "lines": 227,
+      "sha256": "d8066ee9247f2232",
+      "lines": 228,
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
     },
@@ -2516,8 +2516,8 @@
       "id": "docs/local-update-2026-09-25.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "fd1d60311df0599d",
-      "lines": 82
+      "sha256": "ac802207db5ed6f0",
+      "lines": 103
     },
     {
       "id": "docs/repo-map.curated.json",

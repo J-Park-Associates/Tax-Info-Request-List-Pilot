@@ -43,7 +43,7 @@ projects use those). If you add something back, list it for Jason.
 - Generative AI never reads client financial documents or moves client files. That work is deterministic rules or my trained model only.
 
 ## Which model for what
-- Opus 5.5: default for design, SPECs, coding, code review, architecture, reconciliation logic, linked financial models, and tax / Regional Center research. High effort for design, SPECs and review; default effort for building to an approved SPEC.
+- Opus 5.5: default for design, SPECs, coding, code review, architecture, reconciliation logic, linked financial models, and tax / Regional Center research. Default (medium) effort for most work; high for design, SPECs and review; xhigh or max only where it has been shown to help.
 - Sonnet 5: routine lookups, Excel formulas and cleanup, client-facing drafts. Escalate to Opus 5.5 if it struggles.
 - Haiku 4.5: throwaway scripts and formatting only — never tax or regulation (its knowledge ends Feb 2025).
 - Fable is not used.
@@ -74,7 +74,28 @@ scheduled-task prompts. In each one:
 handoffs and decision-log rows that say Fable did something are records of
 what happened; leave them as written.
 
-## Step 4 — report
+## Step 4 — prompts for unattended runs
+
+Anthropic's Opus 5.5 prompting guide
+(https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-5-5)
+recommends a standing instruction for runs nobody is watching (the loop and
+scheduled-task prompts, not a conversation with Jason). Add it once at the
+end of each such prompt, and keep the work in a checklist the session
+updates:
+
+```
+A standing instruction from the user, the person you are working for. It is about how your turns end. A message with no tool call in it ends your turn, and the work stops there until you are asked to continue. The user has seen you end turns in four ways while work they asked for was still owed, and does not want any of them. One: a long summary of what was done that closes by announcing the next step and has no tool call, so the next thing never starts. Two: an offer to carry on with something unless the user would prefer otherwise, which stops to wait for an answer the user was not going to give. Three: a list of decisions for the user when, by your own account, none of them blocks the rest of the work. Four: deciding that this is a good place to report, because the turn has been long or a milestone is done. Status notes are welcome, and so are your recommendations on open decisions, but put them in the same message as your next tool call and carry on with whatever does not depend on the user's answer. If you notice yourself inviting the user to redirect you or offering to wait, delete it and do the next thing. The stops the user does want are the ones where nothing can move without them, or where the thing blocking you is deliberately protected from you. This does not override the need for confirmation on risky or destructive actions.
+```
+
+Per the same guide, also remove from any local prompt:
+
+- lines telling Claude to "think carefully" or "think step by step" before
+  answering — the effort setting controls that now;
+- any request to write out its internal reasoning in the reply — Opus 5.5
+  declines those. (Asking for the *reasons behind a design* in a SPEC or a
+  docstring is fine; that is not the same thing.)
+
+## Step 5 — report
 
 Tell Jason, in plain English, which files changed and what changed in each,
 and record the same list in the next CODE UPDATE in Handoffs. Then delete

@@ -156,9 +156,10 @@ runbook is part of the change.
 Nothing is built without a written SPEC. **Claude Opus 5.5 designs, writes the
 SPEC, builds, and reviews** (set by Jason on 2026-09-25, replacing the earlier
 Fable-designs / Opus-builds / Fable-reviews split; decision-log rows that
-name Fable are history and stay as written). Use high effort for design,
-SPEC writing and review, and default effort for building to an approved
-SPEC. The review is a separate session or agent that did not build the
+name Fable are history and stay as written). Work at the default (medium)
+effort, which on Opus 5.5 matches Opus 5 at high; raise it to high for design,
+SPEC writing and review, and use xhigh or max only where it has been shown to
+help. The review is a separate session or agent that did not build the
 change, so the work is not grading itself. Jason owns every decision; the
 claude.ai Project records his decisions in the Drive thread (folder
 Handoffs), and each work session ends with a CODE UPDATE there.
