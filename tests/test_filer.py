@@ -1386,7 +1386,8 @@ def test_a_cloud_placeholder_is_not_a_link(tmp_path):
     # tag; only a mount point (junction) or a symlink is a link.
     import stat
 
-    from tracker.filer import _LINK_TAGS, _is_link
+    from tracker.fsio import _LINK_TAGS
+    from tracker.fsio import is_link as _is_link
 
     plain = tmp_path / "w2.pdf"
     plain.write_bytes(b"%PDF-1.4")
@@ -3911,6 +3912,39 @@ def test_the_trackers_own_temp_files_are_swept_and_nothing_else(engagement):
 
     assert not any(path.exists() for path in ours)
     assert all(path.read_bytes() == b"half" for path in theirs)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="junctions are Windows'")
+def test_the_sweep_never_walks_through_a_junction(engagement, tmp_path):
+    """Decision 155's review, FIX 1. A junction under a return's folder or
+    under ``_Opened`` points anywhere - at a client's folder, at another
+    household's - and a temp-shaped file behind it is not this household's
+    to take. The walk asks the one link test the package has
+    (``fsio.is_link``, read from the reparse tag), which every supported
+    Python answers: ``DirEntry.is_junction()`` does not exist on 3.11."""
+    import _winapi
+    import time
+
+    from tracker.filer import sweep_stranded_temps
+    from tracker.fsio import is_link
+    from tracker.layout import opened_dir_of
+
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    behind = elsewhere / f"statement.pdf.{os.getpid()}.0a1b2c3d.tmp"
+    behind.write_bytes(b"somebody else's")
+    opened_dir_of(engagement).mkdir(parents=True, exist_ok=True)
+    links = [prepared(engagement, "A01") / "linked", opened_dir_of(engagement) / "linked"]
+    for link in links:
+        _winapi.CreateJunction(str(elsewhere), str(link))
+    try:
+        assert all(is_link(link) for link in links)
+        taken = sweep_stranded_temps(household_of(engagement), [engagement],
+                                     started=time.time() + 1)
+        assert taken == [] and behind.read_bytes() == b"somebody else's"
+    finally:
+        for link in links:
+            os.rmdir(link)
 
 
 def test_a_pass_sweeps_the_readme_temp_so_the_inbox_is_not_syncing(engagement):

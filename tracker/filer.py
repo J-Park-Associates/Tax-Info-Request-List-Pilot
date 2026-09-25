@@ -160,7 +160,6 @@ import hashlib
 import logging
 import os
 import re
-import stat
 import time
 from collections.abc import Sequence
 from contextlib import ExitStack
@@ -172,6 +171,7 @@ from tracker.content_check import RETIRED_CACHE_FILENAME, ContentCache
 from tracker.fsio import (
     TEMP_SUFFIX,
     copy_atomically,
+    is_link,
     make_writable,
     stranded_temps,
     temp_owner,
@@ -899,7 +899,7 @@ def _move_whole(source: Path, target: Path, *, within: Path) -> None:
     operation, the return for a rollback); every folder from the source up
     to it is asked again, and a link anywhere on that path moves nothing.
     """
-    if _is_link(source) or _through_a_link(source.parent, within):
+    if is_link(source) or _through_a_link(source.parent, within):
         raise MovedThroughALinkError(MOVE_THROUGH_A_LINK.format(name=source.name, within=within))
     os.rename(source, target)
 
@@ -1219,14 +1219,16 @@ def sweep_stranded_temps(household_dir: Path | str, returns: Sequence[Path], *,
       that merely ends in ``.tmp`` is somebody's;
     - it came to be before ``started``, this pass's start;
     - the process its name carries is this one or is no longer running;
+    - it is **not** a path any row names: a parked working copy keeps the
+      client's own name, and what came out of an email or a zip rests
+      under ``_Opened`` as an original rests in the year's folder, so one
+      whose own name has that shape is a client's document (a return whose
+      rows cannot be read is not swept at all, nor its ``_Opened``);
     - it is in one of three places: under a return's own folder (working
       copies, the review folder, the Status Report, the draft); under the
-      household-year's ``_Opened``, and **not** a path any row names -
-      what came out of an email or a zip rests there as an original rests
-      in the year's folder, and one whose own name has that shape is a
-      client's; or in the inbox, beside the README and named after it, and
-      only under the README's lock, which is what every README write
-      holds.
+      household-year's ``_Opened``; or in the inbox, beside the README and
+      named after it, and only under the README's lock, which is what
+      every README write holds.
 
     Nothing in the client's year folders is ever looked at: the originals
     rest there, and nothing the tracker writes goes through a temp there.
@@ -1237,32 +1239,33 @@ def sweep_stranded_temps(household_dir: Path | str, returns: Sequence[Path], *,
     household_dir = Path(household_dir)
     taken: list[Path] = []
     try:
-        candidates: list[Path] = []
-        # Compared as Windows compares them: a row's location in another case
-        # is still the file it names.
-        opened: dict[Path, set[str] | None] = {}
-        for folder in returns:
-            folder = Path(folder)
-            candidates += stranded_temps(folder, before=started, recursive=True)
+        # Every path any row names, in any of these returns, compared as
+        # Windows compares them. A parked working copy keeps the client's own
+        # name, and an attachment rests under _Opened under its own: either
+        # may happen to have the temp shape, and a row naming it makes it a
+        # document, never a leftover (decision 155's review).
+        named: set[str] = set()
+        swept: list[Path] = []
+        unread: set[Path] = set()
+        for folder in map(Path, returns):
             try:
                 rows = read_index(folder)
             except Exception as exc:
-                log.warning("The rows of %s could not be read (%s: %s); its household's "
-                            "_Opened folder is not swept this pass",
+                log.warning("The rows of %s could not be read (%s: %s); neither it nor its "
+                            "household's _Opened folder is swept this pass",
                             folder.name, exc.__class__.__name__, exc)
-                opened[opened_dir_of(folder)] = None
+                unread.add(opened_dir_of(folder))
                 continue
-            named = opened.setdefault(opened_dir_of(folder), set())
-            if named is None:
-                continue
+            swept.append(folder)
             for entry in rows:
                 for location in (entry.pbc_location, entry.container, *entry.filed_locations):
                     if location:
                         named.add(os.path.normcase(locate(folder, location)))
-        for base, named in opened.items():
-            if named is not None:
-                candidates += [path for path in stranded_temps(base, before=started, recursive=True)
-                               if os.path.normcase(path) not in named]
+        places = [*swept, *dict.fromkeys(opened_dir_of(folder) for folder in swept
+                                         if opened_dir_of(folder) not in unread)]
+        candidates = [path for place in places
+                      for path in stranded_temps(place, before=started, recursive=True)
+                      if os.path.normcase(path) not in named]
         for path in candidates:
             if _a_stranded_temp_to_take(path) and _remove_a_stranded_temp(path):
                 taken.append(path)
@@ -1636,24 +1639,6 @@ def _storable(path: Path) -> bool:
     return True
 
 
-#: The reparse tags that make a name a link to somewhere else. A cloud
-#: sync client's placeholder is a reparse point too (its tag is the
-#: client's own) and is a file of the client's, not a link.
-_LINK_TAGS = frozenset(
-    tag for tag in (getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", None), getattr(stat, "IO_REPARSE_TAG_SYMLINK", None))
-    if tag is not None
-)
-
-
-def _is_link(path: Path) -> bool:
-    """A symlink, or on Windows a junction (a mount point)."""
-    try:
-        st = os.lstat(path)
-    except OSError:
-        return False
-    return stat.S_ISLNK(st.st_mode) or getattr(st, "st_reparse_tag", 0) in _LINK_TAGS
-
-
 def _through_a_link(path: Path, root: Path) -> bool:
     """True when ``path`` is reached through a link below ``root``.
 
@@ -1674,7 +1659,7 @@ def _through_a_link(path: Path, root: Path) -> bool:
     for part in (path, *path.parents):
         if os.path.normcase(os.path.normpath(str(part))) == base:
             return False
-        if _is_link(part):
+        if is_link(part):
             return True
     return False
 
@@ -1690,7 +1675,7 @@ def unreachable_drops(inbox: Path) -> list[Path]:
     return sorted(
         path for path in inbox.rglob("*")
         if not _storable(path)
-        or (not path.is_file() and not path.is_dir() and not _is_link(path))
+        or (not path.is_file() and not path.is_dir() and not is_link(path))
     )
 
 
@@ -1712,7 +1697,7 @@ def unlistable_folders(inbox: Path) -> list[Path]:
     for folder, subfolders, _files in os.walk(inbox, onerror=onerror):
         subfolders[:] = [
             name for name in subfolders
-            if not _is_link(Path(folder) / name) and not is_sync_staging(name)
+            if not is_link(Path(folder) / name) and not is_sync_staging(name)
         ]
     return sorted(failed)
 

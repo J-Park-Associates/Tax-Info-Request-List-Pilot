@@ -24,7 +24,9 @@ So there is one way to do it, and it is here:
   over it, each flushing its bytes to the disk before the swap, which is
   all most callers want.
 - :func:`stranded_temps` - the temps of that shape a killed write left in
-  a folder (decision 155), for the module that owns the folder to remove.
+  a folder (decision 155), for the module that owns the folder to remove,
+  walked never through a link (:func:`is_link`, the package's one test of
+  a symlink or a junction).
 
 - :func:`make_new_folders` - the one way a folder the tracker is about to
   fill is made (decision 137): every missing level is made by a ``mkdir``
@@ -283,16 +285,32 @@ def _born(info: os.stat_result) -> float:
     return max(info.st_mtime, created)
 
 
-def _a_link(entry: os.DirEntry) -> bool:
-    """Whether a folder entry is a symbolic link or a junction: never walked
-    through and never taken."""
+#: The reparse tags that make a name a link to somewhere else. A cloud
+#: sync client's placeholder is a reparse point too (its tag is the
+#: client's own) and is a file of the client's, not a link. Moved here from
+#: the filer by decision 155's review, so the sweep's walk and the drop's
+#: walk ask one question.
+_LINK_TAGS = frozenset(
+    tag for tag in (getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", None),
+                    getattr(stat, "IO_REPARSE_TAG_SYMLINK", None))
+    if tag is not None
+)
+
+
+def is_link(path: Path | str) -> bool:
+    """A symlink, or on Windows a junction (a mount point) - the one test of
+    a link the package has.
+
+    Read from ``os.lstat``'s reparse tag, which every Python the tracker
+    supports reports: ``DirEntry.is_junction()`` exists only from Python
+    3.12, and on 3.11 a junction would read as an ordinary folder. A name
+    that cannot be looked at is not a link.
+    """
     try:
-        if entry.is_symlink():
-            return True
-        is_junction = getattr(entry, "is_junction", None)
-        return bool(is_junction is not None and is_junction())
+        info = os.lstat(path)
     except OSError:
-        return True
+        return False
+    return stat.S_ISLNK(info.st_mode) or getattr(info, "st_reparse_tag", 0) in _LINK_TAGS
 
 
 def stranded_temps(
@@ -319,7 +337,7 @@ def stranded_temps(
         except OSError:
             continue
         for entry in entries:
-            if _a_link(entry):
+            if is_link(entry.path):
                 continue
             try:
                 if entry.is_dir(follow_symlinks=False):
