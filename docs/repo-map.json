@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 132,
     "edges": 818,
-    "reused": 105
+    "reused": 106
   },
   "node_types": [
     "artifact",
@@ -2516,8 +2516,8 @@
       "id": "docs/local-update-2026-09-25.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ac802207db5ed6f0",
-      "lines": 103
+      "sha256": "660d43a261301248",
+      "lines": 182
     },
     {
       "id": "docs/repo-map.curated.json",

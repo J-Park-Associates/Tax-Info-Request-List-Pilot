@@ -95,9 +95,88 @@ Per the same guide, also remove from any local prompt:
   declines those. (Asking for the *reasons behind a design* in a SPEC or a
   docstring is fine; that is not the same thing.)
 
-## Step 5 — report
+## Step 5 — install the Figma plugin globally
+
+Jason wants the Figma plugin available in every project on this computer.
+A cloud session installed it on 2026-09-25, but that container was
+temporary, and its network policy refused the connection to
+`mcp.figma.com`. Run:
+
+```
+claude plugin marketplace add anthropics/claude-plugins-official
+claude plugin install figma@claude-plugins-official --scope user
+claude plugin list
+```
+
+`claude plugin list` must show `figma@claude-plugins-official` with
+scope `user` and status enabled. Restart Claude Code so the plugin loads.
+Then check that its connection to Figma works: sign in to Figma when asked,
+and have a read-only Figma tool answer. If the connection still fails, give
+Jason the exact error, skip Step 6, and do not install a different Figma
+tool as a workaround.
+
+## Step 6 — start the design system redesign (SPEC first)
+
+Jason wants the J Park & Associates design system brought up to modern
+standards, with the "AI slop" removed, using the Figma plugin. The scope is
+everything: tokens, components, the desktop app's screens and the client
+reminder emails. Nothing is built without a written SPEC, so this session
+writes the SPEC, gets Jason's approval, and stops there. Building happens
+in later sessions, from the approved SPEC. Work at high effort.
+
+The design system is a folder on this computer, beside the repository
+(`tracker/page.py` says so). The cloud session could not see it. Find it,
+and confirm the location with Jason before reading anything else in it.
+
+1. **Audit, and show the evidence.** Read the design system folder and the
+   two places the repository draws its look:
+   - `app/renderer/style.css`. It is older than the design system and does
+     not use it (decision 118 kept "the app's own page palette, older than
+     the design system" as it was). It has its own navy and bright-blue
+     palette, a navy gradient across the top bar and many hand-typed colors.
+   - `PALETTE`, `FONT_SANS` and `FONT_SERIF` in `tracker/page.py`. These
+     mirror the design system's tokens for the Outlook reminder, and a test
+     holds them to the tokens.
+
+   List what reads as AI slop, one finding per line, each with the file or
+   Figma frame it is in. Examples to look for: decorative gradients,
+   rounded corners and shadows on everything, generic blue or purple accents
+   that are not the firm's colors, vague labels, emoji or icons standing in
+   for words, filler copy, inconsistent spacing, low contrast, and colors
+   typed by hand instead of taken from a token. Show Jason the list before
+   proposing fixes.
+2. **Write the SPEC.** Cover:
+   - **Tokens:** color, type, spacing, radius, elevation, and light and
+     dark modes. Each color must meet the WCAG AA contrast minimum, the
+     accessibility standard for how readable text is against its
+     background.
+   - **Components:** buttons, status chips, cards, tables, inputs, toolbar
+     and dialogs, each as a Figma component with its variants and states,
+     bound to the tokens.
+   - **Desktop app screens:** redesigned in Figma, then carried into
+     `app/renderer/style.css` using the tokens, with no hand-typed colors.
+   - **Reminder emails:** the four stages, still Outlook-safe (inline
+     styles, email-safe font stacks). `PALETTE` and its test change in the
+     same commit as the tokens.
+   - **Build order:** tokens, then components, then screens, then code.
+   - **Rules the redesign keeps:** the app stays plain JavaScript with no
+     new frameworks; pages load no fonts, stylesheets or images from the
+     network (`tracker/page.py`); the standing rules in `CLAUDE.md` are
+     unchanged.
+   - **Records to update:** a decision-log row in `docs/ROADMAP.md`, the
+     `docs/repo-map.curated.json` entries the change touches (then
+     `python tools/repo_map.py update`), and `docs/runbook.md` wherever
+     it describes what a person sees.
+3. **Get Jason's approval.** Save the SPEC where Jason keeps SPECs (ask him
+   if it is not clear), show it to him in plain English, and make any
+   changes he asks for. Do not start building in Figma or in code until he
+   approves it.
+
+## Step 7 — report
 
 Tell Jason, in plain English, which files changed and what changed in each,
-and record the same list in the next CODE UPDATE in Handoffs. Then delete
-this file and the "One-time task for the office computer" section of
-`CLAUDE.md` in one commit.
+whether the Figma plugin is installed and connected, and where the design
+system SPEC is saved and whether he approved it. Record the same list in the
+next CODE UPDATE in Handoffs, naming the SPEC as the document the redesign
+continues from. Then delete this file and the "One-time task for the office
+computer" section of `CLAUDE.md` in one commit.
