@@ -40,11 +40,14 @@ Status policy (docs/ROADMAP.md decision log):
   firm-side note (``reasons.FILE_MOVED``) so no draft asks the client for
   a file the firm moved. The filer's sweep decided it, under the same
   lock, earlier in the pass; this reads the rows and acts.
-- **A copy that is not the one the record filed is said** (decision 3
-  extended): the request keeps whatever status its files earn - Received
-  where the newcomer passes the rules, decision 3's regression where it
-  does not - and carries ``reasons.COPY_CHANGED``, on the row and on the
-  run's warnings, because a count cannot say "this is not the document".
+- **A copy that is not the one the record filed is said, and not
+  counted** (decision 3 extended; decision 155): a working copy whose
+  bytes disagree with its row's - the original's - is treated as not
+  there, so a copy torn in half, or another file put in its place, never
+  makes a request Received. The request carries ``reasons.COPY_CHANGED``,
+  firm-side, on the row and on the run's warnings, so its Missing is never
+  a client ask. Until decision 155 the newcomer was counted and kept
+  whatever status it earned.
 
 Strictly read-only where the client's files are concerned: the scanner
 reads the prepared copies and writes only the record, the verdict cache in
@@ -321,8 +324,9 @@ def _scan_item(
     in these folders (decision 109). A file in ``excluded`` is another
     row's mislaid working copy and is not this request's, whatever its
     bytes say: counting it here is the corruption the sweep exists to
-    stop. A file the record claims whose bytes are not its row's is said
-    (``COPY_CHANGED``), and a row whose copy has left one of these folders
+    stop. A file the record claims whose bytes are not its row's is not
+    counted either, and is said (``COPY_CHANGED``, decision 155), and a
+    row whose copy has left one of these folders
     is said too (``FILE_MOVED``) - both firm-side, so no draft asks the
     client for a file the firm moved.
 
@@ -348,9 +352,16 @@ def _scan_item(
         fr for folder in folders
         for fr in check_folder(folder, item, pdf_cache=pdf_cache, open_test=open_test).files
     ]
-    if excluded or interrupted:
+    # A working copy the record claims whose bytes are not its row's - the
+    # original's - is not there, as far as the count goes (decision 155): a
+    # half copy is never counted, and neither is a file somebody put in its
+    # place. It is said (COPY_CHANGED), firm-side, below.
+    strangers = [f.path for f in results
+                 if f.path in claimed and _a_stranger_at(f.path, claimed[f.path], cache)]
+    if excluded or interrupted or strangers:
         results = [f for f in results
-                   if f.path not in excluded and f.path not in interrupted]
+                   if f.path not in excluded and f.path not in interrupted
+                   and f.path not in strangers]
     pending = [f for f in results if f.pending_sync]
     # A person's decision waives tier 2 as well as tier 3: they looked at
     # the file, whatever its size or type says.
@@ -419,10 +430,8 @@ def _scan_item(
     for path, sentence in interrupted.items():
         if path.parent in here and path.exists():
             facts.append(sentence)
-    for f in results:
-        row = claimed.get(f.path)
-        if row is not None and _a_stranger_at(f.path, row, cache):
-            facts.append(reasons.COPY_CHANGED.format(listed=f.path.name))
+    for path in strangers:
+        facts.append(reasons.COPY_CHANGED.format(listed=path.name))
     facts.extend(failures[:_MAX_LISTED_FAILURES])
     if len(failures) > _MAX_LISTED_FAILURES:
         facts.append(MORE_ISSUES_NOTE.format(n=len(failures) - _MAX_LISTED_FAILURES))

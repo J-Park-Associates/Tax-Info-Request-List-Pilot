@@ -96,6 +96,15 @@ before anything is read, so two passes running at once cannot take the
 same two returns the other way round. Nothing is ever inferred into that
 list: a household is assembled by a person, and so is a feed.
 
+**What a killed write left is swept first** (decision 155). Every file
+the tracker writes goes through a temp beside it and is renamed into
+place whole, so a pass killed half way - Task Scheduler's limit, a power
+cut, a restart - leaves a temp and never half a file under its name. The
+household pass takes those temps away under its locks before anything is
+read (``tracker.filer.sweep_stranded_temps``): only the tracker's own
+exact shape, only in the household's firm folders and beside the README,
+never in a year's folder where the originals rest.
+
 **Every folder that does not fit the layout is listed and left alone.** The
 practice page ends with them, each with the one sentence saying why
 (``tracker.registry``). Nothing in one is ever read, moved or renamed.
@@ -112,6 +121,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import os
+import time
 import traceback
 from collections.abc import Iterable
 from contextlib import ExitStack, nullcontext
@@ -129,6 +139,7 @@ from tracker.filer import (
     read_index,
     refresh_household_readme,
     room_for,
+    sweep_stranded_temps,
 )
 from tracker.fsio import write_text_atomically
 from tracker.households import load_household_info, open_years, resolve_feeds
@@ -590,6 +601,9 @@ def run_household(
     going through the rest of the practice.
     """
     today = today or dt.date.today()
+    # This pass's start, for the sweep (decision 155): a temp that came to
+    # be after it is nothing a killed write left.
+    started = time.time()
     # Stamped before anything is touched, so a return that fails its
     # pre-checks still says when it was last looked at.
     runs = [EngagementRun(engagement=one, last_pass=dt.datetime.now()) for one in returns]
@@ -634,6 +648,14 @@ def run_household(
                                       *(one.path for one in fed)],
                                      key=lock_order_key):
                     locks.enter_context(engagement_lock(folder))
+            # What a killed write left - a working copy's temp, the README's
+            # in the client's inbox - goes first, under the locks and before
+            # anything is read, so nothing below counts it (decision 155).
+            # The household's own returns only: a fed return's household
+            # sweeps its own.
+            if not dry_run:
+                sweep_stranded_temps(household, [run.engagement.path for run in working],
+                                     started=started)
             # The household's own side - the inbox and the year's folder -
             # is laid out once for the lot, before the inbox is read. The
             # fed returns are not in it: a fed return's own household lays

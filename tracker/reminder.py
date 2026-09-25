@@ -148,7 +148,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from tracker import ledger, page, reasons, store
-from tracker.fsio import TEMP_SUFFIX
+from tracker.fsio import temp_owner, write_text_atomically
 from tracker.layout import README_NAME, household_name_of, inbox_of, label_for, locate, year_of
 from tracker.manifest import (
     ISO_DATE_HINT,
@@ -1198,9 +1198,11 @@ def unsorted_in_inbox(engagement_dir: Path | str) -> int:
     here, at call time, as the rest of this module reaches it.
 
     **Two corrections from the review.** A temporary file the README's own
-    atomic write left behind when it was killed (``README_NAME`` followed by
-    ``.<pid>.<hex>`` and ``TEMP_SUFFIX``) is the firm's leftover, not a transfer the client started, and never
-    holds a letter. A folder the pass cannot list (``unlistable_folders``)
+    atomic write left behind when it was killed (``README_NAME`` in
+    :data:`tracker.fsio.TEMP_NAME`'s exact shape) is the firm's leftover,
+    not a transfer the client started, and never holds a letter; the
+    household pass sweeps it away first (decision 155), and this is for the
+    one a live writer still holds. A folder the pass cannot list (``unlistable_folders``)
     does, one count per folder: whatever the client put in it cannot be
     sorted, so the letter could ask for it.
     """
@@ -1214,10 +1216,10 @@ def unsorted_in_inbox(engagement_dir: Path | str) -> int:
 
 def _readme_leftover(path: Path, inbox: Path) -> bool:
     """Whether ``path`` is a temporary file the README's own write left in
-    the inbox: beside the README, named after it, ending in the temporary
-    suffix. The client's own ``.tmp`` files are not this."""
-    return (path.parent == inbox and path.name.startswith(README_NAME + ".")
-            and path.name.lower().endswith(TEMP_SUFFIX))
+    the inbox: beside the README, named after it in the exact shape every
+    temp the tracker writes has (:func:`tracker.fsio.temp_owner`). The
+    client's own ``.tmp`` files are not this."""
+    return path.parent == inbox and temp_owner(path.name, target=README_NAME) is not None
 
 
 def draft_reminder(
@@ -1758,6 +1760,13 @@ def write_draft(draft: ReminderDraft, path: Path | str | None = None,
     asks for that the last one did not, and the other way round - above
     the separator, so it is never pasted into the email and never part of
     the fingerprinted body.
+
+    **Whole or not written** (decision 155): through
+    :func:`tracker.fsio.write_text_atomically`, flushed before it takes the
+    name. A draft written straight onto its name and torn by a power cut
+    failed its own fingerprint, so it read as a person's edit for good -
+    every week's draft went to ``NEW_DRAFT_FILENAME`` beside a half letter
+    nobody would regenerate.
     """
     if draft.is_held:
         raise ReminderHeldError(held_refusal(draft))
@@ -1809,7 +1818,7 @@ def write_draft(draft: ReminderDraft, path: Path | str | None = None,
         _SEPARATOR,
         "",
     ]
-    path.write_text("\n".join(header) + body, encoding="utf-8", newline="\r\n")
+    write_text_atomically(path, "\n".join(header) + body, encoding="utf-8", newline="\r\n")
     return path
 
 

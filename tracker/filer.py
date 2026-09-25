@@ -123,6 +123,14 @@ Guarantees:
   row parks and says so; where the bytes are at neither end the row parks
   and says that. A person's action refuses while a move is open here, and
   the next pass - or Run now - clears it.
+- **A working copy is whole or not there, and writable** (decision 155).
+  It is copied to a temp name beside its home, proved against the bytes
+  it was made from, flushed and renamed into place
+  (:func:`tracker.fsio.copy_atomically`), so a copy the power cut in half
+  never holds the proper name - its temp is left, and
+  :func:`sweep_stranded_temps` takes that away at the start of the next
+  household pass. A copy of a read-only original is made writable; the
+  original is only ever read.
 - **An original that leaves the client's own folder is said out loud.**
   The year's folder is the provided-by-client record and the client can see
   it, so Explorer will delete, rename and drag what is already there. A row
@@ -152,7 +160,6 @@ import hashlib
 import logging
 import os
 import re
-import shutil
 import stat
 import time
 from collections.abc import Sequence
@@ -162,7 +169,14 @@ from pathlib import Path
 
 from tracker import containers, ledger, reasons, store
 from tracker.content_check import RETIRED_CACHE_FILENAME, ContentCache
-from tracker.fsio import TEMP_SUFFIX, write_bytes_atomically
+from tracker.fsio import (
+    TEMP_SUFFIX,
+    copy_atomically,
+    make_writable,
+    stranded_temps,
+    temp_owner,
+    write_bytes_atomically,
+)
 from tracker.households import household_returns
 from tracker.layout import (
     MAX_PATH_LENGTH,
@@ -189,6 +203,7 @@ from tracker.locking import (
     acquire_lock,
     engagement_lock,
     lock_is_held,
+    pid_alive,
     release_lock,
 )
 from tracker.manifest import (
@@ -790,53 +805,56 @@ class CopyMismatchError(FilingError):
     """A copy was made and the target did not hold the original's bytes."""
 
 
-def _remove_a_failed_copy(target: Path) -> None:
-    """Take away a copy that is not the document, whatever went wrong."""
-    try:
-        target.unlink(missing_ok=True)
-    except OSError as exc:          # held by a scanner: say so, keep the real error
-        log.warning("Half-written %s could not be removed (%s)", target.name, exc)
-
-
 def _copy_whole(
     source: Path, target: Path, *, expect: str = "", cache: ContentCache | None = None
 ) -> None:
-    """``copy2``, with nothing left behind when it fails half-way, and the
-    copy proved against the bytes it was made from.
+    """Copy whole or not at all, proved against the bytes it was made from
+    before it takes the proper name, and writable (decision 155).
 
-    A copy that stops part-way (disk full, a virus scanner holding the new
-    file) would leave a truncated working copy that the next scan reads as
-    a corrupt document and the reminder then asks the client for. The
-    original in the year's folder is the record; a copy is disposable.
+    :func:`tracker.fsio.copy_atomically` does the copy: into a temp beside
+    ``target``, flushed, renamed into place. A copy that stops part-way -
+    disk full, a virus scanner holding the new file, **the power going out**
+    - leaves no file under ``target``'s name. Until decision 155 it wrote
+    straight onto the name, and a copy the power cut in half kept it: a
+    truncated CSV passes the rules, so a request read Received on half a
+    statement. A kill leaves the temp, which no walk reads and the next
+    household pass sweeps (:func:`sweep_stranded_temps`). The original in
+    the year's folder is the record; a copy is disposable.
 
-    ``expect`` is the digest the target must hold - the caller always knows
+    ``expect`` is the digest the copy must hold - the caller always knows
     it, because a copy is only ever made of bytes this system has already
-    recorded. A copy that came out as something else is not the document:
-    it is removed and :class:`CopyMismatchError` says so, naming both
-    files, so the drop is recorded as decision 17's "could not be filed"
-    row rather than trusted and counted. A row recorded without its bytes
-    (decision 65) has no digest to expect, and passes ``""``: there is
-    nothing to prove it against, and that row is said out loud elsewhere.
+    recorded. It is proved on the temp, before the rename: a copy that came
+    out as something else never holds the proper name, not even for the
+    moment a removal might be refused, and :class:`CopyMismatchError` says
+    so, naming both files, so the drop is recorded as decision 17's "could
+    not be filed" row rather than trusted and counted. A row recorded
+    without its bytes (decision 65) has no digest to expect, and passes
+    ``""``: there is nothing to prove it against, and that row is said out
+    loud elsewhere.
 
-    ``cache`` is the pass's, where the caller has one: ``copy2`` keeps the
-    modification time, so the memo this leaves for the target is the hit
-    the next reader gets and the proof costs one read, once.
+    The temp's name is cut to fit Windows's limit where the target sits
+    near it (``limit``): the target was named to fit decision 131's room,
+    and its temp must not be what refuses the copy.
+
+    ``cache`` is the pass's, where the caller has one: the copy keeps the
+    modification time and the rename keeps the size, so the digest proved
+    on the temp is remembered for ``target`` and the proof costs one read,
+    once.
     """
-    try:
-        shutil.copy2(source, target)
-    except BaseException:
-        _remove_a_failed_copy(target)
-        raise
-    if not expect:
-        return
-    digest = cache.digest_of(target) if cache is not None else _digest_or_none(target)
-    if digest == expect:
-        return
-    _remove_a_failed_copy(target)
-    raise CopyMismatchError(COPY_MISMATCH.format(
-        source=source.name, target=target.name,
-        expected=expect[:_DIGEST_SHOWN], found=(digest or "")[:_DIGEST_SHOWN] or "nothing",
-    ))
+    def prove(temp: Path) -> None:
+        if not expect:
+            return
+        digest = _digest_or_none(temp)
+        if digest != expect:
+            raise CopyMismatchError(COPY_MISMATCH.format(
+                source=source.name, target=target.name,
+                expected=expect[:_DIGEST_SHOWN],
+                found=(digest or "")[:_DIGEST_SHOWN] or "nothing",
+            ))
+
+    copy_atomically(source, target, prove=prove, limit=MAX_PATH_LENGTH)
+    if expect and cache is not None:
+        cache.remember_digest(target, expect)
 
 
 def _digest_or_none(path: Path) -> str | None:
@@ -1146,6 +1164,127 @@ def refresh_household_readme(household_dir: Path | str) -> Path | None:
         log.warning("Could not refresh the README of %s (%s: %s); carrying on",
                     household_dir.name, exc.__class__.__name__, exc)
         return None
+
+
+# ------------------------------------------------ what a killed write left ----
+
+
+def _a_stranded_temp_to_take(path: Path) -> bool:
+    """Whether a temp of the tracker's own shape was left by a writer that
+    is gone: this process (which has no write open at a pass's start) or
+    one that is no longer running. A live owner is still writing it, and
+    one that cannot be asked is left too - it is taken on a later pass."""
+    owner = temp_owner(path.name)
+    if owner is None:
+        return False
+    return owner == os.getpid() or pid_alive(owner) is False
+
+
+def _remove_a_stranded_temp(path: Path) -> bool:
+    """Take one stranded temp away; False, with a log line, where Windows
+    refuses. A temp ``copy2`` carried a read-only attribute onto before the
+    kill is made writable first - it is the copy, never an original."""
+    try:
+        try:
+            path.unlink()
+        except PermissionError:
+            make_writable(path)
+            path.unlink()
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        log.warning("A temporary file a killed write left, %s, could not be removed (%s); "
+                    "the next pass tries again", path.name, exc)
+        return False
+    return True
+
+
+def sweep_stranded_temps(household_dir: Path | str, returns: Sequence[Path], *,
+                         started: float) -> list[Path]:
+    """Take away the temps a killed write left in this household's firm
+    folders and its README's, and return what was taken (decision 155).
+
+    Every file the tracker writes goes through a temp beside it
+    (:mod:`tracker.fsio`), and a kill - a power cut, a restart, Task
+    Scheduler's limit - leaves that temp for ever: a whole client
+    attachment under ``_Opened``, a half working copy, and in the client's
+    own ``Drop files here`` the README's, which the client could see and
+    every pass counted as a file still syncing. The household pass calls
+    this first, under every return's lock, before anything is read.
+
+    **Only ever the tracker's own temps, and never an original.** A file is
+    taken only when all of these hold:
+
+    - its name has :data:`tracker.fsio.TEMP_NAME`'s exact shape - a file
+      that merely ends in ``.tmp`` is somebody's;
+    - it came to be before ``started``, this pass's start;
+    - the process its name carries is this one or is no longer running;
+    - it is in one of three places: under a return's own folder (working
+      copies, the review folder, the Status Report, the draft); under the
+      household-year's ``_Opened``, and **not** a path any row names -
+      what came out of an email or a zip rests there as an original rests
+      in the year's folder, and one whose own name has that shape is a
+      client's; or in the inbox, beside the README and named after it, and
+      only under the README's lock, which is what every README write
+      holds.
+
+    Nothing in the client's year folders is ever looked at: the originals
+    rest there, and nothing the tracker writes goes through a temp there.
+    A temp that cannot be removed now is a log line and waits for the next
+    pass. **Never raises**: a sweep that failed the household would be a
+    leftover jamming the pass it exists to protect.
+    """
+    household_dir = Path(household_dir)
+    taken: list[Path] = []
+    try:
+        candidates: list[Path] = []
+        # Compared as Windows compares them: a row's location in another case
+        # is still the file it names.
+        opened: dict[Path, set[str] | None] = {}
+        for folder in returns:
+            folder = Path(folder)
+            candidates += stranded_temps(folder, before=started, recursive=True)
+            try:
+                rows = read_index(folder)
+            except Exception as exc:
+                log.warning("The rows of %s could not be read (%s: %s); its household's "
+                            "_Opened folder is not swept this pass",
+                            folder.name, exc.__class__.__name__, exc)
+                opened[opened_dir_of(folder)] = None
+                continue
+            named = opened.setdefault(opened_dir_of(folder), set())
+            if named is None:
+                continue
+            for entry in rows:
+                for location in (entry.pbc_location, entry.container, *entry.filed_locations):
+                    if location:
+                        named.add(os.path.normcase(locate(folder, location)))
+        for base, named in opened.items():
+            if named is not None:
+                candidates += [path for path in stranded_temps(base, before=started, recursive=True)
+                               if os.path.normcase(path) not in named]
+        for path in candidates:
+            if _a_stranded_temp_to_take(path) and _remove_a_stranded_temp(path):
+                taken.append(path)
+        if returns:
+            lock = _readme_lock(household_dir)
+            if lock is None:
+                log.warning("The README of %s is being written by another run; its "
+                            "leftover temps are swept on a later pass", household_dir.name)
+            else:
+                try:
+                    for path in stranded_temps(inbox_of(Path(returns[0])), before=started,
+                                               target=README_NAME):
+                        if _a_stranded_temp_to_take(path) and _remove_a_stranded_temp(path):
+                            taken.append(path)
+                finally:
+                    release_lock(lock)
+    except Exception as exc:
+        log.warning("The sweep of %s's leftover temporary files stopped (%s: %s); carrying on",
+                    household_dir.name, exc.__class__.__name__, exc)
+    for path in taken:
+        log.info("Removed %s, a temporary file a killed write left", path.name)
+    return taken
 
 
 # ----------------------------------------------------------------- ensure ----
@@ -1900,10 +2039,16 @@ MOVED_BACK_SENTENCE = "the working copy is back at {home} ({date})"
 #: Attention, every pass, for a file under a request folder or the review
 #: folder that no row names and whose bytes match no row. It is counted
 #: where it sits, because what a request holds is what the scanner says it
-#: has; what nothing knows is who put it there.
+#: has; what nothing knows is who put it there. Since decision 155 no copy
+#: the tracker makes is ever half there under a name - a failed or killed
+#: copy leaves only its temp, which the next pass sweeps - so the advice
+#: no longer assumes a document the client sent (the audit's E8): one that
+#: is not a whole document is ours to delete, and is never the client's to
+#: send again.
 UNRECORDED_COPY = ("{location} is not on the record: nothing filed it there and no row's bytes "
-                   "match it; it is counted as it sits - file it in the app, or drop it in the "
-                   "client's folder, so the record knows it")
+                   "match it; it is counted as it sits - open it: a document goes in through the "
+                   "app or the client's folder, so the record knows it; anything else, a broken "
+                   "or partial copy included, is deleted by hand")
 
 _MOVED_DATE = r"\d{4}-\d{2}-\d{2}"
 

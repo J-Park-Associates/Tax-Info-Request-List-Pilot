@@ -14,10 +14,17 @@ So there is one way to do it, and it is here:
   never read as a client's document.
 - :func:`temp_path_for` - a temp name beside the target that no other
   writer can be using, carrying this process id and a random tag.
+  :data:`TEMP_NAME` is that shape, named once, and :func:`temp_owner`
+  reads a name against it.
 - :func:`atomic_replacement` - the context manager: write to the temp,
-  and ``os.replace`` it over the target when the block ends cleanly.
-- :func:`write_text_atomically` / :func:`write_json_atomically` - the two
-  writers over it, which is all most callers want.
+  ``os.replace`` it over the target when the block ends cleanly, and
+  flush the folder where the platform allows.
+- :func:`write_text_atomically` / :func:`write_json_atomically` /
+  :func:`write_bytes_atomically` / :func:`copy_atomically` - the writers
+  over it, each flushing its bytes to the disk before the swap, which is
+  all most callers want.
+- :func:`stranded_temps` - the temps of that shape a killed write left in
+  a folder (decision 155), for the module that owns the folder to remove.
 
 - :func:`make_new_folders` - the one way a folder the tracker is about to
   fill is made (decision 137): every missing level is made by a ``mkdir``
@@ -25,6 +32,20 @@ So there is one way to do it, and it is here:
   handed back, so a failure afterwards removes those and nothing else. A
   folder that was already there - a person's own, an old return's - is
   never on that list and never removed.
+
+**Every file the tracker writes goes through here, and is whole or not
+there** (decision 155). A write killed half way - a power cut, Windows
+Update restarting the machine, Task Scheduler ending a pass at its limit -
+leaves the temp behind and the target as it was, never half a file under
+the proper name. Until decision 155 that was not true of a working copy:
+``shutil.copy2`` wrote straight onto the final name, a copy the power cut
+in half kept it, and a truncated CSV still passes the rules, so it was
+counted. Nor of the weekly draft, whose torn file then read as a person's
+edit for good; and the text writer swapped before it flushed, so NTFS,
+which journals the rename and not the data, could leave the settings file
+empty after a power cut. A stranded temp is the price of a kill, and
+:func:`stranded_temps` finds it again by its exact shape, so the next pass
+can take it away.
 
 They lived in :mod:`tracker.manifest` until decision 120, because the
 manifest was once the workbook they were written for; they are here now
@@ -46,8 +67,11 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import secrets
-from collections.abc import Iterator
+import shutil
+import stat
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -57,8 +81,16 @@ log = logging.getLogger("tracker.fsio")
 #: nothing is quarantined: a write lands whole or not at all.
 TEMP_SUFFIX = ".tmp"
 
+#: The whole shape of a temp name :func:`temp_path_for` makes - the
+#: target's own name, the writing process's id, eight lower-case hex digits
+#: of a random tag, and :data:`TEMP_SUFFIX` - and nothing else (decision
+#: 155). A stranded temp is recognised by this shape and only by it: a file
+#: that merely ends in ``.tmp`` is somebody's, and never the tracker's to take.
+TEMP_NAME = re.compile(r"(?P<target>.+)\.(?P<pid>[0-9]{1,10})\.(?P<tag>[0-9a-f]{8})"
+                       + re.escape(TEMP_SUFFIX))
 
-def temp_path_for(path: Path) -> Path:
+
+def temp_path_for(path: Path, *, limit: int | None = None) -> Path:
     """A temp name beside ``path`` that no other writer can be using.
 
     It carries this process id and a random tag, so two runs writing the
@@ -66,33 +98,103 @@ def temp_path_for(path: Path) -> Path:
     does, say) cannot swap each other's half-written temp into place - and
     a temp a crashed run left behind is never mistaken for a live one. It
     still ends in ``TEMP_SUFFIX``: the validators and the drop walk ignore
-    that suffix, so a stranded temp is never read as a document.
+    that suffix, so a stranded temp is never read as a document. Its shape
+    is :data:`TEMP_NAME`.
+
+    ``limit`` is the longest path the caller's platform opens, when the
+    caller knows its target may sit near it (a working copy, named to fit
+    decision 131's room): the target's name inside the temp's is cut from
+    its end, down to one character, so the temp's path fits too. The temp
+    is up to 24 characters longer than its target otherwise, and a copy
+    whose target fits must not fail on its temp (decision 155).
     """
-    return path.with_name(f"{path.name}.{os.getpid()}.{secrets.token_hex(4)}{TEMP_SUFFIX}")
+    tail = f".{os.getpid()}.{secrets.token_hex(4)}{TEMP_SUFFIX}"
+    name = path.name
+    if limit is not None:
+        over = len(str(path.with_name(name + tail))) - limit
+        if over > 0:
+            name = name[:max(1, len(name) - over)]
+    return path.with_name(name + tail)
+
+
+def temp_owner(name: str, *, target: str | None = None) -> int | None:
+    """The process id in a name of :data:`TEMP_NAME`'s exact shape, or
+    None for any other name.
+
+    ``target`` narrows it to the temps of one file - a README's, say - and
+    is compared exactly, case and all: ``notes.txt.123.0a1b2c3d.tmp`` is
+    the temp of ``notes.txt``, ``NOTES.TXT.123.0a1b2c3d.tmp`` is not.
+    """
+    matched = TEMP_NAME.fullmatch(name)
+    if matched is None or (target is not None and matched["target"] != target):
+        return None
+    return int(matched["pid"])
+
+
+def _fsync_folder(folder: Path) -> None:
+    """Flush a folder's entry for a file just renamed into it, where the
+    platform allows.
+
+    POSIX can open a folder and fsync it, which makes the rename itself
+    durable. Windows cannot open a folder that way and NTFS journals the
+    rename on its own, so there it is not attempted. Never raises: the file
+    is already whole under its name, and this only makes that sooner.
+    """
+    if os.name == "nt":
+        return
+    try:
+        handle = os.open(folder, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(handle)
+    except OSError:
+        pass
+    finally:
+        os.close(handle)
+
+
+def _remove_temp(temp: Path) -> None:
+    """Take a temp away, clearing a read-only attribute a copy carried onto
+    it first if Windows refuses. The temp is this write's own and nothing
+    else's."""
+    try:
+        temp.unlink(missing_ok=True)
+    except PermissionError:
+        if not temp.exists():
+            raise
+        make_writable(temp)
+        temp.unlink(missing_ok=True)
 
 
 @contextmanager
-def atomic_replacement(path: Path) -> Iterator[Path]:
+def atomic_replacement(path: Path, *, limit: int | None = None) -> Iterator[Path]:
     """Yield a temp path beside ``path``; swap it in whole when the block ends cleanly.
 
     Writing beside the file and swapping it in with ``os.replace`` makes an
     update all-or-nothing; the swap is atomic on NTFS and on every POSIX
     filesystem. A crash, a full disk or a killed scheduled task mid-write
-    leaves the previous file, never half of the new one. The temp is
-    removed whatever happens. A file another program holds open raises
-    ``PermissionError`` from the replace, and the caller says so.
+    leaves the previous file, never half of the new one. The block flushes
+    what it wrote to the disk before it ends - every writer here does - and
+    the folder is flushed after the swap where the platform allows. The
+    temp is removed whatever happens, except when the process is killed,
+    which runs no clean-up at all: :func:`stranded_temps` finds that one
+    again. A file another program holds open raises ``PermissionError``
+    from the replace, and the caller says so. ``limit`` is
+    :func:`temp_path_for`'s.
     """
-    temp = temp_path_for(path)
+    temp = temp_path_for(path, limit=limit)
     try:
         yield temp
         os.replace(temp, path)
+        _fsync_folder(path.parent)
     finally:
         # The temp's removal must never replace the error that stopped the
         # write: a writer may leave the half-written file open when it
         # raises, Windows then refuses the delete, and a full disk would
         # read as "held by another program".
         try:
-            temp.unlink(missing_ok=True)
+            _remove_temp(temp)
         except OSError as exc:
             log.warning("Temporary file %s could not be removed (%s)", temp.name, exc)
 
@@ -100,10 +202,17 @@ def atomic_replacement(path: Path) -> Iterator[Path]:
 def write_text_atomically(
     path: Path, text: str, *, encoding: str = "utf-8", newline: str | None = None
 ) -> None:
-    """Write ``text`` to ``path`` all-or-nothing (see :func:`atomic_replacement`)."""
+    """Write ``text`` to ``path`` all-or-nothing (see :func:`atomic_replacement`).
+
+    Flushed to the disk before the swap (decision 155): NTFS journals the
+    rename and not the data, so a swap made before the bytes were down
+    could leave the settings file or a README empty after a power cut.
+    """
     with atomic_replacement(path) as temp:
         with temp.open("w", encoding=encoding, newline=newline) as handle:
             handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
 
 
 def write_bytes_atomically(path: Path, data: bytes) -> None:
@@ -118,6 +227,112 @@ def write_bytes_atomically(path: Path, data: bytes) -> None:
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
+
+
+def make_writable(path: Path) -> None:
+    """Clear the read-only attribute of a file the caller made.
+
+    Only ever the tracker's own file - a copy, a temp - and never an
+    original: which file that is, is the caller's to know, and this takes
+    one path and does nothing else to it.
+    """
+    mode = os.stat(path).st_mode
+    if not mode & stat.S_IWRITE:
+        os.chmod(path, stat.S_IMODE(mode) | stat.S_IWRITE)
+
+
+def copy_atomically(
+    source: Path, target: Path, *, prove: Callable[[Path], None] | None = None,
+    limit: int | None = None,
+) -> None:
+    """Copy ``source`` to ``target`` all-or-nothing, as a writable file.
+
+    ``shutil.copy2`` into the temp - the bytes, and the modification time
+    the verdict cache's memo keys on - then the temp is made writable,
+    flushed to the disk and swapped in. A copy killed half way leaves its
+    temp and no file under ``target``'s name (decision 155).
+
+    **The copy is writable** (decision 155): ``copy2`` carries the source's
+    read-only attribute across - a file from a CD, or one Explorer took out
+    of a zip - and a read-only working copy then refused its own removal
+    and jammed the household. The attribute is cleared on the temp, which
+    is the copy; ``source`` is only ever read.
+
+    ``prove`` is handed the temp once its bytes are down, before the swap:
+    raising there leaves ``target`` as it was, so a copy that did not come
+    out as its source never holds the proper name, not even for a moment.
+    ``limit`` is :func:`temp_path_for`'s.
+    """
+    with atomic_replacement(target, limit=limit) as temp:
+        shutil.copy2(source, temp)
+        make_writable(temp)
+        with temp.open("r+b") as handle:
+            os.fsync(handle.fileno())
+        if prove is not None:
+            prove(temp)
+
+
+def _born(info: os.stat_result) -> float:
+    """When a file came to be, as near as the platform says: the later of
+    its modification time and its creation (Windows) or change (POSIX)
+    time. ``copy2`` sets a temp's modification time back to its source's,
+    so that alone would make a temp made a second ago look years old."""
+    created = getattr(info, "st_birthtime", None)
+    if created is None:
+        created = info.st_ctime
+    return max(info.st_mtime, created)
+
+
+def _a_link(entry: os.DirEntry) -> bool:
+    """Whether a folder entry is a symbolic link or a junction: never walked
+    through and never taken."""
+    try:
+        if entry.is_symlink():
+            return True
+        is_junction = getattr(entry, "is_junction", None)
+        return bool(is_junction is not None and is_junction())
+    except OSError:
+        return True
+
+
+def stranded_temps(
+    folder: Path, *, before: float, recursive: bool = False, target: str | None = None
+) -> list[Path]:
+    """The temps a killed write left in ``folder``: files whose names have
+    :data:`TEMP_NAME`'s exact shape and that came to be before ``before``
+    (a ``time.time()``), sorted.
+
+    **It only finds; it removes nothing.** Which folders may be swept, and
+    whether the process a temp names may still be writing it, is the
+    owner's to say (``tracker.filer.sweep_stranded_temps``). ``recursive``
+    walks the folders below too, never through a link or a junction;
+    ``target`` narrows it to one file's temps (:func:`temp_owner`). A
+    folder that is not there, or cannot be listed, has none.
+    """
+    found: list[Path] = []
+    pending = [Path(folder)]
+    while pending:
+        here = pending.pop()
+        try:
+            with os.scandir(here) as listing:
+                entries = list(listing)
+        except OSError:
+            continue
+        for entry in entries:
+            if _a_link(entry):
+                continue
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    if recursive:
+                        pending.append(Path(entry.path))
+                    continue
+                if (entry.is_file(follow_symlinks=False)
+                        and temp_owner(entry.name, target=target) is not None
+                        and _born(entry.stat(follow_symlinks=False)) < before):
+                    found.append(Path(entry.path))
+            except OSError:
+                continue
+    return sorted(found)
 
 
 def write_json_atomically(path: Path, payload: object, *, indent: int = 2) -> None:
