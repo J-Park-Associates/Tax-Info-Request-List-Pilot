@@ -80,6 +80,8 @@ edits, not a record of what the machine decided.
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
+import json
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
@@ -381,6 +383,20 @@ NOT_AN_ENGAGEMENT = "{name}: no record here ({ledger}); it is not an engagement"
 #: may not take back a word nobody taught - both are the same refusal,
 #: because the record is what says a word was learned (decision 113).
 UNLEARN_REFUSED = "{identifier} was never taught {keyword!r}; nothing to unlearn"
+
+#: What a save of the list is told when the list has changed since the
+#: editor that made it was opened (decision 160, the audit's B-4). The
+#: editor sends the whole list and every detail, so a save made from a list
+#: another window has since saved would silently take that save back - a
+#: row it added removed, a date it set cleared, a spelling it taught
+#: dropped. Refused instead, and nothing is recorded; the editor stays open
+#: on a refusal, so what the person typed is still in front of them.
+LIST_MOVED = "the list changed since you opened it; reopen and make your change again"
+#: And a save that does not say which list it was made from at all: an
+#: editor from before decision 160, or a caller acting on no view. The
+#: freshness check exists to refuse exactly that, as decision 112's
+#: sequence numbers refuse a click that carries none.
+NO_LIST_HEAD = "the editor did not say which list it was opened on; close it and open it again"
 
 
 @dataclass(frozen=True, slots=True)
@@ -1342,6 +1358,7 @@ def save_rules(
     info: EngagementInfo,
     *,
     lock_held: bool = False,
+    head: str | None = None,
 ) -> RulesSaved:
     """Record a person's edit of the list and the details as one event.
 
@@ -1363,6 +1380,14 @@ def save_rules(
     is the difference between a rule that went wrong and a rule nobody can
     account for - and it is what lets the store be rebuilt from the
     journals alone.
+
+    ``head`` is the version of the list the person's editor was opened on
+    (:func:`list_head`, handed out by the app's ``state``), and a save made
+    from any other version is refused with :data:`LIST_MOVED` before
+    anything is compared (decision 160): compared under the lock, so no
+    other save can land between the check and the write. ``None`` is the
+    machine's own save - the rollover's retirement of a return - which acts
+    on the list as it finds it under the lock and carries no view.
     """
     from contextlib import nullcontext
 
@@ -1374,6 +1399,8 @@ def save_rules(
     now = info_to_json(info)
     with nullcontext() if lock_held else engagement_lock(folder):
         conn = _the_record(folder)
+        if head is not None:
+            refuse_a_stale_list(conn, folder, head)
         held = store.rules(conn, folder) or []
         first = not store.has_rules_event(conn, folder)
         # Diffed by the identifier's exact spelling, because that is how
@@ -1415,6 +1442,104 @@ def save_rules(
         info_fields=tuple(moved),
         recorded=True,
     )
+
+
+def _head_of(conn, folder: Path) -> str:
+    """The version of one engagement's list: a digest of the rules and the
+    details the store holds for it, in the one shape the store hands them
+    out (decision 160)."""
+    from tracker import store
+
+    held = {
+        "rules": store.rules(conn, folder) or [],
+        "info": info_to_json(store.engagement_info(conn, folder) or EngagementInfo()),
+    }
+    text = json.dumps(held, sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def list_head(engagement_dir: Path | str) -> str:
+    """The version of this engagement's request list and details, as the
+    record holds them now (decision 160).
+
+    What the app's ``state`` hands the editor and what a save hands back
+    (:func:`save_rules`' ``head``). **The list's own version, not the
+    journal's head** (decision 135's digest of the whole record): a scan,
+    a filing, a draft and every pass append to the journal while the
+    editor is open, and none of them changes what the editor would write
+    back. Refusing on the journal's head would refuse - and say "the list
+    changed" of - every save made while any pass ran, which is the reason
+    decision 112 keys a person's click on its own row's line rather than
+    on the head. So the digest is of exactly what a save writes: the rules
+    and the details. A keyword a filing taught is not in it - a save never
+    writes one, and unlearning one in the editor does not make the
+    editor's list stale; a spelling taught from the queue is, because it
+    is a detail a save does write (the people). A read: no lock.
+    """
+    folder = Path(engagement_dir)
+    return _head_of(_the_record(folder), folder)
+
+
+def refuse_a_stale_list(conn, engagement_dir: Path | str, head: object) -> None:
+    """Refuse a write made from any list but the one the record holds now
+    (decision 160): :data:`NO_LIST_HEAD` for a write that names none,
+    :data:`LIST_MOVED` for one that names another. Called under the
+    engagement lock, on the connection the write will use."""
+    if not isinstance(head, str) or not head.strip():
+        raise ManifestError(NO_LIST_HEAD)
+    if head.strip() != _head_of(conn, Path(engagement_dir)):
+        raise ManifestError(LIST_MOVED)
+
+
+def recorded_rules(engagement_dir: Path | str) -> list[dict]:
+    """The person's rules as the record holds them, each read as every
+    reader reads it (:func:`rule_as_read`) and without the keywords a
+    filing taught - what a row the editor sent without a column keeps
+    (decision 160)."""
+    from tracker import store
+
+    folder = Path(engagement_dir)
+    return [rule_as_read(row) for row in store.rules(_the_record(folder), folder) or []]
+
+
+def renamed_rules(engagement_dir: Path | str, old: str, new: str) -> list[dict]:
+    """The events that give a request another identifier in the record
+    (decision 160): one ``rules_changed`` - the old spelling removed, the
+    row carried whole under the new one, in its place in the list - and,
+    for each keyword a filing taught the request, the word taken back from
+    the old spelling and taught to the new, so the request keeps what it
+    learned.
+
+    Only the events: the caller records them, in the same write as the
+    intents that move the request's documents (``tracker.filer``'s
+    rename). The list is validated whole with the new identifier first, so
+    a name another row already holds without case, or one no folder can
+    have, is refused by the list's own sentence before anything is
+    written.
+    """
+    from tracker import ledger, store
+
+    folder = Path(engagement_dir)
+    conn = _the_record(folder)
+    items = [item_from_record(row) for row in store.rules(conn, folder) or []]
+    position = next((n for n, item in enumerate(items) if item.identifier == old), None)
+    if position is None:
+        raise ManifestError(RENAME_NOT_ON_THE_LIST.format(old=old))
+    items[position] = replace(items[position], identifier=new)
+    renamed = rule_to_json(validated(items)[position])
+    events = [ledger.new(ledger.RULES_CHANGED, **{
+        ledger.RULES_KEY: [renamed], ledger.REMOVED_KEY: [old], ledger.INFO_KEY: {},
+    })]
+    for keyword in store.learned_keywords(conn, folder).get(identifier_key(old), ()):
+        events.append(ledger.new(ledger.KEYWORD_UNLEARNED, **{
+            ledger.IDENTIFIER_KEY: old, ledger.KEYWORD_KEY: keyword}))
+        events.append(ledger.new(ledger.KEYWORD_LEARNED, **{
+            ledger.IDENTIFIER_KEY: new, ledger.KEYWORD_KEY: keyword}))
+    return events
+
+
+#: What a rename says of a request the list does not hold (decision 160).
+RENAME_NOT_ON_THE_LIST = "{old} is not a request on this list"
 
 
 @dataclass(frozen=True, slots=True)

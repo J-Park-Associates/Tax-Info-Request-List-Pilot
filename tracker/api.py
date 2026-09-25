@@ -34,6 +34,8 @@ Commands:
   unfile    send one filed document back to Needs Review (a person's call)
   restore   put one moved working copy back where the record put it
   unlearn   take back a keyword a filing taught one request, and re-scan
+  rename    give a request another identifier and move its filed documents
+            with it, as one recorded act (JSON on stdin)
   settings / set-root      where the clients live (the settings file beside the app)
   install-schedule         register the daily job for that same folder
   unlock    clear a stale engagement lock (a fresh one is refused)
@@ -62,6 +64,7 @@ from tracker.filer import (
     Spelling,
     assign_review_file,
     dismiss_review_file,
+    documents_by_request,
     ensure,
     find_parked,
     hand_over,
@@ -69,6 +72,7 @@ from tracker.filer import (
     read_index,
     refresh_household_readme,
     refuse_a_path_past_the_limit,
+    rename_request,
     restore_working_copy,
     room_for,
     unfile_document,
@@ -113,6 +117,7 @@ from tracker.manifest import (
     MIN_EXPECTED_COUNT,
     MIN_SIZE_KB_FLOOR,
     NO_DATE_CHECK,
+    NO_LIST_HEAD,
     NOT_APPLICABLE_LABEL,
     NOT_ASKED_LABEL,
     OVERRIDE_REASON_OTHER,
@@ -129,8 +134,11 @@ from tracker.manifest import (
     has_a_document,
     is_idle_unasked,
     item_from_fields,
+    item_from_record,
+    list_head,
     load_engagement_info,
     load_manifest,
+    recorded_rules,
     rule_as_read,
     save_rules,
     status_label,
@@ -157,6 +165,7 @@ from tracker.records import (
     PERSON_KINDS,
     RETURN_NAME_HELP,
     RETURN_NAME_LABEL,
+    RULE_FIELDS,
     RULE_FLAG_FIELDS,
     THE_RECORD,
     YES,
@@ -452,6 +461,32 @@ LEARNED_NOTE = "taught by a filing: {keywords}"
 #: tense and says the request was re-scanned, because its rules just moved.
 UNLEARN_LABEL = "Unlearn"
 UNLEARNED_NOTE = "{keyword} unlearned from {identifier}; the request was re-scanned"
+#: What a save is told of a row carrying a key that is no column this
+#: version knows (decision 160): a newer window's row, or a mistake. Refused
+#: rather than dropped, because a column dropped on the way in is exactly
+#: the silent loss a save must not make.
+UNKNOWN_COLUMN = "Row {n}: '{key}' is not a column this version knows; close the app and open it again"
+#: What a save is told when it would take a request that holds filed
+#: documents off the list - removed, or respelt, which to a save is the same
+#: (decision 160, the audit's D-7). The documents would be orphaned under a
+#: folder no request names, and the letter and the README would ask the
+#: client again. The rename carries them; unfiling them frees the request.
+HOLDS_DOCUMENTS = ("{identifier} holds {n} filed document(s), so a save cannot take it off the list "
+                   "or give it another identifier: use Rename below the list, which moves its "
+                   "documents with it, or unfile its documents first")
+#: The editor's rename (decision 160): its fold's title, the sentence under
+#: it, the two boxes' labels, its button, and what it says once done. It
+#: lands at once, on its own - not part of Save - so the rows typed and not
+#: saved stay in front of the person.
+RENAME_TITLE = "Rename a request"
+RENAME_HINT = ("Gives a request another identifier and moves its filed documents with it, at once. "
+               "Changing an identifier in the list and saving is refused while the request holds "
+               "documents; a change of case alone is saved in the list.")
+RENAME_FROM_LABEL = "Request"
+RENAME_TO_LABEL = "New identifier"
+RENAME_LABEL = "Rename"
+RENAMED_NOTE = "{old} renamed {new}; {moved} working copy(ies) moved with it and the request was re-scanned"
+RENAME_LEFT_NOTE = "left in the old folder because no row names them: {left}"
 #: What the returning-client page says of last year's set-aside rows, in
 #: one line beside the carried counts.
 NOT_APPLICABLE_CARRIED = "{n} request(s) not applicable last year - review them in the editor"
@@ -924,6 +959,11 @@ def _vocab() -> dict:
             # own button beside the word and its own sentence afterwards;
             # the renderer types neither (decision 113).
             "unlearn_label": UNLEARN_LABEL, "unlearned_note": UNLEARNED_NOTE,
+            # The rename (decision 160), its own act beside the list, as
+            # unlearning is; every word here, none in the renderer.
+            "rename_title": RENAME_TITLE, "rename_hint": RENAME_HINT,
+            "rename_from": RENAME_FROM_LABEL, "rename_to": RENAME_TO_LABEL,
+            "rename": RENAME_LABEL, "renamed_note": RENAMED_NOTE, "rename_left_note": RENAME_LEFT_NOTE,
             "engagement_fields": [
                 {"key": f, "label": ENGAGEMENT_LABELS[f], "help": ENGAGEMENT_HELP.get(f, ""),
                  "editable": f in ENGAGEMENT_EDITABLE}
@@ -1477,6 +1517,10 @@ def _state(engagement: Path) -> dict:
         # opens on, and what it shows after a save - each in the form
         # ``edit`` reads back as the same rule (``_rule_for_the_editor``).
         "rules": [_rule_for_the_editor(row) for row in rules],
+        # The version of the list and the details the editor opens on
+        # (decision 160): a save hands it back, and one made from any other
+        # version is refused rather than taking another window's save back.
+        "list_head": list_head(engagement),
         "learned": {row["identifier"]: list(taught[identifier_key(row["identifier"])])
                     for row in rules if taught.get(identifier_key(row["identifier"]))},
         # A request that cannot receive is a warning; a return merely short
@@ -1741,6 +1785,19 @@ def _cmd_edit(argv: list[str]) -> dict:
     an absent one keeps its recorded value, and one present and blank
     clears it.
 
+    **The rows the same way** (decision 160, the audit's E2). A key a row
+    leaves out keeps what the record holds for the row of that identifier
+    (:func:`_as_recorded`), so an older window or build that knows fewer
+    columns does not reset the ones it does not know - a short name
+    blanked, a request set not asked put back in the client's letter. A key
+    that is no column this version knows is refused (:data:`UNKNOWN_COLUMN`).
+    ``head`` is the version of the list the editor was opened on
+    (``state``'s ``list_head``); a save made from any other version, or
+    naming none, is refused under the lock before anything is compared
+    (``manifest.save_rules``). A request that holds filed documents may not
+    leave the list - removed, or respelt other than by case - and the save
+    says so (:data:`HOLDS_DOCUMENTS`); the ``rename`` command carries them.
+
     A refusal is the usual error sentence, and nothing is recorded. The
     engagement lock is taken inside the save, so an edit of a folder a
     pass is holding waits on the lock the way a filing does.
@@ -1750,16 +1807,30 @@ def _cmd_edit(argv: list[str]) -> dict:
     rows = spec.get("items")
     if not isinstance(rows, list):
         raise ManifestError("The editor sent no rows")
-    items = [item_from_fields(row if isinstance(row, dict) else {}, where=f"Row {n}")
-             for n, row in enumerate(rows, start=1)]
+    head = spec.get("head")
+    if not isinstance(head, str) or not head.strip():
+        raise ManifestError(NO_LIST_HEAD)
+    recorded = recorded_rules(engagement)
+    exact = {str(rule["identifier"]): rule for rule in recorded}
+    folded = {identifier_key(str(rule["identifier"])): rule for rule in recorded}
+    items = []
+    for n, row in enumerate(rows, start=1):
+        row = row if isinstance(row, dict) else {}
+        for key in row:
+            if key not in _ROW_KEYS:
+                raise ManifestError(UNKNOWN_COLUMN.format(n=n, key=key))
+        identifier = str(row.get("identifier") or "").strip()
+        held = exact.get(identifier) or folded.get(identifier_key(identifier))
+        items.append(item_from_fields(_as_recorded(row, held), where=f"Row {n}"))
     _refuse_a_list_nobody_is_asked_for(items)
     details = spec.get("engagement") or {}
     for key in details:
         if key not in ENGAGEMENT_EDITABLE:
             raise ManifestError(f"'{key}' is not edited here")
     info = _info_from_spec(details, carry=load_engagement_info(engagement), blank_clears=True)
+    _refuse_taking_away_documents(engagement, recorded, items)
     _refuse_a_changed_row_past_the_limit(engagement, items)
-    saved = save_rules(engagement, items, info)
+    saved = save_rules(engagement, items, info, head=head)
     _refresh_readmes(engagement)
     state = _state(engagement)
     return {
@@ -1768,6 +1839,57 @@ def _cmd_edit(argv: list[str]) -> dict:
         "warnings": state["warnings"],
         "state": state,
     }
+
+
+#: The keys a row the editor sends may carry (decision 160): the columns of
+#: ``records.RULE_FIELDS`` - the two the person never types included,
+#: because ``state`` hands them out and a caller sends the rows back - and
+#: ``extensions``, the name the wizard has always sent the file types by.
+_ROW_KEYS = frozenset(RULE_FIELDS) | {"extensions"}
+
+
+def _as_recorded(row: dict, recorded: dict | None) -> dict:
+    """``row`` with every column it leaves out taken from ``recorded``, the
+    record's row of the same identifier (decision 160): absent means
+    unchanged, as it does for the details. A row the record does not hold
+    is a new request and takes the defaults, as before.
+
+    ``recorded`` is in the form ``state`` hands a rule out
+    (:func:`_rule_for_the_editor`), which :func:`item_from_fields` reads
+    back as the same rule. Three keys are not columns a person keeps on
+    their own: ``row`` is the position, which the save numbers from the
+    list's order; the file types sent as ``extensions`` are the file types;
+    and ``date_pattern_derived`` is what the save decided of the date
+    pattern, so it is kept only with the pattern it describes - when the
+    row leaves the pattern out too, or sends back exactly the pattern the
+    record holds. A pattern the person typed is theirs, derived or not.
+    """
+    if recorded is None:
+        return row
+    filled = dict(row)
+    for key, value in _rule_for_the_editor(recorded).items():
+        if key in row or key == "row":
+            continue
+        if key == "allowed_extensions" and "extensions" in row:
+            continue
+        if key == "date_pattern_derived" and "date_pattern" in row and \
+                str(row["date_pattern"] or "").strip() != str(recorded.get("date_pattern") or "").strip():
+            continue
+        filled[key] = value
+    return filled
+
+
+def _refuse_taking_away_documents(engagement: Path, recorded: list[dict], items: list) -> None:
+    """Refuse a save that would take a request holding filed documents off
+    the list (decision 160, the audit's D-7): the first such request, by
+    name and count (:data:`HOLDS_DOCUMENTS`). Compared without case, so a
+    respelling by case alone keeps the request and is saved."""
+    kept = {identifier_key(item.identifier) for item in items}
+    held = documents_by_request(engagement, [item_from_record(rule) for rule in recorded])
+    for rule in recorded:
+        key = identifier_key(str(rule["identifier"]))
+        if key not in kept and held.get(key):
+            raise ManifestError(HOLDS_DOCUMENTS.format(identifier=rule["identifier"], n=held[key]))
 
 
 #: What a row is compared on to say the editor changed it (decision 131):
@@ -1838,6 +1960,36 @@ def _cmd_unlearn(argv: list[str]) -> dict:
             "keyword": taken.keyword,
             "scan_note": scan_note,
         },
+        "state": _state(engagement),
+    }
+
+
+def _cmd_rename(argv: list[str]) -> dict:
+    """Give a request another identifier and move its filed documents with
+    it (decision 160).
+
+    JSON spec on stdin: {"from": "A01", "to": "A1", "head": "..."} - the
+    request as the list spells it, the new identifier, and the version of
+    the list the editor was opened on (``state``'s ``list_head``). One act
+    through ``filer.rename_request``: the list renamed and each row's
+    intent in one write, then the moves, then the rows; refused - nothing
+    written, nothing moved - on a stale list, a change of case alone, a
+    name already on the list, or a copy that is not where the record put
+    it. Then the re-scan, as ``unlearn`` does it, and the client README.
+
+    The rename lands on its own, not as part of a save: the reply carries
+    the list's new version beside the fresh state, so the editor it came
+    from keeps the rows the person typed and not saved, and saves them
+    against the version this rename left.
+    """
+    engagement = _engagement_dir(argv)
+    spec = json.loads(sys.stdin.read() or "{}")
+    done = rename_request(engagement, str(spec.get("from") or ""), str(spec.get("to") or ""),
+                          head=spec.get("head"))
+    _refresh_readmes(engagement)
+    return {
+        "renamed": {"old": done.old, "new": done.new, "moved": done.moved, "rows": done.rows,
+                    "left": list(done.left), "head": done.head, "scan_note": done.scan_note},
         "state": _state(engagement),
     }
 
@@ -3080,6 +3232,7 @@ COMMANDS = {
     "edit-household": _cmd_edit_household,
     "propose-spellings": _cmd_propose_spellings,
     "unlearn": _cmd_unlearn,
+    "rename": _cmd_rename,
     "unlock": _cmd_unlock,
     "settings": _cmd_settings,
     "set-root": _cmd_set_root,

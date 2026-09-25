@@ -82,6 +82,18 @@ def demo_root(short_root, tmp_path, monkeypatch):
     return root
 
 
+def _head_now(argv) -> str:
+    """The version of the list ``state`` would hand the editor now (decision
+    160), for an ``edit`` or a ``rename`` that does not name its own - blank
+    where the command names no engagement, which it then refuses anyway."""
+    from tracker.manifest import list_head
+
+    try:
+        return list_head(argv[list(argv).index(api.ENGAGEMENT_FLAG) + 1])
+    except (ValueError, IndexError, ManifestError):
+        return ""
+
+
 def run(capsys, *argv, stdin=None):
     """Run one command the way main.js does: argv in, one JSON object out.
 
@@ -90,12 +102,16 @@ def run(capsys, *argv, stdin=None):
     of what is claimed here is about the API rather than about households.
     The same for the people it is for: since decision 128 a return is
     refused without one, and most of what is claimed here is not about the
-    name tier.
+    name tier. And an ``edit`` or a ``rename`` carries the version of the
+    list it was made from, as the editor's does (decision 160): the current
+    one, unless the claim is about a stale one and names it.
     """
     if stdin is not None and argv and argv[0] == "create" and "household" not in stdin:
         stdin = {"household": HOUSEHOLD, **stdin}
     if stdin is not None and argv and argv[0] == "create" and "people" not in stdin:
         stdin = {"people": PEOPLE, **stdin}
+    if stdin is not None and argv and argv[0] in ("edit", "rename") and "head" not in stdin:
+        stdin = {**stdin, "head": _head_now(argv)}
     if stdin is not None:
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr("sys.stdin", io.StringIO(json.dumps(stdin)))
@@ -4042,3 +4058,226 @@ def test_the_short_title_round_trips_through_the_editor_and_the_rollover(capsys,
     assert rolled["D01"].short_title == "Gifts"          # typed, carried
     assert rolled["E01"].short_title == ""               # renamed by a person: derives its own
     assert rolled["X01"].short_title == ""
+
+
+# ------------------------------------------------- decision 160: a save keeps ----
+
+
+def _rows_of(state) -> list[dict]:
+    """The rows the editor would send back for ``state``, untouched."""
+    return [dict(rule) for rule in state["rules"]]
+
+
+def _waiting_in(readme: str) -> str:
+    """The README's *REQUESTED, NOT YET RECEIVED* section alone."""
+    from tracker.scaffold import README_HEADING, RECEIVED_HEADING
+
+    if README_HEADING not in readme:
+        return ""
+    return readme.split(README_HEADING, 1)[1].split(RECEIVED_HEADING, 1)[0]
+
+
+def test_a_save_from_a_stale_list_is_refused(capsys, demo_root):
+    """Two windows open the editor; the second saves; the first's save,
+    made from the list as it was, is refused and records nothing (decision
+    160, the audit's B-4). It used to remove the row the second added,
+    clear the due date and drop the spelling it taught. A save with no
+    version is refused too; a pass run while the editor is open is not a
+    change of the list and refuses nothing."""
+    from tracker.manifest import LIST_MOVED, NO_LIST_HEAD
+
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [
+        {"identifier": "A01", "document": "W-2", "required_keywords": "W-2"},
+        {"identifier": "B01", "document": "1099-INT", "required_keywords": "1099-INT"},
+    ]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = where(demo_root, "Smith")
+    first = payload_of_state(capsys, engagement)
+    second = payload_of_state(capsys, engagement)
+    assert first["list_head"] == second["list_head"] != ""
+
+    people = [{**person, "spellings": [*person["spellings"], "T CLIENT"]}
+              for person in second["engagement"]["people"]]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "items": _rows_of(second) + [{"identifier": "F02", "document": "K-1 Example Partners",
+                                      "required_keywords": "Schedule K-1"}],
+        "engagement": {"due": "2026-03-15", "people": people}, "head": second["list_head"]})
+    assert code == 0 and payload["saved"]["changed"] == ["F02"], payload
+
+    before = ledger.path_for(engagement).read_bytes()
+    stale = _rows_of(first)
+    stale[1]["any_keywords"] = ["interest income"]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "items": stale, "engagement": {"due": "", "people": first["engagement"]["people"]},
+        "head": first["list_head"]})
+    assert code == 1 and payload["error"] == LIST_MOVED
+    assert ledger.path_for(engagement).read_bytes() == before
+    now = payload_of_state(capsys, engagement)
+    assert [rule["identifier"] for rule in now["rules"]] == ["A01", "B01", "F02"]
+    assert now["engagement"]["due"] == "2026-03-15"
+    assert "T CLIENT" in now["engagement"]["people"][0]["spellings"]
+
+    for head in ("", None, 7):
+        code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                            stdin={"items": _rows_of(now), "engagement": {}, "head": head})
+        assert code == 1 and payload["error"] == NO_LIST_HEAD
+    assert ledger.path_for(engagement).read_bytes() == before
+
+    # A pass moves the record's head, not the list's: the editor opened
+    # before it saves after it.
+    opened = payload_of_state(capsys, engagement)
+    journal = ledger.head(engagement)
+    assert run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))[0] == 0
+    assert ledger.head(engagement) != journal
+    assert payload_of_state(capsys, engagement)["list_head"] == opened["list_head"]
+    edited = _rows_of(opened)
+    edited[0]["any_keywords"] = ["wages"]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "items": edited, "engagement": {}, "head": opened["list_head"]})
+    assert code == 0 and payload["saved"]["changed"] == ["A01"], payload
+    assert payload["state"]["list_head"] != opened["list_head"]
+
+
+def _filed_documents(capsys, demo_root, tmp_path):
+    """The sample return with both current-year W-2s filed under A01 and the
+    1098 under C01, by a real pass."""
+    from tests.samples import YEAR
+
+    engagement = sample_engagement(capsys, demo_root, tmp_path, f"W-2 John Smith {YEAR}.pdf",
+                                   f"W-2 Jane Smith {YEAR}.pdf", "Form 1098 Mortgage Interest.pdf")
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    filed = [e for e in payload["state"]["index"] if e["decision"] == FILED]
+    assert sorted(e["identifier"] for e in filed) == ["A01", "A01", "C01"], filed
+    return engagement, payload["state"]
+
+
+def test_respelling_an_identifier_with_documents_is_refused_unless_renamed_with_them(
+        capsys, demo_root, tmp_path):
+    """A01 holds two filed W-2s. Saving the list with A01 spelled A1 - or
+    without A01 at all - used to save as a removal and an addition with no
+    warning: the W-2s became "Other document", A1 was missing, and the
+    letter and the README asked the client again (decision 160, the audit's
+    D-7). The save is refused by name and count, and nothing is recorded;
+    the rename action is the way, and it carries the documents."""
+    from tracker.filer import OTHER_DOCUMENT
+
+    engagement, state = _filed_documents(capsys, demo_root, tmp_path)
+    label = next(i.label for i in load_manifest(engagement) if i.identifier == "A01")
+    before = ledger.path_for(engagement).read_bytes()
+    respelt = [{**rule, "identifier": "A1"} if rule["identifier"] == "A01" else rule
+               for rule in _rows_of(state)]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": respelt, "engagement": {}})
+    assert code == 1 and payload["error"] == api.HOLDS_DOCUMENTS.format(identifier="A01", n=2)
+    dropped = [rule for rule in _rows_of(state) if rule["identifier"] != "A01"]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": dropped, "engagement": {}})
+    assert code == 1 and payload["error"] == api.HOLDS_DOCUMENTS.format(identifier="A01", n=2)
+    assert ledger.path_for(engagement).read_bytes() == before
+    # A row that holds nothing is still removed by a save, as it always was.
+    empty = [rule for rule in _rows_of(state) if rule["identifier"] != "B01"]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": empty, "engagement": {}})
+    assert code == 0 and payload["saved"]["removed"] == ["B01"], payload
+
+    code, payload = run(capsys, "rename", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"from": "A01", "to": "A1"})
+    assert code == 0, payload
+    assert (payload["renamed"]["old"], payload["renamed"]["new"], payload["renamed"]["moved"]) == \
+        ("A01", "A1", 2)
+    items = {i["identifier"]: i for i in payload["state"]["items"]}
+    assert "A01" not in items and items["A1"]["status"] == Status.RECEIVED
+    assert sorted(e["identifier"] for e in payload["state"]["index"] if e["decision"] == FILED) == \
+        ["A1", "A1", "C01"]
+    readme = client_readme(engagement)
+    renamed_label = next(i.label for i in load_manifest(engagement) if i.identifier == "A1")
+    assert renamed_label != label and renamed_label not in _waiting_in(readme)
+    assert f"  {renamed_label}  Received" in readme and OTHER_DOCUMENT not in readme
+
+
+def test_a_rename_carries_its_documents(capsys, demo_root, tmp_path):
+    """The rename moves the request's folder and every working copy in it
+    to the new identifier, rewrites each row that names them, and records
+    it as one act: the list renamed and each row's intent in one write,
+    then the moves, then the rows (decision 119's intents). A stale list,
+    a case-only change, a name already taken and a request that is not on
+    the list are refused, and nothing moves."""
+    from tracker.manifest import LIST_MOVED
+
+    engagement, state = _filed_documents(capsys, demo_root, tmp_path)
+    prepared = engagement / PREPARED_DIR_NAME
+    old_copies = sorted(e["prepared_location"] for e in state["index"]
+                        if e["decision"] == FILED and e["identifier"] == "A01")
+    assert all((engagement / location).is_file() for location in old_copies)
+    assert all("/A01 - " in location for location in old_copies)
+    before = ledger.path_for(engagement).read_bytes()
+
+    for spec, said in (({"from": "A01", "to": "a01"}, "differ only in case"),
+                       ({"from": "A01", "to": "c01"}, "C01"),
+                       ({"from": "Z9", "to": "A1"}, "Z9"),
+                       ({"from": "A01", "to": "A1", "head": "stale"}, LIST_MOVED)):
+        code, payload = run(capsys, "rename", api.ENGAGEMENT_FLAG, str(engagement), stdin=spec)
+        assert code == 1 and said in payload["error"], (spec, payload)
+    assert ledger.path_for(engagement).read_bytes() == before
+    assert all((engagement / location).is_file() for location in old_copies)
+
+    code, payload = run(capsys, "rename", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"from": "A01", "to": "A1"})
+    assert code == 0, payload
+    assert payload["renamed"]["head"] == payload["state"]["list_head"]
+    moved = sorted(e["prepared_location"] for e in payload["state"]["index"]
+                   if e["decision"] == FILED and e["identifier"] == "A1")
+    assert moved == sorted(location.replace("/A01 - ", "/A1 - ") for location in old_copies)
+    for location in moved:
+        assert (engagement / location).is_file()
+        assert Path(location).name.startswith("A1 - ")
+    assert not any((engagement / location).exists() for location in old_copies)
+    assert not [child for child in prepared.iterdir() if child.name.startswith("A01")]
+    # The record says it once: the list renamed and each row's intent in
+    # one write, each row closed by the person's rename, no intent left
+    # open - and the store agrees with the journal (the suite's own check
+    # runs after every test).
+    events = ledger.read_events(engagement)
+    added = events[len(before.splitlines()):]
+    names = [e[ledger.EVENT_KEY] for e in added]
+    assert names[0] == ledger.RULES_CHANGED
+    assert added[0][ledger.REMOVED_KEY] == ["A01"]
+    assert [row["identifier"] for row in added[0][ledger.RULES_KEY]] == ["A1"]
+    intents = [e for e in added if e[ledger.EVENT_KEY] == ledger.MOVING]
+    closed = [e for e in added if e[ledger.EVENT_KEY] == ledger.RENAMED_BY_PERSON]
+    assert len(intents) == len(closed) >= 2
+    assert {e[ledger.KEY_KEY] for e in intents} == {e[ledger.KEY_KEY] for e in closed}
+    assert not store.open_intents(store.connect(), engagement)
+
+
+def test_a_case_only_change_reads_the_same_in_the_readme_and_the_letter(capsys, demo_root, tmp_path):
+    """C01 holds the filed 1098. Respelling it c01 is the same request
+    everywhere (decision 160, the audit's D-8): the save needs no rename,
+    the status is Received, the letter does not ask for it, and the client
+    README lists the 1098 as received under its own label - it used to say
+    "not received" beside an "Other document"."""
+    from tracker import reminder
+    from tracker.filer import OTHER_DOCUMENT, received_for
+
+    engagement, state = _filed_documents(capsys, demo_root, tmp_path)
+    respelt = [{**rule, "identifier": "c01"} if rule["identifier"] == "C01" else rule
+               for rule in _rows_of(state)]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": respelt, "engagement": {}})
+    assert code == 0, payload
+    items = {i["identifier"]: i for i in payload["state"]["items"]}
+    assert items["c01"]["status"] == Status.RECEIVED
+    label = next(i.label for i in load_manifest(engagement) if i.identifier == "c01")
+
+    received = received_for([engagement])
+    assert label in {line.label for line in received.lines}
+    assert OTHER_DOCUMENT not in {line.label for line in received.lines}
+    assert "c01" in {line.identifier for line in received.lines}
+
+    readme = client_readme(engagement)
+    assert label not in _waiting_in(readme)
+    assert f"  {label}  Received" in readme and OTHER_DOCUMENT not in readme
+
+    letter = reminder.draft_reminder(engagement)
+    assert "c01" not in {line.item.identifier.lower() for line in letter.lines}

@@ -215,9 +215,12 @@ from tracker.manifest import (
     RequestItem,
     is_reserved_name,
     label_for,
+    list_head,
     load_engagement_info,
     load_manifest,
     override_label,
+    refuse_a_stale_list,
+    renamed_rules,
 )
 from tracker.names import (
     NAME_CONFIRMED,
@@ -245,6 +248,7 @@ from tracker.records import (
     entry_from_json,
     entry_to_json,
     format_evidence,
+    identifier_key,
     is_a_spelling,
     ledger_key,
     name_words,
@@ -259,6 +263,7 @@ from tracker.scaffold import (
     REVIEW_DIR_NAME,
     assign_folders,
     folder_name_for,
+    matches_identifier,
     readme_returns,
     sanitize_component,
     write_readme,
@@ -1080,15 +1085,21 @@ def received_for(returns: Sequence) -> Received:
             continue
         if items is None:
             items = load_manifest(folder)
-        labels = {item.identifier: item.label for item in items}
+        # Without case, as the status and the letter join a row to its
+        # request (``records.identifier_key``), and under the list's own
+        # spelling: a request respelt C01 -> c01 is the same request here
+        # too, and the README no longer says "not received" of what the
+        # letter counts as received (decision 160, the audit's D-8).
+        requests = {identifier_key(item.identifier): item for item in items}
         for entry in entries:
             day = _day_of(entry.received)
             if entry.decision in _RECEIVED_DECISIONS:
-                lines.extend(ReceivedLine(return_path=folder,
-                                          label=labels.get(identifier, OTHER_DOCUMENT),
-                                          day=day,
-                                          identifier=identifier if identifier in labels else "")
-                             for identifier in _requests_of(entry, items))
+                for identifier in _requests_of(entry, items):
+                    item = requests.get(identifier_key(identifier))
+                    lines.append(ReceivedLine(return_path=folder,
+                                              label=item.label if item else OTHER_DOCUMENT,
+                                              day=day,
+                                              identifier=item.identifier if item else ""))
             elif entry.decision == NEEDS_REVIEW:
                 waiting[day] = waiting.get(day, 0) + 1
     return Received(
@@ -5623,6 +5634,252 @@ def restore_working_copy(
         parked_as=prepared_location(review_dir, parked.name) if parked is not None else "",
         scan_note=_rescan(engagement_dir, today),
     )
+
+
+# ------------------------------------------------------------------ rename ----
+
+
+def documents_by_request(engagement_dir: Path | str,
+                         items: Sequence[RequestItem] | None = None) -> dict[str, int]:
+    """How many filed documents each request holds, keyed without case
+    (``records.identifier_key``): every Filed and File Moved row, once per
+    request it satisfied - its own, and one per copy decision 94 filed
+    under another - read as the client README reads them
+    (:func:`_requests_of`).
+
+    What a save of the list asks before it takes a request off the list or
+    gives it another identifier (decision 160, the audit's D-7): the
+    index, not the status, because the index is the record of what was
+    filed and a status is only as fresh as the last scan.
+    """
+    folder = Path(engagement_dir)
+    items = load_manifest(folder) if items is None else list(items)
+    held: dict[str, int] = {}
+    for entry in read_index(folder):
+        if entry.decision in _RECEIVED_DECISIONS:
+            for identifier in _requests_of(entry, items):
+                if identifier:
+                    key = identifier_key(identifier)
+                    held[key] = held.get(key, 0) + 1
+    return held
+
+
+RENAME_CASE_ONLY = ("{old} and {new} differ only in case; change it in the list and save - "
+                    "a change of case needs no rename")
+RENAME_NOTHING = "Pick the request to rename and type its new identifier"
+RENAME_FOLDER_TAKEN = "{folder} is already there; move it or rename it first"
+RENAME_COPY_TAKEN = "{location} is already there; move it or rename it first"
+RENAME_COPY_MOVED = ("{name} is not where the record put it; put it back or send it to review "
+                     "before renaming {old}")
+RENAME_COPY_MISSING = ("{location} is not there, so it cannot move with {old}; the next pass says "
+                       "where it went - rename after it")
+RENAME_COPY_CHANGED = ("{location} no longer holds the file the record filed there; look at it "
+                       "before renaming {old}")
+RENAME_COPY_SYNCING = "{location} is still syncing; try again when it is here"
+RENAME_PATH_TOO_LONG = ("{location} would be {length} characters, past what Windows opens "
+                        "({limit}); choose a shorter identifier")
+#: What a rename says when the record took it and a file would not move
+#: yet: the rename is the record's from its first write (decision 119's
+#: intent), so it is finished forward - by the next pass - never undone.
+RENAME_UNFINISHED = ("{old} is renamed {new} on the record, but {name} could not be moved yet "
+                     "({problem}); the next pass finishes it (or press Run now)")
+
+
+@dataclass(frozen=True, slots=True)
+class RenameResult:
+    """What one rename did: the two identifiers, how many working copies
+    moved, how many index rows now name the new identifier, the files
+    left behind in the old folder because no row names them, the list's
+    new version (``manifest.list_head``) and the re-scan's note."""
+
+    old: str
+    new: str
+    moved: int
+    rows: int
+    left: tuple[str, ...]
+    head: str
+    scan_note: str
+
+
+def _renamed(name: str, old: str, new: str) -> str:
+    """``name`` with the request's identifier at its front given as ``new``,
+    where it begins with ``old`` at a word boundary (the one shape a
+    request folder and a working copy are made in); otherwise as it is."""
+    if not matches_identifier(name, old):
+        return name
+    rest = name.strip()[len(old.strip()):]
+    return sanitize_component(new) + rest
+
+
+def rename_request(
+    engagement_dir: Path | str,
+    old: str,
+    new: str,
+    *,
+    head: object,
+    today: dt.date | None = None,
+) -> RenameResult:
+    """Give a request another identifier, and move its documents with it.
+
+    A save of the list may not take a request that holds documents off the
+    list, and a respelt identifier is exactly that to a save: the old one
+    removed, a new one added, the documents orphaned under a folder no
+    request names and the letter and the README asking the client again
+    (decision 160, the audit's D-7). This is the other way, and the only
+    one: the request's working folder (the folders ``assign_folders``
+    gives it) takes the new identifier at its front, every working copy in
+    it moves into the renamed folder under a name that does too, and every
+    index row that names the request, or a copy in its folder, names the
+    new one.
+
+    **One act, finished forward** (decision 119). Checked first, under the
+    lock: no move open, the list the version the person's editor was
+    opened on (``head``, decision 160's freshness check), the new
+    identifier legal and free (the list's own validation), every copy that
+    is to move there and holding the row's bytes, no destination taken and
+    none past what Windows opens. Then one write carries the list renamed
+    - with the keywords a filing taught it - and one intent per row that
+    changes, so a run killed after it is finished by the next pass from
+    the record, as any person's decision is; then the moves; then each
+    row, recorded as :data:`tracker.ledger.RENAMED_BY_PERSON`, which closes
+    its intent. A move that fails after the write is not undone: the
+    record has decided, and the refusal says the next pass finishes it.
+
+    A change of case only is refused: it is the same request everywhere
+    (``records.identifier_key``), and the editor saves it. A row whose copy
+    is not where the record put it (File Moved) is refused by name, as
+    every other action on such a copy is. The old folder is removed when
+    the moves have emptied it; a file in it that no row names is left
+    where it is and named in the result, never moved and never deleted.
+    """
+    engagement_dir = Path(engagement_dir)
+    today = today or dt.date.today()
+    old = str(old or "").strip()
+    new = str(new or "").strip()
+    if not old or not new:
+        raise FilingError(RENAME_NOTHING)
+    if identifier_key(old) == identifier_key(new):
+        raise FilingError(RENAME_CASE_ONLY.format(old=old, new=new))
+    prepared = engagement_dir / PREPARED_DIR_NAME
+
+    with engagement_lock(engagement_dir):
+        ensure(engagement_dir)
+        _refuse_if_a_move_is_open(engagement_dir)
+        conn = store.connect()
+        refuse_a_stale_list(conn, engagement_dir, head)
+        list_events = renamed_rules(engagement_dir, old, new)
+        items = load_manifest(engagement_dir)
+        entries = read_index(engagement_dir)
+        before = {ledger_key(e): entry_to_json(e) for e in entries}
+
+        # The request's folders, and where each goes.
+        folders = assign_folders(prepared, [item.identifier for item in items]).get(old) or []
+        folder_to: dict[str, Path] = {}
+        for folder in folders:
+            target = prepared / _renamed(folder.name, old, new)
+            if target.exists():
+                raise FilingError(RENAME_FOLDER_TAKEN.format(
+                    folder=location_of(engagement_dir, target)))
+            folder_to[location_of(engagement_dir, folder)] = target
+
+        def moved_to_new(location: str) -> str | None:
+            parent, _, name = location.rpartition("/")
+            for was, target in folder_to.items():
+                if parent.casefold() == was.casefold():
+                    return location_of(engagement_dir, target / _renamed(name, old, new))
+            return None
+
+        renamed_entries: list[IndexEntry] = []
+        ops_for: dict[str, list[dict]] = {}
+        destinations: set[str] = set()
+        for position, entry in enumerate(entries):
+            locations = entry.filed_locations
+            mapped = {location: moved_to_new(location) for location in locations}
+            mapped = {was: now for was, now in mapped.items() if now}
+            names_it = bool(entry.identifier) and identifier_key(entry.identifier) == identifier_key(old)
+            candidates = [new if identifier_key(one) == identifier_key(old) else one
+                          for one in entry.candidate_list]
+            evidence = entry.evidence
+            record = entry.evidence_record
+            if any(identifier_key(one) == identifier_key(old) for one in record) \
+                    and format_evidence(record) == entry.evidence:
+                evidence = format_evidence({new if identifier_key(one) == identifier_key(old) else one: found
+                                            for one, found in record.items()})
+            if not (mapped or names_it or candidates != entry.candidate_list or evidence != entry.evidence):
+                continue
+            if mapped and entry.decision == FILE_MOVED:
+                raise FilingError(RENAME_COPY_MOVED.format(name=entry.original_name, old=old))
+            ops = []
+            for was, now in mapped.items():
+                source, target = locate(engagement_dir, was), locate(engagement_dir, now)
+                if not source.is_file():
+                    raise FilingError(RENAME_COPY_MISSING.format(location=was, old=old))
+                if is_cloud_placeholder(source):
+                    raise FilingError(RENAME_COPY_SYNCING.format(location=was))
+                if entry.digest and sha256_of(source) != entry.digest:
+                    raise FilingError(RENAME_COPY_CHANGED.format(location=was, old=old))
+                if target.exists() or now.casefold() in destinations:
+                    raise FilingError(RENAME_COPY_TAKEN.format(location=now))
+                if len(str(target)) > MAX_PATH_LENGTH:
+                    raise FilingError(RENAME_PATH_TOO_LONG.format(
+                        location=now, length=len(str(target)), limit=MAX_PATH_LENGTH))
+                destinations.add(now.casefold())
+                ops.append(_op(engagement_dir, ledger.OP_MOVE, source, target, entry.digest))
+            now_locations = [mapped.get(location, location) for location in locations]
+            renamed = replace(
+                entry,
+                identifier=new if names_it else entry.identifier,
+                prepared_location=now_locations[0] if now_locations else entry.prepared_location,
+                also_filed=_CANDIDATE_SEP.join(now_locations[1:]) if mapped else entry.also_filed,
+                candidates=_CANDIDATE_SEP.join(candidates) if candidates != entry.candidate_list
+                else entry.candidates,
+                evidence=evidence,
+            )
+            entries[position] = renamed
+            renamed_entries.append(renamed)
+            ops_for[ledger_key(renamed)] = ops
+
+        # One write: the list renamed and every row's intent. The intents
+        # are written whole here rather than through _intend(), because a
+        # row whose only change is the identifier it names has nothing to
+        # move and still has to be finished with the rest.
+        intents = []
+        for renamed in renamed_entries:
+            key = ledger_key(renamed)
+            intents.append(ledger.new(ledger.MOVING, **{
+                ledger.KEY_KEY: key, ledger.OPS_KEY: ops_for[key], ledger.DECIDED_BY_KEY: ledger.BY_PERSON,
+                ledger.ROW_KEY: entry_to_json(renamed), ledger.EVENT_KEY_AFTER: ledger.RENAMED_BY_PERSON,
+            }))
+        store.record(conn, engagement_dir, *list_events, *intents)
+
+        moved = 0
+        for renamed in renamed_entries:
+            for op in ops_for[ledger_key(renamed)]:
+                try:
+                    _do_op(engagement_dir, op)
+                except (OSError, FilingError) as exc:
+                    raise FilingError(RENAME_UNFINISHED.format(
+                        old=old, new=new, name=Path(op[ledger.FROM_KEY]).name, problem=exc)) from exc
+                moved += 1
+        _record(engagement_dir, before, entries,
+                decided={ledger_key(one): ledger.RENAMED_BY_PERSON for one in renamed_entries})
+
+        left: list[str] = []
+        for folder in folders:
+            try:
+                remaining = sorted(child.name for child in folder.iterdir())
+                if remaining:
+                    left.extend(f"{location_of(engagement_dir, folder)}/{name}" for name in remaining)
+                else:
+                    folder.rmdir()
+            except OSError as exc:
+                log.warning("Could not tidy %s after the rename: %s", folder, exc)
+        now_head = list_head(engagement_dir)
+        rows = sum(1 for entry in entries
+                   if entry.identifier and identifier_key(entry.identifier) == identifier_key(new))
+
+    return RenameResult(old=old, new=new, moved=moved, rows=rows, left=tuple(left),
+                        head=now_head, scan_note=_rescan(engagement_dir, today))
 
 
 # -------------------------------------------------------------------- CLI ----

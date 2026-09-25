@@ -164,5 +164,20 @@ function createWindow() {
   win.loadFile(path.join(__dirname, "renderer", "index.html"));
 }
 
-app.whenReady().then(createWindow);
+// One window (decision 160). A second double-click used to open a second
+// window, and two windows are two request-list editors: the one opened
+// first saved over the other's save. So the shell takes the single-instance
+// lock; a launch that cannot have it quits before any window is made, and
+// the running one answers it by bringing its window forward.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    const [win] = BrowserWindow.getAllWindows();
+    if (!win) return;
+    if (win.isMinimized()) win.restore();
+    win.focus();
+  });
+  app.whenReady().then(createWindow);
+}
 app.on("window-all-closed", () => app.quit());
