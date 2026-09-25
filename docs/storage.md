@@ -155,7 +155,7 @@ the row that return holds is its own `assigned_by_person`, written by its
 own intent in its own record. The `handed_over_by_person` line decision 129
 wrote is retired: read as a release of its key, never written. `copy_moved` is decision
 109's: the pass found a row's working copy somewhere other than where
-the record last said — away from its request folder, away again, or back
+the record last said — away from where it was filed, away again, or back
 where it belongs — and the row the line carries says which. One name in
 either direction, because the fold is the same fold whichever way the
 copy went. `restored_by_person` is decision 110's,

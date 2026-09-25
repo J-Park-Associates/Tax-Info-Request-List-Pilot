@@ -7,9 +7,11 @@ file-attribute flags: on an ordinary desktop file it returns False and
 validation proceeds normally, so the whole layer is fully testable with
 File Explorer and Excel alone.
 
-- Tier 1 (existence): :func:`iter_candidate_files` / :func:`check_folder` —
-  which real files does a request folder contain (junk like the names in ``_IGNORED_NAMES``,
-  ``OFFICE_LOCK_PREFIX`` locks excluded)?
+- Tier 1 (existence): :func:`iter_candidate_files` / :func:`check_files` —
+  which real files are there (junk like the names in ``_IGNORED_NAMES``,
+  ``OFFICE_LOCK_PREFIX`` locks excluded)? Which of them are a request's is
+  ``tracker.scaffold.assign_files``' answer (decision 168), not this
+  module's.
 - Tier 2 (integrity): :func:`check_file` — extension whitelist, minimum
   size, a ``pypdf`` open test for PDFs and a Pillow open test for photos.
 
@@ -42,7 +44,7 @@ import hashlib
 import logging
 from collections import OrderedDict
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from pypdf import PdfReader
@@ -169,27 +171,6 @@ class FileResult:
     pending_sync: bool = False  # cloud-only placeholder; skipped, not failed
 
 
-@dataclass(slots=True)
-class FolderResult:
-    """Facts about one request folder (tier 1 + per-file tier 2)."""
-
-    folder: Path
-    exists: bool
-    files: list[FileResult] = field(default_factory=list)
-
-    @property
-    def valid(self) -> list[FileResult]:
-        return [f for f in self.files if f.ok]
-
-    @property
-    def failed(self) -> list[FileResult]:
-        return [f for f in self.files if not f.ok and not f.pending_sync]
-
-    @property
-    def pending(self) -> list[FileResult]:
-        return [f for f in self.files if f.pending_sync]
-
-
 # ----------------------------------------------------------------- tier 1 ----
 
 
@@ -254,8 +235,12 @@ def is_cloud_placeholder(path: Path) -> bool:
 def iter_candidate_files(folder: Path) -> list[Path]:
     """All non-junk files under ``folder``, recursively, sorted.
 
-    Recursive because clients drop extracted subfolders inside request
-    folders; those files still belong to the request.
+    Recursive because a client drags whole folders into the drop folder,
+    and because the sweep of the firm's folder looks everywhere under it -
+    a mislaid copy is found in a person's folder as readily as beside its
+    home (decision 109). Which files are a *request's* is not this walk's
+    question: that is the files directly in the firm's folder whose names
+    belong to it (``tracker.scaffold.assign_files``, decision 168).
     """
     if not folder.is_dir():
         return []
@@ -461,16 +446,17 @@ def check_file(
     return FileResult(path=path, ok=True)
 
 
-def check_folder(
-    folder: Path, item: RequestItem, *, pdf_cache: PdfVerdictCache | None = None,
+def check_files(
+    files: list[Path], item: RequestItem, *, pdf_cache: PdfVerdictCache | None = None,
     open_test: Callable[[Path], str] | None = None,
-) -> FolderResult:
-    """Tier 1 + 2 for one request folder. Read-only; policy-free.
-    ``open_test`` is :func:`check_file`'s."""
-    exists = folder.is_dir()
-    files = [check_file(p, item, pdf_cache=pdf_cache, open_test=open_test)
-             for p in iter_candidate_files(folder)]
-    return FolderResult(folder=folder, exists=exists, files=files)
+) -> list[FileResult]:
+    """Tier 2 for one request's files - the ones
+    ``tracker.scaffold.assign_files`` gives it (decision 168; until then,
+    everything under its folder). Read-only; policy-free. Junk is passed
+    over, as the walk passes it over. ``open_test`` is
+    :func:`check_file`'s."""
+    return [check_file(p, item, pdf_cache=pdf_cache, open_test=open_test)
+            for p in sorted(files) if not is_ignored(p)]
 
 
 # ------------------------------------------------------------------ hashes ----
@@ -501,9 +487,10 @@ if __name__ == "__main__":
     from tracker.page import tolerant_console
     from tracker.scaffold import (
         PREPARED_DIR_NAME,
-        README_NAME,
         REVIEW_DIR_NAME,
-        assign_folders,
+        assign_files,
+        owner_of,
+        persons_folders,
     )
 
     tolerant_console()   # a client's name the console cannot encode is no traceback
@@ -517,7 +504,8 @@ if __name__ == "__main__":
     engagement = Path(ns.engagement_dir)
     items = load_manifest(engagement)
     prepared = engagement / PREPARED_DIR_NAME
-    assigned = assign_folders(prepared, [i.identifier for i in items])
+    identifiers = [i.identifier for i in items]
+    assigned = assign_files(prepared, identifiers)
 
     print(f"Dry-run validation of {prepared}  (nothing is written)\n")
     for item in items:
@@ -525,36 +513,30 @@ if __name__ == "__main__":
             print(f"[{item.identifier}] {item.document}")
             print(f"    ~ {override_label(item)} - skipped\n")
             continue
-        folders = assigned[item.identifier]
         print(f"[{item.identifier}] {item.document}")
-        if not folders:
-            print(f"    ! {reasons.NO_REQUEST_FOLDER.format()}\n")
+        results = check_files(assigned[item.identifier], item)
+        if not results:
+            print(f"    nothing in {PREPARED_DIR_NAME}/ is named for this request\n")
             continue
-        for folder in folders:
-            result = check_folder(folder, item)
-            if not result.files:
-                print(f"    folder: {folder.name}  -- empty")
-            for fr in result.files:
-                rel = fr.path.relative_to(folder)
-                if fr.pending_sync:
-                    print(f"    PEND  {rel}  ({fr.reason})")
-                elif fr.ok:
-                    print(f"    OK    {rel}")
-                else:
-                    print(f"    FAIL  {rel}  ({fr.reason})")
-            n = len(result.valid)
-            print(f"    => {n} valid file(s), expected {item.expected_count}\n")
+        for fr in results:
+            if fr.pending_sync:
+                print(f"    PEND  {fr.path.name}  ({fr.reason})")
+            elif fr.ok:
+                print(f"    OK    {fr.path.name}")
+            else:
+                print(f"    FAIL  {fr.path.name}  ({fr.reason})")
+        n = sum(1 for fr in results if fr.ok)
+        print(f"    => {n} valid file(s), expected {item.expected_count}\n")
 
-    # Anything loose in PREPARED_DIR_NAME or in folders matching no identifier.
-    claimed = {f for folders in assigned.values() for f in folders}
+    # A file whose name begins with no request's identifier, and every
+    # folder a person made (decision 168): nothing in either is counted.
     if prepared.is_dir():
-        loose = [
-            p.name
-            for p in sorted(prepared.iterdir())
-            if (p.is_file() and not is_ignored(p) and p.name != README_NAME)
-            or (p.is_dir() and p not in claimed)
-        ]
-        if loose:
-            print(f"Not matched to a request (see {REVIEW_DIR_NAME}):")
+        loose = [p.name for p in sorted(prepared.iterdir())
+                 if p.is_file() and not is_ignored(p) and owner_of(p.name, identifiers) is None]
+        folders = [p.name for p in persons_folders(prepared)]
+        if loose or folders:
+            print(f"Not counted under any request (see {REVIEW_DIR_NAME} for parked documents):")
             for name in loose:
                 print(f"    ? {name}")
+            for name in folders:
+                print("    ? " + reasons.PERSONS_FOLDER.format(folder=name, prepared=PREPARED_DIR_NAME))

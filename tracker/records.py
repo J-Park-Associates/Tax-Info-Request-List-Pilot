@@ -1134,7 +1134,7 @@ def household_from_json(raw: dict) -> HouseholdInfo:
 #: and files it, but is never listed as needed and never chased.
 #: ``short_title`` (decision 144) is last, and its default is **blank**:
 #: a row stored before it existed derives its short name from its document
-#: title, and an existing request folder is found by its identifier, so
+#: title, and an existing working copy is found by its identifier, so
 #: nothing already on disk is renamed.
 RULE_FIELDS: tuple[str, ...] = (
     "identifier",

@@ -104,6 +104,7 @@ from tracker.layout import (
     inbox_dir_for,
     inbox_of,
     is_year_folder,
+    locate,
     originals_dir_for,
     private_household_dir,
     return_dir_for,
@@ -225,7 +226,7 @@ from tracker.runner import (
 from tracker.scaffold import (
     PREPARED_DIR_NAME,
     REVIEW_DIR_NAME,
-    assign_folders,
+    assign_files,
     sanitize_component,
     scaffold_engagement,
 )
@@ -407,8 +408,8 @@ OTHER_REQUESTS_HEADING = "Other requests"
 #: (decision 110), the card they sit on, and the word for a row whose bytes
 #: are nowhere under the firm's folder. Nothing is guessed and nothing is
 #: preferred: three buttons, one of which is offered only when the copy sits
-#: in a request's folder, because "keep it where it is" means nothing
-#: anywhere else. The renderer shows these and types none of them.
+#: in the firm's folder under a name that belongs to a request (decision
+#: 168), because "keep it where it is" means nothing anywhere else. The renderer shows these and types none of them.
 RESTORE_LABEL = "Put it back"
 KEEP_LABEL = "Keep it here"
 SEND_TO_REVIEW_LABEL = "Send to review"
@@ -1200,15 +1201,16 @@ def _moved_payload(engagement: Path, entries: list[IndexEntry], items,
     answers it with three buttons, not by reading a row. Each entry carries
     the row's sequence number (decision 112), the home the record put the
     copy at, where its bytes are now (``None`` for a row whose bytes are
-    nowhere under the firm's folder) and - only when the copy sits inside
-    some request's folder - which request that is, because "keep it where
-    it is" means nothing anywhere else. The folder is matched by
-    :func:`tracker.scaffold.assign_folders`, the same answer the filer
-    files by, so a wanderer in a subfolder of a request's folder counts as
-    that request's and one in the review folder or under no request's
-    counts as nobody's.
+    nowhere under the firm's folder) and - only when the copy sits directly
+    in the firm's folder under a name that belongs to a request - which
+    request that is, because "keep it where it is" means nothing anywhere
+    else. The name is matched by :func:`tracker.scaffold.assign_files`, the
+    same answer the filer and the scan read (decision 168), so a wanderer
+    renamed ``A02 - ...`` beside the other copies is offered to A02, and
+    one in the review folder, in a folder a person made or under a name no
+    request's identifier begins counts as nobody's.
     """
-    folders = assign_folders(engagement / PREPARED_DIR_NAME, [i.identifier for i in items])
+    owned = assign_files(engagement / PREPARED_DIR_NAME, [i.identifier for i in items])
     rows = []
     for entry in entries:
         if entry.decision != FILE_MOVED:
@@ -1216,11 +1218,8 @@ def _moved_payload(engagement: Path, entries: list[IndexEntry], items,
         now = moved_to(entry)
         in_request = ""
         if now:
-            where = (engagement / now).parent
-            for identifier, claimed in folders.items():
-                if any(folder == where or folder in where.parents for folder in claimed):
-                    in_request = identifier
-                    break
+            where = locate(engagement, now)
+            in_request = next((identifier for identifier, paths in owned.items() if where in paths), "")
         rows.append({
             "original_name": entry.original_name,
             "pbc_location": entry.pbc_location,
@@ -1293,7 +1292,7 @@ def _return_reminder(path: Path, today: dt.date) -> dict:
     try:
         items = load_manifest(path)
         entries = read_index(path)
-        _, _, _, held = reminder.triage(items, entries)
+        _, _, held = reminder.triage(items, entries)
         last = reminder.last_draft_event(path, carrying=ledger.FILE_KEY)
         approved = reminder.last_approved_event(path)
         in_force = reminder.is_approved_this_week(
@@ -1514,7 +1513,7 @@ def _state(engagement: Path) -> dict:
                          # table only while no document at all is in it; the
                          # editor regroups a row live from ``has_document``.
                          "has_document": has_a_document(i), "not_asked_idle": is_idle_unasked(i),
-                         # The short name the row's folder and copies go by
+                         # The short name the row's copies go by
                          # (decision 144): its own, or the one its document
                          # derives - the editor's placeholder for a blank.
                          "short_name": i.short_name}
@@ -1624,7 +1623,7 @@ def _reminder_payload(engagement: Path, items, entries) -> dict:
     same hold the draft day will: the rows are the ones ``state`` has
     already read, so nothing is read twice to answer this.
     """
-    _, _, _, held = reminder.triage(items, entries)
+    _, _, held = reminder.triage(items, entries)
     drafted = last_drafted(engagement)
     return {
         "held": _held_rows(held),

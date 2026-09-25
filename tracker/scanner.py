@@ -2,9 +2,12 @@
 
 Ties the layers together for one engagement: walk ``PREPARED_DIR_NAME/`` — the
 working set :mod:`tracker.filer` built from the client's drop folder — match
-folders to manifest rows (prefix rule, longest identifier wins), run
+the files in it to manifest rows by their names (prefix rule, longest
+identifier wins: ``tracker.scaffold.assign_files``, decision 168), run
 validation tiers 1-3, resolve each row's status deterministically, and
-**record** what it found.
+**record** what it found. A folder inside ``PREPARED_DIR_NAME`` other than
+the review folder is a person's: nothing in it is counted, and the scan
+names it once (``reasons.PERSONS_FOLDER``).
 
 Recorded, not written back (decision 103). The statuses used to be four
 columns of a workbook, written with a lock retry and deferred to a
@@ -35,8 +38,8 @@ Status policy (docs/ROADMAP.md decision log):
   common single-file case never pays for hashing.
 - **A moved working copy is the record's word, not this scan's** (decision
   109). A file the record says is another row's mislaid copy is not
-  counted under the request whose folder it sits in, and the request whose
-  copy has gone reads Missing - truthfully, its folder is empty - with a
+  counted under the request its name belongs to, and the request whose
+  copy has gone reads Missing - truthfully, nothing of it is there - with a
   firm-side note (``reasons.FILE_MOVED``) so no draft asks the client for
   a file the firm moved. The filer's sweep decided it, under the same
   lock, earlier in the pass; this reads the rows and acts.
@@ -63,6 +66,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import re
+from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -90,12 +94,13 @@ from tracker.records import (
 )
 from tracker.scaffold import (
     PREPARED_DIR_NAME,
-    REVIEW_DIR_NAME,
-    assign_folders,
+    assign_files,
+    owner_of,
+    persons_folders,
 )
 from tracker.validators import (
     PdfVerdictCache,
-    check_folder,
+    check_files,
     is_cloud_placeholder,
     is_ignored,
     iter_candidate_files,
@@ -108,13 +113,18 @@ OVERRIDE_NOTE = "[override: {override}]"
 PARTIAL_NOTE = "{count} of {expected} expected files"
 DUPLICATES_NOTE = "{n} duplicate file(s) ignored"
 ACCEPTED_NOTE = "{n} file(s) filed here by a person; content rules not applied to them"
-FOLDERS_NOTE = "{n} folders match this identifier"
 MORE_ISSUES_NOTE = "(+{n} more issues)"
 SYNCING_MORE_NOTE = "{n} more file(s) still syncing"
 SYNCING_NOTE = "{n} file(s) still syncing from the cloud"
 REGRESSION_NOTE = "was {status} {date}; {why}"
 REGRESSION_COUNT_RAISED = COL_EXPECTED_COUNT + " is now {expected}"
 REGRESSION_FILES_CHANGED = "files changed"
+#: The run's warning for a file directly in ``PREPARED_DIR_NAME`` whose
+#: name begins with no request's identifier (decision 168): it belongs to
+#: no request, so nothing counts it. Until 168 every loose file there was
+#: said to belong "in a request folder".
+UNCLAIMED_FILE = ("{name} is in {prepared}/ and its name begins with no request's identifier, "
+                  "so it is not counted")
 
 
 #: The regression sentence read back off the front of a note (it is always
@@ -170,7 +180,7 @@ def _the_index(engagement_dir: Path) -> list[IndexEntry]:
     Read once per scan and handed to everything here that needs it: what a
     person filed, which paths the record claims, and which file is another
     row's mislaid copy. An unreadable index is the filer's problem, not the
-    scan's - the request folders are still walked and the statuses still
+    scan's - the firm's folder is still walked and the statuses still
     recorded.
     """
     from tracker.filer import read_index
@@ -229,11 +239,11 @@ def _wandered(engagement_dir: Path, rows: list[IndexEntry]) -> frozenset[Path]:
     """Where the record says each mislaid working copy is now.
 
     A file the record knows is another row's copy is not counted under the
-    request whose folder it happens to sit in - that count would be a
-    filing nobody made, and the record knows whose the file is. Everything
-    else a request's folder holds is counted as it sits: what a request has
-    is what its folder holds, and a file a person can see going uncounted
-    would be a lie in the other direction.
+    request its name happens to belong to - that count would be a filing
+    nobody made, and the record knows whose the file is. Every other file
+    named for a request is counted as it sits: what a request has is what
+    ``PREPARED_DIR_NAME`` holds under its name, and a file a person can see
+    going uncounted would be a lie in the other direction.
     """
     from tracker.filer import moved_to
 
@@ -290,20 +300,21 @@ def _answered(rows: list[IndexEntry]) -> dict[str, list[tuple[str, int]]]:
 
 
 def _changed_copy_warnings(
-    claimed: dict[Path, IndexEntry], folders: set[Path], cache: ContentCache
+    claimed: dict[Path, IndexEntry], prepared_dir: Path, cache: ContentCache
 ) -> list[str]:
     """One warning per working copy that is not the one the record filed.
 
     The request's own note says it too (``_scan_item``); this is what puts
     it on the run and so on the practice page, where a person sees every
-    engagement at once. Only the copies in the request folders this scan
-    walked: a parked copy is the record's business and the app's, not a
-    warning about a request.
+    engagement at once. Only the copies directly in ``PREPARED_DIR_NAME``,
+    where this scan counts (decision 168): a parked copy is the record's
+    business and the app's, not a warning about a request, and nothing in
+    a person's folder is counted to be warned about.
     """
     return [
         f"{path.name}: {reasons.COPY_CHANGED.format(listed=path.name)}"
         for path, row in claimed.items()
-        if path.parent in folders and _a_stranger_at(path, row, cache)
+        if path.parent == prepared_dir and _a_stranger_at(path, row, cache)
     ]
 
 
@@ -324,10 +335,9 @@ def _a_stranger_at(path: Path, row: IndexEntry, cache: ContentCache) -> bool:
 def _the_rows_copy_is_here(path: Path, row: IndexEntry, cache: ContentCache) -> bool:
     """Whether a path the record claims still holds that row's document.
 
-    Asked of a ``FILE_MOVED`` row, which may have a copy in more than one
-    request's folder (decision 94): the note about a copy that has gone
-    belongs to the request that lost one, not to the request that still
-    has its own.
+    Asked of a ``FILE_MOVED`` row, which may have a copy under more than one
+    request (decision 94): the note about a copy that has gone belongs to
+    the request that lost one, not to the request that still has its own.
     """
     return (path.is_file() and not is_cloud_placeholder(path)
             and cache.digest_of(path) == row.digest)
@@ -335,7 +345,7 @@ def _the_rows_copy_is_here(path: Path, row: IndexEntry, cache: ContentCache) -> 
 
 def _scan_item(
     item: RequestItem,
-    folders: list[Path],
+    files: list[Path],
     cache: ContentCache,
     today: dt.date,
     pdf_cache: PdfVerdictCache | None = None,
@@ -344,8 +354,16 @@ def _scan_item(
     excluded: frozenset[Path] = frozenset(),
     interrupted: dict[Path, str] | None = None,
     answered: list[tuple[str, int]] | tuple = (),
+    mine: Callable[[Path], bool] = lambda _path: False,
 ) -> StatusUpdate:
     """Run tiers 1-3 for one manifest row and resolve its status.
+
+    ``files`` are the request's files - the ones directly in
+    ``PREPARED_DIR_NAME`` whose names belong to it
+    (``tracker.scaffold.assign_files``, decision 168). ``mine`` says the
+    same of a path that may not be there any more: a copy the record put
+    under this request's name that has gone, or the place an interrupted
+    step was putting one.
 
     ``accepted`` are working copies a person filed here from Needs Review
     (the index says ``ASSIGNED_BY_PERSON``): their decision stands, so the
@@ -353,28 +371,27 @@ def _scan_item(
     not satisfy would otherwise turn the person's decision into a client
     ask for the "right" file.
 
-    ``claimed`` and ``excluded`` are what the record says about the files
-    in these folders (decision 109). A file in ``excluded`` is another
-    row's mislaid working copy and is not this request's, whatever its
-    bytes say: counting it here is the corruption the sweep exists to
-    stop. A file the record claims whose bytes are not its row's is not
-    counted either, and is said (``COPY_CHANGED``, decision 155), and a
-    row whose copy has left one of these folders
-    is said too (``FILE_MOVED``) - both firm-side, so no draft asks the
-    client for a file the firm moved.
+    ``claimed`` and ``excluded`` are what the record says about these
+    files (decision 109). A file in ``excluded`` is another row's mislaid
+    working copy and is not this request's, whatever its bytes say:
+    counting it here is the corruption the sweep exists to stop. A file
+    the record claims whose bytes are not its row's is not counted either,
+    and is said (``COPY_CHANGED``, decision 155), and a row whose copy
+    under this request's name has gone is said too (``FILE_MOVED``) - both
+    firm-side, so no draft asks the client for a file the firm moved.
 
     ``interrupted`` is where a step that died half way was putting a copy,
     and the sentence the row it parked carries (decision 119). It is not
     counted either - what sits there is the wreck of a step, not a
     document anybody filed - and the sentence goes on the request, so a
-    request whose folder holds a copy the power cut in half reads Missing
-    with the firm's own note rather than Failed Validation for a file the
-    client sent correctly.
+    request that has a copy the power cut in half reads Missing with the
+    firm's own note rather than Failed Validation for a file the client
+    sent correctly.
 
     ``answered`` is the consolidated statements filed under another
     request that answer this one (decision 146, :func:`_answered`): each
     counts as the documents its sections are, beside whatever this
-    request's own folder holds, and is said on the row
+    request's own files are, and is said on the row
     (``reasons.IN_CONSOLIDATED``). No file of this request's is read for
     it - the statement was read, and accepted by this row's own rules,
     when it was routed.
@@ -389,10 +406,7 @@ def _scan_item(
     def open_test(path: Path) -> str:
         return open_verdict(path, cache)
 
-    results = [
-        fr for folder in folders
-        for fr in check_folder(folder, item, pdf_cache=pdf_cache, open_test=open_test).files
-    ]
+    results = check_files(files, item, pdf_cache=pdf_cache, open_test=open_test)
     # A working copy the record claims whose bytes are not its row's - the
     # original's - is not there, as far as the count goes (decision 155): a
     # half copy is never counted, and neither is a file somebody put in its
@@ -452,18 +466,15 @@ def _scan_item(
         facts.append(ACCEPTED_NOTE.format(n=by_person))
     if duplicates:
         facts.append(DUPLICATES_NOTE.format(n=duplicates))
-    if len(folders) > 1:
-        facts.append(FOLDERS_NOTE.format(n=len(folders)))
     for filed in dict.fromkeys(filed for filed, _n in answered):
         facts.append(reasons.IN_CONSOLIDATED.format(row=filed))
-    # What the record says about this request's own folders, before the
+    # What the record says about this request's own copies, before the
     # failures, so the note's cut can never take a firm-side marker off the
     # end and turn the row into a client ask. Neither is a failure: a row
     # whose copy was dragged away leaves the request Missing, truthfully,
     # and a file that passes the rules is counted whoever put it there.
-    here = set(folders)
     for path, row in claimed.items():
-        if (row.decision == FILE_MOVED and path.parent in here
+        if (row.decision == FILE_MOVED and mine(path)
                 and not _the_rows_copy_is_here(path, row, cache)):
             now = moved_to(row)
             facts.append(reasons.FILE_MOVED.format(listed="{} -> {}".format(
@@ -471,7 +482,7 @@ def _scan_item(
                 now or f"nowhere under {PREPARED_DIR_NAME}",
             )))
     for path, sentence in interrupted.items():
-        if path.parent in here and path.exists():
+        if mine(path) and path.exists():
             facts.append(sentence)
     for path in strangers:
         facts.append(reasons.COPY_CHANGED.format(listed=path.name))
@@ -500,7 +511,7 @@ def _scan_item(
             validation_notes=_join(facts),
         )
 
-    status = _resolve_status(item, folders, count, len(pending), bool(failures), facts)
+    status = _resolve_status(item, count, len(pending), bool(failures), facts)
     received = _received_date(item, status, count, bool(failures), facts, today)
     return StatusUpdate(
         status=status,
@@ -511,19 +522,15 @@ def _scan_item(
 
 
 def _resolve_status(
-    item: RequestItem, folders: list[Path], count: int, pending: int, failed: bool, facts: list[str],
+    item: RequestItem, count: int, pending: int, failed: bool, facts: list[str],
 ) -> str:
     """The deterministic status for what tiers 1-3 found; adds the note that says why.
 
-    A row nobody asked for (decision 142) has no folder until its first
-    document is filed, on purpose, so its missing folder is Missing with no
-    note: ``NO_REQUEST_FOLDER`` is a scaffold gap, and there is none.
-    A request answered by a consolidated statement filed elsewhere
-    (decision 146) needs no folder of its own: nothing is copied into one."""
-    if not folders and not count:
-        if item.asked:
-            facts.insert(0, reasons.NO_REQUEST_FOLDER.format())
-        return Status.MISSING
+    A request with nothing named for it in ``PREPARED_DIR_NAME`` is simply
+    Missing, with no note (decision 168): no request has a folder that
+    could be missing, so "request folder not found" - which until then
+    held a request with no folder back from the letter - has nothing left
+    to say."""
     if count >= item.expected_count:
         if pending:
             facts.append(SYNCING_MORE_NOTE.format(n=pending))
@@ -595,30 +602,27 @@ def _join(facts: list[str]) -> str:
 # ------------------------------------------------------------- warnings ----
 
 
-def _prepared_warnings(prepared_dir: Path, claimed: set[Path]) -> list[str]:
+def _prepared_warnings(prepared_dir: Path, identifiers: list[str]) -> list[str]:
     """Things in ``PREPARED_DIR_NAME/`` that no manifest row accounts for.
 
-    Loose files in the root and folders matching no identifier - somebody
-    dragged something in by hand. Parked documents are NOT listed here:
-    the engagement's record holds them, with the reason each was parked,
-    and the app works from it. Reporting them twice was how the two
-    disagreed.
+    A file whose name begins with no request's identifier
+    (:data:`UNCLAIMED_FILE`), and every folder other than the review folder
+    (``reasons.PERSONS_FOLDER``, decision 168): working copies sit in the
+    firm's folder itself, so a folder in it is a person's - or a request
+    folder of a return made before 168 - and nothing in it is counted. Each
+    folder is named once per pass, however many files it holds, and never
+    file by file. Parked documents are NOT listed here: the engagement's
+    record holds them, with the reason each was parked, and the app works
+    from it. Reporting them twice was how the two disagreed.
     """
     warnings: list[str] = []
     if not prepared_dir.is_dir():
         return warnings
     for child in sorted(prepared_dir.iterdir()):
-        if child.is_file():
-            if not is_ignored(child):
-                warnings.append(
-                    f"{child.name} is loose in {PREPARED_DIR_NAME}/; it belongs in a request folder"
-                )
-        elif child.is_dir() and child.name != REVIEW_DIR_NAME and child not in claimed:
-            n = len(iter_candidate_files(child))
-            warnings.append(
-                f"folder {child.name!r} in {PREPARED_DIR_NAME}/ matches no request "
-                f"({n} file(s) inside)"
-            )
+        if child.is_file() and not is_ignored(child) and owner_of(child.name, identifiers) is None:
+            warnings.append(UNCLAIMED_FILE.format(name=child.name, prepared=PREPARED_DIR_NAME))
+    for folder in persons_folders(prepared_dir):
+        warnings.append(reasons.PERSONS_FOLDER.format(folder=folder.name, prepared=PREPARED_DIR_NAME))
     return warnings
 
 
@@ -692,7 +696,16 @@ def scan_engagement(
         prepared_dir = engagement_dir / PREPARED_DIR_NAME
         cache = ContentCache(engagement_dir)      # the engagement's verdicts, from the store
         pdf_cache = PdfVerdictCache()     # this scan's; a PDF is parsed once, not once per row
-        assigned = assign_folders(prepared_dir, [i.identifier for i in items])
+        # Each request's files, by their names (decision 168): the one
+        # answer the filer, the rename and the app read too.
+        identifiers = [i.identifier for i in items]
+        assigned = assign_files(prepared_dir, identifiers)
+
+        def belongs_to(identifier: str):
+            """Whether a path - there or not - is a place ``identifier``'s
+            copies sit: directly in the firm's folder, named for it."""
+            return lambda path: (path.parent == prepared_dir
+                                 and owner_of(path.name, identifiers) == identifier)
 
         # The record, read once, for the five things this scan asks of it:
         # which copies a person filed, which paths the record claims, which
@@ -713,18 +726,17 @@ def scan_engagement(
                 item, assigned[item.identifier], cache, today, pdf_cache, accepted=accepted,
                 claimed=claimed, excluded=excluded, interrupted=interrupted,
                 answered=answered.get(identifier_key(item.identifier), ()),
+                mine=belongs_to(item.identifier),
             )
             for item in items
         }
-
-        folders = {folder for folders_ in assigned.values() for folder in folders_}
 
         report = ScanReport(
             engagement_dir=engagement_dir,
             items=items,
             updates=updates,
-            warnings=_prepared_warnings(prepared_dir, folders)
-                     + _changed_copy_warnings(claimed, folders, cache),
+            warnings=_prepared_warnings(prepared_dir, identifiers)
+                     + _changed_copy_warnings(claimed, prepared_dir, cache),
             dry_run=dry_run,
         )
         if dry_run:

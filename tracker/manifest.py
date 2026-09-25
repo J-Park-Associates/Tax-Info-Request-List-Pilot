@@ -127,9 +127,10 @@ COL_NAMED = "Named"
 #: by default everywhere, so a row written before the mark reads as the
 #: request a person ticked.
 COL_ASKED = "Asked"
-#: The short name a request's working folder and working copies are named
-#: by (decision 144): ``A01 - W-2\A01 - W-2 - TY2025.pdf`` rather than the
-#: full document title twice. Blank means derived from the document title
+#: The short name a request's working copies are named by (decision 144):
+#: ``A01 - W-2 - TY2025.pdf`` rather than the full document title (since
+#: decision 168 each copy sits in ``Prepared`` itself, with no folder per
+#: request). Blank means derived from the document title
 #: (:func:`derived_short_title`). Firm-side only: the client README, the
 #: letter and the received list keep the full title.
 COL_SHORT_TITLE = "Short name"
@@ -180,7 +181,7 @@ MIN_SIZE_KB_FLOOR = 0
 #: roadmap's schema table carries the same sentences in its Purpose column
 #: on purpose: one text, two places a person reads it.
 COLUMN_HELP: dict[str, str] = {
-    "identifier": "Names the request and its folder; matched by prefix, so A100 and BS01 both work",
+    "identifier": "Names the request and its working copies; matched by prefix, so A100 and BS01 both work",
     "document": "What the request is called to people",
     "period": "The period asked for, e.g. TY2025 or Dec 2025; a year in it is the year check",
     "expected_count": "How many files are due; counted over distinct valid files",
@@ -210,7 +211,7 @@ COLUMN_HELP: dict[str, str] = {
         "arrives for it is filed here"
     ),
     "short_title": (
-        "What the firm's working folder and file names call it, 20 characters at most; "
+        "What the firm's working file names call it, 20 characters at most; "
         "blank takes the document's first words. The client always sees the full document name"
     ),
 }
@@ -250,7 +251,7 @@ WINDOWS_ILLEGAL_CHARS_TEXT = " ".join(_ILLEGAL_PUNCTUATION)
 #: The names Windows keeps for devices (decision 137, L6). A folder or a
 #: file named one of them - with or without an extension, in any case - is
 #: not a folder at all: ``NUL`` is the null device, ``COM1`` a serial port,
-#: and a request folder, a household or a return named one could never
+#: and a working copy, a household or a return named one could never
 #: hold a document.
 WINDOWS_RESERVED_NAMES: frozenset[str] = frozenset(
     {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"}
@@ -272,11 +273,12 @@ def is_reserved_name(name: str) -> bool:
 #: How a date is asked for on a command line or in the wizard.
 ISO_DATE_HINT = "YYYY-MM-DD"
 
-#: Characters an identifier may not contain. The identifier becomes the
-#: prefix of a Windows folder name and is matched back by that prefix, so
-#: anything the filesystem would alter (``WINDOWS_ILLEGAL_CHARS``) or strip
-#: (a trailing dot) would leave the scanner unable to
-#: find the folder scaffold just made — a permanent "folder not found".
+#: Characters an identifier may not contain. The identifier begins every
+#: working copy's file name and is matched back by that prefix (decision
+#: 168's ``scaffold.assign_files``), so anything the filesystem would alter
+#: (``WINDOWS_ILLEGAL_CHARS``) or strip (a trailing dot) would leave the
+#: scanner unable to find the request's copies - a request that reads
+#: Missing with its documents in front of it.
 _ILLEGAL_IDENTIFIER_CHARS = WINDOWS_ILLEGAL_CHARS
 
 
@@ -441,16 +443,14 @@ class RequestItem:
     #: considers it and a document for it files there, but it is never
     #: listed as needed, never counted as owed and never chased.
     asked: bool = True
-    #: The short name the working folder and the working copies are named
-    #: by (decision 144), at most :data:`SHORT_TITLE_MAX` characters. Blank
+    #: The short name the working copies are named by (decision 144), at most :data:`SHORT_TITLE_MAX` characters. Blank
     #: by default and everywhere a row is read without one: blank is
     #: derived from the document title (:attr:`short_name`).
     short_title: str = ""
 
     @property
     def short_name(self) -> str:
-        """The name the firm's working folder and copies use for this
-        request: the row's own short title, or one derived from its
+        """The name the firm's working copies use for this request: the row's own short title, or one derived from its
         document title (:func:`derived_short_title`)."""
         return self.short_title or derived_short_title(self.document)
 
@@ -535,8 +535,8 @@ def override_label(item: RequestItem) -> str:
     return NOT_APPLICABLE_LABEL.format(year=year) if year else Override.NOT_APPLICABLE
 
 
-#: How a request's parts are joined into one name: the README line, the
-#: request folder and the working copy all use it.
+#: How a request's parts are joined into one name: the README line and
+#: the working copy both use it.
 LABEL_SEPARATOR = " - "
 
 
@@ -618,20 +618,20 @@ def derived_short_title(document: str) -> str:
 
 
 def short_title_problem(short_title: str) -> str:
-    """Why ``short_title`` cannot name a working folder, or "" if it can.
+    """Why ``short_title`` cannot name a working copy, or "" if it can.
 
     Refused rather than sanitised, as an identifier is: the name a person
-    types is the name the folder gets, or they are told why not.
+    types is the name every working copy carries, or they are told why not.
     """
     if len(short_title) > SHORT_TITLE_MAX:
         return f"may have at most {SHORT_TITLE_MAX} characters, got {len(short_title)}"
     if WINDOWS_ILLEGAL_CHARS.search(short_title):
-        return f"may not contain any of {WINDOWS_ILLEGAL_CHARS_TEXT} (it becomes a folder name)"
+        return f"may not contain any of {WINDOWS_ILLEGAL_CHARS_TEXT} (it is part of a file name)"
     if short_title != short_title.rstrip(". "):
-        return "may not end with a dot or a space (Windows drops them from folder names)"
+        return "may not end with a dot or a space (Windows drops them from file names)"
     if short_title and is_reserved_name(short_title):
         return (f"may not be a name Windows keeps for a device ({WINDOWS_RESERVED_NAMES_TEXT}); "
-                f"it becomes a folder name")
+                f"it is part of a file name")
     return ""
 
 
@@ -894,18 +894,18 @@ def parse_extensions(value: object) -> tuple[str, ...]:
 
 
 def identifier_problem(identifier: str) -> str:
-    """Why ``identifier`` cannot name a request folder, or "" if it can.
+    """Why ``identifier`` cannot begin a working copy's name, or "" if it can.
 
     Shared by :func:`validated` and the desktop app's create path so a
     bad identifier is refused with the same sentence wherever it is typed.
     """
     if _ILLEGAL_IDENTIFIER_CHARS.search(identifier):
-        return f"may not contain any of {WINDOWS_ILLEGAL_CHARS_TEXT} (it becomes a folder name)"
+        return f"may not contain any of {WINDOWS_ILLEGAL_CHARS_TEXT} (it begins a file name)"
     if identifier != identifier.rstrip(". "):
-        return "may not end with a dot or a space (Windows drops them from folder names)"
+        return "may not end with a dot or a space (Windows drops them from file names)"
     if is_reserved_name(identifier):
         return (f"may not be a name Windows keeps for a device ({WINDOWS_RESERVED_NAMES_TEXT}); "
-                f"it becomes a folder name")
+                f"it begins a file name")
     return ""
 
 
@@ -1009,7 +1009,7 @@ def _asked(value: object, where: str) -> bool:
 
 def _short_title(value: object, where: str) -> str:
     """A Short name as typed (decision 144): blank is derived, anything
-    else must be a legal folder name within :data:`SHORT_TITLE_MAX`."""
+    else must be legal in a file name, within :data:`SHORT_TITLE_MAX`."""
     text = "" if value is None else str(value).strip()
     if problem := short_title_problem(text):
         raise ManifestError(f"{where}: {COL_SHORT_TITLE} {problem}")
@@ -1103,7 +1103,7 @@ def validated(items: Iterable[RequestItem]) -> list[RequestItem]:
     harnesses, the vocabulary report - so one list is validated one way:
     an identifier on every row, none the file system would alter
     (:func:`identifier_problem`), no two the same without case (a Windows
-    folder name is not case-sensitive); a document on every row; the two
+    file name is not case-sensitive); a document on every row; the two
     numbers within their floors; ``NO_DATE_CHECK`` made blank, a typed
     pattern made to compile, and a blank one derived from the Period with
     ``date_pattern_derived`` set; the override folded to its one spelling
@@ -1227,7 +1227,7 @@ def _with_the_record(
     One place where "what a request is now" is assembled: the status the
     last scan recorded, and the keywords a person's filings taught the row
     added to the ones they typed. Identifiers are matched without case,
-    because a folder name on Windows is (``records.identifier_key``).
+    because a file name on Windows is (``records.identifier_key``).
     """
     out = []
     for item in items:

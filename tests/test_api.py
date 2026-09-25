@@ -199,7 +199,8 @@ def test_create_builds_the_record_and_folders(capsys, demo_root):
     assert ledger.path_for(engagement).is_file()
     assert list(engagement.glob("*.xlsx")) == []
     assert inbox_of(engagement).is_dir()
-    assert any(p.name.startswith("X01") for p in (engagement / PREPARED_DIR_NAME).iterdir())
+    # No folder per request (decision 168): Prepared holds the review folder.
+    assert [p.name for p in (engagement / PREPARED_DIR_NAME).iterdir()] == [REVIEW_DIR_NAME]
     assert [i["identifier"] for i in payload["state"]["items"]][-1] == "X01"
     assert [r["identifier"] for r in payload["state"]["rules"]][-1] == "X01"
 
@@ -243,11 +244,14 @@ def test_the_tax_year_is_within_the_bounds_the_wizard_shows(capsys, demo_root):
     assert code == 1 and "whole number" in payload["error"]
 
 
-def test_create_refuses_an_identifier_that_cannot_name_a_folder(capsys, demo_root):
+def test_create_refuses_an_identifier_that_cannot_begin_a_file_name(capsys, demo_root):
+    """Since decision 168 an identifier begins every working copy's file
+    name, and names no folder: the refusal says so (the review's N-1)."""
     spec = {"household": HOUSEHOLD, "return_name": "Bad", "items": [{"identifier": "A:01", "document": "W-2"}]}
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 1
-    assert "A:01" in payload["error"] and "folder name" in payload["error"]
+    assert "A:01" in payload["error"] and "(it begins a file name)" in payload["error"]
+    assert "folder name" not in payload["error"]
     assert not (where(demo_root, "Bad")).exists()  # never leaves a half-built one
 
 
@@ -1516,7 +1520,7 @@ def test_the_apps_pass_is_the_runners_pass(capsys, demo_root):
     assert code == 0, payload
     code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
     assert code == 0, payload
-    assert any(p.name.startswith("Z01") for p in (engagement / PREPARED_DIR_NAME).iterdir())
+    assert [p.name for p in (engagement / PREPARED_DIR_NAME).iterdir()] == [REVIEW_DIR_NAME]
     assert payload["run"]["warnings"] == []
 
     # A lock held by another run is reported as skipped, not as an error.
@@ -2071,27 +2075,30 @@ def a_moved_row(capsys, demo_root, tmp_path, drag_to):
 
 
 WANDERED = {
-    # Inside the request's own folder, under a name a person gave it...
-    "renamed in its own folder": (lambda eng, home: home.with_name("the 1098 (final).pdf"), True),
-    # ...and in a folder somebody made inside it.
-    "a subfolder of its own folder": (lambda eng, home: home.parent / "old" / home.name, True),
-    # Nobody's folder: the review folder belongs to no request...
+    # In Prepared itself, renamed by a person under its request's name...
+    "renamed under its request's name": (
+        lambda eng, home: home.with_name(home.name.split(" - ")[0] + " - the 1098 (final).pdf"), True),
+    # ...but not under a name no request's identifier begins.
+    "renamed to a name no request begins": (
+        lambda eng, home: home.with_name("the 1098 (final).pdf"), False),
+    # A folder a person made inside Prepared is theirs (decision 168), even
+    # one shaped like a request's...
+    "a person's folder": (lambda eng, home: eng / PREPARED_DIR_NAME / "C01 - old" / home.name, False),
+    # ...and the review folder belongs to no request.
     "the review folder": (
         lambda eng, home: eng / PREPARED_DIR_NAME / REVIEW_DIR_NAME / home.name, False),
-    # ...and a file loose at the root of Prepared/ is in no folder at all.
-    "loose under Prepared": (lambda eng, home: eng / PREPARED_DIR_NAME / home.name, False),
 }
 
 
 @pytest.mark.parametrize("where", list(WANDERED))
-def test_the_state_lists_moved_rows_with_home_now_seq_and_the_request_whose_folder_holds_them(
+def test_the_state_lists_moved_rows_with_home_now_seq_and_the_request_its_name_belongs_to(
     capsys, demo_root, tmp_path, where,
 ):
     """Decision 110's card is its own list, not a fourth column: the row's
     record version, the home the record put the copy at, where its bytes are
-    now, and - only where the copy sits inside some request's folder - which
-    request that is, because "keep it where it is" means nothing anywhere
-    else."""
+    now, and - only where the copy sits in Prepared itself under a name that
+    belongs to a request (decision 168) - which request that is, because
+    "keep it where it is" means nothing anywhere else."""
     from tracker.filer import FILE_MOVED
 
     drag_to, in_a_request = WANDERED[where]
@@ -2109,6 +2116,31 @@ def test_the_state_lists_moved_rows_with_home_now_seq_and_the_request_whose_fold
     # it is not filed where the record says.
     assert state["review"] == []
     assert not [e for e in state["index"] if e["decision"] == FILED]
+
+
+def test_keep_it_here_is_offered_by_the_copys_name(capsys, demo_root, tmp_path):
+    """Claim 7 (decision 168, ruling 6): a mislaid copy a person renamed
+    within Prepared to ``A01 - ...`` - another request's name - is offered
+    Keep it here for A01, and keeping it files it there as A01's canonical
+    copy, beside the others; one inside a person's folder is offered no
+    Keep it here."""
+    engagement, filed, target, state = a_moved_row(
+        capsys, demo_root, tmp_path, lambda eng, home: home.with_name("A01 - the 1098 I renamed.pdf"))
+    [moved] = state["moved"]
+    assert filed["identifier"] == "C01" and moved["in_request"] == "A01"
+
+    code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": moved["pbc_location"], "identifier": moved["in_request"],
+                               "seq": moved["seq"]})
+    assert code == 0, payload
+    [row] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
+    assert row["identifier"] == "A01"
+    assert row["prepared_location"].startswith(f"{PREPARED_DIR_NAME}/A01 - ")
+    assert "/" not in row["prepared_location"][len(PREPARED_DIR_NAME) + 1:]
+    assert (engagement / row["prepared_location"]).is_file() and not target.exists()
+    assert payload["state"]["moved"] == []
+    # One inside a person's folder is offered none: WANDERED's "a person's
+    # folder", above, is that half of the claim.
 
 
 def test_restore_is_a_command_that_re_scans_and_the_moved_list_empties(
@@ -3376,12 +3408,14 @@ def _a_long_row_return(root, household=HOUSEHOLD):
     canonical copy exactly ``LONG_ROW_OVER`` past the limit: since decision
     144 a row's name in the path is its short name - twenty characters at
     most - so the depth is the folder's, as it is when a root grows, not a
-    hundred-character label's."""
+    hundred-character label's. Since decision 168 the copy sits in
+    Prepared itself, so the depth below the return is one name, not a
+    folder and a name."""
     from tests.conftest import TEST_YEAR
     from tracker.layout import MAX_PATH_LENGTH
     from tracker.manifest import RequestItem
 
-    below = len("/Prepared/B01 - " + "y" * 20 + "/B01 - " + "y" * 20 + ".pdf")
+    below = len("/Prepared/B01 - " + "y" * 20 + ".pdf")
     above = len(str(return_dir_for(Path(root), household, TEST_YEAR, "")))
     pad = MAX_PATH_LENGTH + LONG_ROW_OVER - below - above - len("/1040 - Long ")
     if pad < 1:
@@ -3490,7 +3524,9 @@ def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_bel
 ):
     """The API half: a person's filing into a request with no room for even
     its shortest name comes back as the one error sentence, PATH_NO_ROOM,
-    and nothing has moved."""
+    and nothing has moved. Since decision 168 Prepared is the only folder
+    a copy is in, and it is shallower than the review folder, so a request
+    is left no room only by a period as long as ``Jan 2025 - Dec 2025``."""
     from tests.conftest import named_page, root_for_a_return_of, sort
     from tests.test_scanner import text_pdf
     from tracker.filer import PATH_NO_ROOM
@@ -3498,10 +3534,10 @@ def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_bel
     from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
 
     monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
-    root = root_for_a_return_of(tmp_path, 210)
+    root = root_for_a_return_of(tmp_path, 222)             # Prepared: 231, 28 left for a name
     engagement = make_engagement(root, [RequestItem(
-        identifier="A01", document="W-2 Wage Statements", period="TY2025",
-        allowed_extensions=("pdf",), required_keywords=("W-2",))])
+        identifier="A01", document="W-2 Wage Statements", period="Jan 2025 - Dec 2025",
+        date_pattern=r"(?i)\b2025\b", allowed_extensions=("pdf",), required_keywords=("W-2",))])
     set_clients_root(root)
     text_pdf(inbox_of(engagement) / "note.pdf", named_page("A letter the list does not ask for"))
     sort(engagement)
@@ -3514,8 +3550,8 @@ def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_bel
                         stdin={"original": parked.pbc_location, "identifier": "A01", "seq": seq})
 
     assert code == 1
-    assert payload["error"] == PATH_NO_ROOM.format(length=245 + 1 + len("A01 - TY2025.pdf"), limit=260,
-                                                   ext=".pdf")
+    assert payload["error"] == PATH_NO_ROOM.format(
+        length=231 + 1 + len("A01 - Jan 2025 - Dec 2025.pdf"), limit=260, ext=".pdf")
     assert sorted(str(p) for p in root.rglob("*")) == before
 
 
@@ -3807,8 +3843,9 @@ def test_creation_measures_the_room_of_asked_rows_only(capsys, tmp_path, monkeyp
     asked it of. The same row asked is refused, as ever. A document for the
     unasked row is measured where it is written - cut to fit, or parked
     with decision 131's sentence. Since decision 144 a label in the path is
-    a short name of twenty characters at most, so the room is the return
-    folder's: 205 characters here."""
+    a short name of twenty characters at most, and since decision 168 it is
+    in the path once, so the room is the return folder's: 212 characters
+    here (205 while each request had a folder)."""
     from tests.conftest import named_page, root_for_a_return_of, sort
     from tests.test_scanner import text_pdf
     from tracker.layout import PATH_TOO_LONG
@@ -3816,7 +3853,7 @@ def test_creation_measures_the_room_of_asked_rows_only(capsys, tmp_path, monkeyp
     from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
 
     monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
-    root = root_for_a_return_of(tmp_path, 205, return_name="Tight")
+    root = root_for_a_return_of(tmp_path, 212, return_name="Tight")
     root.mkdir(parents=True)
     set_clients_root(root)
     w2 = {"identifier": "A01", "document": "W-2", "period": "TY2025",
@@ -3833,15 +3870,16 @@ def test_creation_measures_the_room_of_asked_rows_only(capsys, tmp_path, monkeyp
                                                  "items": [w2, {**long_row, "asked": False}]})
     assert code == 0, payload
     engagement = where(root, "Tight", year=2025)
-    assert len(str(engagement)) == 205
+    assert len(str(engagement)) == 212
 
     text_pdf(inbox_of(engagement) / "zebra.pdf", named_page("Zebra ledger for 2025"))
     report = sort(engagement)
-    # The row's own folder leaves eighteen characters for the name: the
-    # short name is cut away whole and the copy keeps its identifier, its
-    # period and its extension (test_filer's decision-131 claims).
+    # Prepared leaves the name thirty-eight characters: the short name is
+    # cut from its end, and the copy keeps its identifier, its period and
+    # its extension (test_filer's decision-131 claims). Until decision 168
+    # the row's own folder took the room and the short name went whole.
     [filed] = report.filed
-    assert filed.prepared_location == f"{PREPARED_DIR_NAME}/Z99 - Zebra Ledger Details/Z99 - TY2025.pdf"
+    assert filed.prepared_location == f"{PREPARED_DIR_NAME}/Z99 - Zebra Ledger Detail - TY2025.pdf"
     assert len(str(engagement)) + 1 + len(filed.prepared_location) <= 260
 
 
@@ -4226,8 +4264,9 @@ def test_respelling_an_identifier_with_documents_is_refused_unless_renamed_with_
 
 
 def test_a_rename_carries_its_documents(capsys, demo_root, tmp_path):
-    """The rename moves the request's folder and every working copy in it
-    to the new identifier, rewrites each row that names them, and records
+    """The rename gives every working copy of the request's the new
+    identifier at the front of its name, in Prepared itself (decision 168),
+    rewrites each row that names them, and records
     it as one act: the list renamed and each row's intent in one write,
     then the moves, then the rows (decision 119's intents). A stale list,
     a case-only change, a name already taken and a request that is not on
@@ -4344,12 +4383,11 @@ def test_a_rename_carries_duplicates_and_parked_candidates_that_name_it(
     assert closed.count(duplicate["pbc_location"]) == 2 and closed.count(parked["pbc_location"]) == 2
 
 
-def test_an_interrupted_rename_leaves_no_empty_old_folder(capsys, demo_root, tmp_path, monkeypatch):
+def test_an_interrupted_rename_is_finished_by_the_next_pass(capsys, demo_root, tmp_path, monkeypatch):
     """A rename whose second move fails is on the record from its first
-    write, and the next pass finishes it (decision 119). That pass also
-    removes the request's old folder once it is empty - so no "folder
-    matches no request" warning is left behind - and never a folder with
-    anything in it (decision 160, the designer's ruling on the build)."""
+    write, and the next pass finishes it (decision 119): nothing lost and
+    nothing doubled. Since decision 168 it renames the copies only, in
+    Prepared itself: no folder is made and none is left to tidy."""
     import tracker.filer as filer
     from tracker.filer import RENAME_UNFINISHED
 
@@ -4370,27 +4408,21 @@ def test_an_interrupted_rename_leaves_no_empty_old_folder(capsys, demo_root, tmp
     assert code == 1 and payload["error"].startswith(RENAME_UNFINISHED.split("{name}")[0].format(
         old="A01", new="A1"))
     assert store.open_intents(store.connect(), engagement)
-    assert [child.name for child in prepared.iterdir() if child.name.startswith("A01")] == ["A01 - W-2"]
+    # One copy moved before the failure, one did not: both in Prepared itself.
+    assert len([child for child in prepared.iterdir() if child.name.startswith("A01 - ")]) == 1
+    assert len([child for child in prepared.iterdir() if child.name.startswith("A1 - ")]) == 1
 
     monkeypatch.setattr(filer, "_do_op", real)
     code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
     assert code == 0, payload
     assert not store.open_intents(store.connect(), engagement)
     assert not [child for child in prepared.iterdir() if child.name.startswith("A01")]
-    assert not [w for w in payload["run"]["warnings"] if "matches no request" in w], payload["run"]["warnings"]
+    assert [child.name for child in prepared.iterdir() if child.is_dir()] == [REVIEW_DIR_NAME]
+    assert payload["run"]["warnings"] == []
     filed = [e for e in payload["state"]["index"] if e["decision"] == FILED and e["identifier"] == "A1"]
     assert len(filed) == 2 and all((engagement / e["prepared_location"]).is_file() for e in filed)
-
-    # A folder with anything in it is never removed, and nothing outside
-    # the return's Prepared folder is ever looked at.
-    kept = prepared / "Z9 - Kept"
-    kept.mkdir()
-    (kept / "notes.txt").write_text("a person's note", encoding="utf-8")
-    empty_elsewhere = inbox_of(engagement) / "empty"
-    empty_elsewhere.mkdir()
-    left = filer._remove_emptied_request_folders(engagement, [kept, empty_elsewhere])
-    assert left == [kept / "notes.txt"] and kept.is_dir() and empty_elsewhere.is_dir()
-    empty_elsewhere.rmdir()
+    assert len({e["prepared_location"] for e in filed}) == 2                  # nothing doubled
+    assert len([child for child in prepared.iterdir() if child.name.startswith("A1 - ")]) == 2
 
 
 @pytest.mark.parametrize("only_the_cell", [False, True], ids=["as-routed", "only-the-cell"])

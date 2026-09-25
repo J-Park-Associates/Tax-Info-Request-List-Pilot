@@ -29,8 +29,8 @@ the working copies recorded, so what the fingerprint identified and what a
 person is told are one sentence apart. :data:`INTERRUPTED_MOVE` and
 :data:`INTERRUPTED_MOVE_LOST` (decision 119) are of that kind too: the
 filer's recovery writes them onto the row it could not finish as decided,
-and the scanner says them of the request whose folder the file was going
-into.
+and the scanner says them of the request the file was going to be a
+copy for.
 
 And not every sentence here is a cause at all. :data:`NAMES_SEVERAL_FORMS`
 is what the index says when a document *was* filed - under several
@@ -244,7 +244,7 @@ NO_READABLE_TEXT = Reason(
 #: The request list asks for this document one row per issuer - a Schedule
 #: K-1 per entity that issued one (decision 93, the owner's) - the broad
 #: row accepted the document, and no issuer row did. Filing it on the broad
-#: row would put two entities' K-1s in one folder, which is the thing the
+#: row would put two entities' K-1s under one request, which is the thing the
 #: issuer rows exist to stop; picking the issuer row that is left over
 #: would be guessing by elimination, and a document is filed only when
 #: exactly one request accepts it. So it parks, named: a person files it,
@@ -417,7 +417,7 @@ NAMES_SEVERAL_FORMS = (
 SEVERAL_FORMS_UNSORTED = "it names {n} forms as itself and they do not sort one to a request"
 #: A broker's consolidated 1099 (decision 146): several rows accepted it,
 #: and exactly one was accepted because of its 1099-B section, so the
-#: statement files whole there - one file, one folder, never split.
+#: statement files whole there - one file, one copy, never split.
 #: Plain templates, outside ``ALL``, for the reason the two above are: a
 #: document that filed is not a failure to put to a client.
 FILED_WHOLE = ("carries a 1099-B section and files whole under the one request "
@@ -436,13 +436,21 @@ IN_CONSOLIDATED = "in {row}'s consolidated statement"
 #: statement files whole only when one request accepted its 1099-B section.
 IN_CONSOLIDATED_CLIENT = "included in your consolidated brokerage statement"
 
-# ---- the folder ---------------------------------------------------------------
+# ---- the firm's folder -------------------------------------------------------
 
-NO_REQUEST_FOLDER = Reason(
-    "no-folder", "request folder not found; the next pass creates it", "request folder not found",
-    firm_side=True,
-    firm_note="no request folder, so nothing could be filed here; the next pass creates it",
-)
+#: A folder inside a return's Prepared folder that is not the review
+#: folder (decision 168): working copies sit in Prepared itself, named by
+#: their request, so any folder in it is a person's - or a request folder
+#: of a return made before 168. Nothing is filed into it, counted in it or
+#: moved out of it, and the pass names it once, firm-side. A plain template
+#: rather than a :class:`Reason`, outside ``ALL``: it is a sentence about a
+#: folder on the run's warnings, never a note on a request, and never a
+#: thing to ask a client. ``{prepared}`` is ``layout.PREPARED_DIR_NAME``.
+#: Until 168 a request whose folder was not there said
+#: "request folder not found; the next pass creates it" - retired with the
+#: folder, because a request can no longer lack one.
+PERSONS_FOLDER = ("{folder} is a folder inside {prepared}. The tracker files into {prepared} "
+                  "itself and counts nothing in this folder.")
 
 #: A reading that hit the safety stop (decision 137, B1.2; the owner's
 #: Q-1 of 2026-09-24): ten times the speed ceiling he approved for decision
@@ -579,7 +587,6 @@ ALL: tuple[Reason, ...] = (
     NAME_NOT_ON_PAGE, NAMES_ANOTHER_RETURN, NO_PEOPLE_ON_FILE, UNNAMED_ACROSS_HOUSEHOLDS,
     OPENED_NOT_ACROSS, FILE_MOVED, COPY_CHANGED, INTERRUPTED_MOVE, INTERRUPTED_MOVE_LOST,
     READING_STOPPED, READING_CRASHED, READER_UNAVAILABLE, PENDING_SYNC, VANISHED,
-    NO_REQUEST_FOLDER,
 )
 
 #: Reasons that mean "a person here has not looked yet", never a client ask.

@@ -8,8 +8,8 @@ prepared (1040, 1120, 1120-S, 1065, 1041, 990) and get a request list
 tailored to that form. **The client gets one folder and drops everything
 into it** — no sorting, no naming, no matching files to a list. A scheduled
 job then files what arrives: their originals are preserved untouched in
-the client's folder for the year, renamed working copies are sorted into
-per-request folders on the firm's side, and the return's own record holds
+the client's folder for the year, renamed working copies sit side by side
+in one folder on the firm's side, each named by its request, and the return's own record holds
 every rename, every move and each request's validated status.
 
 A client folder is a **household**, with one folder per **tax year** inside
@@ -60,9 +60,9 @@ are flagged with a note asking the client for an exported PDF/Excel copy.
                 ├── _ledger.jsonl            ← the return's record: the request list, every original, every status, every rules edit
                 ├── Status Report.html       ← this return on one page, redrawn by every pass
                 └── Prepared/                ← the firm's working set (the client never sees it)
-                    ├── A01 - W-2/           ← named by the request's short name (decision 144)
-                    │   └── A01 - W-2 - TY2025.pdf
-                    └── 00 - Needs Review/   ← couldn't be identified; a person decides
+                    ├── 00 - Needs Review/   ← couldn't be identified; a person decides
+                    ├── A01 - W-2 - TY2025.pdf        ← named by its request (decisions 144, 168)
+                    └── A02 - 1099-INT-DIV - TY2025.pdf
 ```
 
 **One inbox per household.** A household with a business and its owner's
@@ -113,9 +113,11 @@ what has arrived shows each attachment that filed, under its request.
 2. List the engagement's document requests (and validation rules) in the
    app's request-list editor
 3. `python -m tracker.scaffold <return_dir>` — builds the household's
-   inbox and the year's folder, and this return's `Prepared/` (folders
+   inbox and the year's folder, and this return's `Prepared/` with its
+   review folder - no folder per request: the working copies sit in
+   `Prepared/` itself, named by their request (decision 168). Folders
    only: the client's README is written by the pass and by the app,
-   decision 130)
+   decision 130
 4. Share the household's folder with the client as Viewer and its inbox as
    Contributor, paste the inbox's link into the household and mark it
    shared — the app asks for all three, once, and `docs/runbook.md` §1
@@ -171,16 +173,16 @@ writes the same rows at another stage and `--today` at another day. Both
 dates are the engagement's details, editable and clearable, and the
 sentences name the dates and never the arithmetic between them.
 
-Two things are deliberately held back from the client and reported to the
+One thing is deliberately held back from the client and reported to the
 accountant instead:
 
 - A row whose only problem is that **we** haven't read it yet (an un-OCR'd
-  scan). The document may be perfect; asking a client to resend it is how a
-  firm looks careless.
-- A row with no request folder. We can't tell a client we never received
-  something we never made a place to put — that's a scaffold problem. (A
-  row nobody asked for has no folder until its first document, on
-  purpose, and is never chased at all — decision 142.)
+  scan), or whose working copy somebody here moved. The document may be
+  perfect; asking a client to resend it is how a firm looks careless. (A
+  row nobody asked for is never chased at all — decision 142. Until
+  decision 168 a row with no request folder was held back as well; no
+  request has a folder any more, so a request with nothing in is simply
+  Missing.)
 
 And one thing **holds the whole reminder** for a person (decision 115): a
 row whose file arrived and failed the rules with no firm-side reason. A copy
@@ -293,7 +295,7 @@ the packaged app with its own executable, which runs the job when given
 version before decision 131 still carries the root it was installed with:
 press **Install Schedule** once after upgrading, and never again for a
 move. Every pass also re-scaffolds each engagement, so a
-row added in the app has its folder by the next run, and rewrites the
+deleted inbox or review folder is back by the next run, and rewrites the
 household's README once, after the sort (decision 130), and
 an engagement that has been rolled forward is retired by its successor
 without anyone opening last year's engagement.

@@ -35,7 +35,6 @@ from tracker.layout import (
     year_folder_name,
     year_of,
 )
-from tracker.scaffold import folder_name_for
 from tracker.templates import template_items
 
 ROOT = Path("G:/Shared drives/JPA Clients")
@@ -125,18 +124,19 @@ def test_the_deepest_path_is_measured_from_the_return_folder():
     assert deepest_path_length(engagement, [copy]) == 164
     assert deepest_path_length(engagement, [copy]) <= MAX_PATH_LENGTH
 
-    # The same return with a request named by a hundred characters is past
-    # it. Since decision 144 the name in the path is the row's short name,
-    # which a person cannot type past twenty; the measure is held to a
-    # hundred all the same.
+    # The same return with a request named by a hundred characters was
+    # past it while the name was in the path twice, once as the request's
+    # folder (316). Since decision 144 the name in the path is the row's
+    # short name, which a person cannot type past twenty, and since
+    # decision 168 it is there once - the copy sits in Prepared itself and
+    # its name is capped - so even a hundred characters fits (215).
     long_row = template_items("1040", core_only=True)[0]
     from dataclasses import replace
 
     long_row = replace(long_row, document="x" * 100, short_title="x" * 100)
-    deepest = (f"{PREPARED_DIR_NAME}/{folder_name_for(long_row)}/"
-               f"{prepared_name_for(long_row, 'xlsx', set())}")
-    assert deepest_path_length(engagement, [deepest]) > MAX_PATH_LENGTH
-    assert deepest_path_length(engagement, [deepest]) == 316
+    deepest = f"{PREPARED_DIR_NAME}/{prepared_name_for(long_row, 'xlsx', set())}"
+    assert deepest_path_length(engagement, [deepest]) <= MAX_PATH_LENGTH
+    assert deepest_path_length(engagement, [deepest]) == 215
 
     assert deepest_path_length(engagement, []) == 0       # a return with no request
 
@@ -152,8 +152,7 @@ def test_the_suites_own_short_root_leaves_room_for_the_whole_1040_core_list(shor
     machine with no room says so instead of failing every create.
     """
     engagement = return_dir_for(short_root, HOUSEHOLD, 2026, RETURN)
-    subpaths = [f"{PREPARED_DIR_NAME}/{folder_name_for(item)}/"
-                f"{prepared_name_for(item, 'xlsx', set())}"
+    subpaths = [f"{PREPARED_DIR_NAME}/{prepared_name_for(item, 'xlsx', set())}"
                 for item in template_items("1040", core_only=True)]
     deepest = deepest_path_length(engagement, subpaths)
     assert deepest <= MAX_PATH_LENGTH, (
@@ -164,13 +163,13 @@ def test_the_suites_own_short_root_leaves_room_for_the_whole_1040_core_list(shor
 def test_the_whole_1040_core_list_fits_under_the_firms_own_root():
     """The measurement that matters at the office: every row of the
     catalog a real client is cut from fits inside what Windows will open -
-    163 characters with the short names (decision 144), where the full
-    titles took 223."""
+    138 characters with each copy in Prepared itself (decision 168), 163
+    with a folder per request and the short names (decision 144), 223 with
+    the full titles."""
     engagement = return_dir_for(ROOT, HOUSEHOLD, 2026, RETURN)
-    subpaths = [f"{PREPARED_DIR_NAME}/{folder_name_for(item)}/"
-                f"{prepared_name_for(item, 'xlsx', set())}"
+    subpaths = [f"{PREPARED_DIR_NAME}/{prepared_name_for(item, 'xlsx', set())}"
                 for item in template_items("1040", core_only=True)]
-    assert deepest_path_length(engagement, subpaths) == 163
+    assert deepest_path_length(engagement, subpaths) == 138
     assert deepest_path_length(engagement, subpaths) <= MAX_PATH_LENGTH
 
 

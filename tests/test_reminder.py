@@ -172,7 +172,7 @@ def engagement(tmp_path, items=SCANNED, name="Smith TY2025"):
 
 
 def test_only_outstanding_rows_become_asks():
-    lines, _, _, held = triage(SCANNED)
+    lines, _, held = triage(SCANNED)
     assert [line.item.identifier for line in lines] == ["A01", "A02"]
     assert [line.section for line in lines] == [SECTION_MISSING, SECTION_PARTIAL]
     # A03 arrived and the rules refused it: a person's call, not the client's ask.
@@ -180,7 +180,7 @@ def test_only_outstanding_rows_become_asks():
 
 
 def test_received_and_pending_sync_are_never_asked_for():
-    lines, _, _, _ = triage(SCANNED)
+    lines, _, _ = triage(SCANNED)
     asked = {line.item.identifier for line in lines}
     assert "A04" not in asked, "Received must not be re-requested"
     assert "A07" not in asked, "Pending Sync is in; the cloud is just slow"
@@ -189,8 +189,8 @@ def test_received_and_pending_sync_are_never_asked_for():
 def test_overrides_are_never_asked_for():
     """Not Applicable does not apply this year; Accepted was judged good
     enough by a person."""
-    lines, attention, gaps, held = triage(SCANNED)
-    everything = {f.item.identifier for f in attention + gaps + held}
+    lines, attention, held = triage(SCANNED)
+    everything = {f.item.identifier for f in attention + held}
     everything |= {line.item.identifier for line in lines}
     assert "A05" not in everything
     assert "A06" not in everything
@@ -237,18 +237,20 @@ def test_multi_file_requests_say_how_many_are_expected(tmp_path):
 def test_rows_we_have_not_read_go_to_the_accountant_not_the_client():
     rows = [item("B01", "Receipts", Status.FAILED,
                  validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format())]
-    lines, attention, _, held = triage(rows)
+    lines, attention, held = triage(rows)
     assert lines == [] and held == []
     assert [f.item.identifier for f in attention] == ["B01"]
     assert reasons.FIRM_WAITING in attention[0].reason
 
 
-def test_a_missing_request_folder_is_our_problem_not_the_clients():
-    rows = [item("B02", "Payroll Reports", Status.MISSING,
-                 validation_notes=reasons.NO_REQUEST_FOLDER.format())]
-    lines, _, gaps, _ = triage(rows)
-    assert lines == [], "we cannot claim a document never arrived with nowhere to put it"
-    assert [f.item.identifier for f in gaps] == ["B02"]
+def test_a_request_with_nothing_in_is_simply_asked_for():
+    """Decision 168: no request has a folder that could be missing, so a
+    Missing row with no note is not a scaffold problem held back from the
+    letter - there is no such list any more - but a plain ask."""
+    rows = [item("B02", "Payroll Reports", Status.MISSING)]
+    lines, attention, held = triage(rows)
+    assert [line.item.identifier for line in lines] == ["B02"]
+    assert attention == [] and held == []
 
 
 def test_needs_review_files_are_counted_as_a_warning(tmp_path):
@@ -412,7 +414,8 @@ def test_written_draft_appends_firm_side_notes_below_the_email(tmp_path):
         item("B01", "Receipts", Status.FAILED,
              validation_notes="scan.pdf: " + reasons.NO_TEXT_AFTER_OCR.format()),
         item("B02", "Payroll Reports", Status.MISSING,
-             validation_notes=reasons.NO_REQUEST_FOLDER.format()),
+             validation_notes=reasons.FILE_MOVED.format(
+                 listed="Prepared/B02 - Payroll - TY2025.pdf -> nowhere under Prepared")),
     ]
     folder = engagement(tmp_path, rows)
     review = folder / PREPARED_DIR_NAME / REVIEW_DIR_NAME
@@ -439,7 +442,7 @@ def test_a_partial_row_we_have_not_finished_reading_is_ours_not_the_clients():
     row = item("A01", "W-2 Wage Statements", Status.PARTIAL, expected_count=2,
                file_count=1,
                validation_notes=f"{PARTIAL_NOTE.format(count=1, expected=2)}; scan.pdf: " + reasons.NO_TEXT_LAYER.format())
-    lines, attention, _, held = triage([row])
+    lines, attention, held = triage([row])
     assert lines == [] and held == []
     assert [flag.item.identifier for flag in attention] == ["A01"]
     assert reasons.FIRM_WAITING_PARTIAL in attention[0].reason
@@ -556,7 +559,7 @@ def test_a_partial_whose_shortfall_is_a_refused_file_holds_and_a_plain_partial_i
                                     + reasons.PASSWORD_PROTECTED.format())
     plain = item("A03", "Brokerage Statements", Status.PARTIAL, expected_count=2, file_count=1,
                  validation_notes=PARTIAL_NOTE.format(count=1, expected=2))
-    lines, attention, _, held = triage([refused, plain])
+    lines, attention, held = triage([refused, plain])
     assert [line.item.identifier for line in lines] == ["A03"]
     assert lines[0].ask == PARTIAL_ASK.format(have=1, expected=2, missing=1)
     assert attention == []
@@ -569,7 +572,7 @@ def test_a_missing_row_with_a_firm_side_marker_is_held_back_not_asked():
     outstanding status is the firm's, Missing included."""
     row = item("D01", "Charitable Donations", Status.MISSING,
                validation_notes="receipts.pdf: " + reasons.VANISHED.format(error="moved"))
-    lines, attention, _, held = triage([row])
+    lines, attention, held = triage([row])
     assert lines == [] and held == []
     assert [flag.item.identifier for flag in attention] == ["D01"]
     assert attention[0].reason == reasons.VANISHED.firm_side_note
@@ -579,7 +582,7 @@ def test_a_failed_row_with_no_recognised_reason_is_held_not_asked_generically():
     """The one guess the drafter made - "please send it again" for a failure
     it could not name - is gone: it is held, with no reason in brackets."""
     row = item("A01", "Doc", Status.FAILED, validation_notes="x.pdf: something nobody predicted")
-    lines, attention, _, held = triage([row])
+    lines, attention, held = triage([row])
     assert lines == [] and attention == []
     assert [flag.item.identifier for flag in held] == ["A01"]
     assert held[0].reason == AMBIGUOUS_HOLD
@@ -602,7 +605,7 @@ def test_the_held_refusal_names_every_held_row_and_writes_nothing(tmp_path):
     assert "C01" in said and "D01" in said and "A01" not in said
     assert list(folder.glob("reminder-draft*")) == []
     # A hold's bracketed reason is in the row's own terms, as an ask would be.
-    _, _, _, [xlsx] = triage([item("E01", "Sheet", Status.FAILED, allowed_extensions=("xlsx",),
+    _, _, [xlsx] = triage([item("E01", "Sheet", Status.FAILED, allowed_extensions=("xlsx",),
                                    validation_notes="x.zip: " + reasons.EXTENSION_NOT_ALLOWED.format(
                                        extension="zip", allowed="xlsx"))])
     assert EXTENSION_ASK.format(accepted=".xlsx") in xlsx.reason
@@ -680,9 +683,9 @@ def test_section_failed_is_unreachable_from_a_pass(tmp_path):
     assert SECTION_FAILED not in SECTION_ORDER
     every_failed = [
         item(f"F{n:02d}", "Doc", Status.FAILED, validation_notes="x.pdf: " + reason.marker)
-        for n, reason in enumerate(reasons.ALL) if reason is not reasons.NO_REQUEST_FOLDER
+        for n, reason in enumerate(reasons.ALL)
     ] + [item("F99", "Doc", Status.FAILED, validation_notes="x.pdf: nobody predicted this")]
-    lines, attention, _, held = triage(every_failed)
+    lines, attention, held = triage(every_failed)
     assert lines == []
     assert {f.item.identifier for f in attention} | {f.item.identifier for f in held} == {
         i.identifier for i in every_failed
@@ -704,14 +707,14 @@ def test_a_missing_row_with_a_file_moved_note_is_the_firms_and_the_draft_never_a
     moved = item("A08", "W-2 Wage Statements", Status.MISSING, period="TY2025",
                  validation_notes="; ".join([
                      "was Received 2026-02-01; files changed",
-                     reasons.FILE_MOVED.format(listed="Prepared/A08 - W-2/A08 - W-2 - TY2025.pdf "
-                                                      "-> Prepared/C01 - Mortgage/A08 - W-2 - TY2025.pdf"),
+                     reasons.FILE_MOVED.format(listed="Prepared/A08 - W-2 - TY2025.pdf "
+                                                      "-> Prepared/C01 - A08 - W-2 - TY2025.pdf"),
                  ]))
 
-    lines, attention, gaps, held = triage(SENDABLE + [moved])
+    lines, attention, held = triage(SENDABLE + [moved])
 
     assert "A08" not in {line.item.identifier for line in lines}
-    assert "A08" not in {flag.item.identifier for flag in gaps + held}
+    assert "A08" not in {flag.item.identifier for flag in held}
     assert [flag.reason for flag in attention if flag.item.identifier == "A08"] == [
         reasons.FILE_MOVED.firm_side_note
     ]
@@ -1732,21 +1735,21 @@ def test_a_reminder_link_is_only_http_or_https_refused_on_save_and_dropped_from_
 
 def test_the_reminder_never_chases_or_reports_a_not_asked_row(tmp_path):
     """A row nobody asked for is skipped before anything else: no line, no
-    scaffold gap for the folder it lacks on purpose, no hold for a failed
-    file under it, and the "N of M" figure counts asked rows only."""
+    firm-side flag, no hold for a failed file under it, and the "N of M"
+    figure counts asked rows only."""
     rows = [
         *SENDABLE,
         item("B01", "Social Security Benefit Statement", Status.MISSING, asked=False),
         item("B02", "1099-C", Status.MISSING, asked=False,
-             validation_notes=reasons.NO_REQUEST_FOLDER.format()),
+             validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format()),
         item("B03", "W-2G", Status.FAILED, asked=False,
              validation_notes="w2g.pdf: " + reasons.PASSWORD_PROTECTED.format()),
         item("B04", "1098-E", Status.RECEIVED, asked=False, file_count=1,
              received_date=dt.date(2026, 2, 1)),
     ]
-    lines, attention, gaps, held = triage(rows)
+    lines, attention, held = triage(rows)
     unasked = {"B01", "B02", "B03", "B04"}
-    for flagged in (lines, attention, gaps, held):
+    for flagged in (lines, attention, held):
         assert not unasked & {one.item.identifier for one in flagged}
 
     draft = draft_reminder(

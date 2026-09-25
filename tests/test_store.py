@@ -1357,7 +1357,7 @@ def _one_filed_row(period: str):
 
     return IndexEntry(received="2026-09-23 10:00:00", original_name="x.pdf", size_kb=5.0,
                       digest="abc", identifier="A01",
-                      prepared_location="Prepared/A01 - W-2 Wages/A01 - W-2.pdf",
+                      prepared_location="Prepared/A01 - W-2.pdf",
                       pbc_location="x.pdf", decision=FILED, reason=f"filed for {period}")
 
 

@@ -109,6 +109,22 @@ the clients root, and the difference between them is the whole point:
   machine dies between the move and the row, the next pass finds the file
   in the year's folder and files or parks it correctly, but its row does
   not say which subfolder it came from.
+- Inside a return, `Prepared` holds the firm's working copies **side by
+  side**, each named by its request - `A01 - W-2 - TY2025.pdf`, then
+  `A01 - W-2 - TY2025 (2).pdf` - and the review folder `00 - Needs Review`
+  (decision 168). There is no folder per request: the name says which
+  request a copy is for, and Explorer sorts a request's copies together. A
+  folder anyone makes inside `Prepared` is theirs: the tracker files nothing
+  into it, counts nothing in it and moves nothing out of it, and every pass
+  names it once on the run - *"<folder> is a folder inside Prepared. The
+  tracker files into Prepared itself and counts nothing in this folder."* A
+  return made before decision 168 keeps its old request folders, and each is
+  named that way. What sits in them is not counted, so such a return reads
+  Missing for every document in its old folders, and its letter would ask
+  the client for them: set it aside before its letter is drafted, and make
+  it again. A file in
+  `Prepared` whose name begins with no request's identifier is named on the
+  run too, and not counted.
 - The inbox holds one file of ours, `_README.txt`, which the tracker writes
   and nobody edits. Step 2 of it reads *"We will examine and place all
   documents into the current year's folder."*; step 3 reads *"Please keep
@@ -178,20 +194,20 @@ for are edited in the same place.
 documents keeps its identifier through a save: changing `A01` to `A1` in
 the list, or deleting the row, and pressing **Save** is refused with a
 sentence naming the request and how many documents it holds - saved, the
-documents would be left in a folder no request names, and the letter and
+documents would be left under a name no request has, and the letter and
 the client's README would ask for them again. To stop asking for such a
 request, set it **Not Applicable** rather than deleting it. To change the identifier,
 open **Rename a request** below the list, pick the request, type the new
-identifier and press **Rename**: its folder in `Prepared`, every working
-copy in it and every row of the index move to the new identifier at once,
-and the request is re-scanned. Nothing else you have typed in the editor
-is lost; save it afterwards as usual. A change of **case** alone (`C01` to
-`c01`) is the same request everywhere and is simply saved. A rename is
-refused while a copy of the request's is not where the record put it -
-put it back or send it to review first. A file in the old folder that no
-row names is left where it is, and the editor names it. If a rename is
-interrupted (a copy held open by another program), the next pass finishes
-it and removes the old folder once it is empty.
+identifier and press **Rename**: every working copy of the request's in
+`Prepared` takes the new identifier at the front of its name, every row of
+the index moves to the new identifier at once, and the request is
+re-scanned. Nothing else you have typed in the editor is lost; save it
+afterwards as usual. A change of **case** alone (`C01` to `c01`) is the
+same request everywhere and is simply saved. A rename is refused while a
+copy of the request's is not where the record put it - put it back or send
+it to review first. A file named for the old identifier that no row names
+is left where it is, and the editor names it. If a rename is interrupted
+(a copy held open by another program), the next pass finishes it.
 
 A request that a broker's consolidated statement answers (decision 146) -
 the statement filed under the brokerage request, this request named in its
@@ -343,14 +359,20 @@ it reads the root from the settings file at every run.
 A longer root leaves every return less room: Windows opens a path of
 `tracker.layout.MAX_PATH_LENGTH` characters at most, and a working copy
 deep in a return with a long household name and a long return name can
-pass it. Since decision 144 a request's folder and its working copies are
-named by the request's **short name** - `A01 - W-2\A01 - W-2 - TY2025.pdf`,
-twenty characters at most, where the full title used to appear twice - so
-the firm's own root, `G:\Shared drives\Income Tax Clients` (35
-characters), refuses none of the 39 returns of the owner's intake test
-with the wizard's default rows asked (9 were refused with the full titles)
-and none with every row asked (34 were); the deepest working copy there
-is 209 and 210 characters. The client never sees a short name: the README,
+pass it. Since decision 144 a request's working copies are named by the
+request's **short name**, twenty characters at most, where the full title
+used to appear twice - so the firm's own root,
+`G:\Shared drives\Income Tax Clients` (35 characters), refuses none of the
+39 returns of the owner's intake test with the wizard's default rows asked
+(9 were refused with the full titles) and none with every row asked (34
+were); the deepest working copy there was 209 and 210 characters. Since
+decision 168 there is no folder per request either: a copy sits in
+`Prepared` itself as `A01 - W-2 - TY2025.pdf`, so every working path is
+shorter again by the folder that held it: under the firm's own root the
+deepest working copy of the intake test's 39 returns is 184 characters with
+the default rows and 185 with every row (from 209 and 210), none of the 39
+refused either way, and the whole 1040 core list under a 28-character root
+went from 163 characters to 138. The client never sees a short name: the README,
 the reminder letter and the received list keep the full title. So the reply to setting the root lists,
 under *Returns short of room under this root*, every return the new root
 leaves short, with the number. Nothing is refused - the firm's data is
@@ -460,7 +482,7 @@ the folder will see that return's documents.
 
 A parked document can be filed under a request of any return the drop folder
 feeds — *File under another return*, in the queue. The original moves where it
-must rest, the working copy is made in that return's request folder, the copy
+must rest, the working copy is made in that return's `Prepared` folder, the copy
 waiting here goes, and the row here is released: nothing about it stays in
 this household; the journal says which return took it; if it went to the
 wrong return, unfile it *there*.
@@ -622,13 +644,15 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
 3. **A working copy that has moved is yours, and it is the first card on
    the screen.** Every pass proves each working copy against the
    fingerprint its own index row carries (decision 109). A copy somebody
-   dragged out of its request folder makes that row
+   dragged away from where the record put it, or renamed, makes that row
    `tracker.filer.FILE_MOVED`, and it is said on the run and on the
    practice page the same morning: the request reads Missing until it is
    back, and the client is never asked for it. The app lists every such
    copy above the review queue with its home, where its bytes are now, and
    three answers — **Put it back**, **Keep it here** (only when the copy
-   sits in a request's folder) and **Send to review** — because which one
+   sits in `Prepared` itself under a name that begins with a request's
+   identifier: it is filed there, under that request, which you can
+   change) and **Send to review** — because which one
    you meant is never guessed (decision 110). Answer them before Saturday:
    the draft holds nothing up for a mislaid copy, and a request that reads
    Missing all week is one nobody is chasing. Nothing you press there
@@ -846,7 +870,7 @@ Three more appear as warnings on the run rather than as index rows:
 | `filer.REPLACED_IN_PBC` | The client replaced an original we had already filed; the working copy was made from the earlier file. Said too for a file taken out of an email or a zip that was replaced under its own name in the hidden `_Opened` folder. | Look at both, and re-file if the new one differs. |
 | `filer.UNTIED_IN_PBC` | A row was recorded without its bytes and its working copy no longer matches the original. | Look at it. Nothing is adopted automatically, by design. |
 | `filer.UNRECORDED_OPENED` / `filer.OPENED_CONTAINER_GONE` | A file sits in a hidden `_Opened` folder that no row names, or a container's folder there whose email or zip has no row any more (decision 143). A pass killed half way that the next pass did not finish can leave one; so can a file somebody put there by hand. It is never sorted from there and never deleted. | Look at it. If it is a document the client sent, drop a copy in the client's folder for the year and the next pass sorts it; then delete the stray by hand. |
-| `filer.UNRECORDED_COPY` | A file is sitting in a request folder (or in the review folder) that nothing on the record put there and no row's bytes account for. It **is** counted for that request — what a request has is what its folder holds — but nobody can say where it came from. It is never a copy the tracker left half made: since decision 155 a copy that fails or is killed part-way (antivirus holding it, a full disk, the power going out) leaves only a temporary file, which nothing counts and the next pass removes. | Open it. If it is a document, file it in the app, or take it out and drop it in the client's folder so the next pass sorts and records it. If it is not a whole document — a partial or broken copy, say one an older version left — delete it by hand; never ask the client for it. Said every pass until you do. |
+| `filer.UNRECORDED_COPY` | A file is sitting in `Prepared` under a name that begins with a request's identifier (or in the review folder) that nothing on the record put there and no row's bytes account for. It **is** counted for that request — what a request has is what `Prepared` holds under its name — but nobody can say where it came from. It is never a copy the tracker left half made: since decision 155 a copy that fails or is killed part-way (antivirus holding it, a full disk, the power going out) leaves only a temporary file, which nothing counts and the next pass removes. | Open it. If it is a document, file it in the app, or take it out and drop it in the client's folder so the next pass sorts and records it. If it is not a whole document — a partial or broken copy, say one an older version left — delete it by hand; never ask the client for it. Said every pass until you do. |
 
 And since decision 143 the Decision column has a sixth value, for an email
 or a zip the pass opened:
@@ -883,20 +907,21 @@ read yet.
 `reasons.HEIC_NOT_SUPPORTED`, `reasons.TOO_LARGE`, `reasons.READING_STOPPED`,
 `reasons.READING_CRASHED`, `reasons.READER_UNAVAILABLE`,
 `reasons.UNNAMED_ACROSS_HOUSEHOLDS`,
-`reasons.UNCHECKABLE_TYPE`, `reasons.NO_REQUEST_FOLDER`,
+`reasons.UNCHECKABLE_TYPE`,
 `reasons.FILE_MOVED`, `reasons.COPY_CHANGED`,
 `reasons.INTERRUPTED_MOVE`, `reasons.INTERRUPTED_MOVE_LOST`. These mean the
-document may be perfectly fine and no person here has read it yet — or, for
-`reasons.NO_REQUEST_FOLDER`, that the request has no folder and the next
-pass makes it. The last two are decision 109's, and they are ours by
+document may be perfectly fine and no person here has read it yet. (Until
+decision 168 there was one more, "request folder not found": no request
+has a folder any more, so a request with nothing in is simply Missing.)
+`reasons.FILE_MOVED` and `reasons.COPY_CHANGED` are decision 109's, and they are ours by
 definition: the client sent the document and somebody here moved the copy
 or put another file in its place.
 
-- `reasons.FILE_MOVED` — this request's working copy is not in its folder
-  any more and the record has found it elsewhere under `Prepared/`. The
+- `reasons.FILE_MOVED` — this request's working copy is not where the
+  record put it any more and the record has found it elsewhere under `Prepared/`. The
   note names where it belongs and where it is; §4 is the row it comes
   from. The request reads Missing until the copy is back.
-- `reasons.COPY_CHANGED` — the file in the request's folder is not the one
+- `reasons.COPY_CHANGED` — the file at the request's copy's place is not the one
   the record filed there: its size or its bytes disagree with the
   client's original. It is **not counted** (decision 155) — a copy torn in
   half, or another file put in its place, is not the document, whatever
@@ -906,14 +931,14 @@ or put another file in its place.
   original is in the client's folder for the year), or file whatever it
   is properly. It is on the practice page too, so you see it across every
   engagement at once.
-- `reasons.INTERRUPTED_MOVE` — a step that was putting a working copy in
-  this request's folder was interrupted (the machine went off, the power
+- `reasons.INTERRUPTED_MOVE` — a step that was putting a working copy of
+  this request's in `Prepared` was interrupted (the machine went off, the power
   went out) and that place now holds a different file. Nothing there was
   touched, the document itself is parked for you in `00 - Needs Review`
   with a copy of its own, and the file that is sitting there is **not**
   counted, so the request reads Missing rather than Failed Validation for
   a document the client sent perfectly well. Open the app, file the parked
-  copy, and take the leftover file out of the folder; it is named every
+  copy, and take the leftover file out of `Prepared`; it is named every
   pass until you do (decision 119).
 - `reasons.INTERRUPTED_MOVE_LOST` — the same interrupted step, where
   neither the place it was taking the file from nor the place it was

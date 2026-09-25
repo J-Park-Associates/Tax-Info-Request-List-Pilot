@@ -824,17 +824,23 @@ def test_documents_spell_manifest_headers_exactly():
                     assert quoted == header, (rel, quoted)
 
 
-def test_tree_diagrams_show_catalog_folders_as_the_scaffold_names_them():
-    from tracker.scaffold import folder_name_for
+def test_tree_diagrams_show_catalog_copies_as_the_filer_names_them():
+    """Decision 168: a working copy sits in Prepared itself, so a tree
+    diagram shows no folder per request, and every working copy it shows
+    is named as the filer names a catalog row's copy."""
+    from tracker.filer import prepared_name_for
     from tracker.templates import FORM_TEMPLATES, TY, item_from_spec
 
-    folders = {folder_name_for(item_from_spec(spec)) for rows in FORM_TEMPLATES.values() for spec in rows}
+    items = [item_from_spec(spec) for rows in FORM_TEMPLATES.values() for spec in rows]
+    names = {prepared_name_for(item, extension, set())
+             for item in items for extension in (item.allowed_extensions or ("pdf",))}
     for rel in DOCUMENTS:
-        for line in re.findall(r"([A-Z]\d{2} - [^/\n]+?)/", read(rel)):
-            assert line in folders, (rel, line)
         for line in read(rel).splitlines():
             if "──" not in line:
                 continue                                  # only the tree diagrams
+            assert not re.search(r"[A-Z]\d{2} - [^/\n]+?/", line), (rel, line)
+            for copy in re.findall(r"([A-Z]\d{2} - .+?\.[a-z]{2,4})\b", line):
+                assert copy in names, (rel, copy)
             for period in re.findall(r"\bTY\d{4}\b", line):
                 assert period == TY, (rel, period)
 

@@ -37,7 +37,12 @@ the clients root:
 - `J Park & Associates/<Household>/` — never shared. It holds the household's
   own record, and under each year one folder per return, named form first
   (`1040 - John & Maria Park`). That return folder is what the rest of this
-  page, and the software, calls the **engagement**.
+  page, and the software, calls the **engagement**. Its `Prepared/` holds
+  the working copies side by side, each named by its request
+  (`A01 - W-2 - TY2025.pdf`), and the review folder `00 - Needs Review`;
+  there is no folder per request (decision 168). A folder anyone makes
+  inside `Prepared/` is theirs: nothing is filed into it or counted in it,
+  and every pass names it once.
 
 One inbox feeds every return of the household's open year, so a pass runs a
 whole household at a time — and a person may extend it further (decision
@@ -89,7 +94,8 @@ Every row is in one of three states (decisions 116 and 142):
   document that arrives for it parks for a person.
 
 Either way the result is the request list in the record plus the
-scaffolded household inbox and `Prepared/` tree, and a `_README.txt` for the
+scaffolded household inbox and `Prepared/` with its review folder (no folder
+per request, decision 168), and a `_README.txt` for the
 client, written by the app straight after the return is made (decision 130:
 the scaffold lays out folders only).
 
@@ -248,7 +254,8 @@ person types.
   bytes to where the record put them: the copy itself is moved home when it
   still holds them, and a fresh one is made from the client's original when
   nothing under `Prepared/` does. **Keep it here** files the copy where it
-  now sits — offered only when it sits in a request's folder, and starting
+  now sits — offered only when it sits in `Prepared/` itself under a name
+  that begins with a request's identifier (decision 168), and starting
   on that request, so keeping the file and correcting the request is one
   click. **Send to review** sends it back to `00 - Needs Review` under the
   client's own name. Two things no answer will do: a file already at home

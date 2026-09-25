@@ -36,8 +36,9 @@ does when a document names nobody on the return: a named request parks it
 for a person, an unnamed one files it on its keywords alone.
 
 And every row carries a **short name** (decision 144, the owner's list of
-2026-09-24): what the firm's working folder and working copies are called,
-``A01 - W-2/A01 - W-2 - TY2025.pdf``, twenty characters at most. The full
+2026-09-24): what the firm's working copies are called,
+``A01 - W-2 - TY2025.pdf`` (each in ``Prepared`` itself since decision
+168), twenty characters at most. The full
 title was in every working path twice and, under the firm's real clients
 root, refused a business with a household name of 26 characters. A row the
 several catalogs share has the same short name on each. The client never
@@ -118,7 +119,7 @@ def _row(identifier: str, document: str, *, core: bool, named: bool, short: str 
          any_keywords: str = "", expected_count: int = 1) -> dict:
     row = {"identifier": identifier, "document": document, "period": period,
            "extensions": extensions, "core": core, "named": named}
-    # The short name the firm's working folder and copies are named by
+    # The short name the firm's working copies are named by
     # (decision 144); blank derives one from the document title.
     if short:
         row["short_title"] = short

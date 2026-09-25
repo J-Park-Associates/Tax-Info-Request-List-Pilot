@@ -86,9 +86,10 @@ What the client is deliberately *not* asked for:
   carries a firm-side marker is the firm's as well (decision 109's rule,
   stated once here). A firm-side row rides the staff-side report under the
   draft, which is still written; it never holds it.
-- Rows whose request folder does not exist. We cannot honestly tell a client
-  we never received something we never made a place to put — that is a
-  scaffold problem, and it is reported as one.
+- (Until decision 168, a row whose request folder did not exist was held
+  as a scaffold problem. No request has a folder any more - its copies sit
+  in ``Prepared`` itself, named by it - so a request with nothing in is
+  simply Missing and asked for.)
 
 Validation notes are **never pasted into the email.** They name keywords,
 size floors and internal folders: firm-side vocabulary that would confuse a
@@ -659,7 +660,6 @@ class ReminderDraft:
     stage: int = 0
     lines: list[ReminderLine] = field(default_factory=list)
     needs_attention: list[FirmSideFlag] = field(default_factory=list)
-    scaffold_gaps: list[FirmSideFlag] = field(default_factory=list)
     #: The ambiguous rows (decision 115). One of these holds the whole draft.
     held: list[FirmSideFlag] = field(default_factory=list)
     #: How many files the household's own ``Drop files here`` holds that
@@ -795,7 +795,7 @@ def _firm_side_reason(item: RequestItem) -> str:
     """Why this row is the firm's problem rather than the client's, or ""."""
     note = item.validation_notes or ""
     for reason in reasons.FIRM_SIDE:
-        if reason is not reasons.NO_REQUEST_FOLDER and reason.matches(note):
+        if reason.matches(note):
             return reason.firm_side_note
     return ""
 
@@ -895,16 +895,18 @@ def _parked_holds(items: Sequence[RequestItem], parked: Sequence) -> dict[str, F
 
 
 def triage(items: Sequence[RequestItem], parked: Sequence = ()) -> tuple[
-    list[ReminderLine], list[FirmSideFlag], list[FirmSideFlag], list[FirmSideFlag]
+    list[ReminderLine], list[FirmSideFlag], list[FirmSideFlag]
 ]:
     """Sort every outstanding row once, by one rule: client asks (``lines``),
-    firm-side work (``attention``), scaffold gaps (``gaps``) and the
-    ambiguous rows that hold the whole draft (``held``, decisions 115 and 117).
+    firm-side work (``attention``) and the ambiguous rows that hold the
+    whole draft (``held``, decisions 115 and 117). The fourth list, the
+    scaffold gaps - a request whose folder was missing - retired with the
+    folder per request (decision 168).
 
     A row nobody asked for (decision 142) is dropped first, whatever its
     status or notes. Overridden rows and anything already in are dropped
-    here too and never reach the draft. For the rest, in this order: a row with no request folder is
-    a scaffold gap; a row carrying any firm-side marker, on any outstanding
+    here too and never reach the draft. For the rest, in this order: a row carrying any
+    firm-side marker, on any outstanding
     status, is the firm's (decisions 20, 21, 58, and 109's rule for a
     Missing row); a Failed row, or a Partial whose shortfall is a refused
     file, is ambiguous and held; a Missing row, and a Partial with no
@@ -919,20 +921,14 @@ def triage(items: Sequence[RequestItem], parked: Sequence = ()) -> tuple[
     """
     lines: list[ReminderLine] = []
     attention: list[FirmSideFlag] = []
-    gaps: list[FirmSideFlag] = []
     held: list[FirmSideFlag] = []
 
     for item in items:
         # Decision 142: a row nobody asked for is never chased, and is
-        # skipped before anything else - it has no folder on purpose, so
-        # the scaffold-gap check below would report it every week.
+        # skipped before anything else.
         if not item.asked:
             continue
         if item.manual_override or item.status not in OUTSTANDING:
-            continue
-
-        if reasons.NO_REQUEST_FOLDER.matches(item.validation_notes or ""):
-            gaps.append(FirmSideFlag(item=item, reason=reasons.NO_REQUEST_FOLDER.firm_side_note))
             continue
 
         # A row we have not read is ours, not the client's, whatever its
@@ -969,7 +965,7 @@ def triage(items: Sequence[RequestItem], parked: Sequence = ()) -> tuple[
     order = {name: i for i, name in enumerate(SECTION_ORDER)}
     lines.sort(key=lambda line: (order[line.section], line.item.identifier))
     held.sort(key=lambda flag: flag.item.identifier)
-    return lines, attention, gaps, held
+    return lines, attention, held
 
 
 def count_needs_review(engagement_dir: Path) -> int:
@@ -1289,7 +1285,7 @@ def draft_reminder(
             f"`python -m tracker.scanner {engagement_dir}` first"
         )
 
-    lines, attention, gaps, held = triage(items, _parked_index_rows(engagement_dir))
+    lines, attention, held = triage(items, _parked_index_rows(engagement_dir))
     summary = summarize(items)
     received, total = summary.received, summary.total
     # The household, the year and the return, as everything that names one
@@ -1335,7 +1331,6 @@ def draft_reminder(
         stage=number,
         lines=lines,
         needs_attention=attention,
-        scaffold_gaps=gaps,
         held=held,
         unsorted=unsorted_in_inbox(engagement_dir),
         needs_review_files=count_needs_review(engagement_dir),
@@ -1788,11 +1783,6 @@ def write_draft(draft: ReminderDraft, path: Path | str | None = None,
     footer: list[str] = []
     if draft.link_dropped:
         footer += ["", FOOTER_RULE, draft.link_dropped]
-    if draft.scaffold_gaps:
-        footer += ["", FOOTER_RULE,
-                   f"{HELD_BACK_HEADING} - fix these here first:"]
-        footer += [f"  {flag.item.label}: {flag.reason}"
-                   for flag in draft.scaffold_gaps]
     if draft.needs_attention:
         footer += ["", FOOTER_RULE,
                    f"{HELD_BACK_HEADING} - waiting on us, not the client:"]
@@ -1957,8 +1947,6 @@ if __name__ == "__main__":
     else:
         print(result.text)
 
-    for flag in result.scaffold_gaps:
-        print(f"{HELD_BACK_LINE}: {flag.item.label}: {flag.reason}")
     for flag in result.needs_attention:
         print(f"{HELD_BACK_LINE}: {flag.item.label}: {flag.reason}")
     for flag in result.held:
