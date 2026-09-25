@@ -425,11 +425,16 @@ FILED_WHOLE = ("carries a 1099-B section and files whole under the one request "
 #: What the same row says of the other asked requests the statement
 #: answers without a copy (decision 146, the owner's answer to 146-Q).
 ALSO_ANSWERS = "it also answers {listed}, with no copy"
-#: What an answered request says it holds: the scanner's note on the
-#: request, the client's received list beside the request's label, and
-#: the runbook all quote this one sentence. ``{row}`` is the request the
-#: statement filed under.
+#: What an answered request says it holds, for the firm: the scanner's
+#: note on the request - which the Status Report and the app's filed list
+#: show - and the runbook quote this one sentence, because a person at the
+#: firm needs the row. ``{row}`` is the request the statement filed under.
 IN_CONSOLIDATED = "in {row}'s consolidated statement"
+#: The same answer in the client's words (decision 146, Jason's Q-L): the
+#: client's received list says it after the date, naming no request, no
+#: label and no possessive. "Brokerage" is always true here, because a
+#: statement files whole only when one request accepted its 1099-B section.
+IN_CONSOLIDATED_CLIENT = "included in your consolidated brokerage statement"
 
 # ---- the folder ---------------------------------------------------------------
 

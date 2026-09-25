@@ -517,9 +517,10 @@ class ReceivedLine:
     day: dt.date | None
     identifier: str
     #: The label of the request whose consolidated statement answered this
-    #: one without a copy (decision 146), said after the date as
-    #: ``reasons.IN_CONSOLIDATED`` says it; empty on every document that
-    #: was filed under this request itself.
+    #: one without a copy (decision 146); the client's received list then
+    #: says ``reasons.IN_CONSOLIDATED_CLIENT`` after the date, naming no
+    #: request. Empty on every document that was filed under this request
+    #: itself.
     inside: str = ""
 
 

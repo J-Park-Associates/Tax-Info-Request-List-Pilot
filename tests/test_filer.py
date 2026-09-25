@@ -6647,12 +6647,13 @@ def test_the_statement_answers_the_int_div_row_and_the_letter_does_not_ask_for_i
     sections) and A04 (its miscellaneous section) read Received, each saying
     it is in E01's consolidated statement, and neither folder holds a file.
     The letter asks for none of them, the client's received list shows each
-    beside the statement's request, and a store rebuilt from the journal
-    agrees with the live one."""
+    as included in their consolidated brokerage statement - naming no
+    request, in the client's words (Jason's Q-L) - and a store rebuilt from
+    the journal agrees with the live one."""
     from tracker.filer import received_for
     from tracker.layout import root_of
     from tracker.manifest import Status
-    from tracker.reasons import IN_CONSOLIDATED
+    from tracker.reasons import IN_CONSOLIDATED, IN_CONSOLIDATED_CLIENT
     from tracker.reminder import draft_reminder
     from tracker.scaffold import write_readme
 
@@ -6682,7 +6683,14 @@ def test_the_statement_answers_the_int_div_row_and_the_letter_does_not_ask_for_i
     assert inside == {"E01": "", "A02": e01, "A04": e01}
     household = engagement.parents[1]
     text = write_readme(household, received).read_text(encoding="utf-8")
-    assert IN_CONSOLIDATED.format(row=e01) in text
+    for identifier in ("A02", "A04"):
+        label = _status(engagement, identifier).label
+        [said] = [one for one in text.splitlines() if one.strip().startswith(label)]
+        assert said.endswith(f", {IN_CONSOLIDATED_CLIENT}"), said
+    assert text.count(IN_CONSOLIDATED_CLIENT) == 2
+    assert IN_CONSOLIDATED.format(row=e01) not in text
+    assert IN_CONSOLIDATED.format(row="E01") not in text
+    assert "'s consolidated" not in text
 
     root = root_of(engagement)
     live = store.connect()
