@@ -103,3 +103,47 @@ def a_reader_that_starts_a_reader_of_its_own(path: Path, *, ocr: bool = True):
 def where_temporary_files_go(path: Path, *, ocr: bool = True):
     """A reading whose words are the child's temporary folder."""
     return content_check.Extraction(tempfile.gettempdir())
+
+
+# ----------------------------------------- the opener of an email or a zip ----
+#
+# Decision 154: a container is opened in the same child, through
+# ``tracker.containers._CHILD_OPENER``. The container rests in the client's
+# folder for the year, where a mark beside it would be a stray the next
+# pass sorts; so an opener's mark goes where the test says, through
+# MARKS_VARIABLE, which the child inherits with the rest of the environment.
+
+#: The environment variable naming the folder an opener's marks go in.
+MARKS_VARIABLE = "TRACKER_TEST_MARKS"
+
+
+def opener_reached(path: Path, stage: str) -> Path:
+    """Where an opener stand-in marks that it reached ``stage`` opening ``path``."""
+    return Path(os.environ[MARKS_VARIABLE]) / f"{Path(path).name}.{stage}"
+
+
+def a_container_parser_that_never_finishes(path: Path):
+    """The real opening, with the parser itself blocked for ever - where a
+    loop in olefile, email or zipfile nobody has found yet would hold it.
+    The mark carries the child's process id."""
+    from tracker import containers
+
+    def blocked(_walk, _data, _extension, *, depth):
+        opener_reached(path, "parser").write_text(str(os.getpid()), encoding="utf-8")
+        threading.Event().wait()
+
+    containers._Walk.open = blocked
+    return containers.open_file(path)
+
+
+def a_container_parser_that_crashes(path: Path):
+    """The real opening, except that the parser ends the process on the
+    spot - no exception, no answer, as a crash in native code does."""
+    from tracker import containers
+
+    def crashes(_walk, _data, _extension, *, depth):
+        opener_reached(path, "parser").write_text(str(os.getpid()), encoding="utf-8")
+        os._exit(3)
+
+    containers._Walk.open = crashes
+    return containers.open_file(path)

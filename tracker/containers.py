@@ -10,13 +10,14 @@ untouched; each attachment becomes its own document and is sorted like any
 drop; nothing inside is ever run; a password-protected or damaged container
 parks.
 
-This module is the opening and nothing else. It is handed the container's
-bytes - already read, under the size ceiling (``validators.MAX_READ_MB``),
-by the filer - and gives back plain data: each attachment's own name and
-bytes, and each part it skipped with why. It writes nothing, holds no file
-open past the call, and decides nothing about a folder: where the
-attachments are written, and what becomes of each, is
-:mod:`tracker.filer`'s.
+This module is the opening and nothing else. :func:`open_container` is
+handed the container's bytes - under the size ceiling
+(``validators.MAX_READ_MB``), which the filer checks - and gives back plain
+data: each attachment's own name and bytes, and each part it skipped with
+why. The pass calls it through :func:`open_bounded`, in a child process it
+can stop (decision 154). It writes nothing, holds no file open past the
+call, and decides nothing about a folder: where the attachments are
+written, and what becomes of each, is :mod:`tracker.filer`'s.
 
 **What counts as a container: the extension alone** (:data:`EXTENSIONS`).
 Never the bytes' magic number, because an ``.xlsx`` and a ``.docx`` are
@@ -84,7 +85,7 @@ from email import message_from_bytes, policy
 from email.message import Message
 from pathlib import PurePath
 
-from tracker import reasons
+from tracker import content_check, reasons
 from tracker.manifest import WINDOWS_ILLEGAL_CHARS, is_reserved_name
 
 #: The extensions that make a drop a container, lower case, no dot. The
@@ -249,6 +250,80 @@ def open_container(data: bytes, extension: str) -> Opened:
         kind = KIND_ZIP if extension.lower().lstrip(".") == "zip" else KIND_EMAIL
         raise NotOpened(reasons.CONTAINER_EMPTY.format(kind=kind))
     return Opened(tuple(walk.attachments), tuple(walk.skipped))
+
+
+# ------------------------------------------------ opened where it can be stopped ----
+#
+# Decision 154. The three parsers above run on bytes a client sent, and 143's
+# limits bound their input - but a defect nobody has found yet, in a loop
+# or in native code, would hold the pass for ever, and a crash would end it.
+# So the pass opens a container the way it reads a document (decision 150):
+# in a child process it can stop, under the stop for a file
+# (content_check.READING_STOP_DOCUMENT_SECONDS), through the one mechanism
+# (content_check.in_a_child). The child reads the file, opens it, and hands
+# back what open_container gives - names, bytes, the parts left and why - or
+# the sentence it would not open with; the pass writes the attachments, and
+# only after the child has answered, so a container that is stopped leaves
+# nothing under the hidden folder of what was taken out.
+
+#: What the child runs on a container (:func:`open_file`): a name of its
+#: own, handed to the child by reference, so the suite can give the child
+#: an opener that never finishes or dies - a patch made in the pass's own
+#: process never reaches the child's.
+_CHILD_OPENER = None     # open_file, set below it
+
+
+def open_file(path: PurePath) -> Opened | str | OSError:
+    """Read the container at ``path`` and open it: the child's job
+    (decision 154). What it held; for one that will not open, the sentence
+    it parks with, as words - a :class:`NotOpened` raised in the child
+    would come back as a crash; and a file that cannot be read at all (a
+    sync client holding it), the ``OSError`` itself, which the pass raises
+    as it did when it read the bytes itself: that is not the parser's."""
+    from pathlib import Path
+
+    try:
+        data = Path(path).read_bytes()
+    except OSError as exc:
+        return exc
+    try:
+        return open_container(data, PurePath(path).suffix)
+    except NotOpened as exc:
+        return exc.sentence
+
+
+_CHILD_OPENER = open_file
+
+
+def open_bounded(path: PurePath) -> Opened | None:
+    """Open the container at ``path`` where the pass can stop it (decision
+    154): :func:`open_file` in the reading's child, waiting at most the
+    stop for a file.
+
+    What it held, on time. Raises :class:`NotOpened` with the sentence the
+    container parks with: locked, damaged, past a limit or empty, as
+    before - and now also the stop's (``READING_STOPPED``) or a crash
+    after the child started (``READING_CRASHED``), both the file's and
+    kept by its row. ``None`` is a child that never started: the
+    machine's fault, not the file's, so nothing is to be recorded and the
+    container is opened again next pass (decision 150's rule; the pass
+    warns once). The suite, which opens in its own process by default
+    (``content_check.READ_IN_A_CHILD``), gets :func:`open_file` there.
+    """
+    if not content_check.READ_IN_A_CHILD:
+        answer = open_file(path)
+    else:
+        answer, failed = content_check.in_a_child(
+            path, _CHILD_OPENER, stop=content_check.READING_STOP_DOCUMENT_SECONDS)
+        if failed is not None:
+            if failed.transient:
+                return None
+            raise NotOpened(failed.reason)
+    if isinstance(answer, OSError):
+        raise answer
+    if isinstance(answer, str):
+        raise NotOpened(answer)
+    return answer
 
 
 @dataclass(slots=True)
