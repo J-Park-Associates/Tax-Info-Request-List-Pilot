@@ -666,7 +666,18 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    it only appears once the lock is older than
    `tracker.locking.STALE_LOCK_SECONDS`, which is past the point Task
    Scheduler must already have killed the run that made it, so clearing it
-   then is safe. Never delete a lock file by hand.
+   then is safe. Never delete a lock file by hand. On the Google Drive
+   drive, a run letting go at the same moment as another can have its
+   lock file stay behind even though Windows said it was deleted (decision
+   171). The run checks, and marks the file released when it stayed. The
+   run that left it clears it the next time it takes that lock, and any
+   later run clears it once the run that left it has ended, or at once if
+   it was marked released; otherwise it is cleared when it goes stale, as
+   above. A notice that says the lock "is changing hands" means two runs
+   met at that instant; press the button again a moment later. A run that
+   says it was refused permission to create the lock is not waiting for
+   another run: the account running it cannot write to that return's
+   folder, and that has to be fixed on the folder.
 4. **Google Drive placeholders.** A file Drive has listed but not yet
    copied down is not the document; the row sits at
    `tracker.manifest.Status.PENDING_SYNC` and the pass leaves it alone

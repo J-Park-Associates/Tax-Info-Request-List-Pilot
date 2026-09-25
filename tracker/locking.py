@@ -54,14 +54,90 @@ is held to neither, and its lock can be taken as stale while it writes.
 lock file that a cloud client syncs between two machines is not a lock:
 both can create theirs before either copy arrives. Run the schedule, and the
 app's Scan button, from one machine per clients root.
+
+**A release is proved, not assumed (decision 171, F1).** The Drive test of
+2026-09-25 had two processes take, append and release one engagement's lock
+over and over on the Google Drive for desktop drive (G:). There,
+``Path.unlink()`` on the lock file sometimes *returned success and left the
+file in place*: 6 times in 200 contended releases, 0 in 200 on NTFS, 0 in
+150 releases on G: with nobody else touching the file. The file left behind
+names a live process - the one that released it - so while that process
+lives every taker is refused, its own next take included, until the age
+rule clears it after two hours and five minutes. The trigger is ordinary: a
+scheduled pass and a click in the app on the same engagement at once. The
+scheduled pass is the process that lives long - up to the run limit - and
+while it lives a lock it left would refuse the app's clicks on that
+engagement for the rest of the pass. So :func:`release_lock` reads the
+file back after the unlink, and only its absence proves it went (a read
+refused while a delete is pending is looked at again, and the file is read
+again before every retried delete, so a delete never lands on a lock
+another run has taken since). Still there with this lock's own token means
+the delete did not take, and it is handled exactly as a refused delete
+always was: retry within the same budget, then mark the file
+``RELEASED_LINE``, which every reader takes as an owner that is gone. A file
+now carrying another token is another run's lock, and is left alone. The
+delete in the stale-replace path is not proved this way: a replace that did
+not take ends in "could not acquire" after two tries, and the next take
+tries again.
+
+**A process never locks itself out (decision 171, F1's worst case).** One
+process takes the same lock twice in a row in ordinary work: an app command
+that unfiles, marks missing, assigns or renames takes the lock and then
+rescans, which takes it again (``tracker.filer._rescan``); the scheduled
+pass locks a fed return beside the household that fed it, and again when
+it reaches that return's own household; and a release that ran out of
+tries, and could not even mark the file released, leaves this process's
+own lock behind for its next take. Each app
+command is its own short process (the desktop app starts one
+``python -m tracker.api`` per command), so a leftover from an *earlier*
+command names a process that has ended and the dead-owner rule clears it;
+it is the second take inside one process that would find its own live pid.
+So the module keeps the exact lock line - the token - of every lock this
+process holds right now, added when a lock is taken and removed, token by
+token, when it is let go. A lock file naming this process on this host
+whose text is *not* one of those tokens cannot be a run in progress - this
+process would know - so it is a leftover of a release that did not take,
+and it is replaced as stale ("left by this process"). One whose text *is* a
+held token is a real double acquire, a bug, and is refused as loudly as
+ever. The record is by token, not by path, so no second spelling of the
+same folder (a mapped drive and its UNC path, a short name) can hide a lock
+this process holds, and one release can only ever remove its own entry. It
+is kept behind a thread lock, as cheap insurance: the module promises to be
+safe across threads, though nothing in the app takes locks on two threads
+today. The check, and the write that makes a new lock this process's own,
+happen under that one thread lock, so a thread can never take another
+thread's lock, taken a moment ago, for a leftover.
+
+**A lock changing hands is a lock (decision 171, F2).** On Windows,
+``os.open(O_CREAT|O_EXCL)`` on a lock file another process is deleting at
+that instant raises ``PermissionError`` (errno 13, delete pending), not
+``FileExistsError``: seen on G: and on NTFS alike (2 in 200 contended
+acquires on NTFS). Caught as nothing, it reached the caller as a bare
+"permission denied". It is the lock being released or taken, so
+:func:`acquire_lock` tries up to ``_CHANGING_HANDS_ATTEMPTS`` times about
+``_CHANGING_HANDS_DELAY`` apart and then raises
+:class:`EngagementLockedError` saying the lock is changing hands - never
+retrying for ever, because a stuck lock must say so, not hang a pass. Only
+a lock file that is *there* can be changing hands: a create refused while
+the name is free (tried once more, in case the delete finished in between)
+is a folder this account cannot write to, and the original
+``PermissionError`` goes to the caller, which reports it as the run's
+error. Called "another run", it would be skipped quietly on every pass, for
+a run that does not exist.
+Refused: a Windows named mutex or a byte-range lock instead of the file. It
+would not reach a second machine through Drive either, and the one-machine
+rule is where that is answered; F1 and F2 needed two local repairs, not a
+new mechanism.
 """
 
 from __future__ import annotations
 
+import collections
 import datetime as dt
 import logging
 import os
 import platform
+import threading
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -79,6 +155,16 @@ _HOST_KEY = "host"
 RELEASED_LINE = "released=1"
 _RELEASE_RETRIES = 10
 _RELEASE_RETRY_DELAY = 0.2
+#: How many times, in total, taking the lock is tried while Windows refuses
+#: the create because the file is being deleted at that instant (F2).
+_CHANGING_HANDS_ATTEMPTS = 3
+_CHANGING_HANDS_DELAY = 0.2
+#: The tokens (the exact lock lines) of the locks this process holds right
+#: now, each with how many takes wrote it (decision 171): a lock file naming
+#: this process whose text is not here is a leftover, not a run. Counted, so
+#: two takes in the same microsecond, which write the same line, are two.
+_held: collections.Counter[str] = collections.Counter()
+_held_guard = threading.Lock()
 #: How long Task Scheduler lets one pass run before killing it. It lives
 #: here, not in tracker.scheduling, because the stale threshold below is
 #: derived from it and this module imports nothing from the package.
@@ -173,34 +259,33 @@ def acquire_lock(engagement_dir: Path, name: str = LOCK_FILENAME) -> EngagementL
     lock = engagement_dir / name
     for _attempt in (1, 2):
         try:
-            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            fd = _open_exclusively(lock)
         except FileExistsError:
             try:
                 age = time.time() - lock.stat().st_mtime
             except OSError:
                 continue  # lock vanished between checks; retry
+            with _held_guard:
+                # Under the guard, so no thread of this process is between
+                # writing its own new lock and recording it as held.
+                leftover = _a_leftover_of_this_process(lock)
+                if leftover:
+                    _replace_stale(lock, age, "; left by this process")
+            if leftover:
+                continue
             gone = _owner_gone(lock)
             if age < STALE_LOCK_SECONDS and not gone:
                 raise EngagementLockedError(
                     f"another scan or sort appears to be running ({lock.name} is "
                     f"{age:.0f}s old); if not, delete the lock file"
                 ) from None
-            log.warning(
-                "Replacing stale engagement lock (%.0f s old%s)", age,
-                "; its owner is no longer running" if gone else "",
-            )
-            try:
-                lock.unlink(missing_ok=True)
-            except PermissionError:
-                # Windows: the owner still has it open, so it is not dead after all.
-                raise EngagementLockedError(
-                    f"{lock.name} looks stale ({age:.0f}s old) but is still held "
-                    "by a running process"
-                ) from None
+            _replace_stale(lock, age, "; its owner is no longer running" if gone else "")
             continue
         token = lock_line(os.getpid(), dt.datetime.now())
         try:
-            os.write(fd, token.encode("utf-8"))
+            with _held_guard:
+                os.write(fd, token.encode("utf-8"))
+                _held[token] += 1
         except OSError:
             os.close(fd)
             lock.unlink(missing_ok=True)
@@ -209,8 +294,105 @@ def acquire_lock(engagement_dir: Path, name: str = LOCK_FILENAME) -> EngagementL
     raise EngagementLockedError(f"could not acquire {lock.name}")
 
 
+def _open_exclusively(lock: Path) -> int:
+    """Create the lock file, or raise ``FileExistsError`` when one is there.
+
+    Windows refuses the create with ``PermissionError`` while another
+    process is deleting the file (F2): the lock is changing hands, so it is
+    tried again briefly, and then reported as a lock. Only a lock that is
+    there can be changing hands: a create refused while the name is free is
+    tried once more at once (the delete may have finished in between), and
+    refused again with the name still free it is a folder this account
+    cannot write to - the original ``PermissionError`` goes to the caller,
+    which reports it as the run's error.
+    """
+    flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY
+    refused_while_there = 0
+    first_refused_while_free: PermissionError | None = None
+    while True:
+        try:
+            return os.open(lock, flags)
+        except PermissionError as exc:
+            if not _name_taken(lock):
+                if first_refused_while_free is not None:
+                    raise first_refused_while_free from None
+                first_refused_while_free = exc
+                continue
+            refused_while_there += 1
+            if refused_while_there >= _CHANGING_HANDS_ATTEMPTS:
+                raise EngagementLockedError(
+                    f"{lock.name} is changing hands; another scan or sort is finishing - try again"
+                ) from exc
+            time.sleep(_CHANGING_HANDS_DELAY)
+
+
+def _name_taken(lock: Path) -> bool:
+    """Something is at the lock's name: a file, or one being deleted (a look
+    refused is a name taken - Windows refuses it while a delete is pending)."""
+    try:
+        os.lstat(lock)
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True
+    return True
+
+
+def _a_leftover_of_this_process(lock: Path) -> bool:
+    """The lock file names this process on this machine, and its line is not
+    one this process holds: a release of ours that did not take. Asked under
+    ``_held_guard``."""
+    try:
+        text = lock.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    fields = dict(part.split("=", 1) for part in text.split() if "=" in part)
+    return (
+        fields.get(_HOST_KEY, "") == _this_host()
+        and fields.get(_PID_KEY, "") == str(os.getpid())
+        and _held[text] == 0
+    )
+
+
+def _replace_stale(lock: Path, age: float, why: str) -> None:
+    """Delete a stale lock so the caller can take it; refuse one still held.
+
+    This delete is not proved the way a release is: one that reports
+    success and leaves the file (F1) ends in "could not acquire" after the
+    caller's two tries, and the next take tries again.
+    """
+    log.warning("Replacing stale engagement lock (%.0f s old%s)", age, why)
+    try:
+        lock.unlink(missing_ok=True)
+    except PermissionError:
+        # Windows: the owner still has it open, so it is not dead after all.
+        raise EngagementLockedError(
+            f"{lock.name} looks stale ({age:.0f}s old) but is still held "
+            "by a running process"
+        ) from None
+
+
 def release_lock(lock: EngagementLock) -> None:
-    """Let go: close the handle, then remove the file only if it is still ours."""
+    """Let go: close the handle, then remove the file only if it is still ours,
+    and make sure it really went (F1). This lock's own token, and only that,
+    stops being held."""
+    try:
+        _release(lock)
+    finally:
+        with _held_guard:
+            if _held[lock.token] > 1:
+                _held[lock.token] -= 1
+            else:
+                _held.pop(lock.token, None)
+
+
+#: Why a release ended by marking the file released instead of deleting it.
+_KEPT_OPEN = "another program kept it open"
+_STAYED = "the delete was reported done but the file stayed"
+_UNCONFIRMED = "could not confirm the lock was removed"
+
+
+def _release(lock: EngagementLock) -> None:
     try:
         os.close(lock.fd)
     except OSError:
@@ -225,23 +407,64 @@ def release_lock(lock: EngagementLock) -> None:
             lock.path.name,
         )
         return
-    for _attempt in range(_RELEASE_RETRIES):
+    stayed = False
+    trouble = _KEPT_OPEN
+    for attempt in range(_RELEASE_RETRIES):
+        if attempt:
+            # Read again before every retried delete: while we waited, ours
+            # may have gone and another run's lock taken the name.
+            try:
+                now = lock.path.read_text(encoding="utf-8", errors="replace")
+            except FileNotFoundError:
+                return
+            except OSError:
+                trouble = _UNCONFIRMED
+                time.sleep(_RELEASE_RETRY_DELAY)
+                continue
+            if now != lock.token:
+                return            # another run's lock now; theirs
         try:
             lock.path.unlink(missing_ok=True)
-            return
         except PermissionError:
             # A sync client reading the file for upload: brief, so wait it out.
+            trouble = _KEPT_OPEN
             time.sleep(_RELEASE_RETRY_DELAY)
-    # Still held. This process may take the next lock itself (a sort, then
+            continue
+        # The delete reported success. On Google Drive that is not proof
+        # (F1), so the file is read back. Only its absence proves it went;
+        # another run's token means ours went and theirs came; this lock's
+        # own token means the delete did not take. A read refused is not an
+        # absence: on G: the read-back right after a "successful" delete was
+        # refused (delete pending) in 8 of 200 contended releases in this
+        # decision's live check, and a refusal proves nothing about what is
+        # there after it - so it is looked at again, in the same budget,
+        # exactly like a delete refused.
+        try:
+            after = lock.path.read_text(encoding="utf-8", errors="replace")
+        except FileNotFoundError:
+            return
+        except OSError:
+            trouble = _UNCONFIRMED
+            time.sleep(_RELEASE_RETRY_DELAY)
+            continue
+        if after != lock.token:
+            return                # another run took it after ours went; theirs
+        stayed = True
+        time.sleep(_RELEASE_RETRY_DELAY)
+    # Still there. This process may take the next lock itself (a sort, then
     # a scan) and would find its own live pid in the file; so the file is
     # marked released, which every reader takes as an owner that is gone.
+    why = _STAYED if stayed else trouble
     try:
         if lock.path.read_text(encoding="utf-8", errors="replace") != lock.token:
             return                # another run took it while we waited; theirs now
         lock.path.write_text(RELEASED_LINE, encoding="utf-8")
-        log.warning("%s could not be removed on release; marked released instead", lock.path.name)
+        log.warning("%s could not be removed on release (%s); marked released instead",
+                    lock.path, why)
+    except FileNotFoundError:
+        return                    # it went while we waited
     except OSError as exc:
-        log.warning("%s could not be removed or marked on release (%s)", lock.path.name, exc)
+        log.warning("%s could not be removed or marked on release (%s; %s)", lock.path, why, exc)
 
 
 @dataclass(frozen=True, slots=True)
