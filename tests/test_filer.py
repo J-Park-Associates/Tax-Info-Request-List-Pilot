@@ -7361,3 +7361,25 @@ def test_an_old_return_with_request_folders_is_named_and_left_alone(engagement):
         reasons.PERSONS_FOLDER.format(folder=old.name, prepared=PREPARED_DIR_NAME)]
     assert [w for w in scanned.warnings if empty.name in w] == [
         reasons.PERSONS_FOLDER.format(folder=empty.name, prepared=PREPARED_DIR_NAME)]
+
+
+def test_a_working_copys_number_takes_a_name_an_open_intent_will_write_as_taken(engagement, monkeypatch):
+    """Ruling 3 over decision 147: the names a working copy is numbered
+    against are Prepared's own - every request's copies share it - and a
+    name an open intent will still write there is one of them, so the pass
+    never hands a waiting filing's name to another document."""
+    import tracker.filer as filer_module
+
+    waiting = engagement / PREPARED_DIR_NAME / "A01 - W-2 Wage Statements - TY2025.pdf"
+    real = filer_module._spoken_for_by_an_open_intent
+
+    def with_one_waiting(runs, ends=(ledger.FROM_KEY, ledger.TO_KEY)):
+        found = real(runs, ends)
+        return found | {waiting} if ends == (ledger.TO_KEY,) else found
+
+    monkeypatch.setattr(filer_module, "_spoken_for_by_an_open_intent", with_one_waiting)
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    [filed] = sort(engagement, today=DAY1).filed
+
+    assert filed.prepared_location == f"{PREPARED_DIR_NAME}/A01 - W-2 Wage Statements - TY2025 (2).pdf"
+    assert not waiting.exists()

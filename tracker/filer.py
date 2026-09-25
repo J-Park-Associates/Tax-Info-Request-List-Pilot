@@ -4229,11 +4229,15 @@ def _plan_working_copy(
     """
     dest_folder = run.prepared_dir
     if dest_folder not in run.reserved:
+        # The names taken are Prepared's own (decision 168, ruling 3): every
+        # request's copies share it, and so does every name an open intent
+        # will still write there (decision 147's ``intended``) - a copy
+        # given one would be the copy a waiting filing lands on.
         run.reserved[dest_folder] = (
             {p.name.lower() for p in dest_folder.iterdir()}
             if dest_folder.is_dir()
             else set()
-        )
+        ) | {path.name.lower() for path in run.intended if path.parent == dest_folder}
     # A copy already there is found before any name is measured (decision
     # 131's review, F5, as the hand-over does): a killed run's copy is
     # reused under the name it has, and a folder with no room for a new
