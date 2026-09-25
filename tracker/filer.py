@@ -328,8 +328,8 @@ NOT_REQUESTED = "Not Requested"
 #: A document whose working copy is not where the record put it, and whose
 #: bytes a pass found at a path no row names (decision 109). A decision on
 #: the document and never a status of a request (the owner's rule,
-#: 2026-09-19): what the scanner says about a request is what its folder
-#: holds, and "the copy is not where I put it" is a fact about the
+#: 2026-09-19): what the scanner says about a request is what Prepared
+#: holds under its name, and "the copy is not where I put it" is a fact about the
 #: document. The row keeps its home in ``prepared_location`` and says where
 #: the bytes are now in its Reason (:func:`moved_to` reads it back);
 #: nothing is moved, and a person decides. A copy dragged back is filed
@@ -1163,18 +1163,25 @@ def _request_of_copy(name: str, items: Sequence[RequestItem]) -> str:
     identifier followed by ``LABEL_SEPARATOR`` - which the canonical prefix
     (``A01 - W-2``, the identifier and the short name) always does, and is
     the one shape a working copy is made in and a person renames within.
-    A bare prefix proves nothing: once ``A01-B`` is deleted from the list,
-    ``A01-B - Loan - TY2025.pdf`` starts with ``A01`` too, and the README
-    would tell the client their W-2 arrived. The longest identifier that
-    fits wins, as it does for every file (``tracker.scaffold.owner_of``).
+    Or its stem is the identifier alone, or the identifier followed by
+    `` (`` - ``A01.pdf``, ``A01 (2).pdf``: a copy whose short name decision
+    131's room cut away whole on a row with no period (the review of 168,
+    N-4). A bare prefix proves nothing: once ``A01-B`` is deleted from the
+    list, ``A01-B - Loan - TY2025.pdf`` starts with ``A01`` too, and the
+    README would tell the client their W-2 arrived. The longest identifier
+    that fits wins, as it does for every file (``tracker.scaffold.owner_of``).
     Without case, as Windows compares names.
     """
     name = name.strip().casefold()
+    stem = Path(name).stem if _AN_EXTENSION.fullmatch(Path(name).suffix) else name
     separator = LABEL_SEPARATOR.casefold()
     best = ""
     for item in items:
         identifier = sanitize_component(item.identifier).casefold()
-        if identifier and name.startswith(identifier + separator) and len(item.identifier) > len(best):
+        if not identifier or len(item.identifier) <= len(best):
+            continue
+        if (name.startswith(identifier + separator) or stem == identifier
+                or stem.startswith(identifier + " (")):
             best = item.identifier
     return best
 
@@ -4007,8 +4014,8 @@ def _decide_across(
                 return run, _file_it(drop, original, digest, size_kb, stamp, run, routing, item,
                                      confirmed=stage.confirmed.get(id(run), ""))
             except NoRoom as exc:
-                # Every rule accepted it and the request's folder has no
-                # room for even its shortest name (decision 131): the last
+                # Every rule accepted it and Prepared has no room for even
+                # the request's shortest name (decision 131): the last
                 # reason the filing branch can give. It parks, and the
                 # request that accepted it is its candidate.
                 no_room = exc
@@ -4741,7 +4748,7 @@ def assign_review_file(
     ``original`` is the index row to act on: its PBC location
     (the year's folder and the original's name) or, failing that, its original name among
     the rows still marked Needs Review. The working copy is created under the
-    canonical name in the request's folder - moved from ``REVIEW_DIR_NAME`` when it is still there, copied from the year's folder when it is not -
+    canonical name in ``PREPARED_DIR_NAME`` (decision 168) - moved from ``REVIEW_DIR_NAME`` when it is still there, copied from the year's folder when it is not -
     and the index row is rewritten as Filed with the decision attributed to
     a person. The original in the year's folder is not touched.
 
@@ -4760,11 +4767,12 @@ def assign_review_file(
     removed in the editor.
 
     A ``FILE_MOVED`` row is filed from here too - decision 110's "keep it
-    here", the answer to a copy somebody dragged into a request's folder
-    on purpose. The copy that moves is then the wanderer the row's reason
-    names (:func:`moved_to`), which takes the canonical name in the folder
-    it already sits in, or in another request's folder when the person
-    picks one instead: the picker is the same picker, so keeping the file
+    here", the answer to a copy somebody renamed under a request's name on
+    purpose (decision 168; dragged into a request's folder until then). The
+    copy that moves is then the wanderer the row's reason names
+    (:func:`moved_to`), which takes the request's canonical name beside
+    where it sits, or another request's when the person picks one instead:
+    the picker is the same picker, so keeping the file
     and correcting the request is one click. A page decision 94 filed
     under several requests is refused here (``SEVERAL_COPIES_REFUSAL``) and
     put back with :func:`restore_working_copy` first.
@@ -4905,8 +4913,8 @@ def assign_review_file(
         # attempt's, and is reused rather than doubled. Otherwise the parked
         # copy is moved, but only while it holds the row's bytes: its name
         # is the client's, and a freed name is taken by the next drop called
-        # the same, so a person filing row A would carry document B into the
-        # request folder under A's canonical name (the eleventh reading); a
+        # the same, so a person filing row A would carry document B into
+        # Prepared under A's canonical name (the eleventh reading); a
         # copy a reviewer's app re-saved is not the row's bytes either and
         # is left where it is, said so, for the person to keep or discard.
         # What will move is decided here and written down before any of it
@@ -5355,8 +5363,8 @@ def dismiss_review_file(
 
 #: What an unfiling says about a working copy whose bytes are not the ones
 #: the row recorded. A reviewer's notes are work, and which of the two files
-#: the firm wants is not the filer's to decide: the copy stays in the
-#: request folder, a fresh one goes back to review, and a person is told so
+#: the firm wants is not the filer's to decide: the copy stays where it
+#: is, a fresh one goes back to review, and a person is told so
 #: they can keep or discard it - and knows the row is still counted until
 #: they do.
 LEFT_FILED = (
@@ -5399,7 +5407,7 @@ def unfile_document(
     copy has always had, and the row is rewritten ``NEEDS_REVIEW`` with no
     identifier, the reason attributed to a person and what the row said
     before kept after it. A page decision 94 filed under several requests
-    has a copy in each and **every one of them leaves its request folder**:
+    has a copy in each and **every one of them leaves its place in Prepared**:
     one goes back to ``REVIEW_DIR_NAME`` under the client's name and the
     rest, being those same bytes again, stand down. Then the engagement is re-scanned, so the request
     the document was answering goes back to what it is without it, with the
@@ -5513,7 +5521,7 @@ def unfile_document(
             LEFT_FILED.format(location=location, parked=parked.name) for location in strangers
         )
         # A page decision 94 filed under several requests has a copy in
-        # each, and every one of them has to leave its request folder or
+        # each, and every one of them has to leave Prepared or
         # the scan goes on counting the document this row no longer
         # claims. One goes back under the client's name; the rest are
         # these same bytes over again, and a copy is disposable - the

@@ -539,4 +539,4 @@ if __name__ == "__main__":
             for name in loose:
                 print(f"    ? {name}")
             for name in folders:
-                print(f"    ? {name}/ " + reasons.PERSONS_FOLDER.format(folder=name, prepared=PREPARED_DIR_NAME))
+                print("    ? " + reasons.PERSONS_FOLDER.format(folder=name, prepared=PREPARED_DIR_NAME))

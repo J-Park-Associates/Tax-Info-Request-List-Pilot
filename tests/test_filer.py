@@ -7383,3 +7383,51 @@ def test_a_working_copys_number_takes_a_name_an_open_intent_will_write_as_taken(
 
     assert filed.prepared_location == f"{PREPARED_DIR_NAME}/A01 - W-2 Wage Statements - TY2025 (2).pdf"
     assert not waiting.exists()
+
+
+def test_a_copy_cut_to_its_identifier_alone_still_reads_under_its_request():
+    """The review of 168, N-4: decision 131's room can cut a short name away
+    whole on a row with no period, leaving ``A01.pdf`` or ``A01 (2).pdf``.
+    Such a copy still names its request - its stem is the identifier alone,
+    or the identifier and a number - and the longest identifier wins, as it
+    does for every file; a bare prefix still proves nothing."""
+    from tracker.filer import _request_of_copy
+
+    items = [RequestItem(identifier="A01", document="W-2"),
+             RequestItem(identifier="A01-B", document="Loan")]
+    assert _request_of_copy("A01.pdf", items) == "A01"
+    assert _request_of_copy("a01 (2).pdf", items) == "A01"
+    assert _request_of_copy("A01-B.pdf", items) == "A01-B"
+    assert _request_of_copy("A01-B (3).pdf", items) == "A01-B"
+    assert _request_of_copy("A01 - W-2 - TY2025.pdf", items) == "A01"
+    assert _request_of_copy("A01x.pdf", items) == ""
+    assert _request_of_copy("A01-C.pdf", items) == ""           # a bare prefix: nobody's
+    assert _request_of_copy("A01B - Loan.pdf", items) == ""
+
+
+def test_a_rename_refused_because_the_target_name_is_taken_moves_nothing(engagement):
+    """The review of 168, N-5: every request's copies share Prepared, so a
+    file nothing recorded may already hold the name a rename would give a
+    copy. The rename is refused by name before anything is written: no
+    copy moves, the list keeps the old identifier and the record gains no
+    line."""
+    from tracker.filer import RENAME_COPY_TAKEN, rename_request
+    from tracker.manifest import list_head
+
+    drop(engagement, "w2 john.pdf", "Form W-2 Wage and Tax Statement 2025 Acme Corp")
+    [filed] = sort(engagement, today=DAY1).filed
+    prepared_dir = engagement / PREPARED_DIR_NAME
+    squatter = prepared_dir / "A1 - W-2 Wage Statements - TY2025.pdf"
+    squatter.write_bytes(b"a person's own file")
+    before = files_under(engagement)
+    lines = len(ledger.read_events(engagement))
+
+    with pytest.raises(FilingError) as refused:
+        rename_request(engagement, "A01", "A1", head=list_head(engagement), today=DAY2)
+
+    assert str(refused.value) == RENAME_COPY_TAKEN.format(location=location_of(engagement, squatter))
+    assert files_under(engagement) == before
+    assert len(ledger.read_events(engagement)) == lines
+    assert [r.prepared_location for r in read_index(engagement)] == [filed.prepared_location]
+    assert [i.identifier for i in load_manifest(engagement)] == ["A01", "C01"]
+    assert squatter.read_bytes() == b"a person's own file"

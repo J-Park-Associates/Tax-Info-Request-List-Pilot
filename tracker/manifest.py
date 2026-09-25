@@ -273,11 +273,12 @@ def is_reserved_name(name: str) -> bool:
 #: How a date is asked for on a command line or in the wizard.
 ISO_DATE_HINT = "YYYY-MM-DD"
 
-#: Characters an identifier may not contain. The identifier becomes the
-#: prefix of a Windows folder name and is matched back by that prefix, so
-#: anything the filesystem would alter (``WINDOWS_ILLEGAL_CHARS``) or strip
-#: (a trailing dot) would leave the scanner unable to
-#: find the folder scaffold just made — a permanent "folder not found".
+#: Characters an identifier may not contain. The identifier begins every
+#: working copy's file name and is matched back by that prefix (decision
+#: 168's ``scaffold.assign_files``), so anything the filesystem would alter
+#: (``WINDOWS_ILLEGAL_CHARS``) or strip (a trailing dot) would leave the
+#: scanner unable to find the request's copies - a request that reads
+#: Missing with its documents in front of it.
 _ILLEGAL_IDENTIFIER_CHARS = WINDOWS_ILLEGAL_CHARS
 
 
@@ -620,17 +621,17 @@ def short_title_problem(short_title: str) -> str:
     """Why ``short_title`` cannot name a working copy, or "" if it can.
 
     Refused rather than sanitised, as an identifier is: the name a person
-    types is the name the folder gets, or they are told why not.
+    types is the name every working copy carries, or they are told why not.
     """
     if len(short_title) > SHORT_TITLE_MAX:
         return f"may have at most {SHORT_TITLE_MAX} characters, got {len(short_title)}"
     if WINDOWS_ILLEGAL_CHARS.search(short_title):
-        return f"may not contain any of {WINDOWS_ILLEGAL_CHARS_TEXT} (it becomes a folder name)"
+        return f"may not contain any of {WINDOWS_ILLEGAL_CHARS_TEXT} (it is part of a file name)"
     if short_title != short_title.rstrip(". "):
-        return "may not end with a dot or a space (Windows drops them from folder names)"
+        return "may not end with a dot or a space (Windows drops them from file names)"
     if short_title and is_reserved_name(short_title):
         return (f"may not be a name Windows keeps for a device ({WINDOWS_RESERVED_NAMES_TEXT}); "
-                f"it becomes a folder name")
+                f"it is part of a file name")
     return ""
 
 
@@ -899,12 +900,12 @@ def identifier_problem(identifier: str) -> str:
     bad identifier is refused with the same sentence wherever it is typed.
     """
     if _ILLEGAL_IDENTIFIER_CHARS.search(identifier):
-        return f"may not contain any of {WINDOWS_ILLEGAL_CHARS_TEXT} (it becomes a folder name)"
+        return f"may not contain any of {WINDOWS_ILLEGAL_CHARS_TEXT} (it begins a file name)"
     if identifier != identifier.rstrip(". "):
-        return "may not end with a dot or a space (Windows drops them from folder names)"
+        return "may not end with a dot or a space (Windows drops them from file names)"
     if is_reserved_name(identifier):
         return (f"may not be a name Windows keeps for a device ({WINDOWS_RESERVED_NAMES_TEXT}); "
-                f"it becomes a folder name")
+                f"it begins a file name")
     return ""
 
 
@@ -1008,7 +1009,7 @@ def _asked(value: object, where: str) -> bool:
 
 def _short_title(value: object, where: str) -> str:
     """A Short name as typed (decision 144): blank is derived, anything
-    else must be a legal folder name within :data:`SHORT_TITLE_MAX`."""
+    else must be legal in a file name, within :data:`SHORT_TITLE_MAX`."""
     text = "" if value is None else str(value).strip()
     if problem := short_title_problem(text):
         raise ManifestError(f"{where}: {COL_SHORT_TITLE} {problem}")
@@ -1102,7 +1103,7 @@ def validated(items: Iterable[RequestItem]) -> list[RequestItem]:
     harnesses, the vocabulary report - so one list is validated one way:
     an identifier on every row, none the file system would alter
     (:func:`identifier_problem`), no two the same without case (a Windows
-    folder name is not case-sensitive); a document on every row; the two
+    file name is not case-sensitive); a document on every row; the two
     numbers within their floors; ``NO_DATE_CHECK`` made blank, a typed
     pattern made to compile, and a blank one derived from the Period with
     ``date_pattern_derived`` set; the override folded to its one spelling
@@ -1226,7 +1227,7 @@ def _with_the_record(
     One place where "what a request is now" is assembled: the status the
     last scan recorded, and the keywords a person's filings taught the row
     added to the ones they typed. Identifiers are matched without case,
-    because a folder name on Windows is (``records.identifier_key``).
+    because a file name on Windows is (``records.identifier_key``).
     """
     out = []
     for item in items:

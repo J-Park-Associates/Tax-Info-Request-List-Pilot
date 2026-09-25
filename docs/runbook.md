@@ -119,7 +119,10 @@ the clients root, and the difference between them is the whole point:
   names it once on the run - *"<folder> is a folder inside Prepared. The
   tracker files into Prepared itself and counts nothing in this folder."* A
   return made before decision 168 keeps its old request folders, and each is
-  named that way; set such a return aside and make it again. A file in
+  named that way. What sits in them is not counted, so such a return reads
+  Missing for every document in its old folders, and its letter would ask
+  the client for them: set it aside before its letter is drafted, and make
+  it again. A file in
   `Prepared` whose name begins with no request's identifier is named on the
   run too, and not counted.
 - The inbox holds one file of ours, `_README.txt`, which the tracker writes
@@ -365,8 +368,11 @@ used to appear twice - so the firm's own root,
 were); the deepest working copy there was 209 and 210 characters. Since
 decision 168 there is no folder per request either: a copy sits in
 `Prepared` itself as `A01 - W-2 - TY2025.pdf`, so every working path is
-shorter again by the folder that held it (the whole 1040 core list under
-a 28-character root went from 163 characters to 138). The client never sees a short name: the README,
+shorter again by the folder that held it: under the firm's own root the
+deepest working copy of the intake test's 39 returns is 184 characters with
+the default rows and 185 with every row (from 209 and 210), none of the 39
+refused either way, and the whole 1040 core list under a 28-character root
+went from 163 characters to 138. The client never sees a short name: the README,
 the reminder letter and the received list keep the full title. So the reply to setting the root lists,
 under *Returns short of room under this root*, every return the new root
 leaves short, with the number. Nothing is refused - the firm's data is

@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "generated": "2026-09-24",
+  "generated": "2026-09-25",
   "generator": "tools/repo_map.py",
   "generator_sha256": "54d924057e3b3de9",
   "module_table_sha256": "1036125e4b43ea9a",
@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 130,
-    "edges": 812,
-    "reused": 102
+    "edges": 814,
+    "reused": 104
   },
   "node_types": [
     "artifact",
@@ -515,8 +515,8 @@
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "d5327b1fbb4c005e",
-      "lines": 6315,
+      "sha256": "d921f048af659d9c",
+      "lines": 6323,
       "cli": "python -m tracker.filer",
       "exports": [
         "ALREADY_SPELLED",
@@ -1035,8 +1035,8 @@
       "id": "tracker/manifest.py",
       "type": "module",
       "layer": "core",
-      "sha256": "fa94154e32838584",
-      "lines": 1832,
+      "sha256": "79e94f0f6070c8db",
+      "lines": 1833,
       "exports": [
         "ALSO_RECEIVED_LABEL",
         "ANY_EXTENSION",
@@ -2305,7 +2305,7 @@
       "id": "tracker/validators.py",
       "type": "module",
       "layer": "core",
-      "sha256": "b5d04b46848d2d6c",
+      "sha256": "ddf03484c7fd96b6",
       "lines": 542,
       "cli": "python -m tracker.validators",
       "exports": [
@@ -2498,7 +2498,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ccbd52873d75e470",
+      "sha256": "7ac738eebe9b7e50",
       "lines": 412,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -2525,8 +2525,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "286694bef868e10c",
-      "lines": 1281,
+      "sha256": "f552a034cfac94bc",
+      "lines": 1287,
       "role": "The operator's page for one tax season: the designated machine and why only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -2543,7 +2543,7 @@
       "id": "docs/vocab-coverage.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "baac320abdcaa272",
+      "sha256": "0410507543a4968a",
       "lines": 9415,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
@@ -2857,8 +2857,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "bbe459cf8ae9b4e6",
-      "lines": 4632,
+      "sha256": "fec82daae7a4d338",
+      "lines": 4635,
       "exports": [
         "HOUSEHOLD",
         "LONG_ROW_OVER",
@@ -2930,7 +2930,7 @@
         "test_create_refuses_a_non_numeric_count_with_a_sentence",
         "test_create_refuses_a_return_whose_deepest_path_would_pass_the_limit_and_says_the_length",
         "test_create_refuses_a_return_with_no_people_and_the_editor_saves_people_as_one_event",
-        "test_create_refuses_an_identifier_that_cannot_name_a_folder",
+        "test_create_refuses_an_identifier_that_cannot_begin_a_file_name",
         "test_create_shifts_the_checklist_to_the_engagements_year",
         "test_create_then_scan_plays_a_whole_engagement_end_to_end",
         "test_create_will_not_overwrite_an_existing_engagement",
@@ -3360,8 +3360,8 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "abcebb89d1c39f82",
-      "lines": 7385,
+      "sha256": "207b96fc4cd20c41",
+      "lines": 7433,
       "exports": [
         "A_PASS_KILLED_MID_COPY",
         "BUSINESS",
@@ -3431,6 +3431,7 @@
         "test_a_cloud_placeholder_is_not_a_link",
         "test_a_confirmed_name_is_evidence_of_its_own_rule_and_says_where",
         "test_a_copy_already_there_is_reused_only_under_its_own_request",
+        "test_a_copy_cut_to_its_identifier_alone_still_reads_under_its_request",
         "test_a_copy_deleted_outright_is_todays_regression_and_no_row_changes",
         "test_a_copy_killed_half_way_leaves_no_file_under_the_proper_name",
         "test_a_copy_of_a_read_only_original_is_writable_and_the_original_stays_read_only",
@@ -3524,6 +3525,7 @@
         "test_a_refused_record_still_rolls_the_copy_back_and_leaves_no_intent_open",
         "test_a_released_row_is_gone_from_the_index_the_queue_and_every_count_and_the_journal_says_where_it_went",
         "test_a_rename_intent_written_before_168_is_finished_as_written",
+        "test_a_rename_refused_because_the_target_name_is_taken_moves_nothing",
         "test_a_request_with_no_room_for_its_shortest_name_parks_with_the_sentence",
         "test_a_resend_after_a_dismissal_files_when_the_list_now_asks_for_it",
         "test_a_resend_after_a_dismissal_owns_its_own_working_copy",
@@ -5120,8 +5122,8 @@
       "id": "tests/test_validators.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ce8b1f8698dcfba3",
-      "lines": 317,
+      "sha256": "ccec9006821df693",
+      "lines": 339,
       "exports": [
         "ANY_ITEM",
         "PDF_ITEM",
@@ -5144,6 +5146,7 @@
         "test_pdf_readability_is_parsed_once_per_run_not_per_process",
         "test_placeholder_skipped_not_read",
         "test_sha256_of",
+        "test_the_dry_run_names_a_persons_folder_once",
         "test_the_pdf_verdict_cache_is_bounded",
         "test_valid_pdf_passes",
         "write_pdf",
@@ -8482,6 +8485,18 @@
       "from": "tests/test_validators.py",
       "to": "tracker/reasons.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_validators.py",
+      "to": "tracker/scaffold.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_validators.py",
+      "to": "tests/conftest.py",
+      "type": "imports",
       "source": "derived"
     },
     {

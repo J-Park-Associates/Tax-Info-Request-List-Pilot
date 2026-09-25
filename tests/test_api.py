@@ -244,11 +244,14 @@ def test_the_tax_year_is_within_the_bounds_the_wizard_shows(capsys, demo_root):
     assert code == 1 and "whole number" in payload["error"]
 
 
-def test_create_refuses_an_identifier_that_cannot_name_a_folder(capsys, demo_root):
+def test_create_refuses_an_identifier_that_cannot_begin_a_file_name(capsys, demo_root):
+    """Since decision 168 an identifier begins every working copy's file
+    name, and names no folder: the refusal says so (the review's N-1)."""
     spec = {"household": HOUSEHOLD, "return_name": "Bad", "items": [{"identifier": "A:01", "document": "W-2"}]}
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 1
-    assert "A:01" in payload["error"] and "folder name" in payload["error"]
+    assert "A:01" in payload["error"] and "(it begins a file name)" in payload["error"]
+    assert "folder name" not in payload["error"]
     assert not (where(demo_root, "Bad")).exists()  # never leaves a half-built one
 
 

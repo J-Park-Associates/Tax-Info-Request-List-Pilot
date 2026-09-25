@@ -315,3 +315,25 @@ def test_the_pdf_verdict_cache_is_bounded(tmp_path):
     cache.put(("b", 1, 1), "")
     cache.put(("c", 1, 1), "")
     assert cache.get(("a", 1, 1)) is None and cache.get(("c", 1, 1)) == ""
+
+
+def test_the_dry_run_names_a_persons_folder_once(tmp_path):
+    """The review of 168, N-7: the dry-run preview names each folder inside
+    Prepared once, in ruling 7's sentence, and a file no request's name
+    claims once."""
+    import subprocess
+    import sys
+
+    from tests.conftest import make_engagement
+    from tracker.scaffold import PREPARED_DIR_NAME
+
+    engagement = make_engagement(tmp_path, [PDF_ITEM])
+    (engagement / PREPARED_DIR_NAME / "my notes").mkdir()
+    (engagement / PREPARED_DIR_NAME / "stray.pdf").write_bytes(b"x")
+    repo = Path(__file__).resolve().parents[1]
+    done = subprocess.run([sys.executable, "-m", "tracker.validators", str(engagement)],
+                          capture_output=True, text=True, cwd=repo, timeout=120)
+    assert done.returncode == 0, done.stderr
+    said = reasons.PERSONS_FOLDER.format(folder="my notes", prepared=PREPARED_DIR_NAME)
+    assert done.stdout.count("my notes") == 1 and f"    ? {said}" in done.stdout
+    assert done.stdout.count("stray.pdf") == 1
