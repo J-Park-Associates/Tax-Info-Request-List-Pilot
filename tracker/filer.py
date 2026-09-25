@@ -8,12 +8,18 @@ The year's folder, in the tree a client is shared
     completely untouched — same bytes, same filename. This is the
     provided-by-client record, and the client can still see it.
 
-``PREPARED_DIR_NAME/<folder_name_for(item)>/``
+``PREPARED_DIR_NAME/``
     A renamed copy of each identified document, on the firm's side of the
     engagement, named to one convention so a preparer can work the return
     without opening the client's filing habits: the request's identifier,
-    its short name and its period (``A01 - W-2/A01 - W-2 - TY2025.pdf``,
-    decision 144).
+    its short name and its period (``A01 - W-2 - TY2025.pdf``, decision
+    144). **The copies sit side by side in the one folder** (decision 168):
+    the name already says which request a copy is for, and a request's
+    copies sort together by it, so the folder per request that held them
+    until then was a second copy of the name's first half. Which request a
+    file belongs to is its name's - the longest identifier it starts with
+    (``tracker.scaffold.assign_files``) - and nothing is ever filed into a
+    folder inside ``PREPARED_DIR_NAME`` other than the review folder.
 
 **The index** maps one to the other: **one row per original**, where it
 went, what it was renamed to, and — when it was not filed — why not. One
@@ -270,9 +276,9 @@ from tracker.scaffold import (
     PREPARED_DIR_NAME,
     README_NAME,
     REVIEW_DIR_NAME,
-    assign_folders,
-    folder_name_for,
+    assign_files,
     matches_identifier,
+    owner_of,
     readme_returns,
     sanitize_component,
     write_readme,
@@ -524,7 +530,7 @@ def _fitted(identifier: str, document: str, period: str, counter: int, suffix: s
     characters, or None when not even its shortest form fits.
 
     Only the **document part** is cut, from its end (decision 131): the
-    identifier the folder is found by, the period that says which year,
+    identifier the copy is found by, the period that says which year,
     the numbered suffix that keeps a series one series and the extension a
     program opens it by are never cut. ``None`` for ``room`` is no limit:
     the canonical name, exactly as it was before there was a room.
@@ -543,12 +549,14 @@ def prepared_name_for(item: RequestItem, extension: str, taken: set[str], *,
                       room: int | None = None) -> str:
     """Canonical working-copy name: ``label_for(identifier, short name, period)`` plus the extension.
 
-    ``taken`` holds names already used in the destination folder; collisions
+    ``taken`` holds names already used in ``PREPARED_DIR_NAME`` - every
+    request's copies share it since decision 168, and two requests' names
+    can never collide because they differ at the identifier; collisions
     get ``(2)``, ``(3)``… so a request expecting several files keeps them in
-    one predictable series.
+    one predictable series, sorted together.
 
     ``room`` is how many characters the whole file name may take - the
-    caller's ``limit_for(extension) - len(str(dest_folder)) - 1`` - and
+    caller's ``limit_for(extension) - len(str(prepared_dir)) - 1`` - and
     ``None`` is the canonical name exactly (creation's measure passes none;
     every writer passes one). A name longer than its room is **cut to fit**
     (decision 131): the document part alone, from its end, with the
@@ -583,7 +591,13 @@ def shortest_name_for(item: RequestItem, extension: str) -> str:
 
 
 def prepared_location(folder: Path, name: str) -> str:
-    """Where a working copy is, relative to the engagement: ``PREPARED_DIR_NAME/<folder>/<name>``."""
+    """Where a working copy is, relative to the engagement:
+    ``PREPARED_DIR_NAME/<name>`` for a copy in the firm's folder itself
+    (decision 168), ``PREPARED_DIR_NAME/<folder>/<name>`` for one in a
+    folder inside it - the review folder, or a person's (one a person
+    named ``Prepared`` too is still inside it)."""
+    if folder.name == PREPARED_DIR_NAME and folder.parent.name != PREPARED_DIR_NAME:
+        return f"{PREPARED_DIR_NAME}/{name}"
     return f"{PREPARED_DIR_NAME}/{folder.name}/{name}"
 
 
@@ -720,15 +734,16 @@ def room_for(engagement_dir: Path, items: Sequence[RequestItem]) -> Room:
         extensions = _extensions_of(item)
         longest = max(extensions, key=len)
         longest_of_all = max((longest_of_all, longest), key=len)
-        folder = prepared / folder_name_for(item)
-        canonical.append(f"{PREPARED_DIR_NAME}/{folder_name_for(item)}/"
-                         f"{prepared_name_for(item, longest, set())}")
-        least = max(least, len(str(folder / shortest_name_for(item, longest))))
+        # A working copy sits in the firm's folder itself (decision 168):
+        # the path measured is PREPARED_DIR_NAME/<name>, one folder shorter
+        # than it was while each request had a folder of its own.
+        canonical.append(f"{PREPARED_DIR_NAME}/{prepared_name_for(item, longest, set())}")
+        least = max(least, len(str(prepared / shortest_name_for(item, longest))))
         parked = False
         for extension in extensions:
             limit = limit_for(extension)
-            short = max(short, len(str(folder / prepared_name_for(item, extension, set()))) - limit)
-            parked = parked or len(str(folder / shortest_name_for(item, extension))) > limit
+            short = max(short, len(str(prepared / prepared_name_for(item, extension, set()))) - limit)
+            parked = parked or len(str(prepared / shortest_name_for(item, extension))) > limit
         parks += parked
     # The floor at the longest extension the list allows; a list with no
     # active row still parks everything, at the defaults' longest.
@@ -743,8 +758,9 @@ def refuse_a_path_past_the_limit(engagement_dir: Path, items: Sequence[RequestIt
     Windows will open.
 
     The deepest thing the tracker ever writes under a return is a working
-    copy this module writes: ``PREPARED_DIR_NAME/<request folder>/<canonical
-    name>``, over every active row of the list the call is about to record
+    copy this module writes: ``PREPARED_DIR_NAME/<canonical name>`` (no
+    folder per request since decision 168), over every active row of the
+    list the call is about to record
     and the longest extension each row allows - :func:`room_for`'s
     ``need``. The client's own file names are not measured - they are the
     client's, and :func:`unreachable_drops` already says a name the index
@@ -765,18 +781,27 @@ def refuse_a_path_past_the_limit(engagement_dir: Path, items: Sequence[RequestIt
             folder=engagement_dir, length=need, limit=MAX_PATH_LENGTH))
 
 
-def request_folder(item: RequestItem, assigned: dict[str, list[Path]], prepared_dir: Path) -> Path:
-    """The folder a request's working copies go in: the one it already has
-    (by identifier prefix, so a Document renamed in the editor changes
-    nothing), else the canonical name."""
-    existing = assigned.get(item.identifier) or []
-    return existing[0] if existing else prepared_dir / folder_name_for(item)
+def copies_of(item: RequestItem, items: Sequence[RequestItem], prepared_dir: Path) -> list[Path]:
+    """The files in ``prepared_dir`` whose names belong to ``item``
+    (decision 168): :func:`tracker.scaffold.assign_files` over the whole
+    list, so a longer identifier keeps its own files - ``A01-B - Loan.pdf``
+    is never ``A01``'s. Read live, because a filing is looking for a copy
+    an earlier attempt made."""
+    return assign_files(prepared_dir, [one.identifier for one in items]).get(item.identifier) or []
 
 
 def _existing_copy(
-    folder: Path, original: Path, digest: str, *, ignore: Path | None = None
+    folder: Path, original: Path, digest: str, *, ignore: Path | None = None,
+    among: Sequence[Path] | None = None,
 ) -> Path | None:
     """A file already in ``folder`` holding ``original``'s bytes, or None.
+
+    ``among`` narrows the files looked at to these - a request's own copies
+    (:func:`copies_of`), since every request's copies share
+    ``PREPARED_DIR_NAME`` (decision 168): a page decision 94 filed under
+    two requests has the same bytes under both names, and A01's copy is
+    never the copy A02's filing reuses. Left out, every file in ``folder``
+    is looked at, which is right for the review folder.
 
     A run that was killed after copying a working copy but before the
     index recorded it (Task Scheduler's limit, the app's timeout, a power
@@ -798,7 +823,7 @@ def _existing_copy(
         size = original.stat().st_size
     except OSError:
         return None
-    for candidate in sorted(folder.iterdir()):
+    for candidate in sorted(folder.iterdir()) if among is None else sorted(among):
         if is_cloud_placeholder(candidate) or (ignore is not None and candidate == ignore):
             continue
         try:
@@ -1129,28 +1154,29 @@ def _day_of(stamp: str) -> dt.date | None:
         return None
 
 
-def _request_of_copy(folder: str, items: Sequence[RequestItem]) -> str:
-    """The request an ``also_filed`` copy's request folder names, or ``""``.
+def _request_of_copy(name: str, items: Sequence[RequestItem]) -> str:
+    """The request an ``also_filed`` copy's own name names, or ``""``.
 
-    Only what the folder can prove (decision 130, the review's F1): its
-    name is the request's own folder name (:func:`folder_name_for`), or the
-    text after the request's identifier begins with ``LABEL_SEPARATOR`` -
-    the one shape a request folder is made in and a person renames within.
+    Read from the copy's file name since decision 168, by the test decision
+    130 applied to its request folder until then, and only what the name
+    can prove (130, the review's F1): it begins with the request's
+    identifier followed by ``LABEL_SEPARATOR`` - which the canonical prefix
+    (``A01 - W-2``, the identifier and the short name) always does, and is
+    the one shape a working copy is made in and a person renames within.
     A bare prefix proves nothing: once ``A01-B`` is deleted from the list,
-    ``A01-B - Loan Statement`` starts with ``A01`` too, and the README
-    would tell the client their W-2 arrived. Without case, as Windows
-    compares names.
+    ``A01-B - Loan - TY2025.pdf`` starts with ``A01`` too, and the README
+    would tell the client their W-2 arrived. The longest identifier that
+    fits wins, as it does for every file (``tracker.scaffold.owner_of``).
+    Without case, as Windows compares names.
     """
-    name = folder.strip().casefold()
-    for item in items:
-        if name == folder_name_for(item).casefold():
-            return item.identifier
+    name = name.strip().casefold()
     separator = LABEL_SEPARATOR.casefold()
+    best = ""
     for item in items:
         identifier = sanitize_component(item.identifier).casefold()
-        if identifier and name.startswith(identifier + separator):
-            return item.identifier
-    return ""
+        if identifier and name.startswith(identifier + separator) and len(item.identifier) > len(best):
+            best = item.identifier
+    return best
 
 
 def _requests_of(entry: IndexEntry, items: Sequence[RequestItem]) -> list[str]:
@@ -1158,15 +1184,16 @@ def _requests_of(entry: IndexEntry, items: Sequence[RequestItem]) -> list[str]:
     ``also_filed`` copy (decision 94).
 
     ``also_filed`` holds the copies' locations, not their requests, so each
-    is read back from the request folder the copy sits in by
-    :func:`_request_of_copy`. A folder no request of today's list provably
-    names answers ``""``, which the README says as :data:`OTHER_DOCUMENT` -
-    never a guessed request.
+    is read back from the copy's own file name by :func:`_request_of_copy`
+    (decision 168; from the request folder it sat in until then). A name
+    no request of today's list provably names answers ``""``, which the
+    README says as :data:`OTHER_DOCUMENT` - never a guessed request. A copy
+    recorded in a request folder before 168 is read by its name too, and
+    its name was always made in the same shape.
     """
     found = [entry.identifier]
     for location in entry.filed_locations[1:]:
-        parts = location.split("/")
-        found.append(_request_of_copy(parts[-2] if len(parts) >= 2 else "", items))
+        found.append(_request_of_copy(location.rsplit("/", 1)[-1], items))
     return found
 
 
@@ -2195,8 +2222,9 @@ MOVED_GONE_SENTENCE = ("{home} no longer holds this row's bytes and nothing unde
 #: others and never taken off again: a copy that moves twice carries where
 #: it has been, which is what the person reading the row wants.
 MOVED_BACK_SENTENCE = "the working copy is back at {home} ({date})"
-#: Attention, every pass, for a file under a request folder or the review
-#: folder that no row names and whose bytes match no row. It is counted
+#: Attention, every pass, for a file named for a request (decision 168;
+#: under a request folder until then) or in the review folder that no row
+#: names and whose bytes match no row. It is counted
 #: where it sits, because what a request holds is what the scanner says it
 #: has; what nothing knows is who put it there. Since decision 155 no copy
 #: the tracker makes is ever half there under a name - a failed or killed
@@ -2309,12 +2337,18 @@ def _prove_working_copies(
     entries: list[IndexEntry],
     cache: ContentCache,
     stamp: str,
-    request_folders: set[Path],
+    request_files: set[Path],
 ) -> tuple[list[FileError], dict[str, str]]:
     """One walk of the firm's folder: prove every copy the record names,
     identify every file it does not. Mutates ``entries``; returns the
     attention lines and ``{ledger_key: ledger.COPY_MOVED}`` for every row
     it rewrote.
+
+    ``request_files`` are the files whose names belong to a request
+    (``tracker.scaffold.assign_files``, decision 168): an unrecorded one
+    of them is counted where it sits, and so is said here. The walk itself
+    goes everywhere under the firm's folder, a person's folder included,
+    so a recorded copy dragged into one is found by its bytes.
 
     The client's own folder has been swept since decision 68 and this one
     was swept by nothing at all: a Filed copy dragged out of its request
@@ -2436,13 +2470,15 @@ def _prove_working_copies(
 
     # What is left is a file nothing filed and no row's bytes answer for.
     # Said every pass until a person routes it through the client's folder
-    # or files it in the app. A loose file at the root of the firm's folder
-    # and a folder matching no request are the scanner's warnings already,
-    # and one warning per thing is the rule.
-    watched = set(request_folders) | {prepared_dir / REVIEW_DIR_NAME}
+    # or files it in the app: a file named for a request, which is counted
+    # where it sits, and anything in the review folder. A file whose name
+    # begins with no request's identifier and a person's folder (decision
+    # 168) are the scanner's warnings already, and one warning per thing
+    # is the rule - a person's folder is named once, never file by file.
+    review = prepared_dir / REVIEW_DIR_NAME
     for location in strays:
         path = locate(engagement_dir, location)
-        if any(folder == path.parent or folder in path.parents for folder in watched):
+        if path in request_files or review == path.parent or review in path.parents:
             attention.append(FileError(path.name, UNRECORDED_COPY.format(location=location), True))
     return attention, swept
 
@@ -2700,7 +2736,6 @@ def _finish_interrupted_moves(
         return []
     attention: list[FileError] = []
     rows_recorded = False
-    renamed_from: set[Path] = set()
     for intent in intents:
         key = str(intent.get(ledger.KEY_KEY) or "")
         row = intent.get(ledger.ROW_KEY)
@@ -2738,10 +2773,6 @@ def _finish_interrupted_moves(
             events += list(intent.get(ledger.ALSO_KEY) or [])
             store.record(conn, engagement_dir, *events)
             rows_recorded = True
-            if intent.get(ledger.EVENT_KEY_AFTER) == ledger.RENAMED_BY_PERSON:
-                renamed_from.update(locate(engagement_dir, op[ledger.FROM_KEY]).parent
-                                    for op in intent.get(ledger.OPS_KEY) or []
-                                    if op.get(ledger.OP_KEY) == ledger.OP_MOVE)
             log.warning("Finished the interrupted %s of %s from the record",
                         intent.get(ledger.EVENT_KEY_AFTER), entry.original_name)
             continue
@@ -2759,7 +2790,6 @@ def _finish_interrupted_moves(
             Path(op.get(ledger.TO_KEY) or entry.original_name).name, sentence, True))
         log.warning("An interrupted step on %s could not be finished: %s",
                     entry.original_name, sentence)
-    _remove_emptied_request_folders(engagement_dir, renamed_from)
     if rows_recorded:
         fresh = read_index(engagement_dir)
         entries[:] = fresh
@@ -3152,7 +3182,7 @@ def _prepare_return(engagement_dir: Path, stamp: str, *, dry_run: bool) -> _Retu
             items=items, by_id={i.identifier: i for i in items}, known={},
             prepared_dir=engagement_dir / PREPARED_DIR_NAME,
             review_dir=engagement_dir / PREPARED_DIR_NAME / REVIEW_DIR_NAME,
-            reserved={}, assigned={}, dry_run=dry_run, report=report,
+            reserved={}, dry_run=dry_run, report=report,
             cache=cache, pdf_cache=PdfVerdictCache(),
         ),
     )
@@ -3176,19 +3206,17 @@ def _prepare_return(engagement_dir: Path, stamp: str, *, dry_run: bool) -> _Retu
             location=earlier.pbc_location, received=earlier.received,
             prepared=earlier.prepared_location,
         ), True))
-    # Existing request folders, so a Document renamed in the editor keeps
-    # filing into the folder that already holds its earlier files - and so
-    # the sweep below knows which folders a request claims, the same
-    # reading the scanner's warnings are drawn from.
-    run.context.assigned = assign_folders(run.context.prepared_dir, [i.identifier for i in items])
     # Every working copy the record names, proved against the row's own
     # fingerprint, and every file the record does not name, identified by
     # it (decision 109). It runs before the rows below are read, so what
     # follows sees the rows as this sweep leaves them; a dry run reads all
-    # of it and records none of it, like everything else.
+    # of it and records none of it, like everything else. Which files are a
+    # request's is their names' to say (decision 168), the same reading
+    # the scanner counts by.
+    assigned = assign_files(run.context.prepared_dir, [i.identifier for i in items])
     sweep, swept = _prove_working_copies(
         engagement_dir, run.context.prepared_dir, entries, cache, stamp,
-        {folder for folders in run.context.assigned.values() for folder in folders},
+        {path for paths in assigned.values() for path in paths},
     )
     report.attention.extend(sweep)
     run.swept = swept
@@ -4146,7 +4174,6 @@ class _SortContext:
     prepared_dir: Path
     review_dir: Path
     reserved: dict[Path, set[str]]         # names claimed this run, per folder
-    assigned: dict[str, list[Path]]        # identifier -> its existing folders
     dry_run: bool
     report: FileReport
     cache: ContentCache
@@ -4176,8 +4203,9 @@ class _SortContext:
 def _plan_working_copy(
     item: RequestItem, drop: Path, original: Path, digest: str, run: _SortContext,
 ) -> tuple[str, Path | None]:
-    """Where one working copy of a preserved original goes in one request's
-    folder, and the file the copy will make there.
+    """Where one working copy of a preserved original goes - in
+    ``PREPARED_DIR_NAME`` itself, named by its request (decision 168) -
+    and the file the copy will make there.
 
     The copy is made from ``original`` - the file in the client's folder
     for the year, never the drop - under the canonical name for that row,
@@ -4192,13 +4220,14 @@ def _plan_working_copy(
     between them is finished from the record rather than guessed at.
 
     One call per request: decision 94 files a page that carries several
-    forms under each of them, and each folder numbers its own names. The
+    forms under each of them, and each request numbers its own names - they
+    share one folder, and differ at the identifier. The
     copy itself is :func:`_file_into`'s to write down and make, from where
     the original will rest - which, for a return in another household, is
     not where it is now (decision 129) - while the reuse check here reads
     the file that is there.
     """
-    dest_folder = request_folder(item, run.assigned, run.prepared_dir)
+    dest_folder = run.prepared_dir
     if dest_folder not in run.reserved:
         run.reserved[dest_folder] = (
             {p.name.lower() for p in dest_folder.iterdir()}
@@ -4208,18 +4237,19 @@ def _plan_working_copy(
     # A copy already there is found before any name is measured (decision
     # 131's review, F5, as the hand-over does): a killed run's copy is
     # reused under the name it has, and a folder with no room for a new
-    # name does not park a document whose copy is already in it.
+    # name does not park a document whose copy is already in it. Only
+    # among this request's own copies (decision 168): another request's
+    # copy of the same page is that request's.
     if not run.dry_run:
-        existing = _existing_copy(dest_folder, original, digest)
+        existing = _existing_copy(dest_folder, original, digest,
+                                  among=copies_of(item, run.items, dest_folder))
         if existing is not None:
             return prepared_location(dest_folder, existing.name), None
-    # Named to fit the room its folder leaves (decision 131): the exact
+    # Named to fit the room the folder leaves (decision 131): the exact
     # path about to be written is what is measured, so a root that grew,
     # a label the editor lengthened and the numbered suffix are all
     # counted. No room for even the shortest name raises NoRoom, and the
-    # caller parks the document instead. The folder itself is made by the
-    # caller once every copy of the filing is named, so a filing that
-    # parks leaves no empty request folder behind.
+    # caller parks the document instead, with nothing made.
     extension = extension_of(drop)
     filed_as = prepared_name_for(item, extension, run.reserved[dest_folder],
                                  room=limit_for(extension) - len(str(dest_folder)) - 1)
@@ -4842,7 +4872,11 @@ def assign_review_file(
                 "recorded - it was replaced after it arrived; look at the file first"
             )
 
-        dest_folder = request_folder(item, assign_folders(prepared_dir, list(items)), prepared_dir)
+        # The copy goes in the firm's folder itself, named by its request
+        # (decision 168) - and so does a mislaid copy a person keeps where
+        # it is, which only ever sits there (the app offers Keep it here
+        # for nothing else): it takes the request's canonical name beside it.
+        dest_folder = prepared_dir
         # Named to fit the room the folder leaves, before anything is made
         # (decision 131): no room even for the shortest name refuses with
         # PATH_NO_ROOM, and nothing has moved.
@@ -4850,8 +4884,10 @@ def assign_review_file(
         # A copy with these bytes already there is found before a name is
         # measured (decision 131's review, F5): it is reused under its own
         # name, so a folder short of room never refuses a filing it holds.
+        # Only this request's own copies are looked at (decision 168).
         existing = _existing_copy(dest_folder, source, digest,
-                                  ignore=parked if parked_here else None)
+                                  ignore=parked if parked_here else None,
+                                  among=copies_of(item, list(items.values()), dest_folder))
         extension = extension_of(source)
         filed_as = existing.name if existing is not None else prepared_name_for(
             item, extension, taken, room=limit_for(extension) - len(str(dest_folder)) - 1)
@@ -5104,11 +5140,12 @@ def hand_over(
                                 recorded=_year_on_record(target_return, {}))
                    if moving_it else source)
 
-        target_prepared = target_return / PREPARED_DIR_NAME
-        dest_folder = request_folder(item, assign_folders(target_prepared, list(items)),
-                                     target_prepared)
+        # In the taking return's firm folder itself, named by the request
+        # (decision 168), and reusing only that request's own copy.
+        dest_folder = target_return / PREPARED_DIR_NAME
         taken = {p.name.lower() for p in dest_folder.iterdir()} if dest_folder.is_dir() else set()
-        existing = _existing_copy(dest_folder, source, digest)
+        existing = _existing_copy(dest_folder, source, digest,
+                                  among=copies_of(item, list(items.values()), dest_folder))
         # Named to fit, before anything is made (decision 131): no room even
         # for the shortest name refuses with PATH_NO_ROOM, nothing moved.
         extension = extension_of(source)
@@ -5930,37 +5967,6 @@ def restore_working_copy(
 # ------------------------------------------------------------------ rename ----
 
 
-def _remove_emptied_request_folders(engagement_dir: Path, folders) -> list[Path]:
-    """Remove each of ``folders`` that a rename emptied, and nothing else
-    (decision 160).
-
-    A request folder directly under the return's ``PREPARED_DIR_NAME`` -
-    never the review folder, never anything in the client's tree, where the
-    originals are - and only when it holds nothing at all: a folder with a
-    file in it, recorded or not, is somebody's and stays. Both the rename
-    and the recovery that finishes an interrupted one come here, so the old
-    folder of a rename a run was killed in does not stay behind as a folder
-    no request names. Best effort: a folder that cannot be removed is a log
-    line, never a failed pass. Returns the files left in the folders kept.
-    """
-    prepared = (engagement_dir / PREPARED_DIR_NAME).resolve()
-    left: list[Path] = []
-    for folder in sorted(set(folders)):
-        try:
-            if folder.resolve().parent != prepared or folder.name.casefold() == REVIEW_DIR_NAME.casefold():
-                continue
-            if not folder.is_dir():
-                continue
-            inside = sorted(folder.iterdir())
-            if inside:
-                left.extend(inside)
-            else:
-                folder.rmdir()
-        except OSError as exc:
-            log.warning("Could not tidy %s after the rename: %s", folder, exc)
-    return left
-
-
 def documents_by_request(engagement_dir: Path | str,
                          items: Sequence[RequestItem] | None = None) -> dict[str, int]:
     """How many filed documents each request holds, keyed without case
@@ -5996,7 +6002,6 @@ def documents_by_request(engagement_dir: Path | str,
 RENAME_CASE_ONLY = ("{old} and {new} differ only in case; change it in the list and save - "
                     "a change of case needs no rename")
 RENAME_NOTHING = "Pick the request to rename and type its new identifier"
-RENAME_FOLDER_TAKEN = "{folder} is already there; move it or rename it first"
 RENAME_COPY_TAKEN = "{location} is already there; move it or rename it first"
 RENAME_COPY_MOVED = ("{name} is not where the record put it; put it back or send it to review "
                      "before renaming {old}")
@@ -6018,8 +6023,9 @@ RENAME_UNFINISHED = ("{old} is renamed {new} on the record, but {name} could not
 class RenameResult:
     """What one rename did: the two identifiers, how many working copies
     moved, how many index rows now name the new identifier, the files
-    left behind in the old folder because no row names them, the list's
-    new version (``manifest.list_head``) and the re-scan's note."""
+    named for the old identifier left as they are because no row names
+    them, the list's new version (``manifest.list_head``) and the re-scan's
+    note."""
 
     old: str
     new: str
@@ -6033,7 +6039,7 @@ class RenameResult:
 def _renamed(name: str, old: str, new: str) -> str:
     """``name`` with the request's identifier at its front given as ``new``,
     where it begins with ``old`` at a word boundary (the one shape a
-    request folder and a working copy are made in); otherwise as it is."""
+    working copy is made in); otherwise as it is."""
     if not matches_identifier(name, old):
         return name
     rest = name.strip()[len(old.strip()):]
@@ -6055,11 +6061,12 @@ def rename_request(
     removed, a new one added, the documents orphaned under a folder no
     request names and the letter and the README asking the client again
     (decision 160, the audit's D-7). This is the other way, and the only
-    one: the request's working folder (the folders ``assign_folders``
-    gives it) takes the new identifier at its front, every working copy in
-    it moves into the renamed folder under a name that does too, and every
-    index row that names the request, or a copy in its folder, names the
-    new one - in its Also Answers cell too, where a consolidated statement
+    one: every working copy the record names whose name belongs to the
+    request (directly in ``PREPARED_DIR_NAME``, by
+    ``tracker.scaffold.owner_of`` - the rule ``assign_files`` applies)
+    takes the new identifier at the front of its name, beside where it was,
+    and every index row that names the request, or one of those copies,
+    names the new one - in its Also Answers cell too, where a consolidated statement
     filed under another request answers this one (decision 146, SPEC-146
     R-1), so the answer and its sections carry and a killed rename finishes
     it from the row its intent holds.
@@ -6080,9 +6087,24 @@ def rename_request(
     A change of case only is refused: it is the same request everywhere
     (``records.identifier_key``), and the editor saves it. A row whose copy
     is not where the record put it (File Moved) is refused by name, as
-    every other action on such a copy is. The old folder is removed when
-    the moves have emptied it; a file in it that no row names is left
-    where it is and named in the result, never moved and never deleted.
+    every other action on such a copy is. A file named for the request
+    that no row names is left where it is and named in the result, never
+    moved and never deleted.
+
+    **No folder moves** (decision 168): a request has none, so there is
+    nothing to rename and no emptied folder to take away - the copies are
+    renamed in place, each one an ordinary move in the intent, and a run
+    killed half way is finished by the next pass from those moves exactly
+    as any interrupted filing is (:func:`_finish_interrupted_moves`),
+    nothing lost and nothing doubled. An intent written before 168 names
+    folder-shaped paths (``PREPARED_DIR_NAME/A01 - W-2/...`` to ``PREPARED_DIR_NAME/B01 -
+    W-2/...``); it is finished as written, because the record decided it -
+    the copy lands in the folder the intent names, which is then a
+    person's folder of a return made before 168 (decision 168's ruling 10),
+    and the emptied old folder stays, empty, until a person takes it away.
+    A copy recorded in such a folder is never renamed by a rename made
+    after 168: it is not in ``PREPARED_DIR_NAME`` itself, and its row
+    takes the new identifier all the same.
     """
     engagement_dir = Path(engagement_dir)
     today = today or dt.date.today()
@@ -6104,22 +6126,30 @@ def rename_request(
         entries = read_index(engagement_dir)
         before = {ledger_key(e): entry_to_json(e) for e in entries}
 
-        # The request's folders, and where each goes.
-        folders = assign_folders(prepared, [item.identifier for item in items]).get(old) or []
-        folder_to: dict[str, Path] = {}
-        for folder in folders:
-            target = prepared / _renamed(folder.name, old, new)
-            if target.exists():
-                raise FilingError(RENAME_FOLDER_TAKEN.format(
-                    folder=location_of(engagement_dir, target)))
-            folder_to[location_of(engagement_dir, folder)] = target
+        # Which copies are the request's is their names' to say (decision
+        # 168): a copy directly in the firm's folder whose name belongs to
+        # the old identifier - the longest that fits, so renaming A01 never
+        # touches A01-B's - takes the new one at its front, beside where it
+        # is. Asked of the name, not of the disk, so a copy the record put
+        # there that has gone is refused below rather than passed over.
+        identifiers = [item.identifier for item in items]
+
+        def belongs_to_old(path: Path) -> bool:
+            owner = owner_of(path.name, identifiers)
+            return path.parent == prepared and owner is not None \
+                and identifier_key(owner) == identifier_key(old)
 
         def moved_to_new(location: str) -> str | None:
-            parent, _, name = location.rpartition("/")
-            for was, target in folder_to.items():
-                if parent.casefold() == was.casefold():
-                    return location_of(engagement_dir, target / _renamed(name, old, new))
-            return None
+            path = locate(engagement_dir, location)
+            if not belongs_to_old(path):
+                return None
+            return location_of(engagement_dir, prepared / _renamed(path.name, old, new))
+
+        # Every file named for the request now, recorded or not - what is
+        # not moved below is named in the result.
+        spelled = next((one for one in identifiers if identifier_key(one) == identifier_key(old)), old)
+        owned = [location_of(engagement_dir, path)
+                 for path in assign_files(prepared, identifiers).get(spelled, [])]
 
         renamed_entries: list[IndexEntry] = []
         ops_for: dict[str, list[dict]] = {}
@@ -6208,8 +6238,10 @@ def rename_request(
         _record(engagement_dir, before, entries,
                 decided={ledger_key(one): ledger.RENAMED_BY_PERSON for one in renamed_entries})
 
-        left = [location_of(engagement_dir, one)
-                for one in _remove_emptied_request_folders(engagement_dir, folders)]
+        # A file named for the old identifier that no row names stays as it
+        # is, and is named: it is somebody's, and nothing proves whose.
+        moving = {op[ledger.FROM_KEY].casefold() for ops in ops_for.values() for op in ops}
+        left = [location for location in owned if location.casefold() not in moving]
         now_head = list_head(engagement_dir)
         rows = sum(1 for entry in entries
                    if entry.identifier and identifier_key(entry.identifier) == identifier_key(new))

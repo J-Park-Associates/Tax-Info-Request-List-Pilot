@@ -367,11 +367,10 @@ def request_row(item: RequestItem) -> dict[str, str]:
         # two words; and a row nobody asked for, with nothing in, is said
         # to be not asked rather than Missing - nobody owes it.
         COL_ASKED: YES if item.asked else NO,
-        # The name the firm's working folder and copies go by (decision
-        # 144): the row's own short title, or the one its document title
-        # derives - the name a new folder and every new copy take, as the
-        # Date Pattern cell shows the check a blank derives. A folder made
-        # before decision 144 keeps its own name.
+        # The name each working copy goes by (decisions 144 and 168): the
+        # row's own short title, or the one its document title derives -
+        # the name every new copy takes, as the Date Pattern cell shows the
+        # check a blank derives. A copy made before keeps its own name.
         COL_SHORT_TITLE: _text(item.short_name),
         COL_STATUS: NOT_ASKED_LABEL if status_label(item) == NOT_ASKED_LABEL else _text(item.status),
         COL_RECEIVED_DATE: _text(item.received_date),

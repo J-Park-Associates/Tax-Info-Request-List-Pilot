@@ -835,7 +835,9 @@ def test_not_applicable_and_accepted_rows_are_not_outstanding(tmp_path, samples)
     assert run.outstanding == len(DEMO_ITEMS) - 2
 
 
-def test_a_row_added_in_the_editor_has_its_folder_by_the_next_run(tmp_path, samples):
+def test_a_row_added_in_the_editor_is_asked_for_by_the_next_run(tmp_path, samples):
+    """Decision 168: no folder is made for it - its copies will sit in
+    Prepared itself - and it is Missing, never "folder not found"."""
     from tracker.scaffold import README_NAME
 
     engagement = build_engagement(tmp_path, samples, drops=())
@@ -845,7 +847,7 @@ def test_a_row_added_in_the_editor_has_its_folder_by_the_next_run(tmp_path, samp
     save_rules(engagement.path, rows, load_engagement_info(engagement.path))
     run = a_pass(engagement, today=FRIDAY)
     assert run.ok
-    assert any(p.name.startswith("Z01") for p in (engagement.path / PREPARED_DIR_NAME).iterdir())
+    assert not any(p.name.startswith("Z01") for p in (engagement.path / PREPARED_DIR_NAME).iterdir())
     assert "Z01 - Rental Property Records" in (inbox_of(engagement.path) / README_NAME).read_text(encoding="utf-8")
     assert run.statuses.get(Status.MISSING, 0) >= 1 and "folder not found" not in str(run.statuses)
 
@@ -882,11 +884,16 @@ def test_a_rolled_forward_engagement_is_retired_by_its_successor(tmp_path, sampl
 
 
 def test_strays_in_prepared_reach_the_run_report(tmp_path, samples):
+    from tracker import reasons
+    from tracker.scanner import UNCLAIMED_FILE
+
     engagement = build_engagement(tmp_path, samples, drops=())
     (engagement.path / PREPARED_DIR_NAME / "loose.txt").write_text("x", encoding="utf-8")
+    (engagement.path / PREPARED_DIR_NAME / "my notes").mkdir()
     run = a_pass(engagement, today=FRIDAY)
     assert run.ok
-    assert any(f"loose.txt is loose in {PREPARED_DIR_NAME}/" in w for w in run.warnings)
+    assert UNCLAIMED_FILE.format(name="loose.txt", prepared=PREPARED_DIR_NAME) in run.warnings
+    assert reasons.PERSONS_FOLDER.format(folder="my notes", prepared=PREPARED_DIR_NAME) in run.warnings
 
 
 # ----------------------------------------------------- the practice on a page ----

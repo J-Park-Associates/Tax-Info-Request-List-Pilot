@@ -13,9 +13,10 @@ from tracker.scaffold import (
     README_PHOTO_LINE,
     README_STEP_2,
     REVIEW_DIR_NAME,
-    assign_folders,
-    folder_name_for,
+    assign_files,
     matches_identifier,
+    owner_of,
+    persons_folders,
     sanitize_component,
     scaffold_engagement,
 )
@@ -63,12 +64,17 @@ def test_sanitize_component():
     assert sanitize_component("12/31/2025") == "12-31-2025"
 
 
-def test_folder_names_are_windows_safe():
+def test_working_copy_names_are_windows_safe_and_begin_with_their_identifier():
+    """Decision 168: the name is all there is to say which request a copy
+    is for, so it always begins with the identifier and a separator."""
+    from tracker.filer import prepared_name_for
+
     for item in ITEMS:
-        name = folder_name_for(item)
+        name = prepared_name_for(item, "pdf", set())
         assert not set('\\/:*?"<>|') & set(name)
         assert not name.endswith((".", " "))
         assert name.startswith(f"{item.identifier} - ")
+        assert owner_of(name, [one.identifier for one in ITEMS]) == item.identifier
 
 
 def test_matches_identifier_boundaries():
@@ -82,12 +88,43 @@ def test_matches_identifier_boundaries():
     assert not matches_identifier("A01x", "A01")
 
 
-def test_assign_folders_longest_identifier_wins(tmp_path):
-    (tmp_path / "A01 - Bank").mkdir()
-    (tmp_path / "A01-B - Loan Docs").mkdir()
-    assigned = assign_folders(tmp_path, ["A01", "A01-B"])
-    assert [p.name for p in assigned["A01"]] == ["A01 - Bank"]
-    assert [p.name for p in assigned["A01-B"]] == ["A01-B - Loan Docs"]
+def test_assign_files_longest_identifier_wins(tmp_path):
+    """Decision 168, ruling 2: the rule the request folders were assigned
+    by, applied to the files directly in Prepared."""
+    (tmp_path / "A01 - Bank - Dec 2025.pdf").write_bytes(b"a")
+    (tmp_path / "A01-B - Loan Docs - TY2025.pdf").write_bytes(b"b")
+    (tmp_path / "A01 - Bank - Dec 2025 (2).pdf").write_bytes(b"c")
+    assigned = assign_files(tmp_path, ["A01", "A01-B"])
+    assert [p.name for p in assigned["A01"]] == ["A01 - Bank - Dec 2025 (2).pdf",
+                                                 "A01 - Bank - Dec 2025.pdf"]
+    assert [p.name for p in assigned["A01-B"]] == ["A01-B - Loan Docs - TY2025.pdf"]
+
+
+def test_only_files_directly_in_prepared_are_a_requests(tmp_path):
+    """A folder inside Prepared - the review folder, a person's, a request
+    folder of a return made before decision 168 - holds nothing of any
+    request's, and a name no identifier begins is nobody's."""
+    (tmp_path / REVIEW_DIR_NAME).mkdir()
+    (tmp_path / REVIEW_DIR_NAME / "A01 - parked.pdf").write_bytes(b"a")
+    (tmp_path / "A01 - W-2").mkdir()
+    (tmp_path / "A01 - W-2" / "A01 - W-2 - TY2025.pdf").write_bytes(b"b")
+    (tmp_path / "scan0012.pdf").write_bytes(b"c")
+    assert assign_files(tmp_path, ["A01"]) == {"A01": []}
+    assert [p.name for p in persons_folders(tmp_path)] == ["A01 - W-2"]
+
+
+def test_a_temp_file_a_killed_copy_left_is_never_a_requests(tmp_path):
+    """Decision 155's temp is the target's name with ``.<pid>.<tag>.tmp``
+    after it, so it begins with the identifier and a separator like the
+    copy it was going to be. It is never counted as one (SPEC-168 §8)."""
+    from tracker.fsio import temp_path_for
+
+    target = tmp_path / "A01 - W-2 - TY2025.pdf"
+    temp = temp_path_for(target)
+    temp.write_bytes(b"half a copy")
+    assert temp.name.startswith("A01 - W-2 - TY2025.pdf.")
+    assert owner_of(temp.name, ["A01"]) == "A01"            # its name alone would claim it
+    assert assign_files(tmp_path, ["A01"]) == {"A01": []}   # the one function never does
 
 
 # -------------------------------------------------------------- scaffold ----
@@ -108,17 +145,10 @@ def test_the_scaffold_makes_both_trees_and_the_readme_in_the_inbox_is_grouped_by
     assert inbox.parent == originals.parent
     assert result.inbox == inbox and result.originals_dir == originals
     assert not any(p.is_dir() for p in inbox.iterdir())
-    # Firm side: one folder per request, plus somewhere for the unclear,
-    # each named by the request's short name (decision 144): here derived,
-    # the first twenty characters of the title cut at a whole word.
-    assert (prepared / REVIEW_DIR_NAME).is_dir()
-    assert [p.name for p in result.created] == [
-        "A01 - Dec 2025 Bank",
-        "A02 - Monthly Bank",
-        "B01 - Q4- A-R -Aging-",
-    ]
-    assert result.not_applicable == ["C01"]
-    assert not (prepared / "C01 - Fixed Asset Register").exists()
+    # Firm side: somewhere for the unclear, and nothing else - no request
+    # has a folder since decision 168; its copies sit in Prepared itself.
+    assert [p.name for p in prepared.iterdir()] == [REVIEW_DIR_NAME]
+    assert result.prepared_dir == prepared
 
     readme = write_readme(household_of(engagement), contact="J Park & Associates"
                           ).read_text(encoding="utf-8")
@@ -202,50 +232,58 @@ def test_the_readme_says_a_clear_photo_is_fine_in_the_owners_words(tmp_path):
 
 def test_idempotent_rerun_creates_nothing(engagement):
     scaffold_engagement(engagement)
-    result = scaffold_engagement(engagement)
-    assert result.created == []
-    assert sorted(result.existing) == ["A01", "A02", "B01"]
+    scaffold_engagement(engagement)
+    assert [p.name for p in (engagement / PREPARED_DIR_NAME).iterdir()] == [REVIEW_DIR_NAME]
 
 
 def test_recreates_deleted_folder(engagement):
     scaffold_engagement(engagement)
-    (engagement / PREPARED_DIR_NAME / "A01 - Dec 2025 Bank").rmdir()
-    result = scaffold_engagement(engagement)
-    assert [p.name for p in result.created] == ["A01 - Dec 2025 Bank"]
+    (engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME).rmdir()
+    scaffold_engagement(engagement)
+    assert (engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME).is_dir()
 
 
-def test_client_rename_with_prefix_not_duplicated(engagement):
+def test_a_copy_renamed_with_its_prefix_still_belongs_to_its_request(engagement):
+    """Rename-tolerant, flat (decision 168): a copy a person renamed
+    ``A01 - bank stuff.pdf`` is still A01's, and the scaffold makes
+    nothing beside it."""
     scaffold_engagement(engagement)
     prepared = engagement / PREPARED_DIR_NAME
-    (prepared / "A01 - Dec 2025 Bank").rename(prepared / "A01 - bank stuff")
+    (prepared / "A01 - bank stuff.pdf").write_bytes(b"%PDF-1.7 fake")
 
-    result = scaffold_engagement(engagement)
-    assert result.created == []
-    assert "A01" in result.existing
-    assert sum(1 for p in prepared.iterdir() if p.name.startswith("A01")) == 1
+    scaffold_engagement(engagement)
+    assigned = assign_files(prepared, [item.identifier for item in ITEMS])
+    assert [p.name for p in assigned["A01"]] == ["A01 - bank stuff.pdf"]
+    assert sorted(p.name for p in prepared.iterdir()) == [REVIEW_DIR_NAME, "A01 - bank stuff.pdf"]
 
 
 def test_existing_client_files_never_touched(engagement):
     scaffold_engagement(engagement)
-    folder = engagement / PREPARED_DIR_NAME / "A01 - Dec 2025 Bank"
-    client_file = folder / "chase_dec_2025.pdf"
+    prepared = engagement / PREPARED_DIR_NAME
+    client_file = prepared / "chase_dec_2025.pdf"
     client_file.write_bytes(b"%PDF-1.7 fake")
+    (prepared / "my notes").mkdir()
+    kept = prepared / "my notes" / "draft.xlsx"
+    kept.write_bytes(b"data")
 
     scaffold_engagement(engagement)
     assert client_file.read_bytes() == b"%PDF-1.7 fake"
+    assert kept.read_bytes() == b"data"
 
 
-def test_not_applicable_folder_left_alone_if_it_exists(engagement):
-    # Client already uploaded to C01 before the item was set aside.
+def test_an_old_request_folder_is_left_alone(engagement):
+    """A request folder made before decision 168 - here a set-aside row's,
+    with a file in it - is a person's folder now: never deleted, never
+    emptied, and nothing is made beside it."""
     prepared = engagement / PREPARED_DIR_NAME
     prepared.mkdir()
     stale = prepared / "C01 - Fixed Asset Register"
     stale.mkdir()
     (stale / "far.xlsx").write_bytes(b"data")
 
-    result = scaffold_engagement(engagement)
-    assert result.not_applicable == ["C01"]
+    scaffold_engagement(engagement)
     assert (stale / "far.xlsx").exists()          # never deleted
+    assert persons_folders(prepared) == [stale]
 
 
 def test_readme_refreshed_on_rerun(engagement):
@@ -268,9 +306,11 @@ def test_the_review_folder_is_never_assigned_to_an_identifier(tmp_path):
     # "00 - Needs Review" starts with "00"; an identifier "00" must not
     # claim it and count every parked file as its own.
     (tmp_path / REVIEW_DIR_NAME).mkdir()
-    (tmp_path / "00 - Opening Balances").mkdir()
-    assigned = assign_folders(tmp_path, ["00"])
-    assert [p.name for p in assigned["00"]] == ["00 - Opening Balances"]
+    (tmp_path / REVIEW_DIR_NAME / "00 - parked.pdf").write_bytes(b"a")
+    (tmp_path / "00 - Opening Balances - TY2025.pdf").write_bytes(b"b")
+    assigned = assign_files(tmp_path, ["00"])
+    assert [p.name for p in assigned["00"]] == ["00 - Opening Balances - TY2025.pdf"]
+    assert persons_folders(tmp_path) == []
 
 
 def test_the_readme_contact_comes_from_the_engagement_details(tmp_path):
@@ -305,20 +345,24 @@ def test_a_readme_the_client_side_holds_does_not_stop_the_scaffold(engagement, m
     assert result.prepared_dir is not None and readme.is_dir()
 
 
-def test_each_issuer_gets_its_own_client_folder(tmp_path):
-    """An issuer row is an ordinary row, so there is one folder per issuing
-    entity (decision 93). Since decision 144 the folder is named by the
-    row's short name, ``K-1`` and the issuer cut to twenty characters at a
-    whole word (the owner's Q-B), while the Document the client reads keeps
-    the entity's whole name."""
+def test_each_issuer_gets_its_own_working_copy_name(tmp_path):
+    """An issuer row is an ordinary row, so each issuing entity's copies
+    have names of their own (decision 93) - since decision 168 side by side
+    in Prepared, with no folder per request. Since decision 144 the name
+    carries the row's short name, ``K-1`` and the issuer cut to twenty
+    characters at a whole word (the owner's Q-B), while the Document the
+    client reads keeps the entity's whole name."""
+    from tracker.filer import prepared_name_for
     from tracker.templates import issuer_row, item_from_spec
 
     rows = [item_from_spec(issuer_row("F02", "Ashford Holdings, L.P.")),
             item_from_spec(issuer_row("F03", "Birch Lane Partners"))]
     eng = make_engagement(tmp_path, rows)
 
-    names = {f.name for f in (eng / PREPARED_DIR_NAME).iterdir() if f.is_dir()}
-    assert {"F02 - K-1 Ashford Holdings", "F03 - K-1 Birch Lane"} <= names
+    assert persons_folders(eng / PREPARED_DIR_NAME) == []
+    names = [prepared_name_for(row, "pdf", set()) for row in rows]
+    assert names[0].startswith("F02 - K-1 Ashford Holdings - ")
+    assert names[1].startswith("F03 - K-1 Birch Lane - ")
     assert [row.document for row in rows] == ["Schedule K-1 - Ashford Holdings LP",
                                               "Schedule K-1 - Birch Lane Partners"]
 
@@ -339,11 +383,14 @@ def arrived(identifier: str, decision: str, *, original: str = "client scan.pdf"
     from tracker.filer import NEEDS_REVIEW
     from tracker.records import IndexEntry
 
-    folder = REVIEW_DIR_NAME if decision == NEEDS_REVIEW else f"{identifier} - folder"
+    # A working copy sits in Prepared itself, named by its request
+    # (decision 168); a parked one in the review folder under its own name.
+    where = (f"{REVIEW_DIR_NAME}/{original}" if decision == NEEDS_REVIEW
+             else f"{identifier} - {original}")
     return IndexEntry(
         received=received, original_name=original, size_kb=12.0, digest=f"d-{original}",
         identifier="" if decision == NEEDS_REVIEW else identifier,
-        prepared_location=f"{PREPARED_DIR_NAME}/{folder}/{original}",
+        prepared_location=f"{PREPARED_DIR_NAME}/{where}",
         pbc_location=f"../../Clients/{TEST_HOUSEHOLD}/{TEST_YEAR}/{original}",
         decision=decision, reason="a reason", also_filed=also,
     )
@@ -389,11 +436,11 @@ def test_a_filed_document_is_listed_as_received_under_its_return_by_its_request_
 
 def test_a_document_filed_to_two_requests_is_listed_once_per_request(tmp_path):
     from tests.conftest import seed_index
-    from tracker.filer import FILED
-    from tracker.scaffold import RECEIVED_HEADING, folder_name_for
+    from tracker.filer import FILED, prepared_name_for
+    from tracker.scaffold import RECEIVED_HEADING
 
     engagement = make_engagement(tmp_path, ITEMS)
-    also = f"{PREPARED_DIR_NAME}/{folder_name_for(ITEMS[2])}/two forms.pdf"
+    also = f"{PREPARED_DIR_NAME}/{prepared_name_for(ITEMS[2], 'pdf', set())}"
     seed_index(engagement, [arrived("A01", FILED, original="two forms.pdf", also=also)])
 
     section = section_of(readme_of(engagement), RECEIVED_HEADING)
@@ -528,7 +575,7 @@ def test_an_also_filed_copy_takes_its_request_off_the_list(tmp_path):
 
     engagement = make_engagement(tmp_path, ITEMS)
     seed_index(engagement, [arrived("A01", FILED, original="two forms.pdf",
-                                    also=f"{PREPARED_DIR_NAME}/B01 - Aging/two forms.pdf")])
+                                    also=f"{PREPARED_DIR_NAME}/B01 - Aging - TY2025.pdf")])
     readme = readme_of(engagement)
 
     assert not _mentions(section_of(readme, README_HEADING), "B01")
@@ -935,34 +982,43 @@ def test_the_readme_asks_only_for_asked_rows_and_lists_what_arrived_under_any(tm
         assert _mentions(section_of(readme, README_HEADING), identifier), identifier
 
 
-def test_the_scaffold_makes_no_folder_for_a_not_asked_row(tmp_path):
-    """No folder up front for a row nobody asked for (decision 142): a 1040
-    would otherwise carry a dozen empty folders. A folder a filing made for
-    it stays, as any existing folder does."""
+def test_the_scaffold_makes_no_request_folders(tmp_path):
+    """Decision 168, claim 5 (decision 142's "no folder for a row nobody
+    asked for", widened to every row): a fresh return's Prepared holds only
+    the review folder, and every asked row is simply Missing - never
+    "request folder not found", which retired with the folder."""
+    from tracker.manifest import Status
+    from tracker.scanner import scan_engagement
+
     unasked = RequestItem(identifier="D01", document="Social Security Benefit Statement",
                           asked=False)
     engagement = make_engagement(tmp_path, [*ITEMS, unasked], scaffold=False)
 
-    result = scaffold_engagement(engagement)
+    scaffold_engagement(engagement)
     prepared = engagement / PREPARED_DIR_NAME
-    assert result.not_asked == ["D01"]
-    assert not assign_folders(prepared, ["D01"])["D01"]
+    assert [p.name for p in prepared.iterdir()] == [REVIEW_DIR_NAME]
 
-    (prepared / folder_name_for(unasked)).mkdir()
-    again = scaffold_engagement(engagement)
-    assert "D01" in again.existing and again.not_asked == []
+    report = scan_engagement(engagement)
+    for identifier in ("A01", "A02", "B01"):
+        update = report.updates[identifier]
+        assert update.status == Status.MISSING and update.file_count == 0
+        assert "folder" not in update.validation_notes
+    assert report.warnings == []
 
 
 def test_the_client_readme_keeps_the_full_title(short_root):
     """Decision 144, claim 7: the short name is the firm's. The request's
-    folder on the firm's side is named ``A01 - W-2``, and the README the
+    copies on the firm's side are named ``A01 - W-2 - ...``, and the README the
     client reads in their inbox still asks for the "W-2 Wage Statements -
     All Employers" by its full title, and never by the short one alone."""
     from tracker.templates import template_items
 
     w2 = template_items("1040", year=TEST_YEAR)[0]
     engagement = make_engagement(short_root, [w2])
-    assert (engagement / PREPARED_DIR_NAME / "A01 - W-2").is_dir()
+    from tracker.filer import prepared_name_for
+
+    assert prepared_name_for(w2, "pdf", set()).startswith("A01 - W-2 - ")
+    assert persons_folders(engagement / PREPARED_DIR_NAME) == []
     readme = (inbox_of(engagement) / README_NAME).read_text(encoding="utf-8")
     assert "A01 - W-2 Wage Statements - All Employers" in readme
     assert "A01 - W-2 (" not in readme and "A01 - W-2\n" not in readme

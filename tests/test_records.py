@@ -49,7 +49,7 @@ A_ROW = IndexEntry(
     size_kb=9.4,
     digest="dd7d" * 16,
     identifier="A01",
-    prepared_location="Prepared/A01 - W-2 Wage Statements/A01 - W-2 Wage Statements - TY2025.pdf",
+    prepared_location="Prepared/A01 - W-2 Wage Statements - TY2025.pdf",
     pbc_location="../../../../Clients/Smith Family/2025/scan0031.pdf",
     decision="Filed",
     reason="names several forms",
@@ -58,7 +58,7 @@ A_ROW = IndexEntry(
         "A01": (Evidence(RULE_REQUIRED, "W-2", WHERE_TITLE, 1),),
         "A02": (Evidence(RULE_ANY, "interest", WHERE_DEEP, 4),),
     }),
-    also_filed="Prepared/A02 - 1099-INT Interest Income/A02 - 1099-INT Interest Income - TY2025.pdf",
+    also_filed="Prepared/A02 - 1099-INT Interest Income - TY2025.pdf",
 )
 
 
@@ -236,8 +236,8 @@ def test_as_pattern_reads_a_templates_own_sentence_back():
     template = "{home} no longer holds this row's bytes; they are at {now} (found {date})"
     pattern = re.compile(as_pattern(
         template, home=r".+?", now="(?P<now>.+?)", date=r"\d{4}-\d{2}-\d{2}") + "$")
-    now = "Prepared/C01 - Mortgage Interest Statement/w2 (2).pdf"
-    said = template.format(home="Prepared/A01 - W-2/A01 - W-2 - TY2025.pdf", now=now,
+    now = "Prepared/C01 - w2 (2).pdf"
+    said = template.format(home="Prepared/A01 - W-2 - TY2025.pdf", now=now,
                            date="2026-07-09")
 
     assert pattern.search(said).group("now") == now

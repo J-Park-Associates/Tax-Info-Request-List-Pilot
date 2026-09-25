@@ -9,10 +9,25 @@ household - the two trees :mod:`tracker.layout` names:
   originals once :mod:`tracker.filer` has moved them out of that inbox,
   and an auto-generated ``README_NAME`` in the inbox telling the client
   they need not sort anything.
-- **Firm side** — inside each return, ``PREPARED_DIR_NAME``, one folder per
-  request row (named by ``folder_name_for``) for the renamed working copies,
-  plus ``REVIEW_DIR_NAME`` for anything the rules could not confidently
-  identify.
+- **Firm side** — inside each return, ``PREPARED_DIR_NAME``, where the
+  renamed working copies sit side by side, each named by its request
+  (``A01 - W-2 - TY2025.pdf``), plus ``REVIEW_DIR_NAME`` for anything the
+  rules could not confidently identify.
+
+**No folder per request** (decision 168). Until then every request had a
+folder in ``PREPARED_DIR_NAME`` named ``<identifier> - <short name>``, made
+by this module on every pass, and every copy inside it began with the same
+words again. The name already says which request a copy is for - decision
+19 made every identifier survive as a prefix, and decision 144 put it at
+the front of every copy's name - so the folder was a second copy of the
+name's first half. A file belongs to the request whose identifier its name
+starts with, the longest one at a word boundary (:func:`assign_files`, the
+rule ``assign_folders`` applied to folders until then), and every
+reader asks that one function. A folder a person makes inside
+``PREPARED_DIR_NAME`` is theirs: nothing is filed into it and nothing in it
+is counted (``reasons.PERSONS_FOLDER``). A return made before 168 keeps
+its request folders exactly as they are, and they are read as a person's
+folders: there is no migration (decision 125's one layout).
 
 One inbox serves every return of the household, so the README is written
 once for the household and lists what each return has not yet received under
@@ -35,18 +50,16 @@ Guarantees:
 
 - **Idempotent.** Re-running recreates deleted folders, and does nothing
   else. Existing folders and the files inside them are never touched,
-  renamed, or deleted. The scheduled run scaffolds on every pass, so a row
-  added in the app has its folder by the next run without anyone asking;
-  the README is refreshed (only when its text changed) by the same pass.
-- **Rename-tolerant.** A folder counts as existing if its name starts with
-  the item's identifier followed by a non-alphanumeric boundary — the same
-  prefix rule the scanner uses — so a client rename like
-  ``A01 - bank stuff`` never causes a duplicate ``A01`` folder.
+  renamed, or deleted. The scheduled run scaffolds on every pass; the
+  README is refreshed (only when its text changed) by the same pass.
+- **Rename-tolerant.** A file belongs to a request if its name starts with
+  the identifier followed by a non-alphanumeric boundary, so a copy a
+  person renamed ``A01 - bank stuff.pdf`` is still A01's.
 - **Windows-safe names.** Illegal characters (``manifest.WINDOWS_ILLEGAL_CHARS``)
-  are replaced, trailing dots/spaces stripped, and names length-capped.
+  are replaced and trailing dots/spaces stripped (:func:`sanitize_component`).
 
-Not Applicable items (``Override.NOT_APPLICABLE``) get no new folder;
-their existing folders are left alone and they are dropped from the README.
+Not Applicable items (``Override.NOT_APPLICABLE``) are dropped from the
+README.
 """
 
 from __future__ import annotations
@@ -76,13 +89,12 @@ from tracker.manifest import (
     Override,
     RequestItem,
     is_reserved_name,
-    label_for,
     load_engagement_info,
     load_manifest,
 )
 from tracker.reasons import GOOGLE_EXPORT_HINT, IN_CONSOLIDATED_CLIENT
 from tracker.records import Received, ReceivedLine
-from tracker.validators import google_stub_examples
+from tracker.validators import google_stub_examples, is_ignored
 
 log = logging.getLogger("tracker.scaffold")
 
@@ -154,7 +166,6 @@ _MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
 
 #: The one list of characters Windows forbids lives in tracker.manifest.
 _ILLEGAL_CHARS = WINDOWS_ILLEGAL_CHARS
-_MAX_FOLDER_NAME = 100
 
 
 # ----------------------------------------------------------------- naming ----
@@ -178,30 +189,14 @@ def sanitize_component(text: str) -> str:
     return cleaned
 
 
-def folder_name_for(item: RequestItem) -> str:
-    """Canonical folder name for a request item: its identifier and its
-    short name, joined (``A01 - W-2``).
-
-    The short name, not the document title (decision 144): the full title
-    was in every path twice, once here and once in each working copy's
-    name, and under the firm's real clients root that alone refused a
-    business with a household name of 26 characters. The client never sees
-    this folder; the README keeps the full title. An existing folder is
-    found by its identifier (``assign_folders``), so one made under a long
-    name keeps it.
-    """
-    name = label_for(sanitize_component(item.identifier), sanitize_component(item.short_name))
-    return name[:_MAX_FOLDER_NAME].rstrip(". ")
-
-
-def matches_identifier(folder_name: str, identifier: str) -> bool:
-    """True if ``folder_name`` starts with ``identifier`` at a word boundary.
+def matches_identifier(name: str, identifier: str) -> bool:
+    """True if ``name`` starts with ``identifier`` at a word boundary.
 
     Case-insensitive (Windows filesystems are). ``A1`` does not match
     ``A10 - ...`` because the character after the prefix must be
     non-alphanumeric (or end of string).
     """
-    name = folder_name.strip().lower()
+    name = name.strip().lower()
     prefix = identifier.strip().lower()
     if not prefix or not name.startswith(prefix):
         return False
@@ -209,34 +204,65 @@ def matches_identifier(folder_name: str, identifier: str) -> bool:
     return rest == "" or not rest[0].isalnum()
 
 
-def assign_folders(
-    parent_dir: Path, identifiers: Sequence[str]
-) -> dict[str, list[Path]]:
-    """Map each identifier to the existing folders that belong to it.
+def owner_of(name: str, identifiers: Sequence[str]) -> str | None:
+    """The request a working copy's name belongs to: the *longest*
+    identifier it starts with at a word boundary, or None.
 
-    Every subfolder of ``parent_dir`` is assigned to the *longest* matching
-    identifier, so with identifiers ``A01`` and ``A01-B`` a folder named
-    ``A01-B - Loan Docs`` belongs to ``A01-B`` only. Folders matching no
-    identifier are ignored here (the scanner reports them, component 5).
+    Longest, so with ``A01`` and ``A01-B`` on the list
+    ``A01-B - Loan - TY2025.pdf`` belongs to ``A01-B`` only. The rule
+    :func:`assign_files` applies to every file in ``PREPARED_DIR_NAME``;
+    it is here on its own for the two readers that ask it of a name whose
+    file may not be there any more - the rename moving a recorded copy, and
+    the scan saying a recorded copy has gone.
+    """
+    best: str | None = None
+    for ident in identifiers:
+        if matches_identifier(name, ident) and (best is None or len(ident) > len(best)):
+            best = ident
+    return best
+
+
+def assign_files(
+    prepared_dir: Path, identifiers: Sequence[str]
+) -> dict[str, list[Path]]:
+    """Map each identifier to the files directly in ``prepared_dir`` whose
+    names belong to it (decision 168) - **the one answer** to "which files
+    are this request's", which the scanner counts, the filer files beside,
+    the rename moves, the app's "Keep it here" offers and the dry-run
+    validator lists.
+
+    Each file goes to the longest identifier its name starts with at a word
+    boundary (:func:`owner_of`); a name no identifier starts is nobody's
+    and the scanner names it. Only files **directly** in the folder: a
+    folder inside it - the review folder, a folder a person made, a request
+    folder of a return made before decision 168 - holds nothing of any
+    request's. Junk is left out (``validators.is_ignored``): the sync
+    client's and Office's own files, and every temp an atomic write makes
+    (decision 155), whose name is the target's with ``.<pid>.<tag>.tmp``
+    after it - it starts with the identifier like the copy it was going to
+    be, and a copy the power cut in half must never be counted as one.
     """
     assigned: dict[str, list[Path]] = {ident: [] for ident in identifiers}
-    if not parent_dir.is_dir():
+    if not prepared_dir.is_dir():
         return assigned
-    for child in sorted(parent_dir.iterdir()):
-        if not child.is_dir():
+    for child in sorted(prepared_dir.iterdir()):
+        if not child.is_file() or is_ignored(child):
             continue
-        # The review folder belongs to nobody. An identifier such as "00"
-        # would otherwise claim it and count every parked file as its own.
-        if child.name.lower() == REVIEW_DIR_NAME.lower():
-            continue
-        best: str | None = None
-        for ident in identifiers:
-            if matches_identifier(child.name, ident):
-                if best is None or len(ident) > len(best):
-                    best = ident
+        best = owner_of(child.name, identifiers)
         if best is not None:
             assigned[best].append(child)
     return assigned
+
+
+def persons_folders(prepared_dir: Path) -> list[Path]:
+    """Every folder inside ``prepared_dir`` other than the review folder:
+    a person's folder (decision 168), where the tracker files nothing and
+    counts nothing - a request folder of a return made before 168 among
+    them. Sorted; empty where the folder is not there."""
+    if not prepared_dir.is_dir():
+        return []
+    return [child for child in sorted(prepared_dir.iterdir())
+            if child.is_dir() and child.name.casefold() != REVIEW_DIR_NAME.casefold()]
 
 
 # --------------------------------------------------------------- scaffold ----
@@ -247,10 +273,6 @@ class ScaffoldResult:
     inbox: Path                                             # the household's one drop folder
     prepared_dir: Path | None = None                        # firm-side working set
     originals_dir: Path | None = None                       # the year's originals, client-side
-    created: list[Path] = field(default_factory=list)       # new folders made
-    existing: list[str] = field(default_factory=list)       # identifiers already present
-    not_applicable: list[str] = field(default_factory=list)  # skipped (Override.NOT_APPLICABLE)
-    not_asked: list[str] = field(default_factory=list)       # no folder up front (decision 142)
     readme: Path | None = None
 
     def describe(self) -> list[str]:
@@ -400,8 +422,17 @@ class _ReturnLine:
 
 
 def scaffold_engagement(engagement_dir: Path | str) -> ScaffoldResult:
-    """Create/refresh one return's ``PREPARED_DIR_NAME/`` tree, and its
-    household's client side with it. **Folders only** (decision 130).
+    """Create/refresh one return's ``PREPARED_DIR_NAME/`` and its review
+    folder, and its household's client side with it. **Folders only**
+    (decision 130).
+
+    **No request gets a folder** (decision 168): a working copy sits in
+    ``PREPARED_DIR_NAME`` itself, named by its request, so a request with
+    nothing in yet has nothing here and is simply Missing - the app and the
+    Status Report are the list of what is still to come. Until 168 every
+    asked row had an empty folder made for it on every pass (decisions 34
+    and 142), and a request whose folder somebody deleted read "request
+    folder not found" until the next pass made it again.
 
     ``engagement_dir`` must hold a record. Raises
     :class:`tracker.manifest.ManifestError` if it holds none — scaffolding
@@ -414,9 +445,9 @@ def scaffold_engagement(engagement_dir: Path | str) -> ScaffoldResult:
     calls ``tracker.filer.refresh_household_readme`` afterwards.
     """
     engagement_dir = Path(engagement_dir)
-    items = load_manifest(engagement_dir)
+    load_manifest(engagement_dir)       # a return with no recorded list is refused here
 
-    # Firm side: one folder per request, plus somewhere for the unclear.
+    # Firm side: where the working copies sit, and somewhere for the unclear.
     prepared_dir = engagement_dir / PREPARED_DIR_NAME
     prepared_dir.mkdir(parents=True, exist_ok=True)
     (prepared_dir / REVIEW_DIR_NAME).mkdir(exist_ok=True)
@@ -428,30 +459,10 @@ def scaffold_engagement(engagement_dir: Path | str) -> ScaffoldResult:
                                        household_of(engagement_dir).name, year)
                      if year is not None else None)
 
-    result = ScaffoldResult(
+    return ScaffoldResult(
         inbox=household.inbox, prepared_dir=prepared_dir, originals_dir=originals_dir,
         readme=household.readme,
     )
-
-    assigned = assign_folders(prepared_dir, [i.identifier for i in items])
-    for item in items:
-        if item.manual_override == Override.NOT_APPLICABLE:
-            result.not_applicable.append(item.identifier)
-            continue
-        if assigned[item.identifier]:
-            result.existing.append(item.identifier)
-            continue
-        # Decision 142: a row nobody asked for gets no folder up front - a
-        # 1040 would otherwise carry a dozen empty folders the preparer did
-        # not ask for. Filing makes the folder with its first document, and
-        # a folder made that way stays (the branch above).
-        if not item.asked:
-            result.not_asked.append(item.identifier)
-            continue
-        folder = prepared_dir / folder_name_for(item)
-        folder.mkdir(exist_ok=True)  # identifiers are unique, so names are too
-        result.created.append(folder)
-    return result
 
 
 # ----------------------------------------------------------------- README ----
@@ -674,12 +685,6 @@ if __name__ == "__main__":
     res = scaffold_engagement(ns.engagement_dir)
     for line in res.describe():
         print(line)
-    for folder in res.created:
-        print(f"  + created  {folder.name}")
-    for ident in res.existing:
-        print(f"  = exists   {ident}")
-    for ident in res.not_applicable:
-        print(f"  ~ set aside {ident} (no folder created)")
-    for ident in res.not_asked:
-        print(f"  ~ not asked {ident} (a folder is made with its first document)")
+    print(f"  (no folder per request: working copies sit in {PREPARED_DIR_NAME}/ itself, "
+          "named by their request)")
     print(f"  (folders only: {res.readme.name} is written by the pass and the app)")

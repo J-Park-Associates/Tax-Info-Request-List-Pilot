@@ -127,9 +127,10 @@ COL_NAMED = "Named"
 #: by default everywhere, so a row written before the mark reads as the
 #: request a person ticked.
 COL_ASKED = "Asked"
-#: The short name a request's working folder and working copies are named
-#: by (decision 144): ``A01 - W-2\A01 - W-2 - TY2025.pdf`` rather than the
-#: full document title twice. Blank means derived from the document title
+#: The short name a request's working copies are named by (decision 144):
+#: ``A01 - W-2 - TY2025.pdf`` rather than the full document title (since
+#: decision 168 each copy sits in ``Prepared`` itself, with no folder per
+#: request). Blank means derived from the document title
 #: (:func:`derived_short_title`). Firm-side only: the client README, the
 #: letter and the received list keep the full title.
 COL_SHORT_TITLE = "Short name"
@@ -180,7 +181,7 @@ MIN_SIZE_KB_FLOOR = 0
 #: roadmap's schema table carries the same sentences in its Purpose column
 #: on purpose: one text, two places a person reads it.
 COLUMN_HELP: dict[str, str] = {
-    "identifier": "Names the request and its folder; matched by prefix, so A100 and BS01 both work",
+    "identifier": "Names the request and its working copies; matched by prefix, so A100 and BS01 both work",
     "document": "What the request is called to people",
     "period": "The period asked for, e.g. TY2025 or Dec 2025; a year in it is the year check",
     "expected_count": "How many files are due; counted over distinct valid files",
@@ -210,7 +211,7 @@ COLUMN_HELP: dict[str, str] = {
         "arrives for it is filed here"
     ),
     "short_title": (
-        "What the firm's working folder and file names call it, 20 characters at most; "
+        "What the firm's working file names call it, 20 characters at most; "
         "blank takes the document's first words. The client always sees the full document name"
     ),
 }
@@ -250,7 +251,7 @@ WINDOWS_ILLEGAL_CHARS_TEXT = " ".join(_ILLEGAL_PUNCTUATION)
 #: The names Windows keeps for devices (decision 137, L6). A folder or a
 #: file named one of them - with or without an extension, in any case - is
 #: not a folder at all: ``NUL`` is the null device, ``COM1`` a serial port,
-#: and a request folder, a household or a return named one could never
+#: and a working copy, a household or a return named one could never
 #: hold a document.
 WINDOWS_RESERVED_NAMES: frozenset[str] = frozenset(
     {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"}
@@ -441,16 +442,14 @@ class RequestItem:
     #: considers it and a document for it files there, but it is never
     #: listed as needed, never counted as owed and never chased.
     asked: bool = True
-    #: The short name the working folder and the working copies are named
-    #: by (decision 144), at most :data:`SHORT_TITLE_MAX` characters. Blank
+    #: The short name the working copies are named by (decision 144), at most :data:`SHORT_TITLE_MAX` characters. Blank
     #: by default and everywhere a row is read without one: blank is
     #: derived from the document title (:attr:`short_name`).
     short_title: str = ""
 
     @property
     def short_name(self) -> str:
-        """The name the firm's working folder and copies use for this
-        request: the row's own short title, or one derived from its
+        """The name the firm's working copies use for this request: the row's own short title, or one derived from its
         document title (:func:`derived_short_title`)."""
         return self.short_title or derived_short_title(self.document)
 
@@ -535,8 +534,8 @@ def override_label(item: RequestItem) -> str:
     return NOT_APPLICABLE_LABEL.format(year=year) if year else Override.NOT_APPLICABLE
 
 
-#: How a request's parts are joined into one name: the README line, the
-#: request folder and the working copy all use it.
+#: How a request's parts are joined into one name: the README line and
+#: the working copy both use it.
 LABEL_SEPARATOR = " - "
 
 
@@ -618,7 +617,7 @@ def derived_short_title(document: str) -> str:
 
 
 def short_title_problem(short_title: str) -> str:
-    """Why ``short_title`` cannot name a working folder, or "" if it can.
+    """Why ``short_title`` cannot name a working copy, or "" if it can.
 
     Refused rather than sanitised, as an identifier is: the name a person
     types is the name the folder gets, or they are told why not.
@@ -894,7 +893,7 @@ def parse_extensions(value: object) -> tuple[str, ...]:
 
 
 def identifier_problem(identifier: str) -> str:
-    """Why ``identifier`` cannot name a request folder, or "" if it can.
+    """Why ``identifier`` cannot begin a working copy's name, or "" if it can.
 
     Shared by :func:`validated` and the desktop app's create path so a
     bad identifier is refused with the same sentence wherever it is typed.

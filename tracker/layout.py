@@ -28,7 +28,7 @@ thing belongs without reaching for the module that puts it there.
 **The one convention for a stored path** is :func:`location_of` and
 :func:`locate`. Every location a record holds is relative to the return
 folder and POSIX, as decision 102 made it: a working copy is
-``PREPARED_DIR_NAME/A01 - W-2 Wage Statements/...`` and an original, which lives in
+``PREPARED_DIR_NAME/A01 - W-2 - TY2025.pdf`` (decision 168) and an original, which lives in
 the other tree, is written with ``..`` back to the root and down the
 client tree. The
 relative form names no drive, so a journal line written on one machine
@@ -54,7 +54,8 @@ PRIVATE_TREE = "J Park & Associates"
 #: household however many returns it has, because a client is told about
 #: one folder and keeps using it (decision 125).
 INBOX_DIR_NAME = "Drop files here"
-#: The firm's working set inside a return: one folder per request row.
+#: The firm's working set inside a return: the working copies side by side,
+#: each named by its request (decision 168), and the review folder.
 PREPARED_DIR_NAME = "Prepared"
 #: Where anything the rules could not confidently identify waits for a person.
 REVIEW_DIR_NAME = "00 - Needs Review"
@@ -268,8 +269,9 @@ def location_of(engagement_dir: Path | str, path: Path | str) -> str:
     folder, POSIX.
 
     **The one convention for every path a record holds** (decision 102,
-    widened by 125). A working copy is ``PREPARED_DIR_NAME/<request>/<name>`` as it
-    always was; an original now lives in the other tree and is written with
+    widened by 125). A working copy is ``PREPARED_DIR_NAME/<name>`` (decision
+    168; ``PREPARED_DIR_NAME/<request>/<name>`` before it); an original now
+    lives in the other tree and is written with
     ``..`` back to the root and down the client tree to the household's
     folder for the year. Neither
     names a drive, so a line written on one machine reads on another, and

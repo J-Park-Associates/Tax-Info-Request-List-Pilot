@@ -114,9 +114,42 @@ def cache_rows(engagement):
     return store.cached_verdicts(store.connect(), engagement, version=CACHE_VERSION)
 
 
+class RequestFiles:
+    """What one request's folder was, flat (decision 168): its working copies
+    sit in Prepared itself, and a file is the request's when its name begins
+    with the identifier (``tracker.scaffold.assign_files``). So ``/ name``
+    is where a file named for the request goes - ``Prepared/A01 - name``,
+    or ``Prepared/<name>`` for a name that already begins with it - and
+    ``iterdir()`` is the request's files. Dragging a copy "into C01" is
+    renaming it under C01's name beside the others, which is the only way a
+    person can move a copy between requests now."""
+
+    def __init__(self, root: Path, identifier: str):
+        self.root, self.identifier = root, identifier
+
+    def __truediv__(self, name: str) -> Path:
+        from tracker.scaffold import matches_identifier
+
+        if matches_identifier(name, self.identifier):
+            return self.root / name
+        return self.root / f"{self.identifier} - {name}"
+
+    def iterdir(self):
+        from tracker.scaffold import assign_files
+
+        return iter(assign_files(self.root, [self.identifier])[self.identifier])
+
+    def mkdir(self, **_kwargs) -> None:
+        self.root.mkdir(parents=True, exist_ok=True)
+
+
 def prepared(engagement, folder_prefix):
+    """The review folder itself, or one request's files as a
+    :class:`RequestFiles` - there is no folder per request (decision 168)."""
     root = engagement / PREPARED_DIR_NAME
-    return next(p for p in root.iterdir() if p.name.startswith(folder_prefix))
+    if folder_prefix == REVIEW_DIR_NAME:
+        return root / REVIEW_DIR_NAME
+    return RequestFiles(root, folder_prefix.split(" ")[0])
 
 
 def kept_files(engagement):
@@ -471,8 +504,7 @@ def test_a_retired_cache_file_is_removed_by_the_next_real_pass_and_never_read(en
 
     calls = counting_extractor(monkeypatch)
     prepared = engagement / PREPARED_DIR_NAME
-    a01 = next(p for p in prepared.iterdir() if p.is_dir() and p.name.startswith("A01"))
-    working_copy = text_pdf(a01 / "A01 - W-2 Wage Statements - TY2025.pdf",
+    working_copy = text_pdf(prepared / "A01 - W-2 Wage Statements - TY2025.pdf",
                             "Form W-2 Wage and Tax Statement 2025")
     stat = working_copy.stat()
     digest = sha256_of(working_copy)
@@ -958,17 +990,26 @@ def test_the_filer_holds_the_engagement_lock(engagement):
     assert not (engagement / LOCK_FILENAME).exists()
 
 
-def test_a_document_renamed_in_the_editor_keeps_filing_into_its_existing_folder(engagement):
+def test_a_document_renamed_in_the_editor_keeps_its_copies_and_names_the_next_by_it(engagement):
+    """Decision 25 flat (decision 168): the request is found by its
+    identifier, so the copy filed before the Document was renamed keeps its
+    name and still counts, and the next copy takes the new short name
+    beside it - no folder to keep, none made."""
+    from tracker.scaffold import assign_files
+
     drop(engagement, "john.pdf", "Form W-2 Wage and Tax Statement 2025")
-    sort(engagement, today=DAY1)
+    first = sort(engagement, today=DAY1).filed[0]
     rows = [RequestItem(**rule_from_json(row)) for row in store.rules(store.connect(), engagement)]
     rows[0] = RequestItem(**{**rule_from_json(rule_to_json(rows[0])), "document": "W-2s (all employers)"})
     save_rules(engagement, rows, load_engagement_info(engagement))
     drop(engagement, "jane.pdf", "Form W-2 Wage and Tax Statement 2025 Jane")
     report = sort(engagement, today=DAY2)
-    folders = [p.name for p in (engagement / PREPARED_DIR_NAME).iterdir() if p.name.startswith("A01")]
-    assert folders == ["A01 - W-2 Wage Statements"]
-    assert report.filed[0].prepared_location.startswith(f"{PREPARED_DIR_NAME}/A01 - W-2 Wage Statements/")
+    assert first.prepared_location == f"{PREPARED_DIR_NAME}/A01 - W-2 Wage Statements - TY2025.pdf"
+    assert report.filed[0].prepared_location == f"{PREPARED_DIR_NAME}/A01 - W-2s (all employers) - TY2025.pdf"
+    owned = assign_files(engagement / PREPARED_DIR_NAME, ["A01", "C01"])["A01"]
+    assert sorted(p.name for p in owned) == ["A01 - W-2 Wage Statements - TY2025.pdf",
+                                             "A01 - W-2s (all employers) - TY2025.pdf"]
+    assert [p.name for p in (engagement / PREPARED_DIR_NAME).iterdir() if p.is_dir()] == [REVIEW_DIR_NAME]
 
 
 def test_a_file_dropped_straight_into_the_years_folder_is_filed_and_indexed(engagement):
@@ -1298,8 +1339,8 @@ def test_assigning_reuses_a_copy_an_earlier_attempt_left_and_leaves_no_half_copy
 
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
     parked = sort(engagement, today=DAY1).review[0]
-    c01 = engagement / PREPARED_DIR_NAME / "C01 - Mortgage Interest"
-    earlier = c01 / "C01 - Mortgage Interest - TY2025.pdf"
+    c01 = prepared(engagement, "C01")
+    earlier = engagement / PREPARED_DIR_NAME / "C01 - Mortgage Interest - TY2025.pdf"
     (engagement / parked.prepared_location).rename(earlier)      # the killed attempt's move
     result = assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
     assert [p.name for p in c01.iterdir()] == [earlier.name] and result.entry.filed_as == earlier.name
@@ -1867,7 +1908,7 @@ def test_a_resend_after_a_dismissal_owns_its_own_working_copy(engagement):
         original_at(engagement, "notice (2).pdf"),
         original_at(engagement, "notice.pdf"),
         f"{PREPARED_DIR_NAME}/{REVIEW_DIR_NAME}/notice (2).pdf",
-        f"{PREPARED_DIR_NAME}/{prepared(engagement, 'C01').name}/{result.entry.filed_as}",
+        f"{PREPARED_DIR_NAME}/{result.entry.filed_as}",
     ]
 
 
@@ -1911,7 +1952,7 @@ def test_a_resend_after_a_dismissal_files_when_the_list_now_asks_for_it(engageme
         original_at(engagement, "notice (2).pdf"),
         original_at(engagement, "notice.pdf"),
         f"{PREPARED_DIR_NAME}/{REVIEW_DIR_NAME}/notice.pdf",
-        f"{PREPARED_DIR_NAME}/{prepared(engagement, 'C01').name}/{filed.filed_as}",
+        f"{PREPARED_DIR_NAME}/{filed.filed_as}",
     ]
 
 
@@ -2800,16 +2841,20 @@ def test_a_filed_copy_renamed_inside_its_folder_is_file_moved(engagement):
     assert files_under(engagement) == untouched
 
 
-def test_a_filed_copy_dragged_loose_into_prepared_is_file_moved(engagement):
-    """The wanderer at the root of the firm's folder: the sweep finds it by
-    its bytes, and the scan goes on warning about a loose file, because one
-    warning per thing is the rule and those are two different things."""
+def test_a_filed_copy_renamed_to_a_name_no_request_begins_is_file_moved(engagement):
+    """The wanderer in the firm's folder under a name no request's
+    identifier begins (decision 168; loose at the root of Prepared until
+    then): the sweep finds it by its bytes, and the scan goes on warning
+    about a file no request's name claims, because one warning per thing is
+    the rule and those are two different things."""
     from tracker.filer import FILE_MOVED, moved_to
-    from tracker.scanner import scan_engagement
+    from tracker.scanner import UNCLAIMED_FILE, scan_engagement
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     filed = sort(engagement, today=DAY1).filed[0]
-    loose = drag(engagement / filed.prepared_location, engagement / PREPARED_DIR_NAME)
+    home = engagement / filed.prepared_location
+    loose = home.with_name("w2 for later.pdf")
+    home.rename(loose)
     untouched = files_under(engagement)
 
     report = sort(engagement, today=DAY2)
@@ -2819,8 +2864,8 @@ def test_a_filed_copy_dragged_loose_into_prepared_is_file_moved(engagement):
     assert row.decision == FILE_MOVED and moved_to(row) == location_of(engagement, loose)
     assert len(report.attention) == 1                      # said once by the sweep...
     assert scanned.warnings == [
-        f"{loose.name} is loose in {PREPARED_DIR_NAME}/; it belongs in a request folder"
-    ]                                                      # ...and once as the loose file it is
+        UNCLAIMED_FILE.format(name=loose.name, prepared=PREPARED_DIR_NAME)
+    ]                                                      # ...and once as the unclaimed file it is
     assert files_under(engagement) == untouched
 
 
@@ -2843,7 +2888,7 @@ def test_a_second_copy_of_a_moved_rows_bytes_does_not_re_point_the_row(engagemen
     assert row.decision == FILE_MOVED and moved_to(row) == location_of(engagement, wanderer)
 
     # The same bytes again, at a path the walk reaches first.
-    planted = home.parent / "a copy of the same thing.pdf"
+    planted = home.parent / "A01 - a copy of the same thing.pdf"
     planted.write_bytes(wanderer.read_bytes())
     assert location_of(engagement, planted) < location_of(engagement, wanderer)
     lines = len(ledger.read_events(engagement))
@@ -2870,7 +2915,7 @@ def test_a_moved_copy_dragged_back_by_hand_is_filed_again_on_the_next_pass(engag
     sort(engagement, today=DAY2)
     assert read_index(engagement)[0].decision == FILE_MOVED
 
-    drag(wanderer, home.parent)                            # a person puts it back
+    wanderer.rename(home)                                  # a person puts it back
     untouched = files_under(engagement)
     report = sort(engagement, today=DAY2)
 
@@ -2895,7 +2940,7 @@ def test_a_moved_row_is_written_once_per_move_and_a_quiet_pass_appends_nothing(e
         sort(engagement, today=day)
         assert len(ledger.read_events(engagement)) == lines + 1    # and not again
 
-    drag(wanderer, engagement / PREPARED_DIR_NAME)                 # moved again
+    wanderer.rename(wanderer.with_name("moved again.pdf"))        # moved again
     sort(engagement, today=DAY2 + dt.timedelta(days=2))
     assert len(ledger.read_events(engagement)) == lines + 2
     assert len(events_named(engagement, ledger.COPY_MOVED)) == 2
@@ -2960,7 +3005,7 @@ def test_a_parked_copy_dragged_into_a_request_folder_is_file_moved_and_comes_bac
     assert row.identifier == ""
     assert files_under(engagement) == untouched
 
-    drag(wanderer, home.parent)
+    wanderer.rename(home)
     sort(engagement, today=DAY2)
     [row] = read_index(engagement)
     assert row.decision == NEEDS_REVIEW               # a person re-decides in one click
@@ -3489,7 +3534,7 @@ def test_keep_it_here_files_the_wanderer_under_the_request_whose_folder_holds_it
 
     assert result.moved_review_copy and not wanderer.exists()
     kept = engagement / result.entry.prepared_location
-    assert kept.parent == prepared(engagement, "C01")
+    assert kept.parent == engagement / PREPARED_DIR_NAME          # beside the others (decision 168)
     assert kept.name.startswith("C01 - ")
     [row] = read_index(engagement)
     assert row.decision == FILED and row.identifier == "C01"
@@ -3510,7 +3555,7 @@ def test_keep_it_here_may_pick_another_request_and_the_wanderer_moves_there(enga
 
     assert not wanderer.exists()
     kept = engagement / result.entry.prepared_location
-    assert kept.parent == prepared(engagement, "A01")
+    assert kept.parent == engagement / PREPARED_DIR_NAME and kept.name.startswith("A01 - ")
     [row] = read_index(engagement)
     assert row.decision == FILED and row.identifier == "A01"
 
@@ -3942,8 +3987,8 @@ def test_a_copy_killed_half_way_leaves_no_file_under_the_proper_name(engagement)
                            str(Path(__file__).resolve().parents[1])],
                           capture_output=True, text=True, timeout=300)
     assert done.returncode == 9, done.stderr
-    a01 = prepared(engagement, "A01")
-    left = sorted(p.name for p in a01.iterdir())
+    a01 = engagement / PREPARED_DIR_NAME             # the copy and its temp sit here (decision 168)
+    left = sorted(p.name for p in a01.iterdir() if p.is_file())
     assert [name for name in left if not name.endswith(TEMP_SUFFIX)] == []  # nothing under a name
     assert len(left) == 1 and (a01 / left[0]).stat().st_size == len(whole) // 2
     assert (originals(engagement) / "w2.pdf").read_bytes() == whole
@@ -3954,7 +3999,7 @@ def test_a_copy_killed_half_way_leaves_no_file_under_the_proper_name(engagement)
     assert not run.error, run.error
     [row] = read_index(engagement)
     assert row.decision == FILED and row.received == DAY1.isoformat()
-    assert [p.name for p in a01.iterdir()] == [row.filed_as]                # the temp is gone
+    assert [p.name for p in a01.iterdir() if p.is_file()] == [row.filed_as]  # the temp is gone
     assert (engagement / row.prepared_location).read_bytes() == whole       # copied whole
     assert not open_intents(engagement)
 
@@ -4299,8 +4344,7 @@ def test_a_destination_holding_other_bytes_is_never_touched_and_the_row_parks_na
     with pytest.raises(KeyboardInterrupt):
         assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
 
-    stranger = (engagement / PREPARED_DIR_NAME / "C01 - Mortgage Interest"
-                / "C01 - Mortgage Interest - TY2025.pdf")
+    stranger = engagement / PREPARED_DIR_NAME / "C01 - Mortgage Interest - TY2025.pdf"
     stranger.parent.mkdir(parents=True, exist_ok=True)
     stranger.write_bytes(b"%PDF-1.4 somebody elses file")
     before = digests_under(engagement)
@@ -5796,7 +5840,8 @@ def test_a_second_copy_whose_request_was_deleted_reads_other_document_never_anot
     ``A01`` - but a bare prefix proves nothing, and the README must never
     tell the client their W-2 arrived when none did. A copy names a request
     only when its folder is that request's own folder name, or the text
-    after the identifier begins with the label separator."""
+    after the identifier begins with the label separator. Since decision
+    168 the test is made of the copy's own name, in Prepared itself."""
     from tests.conftest import seed_index
     from tracker.filer import received_for
     from tracker.records import IndexEntry
@@ -5808,22 +5853,22 @@ def test_a_second_copy_whose_request_was_deleted_reads_other_document_never_anot
     seed_index(engagement, [IndexEntry(
         received="2026-09-23 10:00:00", original_name="combo.pdf", size_kb=12.0,
         digest="d-combo", identifier="A02",
-        prepared_location=f"{PREPARED_DIR_NAME}/A02 - 1098 Mortgage Interest/combo.pdf",
+        prepared_location=f"{PREPARED_DIR_NAME}/A02 - 1098 Mortgage Interest.pdf",
         pbc_location="../../x/combo.pdf", decision=FILED, reason="a reason",
-        also_filed=f"{PREPARED_DIR_NAME}/A01-B - Loan Statement/combo.pdf")])
+        also_filed=f"{PREPARED_DIR_NAME}/A01-B - Loan Statement.pdf")])
 
     labels = [line.label for line in received_for([engagement]).lines]
 
     assert labels == ["A02 - 1098 Mortgage Interest", OTHER_DOCUMENT]
     assert "A01 - W-2 Wage Statement" not in labels
 
-    # A folder a person renamed within the shape still names its request.
+    # A copy a person renamed within the shape still names its request.
     seed_index(engagement, [IndexEntry(
         received="2026-09-24 10:00:00", original_name="combo2.pdf", size_kb=12.0,
         digest="d-combo2", identifier="A02",
-        prepared_location=f"{PREPARED_DIR_NAME}/A02 - 1098 Mortgage Interest/combo2.pdf",
+        prepared_location=f"{PREPARED_DIR_NAME}/A02 - 1098 Mortgage Interest (2).pdf",
         pbc_location="../../x/combo2.pdf", decision=FILED, reason="a reason",
-        also_filed=f"{PREPARED_DIR_NAME}/a01 - my w2s/combo2.pdf")])
+        also_filed=f"{PREPARED_DIR_NAME}/a01 - my w2s.pdf")])
 
     labels = [line.label for line in received_for([engagement]).lines]
 
@@ -5832,8 +5877,9 @@ def test_a_second_copy_whose_request_was_deleted_reads_other_document_never_anot
 
 
 #: One request with no second file expected, as the room's claims want it:
-#: its canonical copy is ``Prepared/A01 - W-2 Wage Statements/A01 - W-2
-#: Wage Statements - TY2025.pdf``, 74 characters below the return folder.
+#: its canonical copy is ``Prepared/A01 - W-2 Wage Statements - TY2025.pdf``,
+#: 48 characters below the return folder (74 while it sat in a request
+#: folder of its own, before decision 168).
 ROOM_ITEMS = [
     RequestItem(
         identifier="A01", document="W-2 Wage Statements", period="TY2025",
@@ -5841,14 +5887,30 @@ ROOM_ITEMS = [
         required_keywords=("W-2",), date_pattern=r"(?i)\b2025\b",
     ),
 ]
-#: Below the return folder: the canonical copy's path, the request folder's.
-CANONICAL_BELOW = 74
-FOLDER_BELOW = 35
+#: Below the return folder: the canonical copy's path, and the folder it
+#: sits in - Prepared itself since decision 168.
+CANONICAL_BELOW = 48
+FOLDER_BELOW = 9
+#: A period long enough that ``A01 - <period>.pdf`` (29 characters) does not
+#: fit the 28 a return of 222 characters leaves in Prepared - while its
+#: review folder still has room (decision 131's floor, 260 exactly). Since
+#: decision 168 that is the only way a request is left no room: Prepared is
+#: shallower than the review folder, so an ordinary TY2025 name fits
+#: wherever a review copy does.
+LONG_PERIOD = "Jan 2025 - Dec 2025"
+
+
+def with_the_long_period(item):
+    """``item`` asking for :data:`LONG_PERIOD`, its year check stated - a
+    period this long would derive a month check a year-end form does not
+    pass, and the claims here are about room, not about the check."""
+    return replace(item, period=LONG_PERIOD, date_pattern=r"(?i)\b2025\b")
+NO_ROOM_RETURN = 222
 
 
 def tight_return(base, over: int, items=ROOM_ITEMS, **kwargs):
     """A return whose A01 canonical copy passes Windows's limit by ``over``
-    characters: its folder is ``260 + over - 74`` characters long."""
+    characters: its folder is ``260 + over - 48`` characters long."""
     from tests.conftest import root_for_a_return_of
 
     root = root_for_a_return_of(base, 260 + over - CANONICAL_BELOW)
@@ -5860,13 +5922,13 @@ def tight_return(base, over: int, items=ROOM_ITEMS, **kwargs):
 def test_the_room_is_measured_from_the_list_alone_and_creations_figure_is_unchanged(tmp_path):
     """``room_for`` reads no disk: a return folder that does not exist is
     measured as readily as one that does. Its ``need`` is creation's figure
-    exactly - the deepest canonical copy: 164 for the example row, 163 for
-    the whole 1040 core list at its longest extension since its rows are
-    named by their short names (decision 144; 223 with the full titles),
-    316 for a row whose name is a hundred characters."""
+    exactly - the deepest canonical copy: 138 for the example row, 138 for
+    the whole 1040 core list at its longest extension, 215 for a row whose
+    name is a hundred characters - each copy in Prepared itself (decision
+    168; 164, 163 and 316 while each request had a folder, 223 for the core
+    list with the full titles before decision 144)."""
     from tracker.filer import Room, room_for, shortest_name_for
     from tracker.layout import MAX_PATH_LENGTH, deepest_path_length, limit_for, return_dir_for
-    from tracker.scaffold import folder_name_for
     from tracker.templates import template_items
 
     root = Path("G:/Shared drives/JPA Clients")
@@ -5875,19 +5937,17 @@ def test_the_room_is_measured_from_the_list_alone_and_creations_figure_is_unchan
 
     w2 = replace(ITEMS[0], period="TY2026", expected_count=1)
     room = room_for(engagement, [w2])
-    assert room.need == 164 and room.limit == MAX_PATH_LENGTH and room.short == 0
+    assert room.need == 138 and room.limit == MAX_PATH_LENGTH and room.short == 0
     # The shortest name: the identifier, the period, a two-digit suffix, the extension.
     assert shortest_name_for(w2, "pdf") == "A01 - TY2026 (99).pdf"
-    assert room.least == len(str(engagement / PREPARED_DIR_NAME / folder_name_for(w2)
-                                 / "A01 - TY2026 (99).pdf"))
+    assert room.least == len(str(engagement / PREPARED_DIR_NAME / "A01 - TY2026 (99).pdf"))
     assert room.floor == len(str(engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME / "x (99).pdf"))
     assert room.floor == 128 and room.parks == 0
 
     core = [replace(item, allowed_extensions=("xlsx",))
             for item in template_items("1040", core_only=True)]
-    subpaths = [f"{PREPARED_DIR_NAME}/{folder_name_for(item)}/{prepared_name_for(item, 'xlsx', set())}"
-                for item in core]
-    assert room_for(engagement, core).need == deepest_path_length(engagement, subpaths) == 163
+    subpaths = [f"{PREPARED_DIR_NAME}/{prepared_name_for(item, 'xlsx', set())}" for item in core]
+    assert room_for(engagement, core).need == deepest_path_length(engagement, subpaths) == 138
     # Every copy is a workbook, and a workbook's reader allows 218: with the
     # short names every one fits (it was five short with the full titles).
     assert limit_for("xlsx") == 218
@@ -5899,11 +5959,12 @@ def test_the_room_is_measured_from_the_list_alone_and_creations_figure_is_unchan
     long_row = replace(template_items("1040", core_only=True)[0], document="x" * 100,
                        short_title="x" * 100, allowed_extensions=("xlsx",))
     long = room_for(engagement, [long_row])
-    assert long.need == 316 and long.short == 316 - 218
-    # Its folder is named after the hundred characters too, and leaves a
-    # workbook no room even for ``A01 - TY2026 (99).xlsx``: it parks.
-    assert long.least == 223 and long.parks == 1
-    assert room_for(engagement, [replace(long_row, allowed_extensions=("pdf",))]).parks == 0
+    # With no folder named after the hundred characters too, the name is in
+    # the path once, capped: it fits even a workbook's reader, where it was
+    # 98 characters short and a workbook parked.
+    assert long.need == 215 and long.short == 0
+    assert long.least == len(str(engagement / PREPARED_DIR_NAME / "A01 - TY2026 (99).xlsx"))
+    assert long.parks == 0
 
     # A row set aside is not measured, as creation does not measure it.
     from tracker.manifest import Override
@@ -5934,14 +5995,14 @@ def test_a_working_copy_is_named_to_fit_the_room_left_under_its_folder(tmp_path)
     [copy] = list(folder.iterdir())
     assert copy.name == "A01 - W-2 Wage - TY2025.pdf"             # " Statements" cut, then the space
     assert len(str(copy)) <= 260
-    assert entry.prepared_location == f"{PREPARED_DIR_NAME}/{folder.name}/{copy.name}"
+    assert entry.prepared_location == f"{PREPARED_DIR_NAME}/{copy.name}"
     assert locate(engagement, entry.prepared_location) == copy
 
     scan_engagement(engagement, today=DAY1)
     assert load_manifest(engagement)[0].status == Status.RECEIVED
 
     original = originals(engagement) / "w2.pdf"
-    assert _existing_copy(folder, original, sha256_of(original)) == copy
+    assert _existing_copy(copy.parent, original, sha256_of(original)) == copy
 
 
 def test_the_numbered_suffix_is_counted_when_a_name_is_cut(tmp_path):
@@ -5959,7 +6020,7 @@ def test_the_numbered_suffix_is_counted_when_a_name_is_cut(tmp_path):
 
     assert len(report.filed) == 2
     folder = prepared(engagement, "A01")
-    room = 260 - len(str(folder)) - 1
+    room = 260 - len(str(engagement / PREPARED_DIR_NAME)) - 1
     names = sorted(p.name for p in folder.iterdir())
     assert names == ["A01 - W-2 W - TY2025 (2).pdf", "A01 - W-2 Wage - TY2025.pdf"]
     assert all(len(name) <= room for name in names)
@@ -5971,23 +6032,25 @@ def test_the_numbered_suffix_is_counted_when_a_name_is_cut(tmp_path):
 
 
 def test_a_request_with_no_room_for_its_shortest_name_parks_with_the_sentence(tmp_path):
-    """Every rule accepted the W-2 and its request's folder leaves no room
-    for even ``A01 - TY2025.pdf``: it parks, with PATH_NO_ROOM naming both
-    numbers, the request as its candidate, a review copy a person can open
-    and the original where every original rests."""
+    """Every rule accepted the W-2 and Prepared leaves no room for even
+    ``A01 - Jan 2025 - Dec 2025.pdf``: it parks, with PATH_NO_ROOM naming
+    both numbers, the request as its candidate, a review copy a person can
+    open and the original where every original rests."""
+    from tests.conftest import root_for_a_return_of
     from tracker.filer import PATH_NO_ROOM
 
-    # The request folder is 245 characters: 14 left for a name that needs 16.
-    engagement = tight_return(tmp_path, 210 + CANONICAL_BELOW - 260, scaffold=True)
-    assert len(str(engagement)) + FOLDER_BELOW == 245
+    # Prepared is 231 characters: 28 left for a name that needs 29.
+    items = [replace(ROOM_ITEMS[0], period=LONG_PERIOD)]
+    engagement = make_engagement(root_for_a_return_of(tmp_path, NO_ROOM_RETURN), items)
+    assert len(str(engagement)) + FOLDER_BELOW == 231
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
 
     report = sort(engagement, today=DAY1)
 
     assert report.filed == []
     [parked] = report.review
-    assert parked.reason == PATH_NO_ROOM.format(length=245 + 1 + len("A01 - TY2025.pdf"), limit=260,
-                                                ext=".pdf")
+    assert parked.reason == PATH_NO_ROOM.format(
+        length=231 + 1 + len(f"A01 - {LONG_PERIOD}.pdf"), limit=260, ext=".pdf")
     assert parked.candidates == "A01"
     copy = locate(engagement, parked.prepared_location)
     assert copy.is_file() and copy.parent.name == REVIEW_DIR_NAME
@@ -6032,13 +6095,14 @@ def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_bel
     from tracker.filer import PATH_NO_ROOM, assign_review_file, hand_over
 
     # One household, three returns: home fits; ``cut`` leaves A01 ten short;
-    # ``none`` leaves its request folder 14 characters for a 16-character name.
+    # ``none`` leaves its Prepared 28 characters for a 29-character name.
     root = root_for_a_return_of(tmp_path, 150, return_name="1040 - Home")
     home = make_engagement(root, ROOM_ITEMS, return_name="1040 - Home")
-    cut = make_engagement(root, ROOM_ITEMS, return_name="1040 - " + "s" * 50)
-    none = make_engagement(root, ROOM_ITEMS, return_name="1040 - " + "t" * 64)
+    cut = make_engagement(root, ROOM_ITEMS, return_name="1040 - " + "s" * 76)
+    none = make_engagement(root, [replace(ROOM_ITEMS[0], period=LONG_PERIOD)],
+                           return_name="1040 - " + "t" * 76)
     assert len(str(cut)) + CANONICAL_BELOW == 270
-    assert len(str(none)) + FOLDER_BELOW == 245
+    assert len(str(none)) + FOLDER_BELOW == 231
     drop(home, "note.pdf", "A letter the list does not ask for")
     drop(home, "other.pdf", "Another letter the list does not ask for")
     sort_all([home, cut, none], today=DAY1)
@@ -6049,7 +6113,7 @@ def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_bel
     before = sorted(str(p) for p in root.rglob("*"))
     with pytest.raises(FilingError) as refused:
         hand_over(home, parked["note.pdf"].pbc_location, none, "A01", today=DAY2)
-    assert str(refused.value) == PATH_NO_ROOM.format(length=245 + 1 + len("A01 - TY2025.pdf"),
+    assert str(refused.value) == PATH_NO_ROOM.format(length=231 + 1 + len(f"A01 - {LONG_PERIOD}.pdf"),
                                                      limit=260, ext=".pdf")
     assert sorted(str(p) for p in root.rglob("*")) == before
 
@@ -6059,7 +6123,8 @@ def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_bel
     assert copy.is_file() and copy.name == "A01 - W-2 Wage - TY2025.pdf" and len(str(copy)) <= 260
 
     # A person's filing in a return with no room: refused, nothing moved.
-    tight = tight_return(tmp_path / "t", 210 + CANONICAL_BELOW - 260)
+    tight = make_engagement(root_for_a_return_of(tmp_path / "t", NO_ROOM_RETURN),
+                            [replace(ROOM_ITEMS[0], period=LONG_PERIOD)])
     drop(tight, "note.pdf", "A letter the list does not ask for")
     sort(tight, today=DAY1)
     [waiting] = [e for e in read_index(tight) if e.decision == NEEDS_REVIEW]
@@ -6087,18 +6152,21 @@ def test_creation_and_the_rollover_still_refuse_the_canonical_name_past_the_limi
     from tracker.manifest import ManifestError
     from tracker.templates import template_items
 
+    # A household name fifty characters longer than the example's: the
+    # core list still fits (138 at the example's, 188 here), and a row named
+    # by a hundred characters - 215 at the example's since decision 168 -
+    # is past the limit (the measure is arithmetic on the name the row
+    # carries; a typed short title is refused past twenty).
     root = Path("G:/Shared drives/JPA Clients")
-    engagement = return_dir_for(root, "Park Family", 2026, "1040 - John & Maria Park")
+    engagement = return_dir_for(root, "Park Family " + "p" * 49, 2026, "1040 - John & Maria Park")
     core = [replace(item, allowed_extensions=("xlsx",))
             for item in template_items("1040", core_only=True)]
-    refuse_a_path_past_the_limit(engagement, core)          # 163 with the short names - accepted
+    refuse_a_path_past_the_limit(engagement, core)          # 188 - accepted
 
-    # A row named by a hundred characters (the measure is arithmetic on the
-    # name the row carries; a typed short title is refused past twenty).
     long_row = replace(core[0], document="x" * 100, short_title="x" * 100)
     with pytest.raises(ManifestError) as refused:
         refuse_a_path_past_the_limit(engagement, [long_row])
-    assert str(refused.value) == PATH_TOO_LONG.format(folder=engagement, length=316, limit=260)
+    assert str(refused.value) == PATH_TOO_LONG.format(folder=engagement, length=265, limit=260)
 
 
 # --------------------------- decision 131's review: the lead's rulings ----
@@ -6220,13 +6288,16 @@ def test_a_review_copy_with_an_odd_suffix_is_cut_to_fit_or_said_as_a_review_copy
 
 
 def test_an_existing_copy_is_found_before_a_name_is_measured(tmp_path):
-    """F5: a killed run left the copy in a request folder that has no room
-    for a new name. The pass finds it by its bytes first - as the
-    hand-over already did - and files under the name it has, rather than
-    parking a document whose copy is already there."""
-    engagement = tight_return(tmp_path, 210 + CANONICAL_BELOW - 260, scaffold=True)
+    """F5: a killed run left the copy, under the request's name, in a
+    Prepared that has no room for a new name. The pass finds it by its
+    bytes first - as the hand-over already did - and files under the name
+    it has, rather than parking a document whose copy is already there."""
+    from tests.conftest import root_for_a_return_of
+
+    items = [replace(ROOM_ITEMS[0], period=LONG_PERIOD)]
+    engagement = make_engagement(root_for_a_return_of(tmp_path, NO_ROOM_RETURN), items)
     folder = prepared(engagement, "A01")
-    assert len(str(folder)) == 245                           # no room for "A01 - TY2025.pdf"
+    assert len(str(engagement / PREPARED_DIR_NAME)) == 231   # no room for "A01 - <period>.pdf"
     dropped = drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     (folder / "c.pdf").write_bytes(dropped.read_bytes())
 
@@ -6234,29 +6305,27 @@ def test_an_existing_copy_is_found_before_a_name_is_measured(tmp_path):
 
     assert report.review == []
     [entry] = report.filed
-    assert entry.prepared_location == f"{PREPARED_DIR_NAME}/{folder.name}/c.pdf"
-    assert [p.name for p in folder.iterdir()] == ["c.pdf"]
+    assert entry.prepared_location == f"{PREPARED_DIR_NAME}/A01 - c.pdf"
+    assert [p.name for p in folder.iterdir()] == ["A01 - c.pdf"]
 
 
-def test_a_filing_that_parks_for_room_leaves_no_request_folder_it_made(short_root):
+def test_a_filing_that_parks_for_room_leaves_nothing_it_made(short_root):
     """F6: decision 94 files one page under two requests. The first has room
-    and the second has none, so the filing parks - and the request folder
-    the attempt would have made for the first is not left behind empty:
-    nothing is made until every copy of the filing is named."""
+    and the second has none, so the filing parks - and nothing the attempt
+    would have made for the first is left behind: nothing is made until
+    every copy of the filing is named. Since decision 168 there is no
+    request folder to make either, only the copy."""
     from tests.conftest import root_for_a_return_of
     from tests.samples import scanned_1098_lines, scanned_w2_lines
     from tracker.filer import PATH_NO_ROOM
-    from tracker.scaffold import folder_name_for
 
-    # A request folder of a hundred characters, which a typed short title
-    # never is (decision 144 refuses one past twenty); the filing's
-    # all-or-nothing naming is what is held here.
-    long_name = "Mortgage Interest Statement " + "m" * 80
-    long_c01 = replace(ITEMS[1], document=long_name, short_title=long_name)
-    assert len(folder_name_for(long_c01)) == 100
+    # C01's period leaves it no room in a Prepared of 231 characters, where
+    # A01's name is cut to fit.
+    long_c01 = with_the_long_period(ITEMS[1])
     items = [ITEMS[0], long_c01]
-    engagement = make_engagement(root_for_a_return_of(short_root, 135), items, scaffold=False)
-    assert len(str(engagement / PREPARED_DIR_NAME / folder_name_for(long_c01))) == 245
+    engagement = make_engagement(root_for_a_return_of(short_root, NO_ROOM_RETURN), items,
+                                 scaffold=False)
+    assert len(str(engagement / PREPARED_DIR_NAME)) == 231
     inbox_of(engagement).mkdir(parents=True, exist_ok=True)
     drop(engagement, "scan0003.pdf", "\n".join(scanned_w2_lines(2025) + scanned_1098_lines(2025)))
 
@@ -6264,10 +6333,10 @@ def test_a_filing_that_parks_for_room_leaves_no_request_folder_it_made(short_roo
 
     assert report.filed == []
     [parked] = report.review
-    assert parked.reason == PATH_NO_ROOM.format(length=245 + 1 + len("C01 - TY2025.pdf"),
+    assert parked.reason == PATH_NO_ROOM.format(length=231 + 1 + len(f"C01 - {LONG_PERIOD}.pdf"),
                                                 limit=260, ext=".pdf")
     made = sorted(p.name for p in (engagement / PREPARED_DIR_NAME).iterdir())
-    assert made == [REVIEW_DIR_NAME]                          # no empty A01 folder
+    assert made == [REVIEW_DIR_NAME]                          # no A01 copy left behind
 
 
 def test_the_period_survives_a_long_label():
@@ -6287,9 +6356,10 @@ def test_a_workbook_review_copy_fitted_past_a_readers_limit_says_so(tmp_path):
     """Deviation 4: a reader's shorter limit never stops a park - the copy
     is fitted to Windows's own - but the row says the copy is longer than
     a spreadsheet program may open, and what to do about it."""
+    from tests.conftest import root_for_a_return_of
     from tracker.filer import REVIEW_COPY_PAST_READER
 
-    engagement = tight_return(tmp_path, 14)                  # the review folder: 227
+    engagement = make_engagement(root_for_a_return_of(tmp_path, 200), ROOM_ITEMS)   # review: 227
     assert len(str(review_dir(engagement))) == 227
     inbox_of(engagement).mkdir(parents=True, exist_ok=True)
     (inbox_of(engagement) / "note.csv").write_text("a,b\n1,2\n", encoding="utf-8")
@@ -6314,14 +6384,16 @@ def test_a_fed_return_with_no_room_parks_at_home_naming_the_fed_return(tmp_path)
     from tracker.registry import discover_engagements
 
     llc_name = "1120S - Park & Lee LLC " + "l" * 20
-    root = root_for_a_return_of(tmp_path, 215, household="Park & Lee LLC", return_name=llc_name)
+    root = root_for_a_return_of(tmp_path, NO_ROOM_RETURN, household="Park & Lee LLC",
+                                return_name=llc_name)
     father = make_engagement(root, ITEMS, household="Park Family",
                              return_name="1040 - John Park", people=FATHER)
-    llc = make_engagement(root, BUSINESS, household="Park & Lee LLC",
+    business = [with_the_long_period(BUSINESS[0])]
+    llc = make_engagement(root, business, household="Park & Lee LLC",
                           return_name=llc_name, people=LLC_PEOPLE)
     feeding(root, [Feed("Park & Lee LLC", llc_name)])
     b01 = prepared(llc, "B01")
-    assert len(str(b01)) + 1 + len("B01 - TY2025.pdf") == 261
+    assert len(str(llc / PREPARED_DIR_NAME)) + 1 + len(f"B01 - {LONG_PERIOD}.pdf") == 261
     drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
 
     done = sort_all([father, llc], home=[father], today=DAY1)
@@ -6538,30 +6610,29 @@ def test_a_document_for_a_not_asked_row_files_there_and_reads_received(tmp_path)
     assert summary.also_received == 1 and summary.total == 1 and summary.received == 0
 
 
-def test_no_folder_is_made_for_a_not_asked_row_until_its_first_document(tmp_path):
-    """The scaffold makes none, the scanner writes no scaffold-gap note for
-    the folder it lacks on purpose, and the filing makes it with the first
-    document - after which it stays."""
+def test_a_not_asked_rows_first_document_sits_in_prepared_itself(tmp_path):
+    """Decision 142's "no folder up front", widened by decision 168 to every
+    row: the scaffold makes none, the scan writes no note for a folder
+    nobody has, and the first document is a copy in Prepared itself."""
     from tracker.manifest import Status
-    from tracker.scaffold import assign_folders
+    from tracker.scaffold import assign_files, scaffold_engagement
     from tracker.scanner import scan_engagement
 
     engagement = make_engagement(tmp_path, NOT_ASKED_ITEMS)
     prepared_dir = engagement / PREPARED_DIR_NAME
-    assert assign_folders(prepared_dir, ["A01", "C01"]) == {
-        "A01": assign_folders(prepared_dir, ["A01"])["A01"], "C01": []}
+    assert [p.name for p in prepared_dir.iterdir()] == [REVIEW_DIR_NAME]
 
     scan_engagement(engagement, today=DAY1)
     rows = {i.identifier: i for i in load_manifest(engagement)}
     assert rows["C01"].status == Status.MISSING
-    assert not reasons.NO_REQUEST_FOLDER.matches(rows["C01"].validation_notes or "")
+    assert (rows["C01"].validation_notes or "") == ""
 
     drop(engagement, "1098.pdf", "Form 1098 Mortgage Interest Statement 2025")
     sort(engagement, today=DAY1)
-    [folder] = assign_folders(prepared_dir, ["C01"])["C01"]
-    assert [p.name for p in folder.iterdir()]
-    from tracker.scaffold import scaffold_engagement
-    assert "C01" in scaffold_engagement(engagement).existing
+    [copy] = assign_files(prepared_dir, ["A01", "C01"])["C01"]
+    assert copy.parent == prepared_dir and copy.name.startswith("C01 - ")
+    scaffold_engagement(engagement)
+    assert [p.name for p in prepared_dir.iterdir() if p.is_dir()] == [REVIEW_DIR_NAME]
 
 
 def test_two_returns_in_one_household_that_both_accept_a_notice_park_it_unless_the_name_decides(tmp_path):
@@ -6638,32 +6709,30 @@ def _catalog_w2(**changes):
     return replace(template_items("1040", year=2025)[0], **changes)
 
 
-def test_the_working_copy_and_its_folder_use_the_short_title(short_root):
-    """Decision 144, claim 2: the owner's example, exactly. A W-2 filed on
-    the catalog's A01 lands at ``A01 - W-2/A01 - W-2 - TY2025.pdf`` - the
-    request's short name in the folder and in the copy, where the full
-    title "W-2 Wage Statements - All Employers" used to be, twice."""
-    from tracker.scaffold import folder_name_for
-
+def test_the_working_copy_uses_the_short_title(short_root):
+    """Decision 144, claim 2: the owner's example. A W-2 filed on the
+    catalog's A01 is ``A01 - W-2 - TY2025.pdf`` - the request's short name
+    where the full title "W-2 Wage Statements - All Employers" used to be -
+    and since decision 168 it sits in Prepared itself, where 144 put it in
+    a folder ``A01 - W-2``."""
     w2 = _catalog_w2(expected_count=1, min_size_kb=0)
     assert w2.short_title == "W-2" and w2.document == "W-2 Wage Statements - All Employers"
-    assert folder_name_for(w2) == "A01 - W-2"
     assert prepared_name_for(w2, "pdf", set()) == "A01 - W-2 - TY2025.pdf"
 
     engagement = make_engagement(short_root, [w2])
     drop(engagement, "scan.pdf", "Form W-2 Wage and Tax Statement 2025 wages, tips, other "
                                  "compensation employee's social security number")
     [entry] = sort(engagement, today=DAY1).filed
-    assert entry.prepared_location == f"{PREPARED_DIR_NAME}/A01 - W-2/A01 - W-2 - TY2025.pdf"
-    assert (engagement / PREPARED_DIR_NAME / "A01 - W-2" / "A01 - W-2 - TY2025.pdf").is_file()
+    assert entry.prepared_location == f"{PREPARED_DIR_NAME}/A01 - W-2 - TY2025.pdf"
+    assert (engagement / PREPARED_DIR_NAME / "A01 - W-2 - TY2025.pdf").is_file()
 
 
-def test_an_existing_long_folder_keeps_its_name_and_takes_short_copies(short_root):
-    """Decision 144, claim 4: nothing is renamed. A return whose request
-    folder was made under the full title before this decision keeps that
-    folder - it is found by its identifier, as a folder always has been -
-    and a copy filed into it now takes the short name. No second folder is
-    made beside it."""
+def test_an_existing_long_folder_is_left_as_it_is_and_the_copy_sits_beside_it(short_root):
+    """Decision 144, claim 4 (nothing is renamed), over decision 168: a
+    request folder made under the full title before either keeps its name
+    and whatever is in it - it is a person's folder now (168, ruling 10) -
+    and a copy filed now takes the short name in Prepared itself, beside
+    it, never inside it."""
     w2 = _catalog_w2(expected_count=1, min_size_kb=0)
     engagement = make_engagement(short_root, [w2], scaffold=False)
     old = engagement / PREPARED_DIR_NAME / "A01 - W-2 Wage Statements - All Employers"
@@ -6677,10 +6746,10 @@ def test_an_existing_long_folder_keeps_its_name_and_takes_short_copies(short_roo
     drop(engagement, "scan.pdf", "Form W-2 Wage and Tax Statement 2025 wages, tips, other "
                                  "compensation employee's social security number")
     [entry] = sort(engagement, today=DAY1).filed
-    assert entry.prepared_location == f"{PREPARED_DIR_NAME}/{old.name}/A01 - W-2 - TY2025.pdf"
-    assert sorted(p.name for p in old.iterdir()) == ["A01 - W-2 - TY2025.pdf"]
-    assert [p.name for p in (engagement / PREPARED_DIR_NAME).iterdir()
-            if p.name.startswith("A01")] == [old.name]
+    assert entry.prepared_location == f"{PREPARED_DIR_NAME}/A01 - W-2 - TY2025.pdf"
+    assert list(old.iterdir()) == []
+    assert sorted(p.name for p in (engagement / PREPARED_DIR_NAME).iterdir()
+                  if p.name.startswith("A01")) == ["A01 - W-2 - TY2025.pdf", old.name]
 
 
 #: The intake's 39 returns (go-live item 11), as (catalog, tax year, length
@@ -6798,7 +6867,7 @@ def test_the_statement_answers_the_int_div_row_and_the_letter_does_not_ask_for_i
 
     prepared = engagement / PREPARED_DIR_NAME
     copies = [p for p in prepared.rglob("*.pdf") if REVIEW_DIR_NAME not in p.parts]
-    assert len(copies) == 1 and copies[0].parent.name.startswith("E01")
+    assert len(copies) == 1 and copies[0].parent == prepared and copies[0].name.startswith("E01 - ")
 
     for identifier, count in (("E01", 1), ("A02", 2), ("A04", 1)):
         item = _status(engagement, identifier)
@@ -7015,3 +7084,280 @@ def test_a_name_held_only_by_a_return_outside_the_pass_is_not_reused(two_returns
     [filed] = read_index(personal)
     assert filed.pbc_location == original_at(personal, "tb (2).pdf")
     assert read_index(business) == [held]
+# ------------------------- decision 168: working copies sit in Prepared itself ----
+
+
+def _only_the_review_folder(engagement) -> None:
+    """No folder per request (decision 168): the one folder inside Prepared
+    is the review folder."""
+    folders = [p.name for p in (engagement / PREPARED_DIR_NAME).iterdir() if p.is_dir()]
+    assert folders == [REVIEW_DIR_NAME], folders
+
+
+def test_a_filed_copy_sits_in_prepared_itself(engagement):
+    """Claim 1: a W-2 files as ``Prepared/A01 - <short> - TY2025.pdf``, and
+    the record's location is that path - and the store rebuilt from the
+    journal agrees, with no version change (claim 11)."""
+    drop(engagement, "scan0012.pdf", "Form W-2 Wage and Tax Statement 2025")
+    [filed] = sort(engagement, today=DAY1).filed
+
+    assert filed.prepared_location == f"{PREPARED_DIR_NAME}/A01 - W-2 Wage Statements - TY2025.pdf"
+    assert (engagement / filed.prepared_location).is_file()
+    [row] = read_index(engagement)
+    assert row.prepared_location == filed.prepared_location
+    _only_the_review_folder(engagement)
+
+    root = root_of(engagement)
+    db = os.environ[store.ENV_STORE]
+    store.close()
+    os.unlink(db)
+    fresh = store.connect()
+    store.rebuild_engagement(fresh, root, engagement)
+    assert [r.prepared_location for r in read_index(engagement)] == [filed.prepared_location]
+    assert store.check(fresh, root, engagement) == []
+
+
+def test_two_w2s_for_one_request_number_side_by_side(engagement):
+    """Claim 2: the second is `` (2)`` beside the first, and both count
+    toward A01."""
+    from tracker.manifest import Status
+    from tracker.scanner import scan_engagement
+
+    drop(engagement, "w2 john.pdf", "Form W-2 Wage and Tax Statement 2025 Acme Corp")
+    drop(engagement, "w2 second job.pdf", "Form W-2 Wage and Tax Statement 2025 Birch LLC")
+    report = sort(engagement, today=DAY1)
+
+    assert sorted(e.prepared_location for e in report.filed) == [
+        f"{PREPARED_DIR_NAME}/A01 - W-2 Wage Statements - TY2025 (2).pdf",
+        f"{PREPARED_DIR_NAME}/A01 - W-2 Wage Statements - TY2025.pdf",
+    ]
+    _only_the_review_folder(engagement)
+    a01 = scan_engagement(engagement, today=DAY1).updates["A01"]
+    assert a01.status == Status.RECEIVED and a01.file_count == 2
+
+
+def test_a_copy_already_there_is_reused_only_under_its_own_request(engagement):
+    """Every request's copies share Prepared (decision 168), so the check
+    for a killed run's copy looks only among the request's own: decision
+    94's page filed under A01 and C01 has the same bytes under both names,
+    and C01's filing never takes A01's copy for its own."""
+    from tests.samples import scanned_1098_lines, scanned_w2_lines
+    from tracker.filer import _existing_copy, copies_of
+    from tracker.validators import sha256_of
+
+    original = drop(engagement, "scan0003.pdf",
+                    "\n".join(scanned_w2_lines(2025) + scanned_1098_lines(2025)))
+    (entry,) = sort(engagement, today=DAY1).filed
+    a01, c01 = (engagement / location for location in entry.filed_locations)
+    kept = originals(engagement) / original.name
+    prepared_dir = engagement / PREPARED_DIR_NAME
+
+    c01.unlink()                                      # as if the pass was killed before it
+    assert _existing_copy(prepared_dir, kept, sha256_of(kept),
+                          among=copies_of(ITEMS[1], ITEMS, prepared_dir)) is None
+    assert _existing_copy(prepared_dir, kept, sha256_of(kept),
+                          among=copies_of(ITEMS[0], ITEMS, prepared_dir)) == a01
+
+
+def test_an_also_filed_copy_is_read_back_by_its_own_name(engagement):
+    """Claim 4: decision 94's two-form page counts once under each request
+    in the received list, read from each copy's own name; and a copy whose
+    name a person changed to one no request begins reads "Other
+    document", never a guessed request."""
+    from tests.conftest import seed_index
+    from tests.samples import scanned_1098_lines, scanned_w2_lines
+    from tracker.filer import received_for
+    from tracker.records import IndexEntry
+    from tracker.scaffold import OTHER_DOCUMENT
+
+    drop(engagement, "scan0003.pdf", "\n".join(scanned_w2_lines(2025) + scanned_1098_lines(2025)))
+    (entry,) = sort(engagement, today=DAY1).filed
+    assert [location.rsplit("/", 1)[-1] for location in entry.filed_locations] == [
+        "A01 - W-2 Wage Statements - TY2025.pdf", "C01 - Mortgage Interest - TY2025.pdf"]
+
+    labels = [line.label for line in received_for([engagement]).lines]
+    assert sorted(labels) == sorted(item.label for item in ITEMS)
+
+    seed_index(engagement, [IndexEntry(
+        received="2026-07-09 10:00:00", original_name="combo.pdf", size_kb=12.0,
+        digest="d-combo", identifier="A01",
+        prepared_location=f"{PREPARED_DIR_NAME}/A01 - W-2 Wage Statements - TY2025 (2).pdf",
+        pbc_location="../../x/combo.pdf", decision=FILED, reason="a reason",
+        also_filed=f"{PREPARED_DIR_NAME}/the 1098 I renamed.pdf")])
+    labels = [line.label for line in received_for([engagement]).lines]
+    assert labels.count(OTHER_DOCUMENT) == 1
+    assert labels.count(ITEMS[1].label) == 1                 # only the real copy's
+
+
+def test_a_folder_a_person_made_is_never_filed_into(engagement):
+    """Ruling 7 from the filer's side: a folder named like a request's, made
+    by a person inside Prepared, is not where the next copy goes - it goes
+    in Prepared itself, and the folder and its file are left as they are."""
+    person = engagement / PREPARED_DIR_NAME / "A01 - W-2 Wage Statements"
+    person.mkdir()
+    (person / "my notes.txt").write_text("mine", encoding="utf-8")
+
+    drop(engagement, "scan0012.pdf", "Form W-2 Wage and Tax Statement 2025")
+    [filed] = sort(engagement, today=DAY1).filed
+
+    assert filed.prepared_location == f"{PREPARED_DIR_NAME}/A01 - W-2 Wage Statements - TY2025.pdf"
+    assert [p.name for p in person.iterdir()] == ["my notes.txt"]
+
+
+def test_a_respelled_identifier_renames_the_copies_only(engagement):
+    """Claim 8: decision 160's rename, flat. Each copy the record names
+    under the old identifier takes the new one at the front of its name,
+    beside where it was; no folder is made, none is renamed or removed; a
+    file named for the old identifier that no row names is left and
+    named."""
+    from tracker.filer import rename_request
+    from tracker.manifest import list_head
+
+    drop(engagement, "w2 john.pdf", "Form W-2 Wage and Tax Statement 2025 Acme Corp")
+    drop(engagement, "w2 second job.pdf", "Form W-2 Wage and Tax Statement 2025 Birch LLC")
+    assert len(sort(engagement, today=DAY1).filed) == 2
+    prepared_dir = engagement / PREPARED_DIR_NAME
+    (prepared_dir / "A01 - my own notes.pdf").write_bytes(b"a person's file")
+
+    result = rename_request(engagement, "A01", "A1", head=list_head(engagement), today=DAY2)
+
+    assert result.moved == 2 and result.rows == 2
+    assert result.left == (f"{PREPARED_DIR_NAME}/A01 - my own notes.pdf",)
+    assert sorted(p.name for p in prepared_dir.iterdir() if p.is_file()) == [
+        "A01 - my own notes.pdf",
+        "A1 - W-2 Wage Statements - TY2025 (2).pdf",
+        "A1 - W-2 Wage Statements - TY2025.pdf",
+    ]
+    _only_the_review_folder(engagement)
+    assert sorted(r.prepared_location for r in read_index(engagement)) == [
+        f"{PREPARED_DIR_NAME}/A1 - W-2 Wage Statements - TY2025 (2).pdf",
+        f"{PREPARED_DIR_NAME}/A1 - W-2 Wage Statements - TY2025.pdf",
+    ]
+    assert {r.identifier for r in read_index(engagement)} == {"A1"}
+
+
+def test_a_rename_intent_written_before_168_is_finished_as_written(engagement):
+    """SPEC-168 §8, the designer's default ruling: a rename a run was killed
+    in before this decision wrote an intent naming folders
+    (``Prepared/A01 - .../`` to ``Prepared/A1 - .../``). The next pass
+    finishes it as written - the record decided it - with nothing lost and
+    nothing doubled: the copy lands where the intent says, the row is
+    recorded as the rename's, and no intent is left open. The folders are
+    then a person's folders of a return made before 168 (ruling 10)."""
+    from tracker.locking import engagement_lock
+    from tracker.manifest import renamed_rules
+    from tracker.records import IndexEntry, entry_to_json
+    from tracker.validators import sha256_of
+
+    original = originals(engagement) / "w2.pdf"
+    original.parent.mkdir(parents=True, exist_ok=True)
+    text_pdf(original, named_page("Form W-2 Wage and Tax Statement 2025"))
+    digest = sha256_of(original)
+    old_home = engagement / PREPARED_DIR_NAME / "A01 - W-2 Wage Statements" / "A01 - W-2 Wage Statements - TY2025.pdf"
+    new_home = engagement / PREPARED_DIR_NAME / "A1 - W-2 Wage Statements" / "A1 - W-2 Wage Statements - TY2025.pdf"
+    old_home.parent.mkdir()
+    old_home.write_bytes(original.read_bytes())
+
+    from tests.conftest import seed_index
+
+    [row] = seed_index(engagement, [IndexEntry(
+        received="2026-07-01 09:00:00", original_name="w2.pdf",
+        size_kb=round(original.stat().st_size / 1024, 1), digest=digest,
+        identifier="A01", prepared_location=location_of(engagement, old_home),
+        pbc_location=original_at(engagement, "w2.pdf"), decision=FILED, reason="a reason")])
+    renamed = replace(row, identifier="A1", prepared_location=location_of(engagement, new_home))
+    with engagement_lock(engagement):
+        store.record(store.connect(), engagement, *renamed_rules(engagement, "A01", "A1"),
+                     ledger.new(ledger.MOVING, **{
+                         ledger.KEY_KEY: ledger_key(renamed),
+                         ledger.OPS_KEY: [{ledger.OP_KEY: ledger.OP_MOVE,
+                                           ledger.FROM_KEY: location_of(engagement, old_home),
+                                           ledger.TO_KEY: location_of(engagement, new_home),
+                                           ledger.DIGEST_KEY: digest}],
+                         ledger.DECIDED_BY_KEY: ledger.BY_PERSON,
+                         ledger.ROW_KEY: entry_to_json(renamed),
+                         ledger.EVENT_KEY_AFTER: ledger.RENAMED_BY_PERSON,
+                     }))
+    assert store.open_intents(store.connect(), engagement)
+
+    sort(engagement, today=DAY2)
+
+    assert not store.open_intents(store.connect(), engagement)
+    assert not old_home.exists() and new_home.read_bytes() == original.read_bytes()
+    [now] = read_index(engagement)
+    assert now.identifier == "A1" and now.prepared_location == location_of(engagement, new_home)
+    assert now.decision == FILED
+    same = [p for p in (engagement / PREPARED_DIR_NAME).rglob("*.pdf") if sha256_of(p) == digest]
+    assert same == [new_home]                                           # nothing doubled
+    assert old_home.parent.is_dir() and not any(old_home.parent.iterdir())  # left, empty, for a person
+    assert events_named(engagement, ledger.RENAMED_BY_PERSON)
+
+
+def test_room_is_measured_without_a_request_folder():
+    """Claim 9: ``room_for(...).need`` for the 1040 core list under the
+    firm's 28-character root is decision 144's figure (163) less the folder
+    the deepest copy sat in: 138. The deepest row is still B01, whose
+    folder ``B01 - Prior-Year Returns/`` was 25 characters."""
+    from tracker.filer import room_for
+    from tracker.layout import return_dir_for
+    from tracker.manifest import label_for
+    from tracker.scaffold import sanitize_component
+    from tracker.templates import template_items
+
+    root = Path("G:/Shared drives/JPA Clients")
+    engagement = return_dir_for(root, "Park Family", 2026, "1040 - John & Maria Park")
+    core = [replace(item, allowed_extensions=("xlsx",))
+            for item in template_items("1040", core_only=True)]
+
+    def with_a_folder(item):
+        folder = label_for(sanitize_component(item.identifier), sanitize_component(item.short_name))
+        return len(str(engagement / PREPARED_DIR_NAME / folder / prepared_name_for(item, "xlsx", set())))
+
+    deepest = max(core, key=with_a_folder)
+    folder = label_for(deepest.identifier, deepest.short_name) + "/"
+    assert with_a_folder(deepest) == 163                        # decision 144's figure
+    assert room_for(engagement, core).need == 163 - len(folder) == 138
+    assert folder == "B01 - Prior-Year Returns/"
+
+
+def test_an_old_return_with_request_folders_is_named_and_left_alone(engagement):
+    """Claim 10, ruling 10: a return made before decision 168 has a folder
+    per request. Nothing is moved or migrated, nothing in the folders is
+    counted - the recorded copy there included - and the pass names each
+    folder, once."""
+    from tests.conftest import seed_index
+    from tracker.manifest import Status
+    from tracker.records import IndexEntry
+    from tracker.scanner import scan_engagement
+    from tracker.validators import sha256_of
+
+    original = originals(engagement) / "w2.pdf"
+    original.parent.mkdir(parents=True, exist_ok=True)
+    text_pdf(original, named_page("Form W-2 Wage and Tax Statement 2025"))
+    old = engagement / PREPARED_DIR_NAME / "A01 - W-2 Wage Statements"
+    old.mkdir()
+    copy = old / "A01 - W-2 Wage Statements - TY2025.pdf"
+    copy.write_bytes(original.read_bytes())
+    stray = old / "a note.pdf"
+    stray.write_bytes(b"somebody's")
+    empty = engagement / PREPARED_DIR_NAME / "C01 - Mortgage Interest"
+    empty.mkdir()
+    seed_index(engagement, [IndexEntry(
+        received="2026-07-01 09:00:00", original_name="w2.pdf",
+        size_kb=round(original.stat().st_size / 1024, 1),
+        digest=sha256_of(original), identifier="A01", prepared_location=location_of(engagement, copy),
+        pbc_location=original_at(engagement, "w2.pdf"), decision=FILED, reason="a reason")])
+    before = kept_files(engagement)
+
+    report = sort(engagement, today=DAY2)
+    scanned = scan_engagement(engagement, today=DAY2)
+
+    assert kept_files(engagement) == before                         # nothing moved
+    assert copy.is_file() and stray.is_file() and empty.is_dir()
+    assert [r.decision for r in read_index(engagement)] == [FILED]  # the record's copy is where it says
+    assert report.attention == []                                   # no file in them is named one by one
+    assert scanned.updates["A01"].status == Status.MISSING and scanned.updates["A01"].file_count == 0
+    assert [w for w in scanned.warnings if old.name in w] == [
+        reasons.PERSONS_FOLDER.format(folder=old.name, prepared=PREPARED_DIR_NAME)]
+    assert [w for w in scanned.warnings if empty.name in w] == [
+        reasons.PERSONS_FOLDER.format(folder=empty.name, prepared=PREPARED_DIR_NAME)]

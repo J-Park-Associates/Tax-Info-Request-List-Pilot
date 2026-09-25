@@ -732,7 +732,7 @@ async function fileRow(original, identifier, seq, keyword, spelling) {
 // ── File under another return (decision 129) ─────────────────────────────
 //
 // One decision the API carries out whole: the original moves where it must
-// rest, the working copy is made in the taking return's request folder, the
+// rest, the working copy is made in the taking return's Prepared folder, the
 // parked copy here goes, and this return's row closes. The page picks the
 // return and the request and sends both; it decides nothing.
 
@@ -982,7 +982,7 @@ function skipCard(card) {
 // Folded away by default. It is a list of what is already right, there for
 // the one row that is not, and the index is the only thing that knows where
 // a working copy went: a correction made in Explorer is one it never learns.
-// One original can have a copy in more than one request folder (a page that
+// One original can have a copy under more than one request (a page that
 // carried two forms), so each destination is named; Unfile still takes the
 // one original, because the row is one row and every copy goes back with it.
 function renderUnfileList(state) {
@@ -2203,7 +2203,7 @@ async function createEngagement() {
     $("modal").classList.add("hidden");
     await refresh(result.state.paths.engagement);
     const lines = [
-      `Engagement "${result.created}" created — ${asked} request folder(s) scaffolded, client README generated. Open the Client Folder to show it.`,
+      `Engagement "${result.created}" created with ${asked} request(s) asked for, client README generated. Open the Client Folder to show it.`,
     ];
     // A household's first return comes back with the sharing checklist
     // (decision 126): the two grants a person makes in Drive, once, in

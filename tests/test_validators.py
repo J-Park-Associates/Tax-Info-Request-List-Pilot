@@ -10,7 +10,7 @@ from tracker.manifest import RequestItem
 from tracker.validators import (
     IMAGE_EXTENSIONS,
     check_file,
-    check_folder,
+    check_files,
     extension_allowed,
     is_cloud_placeholder,
     is_ignored,
@@ -80,14 +80,11 @@ def test_google_native_stub_fails_with_guidance(tmp_path):
     assert reasons.GOOGLE_EXPORT_HINT in result.reason
 
 
-def test_missing_and_empty_folders(tmp_path):
-    missing = check_folder(tmp_path / "nope", ANY_ITEM)
-    assert missing.exists is False and missing.files == []
-
-    empty = tmp_path / "empty"
-    empty.mkdir()
-    result = check_folder(empty, ANY_ITEM)
-    assert result.exists is True and result.files == []
+def test_a_request_with_no_files_checks_nothing(tmp_path):
+    """Decision 168: a request's files are handed in (by their names,
+    ``tracker.scaffold.assign_files``); a request with none has nothing to
+    check - no folder of its own to be missing or empty."""
+    assert check_files([], ANY_ITEM) == []
 
 
 def test_local_files_are_not_placeholders(tmp_path):
@@ -243,22 +240,22 @@ def test_placeholder_skipped_not_read(tmp_path, monkeypatch):
     assert reasons.PENDING_SYNC.format() in result.reason
 
 
-def test_check_folder_classification(tmp_path, monkeypatch):
-    folder = tmp_path / "A01 - Bank"
-    folder.mkdir()
-    write_pdf(folder / "good.pdf")
-    (folder / "bad.docx").write_bytes(b"x" * 100)
-    (folder / "cloud.pdf").write_bytes(b"unsynced")
-    (folder / "desktop.ini").write_bytes(b"junk")
+def test_check_files_classification(tmp_path, monkeypatch):
+    good, bad, cloud, junk = (tmp_path / "A01 - good.pdf", tmp_path / "A01 - bad.docx",
+                              tmp_path / "A01 - cloud.pdf", tmp_path / "desktop.ini")
+    write_pdf(good)
+    bad.write_bytes(b"x" * 100)
+    cloud.write_bytes(b"unsynced")
+    junk.write_bytes(b"junk")
     monkeypatch.setattr(
-        "tracker.validators.is_cloud_placeholder", lambda p: p.name == "cloud.pdf"
+        "tracker.validators.is_cloud_placeholder", lambda p: p.name == cloud.name
     )
 
-    result = check_folder(folder, PDF_ITEM)
-    assert result.exists
-    assert [f.path.name for f in result.valid] == ["good.pdf"]
-    assert [f.path.name for f in result.failed] == ["bad.docx"]
-    assert [f.path.name for f in result.pending] == ["cloud.pdf"]
+    results = check_files([good, bad, cloud, junk], PDF_ITEM)
+    assert [f.path for f in results if f.ok] == [good]
+    assert [f.path for f in results if not f.ok and not f.pending_sync] == [bad]
+    assert [f.path for f in results if f.pending_sync] == [cloud]
+    assert junk not in [f.path for f in results]          # junk is passed over
 
 
 def test_sha256_of(tmp_path):

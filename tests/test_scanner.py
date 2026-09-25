@@ -101,10 +101,22 @@ def edit_row(engagement, identifier, **fields):
     return save_rules(engagement, edited, load_engagement_info(engagement))
 
 
+class _Named:
+    """Where one request's working copies go (decision 168): ``Prepared``
+    itself, each name beginning with the request's identifier. So
+    ``folder(engagement, "A01") / "chase.pdf"`` is
+    ``Prepared/A01 - chase.pdf`` - the file the rule gives A01."""
+
+    def __init__(self, prepared, prefix):
+        self.prepared, self.prefix = prepared, prefix
+
+    def __truediv__(self, name):
+        return self.prepared / f"{self.prefix} - {name}"
+
+
 def folder(engagement, prefix):
-    """The Prepared/ working folder for one request row."""
-    prepared = engagement / PREPARED_DIR_NAME
-    return next(p for p in prepared.iterdir() if p.is_dir() and p.name.startswith(prefix))
+    """Where one request row's working copies go: see :class:`_Named`."""
+    return _Named(engagement / PREPARED_DIR_NAME, prefix)
 
 
 def statuses(engagement):
@@ -212,7 +224,7 @@ def test_pending_sync_status(engagement, monkeypatch):
     ghost = folder(engagement, "A01") / "cloud.pdf"
     ghost.write_bytes(b"unsynced placeholder bytes")
     monkeypatch.setattr(
-        "tracker.validators.is_cloud_placeholder", lambda p: p.name == "cloud.pdf"
+        "tracker.validators.is_cloud_placeholder", lambda p: p.name == ghost.name
     )
     scan_engagement(engagement, today=DAY1)
     row = statuses(engagement)["A01"]
@@ -220,12 +232,15 @@ def test_pending_sync_status(engagement, monkeypatch):
     assert SYNCING_NOTE.format(n=1) in row.validation_notes
 
 
-def test_deleted_folder_reported_missing(engagement):
-    folder(engagement, "A01").rmdir()
+def test_a_request_with_nothing_named_for_it_is_simply_missing(engagement):
+    """Decision 168: no request has a folder that could be missing, so a
+    request with nothing in Prepared under its name is Missing with no note
+    at all - "request folder not found" retired with the folder, and
+    nothing holds the letter back for it."""
     scan_engagement(engagement, today=DAY1)
     row = statuses(engagement)["A01"]
-    assert row.status == Status.MISSING
-    assert reasons.NO_REQUEST_FOLDER.matches(row.validation_notes)
+    assert row.status == Status.MISSING and row.file_count == 0
+    assert row.validation_notes == ""
 
 
 # --------------------------------------------------------------- unfiled ----
@@ -233,8 +248,11 @@ def test_deleted_folder_reported_missing(engagement):
 
 def test_strays_in_prepared_are_warnings_and_parked_files_are_not(engagement):
     # Parked documents are the index's record (with why they were parked);
-    # the scan only warns about what nothing else knows: loose files in
-    # Prepared/ and folders matching no request.
+    # the scan only warns about what nothing else knows: a file in
+    # Prepared/ whose name begins with no request's identifier, and a
+    # person's folder (decision 168), named once however much it holds.
+    from tracker.scanner import UNCLAIMED_FILE
+
     prepared = engagement / PREPARED_DIR_NAME
     review = prepared / REVIEW_DIR_NAME
     (review / "scan0012.pdf").write_bytes(b"x" * 100)
@@ -242,16 +260,21 @@ def test_strays_in_prepared_are_warnings_and_parked_files_are_not(engagement):
     rogue = prepared / "misc uploads"
     rogue.mkdir()
     (rogue / "something.pdf").write_bytes(b"x")
+    (rogue / "A01 - something else.pdf").write_bytes(b"y")
 
     report = scan_engagement(engagement, today=DAY1)
     assert report.warnings == [
-        f"loose_notes.txt is loose in {PREPARED_DIR_NAME}/; it belongs in a request folder",
-        f"folder 'misc uploads' in {PREPARED_DIR_NAME}/ matches no request (1 file(s) inside)",
+        UNCLAIMED_FILE.format(name="loose_notes.txt", prepared=PREPARED_DIR_NAME),
+        reasons.PERSONS_FOLDER.format(folder="misc uploads", prepared=PREPARED_DIR_NAME),
     ]
+    assert report.warnings[1] == ("misc uploads is a folder inside Prepared. The tracker files "
+                                  "into Prepared itself and counts nothing in this folder.")
+    assert report.updates["A01"].file_count == 0      # nothing in a person's folder counts
     assert list(engagement.glob("*.xlsx")) == []                     # no second record
 
     (prepared / "loose_notes.txt").unlink()
     (rogue / "something.pdf").unlink()
+    (rogue / "A01 - something else.pdf").unlink()
     rogue.rmdir()
     assert scan_engagement(engagement, today=DAY2).warnings == []
 
@@ -387,16 +410,16 @@ def test_a_file_that_vanishes_mid_scan_does_not_crash_the_scan(engagement, monke
 
     ghost = folder(engagement, "A01") / "ghost.pdf"
     ghost.write_bytes(b"%PDF-1.4 " + b"x" * 9000)
-    real_listing = scanner_module.iter_candidate_files
+    # The listing is the request's files by their names (decision 168).
+    real_listing = scanner_module.assign_files
 
-    def listing_then_vanish(path):
-        found = real_listing(path)
-        if ghost in found:
+    def listing_then_vanish(path, identifiers):
+        found = real_listing(path, identifiers)
+        if ghost in found.get("A01", []):
             ghost.unlink()
         return found
 
-    monkeypatch.setattr(scanner_module, "iter_candidate_files", listing_then_vanish)
-    monkeypatch.setattr("tracker.validators.iter_candidate_files", listing_then_vanish)
+    monkeypatch.setattr(scanner_module, "assign_files", listing_then_vanish)
 
     report = scan_engagement(engagement, today=DAY1)
     assert report.recorded
@@ -559,7 +582,7 @@ def test_a_received_file_the_sync_client_dehydrated_is_not_a_regression(engageme
     scan_engagement(engagement, today=DAY1)
     assert statuses(engagement)["A01"].status == Status.RECEIVED
 
-    monkeypatch.setattr("tracker.validators.is_cloud_placeholder", lambda p: p.name == "chase.pdf")
+    monkeypatch.setattr("tracker.validators.is_cloud_placeholder", lambda p: p.name == received.name)
     scan_engagement(engagement, today=DAY2)
     row = statuses(engagement)["A01"]
     assert row.status == Status.PENDING_SYNC and row.received_date == DAY1
@@ -568,12 +591,13 @@ def test_a_received_file_the_sync_client_dehydrated_is_not_a_regression(engageme
 
 
 def test_an_empty_note_replaces_the_old_one(engagement):
-    # A blank note must reach the record as a blank. "request folder not found"
-    # must not outlive the folder, or the reminder holds the row back for ever.
-    folder(engagement, "A01").rmdir()
+    # A blank note must reach the record as a blank: a note that outlived
+    # its cause would hold the row back, or ask the client, for ever.
+    text_pdf(folder(engagement, "A01") / "wrong.pdf", "Wells Fargo Statement Dec 2025")
     scan_engagement(engagement, today=DAY1)
-    assert reasons.NO_REQUEST_FOLDER.matches(statuses(engagement)["A01"].validation_notes)
-    scaffold_engagement(engagement)                      # the next pass creates it
+    assert reasons.WRONG_DOCUMENT.matches(statuses(engagement)["A01"].validation_notes)
+    (folder(engagement, "A01") / "wrong.pdf").unlink()
+    scaffold_engagement(engagement)
     scan_engagement(engagement, today=DAY2)
     assert statuses(engagement)["A01"].validation_notes == ""
 
@@ -735,7 +759,7 @@ def test_a_copy_that_disagrees_with_its_original_is_not_counted(engagement):
     assign_review_file(engagement, parked.pbc_location, "A01", today=DAY1)
     [row] = read_index(engagement)
     home = engagement / row.prepared_location
-    assert home.parent.name.startswith("A01"), row
+    assert home.parent.name == PREPARED_DIR_NAME and home.name.startswith("A01 - "), row
     scan_engagement(engagement, today=DAY1)
     assert statuses(engagement)["A01"].status == Status.RECEIVED
 
@@ -758,9 +782,10 @@ def test_a_copy_that_disagrees_with_its_original_is_not_counted(engagement):
     assert scan_engagement(engagement, today=DAY2).updates["A01"].status == Status.RECEIVED
 
 
-def test_an_unrecorded_file_in_a_request_folder_is_counted_and_said(engagement):
+def test_an_unrecorded_file_named_for_a_request_is_counted_and_said(engagement):
     """The scanner's contract since its first row: a request's status is what
-    its folder holds. A file a person can see going uncounted would be a lie
+    the firm's folder holds for it - by its folder until decision 168, by
+    its name since. A file a person can see going uncounted would be a lie
     in the other direction, so it counts - and the pass says every pass that
     nothing on the record put it there."""
     from tests.conftest import sort
@@ -776,7 +801,7 @@ def test_an_unrecorded_file_in_a_request_folder_is_counted_and_said(engagement):
     assert [e.error for e in report.attention] == [UNRECORDED_COPY.format(location=location)]
     assert scanned.updates["A01"].status == Status.RECEIVED
     assert scanned.updates["A01"].file_count == 1
-    assert scanned.warnings == []                 # it is in a request folder, not loose
+    assert scanned.warnings == []                 # its name is A01's: not a stray
     assert stray.is_file()
 
 
@@ -839,3 +864,43 @@ def test_a_person_filed_copy_is_proved_through_the_memo(engagement, monkeypatch)
     again = scan_engagement(engagement, today=DAY2)
     assert calls["n"] == 0
     assert ACCEPTED_NOTE.format(n=1) in again.updates["A01"].validation_notes
+
+
+# ------------------------- decision 168: a request's files are its names ----
+
+
+def test_a_longer_identifier_owns_its_files(tmp_path):
+    """Claim 3: with A01 and A01-B on the list, ``A01-B - Loan - TY2025.pdf``
+    counts toward A01-B only - the longest identifier a name starts with,
+    the rule the request folders were assigned by (``assign_files``)."""
+    items = [RequestItem(identifier="A01", document="Bank Statement", allowed_extensions=("csv",),
+                         min_size_kb=0),
+             RequestItem(identifier="A01-B", document="Loan", allowed_extensions=("csv",),
+                         min_size_kb=0)]
+    engagement = make_engagement(tmp_path, items)
+    prepared = engagement / PREPARED_DIR_NAME
+    (prepared / "A01-B - Loan - TY2025.csv").write_text("loan data", encoding="utf-8")
+
+    report = scan_engagement(engagement, today=DAY1)
+    assert report.updates["A01-B"].status == Status.RECEIVED
+    assert report.updates["A01-B"].file_count == 1
+    assert report.updates["A01"].status == Status.MISSING
+    assert report.updates["A01"].file_count == 0
+
+
+def test_a_folder_inside_prepared_is_a_persons_and_counts_nothing(engagement):
+    """Claim 6, ruling 7: a file in ``Prepared/A01 - Bank Statement/`` - a
+    folder shaped like a request's - is not counted, and the run names the
+    folder once per pass, however many files it holds."""
+    person = engagement / PREPARED_DIR_NAME / "A01 - Bank Statement"
+    person.mkdir()
+    text_pdf(person / "chase.pdf", "Chase Bank Statement Dec 2025")
+    text_pdf(person / "A01 - chase copy.pdf", "Chase Bank Statement Dec 2025")
+    said = reasons.PERSONS_FOLDER.format(folder=person.name, prepared=PREPARED_DIR_NAME)
+
+    for day in (DAY1, DAY2):
+        report = scan_engagement(engagement, today=day)
+        assert report.updates["A01"].status == Status.MISSING
+        assert report.updates["A01"].file_count == 0
+        assert report.warnings.count(said) == 1
+        assert [w for w in report.warnings if "chase" in w] == []   # never file by file
