@@ -10,7 +10,6 @@ the app records it, so no test touches a real one.
 import datetime as dt
 import io
 import json
-import os
 from pathlib import Path
 
 import pytest
@@ -1524,9 +1523,20 @@ def test_the_apps_pass_is_the_runners_pass(capsys, demo_root):
     assert payload["run"]["warnings"] == []
 
     # A lock held by another run is reported as skipped, not as an error.
+    # Another run is another process: a lock naming this one, which it does
+    # not hold, is its own leftover and is replaced (decision 171).
+    import subprocess
+    import sys
+
     from tracker.locking import LOCK_FILENAME
-    (engagement / LOCK_FILENAME).write_text(lock_line(os.getpid(), dt.datetime(2026, 3, 14, 7, 3)), encoding="utf-8")
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    other = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    try:
+        (engagement / LOCK_FILENAME).write_text(lock_line(other.pid, dt.datetime(2026, 3, 14, 7, 3)),
+                                                encoding="utf-8")
+        code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    finally:
+        other.kill()
+        other.wait()
     assert code == 0 and payload["run"]["skipped"].startswith("another run")
     (engagement / LOCK_FILENAME).unlink()
 

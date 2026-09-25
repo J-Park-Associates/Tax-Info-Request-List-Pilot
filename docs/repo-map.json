@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 130,
-    "edges": 814,
-    "reused": 104
+    "edges": 818,
+    "reused": 73
   },
   "node_types": [
     "artifact",
@@ -1004,8 +1004,8 @@
       "id": "tracker/locking.py",
       "type": "module",
       "layer": "core",
-      "sha256": "d26e85c1eae6e4c4",
-      "lines": 358,
+      "sha256": "ecd33989e89eaf40",
+      "lines": 581,
       "exports": [
         "EngagementLock",
         "EngagementLockedError",
@@ -1029,7 +1029,7 @@
         "RELEASED_LINE": "'released=1'"
       },
       "role": "One lock per engagement (LOCK_FILENAME, O_EXCL, stale after STALE_LOCK_SECONDS), held by runner.run_engagement() across a whole pass, by the filer or the scanner on its own when either is run alone, and by the manifest's two writes. EngagementLock (the open handle and its token), EngagementLockedError; engagement_lock() context manager, taken before the request list, the record or the drop folder is read.",
-      "notes": "Exists because two runs on one engagement (scheduler repeat overlapping a desktop click) raced on the same originals and the loser's rows were written from a stale picture. The filer moves and records; the scanner records statuses; the manifest records a person's edit (decision 104) - all under this one lock, one protocol. Dry runs never take it. The descriptor stays open while held (Windows then refuses to delete it, so a stale-looking lock its owner still holds is refused) and release_lock() removes the file only if it still carries this run's token. RUN_TIME_LIMIT_SECONDS is the one number for how long a scheduled pass may run: tracker.scheduling renders it as the task's ExecutionTimeLimit and STALE_LOCK_SECONDS is derived above it. One machine per clients root: a lock file synced between two machines is not a lock. lock_status()/clear_stale_lock() back the app's lock notice. Decision 54: pid_alive() - a lock whose owner process is gone is stale at any age. Decision 56: the lock line carries host=; another host's pid is unknowable, never dead. Decision 59: a lock that cannot be deleted on release is marked RELEASED_LINE. Decision 102: the lock is not re-entrant - it is an O_EXCL file - so the steps a pass makes take a lock_held flag and skip taking it, and a writer that may be reached with the lock already held (manifest.save_rules(), the journal's append) asks lock_is_held() rather than taking it twice. Decision 115: the machine's name in the lock line comes from platform.node(), not from the socket module - the same name, and the package imports no network module. Decision 137 (L6): the module docstring states that the stale-lock rules rest on the one-machine rule - another host's lock is left to the age rule, whose promise is this machine's schedule's."
+      "notes": "Exists because two runs on one engagement (scheduler repeat overlapping a desktop click) raced on the same originals and the loser's rows were written from a stale picture. The filer moves and records; the scanner records statuses; the manifest records a person's edit (decision 104) - all under this one lock, one protocol. Dry runs never take it. The descriptor stays open while held (Windows then refuses to delete it, so a stale-looking lock its owner still holds is refused) and release_lock() removes the file only if it still carries this run's token. RUN_TIME_LIMIT_SECONDS is the one number for how long a scheduled pass may run: tracker.scheduling renders it as the task's ExecutionTimeLimit and STALE_LOCK_SECONDS is derived above it. One machine per clients root: a lock file synced between two machines is not a lock. lock_status()/clear_stale_lock() back the app's lock notice. Decision 54: pid_alive() - a lock whose owner process is gone is stale at any age. Decision 56: the lock line carries host=; another host's pid is unknowable, never dead. Decision 59: a lock that cannot be deleted on release is marked RELEASED_LINE. Decision 102: the lock is not re-entrant - it is an O_EXCL file - so the steps a pass makes take a lock_held flag and skip taking it, and a writer that may be reached with the lock already held (manifest.save_rules(), the journal's append) asks lock_is_held() rather than taking it twice. Decision 115: the machine's name in the lock line comes from platform.node(), not from the socket module - the same name, and the package imports no network module. Decision 137 (L6): the module docstring states that the stale-lock rules rest on the one-machine rule - another host's lock is left to the age rule, whose promise is this machine's schedule's. Decision 171 (the Drive test's F1 and F2): on Google Drive a contended unlink can report success and leave the file, so release_lock() reads the file back - only FileNotFoundError proves it went, a refused read is looked at again - and treats its own token still there like a refused delete (retry, then RELEASED_LINE); the file is read again before every retried delete; a module-level Counter of the exact tokens this process holds (by token, not path: no second spelling hides a held lock, and a release removes only its own), behind a threading.Lock kept as insurance (the app runs one tracker process per command, no threads), makes a lock naming this process whose text is not a held token a leftover to replace - one process takes the same lock twice in ordinary work (an app command then its _rescan; a fed return in two household passes) - while a held token is still refused; and a PermissionError from the O_EXCL create is changing hands only while something is at the name (retried up to _CHANGING_HANDS_ATTEMPTS times, then EngagementLockedError 'is changing hands'): refused with the name free, once more at once, and then the original PermissionError goes to the caller, a run error, never a quiet skip."
     },
     {
       "id": "tracker/manifest.py",
@@ -2498,8 +2498,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "7ac738eebe9b7e50",
-      "lines": 412,
+      "sha256": "646803756e404581",
+      "lines": 413,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -2516,7 +2516,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "50db493f80775270",
+      "sha256": "be62bf54b623d0c8",
       "lines": 813,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -2525,8 +2525,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "f552a034cfac94bc",
-      "lines": 1287,
+      "sha256": "02b2e94d1c1c49fd",
+      "lines": 1298,
       "role": "The operator's page for one tax season: the designated machine and why only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -2857,8 +2857,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "fec82daae7a4d338",
-      "lines": 4635,
+      "sha256": "7fa41f4ca807f790",
+      "lines": 4645,
       "exports": [
         "HOUSEHOLD",
         "LONG_ROW_OVER",
@@ -3912,8 +3912,8 @@
       "id": "tests/test_locking.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9ee204eea5ca4e40",
-      "lines": 206,
+      "sha256": "0b9a51582d7b7aa6",
+      "lines": 494,
       "exports": [
         "test_a_fresh_lock_blocks_a_second_run",
         "test_a_fresh_lock_is_refused_and_a_stale_one_cleared",
@@ -3921,14 +3921,24 @@
         "test_a_lock_from_another_machine_is_judged_by_its_age_alone",
         "test_a_lock_naming_no_process_falls_back_to_its_age",
         "test_a_lock_replaced_while_held_is_not_released_by_its_old_owner",
+        "test_a_lock_taken_while_another_is_let_go_is_still_held",
         "test_a_lock_that_cannot_be_deleted_on_release_does_not_block_its_own_process",
+        "test_a_lock_this_process_really_holds_is_still_refused",
         "test_a_lock_whose_owner_is_gone_is_stale_at_any_age",
+        "test_a_permission_error_while_taking_the_lock_is_a_lock_not_a_crash",
+        "test_a_process_is_never_refused_by_its_own_leftover_lock",
+        "test_a_read_refused_after_the_delete_is_no_proof_it_went",
+        "test_a_release_leaves_a_lock_another_run_took_alone",
+        "test_a_release_whose_unlink_did_not_take_marks_the_lock_released",
+        "test_a_retried_delete_never_lands_on_a_lock_another_run_took",
         "test_a_stale_lock_is_replaced",
+        "test_an_unwritable_folder_is_a_run_error_not_another_run",
         "test_clearing_a_stale_lock_that_is_still_held_is_refused",
         "test_lock_is_released_when_the_body_raises",
         "test_lock_is_taken_and_released",
         "test_lock_status_reads_what_the_lock_says",
-        "test_the_stale_threshold_outlives_the_scheduled_jobs_time_limit"
+        "test_the_stale_threshold_outlives_the_scheduled_jobs_time_limit",
+        "test_two_processes_contending_for_one_lock_lose_no_line_and_leave_no_lock"
       ]
     },
     {
@@ -6985,6 +6995,30 @@
       "from": "tests/test_locking.py",
       "to": "pkg:pytest",
       "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_locking.py",
+      "to": "tracker/registry.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_locking.py",
+      "to": "tracker/runner.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_locking.py",
+      "to": "tests/conftest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_locking.py",
+      "to": "tests/samples.py",
+      "type": "imports",
       "source": "derived"
     },
     {
