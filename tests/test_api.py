@@ -2098,7 +2098,7 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
         "file_where_it_waits": api.FILE_WHERE_IT_WAITS_LABEL,
         "keyword": api.KEYWORD_LABEL, "keyword_help": api.KEYWORD_HELP,
         "issuer_label": api.ISSUER_LABEL, "issuer_help": api.ISSUER_HELP,
-        "issuer_add": api.ISSUER_ADD_LABEL,
+        "issuer_add": api.ISSUER_ADD_LABEL, "issuer_not_rescanned": api.ISSUER_NOT_RESCANNED,
     }
     assert vocab["default_extensions"] == ", ".join(DEFAULT_EXTENSIONS)
     assert "carried_sheet" not in vocab
@@ -7089,6 +7089,25 @@ def test_adding_the_issuer_and_filing_is_one_command_writing_two_events_in_one_t
     assert recorded_rules(engagement) == rules and read_index(engagement) == index
     [filed] = [e for e in index if e.original_name == "k-1 dunmore.pdf"]
     assert filed.decision == FILED and filed.identifier == "F03"
+
+
+def test_a_locked_rescan_after_adding_the_issuer_is_said_by_its_class_never_its_text(
+        capsys, demo_root, monkeypatch):
+    """The restack review's N2: when the re-scan after the filing meets the
+    lock, the reply says so in the vocabulary's sentence, by the error's
+    class alone - never the exception's own text (principle 7)."""
+    engagement, row = _issuer_return(capsys, demo_root)
+
+    def locked(folder):
+        raise api.ScanLockedError("held at C:/private/fabricated by host-x")
+
+    monkeypatch.setattr(api, "scan_engagement", locked)
+    code, payload = _add_issuer(capsys, engagement, row)
+    assert code == 0, payload
+    note = payload["added_and_filed"]["assigned"]["scan_note"]
+    assert note == api.ISSUER_NOT_RESCANNED.format(kind="EngagementLockedError")
+    assert "private" not in note
+    assert api._vocab()["review_labels"]["issuer_not_rescanned"] == api.ISSUER_NOT_RESCANNED
 
 
 def test_the_reply_names_the_row_added_and_the_document_filed(capsys, demo_root):

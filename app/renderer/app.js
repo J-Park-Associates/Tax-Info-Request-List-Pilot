@@ -2836,7 +2836,7 @@ function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack,
         taught ? learnedBox("div", row) : null));
       cell.colSpan = plain.length + 3;
       const routingRow = el("tr", { className: open ? "ed-routing" : "ed-routing hidden",
-                                    dataset: { row: String(index) } }, cell);
+                                    dataset: { index: String(index) } }, cell);
       const toggle = el("button", {
         type: "button", className: "btn btn-small ed-fold", title: vocab.editor.routing_help,
         "aria-expanded": String(open),
@@ -2846,7 +2846,7 @@ function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack,
         toggle.setAttribute("aria-expanded", String(now));
         fold.setOpen(row, now);
       });
-      const plainRow = el("tr", { dataset: { row: String(index) } },
+      const plainRow = el("tr", { dataset: { index: String(index) } },
         el("td", { className: "ed-name" }, name,
           custom ? cellInput(row, documentColumn, changed) : null),
         plain.map((c) => el("td", { className: `ed-${c.key}` }, cellInput(row, c, changed))),
@@ -2860,7 +2860,7 @@ function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack,
       columns.map((c) => el("th", { title: c.help }, c.label)),
       taught ? el("th", {}, "") : null,
       el("th", {}, ""));
-    body = rows.map((row, index) => el("tr", { dataset: { row: String(index) } },
+    body = rows.map((row, index) => el("tr", { dataset: { index: String(index) } },
       keyed ? el("td", { className: "ed-id" }, el("span", { className: "req-id" }, row.identifier)) : null,
       columns.map((c) => el("td", { className: `ed-${c.key}` }, cellInput(row, c, () => onChange(rows)))),
       taught ? learnedBox("td", row) : null,
@@ -2882,7 +2882,7 @@ function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack,
   table.addEventListener("keydown", (e) => {
     // Enter on the last row adds another, as Add a return / New household always has.
     const tr = e.target.closest("tr");
-    if (e.key === "Enter" && tr && tr.dataset.row === String(rows.length - 1) && e.target.matches("input")) {
+    if (e.key === "Enter" && tr && tr.dataset.index === String(rows.length - 1) && e.target.matches("input")) {
       e.preventDefault();
       container.dispatchEvent(new CustomEvent("addrow", { bubbles: true }));
     }
@@ -2982,7 +2982,7 @@ async function createEngagement() {
     // nothing the person typed is lost, and a toast would vanish (decision 196).
     // Anything else - stale, locked, failed - is a notice (decision 193).
     if (err.failure && err.failure.kind === "refused") {
-      $("ne-note").textContent = err.message;
+      $("ne-note").textContent = failureSentence(err);
       $("ne-note").classList.remove("hidden");
     } else {
       failed(err);
@@ -3163,8 +3163,9 @@ async function unlearnKeyword(identifier, keyword) {
   try {
     result = await call(withEng("unlearn"), { identifier, keyword });
   } catch (err) {
-    editorNote(err.message, "err");
-    failed(err);   // and a notice, with Look again when the list moved (the review's S3)
+    // One sentence, said in the editor and as a notice, with Look again when
+    // the list moved (the review's S3): never an error's own text (principle 7).
+    editorNote(failed(err), "err");
     return;
   }
   editorState.learned = result.state.learned || {};
@@ -3311,8 +3312,9 @@ async function renameRequest() {
     if (renamed.scan_note) lines.push(renamed.scan_note);
     editorNote(lines.join("\n"), renamed.left.length || renamed.scan_note ? "warn" : "ok");
   } catch (err) {
-    editorNote(err.message, "err");
-    failed(err);   // and a notice, with Look again when the list moved (the review's S3)
+    // One sentence, said in the editor and as a notice, with Look again when
+    // the list moved (the review's S3): never an error's own text (principle 7).
+    editorNote(failed(err), "err");
   } finally {
     btn.disabled = false;
   }

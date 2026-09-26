@@ -934,9 +934,62 @@ def test_a_refused_create_stays_in_the_dialog():
     html = read("app/renderer/index.html")
     body = _js_function(js, "async function createEngagement() {")
     caught = body.split("} catch (err) {", 1)[1].split("} finally {", 1)[0]
-    assert '$("ne-note")' in caught and "err.message" in caught, caught
-    assert "toast(" not in caught, caught
+    # A1's split (decision 196, the restack review's S2): a refusal stays in
+    # the dialog, in failureSentence's words; anything else is a notice.
+    refusal, other = caught.split("} else {", 1)
+    assert 'if (err.failure && err.failure.kind === "refused") {' in refusal, caught
+    assert '$("ne-note").textContent = failureSentence(err);' in refusal, caught
+    assert other.strip().startswith("failed(err);"), caught
+    assert "err.message" not in caught and "toast(" not in caught, caught
     assert '<p id="ne-note" class="rem-hold hidden" role="alert"></p>' in html
+
+
+def test_a_refused_create_is_said_in_the_dialog_and_a_locked_one_is_a_notice(tmp_path):
+    """A1's split, run as written (decision 196, the restack review's S2):
+    ``createEngagement``'s refusal lands in the dialog's note in the API's
+    sentence and raises no notice; a locked create lands in the notices
+    area and leaves the note alone; an error of the page's own is said by
+    its class there, never its text."""
+    harness = """
+const classes = () => { const on = new Set(["hidden"]);
+  return { remove: (c) => on.delete(c), contains: (c) => on.has(c) }; };
+const page = { "tmpl-list": { querySelectorAll: () => [] }, "ne-create": { disabled: false },
+               "ne-note": { textContent: "", classList: classes() } };
+const $ = (id) => page[id] || { value: "" };
+const templates = [];
+const customItems = [{ identifier: "X01", document: "Letter from the county" }];
+const wizardPeople = [];
+const selectedForm = "1040";
+const householdSpec = () => ({});
+const personSpec = (p) => p;
+const call = async () => { throw THROWN; };
+const toast = (text) => { throw new Error(`toasted: ${text}`); };
+const vocab = { nothing_asked: "", shell: { page_error: "Own error ({kind})." } };
+const fill = (text, values) => text.replace("{kind}", values.kind);
+const done = { notices: [], logged: 0 };
+const window = { tracker: { logError: () => { done.logged += 1; } } };
+const notice = (failure) => done.notices.push([failure.sentence, failure.kind]);
+createEngagement().then(() => process.stdout.write(JSON.stringify({
+  ...done, note: page["ne-note"].textContent, shown: !page["ne-note"].classList.contains("hidden"),
+  enabled: !page["ne-create"].disabled })));
+"""
+    headers = ("async function createEngagement() {", "function failed(err, retry) {",
+               "function failureSentence(err) {")
+
+    def thrown(sentence: str, kind: str) -> str:
+        return (f"Object.assign(new Error({json.dumps(sentence)}), {{ failure: "
+                f"{{ sentence: {json.dumps(sentence)}, kind: {json.dumps(kind)}, identifier: null }} }})")
+
+    refused = "A household of that name is already on the list (fabricated)."
+    seen = _run_renderer(tmp_path, "create_refused", headers, harness.replace("THROWN", thrown(refused, "refused")))
+    assert seen == {"notices": [], "logged": 0, "note": refused, "shown": True, "enabled": True}
+    locked = "Another pass holds this household (fabricated)."
+    seen = _run_renderer(tmp_path, "create_locked", headers, harness.replace("THROWN", thrown(locked, "locked")))
+    assert seen == {"notices": [[locked, "locked"]], "logged": 0, "note": "", "shown": False, "enabled": True}
+    seen = _run_renderer(tmp_path, "create_own", headers,
+                         harness.replace("THROWN", 'new TypeError("x is undefined at C:/private")'))
+    assert seen == {"notices": [["Own error (TypeError).", "failed"]], "logged": 1, "note": "",
+                    "shown": False, "enabled": True}
 
 
 def test_new_households_refusal_leads_back_to_the_name_field_with_everything_typed_kept():
@@ -2387,10 +2440,25 @@ def test_a_switch_between_two_locked_returns_watches_the_second_and_gives_its_bu
 
 
 def test_the_editors_failures_are_notices_too():
+    """Every editor catch says one sentence, in the editor and as a notice:
+    ``failed``'s, never an error's own text (principle 7; the restack
+    review's M1)."""
     js = read("app/renderer/app.js")
-    for name in ("async function saveEditor() {", "async function renameRequest() {"):
+    for name in ("async function saveEditor() {", "async function renameRequest() {",
+                 "async function unlearnKeyword(identifier, keyword) {"):
         body = js.split(name, 1)[1].split("\n}\n", 1)[0]
-        assert "failed(err)" in body, name
+        assert 'editorNote(failed(err), "err");' in body, name
+        assert "err.message" not in body, name
+
+
+def test_an_errors_own_message_is_read_only_where_failureSentence_logs_it():
+    """UX principle 7, by shape: the one place app.js reads a caught error's
+    message is ``failureSentence``, which sends it to the error log."""
+    js = read("app/renderer/app.js")
+    inside = _js_function(js, "function failureSentence(err) {")
+    outside = js.replace(inside, "")
+    assert inside.count(".message") == 1 and "window.tracker.logError(" in inside
+    assert re.search(r"\.message\b", outside) is None
 
 
 def test_every_word_a_scan_reply_is_said_in_is_the_apis():
@@ -2625,7 +2693,6 @@ const editorFolds = new Map();
 const editorRowIsCustom = () => false;
 const editorRowFoldOpen = () => false;
 const showEveryFold = () => {};
-Element.prototype.addEventListener = () => {};
 const editorRows = [
   { identifier: "A01", group: "" },
   { identifier: "B01", group: NOT_ASKED_GROUP },
@@ -2698,6 +2765,57 @@ process.stdout.write(JSON.stringify({ boxes: drawnBoxes, tree: tree(box) }));
                      "catalog_fold": ["identifier", "document", "required_keywords"],
                      "custom_plain": ["document", "expected_count", "asked"],
                      "custom_fold": ["identifier", "required_keywords"]}
+
+
+def test_a_notice_for_a_numeric_identifier_outlines_that_request_and_no_editor_row(tmp_path):
+    """Since decision 193 ``data-row`` is the row a notice names, so
+    ``requestRows`` keeps each row's index in ``data-index`` instead: a
+    notice for request "2", run through ``outlineRefused`` as written,
+    outlines the request table's row "2" and never the editor's or the
+    wizard's third row (the restack review's S1)."""
+    js = read("app/renderer/app.js")
+    drawing = _js_function(js, "function requestRows(container, rows, { columns, onChange, onRemove, "
+                               "onTakeBack, learned = {}, keyed = true, fold = null }) {")
+    assert "row:" not in drawing and "dataset.row" not in drawing
+    seen = _run_renderer(tmp_path, "outline_numeric", (
+        "function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack, "
+        "learned = {}, keyed = true, fold = null }) {", "function outlineRefused() {"), """
+Object.defineProperty(Element.prototype, "classList", { get() {
+  const node = this;
+  return { toggle(name, on) {
+    const names = new Set(node.className.split(" ").filter(Boolean));
+    if (on) names.add(name); else names.delete(name);
+    node.className = [...names].join(" ");
+  } };
+} });
+const vocab = { editor: { routing: "Routing", routing_help: "", remove_row: "Remove" },
+                triage: { identifier_separator: " - " } };
+const columns = ["identifier", "document", "expected_count"].map((key) => ({ key, label: key, help: "" }));
+const cellInput = () => el("span", {});
+const columnsByKey = (keys) => columns.filter((c) => keys.includes(c.key));
+const rows = [{ identifier: "A01", document: "W-2" }, { identifier: "B01", document: "1099-INT" },
+              { identifier: "C01", document: "1098" }];
+const table = el("tr", { dataset: { row: "2" } });
+const editor = document.createElement("div");
+requestRows(editor, rows, { columns, onChange: () => {}, onRemove: () => {}, fold: {
+  plain: ["expected_count"], routing: ["identifier", "document"], custom: () => false,
+  isOpen: () => false, setOpen: () => {} } });
+const wizard = document.createElement("div");
+requestRows(wizard, rows, { columns, onChange: () => {}, onRemove: () => {}, keyed: false });
+const all = [];
+const walk = (n) => { if (n instanceof Element) { all.push(n); n.childNodes.forEach(walk); } };
+[table, editor, wizard].forEach(walk);
+document.querySelectorAll = (selector) => all.filter((n) => selector === "[data-row]" && "row" in n.dataset);
+const notices = [{ identifier: "2" }];
+outlineRefused();
+const outlined = (root) => { const found = []; const look = (n) => { if (n instanceof Element) {
+  if (n.className.split(" ").includes("refused")) found.push(n.dataset.index ?? n.dataset.row);
+  n.childNodes.forEach(look); } }; look(root); return found; };
+process.stdout.write(JSON.stringify({ table: outlined(table), editor: outlined(editor),
+                                      wizard: outlined(wizard),
+                                      indexed: all.filter((n) => n.tag === "tr" && "index" in n.dataset).length }));
+""")
+    assert seen == {"table": ["2"], "editor": [], "wizard": [], "indexed": 9}
 
 
 # The dialogs' guard as written: the registry, the snapshot, the dirty test

@@ -863,6 +863,10 @@ ISSUER_HELP = ("Adds {identifier}, a K-1 row for this issuer, to the request lis
                "document under it. Type the distinctive words and leave off the suffix (L.P., LLC).")
 ISSUER_ADD_LABEL = "Add the issuer and file it"
 ISSUER_ADDED_AND_FILED = "{identifier} - {document} added to the request list, and {name} filed under it."
+#: The issuer added and filed, but the re-scan after it met the engagement
+#: lock: said by the error's class, never its text (principle 7; the
+#: restack review's N2). The next pass puts the row's status right.
+ISSUER_NOT_RESCANNED = "not re-scanned ({kind}); the next pass re-scans it"
 #: A card's issuer that is not a piece of text - only a hand-written
 #: stdin can send one - refused rather than turned into a name (the
 #: review's N4, as ``_seq_of`` refuses a missing version).
@@ -1169,7 +1173,8 @@ def _vocab() -> dict:
                           # and the unnamed issuer's box, sentence and button.
                           "keyword": KEYWORD_LABEL, "keyword_help": KEYWORD_HELP,
                           "issuer_label": ISSUER_LABEL, "issuer_help": ISSUER_HELP,
-                          "issuer_add": ISSUER_ADD_LABEL},
+                          "issuer_add": ISSUER_ADD_LABEL,
+                          "issuer_not_rescanned": ISSUER_NOT_RESCANNED},
         # What every dialog says when closed with changes not saved, and
         # its two answers (decision 201).
         "dialogs": {"unsaved": UNSAVED_CHANGES, "keep_editing": KEEP_EDITING,
@@ -4092,7 +4097,7 @@ def _cmd_add_issuer_and_file(argv: list[str]) -> dict:
     try:
         scan_engagement(engagement)
     except ScanLockedError as exc:
-        scan_note = f"not re-scanned: {exc}"
+        scan_note = ISSUER_NOT_RESCANNED.format(kind=type(exc).__name__)
     _refresh_readmes(engagement)
     return {
         "added_and_filed": {
