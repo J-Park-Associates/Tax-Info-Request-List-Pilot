@@ -25,6 +25,7 @@ from tracker.filer import NEEDS_REVIEW, IndexEntry, read_index
 from tracker.layout import household_of, inbox_of, originals_of, root_of
 from tracker.manifest import (
     EngagementInfo,
+    ManifestError,
     Override,
     RequestItem,
     Status,
@@ -49,6 +50,9 @@ from tracker.reminder import (
     is_unedited,
 )
 from tracker.runner import (
+    CODE_PAGE_NOT_WRITTEN,
+    CODE_PASS_DID_NOT_FINISH,
+    CODE_PASS_STOPPED,
     DRAFT_WEEKDAY,
     LOG_FILENAME,
     NOTHING_OUTSTANDING,
@@ -68,6 +72,7 @@ from tracker.runner import (
     format_report,
     is_draft_day,
     last_drafted,
+    log_path,
     main,
     run_household,
     run_registry,
@@ -494,7 +499,8 @@ def test_a_held_engagement_writes_no_draft_retires_its_own_stale_draft_and_leave
     assert edited.read_bytes() == kept, "a person's work is theirs"
     log_path = append_log(tmp_path / LOG_FILENAME, RunReport(today=SATURDAY, runs=[run]))
     logged = log_path.read_text(encoding="utf-8")
-    assert "held 1" in logged and run.draft_note in logged
+    # Counted, never named (decision 186): which rows hold it is the page's.
+    assert " held=1 " in logged and run.draft_note not in logged
     assert format_report(RunReport(today=SATURDAY, runs=[run])).count("1 held") == 1
 
 
@@ -731,18 +737,21 @@ def test_a_weekday_report_says_why_there_are_no_drafts(tmp_path, samples):
     assert "0 draft(s) written" in text
 
 
-def test_the_log_takes_a_name_utf8_cannot_hold(tmp_path, samples):
+def test_a_name_utf8_cannot_hold_never_reaches_the_log(tmp_path, samples):
     # The eleventh reading: a lone surrogate in a client's file name is
     # reported every pass by name, and the run log - the unattended run's
-    # only trace - died on it, losing every engagement's line.
+    # only trace - died on it. Since decision 186 no name reaches the log
+    # at all: the failure is counted and coded, and the entry is whole.
     engagement = build_engagement(tmp_path, samples)
     run = EngagementRun(engagement=engagement)
     run.error = "bank statement \ud83d.pdf: cannot be handled under this name"
+    run.code = "crashed:UnicodeEncodeError"
     report = RunReport(today=FRIDAY, reminders=REMINDERS_AUTO, dry_run=False, runs=[run])
     log = tmp_path / LOG_FILENAME
     append_log(log, report)
     text = log.read_text(encoding="utf-8")
-    assert "bank statement" in text and "cannot be handled" in text
+    assert "bank statement" not in text and "cannot be handled" not in text
+    assert " failed=1 " in text and "codes crashed:UnicodeEncodeError=1" in text
 
 
 def test_the_log_appends_rather_than_replaces(tmp_path, samples):
@@ -753,9 +762,10 @@ def test_the_log_appends_rather_than_replaces(tmp_path, samples):
     append_log(log, run_registry(registry, today=FRIDAY))
     append_log(log, run_registry(registry, today=SATURDAY))
 
-    text = log.read_text(encoding="utf-8")
-    assert text.count("Smith TY2025") == 2
-    assert "2026-03-13" in text and "2026-03-14" in text
+    lines = log.read_text(encoding="utf-8").splitlines()
+    firsts = [line for line in lines if line.startswith("[")]
+    assert [line.split("] ")[1][:10] for line in firsts] == ["2026-03-13", "2026-03-14"]
+    assert len([line for line in lines if line.strip().startswith("counts ")]) == 2
 
 
 # ------------------------------------------------------- discovery end to end ----
@@ -1379,10 +1389,11 @@ def test_a_household_with_two_open_years_and_a_waiting_file_drafts_no_reminder_a
         assert TWO_OPEN_YEARS.format(years="2025, 2026") in run.warnings
         assert list(run.engagement.path.glob("reminder-draft*")) == []
         assert drafted_events(run.engagement.path) == [{ledger.HELD_KEY: []}]
-    # Said where a person looks: the run log, and the practice page's cell.
+    # Said where a person looks, the practice page's cell, and counted in
+    # the run log, which names nothing (decision 186).
     logged = append_log(tmp_path / LOG_FILENAME,
                         RunReport(today=SATURDAY, runs=runs)).read_text(encoding="utf-8")
-    assert logged.count(said) == len(runs)
+    assert f" held={len(runs)} " in logged and said not in logged
     page = html.unescape(write_status_page(tmp_path, RunReport(today=SATURDAY, runs=runs))
                          .read_text(encoding="utf-8"))
     assert f"<td>{STATUS_HELD.format(n=1)}</td>" in page
@@ -2196,10 +2207,10 @@ def test_a_pass_whose_own_code_raises_still_writes_its_log_and_its_page(
     assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER, "--log") == 1
     said = PASS_STOPPED.format(kind="KeyError")
     assert said in _page(root)
-    assert said in (root / LOG_FILENAME).read_text(encoding="utf-8")
+    logged = log_path().read_text(encoding="utf-8")
+    assert f"{CODE_PASS_STOPPED}=1" in logged
     assert "not a sentence" not in _page(root)
-    assert "Smith TY2025: filed 1" in (root / LOG_FILENAME).read_text(encoding="utf-8"), (
-        "the household that finished is logged")
+    assert " ok=1 " in logged and " filed=1 " in logged, "the household that finished is logged"
     capsys.readouterr()
 
 
@@ -2272,8 +2283,8 @@ def test_a_household_that_stops_is_said_by_its_class_never_its_message(
     monkeypatch.setattr(runner, "_sort_step", refused)
 
     assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER, "--log") == 1
-    log_text = (root / LOG_FILENAME).read_text(encoding="utf-8")
-    assert "OSError (EIO)" in log_text and "OSError (EIO)" in _page(root)
+    log_text = log_path().read_text(encoding="utf-8")
+    assert "crashed:OSError=1" in log_text and "OSError (EIO)" in _page(root)
     for said in (log_text, _page(root)):
         assert where not in said and "a file the disk refused" not in said
     capsys.readouterr()
@@ -2297,9 +2308,10 @@ def test_a_page_that_cannot_be_written_is_said_in_the_log_and_fails_the_run(
     monkeypatch.setattr(runner, "write_status_page", cannot_write)
 
     assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER, "--log") == 1
-    log_text = (root / LOG_FILENAME).read_text(encoding="utf-8")
-    assert PAGE_NOT_WRITTEN.format(kind="PermissionError") in log_text
+    log_text = log_path().read_text(encoding="utf-8")
+    assert f"codes {CODE_PAGE_NOT_WRITTEN}=1" in log_text
     assert "a client's folder" not in log_text
+    assert PAGE_NOT_WRITTEN.format(kind="PermissionError") in capsys.readouterr().out
     capsys.readouterr()
 
 
@@ -2308,7 +2320,7 @@ def test_the_run_log_carries_a_count_of_warnings_never_their_words(tmp_path, sam
     run = EngagementRun(engagement=engagement, warnings=["a sentence naming W-2 Client.pdf"] * 3)
     log_path = append_log(tmp_path / LOG_FILENAME, RunReport(today=SATURDAY, runs=[run]))
     text = log_path.read_text(encoding="utf-8")
-    assert "(warnings: 3)" in text
+    assert " warnings=3" in text
     assert "W-2 Client.pdf" not in text
 
 
@@ -2783,14 +2795,15 @@ def test_a_pass_that_never_ended_is_said_by_the_next_one(tmp_path, samples, monk
 
     root = tmp_path / "Clients"
     build_engagement(root, samples)
-    root_log = root / LOG_FILENAME
+    root_log = log_path()
+    root_log.parent.mkdir(parents=True)
     root_log.write_text("[2026-03-13T02:00:00] pass started\n", encoding="utf-8")   # then killed
 
     assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER, "--log") == 0
     said = PASS_DID_NOT_FINISH.format(stamp="2026-03-13T02:00:00")
     assert said in _page(root)
     text = root_log.read_text(encoding="utf-8")
-    assert said in text
+    assert said not in text and f"{CODE_PASS_DID_NOT_FINISH}=1" in text
     assert text.count("pass started") == 2, "this pass said it started too"
 
     assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER, "--log") == 0
@@ -3117,7 +3130,10 @@ def test_conflict_copies_and_lock_siblings_are_named_every_pass_and_never_delete
         for copy in left:
             assert esc(RECORD_SIBLING.format(path=copy.relative_to(tmp_path))) in text
             assert copy.read_text(encoding="utf-8") == '{"event": "scanned"}\n'
-    assert log.read_text(encoding="utf-8").count("3 copy(ies) beside a record") == 2
+    # Counted in the run log, never named there (decision 186).
+    logged = log.read_text(encoding="utf-8")
+    assert logged.count("record_copies=3") == 2
+    assert not any(copy.name in logged for copy in left)
 
     source = "\n".join(path.read_text(encoding="utf-8") for path in (repo / "tracker").glob("*.py"))
     assert "siblings(" in source and not any(
@@ -3417,7 +3433,7 @@ def _a_scheduled_main(tmp_path, monkeypatch, body):
     settings.mkdir(exist_ok=True)
     monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
     monkeypatch.setattr(runner_module, "_pass", body)
-    return main([SETTINGS_FLAG, str(settings), "--reminders", "never"])
+    return main([SETTINGS_FLAG, str(settings), "--reminders", "never", runner_module.LOG_FLAG])
 
 
 def test_a_household_not_served_twice_is_the_last_pass_files_reason(tmp_path, monkeypatch):
@@ -3456,8 +3472,22 @@ def test_a_pass_that_stops_after_its_root_logs_the_kind_never_the_words(tmp_path
 
     with pytest.raises(RuntimeError):
         _a_scheduled_main(tmp_path, monkeypatch, stopped)
-    said = (clients / LOG_FILENAME).read_text(encoding="utf-8")
+    said = runner_module.log_path().read_text(encoding="utf-8")      # the data home's (decision 186)
     assert f"pass failed ({runner_module.PASS_ENDED_EARLY})" in said and "(RuntimeError)" in said
+    assert "Fabricated" not in said
+    assert not (clients / LOG_FILENAME).exists()
+
+
+def test_a_pass_that_stops_before_its_root_is_logged_in_the_data_home(tmp_path, monkeypatch):
+    """159 had nowhere to log a pass that never found a root; the run log in
+    the data home (decision 186) takes it, by code and class only."""
+    def stopped(ns, parser, reached):
+        raise runner_module.PassFailed(runner_module.PASS_NO_ROOT, "Fabricated Client's folder")
+
+    with pytest.raises(SystemExit):
+        _a_scheduled_main(tmp_path, monkeypatch, stopped)
+    said = runner_module.log_path().read_text(encoding="utf-8")
+    assert f"pass failed ({runner_module.PASS_NO_ROOT})" in said and "(PassFailed)" in said
     assert "Fabricated" not in said
 
 
@@ -3500,7 +3530,7 @@ def _the_scheduled_pass_with(tmp_path, monkeypatch, spoil):
     with spoil(where):
         code = main([SETTINGS_FLAG, str(settings), "--reminders", "never", "--log"])
     page = html.unescape((clients / STATUS_PAGE_FILENAME).read_text(encoding="utf-8"))
-    logged = (clients / LOG_FILENAME).read_text(encoding="utf-8")
+    logged = runner_module.log_path().read_text(encoding="utf-8")   # the data home's (decision 186)
     written = json.loads(runner_module.last_pass_path().read_text(encoding="utf-8"))
     return code, page, logged, written
 
@@ -3526,7 +3556,9 @@ def test_a_damaged_checkpoint_ends_the_pass_named_with_its_page_and_log_written(
     records = page[page.index(runner_module.STATUS_RECORDS_HEADING):]
     first = records.split("<li>", 2)[1]
     assert first.startswith("No household was served this pass") and "Set the file aside" in first
-    assert "No household was served this pass" in logged and "Traceback" not in logged
+    # The log carries the code and the count, never the sentence (decision 186).
+    assert f"{runner_module.CODE_CHECKPOINT_NOT_PROVED}=1" in logged and "checkpoint_unread=1" in logged
+    assert "No household was served this pass" not in logged and "Traceback" not in logged
     assert written["reason_code"] == runner_module.PASS_CHECKPOINT_UNREADABLE
     assert runner_module.PASS_REASONS[runner_module.PASS_CHECKPOINT_UNREADABLE] in \
         runner_module.last_pass_line()["text"]
@@ -3868,6 +3900,9 @@ def test_what_an_earlier_version_left_is_named_for_deletion_and_never_deleted(tm
     monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
     monkeypatch.setenv(store.ENV_STORE, str(data_home() / store.STORE_FILENAME))
     store.close()
+    old_log = tmp_path / "Clients" / LOG_FILENAME        # the run log before 186d named clients
+    old_log.parent.mkdir()
+    old_log.write_text("an old log naming a client\n", encoding="utf-8")
 
     report = run_registry(Registry(source=tmp_path / "Clients", engagements=[]), today=SATURDAY,
                           dry_run=True)
@@ -3876,8 +3911,9 @@ def test_what_an_earlier_version_left_is_named_for_deletion_and_never_deleted(tm
     assert named == [runner_module.LEFT_BEHIND.format(
         paths="; ".join(str(settings.resolve() / name) for name in (
             store.STORE_FILENAME, store.STORE_WAL_FILENAME, runner_module.PASS_ORDER_FILENAME,
-            OCR_SCRATCH_DIRNAME)),
+            OCR_SCRATCH_DIRNAME)) + f"; {old_log}",
         home=data_home())]
+    assert old_log.read_text(encoding="utf-8") == "an old log naming a client\n"
     for name, path in left.items():
         assert path.read_bytes() == name.encode()                 # named, never touched
     assert (settings / OCR_SCRATCH_DIRNAME / "page-1.png").read_bytes() == b"a client's page"
@@ -3897,3 +3933,230 @@ def test_the_store_in_use_is_never_named_as_left_behind(tmp_path, monkeypatch):
     assert Path(store.store_path()).parent == app
     assert runner_module.left_behind(tmp_path) == []
     assert runner_module.left_behind_warning(tmp_path) == ""
+
+
+# ------------------------------------------------ the run log: counts and codes ----
+# Decision 186: the run log lives in the data home, names no client and no
+# file, and says every failure, skip and pass warning by a code.
+
+
+def _log_line(text: str, head: str) -> dict[str, str]:
+    """The last ``counts`` or ``codes`` line of a run log, as key -> value."""
+    [*_, line] = [one.strip() for one in text.splitlines() if one.strip().startswith(head + " ")]
+    return dict(pair.split("=", 1) for pair in line.split()[1:])
+
+
+def test_no_run_log_line_contains_a_client_file_name(tmp_path, samples, monkeypatch, capsys):
+    """The proof (decision 186): households, returns and dropped files that
+    all carry a made-up marker - one file that fails to sort, one slow
+    reading, one held reminder and one crashed return - and not one of
+    their names, nor the marker, reaches the run log. The console still
+    names them all."""
+    import errno
+
+    from tracker.filer import FileError
+
+    marker = "Zqxmarker"
+    root = tmp_path / "Clients"
+    held = build_engagement(root, samples, household=f"{marker} Held Household",
+                            name=f"{marker} Held TY2025",
+                            drops=(f"W-2 John Smith {YEAR}.pdf", "Form 1098 Mortgage Interest.pdf"))
+    crashed = build_engagement(root, samples, household=f"{marker} Crash Household",
+                               name=f"{marker} Crash TY2025")
+    unsorted = build_engagement(root, samples, household=f"{marker} Unsorted Household",
+                                name=f"{marker} Unsorted TY2025")
+    assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER) == 0
+    make_ambiguous(held.path)
+    slow = f"1099-INT {marker} slow.pdf"
+    (inbox_of(held.path) / slow).write_bytes((samples / "1099-INT First National.pdf").read_bytes())
+    (inbox_of(unsorted.path) / f"W-2 John Smith {YEAR}.pdf").write_bytes(
+        (samples / f"W-2 John Smith {YEAR}.pdf").read_bytes())
+    refused = f"{marker} bank statement.pdf"
+    where = str(crashed.path / f"{marker} a file the disk refused.pdf")
+    real_sort, real_file = runner_module._sort_step, runner_module.file_household_drops
+
+    def sort_step(household, sorting, *args, **kwargs):
+        if household == household_of(crashed.path):
+            raise OSError(errno.EIO, "Input/output error", where)
+        return real_sort(household, sorting, *args, **kwargs)
+
+    def file_drops(inbox, originals, *, own, **kwargs):
+        reports = real_file(inbox, originals, own=own, **kwargs)
+        if unsorted.path in reports:
+            reports[unsorted.path].errors.append(FileError(refused, f"{refused} cannot be read", True))
+        return reports
+
+    monkeypatch.setattr(runner_module, "_sort_step", sort_step)
+    monkeypatch.setattr(runner_module, "file_household_drops", file_drops)
+    monkeypatch.setattr(runner_module, "SLOW_READING_SECONDS", 0)
+
+    capsys.readouterr()
+    assert _the_scheduled_job(root, monkeypatch, "--reminders", "always", "--log") == 1
+
+    said = capsys.readouterr().out
+    text = log_path().read_text(encoding="utf-8")
+    counts = _log_line(text, "counts")
+    assert counts["failed"] == "2" and counts["held"] == "1" and counts["unsorted"] == "1"
+    assert _log_line(text, "codes") == {"crashed:OSError": "1", "unsorted-files": "1"}
+    names = [held.label, crashed.label, unsorted.label, slow, refused, where,
+             f"W-2 John Smith {YEAR}.pdf", "Form 1098 Mortgage Interest.pdf", "C01", DRAFT_FILENAME]
+    assert marker not in text
+    for name in names:
+        assert name not in text, name
+    # The console, a person's, still names them.
+    for name in (held.label, crashed.label, unsorted.label, slow, refused):
+        assert name in said, name
+
+
+def test_every_failure_and_skip_is_logged_as_a_code(tmp_path, samples, monkeypatch):
+    """Decision 186: every place a return's ``error`` or ``skipped`` is set
+    sets its code too, and the codes line counts each."""
+    import errno
+    import shutil
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from tracker.layout import client_household_dir
+    from tracker.locking import LOCK_FILENAME
+
+    cases = iter(range(100))
+
+    def one(**kwargs):
+        n = next(cases)
+        return build_engagement(tmp_path / f"case {n}", samples, household=f"Case {n} Household",
+                                name=f"Case {n} TY2025", **kwargs)
+
+    runs = {}
+    runs["no-practice"] = run_household(household_of(one().path), [one()], registry=None)[0]
+    stopped = one()
+    runs["household-stopped"] = a_pass(stopped, registry=SimpleNamespace(
+        stopped={household_of(stopped.path): "stopped"}, paused={}))
+    paused = one()
+    runs["household-paused"] = a_pass(paused, registry=SimpleNamespace(
+        stopped={}, paused={household_of(paused.path): "paused"}))
+    gone = one()
+    a_pass(gone, today=FRIDAY, reminders=REMINDERS_NEVER)       # the household has had its client folder
+    shutil.rmtree(client_household_dir(root_of(gone.path), household_of(gone.path).name))
+    runs["client-folder-missing"] = a_pass(gone, today=FRIDAY)
+    locked = one()
+    (locked.path / LOCK_FILENAME).write_text(f"pid={__import__('os').getpid()}", encoding="utf-8")
+    runs["lock-held"] = a_pass(locked, today=FRIDAY)
+    runs["rolled-forward"] = a_pass(replace(one(), superseded_by="its successor"), today=FRIDAY)
+    runs["inactive"] = a_pass(one(active=False), today=FRIDAY)
+    runs["folder-missing"] = a_pass(Engagement(path=tmp_path / "no such return"), today=FRIDAY)
+    broken = tmp_path / "Broken 2025"
+    broken.mkdir()
+    ledger.path_for(broken).write_text("this is not a record\n", encoding="utf-8")
+    runs["record-unreadable"] = a_pass(Engagement(path=broken), today=FRIDAY)
+    with monkeypatch.context() as patch:
+        patch.setattr(runner_module, "room_for",
+                      lambda *args: SimpleNamespace(parks=0, floor=261, limit=260))
+        runs["no-room"] = a_pass(one(), today=FRIDAY)
+    with monkeypatch.context() as patch:
+        def crash(*args, **kwargs):
+            raise OSError(errno.EIO, "Input/output error")
+        patch.setattr(runner_module, "_sort_step", crash)
+        runs["crashed:OSError"] = a_pass(one(), today=FRIDAY)
+    with monkeypatch.context() as patch:
+        def refuse(*args, **kwargs):
+            raise ManifestError("the list refused")
+        patch.setattr(runner_module, "scan_engagement", refuse)
+        runs["refused:ManifestError"] = a_pass(one(), today=FRIDAY)
+    with monkeypatch.context() as patch:
+        from tracker.filer import FileError
+        real = runner_module.file_household_drops
+
+        def file_drops(*args, **kwargs):
+            reports = real(*args, **kwargs)
+            for report in reports.values():
+                report.errors.append(FileError("x.pdf", "x.pdf could not be read", True))
+            return reports
+        patch.setattr(runner_module, "file_household_drops", file_drops)
+        runs["unsorted-files"] = a_pass(one(), today=FRIDAY)
+
+    for code, run in runs.items():
+        assert run.code == code, (code, run.error or run.skipped)
+        assert run.error or run.skipped, code
+    text = append_log(tmp_path / LOG_FILENAME,
+                      RunReport(today=FRIDAY, runs=list(runs.values()))).read_text(encoding="utf-8")
+    assert _log_line(text, "codes") == {code: "1" for code in runs}
+
+
+def test_every_pass_warning_carries_a_code(tmp_path, samples, monkeypatch):
+    """Decision 186: a pass warning is said with its code beside it -
+    left behind, the reader's path, a reader that could not start, an
+    unreadable pass order - and the codes line counts each."""
+    from tracker import content_check, ocr
+    from tracker.settings import ENV_SETTINGS_DIR
+
+    settings = tmp_path / "settings"
+    settings.mkdir()
+    (settings / store.STORE_SHM_FILENAME).write_bytes(b"")          # left by an earlier version
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    monkeypatch.setattr(ocr, "reader_path_warning", lambda: ocr.READER_PATH_WARNING)
+    asked = []
+    monkeypatch.setattr(content_check, "readers_that_could_not_start",
+                        lambda: asked.append(1) or (["one.pdf"] if len(asked) > 1 else []))
+    hint = store.store_path().parent / runner_module.PASS_ORDER_FILENAME
+    hint.parent.mkdir(parents=True, exist_ok=True)
+    hint.write_text("not the hint", encoding="utf-8")
+    smith = build_engagement(tmp_path / "Clients", samples)
+
+    report = run_registry(Registry(source=tmp_path / "Clients", engagements=[smith]), today=FRIDAY,
+                          reminders=REMINDERS_NEVER)
+
+    assert len(report.warning_codes) == len(report.warnings) == 4
+    assert sorted(report.warning_codes) == sorted([
+        runner_module.CODE_LEFT_BEHIND, runner_module.CODE_READER_PATH_WARNING,
+        runner_module.CODE_ORDER_HINT_UNREADABLE, runner_module.CODE_READER_COULD_NOT_START])
+    text = append_log(tmp_path / LOG_FILENAME, report).read_text(encoding="utf-8")
+    assert _log_line(text, "codes") == {code: "1" for code in report.warning_codes}
+    assert "one.pdf" not in text
+
+
+def test_a_pass_warning_is_added_only_with_its_code():
+    """The guard (decision 186): nothing in the runner adds a pass warning
+    but ``_warn``, so none can reach the page without its code in the log."""
+    import ast
+    import re
+
+    source = Path(runner_module.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    [warn] = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "_warn"]
+    lines = source.splitlines()
+    outside = [n for n, line in enumerate(lines, start=1)
+               if re.search(r"\b(report|result)\.warnings\.(append|extend|insert)\(", line)
+               and not warn.lineno <= n <= warn.end_lineno]
+    assert outside == []
+    assert re.search(r"report\.warnings\.append\(", "\n".join(lines[warn.lineno - 1:warn.end_lineno]))
+
+
+def test_the_run_log_lives_in_the_data_home_when_the_flag_names_no_file(tmp_path, samples, monkeypatch,
+                                                                        capsys):
+    from tracker.settings import data_home
+
+    root = tmp_path / "Clients"
+    build_engagement(root, samples)
+
+    assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER, "--log") == 0
+
+    assert log_path().is_file() and log_path().parent.parent == data_home()
+    assert not (root / LOG_FILENAME).exists()
+    assert list(root.rglob(f"{LOG_FILENAME}*")) == []
+    capsys.readouterr()
+
+
+def test_a_relative_log_file_is_refused_before_the_pass(tmp_path, samples, monkeypatch, capsys):
+    from tracker.runner import LOG_NOT_ABSOLUTE
+
+    root = tmp_path / "Clients"
+    engagement = build_engagement(root, samples)
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(SystemExit) as stopped:
+        _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER, "--log", "mine.log")
+
+    assert stopped.value.code == 2
+    assert LOG_NOT_ABSOLUTE.format(log="mine.log") in capsys.readouterr().err
+    assert (inbox_of(engagement.path) / f"W-2 John Smith {YEAR}.pdf").is_file()   # nothing filed
+    assert not (tmp_path / "mine.log").exists() and not log_path().exists()

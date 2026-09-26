@@ -452,17 +452,22 @@ def test_create_then_scan_plays_a_whole_engagement_end_to_end(capsys, demo_root,
 def test_the_apps_pass_appends_the_line_the_scheduled_run_appends(capsys, demo_root, tmp_path):
     """A pass made from the app used to leave no trace at all: the log is the
     command line's, and the button makes the same pass, so it writes the same
-    line - appended, never replacing what earlier passes wrote."""
+    line - appended, never replacing what earlier passes wrote. Since
+    decision 186 it is the data home's run log, and it names no client."""
+    from tracker.runner import log_path
+
     engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.bmp")
 
     assert run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))[0] == 0
-    first = (demo_root / LOG_FILENAME).read_text(encoding="utf-8")
-    assert engagement.name in first
+    first = log_path().read_text(encoding="utf-8")
+    assert engagement.name not in first and "    counts returns=" in first
+    assert not (demo_root / LOG_FILENAME).exists()
 
     assert run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))[0] == 0
-    second = (demo_root / LOG_FILENAME).read_text(encoding="utf-8")
+    second = log_path().read_text(encoding="utf-8")
     assert second.startswith(first)
-    assert second.count(engagement.name) == 2
+    assert engagement.name not in second
+    assert len([line for line in second.splitlines() if line.startswith("[")]) == 2
 
 
 def test_the_apps_pass_regenerates_the_practices_status_page(capsys, demo_root, tmp_path):

@@ -130,8 +130,10 @@ person types.
 
 ## Rules
 
-- **Never commit client material.** `runs.log` and the drafts are gitignored
-  because they carry real names and share links.
+- **Never commit client material.** The drafts and the status pages are
+  gitignored because they carry real names and share links; the store, the
+  run log and a reading's temporary files never live in a checkout at all
+  (decision 186).
   Client documents live in the synced engagement folders, never here.
 - **Originals are never altered.** Work from the `Prepared/` copies; the
   originals in the client's folder for the year are the record, and the

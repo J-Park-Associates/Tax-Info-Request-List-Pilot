@@ -466,7 +466,7 @@ def test_the_store_the_scratch_and_the_task_file_never_resolve_under_the_program
     import os
     from pathlib import Path
 
-    from tracker import scheduling, store
+    from tracker import runner, scheduling, store
 
     repository = Path(__file__).resolve().parent.parent
     account = tmp_path / "account"
@@ -477,7 +477,7 @@ def test_the_store_the_scratch_and_the_task_file_never_resolve_under_the_program
     monkeypatch.delenv(store.ENV_STORE, raising=False)
     monkeypatch.setenv("LOCALAPPDATA" if os.name == "nt" else "XDG_STATE_HOME", str(account))
     places = [store.store_path(), data_rules.scratch_root(), data_rules.process_scratch(),
-              scheduling.schedule_xml_path(), data_rules.logs_dir()]
+              scheduling.schedule_xml_path(), data_rules.logs_dir(), runner.log_path()]
     for place in places:
         assert data_rules._inside(place, account / data_rules.DATA_HOME_NAME), place
         for never in (data_rules.app_dir(), repository, clients):

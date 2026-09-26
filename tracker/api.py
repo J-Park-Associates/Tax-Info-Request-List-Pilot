@@ -268,6 +268,9 @@ from tracker.rollover import (
     with_default_dates,
 )
 from tracker.runner import (
+    CODE_GRAPHICS_CARD_FAULT,
+    CODE_READER_COULD_NOT_START,
+    CODE_READER_PATH_WARNING,
     DRAFT_WEEKDAY,
     LOG_FILENAME,
     LOG_NOT_WRITTEN,
@@ -284,6 +287,7 @@ from tracker.runner import (
     last_drafted,
     last_pass_line,
     left_behind_warning,
+    log_path,
     reader_start_warning,
     run_household,
     status_report,
@@ -2210,9 +2214,11 @@ def _cmd_state(argv: list[str]) -> dict:
 
 
 def _record_pass(runs: list[EngagementRun] | EngagementRun,
-                 warnings: list[str] | None = None, *, registry: Registry | None) -> list[str]:
-    """Leave the record the scheduled run leaves: a line in the run log and
-    the practice's status page, both in the clients root.
+                 warnings: list[tuple[str, str]] | None = None, *,
+                 registry: Registry | None) -> list[str]:
+    """Leave the record the scheduled run leaves: an entry in the run log,
+    in the data home (decision 186), and the practice's status page, in
+    the clients root.
 
     The app's button makes the same pass as the job, so it must leave the
     same trace - a pass with no record is a pass nobody can check
@@ -2229,24 +2235,27 @@ def _record_pass(runs: list[EngagementRun] | EngagementRun,
     statuses recorded, so the person is told what happened either way -
     **in the reply** (decision 189): the sentence for each that failed is
     returned, because stderr is what the app discards when the reply
-    parses. ``warnings`` are the pass's own sentences, logged and put on
-    the page as the scheduled pass puts its own.
+    parses. ``warnings`` are the pass's own, each (code, sentence): the
+    code is logged and the sentence put on the page, as the scheduled pass
+    does with its own. The log is written whether or not a root is set;
+    the page needs one.
     """
     every = [runs] if isinstance(runs, EngagementRun) else list(runs)
-    said = list(warnings or [])
-    root = _saved_root()
-    if root is None or not root.is_dir():
-        return []
+    said = [sentence for _code, sentence in warnings or []]
+    codes = [code for code, _sentence in warnings or []]
     failed: list[str] = []
     # Broadly, both of them: the pass has already moved the client's files
     # and recorded what it found, so nothing about recording it afterwards
     # may turn a finished pass into an error message in the app.
     try:
-        append_log(root / LOG_FILENAME, RunReport(today=dt.date.today(), reminders=REMINDERS_NEVER,
-                                                  runs=every, warnings=said))
+        append_log(log_path(), RunReport(today=dt.date.today(), reminders=REMINDERS_NEVER,
+                                         runs=every, warnings=said, warning_codes=codes))
     except Exception as exc:
-        log.warning("Could not write %s (%s)", LOG_FILENAME, exc)
+        log.warning("Could not write %s (%s)", LOG_FILENAME, exc.__class__.__name__)
         failed.append(LOG_NOT_WRITTEN.format(kind=exc.__class__.__name__))
+    root = _saved_root()
+    if root is None or not root.is_dir():
+        return failed
     if registry is None:
         log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, RegistryError.__name__)
         failed.append(PAGE_NOT_WRITTEN.format(kind=RegistryError.__name__))
@@ -2324,10 +2333,13 @@ def _cmd_scan(argv: list[str]) -> dict:
     run = next((one for one in runs if one.engagement.path == engagement),
                EngagementRun(engagement=engagement_from(engagement)))
     # Said once, as the pass's own (decisions 150, 169 and 189).
-    pass_warnings = [w for w in (ocr.reader_path_warning(), reader_start_warning()) if w]
+    said = [(code, sentence) for code, sentence in (
+        (CODE_READER_PATH_WARNING, ocr.reader_path_warning()),
+        (CODE_READER_COULD_NOT_START, reader_start_warning())) if sentence]
     if ocr_session := ocr.current_session():
-        pass_warnings.extend(ocr_session.warnings())
-    pass_warnings.extend(_record_pass(runs, pass_warnings, registry=practice))
+        said.extend((CODE_GRAPHICS_CARD_FAULT, sentence) for sentence in ocr_session.warnings())
+    pass_warnings = [sentence for _code, sentence in said]
+    pass_warnings.extend(_record_pass(runs, said, registry=practice))
     payload = {
         "run": {
             "ok": run.ok,

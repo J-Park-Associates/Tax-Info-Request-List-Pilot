@@ -199,8 +199,8 @@ the router filed cannot fail its own rules, so that row is a rule edited
 after filing, a copy dragged in by hand or a copy replaced — the firm's
 doing, or the client's, and not the draft's to guess. Nothing is written for
 that client until somebody decides; the run's own earlier draft is removed,
-an edited one is left, and the run log, the practice page and the app name
-the rows. The manual draft is held by the same question. So does a file the
+an edited one is left, and the practice page and the app name the rows; the
+run log counts the hold. The manual draft is held by the same question. So does a file the
 client sent that the rules could not use at all — a locked PDF, an empty
 upload, a file type nothing accepts — when what it looks like is a request
 still outstanding (decision 117): the drop parks for a person and never
@@ -269,6 +269,10 @@ it in the app is all a move takes:
 ```
 python -m tracker.runner --settings "C:\Tools\tax-tracker" --log     # what the scheduled job runs
 ```
+
+`--log` alone appends the pass's counts and codes — never a client's name — to `runs.log` in the
+tracker's data folder, rotated at 256 KB with three older files kept; `--log <file>` names
+another, by its whole path.
 
 A root on the command line together with `--log` is the shape of the job
 installed before decision 131, and it is refused - red, naming *Install

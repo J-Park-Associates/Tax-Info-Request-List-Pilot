@@ -339,7 +339,8 @@ def test_a_gpu_fault_switches_the_rest_of_the_pass_to_the_cpu(tmp_path, a_card):
     assert report.reader == ocr.DEVICE_GRAPHICS_CARD                 # it began on the card
     assert report.warnings == [ocr.GPU_FAULT_WARNING.format(file="one.pdf")]
     log = append_log(tmp_path / "runs.log", report).read_text(encoding="utf-8")
-    assert log.count("the graphics card failed while reading one.pdf") == 1
+    # Counted by its code, the file never named (decision 186).
+    assert "one.pdf" not in log and "graphics-card-fault=1" in log
     rows = read_index(engagement)
     assert sorted(row.original_name for row in rows) == ["one.pdf", "two.pdf"]
     assert all(row.identifier == "A01" for row in rows), [row.reason for row in rows]

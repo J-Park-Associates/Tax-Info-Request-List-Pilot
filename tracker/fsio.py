@@ -28,6 +28,10 @@ So there is one way to do it, and it is here:
   walked never through a link (:func:`is_link`, the package's one test of
   a symlink or a junction).
 
+- :func:`append_rotating` - the one file the tracker *appends* to rather
+  than replaces (the run log, decision 186): an entry is added whole, and
+  the file is turned over to ``.1``, ``.2``, ... before it would pass its
+  size, so it never grows for ever.
 - :func:`make_new_folders` - the one way a folder the tracker is about to
   fill is made (decision 137): every missing level is made by a ``mkdir``
   that would refuse an existing one, and the levels this call made are
@@ -356,6 +360,48 @@ def stranded_temps(
 def write_json_atomically(path: Path, payload: object, *, indent: int = 2) -> None:
     """Write ``payload`` as JSON to ``path`` all-or-nothing; the cache and the settings use this."""
     write_text_atomically(path, json.dumps(payload, indent=indent))
+
+
+def append_rotating(path: Path, text: str, *, max_bytes: int, keep: int) -> Path:
+    """Append ``text`` to ``path``, first rotating it (path -> path.1 -> ... ->
+    path.<keep>, the oldest dropped) when the append would take it past
+    ``max_bytes``. Opened, written and closed each time, so no process holds it
+    between entries. A rotation another process blocks (PermissionError on a
+    rename) is skipped with a warning and tried again at the next append: the
+    entry is never lost, and the file overshoots by at most a few entries.
+
+    Hand-rolled rather than ``logging.handlers.RotatingFileHandler``
+    (decision 186): a run log takes one whole entry per pass, not a stream
+    of records, and two processes write it - the scheduled pass and the
+    app's own - which the standard library documents that handler as not
+    supporting; on Windows its rollover fails while the other process holds
+    the file, and a handler's failure is printed to a console nobody reads
+    and swallowed. The text is written as UTF-8, and a character UTF-8
+    cannot hold (a lone surrogate) is written as its escape rather than
+    losing the entry. The folder must already be there: making it is the
+    owner's question.
+    """
+    path = Path(path)
+    data = text.encode("utf-8", errors="backslashreplace")
+    try:
+        size = path.stat().st_size
+    except FileNotFoundError:
+        size = 0
+    if size and size + len(data) > max_bytes:
+        older = [path.with_name(f"{path.name}.{n}") for n in range(1, keep + 1)]
+        try:
+            if not older:
+                path.unlink()
+            else:
+                for n in range(len(older) - 1, 0, -1):
+                    if older[n - 1].exists():
+                        os.replace(older[n - 1], older[n])
+                os.replace(path, older[0])
+        except PermissionError as exc:
+            log.warning("Could not rotate %s (%s); appending and trying again next time", path, exc)
+    with path.open("ab") as handle:
+        handle.write(data)
+    return path
 
 
 def make_new_folders(folder: Path) -> list[Path]:
