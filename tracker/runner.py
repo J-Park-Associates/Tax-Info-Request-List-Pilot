@@ -1533,10 +1533,9 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(f"Clients folder problem: {refusal}")
         root = str(configured)
     else:
-        # A root typed on the command line is held to the same rule as
-        # the saved one (decision 176): the Command Center's preview hands
-        # its root straight through, and a preview of the system drive is
-        # a walk of every folder on it.
+        # A root typed on the command line - a person's, or another
+        # program's - is held to the same rule as the saved one (decision
+        # 176): a preview of the system drive is a walk of every folder on it.
         if refusal := clients_root_refusal(root):
             raise SystemExit(f"Clients folder problem: {refusal}")
         if ns.log:

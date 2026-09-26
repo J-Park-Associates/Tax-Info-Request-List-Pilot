@@ -340,15 +340,8 @@ How a season is actually run on the firm's one machine — the morning pass,
 the draft day, what the index's reasons mean, and what to do if that machine
 dies — is [docs/runbook.md](docs/runbook.md).
 
-`automation.manifest.json` registers the tracker with the firm's Command
-Center, so a preview pass, a real pass, the engagement list and the learned
-keywords are all a button there, on demand, under the dated exception the
-Center's contract requires of anything that schedules itself. The schedule
-itself is not moved there and never will be: it stays a Windows Task
-Scheduler entry on the designated machine, and the Command Center runs
-nothing on a timer.
-
-The schedule is a default, not a cage:
+The schedule is a Windows Task Scheduler entry on the designated machine,
+and it is a default, not a cage:
 
 | | |
 |---|---|
