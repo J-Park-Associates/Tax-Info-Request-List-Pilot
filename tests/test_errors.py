@@ -160,10 +160,6 @@ def test_the_cli_names_a_built_in_errors_class_and_says_where_its_words_go():
 SAID_WHOLE_ON_PURPOSE = {
     ("ocr.py", "_build_engine"): "an import failing on this machine: the machine's words",
     ("ocr.py", "_engine"): "the graphics card's engine failing to build: the machine's words",
-    ("registry.py", "household_from"): "the household's own record, which the firm writes",
-    ("registry.py", "engagement_from"): "the return's own record, which the firm writes",
-    ("runner.py", "_feeds_of"): "the household's own record (SPEC-190 R2: stays)",
-    ("runner.py", "_parked_files"): "the return's own record could not be read (SPEC-190 R2: stays)",
     ("registry.py", "_children"): "listing a folder of the clients root: the OS's words, never a document's",
     ("api.py", "main"): "KNOWN_ERRORS: the tracker's own errors, said whole (R2)",
     ("api.py", "_cmd_install_schedule"): "Task Scheduler refusing a task: the machine's words",
@@ -374,6 +370,31 @@ def _second_definitions(source: str, file: str) -> list[str]:
             found.append(f"{file}:{node.lineno} ({node.name}): names an exception's class itself")
         if reads_errno and where not in ERRNO_NAMED_ON_PURPOSE:
             found.append(f"{file}:{node.lineno} ({node.name}): reads an errno's name itself")
+    if file != THE_ONE_DEFINITION[0]:
+        found.extend(_inline_classes(tree, file))
+    return found
+
+
+def _inline_classes(tree: ast.AST, file: str) -> list[str]:
+    """Inside an ``except ... as exc``: ``exc.__class__.__name__``,
+    ``type(exc).__name__`` or ``exc.__name__`` - the class spelled inline,
+    a second spelling of :func:`tracker.errors.error_class` that says an
+    ``OSError`` without its errno (the review's M1, decision 190). A
+    ``type(row).__name__`` of anything an ``except`` did not bind is not an
+    error's name, and passes."""
+    found = []
+    for handler in ast.walk(tree):
+        if not (isinstance(handler, ast.ExceptHandler) and handler.name):
+            continue
+        caught = ast.dump(ast.Name(id=handler.name, ctx=ast.Load()))
+        for statement in handler.body:
+            for node in ast.walk(statement):
+                named = _named_class_of(node) or (
+                    ast.dump(node.value) if isinstance(node, ast.Attribute) and node.attr == "__name__"
+                    else None)
+                if named == caught:
+                    found.append(f"{file}:{node.lineno}: {handler.name}'s class spelled inline, "
+                                 "not through errors.error_class")
     return found
 
 
@@ -395,9 +416,24 @@ def test_the_class_an_error_is_said_as_is_defined_once():
     "def name_of(exc: Exception) -> str:\n    name = type(exc).__name__\n    return name\n",
     "def name_of(problem: OSError) -> str:\n    return errno.errorcode[problem.errno]\n",
     "said_as_class = error_class\n",
+    # the review's M1: the class spelled inline where an error is caught
+    "def f():\n    try:\n        pass\n    except OSError as exc:\n"
+    "        log.warning('Could not write (%s)', exc.__class__.__name__)\n",
+    "def f():\n    try:\n        pass\n    except Exception as late:\n"
+    "        kind = type(late).__name__\n",
 ])
 def test_the_guard_finds_a_second_definition(shape):
     assert _second_definitions(shape, "probe.py"), shape
+
+
+@pytest.mark.parametrize("shape", [
+    "def f(row):\n    return type(row).__name__\n",
+    "class C:\n    def f(self):\n        return self.__class__.__name__\n",
+    "def f():\n    try:\n        pass\n    except OSError as exc:\n"
+    "        log.warning('(%s)', errors.error_class(exc))\n",
+])
+def test_the_guard_passes_a_class_of_what_no_except_caught(shape):
+    assert _second_definitions(shape, "probe.py") == [], shape
 
 
 @pytest.mark.parametrize("shape", [

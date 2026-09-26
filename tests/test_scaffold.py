@@ -813,7 +813,8 @@ def test_a_write_failure_is_a_log_line_and_the_caller_goes_on(engagement, monkey
     caplog.clear()
     with caplog.at_level(logging.WARNING):
         assert refresh_household_readme(household_of(engagement)) is None
-    assert "the store is away" in caplog.text
+    # Said by its class, never its message (decision 190, the rebase review's S1).
+    assert "RuntimeError" in caplog.text and "the store is away" not in caplog.text
 
 
 def test_scaffolding_a_return_writes_no_readme(engagement):

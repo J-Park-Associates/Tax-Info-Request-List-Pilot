@@ -208,7 +208,7 @@ def _build_engine(*, cuda: bool):
         import onnxruntime
         from rapidocr import RapidOCR
     except ImportError as exc:
-        raise ReaderUnavailable(f"{exc.__class__.__name__}: {exc}") from exc
+        raise ReaderUnavailable(f"{errors.error_class(exc)}: {exc}") from exc
     _refuse_downloads()
     onnxruntime.set_default_logger_severity(3)
     folder = models_folder()
@@ -235,7 +235,7 @@ def _build_engine(*, cuda: bool):
     except ReaderUnavailable:
         raise
     except Exception as exc:
-        raise ReaderUnavailable(f"{exc.__class__.__name__}: {exc}") from exc
+        raise ReaderUnavailable(f"{errors.error_class(exc)}: {exc}") from exc
 
 
 def _providers(engine) -> dict[str, list[str]]:
@@ -315,7 +315,7 @@ def _engine():
         except Exception as exc:
             # The reasons this module words itself are sentences already.
             reason = (str(exc) if isinstance(exc, RuntimeError) and str(exc)
-                      else f"{exc.__class__.__name__}: {exc}")
+                      else f"{errors.error_class(exc)}: {exc}")
             log.warning(PACK_UNUSABLE.format(reason=reason))
             _NOTES.append(("pack-unusable", reason))
     _ENGINE, _DEVICE = _build_engine(cuda=False), DEVICE_PROCESSOR

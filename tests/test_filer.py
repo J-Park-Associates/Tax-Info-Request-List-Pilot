@@ -9089,6 +9089,75 @@ def test_an_open_copy_with_no_digest_is_refused_where_it_is_carried_out(engageme
     assert not target.parent.exists()
 
 
+def test_an_unproved_copy_says_its_names_as_the_record_keeps_them(engagement):
+    """COPY_UNPROVED names the files the way COPY_MISMATCH two lines below
+    it does, through layout.recorded_name: a bidi override or a control
+    character in a client's file name never reaches the sentence (decision
+    190, the review's N2). Fabricated name."""
+    from tracker.filer import COPY_UNPROVED, _copy_whole
+
+    original = originals(engagement) / "w2\u202efdp\x07.pdf"
+    original.parent.mkdir(parents=True, exist_ok=True)
+    original.write_bytes(b"%PDF-1.4 a fabricated W-2")
+    target = engagement / PREPARED_DIR_NAME / "new" / "w2.pdf"
+
+    with pytest.raises(FilingError) as refused:
+        _copy_whole(original, target, expect="")
+    said = refused.value.args[0]
+    assert said == COPY_UNPROVED.format(source="w2fdp.pdf", target="w2.pdf"), said
+    assert "\u202e" not in said and "\x07" not in said
+
+#: A fabricated OS error's path, shaped like a client's inbox (decision 190).
+A_CLIENT_PATH = "/Clients/Test Household/Drop files here/W2.pdf"
+
+
+def _refused_with_a_client_path(*_args, **_kwargs):
+    import errno
+
+    raise PermissionError(errno.EACCES, "Permission denied", A_CLIENT_PATH)
+
+
+def _logged_outside_the_debug_log(caplog) -> str:
+    """Every line logged, but the debug log's, where the words are kept on
+    purpose (tracker.errors.keep)."""
+    from tracker.errors import DEBUG_LOGGER
+
+    return "\n".join(record.getMessage() for record in caplog.records if record.name != DEBUG_LOGGER)
+
+
+def test_a_readme_refresh_that_fails_logs_the_class_never_the_path(engagement, monkeypatch, caplog):
+    """The README refresh's warning names the error by its class and errno,
+    never its message, which here is a client's folder (decision 190, the
+    review's S1); the words go to the debug log alone."""
+    import logging
+
+    import tracker.filer as filer
+
+    monkeypatch.setattr(filer, "readme_returns", _refused_with_a_client_path)
+    with caplog.at_level(logging.DEBUG):
+        assert filer.refresh_household_readme(household_of(engagement)) is None
+    logged = _logged_outside_the_debug_log(caplog)
+    assert "PermissionError (EACCES)" in logged, logged
+    assert A_CLIENT_PATH not in logged and "Test Household/Drop" not in logged, logged
+
+
+def test_a_sweep_that_cannot_read_a_returns_rows_logs_the_class_never_the_path(engagement, monkeypatch, caplog):
+    """A return whose rows cannot be read is not swept, and the warning that
+    says so names the error by its class, never a message carrying a
+    client's folder (decision 190, the review's S1)."""
+    import logging
+    import time
+
+    import tracker.filer as filer
+
+    monkeypatch.setattr(filer, "read_index", _refused_with_a_client_path)
+    with caplog.at_level(logging.DEBUG):
+        assert filer.sweep_stranded_temps(household_of(engagement), [engagement],
+                                          started=time.time() + 1) == []
+    logged = _logged_outside_the_debug_log(caplog)
+    assert "PermissionError (EACCES)" in logged, logged
+    assert A_CLIENT_PATH not in logged and "Test Household/Drop" not in logged, logged
+
 def test_a_row_recorded_without_its_bytes_still_gets_a_proved_working_copy(engagement):
     """Decision 65's row has no digest, and its copy is still proved: the
     intent takes the fingerprint from the step that brings the original in,

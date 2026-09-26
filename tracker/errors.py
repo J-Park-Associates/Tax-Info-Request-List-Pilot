@@ -34,7 +34,9 @@ decision 190 moved it here, to layer 0, so that every layer that catches
 an error names it without reaching upward, in 189's form. There is no
 second definition: ``tests/test_errors.py`` fails the suite if a module
 under ``tracker/`` defines another function that builds an error's name
-from its class.
+from its class, or spells a caught exception's class inline
+(``exc.__class__.__name__``) - a second spelling that says an ``OSError``
+without its errno, so one failure would read two ways on one page.
 
 **The words are not thrown away: they are kept, apart** (:func:`keep`). A
 programmer mending a parser needs the message and the trace, so they go to

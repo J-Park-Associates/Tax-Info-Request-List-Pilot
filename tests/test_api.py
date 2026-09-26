@@ -898,8 +898,13 @@ def test_the_review_card_has_three_buckets_and_opens_only_a_documents_copy(capsy
     its type on disk: each parked row and its triage carry ``bucket`` and
     its true ``extension``; a document's row carries the key its review
     copy is named under in ``paths`` - the only paths the shell opens - and
-    a program's carries none, nor, since Open follows 184, a container's."""
+    a program's carries none, nor, since Open follows 184, a container's,
+    nor a document the tracker never read (no request takes a .bmp)."""
+    from tests.test_scanner import text_pdf
+
     engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.bmp")
+    text_pdf(inbox_of(engagement) / "a letter.pdf", "\n".join(
+        f"Line {n:03d} of a fabricated letter that answers no request on the list" for n in range(400)))
     (inbox_of(engagement) / "W-2 2025.pdf.exe").write_bytes(b"MZ")
     (inbox_of(engagement) / "scans.zip").write_bytes(b"PK\x03\x04 not really a zip")
     code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
@@ -908,12 +913,16 @@ def test_the_review_card_has_three_buckets_and_opens_only_a_documents_copy(capsy
 
     rows = {e["original_name"]: e for e in state["index"] if e["decision"] == NEEDS_REVIEW}
     assert {name: (e["bucket"], e["extension"]) for name, e in rows.items()} == {
+        "a letter.pdf": (api.BUCKET_DOCUMENT, "pdf"),
         "vacation photo.bmp": (api.BUCKET_DOCUMENT, "bmp"),
         "scans.zip": (api.BUCKET_CONTAINER, "zip"),
         "W-2 2025.pdf.exe": (api.BUCKET_NOT_A_DOCUMENT, "exe"),
     }
     assert rows["W-2 2025.pdf.exe"]["open_key"] == "" and rows["scans.zip"]["open_key"] == ""
-    opened = Path(state["paths"][rows["vacation photo.bmp"]["open_key"]])
+    assert rows["vacation photo.bmp"]["code"] == reasons.NO_REQUEST_ACCEPTS_CODE
+    assert rows["vacation photo.bmp"]["open_key"] == "", "never read, so never opened here"
+    assert rows["a letter.pdf"]["code"] in api.READ_AND_PARKED_CODES, rows["a letter.pdf"]["code"]
+    opened = Path(state["paths"][rows["a letter.pdf"]["open_key"]])
     assert opened.is_file() and opened.parent.name == REVIEW_DIR_NAME
     assert {t["original_name"]: t["bucket"] for t in state["review"]} == {
         name: e["bucket"] for name, e in rows.items()}
@@ -928,33 +937,47 @@ def _parked_row(name: str, code: str) -> IndexEntry:
 
 
 @pytest.mark.parametrize("name, code", [
-    *(("statement.pdf", code) for code in sorted(api.REFUSED_READING_CODES)),
+    *(("statement.pdf", code) for code in sorted(api.NO_OPEN_CODES - api._CONTAINER_CODES)),
     *(("mail.eml", code) for code in sorted(api._CONTAINER_CODES)),
     ("scans.zip", reasons.AMBIGUOUS_CODE),
 ])
 def test_a_refused_file_has_no_open_on_the_designated_machine(name, code):
     """Open follows 184 (decision 190): a file whose reading the tracker
-    refused, and any email or zip, is opened, if at all, on a machine with
-    no Drive sign-in and no client folder - so the API names no copy for
-    it to open here, whatever its copy on disk, and the card offers none."""
+    refused or never made, and any email or zip, is opened, if at all, on a
+    machine with no Drive sign-in and no client folder - so the API names no
+    copy for it to open here, whatever its copy on disk, and the card
+    offers none."""
     row = _parked_row(name, code)
     payload = api._review_payload(row)
     assert payload["open_key"] == "", (name, code, payload)
-    assert (payload["bucket"] == api.BUCKET_CONTAINER) == (name != "statement.pdf"), payload
+    if name != "statement.pdf":
+        assert payload["bucket"] == api.BUCKET_CONTAINER, payload
 
 
-def test_the_refused_codes_are_named_once_and_each_is_a_reason():
-    """The list beside the buckets is the ruling's, read from reasons.py:
-    every code in it is one a Reason carries, and none is a filing reason."""
-    assert api.REFUSED_READING_CODES <= set(reasons.BY_CODE), sorted(api.REFUSED_READING_CODES)
-    assert not api.REFUSED_READING_CODES & set(reasons.PLAIN_CODES)
-    assert len(api.REFUSED_READING_CODES) == 12, sorted(api.REFUSED_READING_CODES)
+@pytest.mark.parametrize("code", ["", "a-code-nobody-has-placed"])
+def test_a_code_nobody_has_placed_gets_no_open(code):
+    """Open is an allow-list, so it fails closed: a row with no code, or with
+    a code no one has put in either set, offers no Open (decision 190)."""
+    payload = api._review_payload(_parked_row("statement.pdf", code))
+    assert payload["bucket"] == api.BUCKET_DOCUMENT and payload["open_key"] == "", payload
 
 
-@pytest.mark.parametrize("code", [
-    reasons.AMBIGUOUS_CODE, reasons.NO_REQUEST_ACCEPTS_CODE, reasons.UNMATCHED_CODE,
-    reasons.NAME_NOT_ON_PAGE.code, reasons.CONTESTED_CODE,
-])
+def test_every_code_is_placed_in_exactly_one_of_the_two_open_sets():
+    """Every code a row may carry (reasons.KNOWN_CODES) is either one the
+    tracker read and parked for a filing reason - Open - or one that offers
+    no Open here; none is in both and none in neither, so a new code fails
+    this until a person places it."""
+    opens, closed = api.READ_AND_PARKED_CODES, api.NO_OPEN_CODES
+    assert not opens & closed, sorted(opens & closed)
+    assert opens | closed == reasons.KNOWN_CODES, (
+        sorted(reasons.KNOWN_CODES - (opens | closed)), sorted((opens | closed) - reasons.KNOWN_CODES))
+    not_read = {reasons.HEIC_NOT_SUPPORTED, reasons.NO_TEXT_LAYER, reasons.EXTENSION_NOT_ALLOWED,
+                reasons.GOOGLE_STUB, reasons.TOO_SMALL, reasons.UNCHECKABLE_TYPE}
+    assert not {reason.code for reason in not_read} & opens, "the tracker did not read these"
+    assert reasons.NO_REQUEST_ACCEPTS_CODE not in opens, "every request refused its type unread"
+
+
+@pytest.mark.parametrize("code", sorted(api.READ_AND_PARKED_CODES))
 def test_a_read_and_parked_document_opens_its_marked_copy(code):
     """The other half of the rule: a document the tracker read and parked
     for a filing reason carries the key of its review copy - the firm's

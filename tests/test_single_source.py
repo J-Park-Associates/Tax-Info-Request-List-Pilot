@@ -1628,14 +1628,15 @@ def test_the_runbook_opens_nothing_where_it_sits_and_drops_nothing_in_the_client
 
 
 def test_the_runbook_opens_no_container_or_refused_file_on_this_machine():
-    """Open follows 184 (decision 190): no row for an email or a zip, or for
-    a file whose reading was refused, sends a person to **Open** on this
-    machine - it is opened, if at all, on a machine with no Drive sign-in
-    and no client folder - and no sentence about a container, or a text
-    read only in part, offers the card's **Open** either."""
+    """Open follows 184 (decision 190) and is an allow-list: no row for a
+    cause outside ``api.READ_AND_PARKED_CODES`` - an email or a zip, a file
+    whose reading was refused or never made - sends a person to **Open** on
+    this machine - it is opened, if at all, on a machine with no Drive
+    sign-in and no client folder - and no sentence about a container
+    offers the card's **Open** either."""
     from tracker import api, reasons
 
-    closed = api.REFUSED_READING_CODES | api._CONTAINER_CODES
+    closed = api.NO_OPEN_CODES & set(reasons.BY_CODE)
     names = {name for name, value in vars(reasons).items()
              if isinstance(value, reasons.Reason) and value.code in closed}
     assert len(names) == len(closed), sorted(names)
@@ -1649,7 +1650,7 @@ def test_the_runbook_opens_no_container_or_refused_file_on_this_machine():
     assert covered, "the runbook's Reason table names none of the closed codes"
     about = [sentence for sentence in _sentences(read("docs/runbook.md"))
              if offers_open.search(sentence)
-             and re.search(r"container|email or (a )?zip|TEXT_CUT", sentence)]
+             and re.search(r"container|email or (a )?zip", sentence)]
     assert about == [], about
 
 

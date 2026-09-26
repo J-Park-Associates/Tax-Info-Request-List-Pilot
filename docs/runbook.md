@@ -1311,13 +1311,18 @@ with **Open** on its card, and only there, which opens the firm's working
 copy in `00 - Needs Review` - never the client's original - marked as from
 the internet so that Office and Acrobat show it in Protected View, the
 read-only view they give a file from outside (decision 190). **Open** is
-offered only for a document the tracker read and parked for a filing
-reason - ambiguous, the name not on the page, no request accepts it. An
-email or a zip, and a file whose reading was refused (the codes in
-`api.REFUSED_READING_CODES`: unreadable, extraction or OCR failed, the
-reader crashed, stopped or could not start, too large, locked, no pages,
-no readable text), have no **Open**: ask the client to send it again, or
-open it, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184). A copy that
+an allow-list, `api.READ_AND_PARKED_CODES`: it is offered only for a
+document the tracker read and parked for a filing reason - it matched no
+request or more than one, a request contested it, the name is not on the
+page or names another return, its forms would not sort, its issuer is not
+named, it shows its form number. Every other card has no **Open**: an
+email or a zip; a file whose reading was refused (unreadable, extraction
+or OCR failed, the reader crashed, stopped or could not start, too large,
+locked, no pages, no readable text); a file the tracker never read (an
+iPhone photo with no HEIC reader, no reader on this machine, a type no
+request takes, a Google Docs shortcut, a file too small); and any cause
+added since that nobody has placed in the list. For those, ask the client
+to send it again, or open it, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184). A copy that
 cannot be marked is never made (`filer.MARK_REFUSED`, below). Read it
 there, and do not enable editing, content or macros. A program, script or
 shortcut is not a document: since decision 190 the tracker sets it aside
@@ -1353,7 +1358,7 @@ card suggests, asked in the generic sentence, until you decide it.
 | `router.OCR_ONLY` | A scan or a photo with no text layer; OCR read it, but only loosely enough to guess. | Confirm what it is and file it. |
 | `reasons.NO_READABLE_TEXT` | Nothing in the file could be read at all — a scan or a photo the reader could not run on, an image-only PDF, an empty sheet. Nothing was matched against anything, so this is not "matched no request". | It has no **Open** (the tracker read nothing in it). Ask the client to send it again, or open it, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184), and file it by hand. If many files say it at once, the reader itself is damaged: re-install the app (§6, step 5). The shortlist shows what its **file name** suggests; the document decides. |
 | `reasons.UNREADABLE_IMAGE` | A photo arrived that would not open — a half-finished upload, most often. | Ask the client for it again; the reminder does. |
-| `reasons.HEIC_NOT_SUPPORTED` | An iPhone photo arrived and this machine's HEIC reader is missing. Ours, never the client's: they sent an ordinary photo. | Run `Setup.bat` again (it installs `pillow-heif` from the locks); for the packaged app, rebuild it. Until then, open the photo with **Open** on its card and file it by hand. |
+| `reasons.HEIC_NOT_SUPPORTED` | An iPhone photo arrived and this machine's HEIC reader is missing. Ours, never the client's: they sent an ordinary photo. | Run `Setup.bat` again (it installs `pillow-heif` from the locks); for the packaged app, rebuild it. Until then it has no **Open**, because the tracker never read it: open it, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184), and file it by hand. |
 | `reasons.ISSUER_NOT_NAMED` | The request list asks for this document one row per issuer (§8) and this one names none of them — a K-1 from a partnership nobody listed. | File it to the right row, or add a row for that issuer (§8) and it files itself next pass. |
 | `reasons.NAME_NOT_ON_PAGE` | A request that asks for a **named** document accepted it, and the page names nobody on this return's people list (§10). | Open the page with **Open** on its card. If it does name them in a spelling the list has not got, file it and **teach the spelling** on the same card; if it is somebody else's, file it by hand on the return it belongs to. |
 | `reasons.NAMES_ANOTHER_RETURN` | The page names somebody who is on another return of this household, and nobody on this one. The sentence says who, and which return. | Switch to that return and file it there. Nothing was moved. |
@@ -1519,9 +1524,10 @@ or put another file in its place.
 A note on a `.csv`, `.tsv` or `.txt` may end with `reasons.TEXT_CUT`: only
 the first part of a very long text file was read
 (`validators.TEXT_READ_CAP_MB`), so "not found" means not found in that
-part. The file was not read whole, so do not open it on the strength of
-the card: ask the client for it in smaller parts, or open it, if at all,
-on a machine with no Drive sign-in and no client folder, never this one (decision 184), before believing the note.
+part. The part that was read is bounded (decision 178), so the card keeps
+**Open** where the row was parked for a filing reason; but the note speaks
+only for that part - ask the client for it in smaller parts before
+believing it.
 
 Four reasons in that file are not validation notes at all:
 `reasons.NO_READABLE_TEXT`, `reasons.ISSUER_NOT_NAMED`,

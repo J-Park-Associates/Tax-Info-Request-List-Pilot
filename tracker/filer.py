@@ -961,7 +961,8 @@ def _copy_whole(
     once.
     """
     if not expect:
-        raise FilingError(COPY_UNPROVED.format(source=source.name, target=target.name))
+        raise FilingError(COPY_UNPROVED.format(
+            source=recorded_name(source.name), target=recorded_name(target.name)))
     mark = target.parent.name == REVIEW_DIR_NAME and _may_carry_code(source)
 
     def prove(temp: Path) -> None:
@@ -1490,8 +1491,9 @@ def refresh_household_readme(household_dir: Path | str) -> Path | None:
         finally:
             release_lock(lock)
     except Exception as exc:
-        log.warning("Could not refresh the README of %s (%s: %s); carrying on",
-                    household_dir.name, exc.__class__.__name__, exc)
+        errors.keep("filer: the README refresh", exc, name=household_dir.name)
+        log.warning("Could not refresh the README of %s (%s); carrying on",
+                    household_dir.name, errors.error_class(exc))
         return None
 
 
@@ -1615,9 +1617,10 @@ def sweep_stranded_temps(household_dir: Path | str, returns: Sequence[Path], *,
             try:
                 rows = read_index(folder)
             except Exception as exc:
-                log.warning("The rows of %s could not be read (%s: %s); neither it nor its "
+                errors.keep("filer: the temporary-file sweep", exc, name=folder.name)
+                log.warning("The rows of %s could not be read (%s); neither it nor its "
                             "household's _Opened folder is swept this pass",
-                            folder.name, exc.__class__.__name__, exc)
+                            folder.name, errors.error_class(exc))
                 unread.add(opened_dir_of(folder))
                 continue
             swept.append(folder)
@@ -1653,8 +1656,9 @@ def sweep_stranded_temps(household_dir: Path | str, returns: Sequence[Path], *,
                 finally:
                     release_lock(lock)
     except Exception as exc:
-        log.warning("The sweep of %s's leftover temporary files stopped (%s: %s); carrying on",
-                    household_dir.name, exc.__class__.__name__, exc)
+        errors.keep("filer: the temporary-file sweep", exc, name=household_dir.name)
+        log.warning("The sweep of %s's leftover temporary files stopped (%s); carrying on",
+                    household_dir.name, errors.error_class(exc))
     for path in taken:
         log.info("Removed %s, a temporary file a killed write left", path.name)
     return taken
@@ -1943,7 +1947,8 @@ def _do_op(engagement_dir: Path, op: dict, *, cache: ContentCache | None = None)
         return
     target = locate(engagement_dir, op[ledger.TO_KEY])
     if kind == ledger.OP_COPY and not op.get(ledger.DIGEST_KEY):
-        raise FilingError(COPY_UNPROVED.format(source=source.name, target=target.name))
+        raise FilingError(COPY_UNPROVED.format(
+            source=recorded_name(source.name), target=recorded_name(target.name)))
     _through_the_door(engagement_dir, target)
     target.parent.mkdir(parents=True, exist_ok=True)
     if kind == ledger.OP_MOVE:
@@ -2066,8 +2071,8 @@ def _prove(engagement_dir: Path, ops: list[dict]) -> None:
                     source=locate(engagement_dir, op[ledger.FROM_KEY]).name))
             if not digest:
                 raise FilingError(COPY_UNPROVED.format(
-                    source=locate(engagement_dir, op[ledger.FROM_KEY]).name,
-                    target=locate(engagement_dir, op[ledger.TO_KEY]).name))
+                    source=recorded_name(locate(engagement_dir, op[ledger.FROM_KEY]).name),
+                    target=recorded_name(locate(engagement_dir, op[ledger.TO_KEY]).name)))
             unproved.append((op, digest))
         if ledger.TO_KEY in op:
             came_from[op[ledger.TO_KEY]] = op

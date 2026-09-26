@@ -521,24 +521,66 @@ BUCKET_HEADINGS = {
                        f"{reasons.OTHER_MACHINE}, never this one"),
     BUCKET_NOT_A_DOCUMENT: "Not documents - do not open; ask the client what they meant to send",
 }
-#: The codes of a reading the tracker refused or could not finish (decision
-#: 190, following 184): an unreadable PDF or photo, a failed extraction or
-#: OCR, a reading that crashed or hit the safety stop, a file too large to
-#: read, a locked PDF, one with no pages, one with no readable text, and a
-#: reader that could not start. Nothing vouches for such a file, so its
-#: row offers no Open on this machine - the one that holds the Drive
-#: sign-in and every client folder. The person asks the client to send it
-#: again, or opens it under 184's rule, on another machine. Only a document
-#: the tracker read, and parked for a filing reason (ambiguous, the name not
-#: on the page, no request accepts it ...), opens its marked copy here. A
-#: text file read only in part (``reasons.TEXT_CUT``) has no code of its
-#: own - the cut is appended to the verdict it explains - so it is not here:
-#: nothing reads a cause back out of a sentence.
-REFUSED_READING_CODES = frozenset(reason.code for reason in (
-    reasons.UNREADABLE_PDF, reasons.UNREADABLE_IMAGE, reasons.EXTRACTION_FAILED,
-    reasons.OCR_FAILED, reasons.READING_CRASHED, reasons.READING_STOPPED,
-    reasons.TOO_LARGE, reasons.PASSWORD_PROTECTED, reasons.NO_PAGES,
-    reasons.NO_READABLE_TEXT, reasons.NO_TEXT_AFTER_OCR, reasons.READER_UNAVAILABLE))
+#: Open is an allow-list (decision 190, following 184): the codes of a
+#: document the tracker **read** and parked for a filing reason - no request
+#: or more than one accepted it, a request contested it, its name is not on
+#: the page or names another return or another household's person (decision
+#: 204, which waits for one click), its forms would not sort, its issuer
+#: is not named, it shows its form number, it came from an email or a zip
+#: and is not filed across households, and the others of that kind. Only a
+#: row carrying one of these opens its marked copy on this machine, the one
+#: that holds the Drive sign-in and every client folder. A text file read
+#: only in part (``reasons.TEXT_CUT``, bounded by 178) has no code of its
+#: own - the cut is appended to the verdict it explains - so it keeps Open
+#: where that verdict is here.
+READ_AND_PARKED_CODES = frozenset((
+    reasons.UNMATCHED_CODE, reasons.AMBIGUOUS_CODE, reasons.OCR_ONLY_CODE,
+    reasons.CONTESTED_CODE, reasons.SEVERAL_FORMS_UNSORTED_CODE,
+    reasons.CONTESTED_BETWEEN_RETURNS_CODE, reasons.NO_ROOM_CODE,
+    *(reason.code for reason in (
+        reasons.WRONG_DOCUMENT, reasons.NO_EXPECTED_KEYWORD, reasons.WRONG_PERIOD,
+        reasons.ISSUER_NOT_NAMED, reasons.SHOWS_ITS_FORM_NUMBER, reasons.NAME_POINTS_AT,
+        reasons.NAME_NOT_ON_PAGE, reasons.NAMES_ANOTHER_RETURN, reasons.NO_PEOPLE_ON_FILE,
+        reasons.UNNAMED_ACROSS_HOUSEHOLDS, reasons.OPENED_NOT_ACROSS,
+        # read, and it names another household's person: it waits for one
+        # click (decision 204), and a person looks at it before clicking
+        reasons.NAMED_ACROSS_HOUSEHOLDS)),
+))
+#: Every other code, which offers no Open here - listed, not derived, so
+#: that each code is placed by a person and a test proves every code is in
+#: exactly one of the two sets. The allow-list fails closed: a code nobody
+#: has placed yet, or a row with no code, gets no Open. The person asks the
+#: client to send it again, or opens it under 184's rule, on another
+#: machine.
+NO_OPEN_CODES = frozenset((
+    # a reading the tracker refused or could not finish
+    *(reason.code for reason in (
+        reasons.UNREADABLE_PDF, reasons.UNREADABLE_IMAGE, reasons.EXTRACTION_FAILED,
+        reasons.OCR_FAILED, reasons.READING_CRASHED, reasons.READING_STOPPED,
+        reasons.TOO_LARGE, reasons.PASSWORD_PROTECTED, reasons.NO_PAGES,
+        reasons.NO_READABLE_TEXT, reasons.NO_TEXT_AFTER_OCR, reasons.READER_UNAVAILABLE,
+        # a file the tracker did not read: no decoder, no reader on this
+        # machine, a type or a size it refuses, a cloud placeholder, gone
+        reasons.HEIC_NOT_SUPPORTED, reasons.NO_TEXT_LAYER, reasons.EXTENSION_NOT_ALLOWED,
+        reasons.GOOGLE_STUB, reasons.TOO_SMALL, reasons.UNCHECKABLE_TYPE,
+        reasons.PENDING_SYNC, reasons.VANISHED,
+        # not a document, and an email or a zip (their buckets say so too)
+        reasons.NOT_A_DOCUMENT, reasons.CONTAINER_LOCKED, reasons.CONTAINER_DAMAGED,
+        reasons.CONTAINER_EMPTY, reasons.CONTAINER_LIMIT,
+        # a working copy that is not the bytes the record filed, or not there
+        reasons.FILE_MOVED, reasons.COPY_CHANGED, reasons.COPY_MISSING,
+        reasons.COPY_AND_ORIGINAL_GONE, reasons.ANSWER_NOT_COUNTED,
+        reasons.INTERRUPTED_MOVE, reasons.INTERRUPTED_MOVE_LOST)),
+    # every request refused the file's type, so it was never read
+    reasons.NO_REQUEST_ACCEPTS_CODE,
+    # the filer's catch-all, which can stop inside a reading
+    reasons.COULD_NOT_FILE_CODE,
+    # a person's action, which can follow a refused reading as well as a read one
+    reasons.UNFILED_BY_PERSON_CODE, reasons.DISMISSED_BY_PERSON_CODE,
+    reasons.ASSIGNED_BY_PERSON_CODE, reasons.PUT_BACK_REFUSED_CODE,
+    # a filed row's, never a parked one's
+    reasons.MATCHED_CODE, reasons.SEVERAL_FORMS_CODE, reasons.FILED_WHOLE_CODE,
+))
 #: The action that opens a parked row's review copy - the firm's copy in
 #: the private tree, marked for Protected View when it can carry macros -
 #: and what the card says beside a not-a-document row's true type.
@@ -1368,11 +1410,12 @@ def _review_copy_key(entry: IndexEntry) -> str:
     parked for a filing reason opens its marked copy on this machine. A
     not-a-document row never does; an email or a zip never does - it is
     opened, if at all, on a machine with no Drive sign-in and no client
-    folder; nor does a row whose reading was refused
-    (:data:`REFUSED_READING_CODES`); nor a row with no copy."""
+    folder; nor does any row whose code is not on the allow-list
+    (:data:`READ_AND_PARKED_CODES`) - a refused reading, a file the tracker
+    did not read, a code nobody has placed yet; nor a row with no copy."""
     if entry.decision != NEEDS_REVIEW or not entry.prepared_location:
         return ""
-    if review_bucket(entry) != BUCKET_DOCUMENT or entry.code in REFUSED_READING_CODES:
+    if review_bucket(entry) != BUCKET_DOCUMENT or entry.code not in READ_AND_PARKED_CODES:
         return ""
     return f"review_copy {ledger_key(entry)}"
 
@@ -2046,14 +2089,16 @@ def _record_pass(runs: list[EngagementRun] | EngagementRun,
         append_log(root / LOG_FILENAME, RunReport(today=dt.date.today(), reminders=REMINDERS_NEVER,
                                                   runs=every, warnings=said))
     except Exception as exc:
-        log.warning("Could not write %s (%s)", LOG_FILENAME, exc)
-        failed.append(LOG_NOT_WRITTEN.format(kind=exc.__class__.__name__))
+        errors.keep("api: after the pass", exc, name=LOG_FILENAME)
+        log.warning("Could not write %s (%s)", LOG_FILENAME, errors.error_class(exc))
+        failed.append(LOG_NOT_WRITTEN.format(kind=errors.error_class(exc)))
     try:
         write_status_page(root, status_report(discover_engagements(root), passed=every,
                                               warnings=said + failed))
     except Exception as exc:
-        log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, exc)
-        failed.append(PAGE_NOT_WRITTEN.format(kind=exc.__class__.__name__))
+        errors.keep("api: after the pass", exc, name=STATUS_PAGE_FILENAME)
+        log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, errors.error_class(exc))
+        failed.append(PAGE_NOT_WRITTEN.format(kind=errors.error_class(exc)))
     return failed
 
 

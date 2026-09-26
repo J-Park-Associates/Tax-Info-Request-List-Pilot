@@ -386,6 +386,9 @@ STAGE_NOTE = "stage {n}"
 #: same engagement.
 SKIP_INACTIVE = f"inactive (the engagement's details say {ENGAGEMENT_LABELS['active']}: {NO})"
 RECORD_UNREADABLE = "the record could not be read: {problem}"
+#: A return whose folder is gone. The row already names the return; the
+#: folder's path is a client's name and never reaches a page (decision 190).
+FOLDER_NOT_FOUND = "folder not found"
 #: What a pass says about a view whose replace did not land. Not an error:
 #: the view carries no fact, so the old one standing costs a person one pass.
 VIEW_NOT_REGENERATED = "status report open (not regenerated)"
@@ -1034,7 +1037,9 @@ def _feeds_of(household: Path, year: int, registry: object) -> tuple[list[Engage
     try:
         feeds = load_household_info(household).feeds
     except Exception as exc:
-        return [], [FEEDS_UNREAD.format(error=f"{exc.__class__.__name__}: {exc}")]
+        errors.keep("runner: the household's feeds", exc, name=household.name)
+        return [], [FEEDS_UNREAD.format(
+            error=errors.said(exc, (ManifestError, LedgerError, StoreError)))]
     if not feeds:
         return [], []
     found, said = resolve_feeds(household, feeds, year, registry)
@@ -1229,7 +1234,7 @@ def _worth_a_pass(run: EngagementRun) -> bool:
     if run.skipped:
         return False
     if not engagement.path.is_dir():
-        run.error = f"folder not found: {engagement.path}"
+        run.error = FOLDER_NOT_FOUND
         return False
     if engagement.problem:
         run.error = RECORD_UNREADABLE.format(problem=engagement.problem)
@@ -1503,7 +1508,7 @@ def _read_order_hint(report: RunReport) -> tuple[Path | None, dict]:
     try:
         path = store.store_path().parent / PASS_ORDER_FILENAME
     except Exception as exc:
-        log.warning("Could not tell where the pass order lives (%s)", exc.__class__.__name__)
+        log.warning("Could not tell where the pass order lives (%s)", errors.error_class(exc))
         report.warnings.append(ORDER_HINT_UNREADABLE)
         return None, {}
     try:
@@ -1515,7 +1520,7 @@ def _read_order_hint(report: RunReport) -> tuple[Path | None, dict]:
     except FileNotFoundError:
         return path, {}
     except Exception as exc:
-        log.warning("Could not read %s (%s)", path.name, exc.__class__.__name__)
+        log.warning("Could not read %s (%s)", path.name, errors.error_class(exc))
         report.warnings.append(ORDER_HINT_UNREADABLE)
         return path, {}
     households = payload.get("households") if isinstance(payload, dict) else None
@@ -1561,7 +1566,7 @@ def _write_order_hint(path: Path, hint: dict) -> None:
     except OSError as exc:
         # A hint: a pass that cannot keep it runs in the walk's order next
         # time, which is where every pass started before decision 189.
-        log.warning("Could not write %s (%s)", path.name, exc.__class__.__name__)
+        log.warning("Could not write %s (%s)", path.name, errors.error_class(exc))
 
 
 def _why_not_served(runs: list[EngagementRun]) -> str:
@@ -1927,7 +1932,11 @@ def _parked_files(report: RunReport) -> tuple[dict[Path, list[ParkedFile]], list
             ensure(engagement.path)
             entries = read_index(engagement.path)
         except Exception as exc:
-            problems.append(STATUS_INDEX_UNREADABLE.format(label=engagement.label, error=exc))
+            # The firm's own sentence whole; anything else - an OS error
+            # whose message is the record's path - by its class (decision 190).
+            errors.keep("runner: the parked files", exc, name=engagement.path.name)
+            problems.append(STATUS_INDEX_UNREADABLE.format(
+                label=engagement.label, error=errors.said(exc, (ManifestError, LedgerError, StoreError))))
             continue
         parked[engagement.path] = [
             ParkedFile(engagement=engagement.label, received=entry.received,
@@ -2348,10 +2357,13 @@ def _pass(ns, parser, reached: dict) -> int:
                          weekday=day, only=ns.only, report=result)
     except Exception as exc:
         # The runner's own code, not a household's (each of those is
-        # caught where it happens): said by its class, the whole trace on
-        # stderr for a person, and every ending below still attempted.
-        log.error("The pass stopped early", exc_info=True)
-        result.warnings.append(PASS_STOPPED.format(kind=exc.__class__.__name__))
+        # caught where it happens): said by its class, and every ending
+        # below still attempted. The trace goes where every trace goes,
+        # the debug log, and nowhere else (decision 190): a trace quotes
+        # the message, and the message can be a client's folder.
+        errors.keep("runner: the pass", exc)
+        log.error("The pass stopped early (%s)", errors.error_class(exc))
+        result.warnings.append(PASS_STOPPED.format(kind=errors.error_class(exc)))
         failed = True
     print(format_report(result))
 
@@ -2359,8 +2371,8 @@ def _pass(ns, parser, reached: dict) -> int:
         try:
             append_log(log_path, result)
         except Exception as exc:
-            log.warning("Could not write %s (%s)", log_path.name, exc.__class__.__name__)
-            result.warnings.append(LOG_NOT_WRITTEN.format(kind=exc.__class__.__name__))
+            log.warning("Could not write %s (%s)", log_path.name, errors.error_class(exc))
+            result.warnings.append(LOG_NOT_WRITTEN.format(kind=errors.error_class(exc)))
             print(f"\n  ! {result.warnings[-1]}")
             failed = True
         else:
@@ -2380,7 +2392,7 @@ def _pass(ns, parser, reached: dict) -> int:
             # end this in a traceback. But a page stuck on yesterday must not
             # look green (security principle 6; the review's S3): it is said
             # in the run log, by its class only, and the pass exits 1.
-            kind = exc.__class__.__name__
+            kind = errors.error_class(exc)
             log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, kind)
             print(f"\n  ! {PAGE_NOT_WRITTEN.format(kind=kind)}")
             failed = True
@@ -2389,7 +2401,7 @@ def _pass(ns, parser, reached: dict) -> int:
                     with log_path.open("a", encoding="utf-8") as handle:
                         handle.write(f"    ! {PAGE_NOT_WRITTEN.format(kind=kind)}\n")
                 except Exception as late:
-                    log.warning("Could not write %s (%s)", log_path.name, late.__class__.__name__)
+                    log.warning("Could not write %s (%s)", log_path.name, errors.error_class(late))
         else:
             print(f"\n  The practice: {page}")
 
@@ -2398,7 +2410,7 @@ def _pass(ns, parser, reached: dict) -> int:
     try:
         store.close()
     except Exception as exc:
-        log.warning("Could not close the store (%s)", exc.__class__.__name__)
+        log.warning("Could not close the store (%s)", errors.error_class(exc))
     if result.not_served_twice:
         return NOT_SERVED_TWICE_EXIT_CODE
     return 1 if failed or result.errors else 0
@@ -2421,7 +2433,7 @@ def _say_the_pass_started(log_path: Path, report: RunReport) -> None:
     except FileNotFoundError:
         tail = []
     except OSError as exc:
-        log.warning("Could not read %s (%s)", log_path.name, exc.__class__.__name__)
+        log.warning("Could not read %s (%s)", log_path.name, errors.error_class(exc))
         tail = []
     unfinished = ""
     for line in tail:
@@ -2437,7 +2449,7 @@ def _say_the_pass_started(log_path: Path, report: RunReport) -> None:
             stamp = dt.datetime.now().isoformat(timespec="seconds")
             handle.write(PASS_STARTED_LINE.format(stamp=stamp) + "\n")
     except OSError as exc:
-        log.warning("Could not write %s (%s)", log_path.name, exc.__class__.__name__)
+        log.warning("Could not write %s (%s)", log_path.name, errors.error_class(exc))
 
 
 if __name__ == "__main__":

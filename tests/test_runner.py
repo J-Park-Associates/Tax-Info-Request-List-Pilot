@@ -653,6 +653,16 @@ def test_a_missing_folder_is_recorded_not_raised(tmp_path):
     assert run.error.startswith("folder not found")
 
 
+def test_a_missing_folder_is_said_without_its_path(tmp_path):
+    """The row already names the return; the folder's path is a client's
+    name and never reaches the page (decision 190)."""
+    from tracker.runner import FOLDER_NOT_FOUND
+
+    run = a_pass(Engagement(path=tmp_path / "Test Household" / "no-such-client"), today=SATURDAY)
+    assert run.error == FOLDER_NOT_FOUND
+    assert "Test Household" not in run.error and "no-such-client" not in run.error
+
+
 def test_an_unreadable_record_is_recorded_not_raised(tmp_path):
     folder = tmp_path / "Broken 2025"
     folder.mkdir()
@@ -2357,6 +2367,100 @@ def test_a_record_the_disk_refuses_is_said_by_its_class_and_code_never_its_path(
     assert where not in _page(tmp_path) and engagement.path.name not in row.error
 
 
+#: A fabricated OS error's path, shaped like a client's inbox (decision 190).
+A_CLIENT_PATH = "/Clients/Test Household/Drop files here/W2.pdf"
+
+
+def _refused_with_a_client_path():
+    import errno
+
+    return PermissionError(errno.EACCES, "Permission denied", A_CLIENT_PATH)
+
+
+def _says_no_client_path(**said: str) -> None:
+    for where, text in said.items():
+        assert A_CLIENT_PATH not in text and "Drop files here/W2.pdf" not in text, (
+            f"a client's folder reached {where}: {text}")
+
+
+def test_a_record_the_registry_cannot_read_is_said_by_its_class_never_its_path(
+        tmp_path, samples, monkeypatch, capsys):
+    """A record the registry cannot read for a reason of the disk's is the
+    return's problem by its class and errno alone: the OS error's message is
+    a client's folder, and neither the problem, the page, the run log nor
+    the console quotes it (decision 190, the review's S1)."""
+    import tracker.registry as registry
+    from tracker.registry import engagement_from
+
+    root = tmp_path / "Clients"
+    engagement = build_engagement(root, samples)
+    real = registry.load_engagement_info
+
+    def refused(folder, *args, **kwargs):
+        if Path(folder).name == engagement.path.name:
+            raise _refused_with_a_client_path()
+        return real(folder, *args, **kwargs)
+
+    monkeypatch.setattr(registry, "load_engagement_info", refused)
+
+    found = engagement_from(engagement.path)
+    assert found.problem == "PermissionError (EACCES)"
+    assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER, "--log") == 1
+    page = _page(root)
+    assert RECORD_UNREADABLE.format(problem="PermissionError (EACCES)") in page
+    printed = capsys.readouterr()
+    _says_no_client_path(problem=found.problem, page=page, stdout=printed.out, stderr=printed.err,
+                         run_log=(root / LOG_FILENAME).read_text(encoding="utf-8"))
+
+
+def test_a_feed_list_the_disk_refuses_is_said_by_its_class_never_its_path(tmp_path, samples, monkeypatch):
+    """The feed list's warning, which reaches the page and the run log,
+    names a disk's refusal by its class and errno, never the message that
+    carries a client's folder (decision 190, the review's S1)."""
+    import tracker.runner as runner
+    from tracker.runner import FEEDS_UNREAD
+
+    def refused(*_args, **_kwargs):
+        raise _refused_with_a_client_path()
+
+    monkeypatch.setattr(runner, "load_household_info", refused)
+    found, said = runner._feeds_of(tmp_path / "Test Household", YEAR, None)
+    assert found == [] and said == [FEEDS_UNREAD.format(error="PermissionError (EACCES)")]
+    _says_no_client_path(warning=said[0])
+
+
+def test_a_pass_that_stops_prints_no_trace_and_no_message(tmp_path, samples, monkeypatch, capsys, caplog):
+    """The pass-level catch says the stop by its class; the trace, which
+    quotes the message, goes to the debug log alone - one rule for where a
+    trace goes (decision 190, the review's S2)."""
+    import logging
+
+    import tracker.runner as runner
+    from tracker.errors import DEBUG_LOGGER
+    from tracker.runner import PASS_STOPPED
+
+    root = tmp_path / "Clients"
+    build_engagement(root, samples)
+    asked = []
+
+    def fails_at_the_end_of_the_pass():
+        asked.append(True)
+        if len(asked) == 2:
+            raise _refused_with_a_client_path()
+        return ""
+
+    monkeypatch.setattr(runner, "reader_start_warning", fails_at_the_end_of_the_pass)
+    with caplog.at_level(logging.DEBUG):
+        assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER, "--log") == 1
+    assert PASS_STOPPED.format(kind="PermissionError (EACCES)") in _page(root)
+    logged = [record for record in caplog.records if record.name != DEBUG_LOGGER]
+    assert not any(record.exc_info for record in logged), "a trace was printed"
+    printed = capsys.readouterr()
+    assert "Traceback" not in printed.err
+    _says_no_client_path(page=_page(root), stdout=printed.out, stderr=printed.err,
+                         logged="\n".join(record.getMessage() for record in logged),
+                         run_log=(root / LOG_FILENAME).read_text(encoding="utf-8"))
+
 def test_a_household_that_stops_is_said_by_its_class_never_its_message(
         tmp_path, samples, monkeypatch, capsys):
     """A household's surprise costs its returns, and each carries the class
@@ -2388,8 +2492,9 @@ def test_a_page_that_cannot_be_written_is_said_in_the_log_and_fails_the_run(
         tmp_path, samples, monkeypatch, capsys):
     """The page is how a person finds out; one stuck on yesterday must not
     look green (security principle 6; the review's S3). A page that cannot
-    be written is said in the run log by its class alone, and the pass
-    exits 1."""
+    be written is said in the run log by its class alone - in the one
+    spelling, errors.error_class, with its errno (decision 190, the
+    review's M1) - and the pass exits 1."""
     import tracker.runner as runner
     from tracker.runner import PAGE_NOT_WRITTEN
 
@@ -2403,7 +2508,7 @@ def test_a_page_that_cannot_be_written_is_said_in_the_log_and_fails_the_run(
 
     assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER, "--log") == 1
     log_text = (root / LOG_FILENAME).read_text(encoding="utf-8")
-    assert PAGE_NOT_WRITTEN.format(kind="PermissionError") in log_text
+    assert PAGE_NOT_WRITTEN.format(kind="PermissionError (EACCES)") in log_text
     assert "a client's folder" not in log_text
     capsys.readouterr()
 
