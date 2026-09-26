@@ -220,11 +220,13 @@ Date Pattern is at most 200 characters with at most eight variable parts
 (`?`, `*`, `+`, `{m,n}`), of which at most three repeat more than once, one
 at most is open-ended (`+`, `*`) and the rest at most `{…,20}`. No
 repetition may sit inside another, no back-reference inside one, and a `|`
-only inside a plain `?` (so `(?:Dec|12)?` is fine). And the tracker counts
-every way the pattern could try one line and refuses one with more than
-16,384: the slowest pattern that passes took about a quarter of a second
-on a 500-character line, so a pattern cannot hold a pass on one page. The
-count reads the pattern; it is not a clock. Descriptions (Document, Period, Override Reason,
+not inside anything that repeats more than once (so `(?:Dec|12)?` is fine).
+The tracker counts every way the pattern could try one line, and refuses
+one with more than 16,384, or whose ways times the longest stretch of
+matching each can do come to more than 200,000. The slowest pattern found
+by the reviews' attacks takes about 0.25 s on a 500-character line; the
+rule reads the pattern and is not a clock; the time bound that does not
+depend on analysis comes with Solution 4. Descriptions (Document, Period, Override Reason,
 the client and firm details) may run over several lines; identifiers, short
 names and household and return names may not.
 
@@ -1624,8 +1626,8 @@ the same way.
   the value: a value outside the editor's bounds ("must be a whole number
   from 1 to 9999", "must be a date written YYYY-MM-DD", "must be true or
   false", a Date Pattern that "repeats something that itself repeats",
-  "could try too many ways to match one line" or "has more than 8 variable
-  repetitions"); a line naming "an event this version does not know"; a
+  "could try too many ways to match one line", "could do too much matching
+  on one line" or "has more than 8 variable repetitions"); a line naming "an event this version does not know"; a
   step "outside this return's places"; a household or return label that
   "is not one folder name"; or a line stamped in a form the tracker never
   writes. Nothing was

@@ -1456,6 +1456,14 @@ DATE_PATTERN_BOUND_MAX = 20
 #: Period derives is tried at most 176 ways.
 DATE_PATTERN_OPEN_WIDTH = 500
 DATE_PATTERN_WAYS_MAX = 16_384
+#: What a pattern may cost, at most: its ways times the widest match of its
+#: bounded parts (:func:`_width`), because every way tried may be followed
+#: by that much matching (the second re-check of decision 187's review,
+#: M1c: ``(?:\d\d){200}`` adds no way and 400 characters of work to each,
+#: 15 s on one line). A fixed ``{n}`` and a lookaround count toward the
+#: width; an open-ended part counts one, its length being in the ways
+#: already. Every derived pattern costs at most 6,160.
+DATE_PATTERN_COST_MAX = 200_000
 
 #: The fixed phrases. Each names the class of problem; none names the value.
 COUNT_BOUNDS = "must be a whole number from {minimum} to {maximum}"
@@ -1479,6 +1487,7 @@ DATE_PATTERN_TOO_MANY = f"has more than {DATE_PATTERN_REPEATS_MAX} repetitions"
 DATE_PATTERN_TOO_MANY_OPTIONAL = (f"has more than {DATE_PATTERN_VARIABLE_MAX} variable repetitions "
                                   f"(?, *, + or {{m,n}})")
 DATE_PATTERN_TOO_MANY_WAYS = "could try too many ways to match one line"
+DATE_PATTERN_TOO_COSTLY = "could do too much matching on one line"
 DATE_PATTERN_TOO_OPEN = f"has more than {DATE_PATTERN_OPEN_MAX} open-ended repetition (+, * or {{n,}})"
 DATE_PATTERN_TOO_WIDE = f"repeats more than {DATE_PATTERN_BOUND_MAX} times in a bounded repetition"
 
@@ -1657,6 +1666,35 @@ def _ways(pattern: object) -> int:
     return total
 
 
+def _width(pattern: object) -> int:
+    """The widest match of a pattern's bounded parts - how much matching may
+    follow each way it is tried. A fixed ``{n}`` counts n times what it
+    holds, a lookaround its own width, a branch its widest alternative, a
+    back-reference 20, and an open-ended part one."""
+    if not isinstance(pattern, _re_parser.SubPattern):
+        return 1
+    width = 0
+    for op, argument in pattern:
+        if op in _REPEATS:
+            _low, high, inside = argument
+            width += _width(inside) * (1 if high == _re_parser.MAXREPEAT else high)
+        elif op is _re_parser.BRANCH:
+            width += max(_width(one) for one in argument[1])
+        elif op is _re_parser.SUBPATTERN:
+            width += _width(argument[-1])
+        elif op is _re_parser.ATOMIC_GROUP:
+            width += _width(argument)
+        elif op in (_re_parser.ASSERT, _re_parser.ASSERT_NOT):
+            width += _width(argument[1])
+        elif op is _re_parser.GROUPREF_EXISTS:
+            width += max(_width(argument[1]), _width(argument[2]))
+        elif op is _re_parser.GROUPREF:
+            width += DATE_PATTERN_BOUND_MAX
+        elif op is not _re_parser.AT:
+            width += 1
+    return width
+
+
 def date_pattern_problem(pattern: object) -> str:
     """Why a Date Pattern may not be run over a client's page, or ``""``.
 
@@ -1675,8 +1713,10 @@ def date_pattern_problem(pattern: object) -> str:
       once and at most :data:`DATE_PATTERN_OPEN_MAX` is open-ended (``+``,
       ``*``, ``{n,}``);
     - every bounded one repeats at most :data:`DATE_PATTERN_BOUND_MAX` times;
-    - and the ways one start of a line may be tried, counted through every
-      repetition, stay within :data:`DATE_PATTERN_WAYS_MAX` (:func:`_ways`).
+    - the ways one start of a line may be tried, counted through every
+      repetition, stay within :data:`DATE_PATTERN_WAYS_MAX` (:func:`_ways`);
+    - and those ways times the widest match of the bounded parts
+      (:func:`_width`) stay within :data:`DATE_PATTERN_COST_MAX`.
 
     The rule bounds the cost by reading the pattern; it is not a clock
     (principle 8). A time bound that needs no analysis comes with the
@@ -1717,8 +1757,11 @@ def date_pattern_problem(pattern: object) -> str:
         return DATE_PATTERN_TOO_OPEN
     if any(high != _re_parser.MAXREPEAT and high > DATE_PATTERN_BOUND_MAX for _low, high in variable):
         return DATE_PATTERN_TOO_WIDE
-    if _ways(parsed) > DATE_PATTERN_WAYS_MAX:
+    ways = _ways(parsed)
+    if ways > DATE_PATTERN_WAYS_MAX:
         return DATE_PATTERN_TOO_MANY_WAYS
+    if ways * max(1, _width(parsed)) > DATE_PATTERN_COST_MAX:
+        return DATE_PATTERN_TOO_COSTLY
     return ""
 
 

@@ -433,3 +433,47 @@ def test_every_period_form_derives_a_pattern_the_rule_admits():
                     assert records.date_pattern_problem(pattern) == "", period
                     most = max(most, records._ways(records._re_parser.parse(pattern)))
     assert most <= 176
+
+
+#: The second re-check's table (decision 187's review, M1c): a fixed-count
+#: repetition adds no way and hundreds of characters of matching to each -
+#: from 0.72 s to 15 s on one 500-character line under the ways rule alone.
+COSTLY = [
+    "(?:1|11)" * 14 + r"(?:\d\d){200}\D",
+    "(?:1|11)" * 13 + r"(?:\d\d){200}\D",
+    r"\d{0,20}" * 3 + r"(?:\d\d){200}\D",
+    r"\d+\d{0,20}(?:\d\d){150}\D",
+    "(?:1|11)?" * 8 + r"(?:\d\d){200}\D",
+    "(?:1|11)" * 13 + r"\w{400}\D",
+    "(?:1|11)" * 13 + r"\d{300}\D",
+    "(?:1|11)?" * 8 + r"\d{300}\D",
+    "(?:1|11)" * 13 + r"(?=\d{400})\D",
+    r"\d{0,20}" * 3 + r"\d{400}\D",
+]
+
+
+@pytest.mark.parametrize("pattern", COSTLY)
+def test_a_fixed_count_of_matching_is_counted_in_the_cost(pattern):
+    """A pattern's cost is its ways times the widest match of its bounded
+    parts - a fixed ``{n}`` and a lookaround included - and one over
+    200,000 is refused."""
+    assert records.date_pattern_problem(pattern) == records.DATE_PATTERN_TOO_COSTLY
+    assert records.DATE_PATTERN_COST_MAX == 200_000
+
+
+def test_every_derived_and_common_pattern_is_within_the_cost():
+    """Every pattern the Period derives costs at most 6,160, and the ten
+    common hand-typed patterns pass the cost rule too."""
+    most = 0
+    for year in range(1900, 2101):
+        for head in [*manifest._MONTHS, *manifest._MONTH_NAMES, "TY", "FY"]:
+            pattern = manifest.derived_date_pattern(f"{head} {year}")
+            if pattern:
+                parsed = records._re_parser.parse(pattern)
+                most = max(most, records._ways(parsed) * records._width(parsed))
+                assert records.date_pattern_problem(pattern) == "", pattern
+    assert most <= 6_160
+    for common in [r"(?:Dec|12)?", r"12/31/20\d\d", r"20(24|25)", r"Q[1-4]",
+                   r"(0[1-9]|1[0-2])/\d{2}/\d{4}", r"Dec(ember)?\s+31", r"(?:Dec|12)?/31/2025",
+                   r"(?:Q4|4th Quarter)?\s*2025", r"\d{1,2}/\d{1,2}/\d{2,4}", r"(?:12/31|Dec(?:ember)?\s+31)"]:
+        assert records.date_pattern_problem(common) == "", common
