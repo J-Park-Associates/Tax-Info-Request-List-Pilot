@@ -19,7 +19,6 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-import tempfile
 import threading
 from pathlib import Path
 
@@ -83,6 +82,23 @@ def a_pdf_open_that_never_finishes(path: Path, *, ocr: bool = True):
     return content_check.open_and_read(path, ocr=ocr)
 
 
+def a_page_read_that_never_finishes(path: Path, *, ocr: bool = True):
+    """The real reading, with the reader blocked for ever on the first page
+    it is handed - a page RapidOCR never finishes, which nothing inside the
+    child can interrupt (decision 169, ruling 5): the document's stop ends
+    the child."""
+    from tracker import ocr as reader
+
+    reader.read_page = lambda _image, **_kwargs: _never_finishes(path, "page")
+    return content_check.extract(path, ocr=ocr)
+
+
+def the_childs_process_id(path: Path, *, ocr: bool = True):
+    """A reading whose words are the child's own process id: which child
+    read it, for the claims about one child serving a pass."""
+    return content_check.Extraction(str(os.getpid()))
+
+
 def a_reader_that_dies_on_a_crash(path: Path, *, ocr: bool = True):
     """The real reading, except that a file named for a crash ends the
     process on the spot - no exception, no answer, as pdfium does."""
@@ -92,17 +108,75 @@ def a_reader_that_dies_on_a_crash(path: Path, *, ocr: bool = True):
 
 
 def a_reader_that_starts_a_reader_of_its_own(path: Path, *, ocr: bool = True):
-    """A reader that has started a process of its own, the way OCR starts
-    Tesseract, and then never finishes. The helper's process id is left
+    """A reader that has started a process of its own and then never
+    finishes. The helper's process id is left
     beside the document for the test to look for afterwards."""
     helper = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(600)"])
     reached(path, "helper").write_text(str(helper.pid), encoding="utf-8")
     _never_finishes(path, "waiting")
 
 
-def where_temporary_files_go(path: Path, *, ocr: bool = True):
-    """A reading whose words are the child's temporary folder."""
-    return content_check.Extraction(tempfile.gettempdir())
+# ------------------------------------------- the graphics card, in a child ----
+#
+# Decision 169 (REVIEW-169, S-2): the card's claims run in a real child
+# here, because the suite's own card is a fake that never crosses into one.
+# The child has no pack (it is not the frozen app), so these stand in for
+# what the reader says there. Each answers "<process id> <processor only>",
+# so a test can tell which child read and whether it was told to keep off
+# the card.
+
+
+def _who_read() -> content_check.Extraction:
+    from tracker import ocr as reader
+
+    return content_check.Extraction(f"{os.getpid()} {reader._PROCESSOR_ONLY}")
+
+
+def a_reader_that_tells_the_pass(path: Path, *, ocr: bool = True):
+    """In a child that may use the card, a document named for a fault says
+    the card failed on it, and one named for an unusable pack says the pack
+    could not be used - as the reader's own notes do (``take_notes``)."""
+    from tracker import ocr as reader
+
+    if not reader._PROCESSOR_ONLY:
+        if "fault" in path.name:
+            reader._NOTES.append(("gpu-fault", path.name))
+        elif "unusable" in path.name:
+            reader._NOTES.append(("pack-unusable", "the self-test read nothing"))
+    return _who_read()
+
+
+def a_card_that_dies(path: Path, *, ocr: bool = True):
+    """A native crash on the card - an access violation, not an exception:
+    a child that may use the card ends on the spot; one kept on the
+    processor reads."""
+    from tracker import ocr as reader
+
+    if not reader._PROCESSOR_ONLY:
+        os._exit(3)
+    return _who_read()
+
+
+_SERVED = 0
+
+
+def a_reader_that_dies_once_used(path: Path, *, ocr: bool = True):
+    """A crash that only a child which has already served a document has:
+    what the earlier documents left behind, never this file's own."""
+    global _SERVED
+    _SERVED += 1
+    if _SERVED > 1:
+        os._exit(3)
+    return _who_read()
+
+
+def a_reader_that_needs_too_much_memory(path: Path, *, ocr: bool = True):
+    """A document named for its size wants more memory than the child's
+    job allows (SPEC-169 section 9); any other reads."""
+    if "big" in path.name:
+        hold = bytearray(3 * 1024**3)
+        return content_check.Extraction(str(len(hold)))
+    return _who_read()
 
 
 # ----------------------------------------- the opener of an email or a zip ----

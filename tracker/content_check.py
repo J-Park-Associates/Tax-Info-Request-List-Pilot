@@ -9,10 +9,11 @@ Extractors by extension:
 
 - ``.pdf``            → pdfplumber, first ``MAX_PAGES`` pages only; if the
                         PDF has no text layer (a scan), fall back to OCR
-                        *if available* (pytesseract + pypdfium2 + Tesseract).
-                        The OCR stack is entirely optional: when absent, the
-                        file is reported as unverifiable with a clear note —
-                        nothing breaks.
+                        (decision 169: RapidOCR through :mod:`tracker.ocr`,
+                        with its models shipped in the app, so the reader
+                        runs on every machine). When it cannot - a model
+                        missing or broken - the file is reported as
+                        unverifiable with a clear note, and nothing breaks.
 - ``XLSX_EXTENSIONS``   → openpyxl (all sheets, cached formula values);
                         date cells are rendered in both ISO (2025-12-31)
                         and US (12/31/2025) forms so either pattern style
@@ -79,22 +80,13 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
 import re
-import shutil
-import signal
-import subprocess
-import sys
-import tempfile
 import time
-import traceback
 from collections import OrderedDict
-from collections.abc import Iterator
-from contextlib import contextmanager
 from dataclasses import MISSING, asdict, dataclass, fields, replace
 from pathlib import Path
 
-from tracker import reasons, store
+from tracker import ocr, reasons, store
 from tracker.manifest import RequestItem, has_routing_rules, keyword_alternatives
 
 # The Evidence record and the cell format it is written in live in
@@ -158,7 +150,10 @@ RETIRED_CACHE_FILENAME = "_content_cache.json"
 #:    OCR, so a verdict on a scan read at 9 may have been read sideways.
 #: 11 (decision 141): a notice's header phrases (``FIRST_PAGE_PHRASES``)
 #:    count on the first page only, so a verdict that found one deeper is void.
-CACHE_VERSION = 11
+#: 12 (decision 169): RapidOCR reads instead of Tesseract, so every verdict
+#:    on a scan or a photo was reached on another reader's words. The first
+#:    pass after the install reads every scan and photo again, once.
+CACHE_VERSION = 12
 
 #: A "text" PDF with fewer stripped characters than this *per page read*
 #: is a scan: what little it has is a scanner's stamp ("Scanned by
@@ -187,7 +182,7 @@ _MAX_OCR_PAGES = MAX_PAGES
 #: which at the old fixed scale of 2 is some 830 million pixels, and
 #: ``bitmap.to_pil()`` hands Pillow an image without its decompression-bomb
 #: guard ever being asked. Forty million is a letter page at about 600 dpi -
-#: far past what Tesseract needs - so an ordinary page is read exactly as
+#: far past what the reader needs - so an ordinary page is read exactly as
 #: before, and a giant one is read smaller rather than refused.
 PIXEL_BUDGET = 40_000_000
 #: The scale an ordinary PDF page is rendered at for OCR (144 dpi).
@@ -211,23 +206,6 @@ READING_STOP_DOCUMENT_SECONDS = 600.0
 #: rather than wait ten minutes.
 _clock = time.monotonic
 
-#: Tesseract's own confidence in the turn it says a page has. Its scale is
-#: not a percentage: on a form it comes back in the tens, and anything
-#: under about 1 is the detector saying it could not tell. Below this the
-#: four-way scorer decides instead of a number nobody should trust.
-#: Measured against Tesseract 5.4.0 with the `osd` data installed.
-OSD_MIN_CONFIDENCE = 1.0
-#: The turns the four-way scorer tries, in the order it tries them: 0
-#: first, so a tie leaves the page exactly as it came.
-_TURNS = (0, 90, 180, 270)
-#: How many scored words a rotation needs before its mean says anything.
-#: Below this at every turn - a photo of a receipt's corner, a blank page -
-#: the image is handed back as it is: there is nothing to score, and
-#: turning a page on two words would be guessing.
-FOUR_WAY_MIN_WORDS = 3
-#: How many letters a word needs before its confidence is scored. One
-#: letter is noise in any orientation.
-_SCORED_WORD_LETTERS = 2
 
 
 # ---------------------------------------------------------------- evidence ----
@@ -265,8 +243,8 @@ class ContentResult:
     ok: bool
     reason: str = ""
     extractable: bool = True  # False: could not get text (no extractor / no OCR)
-    #: True when the verdict is about the machine, not the document: OCR is
-    #: not installed, or it failed this once. Never cached - installing OCR
+    #: True when the verdict is about the machine, not the document: the
+    #: reader could not run, or it failed this once. Never cached - mending the reader
     #: or a second try must be able to change the answer.
     transient: bool = False
     #: Why the verdict went this way: one Evidence per rule that found its
@@ -1402,7 +1380,12 @@ class _SafetyStop:
         self.page_deadline = self.deadline
 
     def page(self) -> None:
-        """A page starts: it has a minute, or what is left of the ten."""
+        """A page is about to start: none starts past the stop - the page
+        before it overran its minute, or the document its ten (decision
+        169, ruling 5; the reader takes no timeout of its own, so a page
+        under way is bounded by the child's end at the document's stop).
+        Then it has a minute, or what is left of the ten."""
+        self.remaining()
         self.page_deadline = min(_clock() + READING_STOP_PAGE_SECONDS, self.deadline)
 
     def remaining(self) -> float:
@@ -1414,126 +1397,8 @@ class _SafetyStop:
 
 
 #: The stop of the reading under way, set by :func:`extract_by_ocr`. None
-#: outside a reading, where a Tesseract call has no timeout (a test's).
+#: outside a reading (a test's call straight into a reader).
 _STOP: _SafetyStop | None = None
-
-
-def _tesseract(call, image, **kwargs):
-    """One call into Tesseract, inside what is left of the page's time.
-
-    Every ``pytesseract`` call is made through here (decision 137, B1.2):
-    its ``timeout=`` is the page's remaining budget, which is never more
-    than the document's, and a Tesseract that is killed at it is the
-    safety stop, not an OCR failure to retry."""
-    if _STOP is None:
-        return call(image, **kwargs)
-    try:
-        return call(image, timeout=_STOP.remaining(), **kwargs)
-    except RuntimeError as exc:
-        if "timeout" in str(exc).lower():
-            raise ReadingStopped(_clock() - _STOP.started) from exc
-        raise
-
-
-def _score_of(image) -> float | None:
-    """How well Tesseract reads this image, or None when there is too little.
-
-    The mean confidence of the words it found that carry
-    ``_SCORED_WORD_LETTERS`` letters or more, counting only confidences
-    above zero - Tesseract reports -1 for a box it made no word of. A page
-    read the right way up scores far above the same page read sideways,
-    which is the whole of the four-way decision.
-    """
-    import pytesseract
-    from pytesseract import Output
-
-    data = _tesseract(pytesseract.image_to_data, image, output_type=Output.DICT)
-    # strict: the words and their confidences are two columns of one table,
-    # and a reading whose columns do not line up is a broken reading. It
-    # raises here, becomes OcrError, and the file is tried again next pass -
-    # which is the right answer to a reader that has stopped making sense.
-    scored = [
-        value
-        for word, confidence in zip(data["text"], data["conf"], strict=True)
-        if (value := float(confidence)) > 0
-        and sum(character.isalpha() for character in str(word)) >= _SCORED_WORD_LETTERS
-    ]
-    if len(scored) < FOUR_WAY_MIN_WORDS:
-        return None
-    return sum(scored) / len(scored)
-
-
-def _four_way(image):
-    """Read the page at each of the four turns and keep the best reading.
-
-    Where the orientation detector cannot say - too little text on the
-    page, or the ``osd`` data missing - the reading itself decides: four
-    readings cost four times one, and this runs only when OSD declined,
-    which is rare on a form and common on a photo of a receipt. A tie
-    keeps the page as it came, and a page nothing could be scored at any
-    turn is handed back untouched: a turn the reading did not earn is a
-    guess, and nothing here guesses.
-    """
-    # The four turns are scored on a small copy (decision 137's review,
-    # B #2): which way up a page is does not need its full resolution, and
-    # four full readings of a dense 12-megapixel photo took the whole of its
-    # minute on the office machine. Only the chosen turn is read in full.
-    small = _for_scoring(image)
-    best_turn, best_score = 0, None
-    for turn in _TURNS:
-        score = _score_of(small if turn == 0 else small.rotate(-turn, expand=True))
-        if score is not None and (best_score is None or score > best_score):
-            best_turn, best_score = turn, score
-    if best_score is None or best_turn == 0:
-        return image
-    return image.rotate(-best_turn, expand=True)
-
-
-#: The longest side of the copy the four-way scorer reads (decision 137's
-#: review, B #2). A letter page at 150 dpi is 1,650 px on its long side.
-SCORING_LONG_SIDE = 2000
-
-
-def _for_scoring(image):
-    """``image`` reduced so its longer side is at most
-    :data:`SCORING_LONG_SIDE`, or ``image`` itself when it already is."""
-    longest = max(image.width, image.height)
-    if longest <= SCORING_LONG_SIDE:
-        return image
-    factor = SCORING_LONG_SIDE / longest
-    return image.resize((max(1, int(image.width * factor)), max(1, int(image.height * factor))))
-
-
-def _upright(image):
-    """The page or photo the right way up, in memory (decision 127).
-
-    Tesseract reads a sideways page as nonsense - the harness of
-    2026-09-19 caught two corpus scans coming back as
-    ``eoynleg enuendy jeweyuj`` - and until this decision nothing turned
-    anything. The orientation detector (``osd`` data, which the installer
-    ships by default) says the turn and how sure it is; below
-    :data:`OSD_MIN_CONFIDENCE`, or where it raises at all, the four-way
-    scorer decides by reading.
-
-    ``Image.rotate`` returns a new image: **the file on disk is never
-    touched**, here or anywhere else in the reading. Originals are never
-    altered, and a photo is an original.
-    """
-    import pytesseract
-    from pytesseract import Output
-
-    try:
-        said = _tesseract(pytesseract.image_to_osd, image, output_type=Output.DICT)
-        turn = int(said.get("rotate", 0) or 0)
-        confidence = float(said.get("orientation_conf", 0) or 0)
-    except (pytesseract.TesseractNotFoundError, ReadingStopped):
-        raise
-    except Exception:
-        # No `osd` data, or too little text for the detector to speak.
-        return _four_way(image)
-    if confidence < OSD_MIN_CONFIDENCE:
-        return _four_way(image)
-    return image if turn % 360 == 0 else image.rotate(-turn, expand=True)
 
 
 def render_scale(width: float, height: float) -> float:
@@ -1558,23 +1423,20 @@ def _within_budget(image):
 
 
 def _ocr_pdf(path: Path) -> str | None:
-    """OCR the first pages of a PDF. None if the OCR stack is unavailable.
-
-    Requires pytesseract + pypdfium2 + Pillow (pip) AND the Tesseract
-    engine (Windows installer). The packages are pinned and bundled; the
-    engine's absence is a normal, reported condition, never an error.
-
-    Each page is greyscaled and turned upright before it is read
-    (:func:`_upright`), so the detector and the reading see the same
-    pixels and a page scanned sideways comes back as words.
+    """OCR the first pages of a PDF. None when the reader cannot run on
+    this machine (:class:`tracker.ocr.ReaderUnavailable`: a model missing or
+    broken) - a normal, reported condition, never an error.
 
     Each page is rendered at :func:`render_scale` of its own size (decision
     137), so no page is ever drawn past :data:`PIXEL_BUDGET`: an ordinary
-    page at the scale it always had, a giant one smaller.
+    page at the scale it always had, a giant one smaller. It is read as it
+    comes (decision 169, ruling 6): the reader keeps the words of a page
+    scanned sideways, and nothing turns it. The pages are joined with a
+    line break, not :data:`PAGE_BREAK`, as they always were (SPEC-127.2X
+    D9.2): the footer and first-page rules read an OCR reading as one page.
     """
     try:
         import pypdfium2 as pdfium
-        import pytesseract
     except ImportError:
         return None
 
@@ -1584,33 +1446,34 @@ def _ocr_pdf(path: Path) -> str | None:
         try:
             for index in range(min(len(doc), _MAX_OCR_PAGES)):
                 if _STOP is not None:
-                    _STOP.page()              # a page's minute starts before its render
+                    _STOP.page()              # no page starts past the stop
                 page_of = doc[index]
                 bitmap = page_of.render(scale=render_scale(*page_of.get_size()))
                 if _STOP is not None:
                     _STOP.remaining()         # the render counts against the budget
-                page = _upright(bitmap.to_pil().convert("L"))
-                parts.append(_tesseract(pytesseract.image_to_string, page))
+                parts.append(ocr.read_page(bitmap.to_pil().convert("RGB"), name=path.name))
         finally:
             doc.close()
         return "\n".join(parts)
-    except pytesseract.TesseractNotFoundError:
-        return None  # pip packages present but the Tesseract engine is not
+    except ocr.ReaderUnavailable as exc:
+        log.warning("The reader cannot run on this machine (%s)", exc)
+        return None
     except ReadingStopped:
         raise
+    except MemoryError:
+        raise           # the child's memory limit: a crash, not a retry (SPEC-169 section 9)
     except Exception as exc:
         log.warning("OCR failed on %s: %s", path.name, exc)
         raise OcrError(f"{exc.__class__.__name__}: {exc}") from exc
 
 
 def _ocr_image(path: Path) -> str | None:
-    """OCR one photo. None if the OCR stack is unavailable.
+    """OCR one photo. None when the reader cannot run on this machine.
 
     One photo is one page. The phone's own rotation flag is undone first
     (``exif_transpose``) - a photo held upright and recorded sideways is
-    the commonest case there is, and EXIF alone settles it - then the
-    image is greyscaled once, so the orientation detector and the reading
-    work on the same pixels, then turned upright and read.
+    the commonest case there is, and EXIF alone settles it - and the photo
+    is read as it then stands (decision 169, ruling 6).
 
     Nothing is written: the photo on disk is the client's original.
 
@@ -1623,7 +1486,6 @@ def _ocr_image(path: Path) -> str | None:
     person (:class:`TooLargeToRead`), not a retry every pass.
     """
     try:
-        import pytesseract
         from PIL import Image, ImageOps
     except ImportError:
         return None
@@ -1632,11 +1494,12 @@ def _ocr_image(path: Path) -> str | None:
         with Image.open(path) as opened:
             if opened.width * opened.height > PIXEL_BUDGET and opened.format == "JPEG":
                 factor = (PIXEL_BUDGET / (opened.width * opened.height)) ** 0.5
-                opened.draft("L", (int(opened.width * factor), int(opened.height * factor)))
-            image = _within_budget(ImageOps.exif_transpose(opened).convert("L"))
-        return _tesseract(pytesseract.image_to_string, _upright(image))
-    except pytesseract.TesseractNotFoundError:
-        return None  # pip packages present but the Tesseract engine is not
+                opened.draft("RGB", (int(opened.width * factor), int(opened.height * factor)))
+            image = _within_budget(ImageOps.exif_transpose(opened).convert("RGB"))
+        return ocr.read_page(image, name=path.name)
+    except ocr.ReaderUnavailable as exc:
+        log.warning("The reader cannot run on this machine (%s)", exc)
+        return None
     except ReadingStopped:
         raise
     except Image.DecompressionBombError as exc:
@@ -1644,13 +1507,15 @@ def _ocr_image(path: Path) -> str | None:
         # too large even to decode smaller. A size rule, so it is a kept
         # verdict for a person, not a retry every pass.
         raise TooLargeToRead(picture_too_large_reason(exc)) from exc
+    except MemoryError:
+        raise           # the child's memory limit: a crash, not a retry (SPEC-169 section 9)
     except Exception as exc:
         log.warning("OCR failed on %s: %s", path.name, exc)
         raise OcrError(f"{exc.__class__.__name__}: {exc}") from exc
 
 
 class OcrError(RuntimeError):
-    """OCR is installed but failed on this file this time; try again later."""
+    """The reader ran but failed on this file this time; try again later."""
 
 
 class TooLargeToRead(Exception):
@@ -1674,12 +1539,12 @@ def extract(path: Path, *, ocr: bool = True) -> Extraction:
     and finishes it. The one exception is the safety stop, ten times the
     owner's ceiling (decision 137, B1.2, :data:`READING_STOP_PAGE_SECONDS`
     and :data:`READING_STOP_DOCUMENT_SECONDS`): a reading that reaches it
-    is abandoned, and its verdict kept. **What the stop covers here:** OCR
-    - every Tesseract call is killed at its timeout - and an overrun
-    noticed between pages. It cannot interrupt the PDF text layer
-    (pdfplumber), a workbook's reading, or a single page render, which run
-    inside the reading's own process and can only be seen to have overrun
-    once they return. The bound on the whole reading is the process
+    is abandoned, and its verdict kept. **What the stop covers here:** no
+    OCR page starts past it (decision 169, ruling 5), and an overrun is
+    noticed between pages. It cannot interrupt a page being read, the PDF
+    text layer (pdfplumber), a workbook's reading, or a single page render,
+    which run inside the reading's own process and can only be seen to
+    have overrun once they return. The bound on the whole reading is the process
     itself: the pass reads through :func:`extract_bounded`, which runs
     this function in a child it ends at the stop (decision 150).
     """
@@ -1703,6 +1568,8 @@ def _extract(path: Path, *, ocr: bool) -> Extraction:
         return Extraction(None, needs_ocr=True) if not ocr else extract_by_ocr(path)
     try:
         text = extract_text(path)
+    except MemoryError:
+        raise           # the child's memory limit: a crash, not a corrupt file (SPEC-169 section 9)
     except Exception as exc:  # a corrupt file is a reason, not a crash
         error = f"{exc.__class__.__name__}: {exc}"
         return Extraction(
@@ -1722,8 +1589,8 @@ def _extract(path: Path, *, ocr: bool) -> Extraction:
 
 
 def extract_by_ocr(path: Path) -> Extraction:
-    """Read a scan or a photo by OCR; says why when it cannot (no OCR
-    installed, no words, or the safety stop)."""
+    """Read a scan or a photo by OCR; says why when it cannot (the reader
+    cannot run on this machine, no words, or the safety stop)."""
     global _STOP
 
     reader = _ocr_image if extension_of(path) in IMAGE_EXTENSIONS else _ocr_pdf
@@ -1746,8 +1613,8 @@ def extract_by_ocr(path: Path) -> Extraction:
     finally:
         _STOP = None
     if ocr_text is None:
-        # No OCR on this machine: a fact about the machine, remembered by
-        # nobody, so the day it is installed the scan reads the file.
+        # The reader cannot run on this machine: a fact about the machine,
+        # remembered by nobody, so the day it is mended the scan reads the file.
         return Extraction(None, reason=reasons.NO_TEXT_LAYER.format(), extractable=False, transient=True)
     if not ocr_text.strip():
         return Extraction(None, reason=reasons.NO_TEXT_AFTER_OCR.format(), extractable=False)
@@ -1758,8 +1625,8 @@ def abandoned(seconds: float) -> Extraction:
     """The reading the safety stop abandoned after ``seconds`` (decision
     137, B1.2): no text, and a verdict that is the file's, so it is kept
     and the file is not read again until it changes. One sentence, whether
-    the stop was Tesseract's timeout inside the reading or the end of the
-    reading's own process (decision 150)."""
+    the stop was noticed between pages inside the reading or was the end of
+    the reading's own process (decision 150)."""
     minutes = max(1, round(seconds / 60))
     said = "1 minute" if minutes == 1 else f"{minutes} minutes"
     return Extraction(None, reason=reasons.READING_STOPPED.format(minutes=said),
@@ -1768,36 +1635,41 @@ def abandoned(seconds: float) -> Extraction:
 
 # ----------------------------------------------- a reading the pass can stop ----
 #
-# Decision 150. The stop above reaches OCR, and only notices the rest - the
-# PDF text layer, a page's render, a workbook - once it returns: a
-# compressed PDF of a few megabytes can hold hours of drawing commands for
-# pdfplumber or pdfium, far under the size ceiling. So the pass reads each
-# document in a child process and waits for it at most the document's
-# stop. On time, the child hands back the Extraction it made, exactly what
-# extract() returns in the pass's own process. Over time, the child is
-# ended - with everything it started, Tesseract included - and the reading
-# is abandoned: the same kept verdict as above. A child that ends without
-# answering - pdfium or Tesseract crashing, memory running out - is a
-# reading that failed, kept the same way: the file waits for a person, and
-# the pass goes on to the next one.
+# Decision 150. The stop above is noticed between pages, and nothing in
+# the reading's own process can interrupt a page being read, the PDF text
+# layer, a page's render or a workbook: a compressed PDF of a few megabytes
+# can hold hours of drawing commands for pdfplumber or pdfium, far under
+# the size ceiling. So the pass reads in a child process and waits for each
+# document at most the document's stop. On time, the child hands back the
+# Extraction it made, exactly what extract() returns in the pass's own
+# process. Over time, the child is ended - with everything it started - and
+# the reading is abandoned: the same kept verdict as above. A child that
+# ends without answering - pdfium or the reader crashing, memory running
+# out - is a reading that failed, kept the same way: the file waits for a
+# person, and the pass goes on to the next one.
+#
+# Since decision 169 (R-4) the child is **one per pass**, serving documents
+# one at a time, and it lives in tracker.ocr with the reader it runs: the
+# reader's engine takes about a second to load on either device, and a
+# child per document paid it every time. It is replaced after a stop, a
+# crash, a fault on the graphics card and every hundred documents
+# (ocr.ReadingChild, ocr.reading_session). This module words what became
+# of each document.
 #
 # The child makes tier 2's open test too, before it reads (the designer's
-# ruling on the review): opening a PDF is parsing it, and a page tree of a
+# ruling on 150's review): opening a PDF is parsing it, and a page tree of a
 # few kilobytes can keep pypdf counting pages for ever. So nothing of a
 # client's file is parsed in the pass's own process: the open test's
 # verdict comes back with the reading (Extraction.opened), and the router
 # and the scanner take it from there (open_verdict, kept by fingerprint).
 #
 # A child that cannot start at all is the machine's fault and not the
-# file's. It says "started" before it does anything with the file, and an
+# file's. It says "started" before it does anything with a file, and an
 # end before that - or no word by the stop - is a reader that could not
 # start (reasons.READER_UNAVAILABLE): transient, nothing kept, the drop
 # neither decided nor recorded (tracker.filer leaves it for the next pass)
 # and the pass warned once. Only an end after "started" is kept against
 # the file.
-#
-# The pass and the child talk over multiprocessing's Pipe: a named pipe
-# on Windows, an OS pipe elsewhere, never a socket.
 #
 # Opening an email or a zip is parsing it too (decision 154): olefile, the
 # standard library's email and zipfile, on bytes a client sent. So it is
@@ -1806,18 +1678,8 @@ def abandoned(seconds: float) -> Extraction:
 # container, and the child hands back the parts as plain data. The pass
 # writes every attachment, and only once the child has answered.
 #
-# And the child never outlives its pass (the designer's ruling on the
-# build). Task Scheduler's stop, or anything else that kills the pass
-# outright, runs no code of the pass's: two things end the child anyway.
-# It holds a second pipe from the pass - its lifeline - that the pass never
-# writes to, and a thread in the child waits on it; the pass's end closes
-# when the pass does, however it ended, and the child ends itself (on
-# POSIX with the process group it leads, so what it started goes too). A
-# lifeline needs that thread to run, and a reader stuck in native code may
-# not let it, so on Windows the child is also put in a job object that
-# kills everything in it when its last handle closes - and the pass holds
-# the only handle. A process the child starts, Tesseract, is in the job
-# with it.
+# And the child never outlives its pass: a lifeline pipe and, on Windows, a
+# job object (tracker.ocr says how).
 
 #: Whether :func:`extract_bounded` reads in a child process (decision 150).
 #: Always, in the tracker. The suite turns it off for every test but the
@@ -1838,13 +1700,6 @@ OPEN_TEST_FINGERPRINT = "open-test"
 #: The files whose reader could not start this pass, by name (decision
 #: 150). The pass says it once (``runner``), taking the list as it goes.
 _COULD_NOT_START: list[str] = []
-#: How long an ended child is waited for, and how long one that has
-#: answered is given to exit on its own, before the pass goes on.
-_CHILD_EXIT_SECONDS = 30.0
-#: The exit code of a child that ended itself because its pass was gone.
-ORPHANED_EXIT_CODE = 86
-
-
 def reading_stop_seconds(path: Path) -> float:
     """How long the whole reading of ``path`` may take (decision 150): a
     photo is one page - :data:`READING_STOP_PAGE_SECONDS` - and any other
@@ -1863,10 +1718,10 @@ def extract_bounded(path: Path, *, ocr: bool = True) -> Extraction:
     and render included, and a reader that crashes parks the file instead
     of ending the pass. A cached verdict never gets here, so it never
     starts a child. The child writes nothing anywhere: it hands back the
-    reading, and the pass does every write, as before. OCR's temporary
-    folder reaches it through the environment it is started with
-    (:func:`ocr_scratch`, decision 137 L7). The benchmark calls
-    :func:`extract` itself: it measures the reader, not the stop.
+    reading, and the pass does every write, as before. The reader writes no
+    temporary file either (SPEC-169 section 6), so the scratch folder
+    decision 137 (L7) gave OCR is gone. The benchmark calls :func:`extract`
+    itself: it measures the reader, not the stop.
     """
     if not READ_IN_A_CHILD:
         return open_and_read(Path(path), ocr=ocr)
@@ -1941,11 +1796,12 @@ def _read_in_a_child(path: Path, *, ocr: bool) -> Extraction:
 
 
 def in_a_child(path: Path, job, *, stop: float | None = None, **kwargs) -> tuple[object, Extraction | None]:
-    """Run ``job(path, **kwargs)`` in a child process the pass can stop,
-    waiting at most ``stop`` seconds (by default the file's own,
-    :func:`reading_stop_seconds`). The one mechanism for every parse of a
-    client's file (decision 150): the reading, and the opening of an email
-    or a zip (decision 154, :func:`tracker.containers.open_bounded`).
+    """Run ``job(path, **kwargs)`` in the pass's reading child
+    (:func:`tracker.ocr.run_in_child`), waiting at most ``stop`` seconds (by
+    default the file's own, :func:`reading_stop_seconds`). The one mechanism
+    for every parse of a client's file (decision 150): the reading, and the
+    opening of an email or a zip (decision 154,
+    :func:`tracker.containers.open_bounded`).
 
     Gives ``(answer, None)`` on time, ``answer`` being what the job
     returned, and ``(None, why)`` otherwise, ``why`` the Extraction that
@@ -1955,254 +1811,23 @@ def in_a_child(path: Path, job, *, stop: float | None = None, **kwargs) -> tuple
     module-level function, handed to the child by reference; what it
     returns crosses the pipe, so it is plain data.
     """
-    import multiprocessing
-
     path = Path(path)
     stop = reading_stop_seconds(path) if stop is None else stop
-    context = multiprocessing.get_context("spawn")      # Windows has no fork
-    answers, sender = context.Pipe(duplex=False)
-    # The lifeline: the child holds the reading end and the pass the only
-    # writing end, which closes with the pass however the pass ends.
-    lifeline, held = context.Pipe(duplex=False)
-    child = context.Process(target=_the_child,
-                            args=(sender, lifeline, job, str(path), kwargs),
-                            name="tracker-reading", daemon=True)
-    started = time.monotonic()
-    try:
-        child.start()
-    except Exception as exc:
-        # Not the file's doing: nothing of it was opened. Transient.
-        answers.close()
-        held.close()
-        log.warning("The reader could not start for %s: %s", path.name, exc)
-        return None, could_not_start(time.monotonic() - started,
-                                     f"{exc.__class__.__name__}: {exc}", path.name)
-    finally:
-        sender.close()          # the child holds its own end: end-of-file means it is gone
-        lifeline.close()
-    job_object = _kill_on_close_job(child.pid)
-    kind, answer, begun, over = "died", (), False, False
-    try:
-        while True:
-            left = started + stop - time.monotonic()
-            if left <= 0 or not answers.poll(left):
-                _end(child)
-                over = True
-                break
-            try:
-                kind, *answer = answers.recv()
-            except (EOFError, OSError):
-                kind, answer = "died", ()
-                break           # it ended without a word
-            if kind != "started":
-                break
-            begun = True        # from here on, what happens is the file's
-    finally:
-        answers.close()
-        exit_code = _wait_for(child)
-        held.close()
-        _close_job(job_object)
-    seconds = time.monotonic() - started
-    if not begun:
-        error = ("the reader did not start within the safety stop" if over else
-                 f"the reading's process ended with exit code {exit_code} before it started")
-        log.warning("The reader could not start for %s: %s", path.name, error)
-        return None, could_not_start(seconds, error, path.name)
-    if over:
+    outcome = ocr.run_in_child(job, (path,), kwargs, stop)
+    if outcome.kind == "read":
+        return outcome.answer, None
+    if outcome.kind == "not_started":
+        log.warning("The reader could not start for %s: %s", path.name, outcome.error)
+        return None, could_not_start(outcome.seconds, outcome.error, path.name)
+    if outcome.kind == "stopped":
         log.warning("Reading %s stopped at the safety stop (%.0f s)", path.name, stop)
-        return None, abandoned(seconds)
-    if kind == "read":
-        return answer[0], None
-    if kind == "failed":
-        error, trace = answer
-        log.warning("The reader failed on %s: %s", path.name, trace)
-        return None, reading_failed(seconds, error)
-    error = f"the reading's process ended with exit code {exit_code}"
-    log.warning("The reader stopped unexpectedly on %s: %s", path.name, error)
-    return None, reading_failed(seconds, error)
+        return None, abandoned(outcome.seconds)
+    if outcome.kind == "failed":
+        log.warning("The reader failed on %s: %s", path.name, outcome.trace)
+        return None, reading_failed(outcome.seconds, outcome.error)
+    log.warning("The reader stopped unexpectedly on %s: %s", path.name, outcome.error)
+    return None, reading_failed(outcome.seconds, outcome.error)
 
-
-def _the_child(sender, lifeline, job, path: str, kwargs: dict) -> None:
-    """The child's whole life: say it started, run its one job on one file
-    (open and read it, or open a container), hand back the answer, exit.
-
-    On POSIX it leads a process group of its own first, so ending it ends
-    whatever it started. It watches its lifeline from a thread of its own
-    and ends itself when the pass is gone (:func:`_watch_the_pass`), and an
-    answer the pass is no longer there to take ends it the same way.
-    "started" goes before anything touches the file: an end before it is
-    the machine's, after it the file's. Anything the job raises is handed
-    back as words, never left to end the process in silence."""
-    import threading
-
-    if hasattr(os, "setsid"):
-        os.setsid()
-    threading.Thread(target=_watch_the_pass, args=(lifeline,), name="tracker-lifeline",
-                     daemon=True).start()
-    _answer(sender, ("started",))
-    try:
-        try:
-            answer = job(Path(path), **kwargs)
-        except BaseException as exc:
-            _answer(sender, ("failed", f"{exc.__class__.__name__}: {exc}", traceback.format_exc()))
-        else:
-            _answer(sender, ("read", answer))
-    finally:
-        sender.close()
-
-
-def _answer(sender, message) -> None:
-    """Hand the pass the reading - or, when the pass is gone and the pipe
-    broken, end: there is nobody left to read it for."""
-    try:
-        sender.send(message)
-    except OSError:
-        _orphaned()
-
-
-def _watch_the_pass(lifeline) -> None:
-    """The child's lifeline thread. The pass never writes to it, so the
-    wait ends only when the pass's end closes - the pass finished with the
-    child, or the pass is gone. Either way the child has nothing left to do."""
-    try:
-        lifeline.recv()
-    except (EOFError, OSError):
-        pass
-    _orphaned()
-
-
-def _orphaned() -> None:
-    """End this child now, and on POSIX the process group it leads, so
-    whatever it started ends with it (on Windows its job does that)."""
-    if hasattr(os, "killpg"):
-        try:
-            os.killpg(os.getpgrp(), signal.SIGKILL)
-        except OSError:
-            pass
-    os._exit(ORPHANED_EXIT_CODE)
-
-
-def _kill_on_close_job(pid: int):
-    """On Windows, a job object holding the child ``pid`` that kills every
-    process in it when its last handle closes - the handle returned here,
-    which only the pass holds (it is not inheritable). None elsewhere, or
-    where Windows refuses; the lifeline still stands then, and it is said.
-
-    The standard library's ``ctypes`` and nothing else: ``kernel32``'s
-    CreateJobObject, SetInformationJobObject with
-    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, and AssignProcessToJobObject."""
-    if sys.platform != "win32":
-        return None
-    import ctypes
-    from ctypes import wintypes
-
-    class BasicLimits(ctypes.Structure):
-        _fields_ = [("PerProcessUserTimeLimit", ctypes.c_int64),
-                    ("PerJobUserTimeLimit", ctypes.c_int64),
-                    ("LimitFlags", wintypes.DWORD),
-                    ("MinimumWorkingSetSize", ctypes.c_size_t),
-                    ("MaximumWorkingSetSize", ctypes.c_size_t),
-                    ("ActiveProcessLimit", wintypes.DWORD),
-                    ("Affinity", ctypes.c_size_t),
-                    ("PriorityClass", wintypes.DWORD),
-                    ("SchedulingClass", wintypes.DWORD)]
-
-    class IoCounters(ctypes.Structure):
-        _fields_ = [(name, ctypes.c_uint64) for name in (
-            "ReadOperationCount", "WriteOperationCount", "OtherOperationCount",
-            "ReadTransferCount", "WriteTransferCount", "OtherTransferCount")]
-
-    class ExtendedLimits(ctypes.Structure):
-        _fields_ = [("BasicLimitInformation", BasicLimits),
-                    ("IoInfo", IoCounters),
-                    ("ProcessMemoryLimit", ctypes.c_size_t),
-                    ("JobMemoryLimit", ctypes.c_size_t),
-                    ("PeakProcessMemoryUsed", ctypes.c_size_t),
-                    ("PeakJobMemoryUsed", ctypes.c_size_t)]
-
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    kernel32.CreateJobObjectW.restype = wintypes.HANDLE
-    kernel32.CreateJobObjectW.argtypes = (wintypes.LPVOID, wintypes.LPCWSTR)
-    kernel32.SetInformationJobObject.argtypes = (wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID,
-                                                 wintypes.DWORD)
-    kernel32.OpenProcess.restype = wintypes.HANDLE
-    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
-    kernel32.AssignProcessToJobObject.argtypes = (wintypes.HANDLE, wintypes.HANDLE)
-    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
-
-    job = kernel32.CreateJobObjectW(None, None)
-    if not job:
-        log.warning("No job object for the reading (Windows error %d); its lifeline stands",
-                    ctypes.get_last_error())
-        return None
-    limits = ExtendedLimits()
-    limits.BasicLimitInformation.LimitFlags = _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
-    process = kernel32.OpenProcess(_PROCESS_SET_QUOTA | _PROCESS_TERMINATE, False, pid)
-    placed = bool(process) and bool(
-        kernel32.SetInformationJobObject(job, _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
-                                         ctypes.byref(limits), ctypes.sizeof(limits))
-        and kernel32.AssignProcessToJobObject(job, process))
-    error = ctypes.get_last_error()
-    if process:
-        kernel32.CloseHandle(process)
-    if not placed:
-        kernel32.CloseHandle(job)
-        log.warning("The reading could not be put in a job object (Windows error %d); "
-                    "its lifeline stands", error)
-        return None
-    return job
-
-
-#: kernel32's numbers for :func:`_kill_on_close_job`.
-_JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
-_JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
-_PROCESS_SET_QUOTA = 0x0100
-_PROCESS_TERMINATE = 0x0001
-
-
-def _close_job(job) -> None:
-    """Close the pass's handle on a reading's job: anything still in it ends."""
-    if job is None:
-        return
-    import ctypes
-    from ctypes import wintypes
-
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
-    kernel32.CloseHandle(job)
-
-
-def _end(child) -> None:
-    """End a reading's child and everything it started. Tesseract is the
-    child's own child, and ending the child alone would leave it reading."""
-    if sys.platform == "win32":
-        system = Path(os.environ.get("SystemRoot") or r"C:\Windows") / "System32"
-        try:
-            subprocess.run([str(system / "taskkill.exe"), "/F", "/T", "/PID", str(child.pid)],
-                           capture_output=True, timeout=_CHILD_EXIT_SECONDS, check=False,
-                           creationflags=subprocess.CREATE_NO_WINDOW)
-        except (OSError, subprocess.SubprocessError) as exc:
-            log.warning("Could not end the reading's process tree (%s)", exc)
-    else:
-        try:
-            if os.getpgid(child.pid) == child.pid:      # it leads its own group
-                os.killpg(child.pid, signal.SIGKILL)
-        except OSError:
-            pass                                        # already gone
-    child.kill()                                        # the child itself, whatever happened above
-    child.join(_CHILD_EXIT_SECONDS)
-
-
-def _wait_for(child) -> int | None:
-    """Let a child that has answered (or ended) exit, end it if it will
-    not, release it, and say its exit code."""
-    child.join(_CHILD_EXIT_SECONDS)
-    if child.is_alive():
-        _end(child)
-    exit_code = child.exitcode
-    if exit_code is not None:
-        child.close()
-    return exit_code
 
 # ---------------------------------------------------------------- checking ----
 
@@ -2253,53 +1878,6 @@ def _check_uncached(path: Path, item: RequestItem, reading: Extraction | None = 
         verdict = replace(verdict, reason=f"{verdict.reason}; "
                                           f"{reasons.TEXT_CUT.format(limit=TEXT_READ_CAP_MB)}")
     return verdict
-
-
-# ------------------------------------------------------------ OCR's scratch ----
-
-#: The folder, beside the settings file, that OCR's temporary page images
-#: go to during a pass (decision 137, L7). ``pytesseract`` writes each page
-#: it reads to a temporary file before Tesseract reads it back, and a pass
-#: killed mid-page (Task Scheduler's two-hour stop) leaves those images -
-#: a client's pages - in the machine's ``%TEMP%``, where nothing ever
-#: looks. Here, each pass empties the folder before it starts, so a killed
-#: pass's leftovers last until the next one.
-OCR_SCRATCH_DIR_NAME = "ocr-scratch"
-
-
-@contextmanager
-def ocr_scratch(folder: Path) -> Iterator[Path]:
-    """Point this process's temporary files at ``folder`` for the block.
-
-    The folder is emptied first - what a killed pass left - and made if it
-    is not there. ``TMPDIR`` and the ``tempfile`` module's own cached
-    answer are both set, because ``tempfile`` reads the variable once and
-    remembers it, and both are put back when the block ends, so nothing
-    outside the pass is moved.
-    """
-    folder = Path(folder)
-    if folder.is_dir():
-        for leftover in folder.iterdir():
-            try:
-                if leftover.is_dir() and not leftover.is_symlink():
-                    shutil.rmtree(leftover)
-                else:
-                    leftover.unlink()
-            except OSError as exc:
-                log.warning("Could not remove %s from %s (%s)", leftover.name, folder, exc)
-    folder.mkdir(parents=True, exist_ok=True)
-    before_env = os.environ.get("TMPDIR")
-    before_cached = tempfile.tempdir
-    os.environ["TMPDIR"] = str(folder)
-    tempfile.tempdir = str(folder)
-    try:
-        yield folder
-    finally:
-        if before_env is None:
-            os.environ.pop("TMPDIR", None)
-        else:
-            os.environ["TMPDIR"] = before_env
-        tempfile.tempdir = before_cached
 
 
 # ------------------------------------------------------------------- cache ----

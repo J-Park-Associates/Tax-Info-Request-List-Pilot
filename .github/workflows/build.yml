@@ -60,10 +60,13 @@ jobs:
       # Only the scratch clients root below needs these; the packages that go
       # into the package are the virtual environment the batch file makes from
       # requirements-build.txt, and nothing here touches that.
+      # The same two steps as the gate and the batch file (decision 169,
+      # R-11). The source's own dry pass below needs the reader too.
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements.txt -c constraints.txt
+          pip install --no-deps -r requirements-nodeps.txt -c constraints.txt
 
       # The batch file as a person runs it. The one difference is the switch
       # its own header documents, which skips the waits nobody is here to end.
@@ -136,10 +139,37 @@ jobs:
       # to file, route, scan and draft rather than find an empty folder.
       # --reminders always, because otherwise the draft step would only run on
       # the one weekday the runner drafts on and most builds would skip it.
-      - name: The frozen executable makes one dry pass
+      #
+      # And it reads (decision 169): the root holds a scan only the reader can
+      # file (tests/samples.py, SCRATCH_SCAN). The package's engagement line
+      # must be the source's own - a package missing a model, or the reader,
+      # parks the scan and says "review" once more - and its run log's first
+      # line must say the processor read, as it does with no graphics card pack.
+      # The pass is run the way the scheduled job runs it: its root from a
+      # settings folder, with --log. A root on the command line together with
+      # --log is refused (decision 131's review, F3), so the scratch root is
+      # written into a settings folder of the step's own first.
+      - name: The frozen executable makes one dry pass and reads the scan as the source does
         run: |
-          & $env:API_EXE --run $env:SCRATCH_ROOT --dry-run --reminders always
+          $log = Join-Path $env:RUNNER_TEMP "smoke-runs.log"
+          $settings = Join-Path $env:RUNNER_TEMP "smoke-settings"
+          New-Item -ItemType Directory -Force -Path $settings | Out-Null
+          $env:TRACKER_SETTINGS_DIR = $settings
+          python -m tracker.settings $env:SCRATCH_ROOT
+          if ($LASTEXITCODE -ne 0) { throw "the scratch root could not be set" }
+          Remove-Item Env:TRACKER_SETTINGS_DIR
+          $frozen = & $env:API_EXE --run --settings $settings --dry-run --reminders always --log $log | Out-String
           if ($LASTEXITCODE -ne 0) { throw "the dry pass exited $LASTEXITCODE" }
+          Write-Host $frozen
+          $source = python -m tracker.runner $env:SCRATCH_ROOT --dry-run --reminders always | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "the source's dry pass exited $LASTEXITCODE" }
+          $lines = { param($text) (($text -split "`r?`n") | Where-Object { $_ -match '^\s+(OK|ERROR|SKIP)\s' }) -join "`n" }
+          if (-not (& $lines $frozen)) { throw "the package's dry pass printed no OK, ERROR or SKIP line to compare:`n$frozen" }
+          if ((& $lines $frozen) -ne (& $lines $source)) {
+            throw "the package read the pile differently from the source:`n$frozen`n--- the source ---`n$source"
+          }
+          $first = Get-Content -LiteralPath $log -TotalCount 1
+          if ($first -notmatch 'reader=processor') { throw "the run log's first line names no processor: $first" }
 
       # Last, so what can be downloaded is a package that answered both ways.
       # Seven days: long enough to fetch it and copy it to the stick, short

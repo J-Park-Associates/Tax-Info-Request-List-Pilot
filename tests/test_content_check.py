@@ -163,8 +163,8 @@ def test_ocr_text_used_when_available(tmp_path, monkeypatch):
 # Decision 127. Every image below is drawn here with Pillow and thrown
 # away with tmp_path: no binary is committed and no client's photo is
 # anywhere near the suite. The engine itself is not needed - what is
-# claimed is which pixels the reading is handed, so the reader and the
-# orientation detector are fakes.
+# claimed is which pixels the reading is handed, so the reader is a fake
+# (the real one reads in tests/test_ocr.py).
 
 
 def photo(path, words: str = "Form W-2 Wage and Tax Statement", size=(900, 200)):
@@ -180,16 +180,16 @@ def photo(path, words: str = "Form W-2 Wage and Tax Statement", size=(900, 200))
 
 
 def catching_the_reading(monkeypatch, reading: str = ""):
-    """Hold on to the image ``image_to_string`` is actually handed."""
-    import pytesseract
+    """Hold on to the image the reader (``tracker.ocr.read_page``) is handed."""
+    from tracker import ocr
 
     seen = {}
 
-    def reader(image, *args, **kwargs):
+    def reader(image, *, name=""):
         seen["image"] = image
         return reading
 
-    monkeypatch.setattr(pytesseract, "image_to_string", reader)
+    monkeypatch.setattr(ocr, "read_page", reader)
     return seen
 
 
@@ -237,108 +237,41 @@ def test_exif_rotation_is_undone_before_reading(tmp_path, monkeypatch):
     marked.save(picture, exif=tag)
 
     seen = catching_the_reading(monkeypatch)
-    monkeypatch.setattr("tracker.content_check._upright", lambda image: image)
     _ocr_image(picture)
 
     handed = seen["image"]
     assert handed.size == (100, 200)                           # turned, not merely flagged
-    assert handed.getpixel((handed.width - 1, 0)) == 0         # the corner came round
-    assert handed.getpixel((0, 0)) == 255
-    assert handed.mode == "L"                                  # greyscaled once, for both readings
+    assert handed.getpixel((handed.width - 1, 0)) == (0, 0, 0)     # the corner came round
+    assert handed.getpixel((0, 0)) == (255, 255, 255)
+    assert handed.mode == "RGB"                                # in colour, as the reader was measured
     assert Image.open(picture).size == (200, 100)              # the file on disk is untouched
 
 
-def test_a_sideways_page_is_turned_upright_by_osd_before_reading(tmp_path, monkeypatch):
-    """Tesseract reads a sideways page as nonsense, and its own orientation
-    detector can say which way round it is. When it is sure, that is the
-    turn - applied in memory, never to the file."""
-    import pytesseract
-
-    from tracker.content_check import _ocr_image
-
-    picture = photo(tmp_path / "landscape.png", size=(400, 200))
-    monkeypatch.setattr(pytesseract, "image_to_osd",
-                        lambda image, **kw: {"rotate": 90, "orientation_conf": 5.0})
-    seen = catching_the_reading(monkeypatch, "Form W-2")
-
-    assert _ocr_image(picture) == "Form W-2"
-    assert seen["image"].size == (200, 400)                    # a quarter turn, expanded
-    from PIL import Image
-    assert Image.open(picture).size == (400, 200)              # and nothing written
-
-    # Under the floor the detector is a guess, and a guess decides nothing.
-    monkeypatch.setattr(pytesseract, "image_to_osd",
-                        lambda image, **kw: {"rotate": 90, "orientation_conf": 0.4})
-    monkeypatch.setattr("tracker.content_check._four_way", lambda image: image)
-    _ocr_image(picture)
-    assert seen["image"].size == (400, 200)                    # left as it came
-
-
-def test_when_osd_cannot_say_the_four_way_score_decides_and_a_tie_keeps_the_page_as_it_is(
-    tmp_path, monkeypatch,
-):
-    """With the ``osd`` data missing, or too little text for the detector to
-    speak, the reading itself decides: the page is read four ways and the
-    reading that scored best wins. A tie, and a page nothing can be scored
-    on at all, leave it exactly as it came - a turn the reading did not
-    earn would be a guess."""
-    import pytesseract
-    from PIL import Image
-
-    from tracker.content_check import FOUR_WAY_MIN_WORDS, _upright
-
-    def osd_cannot_say(image, **kw):
-        raise pytesseract.TesseractError(1, "Too few characters. Skipping this page")
-
-    monkeypatch.setattr(pytesseract, "image_to_osd", osd_cannot_say)
-    page = Image.new("L", (400, 200), 255)
-
-    scores = iter([10.0, 90.0, 20.0, 30.0])                    # the second turn reads best
-    def by_turn(image, **kw):
-        confidence = next(scores)
-        return {"text": ["Wage", "and", "Statement"], "conf": [confidence] * 3}
-
-    monkeypatch.setattr(pytesseract, "image_to_data", by_turn)
-    assert _upright(page).size == (200, 400)                   # turned by what it read
-
-    tied = {"text": ["Wage", "and", "Statement"], "conf": [50.0] * 3}
-    monkeypatch.setattr(pytesseract, "image_to_data", lambda image, **kw: tied)
-    assert _upright(page) is page                              # a tie keeps 0
-
-    too_few = {"text": ["W"] * 9, "conf": [99.0] * 9}          # one letter each: not words
-    monkeypatch.setattr(pytesseract, "image_to_data", lambda image, **kw: too_few)
-    assert _upright(page) is page
-    assert FOUR_WAY_MIN_WORDS == 3
-
-    nothing = {"text": ["Wage", "and"], "conf": [99.0, -1.0]}  # -1: no word was made of it
-    monkeypatch.setattr(pytesseract, "image_to_data", lambda image, **kw: nothing)
-    assert _upright(page) is page
-
-
-def test_a_rotated_scanned_pdf_page_goes_through_the_same_upright_step(tmp_path, monkeypatch):
-    """One orientation step, used by both readings: a scanned PDF's page is
-    turned the same way a photo is, which is the half of decision 127 the
-    harness of 2026-09-19 asked for."""
-    import pytesseract
+def test_a_page_is_handed_to_the_reader_as_it_comes_and_never_turned(tmp_path, monkeypatch):
+    """Decision 169, ruling 6 as re-ruled: nothing turns a page before it is
+    read. RapidOCR reads the words of a sideways page itself (the claim is
+    in tests/test_ocr.py); a scanned PDF's page and a photo are handed to
+    it exactly as they stand, in memory, and the file is never touched."""
     from pypdf import PdfWriter
 
-    from tracker.content_check import _ocr_pdf
+    from tracker.content_check import _ocr_image, _ocr_pdf
 
     writer = PdfWriter()
     writer.add_blank_page(width=792, height=612)               # landscape, as a sideways scan is
     scan = tmp_path / "scan.pdf"
     with scan.open("wb") as fh:
         writer.write(fh)
-
-    monkeypatch.setattr(pytesseract, "image_to_osd",
-                        lambda image, **kw: {"rotate": 90, "orientation_conf": 5.0})
     seen = catching_the_reading(monkeypatch, "Form 1099-R")
 
     assert _ocr_pdf(scan).strip() == "Form 1099-R"
     handed = seen["image"]
-    assert handed.height > handed.width                        # a portrait page, turned in memory
-    assert handed.mode == "L"
+    assert handed.width > handed.height                        # landscape still: not turned
+    assert handed.mode == "RGB"
     assert scan.read_bytes()[:5] == b"%PDF-"                   # the file itself, untouched
+
+    picture = photo(tmp_path / "landscape.png", size=(400, 200))
+    assert _ocr_image(picture) == "Form 1099-R"
+    assert seen["image"].size == (400, 200)                    # as it stands
 
 
 def test_the_cache_version_moved_so_a_verdict_read_sideways_is_read_again(tmp_path):
@@ -346,19 +279,22 @@ def test_the_cache_version_moved_so_a_verdict_read_sideways_is_read_again(tmp_pa
     page it was read from was never turned upright. The cache is
     disposable, so the version moves and the first pass after this
     decision re-reads those scans once. (Decision 141 moved it again, for
-    the notice's first-page phrases.)"""
-    assert CACHE_VERSION == 11
+    the notice's first-page phrases, and decision 169 once more: a new
+    reader means new verdicts on every scan and photo.)"""
+    assert CACHE_VERSION == 12
 
     rule = item(required_keywords=("Chase",))
     engagement = an_engagement(tmp_path, rule)
     fingerprint = rules_fingerprint(rule)
     conn = store.connect()
     engagement_id = store._engagement_row(conn, engagement)["id"]
-    conn.execute(
-        f"INSERT INTO {store.VERDICTS_TABLE} (engagement_id, digest, fingerprint, version, verdict) "
-        "VALUES (?, ?, ?, ?, ?)", (engagement_id, "sideways", fingerprint, 9, '{"ok": true}'))
+    for version, digest in ((9, "sideways"), (11, "read by tesseract")):
+        conn.execute(
+            f"INSERT INTO {store.VERDICTS_TABLE} (engagement_id, digest, fingerprint, version, verdict) "
+            "VALUES (?, ?, ?, ?, ?)", (engagement_id, digest, fingerprint, version, '{"ok": true}'))
 
     assert ContentCache(engagement).get_by_digest("sideways", fingerprint) is None
+    assert ContentCache(engagement).get_by_digest("read by tesseract", fingerprint) is None
 
 
 def test_a_slow_reading_is_said_and_never_cut_short(tmp_path, monkeypatch):
@@ -485,8 +421,9 @@ def test_a_verdict_row_at_another_cache_version_is_ignored_and_dropped_on_save(t
     # scan that came through it may have been reached on nonsense. The
     # version is carried per row now (decision 107), and it still means
     # all that. Version 10 was read before decision 141 kept a notice's
-    # header phrases to its first page.
-    assert CACHE_VERSION == 11
+    # header phrases to its first page, and version 11 by the reader before
+    # decision 169's.
+    assert CACHE_VERSION == 12
     rule = item(required_keywords=("Chase",))
     engagement = an_engagement(tmp_path, rule)
     pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025")
@@ -1119,7 +1056,6 @@ def test_a_giant_pdf_page_is_rendered_within_the_pixel_budget(tmp_path, monkeypa
     import tracker.content_check as content_check
 
     pypdfium2 = pytest.importorskip("pypdfium2")
-    pytest.importorskip("pytesseract")      # _ocr_pdf reaches the render only with both
 
     def pdf(path, width, height):
         writer = PdfWriter()
@@ -1155,13 +1091,11 @@ def test_a_photo_past_the_pixel_budget_is_read_smaller(tmp_path, monkeypatch):
     from PIL import Image
 
     import tracker.content_check as content_check
+    from tracker import ocr
 
-    pytesseract = pytest.importorskip("pytesseract")
     monkeypatch.setattr(content_check, "PIXEL_BUDGET", 10_000)
     seen = []
-    monkeypatch.setattr(content_check, "_upright", lambda image: image)
-    monkeypatch.setattr(pytesseract, "image_to_string",
-                        lambda image, *a, **k: seen.append(image.size) or "words")
+    monkeypatch.setattr(ocr, "read_page", lambda image, **k: seen.append(image.size) or "words")
     for name in ("photo.png", "photo.jpg"):
         Image.new("RGB", (400, 300), "white").save(tmp_path / name)
         assert content_check._ocr_image(tmp_path / name) == "words"
@@ -1190,35 +1124,6 @@ def test_a_date_pattern_runs_line_by_line_and_skips_lines_over_the_limit():
     # finishes at once: the line holding the run is past the limit.
     evil = "a" * 5000 + "!"
     assert content_check.date_pattern_at(r"(a+)+b", evil) is None
-
-
-def test_ocr_temporary_images_go_to_a_private_folder_each_pass_empties(tmp_path):
-    """Decision 137 (L7): during a pass the process's temporary files go to
-    a folder beside the settings file, emptied at the start of each pass,
-    so a pass killed mid-page leaves a client's page there and not in
-    ``%TEMP%``; outside the pass nothing is moved."""
-    import os
-    import tempfile
-
-    import tracker.content_check as content_check
-
-    before = tempfile.gettempdir()
-    before_env = os.environ.get("TMPDIR")
-    scratch = tmp_path / "app" / content_check.OCR_SCRATCH_DIR_NAME
-    scratch.mkdir(parents=True)
-    (scratch / "tess_left_by_a_killed_pass.png").write_bytes(b"a client's page")
-    (scratch / "tess_folder").mkdir()
-
-    with content_check.ocr_scratch(scratch) as folder:
-        assert folder == scratch and list(scratch.iterdir()) == []       # emptied first
-        assert tempfile.gettempdir() == str(scratch)
-        with tempfile.NamedTemporaryFile(prefix="tess_", delete=False) as handle:
-            written = handle.name
-        assert os.path.dirname(written) == str(scratch)
-
-    assert tempfile.gettempdir() == before and os.environ.get("TMPDIR") == before_env
-    with content_check.ocr_scratch(scratch):
-        assert list(scratch.iterdir()) == []                              # the next pass empties it
 
 
 def test_a_picture_past_pillows_guard_is_a_kept_too_large_verdict_not_a_retry(tmp_path, monkeypatch):
@@ -1260,82 +1165,81 @@ def test_a_picture_past_pillows_guard_is_a_kept_too_large_verdict_not_a_retry(tm
         check_content(photo, rules, cache)
 
 
-def test_a_reading_past_the_safety_stop_is_abandoned_cached_and_not_retried(tmp_path, monkeypatch):
-    """Decision 137 (B1.2; the owner's Q-1 of 2026-09-24): a reading gets a
-    minute a page (a photo is one page) and ten minutes a document,
-    rendering included. Every Tesseract call is given what is left of that
-    as its timeout; a reading that reaches the stop is abandoned - "The
-    reader stopped after N minutes on this file. A person reads it." - kept
-    as the verdict, parked for a person, and not read again until the file
+def test_no_page_starts_past_the_safety_stop_and_the_stopped_reading_is_kept(tmp_path, monkeypatch):
+    """Decision 137 (B1.2; the owner's Q-1 of 2026-09-24), as decision 169
+    (ruling 5) words it: a reading gets a minute a page and ten minutes a
+    document, rendering included. RapidOCR takes no timeout, so the stop
+    is kept between pages: **no page starts past it** - the page before
+    overran its minute, or the document its ten - and a page under way is
+    bounded by the child's end at the document's stop (tests/test_ocr.py).
+    A reading that reaches the stop is abandoned - "The reader stopped
+    after N minutes on this file. A person reads it." - kept as the
+    verdict, parked for a person, and not read again until the file
     changes. A slow reading under the stop is finished as before. The
     clock is moved, not waited for."""
-    from PIL import Image
     from pypdf import PdfWriter
 
     import tracker.content_check as content_check
+    from tracker import ocr
     from tracker.content_check import ContentCache
     from tracker.router import route_file
 
-    pytesseract = pytest.importorskip("pytesseract")
-    pytest.importorskip("pypdfium2")
+    pypdfium2 = pytest.importorskip("pypdfium2")
     now = [1000.0]
     monkeypatch.setattr(content_check, "_clock", lambda: now[0])
-    monkeypatch.setattr(content_check, "_upright", lambda image: image)
     assert (content_check.READING_STOP_PAGE_SECONDS,
             content_check.READING_STOP_DOCUMENT_SECONDS) == (60.0, 600.0)
-    photo = tmp_path / "photo.png"
-    Image.new("L", (40, 40), "white").save(photo)
-    rules = item(allowed_extensions=("pdf",), any_keywords=("w-2",), min_size_kb=0)
-
-    # Slow but under the stop: finished and read, as decision 127 says.
-    given = []
-
-    def slow(image, *, timeout=0, **kwargs):
-        given.append(timeout)
-        now[0] += 59.0
-        return "Form W-2"
-
-    monkeypatch.setattr(pytesseract, "image_to_string", slow)
-    assert content_check.extract(photo).text == "Form W-2"
-    assert given == [60.0]                                   # a photo: one page's minute
-
-    # Past it: Tesseract is killed at its timeout, and the reading is abandoned.
-    def killed(image, *, timeout=0, **kwargs):
-        given.append(timeout)
-        now[0] += timeout
-        raise RuntimeError("Tesseract process timeout")
-
-    monkeypatch.setattr(pytesseract, "image_to_string", killed)
-    stopped = content_check.extract(photo)
-    said = "The reader stopped after 1 minute on this file. A person reads it."
-    assert stopped.text is None and stopped.reason == said and not stopped.transient
-    routed = route_file(photo, [rules])
-    assert routed.identifier is None and routed.reason == said
-
-    cache = ContentCache()
-    verdict = check_content(photo, rules, cache)
-    assert not verdict.ok and reasons.READING_STOPPED.matches(verdict.reason)
-    monkeypatch.setattr(pytesseract, "image_to_string",
-                        lambda *a, **k: pytest.fail("a kept verdict was read again"))
-    assert check_content(photo, rules, cache) == verdict      # not retried
-    Image.new("L", (40, 41), "white").save(photo)             # the file changed
-    monkeypatch.setattr(pytesseract, "image_to_string", killed)
-    before = len(given)
-    assert reasons.READING_STOPPED.matches(check_content(photo, rules, cache).reason)
-    assert len(given) == before + 1                           # read again, stopped again
-
-    # A document: the render counts against the budget. Two pages render
-    # in half a minute each; the third's render alone runs past its minute,
-    # and the stop comes before Tesseract is asked about it.
     writer = PdfWriter()
     for _ in range(10):
         writer.add_blank_page(width=612, height=792)
     scan = tmp_path / "scan.pdf"
     with scan.open("wb") as handle:
         writer.write(handle)
-    import pypdfium2
-
     real_render = pypdfium2.PdfPage.render
+    monkeypatch.setattr(pypdfium2.PdfPage, "render",
+                        lambda page, **kwargs: real_render(page, scale=0.1))
+
+    # Slow but under the stop: every page finished and read.
+    def pages_taking(*seconds):
+        took = iter(seconds)
+        read = []
+
+        def reader(image, *, name=""):
+            read.append(name)
+            now[0] += next(took)
+            return "Form W-2"
+        return reader, read
+
+    reader, read = pages_taking(*[59.0] * 10)
+    monkeypatch.setattr(ocr, "read_page", reader)
+    assert content_check.extract_by_ocr(scan).text.count("Form W-2") == 10
+    assert len(read) == 10
+
+    # The second page overruns its minute: the third never starts.
+    reader, read = pages_taking(30.0, 61.0, 1.0)
+    monkeypatch.setattr(ocr, "read_page", reader)
+    stopped = content_check.extract_by_ocr(scan)
+    said = "The reader stopped after 2 minutes on this file. A person reads it."
+    assert stopped.text is None and stopped.reason == said and not stopped.transient
+    assert len(read) == 2                                     # page 3 never reached the reader
+
+    reader, read = pages_taking(30.0, 61.0, 1.0)
+    monkeypatch.setattr(ocr, "read_page", reader)
+    rules = item(allowed_extensions=("pdf",), any_keywords=("w-2",), min_size_kb=0)
+    routed = route_file(scan, [rules])
+    assert routed.identifier is None and routed.reason == said
+
+    reader, read = pages_taking(30.0, 61.0, 1.0)
+    monkeypatch.setattr(ocr, "read_page", reader)
+    cache = ContentCache()
+    verdict = check_content(scan, rules, cache)
+    assert not verdict.ok and reasons.READING_STOPPED.matches(verdict.reason)
+    monkeypatch.setattr(ocr, "read_page", lambda *a, **k: pytest.fail("a kept verdict was read again"))
+    assert check_content(scan, rules, cache) == verdict       # not retried
+
+    # A document: the render counts against the budget. Two pages render
+    # in half a minute each; the third's render alone runs past its minute,
+    # and the stop comes before the reader is asked about it.
     renders = iter([30.0, 30.0, 61.0])
 
     def slow_render(page, **kwargs):
@@ -1344,17 +1248,18 @@ def test_a_reading_past_the_safety_stop_is_abandoned_cached_and_not_retried(tmp_
 
     asked = []
     monkeypatch.setattr(pypdfium2.PdfPage, "render", slow_render)
-    monkeypatch.setattr(pytesseract, "image_to_string",
-                        lambda image, *, timeout=0, **k: asked.append(timeout) or "page")
+    monkeypatch.setattr(ocr, "read_page", lambda image, **k: asked.append(1) or "page")
     stopped = content_check.extract_by_ocr(scan)
     assert stopped.reason == "The reader stopped after 2 minutes on this file. A person reads it."
-    assert asked == [30.0, 30.0]                              # page 3 never reached Tesseract
-    # Each page's timeout is what is left of its own minute, never more
-    # than what is left of the document's ten.
+    assert asked == [1, 1]                                    # page 3 never reached the reader
+    # A page's minute is never more than what is left of the document's ten.
     stop = content_check._SafetyStop()
     now[0] = stop.started + 590.0
     stop.page()
     assert stop.remaining() == 10.0
+    now[0] = stop.started + 601.0
+    with pytest.raises(content_check.ReadingStopped):
+        stop.page()                                           # no page starts past the ten
     assert content_check._STOP is None                       # nothing outlives the reading
 
 
@@ -1376,38 +1281,6 @@ def test_only_a_staff_date_pattern_runs_line_by_line():
     typed = item(period="TY2025", date_pattern=r"December\s2025", date_pattern_derived=False)
     assert not evaluate_rules(split, typed).ok                      # a person's: line by line
     assert evaluate_rules("December 2025\n", typed).ok
-
-
-def test_orientation_is_scored_on_a_small_copy_and_only_the_chosen_turn_is_full_size(monkeypatch):
-    """Decision 137's review of Part B (#2): which way up a page is does not
-    need its full resolution. The four turns are scored on a copy whose
-    long side is at most ``SCORING_LONG_SIDE``; only the chosen turn of the
-    full page is handed back, to be read once."""
-    from PIL import Image
-
-    import tracker.content_check as content_check
-
-    pytesseract = pytest.importorskip("pytesseract")
-
-    def osd_cannot_say(image, **kw):
-        raise pytesseract.TesseractError(1, "Too few characters. Skipping this page")
-
-    scored = []
-    scores = iter([10.0, 90.0, 20.0, 30.0])                    # the quarter turn reads best
-
-    def by_turn(image, **kw):
-        scored.append(image.size)
-        confidence = next(scores)
-        return {"text": ["Wage", "and", "Statement"], "conf": [confidence] * 3}
-
-    monkeypatch.setattr(pytesseract, "image_to_osd", osd_cannot_say)
-    monkeypatch.setattr(pytesseract, "image_to_data", by_turn)
-    page = Image.new("L", (4032, 3024), 255)                     # a 12-megapixel photo
-    turned = content_check._upright(page)
-
-    assert len(scored) == 4
-    assert all(max(size) <= content_check.SCORING_LONG_SIDE for size in scored)
-    assert turned.size == (3024, 4032)                           # the full page, turned
 
 
 # ------------------------------------ a reading the pass can stop (150) ----
@@ -1542,7 +1415,6 @@ def test_a_render_that_never_finishes_is_stopped_and_abandoned(tmp_path, a_short
     from tests import child_readers
     from tracker.router import route_file
 
-    pytest.importorskip("pytesseract")
     pytest.importorskip("pypdfium2")
     a_short_stop.setattr(content_check, "_CHILD_READER", child_readers.a_render_that_never_finishes)
     writer = PdfWriter()
@@ -1567,7 +1439,7 @@ def test_a_render_that_never_finishes_is_stopped_and_abandoned(tmp_path, a_short
 
 
 def test_a_reader_that_crashes_is_a_failed_reading_not_a_dead_pass(tmp_path, in_a_child):
-    """A crash in pdfium or Tesseract used to end the pass's own process,
+    """A crash in pdfium or the reader used to end the pass's own process,
     and every return after the file went unsorted. The child ends instead:
     the file is a reading that failed - parked with its own sentence, not
     the abandoned one - and the pass goes on to the next document."""
@@ -1671,10 +1543,10 @@ def test_a_cached_verdict_starts_no_child(tmp_path, in_a_child):
 
 
 def test_no_child_is_left_running_after_a_stop(tmp_path, a_short_stop):
-    """Ending the reading ends everything it started. OCR runs Tesseract as
-    the child's own child, and ending only the child would leave Tesseract
-    reading a client's page with nobody waiting for it - so the whole tree
-    goes, on Windows as elsewhere."""
+    """Ending the reading ends everything it started. A reader that had
+    started a process of its own would leave it reading a client's page
+    with nobody waiting for it if only the child were ended - so the whole
+    tree goes, on Windows as elsewhere."""
     import tracker.content_check as content_check
     from tests import child_readers
 
@@ -1692,36 +1564,19 @@ def test_no_child_is_left_running_after_a_stop(tmp_path, a_short_stop):
     assert no_child_left()
 
 
-def test_the_readers_child_puts_its_temporary_files_where_the_pass_said(tmp_path, in_a_child):
-    """OCR's temporary page images go to the pass's own scratch folder
-    (decision 137, L7). The child is started inside the pass, so it takes
-    that folder with the rest of the environment."""
-    from pathlib import Path
-
-    import tracker.content_check as content_check
-    from tests import child_readers
-
-    in_a_child.setattr(content_check, "_CHILD_READER", child_readers.where_temporary_files_go)
-    page = text_pdf(tmp_path / "page.pdf", "Form W-2 2025")
-    with content_check.ocr_scratch(tmp_path / "scratch") as scratch:
-        reading = content_check.extract_bounded(page)
-    assert reading.text is not None
-    assert Path(reading.text).resolve() == scratch.resolve()
-
-
 #: A pass, as a process of its own, that reads one document in a child
-#: with a stand-in reader that starts a helper (Tesseract's stand-in) and
-#: never finishes. ``lifeline`` as the second argument takes the job object
+#: with a stand-in reader that starts a helper (a process of the reader's
+#: own) and never finishes. ``lifeline`` as the second argument takes the job object
 #: away, so the lifeline alone is what is proved.
 A_PASS_READING = """
 import sys
 from pathlib import Path
 sys.path[:0] = [sys.argv[3]]
 from tests import child_readers
-from tracker import content_check
+from tracker import content_check, ocr
 content_check._CHILD_READER = child_readers.a_reader_that_starts_a_reader_of_its_own
 if sys.argv[2] == "lifeline":
-    content_check._kill_on_close_job = lambda pid: None
+    ocr._kill_on_close_job = lambda pid, **_limits: None
 content_check.extract_bounded(Path(sys.argv[1]))
 """
 
@@ -2164,3 +2019,36 @@ def test_a_1099b_section_is_read_as_a_form_label_not_as_the_word_consolidated(li
     from tracker.content_check import carries_a_1099b_section
 
     assert carries_a_1099b_section("\n".join(lines)) is carries
+
+
+def test_running_out_of_memory_is_never_a_retry_or_a_corrupt_file(tmp_path, monkeypatch):
+    """SPEC-169 section 9: a MemoryError - the reading child past its
+    memory limit - is not turned into a transient "OCR failed" (retried
+    every pass) nor into "the file is corrupt": it goes up to the child,
+    which says so and ends, and the pass handles it as a crash."""
+    import pypdfium2
+    from PIL import Image
+
+    from tracker import content_check, ocr
+
+    def out_of_memory(*_args, **_kwargs):
+        raise MemoryError
+
+    photo = tmp_path / "photo.png"
+    Image.new("RGB", (40, 40), "white").save(photo)
+    monkeypatch.setattr(ocr, "read_page", out_of_memory)
+    with pytest.raises(MemoryError):
+        content_check._ocr_image(photo)
+
+    scan = tmp_path / "scan.pdf"
+    writer = PdfWriter()
+    writer.add_blank_page(width=612, height=792)
+    with scan.open("wb") as fh:
+        writer.write(fh)
+    monkeypatch.setattr(pypdfium2.PdfPage, "render", out_of_memory)
+    with pytest.raises(MemoryError):
+        content_check._ocr_pdf(scan)
+
+    monkeypatch.setattr(content_check, "extract_text", out_of_memory)
+    with pytest.raises(MemoryError):
+        content_check._extract(scan, ocr=False)

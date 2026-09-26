@@ -503,7 +503,7 @@ def test_an_ocr_failure_is_the_firms_to_retry_not_the_clients_to_resend():
     from tracker import reasons
 
     assert reasons.OCR_FAILED in reasons.FIRM_SIDE
-    note = "scan.pdf: " + reasons.OCR_FAILED.format(error="TesseractError: timeout")
+    note = "scan.pdf: " + reasons.OCR_FAILED.format(error="ONNXRuntimeError: FAIL")
     assert reasons.find(note) is reasons.OCR_FAILED
 
 

@@ -710,12 +710,16 @@ def test_the_build_output_folder_is_the_one_gitignore_knows():
 
 def test_every_dependency_is_pinned_exactly():
     # A build made next month must freeze the same code as one made today.
-    for rel in ("requirements.txt", "requirements-build.txt"):
+    # A pin may carry an environment marker (decision 169, R-11a and R-11b:
+    # numpy by Python version, ONNX Runtime by platform); it is still exact.
+    for rel in ("requirements.txt", "requirements-build.txt", "requirements-nodeps.txt",
+                "requirements-gpu.txt"):
         for line in read(rel).splitlines():
             line = line.strip()
             if not line or line.startswith("#") or line.startswith("-r "):
                 continue
-            assert re.fullmatch(r"[A-Za-z0-9_.-]+==[0-9][A-Za-z0-9.]*", line), (rel, line)
+            assert re.fullmatch(r"[A-Za-z0-9_.-]+==[0-9][A-Za-z0-9.]*"
+                                r"(; (python_version|sys_platform) [<>=!]=? \"[A-Za-z0-9.]+\")?", line), (rel, line)
     package = json.loads(read("app/package.json"))
     for name, version in package["devDependencies"].items():
         assert re.fullmatch(r"\d+\.\d+\.\d+", version), (name, version)
@@ -880,10 +884,17 @@ def test_the_command_center_manifest_names_real_commands_and_admits_no_sending()
             assert action["kind"] == "authorize", "a pass that writes is authorized, never previewed"
 
 
+#: Flags of other programs' command lines that the documents quote, each
+#: with why: they are not this package's, so no source defines them.
+FOREIGN_FLAGS = {
+    "--no-deps": "pip's: the reader's package is installed without its dependencies (decision 169, R-11)",
+}
+
+
 def test_every_cli_flag_a_document_names_exists_in_the_code():
     from tracker.runner import REMINDER_MODES
 
-    known = _known_flags()
+    known = _known_flags() | set(FOREIGN_FLAGS)
     for rel in DOCUMENTS:
         text = read(rel)
         for flag in set(re.findall(r"(--[a-z][a-z-]*)", text)):
@@ -1007,7 +1018,7 @@ def test_tree_diagrams_name_only_runtime_files_the_code_owns():
 #: tolerant_console(), and each of these takes it before it parses a flag.
 CONSOLE_GUARDED = ("rollover", "filer", "scanner", "registry", "review", "scaffold",
                    "store", "reminder", "runner", "router", "content_check",
-                   "view", "ledger", "validators", "names", "containers")
+                   "view", "ledger", "validators", "names", "containers", "ocr")
 #: The command lines that print no client's name, each with why it is not
 #: guarded - so a new command line has to be named in one list or the other.
 CONSOLE_EXEMPT = {

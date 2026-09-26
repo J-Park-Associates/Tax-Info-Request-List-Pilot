@@ -205,10 +205,14 @@ UNCHECKABLE_TYPE = Reason(
     "uncheckable-type", "content rules cannot be checked on .{extension} files; review manually",
     "content rules cannot be checked", firm_side=True,
 )
+#: A scan or a photo the reader could not run on (decision 169, ruling 9):
+#: the reader ships inside the app, so this is a model file missing or
+#: broken - the machine's, transient, and read again once it is mended. It
+#: said "OCR is not installed" while the engine was a separate install.
 NO_TEXT_LAYER = Reason(
     "no-text-layer",
-    "PDF or photo appears to be a scan with no text layer and OCR is not installed; "
-    "review manually",
+    "PDF or photo appears to be a scan with no text layer and the reader could not run "
+    "on this machine; review manually",
     "no text layer", firm_side=True,
 )
 #: A scan or a photo the reader got nothing out of. It said "in PDF" until
@@ -464,8 +468,8 @@ READING_STOPPED = Reason(
     firm_note="the reader gave up on it at the safety stop; a person here reads it",
 )
 
-#: A reading whose process ended without an answer (decision 150): pdfium
-#: or Tesseract crashed, or memory ran out. Not an abandoned reading - the
+#: A reading whose process ended without an answer (decision 150): the PDF
+#: library or the reader crashed, or memory ran out. Not an abandoned reading - the
 #: stop was not reached - but kept the same way, so the file is not read
 #: again until it changes, and the pass goes on to the next document where
 #: it used to end with this one. Ours: the file may be perfectly good.

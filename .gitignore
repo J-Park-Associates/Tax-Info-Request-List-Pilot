@@ -65,9 +65,10 @@ settings.json
 tracker.db
 tracker.db-wal
 tracker.db-shm
-# OCR's temporary page images during a pass (decision 137, L7): a folder
-# beside the settings file, which from source is this one. A client's page
-# may be in it until the next pass empties it.
+# OCR's temporary page images during a pass (decision 137, L7). Retired by
+# decision 169 - the reader writes no temporary file - but a checkout that
+# ran a pass before it may still hold the folder, with a client's page in
+# it, so it stays ignored.
 ocr-scratch/
 
 # Tools' own working folders (decision 137): Claude Code's worktrees and

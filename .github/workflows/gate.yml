@@ -41,16 +41,24 @@ jobs:
         with:
           python-version: ${{ inputs.python-version }}
           cache: pip
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: |
+            requirements.txt
+            requirements-nodeps.txt
+            constraints.txt
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
         with:
           node-version: lts/*
 
+      # Two steps (decision 169, R-11): the reader's own package goes in
+      # without its dependencies, because its metadata asks for the GUI
+      # build of OpenCV; requirements.txt lists what it really needs. On
+      # Linux that is the plain onnxruntime (R-11b): CI has no graphics card.
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements.txt -c constraints.txt
+          pip install --no-deps -r requirements-nodeps.txt -c constraints.txt
 
       - name: Run the test suite
         run: python -m pytest -q
