@@ -2426,8 +2426,9 @@ def _pass(ns, parser, reached: dict) -> int:
         # A pass says it started (decision 189, SPEC-161 ruling 3), after
         # asking whether the last one that said so ever finished.
         _say_the_pass_started(log_path, result)
-    # The reader writes no temporary file (decision 169), so there is no
-    # scratch folder to point it at any more (decision 137's L7 is retired).
+    # The reader writes no temporary file (decision 169), and a reading child
+    # keeps anything a library writes in its own folder in the data home
+    # (decision 186).
     # Watched from outside (decision 193): the progress file beside the
     # tracker's database names the household and the file, for the app's
     # lock notice; nothing is printed, and nothing here can be stopped from

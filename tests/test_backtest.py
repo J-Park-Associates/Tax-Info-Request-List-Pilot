@@ -346,3 +346,36 @@ def test_a_row_naming_a_document_that_is_not_there_is_reported_by_its_number(tmp
     with pytest.raises(BacktestError) as raised:
         run(folder)
     assert "row 1" in str(raised.value) and W2_FILE not in str(raised.value)
+
+
+def test_a_copy_of_a_document_is_made_in_the_data_home_never_the_machines_temp_folder(tmp_path, monkeypatch):
+    """Decision 186 (F-7): where a link cannot be made the backtest copies
+    the firm's document, so its scratch is this process's own folder in the
+    data home - swept by process number if the run is killed - and gone
+    when the run returns."""
+    import tempfile
+
+    from tracker import settings
+
+    corpus = two_documents(tmp_path)
+
+    def no_links(source, target):
+        raise OSError("this file system has no links")
+
+    seen = []
+
+    def remember(path, items, *, ocr):
+        seen.append(path)
+        assert path.is_file() and not path.is_symlink()
+        return None, False, "text"
+
+    monkeypatch.setattr(backtest.os, "link", no_links)
+    monkeypatch.setattr(backtest, "route_one", remember)
+    backtest.route_corpus(corpus, corpus / EXPECTATIONS_FILENAME)
+
+    assert len(seen) == 2
+    for path in seen:
+        assert settings._inside(path, settings.process_scratch())      # this process's own folder
+        assert path.parents[2] == settings.process_scratch()           # own / backtest-* / <row> / doc
+        assert path.parents[2] != Path(tempfile.gettempdir())
+    assert not settings.process_scratch().exists()

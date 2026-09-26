@@ -72,6 +72,16 @@ still holds, for this child:
 many documents, so a reader must never change module state (a global, a
 patched function) for one document and leave it for the next.
 
+**Nor may anything it writes.** The child points the temp folder - ``TMP``,
+``TEMP``, ``TMPDIR`` and :data:`tempfile.tempdir` - at a folder of its own,
+``scratch_root() / <its pid>`` in the data home, before it serves anything
+(decision 186). The reader writes no temporary file today (SPEC-169 section
+6); that was a measurement, and this makes it a place: whatever a library
+writes lands in the child's folder, which is removed when the child ends, and
+never in the machine's temp folder. One folder per process, and only a folder
+whose process is gone is ever swept, so a preview's child can never empty the
+folder under a running pass (D-14).
+
 The pass opens its child with :func:`reading_session` (the runner for a
 pass, the app for one command); a reading made with none open gets a
 session of its own for that one reading. The pass and the child talk over
@@ -84,9 +94,11 @@ import contextlib
 import io
 import logging
 import os
+import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import traceback
@@ -94,6 +106,9 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from tracker.locking import pid_alive
+from tracker.settings import scratch_root
 
 log = logging.getLogger(__name__)
 
@@ -528,6 +543,65 @@ class Outcome:
     notes: list = field(default_factory=list)
 
 
+#: Every way a library finds the temp folder, pointed by a reading child at
+#: its own folder in the data home (decision 186), with :data:`tempfile.tempdir`.
+SCRATCH_ENV = ("TMP", "TEMP", "TMPDIR")
+
+
+def sweep_scratch(root: Path) -> list[Path]:
+    """Remove the folders under ``root`` whose process is gone, and say which.
+
+    Only a folder named by a process number, and only when
+    :func:`tracker.locking.pid_alive` answers that the process is gone:
+    a live process's folder, or one whose process cannot be known, is
+    kept, so a preview's child never empties a running pass's (D-14). A
+    name that is not a number is not the tracker's and is never touched. A
+    folder that cannot be removed now - a dying process still holds it - is
+    logged and left for the next sweep; nothing here raises."""
+    removed: list[Path] = []
+    try:
+        folders = sorted(root.iterdir())
+    except OSError:
+        return removed                          # no scratch yet: nothing to sweep
+    for folder in folders:
+        name = folder.name
+        if not (name.isascii() and name.isdigit()) or not folder.is_dir():
+            continue
+        if pid_alive(name) is not False:
+            continue
+        try:
+            shutil.rmtree(folder)
+        except OSError as exc:
+            log.warning("Could not remove the scratch folder %s (%s); the next reading sweeps it",
+                        folder, exc)
+            continue
+        removed.append(folder)
+    return removed
+
+
+def _take_scratch(root: Path) -> Path:
+    """Make this process's own temp folder under ``root`` and point every way
+    a library finds the temp folder at it. Sweeps first (:func:`sweep_scratch`)."""
+    sweep_scratch(root)
+    own = root / str(os.getpid())
+    own.mkdir(parents=True, exist_ok=True)
+    for name in SCRATCH_ENV:
+        os.environ[name] = str(own)
+    tempfile.tempdir = str(own)
+    return own
+
+
+def _remove_scratch(folder: Path) -> None:
+    """Remove an ended child's own folder; a warning, never a raise, when it cannot be."""
+    try:
+        shutil.rmtree(folder)
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        log.warning("Could not remove the reading's scratch folder %s (%s); the next reading sweeps it",
+                    folder, exc)
+
+
 class ReadingChild:
     """One reading child process and the pass's ends of its three pipes:
     jobs in, answers out, and the lifeline the pass never writes to."""
@@ -535,6 +609,11 @@ class ReadingChild:
     def __init__(self, *, processor_only: bool) -> None:
         import multiprocessing
 
+        # Where the child keeps whatever a library writes (decision 186),
+        # asked before any process or pipe exists: no data home is a child
+        # that cannot start - the machine's fault, and the file waits.
+        self._scratch_root = scratch_root()
+        self._pid: int | None = None
         context = multiprocessing.get_context("spawn")          # Windows has no fork
         self._answers, sender = context.Pipe(duplex=False)
         jobs, self._jobs = context.Pipe(duplex=False)
@@ -546,7 +625,7 @@ class ReadingChild:
         self.on_the_card = not processor_only and gpu_pack() is not None
         self.memory_limit = GRAPHICS_CARD_CHILD_MEMORY if self.on_the_card else PROCESSOR_CHILD_MEMORY
         self._process = context.Process(
-            target=_the_child, args=(jobs, sender, lifeline, processor_only),
+            target=_the_child, args=(jobs, sender, lifeline, processor_only, str(self._scratch_root)),
             name="tracker-reading", daemon=True)
         try:
             self._process.start()
@@ -558,6 +637,7 @@ class ReadingChild:
             # The child holds its own ends: end-of-file means it is gone.
             for end in (sender, jobs, lifeline):
                 end.close()
+        self._pid = self._process.pid
         self._job_object = _kill_on_close_job(self._process.pid, memory_limit=self.memory_limit)
 
     @property
@@ -641,22 +721,30 @@ class ReadingChild:
                 end.close()
         _close_job(self._job_object)
         self._job_object = None
+        if self._pid is not None and not self._process.is_alive():
+            _remove_scratch(self._scratch_root / str(self._pid))
         if self._process.exitcode is not None:
             with contextlib.suppress(ValueError):
                 self._process.close()
 
 
-def _the_child(jobs, sender, lifeline, processor_only_: bool) -> None:
+def _the_child(jobs, sender, lifeline, processor_only_: bool, scratch: str) -> None:
     """The child's whole life: serve jobs one at a time until the pass says
     it is done, or is gone.
 
-    On POSIX it leads a process group of its own first, so ending it ends
+    First it takes a temp folder of its own under ``scratch``
+    (:func:`_take_scratch`, decision 186); a folder it cannot make ends it
+    before "started", as a job it cannot unpack does. On POSIX it leads a process group of its own first, so ending it ends
     whatever it started. It watches its lifeline from a thread of its own
     (:func:`_watch_the_pass`). For each job it says "started" before
     anything touches the file - an end before it is the machine's, after it
     the file's - and hands back the answer, or what the job raised as
     words, never left to end the process in silence. Every answer carries
     what the reader has to tell the pass (:func:`take_notes`)."""
+    try:
+        _take_scratch(Path(scratch))
+    except OSError:
+        os._exit(UNREADABLE_JOB_EXIT_CODE)      # the machine's, never the file's
     if hasattr(os, "setsid"):
         os.setsid()
     threading.Thread(target=_watch_the_pass, args=(lifeline,), name="tracker-lifeline",

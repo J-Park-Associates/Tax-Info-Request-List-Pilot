@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 162,
-    "edges": 1005,
-    "reused": 105
+    "nodes": 163,
+    "edges": 1012,
+    "reused": 111
   },
   "node_types": [
     "artifact",
@@ -589,8 +589,8 @@
       "id": "tracker/content_check.py",
       "type": "module",
       "layer": "core",
-      "sha256": "9f15b0ead29098da",
-      "lines": 2575,
+      "sha256": "bb8fb40d2402aaea",
+      "lines": 2576,
       "cli": "python -m tracker.content_check",
       "exports": [
         "BROKER_FORM",
@@ -1628,8 +1628,8 @@
       "id": "tracker/ocr.py",
       "type": "module",
       "layer": "core",
-      "sha256": "dde4b719c30e4602",
-      "lines": 1101,
+      "sha256": "2396cb2b38892bd2",
+      "lines": 1189,
       "cli": "python -m tracker.ocr",
       "exports": [
         "CHILD_EXIT_SECONDS",
@@ -1654,6 +1654,7 @@
         "RECOGNITION_MODEL",
         "ReaderUnavailable",
         "ReadingChild",
+        "SCRATCH_ENV",
         "SELF_TEST_TEXT",
         "SELF_TEST_WORDS",
         "SESSIONS",
@@ -1671,6 +1672,7 @@
         "reading_session",
         "reset",
         "run_in_child",
+        "sweep_scratch",
         "take_notes",
         "warm_up"
       ],
@@ -1696,10 +1698,11 @@
         "CHILD_EXIT_SECONDS": "30.0",
         "ORPHANED_EXIT_CODE": "86",
         "UNREADABLE_JOB_EXIT_CODE": "87",
-        "OUT_OF_MEMORY_EXIT_CODE": "88"
+        "OUT_OF_MEMORY_EXIT_CODE": "88",
+        "SCRATCH_ENV": "('TMP', 'TEMP', 'TMPDIR')"
       },
       "role": "The reader (decision 169): RapidOCR on ONNX Runtime with its three models shipped in the app, on the graphics card when the pack beside the app works and on the processor otherwise - and the pass's one long-lived reading child that every parse of a client's file runs in.",
-      "notes": "Rulings 1-3 and 6, R-2 and R-4 of SPEC-169. Engine: _build_engine() names every model by path (models_folder(), inside the rapidocr package, collected as data by api_entry.spec) and _refuse_downloads() replaces rapidocr's DownloadFile.run with a refusal, so nothing is ever fetched; rapidocr imports requests at load time for that downloader, which tests/test_layers.py allows and tests/test_ocr.py pins to open no socket in a full read. Device: gpu_pack() is the gpu-runtime folder beside the frozen exe (never from source); none means the processor with no CUDA request at all (onnxruntime-gpu 'offers' CUDA everywhere, so offered is never the test). With a pack, _on_the_card() calls onnxruntime.preload_dlls() on it, builds asking for CUDA, requires each of SESSIONS (text_det, text_cls, text_rec) to have CUDAExecutionProvider first, and runs _self_test() on a line drawn in memory; any failure is the processor plus PACK_UNUSABLE (a run-log line, not a warning). read_page(): any exception from the card's engine is a fault (the card poisons the process - 'CUDA failure 999'): the engine is dropped, the processor's built, the same page read again, processor_only() for the rest of the pass, and a ('gpu-fault', file) note becomes GPU_FAULT_WARNING once in the pass; reset() lets the next pass try the card. _upright_lines() is ruling 6's seam: lines in reading order from the boxes (the harness's lines_from_boxes), never a turn. The child: ReadingChild is one spawned process serving jobs one at a time over three pipes (jobs, answers, lifeline), saying 'started' before each job touches a file, answering with take_notes(); a job it cannot unpickle exits UNREADABLE_JOB_EXIT_CODE (the machine's, before 'started'). _watch_the_pass/_orphaned (the lifeline) and _kill_on_close_job/_close_job (the Windows job object) and _end() (the whole tree) moved here from content_check. Session (reading_session(), run_in_child()) owns the child for a pass - runner.run_registry with settle=True, which with a pack starts the child at once for warm_up() so the run log's first line is settled - or for one app command (api.main); a reading with none open gets a session of its own. It replaces the child after a stop, a crash, a child that never started, a fault on the card and every DOCUMENTS_PER_CHILD (100) documents. content_check.in_a_child() words each Outcome. The CLI (python -m tracker.ocr [photo]) says which reader this machine uses and times one reading. Decision 189 (SPEC-161 A-F9): awake_clock() - QueryUnbiasedInterruptTime on Windows, time.monotonic elsewhere - is the one clock of every part of a reading's stop: ReadingChild.run() and Session._run_once() in the pass, content_check._clock in the child; ReadingChild.run() re-measures what is left after every message and every wake, so a poll the machine slept through is not a stop. Unchanged by decision 189's judgment worker in code: its one reader child now runs content_check.judge (read plus judgment) as the job for every document the pass decides, so the document's stop and the child's memory cap bound the rules and the name check as well as the reading, and the answer crossing the pipe is a small Judgment with no text. Containers (decision 154) still open through the same run_in_child."
+      "notes": "Rulings 1-3 and 6, R-2 and R-4 of SPEC-169. Engine: _build_engine() names every model by path (models_folder(), inside the rapidocr package, collected as data by api_entry.spec) and _refuse_downloads() replaces rapidocr's DownloadFile.run with a refusal, so nothing is ever fetched; rapidocr imports requests at load time for that downloader, which tests/test_layers.py allows and tests/test_ocr.py pins to open no socket in a full read. Device: gpu_pack() is the gpu-runtime folder beside the frozen exe (never from source); none means the processor with no CUDA request at all (onnxruntime-gpu 'offers' CUDA everywhere, so offered is never the test). With a pack, _on_the_card() calls onnxruntime.preload_dlls() on it, builds asking for CUDA, requires each of SESSIONS (text_det, text_cls, text_rec) to have CUDAExecutionProvider first, and runs _self_test() on a line drawn in memory; any failure is the processor plus PACK_UNUSABLE (a run-log line, not a warning). read_page(): any exception from the card's engine is a fault (the card poisons the process - 'CUDA failure 999'): the engine is dropped, the processor's built, the same page read again, processor_only() for the rest of the pass, and a ('gpu-fault', file) note becomes GPU_FAULT_WARNING once in the pass; reset() lets the next pass try the card. _upright_lines() is ruling 6's seam: lines in reading order from the boxes (the harness's lines_from_boxes), never a turn. The child: ReadingChild is one spawned process serving jobs one at a time over three pipes (jobs, answers, lifeline), saying 'started' before each job touches a file, answering with take_notes(); a job it cannot unpickle exits UNREADABLE_JOB_EXIT_CODE (the machine's, before 'started'). _watch_the_pass/_orphaned (the lifeline) and _kill_on_close_job/_close_job (the Windows job object) and _end() (the whole tree) moved here from content_check. Session (reading_session(), run_in_child()) owns the child for a pass - runner.run_registry with settle=True, which with a pack starts the child at once for warm_up() so the run log's first line is settled - or for one app command (api.main); a reading with none open gets a session of its own. It replaces the child after a stop, a crash, a child that never started, a fault on the card and every DOCUMENTS_PER_CHILD (100) documents. content_check.in_a_child() words each Outcome. The CLI (python -m tracker.ocr [photo]) says which reader this machine uses and times one reading. Decision 189 (SPEC-161 A-F9): awake_clock() - QueryUnbiasedInterruptTime on Windows, time.monotonic elsewhere - is the one clock of every part of a reading's stop: ReadingChild.run() and Session._run_once() in the pass, content_check._clock in the child; ReadingChild.run() re-measures what is left after every message and every wake, so a poll the machine slept through is not a stop. Unchanged by decision 189's judgment worker in code: its one reader child now runs content_check.judge (read plus judgment) as the job for every document the pass decides, so the document's stop and the child's memory cap bound the rules and the name check as well as the reading, and the answer crossing the pipe is a small Judgment with no text. Containers (decision 154) still open through the same run_in_child. Decision 186: nor may anything a reading writes outlive it - each ReadingChild asks settings.scratch_root() before any process starts (no data home: not_started, the machine's), and the child's first act (_take_scratch()) is to sweep folders of dead processes (sweep_scratch(), by locking.pid_alive(), never a live or unknowable one - D-14) and point TMP, TEMP, TMPDIR and tempfile.tempdir at scratch/<its pid>; end() removes that folder once the child is gone, and a killed child's is swept by the next. Not covered: reading_session(in_a_child=False), the suite's in-process reading and the tools that call extract() directly."
     },
     {
       "id": "tracker/page.py",
@@ -2512,8 +2515,8 @@
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "1848a111962434b4",
-      "lines": 2549,
+      "sha256": "3420793e09d5260e",
+      "lines": 2550,
       "cli": "python -m tracker.runner",
       "exports": [
         "ACKNOWLEDGE_COMMAND",
@@ -2890,14 +2893,15 @@
       "id": "tracker/settings.py",
       "type": "module",
       "layer": "core",
-      "sha256": "3522582591b3b260",
-      "lines": 641,
+      "sha256": "88418a6c097f7826",
+      "lines": 653,
       "cli": "python -m tracker.settings",
       "exports": [
         "COLUMN_CATALOG",
         "COLUMN_EXPECTED",
         "COLUMN_FILE",
         "COLUMN_YEAR",
+        "CORPUS_INSIDE_APP",
         "DATA_HOME_BESIDE_PROGRAM",
         "DATA_HOME_NAME",
         "DATA_HOME_NOT_ABSOLUTE",
@@ -3398,7 +3402,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "d5b78dcdb8b9f37d",
+      "sha256": "df59308d60696356",
       "lines": 436,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -3416,8 +3420,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "4e44685bdaee5d09",
-      "lines": 1025,
+      "sha256": "ea3522b621bc2e5a",
+      "lines": 1045,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -3425,8 +3429,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "8eb3daf693243c85",
-      "lines": 2211,
+      "sha256": "c83e3d9ecdf25e5a",
+      "lines": 2213,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -3450,7 +3454,7 @@
       "id": "docs/vocab-coverage.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "5484143a88cc865d",
+      "sha256": "c742ee289c923d15",
       "lines": 9415,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
@@ -3691,6 +3695,12 @@
       "role": "One progress file (<pass id>.json, the latest progress line) and at most one cancel marker (<pass id>.cancel) per running pass, beside the tracker's database (decision 193, tracker/progress.py). The app's lock notice reads a pass's file to name the household and file it is on; Stop writes the marker for a pass the app started. Gitignored; a dead pass's leftovers are swept by the next Watch."
     },
     {
+      "id": "artifact:reading scratch",
+      "type": "artifact",
+      "layer": "runtime",
+      "role": "scratch/<pid> in the data home: a reading child's own temp folder (decision 186) - TMP, TEMP, TMPDIR and tempfile.tempdir point at it before the child serves anything; removed by the pass when the child ends; a child sweeps only folders whose process is gone (D-14). The backtest keeps its copies of the firm's documents in its own scratch/<pid> the same way (F-7)."
+    },
+    {
       "id": "artifact:record-heads.db",
       "type": "artifact",
       "layer": "runtime",
@@ -3765,8 +3775,8 @@
       "id": "tests/child_readers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "973a41d5490f9954",
-      "lines": 223,
+      "sha256": "8a9821cf3e84e009",
+      "lines": 235,
       "exports": [
         "MARKS_VARIABLE",
         "a_card_that_dies",
@@ -3784,7 +3794,8 @@
         "a_text_layer_that_never_finishes",
         "opener_reached",
         "reached",
-        "the_childs_process_id"
+        "the_childs_process_id",
+        "where_temporary_files_go"
       ],
       "constants": {
         "MARKS_VARIABLE": "'TRACKER_TEST_MARKS'"
@@ -4184,8 +4195,8 @@
       "id": "tests/test_backtest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c082e1b84afe2626",
-      "lines": 348,
+      "sha256": "9f18fbfd0f035fe7",
+      "lines": 381,
       "exports": [
         "CLIENT_FOLDER",
         "EMPLOYEE",
@@ -4198,6 +4209,7 @@
         "a_report",
         "expectations_for",
         "run",
+        "test_a_copy_of_a_document_is_made_in_the_data_home_never_the_machines_temp_folder",
         "test_a_disagreement_is_reported_as_the_pair_it_is",
         "test_a_document_is_routed_by_its_text_and_never_by_its_own_name",
         "test_a_document_with_no_text_layer_is_counted_apart_and_is_not_parked",
@@ -5478,8 +5490,8 @@
       "id": "tests/test_ocr.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6c6b04899bdb1071",
-      "lines": 748,
+      "sha256": "ae0bbb5feda513fe",
+      "lines": 846,
       "exports": [
         "A_PASS_BETWEEN_DOCUMENTS",
         "FakeEngine",
@@ -5495,7 +5507,9 @@
         "test_a_card_child_that_dies_is_a_card_fault_and_the_document_is_read_on_the_processor",
         "test_a_card_fault_in_a_child_moves_the_rest_of_the_pass_to_the_processor",
         "test_a_child_over_its_memory_limit_is_replaced_and_the_next_document_reads",
+        "test_a_child_that_is_killed_leaves_its_folder_for_the_next_childs_sweep",
         "test_a_death_in_a_used_child_is_retried_once_on_a_fresh_one",
+        "test_a_folder_the_tracker_did_not_name_is_never_swept",
         "test_a_full_read_opens_no_socket_writes_no_temporary_file_and_fetches_nothing",
         "test_a_gpu_fault_switches_the_rest_of_the_pass_to_the_cpu",
         "test_a_library_past_the_limit_means_the_app_must_move",
@@ -5507,11 +5521,14 @@
         "test_a_pack_is_used_only_when_every_session_is_on_cuda_and_the_self_test_reads",
         "test_a_photo_is_read_by_rapidocr",
         "test_a_reader_that_cannot_run_is_not_blamed_on_the_card",
+        "test_a_reading_child_keeps_every_temporary_file_in_its_own_folder_in_the_data_home",
         "test_a_scan_is_read_by_rapidocr",
         "test_a_short_junction_to_a_deep_folder_is_still_too_deep",
         "test_a_sideways_page_keeps_its_words",
+        "test_a_sweep_never_empties_the_folder_of_a_process_that_is_alive",
         "test_no_gpu_pack_means_the_cpu_without_a_word",
         "test_no_reading_child_outlives_the_pass",
+        "test_no_reading_child_starts_without_a_data_home",
         "test_one_child_reads_every_document_of_a_pass_and_ends_with_it",
         "test_run_from_source_the_app_is_never_too_deep",
         "test_the_document_stop_ends_a_page_the_reader_never_finishes",
@@ -6510,12 +6527,13 @@
       "id": "tests/test_settings.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9f3ef19290ae3a4c",
-      "lines": 485,
+      "sha256": "6209e96cd24fff68",
+      "lines": 499,
       "exports": [
         "beside_the_app",
         "test_a_cleared_folder_box_is_refused_not_recorded_as_the_working_folder",
         "test_a_clients_root_that_holds_or_sits_inside_the_data_home_is_refused",
+        "test_a_corpus_inside_the_app_is_refused_by_name",
         "test_a_data_home_override_must_be_a_whole_path",
         "test_a_folder_that_does_not_exist_is_refused",
         "test_a_missing_local_application_data_is_refused_and_nothing_falls_back_to_the_program_or_temp",
@@ -7106,8 +7124,8 @@
       "id": "tools/backtest.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "7734d2717a9bebf8",
-      "lines": 652,
+      "sha256": "48919180c468b58a",
+      "lines": 661,
       "cli": "python -m tools.backtest",
       "exports": [
         "AT_BASELINE",
@@ -8115,6 +8133,12 @@
       "from": "tests/test_backtest.py",
       "to": "pkg:pytest",
       "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_backtest.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
       "source": "derived"
     },
     {
@@ -9392,6 +9416,12 @@
     {
       "from": "tests/test_ocr.py",
       "to": "tracker/runner.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_ocr.py",
+      "to": "tracker/settings.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -11305,6 +11335,12 @@
     },
     {
       "from": "tools/backtest.py",
+      "to": "artifact:reading scratch",
+      "type": "writes",
+      "source": "curated"
+    },
+    {
+      "from": "tools/backtest.py",
       "to": "docs/backtest-baseline.json",
       "type": "writes",
       "source": "curated"
@@ -12247,9 +12283,33 @@
     },
     {
       "from": "tracker/ocr.py",
+      "to": "tracker/locking.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/ocr.py",
+      "to": "tracker/settings.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/ocr.py",
       "to": "tracker/page.py",
       "type": "imports_at_call",
       "source": "derived"
+    },
+    {
+      "from": "tracker/ocr.py",
+      "to": "artifact:reading scratch",
+      "type": "reads",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/ocr.py",
+      "to": "artifact:reading scratch",
+      "type": "writes",
+      "source": "curated"
     },
     {
       "from": "tracker/progress.py",

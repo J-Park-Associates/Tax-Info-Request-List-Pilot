@@ -84,6 +84,9 @@ ENV_PRODUCT_NAME = "TRACKER_PRODUCT_NAME"
 PACKAGE_JSON = Path(__file__).resolve().parent.parent / "app" / "package.json"
 #: The folder of the firm's own redacted documents, outside the repository.
 ENV_REAL_CORPUS = "TRACKER_REAL_CORPUS"
+#: A corpus inside the app's own folder is refused by name (decision 186).
+CORPUS_INSIDE_APP = (ENV_REAL_CORPUS + " names {folder}, inside the app's own folder (the code "
+                     "checkout, from source); the firm's documents never sit there - move them out")
 #: Where the tracker keeps what it derives from clients on this machine
 #: (decision 186): the store, a reading's temporary files, the run log and the
 #: scheduler's task file. An absolute path; the suite and CI set it.
@@ -293,12 +296,21 @@ def real_corpus_dir() -> Path | None:
     there is nothing to route - and both answer None. Raising instead
     would fail the suite on every machine that has no corpus, CI's
     included; the harness and the report skip on None and say so.
+
+    A corpus inside the app's own folder is another matter (decision 186):
+    not a machine with nothing to route but a positive mistake - the
+    firm's documents one ``git add -A`` from every clone - so it raises
+    ``CORPUS_INSIDE_APP`` and fails loudly on that one machine.
     """
     named = os.environ.get(ENV_REAL_CORPUS, "").strip()
     if not named:
         return None
     folder = Path(named)
-    return folder if folder.is_dir() else None
+    if not folder.is_dir():
+        return None
+    if inside_the_app(folder):
+        raise SettingsError(CORPUS_INSIDE_APP.format(folder=folder))
+    return folder
 
 
 def _write(data: dict) -> None:

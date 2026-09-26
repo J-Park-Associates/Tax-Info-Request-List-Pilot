@@ -483,3 +483,17 @@ def test_the_store_the_scratch_and_the_task_file_never_resolve_under_the_program
         for never in (data_rules.app_dir(), repository, clients):
             assert not data_rules._inside(place, never), (place, never)
     assert not (account / data_rules.DATA_HOME_NAME).exists()
+
+
+def test_a_corpus_inside_the_app_is_refused_by_name(tmp_path, monkeypatch):
+    """Decision 186: no corpus is nothing to route (None); a corpus inside
+    the checkout is a mistake, said by name."""
+    inside = data_rules.app_dir() / "tests"                     # a folder the checkout already has
+    monkeypatch.setenv(ENV_REAL_CORPUS, str(inside))
+    with pytest.raises(SettingsError) as caught:
+        real_corpus_dir()
+    assert str(caught.value) == data_rules.CORPUS_INSIDE_APP.format(folder=inside)
+    outside = tmp_path / "corpus"
+    outside.mkdir()
+    monkeypatch.setenv(ENV_REAL_CORPUS, str(outside))
+    assert real_corpus_dir() == outside

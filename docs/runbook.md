@@ -41,7 +41,9 @@ the firm's name and its telephone number, nothing about a client. Run the
 app and the schedule as the same Windows account: another account on the
 same machine keeps a database of its own, built from the ledgers on its
 first pass (slow once, never wrong). Nobody opens, copies or backs up the
-data folder; the ledgers are the backup.
+data folder; the ledgers are the backup. A reading's temporary files, if a library ever
+writes one, go to a folder of that reading's own in the data folder
+(`scratch`), removed when the reading ends — never the machine's temp folder.
 
 **A return the store refuses as "changed behind the tracker's back".** The
 store keeps a fingerprint of every line of a return's record it has read

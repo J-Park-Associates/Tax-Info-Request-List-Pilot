@@ -2117,8 +2117,9 @@ def extract_bounded(path: Path, *, ocr: bool = True) -> Extraction:
     of ending the pass. A cached verdict never gets here, so it never
     starts a child. The child writes nothing anywhere: it hands back the
     reading, and the pass does every write, as before. The reader writes no
-    temporary file either (SPEC-169 section 6), so the scratch folder
-    decision 137 (L7) gave OCR is gone. The benchmark calls :func:`extract`
+    temporary file either (SPEC-169 section 6), and whatever a library might
+    write goes to the child's own folder in the data home, removed when the
+    child ends (decision 186). The benchmark calls :func:`extract`
     itself: it measures the reader, not the stop.
 
     **Not what the pass reads through since decision 189.** The pass asks

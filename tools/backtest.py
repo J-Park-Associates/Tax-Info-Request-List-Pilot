@@ -101,6 +101,7 @@ from tracker.settings import (  # noqa: E402
     EXPECTATIONS_COLUMNS,
     EXPECTATIONS_FILENAME,
     inside_the_app,
+    process_scratch,
 )
 from tracker.templates import FORM_TYPES, template_items  # noqa: E402
 from tracker.validators import IMAGE_EXTENSIONS, extension_allowed, extension_of, is_ignored  # noqa: E402
@@ -271,8 +272,11 @@ def route_one(path: Path, rows: list[RequestItem], *, ocr: bool) -> tuple[str | 
 def route_corpus(folder: Path, expectations: Path, *, ocr: bool = False) -> tuple[list[Outcome], float]:
     """Route every row of ``expectations``, and say how long the whole pass took.
 
-    The catalogs and the scratch links live in one temporary folder outside
-    the repository, which goes away with the pass.
+    The catalogs and the scratch links live in one temporary folder in this
+    process's own scratch in the data home (decision 186), never the machine's
+    temp folder: a link that cannot be made is a copy of a client document. It
+    goes away with the pass, and a killed pass's folder is swept by its process
+    number.
     """
     catalog_rows, read_expectations = _harness()
     rows = read_expectations(expectations)
@@ -282,20 +286,25 @@ def route_corpus(folder: Path, expectations: Path, *, ocr: bool = False) -> tupl
 
     outcomes: list[Outcome] = []
     started = time.perf_counter()
-    with tempfile.TemporaryDirectory(prefix="backtest-") as scratch_name:
-        scratch = Path(scratch_name)
-        workspace = scratch / "catalogs"
-        workspace.mkdir()
-        built: dict = {}
-        for row, (name, catalog, year, expected) in enumerate(rows, start=1):
-            items = catalog_rows(workspace, catalog, year, built)
-            link = _linked_under_a_neutral_name(_document_path(folder, name, row), scratch, row)
-            began = time.perf_counter()
-            got, no_text, kind = route_one(link, items, ocr=ocr)
-            outcomes.append(Outcome(
-                row=row, catalog=catalog, expected=expected, got=got,
-                no_text=no_text, seconds=time.perf_counter() - began, kind=kind,
-            ))
+    own = process_scratch()
+    own.mkdir(parents=True, exist_ok=True)
+    try:
+        with tempfile.TemporaryDirectory(prefix="backtest-", dir=own) as scratch_name:
+            scratch = Path(scratch_name)
+            workspace = scratch / "catalogs"
+            workspace.mkdir()
+            built: dict = {}
+            for row, (name, catalog, year, expected) in enumerate(rows, start=1):
+                items = catalog_rows(workspace, catalog, year, built)
+                link = _linked_under_a_neutral_name(_document_path(folder, name, row), scratch, row)
+                began = time.perf_counter()
+                got, no_text, kind = route_one(link, items, ocr=ocr)
+                outcomes.append(Outcome(
+                    row=row, catalog=catalog, expected=expected, got=got,
+                    no_text=no_text, seconds=time.perf_counter() - began, kind=kind,
+                ))
+    finally:
+        shutil.rmtree(own, ignore_errors=True)    # a folder still held is swept later by its dead pid
     return outcomes, time.perf_counter() - started
 
 
