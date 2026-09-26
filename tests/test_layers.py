@@ -288,6 +288,16 @@ def test_the_atomic_write_imports_nothing_of_the_package():
     assert call["fsio"] == set(), call["fsio"]
 
 
+def test_the_layout_imports_nothing_of_the_package():
+    """The layout is path arithmetic on one shape (decision 125), and since
+    decision 187 the one wording of where a step of a return may act: the
+    filer and the store both ask it, so it may reach neither, at load time
+    or at call time."""
+    load, call = import_edges()
+    assert load["layout"] == set(), load["layout"]
+    assert call["layout"] == set(), call["layout"]
+
+
 def test_the_package_init_imports_nothing_at_load_time():
     load, _ = import_edges()
     assert load["__init__"] == set(), load["__init__"]

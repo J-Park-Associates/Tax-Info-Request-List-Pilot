@@ -182,9 +182,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import logging
-import ntpath
 import os
-import posixpath
 import re
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -212,23 +210,20 @@ from tracker.fsio import (
 )
 from tracker.households import household_returns
 from tracker.layout import (
-    CLIENTS_TREE,
-    INBOX_DIR_NAME,
     MAX_PATH_LENGTH,
-    OPENED_DIR_NAME,
     PATH_TOO_LONG,
     PRIVATE_TREE,
     deepest_path_length,
     household_name_of,
     household_of,
     inbox_of,
-    is_year_folder,
     limit_for,
     locate,
     location_of,
     lock_order_key,
     opened_dir_of,
     originals_of,
+    place_problem,
     root_of,
     year_of,
 )
@@ -874,6 +869,21 @@ COPY_MISMATCH = (
 _DIGEST_SHOWN = 12
 
 
+#: What a copy with no fingerprint to prove it against is refused with
+#: (decision 187). Every copy is of bytes this system has already recorded,
+#: so a copy that names none was not written by it, and one that is copied
+#: unproved could be anything the line pointed at.
+COPY_UNPROVED = ("{source} would be copied to {target} with no fingerprint to prove the copy "
+                 "against; nothing was copied. A person checks the record")
+
+
+#: What a copy whose source is there but cannot be read just now is refused
+#: with before anything is recorded (decision 187's review, S6): the
+#: original stays where it is, and nothing is copied unproved.
+COPY_UNREAD = ("{source} could not be read just now (still syncing, or held by another "
+               "program), so no copy was made")
+
+
 class CopyMismatchError(FilingError):
     """A copy was made and the target did not hold the original's bytes."""
 
@@ -903,7 +913,10 @@ def _copy_whole(
     not be filed" row rather than trusted and counted. A row recorded
     without its bytes (decision 65) has no digest to expect, and passes
     ``""``: there is nothing to prove it against, and that row is said out
-    loud elsewhere.
+    loud elsewhere - and, since decision 187, its caller fingerprints the
+    source first, because ``expect`` is never blank here: a copy with
+    nothing to prove it against is refused (:data:`COPY_UNPROVED`) before a
+    byte is read.
 
     The temp's name is cut to fit Windows's limit where the target sits
     near it (``limit``): the target was named to fit decision 131's room,
@@ -914,9 +927,10 @@ def _copy_whole(
     on the temp is remembered for ``target`` and the proof costs one read,
     once.
     """
+    if not expect:
+        raise FilingError(COPY_UNPROVED.format(source=source.name, target=target.name))
+
     def prove(temp: Path) -> None:
-        if not expect:
-            return
         digest = _digest_or_none(temp)
         if digest != expect:
             raise CopyMismatchError(COPY_MISMATCH.format(
@@ -926,7 +940,7 @@ def _copy_whole(
             ))
 
     copy_atomically(source, target, prove=prove, limit=MAX_PATH_LENGTH)
-    if expect and cache is not None:
+    if cache is not None:
         cache.remember_digest(target, expect)
 
 
@@ -939,13 +953,15 @@ def _digest_or_none(path: Path) -> str | None:
 
 
 #: What a move refuses when the folder it would take a file out of is now
-#: reached through a link (decision 137, L2).
+#: reached through a link (decision 137, L2) - and, since decision 187, what
+#: any step of an intent refuses when either of its ends is.
 MOVE_THROUGH_A_LINK = ("{name} is now reached through a link (a junction or a shortcut folder) "
-                       "below {within}; nothing was moved")
+                       "below {within}; nothing was moved, copied or removed")
 
 
 class MovedThroughALinkError(OSError):
-    """The source of a move is reached through a link now: nothing moved.
+    """An end of a step is reached through a link now: nothing moved,
+    copied or removed.
 
     An ``OSError``, because every caller of a move already treats one as
     "left in place" - which is exactly what happened."""
@@ -1677,64 +1693,45 @@ def _op(engagement_dir: Path, kind: str, source: Path,
 
 #: What an operation naming a place outside its return's own is refused
 #: with (decision 180).
-OP_OUTSIDE = ("the record of {name} names {location} for a step, which is outside the places "
+OP_OUTSIDE = ("the record of {name} names {location} for a step ({reason}), which is outside the places "
               "a step of this return may touch; nothing was moved, copied or removed. "
               "A person checks the record")
 
 
 def _may_touch(engagement_dir: Path, location: str, *, writes: bool) -> bool:
     """Whether a location an operation names lands where a step of this
-    return may act (decision 180).
-
-    Every step a decision writes is relative to the return whose record
-    holds it, and every one stays in these places, read off the layout:
-    under the return itself; under its household's ``_Opened`` of a year -
-    its own year's where the step writes, any year's where it reads,
-    because a person may hand an attachment parked in one open year to a
-    return of the next (decision 129); and in the client tree only under
-    some household's inbox or year folder - **this** return's household
-    where the step writes (a move's or a copy's destination), any
-    household where it reads, because a return a drop folder feeds takes
-    its original out of another household's inbox. Nothing else - not an absolute path, a drive, a share,
-    another return, the private tree's own files or anything above the
-    clients root - is a place a step goes, so a line the record did not get
-    from this code, however it got there, moves nothing. Lexical, as
-    :func:`tracker.layout.locate` is: the link check guards what lies
-    behind a junction, and this guards what a line says.
-    """
-    if not location or any(isabs(location) for isabs in (ntpath.isabs, posixpath.isabs)) \
-            or ntpath.splitdrive(location)[0]:
-        return False
-
-    def parts(path) -> tuple[str, ...]:
-        return Path(os.path.normcase(os.path.normpath(str(path)))).parts
-
-    root = parts(root_of(engagement_dir))
-    here = parts(locate(engagement_dir, location))
-    if here[:len(root)] != root:
-        return False
-    below = here[len(root):]
-    own = parts(engagement_dir)[len(root):]           # (private tree, household, year, return)
-    if len(below) > len(own) and below[:len(own)] == own:
-        return True
-    if (len(below) > 4 and below[:2] == own[:2] and is_year_folder(below[2])
-            and below[3] == os.path.normcase(OPENED_DIR_NAME) and (below[2] == own[2] or not writes)):
-        return True
-    return (len(below) >= 4 and below[0] == os.path.normcase(CLIENTS_TREE)
-            and (is_year_folder(below[2]) or below[2] == os.path.normcase(INBOX_DIR_NAME))
-            and (not writes or below[1] == own[1]))
+    return may act (decision 180): the layout's rule, worded once in
+    :func:`tracker.layout.place_problem` (decision 187)."""
+    return place_problem(engagement_dir, location, writes=writes) is None
 
 
 def _refuse_a_step_outside(engagement_dir: Path, op: dict) -> None:
     """:data:`OP_OUTSIDE` for the first place in ``op`` a step of this
     return may not touch, before any of it is done."""
-    reads = [op.get(ledger.FROM_KEY, "")]
-    writes = [op[ledger.TO_KEY]] if ledger.TO_KEY in op else []
-    if op[ledger.OP_KEY] == ledger.OP_REMOVE:
-        reads, writes = [], reads
-    for location, write in [*((one, False) for one in reads), *((one, True) for one in writes)]:
-        if not _may_touch(engagement_dir, str(location), writes=write):
-            raise FilingError(OP_OUTSIDE.format(name=Path(engagement_dir).name, location=location))
+    removes = op.get(ledger.OP_KEY) == ledger.OP_REMOVE
+    for location, write in ledger.op_ends(op):
+        code = place_problem(engagement_dir, location, writes=write, removes=removes)
+        if code is not None:
+            raise FilingError(OP_OUTSIDE.format(name=Path(engagement_dir).name, location=location,
+                                                reason=code))
+
+
+def _refuse_a_step_through_a_link(engagement_dir: Path, op: dict) -> None:
+    """:class:`MovedThroughALinkError` for a step either of whose ends is
+    reached through a link below the clients root (decision 187, B-11).
+
+    A source that is itself a link is refused, and so is any folder between
+    the root and either end - including folders a copy or a move would
+    still make, which are not there and so are not links - so a junction
+    swapped in for a year folder or a return's ``Prepared`` has nothing
+    read through it, written through it or made behind it. Asked before
+    any ``mkdir``, which would otherwise follow the junction.
+    """
+    root = root_of(engagement_dir)
+    for location, writes in ledger.op_ends(op):
+        path = locate(engagement_dir, location)
+        if (not writes and is_link(path)) or _through_a_link(path.parent, root):
+            raise MovedThroughALinkError(MOVE_THROUGH_A_LINK.format(name=path.name, within=root))
 
 
 def _do_op(engagement_dir: Path, op: dict, *, cache: ContentCache | None = None) -> None:
@@ -1747,19 +1744,29 @@ def _do_op(engagement_dir: Path, op: dict, *, cache: ContentCache | None = None)
     of it. A copy is proved against the digest the intent recorded
     (decision 109); a move is a rename and nothing else (the caller has
     checked the destination by bytes).
+
+    **Confined again where it is carried out** (decision 187). The place
+    rule is lexical and cannot see a junction, so before any folder is made
+    each end of the step is asked whether it is reached through a link
+    below the clients root (:func:`_refuse_a_step_through_a_link`), and a
+    copy with no fingerprint is refused (:data:`COPY_UNPROVED`): every
+    caller already reads either refusal as "left in place".
     """
     _refuse_a_step_outside(engagement_dir, op)
+    _refuse_a_step_through_a_link(engagement_dir, op)
     kind = op[ledger.OP_KEY]
     source = locate(engagement_dir, op[ledger.FROM_KEY])
     if kind == ledger.OP_REMOVE:
         source.unlink(missing_ok=True)
         return
     target = locate(engagement_dir, op[ledger.TO_KEY])
+    if kind == ledger.OP_COPY and not op.get(ledger.DIGEST_KEY):
+        raise FilingError(COPY_UNPROVED.format(source=source.name, target=target.name))
     target.parent.mkdir(parents=True, exist_ok=True)
     if kind == ledger.OP_MOVE:
         _move_whole(source, target, within=root_of(engagement_dir))
     else:
-        _copy_whole(source, target, expect=op.get(ledger.DIGEST_KEY, ""), cache=cache)
+        _copy_whole(source, target, expect=op[ledger.DIGEST_KEY], cache=cache)
 
 
 def _intend(
@@ -1817,6 +1824,7 @@ def _intend(
     """
     for op in ops:
         _refuse_a_step_outside(engagement_dir, op)
+    _prove(engagement_dir, ops)
     if not ops and then != ledger.RELEASED:
         return
     event = ledger.new(ledger.MOVING, **{
@@ -1833,6 +1841,48 @@ def _intend(
     if reason:
         event[ledger.REASON_KEY] = reason
     store.record(store.connect(), engagement_dir, event)
+
+
+def _prove(engagement_dir: Path, ops: list[dict]) -> None:
+    """Give every copy in ``ops`` the fingerprint it will be proved against
+    (decision 187), or raise :data:`COPY_UNPROVED` before anything is
+    recorded. In place, because the caller carries out the very operations
+    the intent records.
+
+    A copy whose caller named no digest - a row recorded without its bytes
+    (decision 65) - takes it from an earlier step of the same intent whose
+    target is this copy's source (the move that brings the original in):
+    that step's digest, or the bytes of that step's own source; failing
+    that, from the copy's source itself where it is there to be read. A copy
+    with neither has nothing to be proved against, and an intent that
+    would carry one is never written.
+    """
+    came_from: dict[str, dict] = {}          # a step's target -> the step that brings it there
+
+    def fingerprint(location: str) -> str:
+        step = came_from.get(location)
+        if step is not None:
+            return step.get(ledger.DIGEST_KEY) or fingerprint(step[ledger.FROM_KEY])
+        return _digest_or_none(locate(engagement_dir, location)) or ""
+
+    unproved = []
+    for op in ops:
+        if op[ledger.OP_KEY] == ledger.OP_COPY and not op.get(ledger.DIGEST_KEY):
+            digest = fingerprint(op[ledger.FROM_KEY])
+            if not digest and locate(engagement_dir, op[ledger.FROM_KEY]).exists():
+                # There, and not readable now - a sync client or a scanner
+                # holding it. Said as that, never as a record to check.
+                raise FilingError(COPY_UNREAD.format(
+                    source=locate(engagement_dir, op[ledger.FROM_KEY]).name))
+            if not digest:
+                raise FilingError(COPY_UNPROVED.format(
+                    source=locate(engagement_dir, op[ledger.FROM_KEY]).name,
+                    target=locate(engagement_dir, op[ledger.TO_KEY]).name))
+            unproved.append((op, digest))
+        if ledger.TO_KEY in op:
+            came_from[op[ledger.TO_KEY]] = op
+    for op, digest in unproved:          # every one known before any is changed
+        op[ledger.DIGEST_KEY] = digest
 
 
 def _abandon(engagement_dir: Path, key: str) -> None:
@@ -3062,20 +3112,35 @@ def _finish_the_ops(
     file either way, and the machine never overwrites and never deletes
     what it finds. A step whose row carried no digest (decision 65) can be
     proved by nothing, so the file has only to be there for the step to be
-    made and any file at the destination stops it.
+    made and any file at the destination stops it - except a copy, which
+    since decision 187 is proved against its source's bytes, read now.
     """
     # Every step is held to its return's places before any is looked at
     # (decision 180): a recovery acts on lines another machine or a
     # restored copy may have written, and a step outside them is the
     # record's problem for a person, never a move.
+    # And through no link (decision 187, the review's M3): a removal is
+    # carried out here rather than through _do_op, and its digest is read
+    # before it is removed, so both ends are asked before any byte is read.
     for op in ops:
         _refuse_a_step_outside(engagement_dir, op)
+        _refuse_a_step_through_a_link(engagement_dir, op)
     for op in ops:
         kind = op[ledger.OP_KEY]
         source = locate(engagement_dir, op[ledger.FROM_KEY])
         digest = op.get(ledger.DIGEST_KEY, "")
         if _waiting_on_sync(source):
             return _SYNCING, op
+        if kind == ledger.OP_COPY and not digest and source.is_file():
+            # An intent from before decision 187 may hold a copy with no
+            # fingerprint (decision 65). The original is the record, so the
+            # copy is proved against its bytes as _prove() would have done
+            # when the intent was written; one that cannot be read now is
+            # left for a person, never copied unproved.
+            digest = _digest_or_none(source) or ""
+            if not digest:
+                return _LOST, op
+            op = {**op, ledger.DIGEST_KEY: digest}
         if kind == ledger.OP_REMOVE:
             if digest and _the_bytes(source) == digest:
                 source.unlink(missing_ok=True)
@@ -3125,9 +3190,16 @@ def _a_copy_to_act_on(
     # The original is read from where the row says only where a step of
     # this return may read (decision 180): a row another machine or a
     # restored copy wrote is held to the same places as its steps.
-    if not _may_touch(engagement_dir, entry.pbc_location, writes=False):
-        return "", OP_OUTSIDE.format(name=engagement_dir.name, location=entry.pbc_location)
+    code = place_problem(engagement_dir, entry.pbc_location, writes=False)
+    if code is not None:
+        return "", OP_OUTSIDE.format(name=engagement_dir.name, location=entry.pbc_location,
+                                     reason=code)
     source = locate(engagement_dir, entry.pbc_location)
+    # Nor through a link (decision 187, A-7): the place rule is lexical,
+    # and a junction swapped in for the year's folder would have the copy
+    # read whatever it points at.
+    if is_link(source) or _through_a_link(source.parent, root_of(engagement_dir)):
+        return "", MOVE_THROUGH_A_LINK.format(name=source.name, within=root_of(engagement_dir))
     # The copy the interrupted step was about to carry out of review is
     # still there when the step never happened: it is these bytes and it
     # is the copy a person may have written on, so it is used rather than
@@ -3138,7 +3210,7 @@ def _a_copy_to_act_on(
     try:
         parked, past_reader = _review_copy_path(review_dir, entry.original_name)
         review_dir.mkdir(parents=True, exist_ok=True)
-        _copy_whole(source, parked, expect=entry.digest, cache=cache)
+        _copy_whole(source, parked, expect=entry.digest or sha256_of(source), cache=cache)
     except NoRoom as exc:
         log.error("Could not park a copy of %s from %s: %s",
                   entry.original_name, entry.pbc_location, exc)
@@ -5739,7 +5811,7 @@ def assign_review_file(
                     if moved:
                         _move_whole(target, parked, within=engagement_dir)
                     elif parked_stood_in:
-                        _copy_whole(target, parked, expect=digest)
+                        _copy_whole(target, parked, expect=digest or sha256_of(target))
                     elif not reused:          # a copy that was already there stays
                         target.unlink(missing_ok=True)
                 except (OSError, FilingError) as undo:  # the copy stays where it is; the real error is the one to hear
@@ -6320,7 +6392,8 @@ def unfile_document(
                     # The copies that stood down with it come back from the
                     # one that went back, which is them byte for byte.
                     for copy in stood_down:
-                        _copy_whole(working or source, copy, expect=entry.digest)
+                        _copy_whole(working or source, copy,
+                                    expect=entry.digest or sha256_of(working or source))
                 except (OSError, FilingError) as undo:
                     log.error("Could not put %s back after the record refused it: %s", parked.name, undo)
                 _abandon(engagement_dir, ledger_key(new_entry))

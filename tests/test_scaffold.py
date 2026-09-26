@@ -1,5 +1,7 @@
 """Tests for tracker/scaffold.py — folder scaffolding, no OneDrive needed."""
 
+import hashlib
+
 import pytest
 
 from tests.conftest import TEST_HOUSEHOLD, TEST_RETURN, TEST_YEAR, make_engagement
@@ -500,10 +502,11 @@ def arrived(identifier: str, decision: str, *, original: str = "client scan.pdf"
     where = (f"{REVIEW_DIR_NAME}/{original}" if decision == NEEDS_REVIEW
              else f"{identifier} - {original}")
     return IndexEntry(
-        received=received, original_name=original, size_kb=12.0, digest=f"d-{original}",
+        received=received, original_name=original, size_kb=12.0,
+        digest=hashlib.sha256(original.encode()).hexdigest(),
         identifier="" if decision == NEEDS_REVIEW else identifier,
         prepared_location=f"{PREPARED_DIR_NAME}/{where}",
-        pbc_location=f"../../Clients/{TEST_HOUSEHOLD}/{TEST_YEAR}/{original}",
+        pbc_location=f"../../../../Clients/{TEST_HOUSEHOLD}/{TEST_YEAR}/{original}",
         decision=decision, reason="a reason", also_filed=also,
     )
 

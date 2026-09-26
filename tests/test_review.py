@@ -7,6 +7,7 @@ the engagement exactly as it was — no lock, no write, not one changed byte.
 """
 
 import datetime as dt
+import hashlib
 import os
 import subprocess
 import sys
@@ -92,7 +93,7 @@ def engagement(tmp_path):
 def parked_row(name, record, *, reason=UNMATCHED, decision=NEEDS_REVIEW, candidates=()):
     """One index row as the filer writes it, evidence through its own formatter."""
     return IndexEntry(
-        received="2026-01-01", original_name=name, size_kb=9.4, digest=name,
+        received="2026-01-01", original_name=name, size_kb=9.4, digest=hashlib.sha256(name.encode()).hexdigest(),
         identifier="", prepared_location="",
         pbc_location=f"../../../../Clients/Smith Family/2025/{name}",
         decision=decision, reason=reason,

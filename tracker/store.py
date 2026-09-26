@@ -1399,15 +1399,19 @@ def _household_cell(name: str, info: dict) -> object:
 #: and what is wrong with it.
 MALFORMED_LINE = ("{where}: line {seq} of the record is malformed ({event} {problem}); "
                   "the journal is not applied past it")
+#: What :data:`MALFORMED_LINE` calls an event whose name this version does
+#: not know, rather than quoting it (decision 187).
+UNKNOWN_EVENT = "an event this version does not know"
 #: The key decision 129's hand-over intent carried the other record's half
 #: under. Named here, by the one reader that still speaks of it, so that
 #: the refusal says it by name (decision 132).
 ALSO_IN = "also_in"
 
 
-def _refuse_a_malformed_line(event: dict, seq: int, where: str) -> None:
+def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = KIND_RETURN) -> None:
     """A line that parses as JSON and names an event but carries the wrong
-    shape is refused by name, before a value of it reaches a table.
+    shape, an impossible value or a place outside its return's is refused
+    by name, before a value of it reaches a table.
 
     The engagement folder is synced, so a line another machine wrote is
     not trusted to be well formed: a ``rules_changed`` whose ``rules`` holds
@@ -1416,6 +1420,22 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str) -> None:
     ends the whole practice's pass before one document is filed. Refused
     here it is one folder's problem, said in a sentence that names the
     line, and the pass goes on to the next engagement.
+
+    **The record is untrusted input** (decision 187). A line of the right
+    shape is still obeyed: a count is stored in a column SQLite bounds, a
+    date is parsed by every reader, a Date Pattern is run over a client's
+    pages, a step is carried out on the disk. So every value is held to the
+    value rule (``tracker.records``: the bounds the editor holds a person
+    to) and every location to the layout's rule for where a step of this
+    return may act (``tracker.layout.place_problem``, asked at call time as
+    this module already asks the layout); a household or return label must
+    be one folder name (``layout.segment_problem``), because a label is
+    joined onto a path; and a household's record, which has no steps,
+    carries no ``moving`` line. This is the one admission, run by
+    :func:`record` before anything is appended, by :func:`_apply` on every
+    line read in and by :func:`check` over every journal. Each refusal names
+    the field and the class of problem and never quotes the value, which is
+    whatever the line said (security principle 7).
 
     A keyword taught or taken back is checked here for the first time with
     decision 113: until then the two tables this file writes from a line
@@ -1427,29 +1447,65 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str) -> None:
     events name a request and a word, both as text and neither blank, or
     the line is refused like any other.
     """
+    from tracker import layout
+
     name = event.get(ledger.EVENT_KEY)
 
-    def refuse(problem: str) -> None:
-        raise StoreError(MALFORMED_LINE.format(where=where, seq=seq, event=name, problem=problem))
+    # The event's name is said only when it is one this version knows: an
+    # unknown one is whatever the line said (security principle 7).
+    known = name if name in ledger.EVENTS | ledger.RETIRED_EVENTS else UNKNOWN_EVENT
 
+    def refuse(problem: str) -> None:
+        raise StoreError(MALFORMED_LINE.format(where=where, seq=seq, event=known, problem=problem))
+
+    def a_place(field: str, location: object, *, writes: bool, what: str = "a step",
+                removes: bool = False) -> None:
+        if (problem := records.name_problem(location)):
+            refuse(f"carries {what} whose {field!r} {problem}")
+        if (code := layout.place_problem(where, str(location), writes=writes,
+                                         removes=removes)) is not None:
+            refuse(f"carries {what} whose {field!r} is outside this return's places ({code})")
+
+    def a_segment(field: str, label: object) -> None:
+        if label in (None, ""):
+            return
+        if (problem := records.text_problem(label)):
+            refuse(f"carries {field!r} that {problem}")
+        if (code := layout.segment_problem(str(label))) is not None:
+            refuse(f"carries {field!r} that is not one folder name ({code})")
+
+    def a_row(row: dict) -> None:
+        if problem := records.entry_problem(row):
+            refuse(f"carries a row whose {problem}")
+        for field in ("pbc_location", "prepared_location", "container"):
+            if row.get(field):
+                a_place(field, row[field], writes=False, what="a row")
+        for part in str(row.get("also_filed") or "").split(records.CANDIDATE_SEP):
+            if part.strip():
+                a_place("also_filed", part.strip(), writes=False, what="a row")
+
+    if ledger.AT_KEY in event and (problem := records.stamp_problem(event[ledger.AT_KEY])):
+        refuse(f"carries {ledger.AT_KEY!r} that {problem}")
     if name in (ledger.RULES_CHANGED, ledger.RULES_IMPORTED):
         rows = event.get(ledger.RULES_KEY)
         if rows is not None and not isinstance(rows, list):
             refuse(f"carries {ledger.RULES_KEY!r} that is not a list")
         for row in rows or []:
             if not isinstance(row, dict):
-                refuse(f"carries a rule that is not a row: {row!r:.60}")
+                refuse("carries a rule that is not a row")
             # A list field that is not a list of words (decision 137, L4):
             # a string there would be read as one keyword per letter.
             for field_name in sorted(RULE_LIST_FIELDS):
                 if problem := records.word_list_problem(row.get(field_name)):
                     refuse(f"carries a rule whose {field_name!r} {problem}")
+            if problem := records.rule_row_problem(row):
+                refuse(f"carries a rule whose {problem}")
         removed = event.get(ledger.REMOVED_KEY)
         if removed is not None and not isinstance(removed, list):
             refuse(f"carries {ledger.REMOVED_KEY!r} that is not a list")
         for identifier in removed or []:
-            if not isinstance(identifier, str):
-                refuse(f"names a removed identifier that is not text: {identifier!r:.60}")
+            if records.text_problem(identifier):
+                refuse("names a removed identifier that is not one line of text")
         info = event.get(ledger.INFO_KEY)
         if info is not None and not isinstance(info, dict):
             refuse(f"carries {ledger.INFO_KEY!r} that is not a mapping")
@@ -1461,8 +1517,13 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str) -> None:
         if isinstance(info, dict) and "people" in info:
             try:
                 records.people_from_json(info["people"])
-            except (ValueError, TypeError, json.JSONDecodeError) as exc:
-                refuse(f"carries people this version cannot read ({exc})")
+            except (ValueError, TypeError, json.JSONDecodeError):
+                refuse("carries people this version cannot read")
+        if isinstance(info, dict):
+            if problem := records.info_problem(info):
+                refuse(f"carries details whose {problem}")
+            a_segment("household", info.get("household"))
+            a_segment("return_name", info.get("return_name"))
     elif name in ledger.ROW_EVENTS:
         # An index row (decision 137, L4). Its key is the row's identity and
         # its row is a mapping; left to the fold, a row that is a string or
@@ -1470,50 +1531,78 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str) -> None:
         key = event.get(ledger.KEY_KEY)
         if not isinstance(key, str) or not key:
             refuse(f"carries no {ledger.KEY_KEY!r}")
+        if problem := records.name_problem(key):
+            refuse(f"carries {ledger.KEY_KEY!r} that {problem}")
         if not isinstance(event.get(ledger.ROW_KEY), dict):
             refuse(f"carries {ledger.ROW_KEY!r} that is not a row")
         leaving = event.get(ledger.WAS_KEY)
-        if leaving is not None and not isinstance(leaving, str):
+        if leaving is not None and records.name_problem(leaving):
             refuse(f"carries {ledger.WAS_KEY!r} that is not a location")
+        a_row(event[ledger.ROW_KEY])
     elif name == ledger.SCANNED:
         statuses = event.get(ledger.STATUSES_KEY)
         if statuses is not None and not isinstance(statuses, dict):
             refuse(f"carries {ledger.STATUSES_KEY!r} that is not a mapping")
         for identifier, stored in (statuses or {}).items():
+            if records.text_problem(identifier):
+                refuse("carries a status for an identifier that is not one line of text")
             if not isinstance(stored, dict):
-                refuse(f"carries a status for {identifier!r:.40} that is not a mapping")
+                refuse("carries a status that is not a mapping")
+            if problem := records.status_problem(stored):
+                refuse(f"carries a status whose {problem}")
     elif name == ledger.MOVING:
         # The intent is what a later pass will finish a half-made move
         # from, so its shape is checked here rather than trusted in the
         # middle of a recovery with a file already moved: the operations
         # are a list, each one names what it does, where from and - unless
         # it is a stand-down - where to, and the row it carries is a row.
+        # Since decision 187 every place a step names is one this return's
+        # steps may act in, and a household's record - which has no steps -
+        # carries none.
+        if kind == KIND_HOUSEHOLD:
+            refuse("in a household's record, which has no steps")
+        key = event.get(ledger.KEY_KEY)
+        if key is not None and records.name_problem(key):
+            refuse(f"carries {ledger.KEY_KEY!r} that is not one line of text")
         ops = event.get(ledger.OPS_KEY)
         if not isinstance(ops, list):
             refuse(f"carries {ledger.OPS_KEY!r} that is not a list")
         for op in ops:
             if not isinstance(op, dict):
-                refuse(f"carries an operation that is not one: {op!r:.60}")
-            kind = op.get(ledger.OP_KEY)
-            if kind not in (ledger.OP_MOVE, ledger.OP_COPY, ledger.OP_REMOVE):
-                refuse(f"carries an operation this version does not know: {kind!r:.40}")
+                refuse("carries an operation that is not one")
+            step = op.get(ledger.OP_KEY)
+            if step not in (ledger.OP_MOVE, ledger.OP_COPY, ledger.OP_REMOVE):
+                refuse("carries an operation this version does not know")
             if not isinstance(op.get(ledger.FROM_KEY), str):
-                refuse(f"carries a {kind} with no {ledger.FROM_KEY!r}")
-            if kind != ledger.OP_REMOVE and not isinstance(op.get(ledger.TO_KEY), str):
-                refuse(f"carries a {kind} with no {ledger.TO_KEY!r}")
+                refuse(f"carries a {step} with no {ledger.FROM_KEY!r}")
+            if step != ledger.OP_REMOVE and not isinstance(op.get(ledger.TO_KEY), str):
+                refuse(f"carries a {step} with no {ledger.TO_KEY!r}")
             if not isinstance(op.get(ledger.DIGEST_KEY, ""), str):
-                refuse(f"carries a {kind} whose {ledger.DIGEST_KEY!r} is not text")
+                refuse(f"carries a {step} whose {ledger.DIGEST_KEY!r} is not text")
+            if problem := records.digest_problem(op.get(ledger.DIGEST_KEY, "")):
+                refuse(f"carries a {step} whose {ledger.DIGEST_KEY!r} {problem}")
+            named = (ledger.FROM_KEY,) if step == ledger.OP_REMOVE else (ledger.FROM_KEY, ledger.TO_KEY)
+            for field, (location, writes) in zip(named, ledger.op_ends(op), strict=True):
+                a_place(field, location, writes=writes, removes=step == ledger.OP_REMOVE)
         row = event.get(ledger.ROW_KEY)
         if row is not None and not isinstance(row, dict):
             refuse(f"carries {ledger.ROW_KEY!r} that is not a row")
+        if isinstance(row, dict):
+            a_row(row)
         leaving = event.get(ledger.WAS_KEY)
-        if leaving is not None and not isinstance(leaving, str):
+        if leaving is not None and records.name_problem(leaving):
             refuse(f"carries {ledger.WAS_KEY!r} that is not a location")
         also = event.get(ledger.ALSO_KEY)
         if also is not None and not isinstance(also, list):
             refuse(f"carries {ledger.ALSO_KEY!r} that is not a list")
+        for one in also or []:
+            # What travels with the row is recorded as it stands, so it is
+            # admitted as it stands - by this same rule, now.
+            if not isinstance(one, dict) or one.get(ledger.EVENT_KEY) not in ledger.EVENTS:
+                refuse(f"carries {ledger.ALSO_KEY!r} holding something that is not an event")
+            _refuse_a_malformed_line(one, seq, where, kind=kind)
         reason = event.get(ledger.REASON_KEY)
-        if reason is not None and not isinstance(reason, str):
+        if reason is not None and records.text_problem(reason, long=True):
             refuse(f"carries {ledger.REASON_KEY!r} that is not text")
         # Decision 129's intent carried the events it would write into
         # another return's record. Decision 132 retired that: nothing ever
@@ -1523,6 +1612,10 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str) -> None:
             refuse(f"carries {ALSO_IN!r}, the other record's half of a decision 129 "
                    f"hand-over, which this version does not write; finish it with the "
                    f"version that began it")
+    elif name == ledger.MOVE_ABANDONED:
+        key = event.get(ledger.KEY_KEY)
+        if not isinstance(key, str) or not key or records.name_problem(key):
+            refuse(f"carries no {ledger.KEY_KEY!r}")
     elif name == ledger.RELEASED:
         # A release names the row it takes out and says where it went -
         # and carries no row, because there is none left to carry.
@@ -1530,15 +1623,29 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str) -> None:
             refuse(f"carries no {ledger.KEY_KEY!r}")
         if ledger.ROW_KEY in event:
             refuse(f"carries {ledger.ROW_KEY!r}; a release carries no row")
-        if not isinstance(event.get(ledger.REASON_KEY, ""), str):
+        if records.text_problem(event.get(ledger.REASON_KEY, ""), long=True):
             refuse(f"carries {ledger.REASON_KEY!r} that is not text")
     elif name in (ledger.KEYWORD_LEARNED, ledger.KEYWORD_UNLEARNED):
         for key in (ledger.IDENTIFIER_KEY, ledger.KEYWORD_KEY):
             value = event.get(key)
             if not isinstance(value, str):
-                refuse(f"carries {key!r} that is not text: {value!r:.60}")
+                refuse(f"carries {key!r} that is not text")
             if not value:
                 refuse(f"carries a blank {key!r}")
+            if problem := records.text_problem(value):
+                refuse(f"carries {key!r} that {problem}")
+    elif name in (ledger.DRAFTED, ledger.DRAFT_APPROVED):
+        # A week's draft (decision 118): what was asked and held, the file,
+        # its fingerprint and the stage - each read back by the app.
+        for key in (ledger.ASKED_KEY, ledger.HELD_KEY):
+            if key in event and (problem := records.text_list_problem(event[key])):
+                refuse(f"carries {key!r} that {problem}")
+        for key in (ledger.FILE_KEY, ledger.FINGERPRINT_KEY):
+            if key in event and (problem := records.text_problem(event[key])):
+                refuse(f"carries {key!r} that {problem}")
+        if event.get(ledger.STAGE_KEY) is not None and (
+                problem := records.count_problem(event[ledger.STAGE_KEY], 0, records.MAX_STAGE)):
+            refuse(f"carries {ledger.STAGE_KEY!r} that {problem}")
     elif name == ledger.HOUSEHOLD_CHANGED:
         # The household's details travel exactly as a return's do, so the
         # line is checked exactly as one: a mapping of fields, and the one
@@ -1555,16 +1662,23 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str) -> None:
             refuse("carries 'members' that is neither a list nor a name")
         for member in members if isinstance(members, list) else []:
             if not isinstance(member, str):
-                refuse(f"names a member that is not text: {member!r:.60}")
+                refuse("names a member that is not text")
         # The feed list (decision 129). A feed naming no household or no
         # return line points at nothing a pass could resolve, so it is
         # refused here by the record's own reader rather than written into
         # a column the sort would later read as a route.
         if isinstance(household, dict) and "feeds" in household:
             try:
-                records.feeds_from_json(household["feeds"])
-            except (ValueError, TypeError, json.JSONDecodeError) as exc:
-                refuse(f"carries feeds this version cannot read ({exc})")
+                feeds = records.feeds_from_json(household["feeds"])
+            except (ValueError, TypeError, json.JSONDecodeError):
+                refuse("carries feeds this version cannot read")
+            for feed in feeds:
+                a_segment("feeds.household", feed.household)
+                a_segment("feeds.return_name", feed.return_name)
+        if isinstance(household, dict):
+            if problem := records.household_problem(household):
+                refuse(f"carries details whose {problem}")
+            a_segment("name", household.get("name"))
     elif name == ledger.SHARING_CONFIRMED:
         # The firm's word, dated, and nothing else (decision 126): the
         # stamp is the whole of it. A line carrying a payload is either a
@@ -1572,9 +1686,8 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str) -> None:
         # version would be storing something it cannot fold - so it is
         # refused by name here rather than silently kept in the events
         # table where a reader would later trust it.
-        carried = sorted(set(event) - {ledger.EVENT_KEY, ledger.AT_KEY})
-        if carried:
-            refuse(f"carries {', '.join(repr(key) for key in carried)}; it carries nothing")
+        if set(event) - {ledger.EVENT_KEY, ledger.AT_KEY}:
+            refuse("carries fields; it carries nothing")
 
 
 def _apply(conn: sqlite3.Connection, engagement_id: int, events: list[dict], *, start: int) -> int:
@@ -1610,11 +1723,12 @@ def _apply(conn: sqlite3.Connection, engagement_id: int, events: list[dict], *, 
     state = ledger.Folded(rows=_stored_rows(conn, engagement_id), statuses={})
     seqs = _stored_seqs(conn, engagement_id)
     status_seqs: dict[str, int] = {}
-    where = conn.execute("SELECT path FROM engagements WHERE id = ?", (engagement_id,)).fetchone()[0]
+    where, kind = conn.execute("SELECT path, kind FROM engagements WHERE id = ?",
+                               (engagement_id,)).fetchone()
     seq = start - 1
     for event in events:
         seq += 1
-        _refuse_a_malformed_line(event, seq, where)
+        _refuse_a_malformed_line(event, seq, where, kind=kind)
         name = event.get(ledger.EVENT_KEY)
         conn.execute(
             'INSERT OR REPLACE INTO events (engagement_id, seq, at, "event", "key", payload) '
@@ -1761,6 +1875,15 @@ def record(conn: sqlite3.Connection, engagement_dir: Path | str, *events: dict) 
     _refuse_a_rewrite(conn, row, lines, chain, engagement_dir.name)
     if not events:
         return row["applied_seq"]
+    # The one door in (decision 187): every event is admitted by the rule
+    # every line read back is held to, before the first is appended - a
+    # line the store would refuse is never put into the journal, where it
+    # would sit ahead of the store and fail every later sync.
+    for number, event in enumerate(events, start=already + 1):
+        try:
+            _refuse_a_malformed_line(event, number, row["path"], kind=row["kind"])
+        except StoreError as exc:
+            raise StoreError(f"{exc}; nothing was written") from None
     for event in events:
         ledger.append(engagement_dir, event)
     # What the journal holds past the store, not what this call was handed
@@ -2200,6 +2323,14 @@ def check(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str
     problems += _check_intents(conn, engagement["id"], name, folded.intents)
     problems += _check_learned(conn, engagement["id"], name, _recorded_learned(events))
     problems += _check_household(conn, engagement["id"], name, folded.household)
+    # Every line judged again by today's admission (decision 187), so a line
+    # an earlier version applied that the rule now refuses is named on the
+    # day of the upgrade, without deleting the store to find it.
+    for seq, event in enumerate(events, start=1):
+        try:
+            _refuse_a_malformed_line(event, seq, engagement["path"], kind=engagement["kind"])
+        except StoreError as exc:
+            problems.append(str(exc))
     return problems
 
 

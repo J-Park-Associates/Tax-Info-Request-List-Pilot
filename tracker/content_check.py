@@ -99,7 +99,7 @@ from dataclasses import MISSING, asdict, dataclass, field, fields, replace
 from pathlib import Path
 
 from tracker import ledger, ocr, reasons, store
-from tracker.manifest import RequestItem, has_routing_rules, keyword_alternatives
+from tracker.manifest import RequestItem, derived_date_pattern, has_routing_rules, keyword_alternatives
 
 # The Evidence record and the cell format it is written in live in
 # tracker/records.py (decision 100): they are the shape of a verdict, not the
@@ -1359,8 +1359,11 @@ def evaluate_rules(text: str, item: RequestItem, dominant: set[str] | None = Non
         # A pattern a person typed runs line by line (decision 137, L3); the
         # one derived from the Period is the firm's own and runs over the
         # whole text as it always did (the review's F7), so "December" and
-        # "2025" split by a line break still say the year.
-        if item.date_pattern_derived:
+        # "2025" split by a line break still say the year. "Derived" is
+        # what the pattern *is*, recomputed from the Period, never what the
+        # record's flag claims (decision 187): a pattern that is not the
+        # firm's own runs line by line whatever the flag says.
+        if item.date_pattern == derived_date_pattern(item.period):
             hit = re.search(item.date_pattern, text)
             at = hit.start() if hit else None
         else:

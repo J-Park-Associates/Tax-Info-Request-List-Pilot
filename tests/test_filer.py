@@ -1457,8 +1457,14 @@ def test_a_persons_filing_of_an_original_recorded_without_its_bytes_records_them
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
     real = filer_module.sha256_of
 
+    held = set()
+
     def unreadable_once(path):
-        if path.parent == originals(engagement):
+        if path.parent == originals(engagement) and path not in held:
+            # Held for the one read that records the row: since decision
+            # 187 the intent fingerprints a copy's source itself, a moment
+            # later, so the copy is proved and the row keeps no bytes.
+            held.add(path)
             raise PermissionError("held by the sync client")
         return real(path)
     monkeypatch.setattr(filer_module, "sha256_of", unreadable_once)
@@ -1500,8 +1506,14 @@ def test_bytes_recorded_after_the_fact_are_tied_to_the_row_or_not_recorded(engag
     drop(engagement, "scan0013.pdf", "nothing the rules recognise either")
     real = filer_module.sha256_of
 
+    held = set()
+
     def unreadable(path):
-        if path.parent == originals(engagement):
+        if path.parent == originals(engagement) and path not in held:
+            # Held for the one read that records the row: since decision
+            # 187 the intent fingerprints a copy's source itself, a moment
+            # later, so the copy is proved and the row keeps no bytes.
+            held.add(path)
             raise PermissionError("held by the sync client")
         return real(path)
     monkeypatch.setattr(filer_module, "sha256_of", unreadable)
@@ -1575,8 +1587,14 @@ def test_a_parked_path_a_later_row_claims_means_the_earlier_copy_is_gone(engagem
     drop(engagement, "Scan.pdf", "document A, nothing the rules recognise")
     real = filer_module.sha256_of
 
+    held = set()
+
     def unreadable(path):
-        if path.parent == originals(engagement):
+        if path.parent == originals(engagement) and path not in held:
+            # Held for the one read that records the row: since decision
+            # 187 the intent fingerprints a copy's source itself, a moment
+            # later, so the copy is proved and the row keeps no bytes.
+            held.add(path)
             raise PermissionError("held by the sync client")
         return real(path)
     monkeypatch.setattr(filer_module, "sha256_of", unreadable)
@@ -1822,8 +1840,14 @@ def test_a_row_recorded_without_its_bytes_is_never_moved_onto_another_file(engag
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     real = filer_module.sha256_of
 
+    held = set()
+
     def unreadable(path):
-        if path.parent == originals(engagement):
+        if path.parent == originals(engagement) and path not in held:
+            # Held for the one read that records the row: since decision
+            # 187 the intent fingerprints a copy's source itself, a moment
+            # later, so the copy is proved and the row keeps no bytes.
+            held.add(path)
             raise PermissionError("held by the sync client")
         return real(path)
     monkeypatch.setattr(filer_module, "sha256_of", unreadable)
@@ -3300,8 +3324,14 @@ def test_a_row_without_a_digest_is_never_swept(engagement, monkeypatch):
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     real = filer_module.sha256_of
 
+    held = set()
+
     def unreadable(path):
-        if path.parent == originals(engagement):
+        if path.parent == originals(engagement) and path not in held:
+            # Held for the one read that records the row: since decision
+            # 187 the intent fingerprints a copy's source itself, a moment
+            # later, so the copy is proved and the row keeps no bytes.
+            held.add(path)
             raise PermissionError("held by the sync client")
         return real(path)
 
@@ -5951,9 +5981,10 @@ def test_received_for_reads_each_index_once(tmp_path, monkeypatch):
     second = make_engagement(tmp_path, items, return_name="1040 - Second")
     for folder in (first, second):
         seed_index(folder, [IndexEntry(
-            received="2026-09-23", original_name="w2.pdf", size_kb=1.0, digest=f"d-{folder.name}",
+            received="2026-09-23", original_name="w2.pdf", size_kb=1.0, digest=("1" if folder == first else "2") * 64,
             identifier="A01", prepared_location="PBC/A01 - W-2/A01 - W-2.pdf",
-            pbc_location=f"../x/{folder.name}/w2.pdf", decision=FILED, reason="")])
+            pbc_location=location_of(folder, originals(folder) / f"w2 {folder.name}.pdf"),
+            decision=FILED, reason="")])
 
     read = []
     lists = []
@@ -6013,10 +6044,10 @@ def test_a_second_copy_whose_request_was_deleted_reads_other_document_never_anot
              RequestItem(identifier="A02", document="1098 Mortgage Interest")]
     engagement = make_engagement(tmp_path, items, return_name="1040 - Smith")
     seed_index(engagement, [IndexEntry(
-        received="2026-09-23 10:00:00", original_name="combo.pdf", size_kb=12.0,
-        digest="d-combo", identifier="A02",
+        received="2026-09-23", original_name="combo.pdf", size_kb=12.0,
+        digest="c" * 64, identifier="A02",
         prepared_location=f"{PREPARED_DIR_NAME}/A02 - 1098 Mortgage Interest.pdf",
-        pbc_location="../../x/combo.pdf", decision=FILED, reason="a reason",
+        pbc_location=location_of(engagement, originals(engagement) / "combo.pdf"), decision=FILED, reason="a reason",
         also_filed=f"{PREPARED_DIR_NAME}/A01-B - Loan Statement.pdf")])
 
     labels = [line.label for line in received_for([engagement]).lines]
@@ -6026,10 +6057,10 @@ def test_a_second_copy_whose_request_was_deleted_reads_other_document_never_anot
 
     # A copy a person renamed within the shape still names its request.
     seed_index(engagement, [IndexEntry(
-        received="2026-09-24 10:00:00", original_name="combo2.pdf", size_kb=12.0,
-        digest="d-combo2", identifier="A02",
+        received="2026-09-24", original_name="combo2.pdf", size_kb=12.0,
+        digest="e" * 64, identifier="A02",
         prepared_location=f"{PREPARED_DIR_NAME}/A02 - 1098 Mortgage Interest (2).pdf",
-        pbc_location="../../x/combo2.pdf", decision=FILED, reason="a reason",
+        pbc_location=location_of(engagement, originals(engagement) / "combo2.pdf"), decision=FILED, reason="a reason",
         also_filed=f"{PREPARED_DIR_NAME}/a01 - my w2s.pdf")])
 
     labels = [line.label for line in received_for([engagement]).lines]
@@ -7348,10 +7379,10 @@ def test_an_also_filed_copy_is_read_back_by_its_own_name(engagement):
     assert sorted(labels) == sorted(item.label for item in ITEMS)
 
     seed_index(engagement, [IndexEntry(
-        received="2026-07-09 10:00:00", original_name="combo.pdf", size_kb=12.0,
-        digest="d-combo", identifier="A01",
+        received="2026-07-09", original_name="combo.pdf", size_kb=12.0,
+        digest="c" * 64, identifier="A01",
         prepared_location=f"{PREPARED_DIR_NAME}/A01 - W-2 Wage Statements - TY2025 (2).pdf",
-        pbc_location="../../x/combo.pdf", decision=FILED, reason="a reason",
+        pbc_location=location_of(engagement, originals(engagement) / "combo.pdf"), decision=FILED, reason="a reason",
         also_filed=f"{PREPARED_DIR_NAME}/the 1098 I renamed.pdf")])
     labels = [line.label for line in received_for([engagement]).lines]
     assert labels.count(OTHER_DOCUMENT) == 1
@@ -8192,6 +8223,23 @@ def test_a_step_may_touch_only_its_returns_places(engagement, location, writes, 
     assert _may_touch(engagement, location, writes=writes) is allowed
 
 
+def test_the_filer_asks_the_layout_where_a_step_may_act(engagement, monkeypatch):
+    """Decision 187: the place rule has one wording, the layout's. The
+    filer holds none of its own - change the layout's answer and the
+    filer's changes with it."""
+    import tracker.filer as filer
+
+    asked = []
+
+    def answer(return_dir, location, *, writes):
+        asked.append((return_dir, location, writes))
+        return "not-a-place"
+
+    monkeypatch.setattr(filer, "place_problem", answer)
+    assert filer._may_touch(engagement, "Prepared/x.pdf", writes=True) is False
+    assert asked == [(engagement, "Prepared/x.pdf", True)]
+
+
 def test_a_step_outside_its_places_moves_copies_and_removes_nothing(engagement, tmp_path):
     """The integrity review's exp6: a ``moving`` line appended to a journal
     by hand, by another machine or from a restored copy made the next
@@ -8220,7 +8268,8 @@ def test_a_step_outside_its_places_moves_copies_and_removes_nothing(engagement, 
     for op in forged:
         with pytest.raises(FilingError) as refused:
             _do_op(engagement, op)
-        assert refused.value.args[0] == OP_OUTSIDE.format(name=engagement.name, location=escape)
+        assert refused.value.args[0] == OP_OUTSIDE.format(name=engagement.name, location=escape,
+                                                           reason="not-a-place")
         with pytest.raises(FilingError):
             _finish_the_ops(engagement, [op], None)
     assert sorted(p for p in tmp_path.rglob("*")) == before
@@ -8280,11 +8329,419 @@ def test_a_recovery_never_copies_an_original_the_row_names_outside_its_places(en
     lost = [{ledger.OP_KEY: ledger.OP_COPY,
              ledger.FROM_KEY: "../../../../Clients/Test Household/2025/nothing.pdf",
              ledger.TO_KEY: row.prepared_location, ledger.DIGEST_KEY: digest}]
+    # Since decision 187 the store refuses to record such a row at all, so
+    # the line is forged into the journal as a restored copy would be - and
+    # the gate refuses it before the recovery reads a word of it.
+    journal = ledger.path_for(engagement)
+    honest = journal.read_bytes()
     with engagement_lock(engagement):
-        _intend(engagement, ledger_key(row), lost, by=ledger.BY_PASS, row=entry_to_json(row),
-                then=ledger.PARKED)
+        with pytest.raises(store.StoreError, match="outside this return's places"):
+            _intend(engagement, ledger_key(row), lost, by=ledger.BY_PASS, row=entry_to_json(row),
+                    then=ledger.PARKED)
+        assert journal.read_bytes() == honest
+        ledger.append(engagement, ledger.new(ledger.MOVING, **{
+            ledger.KEY_KEY: ledger_key(row), ledger.OPS_KEY: lost, ledger.DECIDED_BY_KEY: ledger.BY_PASS,
+            ledger.ROW_KEY: entry_to_json(row), ledger.EVENT_KEY_AFTER: ledger.PARKED}))
 
-    sort(engagement, today=DAY2)
+    with pytest.raises(store.StoreError, match="outside this return's places"):
+        sort(engagement, today=DAY2)
 
     copies = [path for path in (engagement / "Prepared").rglob("*") if path.is_file()]
     assert not any(path.read_bytes() == secret.read_bytes() for path in copies)
+    # The recovery's own check stands behind the gate: handed the row
+    # directly, it still copies nothing from outside the return's places.
+    from tracker.filer import _a_copy_to_act_on
+    assert _a_copy_to_act_on(engagement, row, None)[0] == ""
+    journal.write_bytes(honest)
+
+
+# Decision 187: the record is untrusted input - every place and link is
+# checked before a step is obeyed, and every copy is proved.
+
+
+def _forge_line(engagement, event: dict) -> bytes:
+    """Put one line in the journal past the store, as a hand edit, another
+    machine or a restored copy would; returns the journal as it was."""
+    import json
+
+    path = ledger.path_for(engagement)
+    honest = path.read_bytes()
+    path.write_bytes(honest + json.dumps(event).encode("utf-8") + b"\n")
+    return honest
+
+
+def _elsewhere(tmp_path, name="elsewhere"):
+    """A folder a junction may point at, holding one file of its own."""
+    folder = tmp_path.parent / f"{tmp_path.name}-{name}"
+    folder.mkdir()
+    (folder / "x.pdf").write_bytes(b"%PDF-1.4 somebody else's file")
+    return folder
+
+
+FORGED = ["absolute", "climb", "link", "removal-behind-a-link", "removal-of-an-original"]
+
+
+@pytest.mark.parametrize("which", FORGED)
+def test_a_forged_step_is_carried_out_nowhere(engagement, tmp_path, which):
+    """The ruling's first proof, one forged ``moving`` line per step, every
+    digest right (the review's S5): a copy from an absolute path, a move
+    whose ``to`` climbs into another household's inbox, a copy out of the
+    return's own Prepared folder reached through a link, a removal behind
+    that link (M3) and a removal of the client's own original (M4). The
+    pass refuses each - at the gate, or where the recovery would carry it
+    out - and nothing on disk changes; handed straight to the one function
+    every step goes through, each is refused too."""
+    from tracker.filer import OP_OUTSIDE, MovedThroughALinkError, _do_op
+    from tracker.layout import CLIENTS_TREE, INBOX_DIR_NAME
+    from tracker.registry import discover_engagements
+    from tracker.runner import RECORD_UNREADABLE, run_registry
+    from tracker.validators import sha256_of
+
+    secret = _elsewhere(tmp_path, "outside") / "x.pdf"
+    original = originals(engagement) / "w2.pdf"
+    original.parent.mkdir(parents=True, exist_ok=True)
+    original.write_bytes(b"%PDF-1.4 the client's W-2")
+    behind = _elsewhere(tmp_path)
+    _link_to(behind, engagement / PREPARED_DIR_NAME / "linked")
+    other_inbox = root_of(engagement) / CLIENTS_TREE / "Other Household" / INBOX_DIR_NAME
+    climbing = location_of(engagement, other_inbox / "w2.pdf")
+    step, refusal = {
+        "absolute": ({ledger.OP_KEY: ledger.OP_COPY, ledger.FROM_KEY: secret.as_posix(),
+                      ledger.TO_KEY: f"{PREPARED_DIR_NAME}/secret.pdf", ledger.DIGEST_KEY: sha256_of(secret)},
+                     OP_OUTSIDE.format(name=engagement.name, location=secret.as_posix(), reason="absolute")),
+        "climb": ({ledger.OP_KEY: ledger.OP_MOVE, ledger.FROM_KEY: location_of(engagement, original),
+                   ledger.TO_KEY: climbing, ledger.DIGEST_KEY: sha256_of(original)},
+                  OP_OUTSIDE.format(name=engagement.name, location=climbing, reason="other-household")),
+        "link": ({ledger.OP_KEY: ledger.OP_COPY, ledger.FROM_KEY: f"{PREPARED_DIR_NAME}/linked/x.pdf",
+                  ledger.TO_KEY: location_of(engagement, originals(engagement) / "x.pdf"),
+                  ledger.DIGEST_KEY: sha256_of(behind / "x.pdf")}, MovedThroughALinkError),
+        "removal-behind-a-link": ({ledger.OP_KEY: ledger.OP_REMOVE,
+                                   ledger.FROM_KEY: f"{PREPARED_DIR_NAME}/linked/x.pdf",
+                                   ledger.DIGEST_KEY: sha256_of(behind / "x.pdf")}, MovedThroughALinkError),
+        "removal-of-an-original": ({ledger.OP_KEY: ledger.OP_REMOVE,
+                                    ledger.FROM_KEY: location_of(engagement, original),
+                                    ledger.DIGEST_KEY: sha256_of(original)},
+                                   OP_OUTSIDE.format(name=engagement.name,
+                                                     location=location_of(engagement, original),
+                                                     reason="client-tree")),
+    }[which]
+    from tracker.runner import PASS_ORDER_FILENAME
+
+    def _tree() -> list:
+        # The pass's own order hint (decision 189) is its bookkeeping, not a step.
+        return sorted(p for p in tmp_path.rglob("*") if p.name != PASS_ORDER_FILENAME)
+
+    before = _tree()
+    honest = _forge_line(engagement, ledger.new(ledger.MOVING, **{
+        ledger.KEY_KEY: "forged", ledger.OPS_KEY: [step], ledger.DECIDED_BY_KEY: ledger.BY_PASS}))
+
+    report = run_registry(discover_engagements(tmp_path), today=DAY1)
+
+    (run,) = [one for one in report.runs if one.engagement.path == engagement]
+    if isinstance(refusal, str):                     # refused at the gate, by the place rule
+        assert run.error.startswith(RECORD_UNREADABLE.split("{")[0])
+        assert "outside this return's places" in run.error
+    else:                                            # admitted, and refused where it is carried out
+        # Since decision 189 a run's error is said as its class (principle 7).
+        assert run.error == MovedThroughALinkError.__name__
+    ledger.path_for(engagement).write_bytes(honest)
+    assert _tree() == before
+    assert (behind / "x.pdf").is_file() and original.is_file()
+
+    if isinstance(refusal, str):
+        with pytest.raises(FilingError) as refused:
+            _do_op(engagement, step)
+        assert refused.value.args[0] == refusal
+    else:
+        with pytest.raises(refusal):
+            _do_op(engagement, step)
+    assert _tree() == before
+    assert original.read_bytes() == b"%PDF-1.4 the client's W-2"
+
+
+def test_a_legitimate_filing_into_a_fed_return_still_completes(fed):
+    """The ruling's third proof: the one step that legitimately reads
+    another household's folder - a drop in the father's inbox filed into
+    the co-owned LLC's return (decision 129) - is admitted, carried out and
+    proved, and leaves no intent open and nothing for the check to name."""
+    from tracker.validators import sha256_of
+
+    father, llc = fed
+    drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
+
+    sort_all([father, llc], home=[father], today=DAY1)
+
+    [row] = read_index(llc)
+    assert row.decision == FILED
+    assert sha256_of(llc / row.prepared_location) == row.digest == sha256_of(llc / row.pbc_location)
+    assert ledger.replay(ledger.read_events(llc)).intents == {}
+    assert ledger.replay(ledger.read_events(father)).intents == {}
+    for folder in (father, llc):
+        assert store.check(store.connect(), root_of(folder), folder) == []
+
+
+def test_a_copy_through_a_link_copies_nothing(engagement, tmp_path):
+    """B-11: a copy followed a junction at either end. Its source behind a
+    link, or its target folder behind one, and nothing is read or written."""
+    from tracker.filer import MovedThroughALinkError, _do_op
+    from tracker.validators import sha256_of
+
+    behind = _elsewhere(tmp_path)
+    _link_to(behind, engagement / PREPARED_DIR_NAME / "linked")
+    original = originals(engagement) / "w2.pdf"
+    original.parent.mkdir(parents=True, exist_ok=True)
+    original.write_bytes(b"%PDF-1.4 the client's W-2")
+    reading = {ledger.OP_KEY: ledger.OP_COPY, ledger.FROM_KEY: f"{PREPARED_DIR_NAME}/linked/x.pdf",
+               ledger.TO_KEY: f"{PREPARED_DIR_NAME}/copy.pdf", ledger.DIGEST_KEY: sha256_of(behind / "x.pdf")}
+    writing = {ledger.OP_KEY: ledger.OP_COPY, ledger.FROM_KEY: location_of(engagement, original),
+               ledger.TO_KEY: f"{PREPARED_DIR_NAME}/linked/sub/w2.pdf", ledger.DIGEST_KEY: sha256_of(original)}
+
+    for op in (reading, writing):
+        with pytest.raises(MovedThroughALinkError, match="nothing was moved, copied or removed"):
+            _do_op(engagement, op)
+
+    assert not (engagement / PREPARED_DIR_NAME / "copy.pdf").exists()
+    assert sorted(p.name for p in behind.iterdir()) == ["x.pdf"]      # no folder made behind it
+
+
+def test_a_removal_through_a_link_removes_nothing(engagement, tmp_path):
+    from tracker.filer import MovedThroughALinkError, _do_op
+    from tracker.validators import sha256_of
+
+    behind = _elsewhere(tmp_path)
+    _link_to(behind, engagement / PREPARED_DIR_NAME / "linked")
+    removal = {ledger.OP_KEY: ledger.OP_REMOVE, ledger.FROM_KEY: f"{PREPARED_DIR_NAME}/linked/x.pdf",
+               ledger.DIGEST_KEY: sha256_of(behind / "x.pdf")}
+
+    with pytest.raises(MovedThroughALinkError):
+        _do_op(engagement, removal)
+
+    assert (behind / "x.pdf").is_file()
+
+
+def test_a_move_into_a_linked_folder_moves_nothing(engagement, tmp_path):
+    """B-11: a lexical rule cannot see a junction, so a year folder swapped
+    for one would have the rename land wherever it points. The target's
+    folders are asked before any is made."""
+    from tracker.filer import MovedThroughALinkError, _do_op
+    from tracker.validators import sha256_of
+
+    original = drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    behind = _elsewhere(tmp_path)
+    originals(engagement).rmdir()                     # the year's folder, swapped for a junction
+    _link_to(behind, originals(engagement))
+    for target in (originals(engagement) / "w2.pdf", originals(engagement) / "new" / "w2.pdf"):
+        move = {ledger.OP_KEY: ledger.OP_MOVE, ledger.FROM_KEY: location_of(engagement, original),
+                ledger.TO_KEY: location_of(engagement, target), ledger.DIGEST_KEY: sha256_of(original)}
+        with pytest.raises(MovedThroughALinkError):
+            _do_op(engagement, move)
+
+    assert original.is_file()
+    assert sorted(p.name for p in behind.iterdir()) == ["x.pdf"]
+    originals(engagement).unlink()
+    originals(engagement).mkdir()
+
+
+def test_a_recovery_copies_no_original_behind_a_link(engagement, tmp_path):
+    """A-7: the recovery's copy to act on read the row's original with no
+    link check, so a year folder swapped for a junction had whatever it
+    pointed at copied into Needs Review. The row's original is held to the
+    link check as a step's source is."""
+    from tracker.filer import MOVE_THROUGH_A_LINK, _a_copy_to_act_on
+    from tracker.records import IndexEntry
+    from tracker.validators import sha256_of
+
+    behind = _elsewhere(tmp_path)
+    originals(engagement).rmdir()                     # the year's folder, swapped for a junction
+    _link_to(behind, originals(engagement))
+    row = IndexEntry(received="2026-07-01", original_name="x.pdf", size_kb=0.1,
+                     digest=sha256_of(behind / "x.pdf"), identifier="A01",
+                     prepared_location=f"{PREPARED_DIR_NAME}/A01 - W-2.pdf",
+                     pbc_location=location_of(engagement, originals(engagement) / "x.pdf"),
+                     decision=FILED, reason="filed")
+
+    location, said = _a_copy_to_act_on(engagement, row, None)
+
+    assert location == ""
+    assert said == MOVE_THROUGH_A_LINK.format(name="x.pdf", within=root_of(engagement))
+    review = engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME
+    assert not review.exists() or not any(review.iterdir())
+    originals(engagement).unlink()
+    originals(engagement).mkdir()
+
+
+def test_an_open_copy_with_no_digest_is_refused_where_it_is_carried_out(engagement):
+    """A copy with nothing to prove it against could be anything the line
+    pointed at, so it is refused before a folder is made - by the one
+    function every step goes through, and by the copy itself."""
+    from tracker.filer import COPY_UNPROVED, _copy_whole, _do_op
+
+    original = originals(engagement) / "w2.pdf"
+    original.parent.mkdir(parents=True, exist_ok=True)
+    original.write_bytes(b"%PDF-1.4 the client's W-2")
+    target = engagement / PREPARED_DIR_NAME / "new" / "w2.pdf"
+    copy = {ledger.OP_KEY: ledger.OP_COPY, ledger.FROM_KEY: location_of(engagement, original),
+            ledger.TO_KEY: location_of(engagement, target), ledger.DIGEST_KEY: ""}
+
+    with pytest.raises(FilingError) as refused:
+        _do_op(engagement, copy)
+    assert refused.value.args[0] == COPY_UNPROVED.format(source="w2.pdf", target="w2.pdf")
+    with pytest.raises(FilingError):
+        _copy_whole(original, target, expect="")
+    assert not target.parent.exists()
+
+
+def test_a_row_recorded_without_its_bytes_still_gets_a_proved_working_copy(engagement):
+    """Decision 65's row has no digest, and its copy is still proved: the
+    intent takes the fingerprint from the step that brings the original in,
+    or from the original itself - and an intent with neither is never
+    written."""
+    from tracker.filer import COPY_UNPROVED, _do_op, _intend
+    from tracker.locking import engagement_lock
+    from tracker.validators import sha256_of
+
+    dropped = drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    digest = sha256_of(dropped)
+    original = originals(engagement) / "w2.pdf"
+    original.parent.mkdir(parents=True, exist_ok=True)
+    working = engagement / PREPARED_DIR_NAME / "A01 - W-2.pdf"
+    ops = [
+        {ledger.OP_KEY: ledger.OP_MOVE, ledger.FROM_KEY: location_of(engagement, dropped),
+         ledger.TO_KEY: location_of(engagement, original), ledger.DIGEST_KEY: ""},
+        {ledger.OP_KEY: ledger.OP_COPY, ledger.FROM_KEY: location_of(engagement, original),
+         ledger.TO_KEY: location_of(engagement, working), ledger.DIGEST_KEY: ""},
+    ]
+    lines = len(ledger.read_events(engagement))
+
+    with engagement_lock(engagement):
+        _intend(engagement, location_of(engagement, original), ops, by=ledger.BY_PASS)
+        (intent,) = ledger.replay(ledger.read_events(engagement)).intents.values()
+        assert [op[ledger.DIGEST_KEY] for op in intent[ledger.OPS_KEY]] == ["", digest]
+        for op in ops:
+            _do_op(engagement, op)
+        assert sha256_of(working) == digest
+        ledger.append(engagement, ledger.new(ledger.MOVE_ABANDONED, key=location_of(engagement, original)))
+
+        nowhere = [{ledger.OP_KEY: ledger.OP_COPY, ledger.FROM_KEY: f"{PREPARED_DIR_NAME}/gone.pdf",
+                    ledger.TO_KEY: f"{PREPARED_DIR_NAME}/copy.pdf", ledger.DIGEST_KEY: ""}]
+        with pytest.raises(FilingError) as refused:
+            _intend(engagement, "gone", nowhere, by=ledger.BY_PASS)
+    assert refused.value.args[0] == COPY_UNPROVED.format(source="gone.pdf", target="copy.pdf")
+    assert len(ledger.read_events(engagement)) == lines + 2
+
+
+def test_a_recovery_removes_nothing_behind_a_link(engagement, tmp_path):
+    """The review's M3: the recovery carries a removal out itself, not
+    through _do_op, so it asks the link check of every step before it reads
+    or removes a byte."""
+    from tracker.filer import MovedThroughALinkError, _finish_the_ops
+    from tracker.validators import sha256_of
+
+    behind = _elsewhere(tmp_path)
+    _link_to(behind, engagement / PREPARED_DIR_NAME / "linked")
+    removal = {ledger.OP_KEY: ledger.OP_REMOVE, ledger.FROM_KEY: f"{PREPARED_DIR_NAME}/linked/x.pdf",
+               ledger.DIGEST_KEY: sha256_of(behind / "x.pdf")}
+
+    with pytest.raises(MovedThroughALinkError):
+        _finish_the_ops(engagement, [removal], None)
+
+    assert (behind / "x.pdf").is_file()
+
+
+def test_a_removal_never_acts_in_the_client_tree(engagement):
+    """The review's M4: every removal the tracker writes takes away one of
+    the firm's own copies, so one naming a client's original - even in this
+    return's own household and year - is refused before it is recorded."""
+    from tracker.filer import OP_OUTSIDE, _intend
+    from tracker.locking import engagement_lock
+    from tracker.validators import sha256_of
+
+    original = originals(engagement) / "w2.pdf"
+    original.write_bytes(b"%PDF-1.4 the client's W-2")
+    location = location_of(engagement, original)
+    removal = {ledger.OP_KEY: ledger.OP_REMOVE, ledger.FROM_KEY: location,
+               ledger.DIGEST_KEY: sha256_of(original)}
+    lines = len(ledger.read_events(engagement))
+
+    with engagement_lock(engagement), pytest.raises(FilingError) as refused:
+        _intend(engagement, location, [removal], by=ledger.BY_PASS)
+
+    assert refused.value.args[0] == OP_OUTSIDE.format(name=engagement.name, location=location,
+                                                      reason="client-tree")
+    assert len(ledger.read_events(engagement)) == lines and original.is_file()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows refuses a control character in a file name, so such a drop cannot exist there")
+def test_a_name_with_a_control_character_is_still_filed_and_recorded(engagement, tmp_path):
+    """The review's M5: decision 104 files a POSIX name holding a control
+    character, and the record's value rule holds a file's own name only to
+    what no path can hold - so the drop is filed and recorded, and the
+    household beside it is sorted as it always was."""
+    drop(engagement, "w2\x01.pdf", "Form W-2 Wage and Tax Statement 2025")
+    drop(engagement, "other.pdf", "nothing the rules recognise")
+
+    report = sort(engagement, today=DAY1)
+
+    assert report.errors == []
+    assert sorted((row.original_name, row.decision) for row in read_index(engagement)) == [
+        ("other.pdf", NEEDS_REVIEW), ("w2\x01.pdf", FILED)]
+
+
+def test_an_interrupted_decision_65_intent_finishes_with_a_proved_copy(engagement):
+    """The review's S3: an intent an earlier version wrote for a row with no
+    digest, killed after the move and before the copy, carries a copy with
+    no fingerprint. The recovery proves it against the original's bytes -
+    the original is the record - so the intent finishes and the row is
+    recorded, rather than the return stopping every pass."""
+    from tracker.records import IndexEntry, entry_to_json
+    from tracker.validators import sha256_of
+
+    original = originals(engagement) / "w2.pdf"
+    original.write_bytes(b"%PDF-1.4 the client's W-2")     # the move already happened
+    working = engagement / PREPARED_DIR_NAME / "A01 - W-2.pdf"
+    row = entry_to_json(IndexEntry(
+        received="2026-07-01", original_name="w2.pdf", size_kb=0.0, digest="", identifier="A01",
+        prepared_location=location_of(engagement, working), pbc_location=location_of(engagement, original),
+        decision=FILED, reason="a reason"))
+    ops = [
+        {ledger.OP_KEY: ledger.OP_MOVE, ledger.FROM_KEY: location_of(engagement, inbox_of(engagement) / "w2.pdf"),
+         ledger.TO_KEY: location_of(engagement, original), ledger.DIGEST_KEY: ""},
+        {ledger.OP_KEY: ledger.OP_COPY, ledger.FROM_KEY: location_of(engagement, original),
+         ledger.TO_KEY: location_of(engagement, working), ledger.DIGEST_KEY: ""},
+    ]
+    _forge_line(engagement, ledger.new(ledger.MOVING, **{
+        ledger.KEY_KEY: location_of(engagement, original), ledger.OPS_KEY: ops, ledger.ROW_KEY: row,
+        ledger.DECIDED_BY_KEY: ledger.BY_PASS, ledger.EVENT_KEY_AFTER: ledger.FILED}))
+
+    sort(engagement, today=DAY1)
+
+    assert ledger.replay(ledger.read_events(engagement)).intents == {}
+    assert sha256_of(working) == sha256_of(original)
+    assert [row.decision for row in read_index(engagement)] == [FILED]
+
+
+def test_an_original_held_for_the_whole_pass_is_parked_and_said_so(engagement, monkeypatch):
+    """The review's S6: an original the pass cannot read at all this pass is
+    never copied unproved. It is kept, recorded for a person, and the
+    sentence says it could not be read - not that the record needs checking."""
+    import tracker.filer as filer_module
+    from tracker.filer import COPY_UNREAD
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    real = filer_module.sha256_of
+
+    def unreadable(path):
+        if path.parent == originals(engagement):
+            raise PermissionError("held by the sync client")
+        return real(path)
+
+    monkeypatch.setattr(filer_module, "sha256_of", unreadable)
+    report = sort(engagement, today=DAY1)
+    monkeypatch.undo()
+
+    [row] = read_index(engagement)
+    assert row.decision == NEEDS_REVIEW and row.prepared_location == "" and row.digest == ""
+    assert COPY_UNREAD.format(source="w2.pdf") in row.reason
+    assert "checks the record" not in row.reason
+    assert (originals(engagement) / "w2.pdf").is_file()
+    assert [error.name for error in report.errors] == ["w2.pdf"]

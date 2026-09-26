@@ -72,6 +72,7 @@ from tracker.layout import (
     client_household_dir,
     inbox_of,
     locate,
+    location_of,
     opened_dir_of,
     originals_of,
     private_household_dir,
@@ -715,7 +716,7 @@ def test_the_store_rebuilds_with_container_and_opened(engagement, tmp_path):
     # A row written before decision 143 carries no container at all: the
     # line is written in that older shape, through the one writer.
     old = IndexEntry(received="2026-06-01", original_name="old.pdf", size_kb=1.0, digest="0" * 64,
-                     identifier="", prepared_location="", pbc_location="../old.pdf",
+                     identifier="", prepared_location="", pbc_location=location_of(engagement, originals_of(engagement) / "old.pdf"),
                      decision=NEEDS_REVIEW, reason="waiting")
     row = entry_to_json(old)
     del row["container"]

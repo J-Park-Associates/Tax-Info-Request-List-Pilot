@@ -75,6 +75,15 @@ The *records* this module reads and writes - :class:`EngagementInfo`,
 rule row - live in :mod:`tracker.records` since decision 100.
 :class:`RequestItem` stays here: it is the schema of the list a person
 edits, not a record of what the machine decided.
+
+**The editor's checks are the record's value rule** (decision 187). The
+bounds and refusals a person's list is held to - the identifier and short
+title rules, the Windows character and device-name tables, the override
+values, the years, the two numbers' bounds and the Date Pattern's shape -
+live in :mod:`tracker.records` beside the new bounds the store's gate holds
+every record line to, so the editor never writes what the gate would
+refuse. This module re-exports each name it used to define; they are the
+records' own objects.
 """
 
 from __future__ import annotations
@@ -93,16 +102,36 @@ from pathlib import Path
 # the manifest.
 from tracker.records import (
     COL_IDENTIFIER,
+    COUNT_BOUNDS,
+    MAX_EXPECTED_COUNT,
+    MAX_SIZE_KB,
+    MIN_EXPECTED_COUNT,
+    MIN_SIZE_KB_FLOOR,
     NO,
     RULE_FIELDS,
+    SHORT_TITLE_MAX,
+    WINDOWS_ILLEGAL_CHARS,
+    WINDOWS_ILLEGAL_CHARS_TEXT,  # noqa: F401
+    WINDOWS_RESERVED_NAMES,  # noqa: F401
+    WINDOWS_RESERVED_NAMES_TEXT,  # noqa: F401
+    YEAR_MAX,
+    YEAR_MIN,
+    YEAR_OUT_OF_RANGE,
     YES,
     EngagementInfo,
+    Override,
     StatusUpdate,
+    count_problem,
+    date_pattern_problem,
     identifier_key,
+    identifier_problem,
     info_to_json,
+    is_reserved_name,  # noqa: F401
     link_problem,
     rule_from_json,
+    rule_row_fault,
     rule_to_json,
+    short_title_problem,
 )
 
 # ---------------------------------------------------------------- schema ----
@@ -165,6 +194,8 @@ COLUMNS: tuple[tuple[str, str], ...] = (
 #: these (``tests/test_single_source.py`` holds it to that), the Status
 #: Report draws them, and every message that names a column uses one.
 HEADERS = tuple(header for header, _ in COLUMNS)
+#: A field's column, for a refusal the record's rule names by field.
+_COLUMN_OF = {field_name: header for header, field_name in COLUMNS}
 assert tuple(field for _, field in COLUMNS) == tuple(
     f for f in RULE_FIELDS if f not in ("row", "date_pattern_derived")
 )
@@ -172,10 +203,9 @@ assert tuple(field for _, field in COLUMNS) == tuple(
 DEFAULT_EXPECTED_COUNT = 1
 DEFAULT_MIN_SIZE_KB = 5
 #: The bounds ``validated()`` and ``item_from_fields()`` enforce on the
-#: two numbers, and where the editor's number inputs take their minimum
-#: from - through the API's vocabulary, never typed in the page.
-MIN_EXPECTED_COUNT = 1
-MIN_SIZE_KB_FLOOR = 0
+#: two numbers (``MIN_EXPECTED_COUNT``, ``MAX_EXPECTED_COUNT``,
+#: ``MIN_SIZE_KB_FLOOR``, ``MAX_SIZE_KB``) are the record's value rule's,
+#: imported above (decision 187).
 
 #: The one sentence the editor shows under each heading, by field. The
 #: roadmap's schema table carries the same sentences in its Purpose column
@@ -227,13 +257,9 @@ ANY_EXTENSION = "*"
 #: in Period - typing it again as a regex was the redundancy, and not typing
 #: it was a 2024 form satisfying a TY2025 request.
 NO_DATE_CHECK = "*"
-#: The years a tax year can be. The pattern below is built from them, the
-#: app's year inputs are bounded by them, and every path that takes a year
-#: from a person checks it against them through :func:`check_tax_year`.
-YEAR_MIN = 1900
-YEAR_MAX = 2099
-#: What a year outside those bounds is told, wherever it was typed.
-YEAR_OUT_OF_RANGE = "Tax year must be between {minimum} and {maximum}, got {year}"
+#: The years a tax year can be (``YEAR_MIN``, ``YEAR_MAX``) are the
+#: record's value rule's since decision 187; the pattern below is built
+#: from them.
 #: A four-digit year standing on its own. The digit guards keep an account
 #: number like 120250 from being read as "2025". Used wherever a year is
 #: found or shifted: the derived year check, rollover, the catalog.
@@ -243,43 +269,8 @@ YEAR_PATTERN = re.compile(
 )
 _PERIOD_YEAR = YEAR_PATTERN
 
-#: Characters Windows forbids in file and folder names, plus control
-#: characters - the one list, for identifiers and for sanitising names.
-_ILLEGAL_PUNCTUATION = '\\/:*?"<>|'
-WINDOWS_ILLEGAL_CHARS = re.compile("[" + re.escape(_ILLEGAL_PUNCTUATION) + r"\x00-\x1f]")
-WINDOWS_ILLEGAL_CHARS_TEXT = " ".join(_ILLEGAL_PUNCTUATION)
-#: The names Windows keeps for devices (decision 137, L6). A folder or a
-#: file named one of them - with or without an extension, in any case - is
-#: not a folder at all: ``NUL`` is the null device, ``COM1`` a serial port,
-#: and a working copy, a household or a return named one could never
-#: hold a document.
-WINDOWS_RESERVED_NAMES: frozenset[str] = frozenset(
-    {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"}
-    | {f"COM{n}" for n in range(1, 10)}
-    | {f"LPT{n}" for n in range(1, 10)}
-    # The superscript digits Windows reserves too (the review's F6).
-    | {f"{port}{digit}" for port in ("COM", "LPT") for digit in "\u00b9\u00b2\u00b3"}
-)
-WINDOWS_RESERVED_NAMES_TEXT = ("CON, PRN, AUX, NUL, CONIN$, CONOUT$, COM1-COM9, LPT1-LPT9 "
-                               "and their superscript-1, 2 and 3 forms")
-
-
-def is_reserved_name(name: str) -> bool:
-    """Whether Windows reads ``name`` as a device rather than a file or a
-    folder: a reserved name, alone or before an extension (``nul.txt``),
-    whatever its case and any spaces before the dot."""
-    stem = str(name).split(".", 1)[0].rstrip(" ")
-    return stem.upper() in WINDOWS_RESERVED_NAMES
 #: How a date is asked for on a command line or in the wizard.
 ISO_DATE_HINT = "YYYY-MM-DD"
-
-#: Characters an identifier may not contain. The identifier begins every
-#: working copy's file name and is matched back by that prefix (decision
-#: 168's ``scaffold.assign_files``), so anything the filesystem would alter
-#: (``WINDOWS_ILLEGAL_CHARS``) or strip (a trailing dot) would leave the
-#: scanner unable to find the request's copies - a request that reads
-#: Missing with its documents in front of it.
-_ILLEGAL_IDENTIFIER_CHARS = WINDOWS_ILLEGAL_CHARS
 
 
 
@@ -324,28 +315,6 @@ HAS_A_DOCUMENT = (Status.RECEIVED, Status.PARTIAL, Status.FAILED, Status.PENDING
 #: How ``Summary.line`` joins its counts, and what it says with no rows.
 SUMMARY_SEPARATOR = " · "
 SUMMARY_EMPTY = "no requests"
-
-
-class Override:
-    """Accountant judgment values that beat the automated rules.
-
-    ``ACCEPTED`` treats the row as Received despite the checks, and carries
-    a reason (:data:`OVERRIDE_REASONS`, decision 116). ``NOT_APPLICABLE``
-    says the request does not apply this year - shown to people with the
-    row's own year (:func:`override_label`) - and takes the row out of
-    every count, every reminder and the active table.
-
-    ``RETIRED`` is the retired-value rule of decision 104 applied to a
-    value: the spelling journals written before decision 116 hold for the
-    second value, folded to its successor on every read by
-    :func:`_override` and never written again.
-    """
-
-    ACCEPTED = "Accepted"
-    NOT_APPLICABLE = "Not Applicable"
-
-    ALL = (ACCEPTED, NOT_APPLICABLE)
-    RETIRED: dict[str, str] = {"Waived": NOT_APPLICABLE}
 
 
 #: The reasons a person may give for an ``Override.ACCEPTED`` override, offered as a
@@ -545,10 +514,6 @@ def label_for(*parts: str) -> str:
     return LABEL_SEPARATOR.join(part for part in parts if part)
 
 
-#: The most characters a short title may have (decision 144). The owner's
-#: style: ``A01 - W-2\A01 - W-2 - TY2025.pdf``, a short title of about
-#: twenty characters, so a real household's name fits under the real root.
-SHORT_TITLE_MAX = 20
 #: What a derived short title never ends with: the cut lands at a word,
 #: and a word left hanging on a separator (``Fees &``, ``1099-INT /``,
 #: ``Schedule K-1 -``) is dropped with it. A closing bracket is kept,
@@ -615,24 +580,6 @@ def derived_short_title(document: str) -> str:
         if entity:
             return issuer_short_title(entity)
     return _cut_short(text)
-
-
-def short_title_problem(short_title: str) -> str:
-    """Why ``short_title`` cannot name a working copy, or "" if it can.
-
-    Refused rather than sanitised, as an identifier is: the name a person
-    types is the name every working copy carries, or they are told why not.
-    """
-    if len(short_title) > SHORT_TITLE_MAX:
-        return f"may have at most {SHORT_TITLE_MAX} characters, got {len(short_title)}"
-    if WINDOWS_ILLEGAL_CHARS.search(short_title):
-        return f"may not contain any of {WINDOWS_ILLEGAL_CHARS_TEXT} (it is part of a file name)"
-    if short_title != short_title.rstrip(". "):
-        return "may not end with a dot or a space (Windows drops them from file names)"
-    if short_title and is_reserved_name(short_title):
-        return (f"may not be a name Windows keeps for a device ({WINDOWS_RESERVED_NAMES_TEXT}); "
-                f"it is part of a file name")
-    return ""
 
 
 #: How a multi-file request says so, everywhere (the README, the reminder,
@@ -893,41 +840,26 @@ def parse_extensions(value: object) -> tuple[str, ...]:
     return tuple(e.lower().lstrip(".") for e in parts)
 
 
-def identifier_problem(identifier: str) -> str:
-    """Why ``identifier`` cannot begin a working copy's name, or "" if it can.
-
-    Shared by :func:`validated` and the desktop app's create path so a
-    bad identifier is refused with the same sentence wherever it is typed.
-    """
-    if _ILLEGAL_IDENTIFIER_CHARS.search(identifier):
-        return f"may not contain any of {WINDOWS_ILLEGAL_CHARS_TEXT} (it begins a file name)"
-    if identifier != identifier.rstrip(". "):
-        return "may not end with a dot or a space (Windows drops them from file names)"
-    if is_reserved_name(identifier):
-        return (f"may not be a name Windows keeps for a device ({WINDOWS_RESERVED_NAMES_TEXT}); "
-                f"it begins a file name")
-    return ""
-
-
-
 # ------------------------------------------------ a row from plain values ----
 
 
-def _whole_number(value: object, default: int, minimum: int, column: str, where: str) -> int:
+def _whole_number(value: object, default: int, minimum: int, maximum: int, column: str,
+                  where: str) -> int:
     """A count or a size from a typed value: blank is the default, anything
-    else a whole number no smaller than ``minimum``, refused with the row
-    and the column named."""
+    else a whole number from ``minimum`` to ``maximum``, refused with the
+    row, the column and the record's own bounds (``records.COUNT_BOUNDS``,
+    decision 187) - never with the value, which the person has in front of
+    them."""
     text = "" if value is None else str(value).strip()
     if not text:
         return default
+    refused = ManifestError(f"{where}: {column} {COUNT_BOUNDS.format(minimum=minimum, maximum=maximum)}")
     try:
         number = float(text)
-        if number != int(number):
-            raise ValueError
-    except (TypeError, ValueError, OverflowError):
-        raise ManifestError(f"{where}: {column} must be a whole number, got {value!r}") from None
-    if int(number) < minimum:
-        raise ManifestError(f"{where}: {column} must be at least {minimum}")
+    except (TypeError, ValueError):
+        raise refused from None
+    if count_problem(number, minimum, maximum):
+        raise refused
     return int(number)
 
 
@@ -1052,10 +984,10 @@ def item_from_fields(fields: Mapping[str, object], *, where: str) -> RequestItem
         document=text("document"),
         period=text("period"),
         expected_count=_whole_number(fields.get("expected_count"), DEFAULT_EXPECTED_COUNT,
-                                     MIN_EXPECTED_COUNT, COL_EXPECTED_COUNT, where),
+                                     MIN_EXPECTED_COUNT, MAX_EXPECTED_COUNT, COL_EXPECTED_COUNT, where),
         allowed_extensions=parse_extensions(extensions),
         min_size_kb=_whole_number(fields.get("min_size_kb"), DEFAULT_MIN_SIZE_KB,
-                                  MIN_SIZE_KB_FLOOR, COL_MIN_SIZE_KB, where),
+                                  MIN_SIZE_KB_FLOOR, MAX_SIZE_KB, COL_MIN_SIZE_KB, where),
         required_keywords=csv_tuple(fields.get("required_keywords")),
         any_keywords=csv_tuple(fields.get("any_keywords")),
         date_pattern="" if fields.get("date_pattern_derived") else text("date_pattern"),
@@ -1104,8 +1036,8 @@ def validated(items: Iterable[RequestItem]) -> list[RequestItem]:
     an identifier on every row, none the file system would alter
     (:func:`identifier_problem`), no two the same without case (a Windows
     file name is not case-sensitive); a document on every row; the two
-    numbers within their floors; ``NO_DATE_CHECK`` made blank, a typed
-    pattern made to compile, and a blank one derived from the Period with
+    numbers within the record's bounds; ``NO_DATE_CHECK`` made blank, a typed
+    pattern held to the record's shape rule (``records.date_pattern_problem``), and a blank one derived from the Period with
     ``date_pattern_derived`` set; the override folded to its one spelling
     and its reason read against it (:func:`_override_reason`: required
     with ``Override.ACCEPTED``, never the word :data:`OVERRIDE_REASON_OTHER`,
@@ -1135,25 +1067,25 @@ def validated(items: Iterable[RequestItem]) -> list[RequestItem]:
         document = item.document.strip()
         if not document:
             raise ManifestError(f"{where}: {COL_DOCUMENT} is required")
-        if item.expected_count < MIN_EXPECTED_COUNT:
-            raise ManifestError(f"{where}: {COL_EXPECTED_COUNT} must be at least {MIN_EXPECTED_COUNT}")
-        if item.min_size_kb < MIN_SIZE_KB_FLOOR:
-            raise ManifestError(f"{where}: {COL_MIN_SIZE_KB} must be at least {MIN_SIZE_KB_FLOOR}")
+        if problem := count_problem(item.expected_count, MIN_EXPECTED_COUNT, MAX_EXPECTED_COUNT):
+            raise ManifestError(f"{where}: {COL_EXPECTED_COUNT} {problem}")
+        if problem := count_problem(item.min_size_kb, MIN_SIZE_KB_FLOOR, MAX_SIZE_KB):
+            raise ManifestError(f"{where}: {COL_MIN_SIZE_KB} {problem}")
         period = item.period.strip()
         date_pattern = "" if item.date_pattern_derived else item.date_pattern.strip()
         derived = False
         if date_pattern == NO_DATE_CHECK:
             date_pattern = ""
         elif date_pattern:
-            try:
-                re.compile(date_pattern)
-            except re.error as exc:
-                raise ManifestError(f"{where}: {COL_DATE_PATTERN} is not a valid regex: {exc}") from None
+            # The record's own shape rule (decision 187), not only "does it
+            # compile": a pattern that compiles may still run away on a page.
+            if problem := date_pattern_problem(date_pattern):
+                raise ManifestError(f"{where}: {COL_DATE_PATTERN} {problem}")
         else:
             date_pattern = derived_date_pattern(period)
             derived = bool(date_pattern)
         override = _override(item.manual_override, where)
-        out.append(replace(
+        checked = replace(
             item,
             identifier=identifier,
             document=document,
@@ -1163,7 +1095,14 @@ def validated(items: Iterable[RequestItem]) -> list[RequestItem]:
             manual_override=override,
             override_reason=_override_reason(item.override_reason, override, where),
             row=n,
-        ))
+        )
+        # The gate's own rule, run on the row the record will carry (decision
+        # 187, the review's M6): the editor never saves what the store's
+        # admission would refuse, so a save cannot wedge its return.
+        field, problem = rule_row_fault(rule_to_json(checked))
+        if problem:
+            raise ManifestError(f"{where}: {_COLUMN_OF.get(field, field)} {problem}")
+        out.append(checked)
     # Two issuer rows whose names nest make each other useless and say
     # nothing about it; the one moment a person can be told is now.
     check_narrowing_names(out)

@@ -56,7 +56,17 @@ from tracker.manifest import (
     unlearn_keyword,
     validated,
 )
-from tracker.records import RULE_FIELDS, info_to_json, rule_to_json
+from tracker.records import (
+    COUNT_BOUNDS,
+    DATE_PATTERN_ALTERNATES,
+    DATE_PATTERN_NESTED,
+    DATE_PATTERN_TOO_OPEN,
+    MAX_EXPECTED_COUNT,
+    MAX_SIZE_KB,
+    RULE_FIELDS,
+    info_to_json,
+    rule_to_json,
+)
 
 SAMPLE_ITEMS = [
     RequestItem(
@@ -223,12 +233,43 @@ def test_bad_regex_rejected():
 
 
 def test_bad_expected_count_rejected():
-    with pytest.raises(ManifestError, match=f"Row 2: {COL_EXPECTED_COUNT} must be a whole number, got 'twelve'"):
+    counts = COUNT_BOUNDS.format(minimum=MIN_EXPECTED_COUNT, maximum=MAX_EXPECTED_COUNT)
+    sizes = COUNT_BOUNDS.format(minimum=MIN_SIZE_KB_FLOOR, maximum=MAX_SIZE_KB)
+    with pytest.raises(ManifestError, match=f"Row 2: {COL_EXPECTED_COUNT} {counts}$"):
         item_from_fields({"identifier": "A01", "document": "x", "expected_count": "twelve"}, where="Row 2")
-    with pytest.raises(ManifestError, match=f"Row 3: {COL_EXPECTED_COUNT} must be at least {MIN_EXPECTED_COUNT}"):
+    with pytest.raises(ManifestError, match=f"Row 3: {COL_EXPECTED_COUNT} {counts}$"):
         item_from_fields({"identifier": "A01", "document": "x", "expected_count": 0}, where="Row 3")
-    with pytest.raises(ManifestError, match=f"Row 1: {COL_MIN_SIZE_KB} must be at least {MIN_SIZE_KB_FLOOR}"):
+    with pytest.raises(ManifestError, match=f"Row 1: {COL_MIN_SIZE_KB} {sizes}$"):
         validated([RequestItem(identifier="A01", document="x", min_size_kb=-1)])
+
+
+def test_the_editor_refuses_an_expected_count_the_store_could_not_hold():
+    """Decision 187 (A-10): ``1e20`` passed the editor, and SQLite then
+    refused it after the line was in the journal, so every later sync
+    failed. The editor holds a count to the record's own bound."""
+    counts = COUNT_BOUNDS.format(minimum=MIN_EXPECTED_COUNT, maximum=MAX_EXPECTED_COUNT)
+    for typed in ("1e20", 10**20, MAX_EXPECTED_COUNT + 1, "2.5"):
+        with pytest.raises(ManifestError, match=f"Row 1: {COL_EXPECTED_COUNT} {counts}$"):
+            item_from_fields({"identifier": "A01", "document": "x", "expected_count": typed},
+                             where="Row 1")
+    with pytest.raises(ManifestError, match=f"Row 1: {COL_EXPECTED_COUNT} {counts}$"):
+        validated([RequestItem(identifier="A01", document="x", expected_count=10**20)])
+    assert item_from_fields({"identifier": "A01", "document": "x",
+                             "expected_count": str(MAX_EXPECTED_COUNT)},
+                            where="Row 1").expected_count == MAX_EXPECTED_COUNT
+
+
+def test_the_editor_refuses_a_runaway_date_pattern_by_name():
+    """Decision 187 (C-5): ``(\\d+)+x`` compiles, and doubles its time with
+    every digit on a page. The editor refuses it with the record's own
+    phrase, naming the column and never the pattern."""
+    for pattern, phrase in [(r"(\d+)+x", DATE_PATTERN_NESTED),
+                            (r"\d*-\d*-\d*", DATE_PATTERN_TOO_OPEN),
+                            (r"(?:Dec|12)+", DATE_PATTERN_ALTERNATES)]:
+        with pytest.raises(ManifestError) as refused:
+            validated([RequestItem(identifier="A01", document="x", date_pattern=pattern)])
+        assert str(refused.value) == f"Row 1: {COL_DATE_PATTERN} {phrase}"
+        assert pattern not in str(refused.value)
 
 
 def test_unknown_override_rejected():
@@ -1044,3 +1085,49 @@ def test_a_row_with_no_short_title_derives_one_at_a_whole_word():
     for bad in ("x" * 21, "W-2 / 1099", "Receipts.", "NUL"):
         with pytest.raises(ManifestError, match=f"Row 1: {COL_SHORT_TITLE} "):
             item_from_fields({"identifier": "X01", "document": "Doc", "short_title": bad}, where="Row 1")
+
+
+GATE_REFUSES = {
+    "identifier": "A" * 1001,
+    "document": "W-2\x00",
+    "period": "TY" * 10_001,
+    "expected_count": 10**20,
+    "allowed_extensions": ("p\x00df",),
+    "min_size_kb": 2**40,
+    "required_keywords": ("w-2\x00",),
+    "any_keywords": ("wages\x00",),
+    "date_pattern": r"\d?" * 20 + "x",
+    "manual_override": "Maybe",
+    "override_reason": "confirmed\x00",
+    "named": "no",
+    "asked": "no",
+    "short_title": "S" * 21,
+}
+
+
+@pytest.mark.parametrize("field", sorted(GATE_REFUSES))
+def test_the_editor_refuses_what_the_gate_refuses(field):
+    """The review's M6 (decision 187): the value rule is used by the writer
+    and by the gate, so a row the store's admission would refuse is never
+    saved - it is refused in the editor, naming its row and column. The two
+    fields the editor always sets itself (``row``, ``date_pattern_derived``)
+    are the ones not listed."""
+    from tracker import records
+
+    assert set(GATE_REFUSES) | {"row", "date_pattern_derived"} == set(RULE_FIELDS)
+    extra = {"manual_override": "Accepted"} if field == "override_reason" else {}
+    item = RequestItem(**{"identifier": "A01", "document": "W-2", **extra, field: GATE_REFUSES[field]})
+    assert records.rule_row_problem(rule_to_json(item)), field
+    with pytest.raises(ManifestError, match=r"^Row 1: "):
+        validated([item])
+
+
+def test_a_line_break_in_a_description_is_saved_and_admitted():
+    """A cell a person wrote on two lines (Excel's Alt+Enter, kept by the
+    reader before decision 104) is a description, not a path: the editor
+    and the gate both take it, so it can never wedge its return."""
+    from tracker import records
+
+    [item] = validated([RequestItem(identifier="A01", document="W-2\nWages", period="Jan\n2025",
+                                    required_keywords=("W-2\nform",))])
+    assert records.rule_row_problem(rule_to_json(item)) == ""

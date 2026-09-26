@@ -797,7 +797,7 @@ def _a_malformed_line_is_one_folders_problem(tmp_path, samples, line: dict, said
     bad = build_engagement(tmp_path / "Clients", samples, name="Bad 2025", drops=())
     lines = ledger.read_events(bad.path)
     with ledger.path_for(bad.path).open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps({ledger.EVENT_KEY: line.pop("event"), ledger.AT_KEY: "2026-01-01T00:00:00",
+        handle.write(json.dumps({ledger.EVENT_KEY: line.pop("event"), ledger.AT_KEY: "2026-01-01T00:00:00Z",
                                  **line}) + "\n")
     try:
         loaded = discover_engagements(tmp_path / "Clients")
@@ -824,7 +824,7 @@ def test_a_rules_line_of_the_wrong_shape_is_one_folders_problem_and_the_pass_goe
 def test_a_statuses_entry_of_the_wrong_shape_is_one_folders_problem_and_the_pass_goes_on(tmp_path, samples):
     _a_malformed_line_is_one_folders_problem(
         tmp_path, samples, {"event": ledger.SCANNED, ledger.STATUSES_KEY: {"A01": ["Received"]}},
-        "carries a status for 'A01' that is not a mapping")
+        "carries a status that is not a mapping")
 
 
 def test_rows_the_rules_cannot_act_on_are_reported_not_buried(tmp_path, samples):
@@ -1044,7 +1044,7 @@ def test_a_file_named_like_markup_is_shown_as_a_name_not_rendered(tmp_path):
     name = "<b>evil</b>.pdf"
     reason = "<i>nothing matched</i>"
     seed_index(folder, [IndexEntry(
-        received=FRIDAY.isoformat(), original_name=name, size_kb=1.0, digest="0" * 8,
+        received=FRIDAY.isoformat(), original_name=name, size_kb=1.0, digest="0" * 64,
         identifier="", prepared_location="",
         pbc_location=f"../../../../Clients/Test Household/2025/{name}",
         decision=NEEDS_REVIEW, reason=reason,

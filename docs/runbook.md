@@ -51,6 +51,17 @@ before anything is rebuilt. Then rebuild **that return only**, with
 - without `--engagement` it rebuilds every return, and the next pass
 re-reads every document in the firm.
 
+**Once, after installing the version that holds every record line to the
+editor's bounds** (decision 187). Run the store check once
+(`python -m tracker.store "<the app folder>" check "<clients root>"`). It
+judges every line of every return's record by today's rule, so a line an
+earlier version accepted that the rule now refuses - a Date Pattern that
+could run away, a step outside its return's folders, a value of the wrong
+kind - is named on the day of the upgrade. A return it names as
+"malformed" is shown to Jason before that household is sorted, and
+repaired the way any malformed line is repaired (section 9); until then
+its household stops with the same sentence.
+
 **The clients root is a folder of clients, and only that.** The app refuses
 the system drive's root (`C:\`), the app's own folder, the folder holding its
 settings and store, and any folder that holds one of them, and says which
@@ -202,6 +213,24 @@ Received Date, File Count and Validation Notes are on the Status Report**,
 not in the editor. The engagement's details — client, share link, due
 date, sender, firm, reminders, active — and the **people** the return is
 for are edited in the same place.
+The editor keeps each value inside the bounds the tracker will read back
+(decision 187): Expected Count is a whole number from 1 to 9,999, Min Size
+KB from 0 to 1,048,576, a date is a real date between 1900 and 2100, and a
+Date Pattern is at most 200 characters with at most eight variable parts
+(`?`, `*`, `+`, `{m,n}`), of which at most three repeat more than once, one
+at most is open-ended (`+`, `*`) and the rest at most `{…,20}`. No
+repetition may sit inside another, no back-reference inside one, and a `|`
+not inside anything that repeats more than once (so `(?:Dec|12)?` is fine).
+The tracker counts every way the pattern could try one line, and refuses
+one with more than 16,384, or whose ways times the longest stretch of
+matching each can do come to more than 200,000 (an assertion such as
+`\b` counts toward that stretch). The slowest pattern found by the
+reviews' attacks - `(?:1|11)?` seven times, then `(?:\d(?=\d)){35}` and
+`(?:x|y)` - takes about 1.3 s on a 500-character line; the rule reads the
+pattern and is not a clock; the time bound that does not
+depend on analysis comes with Solution 4. Descriptions (Document, Period, Override Reason,
+the client and firm details) may run over several lines; identifiers, short
+names and household and return names may not.
 
 **Renaming a request** (decision 160). A request that already holds filed
 documents keeps its identifier through a save: changing `A01` to `A1` in
@@ -1566,16 +1595,49 @@ the same way.
   engagement's **Status Report.html**. Every move and every rename is in
   it, and it is drawn from the ledger, which is the record itself.
 
-- **A household the pass stopped with "names … for a step, which is outside
-  the places a step of this return may touch"** (`tracker.filer.OP_OUTSIDE`,
-  decision 180): the return's record holds a step the tracker did not write
-  - a copy of the record restored over a newer one, a line another machine
-  wrote, or a hand edit - pointing outside that return's own folders. The
+- **A household the pass stopped with "names … for a step (…), which is
+  outside the places a step of this return may touch"**
+  (`tracker.filer.OP_OUTSIDE`, decision 180): the return's record holds a
+  step the tracker did not write - a copy of the record restored over a
+  newer one, a line another machine wrote, or a hand edit - pointing
+  outside that return's own folders. The word in brackets says which way
+  it is outside (decision 187): `absolute` (a drive, a share or a full
+  path), `above-root`, `not-a-place` (inside the clients root but in none
+  of this return's folders), `other-household` or `other-year` (a write
+  into another household's client folder or another year's `_Opened`),
+  `client-tree` (a removal naming a client's original or inbox - the
+  tracker only ever removes its own copies), `blank`, or `not-a-return`.
+  "… would be copied to … with no fingerprint to prove the copy against"
+  (`tracker.filer.COPY_UNPROVED`) is the same kind of line: a copy whose
+  source is not there to be fingerprinted. (An interrupted copy an earlier
+  version left without a fingerprint is proved against the original and
+  finished by the next pass; "… could not be read just now …, so no copy
+  was made" is an original a sync client held: the original is kept in
+  the year's folder and waits in Needs Review for a person to file, and
+  nothing in the record needs checking.) The
   pass moved, copied and removed nothing for it, and every other household
   was sorted as usual. Do not edit the record by hand: say which return and
   which path, and have the record checked
   (`python -m tracker.store <store> check <clients root>`) before that
   household is sorted again.
+
+- **A household the pass stopped with "line N of the record is malformed
+  (…)"** (`tracker.store.MALFORMED_LINE`, shown as "the record could not be
+  read"; decision 187): the record holds a line the tracker will not obey.
+  The words in brackets say which field and which kind of problem, never
+  the value: a value outside the editor's bounds ("must be a whole number
+  from 1 to 9999", "must be a date written YYYY-MM-DD", "must be true or
+  false", a Date Pattern that "repeats something that itself repeats",
+  "could try too many ways to match one line", "could do too much matching
+  on one line" or "has more than 8 variable repetitions"); a line naming "an event this version does not know"; a
+  step "outside this return's places"; a household or return label that
+  "is not one folder name"; or a line stamped in a form the tracker never
+  writes. Nothing was
+  moved, copied or removed for that household, and every other household
+  was sorted as usual. Do not edit the record by hand: say which return and
+  which line, and the store check
+  (`python -m tracker.store "<the app folder>" check "<clients root>"`)
+  names every such line in every return.
 
 Nothing here sends an email, moves money, or tells a client anything. Every
 message a client gets was read and sent by a person at this firm.

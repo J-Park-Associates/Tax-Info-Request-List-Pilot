@@ -456,8 +456,9 @@ STAGE_LINE = "Stage: {number} - {name}"
 #: draft says we have everything and no ladder applies.
 STAGE_NONE = "Stage: -"
 #: The key the ``DRAFTED`` event carries the stage under. A number, never a
-#: word of the letter: nothing a client would read goes on the record.
-STAGE_KEY = "stage"
+#: word of the letter: nothing a client would read goes on the record. The
+#: ledger's own since decision 187, beside the event; re-exported here.
+STAGE_KEY = ledger.STAGE_KEY
 
 
 # ------------------------------------------------- the ladder of emphasis ----

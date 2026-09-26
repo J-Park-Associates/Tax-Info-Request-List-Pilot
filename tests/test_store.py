@@ -161,7 +161,7 @@ A_ROW_ORIGINAL = "../../../../Clients/Smith Family/2025/w2.pdf"
 
 def a_row(**fields) -> dict:
     base = {"received": "2026-07-01", "original_name": "w2.pdf", "size_kb": 1.0,
-            "digest": "abc", "identifier": "", "prepared_location": "",
+            "digest": "ab" * 32, "identifier": "", "prepared_location": "",
             "pbc_location": A_ROW_ORIGINAL, "decision": "Needs Review",
             "reason": "", "candidates": "", "evidence": "", "also_filed": ""}
     return {**base, **fields}
@@ -1355,10 +1355,11 @@ def _one_filed_row(period: str):
     from tracker.filer import FILED
     from tracker.records import IndexEntry
 
-    return IndexEntry(received="2026-09-23 10:00:00", original_name="x.pdf", size_kb=5.0,
-                      digest="abc", identifier="A01",
+    return IndexEntry(received="2026-09-23", original_name="x.pdf", size_kb=5.0,
+                      digest="ab" * 32, identifier="A01",
                       prepared_location="Prepared/A01 - W-2.pdf",
-                      pbc_location="x.pdf", decision=FILED, reason=f"filed for {period}")
+                      pbc_location=f"../../../../Clients/Smith/{period}/x.pdf", decision=FILED,
+                      reason=f"filed for {period}")
 
 
 def _one_request(year: int) -> list[RequestItem]:
@@ -2225,3 +2226,192 @@ def test_a_row_read_that_fails_mid_query_is_a_store_error_too(tmp_path):
             list(rows)
     finally:
         conn.close()
+
+
+# ----------------------------------- the record is untrusted input (187) ----
+
+
+def _forge(engagement, event: dict) -> None:
+    """Put one line in the journal the way a hand edit, another machine or a
+    restored copy would: past the store, without asking it."""
+    path = ledger.path_for(engagement)
+    path.write_bytes(path.read_bytes() + json.dumps(event).encode("utf-8") + b"\n")
+
+
+def _tables(conn, engagement) -> list:
+    mine = (id_of(conn, engagement),)
+    return [
+        [tuple(row) for row in conn.execute(
+            f"SELECT * FROM {table} WHERE engagement_id = ? ORDER BY rowid", mine)]
+        for table in ("documents", "requests")
+    ] + [tuple(conn.execute("SELECT * FROM engagements WHERE id = ?", mine).fetchone())]
+
+
+def _a_rule(**fields) -> dict:
+    return {**rule_to_json(ITEMS[0]), **fields}
+
+
+IMPOSSIBLE = [
+    ("expected_count", ledger.new(ledger.RULES_CHANGED, rules=[_a_rule(expected_count=10**20)])),
+    ("expected_count", ledger.new(ledger.RULES_CHANGED, rules=[_a_rule(expected_count="x")])),
+    ("due", ledger.new(ledger.RULES_CHANGED, rules=[], info={"due": "2025-02-30"})),
+    ("reminders", ledger.new(ledger.RULES_CHANGED, rules=[], info={"reminders": "no"})),
+    ("received", ledger.new(ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(received="13/45/2025"))),
+    ("size_kb", ledger.new(ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(size_kb="x"))),
+    ("digest", ledger.new(ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(digest=5))),
+    ("file_count", ledger.new(ledger.SCANNED, statuses={
+        "A01": {"status": Status.MISSING, "file_count": -1}})),
+    ("at", {**learned("A01", "lender"), ledger.AT_KEY: 12345}),
+    ("at", {**learned("A01", "lender"), ledger.AT_KEY: "1900-01-01T00:00:00Z"}),
+]
+
+
+@pytest.mark.parametrize("field, event", IMPOSSIBLE, ids=[f"{field}-{n}" for n, (field, _) in
+                                                         enumerate(IMPOSSIBLE)])
+def test_an_impossible_value_is_refused_before_any_table_is_touched(conn, root, by_hand, field, event):
+    """Decision 187 (A-6, A-10): a line of the right shape carrying a value
+    no writer writes - a count past SQLite, a date no calendar has, "no" for
+    a flag, a stamp that is a number - is refused by the one admission, at
+    the door in and on every read, naming the field; the journal and every
+    table stay as they were."""
+    build(conn, root, by_hand)
+    before = _tables(conn, by_hand)
+    lines = len(ledger.read_events(by_hand))
+
+    with engagement_lock(by_hand):
+        with pytest.raises(store.StoreError) as refused:
+            store.record(conn, by_hand, event)
+    assert f"'{field}'" in str(refused.value) and "nothing was written" in str(refused.value)
+    assert len(ledger.read_events(by_hand)) == lines
+
+    _forge(by_hand, event)
+    with pytest.raises(store.StoreError) as refused:
+        store.sync(conn, root, by_hand)
+    said_so = str(refused.value)
+    assert "is malformed" in said_so and f"'{field}'" in said_so and f"line {lines + 1}" in said_so
+    assert _tables(conn, by_hand) == before
+
+
+def test_a_step_that_escapes_its_return_is_refused_at_admission(conn, root, by_hand):
+    """Decision 180 recommended it and 187 does it: the store refuses a step
+    outside its return's places before the line is in the journal, so a
+    recovery never meets it. The reason is the layout's code."""
+    build(conn, root, by_hand)
+    lines = len(ledger.read_events(by_hand))
+    for step, code in [
+        ({ledger.OP_KEY: ledger.OP_COPY, ledger.FROM_KEY: "/etc/passwd",
+          ledger.TO_KEY: "Prepared/x.pdf", ledger.DIGEST_KEY: "ab" * 32}, "absolute"),
+        ({ledger.OP_KEY: ledger.OP_MOVE, ledger.FROM_KEY: A_ROW_ORIGINAL,
+          ledger.TO_KEY: "../../../../Clients/Other Household/Drop files here/w2.pdf",
+          ledger.DIGEST_KEY: "ab" * 32}, "other-household"),
+        ({ledger.OP_KEY: ledger.OP_REMOVE, ledger.FROM_KEY: "../../../../../w2.pdf",
+          ledger.DIGEST_KEY: "ab" * 32}, "above-root"),
+        ({ledger.OP_KEY: ledger.OP_REMOVE, ledger.FROM_KEY: A_ROW_ORIGINAL,
+          ledger.DIGEST_KEY: "ab" * 32}, "client-tree"),
+    ]:
+        moving = ledger.new(ledger.MOVING, key=A_ROW_ORIGINAL, ops=[step], by=ledger.BY_PASS)
+        with engagement_lock(by_hand), pytest.raises(store.StoreError) as refused:
+            store.record(conn, by_hand, moving)
+        assert f"outside this return's places ({code})" in str(refused.value)
+    assert len(ledger.read_events(by_hand)) == lines
+
+
+def test_a_moving_line_in_a_households_record_is_refused():
+    """A household has no steps, so its record carries none."""
+    from tracker.layout import PRIVATE_TREE
+
+    moving = ledger.new(ledger.MOVING, key="k", ops=[], by=ledger.BY_PASS)
+    with pytest.raises(store.StoreError, match="in a household's record, which has no steps"):
+        store._refuse_a_malformed_line(moving, 2, f"{PRIVATE_TREE}/Smith Family",
+                                       kind=store.KIND_HOUSEHOLD)
+    store._refuse_a_malformed_line(moving, 2, f"{PRIVATE_TREE}/Smith Family/2025/1040 - Smith",
+                                   kind=store.KIND_RETURN)
+
+
+def test_a_label_that_is_not_one_segment_is_refused_at_admission(conn, root, by_hand):
+    """A household or a return label is joined onto a path somewhere, so one
+    that is a path of its own - a separator, a climb, a drive - is refused
+    at the door, naming the field and the layout's code."""
+    from tracker.layout import PRIVATE_TREE
+
+    household = f"{PRIVATE_TREE}/Smith Family"
+    for event, field, code in [
+        (ledger.new(ledger.RULES_CHANGED, rules=[], info={"household": "../Jones"}), "household",
+         "separator"),
+        (ledger.new(ledger.RULES_CHANGED, rules=[], info={"return_name": ".."}), "return_name", "dot"),
+        (ledger.new(ledger.HOUSEHOLD_CHANGED, household={"name": "C:Jones"}), "name", "drive"),
+        (ledger.new(ledger.HOUSEHOLD_CHANGED, household={"feeds": [
+            {"household": "Jones/..", "return_name": "1040 - Jones"}]}), "feeds.household",
+         "separator"),
+    ]:
+        with pytest.raises(store.StoreError) as refused:
+            store._refuse_a_malformed_line(event, 2, household, kind=store.KIND_HOUSEHOLD)
+        assert f"'{field}' that is not one folder name ({code})" in str(refused.value)
+    build(conn, root, by_hand)
+    with engagement_lock(by_hand), pytest.raises(store.StoreError, match="not one folder name"):
+        store.record(conn, by_hand, ledger.new(ledger.RULES_CHANGED, rules=[],
+                                               info={"household": "a/b"}))
+
+
+def test_a_refusal_never_quotes_the_value_it_refused(by_hand):
+    """Security principle 7: the value is whatever the line said, so the
+    sentence names the field and the class of problem and never repeats it."""
+    marker = "Marker-7731"
+    where = "J Park & Associates/Smith Family/2025/1040 - Smith"
+    for event in [
+        ledger.new(ledger.RULES_CHANGED, rules=[marker]),
+        ledger.new(ledger.RULES_CHANGED, rules=[_a_rule(date_pattern=f"({marker}+)+")]),
+        ledger.new(ledger.RULES_CHANGED, rules=[], info={"people": marker}),
+        ledger.new(ledger.RULES_CHANGED, rules=[], removed=[{marker: 1}]),
+        ledger.new(ledger.MOVING, key="k", by=ledger.BY_PASS, ops=[marker]),
+        ledger.new(ledger.MOVING, key="k", by=ledger.BY_PASS, ops=[{ledger.OP_KEY: marker}]),
+        ledger.new(ledger.MOVING, key="k", by=ledger.BY_PASS, ops=[
+            {ledger.OP_KEY: ledger.OP_COPY, ledger.FROM_KEY: f"/{marker}.pdf",
+             ledger.TO_KEY: "Prepared/x.pdf", ledger.DIGEST_KEY: "ab" * 32}]),
+        ledger.new(ledger.SCANNED, statuses={marker: marker}),
+        ledger.new(ledger.KEYWORD_LEARNED, identifier="A01", keyword=[marker]),
+        ledger.new(ledger.HOUSEHOLD_CHANGED, household={"members": [{marker: 1}]}),
+        ledger.new(ledger.HOUSEHOLD_CHANGED, household={"feeds": marker}),
+        ledger.new(ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(digest=marker)),
+        # The review's S2: an event name this version does not know, and the
+        # fields a line that carries nothing carries.
+        {ledger.EVENT_KEY: f"{marker}-event", ledger.AT_KEY: 5},
+        {ledger.EVENT_KEY: ledger.SHARING_CONFIRMED, ledger.AT_KEY: ledger.stamp(), marker: 1},
+    ]:
+        with pytest.raises(store.StoreError) as refused:
+            store._refuse_a_malformed_line(event, 2, where)
+        assert marker not in str(refused.value), str(refused.value)
+
+
+def test_the_store_check_names_a_line_the_gate_now_refuses(conn, root, by_hand, monkeypatch):
+    """A line an earlier version applied that today's rule refuses is named
+    by ``check`` on the day of the upgrade (decision 187), without the store
+    being deleted to find it: every line of every journal is judged again."""
+    build(conn, root, by_hand)
+    runaway = ledger.new(ledger.RULES_CHANGED, rules=[_a_rule(date_pattern=r"(\d+)+x")])
+    monkeypatch.setattr(store, "_refuse_a_malformed_line", lambda *args, **kwargs: None)
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, runaway)
+    monkeypatch.undo()
+
+    problems = store.check(conn, root, by_hand)
+
+    assert len(problems) == 1
+    assert "line 2 of the record is malformed" in problems[0] and "'date_pattern'" in problems[0]
+
+
+def test_an_old_closed_copy_without_a_digest_is_still_admitted(conn, root, by_hand):
+    """A copy intent with no fingerprint, closed by the row it wrote, is
+    history from an earlier version and not an instruction: the store admits
+    it, and only an open one is refused - where it would be carried out."""
+    build(conn, root, by_hand)
+    copy = {ledger.OP_KEY: ledger.OP_COPY, ledger.FROM_KEY: A_ROW_ORIGINAL,
+            ledger.TO_KEY: "Prepared/A01 - W-2.pdf", ledger.DIGEST_KEY: ""}
+    moving = ledger.new(ledger.MOVING, key=A_ROW_ORIGINAL, ops=[copy], by=ledger.BY_PASS,
+                        row=a_row(), then=ledger.FILED)
+    filed = ledger.new(ledger.FILED, key=A_ROW_ORIGINAL, row=a_row())
+
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, moving, filed)
+
+    assert said(conn, root, by_hand) == []
