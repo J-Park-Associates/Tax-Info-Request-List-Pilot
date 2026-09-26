@@ -19,7 +19,8 @@ same folder as the store, so no test reads the checkout's ``settings.json``
 **And the suite can never see a real root** (decision 185). The session
 points itself at a folder of its own before collection, and a tripwire
 (``tests/tripwire/sitecustomize.py``), armed here and in every Python child
-the suite starts, stops and records any reach for a place
+that inherits the suite's environment (the tripwire's docstring lists what
+escapes), stops and records any reach for a place
 :func:`real_places` names; any record, or any folder the session leaves in
 the checkout, fails the whole session.
 
@@ -633,7 +634,8 @@ def pytest_configure(config):
     patch.setenv("PYTHONPATH", os.pathsep.join(
         [str(TRIPWIRE_DIR), *filter(None, [os.environ.get("PYTHONPATH")])]))
     before = checkout_folders(REPO, places)
-    # In-process: SEEN, and every Python child this process starts is judged.
+    # In-process: SEEN, and a Python child this process starts through a
+    # watched route is judged (the tripwire's docstring lists the routes).
     # The log is written only from a process this one forks (a fork that execs).
     tripwire.install(tripwire.prepare(places), log=str(log), children=os.environ[tripwire.ENV_TRIPWIRE])
     config.stash[_STATE] = {"patch": patch, "session": session, "log": log,

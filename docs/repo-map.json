@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 160,
     "edges": 993,
-    "reused": 114
+    "reused": 119
   },
   "node_types": [
     "artifact",
@@ -3362,7 +3362,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "c4c7ef9f6562a86c",
+      "sha256": "d265303ea9f5e378",
       "lines": 435,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -3380,7 +3380,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "34b95c73137b4467",
+      "sha256": "652a05010ec96929",
       "lines": 984,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -3745,8 +3745,8 @@
       "id": "tests/conftest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "0a4fe76bc827c4ef",
-      "lines": 776,
+      "sha256": "c421de55c136ce57",
+      "lines": 778,
       "exports": [
         "APP_FOLDER",
         "ENV_OFFICE_SHAPED_FULL",
@@ -6834,8 +6834,8 @@
       "id": "tests/test_tripwire.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "dc07096ac561c441",
-      "lines": 491,
+      "sha256": "71754f818f233d6d",
+      "lines": 492,
       "exports": [
         "ALL_PASS",
         "CANARIES",
@@ -7006,7 +7006,7 @@
       "id": "tests/tripwire/sitecustomize.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "b7b083801eb9d68e",
+      "sha256": "bf7073a77691dae8",
       "lines": 410,
       "cli": "python -m tests.tripwire.sitecustomize",
       "exports": [
@@ -7029,7 +7029,7 @@
         "SPAWNV_PASSFDS": "'multiprocessing.util.spawnv_passfds'",
         "UNARMED": "'unarmed Python child'"
       },
-      "role": "The suite's tripwire (decision 185): an audit hook that stops and records any open, listing, folder creation, move, removal, copy, link or SQLite connection at a guarded place, and in the pytest process records every Python child started around it; imported by conftest in the pytest process and found as sitecustomize on PYTHONPATH by every Python child.",
+      "role": "The suite's tripwire (decision 185): an audit hook that stops and records any open, listing, folder creation, move, removal, copy, link or SQLite connection at a guarded place, and in the pytest process records a Python child started around it through a watched route; imported by conftest in the pytest process and found as sitecustomize on PYTHONPATH by every Python child that inherits the suite's environment.",
       "notes": "In the pytest process (install(children=..., log=...)) it watches subprocess.Popen, os.posix_spawn, os.spawn, os.exec (also from a process it forked - fork then exec, POSIX os.spawn* - which writes the session log since its SEEN dies with it), _winapi.CreateProcess (multiprocessing on Windows) and, wrapped because it raises no audit event, multiprocessing.util.spawnv_passfds (multiprocessing on POSIX, the reading child): a Python child (this interpreter after realpath, or a program named python*) whose environment lacks the session's TRACKER_TEST_TRIPWIRE, whose PYTHONPATH does not begin with this session's tripwire folder, or whose flags carry -I, -E or -S is recorded as an unarmed Python child and fails the session - recorded, never raised. A nested session in the office-shaped copy is its own session and judges its children against the copy's folder. A verbatim Windows prefix (\\\\?\\, \\\\?\\UNC\\) is stripped before comparing. It does not see non-Python children, a Python child started by a Python child, a Python child started through a non-Python launcher (a shell, env, the py launcher, a bare PATH name not starting with python), a direct _posixsubprocess.fork_exec outside multiprocessing.util, a native library's own opens, os.stat/exists, an alias that does not carry the place's name (an 8.3 short name, \\\\localhost\\C$\\... or \\\\.\\C:\\...), the clients root a real settings file names (guarded only because that file cannot be read), or deliberate evasion (ctypes): a guard rail in the suite, not a wall. And a relative name given to os.open (how shutil.rmtree walks with dir_fd) is not judged, since the event does not carry the descriptor. Standard library only, imports nothing of the package, so a child is armed before its first import."
     },
     {

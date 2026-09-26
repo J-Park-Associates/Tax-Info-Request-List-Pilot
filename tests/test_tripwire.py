@@ -2,7 +2,8 @@
 
 The claim: every test, and the collection before any test, runs against a
 settings folder and a store of its own; a tripwire armed in the pytest
-process and in every Python child the suite starts stops and records any
+process and in every Python child that inherits the suite's environment
+stops and records any
 reach for a place where a real settings file, store, scratch folder or
 client tree resolves on this machine, and such a reach - or a folder the
 session leaves in the checkout - fails the whole session, even when the test

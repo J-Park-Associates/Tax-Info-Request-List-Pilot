@@ -19,7 +19,7 @@ test swallowed the error.
 
 **One module for both.** The pytest process imports it as
 ``tests.tripwire.sitecustomize`` and installs it itself; every Python child
-finds it as ``sitecustomize`` on ``PYTHONPATH`` and arms itself from
+that inherits the suite's environment finds it as ``sitecustomize`` on ``PYTHONPATH`` and arms itself from
 :data:`ENV_TRIPWIRE` at start-up, before its first import. So it is standard
 library only and imports nothing of the package or the tests: a child may
 start anywhere.
@@ -350,8 +350,8 @@ def install(prepared: tuple, log: str | None, *, children: str | None = None) ->
     raise :class:`TripwireError`, which stops the operation.
 
     ``children`` is the session's :data:`ENV_TRIPWIRE` value, given only by
-    the pytest process: every Python child started without it, or without
-    this folder first on its path, is recorded (never raised on). The
+    the pytest process: a Python child started through a watched route
+    without it, or without this folder first on its path, is recorded (never raised on). The
     pytest process passes its ``log`` too, which only a process it forks
     writes (:func:`_record`)."""
     owner = os.getpid() if children is not None else None
