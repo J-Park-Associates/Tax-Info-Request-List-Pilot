@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 154,
     "edges": 951,
-    "reused": 116
+    "reused": 117
   },
   "node_types": [
     "artifact",
@@ -93,10 +93,10 @@
       "id": ".github/workflows/gate.yml",
       "type": "workflow",
       "layer": "ci",
-      "sha256": "1caf19e5b30a54a0",
-      "lines": 99,
+      "sha256": "7443cee687fedc98",
+      "lines": 100,
       "role": "The gate's steps, written once: the test suite, the linter, `repo_map.py check`, `vocab_report.py check` and `node --check` on the three Electron files, on whichever runner and interpreter the caller names. Called by both of ci.yml's jobs.",
-      "notes": "Decision 122. `on: workflow_call` with two required string inputs, os and python-version; the job carries timeout-minutes: 45, the ceiling that stops a hung job (decision 207: the Windows suite measured 26 to 28 minutes on main on 2026-09-26, 159's tests took a healthy run past the old 30, and a cut-off run is billed in full). It exists because a job's own `if:` cannot see the matrix, which makes ci.yml two jobs rather than one conditional matrix - and the steps written out in each of them would be two copies of the gate, the second one to drift. Its job is named for the runner and the interpreter it was given, so the check names read as they did before the split. Every step after the suite reports whatever the suite did, and keeps its point: a stale map and a failing test are separate problems, and seeing both in one run beats finding the second after fixing the first. Decision 137 (B3): every action is pinned by a full commit SHA with its tag beside it (tests/test_build.py holds every workflow to it). Decision 191: it installs requirements.lock then requirements-nodeps.lock with --require-hashes, using the runner's own pip (no --upgrade pip), caches on the lock files, and its checkout keeps no credentials (F-12)."
+      "notes": "Decision 122. `on: workflow_call` with two required string inputs, os and python-version; the job carries timeout-minutes: 60, the ceiling that stops a hung job (decision 207: the Windows suite measured 26 to 28 minutes on main on 2026-09-26, 159's tests took a healthy run past the old 30 and near 45, and a cut-off run is billed in full; Jason set 60). It exists because a job's own `if:` cannot see the matrix, which makes ci.yml two jobs rather than one conditional matrix - and the steps written out in each of them would be two copies of the gate, the second one to drift. Its job is named for the runner and the interpreter it was given, so the check names read as they did before the split. Every step after the suite reports whatever the suite did, and keeps its point: a stale map and a failing test are separate problems, and seeing both in one run beats finding the second after fixing the first. Decision 137 (B3): every action is pinned by a full commit SHA with its tag beside it (tests/test_build.py holds every workflow to it). Decision 191: it installs requirements.lock then requirements-nodeps.lock with --require-hashes, using the runner's own pip (no --upgrade pip), caches on the lock files, and its checkout keeps no credentials (F-12)."
     },
     {
       "id": "rule:no-AI-on-client-documents",
@@ -3210,7 +3210,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "0bc61691eca9ef33",
+      "sha256": "c4e05c7d79beb320",
       "lines": 429,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -3228,7 +3228,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "b2a085c6ce27778d",
+      "sha256": "88c7180cefae09a1",
       "lines": 936,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."

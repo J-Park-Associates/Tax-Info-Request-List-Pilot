@@ -30,10 +30,11 @@ jobs:
     runs-on: ${{ inputs.os }}
     # A ceiling that stops a hung job, not a target. The Windows suite
     # measured 26 to 28 minutes on main on 2026-09-26, and decision 159's
-    # tests took it past 30, so a healthy run was cut off and proved
-    # nothing. A cut-off run is billed its full 30 minutes anyway, so 45
-    # costs no more than 30 did; a real hang still stops.
-    timeout-minutes: 45
+    # tests took it past 30 and then near 45, so a healthy run was cut off
+    # and proved nothing. A cut-off run is billed in full anyway, and a run
+    # is billed for the minutes it uses, so 60 costs nothing a healthy run
+    # would not; a real hang still stops (Jason, 2026-09-26: 60 minutes).
+    timeout-minutes: 60
     steps:
       # Every action is pinned by the commit its tag named when it was
       # pinned (decision 137, B3): a tag can be moved to other code, a
