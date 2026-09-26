@@ -64,7 +64,8 @@ learned keywords and how many engagements typed each, and each custom row
 (a request added by hand) only by its number and its counts, never its
 document or its keywords - `--engagements` names the engagements, prints the
 custom rows' documents and keywords, and says why any engagement could not be
-read, so a keyword several engagements had
+read, and writes only into a file `--out` names outside the repository, never
+to the screen, where an AI session would read the names (decision 185, J1), so a keyword several engagements had
 to be taught separately can be promoted into `tracker/templates.py`, where
 the suite defends it. It can run each candidate over the IRS forms in
 `tests/irs/` first, and marks the ones that would misfile a form the suite

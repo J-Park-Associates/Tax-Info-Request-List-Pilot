@@ -58,6 +58,12 @@ default output: the catalog rows' learned keywords are words a person
 typed, and one can be a client's employer or a lender's name. They are the
 report's purpose and stay.
 
+**Names go only into a file** (Jason's decision J1 of decision 185).
+``--engagements`` is refused unless ``--out`` names a file outside the
+repository, before anything is read. A console is where an AI session
+reads, and a client's name that reaches one is in its transcript; a file a
+person chose to write is read by a person (security principle 11).
+
 ``--lint`` runs each candidate over the blank forms in ``tests/irs/`` the
 way ``tools/vocab_report.py`` runs the catalog's own keywords - the same
 extraction, the same :func:`tracker.content_check.says`, about thirty seconds -
@@ -71,7 +77,7 @@ its keywords are only ever reported as said, never as misfiling.
 
     python tools/learned_keywords.py                     # the clients root the settings file names
     python tools/learned_keywords.py "D:\\Clients"       # or one named here
-    python tools/learned_keywords.py --engagements       # name the engagements, not just count them
+    python tools/learned_keywords.py --engagements --out D:\\learned.md   # name the engagements, into a file only
     python tools/learned_keywords.py --lint              # mark the ones that would misfile a known form
 """
 
@@ -112,6 +118,9 @@ from tracker.settings import (  # noqa: E402
 FLAG_INACTIVE = "inactive"
 #: How a keyword's reach is said, per engagement count and per corpus form.
 CARRIED_BY = "{n} engagement(s)"
+#: Why ``--engagements`` without ``--out`` is refused (decision 185, J1).
+ENGAGEMENTS_NEED_A_FILE = ("--engagements names clients, so it writes only into a file: add --out <file> "
+                           "outside the repository")
 MISFILE = "would misfile: {form} {placement}"
 FILES_AS = "files as {identifier} in the {catalog} catalog"
 PARKS = "parks in the {catalog} catalog"
@@ -385,7 +394,7 @@ def render(report: Report, *, engagements: bool = False) -> str:
               + (", listed with each row's document." if engagements else
                  ". A hand-typed request and its keywords can echo a client's own words, so each row "
                  "is counted here by number - how many keywords, how many engagements - and "
-                 "--engagements lists its document and its keywords."), ""]
+                 "--engagements (into a file) lists its document and its keywords."), ""]
     for number, row in enumerate(report.custom, start=1):
         if engagements:
             lines += [f"### {row.label} — {CUSTOM_ROW}", ""]
@@ -408,7 +417,7 @@ def render(report: Report, *, engagements: bool = False) -> str:
         # Counted, never named: the folder is a client's name and the
         # problem can quote the record (decision 185).
         lines.append(f"{len(report.problems)} engagement(s) could not be read; "
-                     "--engagements names them and says why.")
+                     "--engagements (into a file) names them and says why.")
     else:
         lines.append(NONE)
     lines.append("")
@@ -461,10 +470,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", default="",
                         help="write the report to this file instead of printing it; never inside the repository")
     parser.add_argument("--engagements", action="store_true",
-                        help="name the engagement folders carrying each keyword (they carry client names)")
+                        help="name the engagement folders carrying each keyword (they carry client names); needs --out")
     parser.add_argument("--lint", action="store_true",
                         help="run each keyword over the IRS forms in tests/irs/ and mark one that would misfile")
     ns = parser.parse_args(argv)
+    if ns.engagements and not ns.out:
+        print(f"learned_keywords: {ENGAGEMENTS_NEED_A_FILE}", file=sys.stderr)
+        return 2
 
     try:
         target = out_path(ns.out) if ns.out else None

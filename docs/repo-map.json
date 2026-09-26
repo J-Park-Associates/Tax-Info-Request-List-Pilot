@@ -3362,7 +3362,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "d265303ea9f5e378",
+      "sha256": "eaf9e52711ba551b",
       "lines": 435,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -3380,7 +3380,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "652a05010ec96929",
+      "sha256": "235ed84d53da8d6e",
       "lines": 984,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -3407,8 +3407,8 @@
       "id": "docs/tools.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "3c0dca44cf2670a8",
-      "lines": 106
+      "sha256": "5e3c3391d449852c",
+      "lines": 107
     },
     {
       "id": "docs/vocab-coverage.json",
@@ -5107,8 +5107,8 @@
       "id": "tests/test_learned_keywords.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "206b0a5329e73bbc",
-      "lines": 361,
+      "sha256": "ff6e116a1cc1aff9",
+      "lines": 382,
       "exports": [
         "CARRIED",
         "REPO",
@@ -5130,6 +5130,7 @@
         "test_lint_marks_a_keyword_that_would_misfile_a_corpus_form_and_leaves_the_rest_alone",
         "test_the_default_output_counts_engagements_and_the_flag_names_them",
         "test_the_default_output_names_no_client_no_folder_and_no_problem_text",
+        "test_the_engagements_are_named_only_into_a_file_never_onto_the_screen",
         "test_the_out_path_is_resolved_against_the_working_folder",
         "test_the_report_drops_a_keyword_that_was_unlearned",
         "test_the_report_writes_nothing_under_the_repository_and_refuses_an_out_path_inside_it",
@@ -7137,14 +7138,15 @@
       "id": "tools/learned_keywords.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "ccff904206a834bb",
-      "lines": 489,
+      "sha256": "0d7b02052f0e1d6e",
+      "lines": 501,
       "cli": "python -m tools.learned_keywords",
       "exports": [
         "CARRIED_BY",
         "CUSTOM_COUNTS",
         "CUSTOM_ROW",
         "CUSTOM_ROW_NUMBERED",
+        "ENGAGEMENTS_NEED_A_FILE",
         "FILES_AS",
         "FLAG_INACTIVE",
         "IN_CATALOGS",
@@ -7170,6 +7172,7 @@
       "constants": {
         "FLAG_INACTIVE": "'inactive'",
         "CARRIED_BY": "'{n} engagement(s)'",
+        "ENGAGEMENTS_NEED_A_FILE": "'--engagements names clients, so it writes only into a file: add --out <file> outside the repository'",
         "MISFILE": "'would misfile: {form} {placement}'",
         "FILES_AS": "'files as {identifier} in the {catalog} catalog'",
         "PARKS": "'parks in the {catalog} catalog'",
@@ -7181,7 +7184,7 @@
         "NONE": "'- none'"
       },
       "role": "Lists what the staff taught the router: every keyword a person taught one engagement's request that no catalog row with the same identifier and document carries, across every engagement under the clients root, grouped by request row with the number of engagements that typed it.",
-      "notes": "Decision 79. A keyword a filing teaches lives in that one engagement's record, so fifty engagements hold fifty private vocabularies and the catalog is the only one tests/test_catalog.py and tests/test_irs_forms.py defend; this is the season's list of candidates to promote. Read-only in the strong sense: no lock is taken, nothing in an engagement folder is written or moved, and a report path inside the repository is refused - an engagement folder name is a client's name and the report names them on request. The engagement's details have recorded the catalog form since decision 86, but this tool does not read it: a row is compared against every catalog holding it and the report says which matched; a row no catalog holds is a custom request, listed apart with all its keywords. An engagement whose record could not be read is a problem line, never a silent skip. It borrows shipped_catalogs() and corpus_documents() from tools/vocab_report.py, so the catalogs it compares against - built through manifest.validated() over template_items() since decision 104 - and the corpus a candidate can be run over are the coverage report's. manifest_rows() reads through manifest.load_manifest(), which is what puts a taught keyword in front of any reader at all. Decision 185: the default output carries no root, folder or problem text; --engagements names them."
+      "notes": "Decision 79. A keyword a filing teaches lives in that one engagement's record, so fifty engagements hold fifty private vocabularies and the catalog is the only one tests/test_catalog.py and tests/test_irs_forms.py defend; this is the season's list of candidates to promote. Read-only in the strong sense: no lock is taken, nothing in an engagement folder is written or moved, and a report path inside the repository is refused - an engagement folder name is a client's name and the report names them on request. The engagement's details have recorded the catalog form since decision 86, but this tool does not read it: a row is compared against every catalog holding it and the report says which matched; a row no catalog holds is a custom request, listed apart with all its keywords. An engagement whose record could not be read is a problem line, never a silent skip. It borrows shipped_catalogs() and corpus_documents() from tools/vocab_report.py, so the catalogs it compares against - built through manifest.validated() over template_items() since decision 104 - and the corpus a candidate can be run over are the coverage report's. manifest_rows() reads through manifest.load_manifest(), which is what puts a taught keyword in front of any reader at all. Decision 185: the default output carries no root, folder or problem text; --engagements names them, and only into a file --out names outside the repository, never onto a console (Jason's J1 (b))."
     },
     {
       "id": "tools/lockfiles.py",

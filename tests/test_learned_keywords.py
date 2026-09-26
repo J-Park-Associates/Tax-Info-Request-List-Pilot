@@ -212,8 +212,29 @@ def test_the_default_output_counts_engagements_and_the_flag_names_them(tmp_path,
     assert "Willowbrook Family Trust" not in counted
     assert line_for(counted, SAID_BY_NOTHING).endswith("1 engagement(s)")
 
-    assert main([str(root), "--engagements"]) == 0
-    assert f"  - {label}" in capsys.readouterr().out
+    named = tmp_path / "learned.md"
+    assert main([str(root), "--engagements", "--out", str(named)]) == 0
+    assert f"  - {label}" in named.read_text(encoding="utf-8")
+    assert "Willowbrook Family Trust" not in capsys.readouterr().out
+
+
+def test_the_engagements_are_named_only_into_a_file_never_onto_the_screen(tmp_path, capsys):
+    """Jason's decision J1 (decision 185): a console is where an AI session
+    reads, so the names go only into a file a person chose, outside the
+    repository; the refusal comes before anything is read."""
+    from learned_keywords import ENGAGEMENTS_NEED_A_FILE
+
+    root = tmp_path / "Clients"
+    taught(engagement(root, "Willowbrook Family Trust"), "A01", SAID_BY_NOTHING)
+
+    assert main([str(root), "--engagements"]) == 2
+    said = capsys.readouterr()
+    assert ENGAGEMENTS_NEED_A_FILE in said.err
+    assert "Willowbrook" not in said.out + said.err
+    assert main([str(tmp_path / "nowhere"), "--engagements"]) == 2
+    assert ENGAGEMENTS_NEED_A_FILE in capsys.readouterr().err
+    assert main([str(root), "--engagements", "--out", str(REPO / "docs" / "learned.md")]) == 2
+    assert not (REPO / "docs" / "learned.md").exists()
 
 
 def test_an_engagement_the_run_would_not_chase_is_still_read_and_is_flagged(tmp_path):
@@ -295,7 +316,7 @@ def test_the_report_writes_nothing_under_the_repository_and_refuses_an_out_path_
     taught(engagement(root, "Smith 2025"), "A01", SAID_BY_NOTHING)
 
     before = checkout_snapshot(REPO, real_places(REPO))
-    assert main([str(root), "--engagements"]) == 0
+    assert main([str(root), "--engagements", "--out", str(tmp_path / "named.md")]) == 0
     capsys.readouterr()
     assert checkout_snapshot(REPO, real_places(REPO)) == before
 
