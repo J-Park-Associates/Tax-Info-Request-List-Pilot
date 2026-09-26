@@ -2988,7 +2988,15 @@ def test_a_new_return_or_a_roll_forward_never_makes_a_gone_client_folder_again(
     (tmp_path / CLIENTS_TREE / "Test Household").rename(tmp_path / CLIENTS_TREE / "Test Hh")
     household = tmp_path / PRIVATE_TREE / "Test Household"
     said = CLIENT_FOLDER_MISSING.format(name="Test Household")
-    before = sorted(tmp_path.rglob("*"))
+    # The app's own folder (the store, the checkpoint, and since decision
+    # 193 the error log that 159's "checkpoint seeded" warning lands in) is
+    # not a client folder: the claim is about the two trees.
+    app = tmp_path / "app"
+
+    def folders():
+        return sorted(path for path in tmp_path.rglob("*") if app not in path.parents)
+
+    before = folders()
 
     def api_run(*argv, stdin):
         with pytest.MonkeyPatch.context() as mp:
@@ -3012,7 +3020,7 @@ def test_a_new_return_or_a_roll_forward_never_makes_a_gone_client_folder_again(
     with pytest.raises(SystemExit):
         runpy.run_module("tracker.rollover", run_name="__main__")
     assert said in console.getvalue()
-    assert sorted(tmp_path.rglob("*")) == before
+    assert folders() == before
 
 
 def test_roll_forward_refuses_a_stopped_household_with_its_own_sentence(tmp_path, samples):
