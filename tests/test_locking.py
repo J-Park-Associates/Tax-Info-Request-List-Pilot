@@ -782,6 +782,112 @@ def test_a_breaker_is_released_only_by_the_run_whose_token_it_holds(tmp_path, ca
     assert "replaced by another run" in caplog.text
 
 
+
+def _refuse_deleting(monkeypatch, target, times):
+    """Refuse ``target``'s delete ``times`` times, as Windows does while
+    another process has the file open (a sharing violation), then let it
+    go. Every refusal is counted in the list returned."""
+    import pathlib
+
+    import tracker.locking as locking_module
+
+    refused = []
+    real_unlink = pathlib.Path.unlink
+
+    def unlink(self, missing_ok=False):
+        if self == target and len(refused) < times:
+            refused.append(self.name)
+            raise PermissionError(13, "The process cannot access the file because it is "
+                                      "being used by another process", str(self))
+        return real_unlink(self, missing_ok=missing_ok)
+
+    monkeypatch.setattr(pathlib.Path, "unlink", unlink)
+    monkeypatch.setattr(locking_module, "_RELEASE_RETRY_DELAY", 0)
+    monkeypatch.setattr(locking_module, "_CHANGING_HANDS_DELAY", 0)
+    return refused
+
+
+def test_a_breaker_another_racer_is_reading_is_still_removed_on_release(tmp_path, monkeypatch):
+    """Decision 159, Windows: the race on windows-latest left the breaker
+    behind - its delete refused because a losing racer had it open for the
+    moment of judging it. The release waits that out."""
+    import tracker.locking as locking_module
+
+    lock = tmp_path / LOCK_FILENAME
+    breaker, token = locking_module._take_breaker(lock)
+    refused = _refuse_deleting(monkeypatch, breaker, 2)
+    locking_module._release_breaker(breaker, token)
+    assert refused == [breaker.name] * 2
+    assert not breaker.exists()
+
+
+
+@on_windows
+def test_a_breaker_open_in_another_hand_for_a_moment_is_still_removed(tmp_path):
+    """The same on Windows itself, with a real open handle rather than a
+    stand-in: a reader holds the breaker open for a tenth of a second while
+    it is released, and the release still removes it."""
+    import threading
+
+    import tracker.locking as locking_module
+
+    lock = tmp_path / LOCK_FILENAME
+    breaker, token = locking_module._take_breaker(lock)
+    reading = open(breaker, "rb")                              # noqa: SIM115 - held on purpose
+    threading.Timer(0.1, reading.close).start()
+    locking_module._release_breaker(breaker, token)
+    assert reading.closed and not breaker.exists()
+
+
+def test_a_dead_lock_another_racer_is_reading_is_still_replaced(tmp_path, monkeypatch):
+    """Decision 159, Windows: a delete of the stale lock refused for a moment
+    is a racer reading it, not its owner - the take goes on and holds it."""
+    import tracker.locking as locking_module
+
+    lock = tmp_path / LOCK_FILENAME
+    lock.write_text(lock_line(_a_dead_pid(), dt.datetime.now()), encoding="utf-8")
+    refused = _refuse_deleting(monkeypatch, lock, 1)
+    taken = acquire_lock(tmp_path)
+    try:
+        assert refused == [lock.name] and locking_module.holds(tmp_path)
+        assert not locking_module.breaker_of(lock).exists()
+    finally:
+        release_lock(taken)
+
+
+def test_a_dead_lock_whose_delete_is_always_refused_is_refused_as_held(tmp_path, monkeypatch):
+    """The owner keeps it open: a delete refused every time is a lock still
+    held, refused by name, and the lock and the breaker are left as they were."""
+    import tracker.locking as locking_module
+
+    lock = tmp_path / LOCK_FILENAME
+    text = lock_line(_a_dead_pid(), dt.datetime.now())
+    lock.write_text(text, encoding="utf-8")
+    _refuse_deleting(monkeypatch, lock, 10_000)
+    with pytest.raises(EngagementLockedError, match="still held by a running process"):
+        acquire_lock(tmp_path)
+    assert lock.read_text(encoding="utf-8") == text
+    assert not locking_module.breaker_of(lock).exists()
+
+
+def test_a_racer_that_cannot_delete_an_abandoned_breaker_gives_up_its_claim(tmp_path, monkeypatch):
+    """Decision 159, Windows: a clear refused every time leaves the abandoned
+    breaker, and its marker goes too - kept, it would refuse every later
+    claim on that breaker, and no stale take of the lock could ever happen."""
+    import tracker.locking as locking_module
+
+    lock = tmp_path / LOCK_FILENAME
+    breaker = locking_module.breaker_of(lock)
+    breaker.write_text(lock_line(_a_dead_pid(), dt.datetime.now()), encoding="utf-8")
+    judged = locking_module._look(breaker)
+    refused = _refuse_deleting(monkeypatch, breaker, locking_module._CHANGING_HANDS_ATTEMPTS)
+    assert locking_module._clear_abandoned(breaker, judged) is False
+    assert len(refused) == locking_module._CHANGING_HANDS_ATTEMPTS and breaker.exists()
+    assert not list(tmp_path.glob(breaker.name + locking_module.BREAKER_CLEARED_INFIX + "*"))
+    assert locking_module._clear_abandoned(breaker, judged) is True       # the next claim clears it
+    assert not breaker.exists()
+
+
 def test_old_clearing_markers_are_swept_by_the_next_breaker(tmp_path):
     import tracker.locking as locking_module
 

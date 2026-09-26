@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 154,
     "edges": 951,
-    "reused": 116
+    "reused": 118
   },
   "node_types": [
     "artifact",
@@ -402,8 +402,8 @@
       "id": "tracker/checkpoint.py",
       "type": "module",
       "layer": "core",
-      "sha256": "6785ee6e99cafbcd",
-      "lines": 543,
+      "sha256": "424ac0e3521dad71",
+      "lines": 575,
       "cli": "python -m tracker.checkpoint",
       "exports": [
         "BUSY",
@@ -1311,8 +1311,8 @@
       "id": "tracker/locking.py",
       "type": "module",
       "layer": "core",
-      "sha256": "6528dec83d3321dd",
-      "lines": 1119,
+      "sha256": "31afa390fbcf3ee1",
+      "lines": 1184,
       "cli": "python -m tracker.locking",
       "exports": [
         "BOOT_MARGIN_SECONDS",
@@ -1357,7 +1357,7 @@
         "RACE_SHAPES": "('dead lock', 'dead lock behind an abandoned breaker', 'old empty lock')"
       },
       "role": "One lock per engagement (LOCK_FILENAME, O_EXCL, stale after STALE_LOCK_SECONDS), held by runner.run_engagement() across a whole pass, by the filer or the scanner on its own when either is run alone, and by the manifest's two writes. EngagementLock (the open handle and its token), EngagementLockedError; engagement_lock() context manager, taken before the request list, the record or the drop folder is read.",
-      "notes": "Exists because two runs on one engagement (scheduler repeat overlapping a desktop click) raced on the same originals and the loser's rows were written from a stale picture. The filer moves and records; the scanner records statuses; the manifest records a person's edit (decision 104) - all under this one lock, one protocol. Dry runs never take it. The descriptor stays open while held (Windows then refuses to delete it, so a stale-looking lock its owner still holds is refused) and release_lock() removes the file only if it still carries this run's token. RUN_TIME_LIMIT_SECONDS is the one number for how long a scheduled pass may run: tracker.scheduling renders it as the task's ExecutionTimeLimit and STALE_LOCK_SECONDS is derived above it. One machine per clients root: a lock file synced between two machines is not a lock. lock_status()/clear_stale_lock() back the app's lock notice. Decision 54: pid_alive() - a lock whose owner process is gone is stale at any age. Decision 56: the lock line carries host=; another host's pid is unknowable, never dead. Decision 59: a lock that cannot be deleted on release is marked RELEASED_LINE. Decision 102: the lock is not re-entrant - it is an O_EXCL file - so the steps a pass makes take a lock_held flag and skip taking it, and a writer that may be reached with the lock already held (manifest.save_rules(), the journal's append) asks lock_is_held() rather than taking it twice. Decision 115: the machine's name in the lock line comes from platform.node(), not from the socket module - the same name, and the package imports no network module. Decision 137 (L6): the module docstring states that the stale-lock rules rest on the one-machine rule - another host's lock is left to the age rule, whose promise is this machine's schedule's. Decision 171 (the Drive test's F1 and F2): on Google Drive a contended unlink can report success and leave the file, so release_lock() reads the file back - only FileNotFoundError proves it went, a refused read is looked at again - and treats its own token still there like a refused delete (retry, then RELEASED_LINE); the file is read again before every retried delete; a module-level Counter of the exact tokens this process holds (by token, not path: no second spelling hides a held lock, and a release removes only its own), behind a threading.Lock kept as insurance (the app runs one tracker process per command, no threads), makes a lock naming this process whose text is not a held token a leftover to replace - one process takes the same lock twice in ordinary work (an app command then its _rescan; a fed return in two household passes) - while a held token is still refused; and a PermissionError from the O_EXCL create is changing hands only while something is at the name (retried up to _CHANGING_HANDS_ATTEMPTS times, then EngagementLockedError 'is changing hands'): refused with the name free, once more at once, and then the original PermissionError goes to the caller, a run error, never a quiet skip. Decision 189 (SPEC-161 A-F3): acquire_lock() fsyncs the lock line; LockStatus.owner_gone is the one judgement (made by _status_from() from the very handle decision 159's breaker compares, and asked by the take, lock_status(), clear_stale_lock() and a breaker's abandonment alike): released; unwritten (empty, no pid=) and older than EMPTY_LOCK_SECONDS (60); or this host's and started more than BOOT_MARGIN_SECONDS (120) before boot_time() (GetTickCount64 on Windows, /proc/uptime elsewhere, None and no boot rule when neither reads; the suite replaces it) or its pid gone. Another host's lock keeps the age rule. Decision 159 (part 2): the stale take is atomic through an O_EXCL breaker (breaker_of); an abandoned breaker is cleared by exactly one racer through an O_EXCL marker named for its identity (text, mtime_ns, inode from one handle), markers swept after BREAKER_STALE_SECONDS; an empty text never compares equal on text alone. The write guard is holds(): a token this process took, with a per-take random id, recorded against the lock path it was written to and matched by samefile - lock_is_held() now answers from it, which is 171's 'left for 159'. this_host() names the machine for the record's host key, and is_this_host() is the one comparison of a host (any case, spaces stripped); LockStatus.owner_gone asks it. The race CLI (python -m tracker.locking race <folder>) takes RACE_LOCK_FILENAME, never a return's own lock, and is Jason's live check L1."
+      "notes": "Exists because two runs on one engagement (scheduler repeat overlapping a desktop click) raced on the same originals and the loser's rows were written from a stale picture. The filer moves and records; the scanner records statuses; the manifest records a person's edit (decision 104) - all under this one lock, one protocol. Dry runs never take it. The descriptor stays open while held (Windows then refuses to delete it, so a stale-looking lock its owner still holds is refused) and release_lock() removes the file only if it still carries this run's token. RUN_TIME_LIMIT_SECONDS is the one number for how long a scheduled pass may run: tracker.scheduling renders it as the task's ExecutionTimeLimit and STALE_LOCK_SECONDS is derived above it. One machine per clients root: a lock file synced between two machines is not a lock. lock_status()/clear_stale_lock() back the app's lock notice. Decision 54: pid_alive() - a lock whose owner process is gone is stale at any age. Decision 56: the lock line carries host=; another host's pid is unknowable, never dead. Decision 59: a lock that cannot be deleted on release is marked RELEASED_LINE. Decision 102: the lock is not re-entrant - it is an O_EXCL file - so the steps a pass makes take a lock_held flag and skip taking it, and a writer that may be reached with the lock already held (manifest.save_rules(), the journal's append) asks lock_is_held() rather than taking it twice. Decision 115: the machine's name in the lock line comes from platform.node(), not from the socket module - the same name, and the package imports no network module. Decision 137 (L6): the module docstring states that the stale-lock rules rest on the one-machine rule - another host's lock is left to the age rule, whose promise is this machine's schedule's. Decision 171 (the Drive test's F1 and F2): on Google Drive a contended unlink can report success and leave the file, so release_lock() reads the file back - only FileNotFoundError proves it went, a refused read is looked at again - and treats its own token still there like a refused delete (retry, then RELEASED_LINE); the file is read again before every retried delete; a module-level Counter of the exact tokens this process holds (by token, not path: no second spelling hides a held lock, and a release removes only its own), behind a threading.Lock kept as insurance (the app runs one tracker process per command, no threads), makes a lock naming this process whose text is not a held token a leftover to replace - one process takes the same lock twice in ordinary work (an app command then its _rescan; a fed return in two household passes) - while a held token is still refused; and a PermissionError from the O_EXCL create is changing hands only while something is at the name (retried up to _CHANGING_HANDS_ATTEMPTS times, then EngagementLockedError 'is changing hands'): refused with the name free, once more at once, and then the original PermissionError goes to the caller, a run error, never a quiet skip. Decision 189 (SPEC-161 A-F3): acquire_lock() fsyncs the lock line; LockStatus.owner_gone is the one judgement (made by _status_from() from the very handle decision 159's breaker compares, and asked by the take, lock_status(), clear_stale_lock() and a breaker's abandonment alike): released; unwritten (empty, no pid=) and older than EMPTY_LOCK_SECONDS (60); or this host's and started more than BOOT_MARGIN_SECONDS (120) before boot_time() (GetTickCount64 on Windows, /proc/uptime elsewhere, None and no boot rule when neither reads; the suite replaces it) or its pid gone. Another host's lock keeps the age rule. Decision 159 (part 2): the stale take is atomic through an O_EXCL breaker (breaker_of); an abandoned breaker is cleared by exactly one racer through an O_EXCL marker named for its identity (text, mtime_ns, inode from one handle), markers swept after BREAKER_STALE_SECONDS; an empty text never compares equal on text alone. On Windows a delete refused because another process has the file open for a moment (a racer reading it to judge it) is waited out: the breaker's release retries within the release budget, reading its token before every try, and the stale delete and the abandoned-breaker clear retry briefly; a clear still refused removes its own marker, so a later claim on that breaker can succeed (decision 159, Windows). The write guard is holds(): a token this process took, with a per-take random id, recorded against the lock path it was written to and matched by samefile - lock_is_held() now answers from it, which is 171's 'left for 159'. this_host() names the machine for the record's host key, and is_this_host() is the one comparison of a host (any case, spaces stripped); LockStatus.owner_gone asks it. The race CLI (python -m tracker.locking race <folder>) takes RACE_LOCK_FILENAME, never a return's own lock, and is Jason's live check L1."
     },
     {
       "id": "tracker/manifest.py",
@@ -2819,8 +2819,8 @@
       "id": "tracker/store.py",
       "type": "module",
       "layer": "core",
-      "sha256": "c8a6fdbbc378ed39",
-      "lines": 3770,
+      "sha256": "b82a926d2d6866b0",
+      "lines": 3805,
       "cli": "python -m tracker.store",
       "exports": [
         "ACCEPTED",
@@ -3210,7 +3210,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "31b0993b3eabddf4",
+      "sha256": "e6899db6811cbc4f",
       "lines": 429,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -3228,7 +3228,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "60b0b07a00fe1865",
+      "sha256": "b2a085c6ce27778d",
       "lines": 936,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -4911,8 +4911,8 @@
       "id": "tests/test_ledger.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "bfed710b86f5b4c9",
-      "lines": 1012,
+      "sha256": "44b78f16699b3af0",
+      "lines": 1017,
       "exports": [
         "A_ROW_ORIGINAL",
         "DAY1",
@@ -5022,12 +5022,16 @@
       "id": "tests/test_locking.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "f3204483820d3785",
-      "lines": 900,
+      "sha256": "4a1682f5fc62f85a",
+      "lines": 1006,
       "exports": [
+        "test_a_breaker_another_racer_is_reading_is_still_removed_on_release",
         "test_a_breaker_from_before_the_boot_is_abandoned_whatever_its_pid_says_now",
         "test_a_breaker_is_released_only_by_the_run_whose_token_it_holds",
         "test_a_breaker_left_by_a_dead_run_is_cleared",
+        "test_a_breaker_open_in_another_hand_for_a_moment_is_still_removed",
+        "test_a_dead_lock_another_racer_is_reading_is_still_replaced",
+        "test_a_dead_lock_whose_delete_is_always_refused_is_refused_as_held",
         "test_a_fresh_lock_blocks_a_second_run",
         "test_a_fresh_lock_is_refused_and_a_stale_one_cleared",
         "test_a_fresh_lock_of_a_live_owner_still_holds",
@@ -5045,6 +5049,7 @@
         "test_a_lock_without_a_readable_boot_falls_to_the_age_rule",
         "test_a_permission_error_while_taking_the_lock_is_a_lock_not_a_crash",
         "test_a_process_is_never_refused_by_its_own_leftover_lock",
+        "test_a_racer_that_cannot_delete_an_abandoned_breaker_gives_up_its_claim",
         "test_a_read_refused_after_the_delete_is_no_proof_it_went",
         "test_a_release_leaves_a_lock_another_run_took_alone",
         "test_a_release_whose_unlink_did_not_take_marks_the_lock_released",
@@ -6298,8 +6303,8 @@
       "id": "tests/test_store.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "51ff5d9628f024fc",
-      "lines": 3419,
+      "sha256": "30a39890da1c1b4c",
+      "lines": 3470,
       "exports": [
         "A_ROW_ORIGINAL",
         "DAY1",
@@ -6328,6 +6333,7 @@
         "key_of",
         "learned",
         "locate_original",
+        "one_value",
         "original_at",
         "recorded",
         "recorded_root",
@@ -6345,6 +6351,7 @@
         "test_a_failed_create_is_forgotten_and_a_retired_event_is_refused",
         "test_a_failure_after_the_journal_leaves_the_store_behind_and_sync_catches_it_up",
         "test_a_file_that_is_not_a_database_is_a_store_error_not_a_raw_one",
+        "test_a_file_that_will_not_open_is_not_held_open_after_the_refusal",
         "test_a_folder_nested_under_the_clients_root_is_never_another_engagement",
         "test_a_folder_outside_the_layout_still_keys_by_its_parent",
         "test_a_hand_appended_line_is_refused_by_a_fresh_store",

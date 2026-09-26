@@ -563,14 +563,34 @@ def _replace_stale(lock: Path, judged: Identity, age: float, why: str) -> None:
                 "while it was being judged stale)"
             )
         log.warning("Replacing stale engagement lock (%.0f s old%s)", age, why)
-        try:
-            lock.unlink(missing_ok=True)
-        except PermissionError:
-            # Windows: the owner still has it open, so it is not dead after all.
-            raise EngagementLockedError(
-                f"{lock.name} looks stale ({age:.0f}s old) but is still held "
-                "by a running process"
-            ) from None
+        for attempt in range(1, _CHANGING_HANDS_ATTEMPTS + 1):
+            try:
+                lock.unlink(missing_ok=True)
+                return
+            except PermissionError:
+                # Windows refuses a delete while any process has the file
+                # open: its owner - then it is not dead after all - or,
+                # for the moment one read takes, another run judging this
+                # same lock (decision 159, Windows). An owner keeps it open;
+                # a reader lets go at once. So it is looked at again and
+                # tried again briefly, and refused as held only after that.
+                if attempt == _CHANGING_HANDS_ATTEMPTS:
+                    raise EngagementLockedError(
+                        f"{lock.name} looks stale ({age:.0f}s old) but is still held "
+                        "by a running process"
+                    ) from None
+            time.sleep(_CHANGING_HANDS_DELAY)
+            try:
+                again = _look(lock)
+            except OSError:
+                continue                 # refused a read too: try the delete again
+            if again is None:
+                return
+            if again != judged:
+                raise EngagementLockedError(
+                    f"another scan or sort appears to be running ({lock.name} was taken "
+                    "while it was being judged stale)"
+                )
     finally:
         _release_breaker(breaker, token)
 
@@ -659,11 +679,32 @@ def _clear_abandoned(breaker: Path, seen: Identity) -> bool:
     if now[1:] != seen[1:]:
         return False                     # a newer breaker: another run's, live
     log.warning("%s was left by a run that is gone; it is cleared", breaker.name)
+    for _attempt in range(_CHANGING_HANDS_ATTEMPTS):
+        try:
+            breaker.unlink(missing_ok=True)
+            return True
+        except PermissionError:
+            # Windows: open in another process - another racer reading it
+            # to judge it, for a moment, or its owner. Waited out briefly
+            # (decision 159, Windows).
+            time.sleep(_CHANGING_HANDS_DELAY)
+        try:
+            now = _look(breaker)
+        except OSError:
+            continue
+        if now is None:
+            return True
+        if now[1:] != seen[1:]:
+            return False
+    # Still refused. The marker goes with this racer's claim: kept, it would
+    # refuse every later racer's claim on this very breaker, and a breaker
+    # nobody may clear, and so nobody may take, would refuse every stale
+    # take of this lock for good. Without it, the next take judges again.
     try:
-        breaker.unlink(missing_ok=True)
-    except PermissionError:
-        return False                     # Windows: its owner still has it open
-    return True
+        marker.unlink(missing_ok=True)
+    except OSError as exc:
+        log.warning("%s could not be removed (%s); it is swept when old", marker.name, exc)
+    return False
 
 
 def _sweep_markers(breaker: Path) -> None:
@@ -682,17 +723,41 @@ def _release_breaker(breaker: Path, token: str) -> None:
     """Remove the breaker - only if it still holds this run's own token, so
     a run whose breaker was cleared under it never deletes the next run's. A
     removal that fails is said, not raised: the lock's own work is done, and
-    the age rule clears the breaker."""
-    try:
-        if breaker.read_text(encoding="utf-8", errors="replace") != token:
-            log.warning("%s was replaced by another run; leaving theirs in place", breaker.name)
+    the age rule clears the breaker.
+
+    **A delete refused on Windows is waited out (decision 159, Windows).**
+    Every racer refused the breaker opens it to judge whether it was
+    abandoned (:func:`_look`), and Windows refuses to delete a file any
+    process has open (a sharing violation, ``PermissionError``). Seen on
+    this project's own race on NTFS: roughly one round in 200 left the
+    breaker behind, and for the next minute every stale take of that lock
+    was refused as "being cleared by another run". A reader lets go at
+    once, so the delete is tried again within the release's own budget,
+    the token read again before every try - the breaker is never deleted
+    once it is another run's. A breaker still left after that (the budget
+    spent, or a crash between the take and this) names this run: while the
+    run lives the age rule clears it after :data:`BREAKER_STALE_SECONDS`,
+    and once it has ended the next taker clears it at once as abandoned.
+    """
+    trouble: OSError | None = None
+    for attempt in range(_RELEASE_RETRIES):
+        if attempt:
+            time.sleep(_RELEASE_RETRY_DELAY)
+        try:
+            if breaker.read_text(encoding="utf-8", errors="replace") != token:
+                log.warning("%s was replaced by another run; leaving theirs in place", breaker.name)
+                return
+            breaker.unlink(missing_ok=True)
             return
-        breaker.unlink(missing_ok=True)
-    except FileNotFoundError:
-        return
-    except OSError as exc:
-        log.warning("%s could not be removed (%s); it is cleared after %d s",
-                    breaker, exc, BREAKER_STALE_SECONDS)
+        except FileNotFoundError:
+            return
+        except PermissionError as exc:
+            trouble = exc                # open in another process for a moment: again
+        except OSError as exc:
+            trouble = exc
+            break
+    log.warning("%s could not be removed (%s); it is cleared after %d s",
+                breaker, trouble, BREAKER_STALE_SECONDS)
 
 
 def release_lock(lock: EngagementLock) -> None:

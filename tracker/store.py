@@ -678,46 +678,55 @@ def open(path: Path | str) -> sqlite3.Connection:  # noqa: A001 - the store is o
     # whole batch or none of it and a driver-invented transaction boundary
     # is not a guarantee anybody wrote down.
     conn = _connect(path)
-    version = conn.execute("PRAGMA user_version").fetchone()[0]
-    while version in _IN_PLACE and version < SCHEMA_VERSION:
-        # One transaction per step: the column and the version land
-        # together or not at all.
-        conn.execute("BEGIN IMMEDIATE")
-        try:
-            # Read again under the write lock: another opener (the app and
-            # a pass starting at once) may have made this step since the
-            # version was read, and a step made twice would fail on the
-            # column it already added. Theirs stands; this one goes on.
-            now = conn.execute("PRAGMA user_version").fetchone()[0]
-            if now == version:
-                for statement in _IN_PLACE[version]:
-                    conn.execute(statement)
-                conn.execute(f"PRAGMA user_version = {version + 1}")
-                now = version + 1
-            conn.execute("COMMIT")
-        except BaseException:
-            conn.execute("ROLLBACK")
+    # Closed on any failure below, not left to the garbage collector: on
+    # Windows an open handle keeps the file from being renamed or deleted,
+    # so a store that could not be opened stayed locked by this process -
+    # a long pass included - for the person told to move it aside
+    # (decision 159, Windows).
+    try:
+        version = conn.execute("PRAGMA user_version").fetchone()[0]
+        while version in _IN_PLACE and version < SCHEMA_VERSION:
+            # One transaction per step: the column and the version land
+            # together or not at all.
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                # Read again under the write lock: another opener (the app and
+                # a pass starting at once) may have made this step since the
+                # version was read, and a step made twice would fail on the
+                # column it already added. Theirs stands; this one goes on.
+                now = conn.execute("PRAGMA user_version").fetchone()[0]
+                if now == version:
+                    for statement in _IN_PLACE[version]:
+                        conn.execute(statement)
+                    conn.execute(f"PRAGMA user_version = {version + 1}")
+                    now = version + 1
+                conn.execute("COMMIT")
+            except BaseException:
+                conn.execute("ROLLBACK")
+                conn.close()
+                raise
+            version = now
+        # **One upgrade policy** (decisions 204 and 159): a version
+        # :data:`_IN_PLACE` names is upgraded where it stands, above; an older
+        # one it does not name is set aside and rebuilt; a newer one refused.
+        if 0 < version < SCHEMA_VERSION:
             conn.close()
-            raise
-        version = now
-    # **One upgrade policy** (decisions 204 and 159): a version
-    # :data:`_IN_PLACE` names is upgraded where it stands, above; an older
-    # one it does not name is set aside and rebuilt; a newer one refused.
-    if 0 < version < SCHEMA_VERSION:
-        conn.close()
-        aside = checkpoint.set_aside(path, version)
-        log.warning("%s was written by an older version (user_version %d); it is set aside as %s "
-                    "and the store is rebuilt from the records", path, version, aside.name)
-        conn = _connect(path)
-        version = 0
-    if version == 0:
-        for statement in SCHEMA:
-            conn.execute(statement)
-        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-    elif version != SCHEMA_VERSION:
-        conn.close()
-        raise StoreError(checkpoint.NEWER_FILE.format(path=path, version=version, known=SCHEMA_VERSION,
-                                                      what="store"))
+            aside = checkpoint.set_aside(path, version)
+            log.warning("%s was written by an older version (user_version %d); it is set aside as %s "
+                        "and the store is rebuilt from the records", path, version, aside.name)
+            conn = _connect(path)
+            version = 0
+        if version == 0:
+            for statement in SCHEMA:
+                conn.execute(statement)
+            conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        elif version != SCHEMA_VERSION:
+            conn.close()
+            raise StoreError(checkpoint.NEWER_FILE.format(path=path, version=version, known=SCHEMA_VERSION,
+                                                          what="store"))
+    except BaseException:
+        _close_after_failure(conn)
+        raise
     return conn
 
 
@@ -728,12 +737,34 @@ def _connect(path: Path) -> sqlite3.Connection:
         conn = sqlite3.connect(path, isolation_level=None, factory=_Connection)
     except sqlite3.Error as exc:
         raise _unavailable(exc) from exc
-    conn.row_factory = sqlite3.Row
-    conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
-    conn.execute("PRAGMA journal_mode = WAL")
-    conn.execute("PRAGMA synchronous = NORMAL")
-    conn.execute("PRAGMA foreign_keys = ON")
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA synchronous = NORMAL")
+        conn.execute("PRAGMA foreign_keys = ON")
+    except BaseException:
+        _close_after_failure(conn)       # a file that is not a database: see open()
+        raise
     return conn
+
+
+def _close_after_failure(conn: sqlite3.Connection) -> None:
+    """Close a connection whose opening failed, keeping the failure that is
+    being raised as the one reported.
+
+    Why not leave it to Python: the connection is still referenced from the
+    exception's traceback and a cursor's cycle, so it stays open until the
+    garbage collector runs. On Windows an open SQLite handle is an open
+    file, and an open file cannot be renamed or deleted (WinError 32): the
+    damaged file this process refused would stay locked against the very
+    step the refusal names (decision 159, Windows). A close that fails
+    itself says nothing new; the error already being raised does.
+    """
+    try:
+        conn.close()
+    except (sqlite3.Error, StoreError):
+        pass
 
 
 def open_read_only(path: Path | str) -> sqlite3.Connection:
@@ -748,9 +779,13 @@ def open_read_only(path: Path | str) -> sqlite3.Connection:
                                factory=_Connection)
     except sqlite3.Error as exc:
         raise _unavailable(exc) from exc
-    conn.row_factory = sqlite3.Row
-    conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
-    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
+        version = conn.execute("PRAGMA user_version").fetchone()[0]
+    except BaseException:
+        _close_after_failure(conn)
+        raise
     if version != SCHEMA_VERSION:
         conn.close()
         raise StoreError(f"{path} is a store at user_version {version}; this version reads "

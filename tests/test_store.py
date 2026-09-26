@@ -59,6 +59,21 @@ ITEMS = [
 ]
 
 
+def one_value(database: Path, sql: str, *parameters):
+    """One value read from ``database`` on a connection closed at once.
+
+    Not ``sqlite3.connect(p).execute(...)`` on one line: on current Python that
+    connection stays open until the garbage collector runs, and on Windows
+    an open file cannot be renamed or deleted, so the store's own set-aside
+    of the same file, a moment later, failed with WinError 32 - the test's
+    handle, not the product's (decision 159, Windows)."""
+    conn = sqlite3.connect(database)
+    try:
+        return conn.execute(sql, parameters).fetchone()[0]
+    finally:
+        conn.close()
+
+
 @pytest.fixture
 def root(tmp_path):
     """The clients root - the folder a cloud client syncs."""
@@ -251,8 +266,8 @@ def test_a_version_nine_store_is_set_aside_and_rebuilt(tmp_path):
         store.open(path).close()
         aside = path.with_name(f"{store.STORE_FILENAME}.v{version}.old")
         assert aside.is_file()
-        assert sqlite3.connect(aside).execute("PRAGMA user_version").fetchone()[0] == version
-        assert sqlite3.connect(path).execute("PRAGMA user_version").fetchone()[0] \
+        assert one_value(aside, "PRAGMA user_version") == version
+        assert one_value(path, "PRAGMA user_version") \
             == store.SCHEMA_VERSION
         path.unlink()
 
@@ -3184,6 +3199,42 @@ def test_a_checkpoint_that_will_not_open_is_that_returns_problem_by_name(conn, r
     where.unlink()
 
 
+def _still_open(kind) -> int:
+    """Connections of the product's ``kind`` this process still has open,
+    collected or not: an open one found among the objects the garbage
+    collector has not yet reached is exactly the handle that locks a file
+    on Windows."""
+    import gc
+
+    count = 0
+    for candidate in gc.get_objects():
+        if isinstance(candidate, kind):
+            try:
+                candidate.execute("SELECT 1")
+            except (sqlite3.ProgrammingError, store.StoreError, checkpoint.CheckpointError):
+                continue                               # closed
+            count += 1
+    return count
+
+
+@pytest.mark.parametrize("which", ["store", "checkpoint"])
+def test_a_file_that_will_not_open_is_not_held_open_after_the_refusal(tmp_path, which):
+    """Decision 159, Windows: a store or record checkpoint that is not a
+    database is refused by name, and the refusing process lets go of it at
+    once. Left to the garbage collector, the connection stayed open behind
+    the exception, and Windows refused the rename the refusal tells a
+    person to make (WinError 32)."""
+    module, kind = (store, store._Connection) if which == "store" else         (checkpoint, checkpoint._Connection)
+    damaged = tmp_path / f"{which}.db"
+    damaged.write_bytes(b"fabricated garbage, not a database" * 40)
+    before = _still_open(kind)
+    with pytest.raises((store.StoreError, checkpoint.CheckpointError)):
+        module.open(damaged)
+    assert _still_open(kind) == before
+    os.replace(damaged, tmp_path / f"{which}.db.set-aside")     # WinError 32 while held
+    assert not damaged.exists()
+
+
 # --------------------------------------- decision 159: the final review's fixes ----
 
 
@@ -3306,12 +3357,12 @@ def test_one_upgrade_policy_a_version_sixteen_store_is_upgraded_in_place_and_nev
     written_at_sixteen.close()
 
     store.open(path).close()
-    assert sqlite3.connect(path).execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION
+    assert one_value(path, "PRAGMA user_version") == store.SCHEMA_VERSION
     assert not list(path.parent.glob(f"{store.STORE_FILENAME}.v*.old*"))
-    assert sqlite3.connect(path).execute("SELECT count(*) FROM sqlite_master WHERE name = ?",
-                                         (store.VERDICTS_TABLE,)).fetchone()[0] == 1
+    assert one_value(path, "SELECT count(*) FROM sqlite_master WHERE name = ?",
+                     store.VERDICTS_TABLE) == 1
     assert heads.read_bytes() == before
-    assert sqlite3.connect(heads).execute("PRAGMA user_version").fetchone()[0] \
+    assert one_value(heads, "PRAGMA user_version") \
         == checkpoint.CHECKPOINT_VERSION
 
     older = sqlite3.connect(path)

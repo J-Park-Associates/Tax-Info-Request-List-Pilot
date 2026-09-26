@@ -264,6 +264,11 @@ def test_a_line_that_lost_only_its_newline_is_kept(bare, caplog):
     b'["keyword_learned"]',                               # whole, but not an object
     b"[" * 200_000,                                       # nested past the parser (review S4)
     b'{"event": ' + b"[" * 200_000,
+], ids=[
+    # Short names, not pytest's own: an id is put in the environment
+    # (PYTEST_CURRENT_TEST), and the 200,000-bracket tails would pass
+    # Windows' 32,767-character limit on one variable - an error at setup.
+    "cut-mid-value", "no-event", "not-an-object", "nested-too-deep", "event-nested-too-deep",
 ])
 def test_a_torn_line_is_still_dropped(bare, tail):
     """Decision 159 keeps only a tail that is one whole event; anything

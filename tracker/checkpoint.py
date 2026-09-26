@@ -219,10 +219,32 @@ def _connected(target: str | Path, where: Path, **options) -> _Connection:
         conn = sqlite3.connect(target, isolation_level=None, factory=_Connection, **options)
     except sqlite3.Error as exc:
         raise _unavailable(exc, where) from exc
-    conn.where = str(where)
-    conn.row_factory = sqlite3.Row
-    conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
+    try:
+        conn.where = str(where)
+        conn.row_factory = sqlite3.Row
+        conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
+    except BaseException:
+        _close_after_failure(conn)
+        raise
     return conn
+
+
+def _close_after_failure(conn: sqlite3.Connection) -> None:
+    """Close a connection whose opening failed, keeping the failure being
+    raised as the one reported.
+
+    Not left to Python: the connection is still referenced from the
+    exception's traceback, so it stays open until the garbage collector
+    runs, and on Windows an open SQLite handle is a file that cannot be
+    renamed or deleted (WinError 32). A damaged checkpoint refused by name
+    - "set it aside, runbook section 6" - stayed locked by the refusing
+    process against exactly that step (decision 159, Windows). A close
+    that fails itself says nothing new; the error already raised does.
+    """
+    try:
+        conn.close()
+    except (sqlite3.Error, CheckpointError):
+        pass
 
 
 @dataclass(frozen=True)
@@ -306,21 +328,27 @@ def open(path: Path | str) -> sqlite3.Connection:  # noqa: A001 - the checkpoint
 
 def _opened(path: Path) -> sqlite3.Connection:
     conn = _connect(path)
-    version = conn.execute("PRAGMA user_version").fetchone()[0]
-    if 0 < version < CHECKPOINT_VERSION:
-        conn.close()
-        set_aside(path, version)
-        conn = _connect(path)
-        version = 0
-    if version == 0:
-        with _transaction(conn):
-            for statement in SCHEMA:
-                conn.execute(statement)
-            conn.execute(f"PRAGMA user_version = {CHECKPOINT_VERSION}")
-    elif version != CHECKPOINT_VERSION:
-        conn.close()
-        raise CheckpointError(NEWER_FILE.format(path=path, version=version, known=CHECKPOINT_VERSION,
-                                                what="record checkpoint"))
+    # Closed on any failure, never left to the garbage collector: see
+    # _close_after_failure (decision 159, Windows).
+    try:
+        version = conn.execute("PRAGMA user_version").fetchone()[0]
+        if 0 < version < CHECKPOINT_VERSION:
+            conn.close()
+            set_aside(path, version)
+            conn = _connect(path)
+            version = 0
+        if version == 0:
+            with _transaction(conn):
+                for statement in SCHEMA:
+                    conn.execute(statement)
+                conn.execute(f"PRAGMA user_version = {CHECKPOINT_VERSION}")
+        elif version != CHECKPOINT_VERSION:
+            conn.close()
+            raise CheckpointError(NEWER_FILE.format(path=path, version=version, known=CHECKPOINT_VERSION,
+                                                    what="record checkpoint"))
+    except BaseException:
+        _close_after_failure(conn)
+        raise
     return conn
 
 
@@ -332,7 +360,11 @@ def open_read_only(path: Path | str) -> sqlite3.Connection | None:
     if not path.is_file():
         return None
     conn = _connected(f"{path.resolve().as_uri()}?mode=ro", path, uri=True)
-    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    try:
+        version = conn.execute("PRAGMA user_version").fetchone()[0]
+    except BaseException:
+        _close_after_failure(conn)
+        raise
     if version != CHECKPOINT_VERSION:
         conn.close()
         raise CheckpointError(f"{path} is a record checkpoint at version {version}; this version "
