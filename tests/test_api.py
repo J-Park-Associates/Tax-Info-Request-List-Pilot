@@ -6936,10 +6936,12 @@ def test_every_outstanding_row_in_the_state_carries_its_side_and_sentence(capsys
         assert one["side_sentence"] == sentence, identifier
     assert {i: items[i]["side"] for i in ("A01", "B01", "C01")} == {
         "A01": "client", "B01": "us", "C01": "decide"}
-    assert items["B01"]["status_key"] == Status.FAILED and items["B01"]["status_label"] == "Could not use"
+    assert items["B01"]["status_key"] == Status.FAILED
+    # The key is all the renderer reads; its label comes from vocab.labels.
+    assert all("status_label" not in one for one in items.values())
 
 
-def test_the_state_triages_once(capsys, demo_root, monkeypatch):
+def test_the_state_builder_triages_once(capsys, demo_root, monkeypatch):
     """The reminder card's held rows and every row's side come from one
     triage of the return's rows. The household card triages each return
     for its own panel (decision 125) and is not this return's state, so

@@ -2551,10 +2551,156 @@ def test_the_renderer_types_no_override_word():
     assert re.search(r"(?<!\w)override:", read("app/renderer/app.js"), re.IGNORECASE) is None
 
 
+# A document just large enough for app.js's own el(): elements keep their
+# children in order, and a child that is not an element becomes text, as a
+# browser's append() makes it. Each drawn tree comes back as JSON.
+_DOM_SHIM = """
+class Node {}
+class Text extends Node { constructor(data) { super(); this.data = data; } }
+class Element extends Node {
+  constructor(tag) { super(); this.tag = tag; this.className = ""; this.dataset = {};
+                     this.attributes = {}; this.childNodes = []; }
+  setAttribute(key, value) { this.attributes[key] = String(value); }
+  append(...nodes) { for (const n of nodes) this.childNodes.push(n instanceof Node ? n : new Text(String(n))); }
+  replaceChildren(...nodes) { this.childNodes = []; this.append(...nodes); }
+}
+const document = { createElement: (tag) => new Element(tag) };
+const tree = (n) => n instanceof Text ? n.data
+  : { tag: n.tag, className: n.className, attributes: n.attributes, children: n.childNodes.map(tree) };
+"""
+
+
+def _run_renderer(tmp_path, name: str, headers: tuple[str, ...], script: str):
+    """Run ``script`` under node with app.js's own ``el()`` (and its
+    attribute list) and the named
+    functions exactly as written, against :data:`_DOM_SHIM`; what the
+    script writes to stdout comes back parsed. Skipped where node is not
+    on PATH (CI installs it)."""
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not on PATH (CI installs it)")
+    js = read("app/renderer/app.js")
+    start = js.index("const EL_ATTRIBUTES = new Set([")
+    allowed = js[start:js.index("]);", start) + 3]
+    bodies = "\n".join([allowed] + [_js_function(js, header) for header in (
+        "function el(tag, attrs = {}, ...children) {", *headers)])
+    path = tmp_path / f"{name}.js"
+    path.write_text(f"{_DOM_SHIM}\n{bodies}\n{script}\n", encoding="utf-8", newline="\n")
+    done = subprocess.run([node, str(path)], capture_output=True, text=True, encoding="utf-8",
+                          timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+def _texts(node) -> list[str]:
+    """Every text in a drawn tree, in order."""
+    if isinstance(node, str):
+        return [node]
+    return [text for child in node["children"] for text in _texts(child)]
+
+
+def test_the_editor_set_aside_fold_draws_each_group_as_elements(tmp_path):
+    """The editor's Set aside fold, drawn by ``renderEditorRows`` as
+    written through the real ``el()``, holds each group's heading and its
+    rows' box as elements - never the text "[object ...]" that an array of
+    [heading, box] pairs handed to ``el()`` unflattened becomes, which left
+    every set-aside row out of the editor."""
+    drawn = _run_renderer(tmp_path, "editor_fold", (
+        "function renderEditorRows() {", "function setAsideHeading(group) {",
+        "function fill(pattern, values) {"), """
+const NOT_ASKED_GROUP = "not asked";
+const vocab = { columns: [], set_aside: { heading: "Set aside ({n})", group: "{label} ({n})" } };
+const editorState = { learned: {} };
+const editorRows = [
+  { identifier: "A01", group: "" },
+  { identifier: "B01", group: NOT_ASKED_GROUP },
+  { identifier: "C01", group: "Not Applicable in TY2025" },
+];
+const editorGroupKey = (row) => row.group;
+const editorRowYear = () => 2025;
+const unlearnKeyword = () => {};
+function requestRows(box, rows) { for (const row of rows) box.append(el("div", { className: "row" }, row.identifier)); }
+function setAsideGroups(rows) {
+  return rows.map((row) => ({ label: row.group, sentence: "A fabricated sentence.", rows: [row] }));
+}
+const page = { "ed-rows": document.createElement("div") };
+const $ = (id) => page[id];
+renderEditorRows();
+process.stdout.write(JSON.stringify(tree(page["ed-rows"])));
+""")
+    active, fold = drawn["children"]
+    assert fold["tag"] == "details" and fold["className"] == "ed-set-aside"
+    assert [child["tag"] if isinstance(child, dict) else child for child in fold["children"]] == [
+        "summary", "div", "div", "div", "div"]
+    assert not any("[object" in text for text in _texts(drawn))
+    assert [box["children"][0]["children"] for box in fold["children"][2::2]] == [["B01"], ["C01"]]
+    assert _texts(active) == ["A01"]
+
+
+def _side_lines(tmp_path, labels: dict, items: list[dict]) -> list:
+    """``sideLine`` as written, for each of ``items``, with the tracker's
+    own sides and the label table given."""
+    from tracker import reminder
+
+    sides = [{"key": side.key, "label": side.label} for side in reminder.SIDES]
+    return _run_renderer(tmp_path, "side_line", (
+        "function sideLine(item) {", "function isSetAside(override) {"), f"""
+const vocab = {{ labels: {json.dumps(labels)}, reminder: {{ sides: {json.dumps(sides)} }},
+                overrides: {{ not_applicable: "Not Applicable" }} }};
+const items = {json.dumps(items)};
+process.stdout.write(JSON.stringify(items.map((item) => {{ const line = sideLine(item); return line && tree(line); }})));
+""")
+
+
+def _titles(node) -> list[str]:
+    """Every ``title`` - a tooltip - in a drawn tree."""
+    if isinstance(node, str):
+        return []
+    own = [node["attributes"]["title"]] if "title" in node["attributes"] else []
+    return own + [title for child in node["children"] for title in _titles(child)]
+
+
+def test_the_side_sentence_is_text_beside_the_chip_and_never_a_tooltip(tmp_path):
+    """Decision 200: whose move a row is, in bold, and the row's own
+    sentence as a text child of the same line - on the page for a person
+    to read, never moved into a ``title`` to hover for."""
+    from tracker import reminder
+
+    items = [{"identifier": side.key, "side": side.key, "manual_override": "",
+              "side_sentence": f"{side.sentence} (fabricated row)"} for side in reminder.SIDES]
+    lines = _side_lines(tmp_path, {}, items)
+    for side, item, line in zip(reminder.SIDES, items, lines, strict=True):
+        assert line["className"] == "req-side"
+        bold, gap, sentence = line["children"]
+        assert bold == {"tag": "span", "className": "side", "attributes": {}, "children": [side.label]}
+        assert (gap, sentence) == (" ", item["side_sentence"])
+        assert _titles(line) == []
+
+
+def test_an_accepted_rows_side_word_is_the_label_tables_not_the_records(tmp_path):
+    """An Accepted row has no side; its line says the label table's word
+    for the override and that label's sentence. Relabelled in the table,
+    the line follows the table, not the word the record keeps."""
+    labels = {"Accepted": {"key": "Accepted", "label": "Signed off (fabricated)",
+                           "sentence": "A fabricated sentence for the accepted row."}}
+    [line] = _side_lines(tmp_path, labels, [{"identifier": "A01", "side": None, "side_sentence": "",
+                                             "manual_override": "Accepted"}])
+    bold, gap, sentence = line["children"]
+    assert bold["children"] == ["Signed off (fabricated)"]
+    assert (gap, sentence) == (" ", "A fabricated sentence for the accepted row.")
+    assert "Accepted" not in _texts(line)
+
+
 def test_the_runbook_status_table_is_the_label_table():
     """The runbook's two columns - what the record says, what the app shows
     - are the tracker's one table, row for row, in its order. Not
-    Applicable's label is said with <year>, as the README spells it."""
+    Applicable's label is said with <year>, as the README spells it. The
+    sides table beneath it is ``reminder.SIDES``, word and sentence, in
+    triage's order, so neither can drift from what the app shows."""
+    from tracker import reminder
     from tracker.manifest import STATUS_LABELS
 
     runbook = read("docs/runbook.md")
@@ -2564,3 +2710,6 @@ def test_the_runbook_status_table_is_the_label_table():
     assert rows == [f"| **{word}** | {shown.label.replace('{year}', '<year>')} - {shown.sentence} |"
                     for word, shown in STATUS_LABELS.items()]
     assert "TY<year>" in read("README.md")
+    lines = section.split("| Whose move | The sentence beside it |\n|---|---|\n", 1)[1].splitlines()
+    sides = lines[:next(i for i, line in enumerate(lines) if not line.startswith("|"))]
+    assert sides == [f"| **{side.label}** | {side.sentence} |" for side in reminder.SIDES]

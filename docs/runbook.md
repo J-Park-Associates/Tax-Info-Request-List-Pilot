@@ -408,10 +408,16 @@ from one table in the tracker (`tracker.manifest.STATUS_LABELS`).
 | **Not Applicable** | Not Applicable in TY<year> - Does not apply this year; not counted, not chased. |
 
 Beside every request that is still outstanding the app says whose move it
-is, with the one sentence behind it: **Client** (the letter asks the client
-for it), **Us** (waiting on us; the letter does not ask) or **Decide** (a
-person decides whether the client resends it or we fix it here; the letter
-is held until then). Requests nobody is waiting on - not asked, or not
+is, with the one sentence behind it, from one table in the tracker
+(`tracker.reminder.SIDES`):
+
+| Whose move | The sentence beside it |
+|---|---|
+| **Client** | The letter asks the client for it. |
+| **Us** | Waiting on us, not the client; the letter does not ask for it. |
+| **Decide** | A person decides whether the client resends it or we fix it here; the letter is held until then. |
+
+Requests nobody is waiting on - not asked, or not
 applicable this year - are folded under **Set aside** below the table, each
 under its own sub-heading.
 

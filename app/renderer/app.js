@@ -106,7 +106,7 @@ function chip(item) {
 function sideLine(item) {
   if (item.manual_override && !isSetAside(item.manual_override)) {
     return el("div", { className: "req-side" },
-      el("span", { className: "side" }, item.manual_override), " ",
+      el("span", { className: "side" }, vocab.labels[item.manual_override].label), " ",
       vocab.labels[item.manual_override].sentence);
   }
   const side = vocab.reminder.sides.find((one) => one.key === item.side);
@@ -116,7 +116,7 @@ function sideLine(item) {
 }
 
 // The rows nobody waits on, grouped for the one set-aside fold (decision
-// 200): the rows nobody asked for with nothing in first, then one group
+// 200): the rows nobody asked for with nothing in first, then one group per
 // not-applicable label, oldest year first - the Status Report's
 // order. Each group carries its label and that label's sentence from the
 // API's table. `idle` says which rows are not asked and idle, `yearOf`
@@ -2951,7 +2951,7 @@ function renderEditorRows() {
     });
   const folded = aside.length
     ? el("details", { className: "ed-set-aside" },
-      el("summary", {}, fill(vocab.set_aside.heading, { n: aside.length })), groups)
+      el("summary", {}, fill(vocab.set_aside.heading, { n: aside.length })), ...groups.flat())
     : null;
   $("ed-rows").replaceChildren(...[activeBox, folded].filter(Boolean));
 }

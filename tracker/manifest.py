@@ -375,7 +375,6 @@ STATUS_LABELS: dict[str, StatusLabel] = {
 }
 
 
-
 class ManifestError(Exception):
     """A request list could not be read, parsed, or validated."""
 
@@ -1669,7 +1668,7 @@ class Summary:
     #: counted apart, so "N of M are in" is a figure about what was asked.
     also_received: int = 0
     #: Rows nobody asked for with no document at all: on nobody's list,
-    #: and the N of every "Not asked (N)" fold.
+    #: and the N of every "Not asked (N)" group in the set-aside fold.
     not_asked: int = 0
 
     @property
@@ -1677,16 +1676,7 @@ class Summary:
         """``Received: 3 · Missing: 2 · Not Applicable: 1`` - the same
         everywhere. The count is said with the bare value, not the year's
         label: a list may hold rows of more than one year."""
-        parts = [f"{status}: {n}" for status, n in sorted(self.counts.items())]
-        if self.unscanned:
-            parts.append(f"{UNSCANNED_LABEL}: {self.unscanned}")
-        if self.also_received:
-            parts.append(f"{ALSO_RECEIVED_LABEL}: {self.also_received}")
-        if self.not_asked:
-            parts.append(f"{NOT_ASKED_LABEL}: {self.not_asked}")
-        if self.not_applicable:
-            parts.append(f"{Override.NOT_APPLICABLE}: {self.not_applicable}")
-        return SUMMARY_SEPARATOR.join(parts) or SUMMARY_EMPTY
+        return self._said(lambda word: word)
 
     @property
     def shown_line(self) -> str:
@@ -1696,14 +1686,21 @@ class Summary:
         the run log and the scanner's command line. Not Applicable is said
         with the bare value, as ``line`` says it: a list may hold rows of
         more than one year."""
-        shown = {word: label.label for word, label in STATUS_LABELS.items()}
-        parts = [f"{shown[status]}: {n}" for status, n in sorted(self.counts.items())]
+        return self._said(lambda word: STATUS_LABELS[word].label)
+
+    def _said(self, say) -> str:
+        """The one builder of the summary line, so :attr:`line` and
+        :attr:`shown_line` are one count in two renderings by construction:
+        the same parts in the same order, each status word said through
+        ``say``. A part added here is added to both. Also received and Not
+        Applicable are said as they are in both."""
+        parts = [f"{say(status)}: {n}" for status, n in sorted(self.counts.items())]
         if self.unscanned:
-            parts.append(f"{shown[UNSCANNED_LABEL]}: {self.unscanned}")
+            parts.append(f"{say(UNSCANNED_LABEL)}: {self.unscanned}")
         if self.also_received:
             parts.append(f"{ALSO_RECEIVED_LABEL}: {self.also_received}")
         if self.not_asked:
-            parts.append(f"{shown[NOT_ASKED_LABEL]}: {self.not_asked}")
+            parts.append(f"{say(NOT_ASKED_LABEL)}: {self.not_asked}")
         if self.not_applicable:
             parts.append(f"{Override.NOT_APPLICABLE}: {self.not_applicable}")
         return SUMMARY_SEPARATOR.join(parts) or SUMMARY_EMPTY
@@ -1729,8 +1726,9 @@ def has_a_document(item: RequestItem) -> bool:
 
 def is_idle_unasked(item: RequestItem) -> bool:
     """A row nobody asked for, not Not Applicable, with no document at all:
-    on neither of the client's lists, folded away under "Not asked (N)" in
-    the Status Report, the app's request table and its editor, and called
+    on neither of the client's lists, folded away in a "Not asked (N)"
+    group under "Set aside (N)" (decision 200) in the Status Report, the
+    app's request table and its editor, and called
     :data:`NOT_ASKED_LABEL` (decision 142). A document of any status -
     even one the rules refused - brings the row back into the active
     table, because it is work for the preparer."""

@@ -1216,3 +1216,22 @@ def test_the_run_log_line_keeps_the_record_words_and_the_shown_line_the_labels()
     assert f"{STATUS_LABELS[UNSCANNED_LABEL].label}: 1" in summary.shown_line
     # The same parts, in the same order: one count, two renderings.
     assert len(summary.line.split(" · ")) == len(summary.shown_line.split(" · ")) == 3
+
+
+def test_the_shown_line_and_the_run_log_line_are_one_count_part_for_part():
+    """With every part of the summary present, the app's line and the run
+    log's say the same figures in the same order; only the words differ,
+    and each shown word is the label table's for the record's word."""
+    from tracker.manifest import STATUS_LABELS, SUMMARY_SEPARATOR, Summary
+
+    counts = {status: n for n, status in enumerate(
+        (Status.MISSING, Status.PARTIAL, Status.FAILED, Status.PENDING_SYNC, Status.RECEIVED), start=1)}
+    summary = Summary(counts=counts, total=21, received=5, outstanding=6, not_applicable=4,
+                      unscanned=6, also_received=2, not_asked=3)
+    record = [part.rsplit(": ", 1) for part in summary.line.split(SUMMARY_SEPARATOR)]
+    shown = [part.rsplit(": ", 1) for part in summary.shown_line.split(SUMMARY_SEPARATOR)]
+    assert len(record) == len(shown) == 9
+    assert [n for _, n in record] == [n for _, n in shown]
+    for (word, _), (said, _) in zip(record, shown, strict=True):
+        assert said == (STATUS_LABELS[word].label if word in STATUS_LABELS
+                        and word != Override.NOT_APPLICABLE else word)

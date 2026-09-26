@@ -200,7 +200,6 @@ from tracker.manifest import (
     rule_as_read,
     save_rules,
     status_key,
-    status_label,
     summarize,
     unlearn_keyword,
 )
@@ -2173,15 +2172,14 @@ def _state(engagement: Path) -> dict:
         },
         # Each row with the year its own Period gives, so the renderer
         # labels a set-aside row without reading the Period's text, and
-        # the record's word for its status (the key of ``vocab.labels``)
-        # and the preparer's word it is shown as (decision 200) - "Not
-        # asked" for a row nobody asked for with nothing in (decision
-        # 142) - so it types none. An outstanding row carries whose move
+        # the record's word for its status (decision 200), the key the
+        # renderer shows through ``vocab.labels`` - "Not asked" for a row
+        # nobody asked for with nothing in (decision 142) - so it types
+        # none. An outstanding row carries whose move
         # it is and the row's own sentence; any other row has no side.
         "items": [
             asdict(i) | {"received_date": i.received_date.isoformat() if i.received_date else None,
                          "year": i.year, "status_key": status_key(i),
-                         "status_label": status_label(i),
                          "side": placed[i.identifier][0].key if i.identifier in placed else None,
                          "side_sentence": placed[i.identifier][1] if i.identifier in placed else "",
                          # Decision 142, the designer's ruling on the build:
