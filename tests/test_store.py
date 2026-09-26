@@ -222,8 +222,13 @@ def journal_as_written_before(engagement, fields: tuple[str, ...]) -> None:
         return value
 
     events = [before(event) for event in ledger.read_events(engagement)]
-    ledger.path_for(engagement).write_text(
-        "".join(json.dumps(event, sort_keys=True) + "\n" for event in events), encoding="utf-8")
+    # Each line linked again, as the version that wrote it would have
+    # linked it (decision 159): a rewrite the chain does not see, so the
+    # rebuild reads it as that version's record rather than refusing an edit.
+    ledger.path_for(engagement).write_bytes(b"")
+    for event in events:
+        written_elsewhere(engagement, {k: v for k, v in event.items() if k not in ledger.LINE_KEYS},
+                          host=event.get(ledger.HOST_KEY) or ledger.this_host())
 
 
 #: The fields decision 190 added to the record, and decision 204's.
@@ -3527,8 +3532,8 @@ def test_a_machine_whose_name_no_line_may_carry_writes_nothing(conn, root, by_ha
 
 
 def test_one_upgrade_policy_a_version_sixteen_store_is_upgraded_in_place_and_never_set_aside(tmp_path):
-    """Decisions 204 and 159: a version :data:`store._IN_PLACE` names gains
-    its column where it stands - never set aside, its verdict cache kept -
+    """Decisions 204, 190 and 159: a version :data:`store._IN_PLACE` names gains
+    its columns where it stands - never set aside, its verdict cache kept -
     and only an older version is set aside and rebuilt. The record
     checkpoint beside it is a file of its own with its own version, and no
     step of the store's upgrade touches it."""
@@ -3538,7 +3543,8 @@ def test_one_upgrade_policy_a_version_sixteen_store_is_upgraded_in_place_and_nev
     checkpoint.open(heads).close()
     before = heads.read_bytes()
     written_at_sixteen = sqlite3.connect(path)
-    written_at_sixteen.execute("ALTER TABLE documents DROP COLUMN waits_for")
+    for statement in AS_AT_16:                     # 204's column and 190's three
+        written_at_sixteen.execute(statement)
     written_at_sixteen.execute("PRAGMA user_version = 16")
     written_at_sixteen.close()
 
@@ -3651,6 +3657,6 @@ def test_an_export_that_cannot_be_written_is_refused_by_name_and_discards_nothin
 
     monkeypatch.setattr(store, "_exclusively", refused)
     with pytest.raises(store.StoreError, match=r"the export could not be written into .*"
-                                               r"\(PermissionError\); nothing was discarded"):
+                                               r"\(PermissionError \(EACCES\)\); nothing was discarded"):
         store.recover(conn, root, by_hand, accept_loss=by_hand.name)
     assert rows(conn, "events") == before

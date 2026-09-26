@@ -558,8 +558,13 @@ def _replace_stale(lock: Path, judged: Identity, age: float, why: str) -> None:
         try:
             now = _look(lock)
         except OSError as exc:
+            # At call time: locking imports nothing of the package at load.
+            from tracker import errors
+
+            errors.keep("locking", exc, name=lock.name)
             raise EngagementLockedError(
-                f"{lock.name} could not be read again before clearing it ({exc}) - try again"
+                f"{lock.name} could not be read again before clearing it "
+                f"({errors.error_class(exc)}) - try again"
             ) from None
         if now is None:
             return
@@ -718,7 +723,12 @@ def _clear_abandoned(breaker: Path, seen: Identity) -> bool:
     try:
         marker.unlink(missing_ok=True)
     except OSError as exc:
-        log.warning("%s could not be removed (%s); it is swept when old", marker.name, exc)
+        # At call time: locking imports nothing of the package at load.
+        from tracker import errors
+
+        errors.keep("locking", exc, name=marker.name)
+        log.warning("%s could not be removed (%s); it is swept when old", marker.name,
+                    errors.error_class(exc))
     return False
 
 
@@ -1156,7 +1166,11 @@ def _racer(folder: str, name: str, rounds: int, barriers: list, answers) -> None
         except EngagementLockedError as exc:
             answers.put(f"refused: {exc}")
         except Exception as exc:          # said to the race, which fails the round
-            answers.put(f"{type(exc).__name__}: {exc}")
+            # By its class (decision 190); the words go to the debug sink.
+            from tracker import errors
+
+            errors.keep("locking race", exc, name=name)
+            answers.put(errors.error_class(exc))
         try:
             barriers[1].wait(_RACE_STEP_SECONDS)
         finally:
@@ -1195,7 +1209,12 @@ if __name__ == "__main__":
     try:
         failures = locking.race(ns.folder, processes=ns.processes, rounds=ns.rounds)
     except (OSError, RuntimeError) as exc:
-        parser.error(str(exc))
+        # race() raises RuntimeError only with its own sentence, said whole;
+        # the OS's error by its class (decision 190).
+        from tracker import errors
+
+        errors.keep("locking race", exc, name=ns.folder.name)
+        parser.error(errors.said(exc, (RuntimeError,)))
     if failures:
         for failure in failures:
             print(failure)

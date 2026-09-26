@@ -3375,7 +3375,7 @@ def test_roll_household_after_a_failed_retirement_says_what_was_rolled_and_left_
     assert payload["retired"] == []
     assert payload["not_retired"] == [f"Park Family {default_tax_year()} 1120S - Park Landscaping LLC"]
     assert payload["warning"].startswith(f"Rolled into {year}: 1040 - John Park, 1040 - Sofia Park.")
-    assert "Not retired: 1120S - Park Landscaping LLC (the disk filled)" in payload["warning"]
+    assert "Not retired: 1120S - Park Landscaping LLC (OSError)" in payload["warning"]
     assert load_engagement_info(llc).active is True
     assert payload["state"]["paths"]["engagement"] == payload["rolled"][0]["created"]
 

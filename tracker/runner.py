@@ -1633,17 +1633,17 @@ def records_needing_a_person(
         # Nothing may stop a pass before its first household (decision
         # 189): the pass goes on, and the page says why the lines from
         # other machines are not listed.
-        log.warning("Could not read the record checkpoint (%s)", content_check.said_as_class(exc))
-        return siblings, [], [FOREIGN_UNLISTED.format(why=checkpoint_said(exc))]
+        errors.keep("runner", exc, name="record checkpoint")
+        log.warning("Could not read the record checkpoint (%s)", errors.error_class(exc))
+        return siblings, [], [FOREIGN_UNLISTED.format(why=errors.said(exc, (checkpoint.CheckpointError,)))]
 
 
 def checkpoint_said(exc: BaseException) -> str:
     """How a checkpoint that could not be read is said on the page: its own
     fixed sentence (the file, the engine's code, the runbook's step - busy
-    or unreadable), or, for anything else, its class and code alone."""
-    if isinstance(exc, checkpoint.CheckpointError):
-        return str(exc)
-    return content_check.said_as_class(exc)
+    or unreadable), or, for anything else, its class and code alone
+    (:func:`tracker.errors.said`, decision 190)."""
+    return errors.said(exc, (checkpoint.CheckpointError,))
 
 
 # ------------------------------------------------------------------ output ----
@@ -1782,7 +1782,7 @@ def _log_a_failed_pass(root: str, reason_code: str, kind: str) -> None:
         with (Path(root) / LOG_FILENAME).open("a", encoding="utf-8", errors="backslashreplace") as handle:
             handle.write(f"[{stamp}] ! pass failed ({reason_code}): {said} ({kind})\n")
     except OSError as exc:
-        log.warning("Could not write %s (%s)", LOG_FILENAME, exc.__class__.__name__)
+        log.warning("Could not write %s (%s)", LOG_FILENAME, errors.error_class(exc))
 
 
 def last_pass_line(path: Path | None = None, *, now: dt.datetime | None = None) -> dict:
@@ -1807,7 +1807,7 @@ def last_pass_line(path: Path | None = None, *, now: dt.datetime | None = None) 
     except FileNotFoundError:
         return {"text": LAST_PASS_NEVER, "level": LEVEL_WARN}
     except Exception as exc:
-        return {"text": LAST_PASS_UNREADABLE.format(error=exc.__class__.__name__), "level": LEVEL_ERR}
+        return {"text": LAST_PASS_UNREADABLE.format(error=errors.error_class(exc)), "level": LEVEL_ERR}
     try:
         if len(raw) > PASS_ORDER_MAX_BYTES:
             raise ValueError("past the file's size")
@@ -1818,7 +1818,7 @@ def last_pass_line(path: Path | None = None, *, now: dt.datetime | None = None) 
             raise ValueError("not a result this version writes")
         old = now - started > dt.timedelta(hours=LAST_PASS_AMBER_HOURS)
     except Exception as exc:
-        return {"text": LAST_PASS_UNREADABLE.format(error=exc.__class__.__name__), "level": LEVEL_ERR}
+        return {"text": LAST_PASS_UNREADABLE.format(error=errors.error_class(exc)), "level": LEVEL_ERR}
     when = started.strftime("%Y-%m-%d %H:%M")
     if result == PASS_FAILED:
         code = data.get("reason_code")
@@ -2240,7 +2240,7 @@ def main(argv: list[str] | None = None) -> int:
             # Only into a root that was allowed and proved (the final
             # review's SF2): a refused root is never written into, even
             # to log its refusal - last-pass.json carries the reason.
-            _log_a_failed_pass(reached["root"], reason, exc.__class__.__name__)
+            _log_a_failed_pass(reached["root"], reason, errors.error_class(exc))
         raise
     if last is not None:
         reason = (PASS_NOT_SERVED if code == NOT_SERVED_TWICE_EXIT_CODE
@@ -2257,7 +2257,7 @@ def _say_last_pass(path: Path, **said) -> None:
     try:
         write_last_pass(path, **said)
     except Exception as exc:
-        log.warning("Could not write %s (%s)", path.name, exc.__class__.__name__)
+        log.warning("Could not write %s (%s)", path.name, errors.error_class(exc))
 
 
 def _pass(ns, parser, reached: dict) -> int:

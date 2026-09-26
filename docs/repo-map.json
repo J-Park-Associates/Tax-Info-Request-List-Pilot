@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 156,
-    "edges": 1005,
-    "reused": 111
+    "edges": 1007,
+    "reused": 112
   },
   "node_types": [
     "artifact",
@@ -423,8 +423,8 @@
       "id": "tracker/checkpoint.py",
       "type": "module",
       "layer": "core",
-      "sha256": "424ac0e3521dad71",
-      "lines": 575,
+      "sha256": "feddb8a8ab47a983",
+      "lines": 587,
       "cli": "python -m tracker.checkpoint",
       "exports": [
         "BUSY",
@@ -677,7 +677,7 @@
         "SAYS_ITS_CODE": "'says_its_code'"
       },
       "role": "What an error is called where a person can see it (decision 190): error_class(exc) is the class, and for an OSError its errno's symbolic name (FileNotFoundError (ENOENT)), or for a class that sets SAYS_ITS_CODE (decision 189's StoreUnavailable, RecordNotWritten) its code, never the message and never a path - the one definition of how an error is said, which decision 189 first wrote as content_check.said_as_class; said(exc, firm_written) keeps the tracker's own sentences whole; keep(where, exc_or_text, name=) writes the whole message and trace to the debug logger DEBUG_LOGGER ('tracker.debug'). A small CLI names a built-in exception's class or says where the words go (WHERE_KEPT).",
-      "notes": "Layer 0, standard library only, nothing of the package. A class name and not a shortened message because 120 characters is an SSN: no length is short enough to be safe, and a class name is written by a programmer. Every reason's {error}, the router's 'could not read it', the filer's and runner's catch-alls and the app's unexpected error name the class; the record's own errors (ManifestError, StoreError and the others) keep their text. Until decision 186 gives the debug log a place, the logger has a NullHandler and propagate=False, so nothing reaches a console, stderr or runs.log. tests/test_errors.py guards that no module under tracker/ puts a caught exception's words beside its class or into a reason's {error}, with the record-side exceptions named once. said(exc, firm_written) is the one rule for a row or a page that may name either kind: the caller's own errors (the filer's FIRM_WRITTEN, the runner's and rollover's ManifestError) whole, anything else by its class (the review's M1 and S3). It also fails on a class spelled inline - x.__class__.__name__, type(x).__name__ or x.__name__ of an exception an except bound - anywhere under tracker/ but errors.py, so an OSError is never said twice, once without its errno (the rebase review's M1). And it fails any log line under tracker/ that carries a caught exception's words, a traceback, exc_info or log.exception: under the scheduled job no handler is configured and Python's last-resort handler prints every warning to the console window (D-6), so a log line says errors.error_class() and the firm's own words, and the words (and a client's file name) go to keep(); content_check's two ReaderUnavailable lines, the machine's words, are the named exceptions."
+      "notes": "Layer 0, standard library only, nothing of the package. A class name and not a shortened message because 120 characters is an SSN: no length is short enough to be safe, and a class name is written by a programmer. Every reason's {error}, the router's 'could not read it', the filer's and runner's catch-alls and the app's unexpected error name the class; the record's own errors (ManifestError, StoreError and the others) keep their text. Until decision 186 gives the debug log a place, the logger has a NullHandler and propagate=False, so nothing reaches a console, stderr or runs.log. tests/test_errors.py guards that no module under tracker/ puts a caught exception's words beside its class or into a reason's {error}, with the record-side exceptions named once. said(exc, firm_written) is the one rule for a row or a page that may name either kind: the caller's own errors (the filer's FIRM_WRITTEN, the runner's and rollover's ManifestError) whole, anything else by its class (the review's M1 and S3). It also fails on a class spelled inline - x.__class__.__name__, type(x).__name__ or x.__name__ of an exception an except bound - anywhere under tracker/ but errors.py, so an OSError is never said twice, once without its errno (the rebase review's M1). And it fails any log line under tracker/ that carries a caught exception's words, a traceback, exc_info or log.exception: under the scheduled job no handler is configured and Python's last-resort handler prints every warning to the console window (D-6), so a log line says errors.error_class() and the firm's own words, and the words (and a client's file name) go to keep(); content_check's two ReaderUnavailable lines, the machine's words, are the named exceptions. Landed on 159: the checkpoint's CheckpointUnavailable sets says_its_code, so error_class says it with its engine code; locking, ledger and store import errors at call time only (their layer rules), and test_errors.FIRM_WRITTEN names CheckpointError, CheckpointUnavailable and RolledNotAllRetired as the firm's own sentences."
     },
     {
       "id": "tracker/filer.py",
@@ -1178,8 +1178,8 @@
       "id": "tracker/ledger.py",
       "type": "module",
       "layer": "core",
-      "sha256": "41ff0596984a0abe",
-      "lines": 1372,
+      "sha256": "4d9e9097f014d85c",
+      "lines": 1377,
       "cli": "python -m tracker.ledger",
       "exports": [
         "ACCEPTED_KEY",
@@ -1376,8 +1376,8 @@
       "id": "tracker/locking.py",
       "type": "module",
       "layer": "core",
-      "sha256": "92c2ec8b4c78d99f",
-      "lines": 1204,
+      "sha256": "c250e6f062967381",
+      "lines": 1223,
       "cli": "python -m tracker.locking",
       "exports": [
         "BOOT_MARGIN_SECONDS",
@@ -2504,7 +2504,7 @@
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "f9a6ba10953eedda",
+      "sha256": "d76a741de72d91a2",
       "lines": 2461,
       "cli": "python -m tracker.runner",
       "exports": [
@@ -2950,8 +2950,8 @@
       "id": "tracker/store.py",
       "type": "module",
       "layer": "core",
-      "sha256": "2aa97a9c86a5eed7",
-      "lines": 3876,
+      "sha256": "2cc7b3fc9350b301",
+      "lines": 3883,
       "cli": "python -m tracker.store",
       "exports": [
         "ACCEPTED",
@@ -3346,7 +3346,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "4149aaccdb8e46a2",
+      "sha256": "84ec17f7eff60c9f",
       "lines": 430,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -3364,7 +3364,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "d2716819a162c824",
+      "sha256": "4affd8dce3ddac6c",
       "lines": 940,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -3802,7 +3802,7 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e6d6108a50b1d052",
+      "sha256": "531e292c96afdb0c",
       "lines": 5822,
       "exports": [
         "COUNTS",
@@ -4458,8 +4458,8 @@
       "id": "tests/test_errors.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "518bc28447e6947c",
-      "lines": 778,
+      "sha256": "efc55bf7aa617368",
+      "lines": 784,
       "exports": [
         "DROPPED",
         "ERRNO_NAMED_ON_PURPOSE",
@@ -6590,8 +6590,8 @@
       "id": "tests/test_store.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7e0ee3c6e7237dda",
-      "lines": 3656,
+      "sha256": "b73275e0097940cd",
+      "lines": 3662,
       "exports": [
         "AS_AT_16",
         "AS_AT_17",
@@ -11945,6 +11945,12 @@
     },
     {
       "from": "tracker/ledger.py",
+      "to": "tracker/errors.py",
+      "type": "imports_at_call",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/ledger.py",
       "to": "tracker/layout.py",
       "type": "imports_at_call",
       "source": "derived"
@@ -13032,6 +13038,12 @@
     {
       "from": "tracker/store.py",
       "to": "tracker/door.py",
+      "type": "imports_at_call",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/store.py",
+      "to": "tracker/errors.py",
       "type": "imports_at_call",
       "source": "derived"
     },

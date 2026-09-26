@@ -246,7 +246,13 @@ FIRM_WRITTEN = {"FilingError", "StaleRowError", "CopyMismatchError", "ManifestEr
                 "DoorError", "LayoutError",
                 # ... and the store's refusal to rebuild over lines only it
                 # holds, which names the firm's own record.
-                "WouldDiscard"}
+                "WouldDiscard",
+                # Decision 159's: the record checkpoint's own sentences (the
+                # file, the engine's code - never its message - and the
+                # runbook's step), and a household roll that rolled and then
+                # could not retire, whose sentence is built from the firm's
+                # names and errors.said.
+                "CheckpointError", "CheckpointUnavailable", "RolledNotAllRetired"}
 
 #: Where a string becomes something a person sees: a keyword or an
 #: attribute of these names, or a call to these.

@@ -2485,8 +2485,12 @@ def _beside(conn: sqlite3.Connection, held: sqlite3.Connection | None = None):
         try:
             opened.close()
         except checkpoint.CheckpointError as exc:
-            log.warning("Could not close the record checkpoint (%s)", exc.code
-                        if isinstance(exc, checkpoint.CheckpointUnavailable) else type(exc).__name__)
+            # At call time: the store imports only the record, the journal,
+            # the lock and the checkpoint at load. By its class and code
+            # (decision 190).
+            from tracker import errors
+
+            log.warning("Could not close the record checkpoint (%s)", errors.error_class(exc))
 
 
 @dataclass
@@ -3520,8 +3524,11 @@ def recover(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | s
     except OSError as exc:
         # Said by its class and the folder, never a traceback, and nothing
         # was discarded: the replay comes only after the export (S2).
+        from tracker import errors
+
+        errors.keep("store", exc, name=base.parent.name)
         raise StoreError(EXPORT_NOT_WRITTEN.format(folder=base.parent,
-                                                   kind=exc.__class__.__name__)) from None
+                                                   kind=errors.error_class(exc))) from None
 
     problem, readable = "", 0
     try:

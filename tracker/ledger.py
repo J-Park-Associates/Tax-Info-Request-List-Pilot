@@ -859,7 +859,12 @@ def _parse_lines(data: bytes, name: str) -> list[tuple[dict, bytes]]:
             why = ("it is not UTF-8" if isinstance(exc, UnicodeDecodeError) else
                    "it is not JSON" if isinstance(exc, json.JSONDecodeError) else
                    "it holds a number too long to read")
-            log.warning("%s line %d does not read: %s", name, number, exc)
+            # At call time: the ledger imports nothing of the package but
+            # the lock at load. The words go to the debug sink only (190).
+            from tracker import errors
+
+            errors.keep("ledger", exc, name=f"{name} line {number}")
+            log.warning("%s line %d does not read (%s)", name, number, errors.error_class(exc))
             raise LedgerError(NOT_AN_EVENT.format(name=name, line=number, why=why), line=number) from None
         except RecursionError:
             # Nested past the interpreter's limit: a line that does not
