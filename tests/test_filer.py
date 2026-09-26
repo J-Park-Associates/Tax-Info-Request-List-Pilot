@@ -336,6 +336,18 @@ def test_a_name_a_deleted_original_left_is_not_reused_for_a_new_drop(engagement)
     assert not any(unrecorded in e.error for e in third.attention + third.errors)
 
 
+def test_an_unrecorded_copys_advice_never_sends_it_to_a_clients_folder():
+    """Decision 184: a file nobody can account for is very often another
+    client's, and a document put in a client's folder is published to that
+    household. So the warning a person reads every pass says to confirm
+    whose it is first, and names a client's folder only to forbid it. A
+    detector of the one known wording, not a boundary."""
+    from tracker.filer import UNRECORDED_COPY
+
+    assert "confirm whose it is" in UNRECORDED_COPY
+    assert UNRECORDED_COPY.count("client's folder") == UNRECORDED_COPY.count("never a client's folder")
+
+
 def test_the_same_bytes_dropped_back_under_a_deleted_originals_name_rest_under_it(engagement):
     """Ruling 9's one exception, as decision 157 carries it: the bytes are
     that row's own, so it is the original coming back and it rests under

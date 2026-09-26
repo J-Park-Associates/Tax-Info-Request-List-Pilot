@@ -2400,9 +2400,10 @@ REFILED_AFTER_GONE = "re-filed: {name} had neither its working copy nor its orig
 #: is not a whole document is ours to delete, and is never the client's to
 #: send again.
 UNRECORDED_COPY = ("{location} is not on the record: nothing filed it there and no row's bytes "
-                   "match it; it is counted as it sits - open it: a document goes in through the "
-                   "app or the client's folder, so the record knows it; anything else, a broken "
-                   "or partial copy included, is deleted by hand")
+                   "match it; it is counted as it sits - open it and confirm whose it is first: "
+                   "a document goes in through the app or a firm-side folder a person controls, "
+                   "never a client's folder; anything else, a broken or partial copy included, "
+                   "is deleted by hand")
 
 _MOVED_DATE = r"\d{4}-\d{2}-\d{2}"
 

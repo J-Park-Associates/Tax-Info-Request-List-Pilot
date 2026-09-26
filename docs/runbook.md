@@ -36,11 +36,17 @@ store keeps a fingerprint of every line of a return's record it has read
 (decision 137). If a sync client or a person rewrote or reordered the record
 while keeping its length, the pass and the app refuse that return, apply
 nothing and say so. Run the store check (`python -m tracker.store "<the app folder>" check "<clients root>"`)
-to see it named, then rebuild **that return only**, with
+to see it named. **A rebuild replays whatever the record now says.** So
+before rebuilding a refused return, copy the database file
+(`tracker.store.STORE_FILENAME`, beside the app) aside, and keep any
+conflict copy of the record — any other file beside the return's
+`_ledger.jsonl` whose name begins `_ledger`, which a sync client makes when
+two copies disagree. They hold the only other copy of the lines the record
+may have lost. If there is a conflict copy, stop and have the two compared
+before anything is rebuilt. Then rebuild **that return only**, with
 `python -m tracker.store "<the app folder>" rebuild "<clients root>" --engagement "<the return's folder>"`
 - without `--engagement` it rebuilds every return, and the next pass
-re-reads every document in the firm. The record itself is the truth and
-nothing is lost.
+re-reads every document in the firm.
 
 **The clients root is a folder of clients, and only that.** The app refuses
 the system drive's root (`C:\`), the app's own folder, the folder holding its
@@ -93,14 +99,16 @@ the clients root, and the difference between them is the whole point:
   it. That sentence is ours, in the record; the client is never told it.
 - **A file is renamed ` (2)` only when another file already has its name**
   in the year's folder — a file sitting there, one a row still names
-  although the client has since deleted it, or one an interrupted filing
+  although it has since gone from there, or one an interrupted filing
   is still waiting to move there. The files at the top of the
   inbox are moved first and the folders after them in name order, so when
   `W2.pdf` and `Scans\W2.pdf` arrive together it is the one from `Scans`
   that becomes `W2 (2).pdf`. A byte-identical copy still gets its own
-  numbered name and its row says Duplicate, as it always did. And a client
-  who deletes `W2.pdf` from their folder and sends a corrected `W2.pdf`
-  gets the new one as `W2 (2).pdf` with a row of its own, while the first
+  numbered name and its row says Duplicate, as it always did. And when
+  `W2.pdf` has gone from the year's folder — a client cannot delete it under
+  the shares in *Sharing a household with a client*, so somebody at the firm
+  or the sync client did — a corrected `W2.pdf` the client sends is filed as
+  `W2 (2).pdf` with a row of its own, while the first
   row goes on saying its original is missing (`filer.MISSING_IN_PBC`) —
   the truthful state, until you look. Only the very same file sent back
   takes its old name again: it is that row's original coming home, and the
@@ -184,9 +192,9 @@ open:**
 | `_ledger.jsonl` | Never open it. It is the machine's own record of what it decided — the audit trail of every document, every status, and every edit you make to the request list. |
 
 The request list is edited in the app — **Edit Request List** — and nowhere
-else. The twelve columns you edit there are Identifier, Document, Period,
+else. The fourteen columns you edit there (`tracker.manifest.HEADERS`) are Identifier, Document, Period,
 Expected Count, Allowed Extensions, Min Size KB, Required Keywords, Any
-Keywords, Date Pattern, Manual Override, Override Reason and Named; **each request's status,
+Keywords, Date Pattern, Manual Override, Override Reason, Named, Asked and Short name; **each request's status,
 Received Date, File Count and Validation Notes are on the Status Report**,
 not in the editor. The engagement's details — client, share link, due
 date, sender, firm, reminders, active — and the **people** the return is
@@ -221,9 +229,9 @@ statement, so deleting it in a save is refused with the same sentence
 its **Mark ... missing** button (**Mark A04 missing**, say) on the statement
 in the filed list, then delete the row and save.
 
-**Save refused: "the list changed since you opened it".** Someone saved
-the list - in the app on another machine, or through the review queue
-teaching a spelling - after you opened the editor. Nothing you saved was
+**Save refused: "the list changed since you opened it".** The list was
+saved after you opened the editor — by the review queue teaching a
+spelling, for one. Nothing you saved was
 recorded. Close the editor, open it again (it now shows the other save),
 and make your change again. The app opens **one window**: a second
 double-click brings the open window forward rather than opening another
@@ -273,15 +281,16 @@ changes nothing:
   the database file's, is taken the same way. Anything else — a mistyped
   folder, a file that is neither — is refused, so a typo can never create
   an empty database somewhere and check it against the ledgers. If it ever disagrees, `rebuild` in place of `check` builds
-  the database again from the ledgers; nothing is lost either way, because
-  the ledgers are what it is made of. A `tracker.db` from before decision
-  107 is refused by name; delete it and run `rebuild` — nothing is lost,
-  the ledgers are what it is made of, and the first pass after it reads
-  every document once to fill the verdict cache the database also keeps.
+  the database again from the ledgers — it replays whatever they now say,
+  so copy the database aside first and keep any conflict copy of a record,
+  exactly as for a refused return at the top of §1. A `tracker.db` from
+  before decision 107 is refused by name; move it aside (rename it; do not
+  delete it) and run `rebuild` — the first pass after it reads every
+  document once to fill the verdict cache the database also keeps.
 - **Once, when decision 137 lands** (and again at decisions 142, 143, 144 and 146,
   `user_version` 13 to 16). Its database is a new version
   (`user_version` 12), so the `tracker.db` already on the machine is refused
-  by name. Delete it and run `rebuild` as above. The rebuild itself takes
+  by name. Move it aside and run `rebuild` as above. The rebuild itself takes
   minutes; what takes longer is the **first pass after it**, which reads
   and OCRs every document again to refill the verdict cache - on a full
   season that can run past the scheduler's two-hour limit. A pass the
@@ -310,12 +319,19 @@ launch. It is written to the settings file beside the app
 command read that one value afterwards. From a terminal the same thing is
 `python -m tracker.settings <folder>`.
 
-**One machine per clients root.** The only thing that stops a scheduled
-pass and a click in the app from moving the same client's files at once is
-a lock file (`tracker.locking.LOCK_FILENAME`), and a file a cloud client
-copies between two machines is not a lock — both machines can create their
-own before either copy arrives. So the schedule runs, and **Sort & Scan**
-is pressed, on the designated machine and nowhere else.
+**One machine per clients root — today's rule.** The schedule,
+**Sort & Scan**, filing, every save in the app and **Roll Forward** happen
+on the designated machine (the table at the top of §1) and nowhere else. The only
+thing that stops a scheduled pass and a click in the app from moving the
+same client's files at once is a lock file
+(`tracker.locking.LOCK_FILENAME`), and a file a cloud client copies between
+two machines is not a lock — both machines can create their own before
+either copy arrives. From another desk, one way to work at the designated
+machine today is Remote Desktop into it. Any other machine may open a
+return's Status Report and read it; it does not run the app against the
+clients folder. This is the rule for now, while the owner decides how
+several machines may write; this paragraph changes when that decision
+does, and nothing else in these pages restates it.
 
 The schedule is one daily task that starts at
 `tracker.scheduling.DEFAULT_START` and repeats every
@@ -542,9 +558,11 @@ year's folder with no row and opened on the next pass.
 **When a container parks** (§4 has each sentence): a locked or damaged one
 is the client's to fix - they send the documents on their own, and the
 reminder asks for them; one with nothing attached, or past a limit, is
-yours - open it on this machine and read it, and drop any document you find
-into the client's folder for the year: the next pass sorts it like any
-other. Close the container with **Not requested** once you have. A
+yours - ask the client what they meant to send, and if you must look
+inside, do it as §4's *Before you open anything a pass parked* says, never
+on the designated machine. A document you find goes in as *A document the
+tracker did not file* below says. Close the container with
+**Not requested** once you have. A
 document from inside a container is never filed into another household's
 return, by the pass or by **File under another return**: file it by hand
 in the return it belongs to, from its own row.
@@ -554,6 +572,30 @@ purpose (the owner's decision of 2026-09-23, a named exception to decision
 107's rule): a pass that recovers an interrupted filing, and a move to
 another machine, both need what is in it. Do not tidy it by hand; a file
 there that no row names is said on every pass until a person has looked.
+
+### A document the tracker did not file
+
+A file turns up that no row accounts for — in `Prepared` under a request's
+name, in a hidden `_Opened` folder, or inside an email or a zip you have
+looked into. **Confirm whose document it is first.** A file nobody can
+account for is very often another client's, and a document put in a
+client's folder is published to that household.
+
+A document goes in through the app or a firm-side folder a person
+controls, never the client-visible tree:
+
+- **It is this return's.** Keep it in a folder of your own inside the
+  return's `Prepared` — the tracker counts nothing there and names the
+  folder on each run (*The layout*, above) — and in **Edit Request List**
+  set the request's Manual Override to Accepted, with the Override Reason
+  for a document received outside the system. The save is recorded, the
+  request reads Received, and the letter stops asking.
+- **It is another return's.** Do the same on that return.
+- **You cannot tell whose it is.** Leave it where it is and ask whoever
+  would know. Never put it in a client's folder to see where the pass
+  sends it.
+- **It is not a whole document** — a partial or broken copy: delete it by
+  hand, and never ask the client for it.
 
 ### A working copy went missing
 
@@ -813,7 +855,7 @@ and an edited file is shown as it stands with a note saying so — the card
 shows the letter alone, so the staff-side lines under the dashed rule at
 the foot of the file are never on the clipboard.
 
-Open it, read it, edit it, paste it into Gmail and send it. Nothing in the
+Open it, read it, edit it, paste it into Outlook and send it. Nothing in the
 tool sends anything, ever — the card has no send button, and there is no
 mail or network code anywhere in the reminder path.
 
@@ -919,6 +961,18 @@ in hand.
 Every original gets a row in the engagement's index: where it went, what it
 became, and — when it was not filed — why not.
 
+**Before you open anything a pass parked.** A file the tracker refused to
+open — an email or a zip that is locked, damaged, empty or past a limit, or
+a file too large, too slow or that crashed the reader — is opened, if at
+all, on a machine with no Drive sign-in and no client folder, never the
+designated machine. Until the tracker sets such files aside itself, a
+parked file whose name ends in a program, script or shortcut extension
+(.exe, .com, .scr, .msi, .bat, .cmd, .ps1, .vbs, .js, .jar, .hta, .lnk,
+.url and the like) is not opened anywhere: ask the client what they meant
+to send. A parked document is opened as its working copy in
+`00 - Needs Review`, never the client's original, and in Protected View
+(the read-only view Office and Acrobat give a file from outside).
+
 | The index says | In plain words | What you do |
 |---|---|---|
 | `filer.FILED` | Exactly one request accepted it. | Nothing. |
@@ -941,16 +995,16 @@ became, and — when it was not filed — why not.
 | `reasons.NAMES_ANOTHER_RETURN` | The page names somebody who is on another return of this household, and nobody on this one. The sentence says who, and which return. | Switch to that return and file it there. Nothing was moved. |
 | `reasons.NO_PEOPLE_ON_FILE` | This return lists nobody yet, so nothing can confirm a named request. | Open **Edit Request List** and add the return's people (§10). Everything parked for this reason files itself on the next pass. |
 | `reasons.SEVERAL_FORMS_UNSORTED` | One page prints two or more forms' own names (a stack scanned in one pass) and they will not sort one to a request: a form no row asks for, two rows wanting one form, or a row that accepted the page on a phrase rather than a form number. When they do sort, the page files a copy under each request and the row's Reason says so (`reasons.NAMES_SEVERAL_FORMS`). | Split the scan, or file the whole page to the one request that matters and note the rest. |
-| `reasons.TOO_LARGE` | The file is larger than the tracker will read (`validators.MAX_READ_MB`) — a video, a disk image, a whole mailbox, or a genuinely enormous scan. It was not opened: no text, no OCR. It is still counted and kept like any other original. | Open it yourself and file it, or ask the client what it was meant to be. |
-| `reasons.READING_STOPPED` | The reader gave up on this file at the safety stop — a minute a page, ten minutes a file (decision 137). Something in it made reading far slower than any real document, or the machine was very busy at the time; it will not be tried again until the file changes. The stop covers the whole reading - the text layer, each page's drawing and the OCR - because each document is opened and read in a process of its own that the pass ends at the stop (decision 150). An email or a zip is opened in that process too, under the stop for a file, and one stopped there parks whole with nothing taken out of it (decision 154). That process never outlives the pass: if the schedule's own time limit stops the pass, the reading stops with it. | Open it and file it yourself. |
-| `reasons.READING_CRASHED` | The reader's own process ended on this file without an answer - the PDF or OCR library crashed, the email or zip opener crashed (decision 154), or the machine ran out of memory (decision 150). Only this file is affected: the pass went on to the next one, and this file will not be tried again until it changes. | Open it and file it yourself. If many files say it at once, the machine itself needs a look. |
+| `reasons.TOO_LARGE` | The file is larger than the tracker will read (`validators.MAX_READ_MB`) — a video, a disk image, a whole mailbox, or a genuinely enormous scan. It was not opened: no text, no OCR. It is still counted and kept like any other original. | Ask the client what it was meant to be. If you must look, do it as the paragraph above this table says, then file it. |
+| `reasons.READING_STOPPED` | The reader gave up on this file at the safety stop — a minute a page, ten minutes a file (decision 137). Something in it made reading far slower than any real document, or the machine was very busy at the time; it will not be tried again until the file changes. The stop covers the whole reading - the text layer, each page's drawing and the OCR - because each document is opened and read in a process of its own that the pass ends at the stop (decision 150). An email or a zip is opened in that process too, under the stop for a file, and one stopped there parks whole with nothing taken out of it (decision 154). That process never outlives the pass: if the schedule's own time limit stops the pass, the reading stops with it. | Open its working copy as the paragraph above this table says, and file it. |
+| `reasons.READING_CRASHED` | The reader's own process ended on this file without an answer - the PDF or OCR library crashed, the email or zip opener crashed (decision 154), or the machine ran out of memory (decision 150). Only this file is affected: the pass went on to the next one, and this file will not be tried again until it changes. | Open its working copy as the paragraph above this table says — never on the designated machine — and file it. If many files say it at once, the machine itself needs a look. |
 | `reasons.READER_UNAVAILABLE` | The reader could not start on this machine at all, so the file was never opened (decision 150). The machine's problem, never the file's: nothing is kept about the file and nothing is recorded - no index row, no Needs Review row. The file waits (in the inbox, or in the year's folder with no row) and is read again on the next pass. The pass's own summary and the run log say it once. | Look at the machine (memory, disk, antivirus, a damaged install). Once it is fixed, the next pass reads and files the waiting files; there is nothing to file by hand. |
 | `reasons.UNNAMED_ACROSS_HOUSEHOLDS` | This household's drop folder feeds a return in another household, and that return would have taken this document on its keywords alone — but the page names nobody, so it was not moved into a folder other people can open. It waits here (decision 137). The Evidence names the return and the request that wanted it, as `<return> / <request>`. The same holds for a document sent again that the other household already has. | Open it. If it is that return's, file it there with **File it**; if it is this household's, file it here. |
 | `router.NO_REQUEST_ACCEPTS` | No request on this manifest takes that file type at all. | Usually a stray file. Otherwise widen the request's allowed types. |
-| `reasons.CONTAINER_LOCKED` | An email or a zip arrived and one of the files inside is locked with a password (or packed in a way this machine cannot unpack), so nothing in it was opened. The container is kept like any original, with a review copy. | Ask the client for the documents themselves; the reminder does. If you have the password, open it yourself and drop the documents in the client's folder for the year. |
-| `reasons.CONTAINER_DAMAGED` | An email or a zip arrived that does not read as one - a broken zip, an Outlook file whose structure is damaged, an email with no headers at all. Nothing in it was opened. | Try opening it yourself. If it will not open, ask the client to send the documents on their own; the reminder does. |
-| `reasons.CONTAINER_EMPTY` | An email or a zip arrived with nothing attached - only the message's own text, or a picture shown inside it. Ours, never the client's. | Open it and read it: the message may say what they meant to send. Close it with **Not requested** once read. |
-| `reasons.CONTAINER_LIMIT` | An email or a zip past one of the limits it is opened under, named in the sentence: nested more than two deep, more than 200 attachments, more than 250 MB once unpacked, a file inside that unpacks to more than 100 times its packed size (the shape of a "zip bomb"), or more than 200 parts that are not documents. Nothing was taken out. A container nested too deep inside another is taken out whole and parks with this reason on its own row, while the rest of what was attached files. | Open it yourself, on this machine, and drop the documents you find in the client's folder for the year; the next pass sorts them. |
+| `reasons.CONTAINER_LOCKED` | An email or a zip arrived and one of the files inside is locked with a password (or packed in a way this machine cannot unpack), so nothing in it was opened. The container is kept like any original, with a review copy. | Ask the client for the documents themselves; the reminder does. Do not unlock it on the designated machine, even with the password: open it, if at all, as the paragraph above this table says, and put any document in as §1, *A document the tracker did not file*, says. |
+| `reasons.CONTAINER_DAMAGED` | An email or a zip arrived that does not read as one - a broken zip, an Outlook file whose structure is damaged, an email with no headers at all. Nothing in it was opened. | Ask the client to send the documents on their own; the reminder does. Do not try to open it on the designated machine. |
+| `reasons.CONTAINER_EMPTY` | An email or a zip arrived with nothing attached - only the message's own text, or a picture shown inside it. Ours, never the client's. | Ask the client what they meant to send, or read the message as the paragraph above this table says — never on the designated machine. Close it with **Not requested** once you know. |
+| `reasons.CONTAINER_LIMIT` | An email or a zip past one of the limits it is opened under, named in the sentence: nested more than two deep, more than 200 attachments, more than 250 MB once unpacked, a file inside that unpacks to more than 100 times its packed size (the shape of a "zip bomb"), or more than 200 parts that are not documents. Nothing was taken out. A container nested too deep inside another is taken out whole and parks with this reason on its own row, while the rest of what was attached files. | Ask the client to send the documents on their own. If you must look inside, do it as the paragraph above this table says, never on the designated machine, and put any document you find in as §1, *A document the tracker did not file*, says. |
 | `reasons.OPENED_NOT_ACROSS` | A document that came inside an email or a zip, which a return in **another** household would have taken. A document from inside a container is the firm's copy of a part of the client's file, and it is never moved into another household's folder. The Evidence names the return and the request that wanted it. It is also what an attachment says when its bytes are already on record only in another household: nothing is written in that household's record, and the Evidence is empty. | File it by hand where it belongs (§1, *An email or a zip*). **File under another return** refuses it in the same words. |
 | `router.PENDING` | A cloud placeholder, still copying down. | Nothing. The next pass picks it up. |
 
@@ -970,12 +1024,12 @@ These appear as warnings on the run rather than as index rows:
 
 | The run warns | In plain words | What you do |
 |---|---|---|
-| `filer.REPLACED_IN_PBC` | The client replaced an original we had already filed; the working copy was made from the earlier file. Said too for a file taken out of an email or a zip that was replaced under its own name in the hidden `_Opened` folder. | Look at both, and re-file if the new one differs. |
+| `filer.REPLACED_IN_PBC` | An original we had already filed no longer holds the bytes we filed. A client cannot change one under the documented shares (§1, *Sharing a household with a client*), so somebody at the firm or the sync client did; the working copy was made from the earlier file. Said too for a file taken out of an email or a zip that was replaced under its own name in the hidden `_Opened` folder. | Look at both, re-file if the new one differs, and find out who at the firm changed it. |
 | `filer.README_UNREAD` | The README in a household's inbox could not be opened just now - most often because someone has it open, or antivirus is holding it (decision 179). It is neither sorted nor written over; it waits where it is, as a file held open does. | Nothing, unless it is said pass after pass: then close whatever has it open. The next pass looks again. |
 | `filer.UNTIED_IN_PBC` | A row was recorded without its bytes and its working copy no longer matches the original. | Look at it. Nothing is adopted automatically, by design. |
-| `filer.UNRECORDED_OPENED` / `filer.OPENED_CONTAINER_GONE` | A file sits in a hidden `_Opened` folder that no row names, or a container's folder there whose email or zip has no row any more (decision 143). A pass killed half way that the next pass did not finish can leave one; so can a file somebody put there by hand. It is never sorted from there and never deleted. | Look at it. If it is a document the client sent, drop a copy in the client's folder for the year and the next pass sorts it; then delete the stray by hand. |
+| `filer.UNRECORDED_OPENED` / `filer.OPENED_CONTAINER_GONE` | A file sits in a hidden `_Opened` folder that no row names, or a container's folder there whose email or zip has no row any more (decision 143). A pass killed half way that the next pass did not finish can leave one; so can a file somebody put there by hand. It is never sorted from there and never deleted. | Open it in Protected View and confirm whose it is first. A document goes in as §1, *A document the tracker did not file*, says — never into a client's folder; then delete the stray by hand. If you cannot tell whose it is, leave it and ask. |
 | `filer.REMAKE_FAILED` | A working copy that was gone could not be made again from the original this pass - a full disk, a path past the limit, or an original that changed while it was read (decision 157). Nothing half made is left, nothing is recorded, and the request is held for you (`reasons.COPY_MISSING`), never asked of the client. | Nothing, if the next pass makes it. If the line comes back every pass, look at what it names: free the disk, shorten the root, or look at the original. |
-| `filer.UNRECORDED_COPY` | A file is sitting in `Prepared` under a name that begins with a request's identifier (or in the review folder) that nothing on the record put there and no row's bytes account for. It **is** counted for that request — what a request has is what `Prepared` holds under its name — but nobody can say where it came from. It is never a copy the tracker left half made: since decision 155 a copy that fails or is killed part-way (antivirus holding it, a full disk, the power going out) leaves only a temporary file, which nothing counts and the next pass removes. | Open it. If it is a document, file it in the app, or take it out and drop it in the client's folder so the next pass sorts and records it. If it is not a whole document — a partial or broken copy, say one an older version left — delete it by hand; never ask the client for it. Said every pass until you do. |
+| `filer.UNRECORDED_COPY` | A file is sitting in `Prepared` under a name that begins with a request's identifier (or in the review folder) that nothing on the record put there and no row's bytes account for. It **is** counted for that request — what a request has is what `Prepared` holds under its name — but nobody can say where it came from. It is never a copy the tracker left half made: since decision 155 a copy that fails or is killed part-way (antivirus holding it, a full disk, the power going out) leaves only a temporary file, which nothing counts and the next pass removes. | Open it in Protected View and confirm whose it is first. A document goes in through the app or a firm-side folder a person controls, never a client's folder: §1, *A document the tracker did not file*. If it is not a whole document — a partial or broken copy, say one an older version left — delete it by hand; never ask the client for it. Said every pass until you do. |
 
 And since decision 143 the Decision column has a sixth value, for an email
 or a zip the pass opened:
@@ -1000,7 +1054,7 @@ copy that is not where the record put it:
 **Where to read them:** on the engagement's **Status Report**, in the
 Requests section, beside each row's status — and in the app. They used to
 be a column of the request list; since September 2026 the list holds only
-the twelve columns you edit, and every note the machine writes is in the
+the fourteen columns you edit, and every note the machine writes is in the
 record and on the page.
 
 Some rows failed because of something the client did. Some failed because
@@ -1110,7 +1164,7 @@ floors and our own folders, and a client should never see any of that.
 
 ## 6. If the designated machine dies, or you move to another one
 
-About thirty minutes, and nothing is lost.
+About thirty minutes.
 
 **Nothing to restore.** Every engagement's manifest, ledger, originals,
 working copies and drafts are in the engagement folder, which syncs. Any
@@ -1120,9 +1174,11 @@ machine signed into the same Drive account has all of it already.
 (`tracker.settings.SETTINGS_FILENAME`), the database beside it
 (`tracker.store.STORE_FILENAME`), the scheduled task, the app folder
 itself, and the graphics card pack if that machine had one (step 5). **The database
-is not worth carrying over.** It is built from the ledgers in the
-engagement folders, and the new machine builds its own on the first pass;
-copying the old one would only be copying something it can make. The first
+is not carried over** — the new machine builds its own from the ledgers in
+the engagement folders on its first pass — **but if the old machine still
+starts, copy its database aside and keep it** until the new machine's first
+pass has run clean: until the record can prove its own lines, it is the
+only other copy of them. The first
 pass there reads every document once - the verdicts the old machine had
 cached were in its database, not in the folders - and is slower for it,
 never wrong. The same is true of the first pass after this version, on
@@ -1236,12 +1292,10 @@ exactly as it came.
 6. Run one pass — **Sort & Scan** on a single engagement — and read the run
    log before trusting the schedule.
 
-**Two machines must never both run it.** Before the new machine's first
-pass, turn the old machine's scheduled task off, or keep that machine off
-the clients folder entirely. Two machines on one clients root can each take
-their own lock and each append to the same ledger at the same moment, and
-that is the one way an original ends up filed with no record of how it got
-there.
+**Before the new machine's first pass**, turn the old machine's scheduled
+task off, or keep that machine off the clients folder entirely: from then
+on the new machine is the designated one (§1, *One machine per clients
+root*), and the table at the top of §1 is changed to name it.
 
 ## 7. What to expect in season one
 

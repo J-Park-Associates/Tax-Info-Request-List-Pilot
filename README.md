@@ -35,11 +35,16 @@ module:
   is no SMTP, no mail client and no network call in the reminder or scheduling
   path.
 
-Works with any cloud share that syncs to a local folder: **OneDrive and
-Google Drive** are both supported — online-only placeholder files are
-detected on either (and never force-downloaded), Google Drive's `.tmp.drive*`
-transfer temps are ignored, and Google-native documents (`.gdoc`, `.gsheet`)
-are flagged with a note asking the client for an exported PDF/Excel copy.
+Works with **Google Drive for desktop syncing a Shared Drive**, and nothing
+else. The rules above hold because of how that Shared Drive is shared: the
+firm owns every file in it, the client is a Viewer on their year folders and
+a Contributor on their inbox ([docs/runbook.md](docs/runbook.md) §1,
+*Sharing a household with a client*). **OneDrive is not supported**: that
+sharing model is Google Drive's, and nothing here has been checked against
+any other. Online-only placeholder files are detected (and never
+force-downloaded), Google Drive's `.tmp.drive*` transfer temps are ignored,
+and Google-native documents (`.gdoc`, `.gsheet`) are flagged with a note
+asking the client for an exported PDF/Excel copy.
 
 **Full design & build status: [docs/ROADMAP.md](docs/ROADMAP.md)**
 
@@ -300,10 +305,13 @@ household's README once, after the sort (decision 130), and
 an engagement that has been rolled forward is retired by its successor
 without anyone opening last year's engagement.
 
-One machine per clients root: the per-engagement lock (`tracker/locking.py`)
-that keeps a scheduled pass and a click in the app from working the same
-folder at once is a file, and a file a cloud client syncs between two
-machines is not a lock. Schedule the job, and press Scan, on one machine.
+One machine per clients root, today: the per-engagement lock
+(`tracker/locking.py`) that keeps a scheduled pass and a click in the app
+from working the same folder at once is a file, and a file a cloud client
+syncs between two machines is not a lock. What runs on the designated
+machine, and what another desk may do, is stated once, in
+[docs/runbook.md](docs/runbook.md) §1, while the owner decides how several
+machines may write.
 
 One daily task is enough: the **runner** decides whether today is a drafting
 day, not the scheduler. So a Saturday the machine spent switched off still

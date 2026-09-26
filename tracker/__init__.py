@@ -1,4 +1,4 @@
-"""Deterministic PBC document tracking over OneDrive or Google Drive.
+"""Deterministic PBC document tracking over a Google Shared Drive, synced by Drive for desktop.
 
 See docs/ROADMAP.md for the build plan. Component modules:
 

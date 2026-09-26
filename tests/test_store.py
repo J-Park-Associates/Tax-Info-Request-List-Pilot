@@ -2063,7 +2063,8 @@ def test_a_journal_rewritten_to_the_same_length_is_refused_by_sync_and_by_record
     for reading in (store.sync, store.catch_up, store.follow_the_journal):
         with pytest.raises(store.StoreError, match=re.escape(sentence)) as refused:
             reading(conn, root, by_hand)
-        assert "Nothing was applied. Run the store check, then rebuild." in str(refused.value)
+        assert ("Nothing was applied. Copy the store aside and keep any conflict copy of the record "
+                "before you rebuild") in str(refused.value)
     with engagement_lock(by_hand), pytest.raises(store.StoreError, match=re.escape(sentence)):
         store.record(conn, by_hand, ledger.new(
             ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(decision="Filed", identifier="A01")))

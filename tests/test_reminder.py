@@ -147,7 +147,7 @@ LABEL = "Test Household 2025 Smith TY2025"
 def engagement(tmp_path, items=SCANNED, name="Smith TY2025"):
     """A request list in the record, with the record carrying these statuses.
 
-    The list holds the person's eleven columns and nothing else, so the
+    The list holds the person's columns and nothing else, so the
     statuses are recorded the way a scan records them: one ``scanned``
     event through the store, under the lock.
     """

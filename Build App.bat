@@ -1,7 +1,8 @@
 @echo off
 rem ── Build the portable app package ─────────────────────────────────────
 rem Output: <OUT>\dist\<productName>-<PLATFORM>-<ARCH>\ (the variables below)
-rem Copy that whole folder to a USB stick or any Windows laptop.
+rem Put that whole folder on the designated machine: today one machine runs a
+rem clients root, and docs\runbook.md section 1 says which and why.
 rem
 rem Reproducible: the Python packages (requirements-build.txt, and the whole
 rem tree under them in constraints.txt), the Electron
@@ -96,8 +97,9 @@ for /f "usebackq delims=" %%i in (`npm --version`) do set NPMVER=%%i
 echo [4/4] Done.
 echo.
 echo Portable app: "%CD%\%PKG%"
-echo Copy that entire folder to a USB drive or laptop and double-click
-echo "%NAME%.exe".
+echo Put that entire folder on the designated machine - today one machine
+echo runs a clients root, docs\runbook.md section 1 - and double-click
+echo "%NAME%.exe" there.
 call :wait
 exit /b 0
 

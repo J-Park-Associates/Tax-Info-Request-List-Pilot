@@ -11,7 +11,7 @@ row 104 retired the last workbook: **everything is in the record.**
 
 | | |
 |---|---|
-| **the record** holds the person's rules | the twelve accountant columns, and nothing else: a request's identifier, its document, its period, how many files are expected, which types and how small, its keywords, its date rule, a Manual Override and its Override Reason, and whether the document it asks for carries a name. Edited in the app's **Edit Request List** editor and nowhere else; every save is one `rules_changed` event. |
+| **the record** holds the person's rules | the fourteen accountant columns (`manifest.HEADERS`), and nothing else: a request's identifier, its document, its period, how many files are expected, which types and how small, its keywords, its date rule, a Manual Override and its Override Reason, whether the document it asks for carries a name, whether the client is asked for it, and the short name the firm's working files use. Edited in the app's **Edit Request List** editor and nowhere else; every save is one `rules_changed` event. |
 | **the record** holds the engagement's details | the client, the share link, the due date, the filing deadline, the sender, the firm, whether they are chased, whether the run skips them, what the engagement was rolled from, which catalog it was cut from and who the return is for - the people whose names its documents print, with the spellings they print them in. Written by the wizard, edited in the same editor, carried in the same event. |
 | **the record** holds what the machine decided | every document and where it went, every request's Status, Received Date, File Count and Validation Notes, every keyword a person's filing taught a request. |
 
@@ -64,8 +64,11 @@ So the split is:
   (the engagement lock needs it), so one store per clients root takes nothing
   away.
 
-The store is disposable. Delete it and every fact it held is still in the
-journals; rebuild it and it says the same thing again. That is the test every
+The store is disposable. Delete it and every fact the journals still hold is
+still in them; rebuild it and it says what they now say. A journal cannot yet
+prove its own lines (audit A-3), so a line lost from one survives only in a
+store that read it — which is why the runbook copies the store aside before
+any rebuild (§1). That is the test every
 step of this plan has to pass, and it is why a person's edit of the request
 list is written into the **journal** rather than only into the database.
 
@@ -580,7 +583,8 @@ counts with a different chain is a refusal, never "nothing to do"), in
 over that many lines of the journal as it is now must equal the one kept,
 or the engagement is refused: *"The record for <return> was changed behind
 the tracker's back (line N onward no longer matches). Nothing was applied.
-Run the store check, then rebuild."* `check()` names it too. It never
+Copy the store aside and keep any conflict copy of the record before you
+rebuild (the runbook, section 1)."* `check()` names it too. It never
 repairs itself. The line named is the first whose event the store holds
 differently; a rewrite that changed only bytes (a key reordered) is named
 from line 1. **Not chosen:** a sequence number and previous-line hash

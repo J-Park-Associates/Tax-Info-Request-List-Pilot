@@ -1792,7 +1792,8 @@ def _catch_up(conn: sqlite3.Connection, root: Path | str | None, engagement_dir:
 #: the digest it kept (decision 137, A3). The same shape as the refusal of a
 #: truncated journal: what happened, that nothing was applied, what to do.
 REWRITTEN = ("The record for {rel} was changed behind the tracker's back (line {line} onward "
-             "no longer matches). Nothing was applied. Run the store check, then rebuild.")
+             "no longer matches). Nothing was applied. Copy the store aside and keep any "
+             "conflict copy of the record before you rebuild (the runbook, section 1).")
 
 
 def _rewritten_from(conn: sqlite3.Connection, engagement_id: int, events: list[dict],
