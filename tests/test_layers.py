@@ -676,17 +676,24 @@ def test_importing_the_api_loads_no_network_module():
     connection. The error log rotates by its own few lines rather than
     ``logging.handlers`` (which loads ``socket``), and the two standard
     library helpers that drag one in - the email parser and XML escaping -
-    are imported where they are used. Measured in a fresh interpreter."""
+    are imported where they are used. Measured in a fresh interpreter.
+
+    Decision 194 (D8) closes the escape for good: ``tracker.scheduling``
+    escapes the task file with ``html.escape(quote=False)``, byte for byte
+    what ``xml.sax.saxutils`` gave, so ``xml.sax`` - which loads
+    ``urllib.request``, ``http.client`` and ``ssl`` - is not in the process
+    at all, and the scheduling module is held to it on its own too."""
     import json
     import subprocess
     import sys
 
-    program = (
-        "import json,sys\n"
-        "import tracker.api\n"
-        "print(json.dumps(sorted(m for m in ('socket', 'http', 'ssl', 'urllib.request') "
-        "if m in sys.modules)))\n"
-    )
-    done = subprocess.run([sys.executable, "-c", program], capture_output=True, text=True,
-                          check=True, cwd=REPO)
-    assert json.loads(done.stdout) == []
+    for module in ("tracker.api", "tracker.scheduling"):
+        program = (
+            "import json,sys\n"
+            f"import {module}\n"
+            "print(json.dumps(sorted(m for m in ('socket', 'http', 'ssl', 'urllib.request', "
+            "'xml.sax') if m in sys.modules)))\n"
+        )
+        done = subprocess.run([sys.executable, "-c", program], capture_output=True, text=True,
+                              check=True, cwd=REPO)
+        assert json.loads(done.stdout) == [], module

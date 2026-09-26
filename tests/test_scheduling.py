@@ -311,3 +311,20 @@ def test_the_scheduled_job_names_the_settings_folder_and_no_clients_root():
     # From anywhere: a POSIX settings folder is named in its own flavour.
     posix = task_scheduler_xml(**{**ARGS, "settings": "/srv/tracker"})
     assert f"/srv/tracker/{SETTINGS_FILENAME}" in posix
+
+
+def test_the_task_xml_is_escaped_exactly_as_before():
+    """Decision 194 (D8): the escape moved off ``xml.sax.saxutils`` - which
+    loads a network library - to ``html.escape(quote=False)``, and the task
+    file is byte-identical: ``&``, ``<`` and ``>`` escaped, quotes left as
+    they are, so a quoted Windows path in ``<Arguments>`` reads the same.
+    The test may import saxutils; ``tracker/`` may not."""
+    from xml.sax.saxutils import escape
+
+    from tracker import scheduling
+
+    for text in ('A & B <Park> "quoted" \'single\'',
+                 '--settings "C:\\Program Files\\J Park & Associates\\" --log',
+                 "&amp; already escaped &lt;", "", "plain"):
+        assert scheduling._xml_escape(text) == escape(text)
+    assert scheduling._xml_escape(2026) == escape("2026")

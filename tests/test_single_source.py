@@ -1777,7 +1777,10 @@ def test_every_draw_after_an_await_goes_through_renderFor():
     assert "view !== viewGeneration" in body
     # The shown return changes in one place, and every change bumps the view.
     assert len(re.findall(r"(?<![\w.])(?<!let )(?<!const )active = ", js)) == 1
-    assert "select(button.dataset.path)" in js and "select(e.target.value)" in js
+    # Since decision 194 a switch is showReturn, which selects before it asks.
+    assert "showReturn(button.dataset.path)" in js and "showReturn(e.target.value)" in js
+    show = js.split("async function showReturn(path) {", 1)[1].split("\n}\n", 1)[0]
+    assert show.index("const view = select(path)") < show.index("call(")
 
 
 def test_the_reminder_card_is_never_hidden_on_an_error():
@@ -1786,7 +1789,11 @@ def test_the_reminder_card_is_never_hidden_on_an_error():
     caught = body.split("} catch (err) {", 1)[1]
     assert '"hidden"' not in caught
     assert "vocab.reminder.unreadable" in caught and "failed(err" in caught
-    assert "result.not_yet" in body
+    # One card from either source (decision 194): the not-yet line and the
+    # sentence saying why a card could not be composed are drawn on it.
+    assert "drawReminderReply(result)" in body
+    drawn = js.split("function drawReminderReply(reply) {", 1)[1].split("\n}\n", 1)[0]
+    assert "reply.not_yet" in drawn and "reply.unreadable" in drawn and '"hidden"' not in drawn
 
 
 def test_every_reply_warning_becomes_a_notice():
@@ -1799,8 +1806,8 @@ def test_every_reply_warning_becomes_a_notice():
 
 def test_a_failed_first_list_is_a_notice_with_retry_needing_no_vocabulary():
     js = read("app/renderer/app.js")
-    refresh = js.split("async function refresh(preferPath) {", 1)[1].split("\n}\n", 1)[0]
-    assert "failed(err, () => refresh(preferPath))" in refresh
+    start = js.split("async function bootstrap(preferPath) {", 1)[1].split("\n}\n", 1)[0]
+    assert "failed(err, () => bootstrap(preferPath))" in start
     # The notice draws its buttons from the static template and reads the
     # vocabulary only for a repeat count, and only when there is one.
     draw = js.split("function drawNotice(entry) {", 1)[1].split("\n}\n", 1)[0]
@@ -1942,3 +1949,68 @@ def test_an_error_of_the_page_or_the_shell_is_said_by_class_and_its_message_only
     assert "err.message" not in run.split("keepInLog(", 1)[0]
     assert 'ipcMain.handle("log-error"' in main_js
     assert api._vocab()["shell"]["page_error"] == api.PAGE_ERROR
+
+
+# ============= one spawn per click (decision 194) ===========================
+
+
+def _body(js: str, head: str) -> str:
+    return js.split(head, 1)[1].split("\n}\n", 1)[0]
+
+
+def _handler(js: str, head: str) -> str:
+    return js.split(head, 1)[1].split("\n});\n", 1)[0]
+
+
+def test_switching_returns_is_one_state_call():
+    """A switch is one process: ``showReturn`` asks ``state`` and nothing
+    else, the three places a person switches and a refusal all go through
+    it, and the list is read once, at start-up (and again only after the
+    clients folder is set, R8)."""
+    js = read("app/renderer/app.js")
+    show = _body(js, "async function showReturn(path) {")
+    assert show.count("call(") == 1 and 'call(["state", ' in show
+    for head in ('$("household-returns").addEventListener("click", (e) => {',
+                 '$("eng-select").addEventListener("change", (e) => {',
+                 '$("prior-list").addEventListener("click", async (e) => {'):
+        handler = _handler(js, head)
+        assert "showReturn(" in handler, head
+        for other in ("refresh(", "bootstrap(", "loadReminder(", "call("):
+            assert other not in handler, (head, other)
+    refused = _body(js, "async function refused(err, btn) {")
+    assert "showReturn(active)" in refused and "bootstrap(" not in refused
+    assert "refresh(" not in js
+    assert js.count('call(["list"])') == 1
+    assert 'call(["list"])' in _body(js, "async function loadEngagements(preferPath, asked) {")
+    calls = [m.start() for m in re.finditer(r"(?<![\w.])bootstrap\(", js)]
+    assert len(calls) == 4        # its definition, its own Retry, saveRoot and start-up
+    assert "await bootstrap();" in _body(js, "async function saveRoot() {")
+    assert js.rstrip().endswith("bootstrap();")
+
+
+def test_the_reminder_card_is_drawn_from_state():
+    """The card arrives with the state (decision 194): ``renderReminder``
+    draws ``state.reminder_card``, and the ``reminder`` command is called
+    from one place, reached only from the stage toggle, a refused approve
+    and the one branch that keeps a rung a person moved (R3)."""
+    js = read("app/renderer/app.js")
+    card = _body(js, "function renderReminder(state) {")
+    assert "drawReminderReply(state.reminder_card" in card
+    assert "reminderStage !== null" in card and "loadReminder()" in card
+    assert js.count('withEng("reminder")') == 1
+    assert 'withEng("reminder")' in _body(js, "async function loadReminder() {")
+    heads = ("function renderReminder(state) {", "async function approveReminder() {",
+             '$("reminder-stages").addEventListener("click"')
+    callers = [m.start() for m in re.finditer(r"(?<![\w.])(?<!function )loadReminder\(", js)]
+    places = sorted(max((js[:at].rfind(head), head) for head in heads)[1] for at in callers)
+    assert places == sorted(heads)
+
+
+def test_the_editor_opens_on_the_state_on_screen():
+    """D13: the editor opens on the state already drawn for this return,
+    with no refetch; a save is still judged by the list's head (160)."""
+    js = read("app/renderer/app.js")
+    body = _body(js, "async function openEditor() {")
+    assert "lastState.paths.engagement === active" in body
+    assert body.index("lastState") < body.index("call(")
+    assert "head: editorState.list_head" in _body(js, "async function saveEditor() {")

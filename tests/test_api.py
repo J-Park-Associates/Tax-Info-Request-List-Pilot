@@ -6245,3 +6245,222 @@ def payload_of_label(capsys, engagement) -> str:
     """The label the app lists this return by."""
     code, listed = run(capsys, "list")
     return next(e["name"] for e in listed["engagements"] if e["path"] == str(engagement))
+
+
+# ============= one spawn per click (decision 194) ===========================
+
+
+def _held_engagement(capsys, demo_root, name):
+    """One return held by a failed row: a card with no letter (decision 115)."""
+    from tests.conftest import seed_statuses
+    from tracker import reasons
+    from tracker.manifest import StatusUpdate
+
+    folder = chased_engagement(capsys, demo_root, name=name)
+    seed_statuses(folder, {"B01": StatusUpdate(
+        status=Status.FAILED, file_count=1,
+        validation_notes="x.pdf: " + reasons.WRONG_DOCUMENT.format(listed="'1098'"))})
+    return folder
+
+
+def test_the_state_reply_carries_the_reminder_card_the_reminder_command_gives(capsys, demo_root):
+    """The card ships inside the state reply (decision 194, R1): for a return
+    with rows outstanding, a held one and one nobody has scanned (193's
+    not-yet line), ``state.reminder_card`` is exactly what ``reminder``
+    answers, less the envelope - one renderer function draws either."""
+    chased = chased_engagement(capsys, demo_root, name="Outstanding")
+    held = _held_engagement(capsys, demo_root, "Held")
+    assert run(capsys, "create", stdin={"household": HOUSEHOLD, "return_name": "Never Scanned",
+                                        "items": [{"identifier": "A01", "document": "W-2"}]})[0] == 0
+    never = where(demo_root, "Never Scanned")
+    for folder in (chased, held, never):
+        card = payload_of_state(capsys, folder)["reminder_card"]
+        code, reply = run(capsys, "reminder", api.ENGAGEMENT_FLAG, str(folder), stdin={})
+        assert code == 0, reply
+        reply.pop("warnings")
+        assert card == reply, folder.name
+    assert payload_of_state(capsys, never)["reminder_card"] == {
+        "reminder": None, "not_yet": reminder.REMINDER_NOT_YET}
+    assert payload_of_state(capsys, held)["reminder_card"]["reminder"]["held"]
+    assert payload_of_state(capsys, chased)["reminder_card"]["reminder"]["editable"] is True
+
+
+def test_a_write_that_returns_state_carries_the_reminder_card_too(capsys, demo_root, tmp_path):
+    """Every write's state carries the card, so a write is one process and
+    the card is the record's after it (decision 194)."""
+    engagement = sample_engagement(capsys, demo_root, tmp_path,
+                                   "Mortgage Notes.docx", "Form 1098 Mortgage Interest.pdf")
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    [parked] = [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
+    [filed] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
+
+    code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": parked["pbc_location"], "identifier": "D01",
+                               "keyword": "mortgage notes", "seq": parked["seq"]})
+    assert code == 0, payload
+    assert payload["state"]["reminder_card"]["reminder"]["fingerprint"] \
+        == reminder_card(capsys, engagement)["fingerprint"]
+
+    code, payload = run(capsys, "unfile", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": filed["pbc_location"], "seq": filed["seq"]})
+    assert code == 0, payload
+    [parked] = [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
+    code, payload = run(capsys, "dismiss", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": parked["pbc_location"], "seq": parked["seq"]})
+    assert code == 0, payload
+    assert payload["state"]["reminder_card"]["reminder"]["fingerprint"] \
+        == reminder_card(capsys, engagement)["fingerprint"]
+
+
+def test_a_reminder_that_cannot_be_read_is_said_and_the_page_still_arrives(
+        capsys, demo_root, monkeypatch):
+    """193's D7, carried into the state (decision 194, R4): a letter that
+    cannot be composed takes nothing else with it. The card says why, the
+    same sentence is in the reply's warnings, and it names the class only -
+    never the exception's text, which can quote a client's path (security
+    principle 7)."""
+    folder = chased_engagement(capsys, demo_root, name="Unreadable Card")
+
+    def unreadable(*args, **kwargs):
+        raise OSError("C:\\secret\\Park W-2.pdf")
+
+    monkeypatch.setattr(api, "_reminder_now", unreadable)
+    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(folder))
+    assert code == 0, payload
+    assert payload["items"]
+    said = payload["reminder_card"]["unreadable"]
+    assert payload["reminder_card"] == {"reminder": None, "unreadable": said}
+    assert said == api.FAILED.format(kind="OSError", log=api.ERROR_LOG_FILENAME)
+    assert said in payload["warnings"]
+    for word in ("secret", "Park W-2"):
+        assert word not in json.dumps(payload)
+
+
+def _the_list_now(capsys) -> dict:
+    code, listed = run(capsys, "list")
+    assert code == 0, listed
+    return {key: listed[key] for key in ("engagements", "households", "misfits", "root")}
+
+
+def test_the_writes_that_change_the_list_carry_it_without_the_vocabulary(capsys, demo_root):
+    """Decision 194, R5 and R6: a new return, a new year, a household's
+    details, an accepted name and a return made inactive each change what
+    the picker shows, so each reply carries the whole list from one walk -
+    the list ``list`` gives, and no vocabulary, which only ``list`` ships."""
+    code, payload = run(capsys, "create", stdin={
+        "household": "Other Household", "return_name": "Smith 2025", "form": "1040",
+        "items": [{"identifier": "A01", "document": "W-2"}]})
+    assert code == 0, payload
+    assert payload["list"] == _the_list_now(capsys) and "vocab" not in payload["list"]
+    prior = where(demo_root, "Smith 2025", household="Other Household")
+
+    code, payload = run(capsys, "roll-household", api.ENGAGEMENT_FLAG, str(prior),
+                        stdin={"year": 2026, "returns": [{"prior": str(prior)}]})
+    assert code == 0, payload
+    assert payload["list"] == _the_list_now(capsys) and "vocab" not in payload["list"]
+    assert str(where(demo_root, "Smith 2025", year=2026, household="Other Household")) in \
+        [one["path"] for one in payload["list"]["engagements"]]
+
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(prior),
+                        stdin={"contact": "Pat"})
+    assert code == 0, payload
+    assert payload["list"] == _the_list_now(capsys) and "vocab" not in payload["list"]
+    [household] = [h for h in payload["list"]["households"] if h["name"] == "Other Household"]
+    assert household["contact"] == "Pat"
+
+    rows = payload_of_state(capsys, prior)["rules"]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(prior),
+                        stdin={"items": rows, "engagement": {"active": False}})
+    assert code == 0, payload
+    assert "active" in payload["saved"]["engagement"]
+    assert payload["list"] == _the_list_now(capsys) and "vocab" not in payload["list"]
+
+    engagement = _a_renamed_household(capsys, demo_root)
+    pause = payload_of_state(capsys, engagement)["household"]["pause"]
+    code, payload = run(capsys, "accept-folder-name", api.ENGAGEMENT_FLAG, pause["engagement"],
+                        stdin={"seq": pause["seq"], "scope": "household"})
+    assert code == 0, payload
+    assert payload["list"] == _the_list_now(capsys) and "vocab" not in payload["list"]
+    assert "Park Household" in [h["name"] for h in payload["list"]["households"]]
+
+
+def test_the_writes_that_cannot_change_the_list_do_not_walk(capsys, demo_root, tmp_path,
+                                                            monkeypatch):
+    """Decision 194, R5: showing, filing, dismissing, unfiling, restoring,
+    marking missing, the firm's word, approving, the card's own command
+    and an edit that leaves ``active`` alone never walk the root and carry
+    no list."""
+    from tests.test_filer import _consolidated_return
+
+    engagement = sample_engagement(capsys, demo_root, tmp_path,
+                                   "Mortgage Notes.docx", "Form 1098 Mortgage Interest.pdf")
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    [parked] = [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
+    [filed] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
+    # One filed copy dragged by hand into the review folder, for restore.
+    home = engagement / filed["prepared_location"]
+    target = engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME / home.name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    home.rename(target)
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    [moved] = payload["state"]["moved"]
+    statement = _consolidated_return(demo_root)
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(statement))
+    assert code == 0, payload
+    [answered] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
+    assert run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(engagement),
+               stdin={"link": "https://drive.example/smith"})[0] == 0
+    chased = chased_engagement(capsys, demo_root, name="Chased")
+    card = reminder_card(capsys, chased)
+
+    walked = _count_walks(monkeypatch)
+    calls = [
+        ("assign", engagement, {"original": parked["pbc_location"], "identifier": "D01",
+                                "keyword": "mortgage notes", "seq": parked["seq"]}),
+        ("restore", engagement, {"original": moved["pbc_location"], "seq": moved["seq"]}),
+        ("mark-missing", statement, {"original": answered["pbc_location"], "identifier": "A02",
+                                     "seq": answered["seq"]}),
+        ("mark-shared", engagement, None),
+        ("approve", chased, {"stage": card["stage"], "fingerprint": card["fingerprint"]}),
+        ("reminder", chased, {}),
+        ("state", engagement, None),
+        ("edit", chased, {"items": payload_of_state(capsys, chased)["rules"],
+                          "engagement": {"client": "Jane"}}),
+    ]
+    for command, folder, spec in calls:
+        code, payload = run(capsys, command, api.ENGAGEMENT_FLAG, str(folder), stdin=spec)
+        assert code == 0, (command, payload)
+        assert "list" not in payload, command
+    # The document assign filed goes back for review, and is then dismissed.
+    [filed] = [e for e in payload_of_state(capsys, engagement)["index"]
+               if e["decision"] == FILED and e["identifier"] == "D01"]
+    code, payload = run(capsys, "unfile", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": filed["pbc_location"], "seq": filed["seq"]})
+    assert code == 0, payload
+    assert "list" not in payload
+    [parked] = [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
+    code, payload = run(capsys, "dismiss", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": parked["pbc_location"], "seq": parked["seq"]})
+    assert code == 0, payload
+    assert "list" not in payload
+    assert walked == []
+
+
+def test_sort_and_scan_carries_the_list_from_its_one_walk(capsys, demo_root, monkeypatch):
+    """Decision 194, R7: Sort & Scan already walks the root once for the
+    pass (decision 192); its reply carries the list from that walk and adds
+    none - which is how a folder made by hand reaches the picker."""
+    engagement = chased_engagement(capsys, demo_root, name="Scanned")
+    walked = _count_walks(monkeypatch)
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    assert walked == [demo_root]
+    assert payload["list"] == _the_list_now(capsys) and "vocab" not in payload["list"]
+
+
+def test_every_list_changing_command_is_a_command():
+    assert set(api.LIST_CHANGING) <= set(api.COMMANDS)
+    assert "set-root" not in api.LIST_CHANGING   # the app starts again after it (R8)

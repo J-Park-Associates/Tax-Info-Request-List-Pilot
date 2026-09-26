@@ -35,10 +35,14 @@ product name in its environment, or a source checkout beside ``app/package.json`
 
 Nothing generated here sends email. The scheduled command files documents,
 updates the manifest and writes draft text files; a person still sends them.
+Importing this module loads no network library (decision 194):
+``tests/test_layers.py::test_importing_the_api_loads_no_network_module``
+holds it there.
 """
 
 from __future__ import annotations
 
+import html
 import json
 import sys
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -167,11 +171,15 @@ def refuse_shell_special(field: str, value: str | Path) -> None:
 
 
 def _xml_escape(value: str) -> str:
-    # At call time (decision 193's review, S2): ``xml.sax.saxutils`` imports
-    # ``urllib.request``, and importing the tracker loads no network module.
-    from xml.sax.saxutils import escape
+    """``&``, ``<`` and ``>`` escaped, and nothing else - byte for byte what
+    ``xml.sax.saxutils.escape`` gave (decision 194, D8).
 
-    return escape(str(value))
+    Not saxutils: it imports ``urllib.request``, which loads ``http.client``
+    and ``ssl``, and even at call time (decision 193's review, S2) that is a
+    network library in the process for one escape. ``quote=False``, because
+    ``quote=True`` would turn a ``"`` inside ``<Arguments>`` into ``&quot;``:
+    valid XML, but a changed task file for no reason."""
+    return html.escape(str(value), quote=False)
 
 
 def _settings_file(settings: str | Path) -> str:

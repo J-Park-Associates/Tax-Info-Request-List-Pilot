@@ -331,9 +331,12 @@ function render(state) {
 // ── The week's reminder (decision 118) ──────────────────────────────────
 
 // The card is the one place a person sees the draft, moves it up or down
-// the ladder, copies it and approves it. It is drawn from its own command
-// rather than from `state`, because the letter is regenerated in memory at
-// whatever stage the toggle stands on and `state` is the record as it is.
+// the ladder, copies it and approves it. It arrives with the state
+// (`state.reminder_card`, decision 194): exactly what the `reminder`
+// command answers at the record's stage, so a switch or a write is one
+// reply and the card cannot disagree with the table. The `reminder`
+// command is the stage toggle's: it regenerates the letter in memory at
+// the rung a person moved to, and redraws the card after a refused approve.
 // Nothing here sends: there is no send button, no mail link and no form.
 //
 // Which rung the person moved the toggle to is the only thing the page
@@ -364,7 +367,25 @@ function renderReminder(state) {
     reminderStage = null;
     reminderFor = active;
   }
-  loadReminder();
+  drawReminderReply(state.reminder_card || { reminder: null, not_yet: "" });
+  // A rung a person moved the toggle to on this return survives a write
+  // by one call, and only then (decision 194, R3): the state's card is at
+  // the record's stage.
+  if (reminderStage !== null && reminderCard && reminderCard.editable
+      && reminderCard.stage !== reminderStage) loadReminder();
+}
+
+// One card from either source - the state's `reminder_card` or the
+// `reminder` command's reply, which are the same shape: the card, the
+// not-yet line (D7), or the sentence saying why it could not be composed
+// (its notice comes from the reply's warnings).
+function drawReminderReply(reply) {
+  if (reply.reminder) {
+    drawReminder(reply.reminder);
+    return;
+  }
+  reminderCard = null;
+  drawReminderLine(reply.unreadable || reply.not_yet);
 }
 
 async function loadReminder() {
@@ -376,13 +397,7 @@ async function loadReminder() {
   try {
     const result = await call(withEng("reminder"), { stage: reminderStage });
     if (view !== viewGeneration) return;
-    if (!result.reminder) {
-      // Not scanned yet: a line on the card, not an error (D7).
-      reminderCard = null;
-      drawReminderLine(result.not_yet);
-      return;
-    }
-    drawReminder(result.reminder);
+    drawReminderReply(result);
   } catch (err) {
     // A reminder that cannot be read is said, and the card stays (D7).
     if (view !== viewGeneration) return;
@@ -1012,7 +1027,7 @@ async function assignParked(li) {
 async function refused(err, btn) {
   failed(err);
   btn.disabled = false;
-  await refresh();
+  await showReturn(active);
 }
 
 // ── The same queue, one card at a time (decision 114) ────────────────────
@@ -1421,6 +1436,7 @@ async function acceptFolderName() {
   try {
     const result = await call(["accept-folder-name", vocab.engagement_flag, pause.engagement],
                               { seq: pause.seq, scope: pause.scope });
+    if (result.list) adoptList(result.list);   // the list this write changed (decision 194)
     renderFor(view, result.state);
   } catch (err) {
     failed(err, acceptFolderName);
@@ -1552,6 +1568,7 @@ async function saveHousehold() {
       feeds: editorFeeds.map((f) => ({ household: f.household, return_name: f.return_name })),
     });
     $("household-modal").classList.add("hidden");
+    if (result.list) adoptList(result.list);   // the list this write changed (decision 194)
     renderFor(view, result.state);
     const moved = result.saved.household;
     banner(moved.length ? `${vocab.household.heading}: ${moved.join(", ")}` : vocab.editor.nothing_changed, "ok");
@@ -1682,7 +1699,7 @@ function watchLock(lock) {
       $("lock-notice").classList.add("hidden");
       setLocked(false);
       notice({ sentence: vocab.lock.buttons_back, kind: "warning" });
-      refresh(active);
+      showReturn(active);
     } catch (err) {
       stopLockWatch();
       failed(err);
@@ -1794,10 +1811,7 @@ async function loadEngagements(preferPath, asked) {
   if (asked !== undefined && asked !== viewGeneration) return null;
   vocab = listed.vocab;
   applyVocabulary();
-  engagements = listed.engagements;
-  households = listed.households || [];
-  misfits = listed.misfits || [];
-  clientsRoot = listed.root || "";
+  adoptList(listed);
   // Sticky, unlike banner(): nothing else writes to it, so it stays until
   // the app is moved to a shorter folder (decision 169).
   $("reader-warning").textContent = listed.reader_warning || "";
@@ -1824,11 +1838,42 @@ async function loadEngagements(preferPath, asked) {
     engagements[0].path;
   if (chosen !== active) select(chosen);
   renderEngagements();
-  renderMisfits();
   return true;
 }
 
-async function refresh(preferPath) {
+// The list half of a `list` reply, without the vocabulary (decision 194):
+// start-up's, or the one a write that changes the list carries (`create`,
+// `rollover`, `roll-household`, `edit-household`, `accept-folder-name`,
+// `edit` when it changed `active`, and `scan` from its one walk). Showing
+// a return never reads the list again: the picker is as the app last
+// walked the root, which is display (UX 1); every write is still judged
+// under the lock.
+function adoptList(listed) {
+  engagements = listed.engagements || [];
+  households = listed.households || [];
+  misfits = listed.misfits || [];
+  clientsRoot = listed.root || "";
+  renderEngagements();
+  renderMisfits();
+}
+
+// Show one return: one `state`, and nothing else (decision 194). The card,
+// the table and the household all arrive in that one reply, and a reply
+// that lands after another return was chosen is dropped (D6).
+async function showReturn(path) {
+  const view = select(path);
+  renderEngagements();
+  try {
+    renderFor(view, await call(["state", vocab.engagement_flag, path]));
+  } catch (err) {
+    if (view === viewGeneration) failed(err, () => showReturn(path));
+  }
+}
+
+// Start-up: the list and the vocabulary, once, then the chosen return.
+// Run again only when the clients folder is set (decision 194, R8), since
+// the vocabulary depends on the settings that writes.
+async function bootstrap(preferPath) {
   try {
     const listed = await loadEngagements(preferPath, viewGeneration);
     if (listed === null) return;   // a later choice owns the page now
@@ -1843,7 +1888,7 @@ async function refresh(preferPath) {
     const view = viewGeneration;
     renderFor(view, await call(withEng("state")));
   } catch (err) {
-    failed(err, () => refresh(preferPath));
+    failed(err, () => bootstrap(preferPath));
   }
 }
 
@@ -1858,7 +1903,7 @@ async function saveRoot() {
     });
     banner(`Clients folder set to ${result.root} (written to ${result.settings_path}).`, "ok");
     renderShortOfRoom(result.short_of_room || []);
-    await refresh();
+    await bootstrap();
   } catch (err) {
     failed(err, saveRoot);
   } finally {
@@ -1979,24 +2024,27 @@ async function runScan() {
     const result = await call(args);
     // The pass's own warnings (decision 189) stay, as notices (decision 193).
     warningNotices(result.pass_warnings || []);
+    // The list from the pass's one walk (decision 194): how a folder made
+    // by hand reaches the picker without a click walking the root.
+    if (result.list) adoptList(result.list);
     const said = scanSummary(result);
     if (view !== viewGeneration) {
       // The return it scanned is no longer shown (D6): its summary is a
       // notice under its own label, so nothing vanishes, and the return
       // shown is drawn from the record.
       notice({ sentence: `${result.run.label}: ${said.text}`, kind: "warning" });
-      await refresh(active);
+      await showReturn(active);
       return;
     }
     if (result.state) renderFor(view, result.state);
-    else await refresh(active);     // filed, then could not redraw (D5): the record redraws it
+    else await showReturn(active);     // filed, then could not redraw (D5): the record redraws it
     if (result.lock) showLock(result.lock);
     banner(said.text, said.cls);
   } catch (err) {
     failed(err, runScan);
     // A pass stopped at the limit says where it was; the page is what the
     // record holds, so it is drawn again from it.
-    if (err.result && err.result.killed && view === viewGeneration) await refresh(active);
+    if (err.result && err.result.killed && view === viewGeneration) await showReturn(active);
   } finally {
     scanning = null;
     btn.disabled = locked;
@@ -2198,7 +2246,10 @@ async function rollForward() {
         })),
       });
     $("modal").classList.add("hidden");
-    await refresh(result.state.paths.engagement);
+    // The list this write changed arrives with it (decision 194).
+    if (result.list) adoptList(result.list);
+    renderFor(select(result.state.paths.engagement), result.state);
+    renderEngagements();
     // The banner: how many returns rolled into the year and how many were
     // retired, then each return's rows added as not asked (decision 142)
     // and last year's unfiled files - said here, once, because there is no
@@ -2628,7 +2679,10 @@ async function createEngagement() {
       year: Number($("ne-year").value) || null,
     });
     $("modal").classList.add("hidden");
-    await refresh(result.state.paths.engagement);
+    // The list this write changed arrives with it (decision 194).
+    if (result.list) adoptList(result.list);
+    renderFor(select(result.state.paths.engagement), result.state);
+    renderEngagements();
     const lines = [
       `Engagement "${result.created}" created with ${asked} request(s) asked for, client README generated. Open the Client Folder to show it.`,
     ];
@@ -2852,7 +2906,13 @@ function editorNote(text, cls) {
 async function openEditor() {
   if (!active) return;
   try {
-    editorState = await call(withEng("state"));
+    // Opened on the state already drawn for this return (decision 194,
+    // D13): display may be cached, a write never is - the save is judged
+    // under the lock by the list's head (decision 160), and a list that
+    // moved since is refused as stale, with Look again (193).
+    editorState = (lastState && lastState.paths && lastState.paths.engagement === active)
+      ? { ...lastState }
+      : await call(withEng("state"));
   } catch (err) {
     failed(err, openEditor);
     return;
@@ -2971,6 +3031,9 @@ async function saveEditor() {
       engagement: engagementFromFields(),
       head: editorState.list_head,
     });
+    // Carried only when the save changed whether the return is active,
+    // the one thing the editor saves that the list shows (decision 194).
+    if (result.list) adoptList(result.list);
     renderFor(view, result.state);
     closeEditor();
     const saved = result.saved;
@@ -3019,8 +3082,7 @@ $("ho-file").addEventListener("click", fileHandOver);
 $("household-returns").addEventListener("click", (e) => {
   const button = e.target.closest("button[data-path]");
   if (!button) return;
-  select(button.dataset.path);
-  refresh(active);
+  showReturn(button.dataset.path);
 });
 $("btn-edit").addEventListener("click", openEditor);
 $("btn-view").addEventListener("click", () => paths && window.tracker.open(paths.view));
@@ -3035,8 +3097,7 @@ $("reminder-stages").addEventListener("click", (e) => {
   loadReminder();
 });
 $("eng-select").addEventListener("change", (e) => {
-  select(e.target.value);
-  refresh(active);
+  showReturn(e.target.value);
 });
 $("form-grid").addEventListener("click", (e) => {
   const card = e.target.closest(".form-card");
@@ -3080,7 +3141,7 @@ $("notices").addEventListener("click", (e) => {
   if (!entry) return;
   dismissNotice(entry);
   if (button.dataset.act === "retry" && entry.retry) entry.retry();
-  if (button.dataset.act === "look") refresh(active);
+  if (button.dataset.act === "look") showReturn(active);
 });
 $("ne-client").addEventListener("input", syncNameDefault);
 $("ne-year").addEventListener("input", syncNameDefault);
@@ -3109,8 +3170,7 @@ $("prior-list").addEventListener("click", async (e) => {
   const button = e.target.closest("button.roll-review-people");
   if (!button) return;
   $("modal").classList.add("hidden");
-  select(button.dataset.path);
-  await refresh(active);
+  await showReturn(button.dataset.path);
   openEditor();
 });
 $("ed-paste-btn").addEventListener("click", () => {
@@ -3193,4 +3253,4 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-refresh();
+bootstrap();

@@ -2115,6 +2115,11 @@ def _state(engagement: Path) -> dict:
         # reminder's own triage over the rows already loaded; nothing here
         # reads a draft file, and nothing here drafts (decision 12).
         "reminder": _reminder_payload(engagement, items, entries),
+        # The Reminder card itself, at the record's stage (decision 194):
+        # exactly what the ``reminder`` command answers, so a switch or a
+        # write is one reply and the card cannot disagree with the table.
+        # The command stays for the stage toggle alone.
+        "reminder_card": _reminder_said(engagement),
         # The household this return belongs to (decision 125): its own
         # record, the years still open across it, its returns and the one
         # queue a person works. The card is drawn from this and types
@@ -2358,7 +2363,9 @@ def _cmd_scan(argv: list[str]) -> dict:
         log.warning("The page could not be redrawn after a pass (%s)", kind, exc_info=True)
         payload["state"] = None
         _warn(STATE_NOT_REDRAWN.format(kind=kind))
-    return payload
+    # The list from the pass's own walk, which adds none (decision 194, R7):
+    # how a folder made by hand reaches the app's picker. No walk, no list.
+    return _with_list(payload, practice) if practice is not None else payload
 
 
 def _emit(line: str) -> None:
@@ -2492,13 +2499,17 @@ def _cmd_edit(argv: list[str]) -> dict:
                        check=lambda: _refuse_taking_away_documents(engagement, recorded, items))
     _refresh_readmes(engagement)
     state = _state(engagement)
-    return {
+    reply = {
         "saved": {"changed": list(saved.changed), "removed": list(saved.removed),
                   "engagement": list(saved.info_fields), "recorded": saved.recorded},
         # The editor's rule warnings are ``state.warnings``; the reply's own
         # ``warnings`` is the envelope's, with one meaning (decision 193).
         "state": state,
     }
+    # ``active`` is the one field saved here that the list shows - the
+    # feed picker reads it - so only a save that changed it walks (R6,
+    # decision 194).
+    return _with_list(reply) if "active" in saved.info_fields else reply
 
 
 #: The keys a row the editor sends may carry (decision 160): the columns of
@@ -2704,6 +2715,15 @@ def _cmd_list(argv: list[str]) -> dict:
         _warn(PRACTICE_NOT_WALKED)
         return {**empty, "needs_root": False, "root": str(root),
                 "root_problem": PRACTICE_NOT_WALKED, "vocab": _vocab()}
+    return {**_list_payload(root, registry), "needs_root": False, "vocab": _vocab(),
+            "reader_warning": empty["reader_warning"], "last_pass": empty["last_pass"]}
+
+
+def _list_payload(root: Path, registry: Registry) -> dict:
+    """The list half of the ``list`` reply - the households, the returns
+    and the left-alone folders of one walk, and the root - without the
+    vocabulary (decision 194). ``list`` adds the vocabulary; a write that
+    changes the list carries this alone (:data:`LIST_CHANGING`)."""
     grouped = registry.by_household()
     households = []
     for household in registry.households:
@@ -2742,10 +2762,55 @@ def _cmd_list(argv: list[str]) -> dict:
                      "where": str(Path(*below)) if (below := layout.parts_below(root, misfit.path))
                      else str(misfit.path)}
                     for misfit in registry.misfits],
-        "needs_root": False, "root": str(root), "vocab": _vocab(),
-        "reader_warning": empty["reader_warning"],
-        "last_pass": empty["last_pass"],
+        "root": str(root),
     }
+
+
+#: The commands whose reply carries the list, because they change it
+#: (decision 194). Showing a return reads the list no more: the app keeps
+#: start-up's and takes the one these writes carry. Each is a whole walk
+#: (:func:`_listing`), never one household's entry patched in (R5): two
+#: folders claiming one household, and the walk's order, are practice-wide
+#: facts a one-household read cannot give, and a spliced list could
+#: disagree with the walk that is the only discovery (decision 125). They
+#: are set-up acts, once per return per season, so the walk there costs no
+#: daily click. ``edit`` carries it only when it changed ``active``, the
+#: one field it saves that the list shows (R6); ``scan`` carries the list
+#: of the walk it already makes, and adds none (R7). ``set-root`` is not
+#: here: the app starts again after it, because the vocabulary depends on
+#: the settings it writes (R8).
+LIST_CHANGING = ("create", "rollover", "roll-household", "edit-household",
+                 "accept-folder-name", "edit", "scan")
+
+
+def _listing(registry: Registry | None = None) -> dict | None:
+    """The list a :data:`LIST_CHANGING` write carries: :func:`_list_payload`
+    of ``registry``, or of one walk of the saved root, without the
+    vocabulary. ``None`` where the root cannot be walked - said once, as
+    :data:`PRACTICE_NOT_WALKED` - and the app keeps the list it has; the
+    write itself stands."""
+    try:
+        root = _saved_root()
+        if root is None or not root.is_dir():
+            return None
+        try:
+            walked = registry if registry is not None else discover_engagements(root)
+        except EmptyRoot:
+            return {"engagements": [], "households": [], "misfits": [], "root": str(root)}
+        return _list_payload(root, walked)
+    except (RegistryError, door.DoorError) as exc:
+        log.warning("The clients root could not be walked (%s)", content_check.said_as_class(exc),
+                    exc_info=True)
+        _warn(PRACTICE_NOT_WALKED)
+        return None
+
+
+def _with_list(reply: dict, registry: Registry | None = None) -> dict:
+    """``reply`` with the list added, when the root could be walked."""
+    listed = _listing(registry)
+    if listed is not None:
+        reply["list"] = listed
+    return reply
 
 
 #: What the wizard is told when a household name typed again is, by the
@@ -2936,7 +3001,7 @@ def _cmd_create(argv: list[str]) -> dict:
     # nothing is ever re-shared.
     if made_household is not None:
         reply["checklist"] = _sharing_checklist(root, household)
-    return reply
+    return _with_list(reply)   # a new return, perhaps a new household (decision 194)
 
 
 def _undo_made(made: list[Path], owned: set[Path]) -> None:
@@ -3069,7 +3134,8 @@ def _cmd_edit_household(argv: list[str]) -> dict:
         feeds=_feeds_from_spec(spec["feeds"], household_dir) if "feeds" in spec else held.feeds,
     )
     saved = save_household(household_dir, info)
-    return {"saved": {"household": list(saved.fields)}, "state": _state(engagement)}
+    # The household's members, contact and link are in the list (decision 194).
+    return _with_list({"saved": {"household": list(saved.fields)}, "state": _state(engagement)})
 
 
 def _cmd_priors(argv: list[str]) -> dict:
@@ -3204,7 +3270,7 @@ def _cmd_rollover(argv: list[str]) -> dict:
         raise
     _refresh_readmes(engagement)
 
-    return {
+    return _with_list({   # next year's return is in the list now (decision 194)
         "created": Engagement(path=engagement, info=info,
                               household_path=household_dir).label,
         "rollover": {
@@ -3214,7 +3280,7 @@ def _cmd_rollover(argv: list[str]) -> dict:
             **_carried_payload(report, prior),
         },
         "state": _state(engagement),
-    }
+    })
 
 
 def _carried_payload(report, prior: Path) -> dict:
@@ -3305,7 +3371,8 @@ def _cmd_roll_household(argv: list[str]) -> dict:
     # the one it was pointed at - a household rollover that rolled nothing
     # still has a household card to redraw.
     landed = done.rolled[0][1] if done.rolled else engagement
-    return {
+    # The year's returns, and the ones retired, are in the list now (decision 194).
+    return _with_list({
         "rolled": rolled,
         "skipped": [{"prior": was.name, "reason": why} for was, why in done.skipped],
         "retired": [Engagement(path=one, household_path=household_dir,
@@ -3317,7 +3384,7 @@ def _cmd_roll_household(argv: list[str]) -> dict:
         "warning": warning,
         "target_year": target_year,
         "state": _state(landed),
-    }
+    })
 
 
 def _cmd_mark_shared(argv: list[str]) -> dict:
@@ -3414,7 +3481,8 @@ def _cmd_accept_folder_name(argv: list[str]) -> dict:
             store.record(conn, one, ledger.new(
                 ledger.RULES_CHANGED, **{ledger.INFO_KEY: named}, **accepted))
             written.append(str(one))
-    return {"accepted": written, "state": _state(engagement)}
+    # An accepted name is the list's name now (decision 194).
+    return _with_list({"accepted": written, "state": _state(engagement)})
 
 
 def _originals_under_another_name(household_dir: Path, returns: list[Path]) -> bool:
@@ -3987,15 +4055,42 @@ def _cmd_reminder(argv: list[str]) -> dict:
     reading next week's letter this week; the app is used on the day.
     """
     engagement = _engagement_dir(argv)
-    spec = _read_spec()
+    return _reminder_reply(engagement, _stage_asked(_read_spec()), dt.date.today())
+
+
+def _reminder_reply(engagement: Path, requested: int | None, today: dt.date) -> dict:
+    """What the ``reminder`` command answers, without the envelope - and
+    what ``state`` carries as ``reminder_card`` (decision 194), so the card
+    drawn from either is the same card."""
     # A return nobody has scanned yet has no reminder: a line on the card,
     # not an error (D7, decision 193). Anything else that fails is a failure
     # the app shows, and the card stays.
     items = load_manifest(engagement)
     if not any(item.status for item in items):
         return {"reminder": None, "not_yet": reminder.REMINDER_NOT_YET}
-    return {"reminder": _reminder_card(
-        _reminder_now(engagement, _stage_asked(spec), dt.date.today()))}
+    return {"reminder": _reminder_card(_reminder_now(engagement, requested, today))}
+
+
+def _reminder_said(engagement: Path) -> dict:
+    """The Reminder card at the record's stage, for ``state`` (decision 194).
+
+    **Said, never hidden** (193's D7, carried here): a letter that cannot
+    be composed does not take the page with it. Its failure is said by the
+    one rule (:func:`_failure_of`) - a worded refusal as itself, anything
+    else by its class, with the traceback to the log only (security
+    principle 7) - as ``unreadable`` on the card and in the reply's
+    ``warnings``. Only the card is caught: the rest of ``state`` fails as
+    it always did, because catching more would hide real failures.
+    """
+    try:
+        return _reminder_reply(engagement, None, dt.date.today())
+    except Exception as exc:
+        failure = _failure_of(exc)
+        if failure["kind"] == "failed":
+            log.warning("The Reminder card could not be composed (%s)",
+                        content_check.said_as_class(exc), exc_info=True)
+        _warn(failure["sentence"])
+        return {"reminder": None, "unreadable": failure["sentence"]}
 
 
 def _cmd_approve(argv: list[str]) -> dict:
