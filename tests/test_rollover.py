@@ -311,6 +311,29 @@ def test_unfiled_documents_from_last_year_are_surfaced(prior, tmp_path):
     assert any("K-1 Redwood LP.pdf" in s for s in report.unfiled_last_year)
 
 
+def test_two_unfiled_documents_of_one_name_are_two_and_no_subfolder_is_quoted(prior, tmp_path):
+    """Decision 190 (C-13). The client names the files: two different
+    scans both called ``scan.pdf`` are two documents never filed, keyed by
+    where each original rests, and the subfolder each came from is its
+    row's own column, never a clause of the line next year's report quotes."""
+    from tests.conftest import seed_index
+    from tracker import reasons
+    from tracker.filer import NEEDS_REVIEW, IndexEntry
+
+    seed_index(prior, [
+        IndexEntry(received="2026-03-01", original_name="scan.pdf", size_kb=12.0, digest=digest,
+                   identifier="", prepared_location=f"{PREPARED_DIR_NAME}/{REVIEW_DIR_NAME}/{copy}",
+                   pbc_location=f"../../../../Clients/Test Household/2025/{copy}",
+                   decision=NEEDS_REVIEW, reason=UNMATCHED, code=reasons.UNMATCHED_CODE,
+                   subfolder="not allowed")
+        for digest, copy in (("a" * 64, "scan.pdf"), ("b" * 64, "scan (2).pdf"))
+    ])
+    report = roll_forward(prior)
+    lines = [s for s in report.unfiled_last_year if s.startswith("scan.pdf")]
+    assert len(lines) == 2
+    assert not any("not allowed" in line or "subfolder" in line for line in lines)
+
+
 def test_rollover_without_a_template_still_works(prior):
     report = roll_forward(prior)
     assert [r.item.identifier for r in report.rolled] == ["A01", "B01", "C01", "D01"]

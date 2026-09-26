@@ -105,10 +105,14 @@ the clients root, and the difference between them is the whole point:
   the client can see — and never again.
 - **A folder the client drags into the inbox is flattened** (decision 147).
   Each file in it moves into the year's folder under its own name, and the
-  emptied folders are removed. Its row's Reason ends with
-  `filer.CAME_FROM_SUBFOLDER` — *came from the client's subfolder
-  'Bank statements\2025'* — so you can still see how the client had sorted
-  it. That sentence is ours, in the record; the client is never told it.
+  emptied folders are removed. Its row keeps the folder in a column of its
+  own, **Client's Subfolder** — `Bank statements\2025` — which the Status
+  Report shows and the review card says as `api.CAME_FROM_SUBFOLDER`
+  (*came from the client's subfolder 'Bank statements\2025'*), so you can
+  still see how the client had sorted it. It is ours, in the record; the
+  client is never told it. Since decision 190 it is never part of the
+  Reason: a folder the client called "not allowed" once read as the file
+  type being refused.
 - **A file is renamed ` (2)` only when another file already has its name**
   in the year's folder — a file sitting there, one a row still names
   although it has since gone from there, or one an interrupted filing
@@ -1277,6 +1281,15 @@ to send. A parked document is opened as its working copy in
 `00 - Needs Review`, never the client's original, and in Protected View
 (the read-only view Office and Acrobat give a file from outside).
 
+**The Code column is what the machine reads** (decision 190). The Reason is
+the sentence for you, and it may quote what the client chose — the file's
+name, a page's spelling — so nothing the tracker decides reads it: the
+letter, its holds and the review card read the row's **Code**, the cause's
+one name in `tracker/reasons.py`. A row written before decision 190 has an
+empty Code: its cause was not recorded, and the tracker does not guess it
+from the words. Such a parked row holds the letter for the request its
+card suggests, asked in the generic sentence, until you decide it.
+
 | The index says | In plain words | What you do |
 |---|---|---|
 | `filer.FILED` | Exactly one request accepted it. | Nothing. |
@@ -1284,7 +1297,7 @@ to send. A parked document is opened as its working copy in
 | `filer.RESENT_AFTER_SET_ASIDE` | The client sent again a document somebody had closed with **Not requested**. It was routed afresh: filed if exactly one request accepts it now, otherwise parked again with a copy of its own. The reason quotes the earlier decision whole — the date and the note whoever closed it typed. | Read what was decided last time, then decide again: file it, or close it again. The copy set aside earlier stays where it is. |
 | `filer.NEEDS_REVIEW` | Parked for a person; the reason says which of the rows below. | Work it in the app. |
 | `filer.ASSIGNED_BY_PERSON` | Someone filed it with **File it**, on the date shown, and what the rules had said is kept after it. | Nothing. This is the audit trail. |
-| `filer.CAME_FROM_SUBFOLDER` | Said at the end of any row - filed, parked, a duplicate, the opened email or zip's own row, or a row saying it could not be filed - whose file the client dropped inside a folder of their own in `Drop files here` (§1, *The layout*). It names that folder, below the inbox. | Nothing. It is where the client had put it; use it when the row's name alone does not say enough. |
+| `api.CAME_FROM_SUBFOLDER` | Not in the Reason: the **Client's Subfolder** column, and the card's line under the reason, on any row - filed, parked, a duplicate, the opened email or zip's own row, or a row saying it could not be filed - whose file the client dropped inside a folder of their own in `Drop files here` (§1, *The layout*). It names that folder, below the inbox. A row written before decision 190 still ends its Reason with this sentence, and has an empty column. | Nothing. It is where the client had put it; use it when the row's name alone does not say enough. |
 | `router.UNMATCHED` | No request on this manifest accepted it. | File it to the right request, or add the request. |
 | `reasons.SHOWS_ITS_FORM_NUMBER` / `reasons.NAME_POINTS_AT` | No request accepted it, but the page shows the **form number** of the request(s) named — in its title, or as the form its first page is about, beside another of that request's own words — most often a scan whose reading lost one of the phrases the request asks for; or, where the page shows none, the file's **name** points at a request, and the sentence says "file name" instead. Those requests are the card's shortlist, never a filing, and the client's reminder is held for them rather than asking for what they sent (decision 140). | Open it: if it is that request's document, file it there; if not, file it where it belongs or set it aside, and the reminder is released. |
 | `router.AMBIGUOUS` | More than one request accepted it. A broker's consolidated 1099 no longer parks here when exactly one request accepted it because of its 1099-B section (decision 146, below); two requests asking for a 1099-B, or none, and it still does. | Pick the right one. |
@@ -1366,7 +1379,10 @@ Some rows failed because of something the client did. Some failed because
 of something on our side. `tracker/reasons.py` holds which is which, and
 the drafted email uses it: a firm-side row is reported to us and never put
 to the client, so nobody asks a client to resend a file we simply have not
-read yet.
+read yet. The email reads the code each note was written with, never the
+note's words, which name the client's files (decision 190); a note written
+before that has no codes, and its request is asked in the generic sentence
+until the next scan writes it again.
 
 **A note that says a file would not open ends with the error's class, in
 brackets, and nothing more** — `not a readable PDF (PdfReadError)`,

@@ -93,6 +93,7 @@ from tracker.manifest import (
     with_statuses,
 )
 from tracker.records import (
+    CANDIDATE_SEP,
     IndexEntry,
     StatusUpdate,
     answer_count,
@@ -282,7 +283,9 @@ def _interrupted(engagement_dir: Path, rows: list[IndexEntry]) -> dict[Path, str
     for row in rows:
         where = interrupted_at(row)
         if where:
-            found[locate(engagement_dir, where)] = interrupted_note(row)
+            # Said with the row's own code (decision 190), so the request's
+            # note records the cause the row recorded.
+            found[locate(engagement_dir, where)] = reasons.Said(interrupted_note(row), row.code)
     return found
 
 
@@ -496,7 +499,7 @@ def _scan_item(
     tier2_failed = [f for f in results if not f.ok and not f.pending_sync and f.path not in accepted]
 
     valid: list[Path] = []
-    content_failed: list[tuple[Path, str]] = []
+    content_failed: list[tuple[Path, str, str]] = []
     by_person = 0
     for f in (f for f in results if f.ok or f.path in accepted):
         if f.path in accepted:
@@ -507,7 +510,7 @@ def _scan_item(
         if verdict.ok:
             valid.append(f.path)
         else:
-            content_failed.append((f.path, verdict.reason))
+            content_failed.append((f.path, verdict.reason, verdict.code))
 
     # De-duplicate by content hash — but never hash the common 0/1-file
     # case, and hash through the memo when there is one to hash (109).
@@ -527,14 +530,25 @@ def _scan_item(
         valid = distinct
     count = len(valid) + sum(n for _filed, n, why in answered if not why)
 
-    failures = [f"{f.path.name}: {f.reason}" for f in tier2_failed]
-    failures += [f"{path.name}: {reason}" for path, reason in content_failed]
+    # Each failure as (note, code): the note names the file, the code says
+    # the cause (decision 190), and only the code is ever read.
+    failures = [(f"{f.path.name}: {f.reason}", f.code) for f in tier2_failed]
+    failures += [(f"{path.name}: {reason}", code) for path, reason, code in content_failed]
     # What is ours to look at comes first: the note lists at most
     # _MAX_LISTED_FAILURES and is cut at _MAX_NOTE_LEN, and a firm-side
-    # marker that fell off the end would turn the row into a client ask.
-    failures.sort(key=lambda note: not any(r.matches(note) for r in reasons.FIRM_SIDE))
+    # cause that fell off the end would turn the row into a client ask.
+    failures.sort(key=lambda failure: failure[1] not in reasons.FIRM_SIDE)
 
     facts: list[str] = []
+    #: The code of each fact that says a cause, in the facts' order
+    #: (decision 190). The facts inserted at the front below (the override,
+    #: the count, the regression) say no cause, so the order holds.
+    codes: list[str] = []
+
+    def said(sentence: str, code: str) -> None:
+        facts.append(sentence)
+        codes.append(code)
+
     if by_person:
         facts.append(ACCEPTED_NOTE.format(n=by_person))
     if duplicates:
@@ -542,10 +556,10 @@ def _scan_item(
     for filed in dict.fromkeys(filed for filed, _n, why in answered if not why):
         facts.append(reasons.IN_CONSOLIDATED.format(row=filed))
     for filed, why in dict.fromkeys((filed, why) for filed, _n, why in answered if why):
-        facts.append(reasons.ANSWER_NOT_COUNTED.format(
-            listed=ANSWERED_BY.format(row=filed, why=why)))
+        said(reasons.ANSWER_NOT_COUNTED.format(listed=ANSWERED_BY.format(row=filed, why=why)),
+             reasons.ANSWER_NOT_COUNTED.code)
     # What the record says about this request's own copies, before the
-    # failures, so the note's cut can never take a firm-side marker off the
+    # failures, so the note's cut can never take a firm-side code off the
     # end and turn the row into a client ask. Neither is a failure: a row
     # whose copy was dragged away leaves the request Missing, truthfully,
     # and a file that passes the rules is counted whoever put it there.
@@ -555,22 +569,23 @@ def _scan_item(
         listed = prepared_location(path.parent, path.name)
         if row.decision == FILE_MOVED and not _the_rows_copy_is_here(path, row, cache):
             if both_gone(row):
-                facts.append(reasons.COPY_AND_ORIGINAL_GONE.format(
-                    listed=f"{row.original_name} ({listed})"))
+                said(reasons.COPY_AND_ORIGINAL_GONE.format(listed=f"{row.original_name} ({listed})"),
+                     reasons.COPY_AND_ORIGINAL_GONE.code)
                 continue
             now = moved_to(row)
-            facts.append(reasons.FILE_MOVED.format(listed="{} -> {}".format(
+            said(reasons.FILE_MOVED.format(listed="{} -> {}".format(
                 listed, now or f"nowhere under {PREPARED_DIR_NAME}",
-            )))
+            )), reasons.FILE_MOVED.code)
         elif row.decision != FILE_MOVED and not path.exists():
             # Decision 157, B9: the pass makes it again when it can.
-            facts.append(reasons.COPY_MISSING.format(listed=listed))
+            said(reasons.COPY_MISSING.format(listed=listed), reasons.COPY_MISSING.code)
     for path, sentence in interrupted.items():
         if mine(path) and path.exists():
-            facts.append(sentence)
+            said(sentence, reasons.code_of(sentence))
     for path in strangers:
-        facts.append(reasons.COPY_CHANGED.format(listed=path.name))
-    facts.extend(failures[:_MAX_LISTED_FAILURES])
+        said(reasons.COPY_CHANGED.format(listed=path.name), reasons.COPY_CHANGED.code)
+    for note, code in failures[:_MAX_LISTED_FAILURES]:
+        said(note, code)
     if len(failures) > _MAX_LISTED_FAILURES:
         facts.append(MORE_ISSUES_NOTE.format(n=len(failures) - _MAX_LISTED_FAILURES))
 
@@ -587,12 +602,14 @@ def _scan_item(
                 file_count=count,
                 received_date=item.received_date or today,
                 validation_notes=_join(facts),
+                note_codes=_joined_codes(codes),
             )
         return StatusUpdate(
             status=item.status,
             file_count=count,
             received_date=item.received_date,
             validation_notes=_join(facts),
+            note_codes=_joined_codes(codes),
         )
 
     status = _resolve_status(item, count, len(pending), bool(failures), facts)
@@ -602,6 +619,7 @@ def _scan_item(
         file_count=count,
         received_date=received,
         validation_notes=_join(facts),
+        note_codes=_joined_codes(codes),
     )
 
 
@@ -676,6 +694,12 @@ def _received_date(
         facts.insert(0, REGRESSION_NOTE.format(
             status=Status.RECEIVED, date=item.received_date.isoformat(), why=why))
     return item.received_date
+
+
+def _joined_codes(codes: list[str]) -> str:
+    """The facts' codes as the record keeps them (``StatusUpdate.note_codes``):
+    joined as the index joins its candidates, a fact with no code left out."""
+    return CANDIDATE_SEP.join(code for code in codes if code)
 
 
 def _join(facts: list[str]) -> str:

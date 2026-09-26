@@ -39,6 +39,7 @@ from tracker.reminder import (
     DRAFT_BANNER,
     DRAFT_FILENAME,
     EXTENSION_ASK,
+    GENERIC_ASK,
     HELD_BACK_HEADING,
     HELD_LINE,
     HELD_REFUSAL,
@@ -88,9 +89,22 @@ from tracker.scanner import OVERRIDE_NOTE, PARTIAL_NOTE, SYNCING_NOTE
 
 
 def item(identifier, document, status, **kwargs):
+    """A request with the record's status on it. Notes said with a code -
+    :func:`failure`, or a Reason's own sentence - carry that code into
+    ``note_codes`` as the scan records it (decision 190); plain text carries
+    none, however it reads."""
+    notes = kwargs.get("validation_notes", "")
+    if "note_codes" not in kwargs and reasons.code_of(notes):
+        kwargs["note_codes"] = reasons.code_of(notes)
     return RequestItem(
         identifier=identifier, document=document, status=status, **kwargs
     )
+
+
+def failure(name, said):
+    """One failure as the scanner notes it, ``name.pdf: sentence``, carrying
+    the sentence's code (decision 190)."""
+    return reasons.Said(f"{name}: {said}", reasons.code_of(said))
 
 
 SCANNED = [
@@ -99,7 +113,7 @@ SCANNED = [
     item("A02", "Bank Statements", Status.PARTIAL,
          period="TY2025", expected_count=3, file_count=2),
     item("A03", "2024 Form 1040 Tax Return", Status.FAILED, period="TY2024",
-         validation_notes="prior.pdf: " + reasons.PASSWORD_PROTECTED.format()),
+         validation_notes=failure("prior.pdf", reasons.PASSWORD_PROTECTED.format())),
     item("A04", "Mortgage Interest Statement", Status.RECEIVED,
          period="TY2025", file_count=1, received_date=dt.date(2026, 2, 1)),
     item("A05", "Charitable Donations", Status.MISSING, manual_override=Override.NOT_APPLICABLE),
@@ -161,6 +175,7 @@ def engagement(tmp_path, items=SCANNED, name="Smith TY2025"):
             file_count=i.file_count or 0,
             received_date=i.received_date,
             validation_notes=i.validation_notes,
+            note_codes=i.note_codes,
         )
         for i in items if i.status
     }
@@ -205,13 +220,13 @@ def test_partial_says_how_many_are_left():
 
 
 @pytest.mark.parametrize("note, expected_fragment", [
-    ("x.pdf: " + reasons.PASSWORD_PROTECTED.format(), reasons.PASSWORD_PROTECTED.client_ask),
-    ("x.gdoc: " + reasons.GOOGLE_STUB.format(extension="gdoc"), reasons.GOOGLE_STUB.client_ask),
-    ("x.pdf: " + reasons.TOO_SMALL.format(size_kb=0.1, minimum=5), reasons.TOO_SMALL.client_ask),
-    ("x.zip: " + reasons.EXTENSION_NOT_ALLOWED.format(extension="zip", allowed="pdf"),
+    (failure("x.pdf", reasons.PASSWORD_PROTECTED.format()), reasons.PASSWORD_PROTECTED.client_ask),
+    (failure("x.gdoc", reasons.GOOGLE_STUB.format(extension="gdoc")), reasons.GOOGLE_STUB.client_ask),
+    (failure("x.pdf", reasons.TOO_SMALL.format(size_kb=0.1, minimum=5)), reasons.TOO_SMALL.client_ask),
+    (failure("x.zip", reasons.EXTENSION_NOT_ALLOWED.format(extension="zip", allowed="pdf")),
      reasons.EXTENSION_NOT_ALLOWED.client_ask),
-    ("x.pdf: " + reasons.WRONG_DOCUMENT.format(listed="'W-2'"), reasons.WRONG_DOCUMENT.client_ask),
-    ("x.pdf: " + reasons.WRONG_PERIOD.format(pattern="2025"), reasons.WRONG_PERIOD.client_ask),
+    (failure("x.pdf", reasons.WRONG_DOCUMENT.format(listed="'W-2'")), reasons.WRONG_DOCUMENT.client_ask),
+    (failure("x.pdf", reasons.WRONG_PERIOD.format(pattern="2025")), reasons.WRONG_PERIOD.client_ask),
 ])
 def test_failures_translate_to_a_plain_instruction(note, expected_fragment):
     ask = client_ask(item("A01", "Doc", Status.FAILED, validation_notes=note))
@@ -237,7 +252,7 @@ def test_multi_file_requests_say_how_many_are_expected(tmp_path):
 
 def test_rows_we_have_not_read_go_to_the_accountant_not_the_client():
     rows = [item("B01", "Receipts", Status.FAILED,
-                 validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format())]
+                 validation_notes=failure("scan.pdf", reasons.NO_TEXT_LAYER.format()))]
     lines, attention, held = triage(rows)
     assert lines == [] and held == []
     assert [f.item.identifier for f in attention] == ["B01"]
@@ -413,7 +428,7 @@ def test_write_draft_marks_it_as_a_draft(tmp_path):
 def test_written_draft_appends_firm_side_notes_below_the_email(tmp_path):
     rows = SENDABLE + [
         item("B01", "Receipts", Status.FAILED,
-             validation_notes="scan.pdf: " + reasons.NO_TEXT_AFTER_OCR.format()),
+             validation_notes=failure("scan.pdf", reasons.NO_TEXT_AFTER_OCR.format())),
         item("B02", "Payroll Reports", Status.MISSING,
              validation_notes=reasons.FILE_MOVED.format(
                  listed="Prepared/B02 - Payroll - TY2025.pdf -> nowhere under Prepared")),
@@ -442,7 +457,9 @@ def test_a_partial_row_we_have_not_finished_reading_is_ours_not_the_clients():
     # client may well have sent both, so "1 of 2 received" is not known yet.
     row = item("A01", "W-2 Wage Statements", Status.PARTIAL, expected_count=2,
                file_count=1,
-               validation_notes=f"{PARTIAL_NOTE.format(count=1, expected=2)}; scan.pdf: " + reasons.NO_TEXT_LAYER.format())
+               validation_notes=(f"{PARTIAL_NOTE.format(count=1, expected=2)}; scan.pdf: "
+                                 + reasons.NO_TEXT_LAYER.format()),
+               note_codes=reasons.NO_TEXT_LAYER.code)
     lines, attention, held = triage([row])
     assert lines == [] and held == []
     assert [flag.item.identifier for flag in attention] == ["A01"]
@@ -503,9 +520,8 @@ def test_the_draft_reads_the_engagement_details_itself(tmp_path):
 def test_an_ocr_failure_is_the_firms_to_retry_not_the_clients_to_resend():
     from tracker import reasons
 
-    assert reasons.OCR_FAILED in reasons.FIRM_SIDE
-    note = "scan.pdf: " + reasons.OCR_FAILED.format(error="ONNXRuntimeError: FAIL")
-    assert reasons.find(note) is reasons.OCR_FAILED
+    assert reasons.OCR_FAILED.code in reasons.FIRM_SIDE
+    assert reasons.first_of([reasons.OCR_FAILED.code]) is reasons.OCR_FAILED
 
 
 # ------------------------------------------- the gate: an ambiguity holds ----
@@ -520,7 +536,7 @@ def _held_engagement(tmp_path, rows=None):
     return engagement(tmp_path, rows or [
         item("A01", "W-2 Wage Statements", Status.MISSING, expected_count=2),
         item("C01", "Form 1098 Mortgage Interest Statement", Status.FAILED,
-             validation_notes="1099.pdf: " + reasons.WRONG_DOCUMENT.format(listed="'1098'")),
+             validation_notes=failure("1099.pdf", reasons.WRONG_DOCUMENT.format(listed="'1098'"))),
     ])
 
 
@@ -544,7 +560,7 @@ def test_a_failed_row_with_a_firm_side_reason_does_not_hold(tmp_path):
     folder = engagement(tmp_path, [
         item("A01", "W-2 Wage Statements", Status.MISSING),
         item("B01", "Receipts", Status.FAILED,
-             validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format()),
+             validation_notes=failure("scan.pdf", reasons.NO_TEXT_LAYER.format())),
     ])
     draft = draft_reminder(folder)
     assert not draft.is_held and draft.held == []
@@ -557,7 +573,8 @@ def test_a_failed_row_with_a_firm_side_reason_does_not_hold(tmp_path):
 def test_a_partial_whose_shortfall_is_a_refused_file_holds_and_a_plain_partial_is_asked():
     refused = item("A02", "Bank Statements", Status.PARTIAL, expected_count=3, file_count=2,
                    validation_notes=f"{PARTIAL_NOTE.format(count=2, expected=3)}; nov.pdf: "
-                                    + reasons.PASSWORD_PROTECTED.format())
+                                    + reasons.PASSWORD_PROTECTED.format(),
+                   note_codes=reasons.PASSWORD_PROTECTED.code)
     plain = item("A03", "Brokerage Statements", Status.PARTIAL, expected_count=2, file_count=1,
                  validation_notes=PARTIAL_NOTE.format(count=1, expected=2))
     lines, attention, held = triage([refused, plain])
@@ -572,7 +589,7 @@ def test_a_missing_row_with_a_firm_side_marker_is_held_back_not_asked():
     """Decision 109's rule, stated once here: a firm-side marker on any
     outstanding status is the firm's, Missing included."""
     row = item("D01", "Charitable Donations", Status.MISSING,
-               validation_notes="receipts.pdf: " + reasons.VANISHED.format(error="moved"))
+               validation_notes=failure("receipts.pdf", reasons.VANISHED.format(error="moved")))
     lines, attention, held = triage([row])
     assert lines == [] and held == []
     assert [flag.item.identifier for flag in attention] == ["D01"]
@@ -594,9 +611,9 @@ def test_the_held_refusal_names_every_held_row_and_writes_nothing(tmp_path):
     folder = _held_engagement(tmp_path, [
         item("A01", "W-2 Wage Statements", Status.MISSING),
         item("C01", "Mortgage Interest", Status.FAILED,
-             validation_notes="x.pdf: " + reasons.WRONG_PERIOD.format(pattern="2025")),
+             validation_notes=failure("x.pdf", reasons.WRONG_PERIOD.format(pattern="2025"))),
         item("D01", "Donations", Status.FAILED,
-             validation_notes="y.pdf: " + reasons.TOO_SMALL.format(size_kb=0.1, minimum=5)),
+             validation_notes=failure("y.pdf", reasons.TOO_SMALL.format(size_kb=0.1, minimum=5))),
     ])
     draft = draft_reminder(folder)
     with pytest.raises(ReminderHeldError) as caught:
@@ -607,8 +624,8 @@ def test_the_held_refusal_names_every_held_row_and_writes_nothing(tmp_path):
     assert list(folder.glob("reminder-draft*")) == []
     # A hold's bracketed reason is in the row's own terms, as an ask would be.
     _, _, [xlsx] = triage([item("E01", "Sheet", Status.FAILED, allowed_extensions=("xlsx",),
-                                   validation_notes="x.zip: " + reasons.EXTENSION_NOT_ALLOWED.format(
-                                       extension="zip", allowed="xlsx"))])
+                                   validation_notes=failure("x.zip", reasons.EXTENSION_NOT_ALLOWED.format(
+                                       extension="zip", allowed="xlsx")))])
     assert EXTENSION_ASK.format(accepted=".xlsx") in xlsx.reason
 
 
@@ -683,7 +700,8 @@ def test_section_failed_is_unreachable_from_a_pass(tmp_path):
     assert SECTION_FAILED == "RECEIVED, BUT WE COULD NOT USE IT"
     assert SECTION_FAILED not in SECTION_ORDER
     every_failed = [
-        item(f"F{n:02d}", "Doc", Status.FAILED, validation_notes="x.pdf: " + reason.marker)
+        item(f"F{n:02d}", "Doc", Status.FAILED, validation_notes="x.pdf: " + reason.marker,
+             note_codes=reason.code)
         for n, reason in enumerate(reasons.ALL)
     ] + [item("F99", "Doc", Status.FAILED, validation_notes="x.pdf: nobody predicted this")]
     lines, attention, held = triage(every_failed)
@@ -693,7 +711,7 @@ def test_section_failed_is_unreachable_from_a_pass(tmp_path):
     }
     folder = engagement(tmp_path, SENDABLE + [
         item("B01", "Receipts", Status.FAILED,
-             validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format()),
+             validation_notes=failure("scan.pdf", reasons.NO_TEXT_LAYER.format())),
     ])
     text = write_draft(draft_reminder(folder), engagement_dir=folder).read_text(encoding="utf-8")
     assert SECTION_FAILED not in text
@@ -710,7 +728,7 @@ def test_a_missing_row_with_a_file_moved_note_is_the_firms_and_the_draft_never_a
                      "was Received 2026-02-01; files changed",
                      reasons.FILE_MOVED.format(listed="Prepared/A08 - W-2 - TY2025.pdf "
                                                       "-> Prepared/C01 - A08 - W-2 - TY2025.pdf"),
-                 ]))
+                 ]), note_codes=reasons.FILE_MOVED.code)
 
     lines, attention, held = triage(SENDABLE + [moved])
 
@@ -806,7 +824,7 @@ def test_stage_four_drops_the_phone_sentence_when_the_firm_has_no_phone(tmp_path
 
 def test_the_recipient_set_is_identical_at_every_stage_and_a_firm_side_row_is_in_none(tmp_path):
     rows = SENDABLE + [item("B01", "Receipts", Status.FAILED,
-                            validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format())]
+                            validation_notes=failure("scan.pdf", reasons.NO_TEXT_LAYER.format()))]
     folder = engagement(tmp_path, rows, name="Every Stage TY2025")
     drafts = [draft_reminder(folder, due_date=DUE, today=DUE, stage=n) for n in (1, 2, 3, 4)]
     assert {tuple(draft.asked) for draft in drafts} == {("A01", "A02")}
@@ -934,7 +952,7 @@ def test_a_locked_pdf_named_for_a_request_parks_with_that_request_on_its_shortli
 
     [row] = parked_rows(folder)
     assert row.candidates == "", "a name is no candidate; nothing is filed on one"
-    assert reasons.PASSWORD_PROTECTED.matches(row.reason)
+    assert row.code == reasons.PASSWORD_PROTECTED.code
     assert [s.identifier for s in shortlist_for(row, DROPPED)] == ["A01"]
 
     draft = draft_reminder(folder)
@@ -995,7 +1013,7 @@ def test_a_parked_file_with_a_firm_side_reason_holds_nothing(tmp_path, monkeypat
     assert len(report.review) == 1
 
     [row] = parked_rows(folder)
-    assert reasons.NO_READABLE_TEXT.matches(row.reason)
+    assert row.code == reasons.NO_READABLE_TEXT.code
     assert [s.identifier for s in shortlist_for(row, DROPPED)] == ["A01"]
 
     draft = draft_reminder(folder)
@@ -1112,7 +1130,7 @@ def test_a_near_miss_holds_the_reminder_and_blames_no_file(tmp_path):
     assert len(report.review) == 1
 
     [row] = parked_rows(folder)
-    assert reasons.find(row.reason) is reasons.SHOWS_ITS_FORM_NUMBER
+    assert row.code == reasons.SHOWS_ITS_FORM_NUMBER.code
     assert row.candidates == "", "a suggestion is never a candidate"
     assert [s.identifier for s in shortlist_for(row, NEAR_MISSED)] == ["A01"]
 
@@ -1180,7 +1198,7 @@ def test_every_existing_reason_holds_exactly_as_before(reason):
     from tracker.reminder import _ask_for, _parked_holds
 
     row = parked_row("scan.pdf", {"A01": (Evidence(RULE_REQUIRED, "W-2", WHERE_TITLE, 1),)},
-                     reason="scan.pdf: " + _sample(reason))
+                     reason="scan.pdf: " + _sample(reason), code=reason.code)
     holds = {identifier: (flag.reason, flag.confirm)
              for identifier, flag in _parked_holds(DROPPED, [row]).items()}
     if reason in (reasons.SHOWS_ITS_FORM_NUMBER, reasons.NAME_POINTS_AT):
@@ -1798,9 +1816,9 @@ def test_the_reminder_never_chases_or_reports_a_not_asked_row(tmp_path):
         *SENDABLE,
         item("B01", "Social Security Benefit Statement", Status.MISSING, asked=False),
         item("B02", "1099-C", Status.MISSING, asked=False,
-             validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format()),
+             validation_notes=failure("scan.pdf", reasons.NO_TEXT_LAYER.format())),
         item("B03", "W-2G", Status.FAILED, asked=False,
-             validation_notes="w2g.pdf: " + reasons.PASSWORD_PROTECTED.format()),
+             validation_notes=failure("w2g.pdf", reasons.PASSWORD_PROTECTED.format())),
         item("B04", "1098-E", Status.RECEIVED, asked=False, file_count=1,
              received_date=dt.date(2026, 2, 1)),
     ]
@@ -1844,3 +1862,121 @@ def test_the_letters_count_is_jasons_sentence_in_the_singular_and_the_plural(rec
     from tracker.reminder import progress_line
 
     assert progress_line(received, total, also) == said
+
+
+# ------------------------------------------- codes are columns (decision 190) ----
+# A row's cause is its code. The Reason cell and the Validation Notes carry
+# what the client chose - a file's name, a subfolder's name - and a reason's
+# placeholders carry a parser's class or a page's spelling; none of it can
+# change what the letter asks or what it holds.
+
+
+def _filled(reason, text):
+    """``reason``'s sentence with every string placeholder filled with
+    ``text``, and the numeric ones with numbers."""
+    import string
+
+    names = {name for _, name, _, _ in string.Formatter().parse(reason.template) if name}
+    numbers = {"size_kb": 1.0, "minimum": 5}
+    return reason.format(**{name: numbers.get(name, text) for name in names})
+
+
+def _what_the_letter_does(reason, text):
+    """What one reason, its detail and its file named ``text``, makes the
+    letter do: the Failed row's ask, the hold of a parked row pointing at
+    A01, and where a Failed row goes."""
+    from tests.test_review import parked_row
+    from tracker.records import RULE_REQUIRED, WHERE_TITLE, Evidence
+    from tracker.reminder import _parked_holds
+
+    said = _filled(reason, text)
+    failed = item("A01", "W-2 Wage Statements", Status.FAILED,
+                  validation_notes=failure(f"{text}.pdf", said))
+    row = parked_row(f"{text}.pdf", {"A01": (Evidence(RULE_REQUIRED, "W-2", WHERE_TITLE, 1),)},
+                     reason=f"{reasons.UNMATCHED}; {said}", code=said.code)
+    lines, attention, held = triage([failed])
+    holds = {identifier: (flag.reason, flag.confirm)
+             for identifier, flag in _parked_holds(DROPPED, [row]).items()}
+    return (row.code, client_ask(failed), holds,
+            [f.reason for f in attention], [f.reason for f in held], len(lines))
+
+
+@pytest.mark.parametrize("reason", reasons.ALL, ids=lambda r: r.code)
+def test_no_client_text_can_change_what_a_row_means(reason):
+    """Decision 190, the SPEC-167 cross product re-aimed. Every reason's
+    placeholders, and the file's own name, filled with each other reason's
+    marker - the words a search used to find another cause by - and the
+    row's code, the ask and the hold are exactly what they are with
+    placeholders that say nothing."""
+    plain = _what_the_letter_does(reason, "x")
+    assert plain[0] == reason.code
+    for other in reasons.ALL:
+        assert _what_the_letter_does(reason, other.marker) == plain, other.code
+
+
+def test_rows_written_before_190_read_as_cause_not_recorded():
+    """A row or a note written before decision 190 has no code. Its cause
+    was not recorded, and nothing reads one back out of its words: a
+    parked row holds where its shortlist names a request - the safe
+    direction, since a person confirms it - and is asked with the generic
+    sentence; a Failed request's ask is the generic one and it is held."""
+    from tests.test_review import parked_row
+    from tracker.records import RULE_REQUIRED, WHERE_TITLE, Evidence
+    from tracker.reminder import _parked_holds
+
+    record = {"A01": (Evidence(RULE_REQUIRED, "W-2", WHERE_TITLE, 1),)}
+    for sentence in (reasons.PASSWORD_PROTECTED.format(), reasons.NO_READABLE_TEXT.format(),
+                     reasons.EXTENSION_NOT_ALLOWED.format(extension="exe", allowed="pdf")):
+        old = parked_row("w2.pdf", record, reason=str(sentence), code="")
+        holds = _parked_holds(DROPPED, [old])
+        assert {i: (f.reason, f.confirm) for i, f in holds.items()} == {
+            "A01": (PARKED_HOLD.format(ask=GENERIC_ASK), False)}
+    nowhere = parked_row("scan.pdf", {}, reason=str(reasons.PASSWORD_PROTECTED.format()), code="")
+    assert _parked_holds(DROPPED, [nowhere]) == {}
+
+    failed = item("A01", "W-2 Wage Statements", Status.FAILED,
+                  validation_notes="x.pdf: " + str(reasons.NO_TEXT_LAYER.format()))
+    assert failed.note_codes == ""
+    assert client_ask(failed) == GENERIC_ASK
+    lines, attention, held = triage([failed])
+    assert attention == [] and [f.reason for f in held] == [AMBIGUOUS_HOLD]
+
+
+def test_no_client_facing_text_carries_a_reason_sentence(tmp_path):
+    """Decision 190. The letter and the client's README of a return with a
+    parked file of every kind - each from a subfolder the client named
+    after a refusal - hold none of a reason's own words, none of the
+    router's and the filer's parking sentences, and not the subfolder
+    label: only the fixed asks reach a client."""
+    import string
+
+    from tests.conftest import seed_index
+    from tests.test_review import parked_row
+    from tracker.api import CAME_FROM_SUBFOLDER
+    from tracker.filer import CONTESTED_BETWEEN_RETURNS, refresh_household_readme
+    from tracker.layout import household_of
+    from tracker.records import RULE_REQUIRED, WHERE_TITLE, Evidence
+    from tracker.scaffold import README_NAME, scaffold_engagement
+
+    folder = engagement(tmp_path, DROPPED, name="Every Kind TY2025")
+    scaffold_engagement(folder)
+    record = {"A01": (Evidence(RULE_REQUIRED, "W-2", WHERE_TITLE, 1),)}
+    rows = [replace(parked_row(f"{n:02d} {r.code}.pdf", record, reason=_filled(r, "x")),
+                    subfolder="not allowed")
+            for n, r in enumerate(reasons.ALL)]
+    seed_index(folder, rows)
+    letter = draft_reminder(folder).body
+    refresh_household_readme(household_of(folder))
+    readme = (inbox_of(folder) / README_NAME).read_text(encoding="utf-8")
+
+    asks = [GENERIC_ASK, *(r.ask for r in reasons.ALL if r.ask)]
+    templates = [r.template for r in reasons.ALL] + [
+        reasons.UNMATCHED, reasons.AMBIGUOUS, reasons.OCR_ONLY, reasons.NO_REQUEST_ACCEPTS,
+        CONTESTED_BETWEEN_RETURNS, CAME_FROM_SUBFOLDER]
+    for template in templates:
+        for literal, *_ in string.Formatter().parse(template):
+            words = literal.strip(" ;:()'.-")
+            if len(words) < 12 or any(words in ask for ask in asks):
+                continue
+            assert words not in letter, words
+            assert words not in readme, words

@@ -7,22 +7,36 @@ producer silently changed what the client was asked for - or turned "a
 person here has not read it yet" into a request to the client - with no
 test failing at either end.
 
-Each :class:`Reason` here is the one definition of one cause: the sentence
-the scanner writes (a template, since most carry a detail), the marker the
-reminder recognises it by (a literal part of that template, checked by the
-suite), the plain sentence the client is asked with, whether the row is
-the firm's to look at rather than the client's to fix, and - its own
-answer since decision 140 - whether a parked file carrying it holds the
-client's reminder. Producers call
-``REASON.format(...)``; the reminder consults the same objects. There is
-nothing to keep in step.
+Each :class:`Reason` here is the one definition of one cause: its code,
+the sentence the scanner writes (a template, since most carry a detail),
+the plain sentence the client is asked with, whether the row is the firm's
+to look at rather than the client's to fix, and - its own answer since
+decision 140 - whether a parked file carrying it holds the client's
+reminder. Producers call ``REASON.format(...)``; the reminder consults the
+same objects. There is nothing to keep in step.
+
+**Codes are columns (decision 190).** Until then the reminder and the
+review card found a row's cause by searching its sentence for a marker.
+The sentence carries what the client chose - a file's name, a subfolder's
+name, a parser's words - so a subfolder called "not allowed" turned a
+password-protected PDF into a file-type ask, and quoting the client's text
+(SPEC-167) only moved the problem. The search is gone. A sentence is said
+as a :class:`Said`, which carries its Reason's code; every record that
+keeps a sentence keeps the code beside it (``IndexEntry.code``,
+``StatusUpdate.note_codes``, ...), and every reader reads the code:
+:data:`BY_CODE` for the Reason, :data:`HOLDS` and :data:`FIRM_SIDE` as sets
+of codes, :func:`first_of` for the most specific of several. The router's
+and the filer's own sentences that are not Reasons have codes here too
+(``*_CODE``), so every sentence that parks a row has one. A row written
+before 190 has the code ``""``: its cause was not recorded, and nothing
+reads one back out of its words.
 
 Not every cause is a validation note. :data:`NO_READABLE_TEXT` and
 :data:`ISSUER_NOT_NAMED` are the router's, written into the index's Reason
 column rather than into a request's notes, and they are worded here for the
-same reason the rest are: one sentence, one owner, and a marker the index,
-the review queue and the status report all recognise without retyping a
-word of it. :data:`FILE_MOVED` and :data:`COPY_CHANGED` are a third kind
+same reason the rest are: one sentence, one owner, and one code the index,
+the review queue and the status report all read without retyping a word
+of it. :data:`FILE_MOVED` and :data:`COPY_CHANGED` are a third kind
 again (decision 109): the scanner writes them into a request's notes, but
 it does not decide them - it reads them off the rows the filer's sweep of
 the working copies recorded, so what the fingerprint identified and what a
@@ -47,19 +61,50 @@ is not one.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 
-#: How the scanner prefixes a failure with the file it is about
-#: (``"name.pdf: reason"``). A marker is looked for in the reasons, never in
-#: a file name: a client who names a file "Not allowed deductions.pdf" has
-#: not been told the file type is not allowed.
-_FILE_PREFIX = re.compile(r"(^|; )[^;]*?\.[a-z0-9]{1,5}: ", re.IGNORECASE)
+
+class Said(str):
+    """A sentence one cause said, carrying that cause's code (decision 190).
+
+    What :meth:`Reason.format` returns, and what every producer hands on
+    when it hands a sentence on: the text is the sentence exactly as it
+    always was - equal to it, printed as it, stored as it - and ``code``
+    rides beside it, so the record a producer builds takes its code from
+    the object that said the sentence and never from the sentence's words.
+
+    **Why a string that carries its code, rather than a pair.** A tier-2
+    refusal is handed through a function that returns a sentence
+    (``validators.too_large_reason``), across the reading's child (decision
+    150, pickled), through the verdict cache, into a row. Each hop already
+    passes the sentence; the code now travels in the same object, and
+    every record that keeps one - ``FileResult``, ``ContentResult``,
+    ``Extraction``, ``Routing``, ``IndexEntry`` - has a ``code`` field of
+    its own, set from it where the record is made. A sentence anybody
+    edits - a clause joined on, a slice - is a plain ``str`` again with no
+    code, which is right: an edited sentence is no longer one cause's.
+    """
+
+    code: str
+
+    def __new__(cls, text: str, code: str) -> Said:
+        said = super().__new__(cls, text)
+        said.code = code
+        return said
+
+    def __reduce__(self):
+        # Pickled across the reading's child and copied by asdict(): the
+        # code goes with it both ways.
+        return (Said, (str(self), self.code))
 
 
-def reasons_in(note: str) -> str:
-    """``note`` with each failure's file-name prefix removed."""
-    return _FILE_PREFIX.sub(lambda m: m.group(1), note or "")
+def code_of(sentence: str) -> str:
+    """The code ``sentence`` was said with, or ``""`` for a plain string.
+
+    Reads the attribute a :class:`Said` carries. It never looks at the
+    words: a sentence that does not carry a code has none, whatever it
+    says (decision 190)."""
+    return sentence.code if isinstance(sentence, Said) else ""
 
 #: Shown to the client when a failure has no recognised cause. Deliberately
 #: vague about our rules and specific about what the client should do.
@@ -77,7 +122,11 @@ class Reason:
 
     code: str
     template: str      # the note as written; {placeholders} carry the detail
-    marker: str        # a literal part of the template the reminder keys on
+    #: A literal part of the template: what the review card names the
+    #: refusal by (``review._refusals_for``). Until decision 190 it was also
+    #: what a note was searched for; nothing searches a sentence now - a
+    #: row's cause is its code.
+    marker: str
     ask: str = ""      # the client-facing sentence; "" means GENERIC_ASK
     firm_side: bool = False   # True: waiting on a person here, never put to the client
     firm_note: str = ""       # what the firm is told instead; "" means FIRM_WAITING
@@ -90,11 +139,9 @@ class Reason:
     #: whether it holds the letter are two questions.
     holds: bool = False
 
-    def format(self, **detail: object) -> str:
-        return self.template.format(**detail)
-
-    def matches(self, note: str) -> bool:
-        return self.marker.lower() in reasons_in(note).lower()
+    def format(self, **detail: object) -> Said:
+        """The sentence, filled, carrying this reason's code."""
+        return Said(self.template.format(**detail), self.code)
 
     @property
     def client_ask(self) -> str:
@@ -647,8 +694,9 @@ OPENED_NOT_ACROSS = Reason(
 #: not decide one - so it is outside ``ALL``, like the templates above.
 TEXT_CUT = "only the first {limit} MB of this file's text was read"
 
-#: Every reason, in the order the reminder tries them: the specific causes
-#: before the vague ones, so a note carrying two markers gets the better ask.
+#: Every reason, in the order of preference: the specific causes before the
+#: vague ones, so a note that says two causes gets the better ask
+#: (:func:`first_of`).
 ALL: tuple[Reason, ...] = (
     CONTAINER_LOCKED, CONTAINER_DAMAGED, CONTAINER_EMPTY, CONTAINER_LIMIT,
     PASSWORD_PROTECTED, GOOGLE_STUB, TOO_SMALL, TOO_LARGE, EXTENSION_NOT_ALLOWED,
@@ -662,16 +710,96 @@ ALL: tuple[Reason, ...] = (
     READING_STOPPED, READING_CRASHED, READER_UNAVAILABLE, PENDING_SYNC, VANISHED,
 )
 
-#: Reasons that mean "a person here has not looked yet", never a client ask.
-FIRM_SIDE: tuple[Reason, ...] = tuple(r for r in ALL if r.firm_side)
-#: Reasons whose parked file holds the reminder for the requests its
-#: shortlist names (decisions 117 and 140).
-HOLDS: tuple[Reason, ...] = tuple(r for r in ALL if r.holds)
+#: Every reason by its code: how a reader turns a row's ``code`` back into
+#: the one object that says what it means (decision 190).
+BY_CODE: dict[str, Reason] = {reason.code: reason for reason in ALL}
+#: The codes of the reasons that mean "a person here has not looked yet",
+#: never a client ask.
+FIRM_SIDE: frozenset[str] = frozenset(r.code for r in ALL if r.firm_side)
+#: The codes of the reasons whose parked file holds the reminder for the
+#: requests its shortlist names (decisions 117 and 140).
+HOLDS: frozenset[str] = frozenset(r.code for r in ALL if r.holds)
 
 
-def find(note: str) -> Reason | None:
-    """The first reason whose marker appears in ``note``, or None."""
-    for reason in ALL:
-        if reason.matches(note):
-            return reason
-    return None
+def first_of(codes) -> Reason | None:
+    """The most specific Reason among ``codes`` - the first of them in
+    :data:`ALL`'s order - or None when no code names one. A code no Reason
+    has (the router's own, an empty one) is passed over, never guessed at."""
+    found = [BY_CODE[code] for code in codes if code in BY_CODE]
+    return min(found, key=ALL.index) if found else None
+
+
+# ---- the sentences that park a row and are not Reasons ----------------------
+#
+# The router's and the filer's own sentences (decision 190): each gets a code
+# here, so every row that parks carries one, and the row's cause is read
+# from it. None of them is in ALL - none has a client ask or a hold of its
+# own - so BY_CODE does not name them, and a reader that asks it for one
+# gets None, which is what "not one of the reasons" means. The router's are
+# worded here, beside their codes, and tracker.router names them; the
+# filer's sentences carry detail only the filer has, so they stay in
+# tracker.filer and their codes are here.
+
+#: Read, and no request's rules accepted it.
+UNMATCHED = "matched no request"
+UNMATCHED_CODE = "unmatched"
+#: More than one request accepted it equally.
+AMBIGUOUS = "matched more than one request"
+AMBIGUOUS_CODE = "ambiguous"
+#: OCR text matched a request's looser keywords only; not enough to file on.
+OCR_ONLY = "matched only by OCR text"
+OCR_ONLY_CODE = "ocr-only"
+#: Every request refused the file type.
+NO_REQUEST_ACCEPTS = "no request accepts .{extension} files"
+NO_REQUEST_ACCEPTS_CODE = "no-request-accepts"
+#: How a contested file's sentence starts ("looks like A01 (...) - a person
+#: should confirm"). The candidates travel as data (Routing.candidates, then
+#: the index's Candidates column); nothing parses this sentence to get them
+#: back. A contested row's code is the most specific refusal that contested
+#: it (:func:`first_of`), since that is what decided it; ``CONTESTED_CODE``
+#: is for one with no refusal a Reason names, and
+#: ``SEVERAL_FORMS_UNSORTED_CODE`` for a page whose forms would not sort one
+#: to a request.
+CONTESTED_PREFIX = "looks like"
+CONTESTED_CODE = "contested"
+SEVERAL_FORMS_UNSORTED_CODE = "several-forms-unsorted"
+#: Where a document filed: the router's three filing sentences, so a filed
+#: row says what decided it as a parked one does.
+MATCHED_CODE = "matched"
+SEVERAL_FORMS_CODE = "several-forms"
+FILED_WHOLE_CODE = "filed-whole"
+#: tracker.filer's ``CONTESTED_BETWEEN_RETURNS``: requests in two returns
+#: accepted it and the name did not tell them apart.
+CONTESTED_BETWEEN_RETURNS_CODE = "between-returns"
+#: tracker.filer's ``PATH_NO_ROOM`` and ``PATH_NO_ROOM_IN``: no room for
+#: even the request's shortest name.
+NO_ROOM_CODE = "no-room"
+#: The filer's catch-all: "could not be filed (...) - file it by hand".
+COULD_NOT_FILE_CODE = "could-not-file"
+#: tracker.filer's ``UNFILED_BY_PERSON``: a person took a filed document
+#: back to the review queue.
+UNFILED_BY_PERSON_CODE = "unfiled"
+#: tracker.filer's ``DISMISSED_BY_PERSON``: a person set it aside as not
+#: requested.
+DISMISSED_BY_PERSON_CODE = "not-requested"
+#: tracker.filer's ``ASSIGNED_BY_PERSON``: a person filed it.
+ASSIGNED_BY_PERSON_CODE = "assigned"
+#: tracker.filer's ``PUT_BACK_REFUSED``: a person asked for a moved copy to
+#: go home, somebody's file was there, and the row parks with a copy.
+PUT_BACK_REFUSED_CODE = "put-back-refused"
+
+#: Every code above, for the suite's one check that no two causes share a
+#: code and that every one of them is here.
+PLAIN_CODES: tuple[str, ...] = (
+    UNMATCHED_CODE, AMBIGUOUS_CODE, OCR_ONLY_CODE, NO_REQUEST_ACCEPTS_CODE,
+    CONTESTED_CODE, SEVERAL_FORMS_UNSORTED_CODE, MATCHED_CODE, SEVERAL_FORMS_CODE, FILED_WHOLE_CODE,
+    CONTESTED_BETWEEN_RETURNS_CODE, NO_ROOM_CODE, COULD_NOT_FILE_CODE,
+    UNFILED_BY_PERSON_CODE, DISMISSED_BY_PERSON_CODE, ASSIGNED_BY_PERSON_CODE,
+    PUT_BACK_REFUSED_CODE,
+)
+
+#: Every code a row or a status may carry: a Reason's and a plain one.
+#: What the store admits (decision 187's value rule, held to decision
+#: 190's columns): a code outside it is refused as a malformed line,
+#: because the letter, its holds and the review card read it.
+KNOWN_CODES: frozenset[str] = frozenset(BY_CODE) | frozenset(PLAIN_CODES)

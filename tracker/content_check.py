@@ -164,7 +164,10 @@ RETIRED_CACHE_FILENAME = "_content_cache.json"
 #: 12 (decision 169): RapidOCR reads instead of Tesseract, so every verdict
 #:    on a scan or a photo was reached on another reader's words. The first
 #:    pass after the install reads every scan and photo again, once.
-CACHE_VERSION = 12
+#: 13 (decision 190): a verdict carries its cause's code, and a reason
+#:    names a parser's failure by its class, never its words; a verdict
+#:    kept before either says neither.
+CACHE_VERSION = 13
 
 #: A "text" PDF with fewer stripped characters than this *per page read*
 #: is a scan: what little it has is a scanner's stamp ("Scanned by
@@ -295,6 +298,9 @@ class ContentResult:
     #: verdict too - what *did* match is the lead a person works from - and
     #: read by nothing that decides anything.
     evidence: tuple[Evidence, ...] = ()
+    #: The code of the Reason ``reason`` says (decision 190), kept with the
+    #: verdict so a verdict read back from the cache says it too.
+    code: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -329,6 +335,8 @@ class Extraction:
     #: cleanly, the refusal otherwise, and None when it was not made - a
     #: reading of :func:`extract` alone, or one that never finished.
     opened: str | None = None
+    #: The code of the Reason ``reason`` says (decision 190).
+    code: str = ""
 
 
 # ------------------------------------------------------------------ rules ----
@@ -1348,7 +1356,7 @@ def evaluate_rules(text: str, item: RequestItem, dominant: set[str] | None = Non
     if missing:
         listed = ", ".join(f"'{k}'" for k in missing)
         return ContentResult(ok=False, reason=reasons.WRONG_DOCUMENT.format(listed=listed),
-                             evidence=tuple(found))
+                             evidence=tuple(found), code=reasons.WRONG_DOCUMENT.code)
 
     if item.any_keywords:
         hits = [e for e in (_found(RULE_ANY, text, k, dominant) for k in item.any_keywords)
@@ -1356,7 +1364,7 @@ def evaluate_rules(text: str, item: RequestItem, dominant: set[str] | None = Non
         if not hits:
             listed = ", ".join(item.any_keywords)
             return ContentResult(ok=False, reason=reasons.NO_EXPECTED_KEYWORD.format(listed=listed),
-                                 evidence=tuple(found))
+                                 evidence=tuple(found), code=reasons.NO_EXPECTED_KEYWORD.code)
         found.extend(hits)
 
     if item.date_pattern:
@@ -1375,7 +1383,7 @@ def evaluate_rules(text: str, item: RequestItem, dominant: set[str] | None = Non
         if at is None:
             return ContentResult(ok=False,
                                  reason=reasons.WRONG_PERIOD.format(pattern=item.date_pattern),
-                                 evidence=tuple(found))
+                                 evidence=tuple(found), code=reasons.WRONG_PERIOD.code)
         # The row's Period, not the regex it derives and not a word of the
         # document: what a person reading the index needs is "TY2025".
         where, page = _where_said(text, at)
@@ -1937,7 +1945,7 @@ def extract(path: Path, *, ocr: bool = True) -> Extraction:
     # reason is the whole reading, and it is the file's, not the machine's,
     # so the verdict is kept and the file is not tried again next pass.
     if too_large := too_large_reason(path):
-        return Extraction(None, reason=too_large, extractable=False)
+        return Extraction(None, reason=too_large, extractable=False, code=reasons.TOO_LARGE.code)
     reading = _extract(path, ocr=ocr)
     return replace(reading, seconds=time.perf_counter() - started)
 
@@ -1963,11 +1971,12 @@ def _extract(path: Path, *, ocr: bool) -> Extraction:
         error = errors.said(exc, (UnknownPacking,))
         return Extraction(
             None, reason=reasons.EXTRACTION_FAILED.format(error=error),
-            extractable=False, error=error,
+            extractable=False, error=error, code=reasons.EXTRACTION_FAILED.code,
         )
     if text is None:
         return Extraction(
             None, reason=reasons.UNCHECKABLE_TYPE.format(extension=extension), extractable=False,
+            code=reasons.UNCHECKABLE_TYPE.code,
         )
     pages = text.count(PAGE_BREAK) + 1
     if extension == PDF_EXTENSION and len(text.strip()) < _MIN_TEXT_CHARS * pages:
@@ -1995,21 +2004,23 @@ def extract_by_ocr(path: Path) -> Extraction:
     except ReadingStopped as exc:
         return abandoned(exc.seconds)
     except TooLargeToRead as exc:
-        return Extraction(None, reason=str(exc), extractable=False)
+        return Extraction(None, reason=str(exc), extractable=False, code=reasons.TOO_LARGE.code)
     except OcrError as exc:
         # Ours to retry, not the client's to resend: the file may be fine.
         return Extraction(
             None, reason=reasons.OCR_FAILED.format(error=exc.error),
-            extractable=False, error=exc.error, transient=True,
+            extractable=False, error=exc.error, transient=True, code=reasons.OCR_FAILED.code,
         )
     finally:
         _STOP = None
     if ocr_text is None:
         # The reader cannot run on this machine: a fact about the machine,
         # remembered by nobody, so the day it is mended the scan reads the file.
-        return Extraction(None, reason=reasons.NO_TEXT_LAYER.format(), extractable=False, transient=True)
+        return Extraction(None, reason=reasons.NO_TEXT_LAYER.format(), extractable=False, transient=True,
+                          code=reasons.NO_TEXT_LAYER.code)
     if not ocr_text.strip():
-        return Extraction(None, reason=reasons.NO_TEXT_AFTER_OCR.format(), extractable=False)
+        return Extraction(None, reason=reasons.NO_TEXT_AFTER_OCR.format(), extractable=False,
+                          code=reasons.NO_TEXT_AFTER_OCR.code)
     if len(ocr_text) > READING_CHAR_BUDGET:
         # Cut like every other reading (decision 178's budget; decision 189
         # closed the gap): OCR's words are held and judged like a text
@@ -2028,7 +2039,7 @@ def abandoned(seconds: float) -> Extraction:
     minutes = max(1, round(seconds / 60))
     said = "1 minute" if minutes == 1 else f"{minutes} minutes"
     return Extraction(None, reason=reasons.READING_STOPPED.format(minutes=said),
-                      extractable=False, seconds=seconds)
+                      extractable=False, seconds=seconds, code=reasons.READING_STOPPED.code)
 
 
 # ----------------------------------------------- a reading the pass can stop ----
@@ -2198,7 +2209,8 @@ def could_not_start(seconds: float, error: str, name: str) -> Extraction:
     doing, so transient - nothing is kept - and the pass says it once."""
     _COULD_NOT_START.append(name)
     return Extraction(None, reason=reasons.READER_UNAVAILABLE.format(), extractable=False,
-                      error=error, transient=True, seconds=seconds)
+                      error=error, transient=True, seconds=seconds,
+                      code=reasons.READER_UNAVAILABLE.code)
 
 
 def readers_that_could_not_start() -> list[str]:
@@ -2221,30 +2233,37 @@ def open_verdict(path: Path, cache: ContentCache, item: RequestItem | None = Non
     the content check that follows, so the file is read once. A stopped or
     crashed child is the verdict, kept; a child that could not start, or a
     machine without the HEIC decoder, is the machine's, said and not kept.
+
+    The refusal is a :class:`tracker.reasons.Said`, carrying its code
+    (decision 190): a kept one is said again with the code it was kept
+    with, so the row the scanner writes knows its cause either way.
     """
     digest = cache.digest_of(path)
     if digest:
         hit = cache.get_by_digest(digest, OPEN_TEST_FINGERPRINT)
         if hit is not None:
-            return hit.reason
+            return reasons.Said(hit.reason, hit.code) if hit.reason else ""
     rows = (row_question(item),) if item is not None and has_content_rules(item) else ()
     before_a_judgment(cache)
     judgment = judge_bounded(path, Questions(rows=rows))
     reading = judgment.extraction
-    verdict = reading.opened if reading.opened is not None else reading.reason
+    if reading.opened is not None:
+        verdict, code = reading.opened, reasons.code_of(reading.opened)
+    else:
+        verdict, code = reading.reason, reading.code
     if digest:
         cache.hold_reading(digest, judgment)
-        if not reading.transient and not reasons.HEIC_NOT_SUPPORTED.matches(verdict):
+        if not reading.transient and code != reasons.HEIC_NOT_SUPPORTED.code:
             cache.put_by_digest(digest, OPEN_TEST_FINGERPRINT,
-                                ContentResult(ok=not verdict, reason=verdict))
-    return verdict
+                                ContentResult(ok=not verdict, reason=verdict, code=code))
+    return reasons.Said(verdict, code) if verdict else ""
 
 
 def reading_failed(seconds: float, error: str) -> Extraction:
     """The reading whose process ended without an answer (decision 150):
     the file's verdict, kept like an abandoned one, for a person to read."""
     return Extraction(None, reason=reasons.READING_CRASHED.format(), extractable=False,
-                      error=error, seconds=seconds)
+                      error=error, seconds=seconds, code=reasons.READING_CRASHED.code)
 
 
 def _read_in_a_child(path: Path, questions: Questions) -> Judgment:
@@ -2355,6 +2374,7 @@ def _check_uncached(
     if reading.text is None:
         return ContentResult(
             ok=False, reason=reading.reason, extractable=False, transient=reading.transient,
+            code=reading.code,
         )
     verdict = judgment.rows[question].verdict
     if reading.cut and not verdict.ok:

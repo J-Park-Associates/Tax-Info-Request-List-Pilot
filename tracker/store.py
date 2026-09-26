@@ -61,10 +61,11 @@ wrote is renamed out of the way (``.v<N>.old``, never deleted) and a fresh
 one built from the journals, which also empties the verdict cache it
 keeps, so the next pass reads and OCRs every document again; a newer one
 is refused by name. A version is instead **upgraded in
-place** only where the change is one new column that is additive, has an
-empty default, and that no journal line written before the new version
-can carry - so every existing row's true value is that default, and
-:func:`check` holds the column to the journal from then on. Each such step
+place** only where the change is new columns, each of which is additive
+and that no journal line written before the new version can carry - so
+every existing row's true value is empty, which the column holds as NULL
+exactly as a rebuild would, and :func:`check` holds the columns to the
+journal from then on (decision 204's one column; decision 190's three). Each such step
 is written out by name in :data:`_IN_PLACE` (from-version -> statements),
 never inferred; every other older version is set aside, and a newer one
 refused.
@@ -300,17 +301,38 @@ ENV_STORE = "TRACKER_STORE"
 #: fed return line and what its list accepted. It is the store's first
 #: **in-place** step (the module docstring's rule, :data:`_IN_PLACE`): no
 #: journal line before 204 carries the field, so every version-16 row
-#: waits for nothing, and a version-16 file gains the column with an empty
-#: default and keeps its verdict cache. Every other earlier version is set
-#: aside and rebuilt (decision 159, E3); a newer one refused.
-SCHEMA_VERSION = 17
+#: waits for nothing, and a version-16 file gains the column (NULL, as a
+#: rebuild writes it - decision 190) and keeps its verdict cache. Every
+#: other earlier version is set aside and rebuilt (decision 159, E3); a
+#: newer one refused.
+#: Version 18 (decision 190) added ``code`` and ``subfolder`` to
+#: ``documents`` and ``note_codes`` to ``statuses``: a row's cause, the
+#: client subfolder it came from and the causes a request's notes say, each
+#: a column rather than a phrase inside a sentence. It is an in-place step
+#: too, by the same rule applied to each column: all three are additive,
+#: and no journal line before 190 carries any of them, so
+#: every version-17 row's cause reads as ``""`` - not recorded, and nothing
+#: reads one out of its words - which is what a rebuild from the journals
+#: would give. The verdicts a version-17 file cached are kept as rows but no
+#: longer answer: they were cached before a verdict carried its code, and
+#: :data:`tracker.content_check.CACHE_VERSION` moved with this step.
+SCHEMA_VERSION = 18
 
 #: The explicit in-place upgrades (the module docstring's rule): the
 #: version a file is at, and the statements that bring it to the next one.
-#: Only a new additive column with an empty default that no earlier journal
-#: line can carry qualifies; anything else is a delete-and-rebuild bump.
+#: Only new additive columns that no earlier journal line can carry
+#: qualify; anything else is a delete-and-rebuild bump. Each is added with
+#: no default - NULL on every existing row, which is exactly what a rebuild
+#: writes for a line that does not carry the field, and what the records
+#: read back as empty - so ``store check`` compares the upgraded file with
+#: the journal and finds nothing. (A default of ``''`` would not be what a
+#: rebuild writes, and the check named every earlier row; decision 190
+#: found that in 204's step and made both steps add NULL.)
 _IN_PLACE: dict[int, tuple[str, ...]] = {
-    16: ("""ALTER TABLE documents ADD COLUMN "waits_for" TEXT DEFAULT ''""",),
+    16: ("""ALTER TABLE documents ADD COLUMN "waits_for" TEXT""",),
+    17: ("""ALTER TABLE documents ADD COLUMN "code" TEXT""",
+         """ALTER TABLE documents ADD COLUMN "subfolder" TEXT""",
+         """ALTER TABLE statuses ADD COLUMN "note_codes" TEXT"""),
 }
 
 #: What a row of ``engagements`` holds the record of: one return, or one
@@ -669,8 +691,8 @@ def open(path: Path | str) -> sqlite3.Connection:  # noqa: A001 - the store is o
     its record, proved against this machine's checkpoint. Until 159 an
     older store was refused until a person deleted it, and the sentence
     that told them to also offered "or run that version". **Except a
-    version upgraded in place** (decision 204, :data:`_IN_PLACE`): version
-    16 gains its column where it stands and keeps its verdict cache; only
+    version upgraded in place** (decisions 204 and 190, :data:`_IN_PLACE`):
+    versions 16 and 17 gain their columns where they stand; only
     an older version no in-place step reaches is set aside. The record
     checkpoint beside it is another file with its own version, and no step
     here touches it. The caller closes the connection.
@@ -1629,7 +1651,7 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
     events name a request and a word, both as text and neither blank, or
     the line is refused like any other.
     """
-    from tracker import layout
+    from tracker import layout, reasons
 
     name = event.get(ledger.EVENT_KEY)
 
@@ -1656,9 +1678,16 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
         if (code := layout.segment_problem(str(label))) is not None:
             refuse(f"carries {field!r} that is not one folder name ({code})")
 
+    def a_code(field: str, code: object, what: str) -> None:
+        # A cause's code is read by the letter, its holds and the review
+        # card (decision 190), so it is one this version names, or none.
+        if code and code not in reasons.KNOWN_CODES:
+            refuse(f"carries {what} whose {field!r} is not a cause's code")
+
     def a_row(row: dict) -> None:
         if problem := records.entry_problem(row):
             refuse(f"carries a row whose {problem}")
+        a_code("code", row.get("code"), "a row")
         for field in ("pbc_location", "prepared_location", "container"):
             if row.get(field):
                 a_place(field, row[field], writes=False, what="a row")
@@ -1740,6 +1769,8 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
                 refuse("carries a status that is not a mapping")
             if problem := records.status_problem(stored):
                 refuse(f"carries a status whose {problem}")
+            for code in records.split_codes(stored.get("note_codes")):
+                a_code("note_codes", code, "a status")
     elif name == ledger.MOVING:
         # The intent is what a later pass will finish a half-made move
         # from, so its shape is checked here rather than trusted in the

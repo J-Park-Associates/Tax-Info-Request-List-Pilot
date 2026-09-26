@@ -226,11 +226,14 @@ def test_client_subfolders_are_flattened(engagement):
 # The year folder stays flat (decision 125): a file from a subfolder of the
 # drop moves in under its own name. It is numbered only where another file
 # has that name, the file at the top of the inbox is the one that keeps it,
-# and the row says which of the client's subfolders the file came from.
+# and the row says which of the client's subfolders the file came from - in
+# its own Client's Subfolder column since decision 190, never in the Reason.
 
 def came_from(folder):
-    """The sentence a row gains when its file came out of a subfolder of
-    the drop (decision 147, ruling 4), in the SPEC's own words."""
+    """The sentence a row's Reason ended with, before decision 190, when its
+    file came out of a subfolder of the drop (decision 147, ruling 4). It
+    is the card's label now (``api.CAME_FROM_SUBFOLDER``), and no Reason
+    carries it."""
     return f"came from the client's subfolder '{folder}'"
 
 
@@ -244,9 +247,11 @@ def test_a_subfolder_file_keeps_its_name_when_nothing_else_has_it(engagement):
     assert [p.name for p in originals(engagement).iterdir()] == ["w2.pdf"]
     assert row.pbc_location == original_at(engagement, "w2.pdf")
     assert row.original_name == "w2.pdf"
-    # The path below the inbox, the way the client sees it in Explorer.
-    assert row.reason.endswith("; " + came_from("Bank statements\\2025"))
-    assert read_index(engagement)[0].reason == row.reason          # the record's, not the report's
+    # The path below the inbox, the way the client sees it in Explorer - in
+    # its own column, and not a word of it in the Reason (decision 190).
+    assert row.subfolder == "Bank statements\\2025"
+    assert "Bank statements" not in row.reason
+    assert read_index(engagement)[0].subfolder == row.subfolder     # the record's, not the report's
 
 
 def test_a_different_file_of_the_same_name_is_the_one_numbered_and_the_row_names_its_subfolder(engagement):
@@ -270,8 +275,9 @@ def test_a_different_file_of_the_same_name_is_the_one_numbered_and_the_row_names
     assert set(rows) == {top_digest, inner_digest}
     assert rows[top_digest].pbc_location == original_at(engagement, "W2.pdf")
     assert rows[inner_digest].pbc_location == original_at(engagement, "W2 (2).pdf")
-    assert came_from("Scans") not in rows[top_digest].reason
-    assert rows[inner_digest].reason.endswith("; " + came_from("Scans"))
+    assert rows[top_digest].subfolder == ""
+    assert rows[inner_digest].subfolder == "Scans"
+    assert came_from("Scans") not in rows[inner_digest].reason
     assert rows[inner_digest].original_name == "W2.pdf"           # what the client called it
 
 
@@ -286,14 +292,75 @@ def test_an_identical_copy_from_a_subfolder_is_a_duplicate_as_before(engagement)
     [filed] = report.filed
     [dup] = report.duplicates
     assert filed.pbc_location == original_at(engagement, "w2.pdf")
-    assert came_from("tax stuff") not in filed.reason
+    assert filed.subfolder == ""
     # Both preserved; the copy from the subfolder is the one numbered, and
     # it is the duplicate it always was (decision 111).
     assert dup.decision == DUPLICATE
     assert dup.pbc_location == original_at(engagement, "w2 (2).pdf")
     assert "identical to w2.pdf" in dup.reason
-    assert dup.reason.endswith("; " + came_from("tax stuff"))
+    assert dup.subfolder == "tax stuff" and "tax stuff" not in dup.reason
     assert len(list(prepared(engagement, "A01").iterdir())) == 1
+
+
+def test_a_client_subfolder_named_like_a_marker_changes_nothing(tmp_path):
+    """Decision 190, B-4. A client's folder is the client's words: one called
+    "not allowed" once turned a password-protected W-2 into a file-type ask,
+    and one called "Google Docs shortcut" into an export ask, because the
+    folder's name was a clause of the Reason and the reminder searched it.
+    The same locked file, dropped at the top and inside each of these
+    folders, now gets the same code, the same card and the same letter; the
+    folder is in its own column and nowhere in the Reason."""
+    from tests.test_reminder import DROPPED, locked
+    from tracker.reminder import draft_reminder
+    from tracker.review import shortlist_for
+    from tracker.scanner import scan_engagement
+
+    seen = []
+    for n, folder in enumerate(("", "not allowed", "Google Docs shortcut", "Scans")):
+        engagement = make_engagement(tmp_path / f"root{n}", DROPPED)
+        shared = inbox_of(engagement) / folder if folder else inbox_of(engagement)
+        shared.mkdir(parents=True, exist_ok=True)
+        locked("W-2 Jane Smith 2025.pdf")(shared)
+        sort(engagement, today=DAY1)
+        scan_engagement(engagement, today=DAY1)
+
+        [row] = [e for e in read_index(engagement) if e.decision == NEEDS_REVIEW]
+        assert row.subfolder == folder
+        assert not folder or folder not in row.reason
+        draft = draft_reminder(engagement)
+        seen.append((
+            row.code, row.reason,
+            [(s.identifier, s.reason) for s in shortlist_for(row, DROPPED)],
+            [(f.item.identifier, f.reason) for f in draft.held],
+            [line.item.identifier for line in draft.lines], draft.body,
+        ))
+    assert seen[0][0] == reasons.PASSWORD_PROTECTED.code
+    assert all(one == seen[0] for one in seen), seen
+
+
+def test_every_row_a_pass_parks_has_a_code(engagement):
+    """Decision 190: every sentence that parks a row has a code, and the
+    row carries it - a locked PDF, a page that matches nothing, a type no
+    request takes, a zip that will not open and an upload that arrived
+    empty each park with a code the reader can read, and none with ``""``,
+    which means a row written before 190."""
+    from tests.test_reminder import locked
+
+    inbox = inbox_of(engagement)
+    locked("W-2 2025.pdf")(inbox)
+    drop(engagement, "notes.pdf", "A shopping list with nothing on it", who="")
+    (inbox / "setup.exe").write_bytes(b"MZ" * 4000)
+    (inbox / "docs.zip").write_bytes(b"PK\x03\x04 not a zip at all" * 200)
+    (inbox / "empty.pdf").write_bytes(b"%PDF")
+
+    sort(engagement, today=DAY1)
+
+    parked = {row.original_name: row.code for row in read_index(engagement)
+              if row.decision == NEEDS_REVIEW}
+    assert set(parked) == {"W-2 2025.pdf", "notes.pdf", "setup.exe", "docs.zip", "empty.pdf"}
+    assert all(parked.values()), parked
+    assert parked["W-2 2025.pdf"] == reasons.PASSWORD_PROTECTED.code
+    assert parked["docs.zip"] == reasons.CONTAINER_DAMAGED.code
 
 
 def test_the_subfolder_is_removed_once_empty(engagement):
@@ -3429,11 +3496,11 @@ def test_a_split_rows_second_copy_dragged_away_is_said_on_the_request_that_lost_
     assert row.decision == FILE_MOVED
     assert moved_to(row) == location_of(engagement, wanderer)
     assert f"{split.filed_locations[1]} -> " in report.updates["C01"].validation_notes
-    assert reasons.FILE_MOVED.matches(report.updates["C01"].validation_notes)
+    assert reasons.FILE_MOVED.code in report.updates["C01"].note_code_list
     assert report.updates["C01"].status == Status.MISSING
     # A01 still has the copy the split filed there, and is told nothing.
     assert report.updates["A01"].file_count == 1
-    assert not reasons.FILE_MOVED.matches(report.updates["A01"].validation_notes)
+    assert reasons.FILE_MOVED.code not in report.updates["A01"].note_code_list
     assert files_under(engagement) == untouched
 
 
@@ -4359,17 +4426,17 @@ def test_a_power_loss_mid_copy_leaves_a_truncated_file_that_is_named_and_the_row
 
     [row] = read_index(engagement)
     assert row.decision == NEEDS_REVIEW and row.identifier == ""
-    assert reasons.INTERRUPTED_MOVE.matches(row.reason)
+    assert row.code == reasons.INTERRUPTED_MOVE.code
     assert location_of(engagement, truncated) in row.reason
     assert truncated.read_bytes() == b"%PDF-1.4 half"          # never touched
     parked = engagement / row.prepared_location
     assert parked.parent.name == REVIEW_DIR_NAME
     assert parked.read_bytes() == original.read_bytes()        # made from the original
-    assert any(reasons.INTERRUPTED_MOVE.matches(e.error) for e in report.attention)
+    assert any(reasons.INTERRUPTED_MOVE.marker in e.error for e in report.attention)
 
     a01 = scan_engagement(engagement, today=DAY2).updates["A01"]
     assert a01.status == Status.MISSING and a01.file_count == 0
-    assert reasons.INTERRUPTED_MOVE.matches(a01.validation_notes)
+    assert reasons.INTERRUPTED_MOVE.code in a01.note_code_list
     conserved(engagement, before, moves, added=[digests_under(engagement)[row.prepared_location]])
 
 
@@ -4543,12 +4610,12 @@ def test_a_destination_holding_other_bytes_is_never_touched_and_the_row_parks_na
 
     [row] = read_index(engagement)
     assert row.decision == NEEDS_REVIEW and row.identifier == ""
-    assert reasons.INTERRUPTED_MOVE.matches(row.reason)
+    assert row.code == reasons.INTERRUPTED_MOVE.code
     assert location_of(engagement, stranger) in row.reason
     assert stranger.read_bytes() == b"%PDF-1.4 somebody elses file"     # untouched
     assert row.prepared_location == parked.prepared_location            # the copy waiting is used
     assert [p.name for p in review_dir(engagement).iterdir()] == ["scan0012.pdf"]
-    assert any(reasons.INTERRUPTED_MOVE.matches(e.error) for e in report.attention)
+    assert any(reasons.INTERRUPTED_MOVE.marker in e.error for e in report.attention)
     conserved(engagement, before, moves)
 
 
@@ -4575,11 +4642,11 @@ def test_bytes_gone_from_both_places_park_the_row_and_say_so(engagement, monkeyp
 
     [row] = read_index(engagement)
     assert row.decision == NEEDS_REVIEW
-    assert reasons.INTERRUPTED_MOVE_LOST.matches(row.reason)
+    assert row.code == reasons.INTERRUPTED_MOVE_LOST.code
     assert INTERRUPTED_ORIGINAL_HELD in row.reason
     assert filed.prepared_location in row.reason
     assert (engagement / row.prepared_location).read_bytes() == original.read_bytes()
-    assert any(reasons.INTERRUPTED_MOVE_LOST.matches(e.error) for e in report.attention)
+    assert any(reasons.INTERRUPTED_MOVE_LOST.marker in e.error for e in report.attention)
     conserved(engagement, before, moves,
               added=[digests_under(engagement)[row.prepared_location]])
 
@@ -5002,7 +5069,7 @@ def test_a_w2_naming_nobody_on_the_list_parks_even_in_a_one_return_household(tmp
     [parked] = sort(engagement, today=DAY1).review
 
     assert parked.decision == NEEDS_REVIEW
-    assert reasons.NAME_NOT_ON_PAGE.matches(parked.reason)
+    assert parked.code == reasons.NAME_NOT_ON_PAGE.code
     assert "1040 - Test Client" in parked.reason           # the return it parked in
     assert parked.candidates == "A01"                      # what the keywords said
     assert (engagement / parked.prepared_location).is_file()
@@ -5024,7 +5091,7 @@ def test_a_document_naming_another_returns_person_parks_and_names_them(tmp_path)
 
     assert read_index(business) == []
     [parked] = done[john].review
-    assert reasons.NAMES_ANOTHER_RETURN.matches(parked.reason)
+    assert parked.code == reasons.NAMES_ANOTHER_RETURN.code
     assert "Park Landscaping LLC (Park Family 2025 1120S - Park Landscaping)" in parked.reason
     # The evidence carries the other return's spelling, as a rule of its own.
     assert Evidence(RULE_NAME, "Park Landscaping LLC", WHERE_FIRST_PAGE, 1) \
@@ -5059,7 +5126,7 @@ def test_an_unnamed_request_is_vetoed_by_another_returns_name(tmp_path):
 
     assert read_index(john) == []
     [parked] = done[business].review
-    assert reasons.NAMES_ANOTHER_RETURN.matches(parked.reason)
+    assert parked.code == reasons.NAMES_ANOTHER_RETURN.code
     assert "John Park (Park Family 2025 1040 - John Park)" in parked.reason
 
 
@@ -5072,7 +5139,7 @@ def test_a_return_with_no_people_parks_its_named_requests_with_the_add_them_sent
 
     [parked] = sort(engagement, today=DAY1).review
 
-    assert reasons.NO_PEOPLE_ON_FILE.matches(parked.reason)
+    assert parked.code == reasons.NO_PEOPLE_ON_FILE.code
     assert "add them in the editor" in parked.reason
 
 
@@ -5158,7 +5225,7 @@ def test_a_decision_94_split_is_named_if_any_of_its_forms_request_is_named(tmp_p
 
     [parked] = sort(engagement, today=DAY1).review
 
-    assert reasons.NAME_NOT_ON_PAGE.matches(parked.reason)
+    assert parked.code == reasons.NAME_NOT_ON_PAGE.code
 
 
 #: A named row of a business's list: a bank statement without the entity's
@@ -5193,7 +5260,7 @@ def test_a_name_parked_document_parks_in_the_first_return_that_accepted_it(tmp_p
     assert done[john].handled == 0 and read_index(john) == []
     [parked] = done[business].review
     assert parked.decision == NEEDS_REVIEW
-    assert reasons.NAME_NOT_ON_PAGE.matches(parked.reason)
+    assert parked.code == reasons.NAME_NOT_ON_PAGE.code
     assert "Park Family 2025 1120S - Park Landscaping" in parked.reason
     assert parked.candidates == "D01"          # the accepting return's, not the 1040's
     assert (business / parked.prepared_location).is_file()
@@ -5251,7 +5318,7 @@ def test_a_re_send_after_a_set_aside_is_name_checked_before_it_files(
         assert report.filed == []
         [again] = report.review
         assert again.decision == NEEDS_REVIEW
-        assert reasons.NAME_NOT_ON_PAGE.matches(again.reason)
+        assert again.code == reasons.NAME_NOT_ON_PAGE.code
 
 
 # ====== the household routes: the feed list (decisions 129 and 132) =======
@@ -5333,7 +5400,7 @@ def test_a_drop_naming_a_fed_households_person_parks_at_home_for_one_click_and_n
     assert done[llc].filed == [] and read_index(llc) == []
     [row] = read_index(father)
     assert row.decision == NEEDS_REVIEW and row.identifier == ""
-    assert reasons.NAMED_ACROSS_HOUSEHOLDS.matches(row.reason)
+    assert row.code == reasons.NAMED_ACROSS_HOUSEHOLDS.code
     assert row.reason.startswith("Names Park & Lee LLC, who is on " + LLC_LABEL)
     assert row.waiting_for == WaitsFor("Park & Lee LLC", "1120S - Park & Lee LLC", ("B01",), "")
     assert f"{LLC_LABEL} / B01" in parse_evidence(row.evidence)
@@ -5522,7 +5589,7 @@ def test_a_set_aside_re_send_naming_a_fed_households_person_parks_too(fed):
     assert read_index(llc) == before and done[llc].filed == []
     [row] = read_index(father)
     assert row.decision == NEEDS_REVIEW
-    assert reasons.NAMED_ACROSS_HOUSEHOLDS.matches(row.reason)
+    assert row.code == reasons.NAMED_ACROSS_HOUSEHOLDS.code
     assert row.reason.startswith(RESENT_AFTER_SET_ASIDE.split("{")[0])
     assert row.waiting_for.identifiers == ("B02",)
     assert row.pbc_location == original_at(father, "notice.pdf")
@@ -5550,7 +5617,7 @@ def test_a_re_send_through_a_feed_of_a_document_the_other_household_lost_parks_a
 
     assert done[llc].filed == [] and read_index(llc) == [first]
     [waiting] = read_index(father)
-    assert reasons.NAMED_ACROSS_HOUSEHOLDS.matches(waiting.reason)
+    assert waiting.code == reasons.NAMED_ACROSS_HOUSEHOLDS.code
     assert waiting.waiting_for.identifiers == ("B01",)
 
     click(father, waiting, llc, today=DAY3)
@@ -5583,7 +5650,7 @@ def test_a_drop_parked_for_another_household_has_its_verdicts_kept_before_the_ne
     done = sort_all([father, llc], home=[father], today=DAY1)
 
     assert [row.original_name for row in done[father].review] == ["a tb.pdf"]
-    assert reasons.NAMED_ACROSS_HOUSEHOLDS.matches(done[father].review[0].reason)
+    assert done[father].review[0].code == reasons.NAMED_ACROSS_HOUSEHOLDS.code
     assert seen[0] == 0 and seen[-1] >= 1
 
 
@@ -5614,7 +5681,7 @@ def test_an_unnamed_drop_across_households_parks_as_before_and_carries_no_waits_
 
     [row] = sort_all([father, llc], home=[father], today=DAY1)[father].review
 
-    assert reasons.UNNAMED_ACROSS_HOUSEHOLDS.matches(row.reason)
+    assert row.code == reasons.UNNAMED_ACROSS_HOUSEHOLDS.code
     assert row.waits_for == "" and row.waiting_for is None
     assert read_index(llc) == []
 
@@ -5680,7 +5747,7 @@ def test_a_drop_that_fails_the_name_check_parks_in_the_dropping_household_naming
     assert read_index(llc) == []
     [parked] = done[father].review
     assert parked.decision == NEEDS_REVIEW
-    assert reasons.NAMES_ANOTHER_RETURN.matches(parked.reason)
+    assert parked.code == reasons.NAMES_ANOTHER_RETURN.code
     assert "Park & Lee LLC 2025 1120S - Park & Lee LLC" in parked.reason
     assert parked.pbc_location == original_at(father, "w2.pdf")     # it rests where it was dropped
     assert (father / parked.prepared_location).is_file()
@@ -6925,7 +6992,7 @@ def test_a_fed_return_with_no_room_parks_at_home_naming_the_fed_return(tmp_path)
     assert read_index(llc) == [] and list(b01.iterdir()) == []
     [parked] = done[father].review
     label = next(one.label for one in discover_engagements(root).engagements if one.path == llc)
-    assert reasons.NAMED_ACROSS_HOUSEHOLDS.matches(parked.reason) and label in parked.reason
+    assert parked.code == reasons.NAMED_ACROSS_HOUSEHOLDS.code and label in parked.reason
     assert "this request" not in parked.reason
     assert parked.pbc_location == original_at(father, "tb.pdf")
     with pytest.raises(NoRoom) as refused:
@@ -6993,7 +7060,7 @@ def test_a_drop_over_the_size_ceiling_goes_to_review_unread(engagement, monkeypa
     assert report.filed == []
     [parked] = report.review
     assert parked.decision == NEEDS_REVIEW
-    assert reasons.TOO_LARGE.matches(parked.reason)
+    assert parked.code == reasons.TOO_LARGE.code
     assert parked.reason.startswith("Too large to read (") and "A person looks at it." in parked.reason
     assert [p.name for p in originals(engagement).iterdir()] == ["huge.pdf"]   # counted and kept
     assert [row.original_name for row in read_index(engagement)] == ["huge.pdf"]
@@ -7062,7 +7129,7 @@ def test_an_unnamed_document_is_not_filed_across_households(tmp_path):
     [parked] = read_index(father)
     assert parked.decision == NEEDS_REVIEW
     assert parked.reason == "Unnamed, so it was not filed into another household's return."
-    assert reasons.UNNAMED_ACROSS_HOUSEHOLDS.matches(parked.reason)
+    assert parked.code == reasons.UNNAMED_ACROSS_HOUSEHOLDS.code
     # Where it was wanted, in the firm's words only (review of Part B, #3):
     # the other return's label and the request that accepted it.
     wanted = parse_evidence(parked.evidence)
@@ -7238,7 +7305,7 @@ def test_two_returns_in_one_household_that_both_accept_a_notice_park_it_unless_t
     assert set(parked) == {"both.pdf", "nobody.pdf"}
     assert parked["both.pdf"].reason == CONTESTED_BETWEEN_RETURNS.format(
         listed="Park Family 2025 1040 - Test Client: Z01; Park Family 2025 1065 - Park Landscaping: Z01")
-    assert reasons.NAME_NOT_ON_PAGE.matches(parked["nobody.pdf"].reason)
+    assert parked["nobody.pdf"].code == reasons.NAME_NOT_ON_PAGE.code
 
 
 def test_a_re_sent_set_aside_document_files_under_its_not_asked_row_and_the_earlier_entry_keeps_its_answer(
@@ -8156,8 +8223,8 @@ def test_a_copy_and_original_both_gone_is_named_not_chased(engagement):
     assert sentence in [e.error for e in report.attention]
     item = _status(engagement, "C01")
     assert item.status == Status.MISSING
-    assert reasons.COPY_AND_ORIGINAL_GONE.matches(item.validation_notes)
-    assert not reasons.FILE_MOVED.matches(item.validation_notes)
+    assert reasons.COPY_AND_ORIGINAL_GONE.code in item.note_code_list
+    assert reasons.FILE_MOVED.code not in item.note_code_list
     assert events_named(engagement, ledger.COPY_REMADE) == []
 
     lines = len(ledger.read_events(engagement))
@@ -8342,7 +8409,7 @@ def test_marking_a_both_gone_row_missing_asks_the_client_and_the_readme_agrees(e
         identifier="C01", date=DAY3.isoformat(), note=" (gone from Drive)"))
     assert len(events_named(engagement, ledger.ANSWER_WITHDRAWN_BY_PERSON)) == 1
     item = _status(engagement, "C01")
-    assert item.status == Status.MISSING and reasons.find(item.validation_notes) is None
+    assert item.status == Status.MISSING and reasons.first_of(item.note_code_list) is None
     assert "C01" in _asked(engagement, DAY3)
     assert "C01" not in {line.identifier for line in received_for([engagement]).lines}
     with pytest.raises(FilingError):
@@ -8422,7 +8489,7 @@ def test_an_original_that_cannot_be_read_holds_the_request_and_is_never_read(
     assert [e[ledger.EVENT_KEY] for e in ledger.read_events(engagement)[lines:]] == [ledger.SCANNED]
     item = _status(engagement, "C01")
     assert item.status == Status.MISSING
-    assert reasons.COPY_MISSING.matches(item.validation_notes)
+    assert reasons.COPY_MISSING.code in item.note_code_list
     assert "C01" not in _asked(engagement, DAY2)
 
     monkeypatch.undo()
@@ -8462,7 +8529,7 @@ def test_a_statement_whose_copy_is_not_counted_answers_nothing_until_it_is_made_
         assert item.status == Status.MISSING and item.file_count == 0
         assert held in item.validation_notes
         assert IN_CONSOLIDATED.format(row="E01") not in item.validation_notes
-    assert reasons.COPY_MISSING.matches(_status(engagement, "E01").validation_notes)
+    assert reasons.COPY_MISSING.code in _status(engagement, "E01").note_code_list
     assert not {"E01", "A02", "A04"} & _asked(engagement, DAY2)
 
     monkeypatch.undo()
@@ -8487,7 +8554,7 @@ def test_a_store_rebuilt_from_the_journal_agrees_after_a_remake_and_a_return(eng
 
     assert len(events_named(engagement, ledger.COPY_REMADE)) == 1
     assert len(events_named(engagement, ledger.ORIGINAL_RETURNED)) == 1
-    assert store.SCHEMA_VERSION == 17
+    assert store.SCHEMA_VERSION == 18
     live = read_index(engagement)
     root = root_of(engagement)
     assert store.check(store.connect(), root, engagement) == []

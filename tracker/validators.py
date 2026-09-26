@@ -169,6 +169,9 @@ class FileResult:
     ok: bool
     reason: str = ""            # human-readable tier-2 failure, if any
     pending_sync: bool = False  # cloud-only placeholder; skipped, not failed
+    #: The code of the Reason ``reason`` says (decision 190): what a reader
+    #: compares, never the sentence, which names the client's file type.
+    code: str = ""
 
 
 # ----------------------------------------------------------------- tier 1 ----
@@ -400,11 +403,12 @@ def check_file(
             ok=False,
             pending_sync=True,
             reason=reasons.PENDING_SYNC.format(),
+            code=reasons.PENDING_SYNC.code,
         )
 
     extension = extension_of(path)
     if stub := google_stub_reason(path):
-        return FileResult(path=path, ok=False, reason=stub)
+        return FileResult(path=path, ok=False, reason=stub, code=reasons.code_of(stub))
     if item.allowed_extensions and not extension_allowed(extension, item.allowed_extensions):
         return FileResult(
             path=path,
@@ -412,6 +416,7 @@ def check_file(
             reason=reasons.EXTENSION_NOT_ALLOWED.format(
                 extension=extension, allowed=", ".join(item.allowed_extensions)
             ),
+            code=reasons.EXTENSION_NOT_ALLOWED.code,
         )
 
     try:
@@ -425,26 +430,29 @@ def check_file(
             ok=False,
             pending_sync=True,
             reason=reasons.VANISHED.format(error=errors.error_class(exc)),
+            code=reasons.VANISHED.code,
         )
     if size < item.min_size_kb * 1024:
         return FileResult(
             path=path,
             ok=False,
             reason=reasons.TOO_SMALL.format(size_kb=size / 1024, minimum=item.min_size_kb),
+            code=reasons.TOO_SMALL.code,
         )
 
     if open_test is not None and extension in (PDF_EXTENSION, *IMAGE_EXTENSIONS):
         if error := open_test(path):
-            return FileResult(path=path, ok=False, reason=error)
+            return FileResult(path=path, ok=False, reason=error, code=reasons.code_of(error))
     elif extension == PDF_EXTENSION:
         error = _pdf_error(path, pdf_cache)
         if error:
-            return FileResult(path=path, ok=False, reason=error)
+            return FileResult(path=path, ok=False, reason=error, code=reasons.code_of(error))
     elif extension in IMAGE_EXTENSIONS:
         # The same tier, one file type along: a photo that will not open is
         # refused here rather than reaching the reader as a document.
         if photo_error := _image_error(path):
-            return FileResult(path=path, ok=False, reason=photo_error)
+            return FileResult(path=path, ok=False, reason=photo_error,
+                              code=reasons.code_of(photo_error))
 
     return FileResult(path=path, ok=True)
 

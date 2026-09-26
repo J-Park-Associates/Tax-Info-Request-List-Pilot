@@ -75,7 +75,7 @@ def test_required_keywords(tmp_path):
     assert check_content(pdf, item(required_keywords=("Chase",))).ok
     result = check_content(pdf, item(required_keywords=("Chase", "Wells Fargo")))
     assert not result.ok
-    assert "'Wells Fargo'" in result.reason and reasons.WRONG_DOCUMENT.matches(result.reason)
+    assert "'Wells Fargo'" in result.reason and result.code == reasons.WRONG_DOCUMENT.code
 
 
 def test_keywords_case_insensitive(tmp_path):
@@ -94,7 +94,7 @@ def test_date_pattern(tmp_path):
     pdf = text_pdf(tmp_path / "s.pdf", "Statement period: December 2025")
     assert check_content(pdf, item(date_pattern=r"(?i)december\s+2025")).ok
     result = check_content(pdf, item(date_pattern=r"(?i)january\s+2026"))
-    assert not result.ok and reasons.WRONG_PERIOD.matches(result.reason)
+    assert not result.ok and result.code == reasons.WRONG_PERIOD.code
 
 
 def test_evaluate_rules_lists_all_missing():
@@ -130,7 +130,7 @@ def test_unsupported_extension(tmp_path):
     f.write_bytes(b"binary")
     result = check_content(f, item(required_keywords=("x",)))
     assert not result.ok and not result.extractable
-    assert ".docx" in result.reason and reasons.UNCHECKABLE_TYPE.matches(result.reason)
+    assert ".docx" in result.reason and result.code == reasons.UNCHECKABLE_TYPE.code
 
 
 def test_image_only_pdf_without_ocr(tmp_path, monkeypatch):
@@ -143,7 +143,7 @@ def test_image_only_pdf_without_ocr(tmp_path, monkeypatch):
 
     result = check_content(scan, item(required_keywords=("Chase",)))
     assert not result.ok and not result.extractable
-    assert reasons.NO_TEXT_LAYER.matches(result.reason)
+    assert result.code == reasons.NO_TEXT_LAYER.code
 
 
 def test_ocr_text_used_when_available(tmp_path, monkeypatch):
@@ -215,10 +215,10 @@ def test_a_photo_is_read_by_ocr_like_a_scanned_pdf_and_never_has_a_text_layer(tm
     # And the machine's two answers are the machine's, for a photo as for a scan.
     monkeypatch.setattr("tracker.content_check._ocr_image", lambda p: None)
     no_engine = check_content(picture, item(required_keywords=("Chase",)))
-    assert no_engine.transient and reasons.NO_TEXT_LAYER.matches(no_engine.reason)
+    assert no_engine.transient and no_engine.code == reasons.NO_TEXT_LAYER.code
     monkeypatch.setattr("tracker.content_check._ocr_image", lambda p: "   ")
-    assert reasons.NO_TEXT_AFTER_OCR.matches(
-        check_content(picture, item(required_keywords=("Chase",))).reason)
+    assert (check_content(picture, item(required_keywords=("Chase",))).code
+            == reasons.NO_TEXT_AFTER_OCR.code)
 
 
 def test_exif_rotation_is_undone_before_reading(tmp_path, monkeypatch):
@@ -279,9 +279,10 @@ def test_the_cache_version_moved_so_a_verdict_read_sideways_is_read_again(tmp_pa
     page it was read from was never turned upright. The cache is
     disposable, so the version moves and the first pass after this
     decision re-reads those scans once. (Decision 141 moved it again, for
-    the notice's first-page phrases, and decision 169 once more: a new
-    reader means new verdicts on every scan and photo.)"""
-    assert CACHE_VERSION == 12
+    the notice's first-page phrases, decision 169 once more: a new reader
+    means new verdicts on every scan and photo, and decision 190 again: a
+    verdict carries its cause's code.)"""
+    assert CACHE_VERSION == 13
 
     rule = item(required_keywords=("Chase",))
     engagement = an_engagement(tmp_path, rule)
@@ -421,9 +422,9 @@ def test_a_verdict_row_at_another_cache_version_is_ignored_and_dropped_on_save(t
     # scan that came through it may have been reached on nonsense. The
     # version is carried per row now (decision 107), and it still means
     # all that. Version 10 was read before decision 141 kept a notice's
-    # header phrases to its first page, and version 11 by the reader before
-    # decision 169's.
-    assert CACHE_VERSION == 12
+    # header phrases to its first page, version 11 by the reader before
+    # decision 169's, and version 12 carried no cause's code (decision 190).
+    assert CACHE_VERSION == 13
     rule = item(required_keywords=("Chase",))
     engagement = an_engagement(tmp_path, rule)
     pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025")
@@ -1040,7 +1041,7 @@ def test_a_long_text_file_is_read_to_the_cap_and_says_so(tmp_path, monkeypatch):
 
     verdict = check_content(late, rules)
     assert not verdict.ok
-    assert reasons.WRONG_DOCUMENT.matches(verdict.reason)
+    assert verdict.code == reasons.WRONG_DOCUMENT.code
     assert verdict.reason.endswith(reasons.TEXT_CUT.format(limit=1))
 
     whole = tmp_path / "short.txt"
@@ -1144,16 +1145,16 @@ def test_a_picture_past_pillows_guard_is_a_kept_too_large_verdict_not_a_retry(tm
     Image.new("L", (100, 100), "white").save(photo)
     rules = item(allowed_extensions=("pdf",), any_keywords=("w-2",), min_size_kb=0)
 
-    assert reasons.TOO_LARGE.matches(check_file(photo, rules).reason)   # tier 2: ours, not the client's
+    assert check_file(photo, rules).code == reasons.TOO_LARGE.code   # tier 2: ours, not the client's
     reading = content_check.extract(photo)
     assert reading.text is None and not reading.transient
     assert reading.reason == "Too large to read (0 megapixels). A person looks at it."
     routed = route_file(photo, [rules])
-    assert routed.identifier is None and reasons.TOO_LARGE.matches(routed.reason)
+    assert routed.identifier is None and routed.code == reasons.TOO_LARGE.code
 
     cache = ContentCache()
     first = check_content(photo, rules, cache)
-    assert not first.ok and reasons.TOO_LARGE.matches(first.reason)
+    assert not first.ok and first.code == reasons.TOO_LARGE.code
 
     def never(_path):
         raise AssertionError("a kept verdict was read again")
@@ -1233,7 +1234,7 @@ def test_no_page_starts_past_the_safety_stop_and_the_stopped_reading_is_kept(tmp
     monkeypatch.setattr(ocr, "read_page", reader)
     cache = ContentCache()
     verdict = check_content(scan, rules, cache)
-    assert not verdict.ok and reasons.READING_STOPPED.matches(verdict.reason)
+    assert not verdict.ok and verdict.code == reasons.READING_STOPPED.code
     monkeypatch.setattr(ocr, "read_page", lambda *a, **k: pytest.fail("a kept verdict was read again"))
     assert check_content(scan, rules, cache) == verdict       # not retried
 
@@ -1410,7 +1411,8 @@ def test_a_text_layer_that_never_finishes_is_stopped_and_abandoned(tmp_path, a_s
 
     assert child_readers.reached(pdf, "text-layer").is_file()      # stopped inside the text layer
     assert STOP_IN_TESTS <= took < STOP_IN_TESTS + 45
-    assert verdict == content_check.ContentResult(ok=False, reason=STOPPED, extractable=False)
+    assert verdict == content_check.ContentResult(ok=False, reason=STOPPED, extractable=False,
+                                                     code=reasons.READING_STOPPED.code)
     assert no_child_left()
     a_short_stop.setattr(content_check, "_read_in_a_child",
                          lambda *a, **k: pytest.fail("a kept verdict was read again"))
@@ -1442,7 +1444,8 @@ def test_a_render_that_never_finishes_is_stopped_and_abandoned(tmp_path, a_short
 
     cache = ContentCache()
     verdict = check_content(scan, rules, cache)
-    assert verdict == content_check.ContentResult(ok=False, reason=STOPPED, extractable=False)
+    assert verdict == content_check.ContentResult(ok=False, reason=STOPPED, extractable=False,
+                                                     code=reasons.READING_STOPPED.code)
     a_short_stop.setattr(content_check, "_read_in_a_child",
                          lambda *a, **k: pytest.fail("a kept verdict was read again"))
     assert check_content(scan, rules, cache) == verdict
@@ -1472,7 +1475,7 @@ def test_a_reader_that_crashes_is_a_failed_reading_not_a_dead_pass(tmp_path, in_
 
     [parked] = report.review
     assert parked.original_name == "a crash.pdf" and parked.reason == CRASHED
-    assert reasons.find(parked.reason) is reasons.READING_CRASHED and reasons.READING_CRASHED.firm_side
+    assert parked.code == reasons.READING_CRASHED.code and reasons.READING_CRASHED.firm_side
     [filed] = report.filed
     assert filed.original_name == "the next one.pdf" and filed.identifier == "A01"
     assert no_child_left()
@@ -2427,7 +2430,8 @@ def test_a_catastrophic_date_pattern_costs_one_stop_and_the_next_pass_takes_the_
     a_short_stop.setattr(content_check, "_read_in_a_child",
                          lambda *a, **k: pytest.fail("a kept verdict was judged again"))
     kept = check_content(loose, row, ContentCache(engagement))
-    assert kept == content_check.ContentResult(ok=False, reason=STOPPED, extractable=False)
+    assert kept == content_check.ContentResult(ok=False, reason=STOPPED, extractable=False,
+                                               code=content_check.reasons.READING_STOPPED.code)
     # The record now carries a pattern decision 187 refuses on read. The
     # read-back check after every test is about honest records, so this
     # test takes its forged one away.

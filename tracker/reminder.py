@@ -28,7 +28,7 @@ What the client is asked for:
 
 What holds the whole reminder back for a person (decision 115):
 
-- ``Status.FAILED`` with no firm-side marker, and ``Status.PARTIAL`` whose
+- ``Status.FAILED`` with no firm-side code, and ``Status.PARTIAL`` whose
   shortfall is a file the rules refused. Something arrived and the rules
   could not use it - but a copy the router filed cannot fail the content
   rules on its own filing (the scan's verdict is the router's), so a Failed
@@ -83,7 +83,7 @@ What the client is deliberately *not* asked for:
   holds for a ``Status.PARTIAL`` row too: if the file that would complete it is one
   we have not read, "1 of 2 received" is not something we know yet. And it
   holds on any outstanding status - a ``Status.MISSING`` row whose note
-  carries a firm-side marker is the firm's as well (decision 109's rule,
+  carries a firm-side code is the firm's as well (decision 109's rule,
   stated once here). A firm-side row rides the staff-side report under the
   draft, which is still written; it never holds it.
 - (Until decision 168, a row whose request folder did not exist was held
@@ -309,7 +309,7 @@ PARTIAL_ASK_COMPLETE = "{have} of {expected} received"
 SECTION_MISSING = "NOT YET RECEIVED"
 SECTION_PARTIAL = "STARTED, BUT NOT COMPLETE"
 #: The section a Failed row used to be asked under. Unreachable from a pass
-#: since decision 115 - a Failed row with no firm-side marker holds the
+#: since decision 115 - a Failed row with no firm-side code holds the
 #: draft instead - so it is not in ``SECTION_ORDER``; the name stays because
 #: an "ask the client again" action a person records would put a row here.
 SECTION_FAILED = "RECEIVED, BUT WE COULD NOT USE IT"
@@ -747,9 +747,10 @@ def stage_named(number: int) -> Stage:
 def client_ask(item: RequestItem) -> str:
     """One plain sentence telling the client what to do about ``item``.
 
-    Driven by the scanner's validation note, never quoting it. A Partial
-    row's sentence is the count, and the row's own reason after it when the
-    note carries a client-side one. A Failed row's sentence still translates
+    Driven by the codes of the scanner's validation note (decision 190),
+    never by its words and never quoting it. A Partial row's sentence is
+    the count, and the row's own reason after it when the note carries a
+    client-side one. A Failed row's sentence still translates
     here - the generic ask when nothing in the note is recognised - but
     since decision 115 no pass asks it: :func:`triage` holds a Failed row
     for a person instead, and this branch waits for the action that would
@@ -763,7 +764,7 @@ def client_ask(item: RequestItem) -> str:
                if missing else PARTIAL_ASK_COMPLETE.format(have=have, expected=expected))
         # A count alone hides why: the client who sent both W-2s, one of
         # them password-protected, is told what to fix, not just "1 of 2".
-        reason = reasons.find(item.validation_notes or "")
+        reason = reasons.first_of(item.note_code_list)
         if reason is not None and not reason.firm_side:
             ask = f"{ask}; {_ask_for(reason, item)}"
         return ask
@@ -771,7 +772,7 @@ def client_ask(item: RequestItem) -> str:
     if item.status != Status.FAILED:
         return ""
 
-    reason = reasons.find(item.validation_notes or "")
+    reason = reasons.first_of(item.note_code_list)
     return _ask_for(reason, item) if reason else GENERIC_ASK
 
 
@@ -793,10 +794,10 @@ def _ask_for(reason: reasons.Reason, item: RequestItem) -> str:
 
 
 def _firm_side_reason(item: RequestItem) -> str:
-    """Why this row is the firm's problem rather than the client's, or ""."""
-    note = item.validation_notes or ""
-    for reason in reasons.FIRM_SIDE:
-        if reason.matches(note):
+    """Why this row is the firm's problem rather than the client's, or "":
+    the first firm-side cause its notes' codes name (decision 190)."""
+    for reason in reasons.ALL:
+        if reason.code in reasons.FIRM_SIDE and reason.code in item.note_code_list:
             return reason.firm_side_note
     return ""
 
@@ -818,7 +819,7 @@ def _section_for(item: RequestItem) -> str:
 def _ambiguous_reason(item: RequestItem) -> str:
     """Why this row holds the draft, or "" when it does not (decision 115).
 
-    Called for a row no firm-side marker claimed. A Failed row is ambiguous
+    Called for a row no firm-side code claimed. A Failed row is ambiguous
     as it stands: something arrived and the rules refused it, and whether
     the client resends or we fix it here is not the draft's to decide. A
     Partial row is ambiguous when its shortfall is a refused file - the
@@ -826,7 +827,7 @@ def _ambiguous_reason(item: RequestItem) -> str:
     The reason's own sentence rides in brackets so the person sees what the
     scan said.
     """
-    reason = reasons.find(item.validation_notes or "")
+    reason = reasons.first_of(item.note_code_list)
     if item.status == Status.FAILED:
         return f"{AMBIGUOUS_HOLD} ({_ask_for(reason, item)})" if reason else AMBIGUOUS_HOLD
     if item.status == Status.PARTIAL and reason is not None:
@@ -873,6 +874,14 @@ def _parked_holds(items: Sequence[RequestItem], parked: Sequence) -> dict[str, F
     Only rows the filer parked are read: a row a person dismissed is their
     answer, and a row they filed or unfiled is a decision, not a question.
 
+    **The row's code, never its sentence** (decision 190). The Reason cell
+    carries what the client chose - the file's name, the subfolder it came
+    from - so the cause is read from the Code column alone. A row written
+    before 190 has no code: its cause was not recorded. It **holds** where
+    its shortlist names a request, asked with :data:`GENERIC_ASK` - the safe
+    direction, since a person confirms it - and nothing reads a cause back
+    out of its words.
+
     **A parked row whose copy and original are both gone** (decision 157,
     ruling B5, and its review's S-1) still holds. The pass turns it into
     ``FILE_MOVED`` with the both-gone sentence, keeping what it said before,
@@ -897,16 +906,25 @@ def _parked_holds(items: Sequence[RequestItem], parked: Sequence) -> dict[str, F
     for row in parked:
         if not still_parked(row):
             continue
-        reason = reasons.find(row.reason or "")
-        if reason is None or not reason.holds:
+        code = row.code or ""
+        reason = reasons.BY_CODE.get(code)
+        if code and code not in reasons.HOLDS:
             continue
         for suggestion in shortlist_for(row, listed):
             item = rows.get(suggestion.identifier)
-            if item is not None:
-                holds[suggestion.identifier] = (
-                    FirmSideFlag(item=item, reason=CONFIRM_HOLD.format(note=reason.firm_side_note),
-                                 confirm=True) if reason.firm_side
-                    else FirmSideFlag(item=item, reason=PARKED_HOLD.format(ask=_ask_for(reason, item))))
+            if item is None:
+                continue
+            if reason is None:
+                # Written before 190: the cause was not recorded (the
+                # ``code and`` above lets only these through without one).
+                holds[suggestion.identifier] = FirmSideFlag(
+                    item=item, reason=PARKED_HOLD.format(ask=GENERIC_ASK))
+            elif reason.firm_side:
+                holds[suggestion.identifier] = FirmSideFlag(
+                    item=item, reason=CONFIRM_HOLD.format(note=reason.firm_side_note), confirm=True)
+            else:
+                holds[suggestion.identifier] = FirmSideFlag(
+                    item=item, reason=PARKED_HOLD.format(ask=_ask_for(reason, item)))
     return holds
 
 
@@ -922,7 +940,7 @@ def triage(items: Sequence[RequestItem], parked: Sequence = ()) -> tuple[
     A row nobody asked for (decision 142) is dropped first, whatever its
     status or notes. Overridden rows and anything already in are dropped
     here too and never reach the draft. For the rest, in this order: a row carrying any
-    firm-side marker, on any outstanding
+    firm-side code, on any outstanding
     status, is the firm's (decisions 20, 21, 58, and 109's rule for a
     Missing row); a Failed row, or a Partial whose shortfall is a refused
     file, is ambiguous and held; a Missing row, and a Partial with no

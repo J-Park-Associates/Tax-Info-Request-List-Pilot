@@ -189,8 +189,8 @@ REFUSAL_SEPARATOR = "; "
 
 #: Every refusal by its code, so a ``RULE_REFUSED`` term (which travels as
 #: the code, never the sentence) can be said in the words its one owner
-#: gives it.
-_REASON_BY_CODE: dict[str, reasons.Reason] = {reason.code: reason for reason in reasons.ALL}
+#: gives it. The one table, :data:`tracker.reasons.BY_CODE`.
+_REASON_BY_CODE: dict[str, reasons.Reason] = reasons.BY_CODE
 
 
 @dataclass(frozen=True, slots=True)
@@ -334,18 +334,19 @@ def _name_said(entry: IndexEntry, found: tuple[Evidence, ...]) -> NameSaid | Non
     unmatched file, a duplicate) gets ``None`` and the card says nothing,
     which is right: no suggestion is better than an invented one.
 
-    A veto is told from a confirmation by the reason's own marker
-    (decision 121: one way to read a reason), never by whether a regular
-    expression over the prose happened to match - because on a vetoed row
-    the ``RULE_NAME`` evidence carries the *other* return's spelling, and a
-    failed match would read it as this return's and say the page names a
-    person it does not.
+    A veto is told from a confirmation by the row's code (decision 190),
+    never by its sentence - which carries the client's file name and the
+    subfolder it came from - and never by whether a regular expression
+    over the prose happened to match: on a vetoed row the ``RULE_NAME``
+    evidence carries the *other* return's spelling, and a failed match
+    would read it as this return's and say the page names a person it
+    does not. The other return's label is read back off the sentence the
+    filer wrote once the code has said it is that sentence.
     """
     spelling = next((e.term for e in found if e.rule == RULE_NAME), "")
-    if reasons.NAMES_ANOTHER_RETURN.matches(entry.reason):
+    if entry.code == reasons.NAMES_ANOTHER_RETURN.code:
         return NameSaid(NAME_VETOED, spelling, _label_of(entry.reason, spelling))
-    if (reasons.NAME_NOT_ON_PAGE.matches(entry.reason)
-            or reasons.NO_PEOPLE_ON_FILE.matches(entry.reason)):
+    if entry.code in (reasons.NAME_NOT_ON_PAGE.code, reasons.NO_PEOPLE_ON_FILE.code):
         return NameSaid(NAME_ABSENT)
     return NameSaid(NAME_CONFIRMED, spelling) if spelling else None
 
@@ -367,15 +368,15 @@ def _refusals_for(entry: IndexEntry, identifier: str, found: tuple[Evidence, ...
 
     Two places carry one: a ``RULE_REFUSED`` entry in the request's own
     evidence, and - for a request the row's Candidates cell names - the
-    row's own reason, which is where a failed period check ends up when the
-    document announced itself as that request's paperwork and then failed
-    it. Deduplicated, because they are frequently the same refusal said
-    twice.
+    row's own code (decision 190), which is where a failed period check
+    ends up when the document announced itself as that request's paperwork
+    and then failed it. Deduplicated, because they are frequently the same
+    refusal said twice.
     """
     codes = [e.term for e in found if e.rule == RULE_REFUSED]
     refused = [_REASON_BY_CODE[code] for code in codes if code in _REASON_BY_CODE]
     if identifier in entry.candidate_list:
-        named = reasons.find(entry.reason)
+        named = _REASON_BY_CODE.get(entry.code)
         if named is not None:
             refused.append(named)
     said: list[str] = []

@@ -449,6 +449,13 @@ ROLLOVER_UNTICKED_NOTE = ("A return left unticked is retired for {year}: it is s
 #: on what is already filed, and what it asks them for. The renderer shows
 #: these; it types none of them.
 DISMISS_LABEL = "Not requested"
+#: What the card says of a row whose file the client dropped inside a
+#: folder of their own in the inbox (decision 147), filled from the row's
+#: own Client's Subfolder column. The sentence every such row's Reason used
+#: to end with, moved here unchanged when the subfolder became a column
+#: (decision 190): a folder the client called "not allowed" was read as
+#: the file type being refused.
+CAME_FROM_SUBFOLDER = "came from the client's subfolder '{folder}'"
 DISMISS_NOTE_HINT = "why nothing asks for it (optional)"
 DISMISSED_HEADING = "Not requested ({n})"
 FILE_LABEL = "File it"
@@ -834,6 +841,7 @@ def _vocab() -> dict:
         "decisions": {"filed": FILED, "needs_review": NEEDS_REVIEW, "duplicate": DUPLICATE,
                       "dismissed": NOT_REQUESTED, "file_moved": FILE_MOVED},
         "review_labels": {"dismiss": DISMISS_LABEL, "dismiss_note": DISMISS_NOTE_HINT,
+                          "came_from": CAME_FROM_SUBFOLDER,
                           "dismissed_heading": DISMISSED_HEADING, "file": FILE_LABEL,
                           "file_anyway": FILE_ANYWAY_LABEL,
                           "unfile": UNFILE_LABEL, "unfile_note": UNFILE_NOTE_HINT,
@@ -1323,7 +1331,7 @@ def _waiting_payload(engagement: Path, entry: IndexEntry,
     """
     claim = entry.waiting_for
     if (claim is None or entry.decision != NEEDS_REVIEW
-            or not reasons.NAMED_ACROSS_HOUSEHOLDS.matches(entry.reason)):
+            or entry.code != reasons.NAMED_ACROSS_HOUSEHOLDS.code):
         return None, ""
     returns = fed()
     target = waiting_target(claim, returns)

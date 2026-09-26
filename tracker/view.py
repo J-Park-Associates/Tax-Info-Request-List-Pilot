@@ -214,7 +214,7 @@ VIEW_OPEN_LABEL = "Open Status Report"
 
 #: The index columns the review section repeats. The headers still come
 #: from the index's own table, so there is one owner for them.
-NEEDS_REVIEW_FIELDS = ("received", "original_name", "pbc_location", "reason",
+NEEDS_REVIEW_FIELDS = ("received", "original_name", "subfolder", "pbc_location", "reason",
                        "candidates", "evidence")
 
 #: What a coloured status word is classed as, and what a row set aside as

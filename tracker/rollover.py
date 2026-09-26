@@ -507,6 +507,14 @@ def _unfiled_last_year(prior_dir: Path) -> list[str]:
     Reported, never acted on: a request row needs a name and rules a person
     chooses. But a document that arrived and fitted nowhere is exactly the
     gap next year's list should close.
+
+    One line per original, keyed by where the original rests
+    (``pbc_location``, the record's own key), never by the name the client
+    gave it (decision 190): two different files called ``scan.pdf`` are two
+    documents never filed, and counting them as one would under-state the
+    gap. The line quotes the row's Reason, which since 190 carries no
+    subfolder - that is its own column, and the client's folder name is not
+    a reason anything was not filed.
     """
     from tracker.filer import NEEDS_REVIEW, ensure, read_index
 
@@ -518,11 +526,12 @@ def _unfiled_last_year(prior_dir: Path) -> list[str]:
         rows = read_index(prior_dir)
     except Exception:  # an unreadable index must never block a rollover
         return []
-    seen: dict[str, str] = {}
+    seen: dict[str, tuple[str, str]] = {}
     for row in rows:
-        if row.decision == NEEDS_REVIEW and row.original_name not in seen:
-            seen[row.original_name] = row.reason
-    return [f"{name} — {reason}" for name, reason in seen.items()]
+        key = row.pbc_location or row.digest or row.original_name
+        if row.decision == NEEDS_REVIEW and key not in seen:
+            seen[key] = (row.original_name, row.reason)
+    return [f"{name} — {reason}" for name, reason in seen.values()]
 
 
 # ------------------------------------------------------- the household roll ----

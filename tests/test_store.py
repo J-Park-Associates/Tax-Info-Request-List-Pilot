@@ -201,6 +201,55 @@ A_ROW_ORIGINAL = "../../../../Clients/Smith Family/2025/w2.pdf"
 #: before the first in-place step (decision 204 upgrades a version-16 file
 #: where it stands, so "the version before this one" is not set aside).
 REFUSED_EARLIER = min(store._IN_PLACE) - 1
+#: What turns a store of this version back into one at version 17: the
+#: columns decision 190's in-place step adds, taken off again.
+AS_AT_17 = ('ALTER TABLE documents DROP COLUMN "code"',
+            'ALTER TABLE documents DROP COLUMN "subfolder"',
+            'ALTER TABLE statuses DROP COLUMN "note_codes"')
+#: ... and back to version 16: decision 204's column too.
+AS_AT_16 = (*AS_AT_17, 'ALTER TABLE documents DROP COLUMN "waits_for"')
+
+
+def journal_as_written_before(engagement, fields: tuple[str, ...]) -> None:
+    """Take ``fields`` back out of every line of a journal this version
+    wrote - wherever a row, an intent or a status carries them - so it
+    reads as one written before the decision that added them."""
+    def before(value):
+        if isinstance(value, dict):
+            return {key: before(one) for key, one in value.items() if key not in fields}
+        if isinstance(value, list):
+            return [before(one) for one in value]
+        return value
+
+    events = [before(event) for event in ledger.read_events(engagement)]
+    ledger.path_for(engagement).write_text(
+        "".join(json.dumps(event, sort_keys=True) + "\n" for event in events), encoding="utf-8")
+
+
+#: The fields decision 190 added to the record, and decision 204's.
+FIELDS_OF_190 = ("code", "subfolder", "note_codes")
+FIELDS_OF_204 = ("waits_for",)
+
+
+def as_a_rebuild_leaves_it(conn, root, engagement, tmp_path) -> bool:
+    """Whether ``conn``'s rows and statuses are, cell for cell - NULL as
+    NULL - what a store rebuilt from the engagement's journal holds: the
+    claim an in-place step makes (the store's rule, decisions 204 and 190).
+    ``store check`` cannot be asked here, because the fixture's journal was
+    rewritten after the store applied it, which the check rightly names."""
+    rebuilt = store.open(tmp_path / "rebuilt" / store.STORE_FILENAME)
+    try:
+        store.rebuild_engagement(rebuilt, root, engagement)
+
+        def cells(one):
+            return {table: sorted(tuple(sorted((k, row[k]) for k in row.keys()
+                                               if k not in ("engagement_id",)))
+                                  for row in one.execute(f"SELECT * FROM {table}"))
+                    for table in ("documents", "statuses")}
+
+        return cells(conn) == cells(rebuilt)
+    finally:
+        rebuilt.close()
 
 
 def a_row(**fields) -> dict:
@@ -220,7 +269,7 @@ def test_opening_a_file_that_is_not_there_creates_the_schema(tmp_path):
 
     conn = store.open(path)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 17
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 18
         tables = {row[0] for row in conn.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table'")}
         assert tables == {"engagements", "requests", "statuses", "learned_keywords",
@@ -2212,7 +2261,7 @@ def test_a_row_written_without_asked_reads_as_asked(conn, root, by_hand):
 
     build(conn, root, by_hand)
     build(store.connect(), root, by_hand)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 17
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 18
     assert all(row["asked"] is True for row in store.rules(conn, by_hand))
     assert all(item.asked for item in load_manifest(by_hand))
     assert store.check(conn, root, by_hand) == []
@@ -2242,7 +2291,7 @@ def test_a_row_written_without_a_short_title_reads_as_blank(conn, root, by_hand)
 
     build(conn, root, by_hand)
     build(store.connect(), root, by_hand)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 17
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 18
     assert all(item.short_title == "" for item in load_manifest(by_hand))
     assert all(item.short_name for item in load_manifest(by_hand))
     assert store.check(conn, root, by_hand) == []
@@ -2334,6 +2383,12 @@ IMPOSSIBLE = [
     ("file_count", ledger.new(ledger.SCANNED, statuses={
         "A01": {"status": Status.MISSING, "file_count": -1}})),
     ("at", {**learned("A01", "lender"), ledger.AT_KEY: 12345}),
+    # Decision 190's columns, held to 187's rule: a cause's code is one this
+    # version names, and the client's subfolder is one line of text.
+    ("code", ledger.new(ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(code="not-a-cause"))),
+    ("subfolder", ledger.new(ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(subfolder="Scans\n2025"))),
+    ("note_codes", ledger.new(ledger.SCANNED, statuses={
+        "A01": {"status": Status.MISSING, "note_codes": "not-a-cause"}})),
     ("at", {**learned("A01", "lender"), ledger.AT_KEY: "1900-01-01T00:00:00Z"}),
 ]
 
@@ -2612,7 +2667,7 @@ def test_an_index_of_the_previous_version_reads_with_waits_for_empty(conn, root,
     assert "waits_for" not in ledger.path_for(by_hand).read_text(encoding="utf-8")
 
     build(conn, root, by_hand)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 17
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 18
     [row] = [entry_from_json(one) for one in store.documents(conn, by_hand)]
     assert row.waits_for == "" and row.waiting_for is None
     assert store.check(conn, root, by_hand) == []
@@ -2621,11 +2676,13 @@ def test_an_index_of_the_previous_version_reads_with_waits_for_empty(conn, root,
 
 def test_a_version_16_store_is_upgraded_in_place_and_keeps_its_cached_verdicts(tmp_path):
     """Decision 204, the store's first in-place step (the module docstring's
-    rule): a version-16 file gains ``waits_for`` with an empty default and
-    becomes version 17 where it stands - its verdict cache kept, so the
+    rule): a version-16 file gains ``waits_for``, NULL on every row as a
+    rebuild writes it, and becomes version 17 where it stands - its verdict cache kept, so the
     first pass after the upgrade reads nothing again - and every row it
-    held reads as waiting for nothing, which is what the journal says. Any
-    other earlier version is set aside and rebuilt (decision 159, E3)."""
+    held reads as waiting for nothing, which is what the journal - one
+    written before 204 - says, cell for cell as a rebuild leaves it. It goes on
+    through decision 190's step to this version. Any other earlier
+    version is set aside and rebuilt (decision 159, E3)."""
     from tests.conftest import sort
     from tests.test_scanner import text_pdf
     from tracker.layout import inbox_of
@@ -2646,19 +2703,21 @@ def test_a_version_16_store_is_upgraded_in_place_and_keeps_its_cached_verdicts(t
     old.parent.mkdir()
     written = sqlite3.connect(old)
     live.backup(written)
-    written.execute('ALTER TABLE documents DROP COLUMN "waits_for"')     # what version 16 was
+    for statement in AS_AT_16:                                           # what version 16 was
+        written.execute(statement)
     written.execute("PRAGMA user_version = 16")
     written.commit()
     written.close()
+    journal_as_written_before(engagement, FIELDS_OF_190 + FIELDS_OF_204)
 
     conn = store.open(old)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 17
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 18
         assert conn.execute(f"SELECT COUNT(*) FROM {store.VERDICTS_TABLE}").fetchone()[0] == cached
         assert conn.execute(f"SELECT COUNT(*) FROM {store.FILE_MEMOS_TABLE}").fetchone()[0] == memos
         rows = [entry_from_json(one) for one in store.documents(conn, engagement)]
         assert len(rows) == 2 and all(row.waits_for == "" for row in rows)
-        assert store.check(conn, tmp_path / "root", engagement) == []
+        assert as_a_rebuild_leaves_it(conn, tmp_path / "root", engagement, tmp_path)
     finally:
         conn.close()
     reopened = store.open(old)                   # a second open finds nothing to do
@@ -2679,11 +2738,13 @@ def test_two_openers_of_one_version_16_store_both_succeed(tmp_path, monkeypatch)
     """The in-place step re-reads the version under the write lock (the port
     review's should-fix): an opener that read 16 before another opener
     upgraded the file finds the step made and goes on, rather than failing
-    on the column the other added. Both end at version 17."""
+    on the column the other added. Both end at this version (18
+    since decision 190: each step is re-read the same way)."""
     path = tmp_path / "shared" / store.STORE_FILENAME
     store.open(path).close()
     written = sqlite3.connect(path)
-    written.execute('ALTER TABLE documents DROP COLUMN "waits_for"')
+    for statement in AS_AT_16:
+        written.execute(statement)
     written.execute("PRAGMA user_version = 16")
     written.commit()
     written.close()
@@ -2700,9 +2761,51 @@ def test_two_openers_of_one_version_16_store_both_succeed(tmp_path, monkeypatch)
     conn = store.open(path)
     try:
         assert raced["done"]
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 17
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 18
         columns = [row[1] for row in conn.execute("PRAGMA table_info(documents)")]
-        assert columns.count("waits_for") == 1
+        assert columns.count("waits_for") == 1 and columns.count("code") == 1
+    finally:
+        conn.close()
+
+
+def test_a_version_17_store_gains_the_cause_columns_in_place_and_every_old_row_reads_not_recorded(
+        tmp_path):
+    """Decision 190's in-place step (the store's rule, applied to each of
+    its three columns): a version-17 file gains ``code`` and ``subfolder``
+    on its rows and ``note_codes`` on its statuses, all empty, and becomes
+    version 18 where it stands. That is what a rebuild from a journal
+    written before 190 gives, cell for cell - no such line carries a cause -
+    and no row's cause is read out of its words."""
+    from tests.conftest import sort
+    from tests.test_scanner import text_pdf
+    from tracker.layout import inbox_of
+    from tracker.records import entry_from_json
+
+    engagement = make_engagement(tmp_path / "root", [RequestItem(
+        identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),
+        min_size_kb=0, required_keywords=("W-2",))])
+    text_pdf(inbox_of(engagement) / "notice.pdf", "an agency notice nothing asks for")
+    sort(engagement)
+    live = store.connect()
+
+    old = tmp_path / "v17" / store.STORE_FILENAME
+    old.parent.mkdir()
+    written = sqlite3.connect(old)
+    live.backup(written)
+    for statement in AS_AT_17:                                           # what version 17 was
+        written.execute(statement)
+    written.execute("PRAGMA user_version = 17")
+    written.commit()
+    written.close()
+    journal_as_written_before(engagement, FIELDS_OF_190)
+
+    conn = store.open(old)
+    try:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 18
+        [row] = [entry_from_json(one) for one in store.documents(conn, engagement)]
+        assert row.original_name == "notice.pdf" and row.code == "" and row.subfolder == ""
+        assert "note_codes" in [one[1] for one in conn.execute("PRAGMA table_info(statuses)")]
+        assert as_a_rebuild_leaves_it(conn, tmp_path / "root", engagement, tmp_path)
     finally:
         conn.close()
 # ------------------------------- decision 159: the record can show it was not altered ----

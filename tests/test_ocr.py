@@ -155,7 +155,7 @@ def test_a_missing_model_means_the_reader_cannot_run_and_the_scan_waits(tmp_path
 
     reading = extract(scan)
     assert reading.text is None and reading.transient
-    assert reasons.NO_TEXT_LAYER.matches(reading.reason)
+    assert reading.code == reasons.NO_TEXT_LAYER.code
     assert "the reader could not run on this machine" in reading.reason
     assert "OCR is not installed" not in reading.reason
 

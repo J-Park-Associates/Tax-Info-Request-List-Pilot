@@ -3333,6 +3333,7 @@ def _finish_interrupted_moves(
             prepared_location=parked,
             reason="; ".join(part for part in (
                 _without_moved_sentence(entry.reason), sentence, copy_said) if part),
+            code=reasons.code_of(sentence),
         )
         store.record(conn, engagement_dir, _ledger_event(ledger.PARKED, new_entry))
         rows_recorded = True
@@ -3383,17 +3384,6 @@ CONTESTED_BETWEEN_RETURNS = "accepted by requests in more than one return ({list
 #: family, and the Status Report of the return that took the document says
 #: where it came from in exactly those words.
 DROPPED_ELSEWHERE = "dropped in {household}"
-
-#: What a row says about a file the client dropped inside a subfolder of
-#: the inbox (decision 147, ruling 4): the year's folder is flat (decision
-#: 125), so the subfolder is gone from the file's resting name, and the
-#: record keeps it here - the path below the inbox, the way the client sees
-#: it in Explorer. Firm-side: the record's, never a sentence put to the
-#: client. **Accepted limit** (decision 119): the inbox move writes no
-#: intent, so a pass killed between the move and the row leaves a stray the
-#: next pass files where it lies, without this sentence.
-CAME_FROM_SUBFOLDER = "came from the client's subfolder '{folder}'"
-
 
 @dataclass(slots=True)
 class _ReturnRun:
@@ -4073,9 +4063,8 @@ def _sort_all(
                        and not any(digest in run.known for run in runs)
                        and not too_large_reason(recorded_at))
             subfolder = "" if already_filed else _subfolder_of(drop, inbox)
-            came_from = CAME_FROM_SUBFOLDER.format(folder=subfolder) if subfolder else ""
             for run in runs:
-                run.context.came_from = came_from
+                run.context.subfolder = subfolder
             try:
                 if opening:
                     _open_container(drop, original, recorded_at, digest, size_kb, stamp, runs, first)
@@ -4105,16 +4094,16 @@ def _sort_all(
                     digest=digest, identifier="",
                     prepared_location="", pbc_location=location_of(run.engagement_dir, original),
                     decision=NEEDS_REVIEW,
-                    reason="; ".join(part for part in (
-                        f"could not be filed ({errors.said(exc, FIRM_WRITTEN)}); "
-                        f"original preserved in {location_of(run.engagement_dir, original)} - "
-                        f"file it by hand", came_from) if part),
+                    reason=(f"could not be filed ({errors.said(exc, FIRM_WRITTEN)}); "
+                            f"original preserved in {location_of(run.engagement_dir, original)} - "
+                            f"file it by hand"),
+                    code=reasons.COULD_NOT_FILE_CODE, subfolder=subfolder,
                 )
                 run.report.errors.append(FileError(drop.name, entry.reason, False))
                 run.report.review.append(entry)
             finally:
                 for one in runs:
-                    one.context.came_from = ""
+                    one.context.subfolder = ""
 
             run.entries.append(entry)
             if entry.decision != DUPLICATE and digest:
@@ -4398,7 +4387,8 @@ def _open_container(
         opened = containers.open_bounded(recorded_at)
     except containers.NotOpened as exc:
         _keep(home, _park_it(drop, original, digest, size_kb, stamp, home,
-                             reason=exc.sentence, candidates=(), evidence=""), digest)
+                             reason=exc.sentence, code=exc.code, candidates=(), evidence=""),
+              digest)
         return
     if opened is None:
         # The opener's child could not start (decision 154, 150's rule):
@@ -4412,7 +4402,7 @@ def _open_container(
     # The container's own row says the subfolder it came from (decision
     # 147); the attachments' rows do not - each attachment's decision
     # clears it, so it is read here, before any of them.
-    came_from = home.context.came_from
+    subfolder = home.context.subfolder
     at = {id(run): location_of(run.engagement_dir, original) for run in runs}
     folder = _opened_folder(home, original, runs)
     claimed: set[Path] = set()
@@ -4426,7 +4416,7 @@ def _open_container(
     entry = IndexEntry(
         received=stamp, original_name=drop.name, size_kb=size_kb, digest=digest,
         identifier="", prepared_location="", pbc_location=at[id(home)], decision=OPENED,
-        reason="; ".join(part for part in (_opened_sentence(opened), came_from) if part),
+        reason=_opened_sentence(opened), subfolder=subfolder,
     )
     home.opened[ledger_key(entry)] = {
         ledger.ATTACHMENTS_KEY: [
@@ -4504,14 +4494,15 @@ def _decide_attachment(
     """
     size_kb = round(len(attachment.data) / 1024, 1)
     named = path.with_name(attachment.name)
-    outer = {id(run): run.context.came_from for run in runs}
+    outer = {id(run): run.context.subfolder for run in runs}
     for run in runs:
         run.context.container = at[id(run)]
-        run.context.came_from = ""
+        run.context.subfolder = ""
     try:
         if attachment.parks and not any(digest in run.known and _may_hold(run) for run in runs):
             run, entry = first, _park_it(named, path, digest, size_kb, stamp, first,
-                                         reason=attachment.parks, candidates=(), evidence="")
+                                         reason=attachment.parks, code=attachment.code,
+                                         candidates=(), evidence="")
         else:
             decided = _decide_across(named, path, digest, size_kb, stamp, runs, first)
             if decided is None:
@@ -4528,14 +4519,14 @@ def _decide_attachment(
             identifier="", prepared_location="", pbc_location=where, decision=NEEDS_REVIEW,
             reason=(f"could not be filed ({errors.said(exc, FIRM_WRITTEN)}); "
                     f"taken out to {where} - file it by hand"),
-            container=at[id(run)],
+            container=at[id(run)], code=reasons.COULD_NOT_FILE_CODE,
         )
         run.report.errors.append(FileError(attachment.name, entry.reason, False))
         run.report.review.append(entry)
     finally:
         for one in runs:
             one.context.container = ""
-            one.context.came_from = outer[id(one)]
+            one.context.subfolder = outer[id(one)]
     _keep(run, entry, digest)
     return True
 
@@ -4791,6 +4782,7 @@ def _decide_across(
             home = next((one for one in runs if one.home), first)
             return home, _park_it(drop, original, digest, size_kb, stamp, home,
                                   reason=reasons.OPENED_NOT_ACROSS.format(),
+                                  code=reasons.OPENED_NOT_ACROSS.code,
                                   candidates=(), evidence="")
 
     # One reading, however many returns judge it (decision 128). A dry run
@@ -4877,7 +4869,7 @@ def _decide_across(
             ext=_kind_of(no_room.extension))
         return home, _park_it(
             drop, original, digest, size_kb, stamp, home,
-            reason=reason, candidates=said.candidates,
+            reason=reason, code=reasons.NO_ROOM_CODE, candidates=said.candidates,
             evidence=format_evidence(said.evidence_record),
         )
 
@@ -4885,6 +4877,7 @@ def _decide_across(
         return home, _park_it(
             drop, original, digest, size_kb, stamp, home,
             reason=reasons.OPENED_NOT_ACROSS.format(),
+            code=reasons.OPENED_NOT_ACROSS.code,
             candidates=home_routing.candidates,
             evidence=_with_the_wanting_return(home_routing, run, routing),
         )
@@ -4893,6 +4886,7 @@ def _decide_across(
         return home, _park_it(
             drop, original, digest, size_kb, stamp, home,
             reason=reasons.UNNAMED_ACROSS_HOUSEHOLDS.format(),
+            code=reasons.UNNAMED_ACROSS_HOUSEHOLDS.code,
             candidates=home_routing.candidates,
             evidence=_with_the_wanting_return(home_routing, run, routing),
         )
@@ -4901,6 +4895,7 @@ def _decide_across(
         return home, _park_it(
             drop, original, digest, size_kb, stamp, home,
             reason=_named_across(stage, run),
+            code=reasons.NAMED_ACROSS_HOUSEHOLDS.code,
             candidates=home_routing.candidates,
             evidence=_with_the_wanting_return(home_routing, run, routing),
             waits_for=_waits_for(run, routing),
@@ -4919,6 +4914,7 @@ def _decide_across(
         return home, _park_it(
             drop, original, digest, size_kb, stamp, home,
             reason=CONTESTED_BETWEEN_RETURNS.format(listed=listed),
+            code=reasons.CONTESTED_BETWEEN_RETURNS_CODE,
             candidates=home_routing.candidates,
             evidence=format_evidence(home_routing.evidence_record),
         )
@@ -4928,7 +4924,9 @@ def _decide_across(
     # request", which would be a lie about a W-2 the list plainly wanted.
     return home, _park_it(
         drop, original, digest, size_kb, stamp, home,
-        reason=stage.reason or home_routing.reason, candidates=home_routing.candidates,
+        reason=stage.reason or home_routing.reason,
+        code=reasons.code_of(stage.reason) or home_routing.code,
+        candidates=home_routing.candidates,
         evidence=format_evidence(home_routing.evidence_record),
     )
 
@@ -4948,7 +4946,7 @@ def _not_read(reading) -> bool:
     pass reads it again as a stray. The reader that started and then died
     is the file's (``READING_CRASHED``) and is decided as before.
     """
-    return bool(reading.transient) and reasons.READER_UNAVAILABLE.matches(reading.reason)
+    return bool(reading.transient) and reading.code == reasons.READER_UNAVAILABLE.code
 
 
 def _across_households(run: _ReturnRun) -> bool:
@@ -5062,14 +5060,18 @@ class _SortContext:
     #: or a duplicate, and the intent written before it - names its
     #: container, and a recovery records the row the decision would have.
     container: str = ""
-    #: :data:`CAME_FROM_SUBFOLDER`, said, for a drop that came out of a
-    #: subfolder of the inbox (decision 147), and ``""`` for any other. Set
-    #: on every run around that drop's decision and cleared after it, as
+    #: The client's subfolder of the inbox a drop came out of (decision 147),
+    #: as the path below the inbox, and ``""`` for any other. Set on every
+    #: run around that drop's decision and cleared after it, as
     #: ``container`` is, so the row every road writes - filed, parked, a
-    #: duplicate or the container's own - carries it, and so does the intent
-    #: written before it. Cleared around an attachment's decision: what came
-    #: out of a zip did not come out of the subfolder, the zip did.
-    came_from: str = ""
+    #: duplicate or the container's own - carries it in its ``subfolder``
+    #: column (decision 190: a column, never a clause of the Reason), and so
+    #: does the intent written before it. Cleared around an attachment's
+    #: decision: what came out of a zip did not come out of the subfolder,
+    #: the zip did. **Accepted limit** (decision 119): the inbox move writes
+    #: no intent, so a pass killed between the move and the row leaves a
+    #: stray the next pass files where it lies, with no subfolder.
+    subfolder: str = ""
     #: Every path an open intent of the household's pass will still write
     #: to (decision 147, the designer's ruling on deviation 3), read once
     #: per pass after recovery and set on every run: a name taken as a
@@ -5256,7 +5258,7 @@ def _file_it(
         prepared_location=locations[0],
         pbc_location=location_of(run.engagement_dir, resting), decision=FILED,
         reason="; ".join(part for part in
-                         (routing.reason, refiled, resent, confirmed, context.came_from) if part),
+                         (routing.reason, refiled, resent, confirmed) if part),
         candidates=_CANDIDATE_SEP.join(routing.candidates),
         evidence=format_evidence(routing.evidence_record),
         also_filed=_CANDIDATE_SEP.join(locations[1:]),
@@ -5265,6 +5267,7 @@ def _file_it(
         # without a copy, as the routing named them - each still on this
         # return's list, since the routing was this list's.
         answers=format_answers([one for one in routing.answers if one[0] in context.by_id]),
+        code=routing.code, subfolder=context.subfolder,
     )
     # The move first, then the copies from where it will have moved to:
     # a step may stand on the one before it, and the recovery finishes
@@ -5307,12 +5310,14 @@ def _review_copy_path(review_dir: Path, name: str) -> tuple[Path, str]:
 
 def _park_it(
     drop: Path, original: Path, digest: str, size_kb: float, stamp: str,
-    run: _ReturnRun, *, reason: str, candidates, evidence: str, resent: str = "",
+    run: _ReturnRun, *, reason: str, code: str, candidates, evidence: str, resent: str = "",
     waits_for: str = "",
 ) -> IndexEntry:
     """Park one preserved original in this return's Needs Review, with a
-    working copy a person can open and the sentence that says why - and,
-    for a document naming another household's person, what it waits for
+    working copy a person can open, the sentence that says why and the code
+    of the cause that sentence says (decision 190) - required, because a
+    parked row's code is what the letter and the card read - and, for a
+    document naming another household's person, what it waits for
     (``waits_for``, decision 204)."""
     context = run.context
     review_name = drop.name
@@ -5335,20 +5340,21 @@ def _park_it(
                                original, review_target, digest))
         context.review_dir.mkdir(parents=True, exist_ok=True)
         review_name = review_target.name
-    reason = "; ".join(part for part in (resent, reason, context.came_from, past_reader) if part)
+    reason = "; ".join(part for part in (resent, reason, past_reader) if part)
     entry = IndexEntry(
         received=stamp, original_name=drop.name, size_kb=size_kb,
         digest=digest, identifier="",
         prepared_location=prepared_location(context.review_dir, review_name),
         pbc_location=location_of(run.engagement_dir, original), decision=NEEDS_REVIEW,
         # The flag first: what a person opening the card should read before
-        # the reason for parking it; the subfolder it came from (decision
-        # 147) after it; a copy past a reader's limit, last.
+        # the reason for parking it; a copy past a reader's limit, last. The
+        # subfolder it came from (decision 147) is its own column.
         reason=reason,
         candidates=_CANDIDATE_SEP.join(candidates),
         evidence=evidence,
         container=context.container,
         waits_for=waits_for,
+        code=code, subfolder=context.subfolder,
     )
     _carry_out(entry, parking, ledger.PARKED, context)
     run.report.review.append(entry)
@@ -5450,8 +5456,8 @@ def _sort_one(
             digest=digest, identifier=earlier.identifier,
             prepared_location="",
             pbc_location=location_of(run.engagement_dir, original), decision=DUPLICATE,
-            reason="; ".join(part for part in (said, context.came_from) if part),
-            container=context.container,
+            reason=said,
+            container=context.container, subfolder=context.subfolder,
         )
         run.report.duplicates.append(entry)
         return run, entry
@@ -5490,6 +5496,8 @@ def _sort_one(
             return home, _park_it(drop, original, digest, size_kb, stamp, home,
                                   reason=(_named_across(stage, run) if named
                                           else reasons.UNNAMED_ACROSS_HOUSEHOLDS.format()),
+                                  code=(reasons.NAMED_ACROSS_HOUSEHOLDS.code if named
+                                        else reasons.UNNAMED_ACROSS_HOUSEHOLDS.code),
                                   candidates="",
                                   evidence=_with_the_wanting_return(_NO_ROUTING, run, routing),
                                   resent=resent,
@@ -5502,14 +5510,17 @@ def _sort_one(
                                      confirmed=stage.confirmed.get(id(run), ""))
             except NoRoom as exc:        # decision 131: no room even for the shortest name
                 return run, _park_it(drop, original, digest, size_kb, stamp, run,
-                                     reason=str(exc), candidates=routing.candidates,
+                                     reason=str(exc), code=reasons.NO_ROOM_CODE,
+                                     candidates=routing.candidates,
                                      evidence=format_evidence(routing.evidence_record), resent=resent)
         routing = stage.graded.get(id(run), routing)
         return run, _park_it(drop, original, digest, size_kb, stamp, run,
-                             reason=stage.reason or routing.reason, candidates=routing.candidates,
+                             reason=stage.reason or routing.reason,
+                             code=reasons.code_of(stage.reason) or routing.code,
+                             candidates=routing.candidates,
                              evidence=format_evidence(routing.evidence_record), resent=resent)
     return run, _park_it(drop, original, digest, size_kb, stamp, run,
-                         reason=routing.reason, candidates=routing.candidates,
+                         reason=routing.reason, code=routing.code, candidates=routing.candidates,
                          evidence=format_evidence(routing.evidence_record), resent=resent)
 
 
@@ -5839,7 +5850,7 @@ def assign_review_file(
             prepared_location=prepared_location(dest_folder, filed_as),
             decision=FILED,
             reason=f"{attributed}; was: {entry.reason}",
-            candidates="",
+            candidates="", code=reasons.ASSIGNED_BY_PERSON_CODE,
             # Filed here, it waits for nothing (decision 204).
             waits_for="",
         )
@@ -6092,6 +6103,7 @@ def hand_over(
             pbc_location=location_of(target_return, resting),
             decision=FILED,
             reason="; ".join(part for part in (attributed, dropped, f"was: {entry.reason}") if part),
+            code=reasons.ASSIGNED_BY_PERSON_CODE,
             # The candidates and the evidence were this return's request
             # list judging the page; they name identifiers the taking
             # return does not have, so they do not travel with the row.
@@ -6237,7 +6249,7 @@ def _refuse_unless_it_waits_for(
     it would; anything else is a person's picker to decide."""
     claim = entry.waiting_for
     if (entry.decision != NEEDS_REVIEW or claim is None
-            or not reasons.NAMED_ACROSS_HOUSEHOLDS.matches(entry.reason)):
+            or entry.code != reasons.NAMED_ACROSS_HOUSEHOLDS.code):
         raise FilingError(NOT_WAITING.format(name=entry.original_name))
     if (waiting_target(claim, [target_return]) is None
             or tuple(claim.identifiers) != tuple(identifiers)
@@ -6356,6 +6368,7 @@ def dismiss_review_file(
             # Set aside, it waits for nothing (decision 204): the one click
             # is offered only on the row the pass parked.
             waits_for="",
+            code=reasons.DISMISSED_BY_PERSON_CODE,
         )
         entries[position] = new_entry
         # Nothing was moved, so there is nothing to put back: a record that
@@ -6562,7 +6575,7 @@ def unfile_document(
             decision=NEEDS_REVIEW,
             reason=(f"{UNFILED_BY_PERSON} on {today.isoformat()}{_said(note)}; was: {entry.reason}"
                     + (f"; {past_reader}" if past_reader else "")),
-            also_filed="", answers="",
+            also_filed="", answers="", code=reasons.UNFILED_BY_PERSON_CODE,
         )
         entries[position] = new_entry
         _intend(engagement_dir, ledger_key(new_entry), ops, by=ledger.BY_PERSON,
@@ -7051,6 +7064,7 @@ def _put_back_a_moved_copy(
             entry, decision=NEEDS_REVIEW, identifier="", also_filed="", answers="",
             prepared_location=prepared_location(review_dir, parked.name),
             reason=f"{_without_moved_sentence(entry.reason)}; {sentence}",
+            code=reasons.PUT_BACK_REFUSED_CODE,
         )
     elif not absent:
         # Already home: no file operation at all, and the wanderer -

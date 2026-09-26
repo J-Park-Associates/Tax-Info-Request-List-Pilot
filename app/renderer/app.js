@@ -655,7 +655,7 @@ function reviewRow(e, choices, ids, open, triage, people = []) {
   // click, so the filer judges the decision against the row it was made on.
   return el("li", { dataset: { original: e.pbc_location, seq: e.seq } },
     el("span", { className: "r-name" }, e.original_name),
-    el("span", { className: "r-why" }, e.reason),
+    el("span", { className: "r-why" }, e.reason, cameFrom(e)),
     el("select", { "aria-label": `Request for ${e.original_name}` },
       el("option", { value: "" }, "Belongs to…"),
       best.length
@@ -964,6 +964,16 @@ function renderDeck(state) {
 // sentence behind it, the rows the evidence points at that are set aside,
 // and the three answers. A card with nothing suggested has no Accept -
 // there is nothing to accept - and says so in the API's words.
+// The client's own subfolder a parked file came out of, read from the row's
+// column and said in the API's words (decision 190) - never a clause of its
+// reason - or nothing for a file dropped at the inbox's top.
+function cameFrom(row) {
+  return row.subfolder
+    ? el("span", { className: "r-subfolder" },
+        fill(vocab.review_labels.came_from, { folder: row.subfolder }))
+    : null;
+}
+
 function deckCard(t, row, place, total, people = []) {
   const best = (t.shortlist || [])[0];
   // The suggestion Accept files to travels on the card, as the row's record
@@ -972,7 +982,7 @@ function deckCard(t, row, place, total, people = []) {
   return el("div", { className: "deck-card card",
                      dataset: { original: t.pbc_location, seq: t.seq, ...identified } },
     el("span", { className: "r-name" }, t.original_name),
-    el("span", { className: "r-why" }, row ? row.reason : ""),
+    el("span", { className: "r-why" }, row ? row.reason : "", row && cameFrom(row)),
     best && el("span", { className: "deck-suggested" }, vocab.review_labels.suggested),
     el("ul", { className: "r-reasons" },
       best

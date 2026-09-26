@@ -76,7 +76,7 @@ def test_google_native_stub_fails_with_guidance(tmp_path):
     result = check_file(stub, ANY_ITEM)
     assert result.ok is False
     assert result.pending_sync is False
-    assert reasons.GOOGLE_STUB.matches(result.reason)
+    assert result.code == reasons.GOOGLE_STUB.code
     assert reasons.GOOGLE_EXPORT_HINT in result.reason
 
 
@@ -134,13 +134,13 @@ def test_corrupt_pdf_fails(tmp_path):
     fake = tmp_path / "fake.pdf"
     fake.write_bytes(b"this is not a pdf at all" * 10)
     result = check_file(fake, PDF_ITEM)
-    assert not result.ok and reasons.UNREADABLE_PDF.matches(result.reason)
+    assert not result.ok and result.code == reasons.UNREADABLE_PDF.code
 
 
 def test_password_protected_pdf_fails(tmp_path):
     locked = write_pdf(tmp_path / "locked.pdf", password="secret123")
     result = check_file(locked, PDF_ITEM)
-    assert not result.ok and reasons.PASSWORD_PROTECTED.matches(result.reason)
+    assert not result.ok and result.code == reasons.PASSWORD_PROTECTED.code
 
 
 # ------------------------------------------------- photos are documents ----
@@ -197,9 +197,9 @@ def test_a_file_pillow_cannot_open_is_refused_as_an_unreadable_image(tmp_path):
     not_a_photo.write_bytes(b"this is not a photo at all" * 10)
 
     result = check_file(not_a_photo, PDF_ITEM)
-    assert not result.ok and reasons.UNREADABLE_IMAGE.matches(result.reason)
-    assert reasons.find(result.reason) is reasons.UNREADABLE_IMAGE
-    assert reasons.UNREADABLE_IMAGE not in reasons.FIRM_SIDE      # the client can fix it
+    assert not result.ok and result.code == reasons.UNREADABLE_IMAGE.code
+    assert result.code == reasons.UNREADABLE_IMAGE.code
+    assert reasons.UNREADABLE_IMAGE.code not in reasons.FIRM_SIDE      # the client can fix it
 
 
 def test_a_heic_photo_is_refused_by_name_when_the_reader_is_absent_and_read_when_it_is_present(
@@ -212,8 +212,8 @@ def test_a_heic_photo_is_refused_by_name_when_the_reader_is_absent_and_read_when
     absent = tmp_path / "receipt.heic"
     absent.write_bytes(b"\x00" * 4096)
     result = check_file(absent, PDF_ITEM)
-    assert not result.ok and reasons.HEIC_NOT_SUPPORTED.matches(result.reason)
-    assert reasons.HEIC_NOT_SUPPORTED in reasons.FIRM_SIDE
+    assert not result.ok and result.code == reasons.HEIC_NOT_SUPPORTED.code
+    assert reasons.HEIC_NOT_SUPPORTED.code in reasons.FIRM_SIDE
     assert reasons.HEIC_NOT_SUPPORTED.client_ask == reasons.GENERIC_ASK   # never asked
 
     monkeypatch.undo()
@@ -276,7 +276,7 @@ def test_a_file_that_vanishes_mid_scan_is_pending_not_a_crash(tmp_path):
     result = check_file(ghost, PDF_ITEM)
     assert result.ok is False
     assert result.pending_sync is True
-    assert reasons.VANISHED.matches(result.reason)
+    assert result.code == reasons.VANISHED.code
 
 
 def test_pdf_readability_is_parsed_once_per_run_not_per_process(tmp_path, monkeypatch):

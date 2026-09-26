@@ -172,11 +172,13 @@ class Attachment:
 
     ``parks`` is empty for an ordinary attachment. A container nested past
     :data:`MAX_DEPTH`, or one that would not open, is handed back whole as
-    an attachment of its own and carries the sentence it parks with."""
+    an attachment of its own and carries the sentence it parks with, and
+    that sentence's code (decision 190)."""
 
     name: str
     data: bytes
     parks: str = ""
+    code: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,11 +198,14 @@ class Opened:
 
 
 class NotOpened(Exception):
-    """The container does not open, and the sentence it parks with."""
+    """The container does not open, the sentence it parks with, and that
+    sentence's code (decision 190): given, or the one the sentence was
+    said with (:func:`tracker.reasons.code_of`) - never read off its words."""
 
-    def __init__(self, sentence: str):
+    def __init__(self, sentence: str, code: str | None = None):
         super().__init__(sentence)
         self.sentence = sentence
+        self.code = reasons.code_of(sentence) if code is None else code
 
 
 def is_container(name: str | PurePath) -> bool:
@@ -302,7 +307,8 @@ def open_file(path: PurePath) -> Opened | str | OSError:
     try:
         return open_container(data, PurePath(path).suffix)
     except NotOpened as exc:
-        return exc.sentence
+        # Said, so its code crosses the pipe with it (decision 190).
+        return reasons.Said(exc.sentence, exc.code)
 
 
 _CHILD_OPENER = open_file
@@ -331,7 +337,7 @@ def open_bounded(path: PurePath) -> Opened | None:
         if failed is not None:
             if failed.transient:
                 return None
-            raise NotOpened(failed.reason)
+            raise NotOpened(failed.reason, failed.code)
     if isinstance(answer, OSError):
         raise answer
     if isinstance(answer, str):
@@ -380,7 +386,8 @@ class _Walk:
             return
         if depth + 1 > MAX_DEPTH:
             self.attachments.append(Attachment(
-                name, data, parks=reasons.CONTAINER_LIMIT.format(error=LIMIT_DEPTH)))
+                name, data, parks=reasons.CONTAINER_LIMIT.format(error=LIMIT_DEPTH),
+                code=reasons.CONTAINER_LIMIT.code))
             return
         # An inner container: its attachments are this one's. One that will
         # not open is handed back whole with its own sentence - unless what
@@ -393,9 +400,11 @@ class _Walk:
                 kind = KIND_ZIP if extension == "zip" else KIND_EMAIL
                 raise NotOpened(reasons.CONTAINER_EMPTY.format(kind=kind))
         except NotOpened as exc:
-            if reasons.CONTAINER_LIMIT.matches(exc.sentence) and LIMIT_DEPTH not in exc.sentence:
+            # The code says which cause; which limit is the firm's own
+            # phrase (LIMIT_*), the only detail that sentence carries.
+            if exc.code == reasons.CONTAINER_LIMIT.code and LIMIT_DEPTH not in exc.sentence:
                 raise
-            self.attachments.append(Attachment(name, data, parks=exc.sentence))
+            self.attachments.append(Attachment(name, data, parks=exc.sentence, code=exc.code))
             return
         if len(self.attachments) + len(inner.attachments) > MAX_ATTACHMENTS:
             raise NotOpened(reasons.CONTAINER_LIMIT.format(error=LIMIT_COUNT))

@@ -1889,6 +1889,7 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
                                   "file_moved": FILE_MOVED}
     assert vocab["review_labels"] == {
         "dismiss": api.DISMISS_LABEL, "dismiss_note": api.DISMISS_NOTE_HINT,
+        "came_from": api.CAME_FROM_SUBFOLDER,
         "dismissed_heading": api.DISMISSED_HEADING, "file": api.FILE_LABEL,
         "file_anyway": api.FILE_ANYWAY_LABEL,
         "unfile": api.UNFILE_LABEL, "unfile_note": api.UNFILE_NOTE_HINT,
@@ -2069,7 +2070,8 @@ def test_state_carries_the_held_rows_and_every_word_is_the_vocabularys(capsys, d
     seed_statuses(folder, {
         "A01": StatusUpdate(status=Status.MISSING),
         "C01": StatusUpdate(status=Status.FAILED, file_count=1,
-                            validation_notes="x.pdf: " + reasons.WRONG_DOCUMENT.format(listed="'1098'")),
+                            validation_notes="x.pdf: " + reasons.WRONG_DOCUMENT.format(listed="'1098'"),
+                            note_codes=reasons.WRONG_DOCUMENT.code),
     })
     code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(folder))
     assert code == 0
@@ -2582,7 +2584,8 @@ def test_a_held_reminder_shows_no_letter_and_offers_no_action(capsys, demo_root)
     folder = chased_engagement(capsys, demo_root, name="Held")
     seed_statuses(folder, {"B01": StatusUpdate(
         status=Status.FAILED, file_count=1,
-        validation_notes="x.pdf: " + reasons.WRONG_DOCUMENT.format(listed="'1098'"))})
+        validation_notes="x.pdf: " + reasons.WRONG_DOCUMENT.format(listed="'1098'"),
+        note_codes=reasons.WRONG_DOCUMENT.code)})
 
     card = reminder_card(capsys, folder)
     assert [row["identifier"] for row in card["held"]] == ["B01"]
@@ -2759,7 +2762,8 @@ def test_an_edited_drafts_footer_is_neither_shown_nor_copied(capsys, demo_root):
     # it under the footer instead of asking for it...
     seed_statuses(folder, {"B01": StatusUpdate(
         status=Status.FAILED, file_count=1,
-        validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format())})
+        validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format(),
+        note_codes=reasons.NO_TEXT_LAYER.code)})
     # ...and a file nobody has identified yet puts the warning there too.
     review = folder / PREPARED_DIR_NAME / REVIEW_DIR_NAME
     review.mkdir(parents=True, exist_ok=True)
