@@ -383,6 +383,10 @@ changes nothing:
   do it outside office hours, and if one return matters first, rebuild it
   alone ahead of the rest with `--engagement "<the return's folder>"`. It
   happens once; later passes read only what is new.
+- **Decision 204** (`user_version` 17) needs nothing: a version-16
+  `tracker.db` is upgraded where it stands the first time it is opened -
+  one new column, nothing deleted, the verdict cache kept - so the pass
+  after it reads nothing again. Only an older one is refused as above.
 - **Once, when decision 169 lands** (the new reader). The database's
   version does not change, so there is nothing to delete for it (set
   `tracker.db` aside only if another decision in the same install asks).

@@ -44,6 +44,18 @@ replayed, and nothing else. That single function is the answer to two
 questions: how a store deleted by accident comes back, and how a store
 somebody doubts is proved. It writes nothing to the journal.
 
+**A version it does not know is deleted and rebuilt - with one kind of
+exception** (decision 204). A store written at another ``user_version`` is
+refused by name, and the remedy is to delete it and rebuild from the
+journals, which also empties the verdict cache it keeps, so the next pass
+reads and OCRs every document again. A version is instead **upgraded in
+place** only where the change is one new column that is additive, has an
+empty default, and that no journal line written before the new version
+can carry - so every existing row's true value is that default, and
+:func:`check` holds the column to the journal from then on. Each such step
+is written out by name in :data:`_IN_PLACE` (from-version -> statements),
+never inferred; every other mismatch is refused as before.
+
 **The check is the gate.** :func:`check` compares these tables with
 :func:`tracker.ledger.replay` over the journal and names every place they
 disagree, in sentences. Each stage was built on a store that had been
@@ -268,11 +280,21 @@ ENV_STORE = "TRACKER_STORE"
 #: written before it existed reads as answering nothing.
 #: Version 17 (decision 204) added ``waits_for`` to ``documents``: what a
 #: row parked because it names another household's person waits for - the
-#: fed return line and what its list accepted. A version-16 file has no
-#: such column, so it is refused, deleted and rebuilt from the journals like
-#: every version before it - the field travels in the row events, and a row
-#: written before it existed reads as waiting for nothing.
+#: fed return line and what its list accepted. It is the store's first
+#: **in-place** step (the module docstring's rule, :data:`_IN_PLACE`): no
+#: journal line before 204 carries the field, so every version-16 row
+#: waits for nothing, and a version-16 file gains the column with an empty
+#: default and keeps its verdict cache. Every other version is still
+#: refused, deleted and rebuilt.
 SCHEMA_VERSION = 17
+
+#: The explicit in-place upgrades (the module docstring's rule): the
+#: version a file is at, and the statements that bring it to the next one.
+#: Only a new additive column with an empty default that no earlier journal
+#: line can carry qualifies; anything else is a delete-and-rebuild bump.
+_IN_PLACE: dict[int, tuple[str, ...]] = {
+    16: ("""ALTER TABLE documents ADD COLUMN "waits_for" TEXT DEFAULT ''""",),
+}
 
 #: What a row of ``engagements`` holds the record of: one return, or one
 #: household (decision 125). Both are folders with a journal, keyed by
@@ -640,6 +662,20 @@ def open(path: Path | str) -> sqlite3.Connection:  # noqa: A001 - the store is o
     conn.execute("PRAGMA synchronous = NORMAL")
     conn.execute("PRAGMA foreign_keys = ON")
     version = conn.execute("PRAGMA user_version").fetchone()[0]
+    while version in _IN_PLACE and version < SCHEMA_VERSION:
+        # One transaction per step: the column and the version land
+        # together or not at all.
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            for statement in _IN_PLACE[version]:
+                conn.execute(statement)
+            conn.execute(f"PRAGMA user_version = {version + 1}")
+            conn.execute("COMMIT")
+        except BaseException:
+            conn.execute("ROLLBACK")
+            conn.close()
+            raise
+        version += 1
     if version == 0:
         for statement in SCHEMA:
             conn.execute(statement)

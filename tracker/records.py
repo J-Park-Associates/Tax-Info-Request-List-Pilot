@@ -1939,6 +1939,29 @@ _ENTRY_TEXT = ("identifier", "decision", "candidates")
 #: A file's own name and the locations of real files (M5).
 _ENTRY_NAMES = ("original_name", "prepared_location", "pbc_location", "container")
 _ENTRY_LONG_TEXT = ("reason", "evidence", "also_filed", "answers", "waits_for")
+#: What a Waits For cell that does not read back as one is refused with
+#: (decision 204's review, S-3).
+WAITS_FOR_BOUNDS = "is not a Waits For cell (<household> / <return name> / <request>[, ...])"
+
+
+def waits_for_problem(value: object) -> str:
+    """Why a stored Waits For cell is not one, or ``""`` (decision 204's
+    review, S-3; security principle 1): empty, or a cell
+    :func:`parse_waits_for` reads back whole, whose household, return name
+    and every request identifier are one-line text as a household's name
+    and an identifier are held to. A claim is checked when it is read in as
+    well as when the click carries it out (``filer.waiting_target``,
+    ``filer.requests_taking``); this detects a malformed or overlong claim,
+    it does not make a well-formed forged one impossible."""
+    if value == "":
+        return ""
+    if not isinstance(value, str):
+        return WAITS_FOR_BOUNDS
+    claim = parse_waits_for(value)
+    if claim is None or format_waits_for(claim) != value:
+        return WAITS_FOR_BOUNDS
+    parts = (claim.household, claim.return_name, *claim.identifiers)
+    return next((TEXT_BOUNDS for one in parts if text_problem(one)), "")
 
 
 def entry_problem(row: dict) -> str:
@@ -1958,6 +1981,8 @@ def entry_problem(row: dict) -> str:
                if row.get(name) is not None]
     checks += [_field(name, text_problem(row[name], long=True)) for name in _ENTRY_LONG_TEXT
                if row.get(name) is not None]
+    if row.get("waits_for") is not None:
+        checks.append(_field("waits_for", waits_for_problem(row["waits_for"])))
     return _first(*checks)
 
 

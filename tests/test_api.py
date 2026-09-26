@@ -3574,6 +3574,43 @@ def test_a_waiting_row_whose_feed_was_trimmed_offers_no_click_and_says_not_fed(c
     assert read_index(llc) == []
 
 
+def test_a_claim_is_offered_only_on_the_row_the_click_would_take(capsys, demo_root):
+    """The review's S-3: the card offers the click on exactly the rows the
+    filer's refusal lets through - still parked, with the named-across
+    reason. The same claim on a row a person set aside, or under any other
+    reason, draws no button and no sentence."""
+    from dataclasses import replace
+
+    father, llc = two_households(capsys, demo_root)
+    waiting = waiting_document(capsys, father)
+    [row] = read_index(father)
+    fed = lambda: {llc: "Park & Lee LLC 2025 1120S - Park & Lee LLC"}  # noqa: E731
+    offer, _said = api._waiting_payload(father, row, fed)
+    assert offer == waiting["waits_for"]
+    for other in (replace(row, decision="Not Requested"), replace(row, reason="a reason of its own")):
+        assert api._waiting_payload(father, other, fed) == (None, "")
+
+
+def test_a_waiting_row_whose_return_has_no_room_offers_no_click_and_says_so_in_that_returns_words(
+        capsys, demo_root, monkeypatch):
+    """The review's S-1: a click bound to fail on the taking return's room is
+    not offered. The card says why in the sentence the click would be
+    refused with, naming that return - never "this request's Short name"."""
+    import tracker.filer as filer_module
+
+    father, llc = two_households(capsys, demo_root)
+    waiting_document(capsys, father)
+    monkeypatch.setattr(filer_module, "limit_for", lambda _extension: 10)
+
+    _code, state = run(capsys, "state", api.ENGAGEMENT_FLAG, str(father))
+
+    [card] = state["review"]
+    assert card["waits_for"] is None
+    said = card["waits_for_refused"]
+    assert said.startswith("the working copy's path in Park & Lee LLC 2025 1120S - Park & Lee LLC")
+    assert "this request" not in said
+
+
 def a_parked_document(capsys, engagement):
     """One document nothing asks for, dropped in the household's inbox and
     left waiting for a person by a pass - the row a hand-over acts on, with

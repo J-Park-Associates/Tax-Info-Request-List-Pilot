@@ -528,3 +528,21 @@ def test_waits_for_round_trips_and_is_empty_on_every_other_row():
     entry = entry_from_json(row)
     assert entry.waits_for == "" and entry.waiting_for is None
     assert IndexEntry(**row).waits_for == ""
+
+
+def test_a_stored_waits_for_cell_is_refused_unless_it_reads_back_whole():
+    """Decision 204's review, S-3 (security principle 1): the claim is held
+    to its structure when a record line is read in, not only when the click
+    carries it out. Empty is no claim; a cell that does not read back as
+    written, or whose parts are not one-line text, is refused by name."""
+    from tracker.records import WAITS_FOR_BOUNDS, entry_problem, waits_for_problem
+
+    assert waits_for_problem("") == ""
+    assert waits_for_problem("Park & Lee LLC / 1120S - Park & Lee LLC / B01, B02") == ""
+    assert waits_for_problem("H / R / E01; also answers A02 (1099-int, 1099-div)") == ""
+    for forged in ("B01", "a / b", "a / b / c / d", "a /  / B01", " a / b / B01", 7):
+        assert waits_for_problem(forged) == WAITS_FOR_BOUNDS, forged
+    assert waits_for_problem("a\tb / R / B01") != ""
+    row = {"received": "2026-07-01", "original_name": "w2.pdf", "size_kb": 1.0, "digest": "ab" * 32,
+           "decision": "Needs Review", "reason": "", "waits_for": "a / b"}
+    assert entry_problem(row) == f"'waits_for' {WAITS_FOR_BOUNDS}"

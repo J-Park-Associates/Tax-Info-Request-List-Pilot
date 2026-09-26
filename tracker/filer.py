@@ -644,9 +644,12 @@ def prepared_location(folder: Path, name: str) -> str:
 PATH_NO_ROOM = ("the working copy's path would be {length} characters at its shortest, past the "
                 "{limit} characters a {ext} copy may have; shorten the clients root, or this "
                 "request's Short name in the editor")
-#: The same, when the request that accepted the document is in a return
-#: this household's drop folder feeds (decision 129): the document parks at
-#: home, so "this request" would name a list the person is not looking at.
+#: The same, when the request that accepted the document is in another
+#: return than the one the person is looking at: another of this
+#: household's returns, where the document parks in the home return
+#: (decision 131's review, deviation 5), or the return a hand-over files
+#: into (decision 204) - so "this request" would name a list the person is
+#: not looking at.
 PATH_NO_ROOM_IN = ("the working copy's path in {label} would be {length} characters at its shortest, "
                    "past the {limit} characters a {ext} copy may have; shorten the clients root, or "
                    "that request's Short name in {label}'s list in the editor")
@@ -4856,10 +4859,13 @@ def _decide_across(
 
     if no_room is not None:
         said = routing if home is run else home_routing
-        # A request in a return this drop folder feeds is named by that
-        # return's label (decision 131's review, deviation 5): the row
-        # parks at home, where "this request" would be a list the person
-        # reading it is not looking at.
+        # A request in another of this household's returns is named by that
+        # return's label (decision 131's review, deviation 5): a page naming
+        # that return's person, whose room ran out, parks in the home
+        # return the name vetoed it from, where "this request" would be a
+        # list the person reading it is not looking at. (Since decision 204
+        # a return in another household never files on the pass, so the
+        # one no room reaches here for is always this household's.)
         reason = str(no_room) if home is run else PATH_NO_ROOM_IN.format(
             label=run.label, length=no_room.length, limit=no_room.limit,
             ext=_kind_of(no_room.extension))
@@ -6044,22 +6050,7 @@ def hand_over(
         # (decision 168), and reusing only that request's own copy - one
         # copy per request, as the pass makes them (decision 94).
         dest_folder = target_return / PREPARED_DIR_NAME
-        taken = {p.name.lower() for p in dest_folder.iterdir()} if dest_folder.is_dir() else set()
-        extension = extension_of(source)
-        # Named to fit, before anything is made (decision 131): no room even
-        # for the shortest name refuses with PATH_NO_ROOM, nothing moved.
-        names: list[str] = []
-        to_make: list[Path] = []
-        for one in wanted:
-            existing = _existing_copy(dest_folder, source, digest,
-                                      among=copies_of(one, list(items.values()), dest_folder))
-            if existing is not None:
-                names.append(existing.name)
-                continue
-            name = prepared_name_for(one, extension, taken,
-                                     room=limit_for(extension) - len(str(dest_folder)) - 1)
-            names.append(name)
-            to_make.append(dest_folder / name)
+        names, to_make = hand_over_copies(target_return, wanted, items, source, digest)
         filed_as = names[0]
         dest_folder.mkdir(parents=True, exist_ok=True)
 
@@ -6152,6 +6143,47 @@ def hand_over(
         spelling=said, spelling_note=spelling_note, left_in_review=left_in_review,
         overrode_shortlist=overrode,
     )
+
+
+def hand_over_copies(
+    target_return: Path, wanted: Sequence[RequestItem], items: Mapping[str, RequestItem],
+    source: Path, digest: str,
+) -> tuple[list[str], list[Path]]:
+    """The working copies a hand-over makes in the taking return's
+    ``Prepared`` folder: one name per request of ``wanted`` (decision 94),
+    in order, reusing only that request's own copy already holding these
+    bytes (decision 168) - and the files still to make. Read only.
+
+    Named to fit, before anything is made (decision 131). No room even for
+    the shortest name refuses with :data:`PATH_NO_ROOM_IN`, naming the
+    taking return by its label (decision 131's review, deviation 5): the
+    person reads it on the dropping return's page, where "this request"
+    would name a list they are not looking at. The card that offers the
+    one click (decision 204) asks this too, so it never offers a click
+    bound to fail.
+    """
+    dest_folder = target_return / PREPARED_DIR_NAME
+    taken = {p.name.lower() for p in dest_folder.iterdir()} if dest_folder.is_dir() else set()
+    extension = extension_of(source)
+    names: list[str] = []
+    to_make: list[Path] = []
+    for one in wanted:
+        existing = _existing_copy(dest_folder, source, digest,
+                                  among=copies_of(one, list(items.values()), dest_folder))
+        if existing is not None:
+            names.append(existing.name)
+            continue
+        try:
+            name = prepared_name_for(one, extension, taken,
+                                     room=limit_for(extension) - len(str(dest_folder)) - 1)
+        except NoRoom as exc:
+            label = _label_of(target_return, _details_of(target_return))
+            raise NoRoom(exc.length, exc.limit, exc.extension, sentence=PATH_NO_ROOM_IN.format(
+                label=label, length=exc.length, limit=exc.limit,
+                ext=_kind_of(exc.extension))) from None
+        names.append(name)
+        to_make.append(dest_folder / name)
+    return names, to_make
 
 
 def requests_taking(items: Mapping[str, RequestItem], identifiers: Sequence[str]) -> list[RequestItem]:

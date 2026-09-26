@@ -5559,6 +5559,31 @@ def test_a_re_send_through_a_feed_of_a_document_the_other_household_lost_parks_a
     rows_rest_at_home(father, llc)
 
 
+def test_a_drop_parked_for_another_household_has_its_verdicts_kept_before_the_next_drop_is_read(
+        fed, monkeypatch):
+    """Decision 204 inside decision 189's sort: the park that waits for one
+    click is a verdict like any other, kept as it is reached - when the
+    next drop is read, the waiting page's verdicts are already in the
+    store, and a pass stopped there would not read it again."""
+    import tracker.content_check as content_check
+
+    father, llc = fed
+    drop(father, "a tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
+    drop(father, "b w2.pdf", "Form W-2 Wage and Tax Statement 2025", who="John Park")
+    real, seen = content_check.extract, []
+
+    def looking_at_the_store(path, **kwargs):
+        seen.append(len(cache_rows(father)[1]) + len(cache_rows(llc)[1]))
+        return real(path, **kwargs)
+
+    monkeypatch.setattr(content_check, "extract", looking_at_the_store)
+    done = sort_all([father, llc], home=[father], today=DAY1)
+
+    assert [row.original_name for row in done[father].review] == ["a tb.pdf"]
+    assert reasons.NAMED_ACROSS_HOUSEHOLDS.matches(done[father].review[0].reason)
+    assert seen[0] == 0 and seen[-1] >= 1
+
+
 def test_a_drop_in_the_other_households_own_inbox_still_files_on_the_pass(fed):
     """R-9 (a): in the LLC's own inbox its return is its own, and the pass
     files there as it always has."""
@@ -6580,10 +6605,12 @@ def test_a_review_copy_is_named_to_fit_and_the_row_keeps_the_clients_name(short_
 def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_below_the_floor(tmp_path):
     """A person's filing and a hand-over name the working copy the way the
     pass does: cut to fit where the canonical name does not, and refused
-    with PATH_NO_ROOM - nothing moved - only where not even the shortest
-    name fits."""
+    - nothing moved - only where not even the shortest name fits: a
+    person's filing with PATH_NO_ROOM, a hand-over with PATH_NO_ROOM_IN
+    naming the taking return, since the person reads it on another
+    return's page (decision 204's review, S-1)."""
     from tests.conftest import root_for_a_return_of
-    from tracker.filer import PATH_NO_ROOM, assign_review_file, hand_over
+    from tracker.filer import PATH_NO_ROOM_IN, _details_of, _label_of, assign_review_file, hand_over
 
     # One household, three returns: home fits; ``cut`` leaves A01 ten short;
     # ``none`` leaves its Prepared 28 characters for a 29-character name.
@@ -6606,8 +6633,9 @@ def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_bel
     before = sorted(str(p) for p in root.rglob("*"))
     with pytest.raises(FilingError) as refused:
         hand_over(home, parked["note.pdf"].pbc_location, none, "A01", today=DAY2)
-    assert str(refused.value) == PATH_NO_ROOM.format(length=231 + 1 + len(f"A01 - {LONG_PERIOD}.pdf"),
-                                                     limit=260, ext=".pdf")
+    assert str(refused.value) == PATH_NO_ROOM_IN.format(
+        label=_label_of(none, _details_of(none)),
+        length=231 + 1 + len(f"A01 - {LONG_PERIOD}.pdf"), limit=260, ext=".pdf")
     assert sorted(str(p) for p in root.rglob("*")) == before
 
     # Handed to the return with room for a cut name: named to fit.
@@ -6872,7 +6900,7 @@ def test_a_fed_return_with_no_room_parks_at_home_naming_the_fed_return(tmp_path)
     was dropped for one click, the row naming the fed return by its label;
     and the click itself refuses on the room, with nothing moved."""
     from tests.conftest import root_for_a_return_of
-    from tracker.filer import NoRoom
+    from tracker.filer import PATH_NO_ROOM_IN, NoRoom
     from tracker.records import Feed
     from tracker.registry import discover_engagements
 
@@ -6897,10 +6925,43 @@ def test_a_fed_return_with_no_room_parks_at_home_naming_the_fed_return(tmp_path)
     assert reasons.NAMED_ACROSS_HOUSEHOLDS.matches(parked.reason) and label in parked.reason
     assert "this request" not in parked.reason
     assert parked.pbc_location == original_at(father, "tb.pdf")
-    with pytest.raises(NoRoom):
+    with pytest.raises(NoRoom) as refused:
         click(father, parked, llc)
+    # Said in the fed return's own words, on the father's page (the
+    # review's S-1): never "this request's Short name".
+    assert str(refused.value) == PATH_NO_ROOM_IN.format(label=label, length=261, limit=260, ext=".pdf")
     assert read_index(father) == [parked] and read_index(llc) == []
     assert [p.name for p in originals(father).iterdir()] == ["tb.pdf"]
+
+
+def test_a_sibling_return_with_no_room_parks_in_the_home_return_naming_it(tmp_path):
+    """Deviation 5 inside one household (the review of decision 204, S-2):
+    a W-2 naming Maria, whose return has no room even for the shortest
+    name, while John's list also accepts it. The name vetoes John's return,
+    Maria's has no room, and the row parks in John's - the home return -
+    naming Maria's return by its label, never "this request"."""
+    from tests.conftest import root_for_a_return_of
+    from tracker.filer import PATH_NO_ROOM_IN
+    from tracker.registry import discover_engagements
+
+    long_name = "1040 - Maria Park " + "m" * 24
+    root = root_for_a_return_of(tmp_path, NO_ROOM_RETURN, household="Park Family",
+                                return_name=long_name)
+    john = make_engagement(root, ITEMS, household="Park Family",
+                           return_name="1040 - John Park", people=FATHER)
+    maria = make_engagement(root, [with_the_long_period(ITEMS[0])], household="Park Family",
+                            return_name=long_name, people=(MARIA,))
+    drop(john, "w2.pdf", "Form W-2 Wage and Tax Statement 2025", who="Maria Park")
+
+    done = sort_all([john, maria], today=DAY1)
+
+    assert read_index(maria) == []
+    [parked] = done[john].review
+    label = next(one.label for one in discover_engagements(root).engagements if one.path == maria)
+    assert parked.reason.startswith(PATH_NO_ROOM_IN.format(
+        label=label, length=261, limit=260, ext=".pdf"))
+    assert "this request" not in parked.reason
+    assert parked.pbc_location == original_at(john, "w2.pdf")
 
 
 # ---------------------------------------------- decision 137: the security review ----

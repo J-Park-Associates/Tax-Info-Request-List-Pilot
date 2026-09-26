@@ -59,7 +59,20 @@ from dataclasses import asdict, replace
 from functools import cache
 from pathlib import Path
 
-from tracker import STANDING_RULES, content_check, door, layout, ledger, names, ocr, records, reminder, review, store
+from tracker import (
+    STANDING_RULES,
+    content_check,
+    door,
+    layout,
+    ledger,
+    names,
+    ocr,
+    reasons,
+    records,
+    reminder,
+    review,
+    store,
+)
 from tracker.filer import (
     DUPLICATE,
     FILE_MOVED,
@@ -78,6 +91,7 @@ from tracker.filer import (
     ensure,
     find_parked,
     hand_over,
+    hand_over_copies,
     mark_missing_again,
     marked_missing,
     moved_to,
@@ -1274,7 +1288,8 @@ def _triage_payload(triaged: review.Triage, seqs: dict[str, int],
     }
 
 
-def _waiting_payload(entry: IndexEntry, fed: Callable[[], dict[Path, str]]) -> tuple[dict | None, str]:
+def _waiting_payload(engagement: Path, entry: IndexEntry,
+                     fed: Callable[[], dict[Path, str]]) -> tuple[dict | None, str]:
     """What one click on a parked row would do (decision 204), or why it
     offers none.
 
@@ -1284,11 +1299,19 @@ def _waiting_payload(entry: IndexEntry, fed: Callable[[], dict[Path, str]]) -> t
     names is held to the taking list by the filer's own check - so the
     card is offered exactly where the click would go through, and refused
     in the click's own words where it would not: :data:`NOT_FED` with the
-    claim's return name, or the request's refusal. ``fed`` is asked only
-    when a row waits, so a queue with none costs nothing.
+    claim's return name, the request's refusal, or the taking return's
+    want of room (:func:`tracker.filer.hand_over_copies`, the click's own
+    naming). ``fed`` is asked only when a row waits, so a queue with none
+    costs nothing.
+
+    Only a row the click would take is offered - still parked, with
+    ``NAMED_ACROSS_HOUSEHOLDS`` as its reason, the condition the filer's
+    refusal holds it to (the review's S-3) - so a claim on any other row
+    draws no button.
     """
     claim = entry.waiting_for
-    if claim is None:
+    if (claim is None or entry.decision != NEEDS_REVIEW
+            or not reasons.NAMED_ACROSS_HOUSEHOLDS.matches(entry.reason)):
         return None, ""
     returns = fed()
     target = waiting_target(claim, returns)
@@ -1297,6 +1320,7 @@ def _waiting_payload(entry: IndexEntry, fed: Callable[[], dict[Path, str]]) -> t
     try:
         items = {item.identifier: item for item in load_manifest(target)}
         wanted = requests_taking(items, claim.identifiers)
+        hand_over_copies(target, wanted, items, locate(engagement, entry.pbc_location), entry.digest)
     except (FilingError, ManifestError) as exc:
         return None, str(exc)
     return {
@@ -1735,7 +1759,7 @@ def _state(engagement: Path) -> dict:
         # There is no `review` command - the card draws from the one state
         # the app already reads - and the manifest and the index are handed
         # to triage() so each is read once for the whole screen.
-        "review": [_triage_payload(t, seqs, _waiting_payload(t.entry, fed_once))
+        "review": [_triage_payload(t, seqs, _waiting_payload(engagement, t.entry, fed_once))
                    for t in review.triage(engagement, entries, items=items)],
         # The working copies that are not where the record put them
         # (decision 109 found them; decision 110 is what a person does
@@ -3078,7 +3102,7 @@ def _hand_over_waiting(engagement: Path, original: str, seq: int | None) -> dict
     claim = entry.waiting_for
     if claim is None:
         raise FilingError(NOT_WAITING.format(name=entry.original_name))
-    offer, refused = _waiting_payload(entry, lambda: _fed_returns(engagement))
+    offer, refused = _waiting_payload(engagement, entry, lambda: _fed_returns(engagement))
     if offer is None:
         raise ManifestError(refused)
     return _hand_over(engagement, original, Path(offer["target"]), claim.identifiers[0],
