@@ -156,6 +156,10 @@ class Reason:
 #: read. Said once: the note, the ask and the folder README all quote it.
 GOOGLE_EXPORT_HINT = "File > Download > PDF or Excel"
 
+#: Where a file this machine will not open is opened, if at all (decision
+#: 184): said once, so the notes, the review card and the runbook agree.
+OTHER_MACHINE = "on a machine with no Drive sign-in and no client folder"
+
 # ---- tier 2: the file itself -----------------------------------------------
 
 PASSWORD_PROTECTED = Reason(
@@ -227,8 +231,7 @@ TOO_SMALL = Reason(
 TOO_LARGE = Reason(
     "too-large", "Too large to read ({size}). A person looks at it.",
     "Too large to read", firm_side=True,
-    firm_note=("too large for the tracker to read; a person opens it, if at all, "
-               "on a machine with no Drive sign-in and no client folder"),
+    firm_note=f"too large for the tracker to read; a person opens it, if at all, {OTHER_MACHINE}",
 )
 PENDING_SYNC = Reason(
     "pending-sync", "cloud-only placeholder; waiting for OneDrive/Google Drive to sync",
@@ -678,11 +681,10 @@ CONTAINER_EMPTY = Reason(
 CONTAINER_LIMIT = Reason(
     "container-limit",
     "not opened: it passes a limit for an email or a zip ({error}); opened, if at all, "
-    "on a machine with no Drive sign-in and no client folder",
+    + OTHER_MACHINE,
     "passes a limit for an email or a zip", firm_side=True,
     firm_note="an email or zip was too large or too deep to open here; a person opens it, "
-              "if at all, on a machine with no Drive sign-in and no client folder - never "
-              "the client",
+              f"if at all, {OTHER_MACHINE} - never the client",
 )
 #: A document that came out of an email or a zip, which a return in
 #: **another** household would have taken: an attachment's original is the

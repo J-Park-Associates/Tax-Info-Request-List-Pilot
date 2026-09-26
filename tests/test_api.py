@@ -18,7 +18,7 @@ import pytest
 import tracker.api as api
 from tests.conftest import TEST_CLIENT, app_stdin, make_engagement
 from tests.samples import PRIOR_YEAR, SCRATCH_PEOPLE
-from tracker import layout, ledger, store, view
+from tracker import layout, ledger, reasons, store, view
 from tracker.filer import FILED, NEEDS_REVIEW, read_index
 from tracker.households import load_household_info
 from tracker.layout import PRIVATE_TREE, inbox_of, return_dir_for
@@ -40,6 +40,8 @@ from tracker.records import (
     MAX_EXPECTED_COUNT,
     MAX_SIZE_KB,
     MIN_EXPECTED_COUNT,
+    IndexEntry,
+    ledger_key,
 )
 from tracker.runner import DRAFT_WEEKDAY, LOG_FILENAME, STATUS_PAGE_FILENAME, WEEKDAY_NAMES
 from tracker.scaffold import PREPARED_DIR_NAME, REVIEW_DIR_NAME
@@ -894,9 +896,9 @@ def test_a_parked_file_the_evidence_says_nothing_about_is_offered_nothing(
 def test_the_review_card_has_three_buckets_and_opens_only_a_documents_copy(capsys, demo_root, tmp_path):
     """Decision 190's three buckets, decided here from the row's code and
     its type on disk: each parked row and its triage carry ``bucket`` and
-    its true ``extension``; a document's and a container's row carry the
-    key its review copy is named under in ``paths`` - the only paths the
-    shell opens - and a program's carries none."""
+    its true ``extension``; a document's row carries the key its review
+    copy is named under in ``paths`` - the only paths the shell opens - and
+    a program's carries none, nor, since Open follows 184, a container's."""
     engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.bmp")
     (inbox_of(engagement) / "W-2 2025.pdf.exe").write_bytes(b"MZ")
     (inbox_of(engagement) / "scans.zip").write_bytes(b"PK\x03\x04 not really a zip")
@@ -910,12 +912,57 @@ def test_the_review_card_has_three_buckets_and_opens_only_a_documents_copy(capsy
         "scans.zip": (api.BUCKET_CONTAINER, "zip"),
         "W-2 2025.pdf.exe": (api.BUCKET_NOT_A_DOCUMENT, "exe"),
     }
-    assert rows["W-2 2025.pdf.exe"]["open_key"] == ""
-    for name in ("vacation photo.bmp", "scans.zip"):
-        opened = Path(state["paths"][rows[name]["open_key"]])
-        assert opened.is_file() and opened.parent.name == REVIEW_DIR_NAME, name
+    assert rows["W-2 2025.pdf.exe"]["open_key"] == "" and rows["scans.zip"]["open_key"] == ""
+    opened = Path(state["paths"][rows["vacation photo.bmp"]["open_key"]])
+    assert opened.is_file() and opened.parent.name == REVIEW_DIR_NAME
     assert {t["original_name"]: t["bucket"] for t in state["review"]} == {
         name: e["bucket"] for name, e in rows.items()}
+
+
+def _parked_row(name: str, code: str) -> IndexEntry:
+    """A parked row with a review copy, as the filer writes one: fabricated."""
+    return IndexEntry(
+        received="2026-02-01", original_name=name, size_kb=12.0, digest="7" * 64,
+        identifier="", prepared_location=f"{REVIEW_DIR_NAME}/{name}",
+        pbc_location=f"pbc/{name}", decision=NEEDS_REVIEW, reason="fabricated", code=code)
+
+
+@pytest.mark.parametrize("name, code", [
+    *(("statement.pdf", code) for code in sorted(api.REFUSED_READING_CODES)),
+    *(("mail.eml", code) for code in sorted(api._CONTAINER_CODES)),
+    ("scans.zip", reasons.AMBIGUOUS_CODE),
+])
+def test_a_refused_file_has_no_open_on_the_designated_machine(name, code):
+    """Open follows 184 (decision 190): a file whose reading the tracker
+    refused, and any email or zip, is opened, if at all, on a machine with
+    no Drive sign-in and no client folder - so the API names no copy for
+    it to open here, whatever its copy on disk, and the card offers none."""
+    row = _parked_row(name, code)
+    payload = api._review_payload(row)
+    assert payload["open_key"] == "", (name, code, payload)
+    assert (payload["bucket"] == api.BUCKET_CONTAINER) == (name != "statement.pdf"), payload
+
+
+def test_the_refused_codes_are_named_once_and_each_is_a_reason():
+    """The list beside the buckets is the ruling's, read from reasons.py:
+    every code in it is one a Reason carries, and none is a filing reason."""
+    assert api.REFUSED_READING_CODES <= set(reasons.BY_CODE), sorted(api.REFUSED_READING_CODES)
+    assert not api.REFUSED_READING_CODES & set(reasons.PLAIN_CODES)
+    assert len(api.REFUSED_READING_CODES) == 12, sorted(api.REFUSED_READING_CODES)
+
+
+@pytest.mark.parametrize("code", [
+    reasons.AMBIGUOUS_CODE, reasons.NO_REQUEST_ACCEPTS_CODE, reasons.UNMATCHED_CODE,
+    reasons.NAME_NOT_ON_PAGE.code, reasons.CONTESTED_CODE,
+])
+def test_a_read_and_parked_document_opens_its_marked_copy(code):
+    """The other half of the rule: a document the tracker read and parked
+    for a filing reason carries the key of its review copy - the firm's
+    copy, marked for Protected View - and nothing else opens it."""
+    row = _parked_row("statement.pdf", code)
+    payload = api._review_payload(row)
+    assert payload["bucket"] == api.BUCKET_DOCUMENT
+    assert payload["open_key"] == f"review_copy {ledger_key(row)}", payload
 
 
 def test_every_parked_row_ships_a_unique_handle_and_a_program_from_a_zip_is_answered_by_it(

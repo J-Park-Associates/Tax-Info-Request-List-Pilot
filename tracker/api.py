@@ -517,9 +517,28 @@ BUCKET_CONTAINER = "container"
 BUCKET_NOT_A_DOCUMENT = "not_a_document"
 BUCKET_HEADINGS = {
     BUCKET_DOCUMENT: "Documents",
-    BUCKET_CONTAINER: "Emails and zips",
+    BUCKET_CONTAINER: ("Emails and zips - opened, if at all, "
+                       f"{reasons.OTHER_MACHINE}, never this one"),
     BUCKET_NOT_A_DOCUMENT: "Not documents - do not open; ask the client what they meant to send",
 }
+#: The codes of a reading the tracker refused or could not finish (decision
+#: 190, following 184): an unreadable PDF or photo, a failed extraction or
+#: OCR, a reading that crashed or hit the safety stop, a file too large to
+#: read, a locked PDF, one with no pages, one with no readable text, and a
+#: reader that could not start. Nothing vouches for such a file, so its
+#: row offers no Open on this machine - the one that holds the Drive
+#: sign-in and every client folder. The person asks the client to send it
+#: again, or opens it under 184's rule, on another machine. Only a document
+#: the tracker read, and parked for a filing reason (ambiguous, the name not
+#: on the page, no request accepts it ...), opens its marked copy here. A
+#: text file read only in part (``reasons.TEXT_CUT``) has no code of its
+#: own - the cut is appended to the verdict it explains - so it is not here:
+#: nothing reads a cause back out of a sentence.
+REFUSED_READING_CODES = frozenset(reason.code for reason in (
+    reasons.UNREADABLE_PDF, reasons.UNREADABLE_IMAGE, reasons.EXTRACTION_FAILED,
+    reasons.OCR_FAILED, reasons.READING_CRASHED, reasons.READING_STOPPED,
+    reasons.TOO_LARGE, reasons.PASSWORD_PROTECTED, reasons.NO_PAGES,
+    reasons.NO_READABLE_TEXT, reasons.NO_TEXT_AFTER_OCR, reasons.READER_UNAVAILABLE))
 #: The action that opens a parked row's review copy - the firm's copy in
 #: the private tree, marked for Protected View when it can carry macros -
 #: and what the card says beside a not-a-document row's true type.
@@ -1341,12 +1360,19 @@ def review_bucket(entry: IndexEntry) -> str:
 
 def _review_copy_key(entry: IndexEntry) -> str:
     """The key under ``paths`` of a parked row's review copy, or ``""``
-    where the card offers no Open: a not-a-document row, or a row with no
-    copy. The shell opens only a path the API has named (``paths``), so
-    the copy is named there and the row carries only its key."""
+    where the card offers no Open. The shell opens only a path the API has
+    named (``paths``), so the copy is named there and the row carries only
+    its key, and the renderer offers Open exactly where there is one.
+
+    Open follows 184 (decision 190): only a document the tracker read and
+    parked for a filing reason opens its marked copy on this machine. A
+    not-a-document row never does; an email or a zip never does - it is
+    opened, if at all, on a machine with no Drive sign-in and no client
+    folder; nor does a row whose reading was refused
+    (:data:`REFUSED_READING_CODES`); nor a row with no copy."""
     if entry.decision != NEEDS_REVIEW or not entry.prepared_location:
         return ""
-    if review_bucket(entry) == BUCKET_NOT_A_DOCUMENT:
+    if review_bucket(entry) != BUCKET_DOCUMENT or entry.code in REFUSED_READING_CODES:
         return ""
     return f"review_copy {ledger_key(entry)}"
 

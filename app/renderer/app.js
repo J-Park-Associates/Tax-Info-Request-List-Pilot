@@ -652,8 +652,10 @@ function requestOption(item, picked) {
 // request, because a suggestion is a suggestion and nothing is taken away.
 // A row that is not a document (decision 190) is never opened and never
 // filed: it says its true type, and offers only the answer that sets it
-// aside. Any other parked row offers Open, which opens its review copy by
-// the key the API named it under in state.paths - never a path of ours.
+// aside. A row offers Open only where the API named a key for it
+// (decision 190, following 184: a document the tracker read and parked, never
+// an email or a zip, nor a file whose reading was refused), and Open opens
+// its review copy by that key in state.paths - never a path of ours.
 function notADocument(row) {
   return Boolean(row) && row.bucket === vocab.review_labels.not_a_document;
 }

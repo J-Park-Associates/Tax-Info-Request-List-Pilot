@@ -13,6 +13,7 @@ import re
 from pathlib import Path
 
 from tracker.content_check import RETIRED_CACHE_FILENAME
+from tracker.reasons import OTHER_MACHINE
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -1617,12 +1618,39 @@ def test_the_runbook_opens_nothing_where_it_sits_and_drops_nothing_in_the_client
               if re.search(r"(?<!not )(?<!never )\b(open|look at) (it|both|them|either|the original)\b",
                            sentence, re.IGNORECASE)
               and not re.search(r"on its card|from its card|\*\*Open\*\*", sentence)
+              and OTHER_MACHINE not in sentence
               and not any(allowed in sentence for allowed in not_a_clients_file)]
     assert opened == [], opened
     dropped = [sentence for sentence in _sentences(runbook)
                if re.search(r"\b(drop|put|move|copy)\b.*\b(in|into|to) the client's folder\b"
                             r"(?! for the year)", sentence, re.IGNORECASE)]
     assert dropped == [], dropped
+
+
+def test_the_runbook_opens_no_container_or_refused_file_on_this_machine():
+    """Open follows 184 (decision 190): no row for an email or a zip, or for
+    a file whose reading was refused, sends a person to **Open** on this
+    machine - it is opened, if at all, on a machine with no Drive sign-in
+    and no client folder - and no sentence about a container, or a text
+    read only in part, offers the card's **Open** either."""
+    from tracker import api, reasons
+
+    closed = api.REFUSED_READING_CODES | api._CONTAINER_CODES
+    names = {name for name, value in vars(reasons).items()
+             if isinstance(value, reasons.Reason) and value.code in closed}
+    assert len(names) == len(closed), sorted(names)
+    offers_open = re.compile(r"(?<!no )\*\*Open\*\* (on|from) its card|(?<!no )with \*\*Open\*\*")
+    rows = [line for line in read("docs/runbook.md").splitlines() if line.startswith("| `reasons.")]
+    covered = {name for line in rows for name in names if f"`reasons.{name}`" in line.split(" | ")[0]}
+    wrong = [line[:80] for line in rows
+             if any(f"`reasons.{name}`" in line.split(" | ")[0] for name in names)
+             and offers_open.search(line)]
+    assert wrong == [], wrong
+    assert covered, "the runbook's Reason table names none of the closed codes"
+    about = [sentence for sentence in _sentences(read("docs/runbook.md"))
+             if offers_open.search(sentence)
+             and re.search(r"container|email or (a )?zip|TEXT_CUT", sentence)]
+    assert about == [], about
 
 
 def test_the_runbook_sends_documents_from_a_container_to_the_households_inbox():
