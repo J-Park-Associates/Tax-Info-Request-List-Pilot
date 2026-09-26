@@ -5293,8 +5293,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e20eddfeccf9c757",
-      "lines": 1445,
+      "sha256": "379a6d174141a82b",
+      "lines": 1486,
       "exports": [
         "CONSOLE_EXEMPT",
         "CONSOLE_GUARDED",
@@ -5302,7 +5302,9 @@
         "DELETED_REPO_FILES",
         "DOCUMENTS",
         "FOREIGN_FLAGS",
+        "GUARD_NAME",
         "NUMBER_WORDS",
+        "REMOVED_NAME",
         "REPO",
         "RETIRED_FILES",
         "STRUCK",
@@ -5341,6 +5343,9 @@
         "test_the_example_root_is_the_same_everywhere",
         "test_the_feed_editor_picks_a_return_by_index_and_never_takes_a_value_apart",
         "test_the_frozen_api_name_has_one_home",
+        "test_the_guard_exempts_only_the_log_and_its_own_name",
+        "test_the_guard_finds_the_name_as_an_identifier",
+        "test_the_guard_finds_the_name_hard_wrapped_across_two_lines",
         "test_the_one_machine_rule_is_stated_once_as_todays_rule",
         "test_the_package_docstring_lists_every_module",
         "test_the_package_prose_names_constants_rather_than_their_values",
@@ -5380,6 +5385,7 @@
       ],
       "constants": {
         "DOCUMENTS": "('README.md', 'docs/ROADMAP.md', 'docs/workflow.md', 'docs/runbook.md', 'docs/storage.md', 'CLAUDE.md')",
+        "GUARD_NAME": "'test_the_command_center_is_gone_from_everything_but_the_decision_log'",
         "CONSOLE_GUARDED": "('rollover', 'filer', 'scanner', 'registry', 'review', 'scaffold', 'store', 'reminder', 'runner', 'router', 'content_check', 'view', 'ledger', 'validators', 'names', 'containers', 'ocr')",
         "NUMBER_WORDS": "('ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty')",
         "STRUCK": "('open it yourself', 'open it on this machine', 'on this machine, and drop', \"drop any document you find into the client's folder\", \"drop the documents in the client's folder\", \"drop the documents you find in the client's folder\", \"drop a copy in the client's folder\", \"drop it in the client's folder\", 'the record itself is the truth', 'nothing is lost either way', 'and run `rebuild` \u2014 nothing is lost')"
