@@ -5,18 +5,17 @@ let paths = null;          // paths of the active engagement
 let engagements = [];      // [{name, path, household, year, return_name}]
 let households = [];       // [{name, path, returns, open_years, ...}]
 let misfits = [];          // [{path, sentence}] - the folders left alone
-let chosenHousehold = null;  // the wizard's household: a path, or null for a new one
+let addingTo = null;       // the household a new return is added to: a path its card reported, or null for a new household
 let active = null;         // path of the active engagement
 let forms = [];            // tax form catalog [{id, label, who, blurb}]
 let templatesByForm = {};  // form id -> tailored request template items
 let defaultYear = null;    // the tax year a new engagement is for (from the calendar)
 let nameIsAuto = true;     // new-client name follows client + year + form until typed
-let selectedForm = null;   // form id chosen on the wizard's first page
+let selectedForm = null;   // form id chosen on the dialog's form step
 let templates = [];        // template items for the chosen form
-let customItems = [];      // custom rows added in the wizard (plain objects keyed by column)
+let customItems = [];      // custom rows added in the new return's request list (plain objects keyed by column)
 let editorRows = [];       // the request-list editor's rows (plain objects keyed by column)
-let priors = [];           // engagements a new year can roll forward from
-let rollFor = null;        // path of the household the returning-client page rolls
+let rollChoice = null;     // the roll fold's unticks and form picks, for the household on screen
 let lastState = null;      // the state the household card was drawn from
 
 const $ = (id) => document.getElementById(id);
@@ -67,9 +66,9 @@ function el(tag, attrs = {}, ...children) {
 // Flattened, because half the callers build their list as "one fixed node,
 // then a mapped array" and replaceChildren() turns an array it is handed
 // into the text "[object HTMLOptionElement],..." rather than into its
-// elements. That is how the wizard's list of existing households, and the
+// elements. That is how the old list of existing households, and the
 // rollover's list of form templates, came out holding one option and a
-// line of noise.
+// line of noise; the flatten stays for any caller.
 function show(id, nodes) {
   $(id).replaceChildren(...nodes.flat(Infinity).filter((n) => n !== null && n !== undefined && n !== false));
 }
@@ -1337,6 +1336,9 @@ function renderHousehold(state) {
   const hh = state.household;
   $("household-card").classList.toggle("hidden", !hh);
   if (!hh) return;
+  // The roll fold's choices belong to the household they were made on
+  // (decision 196): a redraw of it keeps them, another household's drops them.
+  if (rollChoice && rollChoice.household !== hh.path) rollChoice = null;
   $("household-heading").textContent = words.heading;
   $("household-name").textContent = hh.name;
   $("household-members-label").textContent = words.members_label;
@@ -1375,10 +1377,189 @@ function renderHousehold(state) {
         dataset: { path: r.path },
       }, r.label),
       r.reminder && el("span", { className: "wiz-note" }, returnReminderLine(r.reminder, r.label)))));
+  renderRollFold(hh);
   $("household-queue").textContent = fill(words.queue_line, { n: hh.queue });
   $("btn-edit-household").textContent = words.edit;
+  // A return is added to the household on screen, never to one picked on
+  // another page (decision 196); while it is paused the pause is the work.
+  $("btn-add-return").textContent = words.add_return;
+  $("btn-add-return").classList.toggle("hidden", Boolean(pause.sentence));
   renderFeeds(hh);
   renderSharing(hh);
+}
+
+// ── the household's roll fold (decisions 126 and 196) ─────────────────────
+// A household rolls as a household, from its own card, and only when the
+// API names the year (state.household.roll_year: one open year, not paused,
+// a return to roll, and that year has ended). Every open-year return is
+// ticked; an unticked one is retired, which the API's sentence says before
+// anything is unticked. The year is named, never typed.
+
+// The returns a roll carries: the one open year's, active, not rolled on.
+function rollableReturns(hh) {
+  const open = hh.open_years.length === 1 ? hh.open_years[0] : null;
+  return hh.returns.filter((r) => r.year === open && r.active && !r.superseded_by);
+}
+
+function renderRollFold(hh) {
+  const words = vocab.household;
+  const fold = $("household-roll");
+  if (fold.dataset.household !== hh.path) {
+    fold.open = false;
+    fold.dataset.household = hh.path;
+  }
+  fold.classList.toggle("hidden", !hh.roll_year);
+  if (!hh.roll_year) {
+    show("household-roll", []);
+    return;
+  }
+  const year = hh.roll_year;
+  const choice = rollChoice && rollChoice.household === hh.path ? rollChoice : null;
+  show("household-roll", [
+    el("summary", {}, fill(words.roll_forward_to, { year })),
+    el("p", { className: "wiz-sub" }, words.roll_intro),
+    el("div", { className: "tmpl-list" }, rollableReturns(hh).map((r) => {
+      const picked = choice && choice.forms.has(r.path) ? choice.forms.get(r.path) : r.form;
+      const known = forms.some((f) => f.id === picked);
+      return el("div", { className: "prior-item roll-return" },
+        el("label", { className: "prior-head" },
+          el("input", { type: "checkbox", className: "roll-tick",
+                        checked: !(choice && choice.unticked.has(r.path)),
+                        dataset: { path: r.path } }),
+          el("span", { className: "prior-name" }, r.label),
+        ),
+        // The people the roll carries unchanged (decision 128), under the
+        // return they belong to, with the way to look at them. Nothing
+        // blocks on the look: strict parking is the safety net.
+        el("div", { className: "prior-people" },
+          el("span", { className: "prior-meta" },
+            `${vocab.people.label}: ${(r.people || []).join(", ") || "—"}`),
+          el("button", { type: "button", className: "btn btn-small roll-review-people",
+                         dataset: { path: r.path } }, vocab.people.review_people),
+        ),
+        el("label", { className: "field roll-form" },
+          el("span", {}, vocab.roll_template_label),
+          // The return's own recorded form is picked by default (decision
+          // 142's review, R2), so the catalog rows it never had arrive as
+          // not asked without anybody choosing; "no template" is the
+          // default only for a return that never recorded one.
+          el("select", { className: "roll-form-pick", dataset: { path: r.path } },
+            el("option", { value: "", selected: !known }, words.roll_no_template),
+            forms.map((f) => el("option", { value: f.id, selected: f.id === picked },
+              `${f.label} · ${f.who}`)),
+          ),
+        ),
+      );
+    })),
+    el("p", { className: "wiz-note" }, fill(words.rollover_unticked, { year })),
+    el("div", { className: "editor-actions" },
+      el("button", { type: "button", id: "btn-roll", className: "btn btn-primary btn-small" },
+        fill(words.roll_ticked, { year }))),
+  ]);
+}
+
+// The one roll call, built from the household on screen and nothing else:
+// a pure function of the card's household and the fold's choices, which a
+// test runs under node (decision 196). Another household's leftover choice
+// is ignored; null when the API offers no roll.
+function rollHouseholdCall(hh, choice) {
+  if (!hh || !hh.roll_year) return null;
+  const open = hh.open_years.length === 1 ? hh.open_years[0] : null;
+  const rollable = hh.returns.filter((r) => r.year === open && r.active && !r.superseded_by);
+  if (!rollable.length) return null;
+  const mine = choice && choice.household === hh.path ? choice : null;
+  const unticked = mine ? mine.unticked : new Set();
+  const picks = mine ? mine.forms : new Map();
+  return [
+    ["roll-household", vocab.engagement_flag, rollable[0].path],
+    {
+      year: hh.roll_year,
+      returns: rollable
+        .filter((r) => !unticked.has(r.path))
+        .map((r) => ({ prior: r.path, form: picks.has(r.path) ? picks.get(r.path) : (r.form || "") })),
+    },
+  ];
+}
+
+// The fold's ticks and picks, held for the household on screen so a redraw
+// (looking at a return's people switches the return) brings back what the
+// person chose.
+// Display state only: nothing about it is recorded (decision 83).
+function rollChoiceFor(path) {
+  if (!rollChoice || rollChoice.household !== path) {
+    rollChoice = { household: path, unticked: new Set(), forms: new Map() };
+  }
+  return rollChoice;
+}
+
+function gatherRollChoice(hh) {
+  const choice = rollChoiceFor(hh.path);
+  for (const box of $("household-roll").querySelectorAll(".roll-tick")) {
+    if (box.checked) choice.unticked.delete(box.dataset.path);
+    else choice.unticked.add(box.dataset.path);
+  }
+  for (const pick of $("household-roll").querySelectorAll(".roll-form-pick")) {
+    choice.forms.set(pick.dataset.path, pick.value);
+  }
+  return choice;
+}
+
+async function rollFromCard() {
+  const words = vocab.household;
+  const hh = lastState && lastState.household;
+  if (!hh) return;
+  const built = rollHouseholdCall(hh, gatherRollChoice(hh));
+  if (!built) return;
+  const btn = $("btn-roll");
+  btn.disabled = true;
+  try {
+    const result = await call(...built);
+    rollChoice = null;
+    $("household-roll").open = false;
+    // The list this write changed arrives with it (decision 194).
+    if (result.list) adoptList(result.list);
+    renderFor(select(result.state.paths.engagement), result.state);
+    renderEngagements();
+    // The banner: how many returns rolled into the year and how many were
+    // retired, then each return's rows added as not asked (decision 142)
+    // and last year's unfiled files - said here, once, because there is no
+    // sheet to point at and a row a person wants asked is set in the editor.
+    const lines = [
+      fill(words.roll_done, { rolled: result.rolled.length, year: result.target_year,
+                             retired: result.retired.length }),
+      // The people carried unchanged and are worth one look (decision
+      // 128), in the API's words.
+      fill(vocab.people.rolled_note, { n: result.rolled.length }),
+    ];
+    for (const one of result.rolled) {
+      const setAside = one.carried.filter((c) => c.origin === vocab.origin_not_applicable);
+      const added = one.carried.filter((c) => c.origin === vocab.origin_new);
+      const parts = [fill(words.roll_carried, { n: one.carried.length - setAside.length - added.length })];
+      if (setAside.length) parts.push(fill(vocab.not_applicable_carried, { n: setAside.length }));
+      if (added.length) parts.push(fill(vocab.new_not_asked_carried, { n: added.length }));
+      if (one.unfiled_last_year.length) {
+        parts.push(fill(words.roll_unfiled, { n: one.unfiled_last_year.length }));
+      }
+      lines.push(`• ${one.label}: ${parts.join("; ")}.`);
+      // Decision 137: a link that was not a web address was left behind;
+      // the sentence is the API's.
+      if (one.link_dropped) lines.push(`  ${one.link_dropped}`);
+    }
+    for (const one of result.retired) lines.push(`• ${fill(words.roll_retired_line, { label: one })}`);
+    for (const one of result.skipped) lines.push(`• ${one.prior}: ${one.reason}`);
+    // Decision 159: every return rolled but a retirement failed - the
+    // API's own sentence says what was rolled, retired and left open.
+    if (result.warning) lines.push(result.warning);
+    const dropped = result.rolled.some((one) => one.link_dropped);
+    banner(lines.join("\n"),
+      result.skipped.length || result.warning || dropped ? "warn" : "ok");
+  } catch (err) {
+    // A refused roll lands in the notices area and stays until dismissed
+    // (decision 193); the fold keeps the person's ticks and picks.
+    failed(err);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // What this drop folder also feeds, and whose drop folders feed a return
@@ -1750,10 +1931,15 @@ function applyVocabulary() {
   // shared (decision 125): the labels are the API's, the paths are too.
   $("inbox-label").textContent = vocab.household.open_inbox;
   $("client-folder-label").textContent = vocab.household.open_client_folder;
-  $("household-title").textContent = vocab.household.heading;
-  $("hh-existing-head").textContent = vocab.household.existing;
-  $("hh-existing-label").textContent = vocab.household.name_label;
+  $("household-title").textContent = vocab.household.new;
   $("hh-new-head").textContent = vocab.household.new;
+  // Add a return and New household (decision 196): the toolbar's button,
+  // the household step's sentence, the form step and the request list.
+  $("new-household-label").textContent = vocab.household.new;
+  $("household-new-intro").textContent = vocab.household.new_intro;
+  $("form-note").textContent = vocab.household.form_step_note;
+  $("wi-back").textContent = `\u2190 ${vocab.household.change_form}`;
+  $("ne-create").textContent = vocab.household.create_return;
   $("hh-name-label").textContent = vocab.household.name_label;
   $("hh-contact-label").textContent = vocab.household.contact_label;
   $("hh-contact").title = vocab.household.contact_help;
@@ -1767,7 +1953,6 @@ function applyVocabulary() {
   // pages that add one (decision 129).
   $("hh-return-warning").textContent = vocab.household.return_warning;
   $("ne-return-warning").textContent = vocab.household.return_warning;
-  $("ro-household-label").textContent = vocab.household.heading;
   $("view-label").textContent = vocab.view.open;
   $("edit-label").textContent = vocab.editor.open;
   // The two renderings of the review queue are named by the API too
@@ -1786,7 +1971,7 @@ function applyVocabulary() {
   $("phone-input").placeholder = `${vocab.settings.phone_label} — ${vocab.settings.phone_help}`;
   $("phone-input").title = vocab.settings.phone_help;
   $("phone-input").setAttribute("aria-label", vocab.settings.phone_label);
-  for (const id of ["ro-year", "ne-year"]) {
+  for (const id of ["ne-year"]) {
     $(id).min = vocab.year_min;
     $(id).max = vocab.year_max;
     $(id).title = vocab.year_note;
@@ -1896,13 +2081,14 @@ async function bootstrap(preferPath) {
     if (listed === null) return;   // a later choice owns the page now
     if (!listed) {
       if (!$("setup-card").classList.contains("hidden")) return;   // waiting for the folder
-      banner(`No engagements under ${clientsRoot} yet — click ${$("btn-new").textContent.trim()} to create the first.`, "ok");
+      banner(`No engagements under ${clientsRoot} yet — click ${$("btn-new-household").textContent.trim()} to create the first.`, "ok");
       show("rows", []);
       show("rows-not-asked", []);
       $("rows-not-asked-group").classList.add("hidden");
       return;
     }
     const view = viewGeneration;
+    await loadForms();
     renderFor(view, await call(withEng("state")));
   } catch (err) {
     failed(err, () => bootstrap(preferPath));
@@ -2072,71 +2258,92 @@ async function runScan() {
   }
 }
 
-// ── New Engagement wizard ───────────────────────────────────────────────
-// Opens on the returning-client page — rolling last year forward is the
-// default action. Behind it: pick a tax form type, then trim its list.
+// ── Add a return / New household (decision 196) ─────────────────────────
+// One dialog, two ways in. Add a return opens from the household's card on
+// the form grid, for that household and no other; New household opens from
+// the toolbar on the household step. Then the form, then the request list.
+// There is no household picked here: addingTo is set by openAddReturn from
+// the card's own household, cleared by openNewHousehold and on close.
 
-async function openWizard() {
+// The catalog, loaded once: the form grid and the roll fold's form pick.
+async function loadForms() {
+  if (forms.length) return;
+  const result = await call(["templates"]);
+  forms = result.forms;
+  templatesByForm = result.templates;
+  defaultYear = result.default_year || null;
+}
+
+async function openAddReturn(hh) {
+  if (!hh) return;
   try {
-    if (!forms.length) {
-      const result = await call(["templates"]);
-      forms = result.forms;
-      templatesByForm = result.templates;
-      defaultYear = result.default_year || null;
-    }
-    priors = (await call(["priors"])).priors;
+    await loadForms();
   } catch (err) {
-    failed(err, openWizard);
+    failed(err, () => openAddReturn(hh));
     return;
   }
+  addingTo = hh.path;
   selectedForm = null;
-  // The page opens on the active return's household (decision 126); the
-  // picker is how a person moves to another one without switching it.
-  rollFor = null;
+  hideCreateNote();
+  $("form-title").textContent = fill(vocab.household.add_return_title, { household: hh.name });
+  renderFormGrid();
+  showStep("form");
+  $("modal").classList.remove("hidden");
+}
+
+async function openNewHousehold() {
+  try {
+    await loadForms();
+  } catch (err) {
+    failed(err, openNewHousehold);
+    return;
+  }
+  addingTo = null;
+  selectedForm = null;
+  hideCreateNote();
+  $("form-title").textContent = vocab.household.form_step_title;
   renderHouseholdStep();
-  renderPriorPage();
   renderFormGrid();
   showStep("household");
   $("modal").classList.remove("hidden");
 }
 
+function closeNewReturn() {
+  $("modal").classList.add("hidden");
+  addingTo = null;
+  hideCreateNote();
+}
+
+// A refused create stays in the dialog, in the API's words, until the
+// person edits a field or closes it: nothing they typed is lost.
+function hideCreateNote() {
+  $("ne-note").classList.add("hidden");
+  $("ne-note").textContent = "";
+}
+
 function showStep(step) {
   $("wiz-household").classList.toggle("hidden", step !== "household");
-  $("wiz-prior").classList.toggle("hidden", step !== "prior");
   $("wiz-form").classList.toggle("hidden", step !== "form");
   $("wiz-items").classList.toggle("hidden", step !== "items");
 }
 
-// ── page 0: whose household ─────────────────────────────────────────────
-// A return is made inside a household (decision 125): an existing one, by
-// its folder, or a new one this call makes from the four fields.
+// ── the household step: a new household ─────────────────────────────────
+// A return is made inside a household (decision 125). New household makes
+// one from these four fields, with its first return; a name that reads as
+// a household already in the list is refused by the API, which points at
+// the list (decision 188). The page compares nothing.
 
 function renderHouseholdStep() {
-  show("hh-existing", [
-    el("option", { value: "" }, vocab.household.new),
-    households.map((h) => el("option", { value: h.path }, h.name)),
-  ]);
-  $("hh-existing").value = chosenHousehold || "";
   $("hh-name").value = "";
   $("hh-contact").value = "";
   $("hh-members").value = "";
   $("hh-link").value = "";
-  syncHouseholdStep();
 }
 
-function syncHouseholdStep() {
-  chosenHousehold = $("hh-existing").value || null;
-  for (const id of ["hh-name", "hh-contact", "hh-members", "hh-link"]) {
-    $(id).disabled = Boolean(chosenHousehold);
-  }
-  $("hh-existing-head").classList.toggle("hidden", households.length === 0);
-  $("hh-existing").classList.toggle("hidden", households.length === 0);
-}
-
-// What every create and rollover sends about the household: the folder of
-// the one that exists, or the four fields of the one being made.
+// What every create sends about the household: the folder of the one on
+// screen, or the four fields of the one being made.
 function householdSpec() {
-  if (chosenHousehold) return { household_path: chosenHousehold };
+  if (addingTo) return { household_path: addingTo };
   return {
     household: $("hh-name").value.trim(),
     contact: $("hh-contact").value.trim(),
@@ -2147,164 +2354,9 @@ function householdSpec() {
 
 // The household's own contact is the greeting a new return starts with.
 function householdContact() {
-  if (!chosenHousehold) return $("hh-contact").value.trim();
-  const found = households.find((h) => h.path === chosenHousehold);
-  return found ? found.contact : "";
-}
-
-// ── page 0: returning client ────────────────────────────────────────────
-
-function priorMeta(p) {
-  const bits = [];
-  if (p.superseded_by) bits.push(`already rolled forward into ${p.superseded_by}`);
-  if (p.year) bits.push(fill(vocab.period_pattern, { year: p.year }));
-  bits.push(`${p.requests} request${p.requests === 1 ? "" : "s"}`);
-  if (p.requests) bits.push(`${p.received} received`);
-  return bits.join(" · ");
-}
-
-// The household's returns for the open year, as the page ticks them: the
-// priors the API listed, grouped by household, with a prior a rollover has
-// already retired left out - it is not an open-year return any more.
-function priorsOfHousehold(path) {
-  return priors.filter((p) => p.household === path && !p.superseded_by);
-}
-
-// The household this page rolls: the one a person picked here, else the
-// active return's, else the first household that has a prior at all.
-function rollHousehold() {
-  if (rollFor && priorsOfHousehold(rollFor).length) return rollFor;
-  const here = lastState && lastState.household ? lastState.household.path : null;
-  if (here && priorsOfHousehold(here).length) return here;
-  const found = households.find((h) => priorsOfHousehold(h.path).length);
-  return found ? found.path : null;
-}
-
-function renderPriorPage() {
-  // **A household rolls as a household** (decision 126): the page shows
-  // the open year's returns as a checklist, all ticked, and Roll Forward
-  // rolls every ticked one and retires the rest. The picker is here so a
-  // person can roll another household without switching the active
-  // return first.
-  rollFor = rollHousehold();
-  show("ro-household", households
-    .filter((h) => priorsOfHousehold(h.path).length)
-    .map((h) => el("option", { value: h.path, selected: h.path === rollFor }, h.name)));
-  const shown = rollFor ? priorsOfHousehold(rollFor) : [];
-  show("prior-list", shown.map((p) =>
-    el("div", { className: "prior-item roll-return" },
-      el("label", { className: "prior-head" },
-        el("input", { type: "checkbox", className: "roll-tick", checked: true,
-                      dataset: { path: p.path } }),
-        el("span", { className: "prior-name" }, p.label || p.name),
-        el("span", { className: "prior-meta" }, priorMeta(p)),
-      ),
-      // The people the roll carries unchanged (decision 128), under the
-      // return they belong to, with the way to look at them. Nothing
-      // blocks on the look: strict parking is the safety net.
-      el("div", { className: "prior-people" },
-        el("span", { className: "prior-meta" },
-          `${vocab.people.label}: ${(p.people || []).map((one) => one.name).join(", ") || "—"}`),
-        el("button", { type: "button", className: "btn btn-small roll-review-people",
-                       dataset: { path: p.path } }, vocab.people.review_people),
-      ),
-      el("label", { className: "field roll-form" },
-        el("span", {}, vocab.roll_template_label),
-        // The return's own recorded form is picked by default (decision
-        // 142's review, R2), so the catalog rows it never had arrive as not
-        // asked without anybody choosing; "No template" is the default only
-        // for a return that never recorded one.
-        el("select", { className: "roll-form-pick", dataset: { path: p.path } },
-          el("option", { value: "", selected: !forms.some((f) => f.id === p.form) },
-            "No template — carry last year's list as it is"),
-          forms.map((f) => el("option", { value: f.id, selected: f.id === p.form }, `${f.label} · ${f.who}`)),
-        ),
-      ),
-    )));
-  $("prior-list").classList.toggle("hidden", shown.length === 0);
-  $("prior-empty").classList.toggle("hidden", shown.length > 0);
-  $("ro-create").disabled = shown.length === 0;
-  $("ro-household-field").classList.toggle("hidden", households.length < 2);
-  syncPriorDefaults();
-}
-
-function syncPriorDefaults() {
-  const shown = rollFor ? priorsOfHousehold(rollFor) : [];
-  $("ro-year").value = shown.map((p) => p.next_year).find(Boolean) || "";
-  syncUntickedNote();
-}
-
-// Said before anything is unticked, in the API's words: an unticked return
-// is retired for the year, not merely skipped (decision 126).
-function syncUntickedNote() {
-  $("ro-unticked-note").textContent =
-    fill(vocab.household.rollover_unticked, { year: $("ro-year").value || "" });
-}
-
-async function rollForward() {
-  const ticked = [...$("prior-list").querySelectorAll(".roll-tick")].filter((b) => b.checked);
-  const first = priorsOfHousehold(rollFor)[0];
-  if (!first) {
-    toast("Pick the engagement to roll forward, or start from a form template.");
-    return;
-  }
-  const btn = $("ro-create");
-  btn.disabled = true;
-  try {
-    const pick = (cls, path) =>
-      $("prior-list").querySelector(`.${cls}[data-path="${CSS.escape(path)}"]`);
-    const result = await call(
-      ["roll-household", vocab.engagement_flag, first.path],
-      {
-        year: Number($("ro-year").value) || null,
-        returns: ticked.map((box) => ({
-          prior: box.dataset.path,
-          form: pick("roll-form-pick", box.dataset.path).value,
-        })),
-      });
-    $("modal").classList.add("hidden");
-    // The list this write changed arrives with it (decision 194).
-    if (result.list) adoptList(result.list);
-    renderFor(select(result.state.paths.engagement), result.state);
-    renderEngagements();
-    // The banner: how many returns rolled into the year and how many were
-    // retired, then each return's rows added as not asked (decision 142)
-    // and last year's unfiled files - said here, once, because there is no
-    // sheet to point at and a row a person wants asked is set in the editor.
-    const lines = [
-      `${result.rolled.length} return(s) rolled into ${result.target_year}; ` +
-      `${result.retired.length} retired`,
-      // The people carried unchanged and are worth one look (decision
-      // 128), in the API's words.
-      fill(vocab.people.rolled_note, { n: result.rolled.length }),
-    ];
-    for (const one of result.rolled) {
-      const setAside = one.carried.filter((c) => c.origin === vocab.origin_not_applicable);
-      const added = one.carried.filter((c) => c.origin === vocab.origin_new);
-      const parts = [`${one.carried.length - setAside.length - added.length} request(s) carried`];
-      if (setAside.length) parts.push(fill(vocab.not_applicable_carried, { n: setAside.length }));
-      if (added.length) parts.push(fill(vocab.new_not_asked_carried, { n: added.length }));
-      if (one.unfiled_last_year.length) {
-        parts.push(`${one.unfiled_last_year.length} file(s) sent last year were never filed`);
-      }
-      lines.push(`• ${one.label}: ${parts.join("; ")}.`);
-      // Decision 137: a link that was not a web address was left behind;
-      // the sentence is the API's.
-      if (one.link_dropped) lines.push(`  ${one.link_dropped}`);
-    }
-    for (const one of result.retired) lines.push(`• ${one}: retired.`);
-    for (const one of result.skipped) lines.push(`• ${one.prior}: ${one.reason}`);
-    // Decision 159: every return rolled but a retirement failed - the
-    // API's own sentence says what was rolled, retired and left open.
-    if (result.warning) lines.push(result.warning);
-    const dropped = result.rolled.some((one) => one.link_dropped);
-    banner(lines.join("\n"),
-      result.skipped.length || result.warning || dropped ? "warn" : "ok");
-  } catch (err) {
-    failed(err);
-  } finally {
-    btn.disabled = false;
-  }
+  if (!addingTo) return $("hh-contact").value.trim();
+  const here = lastState && lastState.household;
+  return here && here.path === addingTo ? here.contact : "";
 }
 
 function renderFormGrid() {
@@ -2322,7 +2374,7 @@ function chooseForm(formId) {
   selectedForm = formId;
   templates = templatesByForm[formId] || [];
   customItems = [];
-  $("items-title").textContent = `New ${form.label} Engagement`;
+  $("items-title").textContent = fill(vocab.household.items_title, { form: form.label });
   $("chosen-form").textContent = `${form.label} · ${form.who}`;
   $("tmpl-head-label").textContent = `${form.label} request list — ${vocab.ask_the_client}`;
   $("tmpl-note").textContent = vocab.ask_the_client_note;
@@ -2382,7 +2434,7 @@ function renderTemplateList() {
 // ticks them. Nothing here infers a person from a document, and no
 // spelling is ever learned except by somebody typing it.
 
-let wizardPeople = [];     // the wizard's list, before the return exists
+let wizardPeople = [];     // the new return's people, before the return exists
 let editorPeople = [];     // the editor's list, as the record holds it
 
 function blankPerson() {
@@ -2484,11 +2536,12 @@ function labelPeopleBlock(headId, helpId, addId) {
   $(addId).textContent = vocab.people.add;
 }
 
-// ── the one row component: the wizard's custom rows and the editor's ─────
+// ── the one row component: a new return's custom rows and the editor's ──
 
 // A column of the request list, as the API describes it: its key in the
-// record, its heading, and the sentence under the heading. The wizard shows
-// three of them; the editor shows them all.
+// record, its heading, and the sentence under the heading. The request list
+// of Add a return / New household shows three of them; the editor shows
+// them all.
 function columnsByKey(keys) {
   return keys.map((key) => vocab.columns.find((c) => c.key === key)).filter(Boolean);
 }
@@ -2589,7 +2642,7 @@ function learnedCell(identifier, learned) {
 // plain objects keyed by column key; `onChange(rows)` is told about every
 // edit, `onRemove(index)` about a removed row, and `onTakeBack(identifier,
 // keyword)` about a word taken back. `keyed` shows each row's
-// identifier as fixed text (the wizard assigns them); the editor passes
+// identifier as fixed text (Add a return / New household assigns them); the editor passes
 // the identifier as one of its columns instead, typed like the rest.
 function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack, learned = {}, keyed = true }) {
   const head = el("tr", {},
@@ -2621,7 +2674,7 @@ function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack,
     if (btn) onRemove(Number(btn.dataset.index));
   });
   table.addEventListener("keydown", (e) => {
-    // Enter on the last row adds another, the way the wizard always did.
+    // Enter on the last row adds another, as Add a return / New household always has.
     if (e.key === "Enter" && e.target.closest("tr") === table.querySelector("tbody tr:last-child")) {
       e.preventDefault();
       container.dispatchEvent(new CustomEvent("addrow", { bubbles: true }));
@@ -2630,7 +2683,7 @@ function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack,
   container.replaceChildren(table);
 }
 
-// ── the wizard's custom requests ────────────────────────────────────────
+// ── Add a return / New household: custom requests ───────────────────────
 
 // Blank fields are sent blank: the catalog's item_from_spec() fills the
 // file types and the keyword (the document name) by the one rule, and the
@@ -2695,13 +2748,13 @@ async function createEngagement() {
       due: $("ne-due").value,
       year: Number($("ne-year").value) || null,
     });
-    $("modal").classList.add("hidden");
+    closeNewReturn();
     // The list this write changed arrives with it (decision 194).
     if (result.list) adoptList(result.list);
     renderFor(select(result.state.paths.engagement), result.state);
     renderEngagements();
     const lines = [
-      `Engagement "${result.created}" created with ${asked} request(s) asked for, client README generated. Open the Client Folder to show it.`,
+      fill(vocab.household.return_created, { label: result.created, n: asked }),
     ];
     // A household's first return comes back with the sharing checklist
     // (decision 126): the two grants a person makes in Drive, once, in
@@ -2717,7 +2770,16 @@ async function createEngagement() {
     if (result.link_dropped) lines.push(result.link_dropped);
     banner(lines.join("\n"), result.link_dropped ? "warn" : "ok");
   } catch (err) {
-    failed(err);
+    // A refusal - 188's duplicate name among them - stays in the dialog, in
+    // the API's words, until a field is edited or the dialog is closed:
+    // nothing the person typed is lost, and a toast would vanish (decision 196).
+    // Anything else - stale, locked, failed - is a notice (decision 193).
+    if (err.failure && err.failure.kind === "refused") {
+      $("ne-note").textContent = err.message;
+      $("ne-note").classList.remove("hidden");
+    } else {
+      failed(err);
+    }
   } finally {
     btn.disabled = false;
   }
@@ -3079,7 +3141,8 @@ async function saveEditor() {
 // ── wiring ──────────────────────────────────────────────────────────────
 
 $("btn-scan").addEventListener("click", runScan);
-$("btn-new").addEventListener("click", openWizard);
+$("btn-new-household").addEventListener("click", openNewHousehold);
+$("btn-add-return").addEventListener("click", () => openAddReturn(lastState && lastState.household));
 $("btn-inbox").addEventListener("click", () => paths && window.tracker.open(paths.inbox));
 $("btn-client-folder").addEventListener("click", () => paths && window.tracker.open(paths.client_folder));
 $("btn-edit-household").addEventListener("click", openHouseholdEditor);
@@ -3125,26 +3188,31 @@ $("form-grid").addEventListener("click", (e) => {
   if (card) chooseForm(card.dataset.form);
 });
 $("wi-back").addEventListener("click", () => showStep("form"));
-$("wf-back").addEventListener("click", () => showStep("prior"));
-$("wh-cancel").addEventListener("click", () => $("modal").classList.add("hidden"));
-$("wh-next").addEventListener("click", () => {
-  renderPriorPage();
-  showStep("prior");
+$("wh-cancel").addEventListener("click", closeNewReturn);
+$("wh-next").addEventListener("click", () => showStep("form"));
+$("wf-cancel").addEventListener("click", closeNewReturn);
+// A refusal in the dialog's note stands until the person edits a field.
+$("modal").addEventListener("input", hideCreateNote);
+// The household card's roll fold (decision 196): its ticks and form picks
+// are held for the household on screen, its one button rolls it, and
+// the people button opens the editor on that return - which redraws the card
+// of the same household, so the choices come back as they were left.
+$("household-roll").addEventListener("change", (e) => {
+  if (!e.target.closest(".roll-tick, .roll-form-pick")) return;
+  if (lastState && lastState.household) gatherRollChoice(lastState.household);
 });
-$("hh-existing").addEventListener("change", () => {
-  syncHouseholdStep();
-  renderPriorPage();
+$("household-roll").addEventListener("click", async (e) => {
+  if (e.target.closest("#btn-roll")) {
+    rollFromCard();
+    return;
+  }
+  const button = e.target.closest("button.roll-review-people");
+  if (!button) return;
+  if (lastState && lastState.household) gatherRollChoice(lastState.household);
+  // One state call for the return (decision 194), then the editor on it.
+  await showReturn(button.dataset.path);
+  openEditor();
 });
-$("wf-cancel").addEventListener("click", () => $("modal").classList.add("hidden"));
-$("wp-cancel").addEventListener("click", () => $("modal").classList.add("hidden"));
-$("wp-new-client").addEventListener("click", () => showStep("form"));
-$("ro-household").addEventListener("change", (e) => {
-  rollFor = e.target.value || null;
-  renderPriorPage();
-});
-$("ro-create").addEventListener("click", rollForward);
-$("ro-year").addEventListener("keydown", (e) => e.key === "Enter" && rollForward());
-$("ro-year").addEventListener("input", syncUntickedNote);
 $("btn-schedule").addEventListener("click", installSchedule);
 $("btn-save-root").addEventListener("click", saveRoot);
 $("root-input").addEventListener("keydown", (e) => e.key === "Enter" && saveRoot());
@@ -3174,7 +3242,7 @@ $("cu-add").addEventListener("click", addCustomItem);
 $("cu-rows").addEventListener("addrow", addCustomItem);
 $("ed-add").addEventListener("click", addEditorRow);
 $("ed-rows").addEventListener("addrow", addEditorRow);
-// The People block's one button, in the wizard and in the editor
+// The People block's one button, in Add a return / New household and in the editor
 // (decision 128); the rows wire their own controls as they are drawn.
 $("wp-add").addEventListener("click", () => {
   wizardPeople.push(blankPerson());
@@ -3183,16 +3251,6 @@ $("wp-add").addEventListener("click", () => {
 $("ep-add").addEventListener("click", () => {
   editorPeople.push(blankPerson());
   renderPeople("ep-people", editorPeople, () => {});
-});
-// The returning-client page's button for looking at a return's people
-// opens the editor on that return, which is where the block lives and the
-// only place a person is added, changed or removed.
-$("prior-list").addEventListener("click", async (e) => {
-  const button = e.target.closest("button.roll-review-people");
-  if (!button) return;
-  $("modal").classList.add("hidden");
-  await showReturn(button.dataset.path);
-  openEditor();
 });
 $("ed-paste-btn").addEventListener("click", () => {
   const added = pasteRows($("ed-paste").value);
@@ -3205,9 +3263,9 @@ $("editor").addEventListener("click", (e) => {
   if (e.target === $("editor")) closeEditor();
 });
 $("ne-create").addEventListener("click", createEngagement);
-$("ne-cancel").addEventListener("click", () => $("modal").classList.add("hidden"));
+$("ne-cancel").addEventListener("click", closeNewReturn);
 $("modal").addEventListener("click", (e) => {
-  if (e.target === $("modal")) $("modal").classList.add("hidden");
+  if (e.target === $("modal")) closeNewReturn();
 });
 $("moved-list").addEventListener("click", (e) => {
   const restore = e.target.closest(".r-restore");
@@ -3269,7 +3327,7 @@ $("filed-list").addEventListener("click", (e) => {
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
-    $("modal").classList.add("hidden");
+    closeNewReturn();
     closeEditor();
   }
 });

@@ -557,7 +557,7 @@ def _saved_root() -> Path | None:
 
 #: The one flag the app passes: which engagement a command is about.
 ENGAGEMENT_FLAG = "--engagement"
-#: Every word the household's card, the wizard's household step and the
+#: Every word the household's card, the New household step and the
 #: misfit list show (decision 125). The renderer types none of it: it
 #: reads these from the vocabulary, as it reads every other word Python
 #: owns.
@@ -574,7 +574,33 @@ OPEN_CLIENT_FOLDER_LABEL = "Open Client Folder"
 OPEN_INBOX_LABEL = "Open Inbox"
 EDIT_HOUSEHOLD_LABEL = "Edit household"
 NEW_HOUSEHOLD_LABEL = "New household"
-EXISTING_HOUSEHOLD_LABEL = "Add a return to an existing household"
+#: Decision 196: the household's card carries the two ways a return is made
+#: for a household the tracker knows - Roll forward to the next year, and Add
+#: a return - and the toolbar's New household makes one it does not. There is
+#: no wizard and no household picked on one page for another to act on; every
+#: word of the three is here, and the page types none of them.
+ROLL_FORWARD_TO = "Roll forward to {year}"
+ROLL_TICKED_LABEL = "Roll the ticked returns forward to {year}"
+ROLL_INTRO = ("Last year's list is the starting point. Everything the client actually sent, set "
+              "aside or under-delivered carries forward - what was set aside as not applicable "
+              "under its own heading, for a fresh decision; the form template only fills blanks.")
+ROLL_NO_TEMPLATE = "No template — carry last year's list as it is"
+ROLL_DONE_LINE = "{rolled} return(s) rolled into {year}; {retired} retired"
+ROLL_CARRIED = "{n} request(s) carried"
+ROLL_UNFILED = "{n} file(s) sent last year were never filed"
+ROLL_RETIRED_LINE = "{label}: retired."
+ADD_RETURN_LABEL = "Add a return"
+ADD_RETURN_TITLE = "Add a return to {household}"
+NEW_HOUSEHOLD_INTRO = ("A client folder is a household: one folder per tax year inside it, one "
+                       "folder per return inside that, and one inbox the client drops everything "
+                       "into.")
+FORM_STEP_TITLE = "What type of return?"
+FORM_STEP_NOTE = "The request list is tailored to the form you pick."
+CHANGE_FORM_LABEL = "Change form type"
+ITEMS_TITLE = "New {form} return"
+CREATE_RETURN_LABEL = "Create return"
+RETURN_CREATED_LINE = ('Return "{label}" created with {n} request(s) asked for, client README '
+                       "generated. Open the Client Folder to show it.")
 HOUSEHOLD_RETURNS_HEADING = "Returns this year"
 HOUSEHOLD_QUEUE_LINE = "{n} document(s) waiting for a person across this household"
 #: The feed list (decision 129): what a drop folder feeds beyond its own
@@ -643,7 +669,7 @@ SHARING_NOTE = ("The tracker cannot see Drive's sharing. The two grants are the 
 #: Why *Mark as shared* refuses: the inbox's link is the one part of the
 #: three the tracker can see was done, so it is the one part it insists on.
 SHARE_LINK_FIRST = "paste the inbox's link into the household first"
-#: What the returning-client page says under its checklist of returns, so
+#: What the roll fold on the household's card says beside its ticks, so
 #: nobody unticks a return expecting it to sit still (decision 126).
 ROLLOVER_UNTICKED_NOTE = ("A return left unticked is retired for {year}: it is set inactive and "
                           "stops being chased. Tick it later and roll it on its own if that changes.")
@@ -759,19 +785,19 @@ RENAME_TO_LABEL = "New identifier"
 RENAME_LABEL = "Rename"
 RENAMED_NOTE = "{old} renamed {new}; {moved} working copy(ies) moved with it and the request was re-scanned"
 RENAME_LEFT_NOTE = "left in the old folder because no row names them: {left}"
-#: What the returning-client page says of last year's set-aside rows, in
+#: What the roll's banner says of last year's set-aside rows, in
 #: one line beside the carried counts.
 NOT_APPLICABLE_CARRIED = "{n} request(s) not applicable last year - review them in the editor"
 #: And of the catalog rows the client never had, added as not asked
 #: (decision 142, rewording decision 9: they used to be offered, not added).
 NEW_NOT_ASKED_CARRIED = ("{n} catalog row(s) this client never had added as not asked - "
                          "a document for one files there; set Asked in the editor to ask for it")
-#: The wizard's heading over the catalog's checkboxes, and the sentence
+#: The request list's heading over the catalog's checkboxes, and the sentence
 #: under it (decision 142): a tick is a request the client is asked for
 #: and reminded of; every row is on the return either way.
 ASK_THE_CLIENT = "Ask the client"
 #: The name the app's folded table of not-asked rows is read out by, and
-#: the returning-client page's label over the template pick (decision 142).
+#: the roll fold's label over the template pick (decision 142).
 NOT_ASKED_TABLE_LABEL = "Requests not asked for"
 ROLL_TEMPLATE_LABEL = "Form template (fills blanks, adds the rows this client never had as not asked)"
 ASK_THE_CLIENT_NOTE = ("Every row is on the return. A ticked row is asked for and reminded; "
@@ -1011,7 +1037,7 @@ def _vocab() -> dict:
         "not_applicable_label": NOT_APPLICABLE_LABEL,
         "override_reasons": list(OVERRIDE_REASONS),
         "override_reason_other": OVERRIDE_REASON_OTHER,
-        # The one line the returning-client page adds for last year's
+        # The one line the roll's banner adds for last year's
         # set-aside rows, and the origin value it groups them on.
         "origin_not_applicable": ORIGIN_NOT_APPLICABLE,
         "not_applicable_carried": NOT_APPLICABLE_CARRIED,
@@ -1127,8 +1153,9 @@ def _vocab() -> dict:
             "return_name_pattern": RETURN_NAME_PATTERN,
             "engagement_label_pattern": ENGAGEMENT_LABEL_PATTERN,
         },
-        # Every word the household's card, the wizard's household step and
-        # the misfit list show. The page types none of them.
+        # Every word the household's card, its roll fold, the Add a return
+        # and New household dialog and the misfit list show. The page types
+        # none of them.
         "household": {
             "heading": HOUSEHOLD_HEADING,
             "name_label": HOUSEHOLD_NAME_LABEL,
@@ -1144,7 +1171,17 @@ def _vocab() -> dict:
             "open_inbox": OPEN_INBOX_LABEL,
             "edit": EDIT_HOUSEHOLD_LABEL,
             "new": NEW_HOUSEHOLD_LABEL,
-            "existing": EXISTING_HOUSEHOLD_LABEL,
+            # Add a return and New household (decision 196): the dialog goes
+            # form, then request list, and says whose return it makes.
+            "add_return": ADD_RETURN_LABEL,
+            "add_return_title": ADD_RETURN_TITLE,
+            "new_intro": NEW_HOUSEHOLD_INTRO,
+            "form_step_title": FORM_STEP_TITLE,
+            "form_step_note": FORM_STEP_NOTE,
+            "change_form": CHANGE_FORM_LABEL,
+            "items_title": ITEMS_TITLE,
+            "create_return": CREATE_RETURN_LABEL,
+            "return_created": RETURN_CREATED_LINE,
             "returns_heading": HOUSEHOLD_RETURNS_HEADING,
             "queue_line": HOUSEHOLD_QUEUE_LINE,
             "misfits_heading": MISFITS_HEADING,
@@ -1159,9 +1196,18 @@ def _vocab() -> dict:
             "mark_shared": MARK_SHARED_LABEL,
             "shared_on_line": SHARED_ON_LINE,
             "not_yet_shared_line": NOT_YET_SHARED_LINE,
-            # And the one line the returning-client page needs of its own:
-            # what unticking a return does to it.
+            # The roll fold's words (decision 196): the line that names the
+            # year, what rolling carries, what unticking a return does to it,
+            # the button, and the banner a roll leaves.
             "rollover_unticked": ROLLOVER_UNTICKED_NOTE,
+            "roll_forward_to": ROLL_FORWARD_TO,
+            "roll_ticked": ROLL_TICKED_LABEL,
+            "roll_intro": ROLL_INTRO,
+            "roll_no_template": ROLL_NO_TEMPLATE,
+            "roll_done": ROLL_DONE_LINE,
+            "roll_carried": ROLL_CARRIED,
+            "roll_unfiled": ROLL_UNFILED,
+            "roll_retired_line": ROLL_RETIRED_LINE,
             # The feed list (decision 129): what this drop folder also
             # feeds, who feeds it, the word that adds one, and the two
             # warnings a person reads before extending either. The page
@@ -1952,6 +1998,16 @@ def _household_payload(engagement: Path) -> dict:
     side. There is still **one letter per return** and the Reminder card
     is still the surface a person approves from: this is a line, never a
     send, and never a bundle.
+
+    And whether a roll is offered (decision 196): ``roll_year`` is the
+    next year only when the household has one open year, is not paused,
+    has an active return not yet rolled on, and that next year has ended -
+    never mid-season, when a roll would retire the returns being prepared.
+    The rule is the API's, beside the pause and the two-years note, and the
+    page never computes it; the command's own refusals stay the backstop.
+    Each return carries its form and its people's names, read from the
+    records already loaded here, so the card's roll fold needs no walk of
+    the practice (``priors`` walks it, and stays for the command line).
     """
     today = dt.date.today()
     household_dir = household_of(engagement)
@@ -1979,6 +2035,12 @@ def _household_payload(engagement: Path) -> dict:
     )
     feeds, fed = _feed_payload(household_dir, years)
     pause = _pause_payload(household_dir, info, returns)
+    rollable = [one for one in returns
+                if one.active and not one.superseded_by and one.tax_year in years]
+    roll_year = None
+    if (len(years) == 1 and not pause["sentence"] and rollable
+            and next_tax_year(years[0]) <= default_tax_year(today)):
+        roll_year = next_tax_year(years[0])
     return {
         # Why the pass touches nothing of this household, and what a person
         # may accept (decision 188): the card draws the sentence and the
@@ -1992,11 +2054,16 @@ def _household_payload(engagement: Path) -> dict:
         "feeds": feeds,
         "fed_by": fed,
         "open_years": years,
+        # The year the card's roll fold names, or None when no roll is
+        # offered (decision 196).
+        "roll_year": roll_year,
         "returns": [
             {"label": one.label, "path": str(one.path),
              "year": one.tax_year if one.tax_year is not None else year_of(one.path),
              "return_name": one.info.return_name or one.path.name,
              "active": one.active, "superseded_by": one.superseded_by,
+             "form": one.info.form,
+             "people": [person.name for person in one.info.people],
              "reminder": (_return_reminder(one.path, today, one.label)
                           if one.active and one.tax_year in years else None)}
             for one in returns
@@ -2902,7 +2969,7 @@ def _with_list(reply: dict, registry: Registry | None = None) -> dict:
     return reply
 
 
-#: What the wizard is told when a household name typed again is, by the
+#: What New household is told when a household name typed again is, by the
 #: layout's key, a household already in the list (decision 188, R7; the
 #: tie-breaker is Jason's ruling of 2026-09-26: a first name or a middle
 #: initial, then the city - never an identifier).
@@ -2965,6 +3032,8 @@ def _cmd_create(argv: list[str]) -> dict:
     over by every return added to it. The same holds for a household named
     by ``household``, where the record already knows one of that name.
     Otherwise a new household is made first, and the return after it.
+    The app sends ``household_path`` from Add a return on the household's
+    card and the four fields from New household (decision 196).
 
     The year defaults to the most recently ended year; catalog rows are
     shifted to it. The return's greeting and link default to the
@@ -3414,7 +3483,10 @@ def _cmd_roll_household(argv: list[str]) -> dict:
     left open and ``warning`` is the rollover's own sentence
     (``RolledNotAllRetired``), which the app shows as its banner.
 
-    The year defaults to the one after the household's open year. Nothing
+    The app calls it from the household's card (decision 196), with the
+    household on screen and the year the card named; the command line keeps
+    ``year`` for the rare case. The year defaults to the one after the
+    household's open year. Nothing
     under the client tree is touched but the new year's folder, and no
     permission is changed: the inbox was shared once, and a new year is a
     new folder under the same grant.

@@ -41,6 +41,7 @@ from tracker.records import (
     MAX_SIZE_KB,
     MIN_EXPECTED_COUNT,
 )
+from tracker.rollover import next_tax_year
 from tracker.runner import DRAFT_WEEKDAY, LOG_FILENAME, STATUS_PAGE_FILENAME, WEEKDAY_NAMES
 from tracker.scaffold import PREPARED_DIR_NAME, REVIEW_DIR_NAME
 from tracker.scheduling import SCHEDULE_XML_ENCODING, TASK_NAME
@@ -3231,6 +3232,12 @@ def test_state_carries_the_household_its_open_years_its_returns_and_the_queue_co
     assert household["members"] == ["John Park"] and household["contact"] == "John"
     assert household["open_years"] == [default_tax_year()]
     assert [r["path"] for r in household["returns"]] == [str(personal), str(business)]
+    # Each return's form and its people's names, for the card's roll fold
+    # (decision 196); and no roll is offered while the open year is the
+    # one being prepared.
+    assert [r["form"] for r in household["returns"]] == ["1040", ""]
+    assert [r["people"] for r in household["returns"]] == [[TEST_CLIENT], [TEST_CLIENT]]
+    assert household["roll_year"] is None
     assert household["queue"] == sum(
         1 for one in (personal, business)
         for row in read_index(one) if row.decision == NEEDS_REVIEW)
@@ -3385,6 +3392,93 @@ def test_roll_household_after_a_failed_retirement_says_what_was_rolled_and_left_
     assert "Not retired: 1120S - Park Landscaping LLC (the disk filled)" in payload["warning"]
     assert load_engagement_info(llc).active is True
     assert payload["state"]["paths"]["engagement"] == payload["rolled"][0]["created"]
+
+
+# ------------------ decision 196: the roll is the household on screen ----
+
+
+def _calendar_a_year_on(monkeypatch):
+    """The calendar a year later: the year every return here was made for
+    has ended, and so has the one it would roll to."""
+    later = default_tax_year() + 1
+    monkeypatch.setattr(api, "default_tax_year", lambda today=None: later)
+
+
+def test_the_household_card_names_the_year_it_rolls_to_and_each_returns_form_and_people(
+        capsys, demo_root, monkeypatch):
+    """Once the year a roll opens has ended, the card's state names it -
+    the next year after the household's one open year - and every return
+    carries the form and the people's names the roll fold shows, read from
+    the records the card is already drawn from."""
+    john, sofia, llc = a_park_household(capsys, demo_root)
+    _calendar_a_year_on(monkeypatch)
+    household = api._state(john)["household"]
+    assert household["open_years"] == [default_tax_year()]
+    assert household["roll_year"] == next_tax_year(default_tax_year())
+    assert [r["path"] for r in household["returns"]] == [str(john), str(sofia), str(llc)]
+    for one in household["returns"]:
+        assert "form" in one and one["people"] == [TEST_CLIENT], one
+
+
+def test_no_roll_is_offered_mid_season_on_a_paused_household_or_with_two_open_years(
+        capsys, demo_root, monkeypatch):
+    """The API says when a roll is offered, and never while the year being
+    prepared is still the open one, while the household is paused (decision
+    188), or while two years are open - each of which the command refuses
+    or would retire the returns being worked on."""
+    from tracker.layout import private_household_dir
+
+    # Mid-season: the open year is the calendar's default, whose next year
+    # has not ended.
+    items = [{"identifier": "A01", "document": "W-2"}]
+    assert run(capsys, "create", stdin={"household": "Lee Family", "return_name": "1040 - Ann Lee",
+                                        "items": items})[0] == 0
+    ann = where(demo_root, "1040 - Ann Lee", household="Lee Family")
+    assert api._state(ann)["household"]["roll_year"] is None
+
+    # Two open years: a return for the year before sits beside it.
+    assert run(capsys, "create", stdin={
+        "household_path": str(private_household_dir(demo_root, "Lee Family")),
+        "return_name": "1040 - Ben Lee", "year": default_tax_year() - 1, "items": items})[0] == 0
+    with monkeypatch.context() as later:
+        _calendar_a_year_on(later)
+        household = api._state(ann)["household"]
+        assert len(household["open_years"]) == 2 and household["roll_year"] is None
+
+    # Paused: the folder renamed under its record (the 188 fixture), with
+    # the calendar where a roll would otherwise be offered.
+    renamed = _a_renamed_household(capsys, demo_root)
+    _calendar_a_year_on(monkeypatch)
+    household = api._state(renamed)["household"]
+    assert household["pause"]["sentence"] and household["roll_year"] is None
+
+
+def test_rolling_one_households_return_never_touches_another_household(capsys, demo_root):
+    """D1 held at the API end: rolling a return of one household rolls that
+    household, and another household's private and client trees - every
+    name and every byte, its journal with them - are as they were."""
+    from tracker.layout import CLIENTS_TREE, private_household_dir
+
+    john, sofia, llc = a_park_household(capsys, demo_root)
+    assert run(capsys, "create", stdin={
+        "household": "Lee Family", "return_name": "1040 - Ann Lee",
+        "items": [{"identifier": "A01", "document": "W-2"}]})[0] == 0
+    lee_private = private_household_dir(demo_root, "Lee Family")
+    lee_client = demo_root / CLIENTS_TREE / "Lee Family"
+
+    def snapshot():
+        return {str(path.relative_to(demo_root)): path.read_bytes() if path.is_file() else None
+                for tree in (lee_private, lee_client) for path in sorted(tree.rglob("*"))}
+
+    before, journal = snapshot(), ledger.read_events(lee_private)
+    year = default_tax_year() + 1
+    code, payload = run(capsys, "roll-household", api.ENGAGEMENT_FLAG, str(john), stdin={
+        "year": year, "returns": [{"prior": str(john)}, {"prior": str(sofia)}, {"prior": str(llc)}]})
+    assert code == 0, payload
+    assert sorted(one["prior"] for one in payload["rolled"]) == [
+        "1040 - John Park", "1040 - Sofia Park", "1120S - Park Landscaping LLC"]
+    assert snapshot() == before
+    assert ledger.read_events(lee_private) == journal
 
 
 def test_creating_a_households_first_return_hands_back_the_sharing_checklist_and_a_later_return_does_not(
@@ -4865,16 +4959,21 @@ def test_the_returning_client_page_picks_the_returns_recorded_form_by_default(ca
     """Decision 142's review, R2: each prior carries the catalog it was cut
     from, and the page's template pick defaults to it, so the catalog rows
     the return never had arrive as not asked without anybody choosing; a
-    return that recorded no form defaults to no template."""
+    return that recorded no form defaults to no template. Since decision
+    196 the pick is the roll fold's on the household's card, and the form
+    comes from the card's own state; ``priors`` still carries it for the
+    command line."""
     spec = {"household": HOUSEHOLD, "return_name": "Recorded", "form": "1040",
             "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
     assert run(capsys, "create", stdin=spec)[0] == 0
     [prior] = run(capsys, "priors")[1]["priors"]
     assert prior["form"] == "1040"
+    engagement = where(demo_root, "Recorded")
+    assert [r["form"] for r in api._state(engagement)["household"]["returns"]] == ["1040"]
 
     js = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(encoding="utf-8")
-    assert "selected: f.id === p.form" in js
-    assert "selected: !forms.some((f) => f.id === p.form)" in js
+    assert ": r.form;" in js and "const known = forms.some((f) => f.id === picked);" in js
+    assert "selected: f.id === picked" in js and "selected: !known" in js
 
 
 # ------------------------------------------------ decision 144: short names ----

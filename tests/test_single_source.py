@@ -12,6 +12,8 @@ import json
 import re
 from pathlib import Path
 
+import pytest
+
 from tests.conftest import child_env
 from tracker.content_check import RETIRED_CACHE_FILENAME
 
@@ -689,18 +691,177 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
 
 
 def test_the_renderers_one_list_writer_flattens_what_it_is_handed():
-    """Half the callers build a list as "one fixed node, then a mapped
+    """Half the callers once built a list as "one fixed node, then a mapped
     array", and ``replaceChildren`` turns an array it is handed into the
     text ``[object HTMLOptionElement],...`` instead of its elements - so
-    the wizard's list of existing households and the rollover's list of
-    form templates each came out holding one option and a line of noise.
-    One flatten in the writer, not a rule every call site has to remember.
+    the old list of existing households and the rollover's list of form
+    templates each came out holding one option and a line of noise. One
+    flatten in the writer, not a rule every call site has to remember; it
+    stays for any caller that builds a list that way.
     """
     js = read("app/renderer/app.js")
     body = js.split("function show(id, nodes) {", 1)[1].split("}", 1)[0]
     assert "nodes.flat(" in body, body
-    # And the pattern the flatten exists for is still written this way.
-    assert re.search(r'show\("hh-existing", \[\s*\n.*\n\s*households\.map\(', js)
+
+
+# ------------------ decision 196: Roll forward and Add a return ----
+
+
+def _js_function(js: str, header: str) -> str:
+    """One function of ``app.js`` exactly as it is spelled, braces matched."""
+    start = js.index(header)
+    depth = 0
+    for at in range(js.index("{", start + len(header) - 1), len(js)):
+        depth += {"{": 1, "}": -1}.get(js[at], 0)
+        if depth == 0:
+            return js[start:at + 1]
+    raise AssertionError(f"{header} in app.js has no closing brace")
+
+
+def test_the_renderer_keeps_no_hidden_household_choice():
+    """D1 was a household picked on one page into a variable the roll page
+    never read. The wizard is gone whole, and with it every place a
+    household could be chosen except the card being looked at: the one
+    household a new return is added to by path is set from that card, and
+    only there."""
+    js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
+    for name in ("chosenHousehold", "rollFor", "rollHousehold", "priorsOfHousehold",
+                 "openWizard"):
+        assert not re.search(rf"\b{name}\b", js), name
+    assert 'call(["priors"]' not in js
+    for ident in ("hh-existing", "ro-household", "ro-year", "wiz-prior", "wp-new-client",
+                  "wf-back", 'btn-new"'):
+        assert ident not in js and ident not in html, ident
+    assigned = re.findall(r"\baddingTo = ([^;]+);", js)
+    assert len(assigned) == 4, assigned          # the declaration, and the three below
+    opening = _js_function(js, "async function openAddReturn(hh) {")
+    fresh = _js_function(js, "async function openNewHousehold() {")
+    closing = _js_function(js, "function closeNewReturn() {")
+    assert re.findall(r"\baddingTo = ([^;]+);", opening) == ["hh.path"]
+    assert re.findall(r"\baddingTo = ([^;]+);", fresh) == ["null"]
+    assert re.findall(r"\baddingTo = ([^;]+);", closing) == ["null"]
+    assert "let addingTo = null;" in js
+
+
+def _a_household(name: str, year: int) -> dict:
+    """A fabricated household payload as ``state.household`` carries it:
+    two returns of the open year, one already rolled on, one retired."""
+    home = f"/fabricated/{name}"
+    def one(label, **more):
+        return {"label": f"{name} {year} {label}", "path": f"{home}/{year}/{label}", "year": year,
+                "active": True, "superseded_by": None, "form": "1040",
+                "people": [f"{label} person"], **more}
+    return {"name": name, "path": home, "open_years": [year], "roll_year": year + 1,
+            "returns": [one("1040 - One"), one("1120S - Two", form="1120S"),
+                        one("1040 - Rolled", superseded_by="later"),
+                        one("1040 - Retired", active=False)]}
+
+
+def test_roll_forward_rolls_the_household_on_screen_and_names_no_other(tmp_path):
+    """The roll call is one pure function of the household on screen: run
+    as written, with another household's choices left over, it names only
+    the household it was handed - its open-year return, its ticked returns,
+    the year the card named - and nothing when no roll is offered."""
+    import shutil
+    import subprocess
+
+    import tracker.api as api_module
+
+    js = read("app/renderer/app.js")
+    body = _js_function(js, "function rollHouseholdCall(hh, choice) {")
+    # The static half, which always runs: the one roll call is built here,
+    # and this function reads nothing but what it is handed.
+    assert js.count('"roll-household"') == 1 and '"roll-household"' in body
+    for name in ("households", "active", "lastState", "document", "$("):
+        assert not re.search(rf"(?<![\w.]){re.escape(name)}", body), name
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not on PATH (CI installs it); the roll call's source is still held by name")
+    here, there = _a_household("Alpha Household", 2026), _a_household("Beta Household", 2026)
+    a_ticked, a_unticked = here["returns"][0]["path"], here["returns"][1]["path"]
+    b_first = there["returns"][0]["path"]
+    script = tmp_path / "roll_call.js"
+    script.write_text(
+        "const input = JSON.parse(require('fs').readFileSync(0, 'utf8'));\n"
+        "const vocab = { engagement_flag: input.flag };\n"
+        f"{body}\n"
+        "const choice = (c) => c && { household: c.household, unticked: new Set(c.unticked),\n"
+        "                              forms: new Map(c.forms) };\n"
+        "process.stdout.write(JSON.stringify(input.cases.map(\n"
+        "  ([hh, c]) => rollHouseholdCall(hh, choice(c)))));\n",
+        encoding="utf-8", newline="\n")
+    leftover = {"household": there["path"], "unticked": [a_ticked], "forms": [[b_first, "1065"]]}
+    own = {"household": here["path"], "unticked": [a_unticked], "forms": [[a_ticked, "1040"]]}
+    cases = [[here, leftover], [here, own], [{**here, "roll_year": None}, own]]
+    done = subprocess.run([node, str(script)], capture_output=True, text=True, encoding="utf-8",
+                          input=json.dumps({"flag": api_module.ENGAGEMENT_FLAG, "cases": cases}),
+                          timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    with_leftover, with_own, offered_none = json.loads(done.stdout)
+
+    open_year = [r["path"] for r in here["returns"] if r["active"] and not r["superseded_by"]]
+    for argv, spec in (with_leftover, with_own):
+        assert argv[:2] == ["roll-household", api_module.ENGAGEMENT_FLAG]
+        assert argv[2] in open_year
+        assert spec["year"] == here["roll_year"]
+        assert all(one["prior"] in open_year for one in spec["returns"])
+        assert "Beta" not in json.dumps([argv, spec])
+    # Beta's leftover untick and pick are nobody's here: every open-year
+    # return is ticked, each with its own recorded form.
+    assert with_leftover[1]["returns"] == [{"prior": a_ticked, "form": "1040"},
+                                           {"prior": a_unticked, "form": "1120S"}]
+    # Alpha's own untick leaves that return out, to be retired by the API.
+    assert with_own[1]["returns"] == [{"prior": a_ticked, "form": "1040"}]
+    assert offered_none is None
+
+
+#: The words decision 196 adds under ``vocab.household``.
+ROLL_AND_ADD_KEYS = ("roll_forward_to", "roll_ticked", "roll_intro", "roll_no_template",
+                     "roll_done", "roll_carried", "roll_unfiled", "roll_retired_line",
+                     "add_return", "add_return_title", "new_intro", "form_step_title",
+                     "form_step_note", "change_form", "items_title", "create_return",
+                     "return_created")
+
+
+def test_every_word_of_roll_forward_add_a_return_and_new_household_is_the_apis():
+    """Every visible word of the roll fold, Add a return and New household
+    comes from the API's vocabulary: each is read by its key, none is typed
+    in the renderer or the page, and the wizard's own typed words are gone
+    from the app and from the docs that walked a person through it."""
+    import tracker.api as api_module
+
+    js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
+    words = api_module._vocab()["household"]
+    assert "existing" not in words
+    for key in ROLL_AND_ADD_KEYS:
+        assert isinstance(words[key], str) and words[key], key
+        assert f"vocab.household.{key}" in js or f"words.{key}" in js, key
+        literal = words[key]
+        stem = literal.split("{")[0].strip() or literal.split("}")[1].split("{")[0].strip()
+        for quoted in (f'"{stem}', f"'{stem}", f"`{stem}", f">{stem}"):
+            assert quoted not in js and quoted not in html, (key, quoted)
+    for typed in ("New Engagement", "Create Engagement", "Roll Forward<", "returning client",
+                  "No template — carry", "return(s) rolled into", "request(s) carried",
+                  "file(s) sent last year were never filed"):
+        assert typed not in js and typed not in html, typed
+    for doc in ("docs/runbook.md", "README.md", "docs/workflow.md"):
+        assert "New Engagement" not in read(doc), doc
+
+
+def test_a_refused_create_stays_in_the_dialog():
+    """A refused create - 188's duplicate household name among them - is
+    shown in the dialog's own note, where it stays until a field is edited
+    or the dialog closed, so nothing typed is lost; a toast would vanish."""
+    js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
+    body = _js_function(js, "async function createEngagement() {")
+    caught = body.split("} catch (err) {", 1)[1].split("} finally {", 1)[0]
+    assert '$("ne-note")' in caught and "err.message" in caught, caught
+    assert "toast(" not in caught, caught
+    assert '<p id="ne-note" class="rem-hold hidden" role="alert"></p>' in html
 
 
 def test_the_renderer_names_no_catalog_of_its_own():

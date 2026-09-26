@@ -8,7 +8,7 @@ people side.
 
 - **Engagement lead** — owns each return's request list: picks the return
   type or rolls last year's list forward, trims and extends it, and fills in
-  the client, share link and due date in the wizard (they land in the
+  the client, share link and due date in Add a return (they land in the
   record as the engagement's details; nothing else needs registering). Owns
   the household too — its members, its contact and its inbox link, saved in
   the app's household card. Starts the
@@ -69,9 +69,10 @@ an engagement's list is cut from it into the record, where the app's
 editor shows it.
 
 - **Returning client (the default):** roll the household's year forward.
-  In the desktop app, *New Engagement* opens on the returning-client page,
-  which lists the household's open-year returns with every one ticked and
-  rolls them all at once; a return left unticked is retired for that year.
+  In the desktop app, the household's card carries *Roll forward to <year>*
+  once that year has ended; it lists the household's open-year returns
+  with every one ticked and rolls them all at once; a return left unticked
+  is retired for that year.
   On the command line it is `python -m tracker.rollover <the household's
   folder> --year 2027 --all`, or `<last year's return> --form 1040` for one
   return on its own. Last year's rows win on every field; the form
@@ -80,7 +81,7 @@ editor shows it.
 - **New client:** pick the return type (`tracker.templates.FORM_TYPES`),
   tick the rows to **ask the client** for, add anything unusual. Every
   catalog row goes on the return either way. Every request needs a
-  keyword the document itself contains; the wizard defaults it to the
+  keyword the document itself contains; the request list defaults it to the
   document name so a custom request can still auto-file.
 
 Every row is in one of three states (decisions 116 and 142):
