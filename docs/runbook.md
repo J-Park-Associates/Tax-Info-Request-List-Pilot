@@ -1228,8 +1228,8 @@ exactly as it came.
    or download the package from the `build.yml` run a `v*` release tag
    started (decision 191: a package is built from a tag and from nothing
    else, and only an admin can make one, so it is the build of reviewed
-   code). **Before writing the USB stick, check the package**, in this
-   order:
+   code). **Before putting it on the machine, check the package**, in
+   this order:
    1. Download the run's artifact. GitHub always hands it over wrapped in
       a zip of its own, `portable-package.zip`.
    2. Unzip `portable-package.zip`. Inside are the package itself,
@@ -1243,8 +1243,9 @@ exactly as it came.
       GitHub. Not only with the `.sha256` file beside the zip, which
       travelled with it; and not with the artifact's own digest GitHub
       shows on the run page, which is the outer zip's.
-   5. Only when they match, unzip `tax-document-tracker-<tag>.zip` onto
-      the stick. When they differ, do not install it: download it again,
+   5. Only when they match, unzip `tax-document-tracker-<tag>.zip` into
+      the app's folder on the machine's own drive. When they differ, do not
+      install it: download it again,
       and if they still differ, ask.
 
    There is no separate backup of the app, and none is needed.

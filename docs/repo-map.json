@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 147,
     "edges": 870,
-    "reused": 97
+    "reused": 116
   },
   "node_types": [
     "artifact",
@@ -2662,8 +2662,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "2d0356c5635ba2e8",
-      "lines": 1577,
+      "sha256": "a3178706760733f9",
+      "lines": 1578,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
