@@ -12,12 +12,13 @@ on that day: ``stamped_on`` does, and ``pass_on`` is a pass with it.
 
 import datetime as dt
 import html
+import re
 from pathlib import Path
 
 import pytest
 
 import tracker.runner as runner_module
-from tests.conftest import make_engagement, seed_index
+from tests.conftest import make_engagement, seed_index, written_elsewhere
 from tests.samples import DEMO_ITEMS, PRIOR_YEAR, SCRATCH_PEOPLE, YEAR, build_samples
 from tracker import ledger, store
 from tracker.filer import NEEDS_REVIEW, IndexEntry, read_index
@@ -148,7 +149,8 @@ def pass_on(stamped_on, engagement, day, **kwargs):
 
 def drafted_events(engagement_dir):
     """The ``drafted`` lines on the record, without their stamps."""
-    return [{k: v for k, v in e.items() if k not in (ledger.EVENT_KEY, ledger.AT_KEY)}
+    return [{k: v for k, v in e.items()
+             if k not in (ledger.EVENT_KEY, ledger.AT_KEY) and k not in ledger.LINE_KEYS}
             for e in ledger.read_events(engagement_dir) if e[ledger.EVENT_KEY] == ledger.DRAFTED]
 
 
@@ -790,15 +792,13 @@ def _a_malformed_line_is_one_folders_problem(tmp_path, samples, line: dict, said
     every other engagement is run, and the pass ends by its own rule (an
     engagement error is exit 1) rather than in a traceback inside
     discovery before one document is filed."""
-    import json
     import shutil
 
     build_engagement(tmp_path / "Clients", samples, name="Good")
     bad = build_engagement(tmp_path / "Clients", samples, name="Bad 2025", drops=())
     lines = ledger.read_events(bad.path)
-    with ledger.path_for(bad.path).open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps({ledger.EVENT_KEY: line.pop("event"), ledger.AT_KEY: "2026-01-01T00:00:00Z",
-                                 **line}) + "\n")
+    written_elsewhere(bad.path, {ledger.EVENT_KEY: line.pop("event"),
+                                 ledger.AT_KEY: "2026-01-01T00:00:00Z", **line})
     try:
         loaded = discover_engagements(tmp_path / "Clients")
         problems = {e.path.name: e.problem for e in loaded.engagements}
@@ -1928,7 +1928,9 @@ def test_the_runner_reads_the_clients_root_from_the_settings_file_when_given_non
 ):
     """The job names the app's settings folder and no root (decision 131):
     with a root recorded there the pass runs over it; with none it exits
-    saying how to set one; a root on the command line still wins."""
+    saying how to set one. A root on the command line used to win over it;
+    since decision 159 (E5, the review's S2) one outside the root this
+    machine's record checkpoint belongs to is refused by name."""
     from tracker.settings import ENV_SETTINGS_DIR, NO_ROOT_HINT, SET_ROOT_HINT, set_clients_root
 
     recorded = tmp_path / "Recorded"
@@ -1947,8 +1949,9 @@ def test_the_runner_reads_the_clients_root_from_the_settings_file_when_given_non
     assert (recorded / STATUS_PAGE_FILENAME).is_file()
     assert not (by_hand / STATUS_PAGE_FILENAME).exists()
 
-    assert main([str(by_hand), SETTINGS_FLAG, str(settings), "--reminders", "never"]) == 0
-    assert (by_hand / STATUS_PAGE_FILENAME).is_file()
+    with pytest.raises(SystemExit, match="record checkpoint belongs to"):
+        main([str(by_hand), SETTINGS_FLAG, str(settings), "--reminders", "never"])
+    assert not (by_hand / STATUS_PAGE_FILENAME).exists()
 
     empty = tmp_path / "empty"
     empty.mkdir()
@@ -2001,9 +2004,11 @@ def test_the_old_scheduled_job_naming_another_root_is_refused_and_says_install_s
     assert main([str(current) + os.sep, LOG_FLAG, "--reminders", "never"]) == 0
     assert (current / STATUS_PAGE_FILENAME).is_file()
 
-    # A person running one folder by hand, no log: a root on the command line still wins.
-    assert main([str(old), "--reminders", "never"]) == 0
-    assert (old / STATUS_PAGE_FILENAME).is_file()
+    # A person running another folder by hand, no log: not the job's refusal,
+    # but since decision 159 (E5) the checkpoint's - it belongs to Current.
+    with pytest.raises(SystemExit, match="record checkpoint belongs to"):
+        main([str(old), "--reminders", "never"])
+    assert not (old / STATUS_PAGE_FILENAME).exists()
     capsys.readouterr()
 
 
@@ -3035,3 +3040,480 @@ def test_roll_forward_refuses_a_stopped_household_with_its_own_sentence(tmp_path
         roll_household(household, target_year=YEAR + 1, plans=[ReturnPlan(prior=engagement.path)])
     assert str(refused.value) == HOUSEHOLD_RECORD_MISSING.format(folder="Test Household")
     assert not (household / str(YEAR + 1)).exists()
+# ------------------------------------------- decision 159: records that need a person ----
+
+
+def test_conflict_copies_and_lock_siblings_are_named_every_pass_and_never_deleted(tmp_path, samples):
+    """A-8 / G-5: what a sync client leaves beside a return's record and
+    lock, and beside a household's, is named on the practice page and
+    counted in the run log every pass - and no pass deletes, moves or
+    renames one; only a person does."""
+    from tracker.layout import household_of
+    from tracker.page import esc
+    from tracker.runner import (
+        RECORD_SIBLING,
+        STATUS_RECORDS_HEADING,
+        append_log,
+        status_report,
+        write_status_page,
+    )
+
+    repo = Path(__file__).resolve().parents[1]
+
+    engagement = build_engagement(tmp_path, samples)
+    left = [engagement.path / "_ledger (1).jsonl", engagement.path / "_scan (conflict).lock",
+            household_of(engagement.path) / "_LEDGER_conflict-2026.jsonl"]
+    for copy in left:
+        copy.write_text('{"event": "scanned"}\n', encoding="utf-8")
+    log = tmp_path / "logs" / "runs.log"
+
+    for _week in range(2):
+        report = run_registry(discover_engagements(tmp_path), today=FRIDAY)
+        append_log(log, report)
+        write_status_page(tmp_path, status_report(discover_engagements(tmp_path), passed=report.runs))
+        text = (tmp_path / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
+        assert STATUS_RECORDS_HEADING in text
+        for copy in left:
+            assert esc(RECORD_SIBLING.format(path=copy.relative_to(tmp_path))) in text
+            assert copy.read_text(encoding="utf-8") == '{"event": "scanned"}\n'
+    assert log.read_text(encoding="utf-8").count("3 copy(ies) beside a record") == 2
+
+    source = "\n".join(path.read_text(encoding="utf-8") for path in (repo / "tracker").glob("*.py"))
+    assert "siblings(" in source and not any(
+        f"{call}(" in line for line in source.splitlines() if "sibling" in line
+        for call in ("unlink", "rename", "replace", "rmtree", "move"))
+
+
+def test_a_line_written_on_another_machine_is_named_until_acknowledged(tmp_path, samples):
+    """Decision 159, C-1 (a): a line another machine wrote is accepted - the
+    pass files on - and named on the practice page every pass until a
+    person acknowledges it; then it is not."""
+    from tests.conftest import written_elsewhere
+    from tracker import checkpoint
+    from tracker.runner import STATUS_RECORDS_HEADING
+
+    engagement = build_engagement(tmp_path, samples)
+    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 0
+    written_elsewhere(engagement.path, ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: {}}),
+                      host="laptop-2")
+    seq = len(ledger.read_events(engagement.path))
+
+    for _pass in range(2):
+        assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 0
+        text = (tmp_path / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
+        assert STATUS_RECORDS_HEADING in text
+        assert f"line {seq} was written on laptop-2" in text
+
+    with checkpoint.opened(checkpoint.path_for(store.store_path())) as held:
+        (line,) = checkpoint.unacknowledged(held)
+        assert checkpoint.acknowledge(held, line.key) == 1
+    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 0
+    text = (tmp_path / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
+    assert STATUS_RECORDS_HEADING not in text and "laptop-2" not in text
+
+
+def test_a_refused_record_is_named_among_the_records_that_need_a_person(tmp_path, samples):
+    """A record cut short behind the pass's back is that return's problem -
+    the pass goes on - and it is listed first, with what to do."""
+    from tracker.runner import STATUS_RECORDS_HEADING
+
+    engagement = build_engagement(tmp_path, samples)
+    other = build_engagement(tmp_path, samples, name="Other TY2025")
+    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 0
+    path = ledger.path_for(engagement.path)
+    path.write_bytes(b"".join(path.read_bytes().splitlines(keepends=True)[:-1]))
+
+    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 1
+    text = (tmp_path / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
+    first, _rest = text.split(f"<h2>{STATUS_RECORDS_HEADING}", 1)[1].split("</ul>", 1)
+    # Decision 188's sentence for a journal shorter than the store, with the
+    # recover pointer every refused record ends with.
+    assert "holds fewer lines than the store has applied" in first and ledger.RUN_RECOVER in first
+    assert other.path.name not in first
+    path.unlink()                    # the fixtures' own fresh store would read it as it now is
+
+
+def test_a_root_the_checkpoint_does_not_belong_to_is_refused_by_the_pass(tmp_path, samples, monkeypatch):
+    """E5: the settings naming another folder than the one this machine's
+    checkpoint belongs to - a copy of the root - stop the pass by name
+    before anything is walked."""
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    settings = tmp_path.parent / f"{tmp_path.name}-app"
+    settings.mkdir(exist_ok=True)
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    clients, copy = tmp_path / "Clients", tmp_path / "Clients copy"
+    build_engagement(clients, samples)
+    copy.mkdir()
+    set_clients_root(clients)
+    assert main(["--date", FRIDAY.isoformat()]) == 0
+    set_clients_root(copy)
+    with pytest.raises(SystemExit, match="record checkpoint belongs to .*If the clients root really moved"):
+        main(["--date", FRIDAY.isoformat()])
+    assert not (copy / STATUS_PAGE_FILENAME).exists()
+
+
+def test_a_failure_before_the_root_is_written_to_the_last_pass_file(tmp_path, monkeypatch, capsys):
+    """The scheduled job's shape writes the last-pass file beside the store
+    (decision 159, E4): a pass that stops before it reaches a root says so
+    with a reason code, and one that runs says when and how it ended. A
+    pass run by hand writes nothing there, so it cannot make a stopped
+    schedule look alive."""
+    import json
+
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    beside_the_store = Path(store.store_path()).with_name(runner_module.LAST_PASS_FILENAME)
+    assert runner_module.last_pass_path() == beside_the_store
+
+    empty = tmp_path / "empty-settings"
+    empty.mkdir()
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(empty))
+    with pytest.raises(SystemExit):
+        main([SETTINGS_FLAG, str(empty), "--reminders", "never"])
+    failed = json.loads(beside_the_store.read_text(encoding="utf-8"))
+    assert failed["result"] == runner_module.PASS_FAILED
+    assert failed["reason_code"] == runner_module.PASS_NO_ROOT
+    assert failed["root"] == "" and failed["started"] and failed["ended"] and failed["build"]
+
+    clients = tmp_path / "Clients"
+    make_engagement(clients, [RequestItem(identifier="A01", document="W-2")])
+    settings = tmp_path / "settings"
+    settings.mkdir()
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    set_clients_root(clients)
+    assert main([SETTINGS_FLAG, str(settings), "--reminders", "never"]) == 0
+    ran = json.loads(beside_the_store.read_text(encoding="utf-8"))
+    assert ran["result"] == runner_module.PASS_SUCCEEDED and ran["reason_code"] == ""
+    assert Path(ran["root"]) == clients
+
+    # By hand, or a dry run: the file is left as the schedule wrote it.
+    before = beside_the_store.read_bytes()
+    assert main([str(clients), "--reminders", "never"]) == 0
+    assert main([SETTINGS_FLAG, str(settings), "--dry-run", "--reminders", "never"]) == 0
+    assert beside_the_store.read_bytes() == before
+    capsys.readouterr()
+
+
+def test_the_last_pass_line_is_amber_when_old_and_red_when_failed(tmp_path):
+    """The app's one line: plain when recent, amber after
+    LAST_PASS_AMBER_HOURS or when no pass has run, red on a failure or a
+    file that does not read - every word the runner's."""
+    now = dt.datetime(2026, 3, 2, 12, 0)
+    path = tmp_path / runner_module.LAST_PASS_FILENAME
+    assert runner_module.last_pass_line(path, now=now) == {
+        "text": runner_module.LAST_PASS_NEVER, "level": runner_module.LEVEL_WARN}
+
+    recent = now - dt.timedelta(hours=1)
+    runner_module.write_last_pass(path, started=recent, ended=recent, root="R",
+                                  result=runner_module.PASS_SUCCEEDED)
+    line = runner_module.last_pass_line(path, now=now)
+    assert line["level"] == runner_module.LEVEL_OK and "2026-03-02 11:00" in line["text"]
+
+    old = now - dt.timedelta(hours=runner_module.LAST_PASS_AMBER_HOURS, minutes=1)
+    runner_module.write_last_pass(path, started=old, ended=old, root="R",
+                                  result=runner_module.PASS_SUCCEEDED)
+    line = runner_module.last_pass_line(path, now=now)
+    assert line["level"] == runner_module.LEVEL_WARN and line["text"].endswith(runner_module.LAST_PASS_OLD)
+
+    runner_module.write_last_pass(path, started=recent, ended=recent, root="",
+                                  result=runner_module.PASS_FAILED,
+                                  reason_code=runner_module.PASS_SETTINGS)
+    line = runner_module.last_pass_line(path, now=now)
+    assert line["level"] == runner_module.LEVEL_ERR
+    assert runner_module.PASS_REASONS[runner_module.PASS_SETTINGS] in line["text"]
+
+    path.write_text("{not json", encoding="utf-8")
+    assert runner_module.last_pass_line(path, now=now)["level"] == runner_module.LEVEL_ERR
+
+
+def test_a_pass_over_a_root_the_checkpoint_does_not_belong_to_is_refused_however_the_root_is_given(
+        tmp_path, samples, monkeypatch):
+    """The review's S2 (probe C7): a copy of the root typed on the command
+    line is held to the checkpoint exactly as the settings' root is; one
+    client's folder inside the claimed root is not a copy."""
+    import shutil
+
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    settings = tmp_path.parent / f"{tmp_path.name}-app"
+    settings.mkdir(exist_ok=True)
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    clients, copy = tmp_path / "Clients", tmp_path / "Clients copy"
+    build_engagement(clients, samples)
+    set_clients_root(clients)
+    assert main(["--date", FRIDAY.isoformat()]) == 0
+    shutil.copytree(clients, copy)
+    with pytest.raises(SystemExit, match="record checkpoint belongs to"):
+        main([str(copy), "--date", FRIDAY.isoformat()])
+    with pytest.raises(SystemExit, match="record checkpoint belongs to"):
+        main([str(copy), "--date", FRIDAY.isoformat(), "--dry-run"])
+    assert main([str(clients), "--date", FRIDAY.isoformat(), "--dry-run"]) == 0
+    shutil.rmtree(copy)
+
+
+def test_a_checkpoint_that_will_not_open_stops_the_pass_by_name(tmp_path, samples):
+    """The review's S4: the file and the runbook's step, never a traceback;
+    the file is left where it is for a person. Since the rebase review's
+    MF1 the pass does not stop at the proof: it serves no household, exits
+    1, and says it first on the practice page it still writes."""
+    from tracker import checkpoint
+
+    build_engagement(tmp_path, samples)
+    where = checkpoint.path_for(store.store_path())
+    where.parent.mkdir(parents=True, exist_ok=True)
+    where.write_bytes(b"fabricated garbage, not a database" * 40)
+    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 1
+    page = html.unescape((tmp_path / STATUS_PAGE_FILENAME).read_text(encoding="utf-8"))
+    assert re.search("No household was served this pass: .*cannot read this machine's record "
+                     "checkpoint.*runbook §6", page)
+    assert where.read_bytes().startswith(b"fabricated garbage")
+    where.unlink()
+
+
+def test_a_record_that_does_not_read_is_among_the_records_that_need_a_person(tmp_path, samples):
+    """The review's S6: a careless hand edit that leaves a line unreadable is
+    listed first with what to do, and the page never quotes the parser."""
+    from tracker.runner import STATUS_RECORDS_HEADING
+
+    engagement = build_engagement(tmp_path, samples)
+    with ledger.path_for(engagement.path).open("ab") as handle:
+        handle.write(b'{"event": "scanned", "note": "Fabricated" "x"}\n')
+    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 1
+    text = (tmp_path / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
+    first = text.split(f"<h2>{STATUS_RECORDS_HEADING}", 1)[1].split("</ul>", 1)[0]
+    assert "does not read as an event (it is not JSON)" in first and ledger.RUN_RECOVER in first
+    assert "Fabricated" not in text and "column" not in first
+    ledger.path_for(engagement.path).unlink()
+
+
+def test_the_page_names_the_acknowledge_command_with_this_machines_store(tmp_path, samples):
+    """The review's N7: no placeholder a person has to fill in."""
+    from tests.conftest import written_elsewhere
+
+    engagement = build_engagement(tmp_path, samples)
+    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 0
+    written_elsewhere(engagement.path, ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: {}}),
+                      host="laptop-2")
+    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 0
+    text = (tmp_path / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
+    assert "&lt;store&gt;" not in text and "<store>" not in text
+    assert f"python -m tracker.checkpoint &quot;{store.store_path()}&quot; acknowledge" in text
+
+
+def test_a_first_pass_typed_on_one_clients_folder_claims_nothing(tmp_path, samples, monkeypatch):
+    """The final review's SF1: only the settings' root claims this machine's
+    record checkpoint. A first real pass typed on a folder inside it claims
+    nothing, so the scheduled pass over the whole root still runs. Since
+    decision 188 the door refuses such a root itself - inside a tree of the
+    real root - before the checkpoint is asked, so nothing is claimed."""
+    from tracker import checkpoint
+    from tracker.layout import PRIVATE_TREE
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    settings = tmp_path.parent / f"{tmp_path.name}-app"
+    settings.mkdir(exist_ok=True)
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    clients = tmp_path / "Clients"
+    build_engagement(clients, samples)
+    set_clients_root(clients)
+    with pytest.raises(SystemExit, match="is inside the"):
+        main([str(clients / PRIVATE_TREE), "--date", FRIDAY.isoformat()])
+    where = checkpoint.path_for(store.store_path())
+    if where.is_file():
+        with checkpoint.opened(where) as held:
+            assert checkpoint.root_of(held) is None
+    assert main([SETTINGS_FLAG, str(settings), "--date", FRIDAY.isoformat()]) == 0
+    with checkpoint.opened(where) as held:
+        assert checkpoint.root_of(held) == str(clients.resolve())
+
+
+def test_a_refused_root_is_never_written_into_even_to_log_the_refusal(tmp_path, monkeypatch):
+    """The final review's SF2: a settings root refused by decision 137's
+    rule gets no run-log line; the last-pass file beside the store carries
+    the reason code."""
+    import json
+
+    from tracker.runner import LAST_PASS_FILENAME, LOG_FILENAME, last_pass_path
+    from tracker.settings import ENV_SETTINGS_DIR, KEY_CLIENTS_ROOT, settings_path
+
+    settings = tmp_path / "appdata" / "settings"
+    settings.mkdir(parents=True)
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    around = settings.parent
+    settings_path().write_text(json.dumps({KEY_CLIENTS_ROOT: str(around)}), encoding="utf-8")
+    with pytest.raises(SystemExit):
+        main([SETTINGS_FLAG, str(settings), "--reminders", "never"])
+    assert not (around / LOG_FILENAME).exists()
+    assert last_pass_path().name == LAST_PASS_FILENAME
+    assert json.loads(last_pass_path().read_text(encoding="utf-8"))["result"] == "failed"
+
+
+# ------------------- the last-pass file beside 189's log and page (159 on 189) ----
+
+
+def _a_scheduled_main(tmp_path, monkeypatch, body):
+    """Run ``main`` in the scheduled job's shape with ``_pass`` replaced by
+    ``body`` (what the pass itself does is 189's, tested above)."""
+    from tracker.settings import ENV_SETTINGS_DIR
+
+    settings = tmp_path / "settings"
+    settings.mkdir(exist_ok=True)
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    monkeypatch.setattr(runner_module, "_pass", body)
+    return main([SETTINGS_FLAG, str(settings), "--reminders", "never"])
+
+
+def test_a_household_not_served_twice_is_the_last_pass_files_reason(tmp_path, monkeypatch):
+    """Decision 189's exit 3 is its own reason in the file, not "a return
+    failed": the app's line points at the page, which names the household."""
+    import json
+
+    assert _a_scheduled_main(tmp_path, monkeypatch,
+                             lambda ns, parser, reached: runner_module.NOT_SERVED_TWICE_EXIT_CODE) == 3
+    written = json.loads(runner_module.last_pass_path().read_text(encoding="utf-8"))
+    assert written["result"] == runner_module.PASS_FAILED
+    assert written["reason_code"] == runner_module.PASS_NOT_SERVED
+    line = runner_module.last_pass_line()
+    assert runner_module.PASS_REASONS[runner_module.PASS_NOT_SERVED] in line["text"]
+
+
+def test_a_last_pass_file_that_cannot_be_written_never_stops_the_pass(tmp_path, monkeypatch):
+    """Decision 189: nothing but the pass's own work decides its exit."""
+    def refused(*args, **kwargs):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(runner_module, "write_last_pass", refused)
+    assert _a_scheduled_main(tmp_path, monkeypatch, lambda ns, parser, reached: 0) == 0
+
+
+def test_a_pass_that_stops_after_its_root_logs_the_kind_never_the_words(tmp_path, monkeypatch):
+    """The run log's early-failure line carries the reason's code, its fixed
+    sentence and the class of what stopped the pass - never the message,
+    which can name a client's folder (decision 189, security principle 7)."""
+    clients = tmp_path / "Clients"
+    clients.mkdir()
+
+    def stopped(ns, parser, reached):
+        reached["root"] = str(clients)
+        raise RuntimeError("Fabricated Client, 1040 - Fabricated Name")
+
+    with pytest.raises(RuntimeError):
+        _a_scheduled_main(tmp_path, monkeypatch, stopped)
+    said = (clients / LOG_FILENAME).read_text(encoding="utf-8")
+    assert f"pass failed ({runner_module.PASS_ENDED_EARLY})" in said and "(RuntimeError)" in said
+    assert "Fabricated" not in said
+
+
+@pytest.mark.parametrize("text", [
+    '{"started": "2026-03-02T11:00:00", "result": "Fabricated Client says hello"}',
+    "[" * 100_000,
+    '{"started": "2026-03-02T11:00:00+05:00", "result": "succeeded"}',
+], ids=["a-result-not-written-here", "nested-past-the-limit", "an-aware-time"])
+def test_the_last_pass_line_echoes_nothing_the_file_holds(tmp_path, text):
+    """Read as 189 reads its hint: bounded, never raising, and a result or
+    a reason is said only when it is one this module writes."""
+    path = tmp_path / runner_module.LAST_PASS_FILENAME
+    path.write_text(text, encoding="utf-8")
+    line = runner_module.last_pass_line(path, now=dt.datetime(2026, 3, 2, 12, 0))
+    assert line["level"] == runner_module.LEVEL_ERR and "Fabricated" not in line["text"]
+
+
+# ------------- a checkpoint that cannot be asked (the rebase review's MF1-SF3) ----
+
+
+def _the_scheduled_pass_with(tmp_path, monkeypatch, spoil):
+    """Two households, the settings naming their root, and ``spoil`` done to
+    this machine's record checkpoint; then the scheduled job's pass, logged.
+    Returns the exit, the page, the log and the last-pass file."""
+    import json
+
+    from tracker import checkpoint
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    clients = tmp_path / "Clients"
+    make_engagement(clients, [RequestItem(identifier="A01", document="W-2")], household="Smith Family")
+    make_engagement(clients, [RequestItem(identifier="A01", document="W-2")], household="Jones Family")
+    settings = tmp_path / "settings"
+    settings.mkdir()
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    set_clients_root(clients)
+    monkeypatch.setattr(checkpoint, "BUSY_TIMEOUT_MS", 100)
+    where = checkpoint.path_for(store.store_path())
+    checkpoint.open(where).close()
+    with spoil(where):
+        code = main([SETTINGS_FLAG, str(settings), "--reminders", "never", "--log"])
+    page = html.unescape((clients / STATUS_PAGE_FILENAME).read_text(encoding="utf-8"))
+    logged = (clients / LOG_FILENAME).read_text(encoding="utf-8")
+    written = json.loads(runner_module.last_pass_path().read_text(encoding="utf-8"))
+    return code, page, logged, written
+
+
+def test_a_damaged_checkpoint_ends_the_pass_named_with_its_page_and_log_written(tmp_path, monkeypatch):
+    """MF1: a record-heads.db damaged past its first page used to end every
+    scheduled pass as a traceback before the first household, with no page
+    and no log. Now the pass reaches its root, serves no household, writes
+    both - the checkpoint's own sentence first under Records that need a
+    person - and the last-pass file carries its own reason."""
+    from contextlib import contextmanager
+
+    @contextmanager
+    def damaged(where):
+        data = bytearray(where.read_bytes())
+        for i in range(4096, len(data)):
+            data[i] = 0xA5
+        where.write_bytes(bytes(data))
+        yield
+
+    code, page, logged, written = _the_scheduled_pass_with(tmp_path, monkeypatch, damaged)
+    assert code == 1
+    records = page[page.index(runner_module.STATUS_RECORDS_HEADING):]
+    first = records.split("<li>", 2)[1]
+    assert first.startswith("No household was served this pass") and "Set the file aside" in first
+    assert "No household was served this pass" in logged and "Traceback" not in logged
+    assert written["reason_code"] == runner_module.PASS_CHECKPOINT_UNREADABLE
+    assert runner_module.PASS_REASONS[runner_module.PASS_CHECKPOINT_UNREADABLE] in \
+        runner_module.last_pass_line()["text"]
+
+
+def test_a_busy_checkpoint_is_never_called_another_root(tmp_path, monkeypatch):
+    """SF1: three states, three sentences. Busy says try again and never
+    set-aside; it is never "not the root", which sends a person to
+    move-root."""
+    import sqlite3
+    from contextlib import contextmanager
+
+    @contextmanager
+    def held_elsewhere(where):
+        holder = sqlite3.connect(where, isolation_level=None)
+        holder.execute("BEGIN EXCLUSIVE")
+        try:
+            yield
+        finally:
+            holder.execute("ROLLBACK")
+            holder.close()
+
+    code, page, _logged, written = _the_scheduled_pass_with(tmp_path, monkeypatch, held_elsewhere)
+    assert code == 1
+    assert written["reason_code"] == runner_module.PASS_CHECKPOINT_BUSY
+    assert "the next pass tries again" in page and "Set the file aside" not in page
+    assert "belongs to" not in runner_module.last_pass_line()["text"]
+
+
+def test_lines_from_other_machines_that_cannot_be_listed_are_said_where_they_would_be(
+        tmp_path, samples, monkeypatch):
+    """SF3: a checkpoint that fails only when asked for the lines from other
+    machines leaves a sentence in their place on the page, never nothing."""
+    from tracker import checkpoint
+
+    clients = tmp_path / "Clients"
+    build_engagement(clients, samples)
+
+    def unlisted():
+        raise checkpoint.CheckpointUnavailable("record-heads.db", "SQLITE_IOERR_READ")
+
+    monkeypatch.setattr(store, "foreign_lines", unlisted)
+    report = runner_module.status_report(discover_engagements(clients))
+    page = html.unescape(write_status_page(clients, report).read_text(encoding="utf-8"))
+    assert "Lines from other machines could not be listed this pass: record-heads.db" in page
+    assert "SQLITE_IOERR_READ" in page

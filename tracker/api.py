@@ -43,6 +43,8 @@ Commands:
   settings / set-root      where the clients live (the settings file beside the app)
   install-schedule         register the daily job for that same folder
   unlock    clear a stale engagement lock (a fresh one is refused)
+  acknowledge-foreign  a person has looked at the lines another machine wrote
+            in one return's record; they stop being named (decision 159)
 """
 
 from __future__ import annotations
@@ -61,6 +63,7 @@ from pathlib import Path
 
 from tracker import (
     STANDING_RULES,
+    checkpoint,
     content_check,
     door,
     layout,
@@ -229,6 +232,7 @@ from tracker.rollover import (
     ORIGIN_PRIOR,
     UNKNOWN_YEAR_LABEL,
     ReturnPlan,
+    RolledNotAllRetired,
     carried_link,
     carry_engagement_info,
     detect_year,
@@ -252,6 +256,7 @@ from tracker.runner import (
     append_log,
     last_draft_day,
     last_drafted,
+    last_pass_line,
     reader_start_warning,
     run_household,
     status_report,
@@ -2252,7 +2257,11 @@ def _cmd_list(argv: list[str]) -> dict:
     # The app's first call: an app too deep for its reader says so at once,
     # in a banner that stays (SPEC-169 section 9).
     empty = {"engagements": [], "households": [], "misfits": [],
-             "reader_warning": ocr.reader_path_warning()}
+             "reader_warning": ocr.reader_path_warning(),
+             # When the scheduled pass last ran and how it ended (decision
+             # 159, E4): one line on the main screen, in the runner's words,
+             # with or without a root - a missing root is one way it stops.
+             "last_pass": last_pass_line()}
     # A saved root the rule refuses (decision 188, E-13) is never walked:
     # the app asks for the folder again and says why, and the rest of the
     # app - its vocabulary, its commands - still arrives with this reply.
@@ -2308,6 +2317,7 @@ def _cmd_list(argv: list[str]) -> dict:
                     for misfit in registry.misfits],
         "needs_root": False, "root": str(root), "vocab": _vocab(),
         "reader_warning": empty["reader_warning"],
+        "last_pass": empty["last_pass"],
     }
 
 
@@ -2809,13 +2819,18 @@ def _cmd_roll_household(argv: list[str]) -> dict:
          "returns": [{"prior": "<return folder>", "form": "1040",
                       "return_name": ""}, ...]}
 
-    Every ticked return is rolled into the year, one at a time, each under
-    its own lock and by the same carry rule the per-return ``rollover``
-    uses - which stays the primitive this calls. **Every open-year return
-    the list leaves out is retired** with one details edit, so the
-    household has exactly one open year again and its inbox goes on being
-    sorted (decision 126). One return's refusal is reported in ``skipped``
-    and undoes none of the others.
+    Every ticked return is rolled into the year by the same carry rule the
+    per-return ``rollover`` uses - which stays the primitive this plans
+    with. **Every open-year return the list leaves out is retired** with
+    one details edit, so the household has exactly one open year again and
+    its inbox goes on being sorted (decision 126). **Every ticked return or
+    none** (decision 159): one return's refusal is the whole call's error,
+    naming that return, and nothing is rolled; ``skipped`` stays in the
+    reply's shape and is always empty. A retirement that fails after every
+    return was rolled is not an error of the call - the new returns exist -
+    so the reply says what was done: ``not_retired`` names the returns
+    left open and ``warning`` is the rollover's own sentence
+    (``RolledNotAllRetired``), which the app shows as its banner.
 
     The year defaults to the one after the household's open year. Nothing
     under the client tree is touched but the new year's folder, and no
@@ -2846,7 +2861,12 @@ def _cmd_roll_household(argv: list[str]) -> dict:
             return_name=_folder_name(named, "return") if named else "",
         ))
 
-    done = roll_household(household_dir, target_year=target_year, plans=plans)
+    warning = ""
+    not_retired: list[Path] = []
+    try:
+        done = roll_household(household_dir, target_year=target_year, plans=plans)
+    except RolledNotAllRetired as exc:
+        done, not_retired, warning = exc.result, exc.not_retired, str(exc)
     rolled = [
         {"prior": was.name, "created": str(created),
          "label": Engagement(path=created, household_path=household_dir,
@@ -2864,6 +2884,10 @@ def _cmd_roll_household(argv: list[str]) -> dict:
         "retired": [Engagement(path=one, household_path=household_dir,
                                info=load_engagement_info(one)).label
                     for one in done.retired],
+        "not_retired": [Engagement(path=one, household_path=household_dir,
+                                   info=load_engagement_info(one)).label
+                        for one in not_retired],
+        "warning": warning,
         "target_year": target_year,
         "state": _state(landed),
     }
@@ -3684,6 +3708,46 @@ def _cmd_install_schedule(argv: list[str]) -> dict:
     }
 
 
+def _cmd_acknowledge_foreign(argv: list[str]) -> dict:
+    """A person has looked at the lines another machine wrote in one
+    return's record (decision 159, C-1 (a)): they stop being named on the
+    practice page. Taken under the return's lock, like every write."""
+    engagement = _engagement_dir(argv)
+    with engagement_lock(engagement):
+        acknowledged = store.acknowledge_foreign(engagement)
+    return {"acknowledged": acknowledged, "state": _state(engagement)}
+
+
+#: The commands that write a record, a file or the store. Each holds the
+#: settings' root to this machine's record checkpoint first (decision 159,
+#: E5): a checkpoint that belongs to another root is refused by name
+#: before anything is written.
+WRITING_COMMANDS = frozenset({
+    "rollover", "roll-household", "mark-shared", "scan", "approve", "create", "assign",
+    "dismiss", "unfile", "restore", "edit", "edit-household", "unlearn", "rename",
+    "mark-missing", "acknowledge-foreign",
+    # Decision 188's accept writes the household's and its returns' records
+    # (the port review's M2): held to the checkpoint's root like every other.
+    "accept-folder-name",
+})
+
+
+def _prove_the_root() -> None:
+    """:func:`tracker.store.prove_the_root` for the root the settings name,
+    said as the API says every refusal. The root is the door's first
+    (decision 188, :func:`_saved_root`): a root its rule refuses is said in
+    its sentence and never asked of the checkpoint."""
+    root = _saved_root()
+    if root is None:
+        return
+    try:
+        store.prove_the_root(root)
+    except (store.StoreError, checkpoint.CheckpointError) as exc:
+        # Not this machine's root, or its checkpoint busy or unreadable -
+        # each in its own sentence (the rebase review's SF1).
+        raise ManifestError(str(exc)) from None
+
+
 COMMANDS = {
     "state": _cmd_state,
     "priors": _cmd_priors,
@@ -3711,6 +3775,7 @@ COMMANDS = {
     "settings": _cmd_settings,
     "set-root": _cmd_set_root,
     "install-schedule": _cmd_install_schedule,
+    "acknowledge-foreign": _cmd_acknowledge_foreign,
 }
 
 
@@ -3719,6 +3784,8 @@ def main(argv: list[str]) -> int:
         print(json.dumps({"error": f"usage: tracker.api {'|'.join(COMMANDS)}"}))
         return 1
     try:
+        if argv[0] in WRITING_COMMANDS:
+            _prove_the_root()
         # One reading child for the command, started only if something is
         # read, and ended with it (decision 169, R-4).
         with ocr.reading_session(in_a_child=content_check.READ_IN_A_CHILD):

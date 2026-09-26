@@ -1743,6 +1743,33 @@ def test_the_app_is_told_at_once_when_it_sits_too_deep_for_its_reader(capsys, tm
     assert payload["reader_warning"] == ocr.READER_PATH_WARNING
 
 
+def test_the_app_state_reports_the_last_pass(capsys, tmp_path, monkeypatch):
+    """``list``, the call the main screen is drawn from, carries the one
+    line about the scheduled pass (decision 159, E4) in the runner's words
+    and colour, with a root or without one: amber before any pass, red
+    after a failed one."""
+    import datetime as dt
+
+    from tracker import runner
+    from tracker.settings import ENV_SETTINGS_DIR
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    code, payload = run(capsys, "list")
+    assert code == 0 and payload["needs_root"] is True
+    assert payload["last_pass"] == {"text": runner.LAST_PASS_NEVER, "level": runner.LEVEL_WARN}
+
+    now = dt.datetime.now()
+    runner.write_last_pass(runner.last_pass_path(), started=now, ended=now, root="",
+                           result=runner.PASS_FAILED, reason_code=runner.PASS_ROOT_REFUSED)
+    clients = tmp_path / "Clients"
+    clients.mkdir()
+    assert run(capsys, "set-root", stdin={"root": str(clients)})[0] == 0
+    code, payload = run(capsys, "list")
+    assert code == 0 and payload["needs_root"] is False
+    assert payload["last_pass"]["level"] == runner.LEVEL_ERR
+    assert runner.PASS_REASONS[runner.PASS_ROOT_REFUSED] in payload["last_pass"]["text"]
+
+
 def test_the_short_path_warning_comes_with_the_returns_too(capsys, demo_root, monkeypatch):
     from tracker import ocr
 
@@ -3092,19 +3119,31 @@ def a_park_household(capsys, root):
             ("1040 - John Park", "1040 - Sofia Park", "1120S - Park Landscaping LLC")]
 
 
-def test_roll_household_returns_the_rolled_the_skipped_and_the_retired_and_the_state_of_the_first_new_return(
+def test_roll_household_returns_the_rolled_and_the_retired_and_the_state_of_the_first_new_return(
     capsys, demo_root,
 ):
     """One call rolls the household's year: the returns it was given, the
-    ones that refused with their sentences, the ones it retired - and the
-    state of the first return it made, which is where the app lands."""
+    ones it retired - and the state of the first return it made, which is
+    where the app lands. A refusal on any ticked return is the whole call's
+    error, naming the return, and nothing is rolled or retired (decision
+    159); ``skipped`` stays in the reply and is empty."""
     from tracker.manifest import load_engagement_info
 
     john, sofia, llc = a_park_household(capsys, demo_root)
     year = default_tax_year() + 1
-    # The middle plan's target is already there, so it refuses and the
-    # others are rolled all the same.
-    where(demo_root, "1040 - Sofia Park", year=year, household="Park Family").mkdir(parents=True)
+    # The second plan's target is already there, so the whole roll refuses.
+    blocking = where(demo_root, "1040 - Sofia Park", year=year, household="Park Family")
+    blocking.mkdir(parents=True)
+    code, payload = run(capsys, "roll-household", api.ENGAGEMENT_FLAG, str(llc), stdin={
+        "year": year,
+        "returns": [{"prior": str(john)}, {"prior": str(sofia)}],
+    })
+    assert code == 1, payload
+    assert payload["error"].startswith("1040 - Sofia Park: ") and "already exists" in payload["error"]
+    assert payload["error"].endswith("Nothing was rolled.")
+    assert not where(demo_root, "1040 - John Park", year=year, household="Park Family").exists()
+    assert load_engagement_info(llc).active is True
+    blocking.rmdir()
 
     code, payload = run(capsys, "roll-household", api.ENGAGEMENT_FLAG, str(llc), stdin={
         "year": year,
@@ -3112,19 +3151,52 @@ def test_roll_household_returns_the_rolled_the_skipped_and_the_retired_and_the_s
     })
     assert code == 0, payload
 
-    assert [one["prior"] for one in payload["rolled"]] == ["1040 - John Park"]
+    assert [one["prior"] for one in payload["rolled"]] == ["1040 - John Park", "1040 - Sofia Park"]
     assert payload["rolled"][0]["label"] == f"Park Family {year} 1040 - John Park"
     assert payload["rolled"][0]["created"] == str(
         where(demo_root, "1040 - John Park", year=year, household="Park Family"))
     assert payload["rolled"][0]["carried"][0]["identifier"] == "A01"
-    [refused] = payload["skipped"]
-    assert refused["prior"] == "1040 - Sofia Park" and "already exists" in refused["reason"]
+    assert payload["skipped"] == [] and payload["not_retired"] == [] and payload["warning"] == ""
     # The one return nobody ticked is retired, by its label.
     assert payload["retired"] == [f"Park Family {default_tax_year()} 1120S - Park Landscaping LLC"]
     assert load_engagement_info(llc).active is False
     # The state is the first return this call made.
     assert payload["state"]["paths"]["engagement"] == payload["rolled"][0]["created"]
     assert payload["target_year"] == year
+
+
+def test_roll_household_after_a_failed_retirement_says_what_was_rolled_and_left_open(
+    capsys, demo_root, monkeypatch,
+):
+    """Decision 159, the review's S2. Every ticked return rolled and then a
+    retirement failed: the new returns exist, so the reply is not an error.
+    It names the return left open and carries the rollover's own sentence,
+    which the app shows as its banner, and lands on the first new return."""
+    from tracker import rollover
+    from tracker.manifest import load_engagement_info
+
+    john, sofia, llc = a_park_household(capsys, demo_root)
+    year = default_tax_year() + 1
+    real_save = rollover.save_rules
+
+    def llc_fails(folder, *args, **kwargs):
+        if folder == llc:
+            raise OSError("the disk filled")
+        return real_save(folder, *args, **kwargs)
+
+    monkeypatch.setattr(rollover, "save_rules", llc_fails)
+    code, payload = run(capsys, "roll-household", api.ENGAGEMENT_FLAG, str(llc), stdin={
+        "year": year,
+        "returns": [{"prior": str(john)}, {"prior": str(sofia)}],
+    })
+    assert code == 0, payload
+    assert [one["prior"] for one in payload["rolled"]] == ["1040 - John Park", "1040 - Sofia Park"]
+    assert payload["retired"] == []
+    assert payload["not_retired"] == [f"Park Family {default_tax_year()} 1120S - Park Landscaping LLC"]
+    assert payload["warning"].startswith(f"Rolled into {year}: 1040 - John Park, 1040 - Sofia Park.")
+    assert "Not retired: 1120S - Park Landscaping LLC (the disk filled)" in payload["warning"]
+    assert load_engagement_info(llc).active is True
+    assert payload["state"]["paths"]["engagement"] == payload["rolled"][0]["created"]
 
 
 def test_creating_a_households_first_return_hands_back_the_sharing_checklist_and_a_later_return_does_not(
@@ -3192,7 +3264,7 @@ def test_mark_shared_refuses_without_a_link_records_one_event_and_the_state_says
     events = ledger.read_events(household)
     assert len(events) == before + 1
     assert events[-1][ledger.EVENT_KEY] == ledger.SHARING_CONFIRMED
-    assert set(events[-1]) == {ledger.EVENT_KEY, ledger.AT_KEY}
+    assert set(events[-1]) == {ledger.EVENT_KEY, ledger.AT_KEY} | ledger.LINE_KEYS
     # Folded by nothing: the household reads back exactly as it did.
     assert ledger.replay(events).household == ledger.replay(events[:-1]).household
 
@@ -5387,3 +5459,147 @@ def test_a_returns_accept_writes_only_that_returns_line(capsys, demo_root):
     last = ledger.read_events(engagement)[-1]
     assert last[ledger.INFO_KEY] == {"household": "Park Household", "return_name": engagement.name}
     assert household_pause(household) == HOUSEHOLD_PAUSED
+# ------------------------------------------ decision 159: the record's checkpoint ----
+
+
+def test_a_person_acknowledges_a_line_another_machine_wrote(capsys, demo_root):
+    """C-1 (a): the line is accepted and named until a person says they have
+    looked; ``acknowledge-foreign`` is that, a writing command under the
+    return's lock."""
+    from tests.conftest import written_elsewhere
+
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = where(demo_root, "Smith")
+    written_elsewhere(engagement, ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: {}}),
+                      host="laptop-2")
+    assert run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))[0] == 0     # accepted
+    assert [(one.host) for one in store.foreign_lines()] == ["laptop-2"]
+
+    code, payload = run(capsys, "acknowledge-foreign", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0 and payload["acknowledged"] == 1
+    assert store.foreign_lines() == []
+    assert "acknowledge-foreign" in api.WRITING_COMMANDS
+
+
+def test_a_writing_command_refuses_a_root_the_checkpoint_does_not_belong_to(capsys, demo_root, tmp_path):
+    """E5: every writing command holds the settings' root to this machine's
+    checkpoint first; a copy of the root is refused by name before anything
+    is written."""
+    from tracker.settings import set_clients_root
+
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    copy = tmp_path / "Clients copy"
+    copy.mkdir()
+    set_clients_root(copy)
+    code, payload = run(capsys, "create", stdin={**spec, "return_name": "Jones"})
+    assert code == 1 and "record checkpoint belongs to" in payload["error"]
+    assert "If the clients root really moved" in payload["error"]
+    assert not where(copy, "Jones").exists()
+    assert run(capsys, "settings")[0] == 0                              # reading is not refused
+    set_clients_root(demo_root)
+
+
+def test_a_writing_command_says_a_busy_checkpoint_as_busy_not_as_another_root(capsys, demo_root,
+                                                                              monkeypatch):
+    """The rebase review's SF1: the checkpoint held by another run is said
+    as busy - try again - never as a root it does not belong to, and
+    nothing is written."""
+    import sqlite3
+
+    from tracker import checkpoint
+
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    monkeypatch.setattr(checkpoint, "BUSY_TIMEOUT_MS", 100)
+    holder = sqlite3.connect(checkpoint.path_for(store.store_path()), isolation_level=None)
+    holder.execute("BEGIN EXCLUSIVE")
+    try:
+        code, payload = run(capsys, "create", stdin={**spec, "return_name": "Jones"})
+    finally:
+        holder.execute("ROLLBACK")
+        holder.close()
+    assert code == 1 and "is busy" in payload["error"] and "belongs to" not in payload["error"]
+    assert not where(demo_root, "Jones").exists()
+
+
+def _writers_in_the_package() -> set[str]:
+    """Every function in ``tracker/`` that reaches a write of a record or a
+    client's file - ``store.record``, ``ledger.append``, a move
+    (``os.rename``) or a copy (``shutil.copy2``) - by name, through the
+    package's own calls, to a fixed point. Wide on purpose: a name shared by
+    two functions counts as the writer's, so a guard built on it errs toward
+    naming a command a writer."""
+    import ast
+    from pathlib import Path
+
+    roots = {("store", "record"), ("ledger", "append"), ("os", "rename"), ("shutil", "copy2")}
+    calls: dict[str, set[str]] = {}
+    writes: set[str] = set()
+    for path in sorted((Path(__file__).resolve().parents[1] / "tracker").glob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            named = calls.setdefault(node.name, set())
+            for call in (one for one in ast.walk(node) if isinstance(one, ast.Call)):
+                func = call.func
+                if isinstance(func, ast.Attribute):
+                    named.add(func.attr)
+                    if isinstance(func.value, ast.Name) and (func.value.id, func.attr) in roots:
+                        writes.add(node.name)
+                elif isinstance(func, ast.Name):
+                    named.add(func.id)
+                    if (path.stem, func.id) in roots:
+                        writes.add(node.name)
+    grew = True
+    while grew:
+        grew = False
+        for name, called in calls.items():
+            if name not in writes and called & writes:
+                writes.add(name)
+                grew = True
+    return writes
+
+
+def test_every_command_that_writes_holds_the_root_to_the_checkpoint_first():
+    """Decision 159 (E5) and the port review's M2: every API command whose
+    handler reaches a record's append, a move or a copy is in
+    ``WRITING_COMMANDS``, so the settings' root is proved against this
+    machine's record checkpoint before it writes. The writers are derived
+    from the dispatch table and the package's own calls, never listed by
+    hand, so a writing command a later decision adds is caught here."""
+    writers = _writers_in_the_package()
+    derived = {name for name, handler in api.COMMANDS.items() if handler.__name__ in writers}
+    assert "accept-folder-name" in derived, "the derivation must see decision 188's accept"
+    assert derived <= api.WRITING_COMMANDS, sorted(derived - api.WRITING_COMMANDS)
+    assert api.WRITING_COMMANDS <= set(api.COMMANDS)
+
+
+def test_accepting_a_folders_name_is_refused_on_a_root_the_checkpoint_does_not_belong_to(
+        capsys, demo_root, tmp_path):
+    """The port review's M2: decision 188's accept writes the household's and
+    its returns' records, so it is held to this machine's record checkpoint
+    like every writing command - on a copy of the root it is refused by name
+    and writes nothing."""
+    import shutil
+
+    from tracker.settings import set_clients_root
+
+    engagement = _a_renamed_household(capsys, demo_root)
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0                     # claims demo_root
+    copy = tmp_path / "Clients copy"
+    shutil.copytree(demo_root, copy)
+    set_clients_root(copy)
+    try:
+        moved = copy / engagement.relative_to(demo_root)
+        pause = run(capsys, "state", api.ENGAGEMENT_FLAG, str(moved))[1]["household"]["pause"]
+        household = moved.parent.parent
+        before = len(ledger.read_events(household))
+        code, payload = run(capsys, "accept-folder-name", api.ENGAGEMENT_FLAG, pause["engagement"],
+                            stdin={"seq": pause["seq"], "scope": "household"})
+        assert code == 1 and "record checkpoint belongs to" in payload["error"]
+        assert len(ledger.read_events(household)) == before
+    finally:
+        set_clients_root(demo_root)

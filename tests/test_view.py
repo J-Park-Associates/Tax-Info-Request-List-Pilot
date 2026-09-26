@@ -777,3 +777,49 @@ def test_a_not_asked_row_with_any_document_sits_in_the_active_table_and_only_one
     assert [i.identifier for i in items if is_idle_unasked(i)] == ["B05", "B06"]
     summary = summarize(items)
     assert summary.not_asked == 2 and summary.also_received == 2
+
+
+# ------------------------------------------ decision 159: who wrote the last line ----
+
+
+def test_current_names_the_host_that_wrote_the_last_line(engagement):
+    """D-7: "current" says the page is fresh; the Summary now says whose
+    line it is fresh to - the host and the time the record's last line
+    carries, and whether the pass or a person decided it. A last line from
+    before 159 says it recorded no writer."""
+    from tests.conftest import written_elsewhere
+    from tracker.locking import this_host
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    sort(engagement, today=dt.date(2026, 7, 1))
+    written = view.write_view(engagement)
+    last = ledger.read_events(engagement)[-1]
+    said = written.stamp[view.LABEL_LAST_WRITTEN]
+    assert said.startswith(f"on {this_host()} {last[ledger.AT_KEY]} by ")
+    assert view.view_state(engagement) == view.CURRENT
+    assert html.escape(said) in view.path_for(engagement).read_text(encoding="utf-8")
+
+    written_elsewhere(engagement, ledger.new(ledger.RELEASED, **{
+        ledger.KEY_KEY: "nothing", ledger.REASON_KEY: "x", ledger.DECIDED_BY_KEY: ledger.BY_PERSON}),
+        host="laptop-2")
+    assert view.last_written(ledger.read_events(engagement)[-1]).startswith("on laptop-2 ")
+    assert view.last_written(ledger.read_events(engagement)[-1]).endswith(" by a person")
+    assert view.last_written({ledger.EVENT_KEY: ledger.SCANNED, ledger.AT_KEY: "2026-01-01"}) \
+        == view.LAST_WRITTEN_UNKNOWN
+    assert view.last_written(None) == view.LAST_WRITTEN_NOTHING
+    assert view.META_NAMES[view.LABEL_LAST_WRITTEN] == "tracker-last-written"
+
+
+@pytest.mark.parametrize("host, at", [
+    ("PLANTED/Fabricated-Name.pdf", "2026-03-02T11:00:00Z"),
+    ("office-pc", "Fabricated Client, SSN 000-00-0000"),
+], ids=["a-writer-that-is-not-a-name", "a-time-that-is-not-one"])
+def test_the_summary_names_a_writer_only_inside_the_gates_rule(host, at):
+    """The view reads the record's last line itself, not through the
+    store's admission (decision 187), so it asks the admission's two rules
+    before it shows a writer or a time: nothing a line carries is echoed."""
+    from tracker import ledger
+    from tracker.view import LAST_WRITTEN_UNKNOWN, last_written
+
+    said = last_written({ledger.EVENT_KEY: ledger.FILED, ledger.HOST_KEY: host, ledger.AT_KEY: at})
+    assert said == LAST_WRITTEN_UNKNOWN and "Fabricated" not in said

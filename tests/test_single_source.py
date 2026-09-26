@@ -303,6 +303,30 @@ def test_gitignore_knows_every_runtime_file_python_writes_outside_the_repo():
         assert ignored.count(name) == 1, name
 
 
+def test_every_file_beside_the_store_is_ignored_by_git():
+    """Decision 159 (the final review's MF1): the checkpoint, the last-pass
+    file, recover's exports and a set-aside older store sit beside the
+    store, which in a source checkout is this repository - and each holds
+    client data or describes one machine. Asked of git itself, by the names
+    the code writes, so a pattern that does not match is caught."""
+    import subprocess
+
+    from tracker.checkpoint import CHECKPOINT_FILENAME, SET_ASIDE_SUFFIX
+    from tracker.fsio import TEMP_SUFFIX
+    from tracker.runner import LAST_PASS_FILENAME
+    from tracker.store import RECOVERED_DIR, STORE_FILENAME
+
+    aside = STORE_FILENAME + SET_ASIDE_SUFFIX.format(version=15)
+    names = [CHECKPOINT_FILENAME, CHECKPOINT_FILENAME + "-wal", CHECKPOINT_FILENAME + "-shm",
+             LAST_PASS_FILENAME, f"{LAST_PASS_FILENAME}.1234.abcd{TEMP_SUFFIX}",
+             f"{RECOVERED_DIR}/J Park & Associates__Household__2025__Return-2026-09-26-120000.jsonl",
+             aside, aside + ".1", aside + "-wal"]
+    for name in names:
+        asked = subprocess.run(["git", "check-ignore", "--no-index", "-q", name],
+                               cwd=REPO, capture_output=True)
+        assert asked.returncode == 0, name
+
+
 def test_gitignore_knows_both_client_trees_and_every_file_written_inside_them():
     """Decision 176: the list above is the files beside the settings file.
     A pass over a client's folder copied into the checkout writes into the
@@ -738,12 +762,13 @@ def test_documents_name_only_runtime_files_the_code_owns():
     repo file, or one of the files the log retired (``RETIRED_FILES``)."""
     import subprocess
 
+    from tracker.checkpoint import CHECKPOINT_FILENAME
     from tracker.filer import README_LOCK_FILENAME
     from tracker.ledger import LEDGER_FILENAME
-    from tracker.locking import LOCK_FILENAME
+    from tracker.locking import LOCK_FILENAME, RACE_LOCK_FILENAME
     from tracker.registry import LEGACY_MANIFEST_FILENAME
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
-    from tracker.runner import LOG_FILENAME, PASS_ORDER_FILENAME, STATUS_PAGE_FILENAME
+    from tracker.runner import LAST_PASS_FILENAME, LOG_FILENAME, PASS_ORDER_FILENAME, STATUS_PAGE_FILENAME
     from tracker.scaffold import README_NAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
     from tracker.settings import SETTINGS_FILENAME
@@ -754,7 +779,9 @@ def test_documents_name_only_runtime_files_the_code_owns():
     owned = {LEDGER_FILENAME, LOCK_FILENAME, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
              LOG_FILENAME, STATUS_PAGE_FILENAME, README_NAME, README_LOCK_FILENAME,
              SCHEDULE_XML_FILENAME, SETTINGS_FILENAME, STORE_FILENAME, VIEW_FILENAME,
-             PASS_ORDER_FILENAME}
+             PASS_ORDER_FILENAME,
+             # Decision 159: the checkpoint, the scheduled pass's own note, the race's lock.
+             CHECKPOINT_FILENAME, LAST_PASS_FILENAME, RACE_LOCK_FILENAME}
     tracked = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True).stdout.split()
     repo_files = {Path(t).name for t in tracked} | {t for t in tracked}
     for rel in DOCUMENTS:
@@ -1132,7 +1159,8 @@ def test_tree_diagrams_name_only_runtime_files_the_code_owns():
 #: tolerant_console(), and each of these takes it before it parses a flag.
 CONSOLE_GUARDED = ("rollover", "filer", "scanner", "registry", "review", "scaffold",
                    "store", "reminder", "runner", "router", "content_check",
-                   "view", "ledger", "validators", "names", "containers", "ocr", "door")
+                   "view", "ledger", "validators", "names", "containers", "ocr", "door",
+                   "checkpoint", "locking")
 #: The command lines that print no client's name, each with why it is not
 #: guarded - so a new command line has to be named in one list or the other.
 CONSOLE_EXEMPT = {
@@ -1493,6 +1521,10 @@ def test_the_repository_carries_no_task_for_the_office_computer():
 DOOR_EXEMPT = {
     "tracker/settings.py": "it records the root, and holds the rule the door asks",
     "tools/backtest.py": "its folder is the firm's sorted documents, never the clients root",
+    # Decision 159's race: any folder a person races a test lock in (its own
+    # _race.lock, never a return's lock); it reads nothing there and walks
+    # nothing - a check of the lock on a drive, not a pass over clients.
+    "tracker/locking.py": "its folder is any folder a test lock is raced in; nothing is read or walked",
 }
 
 

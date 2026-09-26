@@ -72,6 +72,49 @@ any rebuild (§1). That is the test every
 step of this plan has to pass, and it is why a person's edit of the request
 list is written into the **journal** rather than only into the database.
 
+**But a rebuild is proved first** (decision 159). A journal can come back
+from a sync client shorter, reordered or rewritten, and a rebuild from it
+would say the new thing with confidence and lose the old. So:
+
+- **Every line carries its link and its writer.** A line written since
+  decision 159 names the SHA-256 of the line before it (`prev`), the
+  machine that wrote it (`host`) and the record format (`fmt`, now 1). A
+  broken link, a line without one past the first linked line, or a newer
+  format stops the reader at that line, by name. What the three keys and
+  a line's time hold - a link blank or a digest, a format this version
+  writes, a writer that is a machine's name, a time as the tracker writes
+  it - is held to decision 187's value rule at the store's one admission,
+  like every other value a line carries (`records.host_problem`,
+  `records.stamp_problem`); `record()` admits each line exactly as it will
+  be written, writer included. Older lines without the three keys still
+  read; the store's own version is unchanged.
+- **The checkpoint** (`record-heads.db`, `tracker/checkpoint.py`, its own
+  version 1) sits beside the store on the machine that writes, is never
+  synced and survives deleting the store. Per return it keeps how many
+  lines this machine has written or accepted and the hash of the last one,
+  the clients root it belongs to, and the lines it has seen from other
+  machines. The store checks every catch-up against it: a record shorter
+  than the checkpoint, rewritten before its count, or with a line past it
+  that claims this machine (in any case of its name) and is not one of the
+  exact lines this machine said it was about to write - the chain each
+  would have, not a count - is refused before anything is applied. A
+  checkpoint that will not open is refused by name, never set aside by
+  itself. A line from another machine is named on the practice
+  page every pass until a person acknowledges it; whether such a line is
+  ever refused instead is one function, `checkpoint.foreign_lines_refused()`,
+  `False` until the multi-writer question is decided.
+- **`rebuild` refuses what the checkpoint vouches for and the record no
+  longer holds**, and `recover` is the way past it: it exports both copies
+  into `recovered/` beside the store, lists the lines that differ, and
+  replays only when a person types the return's folder name. It never
+  rewrites a record. `verify` is the same comparison, firm-wide, read-only.
+
+This detects accidents anywhere and, on the machine that writes, an append
+or rewrite that machine did not make. It does not protect against a writer
+who controls that machine itself, and it is not proof to a third party of
+who wrote a line; decision 159 in the roadmap says why a secret key was
+rejected.
+
 ## One store per process
 
 `store.connect()` hands out one connection to one file for the life of the
@@ -583,15 +626,17 @@ counts with a different chain is a refusal, never "nothing to do"), in
 over that many lines of the journal as it is now must equal the one kept,
 or the engagement is refused: *"The record for <return> was changed behind
 the tracker's back (line N onward no longer matches). Nothing was applied.
-Copy the store aside, into its own folder under a new name with today's
-date (never to the desktop, a USB drive, an email or a chat), and keep any
-conflict copy of the record before you rebuild (the runbook, section 1)."* `check()` names it too. It never
+Run recover (runbook §6)."* (since decision 159; decision 184 had it say to
+copy the store aside and keep any conflict copy before a rebuild, and before
+that "run the store check, then rebuild" - until a rebuild could drop lines
+nobody exported; recover now exports the store's copy itself, and a conflict
+copy is never deleted and is named every pass). `check()` names it too. It never
 repairs itself. The line named is the first whose event the store holds
 differently; a rewrite that changed only bytes (a key reordered) is named
-from line 1. **Not chosen:** a sequence number and previous-line hash
-written into each journal line. That would change the journal's format for
-every existing folder, and the journal is the source of record; the chain
-lives in the store, which is rebuildable, which is the right side of the
-line for a check. A version-11 file has no column for it, so it is refused
+from line 1. **Not chosen then:** a sequence number and previous-line hash
+written into each journal line - it would change the journal's format for
+every existing folder. **Since decision 159, chosen:** every new line
+carries the previous line's chain (`prev`), its writer and its format,
+older lines still read, and the store's chain stays as it was. A version-11 file has no column for it, so it is refused
 by name, deleted and rebuilt, and the rebuild computes the chain as it
 replays.

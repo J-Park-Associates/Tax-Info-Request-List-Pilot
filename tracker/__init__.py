@@ -25,6 +25,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - templates     : the per-form request catalog, the one place the checklists live
 - locking       : the one lock per engagement that sort and scan both hold
 - ledger        : the engagement's own append-only record of what was decided, written beside the client's files under that lock
+- checkpoint    : what this machine last saw of each record, beside the store; a record shorter, rewritten or claiming this machine is refused
 - store         : the database on this machine, rebuilt from the record; one file per clients root, and the index is read from it
 - fsio          : the one way a file is replaced whole or not at all: the temp name beside it, and the swap
 - page          : the markup both of the firm's pages are drawn with: escaping, tables, the bytes a page is written as

@@ -187,8 +187,9 @@ Conventions worth matching:
   (`test_overrides_are_never_asked_for`), not `test_case_3`.
 - Import directions hold, and `tests/test_layers.py` says which: no load-time
   import points to a higher layer; `ledger` and `locking` import nothing of
-  the package but each other; `store` imports `ledger`, `locking` and
-  `records` and nothing else; `manifest` imports `records` and nothing else
+  the package but each other, and `checkpoint` imports nothing of it at all
+  (its `__main__` alone reaches `page`); `store` imports `ledger`, `locking`,
+  `records` and `checkpoint` and nothing else; `manifest` imports `records` and nothing else
   at load time, and reaches `store`, `ledger` and `locking` at call time
   (decision 104 gave it the request list's writes); `runner` never imports
   `scheduling` or `api`;
@@ -206,18 +207,37 @@ hours (2026-09-21) costing ~890 GitHub-billed minute-equivalents — enough to
 blow through a typical monthly Actions quota in about 3 days — with Windows
 jobs alone accounting for more than 65% of that despite already being gated.
 
-- **Don't add the `windows` PR label by habit.** Only label a PR `windows` when
-  it actually touches the held engagement lock, the atomic replace, path
-  handling, or a Windows-only test — exactly what `ci.yml`'s own comment says
-  the label is for. Every unnecessary label doubles that PR's CI bill.
-- **Batch commits before pushing** rather than pushing after every small
-  fixup. `concurrency: cancel-in-progress` only saves runs *superseded* on the
-  same ref before they finish — a run that completes is billed regardless, so
-  fewer, larger pushes cost less than many small ones.
-- **Prefer fewer, larger merges to `main`** over merging each small patch the
-  moment it's approved, when the work allows it — every push to `main` runs
-  the Windows pair unconditionally.
-- This is a process/cost convention governing how commits and PRs are made,
-  not a change to what the software does — it does not need a SPEC.
+**Standing rule since 2026-09-26 (decision 207, Jason: "CI checks should not
+be done on the github budget. test here and merge in bulk. make this the
+standing rule"):**
 
-Set by Jason on 2026-09-22.
+- **Every session runs the whole suite before it pushes** (a tracker-lane
+  restack runs the narrower set below). Run
+  `python -m pytest -q`, `python -m ruff check .`, and both `check`s. A
+  cloud session runs them on its own machine, which costs no GitHub minutes.
+  The tracker lane runs them on the office PC: the owning tests of every
+  file a restack touched, plus ruff and both checks.
+- **CI runs once, on a ready pull request into `main`.** There is no run on
+  a push to `main`, and none on a push to any other branch. A **draft** pull
+  request runs nothing. The tracker lane opens every pull request as a draft
+  and marks it ready once, when the stack is final.
+- **Land in bulk.** One pull request may carry several reviewed decisions in
+  landing order, each still its own commits. A stacked pull request stays a
+  draft until it is retargeted onto `main`, then is marked ready: a pull
+  request based on another branch runs nothing, and retargeting starts no
+  run.
+- **Rebase merging is the default when several agents work on the same
+  head** (Jason, 2026-09-26): parallel lanes branched from one `main` tip land
+  by GitHub's rebase merge, so history stays one line and the next lane
+  rebases onto a straight tip. A single chain from one agent may still merge
+  with a merge commit. Never squash, and never force-push `main`.
+- **The `windows` label goes on while the pull request is a draft,** and
+  only when it touches the held engagement lock, the atomic replace, path
+  handling, or a Windows-only test. Labelling starts no run of its own.
+- **Never trigger `@claude` inside a GitHub issue or pull request.** That
+  runs on GitHub Actions; start the work from claude.ai/code instead.
+- **Batch commits before pushing** rather than pushing after every small
+  fixup. `concurrency: cancel-in-progress` only saves runs *superseded*
+  before they finish; a run that completes is billed regardless.
+
+Set by Jason on 2026-09-22; revised to decision 207 on 2026-09-26.

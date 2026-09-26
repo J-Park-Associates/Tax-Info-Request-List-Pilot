@@ -8709,9 +8709,12 @@ def test_a_recovery_never_copies_an_original_the_row_names_outside_its_places(en
             _intend(engagement, ledger_key(row), lost, by=ledger.BY_PASS, row=entry_to_json(row),
                     then=ledger.PARKED)
         assert journal.read_bytes() == honest
-        ledger.append(engagement, ledger.new(ledger.MOVING, **{
-            ledger.KEY_KEY: ledger_key(row), ledger.OPS_KEY: lost, ledger.DECIDED_BY_KEY: ledger.BY_PASS,
-            ledger.ROW_KEY: entry_to_json(row), ledger.EVENT_KEY_AFTER: ledger.PARKED}))
+    # Forged as another machine's line (decision 159): one appended here,
+    # past the store, would be refused first as a line claiming this
+    # machine that this machine did not write.
+    _forge_line(engagement, ledger.new(ledger.MOVING, **{
+        ledger.KEY_KEY: ledger_key(row), ledger.OPS_KEY: lost, ledger.DECIDED_BY_KEY: ledger.BY_PASS,
+        ledger.ROW_KEY: entry_to_json(row), ledger.EVENT_KEY_AFTER: ledger.PARKED}))
 
     with pytest.raises(store.StoreError, match="outside this return's places"):
         sort(engagement, today=DAY2)
@@ -8730,13 +8733,14 @@ def test_a_recovery_never_copies_an_original_the_row_names_outside_its_places(en
 
 
 def _forge_line(engagement, event: dict) -> bytes:
-    """Put one line in the journal past the store, as a hand edit, another
-    machine or a restored copy would; returns the journal as it was."""
-    import json
+    """Put one line in the journal past the store, as another machine
+    would; returns the journal as it was. Linked to the line before
+    (decision 159), so it is the store's admission and the filer's own
+    checks that judge it, not the ledger's link."""
+    from tests.conftest import written_elsewhere
 
-    path = ledger.path_for(engagement)
-    honest = path.read_bytes()
-    path.write_bytes(honest + json.dumps(event).encode("utf-8") + b"\n")
+    honest = ledger.path_for(engagement).read_bytes()
+    written_elsewhere(engagement, event)
     return honest
 
 

@@ -185,23 +185,34 @@ def test_both_workflows_name_the_one_interpreter_the_office_runs():
     assert f'python-version: "{floor}"' in ci                 # and the floor is still run
 
 
-def test_windows_runs_on_main_and_by_label_and_every_job_has_a_timeout():
-    """Decision 122: a pull request pays for Linux; Windows is main's, or the label's.
+def test_ci_runs_once_per_ready_pull_request_and_windows_only_by_label():
+    """Decision 207 (revising 122): CI is one final check before a merge.
 
-    The Windows pair was four fifths of a run's price and repeated a gate that
-    had just run on Windows locally. Windows is its own job now, because a
-    job's own `if:` is evaluated before a matrix is expanded and cannot see
-    it — so the steps live once, in gate.yml, which both jobs call. main must
-    keep the Windows check, and the label must be able to ask for it on a pull
-    request, which it can only do if labelling one starts a run.
+    Every session runs the whole suite before it pushes, so GitHub's paid
+    minutes go only on a ready pull request into main. There is no run on a
+    push to main, whose content was checked as the pull request it came from;
+    a draft runs nothing, and the job condition is what says so, because
+    `synchronize` fires on drafts too. `labeled` is not a trigger: it started
+    a second run beside the first, and two runs started at once cancel each
+    other and are billed anyway. So the `windows` label goes on while the pull
+    request is a draft, and the one run it gets when marked ready sees it.
+    Windows is its own job, because a job's own `if:` is evaluated before a
+    matrix is expanded and cannot see it - so the steps live once, in
+    gate.yml, which both jobs call.
     """
     ci = read(".github/workflows/ci.yml")
     gate = read(f".github/workflows/{GATE_WORKFLOW}")
-    condition = re.search(r"^\s*if: (.+)$", ci.split("\n  windows:\n", 1)[1], re.M).group(1)
-    assert "github.event_name == 'push'" in condition               # main keeps the Windows check
-    assert "labels.*.name, 'windows'" in condition                  # and a pull request may ask
-    types = re.search(r"^\s*types: \[([^\]]+)\]$", ci, re.M).group(1)
-    assert "labeled" in types                                       # the label starts its own run
+    triggers = ci.split("\non:", 1)[1].split("\nconcurrency:", 1)[0]
+    assert "push:" not in triggers                                   # main is not re-run
+    assert re.search(r"^\s*branches: \[main\]$", triggers, re.M)      # only pull requests into main
+    types = {t.strip() for t in re.search(r"^\s*types: \[([^\]]+)\]$", triggers, re.M).group(1).split(",")}
+    assert types == {"opened", "synchronize", "ready_for_review"}    # no `labeled`, no second run
+    assert "cancel-in-progress: true" in ci
+    linux = re.search(r"^\s*if: (.+)$", ci.split("\n  linux:\n", 1)[1].split("\n  windows:\n", 1)[0], re.M).group(1)
+    windows = re.search(r"^\s*if: (.+)$", ci.split("\n  windows:\n", 1)[1], re.M).group(1)
+    assert "github.event.pull_request.draft == false" in linux       # a draft runs nothing
+    assert "github.event.pull_request.draft == false" in windows
+    assert "labels.*.name, 'windows'" in windows                     # Windows only when asked
     # The gate is written once and called twice: a job's own `if:` cannot see
     # the matrix, so Linux and Windows are two jobs, not two rows of one.
     assert not re.search(r"^\s*steps:", ci, re.M)

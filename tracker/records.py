@@ -1518,6 +1518,11 @@ DATE_BOUNDS = f"must be a date written YYYY-MM-DD, from {DATE_YEAR_MIN} to {DATE
 STAMP_BOUNDS = f"must be a time written YYYY-MM-DDTHH:MM:SSZ, from {STAMP_YEAR_MIN} to {DATE_YEAR_MAX}"
 FLAG_BOUNDS = "must be true or false"
 DIGEST_BOUNDS = "must be blank or 64 lowercase hexadecimal characters"
+#: The longest writer's name a record line may carry (decision 159): a
+#: machine's name, never a sentence.
+HOST_MAX = 64
+HOST_BOUNDS = (f"must be a machine's name: at most {HOST_MAX} printable characters, with no space "
+               "and no path separator")
 TEXT_BOUNDS = f"must be one line of text of at most {TEXT_MAX} characters, with no control character"
 LONG_TEXT_BOUNDS = f"must be text of at most {LONG_TEXT_MAX} characters, with no NUL"
 TEXT_LIST_BOUNDS = "must be a list of text"
@@ -1626,6 +1631,22 @@ def digest_problem(value: object) -> str:
     if value == "" or (isinstance(value, str) and _HEX_DIGEST.fullmatch(value)):
         return ""
     return DIGEST_BOUNDS
+
+
+def host_problem(value: object) -> str:
+    """:data:`HOST_BOUNDS` for anything but a machine's name as a record line
+    carries its writer (decision 159): text, not blank, at most
+    :data:`HOST_MAX` characters, printable (no control or direction
+    character), no whitespace at all - a machine's name has none, so
+    ``"VM "`` cannot pass for ``vm`` as another machine (159's final
+    review, SF3) - and no path separator. The one rule of a writer's name:
+    the store's gate holds every line to it, and a reader that shows a
+    writer without the gate (the view's Summary, recover's difference)
+    asks it before showing one."""
+    if (isinstance(value, str) and value and len(value) <= HOST_MAX and value.isprintable()
+            and not any(ch.isspace() for ch in value) and "/" not in value and "\\" not in value):
+        return ""
+    return HOST_BOUNDS
 
 
 def text_problem(value: object, *, long: bool = False) -> str:

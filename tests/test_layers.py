@@ -39,7 +39,8 @@ module reaches ``socket`` for listeners and clients the package never
 makes, and the test below holds it to the pipe.
 
 **Rule 7, amended** (from the implementation plan's rules for every step):
-``ledger`` and ``locking`` import nothing of the package but each other;
+``ledger`` and ``locking`` import nothing of the package but each other,
+and ``checkpoint`` (decision 159) imports nothing of the package at all;
 ``manifest`` imports ``records`` and nothing else at load time, and
 reaches ``store``, ``ledger`` and ``locking`` at call time; ``runner``
 never imports ``scheduling`` or ``api``; the package's ``__init__`` imports
@@ -81,8 +82,8 @@ a folder: the check itself runs one layer up, in the filer's household
 pass, where the returns and their people lists are.
 
 ``store`` joins L1 with decision 101 and is deliberately narrower than its
-layer allows: it imports ``records``, ``ledger`` and ``locking`` and
-nothing else of the package, not even the in-layer ``manifest``.
+layer allows: it imports ``records``, ``ledger``, ``locking`` and (since
+decision 159) ``checkpoint``, and nothing else of the package, not even the in-layer ``manifest``.
 Everything it holds comes out of the journal, so the database that answers
 for the readers never depends on the modules that walk folders and move
 files; its command line imports the registry at call time, which is where
@@ -102,7 +103,8 @@ LAYERS: dict[int, frozenset[str]] = {
     # ``door`` joins L0 with decision 188: the disk half of the layout. It
     # imports ``layout``, ``fsio`` and ``settings``, all L0, so L0 is the
     # lowest layer the table allows it - and every layer above may ask it.
-    0: frozenset({"__init__", "reasons", "locking", "page", "fsio", "settings", "layout", "door"}),
+    0: frozenset({"__init__", "reasons", "locking", "checkpoint", "page", "fsio", "settings",
+                  "layout", "door"}),
     1: frozenset({"households", "ledger", "manifest", "records", "scaffold", "store",
                   "templates", "validators"}),
     2: frozenset({"containers", "content_check", "names", "ocr", "router"}),
@@ -250,11 +252,23 @@ def test_the_bottom_two_import_nothing_of_the_package_but_each_other():
     assert load["ledger"] <= {"locking"}, load["ledger"]
 
 
-def test_the_store_imports_only_the_record_the_journal_and_the_lock():
+def test_the_checkpoint_imports_nothing_of_the_package():
+    """Decision 159: the record checkpoint sits at the bottom beside the
+    journal and the lock, and is handed keys, counts, heads and hosts - so
+    it imports nothing of the package; its command line alone reaches the
+    console guard every command line that prints a client's name uses, and
+    the door (decision 188) for the root a person types."""
+    load, call = import_edges()
+    assert load["checkpoint"] == set(), load["checkpoint"]
+    assert call.get("checkpoint", set()) <= {"page", "door"}, call["checkpoint"]
+
+
+def test_the_store_imports_only_the_record_the_journal_the_lock_and_the_checkpoint():
     """Decision 101: narrower than its layer, on purpose - the store must
-    not depend on what opens a workbook, or it cannot replace it."""
+    not depend on what opens a workbook, or it cannot replace it. Decision
+    159 adds the checkpoint, which is below it and imports nothing."""
     load, _ = import_edges()
-    assert load["store"] == {"ledger", "locking", "records"}, load["store"]
+    assert load["store"] == {"checkpoint", "ledger", "locking", "records"}, load["store"]
 
 
 def test_the_manifest_imports_the_record_and_nothing_else():
@@ -454,6 +468,9 @@ def test_the_readings_child_talks_over_a_named_pipe_never_a_socket():
 ALLOWED_SPELLINGS: dict[tuple[str, str], str] = {
     ("tracker/settings.py", "_within"): "the machine's own folders (decision 137), not a client's",
     ("tracker/settings.py", "_inside"): "the machine's own folders (decision 137), not a client's",
+    ("tracker/locking.py", "holds"): ("whether a held token was written to this very lock file, "
+                                      "under any spelling (decision 159) - one file, not a place "
+                                      "in either tree"),
     ("tools/repo_map.py", "*"): "the repository's paths, never a client's",
     ("tools/vocab_report.py", "*"): "the repository's paths, never a client's",
     ("tools/backtest.py", "*"): "the repository's paths, never a client's",

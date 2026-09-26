@@ -6865,7 +6865,7 @@ def _make_a_gone_copy_again(
                          already_home=False)
 
 
-def _holds_the_row(path: Path, digest: str) -> bool:
+def holds_the_row(path: Path, digest: str) -> bool:
     """Whether this file is here, readable now, and the row's own bytes.
 
     A person's click, not the unchanged-tree path: the file is read rather
@@ -6873,6 +6873,11 @@ def _holds_the_row(path: Path, digest: str) -> bool:
     moment it is moved. A placeholder is never read (hashing one would make
     the sync client download it) and is not here as far as this is
     concerned - the caller refuses first, so it never reaches this.
+
+    Public because it is the one proof of a row's bytes a read-only check
+    reuses: ``tracker.store.verify`` (decision 159, G-10) holds every
+    recorded original and working copy to it rather than hashing a second
+    way.
     """
     return path.is_file() and not is_cloud_placeholder(path) and sha256_of(path) == digest
 
@@ -7024,7 +7029,7 @@ def _put_back_a_moved_copy(
         # refuses with the review copy's sentence, nothing touched.
         parked, past_reader = _review_copy_path(review_dir, entry.original_name)
         review_dir.mkdir(parents=True, exist_ok=True)
-        if wanderer is not None and _holds_the_row(wanderer, entry.digest):
+        if wanderer is not None and holds_the_row(wanderer, entry.digest):
             ops.append(_op(engagement_dir, ledger.OP_MOVE, wanderer, parked, entry.digest))
             wanderer_moved = True
         else:
@@ -7055,7 +7060,7 @@ def _put_back_a_moved_copy(
         )
     else:
         home = locate(engagement_dir, absent[0])
-        if wanderer is not None and _holds_the_row(wanderer, entry.digest):
+        if wanderer is not None and holds_the_row(wanderer, entry.digest):
             ops.append(_op(engagement_dir, ledger.OP_MOVE, wanderer, home, entry.digest))
             moved_home = wanderer_moved = True
             sentence = PUT_BACK.format(home=absent[0], date=stamp, now=now)

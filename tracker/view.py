@@ -139,6 +139,8 @@ from tracker.records import (
     UNKNOWN,
     YES,
     IndexEntry,
+    host_problem,
+    stamp_problem,
 )
 
 log = logging.getLogger("tracker.view")
@@ -166,6 +168,9 @@ LABEL_RECORD_DIGEST = "Record SHA-256"
 LABEL_REQUEST_ROWS = "Request rows"
 LABEL_INDEX_ROWS = "Index rows"
 LABEL_PARKED_ROWS = "Parked for a person"
+#: Who wrote the record's last line (decision 159, D-7): "current" says the
+#: page is fresh, and this says whose line it is fresh to.
+LABEL_LAST_WRITTEN = "Last written"
 
 #: The same values, machine-readable, as the meta tags the head carries.
 #: ``read_stamp`` reads these rather than the visible text: a label is
@@ -179,9 +184,20 @@ META_NAMES: dict[str, str] = {
     LABEL_REQUEST_ROWS: "tracker-request-rows",
     LABEL_INDEX_ROWS: "tracker-index-rows",
     LABEL_PARKED_ROWS: "tracker-parked-rows",
+    LABEL_LAST_WRITTEN: "tracker-last-written",
 }
 _LABEL_BY_META = {name: label for label, name in META_NAMES.items()}
 _META_PATTERN = re.compile(r'<meta name="([^"]+)" content="([^"]*)">')
+
+#: The Last written value (decision 159, D-7): the host and time the
+#: record's last line carries, and whether a pass or a person decided it -
+#: or, for a line that says neither, the event's own name.
+LAST_WRITTEN = "on {host} {at} by {by}"
+LAST_WRITTEN_BY = {ledger.BY_PASS: "the pass", ledger.BY_PERSON: "a person"}
+#: A last line from before decision 159, which carries no host.
+LAST_WRITTEN_UNKNOWN = "before this version recorded a writer"
+#: A record with no line yet.
+LAST_WRITTEN_NOTHING = "nothing yet"
 
 #: What the app says about a view, and the three words it may say. The view
 #: is a derivation of two things that both move, so "there is one" is not an
@@ -473,12 +489,30 @@ def label_of(engagement_dir: Path) -> str:
     )
 
 
+def last_written(event: dict | None) -> str:
+    """Who wrote a record's last line, as the Summary says it (decision 159,
+    D-7): :data:`LAST_WRITTEN`, :data:`LAST_WRITTEN_UNKNOWN` or
+    :data:`LAST_WRITTEN_NOTHING`."""
+    if event is None:
+        return LAST_WRITTEN_NOTHING
+    host, at = event.get(ledger.HOST_KEY), event.get(ledger.AT_KEY, "")
+    # The view reads the record's last line itself, not through the store's
+    # gate, so it asks the gate's two rules before it shows either value
+    # (decisions 159 and 187): nothing a line carries is echoed unchecked.
+    if host_problem(host) or stamp_problem(at):
+        return LAST_WRITTEN_UNKNOWN
+    decided = event.get(ledger.DECIDED_BY_KEY)
+    by = LAST_WRITTEN_BY.get(decided) if isinstance(decided, str) else None
+    return LAST_WRITTEN.format(host=host, at=at,
+                               by=by or str(event.get(ledger.EVENT_KEY, "")).replace("_", " "))
+
+
 def _readers(
     engagement_dir: Path,
     items: list[RequestItem] | None,
     entries: list[IndexEntry] | None,
     head: str | None,
-) -> tuple[str, list[RequestItem], list[IndexEntry]]:
+) -> tuple[str, dict | None, list[RequestItem], list[IndexEntry]]:
     """The record's head, then what the readers say, each read here if the
     caller has not read it already.
 
@@ -490,29 +524,33 @@ def _readers(
     behind and the next draw replaces it - an error toward one redraw,
     never toward hiding a change. It is the head the record had at most
     when the readers read, which is what the page can claim to show.
-    ``tracker.ledger.read_with_head`` cannot serve here: the rows come from
-    the readers (the store, following the journal), not from this read of
-    the file. A caller handing in rows it read hands in the head it read
-    before them.
+    The rows come from the readers (the store, following the journal), not
+    from this read of the file; this read gives the head and, from the same
+    bytes, the record's last line, whose writer the Summary names (decision
+    159). A caller handing in rows it read hands in the head it read before
+    them.
     """
-    if head is None:
-        head = ledger.head(engagement_dir)
     try:
+        if head is None:
+            recorded, head = ledger.read_with_head(engagement_dir)
+        else:
+            recorded = ledger.read_events(engagement_dir)
         if items is None:
             items = load_manifest(engagement_dir)
         if entries is None:
             entries = read_index(engagement_dir)
-    except (ManifestError, FilingError, OSError) as exc:
+    except (ManifestError, FilingError, ledger.LedgerError, OSError) as exc:
         # A record the readers refuse: there is nothing to draw, and the
         # caller decides what that means. A pass says it in a log line and
         # stands.
         raise ViewError(f"{engagement_dir.name}: the view could not be built ({exc})") from exc
-    return head, items, entries
+    return head, (recorded[-1] if recorded else None), items, entries
 
 
 def _stamp(
     engagement_dir: Path,
     head: str,
+    last: dict | None,
     items: list[RequestItem],
     entries: list[IndexEntry],
     parked: list[IndexEntry],
@@ -535,6 +573,7 @@ def _stamp(
         LABEL_REQUEST_ROWS: str(len(items)),
         LABEL_INDEX_ROWS: str(len(entries)),
         LABEL_PARKED_ROWS: str(len(parked)),
+        LABEL_LAST_WRITTEN: last_written(last),
     }
 
 
@@ -661,10 +700,10 @@ def render_page(
     the only claim the fixture makes.
     """
     engagement_dir = Path(engagement_dir)
-    head, items, entries = _readers(engagement_dir, items, entries, head)
+    head, last, items, entries = _readers(engagement_dir, items, entries, head)
     triaged = review.triage(engagement_dir, entries, items=items)
     parked = [one.entry for one in triaged]
-    stamp = _stamp(engagement_dir, head, items, entries, parked, now)
+    stamp = _stamp(engagement_dir, head, last, items, entries, parked, now)
     return _page(engagement_dir, items, entries, triaged, stamp)
 
 
@@ -694,10 +733,10 @@ def write_view(
     """
     engagement_dir = Path(engagement_dir)
     path = engagement_dir / VIEW_FILENAME
-    head, items, entries = _readers(engagement_dir, items, entries, head)
+    head, last, items, entries = _readers(engagement_dir, items, entries, head)
     triaged = review.triage(engagement_dir, entries, items=items)
     parked = [one.entry for one in triaged]
-    stamp = _stamp(engagement_dir, head, items, entries, parked, now)
+    stamp = _stamp(engagement_dir, head, last, items, entries, parked, now)
     result = ViewResult(path=path, requests=len(items), rows=len(entries),
                         parked=len(parked), stamp=stamp)
     try:

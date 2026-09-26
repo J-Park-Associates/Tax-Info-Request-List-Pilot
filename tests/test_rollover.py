@@ -9,7 +9,7 @@ import datetime as dt
 
 import pytest
 
-from tests.conftest import ensure, make_engagement, seed_statuses
+from tests.conftest import ensure, make_engagement, seed_statuses, written_elsewhere
 from tracker import ledger
 from tracker.layout import inbox_of, root_of
 from tracker.manifest import (
@@ -989,27 +989,280 @@ def test_a_household_with_two_open_years_refuses_to_roll_until_one_is_retired(pa
         "retire one in the editor before rolling forward")
 
 
-def test_one_returns_refusal_does_not_undo_the_others_and_is_said(park):
-    """Each return is its own decision on its own record: the second plan
-    targets a folder that already exists, and the first and the third are
-    rolled all the same."""
+def _a_fourth_return(root):
+    """A return nobody will tick, so a roll that went ahead would retire it."""
+    return make_engagement(root, W2, household=PARK, year=2026, return_name="1040 - Leo Park")
+
+
+def _lines_of(*folders):
+    return {folder: len(ledger.read_events(folder)) for folder in folders}
+
+
+def test_household_roll_forward_takes_every_lock_before_writing(park):
+    """Decision 159, C-11. Another run holds one return's lock: the roll is
+    refused before its first write - no new folder, no record line on any
+    return or on the household - and the locks it did take are let go."""
+    import os
+    import subprocess
+    import sys
+
     from tracker.layout import return_dir_for
+    from tracker.locking import LOCK_FILENAME, EngagementLockedError, lock_line
     from tracker.rollover import ReturnPlan, roll_household
 
     root, john, sofia, llc = park
-    return_dir_for(root, PARK, 2027, "1040 - Sofia Park").mkdir(parents=True)
+    household = _household(root)
+    before = _lines_of(john, sofia, llc, household)
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    try:
+        (sofia / LOCK_FILENAME).write_text(lock_line(child.pid, dt.datetime.now()),
+                                           encoding="utf-8")
+        # Sofia is not ticked: a roll that went ahead would retire her.
+        with pytest.raises(EngagementLockedError):
+            roll_household(household, target_year=2027,
+                           plans=[ReturnPlan(prior=john), ReturnPlan(prior=llc)])
+    finally:
+        child.kill()
+        child.wait()
 
+    assert not return_dir_for(root, PARK, 2027, "1040 - John Park").exists()
+    assert not return_dir_for(root, PARK, 2027, "1120S - Park Landscaping LLC").exists()
+    assert not return_dir_for(root, PARK, 2027, "1040 - John Park").parent.exists()
+    assert _lines_of(john, sofia, llc, household) == before
+    for folder in (john, llc, household):
+        assert not (folder / LOCK_FILENAME).exists()
+    assert str(child.pid) in (sofia / LOCK_FILENAME).read_text(encoding="utf-8")
+    os.remove(sofia / LOCK_FILENAME)
+
+
+def test_household_roll_forward_rolls_all_or_none(park, monkeypatch):
+    """Decision 159, amending 126. The second of three ticked returns
+    refuses - its target already exists - and nothing is rolled: no new
+    return, the unticked one not retired, and the sentence names the
+    return. And a failure while making the third removes the two made
+    before it, folders and store rows, and still retires nobody."""
+    from tracker import rollover, store
+    from tracker.layout import return_dir_for
+    from tracker.manifest import load_engagement_info
+    from tracker.rollover import NOTHING_ROLLED, ReturnPlan, roll_household
+
+    root, john, sofia, llc = park
+    leo = _a_fourth_return(root)
+    household = _household(root)
+    ticked = [ReturnPlan(prior=one) for one in (john, sofia, llc)]
+    targets = [return_dir_for(root, PARK, 2027, one.name) for one in (john, sofia, llc)]
+    before = _lines_of(john, sofia, llc, leo, household)
+
+    targets[1].mkdir(parents=True)
+    with pytest.raises(ManifestError) as refused:
+        roll_household(household, target_year=2027, plans=ticked)
+    said = str(refused.value)
+    assert said.startswith("1040 - Sofia Park: ") and "already exists" in said
+    assert said.endswith(NOTHING_ROLLED.format(prior="", why="").lstrip(": ."))
+    assert not targets[0].exists() and not targets[2].exists()
+    assert load_engagement_info(leo).active is True
+    assert _lines_of(john, sofia, llc, leo, household) == before
+    targets[1].rmdir()
+    targets[1].parent.rmdir()                          # the year folder the test made
+
+    real_create = rollover.create_engagement
+
+    def the_third_fails(folder, items, info):
+        if folder == targets[2]:
+            raise OSError("the disk filled while the third return was made")
+        return real_create(folder, items, info)
+
+    monkeypatch.setattr(rollover, "create_engagement", the_third_fails)
+    with pytest.raises(ManifestError, match="the disk filled") as failed:
+        roll_household(household, target_year=2027, plans=ticked)
+    assert str(failed.value).startswith("1120S - Park Landscaping LLC: ")
+    conn = store.connect()
+    for target in targets:
+        assert not target.exists()
+        assert store.kind(conn, target) is None
+    assert not targets[0].parent.exists()             # the year folder this roll made
+    assert load_engagement_info(leo).active is True
+    assert _lines_of(john, sofia, llc, leo, household) == before
+
+    # Nothing in the way: the same roll goes through whole.
+    monkeypatch.setattr(rollover, "create_engagement", real_create)
+    done = roll_household(household, target_year=2027, plans=ticked)
+    assert [created for _, created, _ in done.rolled] == targets
+    assert done.retired == [leo] and done.skipped == []
+    assert load_engagement_info(leo).active is False
+
+
+
+def test_a_ticked_return_whose_name_is_taken_by_the_key_rolls_nothing(park):
+    """Decision 188's uniqueness, asked in decision 159's plan: a ticked
+    return whose name is already a folder of the new year - by the layout's
+    one key, so another case is the same name - refuses the whole roll,
+    with 188's sentence, before any lock is taken or anything written."""
+    from tracker.layout import return_dir_for
+    from tracker.manifest import load_engagement_info
+    from tracker.rollover import NOTHING_ROLLED, ReturnPlan, roll_household
+
+    root, john, sofia, llc = park
+    leo = _a_fourth_return(root)
+    household = _household(root)
+    before = _lines_of(john, sofia, llc, leo, household)
+    taken = return_dir_for(root, PARK, 2027, "1040 - Sofia Park").with_name("1040 - sofia park")
+    taken.mkdir(parents=True)
+
+    with pytest.raises(ManifestError) as refused:
+        roll_household(household, target_year=2027,
+                       plans=[ReturnPlan(prior=one) for one in (john, sofia)])
+    said = str(refused.value)
+    assert said.startswith("1040 - Sofia Park: A return named '1040 - sofia park' already exists "
+                           f"for {PARK} 2027")
+    assert said.endswith(NOTHING_ROLLED.format(prior="", why="").lstrip(": ."))
+    assert not return_dir_for(root, PARK, 2027, "1040 - John Park").exists()
+    assert load_engagement_info(leo).active is True
+    assert _lines_of(john, sofia, llc, leo, household) == before
+
+
+def test_a_ticked_return_past_the_path_limit_rolls_nothing(park, monkeypatch):
+    """The path limit (decisions 125 and 126), asked in the plan too: a
+    return whose working copies would not fit refuses the whole roll with
+    the filer's sentence, and nothing is made, retired or recorded."""
+    from tracker import filer
+    from tracker.layout import return_dir_for
+    from tracker.manifest import load_engagement_info
+    from tracker.rollover import NOTHING_ROLLED, ReturnPlan, roll_household
+
+    root, john, sofia, llc = park
+    leo = _a_fourth_return(root)
+    household = _household(root)
+    before = _lines_of(john, sofia, llc, leo, household)
+    monkeypatch.setattr(filer, "MAX_PATH_LENGTH", 10)
+
+    with pytest.raises(ManifestError) as refused:
+        roll_household(household, target_year=2027,
+                       plans=[ReturnPlan(prior=one) for one in (john, sofia)])
+    said = str(refused.value)
+    assert said.startswith("1040 - John Park: ") and said.endswith(
+        NOTHING_ROLLED.format(prior="", why="").lstrip(": ."))
+    assert filer.PATH_TOO_LONG.split("{")[0].strip() in said
+    for one in (john, sofia):
+        assert not return_dir_for(root, PARK, 2027, one.name).exists()
+    assert load_engagement_info(leo).active is True
+    assert _lines_of(john, sofia, llc, leo, household) == before
+
+def test_a_retirement_saves_the_list_as_it_stands_under_the_lock(park, monkeypatch):
+    """The review's S1. A person saves an unticked return's list after the
+    roll has planned and before it takes the locks. The retirement reads
+    that return's rows and details again under its lock, so it sets
+    ``active: no`` and nothing else: the person's new row stays."""
+    import contextlib
+
+    from tracker import locking
+    from tracker.manifest import load_engagement_info, load_manifest, save_rules
+    from tracker.rollover import ReturnPlan, roll_household
+
+    root, john, sofia, llc = park
+    real = locking.engagement_lock
+    edited = []
+
+    @contextlib.contextmanager
+    def a_person_saves_first(folder):
+        if not edited:
+            edited.append(sofia)
+            extra = RequestItem(identifier="A02", document="1099-INT", period="TY2026",
+                                allowed_extensions=("pdf",), min_size_kb=0,
+                                any_keywords=("1099-int",))
+            save_rules(sofia, [*W2, extra], load_engagement_info(sofia))
+        with real(folder) as lock:
+            yield lock
+
+    monkeypatch.setattr(locking, "engagement_lock", a_person_saves_first)
     done = roll_household(_household(root), target_year=2027,
-                          plans=[ReturnPlan(prior=one) for one in (john, sofia, llc)])
+                          plans=[ReturnPlan(prior=john), ReturnPlan(prior=llc)])
 
-    assert [was.name for was, _, _ in done.rolled] == [
-        "1040 - John Park", "1120S - Park Landscaping LLC"]
-    [(refused, why)] = done.skipped
-    assert refused == sofia and "already exists" in why
+    assert edited and done.retired == [sofia]
+    assert [item.identifier for item in load_manifest(sofia)] == ["A01", "A02"]
+    assert load_engagement_info(sofia).active is False
+    assert ledger.read_events(sofia)[-1][ledger.INFO_KEY] == {"active": False}
+
+
+def test_a_failed_retirement_says_what_was_rolled_and_left_open_and_still_refreshes_the_readme(
+    park, monkeypatch,
+):
+    """The review's S2 and S3. Every ticked return was rolled; then one
+    retirement failed. That is not "nothing was rolled": it is its own
+    error, carrying what was done, with the rollover's sentence - and the
+    household scaffold and README refresh still run, because the new
+    year's returns exist. Every lock is let go."""
+    from tracker import filer, rollover
+    from tracker.layout import return_dir_for
+    from tracker.locking import LOCK_FILENAME
+    from tracker.manifest import load_engagement_info
+    from tracker.rollover import ROLLOVER_NOT_RETIRED, ReturnPlan, RolledNotAllRetired, roll_household
+
+    root, john, sofia, llc = park
+    leo = _a_fourth_return(root)
+    household = _household(root)
+    real_save = rollover.save_rules
+
+    def the_first_retirement_fails(folder, *args, **kwargs):
+        if folder == leo:
+            raise OSError("the disk filled")
+        return real_save(folder, *args, **kwargs)
+
+    refreshed = []
+    real_refresh = filer.refresh_household_readme
+    monkeypatch.setattr(rollover, "save_rules", the_first_retirement_fails)
+    monkeypatch.setattr(filer, "refresh_household_readme",
+                        lambda folder: (refreshed.append(folder), real_refresh(folder))[1])
+
+    with pytest.raises(RolledNotAllRetired) as failed:
+        roll_household(household, target_year=2027,
+                       plans=[ReturnPlan(prior=john), ReturnPlan(prior=llc)])
+
+    said = failed.value
+    assert isinstance(said, ManifestError)
+    assert [was for was, _, _ in said.result.rolled] == [john, llc]
+    assert said.result.retired == [] and said.not_retired == [leo, sofia]
+    assert str(said) == ROLLOVER_NOT_RETIRED.format(
+        year=2027, rolled="1040 - John Park, 1120S - Park Landscaping LLC", retired="none",
+        left="1040 - Leo Park, 1040 - Sofia Park", why="the disk filled")
     assert return_dir_for(root, PARK, 2027, "1040 - John Park").is_dir()
-    assert return_dir_for(root, PARK, 2027, "1120S - Park Landscaping LLC").is_dir()
-    # A refusal retires nothing either: every plan was ticked.
-    assert done.retired == []
+    assert load_engagement_info(leo).active is True and load_engagement_info(sofia).active is True
+    assert refreshed == [household]
+    for folder in (household, john, sofia, llc, leo):
+        assert not (folder / LOCK_FILENAME).exists()
+
+
+def test_the_command_line_says_rolled_not_all_retired_after_a_failed_retirement(park, monkeypatch):
+    """The review's S2: never "was not rolled forward" over a sentence
+    that says the returns were rolled."""
+    import io
+
+    from tracker import manifest
+    from tracker.layout import return_dir_for
+    from tracker.rollover import NOT_ALL_RETIRED_HEADING, NOT_ROLLED_HEADING
+
+    root, john, sofia, llc = park
+    real_save = manifest.save_rules
+
+    def sofia_fails(folder, *args, **kwargs):
+        if folder == sofia:
+            raise OSError("the disk filled")
+        return real_save(folder, *args, **kwargs)
+
+    monkeypatch.setattr(manifest, "save_rules", sofia_fails)
+    console = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+    code = run_the_command_line(monkeypatch, [
+        str(_household(root)), "--year", "2027",
+        "--only", "1040 - John Park", "--only", "1120S - Park Landscaping LLC",
+    ], console)
+    console.flush()
+    shown = console.buffer.getvalue().decode("utf-8")
+
+    assert code == 1, shown
+    assert NOT_ALL_RETIRED_HEADING in shown and f"  {NOT_ROLLED_HEADING}\n" not in shown
+    assert "was not rolled forward" not in shown
+    assert "Not retired: 1040 - Sofia Park (the disk filled)" in shown
+    assert return_dir_for(root, PARK, 2027, "1040 - John Park").is_dir()
 
 
 def test_a_return_moved_into_another_household_pauses_until_the_folders_name_is_accepted_then_rolls_where_it_sits(
@@ -1098,13 +1351,13 @@ def test_the_household_rollover_makes_no_change_under_the_client_tree_but_the_ne
     assert client_household_dir(root, PARK).is_dir()
 
 
-def test_the_command_line_rolls_a_household_and_prints_rolled_not_rolled_and_retired(
+def test_the_command_line_rolls_a_household_and_prints_rolled_and_retired_or_what_refused(
     park, monkeypatch,
 ):
     """One command line, two forms (decision 126): a household's folder
     rolls the household's year, told apart from a return by what the path
-    holds. It prints what rolled, what refused with its sentence, and what
-    it retired."""
+    holds. A refusal rolls nothing and is printed with its sentence
+    (decision 159); a roll prints what rolled and what it retired."""
     import io
 
     from tracker.layout import return_dir_for
@@ -1122,10 +1375,25 @@ def test_the_command_line_rolls_a_household_and_prints_rolled_not_rolled_and_ret
     console.flush()
     shown = console.buffer.getvalue().decode("utf-8")
 
+    assert code == 1, shown
+    assert NOT_ROLLED_HEADING in shown and f"  {ROLLED_HEADING}\n" not in shown
+    assert "1120S - Park Landscaping LLC" in shown and "already exists" in shown
+    assert "Nothing was rolled" in shown
+    assert not return_dir_for(root, PARK, 2027, "1040 - John Park").exists()
+    assert load_engagement_info(sofia).active is True
+
+    return_dir_for(root, PARK, 2027, "1120S - Park Landscaping LLC").rmdir()
+    console = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+    code = run_the_command_line(monkeypatch, [
+        str(_household(root)), "--year", "2027",
+        "--only", "1040 - John Park", "--only", "1120S - Park Landscaping LLC",
+    ], console)
+    console.flush()
+    shown = console.buffer.getvalue().decode("utf-8")
+
     assert code == 0, shown
-    assert shown.index(ROLLED_HEADING) < shown.index(NOT_ROLLED_HEADING)
-    assert shown.index(NOT_ROLLED_HEADING) < shown.index(RETIRED_HEADING.format(year=2027))
-    assert "1040 - John Park" in shown and "already exists" in shown
+    assert shown.index(ROLLED_HEADING) < shown.index(RETIRED_HEADING.format(year=2027))
+    assert NOT_ROLLED_HEADING not in shown
     assert return_dir_for(root, PARK, 2027, "1040 - John Park").is_dir()
     # Sofia was not named, so she is retired for the year and told so.
     assert load_engagement_info(sofia).active is False
@@ -1215,7 +1483,6 @@ def test_the_client_tree_is_byte_identical_after_a_roll_forward_whose_record_nam
     Forward writes nothing, the client tree is byte for byte what it was,
     and the private tree gains nothing. (SPEC-188's T4 expects the pause
     for the path-shaped label too; the gate refuses that line first.)"""
-    import json
 
     from tracker.households import HOUSEHOLD_PAUSED
     from tracker.layout import CLIENTS_TREE, PRIVATE_TREE, private_household_dir
@@ -1228,8 +1495,10 @@ def test_the_client_tree_is_byte_identical_after_a_roll_forward_whose_record_nam
     original = journal.read_bytes()
     for forged, refused in [(f"../../{CLIENTS_TREE}/{PARK}/Drop files here", "not one folder name"),
                             ("Somebody Else", HOUSEHOLD_PAUSED[:40])]:
-        journal.write_bytes(original + (json.dumps(ledger.new(
-            ledger.RULES_CHANGED, info={"household": forged})) + "\n").encode("utf-8"))
+        # Forged as another machine's line, linked (decision 159): an
+        # unlinked one is refused by the reader before the gate is reached.
+        journal.write_bytes(original)
+        written_elsewhere(john, ledger.new(ledger.RULES_CHANGED, info={"household": forged}))
         with pytest.raises(Exception) as said:
             roll_household(household, target_year=2027, plans=[ReturnPlan(prior=john)])
         assert refused in str(said.value), said.value
@@ -1268,3 +1537,21 @@ def test_a_renamed_private_folder_pauses_roll_forward_and_the_old_client_folder_
                                 io.StringIO()) == 2
     assert HOUSEHOLD_PAUSED[:40] in console.getvalue()
     assert not (renamed / "2027").exists()
+
+
+def test_a_name_the_layout_refuses_rolls_nothing_in_the_plans_voice(park):
+    """The port review's note: a typed name decision 188's rule refuses is
+    the plan's refusal like any other - "Nothing was rolled." - before any
+    lock or write."""
+    from tracker.layout import return_dir_for
+    from tracker.rollover import NOTHING_ROLLED, ReturnPlan, roll_household
+
+    root, john, sofia, llc = park
+    household = _household(root)
+    before = _lines_of(john, sofia, llc, household)
+    with pytest.raises(ManifestError) as refused:
+        roll_household(household, target_year=2027,
+                       plans=[ReturnPlan(prior=john), ReturnPlan(prior=sofia, return_name="con")])
+    assert str(refused.value).endswith(NOTHING_ROLLED.format(prior="", why="").lstrip(": ."))
+    assert not return_dir_for(root, PARK, 2027, john.name).exists()
+    assert _lines_of(john, sofia, llc, household) == before

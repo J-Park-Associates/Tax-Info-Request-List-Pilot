@@ -54,13 +54,18 @@ Nothing here writes to the prior year's engagement — it is read-only history.
 
 **A household rolls as a household** (decision 126). A client sees one
 folder and one inbox, so Roll Forward takes the household's open year and
-rolls every ticked return into the next one, each under its own lock by
-the rule above, and retires every return left unticked with a single
-details edit (``active: no``) — so the household has exactly one open
-year again when it is done and its inbox goes on being sorted.
-:func:`roll_household` is that loop; :func:`roll_forward` stays the
-primitive it calls and the per-return command line still rolls one. One
-return's refusal is said and undoes none of the others. A return that
+rolls every ticked return into the next one by the rule above, and
+retires every return left unticked with a single details edit
+(``active: no``) — so the household has exactly one open year again when
+it is done and its inbox goes on being sorted. :func:`roll_household` is
+that roll; :func:`roll_forward` stays the primitive it plans with and the
+per-return command line still rolls one. **It is every ticked return or
+none** (decision 159, amending 126's "one return's refusal undoes none of
+the others"): every refusal is found before anything is written, the
+household's lock and every open return's are taken before the first
+write, and a failure while making one new return removes the ones made
+before it. A half-rolled household is the two-open-years state the roll
+exists to end, and a pass could sort it between two rolls. A return that
 *was* rolled needs no edit: its successor's Rolled From is what retires
 it, exactly as it always has been.
 """
@@ -71,6 +76,7 @@ import datetime as dt
 import os
 import shutil
 from collections.abc import Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -81,7 +87,14 @@ from tracker.households import (
     open_years,
     return_name_taken,
 )
-from tracker.layout import household_of, name_key, normalised_name, return_dir_for, root_of
+from tracker.layout import (
+    LayoutError,
+    household_of,
+    name_key,
+    normalised_name,
+    return_dir_for,
+    root_of,
+)
 from tracker.manifest import (  # shift_years/detect_year re-exported: they live in manifest
     ManifestError,
     Override,
@@ -98,6 +111,7 @@ from tracker.manifest import (  # shift_years/detect_year re-exported: they live
     save_rules,
     shift_item,
     shift_years,
+    validated,
 )
 from tracker.records import EngagementInfo, HouseholdInfo, link_problem
 from tracker.templates import ask_by_for, filing_deadline_for, template_items
@@ -143,10 +157,21 @@ ROLLOVER_NOT_THIS_HOUSEHOLD = "{prior} is not an open-year return of {household}
 #: the reason is not a detail field, so it is said where a person reads
 #: it: beside the retired return on the command line, and in the runbook.
 RETIRED_BY_ROLLOVER = "retired by the household's rollover on {day}: it was not rolled into {year}"
-#: The command line's three headings over what one household rollover did.
+#: The command line's headings over what one household rollover did.
 ROLLED_HEADING = "ROLLED"
 NOT_ROLLED_HEADING = "NOT ROLLED"
+#: Every ticked return was rolled and a retirement failed (decision 159).
+NOT_ALL_RETIRED_HEADING = "ROLLED, NOT ALL RETIRED"
 RETIRED_HEADING = "RETIRED (not rolled into {year})"
+#: A household roll is every ticked return or none (decision 159): one
+#: return's refusal is the whole call's, said with that return's sentence.
+NOTHING_ROLLED = "{prior}: {why}. Nothing was rolled."
+#: Every return was rolled, and a retirement then failed: a retirement is a
+#: record line and is not undone, so the sentence says where it stopped.
+ROLLOVER_NOT_RETIRED = (
+    "Rolled into {year}: {rolled}. Retired: {retired}. Not retired: {left} ({why}); "
+    "retire those in the editor (Active: no) so the household has one open year"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,9 +241,10 @@ class HouseholdRollover:
 
     ``rolled`` is ``(prior, created, report)`` per return, in the order
     they were rolled; ``retired`` is every open-year return that was not
-    planned, each now ``active: no`` by one event of its own; ``skipped``
-    is ``(prior, sentence)`` for a return whose own roll refused, which
-    undoes none of the others.
+    planned, each now ``active: no`` by one event of its own. ``skipped``
+    is kept for the reply's shape and is always empty since decision 159:
+    a household roll is every ticked return or none, and a refusal is
+    raised for the whole call.
     """
 
     target_year: int
@@ -555,25 +581,51 @@ def roll_household(
     plans: Sequence[ReturnPlan],
     today: dt.date | None = None,
 ) -> HouseholdRollover:
-    """Roll one household's year forward, return by return, and retire what
-    it leaves behind (decision 126).
+    """Roll one household's year forward, every ticked return or none, and
+    retire what it leaves behind (decisions 126 and 159).
 
     **The household is what a person rolls**, because the household is what
     the client sees: one inbox, one folder, and however many returns the
     firm keeps under it. Roll Forward takes the open year's active returns,
     rolls each ticked one into ``target_year`` exactly as the per-return
-    rollover does - the same carry rule, the same defaults, its own lock -
-    and sets every unticked one ``active: no`` with one details edit. So
-    the household has **exactly one open year again** when it is done,
-    whichever returns were ticked, and the next pass sorts its inbox
-    instead of refusing on two open years.
+    rollover does - the same carry rule, the same defaults - and sets every
+    unticked one ``active: no`` with one details edit. So the household has
+    **exactly one open year again** when it is done, whichever returns were
+    ticked, and the next pass sorts its inbox instead of refusing on two
+    open years.
 
-    **Each return is its own decision, on its own record.** A refusal on
-    one - a target that already exists, a path past what Windows will
-    open, a year that is not after the prior's - is recorded in
-    ``skipped`` with its sentence and the loop goes on; nothing rolled
-    before it is undone, for the same reason decision 102 made one
-    transaction per engagement.
+    **All or nothing (decision 159, amending 126).** Until 159 a refusal on
+    one return was recorded in ``skipped`` and the loop went on, and a pass
+    could sort the household between two rolls: the household was left half
+    in one year and half in the next, which is the two-open-years state the
+    roll exists to end. Now, in this order:
+
+    1. **Plan, writing nothing.** Every refusal a roll can make - a target
+       that already exists, a path past what Windows will open, a year that
+       is not after the prior's, a list that does not validate, and a
+       return that cannot be retired - is found for every return first
+       (:func:`_plan_one`). Any refusal raises :class:`ManifestError`
+       naming the return, with its sentence and :data:`NOTHING_ROLLED`.
+    2. **Every lock, before any write**: the household's own (its journal
+       is guarded by the same lock file), then every open return's, ticked
+       or not, in folder-name order without case. A lock another run holds
+       raises ``EngagementLockedError`` and nothing is written.
+    3. **Make every new return** (:func:`_make_one`). A failure on any one
+       removes every return this call made - the folders only its own
+       ``make_new_folders`` made, and their store rows - and raises. A new
+       return's record is inside its new folder, so this undo removes only
+       what this call made (decision 137 M1).
+    4. **Only then retire** the unticked returns, under the locks already
+       held, each from its rows and details **read again under its lock**,
+       so an edit a person saved while the roll was planning is kept. A
+       retirement is a record line and cannot be undone: one that fails
+       raises :class:`RolledNotAllRetired`, naming what was rolled, which
+       returns were retired and which were not, and a person retires the
+       rest in the editor. The household scaffold and README refresh still
+       run first, because the new year's returns exist.
+
+    ``HouseholdRollover.skipped`` stays for the reply's shape and is always
+    empty: a refusal is now the whole call's.
 
     **A return rolled here needs no retiring:** its successor's Rolled
     From is what retires it, as it always has been
@@ -590,6 +642,7 @@ def roll_household(
     in the same folder they have always used.
     """
     from tracker.filer import refresh_household_readme
+    from tracker.locking import engagement_lock
     from tracker.scaffold import scaffold_household
 
     household_dir = Path(household_dir)
@@ -625,108 +678,224 @@ def roll_household(
     except ManifestError:                 # a household whose record cannot be read
         household_info = HouseholdInfo()
 
-    result = HouseholdRollover(target_year=target_year)
+    # 1. Every refusal, before anything is written.
+    rolls: list[_PlannedRoll] = []
+    targets: set[str] = set()
     for one, plan in planned:
-        _roll_one(one.path, one.info, plan, household_dir.name, household_info,
-                  target_year=target_year, result=result)
-
+        try:
+            roll = _plan_one(one.path, one.info, plan, household_dir.name, household_info,
+                             target_year=target_year)
+            # Two ticked returns into one name - by the layout's one key
+            # (decision 188), so a case or a look-alike letter is the same.
+            if name_key(roll.target.name) in targets:
+                raise ManifestError(
+                    f"another ticked return is also rolled into '{roll.target.name}'")
+        # A name the layout refuses (decision 188) is the plan's refusal too,
+        # in the same voice (the port review's note).
+        except (ManifestError, OSError, LayoutError) as exc:
+            raise ManifestError(_nothing_rolled(one.path.name, exc)) from exc
+        targets.add(name_key(roll.target.name))
+        rolls.append(roll)
     # What nobody ticked is finished with: one details edit on its own
-    # record, under its own lock, carrying the one field that moved. A
-    # return that *was* ticked is never retired here - rolled, its
-    # successor's Rolled From retires it; refused, it is still this
-    # year's work and the refusal is what a person acts on.
+    # record, carrying the one field that moved. A return that *was* ticked
+    # is never retired here - rolled, its successor's Rolled From retires it.
     ticked = {_same_folder(one.path) for one, _ in planned}
+    retiring: list[Path] = []
     for one in open_returns:
         if _same_folder(one.path) in ticked:
             continue
-        save_rules(one.path, _rows_as_stored(one.path), replace(one.info, active=False))
-        result.retired.append(one.path)
+        try:
+            # The up-front refusal only: what is saved is read again under
+            # the lock (step 4), so an edit made meanwhile is never undone.
+            validated(_rows_as_stored(one.path))
+        except (ManifestError, OSError) as exc:
+            raise ManifestError(_nothing_rolled(one.path.name, exc)) from exc
+        retiring.append(one.path)
+
+    result = HouseholdRollover(target_year=target_year)
+    with ExitStack() as locks:
+        # 2. Every lock before any write: the household's, then its returns'.
+        for folder in [household_dir, *sorted((one.path for one in open_returns),
+                                              key=lambda path: path.name.lower())]:
+            locks.enter_context(engagement_lock(folder))
+
+        # 3. Every new return, or none.
+        made: list[tuple[Path, list[Path]]] = []
+        for roll in rolls:
+            try:
+                made.append((roll.target, _make_one(roll)))
+            except Exception as exc:
+                for target, folders in reversed(made):
+                    _unmake(target, folders)
+                if isinstance(exc, (ManifestError, OSError)):
+                    raise ManifestError(_nothing_rolled(roll.prior.name, exc)) from exc
+                raise
+            result.rolled.append((roll.prior, roll.target, roll.report))
+
+        # 4. Only now, retire - under the locks already held (decision 102).
+        # The rows and the details saved are read here, under the lock
+        # (the review's S1): read at the plan, a person's edit saved between
+        # the plan and the locks would be diffed away by the retirement.
+        not_retired: RolledNotAllRetired | None = None
+        for folder in retiring:
+            try:
+                info = load_engagement_info(folder)
+                save_rules(folder, _rows_as_stored(folder), replace(info, active=False),
+                           lock_held=True)
+            except Exception as exc:
+                not_retired = RolledNotAllRetired(
+                    result, [one for one in retiring if one not in result.retired], exc)
+                break
+            result.retired.append(folder)
 
     # The client's side, once, at the end: the year folders the rolls made
     # are already there, and the README - its one composer, decision 130 -
-    # now lists the new year's returns.
-    scaffold_household(household_dir)
-    refresh_household_readme(household_dir)
-    return result
+    # now lists the new year's returns. Whenever a return was rolled, even
+    # when a retirement failed (the review's S3): the new year's returns
+    # exist and the client's README should list them. A failure here does
+    # not hide the retirement's; it is added to it.
+    if not_retired is None:
+        scaffold_household(household_dir)
+        refresh_household_readme(household_dir)
+        return result
+    for step in (scaffold_household, refresh_household_readme):
+        try:
+            step(household_dir)
+        except Exception as exc:
+            not_retired.also.append(f"{step.__name__} failed ({exc})")
+    raise not_retired
 
 
-def _roll_one(prior: Path, prior_info: EngagementInfo, plan: ReturnPlan,
-              household_name: str, household_info: HouseholdInfo, *,
-              target_year: int, result: HouseholdRollover) -> Path | None:
-    """One return of a household rollover, or ``None`` with its refusal in
-    ``result.skipped``.
+class RolledNotAllRetired(ManifestError):
+    """Every ticked return was rolled, and then a retirement failed (decision
+    159, the review's S2).
 
-    Everything the per-return rollover does, in its order: last year's
-    rows, the target the layout computes, the refusals creation makes, the
-    details carried and refilled from the household, the dates the form
-    implies, the record under the new return's own lock, and the scaffold.
+    Not "nothing was rolled": the new year's returns exist, and a
+    retirement is a record line that is not undone. So it is its own
+    error, carrying what was done - ``result`` (rolled, and retired so
+    far) and ``not_retired`` - for the command line's heading and the
+    app's banner, and its sentence (:data:`ROLLOVER_NOT_RETIRED`) says the
+    same in words. ``also`` holds any failure of the scaffold or README
+    refresh that ran after it.
     """
-    from tracker import store
+
+    def __init__(self, result: HouseholdRollover, not_retired: list[Path], why: object):
+        self.result = result
+        self.not_retired = not_retired
+        self.why = str(why)
+        self.also: list[str] = []
+        super().__init__(self.sentence())
+
+    def sentence(self) -> str:
+        said = ROLLOVER_NOT_RETIRED.format(
+            year=self.result.target_year,
+            rolled=", ".join(was.name for was, _, _ in self.result.rolled) or "none",
+            retired=", ".join(path.name for path in self.result.retired) or "none",
+            left=", ".join(path.name for path in self.not_retired),
+            why=self.why)
+        return "; ".join([said, *self.also])
+
+    def __str__(self) -> str:
+        return self.sentence()
+
+
+def _nothing_rolled(name: str, why: object) -> str:
+    """One return's refusal, said as the whole household roll's."""
+    return NOTHING_ROLLED.format(prior=name, why=str(why).rstrip(". "))
+
+
+@dataclass(frozen=True, slots=True)
+class _PlannedRoll:
+    """One ticked return's roll, worked out whole before anything is written."""
+
+    prior: Path
+    target: Path
+    report: RolloverReport
+    info: EngagementInfo
+
+
+def _plan_one(prior: Path, prior_info: EngagementInfo, plan: ReturnPlan,
+              household_name: str, household_info: HouseholdInfo, *,
+              target_year: int) -> _PlannedRoll:
+    """Everything one return's roll decides, and every refusal it makes,
+    with nothing written (decision 159): last year's rows, the target the
+    layout computes, the refusals creation makes, the details carried and
+    refilled from the household, and the dates the form implies."""
     from tracker.filer import refuse_a_path_past_the_limit
+
+    report = roll_forward(prior, target_year=target_year,
+                          template=template_items(plan.form) if plan.form else [])
+    # **A return rolls forward where it sits** (decision 177): the
+    # household being rolled and the prior's own folder name, never the
+    # names its record carries. A return a person dragged into another
+    # household still names the old one in its record, and the new year
+    # went back there - under the other household's inbox, README and
+    # client folder.
+    household = household_name
+    return_name = plan.return_name or prior.name
+    target = return_dir_for(root_of(prior), household, target_year, return_name)
+    # Unique by the layout's key within the household-year (decision 188),
+    # asked here, in the plan, so a name taken refuses the whole roll before
+    # any lock is taken or anything written (decision 159).
+    if (taken := return_name_taken(target.parent, return_name)) is not None:
+        raise ManifestError(
+            f"A return named '{taken}' already exists for {household} {target_year}")
+    refuse_a_path_past_the_limit(target, report.items)
+    validated(report.items)
+
+    carried = carry_engagement_info(prior_info, rolled_from=str(prior), tax_year=target_year)
+    # The inbox is the household's and does not change from one year to
+    # the next, so its link and its greeting are refilled here rather than
+    # left blank for somebody to notice in February.
+    link, report.link_dropped = carried_link(carried.link or household_info.link)
+    carried = replace(carried,
+                      client=carried.client or household_info.contact,
+                      link=link,
+                      household=household, return_name=return_name)
+    info = with_default_dates(carried, carried.form or plan.form, target_year)
+    return _PlannedRoll(prior=prior, target=target, report=report, info=info)
+
+
+def _make_one(roll: _PlannedRoll) -> list[Path]:
+    """Make one planned return: its folders, its record under its own new
+    lock, and its scaffold. Returns the folders this call's own mkdir made,
+    for :func:`roll_household` to remove again should a later return fail.
+    A failure here removes this return first and raises."""
     from tracker.scaffold import scaffold_engagement
 
-    target: Path | None = None
+    # The return and, in a new year, its year folder - and only what this
+    # call's own mkdir made is removed again (decision 137).
+    made = make_new_folders(roll.target)
     try:
-        report = roll_forward(prior, target_year=target_year,
-                              template=template_items(plan.form) if plan.form else [])
-        # **A return rolls forward where it sits** (decision 177): the
-        # household being rolled and the prior's own folder name, never
-        # the names its record carries. A return a person dragged into
-        # another household still names the old one in its record, and
-        # the new year went back there - under the other household's
-        # inbox, README and client folder.
-        household = household_name
-        return_name = plan.return_name or prior.name
-        target = return_dir_for(root_of(prior), household, target_year, return_name)
-        # Unique by the layout's key within the household-year (decision 188).
-        if (taken := return_name_taken(target.parent, return_name)) is not None:
-            raise ManifestError(
-                f"A return named '{taken}' already exists for {household} {target_year}")
-        refuse_a_path_past_the_limit(target, report.items)
+        create_engagement(roll.target, roll.report.items, roll.info)
+        scaffold_engagement(roll.target)
+    except Exception:
+        _unmake(roll.target, made)
+        raise
+    return made
 
-        carried = carry_engagement_info(prior_info, rolled_from=str(prior),
-                                        tax_year=target_year)
-        # The inbox is the household's and does not change from one year
-        # to the next, so its link and its greeting are refilled here
-        # rather than left blank for somebody to notice in February.
-        link, report.link_dropped = carried_link(carried.link or household_info.link)
-        carried = replace(carried,
-                          client=carried.client or household_info.contact,
-                          link=link,
-                          household=household, return_name=return_name)
-        info = with_default_dates(carried, carried.form or plan.form, target_year)
-        # The return and, in a new year, its year folder - and only what
-        # this call's own mkdir made is removed again (decision 137).
-        made = make_new_folders(target)
+
+def _unmake(target: Path, made: list[Path]) -> None:
+    """Remove a return this roll made: never a half-built return, in the
+    folder or in the store. The folder first, so the name is free again
+    whatever happens next, then the store's row in its own try, because a
+    store that cannot be reached at this moment must not replace the
+    refusal the person is owed with its own. The return is this call's; a
+    year folder above it goes only when it is empty (the review's F4)."""
+    from tracker import store
+
+    for folder in reversed(made):
+        if folder == target:
+            shutil.rmtree(folder, ignore_errors=True)
+            continue
         try:
-            create_engagement(target, report.items, info)
-            scaffold_engagement(target)
-        except Exception:
-            # Never a half-built return, in the folder or in the store -
-            # the folder first, so the name is free again whatever
-            # happens next, then the store's row in its own try, because
-            # a store that cannot be reached at this moment must not
-            # replace the refusal the person is owed with its own.
-            # The return is this call's; a year folder above it goes only
-            # when it is empty (the review's F4).
-            for folder in reversed(made):
-                if folder == target:
-                    shutil.rmtree(folder, ignore_errors=True)
-                    continue
-                try:
-                    folder.rmdir()
-                except OSError:
-                    pass
-            try:
-                store.forget(store.connect(), target)
-            except Exception:
-                pass
-            raise
-    except (ManifestError, OSError) as exc:
-        result.skipped.append((prior, str(exc)))
-        return None
-    result.rolled.append((prior, target, report))
-    return target
+            folder.rmdir()
+        except OSError:
+            pass
+    try:
+        store.forget(store.connect(), target)
+    except Exception:
+        pass
 
 
 # --------------------------------------------------------------------- CLI ----
@@ -821,11 +990,24 @@ if __name__ == "__main__":
         if len(forms) > 1 and len(forms) != len(chosen):
             parser.error("give --form once for every return, or one per --only in the same order")
         day = dt.date.today()
-        done = roll_household(given, target_year=ns.year, today=day, plans=[
-            ReturnPlan(prior=one.path,
-                       form=forms[n] if len(forms) > 1 else (forms[0] if forms else ""))
-            for n, one in enumerate(chosen)
-        ])
+        from tracker.locking import EngagementLockedError
+
+        try:
+            done = roll_household(given, target_year=ns.year, today=day, plans=[
+                ReturnPlan(prior=one.path,
+                           form=forms[n] if len(forms) > 1 else (forms[0] if forms else ""))
+                for n, one in enumerate(chosen)
+            ])
+        except RolledNotAllRetired as exc:
+            # Rolled, and a retirement failed: not "nothing was rolled".
+            print(f"{given.name} was rolled forward, but not every return left out was "
+                  f"retired\n\n  {NOT_ALL_RETIRED_HEADING}\n    {exc}\n")
+            raise SystemExit(1) from None
+        except (ManifestError, EngagementLockedError) as exc:
+            # Every ticked return or none (decision 159): the refusal is
+            # the whole roll's, said under the heading a person looks for.
+            print(f"{given.name} was not rolled forward\n\n  {NOT_ROLLED_HEADING}\n    {exc}\n")
+            raise SystemExit(1) from None
 
         span = (f"{open_years_now[0]} → {ns.year}" if open_years_now
                 else f"{UNKNOWN_YEAR_LABEL} ({ns.year})")

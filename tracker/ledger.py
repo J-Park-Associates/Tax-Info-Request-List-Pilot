@@ -76,7 +76,43 @@ mid-append leaves at most a torn last line - bytes with no newline after
 them. :func:`read_events` ignores such a tail and the next :func:`append`
 truncates it first. Nothing else ever rewrites the file. A record's own JSON
 never contains a newline (``json.dumps`` escapes them), so an unterminated
-tail is the only shape a torn write can take.
+tail is the only shape a torn write can take. A tail that is one whole
+event is not torn - a sync client or an editor dropped only its newline -
+and is read as a line, and the next append gives it its newline back
+(decision 159).
+
+**Every line carries its link, its host and its format** (decision 159).
+:func:`append` writes three keys of its own beside the caller's event:
+:data:`LINK_KEY`, the applied chain through every line before it (the
+number the store already keeps as ``applied_digest``, computed by
+:func:`chain_link` and nowhere else); :data:`HOST_KEY`, the machine that
+wrote it (``locking.this_host()``); and :data:`FORMAT_KEY`,
+:data:`RECORD_FORMAT`. Every reader checks them while it parses
+(:func:`_parse_lines`): a line whose link is not the chain before it was
+reordered, cut or edited; a line with no link after one that has it was
+written by an older version or by hand; a line of a newer format is not
+read rather than misread. Each is
+refused by name - its class and line, never the parser's own text - ending
+with :data:`RUN_RECOVER`, and a record refused is that return's problem,
+never the practice's. The link detects accidents; a rewrite that
+recomputes it is :mod:`tracker.checkpoint`'s to catch. Lines from before 159 carry
+no link and are read as they always were; the first linked line's link
+covers all of them. What the link cannot tell - whether the record is the
+one *this machine* wrote - is :mod:`tracker.checkpoint`'s.
+
+**The chain here, the values at the gate** (decision 159 carried onto
+decision 187). What this reader checks is what only the chain can say:
+the link, a line without one after a linked one, a newer format. What the
+three keys and a line's time *hold* - a link blank or a digest, a format
+this version writes, a writer that is a machine's name
+(``records.host_problem``), a time as :func:`stamp` writes it
+(``records.stamp_problem``) - is a value like every other value a line
+carries, and is held to its rule in one place: the store's admission
+(``store._refuse_a_malformed_line``), which :func:`tracker.store.record`
+runs on each line exactly as :func:`line_of` will write it, and every
+catch-up, check and verify runs on every line read in. A reader that
+shows a writer or a time without the store (the view's Summary) asks the
+same two rules first.
 
 **Written only under the engagement lock.** ``O_APPEND`` is atomic for
 concurrent writers on POSIX and is *not* on Windows, where two appends can
@@ -113,10 +149,18 @@ import hashlib
 import json
 import logging
 import os
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tracker.locking import lock_is_held
+from tracker.locking import (
+    BREAKER_CLEARED_INFIX,
+    BREAKER_STALE_SECONDS,
+    BREAKER_SUFFIX,
+    LOCK_FILENAME,
+    lock_is_held,
+    this_host,
+)
 
 log = logging.getLogger("tracker.ledger")
 
@@ -452,8 +496,48 @@ _BINARY = getattr(os, "O_BINARY", 0)
 _NEWLINE = b"\n"
 
 
+#: The three keys every line since decision 159 carries, written by
+#: :func:`append` and never by a caller: the applied chain through the line
+#: before (``""`` on a record's first line), the machine that wrote it, and
+#: the record's format.
+LINK_KEY = "prev"
+HOST_KEY = "host"
+FORMAT_KEY = "fmt"
+LINE_KEYS = frozenset({LINK_KEY, HOST_KEY, FORMAT_KEY})
+#: The format this version writes and the newest it reads (decision 159, E1).
+RECORD_FORMAT = 1
+
+#: What a person does about a record that does not read or does not match:
+#: the one pointer every refusal of a record ends with, so the practice page
+#: can list those refusals apart from every other problem.
+RUN_RECOVER = "Run recover (runbook §6)."
+#: The record's own refusals (decision 159). Each names the line and what it
+#: means; nothing past such a line is read.
+BROKEN_LINK = ("{name} line {line} does not follow the line before it (the record was reordered, "
+               "cut or edited). Nothing past it is read. " + RUN_RECOVER)
+UNLINKED_LINE = ("{name} line {line} was written without the record's link - by an older version "
+                 "of the tracker or by hand. Nothing past it is read. " + RUN_RECOVER)
+NEWER_FORMAT = ("{name} line {line} was written by a newer version of the tracker (format {fmt}); "
+                "this version reads format {known} and stops here rather than misread it. "
+                + RUN_RECOVER)
+#: A line that does not read at all, by class only - never the parser's own
+#: text, which quotes the line (decision 159, principle 7); that goes to the
+#: local log.
+NOT_AN_EVENT = "{name} line {line} does not read as an event ({why}). " + RUN_RECOVER
+LINE_KEY_GIVEN = ("{keys} are written by the record itself (decision 159); an event may not carry "
+                  "them, and {event!r} was not written")
+
+
 class LedgerError(RuntimeError):
-    """The record could not be appended to, or does not read as one."""
+    """The record could not be appended to, or does not read as one.
+
+    ``line`` is the line a reader stopped at, when it stopped at one: what
+    ``store.recover`` needs to know how much of a record still reads.
+    """
+
+    def __init__(self, message: str, *, line: int | None = None) -> None:
+        super().__init__(message)
+        self.line = line
 
 
 #: What a record the disk refused says (decision 189): the error's class
@@ -573,20 +657,62 @@ def append(engagement_dir: Path | str, event: dict) -> Path:
     engagement_dir = Path(engagement_dir)
     name = event.get(EVENT_KEY)
     _writable(name)
+    if given := sorted(LINE_KEYS & set(event)):
+        raise LedgerError(LINE_KEY_GIVEN.format(keys=", ".join(map(repr, given)), event=name))
     if not lock_is_held(engagement_dir):
         raise LedgerError(
             f"{engagement_dir.name}: the record is appended to only while this run holds the "
             f"engagement lock; {name!r} was not written"
         )
     path = path_for(engagement_dir)
-    _truncate_torn_tail(path)
-    _write_line(path, event)
+    # One read of the file, parsed by the one reader: a record that does not
+    # read - a broken link, a newer format - is refused here too, before a
+    # line is put after it (decision 159, E1), and the link written is the
+    # chain over exactly the lines that reader returned.
+    try:
+        data = path.read_bytes()
+    except FileNotFoundError:
+        data = b""
+    except OSError as exc:
+        # The disk's error leaves as the record's, by its code (decision 189).
+        raise _not_written(exc) from exc
+    before = ""
+    for _event, raw in _parse_lines(data, path.name):
+        before = chain_link(before, raw)
+    _truncate_torn_tail(path, data)
+    _write_raw(path, line_of(event, before))
     return path
+
+
+def line_of(event: dict, before: str) -> bytes:
+    """The exact bytes :func:`append` writes for ``event`` after a record
+    whose chain is ``before``, without the newline: the event with its link,
+    this machine's name and the format (decision 159). One function, so the
+    intent :func:`intended_heads` records is made of the very bytes the
+    append writes (principle 2)."""
+    return json.dumps({**event, LINK_KEY: before, HOST_KEY: this_host(), FORMAT_KEY: RECORD_FORMAT},
+                      ensure_ascii=False, sort_keys=True).encode("utf-8")
+
+
+def intended_heads(before: str, events: list[dict]) -> list[str]:
+    """The chain after each of ``events``, appended in order to a record
+    whose chain is ``before``: what ``store.record`` says it is about to
+    write, so a line of this machine past the checkpoint is accepted only
+    when it is exactly one of those lines (decision 159, the review's M1)."""
+    heads = []
+    for event in events:
+        before = chain_link(before, line_of(event, before))
+        heads.append(before)
+    return heads
 
 
 def _write_line(path: Path, event: dict) -> None:
     """One event, one line, one write, flushed to the platter before we go on."""
-    line = json.dumps(event, ensure_ascii=False, sort_keys=True).encode("utf-8") + _NEWLINE
+    _write_raw(path, json.dumps(event, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+
+
+def _write_raw(path: Path, line: bytes) -> None:
+    line = line + _NEWLINE
     try:
         fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | _BINARY, 0o666)
         try:
@@ -598,22 +724,42 @@ def _write_line(path: Path, event: dict) -> None:
         raise _not_written(exc) from exc
 
 
-def _truncate_torn_tail(path: Path) -> None:
-    """Drop bytes a killed run left with no newline after them.
+def _truncate_torn_tail(path: Path, data: bytes) -> None:
+    """Drop bytes a killed run left with no newline after them - unless they
+    are a whole line that lost only its newline, which is kept.
 
     Only ever the tail, and only under the lock: a torn line is the one thing
     a crash can leave behind, and appending after it would bury the damage in
     the middle of the file where no reader could tell it from a record.
+
+    **A line that lost only its newline is not torn (decision 159, A-4).** A
+    sync client or an editor that saves a file without its last newline
+    leaves the last event whole; dropping it would delete a decision the
+    record had already made. So a tail that reads as one complete event
+    (:func:`_a_complete_tail`) gets its newline back - one write, flushed -
+    with a warning naming the file, and the next line goes after it. A
+    genuinely torn line never reads as a whole object, and is dropped as
+    before.
+
+    ``data`` is the file's bytes as :func:`append` read them, under the
+    lock, so the tail judged is the tail its link was computed over.
     """
-    try:
-        data = path.read_bytes()
-    except FileNotFoundError:
-        return
-    except OSError as exc:
-        raise _not_written(exc) from exc
     if not data or data.endswith(_NEWLINE):
         return
     keep = data.rfind(_NEWLINE) + 1
+    if _a_complete_tail(data[keep:]):
+        log.warning("%s ended without its last newline; the line is whole and is kept", path.name)
+        try:
+            fd = os.open(path, os.O_WRONLY | os.O_APPEND | _BINARY)
+            try:
+                os.write(fd, _NEWLINE)
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+        except OSError as exc:
+            # The disk's error leaves as the record's (decision 189).
+            raise _not_written(exc) from exc
+        return
     log.warning("%s ended mid-line (%d byte(s)); the torn tail is dropped", path.name, len(data) - keep)
     try:
         with open(path, "r+b") as handle:
@@ -622,6 +768,22 @@ def _truncate_torn_tail(path: Path) -> None:
             os.fsync(handle.fileno())
     except OSError as exc:
         raise _not_written(exc) from exc
+
+
+def _a_complete_tail(tail: bytes) -> bool:
+    """The bytes after the last newline are one whole event: they parse as
+    one JSON object carrying :data:`EVENT_KEY`. Its link is checked where
+    every line's is (:func:`_parse_lines`), so a kept tail that carries a
+    link must carry the right one or the record is refused. A tail nested too
+    deep to parse is torn, never a crash: before 159 no tail was parsed at
+    all, and a record's tail is exactly the bytes nobody vouches for."""
+    if not tail.strip():
+        return False
+    try:
+        event = json.loads(tail.decode("utf-8"))
+    except (ValueError, RecursionError):
+        return False
+    return isinstance(event, dict) and event.get(EVENT_KEY) is not None
 
 
 # ------------------------------------------------------------------ read ----
@@ -651,14 +813,29 @@ def _parse(data: bytes, name: str) -> list[dict]:
 
 def _parse_lines(data: bytes, name: str) -> list[tuple[dict, bytes]]:
     """:func:`_parse`, with each event's own line as it is in the file
-    (without its newline): what :func:`read_with_chain` digests."""
+    (without its newline): what :func:`read_with_chain` digests.
+
+    **Each line is checked in its place while it is read** (decision 159):
+    its format (:data:`NEWER_FORMAT`), then its link - a line carrying
+    :data:`LINK_KEY` must name the chain through the lines before it
+    (:data:`BROKEN_LINK`) and a host, and once one line has carried a link
+    every line after it must (:data:`UNLINKED_LINE`). The lines before the
+    first linked one are the record from before 159 and read as they always
+    did.
+    """
     if not data:
         return []
     lines = data.split(_NEWLINE)
-    if lines[-1]:
-        log.warning("%s ends mid-line; the torn last line is ignored", name)
-    lines.pop()                       # the tail after the last newline: empty, or torn
+    if lines[-1] and _a_complete_tail(lines[-1]):
+        # A whole line that lost only its newline is a line (decision 159);
+        # the next append gives it its newline back.
+        log.warning("%s ends without its last newline; the last line is whole and is read", name)
+    else:
+        if lines[-1]:
+            log.warning("%s ends mid-line; the torn last line is ignored", name)
+        lines.pop()                   # the tail after the last newline: empty, or torn
     events = []
+    before, linked = "", False
     for number, raw in enumerate(lines, start=1):
         if not raw.strip():
             continue
@@ -668,12 +845,94 @@ def _parse_lines(data: bytes, name: str) -> list[tuple[dict, bytes]]:
             # Not only a decoding or a JSON error (both are ValueErrors): a
             # number past the interpreter's digit limit raises a bare one,
             # which escaped every reader as something other than a record
-            # that does not read (decision 180).
-            raise LedgerError(f"{name} line {number} does not read as an event: {exc}") from exc
+            # that does not read (decision 180). Said by its class; the
+            # parser's text quotes the line and goes to the local log only.
+            why = ("it is not UTF-8" if isinstance(exc, UnicodeDecodeError) else
+                   "it is not JSON" if isinstance(exc, json.JSONDecodeError) else
+                   "it holds a number too long to read")
+            log.warning("%s line %d does not read: %s", name, number, exc)
+            raise LedgerError(NOT_AN_EVENT.format(name=name, line=number, why=why), line=number) from None
+        except RecursionError:
+            # Nested past the interpreter's limit: a line that does not
+            # read, said as one, never a bare RecursionError (decision 159).
+            raise LedgerError(NOT_AN_EVENT.format(name=name, line=number,
+                                                  why="it is nested too deeply"), line=number) from None
         if not isinstance(event, dict) or event.get(EVENT_KEY) is None:
-            raise LedgerError(f"{name} line {number} is not an event")
+            raise LedgerError(f"{name} line {number} is not an event. " + RUN_RECOVER, line=number)
+        try:
+            linked = _in_its_place(event, name, number, before, linked)
+        except LedgerError as exc:
+            exc.line = number
+            raise
+        before = chain_link(before, raw)
         events.append((event, raw))
     return events
+
+
+def _in_its_place(event: dict, name: str, number: int, before: str, linked: bool) -> bool:
+    """Refuse a line of a newer format, a line whose link is not ``before``,
+    and a line with no link once the record is linked. Returns whether the
+    record is linked from this line on."""
+    fmt = event.get(FORMAT_KEY)
+    # A format that is not a number is a value out of its rule, and the
+    # store's gate refuses it with every other (decision 187); here only a
+    # number this version does not read stops the reader.
+    if isinstance(fmt, int) and not isinstance(fmt, bool) and fmt > RECORD_FORMAT:
+        raise LedgerError(NEWER_FORMAT.format(name=name, line=number, fmt=fmt, known=RECORD_FORMAT))
+    if LINK_KEY not in event:
+        if linked:
+            raise LedgerError(UNLINKED_LINE.format(name=name, line=number))
+        return False
+    if event[LINK_KEY] != before:
+        raise LedgerError(BROKEN_LINK.format(name=name, line=number))
+    return True
+
+
+def siblings(folder: Path | str) -> list[Path]:
+    """Every copy of the record or the lock beside the real ones in one
+    folder: what a sync client leaves when two machines disagree (decision
+    159, A-8 / G-5).
+
+    Non-recursive and case-insensitive: every file whose name starts with
+    the record's stem and ends ``.jsonl`` but is not :data:`LEDGER_FILENAME`
+    (Drive's ``_ledger (1).jsonl``, ``_ledger_conflict-....jsonl``), and
+    every file whose name starts with the lock's stem and ends ``.lock``, or
+    is the lock's name with anything after it - except the lock itself, its
+    breaker, and a breaker's cleared-marker younger than
+    ``locking.BREAKER_STALE_SECONDS`` (both are the lock at work; an older
+    one was left behind and is named like any other). **Nothing ever
+    deletes, moves or renames one**: the tracker cannot know which copy is
+    right, so each is named every pass until a person deals with it.
+    """
+    folder = Path(folder)
+    record_stem = Path(LEDGER_FILENAME).stem.casefold()
+    lock_name = LOCK_FILENAME.casefold()
+    lock_stem = Path(LOCK_FILENAME).stem.casefold()
+    breaker = (LOCK_FILENAME + BREAKER_SUFFIX).casefold()
+    marker = breaker + BREAKER_CLEARED_INFIX.casefold()
+    try:
+        children = sorted(folder.iterdir())
+    except OSError:
+        return []
+    found = []
+    for child in children:
+        name = child.name.casefold()
+        if name in (LEDGER_FILENAME.casefold(), lock_name, breaker) or not child.is_file():
+            continue
+        if name.startswith(marker) and not _left_behind(child):
+            continue
+        if (name.startswith(record_stem) and name.endswith(".jsonl")) or (
+                name.startswith(lock_stem) and (name.endswith(".lock") or name.startswith(lock_name))):
+            found.append(child)
+    return found
+
+
+def _left_behind(path: Path) -> bool:
+    """A breaker's marker older than the lock says one lives."""
+    try:
+        return time.time() - path.stat().st_mtime >= BREAKER_STALE_SECONDS
+    except OSError:
+        return False
 
 
 def chain_link(before: str, line: bytes) -> str:

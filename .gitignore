@@ -81,6 +81,19 @@ tracker.db
 tracker.db-wal
 tracker.db-shm
 pass-order.json
+# Decision 159 writes beside the store too, and each holds client data or
+# describes this one machine: the record checkpoint (and SQLite's two side
+# files), the last-pass file (and its temp name while it is replaced), the
+# exports recover keeps, and a store an older version wrote, set aside -
+# which holds every client's index rows like tracker.db. Until decision 186
+# moves the data home out of the program's folder, these lines are what
+# keeps them out of the repository.
+record-heads.db
+record-heads.db-*
+last-pass.json
+last-pass.json.*
+recovered/
+tracker.db.v*.old*
 # OCR's temporary page images during a pass (decision 137, L7). Retired by
 # decision 169 - the reader writes no temporary file - but a checkout that
 # ran a pass before it may still hold the folder, with a client's page in
