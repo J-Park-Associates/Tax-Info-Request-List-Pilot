@@ -864,7 +864,12 @@ def _release(lock: EngagementLock) -> None:
     except FileNotFoundError:
         return                    # it went while we waited
     except OSError as exc:
-        log.warning("%s could not be removed or marked on release (%s; %s)", lock.path, why, exc)
+        # At call time: locking imports nothing of the package at load.
+        from tracker import errors
+
+        errors.keep("locking", exc, name=lock.path.name)
+        log.warning("%s could not be removed or marked on release (%s; %s)",
+                    lock.path, why, errors.error_class(exc))
 
 
 @dataclass(frozen=True, slots=True)

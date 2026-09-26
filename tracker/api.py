@@ -3856,7 +3856,8 @@ def _short_of_room(root: Path) -> list[dict]:
         try:
             room = room_for(engagement.path, load_manifest(engagement.path))
         except Exception as exc:          # the pass and the picker say this return's problem
-            log.warning("Could not measure %s (%s)", engagement.label, exc)
+            errors.keep("api", exc, name=engagement.label)
+            log.warning("Could not measure %s (%s)", engagement.label, errors.error_class(exc))
             continue
         if room.short or room.parks:
             short.append({"engagement": engagement.label, "short": room.short, "parks": room.parks,

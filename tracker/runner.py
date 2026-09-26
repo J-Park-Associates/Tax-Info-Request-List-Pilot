@@ -1201,8 +1201,9 @@ def _view_step(run: EngagementRun) -> None:
     try:
         run.view_stale = write_view(run.engagement.path).stale
     except Exception as exc:
+        errors.keep("runner", exc, name=run.engagement.label)
         log.warning("Could not write %s for %s (%s)",
-                    VIEW_FILENAME, run.engagement.label, exc)
+                    VIEW_FILENAME, run.engagement.label, errors.error_class(exc))
 
 
 def skipped_because(engagement: Engagement) -> str:
@@ -1360,7 +1361,8 @@ def _retire_unedited_drafts(engagement_dir: Path, *,
         try:
             path.unlink()
         except OSError as exc:    # open in Word, or a sync client mid-upload: next time
-            log.warning("Could not retire %s (%s)", path.name, exc)
+            errors.keep("runner", exc, name=path.name)
+            log.warning("Could not retire %s (%s)", path.name, errors.error_class(exc))
 
 
 def _refresh_stale_draft(draft, engagement_dir: Path, *, changed_from: dict | None = None,
@@ -1383,7 +1385,8 @@ def _refresh_stale_draft(draft, engagement_dir: Path, *, changed_from: dict | No
         try:
             refreshed.append(write_draft(draft, path=path, changed_from=changed_from))
         except OSError as exc:    # open in Word, or a sync client mid-upload: next time
-            log.warning("Could not refresh %s (%s)", path.name, exc)
+            errors.keep("runner", exc, name=path.name)
+            log.warning("Could not refresh %s (%s)", path.name, errors.error_class(exc))
     return refreshed
 
 

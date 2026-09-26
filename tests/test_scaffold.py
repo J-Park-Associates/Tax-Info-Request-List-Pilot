@@ -796,6 +796,7 @@ def test_a_write_failure_is_a_log_line_and_the_caller_goes_on(engagement, monkey
 
     import tracker.filer as filer_module
     import tracker.scaffold as scaffold_module
+    from tracker import errors
 
     scaffold_engagement(engagement)
 
@@ -804,7 +805,11 @@ def test_a_write_failure_is_a_log_line_and_the_caller_goes_on(engagement, monkey
     monkeypatch.setattr(scaffold_module, "write_text_atomically", refused)
     with caplog.at_level(logging.WARNING):
         assert refresh_household_readme(household_of(engagement)) is None
-    assert "being uploaded" in caplog.text
+    # The line names the class; the error's words reach only the debug
+    # sink (decision 190), which the suite's capture also hears.
+    logged = [r.getMessage() for r in caplog.records if r.name != errors.DEBUG_LOGGER]
+    assert any("PermissionError" in line for line in logged), logged
+    assert not any("being uploaded" in line for line in logged), logged
 
     # And anything else that goes wrong reading the record is a log line too.
     def broken(returns):

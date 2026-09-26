@@ -878,7 +878,8 @@ def _end(process) -> None:
                            capture_output=True, timeout=CHILD_EXIT_SECONDS, check=False,
                            creationflags=subprocess.CREATE_NO_WINDOW)
         except (OSError, subprocess.SubprocessError) as exc:
-            log.warning("Could not end the reading's process tree (%s)", exc)
+            errors.keep("ocr", exc)
+            log.warning("Could not end the reading's process tree (%s)", errors.error_class(exc))
     else:
         try:
             if os.getpgid(process.pid) == process.pid:      # it leads its own group

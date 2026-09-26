@@ -3714,7 +3714,7 @@ if __name__ == "__main__":
     # root held to the settings' rule, the folder a return's or a
     # household's place under it, rebuilt from its own names.
     from tracker import door
-
+    from tracker.layout import LayoutError
     try:
         clients_root = door.checked_root(ns.root)
         if ns.engagement:
@@ -3722,7 +3722,7 @@ if __name__ == "__main__":
                 one = door.return_dir(Path(ns.engagement).absolute(), root=clients_root)
             except ValueError:
                 one = door.household_dir(Path(ns.engagement).absolute(), root=clients_root)
-    except ValueError as exc:
+    except (door.DoorError, LayoutError) as exc:     # the door's own sentences
         parser.error(str(exc))
     if ns.command == "recover" and not ns.engagement:
         parser.error("recover needs --engagement <the return folder>")

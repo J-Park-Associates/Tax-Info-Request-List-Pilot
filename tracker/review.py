@@ -521,10 +521,11 @@ if __name__ == "__main__":
     # A typed folder is parsed, never trusted: it must be a return's
     # place under the checked clients root (decision 188).
     from tracker import door
+    from tracker.layout import LayoutError
 
     try:
         ns.engagement_dir = door.return_dir(Path(ns.engagement_dir).absolute())
-    except ValueError as exc:
+    except (door.DoorError, LayoutError) as exc:     # the door's own sentences
         parser.error(str(exc))
 
     from tracker.filer import ensure, read_index

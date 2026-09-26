@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 156,
-    "edges": 990,
-    "reused": 105
+    "edges": 1005,
+    "reused": 98
   },
   "node_types": [
     "artifact",
@@ -135,8 +135,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "0644ce56374aea9e",
-      "lines": 4025,
+      "sha256": "8cb2fef97c6bccd3",
+      "lines": 4026,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_FOLDER_NAME_HELP",
@@ -533,8 +533,8 @@
       "id": "tracker/content_check.py",
       "type": "module",
       "layer": "core",
-      "sha256": "aee10cc9b27f3a61",
-      "lines": 2603,
+      "sha256": "b983e0cdc7433a99",
+      "lines": 2604,
       "cli": "python -m tracker.content_check",
       "exports": [
         "BROKER_FORM",
@@ -677,14 +677,14 @@
         "SAYS_ITS_CODE": "'says_its_code'"
       },
       "role": "What an error is called where a person can see it (decision 190): error_class(exc) is the class, and for an OSError its errno's symbolic name (FileNotFoundError (ENOENT)), or for a class that sets SAYS_ITS_CODE (decision 189's StoreUnavailable, RecordNotWritten) its code, never the message and never a path - the one definition of how an error is said, which decision 189 first wrote as content_check.said_as_class; said(exc, firm_written) keeps the tracker's own sentences whole; keep(where, exc_or_text, name=) writes the whole message and trace to the debug logger DEBUG_LOGGER ('tracker.debug'). A small CLI names a built-in exception's class or says where the words go (WHERE_KEPT).",
-      "notes": "Layer 0, standard library only, nothing of the package. A class name and not a shortened message because 120 characters is an SSN: no length is short enough to be safe, and a class name is written by a programmer. Every reason's {error}, the router's 'could not read it', the filer's and runner's catch-alls and the app's unexpected error name the class; the record's own errors (ManifestError, StoreError and the others) keep their text. Until decision 186 gives the debug log a place, the logger has a NullHandler and propagate=False, so nothing reaches a console, stderr or runs.log. tests/test_errors.py guards that no module under tracker/ puts a caught exception's words beside its class or into a reason's {error}, with the record-side exceptions named once. said(exc, firm_written) is the one rule for a row or a page that may name either kind: the caller's own errors (the filer's FIRM_WRITTEN, the runner's and rollover's ManifestError) whole, anything else by its class (the review's M1 and S3). It also fails on a class spelled inline - x.__class__.__name__, type(x).__name__ or x.__name__ of an exception an except bound - anywhere under tracker/ but errors.py, so an OSError is never said twice, once without its errno (the rebase review's M1)."
+      "notes": "Layer 0, standard library only, nothing of the package. A class name and not a shortened message because 120 characters is an SSN: no length is short enough to be safe, and a class name is written by a programmer. Every reason's {error}, the router's 'could not read it', the filer's and runner's catch-alls and the app's unexpected error name the class; the record's own errors (ManifestError, StoreError and the others) keep their text. Until decision 186 gives the debug log a place, the logger has a NullHandler and propagate=False, so nothing reaches a console, stderr or runs.log. tests/test_errors.py guards that no module under tracker/ puts a caught exception's words beside its class or into a reason's {error}, with the record-side exceptions named once. said(exc, firm_written) is the one rule for a row or a page that may name either kind: the caller's own errors (the filer's FIRM_WRITTEN, the runner's and rollover's ManifestError) whole, anything else by its class (the review's M1 and S3). It also fails on a class spelled inline - x.__class__.__name__, type(x).__name__ or x.__name__ of an exception an except bound - anywhere under tracker/ but errors.py, so an OSError is never said twice, once without its errno (the rebase review's M1). And it fails any log line under tracker/ that carries a caught exception's words, a traceback, exc_info or log.exception: under the scheduled job no handler is configured and Python's last-resort handler prints every warning to the console window (D-6), so a log line says errors.error_class() and the firm's own words, and the words (and a client's file name) go to keep(); content_check's two ReaderUnavailable lines, the machine's words, are the named exceptions."
     },
     {
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "cfac440f4e02e6c6",
-      "lines": 7804,
+      "sha256": "afa5ab1fd2b8659a",
+      "lines": 7817,
       "cli": "python -m tracker.filer",
       "exports": [
         "ALREADY_SPELLED",
@@ -943,8 +943,8 @@
       "id": "tracker/fsio.py",
       "type": "module",
       "layer": "core",
-      "sha256": "42fadc81f53d96f2",
-      "lines": 419,
+      "sha256": "b66f997d37846431",
+      "lines": 423,
       "exports": [
         "TEMP_NAME",
         "TEMP_SUFFIX",
@@ -1177,8 +1177,8 @@
       "id": "tracker/ledger.py",
       "type": "module",
       "layer": "core",
-      "sha256": "a2e33c84aee6c8d6",
-      "lines": 1371,
+      "sha256": "41ff0596984a0abe",
+      "lines": 1372,
       "cli": "python -m tracker.ledger",
       "exports": [
         "ACCEPTED_KEY",
@@ -1375,8 +1375,8 @@
       "id": "tracker/locking.py",
       "type": "module",
       "layer": "core",
-      "sha256": "c2ebf32e71e42c5a",
-      "lines": 1199,
+      "sha256": "92c2ec8b4c78d99f",
+      "lines": 1204,
       "cli": "python -m tracker.locking",
       "exports": [
         "BOOT_MARGIN_SECONDS",
@@ -1608,8 +1608,8 @@
       "id": "tracker/ocr.py",
       "type": "module",
       "layer": "core",
-      "sha256": "b55c4fcc6eb14931",
-      "lines": 1126,
+      "sha256": "60a6cc6dd5aedef9",
+      "lines": 1127,
       "cli": "python -m tracker.ocr",
       "exports": [
         "CHILD_EXIT_SECONDS",
@@ -2138,8 +2138,8 @@
       "id": "tracker/reminder.py",
       "type": "module",
       "layer": "core",
-      "sha256": "0bd11c581c3981a1",
-      "lines": 2196,
+      "sha256": "658343453f7d0b1d",
+      "lines": 2201,
       "cli": "python -m tracker.reminder",
       "exports": [
         "AMBIGUOUS_HOLD",
@@ -2350,8 +2350,8 @@
       "id": "tracker/review.py",
       "type": "module",
       "layer": "core",
-      "sha256": "721e413d1668a608",
-      "lines": 543,
+      "sha256": "da5a6e9d326d31d0",
+      "lines": 544,
       "cli": "python -m tracker.review",
       "exports": [
         "FILENAME_WORDS",
@@ -2402,7 +2402,7 @@
       "id": "tracker/rollover.py",
       "type": "module",
       "layer": "core",
-      "sha256": "868fce5d0e6ecd55",
+      "sha256": "09074ad68e3332e5",
       "lines": 1136,
       "cli": "python -m tracker.rollover",
       "exports": [
@@ -2468,7 +2468,7 @@
       "id": "tracker/router.py",
       "type": "module",
       "layer": "core",
-      "sha256": "0989117766564c04",
+      "sha256": "dbb6137d33ee3a73",
       "lines": 1121,
       "cli": "python -m tracker.router",
       "exports": [
@@ -2498,8 +2498,8 @@
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "754db4bb4da7ac4f",
-      "lines": 2458,
+      "sha256": "f9a6ba10953eedda",
+      "lines": 2461,
       "cli": "python -m tracker.runner",
       "exports": [
         "ACKNOWLEDGE_COMMAND",
@@ -2710,8 +2710,8 @@
       "id": "tracker/scaffold.py",
       "type": "module",
       "layer": "core",
-      "sha256": "9dc4625536bda7b9",
-      "lines": 805,
+      "sha256": "fa7082f651a6bdc9",
+      "lines": 808,
       "cli": "python -m tracker.scaffold",
       "exports": [
         "ClientFolderMissing",
@@ -2767,8 +2767,8 @@
       "id": "tracker/scanner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "caeaf38be4dc0e76",
-      "lines": 949,
+      "sha256": "04da3c103ac08a8a",
+      "lines": 950,
       "cli": "python -m tracker.scanner",
       "exports": [
         "ACCEPTED_NOTE",
@@ -2944,7 +2944,7 @@
       "id": "tracker/store.py",
       "type": "module",
       "layer": "core",
-      "sha256": "6d4a6b67fae075bb",
+      "sha256": "523fc5be5074c312",
       "lines": 3851,
       "cli": "python -m tracker.store",
       "exports": [
@@ -3139,7 +3139,7 @@
       "id": "tracker/validators.py",
       "type": "module",
       "layer": "core",
-      "sha256": "32bc37f66cfa4a66",
+      "sha256": "678141310be28e15",
       "lines": 655,
       "cli": "python -m tracker.validators",
       "exports": [
@@ -3186,8 +3186,8 @@
       "id": "tracker/view.py",
       "type": "module",
       "layer": "core",
-      "sha256": "57a07474c2d9d6e4",
-      "lines": 861,
+      "sha256": "349413a80bde6e7f",
+      "lines": 862,
       "cli": "python -m tracker.view",
       "exports": [
         "BADGE_CLASS",
@@ -3340,7 +3340,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "470a3316b1405ab5",
+      "sha256": "674b2a510156a9a8",
       "lines": 430,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -3358,7 +3358,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "fbbd52d8072c5c8f",
+      "sha256": "b1a12cc10905ebf3",
       "lines": 940,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -3367,8 +3367,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "90462173e9097fde",
-      "lines": 2254,
+      "sha256": "2ff5b2be9ad1b017",
+      "lines": 2258,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -3392,7 +3392,7 @@
       "id": "docs/vocab-coverage.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "8bbe9f99abc8ac08",
+      "sha256": "2ebfbe7fca2ae091",
       "lines": 9415,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
@@ -4451,11 +4451,13 @@
       "id": "tests/test_errors.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "add1fab5b6a66f4d",
-      "lines": 630,
+      "sha256": "518bc28447e6947c",
+      "lines": 778,
       "exports": [
+        "DROPPED",
         "ERRNO_NAMED_ON_PURPOSE",
         "FIRM_WRITTEN",
+        "LOGGED_WHOLE_ON_PURPOSE",
         "NAME",
         "NUMBER",
         "QUOTED",
@@ -4465,6 +4467,7 @@
         "carries_client_words",
         "kept",
         "quotes_the_document",
+        "test_a_caught_errors_words_reach_no_console_during_a_pass",
         "test_a_code_an_error_did_not_mark_as_said_is_never_said",
         "test_a_review_copy_that_cannot_be_made_names_the_os_error_not_its_path",
         "test_a_store_or_record_the_disk_refused_is_said_with_its_code",
@@ -4482,6 +4485,7 @@
         "test_no_byte_of_a_failed_extraction_reaches_the_reading",
         "test_no_byte_of_a_failed_ocr_reaches_the_reading",
         "test_no_byte_of_what_a_reading_child_raised_crosses_into_the_reading",
+        "test_no_log_line_under_tracker_carries_a_caught_exceptions_words",
         "test_the_app_names_an_unexpected_error_by_its_class_and_keeps_a_firm_errors_words",
         "test_the_class_an_error_is_said_as_is_defined_once",
         "test_the_cli_names_a_built_in_errors_class_and_says_where_its_words_go",
@@ -4490,12 +4494,15 @@
         "test_the_guard_finds_a_second_definition",
         "test_the_guard_passes_a_class_and_a_firm_constant",
         "test_the_guard_passes_a_class_of_what_no_except_caught",
-        "test_the_guard_sees_every_shape_of_an_exceptions_words"
+        "test_the_guard_sees_every_shape_of_an_exceptions_words",
+        "test_the_log_guard_passes_the_class_and_the_debug_sink",
+        "test_the_log_guard_sees_every_shape_of_an_exceptions_words"
       ],
       "constants": {
         "NUMBER": "'123-45-6789'",
         "NAME": "'Jane Fabricated'",
-        "THE_ONE_DEFINITION": "('errors.py', 'error_class')"
+        "THE_ONE_DEFINITION": "('errors.py', 'error_class')",
+        "DROPPED": "'/Clients/Test Household/Drop files here/W2.pdf'"
       }
     },
     {
@@ -5012,8 +5019,8 @@
       "id": "tests/test_layers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "796e63d12e591c40",
-      "lines": 926,
+      "sha256": "53759fb54de4c094",
+      "lines": 930,
       "exports": [
         "PACKAGE",
         "REPO",
@@ -6261,8 +6268,8 @@
       "id": "tests/test_scaffold.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c5816d0d65a94b7e",
-      "lines": 1140,
+      "sha256": "7d8d8688137190ca",
+      "lines": 1145,
       "exports": [
         "A01_LABEL",
         "ACTIVE_IDS",
@@ -8409,6 +8416,12 @@
     },
     {
       "from": "tests/test_errors.py",
+      "to": "tracker/layout.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_errors.py",
       "to": "tracker/ledger.py",
       "type": "exercises",
       "source": "derived"
@@ -8427,7 +8440,19 @@
     },
     {
       "from": "tests/test_errors.py",
+      "to": "tracker/registry.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_errors.py",
       "to": "tracker/runner.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_errors.py",
+      "to": "tracker/scaffold.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -8445,7 +8470,25 @@
     },
     {
       "from": "tests/test_errors.py",
+      "to": "tracker/view.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_errors.py",
       "to": "tests/child_readers.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_errors.py",
+      "to": "tests/conftest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_errors.py",
+      "to": "tests/samples.py",
       "type": "imports",
       "source": "derived"
     },
@@ -10257,6 +10300,12 @@
     },
     {
       "from": "tests/test_scaffold.py",
+      "to": "tracker/errors.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_scaffold.py",
       "to": "tracker/filer.py",
       "type": "exercises",
       "source": "derived"
@@ -11547,6 +11596,12 @@
     },
     {
       "from": "tracker/content_check.py",
+      "to": "tracker/layout.py",
+      "type": "imports_at_call",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/content_check.py",
       "to": "tracker/names.py",
       "type": "imports_at_call",
       "source": "derived"
@@ -11877,6 +11932,12 @@
     },
     {
       "from": "tracker/ledger.py",
+      "to": "tracker/layout.py",
+      "type": "imports_at_call",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/ledger.py",
       "to": "tracker/page.py",
       "type": "imports_at_call",
       "source": "derived"
@@ -11896,6 +11957,12 @@
     {
       "from": "tracker/locking.py",
       "to": "tracker/__init__.py",
+      "type": "imports_at_call",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/locking.py",
+      "to": "tracker/errors.py",
       "type": "imports_at_call",
       "source": "derived"
     },
@@ -12099,6 +12166,12 @@
     },
     {
       "from": "tracker/reminder.py",
+      "to": "tracker/errors.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/reminder.py",
       "to": "tracker/fsio.py",
       "type": "imports",
       "source": "derived"
@@ -12279,6 +12352,12 @@
     },
     {
       "from": "tracker/review.py",
+      "to": "tracker/layout.py",
+      "type": "imports_at_call",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/review.py",
       "to": "tracker/page.py",
       "type": "imports_at_call",
       "source": "derived"
@@ -12436,6 +12515,12 @@
     {
       "from": "tracker/router.py",
       "to": "tracker/door.py",
+      "type": "imports_at_call",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/router.py",
+      "to": "tracker/layout.py",
       "type": "imports_at_call",
       "source": "derived"
     },
@@ -12657,6 +12742,12 @@
     },
     {
       "from": "tracker/scaffold.py",
+      "to": "tracker/errors.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/scaffold.py",
       "to": "tracker/fsio.py",
       "type": "imports",
       "source": "derived"
@@ -12742,6 +12833,12 @@
     {
       "from": "tracker/scanner.py",
       "to": "tracker/content_check.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/scanner.py",
+      "to": "tracker/errors.py",
       "type": "imports",
       "source": "derived"
     },

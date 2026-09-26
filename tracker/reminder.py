@@ -155,7 +155,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tracker import ledger, page, reasons, store
+from tracker import errors, ledger, page, reasons, store
 from tracker.fsio import temp_owner, write_text_atomically
 from tracker.layout import README_NAME, household_name_of, inbox_of, label_for, locate, year_of
 from tracker.manifest import (
@@ -1095,7 +1095,9 @@ def count_needs_review(engagement_dir: Path) -> int:
     try:
         rows = read_index(engagement_dir)
     except Exception as exc:
-        log.warning("Could not read the index for the files a person has seen: %s", exc)
+        errors.keep("reminder", exc, name=engagement_dir.name)
+        log.warning("Could not read the index for the files a person has seen (%s)",
+                    errors.error_class(exc))
         return len(parked)
     # The newest row for a working copy is the one that counts: a name freed
     # and taken by the next drop called the same is not the earlier decision.
@@ -1293,7 +1295,9 @@ def _parked_index_rows(engagement_dir: Path) -> list:
     try:
         return read_index(engagement_dir)
     except Exception as exc:
-        log.warning("Could not read the index for the files a person is holding: %s", exc)
+        errors.keep("reminder", exc, name=engagement_dir.name)
+        log.warning("Could not read the index for the files a person is holding (%s)",
+                    errors.error_class(exc))
         return []
 
 
@@ -2114,10 +2118,11 @@ if __name__ == "__main__":
     # A typed folder is parsed, never trusted: it must be a return's
     # place under the checked clients root (decision 188).
     from tracker import door
+    from tracker.layout import LayoutError
 
     try:
         ns.engagement_dir = door.return_dir(Path(ns.engagement_dir).absolute())
-    except ValueError as exc:
+    except (door.DoorError, LayoutError) as exc:     # the door's own sentences
         parser.error(str(exc))
 
     def _day(flag: str, typed: str) -> dt.date | None:

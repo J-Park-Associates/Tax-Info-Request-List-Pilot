@@ -186,10 +186,12 @@ READER_IMPORTS_ALLOWED: frozenset[str] = frozenset(
 #: ``traceback`` are what the error module is built on, and ``builtins`` is
 #: where its command line looks up the built-in exception it is named.
 #: ``math`` is decision 187's value rule in ``records`` (a number the record
-#: holds must be finite).
+#: holds must be finite). ``functools`` is decision 204's ``cache`` in
+#: ``api``: the feed list read once for a state, and only if a row waits.
 ALLOWED_STDLIB: frozenset[str] = frozenset({
     "__future__", "argparse", "base64", "builtins", "collections", "contextlib", "csv", "ctypes",
-    "dataclasses", "datetime", "email", "errno", "hashlib", "html", "io", "json", "logging", "math",
+    "dataclasses", "datetime", "email", "errno", "functools", "hashlib", "html", "io", "json",
+    "logging", "math",
     "multiprocessing", "ntpath", "os", "pathlib", "platform", "posixpath", "re", "secrets",
     "shutil", "signal", "sqlite3", "stat", "subprocess", "sys", "threading", "time",
     "traceback", "unicodedata", "xml", "zipfile", "zlib",
@@ -730,6 +732,8 @@ ALLOWED_SPELLINGS: dict[tuple[str, str], str] = {
     ("tracker/locking.py", "holds"): ("whether a held token was written to this very lock file, "
                                       "under any spelling (decision 159) - one file, not a place "
                                       "in either tree"),
+    ("tracker/validators.py", "bears_macros"): ("a member's name inside an Office package's zip "
+                                                "(decision 190), never a folder of the layout"),
     ("tools/repo_map.py", "*"): "the repository's paths, never a client's",
     ("tools/vocab_report.py", "*"): "the repository's paths, never a client's",
     ("tools/backtest.py", "*"): "the repository's paths, never a client's",

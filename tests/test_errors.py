@@ -239,7 +239,14 @@ def _enclosing(tree: ast.AST) -> dict[int, str]:
 FIRM_WRITTEN = {"FilingError", "StaleRowError", "CopyMismatchError", "ManifestError", "StoreError",
                 "LedgerError", "ReminderError", "DraftsEditedError", "ReminderHeldError",
                 "SettingsError", "RegistryError", "EngagementLockedError", "ScanLockedError",
-                "ViewError", "NoRoom", "NotOpened", "TooLargeToRead", "ReadingStopped"}
+                "ViewError", "NoRoom", "NotOpened", "TooLargeToRead", "ReadingStopped",
+                # Decision 188's refusals: the door's and the layout's own
+                # sentences, about a folder the firm named or a name a
+                # person typed - never a parser's words.
+                "DoorError", "LayoutError",
+                # ... and the store's refusal to rebuild over lines only it
+                # holds, which names the firm's own record.
+                "WouldDiscard"}
 
 #: Where a string becomes something a person sees: a keyword or an
 #: attribute of these names, or a call to these.
@@ -467,6 +474,104 @@ def test_the_guard_passes_a_class_and_a_firm_constant(shape):
     assert _findings(source, "probe.py") == []
 
 
+# ------------------------- the guard: a log line says the class alone ----
+
+#: The log lines that still carry a caught exception's words, each with why
+#: they may: machine-side, never a client's text. Everything else hands the
+#: words to :func:`tracker.errors.keep` and logs the class alone, because
+#: under the scheduled job no handler is configured and Python's last-resort
+#: handler prints every warning to the console window (decision 190, D-6).
+LOGGED_WHOLE_ON_PURPOSE = {
+    ("content_check.py", "_ocr_pdf"): "ocr.ReaderUnavailable: the machine's words "
+                                      "(an import, a model, a device), never a document's",
+    ("content_check.py", "_ocr_image"): "ocr.ReaderUnavailable: the machine's words "
+                                        "(an import, a model, a device), never a document's",
+}
+
+#: The names a logger goes by under tracker/, and the calls that log.
+_LOGGERS = {"log", "logger", "logging", "_log"}
+_LEVELS = {"debug", "info", "warning", "warn", "error", "exception", "critical", "log"}
+
+
+def _in_a_log_line(node: ast.AST, caught: set[str]) -> bool:
+    """Whether a caught name reaches ``node`` other than through
+    :func:`tracker.errors.error_class` - :func:`tracker.errors.said` is a
+    page's namer, and says a firm error's whole sentence, so not here."""
+    if isinstance(node, ast.Call) and (
+            (isinstance(node.func, ast.Name) and node.func.id == "error_class")
+            or (isinstance(node.func, ast.Attribute) and node.func.attr == "error_class")):
+        return False
+    if isinstance(node, ast.Attribute) and node.attr in _NOT_WORDS:
+        return False
+    if isinstance(node, ast.Name):
+        return node.id in caught
+    return any(_in_a_log_line(child, caught) for child in ast.iter_child_nodes(node))
+
+
+def _logged_words(source: str, file: str) -> list[str]:
+    """Every logging call that says a caught exception's words or a
+    traceback: the exception itself, ``str(exc)``, ``exc.args``, an
+    f-string of it, ``exc_info=`` / ``stack_info=``, ``log.exception`` or
+    anything of ``traceback``."""
+    tree = ast.parse(source)
+    caught = {h.name for h in ast.walk(tree) if isinstance(h, ast.ExceptHandler) and h.name}
+    function = _enclosing(tree)
+    found: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr in _LEVELS and isinstance(node.func.value, ast.Name)
+                and node.func.value.id in _LOGGERS):
+            continue
+        values = [*node.args, *(kw.value for kw in node.keywords)]
+        if node.func.attr == "exception":
+            found.append((node.lineno, "log.exception: a traceback on the console"))
+        if any(kw.arg in {"exc_info", "stack_info"} for kw in node.keywords):
+            found.append((node.lineno, "a traceback handed to a log line"))
+        if any(_in_a_log_line(v, caught) for v in values):
+            found.append((node.lineno, "a caught exception's words in a log line"))
+        if any(isinstance(n, ast.Name) and n.id == "traceback" for v in values for n in ast.walk(v)):
+            found.append((node.lineno, "a traceback in a log line"))
+    return [f"{file}:{line} ({function.get(line, '<module>')}): {what}"
+            for line, what in sorted(set(found))
+            if (file, function.get(line, "")) not in LOGGED_WHOLE_ON_PURPOSE]
+
+
+def test_no_log_line_under_tracker_carries_a_caught_exceptions_words():
+    """A log line reaches the console window of the scheduled job, so it
+    says an error's class and the firm's words; the error's own words go
+    to :func:`tracker.errors.keep` (decision 190)."""
+    found = [finding for path in sorted(TRACKER.glob("*.py"))
+             for finding in _logged_words(path.read_text(encoding="utf-8"), path.name)]
+    assert found == [], "\n".join(found)
+
+
+@pytest.mark.parametrize("shape", [
+    'log.warning("Could not refresh %s (%s)", name, exc)',
+    'log.warning("Could not refresh: %s", str(exc))',
+    'log.error(f"Could not refresh ({exc})")',
+    'log.warning("Could not refresh (%s)", exc.args[0])',
+    'log.warning("Could not refresh", exc_info=True)',
+    'log.exception("Could not refresh")',
+    'log.warning("%s", traceback.format_exc())',
+    'log.warning("Could not refresh (%s)", errors.said(exc, FIRM_WRITTEN))',
+    'logging.warning("Could not refresh (%s)", exc)',
+])
+def test_the_log_guard_sees_every_shape_of_an_exceptions_words(shape):
+    source = f"def f():\n    try:\n        pass\n    except Exception as exc:\n        {shape}\n"
+    assert _logged_words(source, "probe.py"), shape
+
+
+@pytest.mark.parametrize("shape", [
+    'log.warning("Could not refresh %s (%s)", name, errors.error_class(exc))',
+    'log.warning("Could not refresh (%s)", error_class(exc))',
+    'errors.keep("scaffold", exc, name=name)',
+    'parser.error(str(exc))',
+])
+def test_the_log_guard_passes_the_class_and_the_debug_sink(shape):
+    source = f"def f():\n    try:\n        pass\n    except Exception as exc:\n        {shape}\n"
+    assert _logged_words(source, "probe.py") == [], shape
+
+
 # ------------- no byte of a damaged document reaches a reason, module by module ----
 
 
@@ -628,3 +733,46 @@ def test_the_firms_own_error_is_said_whole_and_anything_else_by_its_class():
     assert errors.said(ValueError(QUOTED), filer.FIRM_WRITTEN) == "ValueError"
     assert errors.said(PermissionError(errno.EACCES, "no", f"/{NAME}"), filer.FIRM_WRITTEN) == (
         "PermissionError (EACCES)")
+
+
+# ------------------------------------ the console of the scheduled job ----
+
+#: Fabricated: where a client's W-2 would sit, in the words an OS error says.
+DROPPED = "/Clients/Test Household/Drop files here/W2.pdf"
+
+
+def test_a_caught_errors_words_reach_no_console_during_a_pass(tmp_path, monkeypatch, capsys, caplog, kept):
+    """Every write a pass makes that may simply not happen - the household's
+    README, the return's page - refuses with an OS error whose words carry
+    a client's path. The pass goes on, its log lines name the class, and
+    the path reaches the debug sink and nothing a console prints
+    (decision 190, D-6)."""
+    from tests.conftest import make_engagement
+    from tests.samples import DEMO_ITEMS
+    from tracker import scaffold, view
+    from tracker.layout import household_of, root_of
+    from tracker.registry import discover_engagements, engagement_from
+    from tracker.runner import run_household
+
+    folder = make_engagement(tmp_path, DEMO_ITEMS)
+
+    def refused(*_args, **_kwargs):
+        raise PermissionError(errno.EACCES, "Permission denied", DROPPED)
+
+    monkeypatch.setattr(scaffold, "write_text_atomically", refused)
+    monkeypatch.setattr(view, "write_text_atomically", refused)
+    caplog.set_level(logging.DEBUG)
+    capsys.readouterr()
+
+    run_household(household_of(folder), [engagement_from(folder)],
+                  registry=discover_engagements(root_of(folder)))
+
+    printed = capsys.readouterr()
+    assert DROPPED not in printed.out + printed.err, printed
+    # The suite's capture attaches to every logger, the debug sink too;
+    # what a console could print is every other logger's lines.
+    logged = "\n".join(record.getMessage() for record in caplog.records
+                       if record.name != errors.DEBUG_LOGGER)
+    assert DROPPED not in logged, logged
+    assert "PermissionError (EACCES)" in logged, logged
+    assert any(DROPPED in words for words in kept), kept

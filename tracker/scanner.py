@@ -79,7 +79,7 @@ from contextlib import nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tracker import ledger, reasons, store
+from tracker import errors, ledger, reasons, store
 from tracker.content_check import ContentCache, OutOfTime, check_content, open_verdict
 from tracker.layout import locate
 from tracker.locking import EngagementLockedError, engagement_lock
@@ -201,7 +201,8 @@ def _the_index(engagement_dir: Path) -> list[IndexEntry]:
     try:
         return read_index(engagement_dir)
     except Exception as exc:
-        log.warning("Could not read the index: %s", exc)
+        errors.keep("scanner", exc, name=engagement_dir.name)
+        log.warning("Could not read the index (%s)", errors.error_class(exc))
         return []
 
 
@@ -923,10 +924,10 @@ if __name__ == "__main__":
     # A typed folder is parsed, never trusted: it must be a return's
     # place under the checked clients root (decision 188).
     from tracker import door
-
+    from tracker.layout import LayoutError
     try:
         ns.engagement_dir = door.return_dir(Path(ns.engagement_dir).absolute())
-    except ValueError as exc:
+    except (door.DoorError, LayoutError) as exc:     # the door's own sentences
         parser.error(str(exc))
 
     engagement = Path(ns.engagement_dir)

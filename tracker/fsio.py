@@ -197,8 +197,12 @@ def atomic_replacement(path: Path, *, limit: int | None = None) -> Iterator[Path
         # read as "held by another program".
         try:
             _remove_temp(temp)
-        except OSError as exc:
-            log.warning("Temporary file %s could not be removed (%s)", temp.name, exc)
+        except OSError:
+            # Neither its words nor its name (a client's file's, with a
+            # pid and a tag) are said here (decision 190): fsio imports
+            # nothing, so it cannot hand them to errors.keep, and an OS
+            # error's words carry the whole path.
+            log.warning("A temporary file could not be removed after its write failed")
 
 
 def write_text_atomically(

@@ -762,9 +762,10 @@ def write_view(
         # Somebody has it open, and on Windows an open read handle is
         # enough to refuse the swap. Nothing here is a fact, so this is the
         # one write in the system that may simply not happen.
+        errors.keep("view", exc, name=engagement_dir.name)
         log.warning(
             "%s: %s was not regenerated (%s); it stays one pass behind and the run stands",
-            engagement_dir.name, VIEW_FILENAME, exc,
+            engagement_dir.name, VIEW_FILENAME, errors.error_class(exc),
         )
         result.stale = True
     return result
@@ -842,10 +843,10 @@ if __name__ == "__main__":
     # A typed folder is parsed, never trusted: it must be a return's
     # place under the checked clients root (decision 188).
     from tracker import door
-
+    from tracker.layout import LayoutError
     try:
         ns.engagement_dir = door.return_dir(Path(ns.engagement_dir).absolute())
-    except ValueError as exc:
+    except (door.DoorError, LayoutError) as exc:     # the door's own sentences
         parser.error(str(exc))
 
     folder = Path(ns.engagement_dir)

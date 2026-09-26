@@ -1235,7 +1235,8 @@ def _year_on_record(engagement_dir: Path, held: Mapping[Path, list[IndexEntry]])
         try:
             pairs.append((folder, read_index(folder)))
         except Exception as exc:      # a record nobody can read names nothing it can prove
-            log.warning("Could not read %s's rows: %s", folder.name, exc)
+            errors.keep("filer", exc, name=folder.name)
+            log.warning("Could not read %s's rows (%s)", folder.name, errors.error_class(exc))
     return _on_record(pairs)
 
 
@@ -1550,8 +1551,9 @@ def _remove_a_stranded_temp(path: Path) -> bool:
     except FileNotFoundError:
         return False
     except OSError as exc:
-        log.warning("A temporary file a killed write left, %s, could not be removed (%s); "
-                    "the next pass tries again", path.name, exc)
+        errors.keep("filer", exc, name=path.name)
+        log.warning("A temporary file a killed write left could not be removed (%s); "
+                    "the next pass tries again", errors.error_class(exc))
         return False
     return True
 
@@ -2095,7 +2097,8 @@ def _abandon(engagement_dir: Path, key: str) -> None:
         store.record(store.connect(), engagement_dir, ledger.new(
             ledger.MOVE_ABANDONED, **{ledger.KEY_KEY: key}))
     except Exception as exc:          # the real error is the one the caller is raising
-        log.error("Could not record that the move of %s was abandoned: %s", key, exc)
+        errors.keep("filer", exc, name=key)
+        log.error("Could not record that a move was abandoned (%s)", errors.error_class(exc))
 
 
 def _carry_out_a_persons_ops(engagement_dir: Path, key: str, ops: list[dict]) -> None:
@@ -3430,8 +3433,8 @@ def _a_copy_to_act_on(
         review_dir.mkdir(parents=True, exist_ok=True)
         _copy_whole(source, parked, expect=entry.digest or sha256_of(source), cache=cache)
     except NoRoom as exc:
-        log.error("Could not park a copy of %s from %s: %s",
-                  entry.original_name, entry.pbc_location, exc)
+        errors.keep("filer", exc, name=entry.original_name)
+        log.error("Could not park a review copy (%s)", errors.error_class(exc))
         return "", str(exc)
     except (OSError, FilingError) as exc:
         # An OS error's words spell out the path - a client's folder, and
@@ -3503,8 +3506,8 @@ def _finish_interrupted_moves(
             name = entry_from_json(row).original_name if row else key
             attention.append(FileError(
                 name, f"{errors.said(exc, FIRM_WRITTEN)}; {INTERRUPTED_MARK_REFUSED}", True))
-            log.warning("An interrupted step on %s was abandoned: %s", name,
-                        errors.said(exc, FIRM_WRITTEN))
+            errors.keep("filer", exc, name=name)
+            log.warning("An interrupted step was abandoned (%s)", errors.error_class(exc))
             continue
         if outcome == _SYNCING:
             attention.append(FileError(Path(op[ledger.FROM_KEY]).name, INTERRUPTED_SYNCING.format(
@@ -3917,7 +3920,8 @@ def _named_by_another_records_intent(path: Path, runs: list[_ReturnRun]) -> bool
                 store.follow_the_journal(conn, clients_root_of(folder), folder)
                 intents = store.open_intents(conn, folder)
             except Exception as exc:      # a record nobody can read names nothing it can prove
-                log.warning("Could not read %s's open intents: %s", folder.name, exc)
+                errors.keep("filer", exc, name=folder.name)
+                log.warning("Could not read %s's open intents (%s)", folder.name, errors.error_class(exc))
                 continue
             for intent in intents:
                 for op in intent.get(ledger.OPS_KEY) or []:
@@ -4122,7 +4126,9 @@ def _remove_the_retired_cache(engagement_dir: Path) -> list[str]:
         except FileNotFoundError:
             continue
         except OSError as exc:
-            log.warning("Could not remove the retired verdict cache file %s: %s", path.name, exc)
+            errors.keep("filer", exc, name=path.name)
+            log.warning("Could not remove the retired verdict cache file %s (%s)",
+                        path.name, errors.error_class(exc))
             continue
         removed.append(path.name)
     return removed
@@ -4461,8 +4467,9 @@ def _take_back(engagement_dir: Path, done: list[dict]) -> None:
             elif _the_bytes(target) == op.get(ledger.DIGEST_KEY):
                 target.unlink()
         except (OSError, FilingError) as exc:
-            log.error("Could not undo %s of %s after a later step failed: %s",
-                      op[ledger.OP_KEY], target.name, exc)
+            errors.keep("filer", exc, name=target.name)
+            log.error("Could not undo a %s after a later step failed (%s)",
+                      op[ledger.OP_KEY], errors.error_class(exc))
 
 
 # ------------------------------------------------------ an email or a zip ----
@@ -6178,7 +6185,9 @@ def assign_review_file(
                     elif not reused:          # a copy that was already there stays
                         target.unlink(missing_ok=True)
                 except (OSError, FilingError) as undo:  # the copy stays where it is; the real error is the one to hear
-                    log.error("Could not put %s back after the record refused it: %s", target.name, undo)
+                    errors.keep("filer", undo, name=target.name)
+                    log.error("Could not put a file back after the record refused it (%s)",
+                              errors.error_class(undo))
                 # The files are back where the record says, so the move is
                 # not to be finished forward by the next pass (decision 119).
                 _abandon(engagement_dir, ledger_key(new_entry))
@@ -6904,7 +6913,9 @@ def unfile_document(
                         _copy_whole(working or source, copy,
                                     expect=entry.digest or sha256_of(working or source))
                 except (OSError, FilingError) as undo:
-                    log.error("Could not put %s back after the record refused it: %s", parked.name, undo)
+                    errors.keep("filer", undo, name=parked.name)
+                    log.error("Could not put a file back after the record refused it (%s)",
+                              errors.error_class(undo))
                 _abandon(engagement_dir, ledger_key(new_entry))
             raise
 
@@ -7435,8 +7446,9 @@ def _put_back_a_moved_copy(
                     elif filled:
                         filled[0].unlink(missing_ok=True)
             except (OSError, FilingError) as undo:
-                log.error("Could not put %s back after the record refused it: %s",
-                          entry.original_name, undo)
+                errors.keep("filer", undo, name=entry.original_name)
+                log.error("Could not put a file back after the record refused it (%s)",
+                          errors.error_class(undo))
             _abandon(engagement_dir, ledger_key(new_entry))
         raise
     return RestoreResult(
@@ -7762,10 +7774,11 @@ if __name__ == "__main__":
     # A typed folder is parsed, never trusted: it must be a return's
     # place under the checked clients root (decision 188).
     from tracker import door
+    from tracker.layout import LayoutError
 
     try:
         ns.engagement_dir = door.return_dir(Path(ns.engagement_dir).absolute())
-    except ValueError as exc:
+    except (door.DoorError, LayoutError) as exc:     # the door's own sentences
         parser.error(str(exc))
 
     # One inbox feeds every return of the household (decision 125), so a
