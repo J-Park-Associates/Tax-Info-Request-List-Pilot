@@ -75,8 +75,8 @@
       "id": ".github/workflows/build.yml",
       "type": "workflow",
       "layer": "ci",
-      "sha256": "24d6b555a927c44f",
-      "lines": 216,
+      "sha256": "3324d6096b803eb0",
+      "lines": 217,
       "role": "Builds the portable package from a `v*` tag and nothing else (decision 191) by running Build App.bat itself on a Windows runner, proves the frozen executable answers in both of its modes, prints the build-info file, zips the package, publishes its SHA-256 beside it and on the run's summary page, and uploads the zip and the .sha256 as the run's artifact for seven days.",
       "notes": "Decision 78. It runs the batch file rather than re-implementing the build, because a second copy of the build is the one that drifts; tests/test_build.py refuses a workflow that names PyInstaller, the packager or the copy itself. The batch file pauses for a person at every exit, so it reads one documented switch that skips the waits, named in its own header and set here. The two smoke checks run the frozen executable, not the source: `list` with the shell's two environment variables set, which must answer JSON rather than a traceback on an install with no clients root yet, and one dry pass over a scratch clients root tests/samples.py builds, which walks filing, routing, scanning and drafting. Since decision 169 the root holds a scan only the reader can file (SCRATCH_SCAN), and the step compares the package's engagement line with the source's own dry pass and reads the run log's first line for reader=processor, so a package missing the reader or a model fails here. It installs the tree in the two steps every install makes (R-11): requirements.lock then rapidocr with --no-deps from requirements-nodeps.lock, both hash-checked (decision 191). Where the package landed is read back out of the batch file's own OUT/PLATFORM/ARCH and app/package.json's two names, so no path here is a second copy of one. Not on push: a freeze, an npm install, an Electron download and a few hundred megabytes of artifact are not what a commit should cost. Decision 191: no workflow_dispatch - v* tags are protected, so a package is the build of reviewed code - and a job guard `if: startsWith(github.ref, 'refs/tags/v')`; the checksum step runs after both smoke checks, and the runbook compares the summary page's hash with certutil -hashfile before a stick is written (transport, not provenance). Its checkout keeps no credentials (F-12)."
     },
@@ -2627,15 +2627,15 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "d2f7a71c49807e25",
-      "lines": 553,
+      "sha256": "0494677d17bd020e",
+      "lines": 556,
       "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
     },
     {
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "23d487a0a43fb0ec",
+      "sha256": "8290ce8c6d232a76",
       "lines": 422,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -2653,7 +2653,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "cfb9fefe3739031d",
+      "sha256": "2b45f46e55712605",
       "lines": 881,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -2662,8 +2662,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "d2449fea722e9dd5",
-      "lines": 1559,
+      "sha256": "2d0356c5635ba2e8",
+      "lines": 1577,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -3329,8 +3329,8 @@
       "id": "tests/test_build.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "23bdb51f134fbe58",
-      "lines": 576,
+      "sha256": "6bdf1f2def296841",
+      "lines": 627,
       "exports": [
         "BUILD_ENVIRONMENT",
         "BUILD_LOCKS",
@@ -3342,6 +3342,11 @@
         "LAUNCHER",
         "NODEPS",
         "NODEPS_STEP",
+        "NPM_COMMAND",
+        "NPM_INSTALL",
+        "NPM_SPELLINGS",
+        "PIP_INSTALL",
+        "PIP_SPELLINGS",
         "PYPDF_ADVISORIES_FIXED_IN",
         "REPO",
         "RUNTIME_LOCK",
@@ -3364,6 +3369,7 @@
         "test_every_batch_file_ignores_its_own_folder_when_it_finds_a_command",
         "test_every_checkout_leaves_no_credentials_behind",
         "test_every_install_is_hash_checked_from_a_lock",
+        "test_every_spelling_of_an_install_is_recognised",
         "test_the_audit_runs_weekly_on_linux_and_never_on_a_push",
         "test_the_build_fails_when_a_frozen_version_differs_from_the_locks",
         "test_the_build_workflow_is_never_run_per_commit",
@@ -3394,6 +3400,8 @@
         "NODEPS": "'requirements-nodeps.txt'",
         "SETUP_SCRIPT": "'Setup.bat'",
         "LAUNCHER": "'Start App.bat'",
+        "PIP_SPELLINGS": "('pip install -r requirements.txt', 'pip3 install pyinstaller', 'pip3.14 install x', 'PIP.EXE Install x', 'python -m pip  install -r requirements.txt', 'py -m pip install x', '%PY% -m pip install x', 'python3 -m   pip\\tinstall x')",
+        "NPM_SPELLINGS": "('npm ci', 'call npm.cmd ci', 'npm install', 'npm i electron', 'NPM   Install', 'call npm.CMD i')",
         "PYPDF_ADVISORIES_FIXED_IN": "(6, 16, 1)"
       },
       "role": "Guards what only the build workflow could otherwise discover ten minutes into a release: that it runs the batch file the repository owns rather than a copy of the build, that the switch it sets is the one that batch file reads, that the flags it fires at the frozen executable are flags tracker/runner.py declares, that it passes the two environment variables tracker/settings.py names, and that both workflows quote the one interpreter pyproject.toml writes down.",
@@ -4209,8 +4217,8 @@
       "id": "tests/test_lockfiles.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "74677a4d1b3f7187",
-      "lines": 308,
+      "sha256": "60b2df311f76ba11",
+      "lines": 342,
       "exports": [
         "DIGEST_A",
         "DIGEST_B",
@@ -4224,6 +4232,7 @@
         "test_a_pin_missing_its_hash_is_named",
         "test_a_range_in_a_lock_is_refused_with_its_line",
         "test_audit_fails_a_native_engine_behind_a_release_older_than_ninety_days",
+        "test_audit_measures_staleness_from_the_first_release_newer_than_the_pin",
         "test_audit_names_each_advisory_by_id_package_and_version",
         "test_audit_reads_the_npm_lock_too",
         "test_every_committed_lock_line_carries_a_hash",
@@ -5810,8 +5819,8 @@
       "id": "tools/lockfiles.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "16c58bc3f8d87fd4",
-      "lines": 396,
+      "sha256": "3e3f38a41a647e57",
+      "lines": 421,
       "cli": "python -m tools.lockfiles",
       "exports": [
         "CHANGED",
@@ -5851,7 +5860,7 @@
         "NOT_SET_UP": "\"The app's private Python is not set up on this computer. Run Setup.bat once (it needs the internet), then start the app again.\"",
         "CHANGED": "'The package list changed since Setup ran on this computer. Run Setup.bat again, then start the app again.'"
       },
-      "role": "The supply-chain lock (decision 191), standard library only: `hash` fills every lock's hashes from PyPI's JSON API, `check` holds the locks to the requirements*.txt pins (every line hashed, no name twice under one marker, the GUI OpenCV in none), `stamp`/`verify` record and compare the locks inside Setup.bat's .venv, `audit` asks OSV about every locked Python and npm package and fails a native engine (NATIVE_ENGINES: pillow, pypdfium2) behind a release older than STALE_DAYS.",
+      "role": "The supply-chain lock (decision 191), standard library only: `hash` fills every lock's hashes from PyPI's JSON API, `check` holds the locks to the requirements*.txt pins (every line hashed, no name twice under one marker, the GUI OpenCV in none), `stamp`/`verify` record and compare the locks inside Setup.bat's .venv, `audit` asks OSV about every locked Python and npm package and fails a native engine (NATIVE_ENGINES: pillow, pypdfium2) whose first release newer than the pin is older than STALE_DAYS - measured from the first newer release, not the newest (review S-1).",
       "notes": "hash and audit reach the network; they are a maintainer's and the weekly workflow's commands, never on the app's or the scheduled pass's path, and nothing under tracker/ imports this module (the fourth standing rule; tests/test_lockfiles.py checks). The network is one injectable fetch(url, body), so the tests run on fabricated answers. Rejected: pip-tools and uv pip compile (each re-resolves and would move pins), pip-audit (one more package to lock and trust). verify returns NOT_SET_UP when there is no stamp and CHANGED when a lock or app/package-lock.json differs from it; the CLI prints the sentence and exits 1, which is what Start App.bat shows."
     },
     {

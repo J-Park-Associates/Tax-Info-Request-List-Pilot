@@ -83,7 +83,9 @@ STAMP_NAME = "tracker-lock.json"
 #: in C is where an advisory lands, so their cadence is stated rather than
 #: left to chance: reviewed with the weekly Dependabot PR, bumped within 7
 #: days of an advisory (the audit names it) and at least every
-#: ``STALE_DAYS`` days when a newer release exists (the audit fails).
+#: ``STALE_DAYS`` days when a newer release exists: the audit fails when the
+#: *first* release newer than the pin was published more than ``STALE_DAYS``
+#: days ago, however recent the newest one is.
 NATIVE_ENGINES = ("pillow", "pypdfium2")
 STALE_DAYS = 90
 
@@ -305,7 +307,16 @@ def _npm_packages(repo: Path) -> list[tuple[str, str]]:
     return sorted(found)
 
 
+def _final_release(version: str) -> tuple[int, ...] | None:
+    """A plain release's numbers (``12.3.0`` -> (12, 3, 0)); None for a pre-release,
+    a dev or post release or anything else that is not only dotted numbers, which
+    the cadence does not count."""
+    return tuple(int(part) for part in version.split(".")) if re.fullmatch(r"\d+(\.\d+)*", version) else None
+
+
 def _published(release_files: list[dict]) -> date | None:
+    """When a release first appeared: its earliest file not yanked."""
+    release_files = [file for file in release_files if not file.get("yanked")]
     times = [file.get("upload_time_iso_8601") or file.get("upload_time") for file in release_files]
     times = [t for t in times if t]
     if not times:
@@ -339,14 +350,28 @@ def audit(repo: Path = ROOT, fetch: Fetch = fetch_json, today: date | None = Non
         if engine not in pinned:
             findings.append(f"{engine} is a native engine and no lock pins it")
             continue
+        # Measured from the moment a newer release first existed: the
+        # earliest release above the pin, not the newest one. An engine that
+        # releases every few weeks would otherwise keep the newest release
+        # young for ever and the pin behind it for ever (review S-1).
         project = fetch(PYPI_PROJECT.format(name=engine), None)
-        newest = project.get("info", {}).get("version")
-        if not newest or newest == pinned[engine]:
+        pin = _final_release(pinned[engine])
+        if pin is None:
+            findings.append(f"{engine} is pinned at {pinned[engine]}, which is not a plain release")
             continue
-        published = _published(project.get("releases", {}).get(newest, []))
-        if published and (today - published).days > STALE_DAYS:
-            findings.append(f"{engine} {pinned[engine]} is pinned, and {newest} was published "
-                            f"{published.isoformat()}, more than {STALE_DAYS} days ago: bump the native engine")
+        newer = []
+        for version, files in project.get("releases", {}).items():
+            number, published = _final_release(version), _published(files)
+            if number is not None and number > pin and published:
+                newer.append((published, version))
+        if not newer:
+            continue
+        first_published, first = min(newer)
+        if (today - first_published).days > STALE_DAYS:
+            newest = project.get("info", {}).get("version") or max(newer, key=lambda r: _final_release(r[1]))[1]
+            findings.append(f"{engine} {pinned[engine]} is pinned, and {first}, the first newer release, was "
+                            f"published {first_published.isoformat()}, more than {STALE_DAYS} days ago "
+                            f"(newest: {newest}): bump the native engine")
     return findings
 
 

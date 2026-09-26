@@ -287,10 +287,12 @@ button opens that same page, and the app's own pass rewrites it too.
 Generate the job itself with:
 
 ```
-python -m tracker.scheduling --working-dir "C:\Tools\tax-tracker" --out tax-tracker.xml --install
+.venv\Scripts\python.exe -m tracker.scheduling --working-dir "C:\Tools\tax-tracker" --out tax-tracker.xml --install
 ```
 
-`--settings` defaults to this checkout's own folder, whose `settings.json`
+Run it with the app's private Python, the one `Setup.bat` made (decision
+191): the job runs whichever interpreter registered it, and the machine's
+own Python holds none of the locked packages. `--settings` defaults to this checkout's own folder, whose `settings.json`
 must already name a clients root; the job carries no root of its own.
 `--install` registers the task as it writes the XML, and running the same
 line again changes the schedule. The app's **Install Schedule** button does exactly this for the
@@ -543,10 +545,11 @@ tag and from nothing else (tags are protected, so a package is the build of
 reviewed code), runs the frozen executable to
 prove it answers, and leaves the package to download as the run's artifact for
 seven days - one zip beside its SHA-256, which the run's summary page shows
-too.
-A weekly workflow (`audit.yml`) asks OSV about every locked package. It builds and tests on the interpreter `[tool.office]` in
+too. It builds and tests on the interpreter `[tool.office]` in
 `pyproject.toml` names — the one the firm's machine runs — so the package is
-proved on the interpreter it ships under. On first launch the app asks where your clients live
+proved on the interpreter it ships under. A weekly workflow (`audit.yml`)
+reads the locks and asks OSV about every locked package; it builds and
+installs nothing. On first launch the app asks where your clients live
 and writes that to `settings.json` beside itself; everything else follows
 from that one folder. Who does what, and the life of a request, is in
 [docs/workflow.md](docs/workflow.md); the decision log is

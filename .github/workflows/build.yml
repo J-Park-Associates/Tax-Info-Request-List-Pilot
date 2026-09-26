@@ -20,8 +20,9 @@
 # The package is uploaded as one zip beside its SHA-256, and the hash is
 # written on the run's summary page. Before a USB stick is written, the
 # runbook compares that page's hash with `certutil -hashfile <zip> SHA256`
-# on the downloaded zip: it proves the zip on the stick is the zip this run
-# built (transport), not that the run built reviewed code (the tag does that).
+# on the inner zip - the download is the artifact's own wrapper zip, holding
+# this zip and its .sha256 - which proves the zip on the stick is the zip this
+# run built (transport), not that the run built reviewed code (the tag does).
 name: Build the portable package
 
 on:

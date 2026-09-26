@@ -1228,13 +1228,26 @@ exactly as it came.
    or download the package from the `build.yml` run a `v*` release tag
    started (decision 191: a package is built from a tag and from nothing
    else, and only an admin can make one, so it is the build of reviewed
-   code). The run leaves one zip and, beside it, its SHA-256. **Before
-   writing the USB stick, check the zip:** in a Command Prompt, run
-   `certutil -hashfile <zip> SHA256` on the downloaded zip and compare
-   the answer with the hash on the run's own summary page on GitHub - not
-   only with the copy inside the download, which travelled with the zip.
-   They differ: do not install it; download it again, and if they still
-   differ, ask. There is no separate backup of the app, and none is needed.
+   code). **Before writing the USB stick, check the package**, in this
+   order:
+   1. Download the run's artifact. GitHub always hands it over wrapped in
+      a zip of its own, `portable-package.zip`.
+   2. Unzip `portable-package.zip`. Inside are the package itself,
+      `tax-document-tracker-<tag>.zip` (the tag, such as `v1.2.0`, in its
+      name), and its `.sha256` file.
+   3. In a Command Prompt in that folder, run
+      `certutil -hashfile tax-document-tracker-<tag>.zip SHA256` - on the
+      inner zip, never on `portable-package.zip`.
+   4. Compare the answer with the line "SHA-256 of
+      `tax-document-tracker-<tag>.zip`" on the run's own summary page on
+      GitHub. Not only with the `.sha256` file beside the zip, which
+      travelled with it; and not with the artifact's own digest GitHub
+      shows on the run page, which is the outer zip's.
+   5. Only when they match, unzip `tax-document-tracker-<tag>.zip` onto
+      the stick. When they differ, do not install it: download it again,
+      and if they still differ, ask.
+
+   There is no separate backup of the app, and none is needed.
    The client files are on the Shared Drive, `settings.json` holds only the
    clients folder, the firm's name and its telephone number, all three typed
    again at step 3, and `tracker.db` rebuilds itself from the journals. Running from source needs Python and
@@ -1244,7 +1257,11 @@ exactly as it came.
    the machine's own Python. After that `Start App.bat` starts offline and
    installs nothing; when the lock files change (an update pulled from
    the repository), it says "The package list changed since Setup ran on
-   this computer" - run `Setup.bat` again. The packaged build needs
+   this computer" - run `Setup.bat` again. **After `Setup.bat`, press
+   Install Schedule once** (step 4): the button registers the Python the
+   app runs under, which from source is now `.venv`'s; a job registered
+   before `Setup.bat` names the machine's own Python, which holds none of
+   the locked packages, and would fail every run. The packaged build needs
    neither. Keep the folder's path short — a
    few levels deep at most, like the `C:\Tools\tax-tracker` the README's
    scheduling example uses: past the classic Windows path limit the packaged
@@ -1335,8 +1352,9 @@ current, all on GitHub, none on the office machine:
 - **The two native engines** - `pillow` (images) and `pypdfium2` (PDFs) -
   parse every client file in compiled code, so they have a stated cadence:
   bumped within 7 days of an advisory, and at least every 90 days when a
-  newer release exists. The audit fails when either has a newer release
-  older than 90 days.
+  newer release exists. The audit fails when the first release newer
+  than the pin came out more than 90 days ago - however recent the newest
+  one is. A red run for either is the cadence asking for the bump.
 
 ## 7. What to expect in season one
 

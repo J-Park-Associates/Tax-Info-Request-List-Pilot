@@ -240,10 +240,14 @@ def test_hash_refuses_a_version_pypi_lists_no_files_for(tmp_path):
 
 
 def _answers(*, vulns: dict[tuple[str, str], list[str]] | None = None,
-             newest: dict[str, tuple[str, str]] | None = None):
-    """A fetch that answers OSV with ``vulns`` and PyPI's project page with ``newest``."""
+             newest: dict[str, tuple[str, str]] | None = None,
+             releases: dict[str, dict[str, str]] | None = None):
+    """A fetch that answers OSV with ``vulns`` and PyPI's project page with
+    ``releases`` (name -> version -> first upload), the last listed being the
+    newest; ``newest`` is the one-release shorthand."""
     vulns = vulns or {}
-    newest = newest or {}
+    releases = {**{name: {version: uploaded} for name, (version, uploaded) in (newest or {}).items()},
+                **(releases or {})}
     seen = []
 
     def fetch(url, body):
@@ -253,9 +257,9 @@ def _answers(*, vulns: dict[tuple[str, str], list[str]] | None = None,
                 {"vulns": [{"id": vuln} for vuln in vulns.get((query["package"]["name"], query["version"]), [])]}
                 for query in body["queries"]]}
         name = url.split("/pypi/", 1)[1].split("/", 1)[0]
-        version, uploaded = newest[name]
-        return {"info": {"version": version},
-                "releases": {version: [{"upload_time_iso_8601": uploaded}]}}
+        listed = releases[name]
+        return {"info": {"version": list(listed)[-1]},
+                "releases": {version: [{"upload_time_iso_8601": uploaded}] for version, uploaded in listed.items()}}
 
     return fetch, seen
 
@@ -280,12 +284,42 @@ def test_audit_fails_a_native_engine_behind_a_release_older_than_ninety_days(tmp
     fetch, _seen = _answers(newest={"pillow": ("13.0", "2026-06-01T00:00:00Z"),      # 117 days
                                     "pypdfium2": ("5.1", "2026-08-01T00:00:00Z")})   # 56 days
     assert audit(repo, fetch=fetch, today=date(2026, 9, 26)) == [
-        "pillow 12.0 is pinned, and 13.0 was published 2026-06-01, more than 90 days ago: "
-        "bump the native engine"]
+        "pillow 12.0 is pinned, and 13.0, the first newer release, was published 2026-06-01, "
+        "more than 90 days ago (newest: 13.0): bump the native engine"]
     # An engine at the newest release is never stale, however old that is.
     fetch, _seen = _answers(newest={"pillow": ("12.0", "2020-01-01T00:00:00Z"),
                                     "pypdfium2": ("5.0", "2020-01-01T00:00:00Z")})
     assert audit(repo, fetch=fetch, today=date(2026, 9, 26)) == []
+
+
+def test_audit_measures_staleness_from_the_first_release_newer_than_the_pin(tmp_path):
+    """Review S-1: an engine that releases every few weeks keeps its newest
+    release young; the cadence runs from the day a newer release first
+    existed. Pinned 5.11.0, 5.12.0 out 139 days ago, the newest a month old:
+    red. Older releases, pre-releases and yanked files do not count."""
+    repo = _engines_repo(tmp_path, pdfium="5.11.0")
+    fetch, _seen = _answers(newest={"pillow": ("12.0", "2026-01-01T00:00:00Z")}, releases={"pypdfium2": {
+        "5.10.0": "2026-01-01T00:00:00Z",
+        "5.11.0": "2026-06-29T00:00:00Z",
+        "5.12.0": "2026-07-15T00:00:00Z",
+        "5.13.0": "2026-08-13T00:00:00Z",
+        "5.14.0": "2026-11-01T00:00:00Z"}})
+    assert audit(repo, fetch=fetch, today=date(2026, 12, 1)) == [
+        "pypdfium2 5.11.0 is pinned, and 5.12.0, the first newer release, was published 2026-07-15, "
+        "more than 90 days ago (newest: 5.14.0): bump the native engine"]
+    # The same history on the day the first newer release is 90 days old: not yet.
+    assert audit(repo, fetch=fetch, today=date(2026, 10, 13)) == []
+
+    def pre_and_yanked(url, body):
+        answer = fetch(url, body)
+        if "pypdfium2" in url:
+            answer["releases"] = {"5.11.0": [{"upload_time_iso_8601": "2026-06-29T00:00:00Z"}],
+                                  "5.12.0rc1": [{"upload_time_iso_8601": "2026-01-01T00:00:00Z"}],
+                                  "5.12.0": [{"upload_time_iso_8601": "2026-01-01T00:00:00Z", "yanked": True}],
+                                  "5.13.0": [{"upload_time_iso_8601": "2026-11-01T00:00:00Z"}]}
+        return answer
+
+    assert audit(repo, fetch=pre_and_yanked, today=date(2026, 12, 1)) == []
 
 
 def test_audit_reads_the_npm_lock_too(tmp_path):

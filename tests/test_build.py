@@ -103,7 +103,16 @@ def test_the_package_is_published_with_its_sha256_after_the_smoke_checks():
     upload = run[run.index("- name: Upload the package"):]
     assert "${{ env.PACKAGE_ZIP }}" in upload and "${{ env.PACKAGE_SHA256 }}" in upload
     assert "${{ env.PACKAGE_DIR }}" not in upload
-    assert "certutil -hashfile" in read("docs/runbook.md")
+    # Review M-1: the upload is wrapped in the artifact's own zip, so the
+    # runbook names the inner zip - by the name this step gives it - and
+    # compares with the summary page, never only with the file beside it.
+    runbook = read("docs/runbook.md")
+    prefix = re.search(r'\$zipName = "([\w.-]+)\$env:GITHUB_REF_NAME\.zip"', checksum).group(1)
+    artifact = re.search(r"^\s*name: (\S+)$", upload, re.M).group(1)
+    assert f"certutil -hashfile {prefix}<tag>.zip SHA256" in runbook
+    assert f"`{artifact}.zip`" in runbook
+    step = runbook[runbook.index(f"`{artifact}.zip`"):]
+    assert step.index(f"Unzip `{artifact}.zip`") < step.index("certutil -hashfile") < step.index("summary page")
 
 
 def test_the_workflow_skips_the_prompts_through_the_switch_the_script_reads():
@@ -379,10 +388,45 @@ def test_the_reader_is_installed_in_two_steps_everywhere_the_tree_is_installed()
     assert [name for name, _version, _marker in _pin_lines(read(NODEPS).splitlines())] == ["rapidocr"]
 
 
-def _install_lines(text: str) -> list[str]:
-    """Every command line that runs pip install, comments and echoes aside."""
+#: A pip install however it is spelled (review S-2): ``pip``, ``pip3``,
+#: ``pip3.14``, ``pip.exe``, and ``python -m pip``, ``py -m pip`` or
+#: ``%PY% -m pip`` (each ends in ``pip``), any case, any spacing.
+PIP_INSTALL = re.compile(r"(?i)\bpip(?:\d+(?:\.\d+)?)?(?:\.exe)?\s+install\b")
+#: An npm install however it is spelled: ``npm`` or ``npm.cmd``, running
+#: ``ci``, ``install`` or its short form ``i``.
+NPM_INSTALL = re.compile(r"(?i)\bnpm(?:\.cmd)?\s+(?:ci|install|i)\b")
+#: A line that IS an npm install (not an echo of its name in an error line).
+NPM_COMMAND = re.compile(r"(?i)(?:call\s+)?npm(?:\.cmd)?\s+(?:ci|install|i)\b")
+#: The spellings the two patterns must catch, each a line a person might add.
+PIP_SPELLINGS = ("pip install -r requirements.txt", "pip3 install pyinstaller", "pip3.14 install x",
+                 "PIP.EXE Install x", "python -m pip  install -r requirements.txt",
+                 "py -m pip install x", "%PY% -m pip install x", "python3 -m   pip\tinstall x")
+NPM_SPELLINGS = ("npm ci", "call npm.cmd ci", "npm install", "npm i electron", "NPM   Install",
+                 "call npm.CMD i")
+
+
+def _commands(text: str) -> list[str]:
+    """A batch file's or workflow's lines that run something: comments and echoes aside."""
     return [line.strip() for line in text.splitlines()
-            if "pip install" in line and not re.match(r"\s*(#|rem\b|echo\b)", line)]
+            if line.strip() and not re.match(r"\s*(#|rem\b|echo\b|::)", line, re.I)]
+
+
+def _install_lines(text: str) -> list[str]:
+    """Every command line that runs a pip install, however it is spelled."""
+    return [line for line in _commands(text) if PIP_INSTALL.search(line)]
+
+
+def test_every_spelling_of_an_install_is_recognised():
+    """Review S-2: the proofs below are only as good as the pattern that
+    finds an install - a ``pip3`` or a doubled space must not slip past."""
+    for spelling in PIP_SPELLINGS:
+        assert _install_lines(spelling) == [spelling.strip()], spelling
+    for spelling in NPM_SPELLINGS:
+        assert NPM_INSTALL.search(spelling), spelling
+    for harmless in ("pipeline install", "rem pip install x", "echo pip install failed", "pip freeze"):
+        assert not _install_lines(harmless), harmless
+    for harmless in ("npm run build", "npm --version", "npm cache verify"):
+        assert not NPM_INSTALL.search(harmless), harmless
 
 
 def test_every_install_is_hash_checked_from_a_lock():
@@ -398,9 +442,10 @@ def test_every_install_is_hash_checked_from_a_lock():
         for line in _install_lines(text):
             seen += 1
             assert "--require-hashes" in line, (name, line)
-            files = re.findall(r"-r (\S+)", line)
+            files = re.findall(r"-r\s+(\S+)", line)
             assert files and all(file.endswith(".lock") for file in files), (name, line)
-            assert " -c " not in line and "--upgrade" not in line and "-U " not in line, (name, line)
+            assert not re.search(r"\s-c\s", line) and "--upgrade" not in line and not re.search(r"\s-U\b", line), (
+                name, line)
     assert seen >= 8                                   # Setup, the build, the pack, gate and build workflows
 
 
@@ -412,15 +457,21 @@ def test_the_launcher_never_installs_and_says_when_setup_must_run():
     from tools.lockfiles import NOT_SET_UP, STAMP_NAME
 
     launcher = read(LAUNCHER)
-    for install in ("pip", "npm ci", "npm install"):
-        assert install not in launcher, install
+    assert "pip" not in launcher.lower()                    # not even in a comment
+    for line in _commands(launcher):
+        assert not PIP_INSTALL.search(line) and not NPM_INSTALL.search(line), line
     assert r"tools\lockfiles.py verify .venv" in launcher
     assert f"echo {NOT_SET_UP}" in launcher
     assert r'if not exist ".venv\Scripts\python.exe" goto :not_set_up' in launcher
-    setup = read(SETUP_SCRIPT)
-    assert "npm ci" in setup and "npm install" not in setup
-    stamp = setup.index(r"tools\lockfiles.py stamp .venv")
-    assert stamp > setup.index("npm ci") and stamp > NODEPS_STEP.search(setup).start()   # last
+    # Setup's stamp is its last command after the installs, found by the
+    # commands themselves, never by a comment that names them (review S-3).
+    setup = _commands(read(SETUP_SCRIPT))
+    # The line that runs npm, not the error line after it that echoes its name.
+    [npm] = [i for i, line in enumerate(setup) if NPM_COMMAND.match(line)]
+    assert re.fullmatch(r"call npm ci\b.*", setup[npm]), setup[npm]
+    [stamp] = [i for i, line in enumerate(setup) if re.search(r"tools\\lockfiles\.py stamp \.venv", line)]
+    installs = [i for i, line in enumerate(setup) if PIP_INSTALL.search(line)]
+    assert installs and stamp > max(installs) and stamp > npm, (stamp, installs, npm)
     assert STAMP_NAME.endswith(".json")
 
 
