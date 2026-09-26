@@ -5075,11 +5075,11 @@ def test_look_alike_spellings_of_one_name_are_refused_as_one_name(capsys, demo_r
     from tracker import layout
 
     items = [{"identifier": "A01", "document": "W-2"}]
-    for made in ("Park", "Cox"):
+    for made in ("Park", "Cox", "Woo"):
         assert run(capsys, "create", stdin={"household": made, "return_name": "1040 - One",
                                             "items": items})[0] == 0
     for typed in ("PARK", "\u0420\u0430rk", "P\u0430rk", "\uff30\uff41\uff52\uff4b",
-                  "Pa\u00adrk", "\u0421\u041e\u0425"):
+                  "Pa\u00adrk", "\u0421\u041e\u0425", "\u051c\u041e\u041e"):
         code, payload = run(capsys, "create", stdin={"household": typed, "return_name": "1040 - Two",
                                                      "items": items})
         assert code == 1, typed
@@ -5087,7 +5087,7 @@ def test_look_alike_spellings_of_one_name_are_refused_as_one_name(capsys, demo_r
         assert (payload["error"].startswith(f"'{named}' is not a household name: ")
                 or payload["error"].startswith("A household with that name is already in the list")
                 ), (typed, payload["error"])
-    assert sorted(p.name for p in (demo_root / PRIVATE_TREE).iterdir()) == ["Cox", "Park"]
+    assert sorted(p.name for p in (demo_root / PRIVATE_TREE).iterdir()) == ["Cox", "Park", "Woo"]
 
 
 def test_a_client_folder_no_household_owns_is_never_adopted(capsys, demo_root):
@@ -5189,10 +5189,14 @@ def test_a_year_disagreement_is_not_accepted(capsys, demo_root):
     code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(moved))
     pause = payload["household"]["pause"]
     assert pause["sentence"] == HOUSEHOLD_PAUSED_YEAR
+    # No button (the review's S3): nothing to accept, only to put back.
+    assert pause["scope"] == "" and pause["seq"] is None
+    assert "retired and made again" in pause["sentence"]
     journal = ledger.path_for(moved).read_bytes()
+    seq = len(ledger.read_events(moved.parent.parent))
     for scope in ("household", "return"):
         code, payload = run(capsys, "accept-folder-name", api.ENGAGEMENT_FLAG, str(moved),
-                            stdin={"seq": pause["seq"], "scope": scope})
+                            stdin={"seq": seq, "scope": scope})
         assert code == 1 and payload["error"] == api.YEAR_NOT_ACCEPTED
     assert ledger.path_for(moved).read_bytes() == journal
 
@@ -5212,3 +5216,41 @@ def test_accepting_a_household_whose_originals_rest_under_the_old_name_is_refuse
                         stdin={"seq": pause["seq"], "scope": "household"})
     assert code == 1 and payload["error"] == api.ORIGINALS_UNDER_OLD_NAME
     assert len(ledger.read_events(household)) == lines
+
+
+def test_accepting_one_return_never_renames_a_household_that_has_received_a_document(
+        capsys, demo_root):
+    """The review's M2 (D-1 by the accept route): an accept of one return
+    runs the same originals check before it writes anything, so a household
+    whose originals rest under its old client folder is not renamed by a
+    return's accept either - and a return's accept never writes the
+    household's name, so the household stays paused and the pass red."""
+    from tracker.households import HOUSEHOLD_PAUSED, household_pause
+
+    engagement = _a_renamed_household(capsys, demo_root, received=True)
+    household = engagement.parent.parent
+    lines = (len(ledger.read_events(household)), len(ledger.read_events(engagement)))
+    code, payload = run(capsys, "accept-folder-name", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"seq": lines[0], "scope": "return"})
+    assert code == 1 and payload["error"] == api.ORIGINALS_UNDER_OLD_NAME
+    assert (len(ledger.read_events(household)), len(ledger.read_events(engagement))) == lines
+    assert household_pause(household) == HOUSEHOLD_PAUSED
+
+
+def test_a_returns_accept_writes_only_that_returns_line(capsys, demo_root):
+    """A return's accept, where nothing has been received, writes that
+    return's own two names and nothing on the household's record: a
+    household whose own record claims another name is still paused until
+    its own accept."""
+    from tracker.households import HOUSEHOLD_PAUSED, household_pause
+
+    engagement = _a_renamed_household(capsys, demo_root)
+    household = engagement.parent.parent
+    lines = len(ledger.read_events(household))
+    code, payload = run(capsys, "accept-folder-name", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"seq": lines, "scope": "return"})
+    assert code == 0, payload
+    assert len(ledger.read_events(household)) == lines
+    last = ledger.read_events(engagement)[-1]
+    assert last[ledger.INFO_KEY] == {"household": "Park Household", "return_name": engagement.name}
+    assert household_pause(household) == HOUSEHOLD_PAUSED

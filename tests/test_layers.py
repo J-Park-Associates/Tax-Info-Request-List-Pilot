@@ -467,6 +467,30 @@ _TREE_WORDS = {"CLIENTS_TREE", "PRIVATE_TREE", "INBOX_DIR_NAME", "OPENED_DIR_NAM
 _NAME_RULES = {"WINDOWS_RESERVED_NAMES", "is_reserved_name", "segment_problem", "name_key",
                "MACHINE_PREFIXES"}
 _FOLDS = {"casefold", "lower", "normcase"}
+_JOINS = {"joinpath", "join", "Path", "PurePath", "PureWindowsPath", "PurePosixPath"}
+
+
+def _layout_words() -> set[str]:
+    """The layout's own words, as text: a literal equal to one is the
+    layout spelled again (the review's S1)."""
+    from tracker import layout
+
+    return {layout.CLIENTS_TREE, layout.PRIVATE_TREE, layout.INBOX_DIR_NAME,
+            layout.PREPARED_DIR_NAME, layout.REVIEW_DIR_NAME, layout.OPENED_DIR_NAME}
+
+
+def _is_text_of_a_path(node: ast.AST) -> bool:
+    """``str(...)`` or ``os.fspath(...)``: a path made text to be compared."""
+    return isinstance(node, ast.Call) and (
+        (isinstance(node.func, ast.Name) and node.func.id == "str")
+        or (isinstance(node.func, ast.Attribute) and node.func.attr == "fspath"))
+
+
+def _is_parts(node: ast.AST) -> bool:
+    """A path's ``.parts``, or a subscript of it."""
+    while isinstance(node, ast.Subscript):
+        node = node.value
+    return isinstance(node, ast.Attribute) and node.attr == "parts"
 
 
 def _named(node: ast.AST) -> str:
@@ -488,6 +512,11 @@ def spellings(source: str) -> list[tuple[str, int, str]]:
     """Every rule about the trees ``source`` spells for itself, as
     (enclosing function, line, what) - decision 188's R13."""
     found: list[tuple[str, int, str]] = []
+    words = _layout_words()
+
+    def tree_word(node: ast.AST) -> bool:
+        return _named(node) in _TREE_WORDS or (
+            isinstance(node, ast.Constant) and node.value in words)
 
     def visit(node: ast.AST, where: str) -> None:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -501,10 +530,17 @@ def spellings(source: str) -> list[tuple[str, int, str]]:
             if called in ("startswith", "endswith") and any(
                     _mentions(arg, _is_os_path) for arg in node.args):
                 found.append((where, node.lineno, f"{called} on a path separator"))
+            elif called in ("startswith", "endswith") and isinstance(node.func, ast.Attribute) and (
+                    _is_text_of_a_path(node.func.value) or any(map(_is_text_of_a_path, node.args))):
+                found.append((where, node.lineno, f"{called} on a path's text"))
+            if called in _JOINS and any(tree_word(arg) for arg in node.args):
+                found.append((where, node.lineno, "joins a tree word onto a path"))
         if isinstance(node, ast.Compare):
             operands = [node.left, *node.comparators]
-            if any(_named(one) in _TREE_WORDS for one in operands):
+            if any(tree_word(one) for one in operands):
                 found.append((where, node.lineno, "compares a tree word"))
+            if any(_is_parts(one) for one in operands):
+                found.append((where, node.lineno, "compares a path's parts"))
             folded = [one for one in operands
                       if isinstance(one, ast.Call) and _named(one.func) in _FOLDS]
             if folded and _mentions(node, lambda n: (
@@ -512,7 +548,7 @@ def spellings(source: str) -> list[tuple[str, int, str]]:
                     or "household" in _named(n) or "return_name" in _named(n)):
                 found.append((where, node.lineno, "compares a folded folder name"))
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div) and (
-                _named(node.left) in _TREE_WORDS or _named(node.right) in _TREE_WORDS):
+                tree_word(node.left) or tree_word(node.right)):
             found.append((where, node.lineno, "joins a tree word onto a path"))
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             modules = [alias.name for alias in node.names] if isinstance(node, ast.Import) \
@@ -578,6 +614,19 @@ def test_no_rule_about_the_trees_is_spelled_outside_the_layout():
         "calls relative_to", "compares a tree word", "startswith on a path separator",
         "compares a folded folder name", "joins a tree word onto a path", "imports unicodedata",
         "defines name_key"]
+    # The review's S1: the spellings the first scanner missed.
+    missed = spellings(
+        "def g(p, root, h):\n"
+        "    a = str(p).startswith(str(root))\n"
+        "    b = Path(root).joinpath(CLIENTS_TREE, h)\n"
+        "    c = os.path.join(root, PRIVATE_TREE)\n"
+        "    d = Path(root, 'Clients', h)\n"
+        "    e = p.parts[:2] == (root.name, 'x')\n"
+        "    f = root / 'Drop files here'\n")
+    assert [what for _, _, what in missed] == [
+        "startswith on a path's text", "joins a tree word onto a path",
+        "joins a tree word onto a path", "joins a tree word onto a path",
+        "compares a path's parts", "joins a tree word onto a path"]
     assert spellings("def f(root, p):\n    return layout.place_of(root, p).kind == layout.RETURN\n"
                      "def g(n):\n    return f'the {CLIENTS_TREE} folder'\n") == []
 

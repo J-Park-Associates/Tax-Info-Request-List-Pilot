@@ -2982,14 +2982,16 @@ def _prove_working_copies(
     return attention, swept, said
 
 
-def _prune_empty_dirs(inbox: Path) -> None:
+def _prune_empty_dirs(inbox: Path, root: Path, household: str) -> None:
     """Remove folders the client dragged into the inbox that are empty now
     their files have moved into the year's folder. Deepest first; anything
     that is not empty or is a sync client's staging folder is left alone.
 
     The inbox holds nothing of the firm's to keep since decision 125: the
     originals rest in the other tree, so there is no folder here to step
-    around."""
+    around. Each removal goes through the one door into the client tree
+    (``door.client_write``, decision 188's review, S2): a folder it refuses
+    is left where it is."""
     candidates = sorted(
         (p for p in inbox.rglob("*") if p.is_dir()),
         key=lambda p: len(p.parts),
@@ -3001,8 +3003,8 @@ def _prune_empty_dirs(inbox: Path) -> None:
         if through_a_link(folder, inbox):
             continue        # rmdir on a junction removes the junction, whatever it points at
         try:
-            folder.rmdir()  # only succeeds when empty
-        except OSError:
+            door.client_write(root, household, folder).rmdir()  # only succeeds when empty
+        except (OSError, door.DoorError):
             continue
 
 
@@ -3613,7 +3615,8 @@ def file_household_drops(
         # files that were in it, and a pass that found nothing to do used
         # to leave it there for ever. The inbox holds no folder of the
         # firm's to keep.
-        _prune_empty_dirs(inbox)
+        _prune_empty_dirs(inbox, root_of(runs[0].engagement_dir),
+                           household_name_of(runs[0].engagement_dir))
     return {run.engagement_dir: run.report for run in runs}
 
 

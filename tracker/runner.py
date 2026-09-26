@@ -170,8 +170,7 @@ from tracker.filer import (
 )
 from tracker.fsio import write_json_atomically, write_text_atomically
 from tracker.households import (
-    CLIENT_FOLDER_MISSING,
-    client_side_expected,
+    client_folder_missing,
     load_household_info,
     open_years,
     resolve_feeds,
@@ -777,9 +776,8 @@ def run_household(
         # renamed or moved in the client tree: nothing is made again under
         # the old name (SPEC-162 ruling 2, kept by decision 188).
         client_side_there = client_household_dir(household.parent.parent, household.name).is_dir()
-        if not held_back and not client_side_there \
-                and client_side_expected(household, [run.engagement.path for run in runs]):
-            held_back = CLIENT_FOLDER_MISSING.format(name=household.name)
+        if not held_back and not client_side_there:
+            held_back = client_folder_missing(household, [run.engagement.path for run in runs])
         if held_back:
             for run in runs:
                 run.error = held_back

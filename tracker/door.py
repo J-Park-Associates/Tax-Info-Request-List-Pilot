@@ -178,6 +178,23 @@ def client_write(root: Path | str, household: str, target: Path | str, *,
     return Path(target)
 
 
+def client_folder_missing(root: Path | str, household: str, *, had_one: bool) -> str:
+    """``layout.CLIENT_FOLDER_MISSING`` when the household's client folder
+    is not on the disk and its record shows it had one (``had_one``: it was
+    shared, or an original rests there) - else ``""`` (SPEC-162 ruling 2,
+    kept by decision 188; the review's M3).
+
+    **Decided here once**, and asked by the pass, by a new return into an
+    existing household and by every form of Roll Forward, before anything
+    is written: a client folder made again under the old name would be an
+    empty, unshared inbox the pass reads green while the client's real
+    folder - renamed or moved - sits among the misfits. The record's half
+    (``had_one``) is the caller's to read; this is the disk's half."""
+    if had_one and not layout.client_household_dir(root, household).is_dir():
+        return layout.CLIENT_FOLDER_MISSING.format(name=household)
+    return ""
+
+
 # -------------------------------------------------------------------- CLI ----
 
 if __name__ == "__main__":

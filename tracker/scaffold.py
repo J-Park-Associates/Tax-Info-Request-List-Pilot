@@ -331,7 +331,7 @@ def scaffold_household(
     household_dir: Path | str,
     *,
     returns: list[Path] | None = None,
-    may_make_household: bool = True,
+    may_make_household: bool | None = None,
 ) -> HouseholdScaffold:
     """Create/refresh one household's client side: its folder, its inbox and
     a year folder per open year. **Folders only** (decision 130): the README
@@ -349,7 +349,11 @@ def scaffold_household(
     nothing else. Nothing already there is touched, renamed or deleted.
 
     **Except the household's client folder, once it has had one**
-    (``may_make_household=False``, SPEC-162 ruling 2 kept by decision 188):
+    (SPEC-162 ruling 2 kept by decision 188). Left as ``None``,
+    ``may_make_household`` is asked of the record (the review's M3: a new
+    return and a Roll Forward lay the household out too, and must not make
+    it again); ``False`` refuses and ``True`` makes it, for a caller that
+    has already asked:
     a household that was shared, or whose originals rest in its client
     folder, whose client folder is gone was renamed or moved, and making a
     new empty one would hide that - :class:`ClientFolderMissing` is raised
@@ -368,10 +372,16 @@ def scaffold_household(
     # (decision 188): the household's client folder only while it is being
     # made, its inbox and its year folders always. The tree itself is no
     # household's place; a new root gets it once.
-    if not may_make_household and not client_dir.is_dir():
-        from tracker.households import CLIENT_FOLDER_MISSING
+    if not client_dir.is_dir():
+        if may_make_household is None:
+            from tracker.households import client_folder_missing
 
-        raise ClientFolderMissing(CLIENT_FOLDER_MISSING.format(name=household))
+            if said := client_folder_missing(household_dir, returns):
+                raise ClientFolderMissing(said)
+        elif not may_make_household:
+            from tracker.layout import CLIENT_FOLDER_MISSING
+
+            raise ClientFolderMissing(CLIENT_FOLDER_MISSING.format(name=household))
     clients_tree_of(root).mkdir(exist_ok=True)
     _make(root, household, client_dir, making=True)
     _make(root, household, inbox)

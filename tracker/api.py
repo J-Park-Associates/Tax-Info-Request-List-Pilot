@@ -88,10 +88,10 @@ from tracker.filer import (
 )
 from tracker.fsio import make_new_folders, write_text_atomically
 from tracker.households import (
+    HOUSEHOLD_PAUSED_YEAR,
     claim_disagrees,
     create_household,
     fed_by,
-    household_pause,
     household_returns,
     load_household_info,
     open_years,
@@ -200,6 +200,9 @@ from tracker.registry import (
     discover_engagements,
     engagement_from,
     mark_superseded,
+)
+from tracker.registry import (
+    held_back as registry_held_back,
 )
 from tracker.rollover import (
     ORIGIN_NEW,
@@ -1468,8 +1471,10 @@ def _pause_payload(household_dir: Path, info: HouseholdInfo, returns: list) -> d
     return whose claims disagree (decision 188)."""
     readable = [one for one in returns if not one.problem]
     sentence = pause_of(household_dir, info, [(one.path, one.info) for one in readable])
-    if not sentence:
-        return {"sentence": "", "scope": "", "engagement": "", "seq": None}
+    # A year is never accepted (ruling 9.3): the card shows the sentence and
+    # no button, rather than a button that can only be refused (review S3).
+    if not sentence or sentence == HOUSEHOLD_PAUSED_YEAR:
+        return {"sentence": sentence, "scope": "", "engagement": "", "seq": None}
     household_claim = claim_disagrees(info.name, household_dir.name) or any(
         claim_disagrees(one.info.household, household_dir.name) for one in readable)
     which = next((one.path for one in readable if return_disagrees(one.path, one.info)), None)
@@ -2308,9 +2313,7 @@ def _cmd_create(argv: list[str]) -> dict:
         # A household paused or stopped takes no new return (decision 188,
         # R7): the new record would be written from one name and filed
         # under another, or into one of two folders that claim one family.
-        practice = _the_practice()
-        if held := ((practice.stopped.get(household_dir) if practice is not None else None)
-                    or household_pause(household_dir)):
+        if held := registry_held_back(household_dir):
             raise ManifestError(held)
     else:
         household = _folder_name(spec.get("household"), "household")
@@ -2615,10 +2618,10 @@ def _cmd_rollover(argv: list[str]) -> dict:
     # describe the prior year before roll_forward() asks what never got
     # filed.
     ensure(prior)
-    # A household whose folders and record disagree is paused (decision
-    # 188): refused before anything is written.
-    if paused := household_pause(household_of(prior)):
-        raise ManifestError(paused)
+    # A household paused, stopped, or whose client folder is gone (decision
+    # 188 and its review's M3, S4): refused before anything is written.
+    if held := registry_held_back(household_of(prior)):
+        raise ManifestError(held)
 
     form = str(spec.get("form", "")).strip()
     template = template_items(form) if form else []
@@ -2819,13 +2822,16 @@ def _cmd_accept_folder_name(argv: list[str]) -> dict:
     claimed another name, and - for ``household`` - one ``rules_changed``
     line with the folder's name as ``info.household`` to each return whose
     claim disagrees, or - for ``return`` - one with ``info.household`` and
-    ``info.return_name`` for that return. Every line carries
+    ``info.return_name`` for that return - never the household's name.
+    Every line carries
     ``accepted: folder_name``, the person's word, dated by its own stamp.
     **Nothing is moved or renamed.** Refused, with nothing written, when a
     year disagrees (:data:`YEAR_NOT_ACCEPTED`: a return's year is its
-    record's) and, for a household, when a recorded original rests under a
-    client folder of another name (:data:`ORIGINALS_UNDER_OLD_NAME`: a
-    household that has received a document is not renamed this season).
+    record's) and, whatever the scope, when a recorded original of an
+    accepted return rests under a client folder of another name
+    (:data:`ORIGINALS_UNDER_OLD_NAME`: a household that has received a
+    document is not renamed this season, and its originals are never
+    orphaned).
     """
     engagement = _engagement_dir(argv)
     spec = _read_spec()
@@ -2850,10 +2856,15 @@ def _cmd_accept_folder_name(argv: list[str]) -> dict:
         judged = returns if scope == "household" else [engagement]
         if any(return_disagrees(one, details[one]) == "year" for one in judged):
             raise ManifestError(YEAR_NOT_ACCEPTED)
-        if scope == "household" and _originals_under_another_name(household_dir, returns):
+        # Whatever the scope, before anything is written (the review's M2):
+        # an accept whose returns hold originals under a client folder of
+        # another name would orphan them.
+        if _originals_under_another_name(household_dir, judged):
             raise ManifestError(ORIGINALS_UNDER_OLD_NAME)
         conn = store.connect()
-        if claim_disagrees(info.name, folder_name):
+        # Only an accept of the household renames it: a return's accept
+        # writes that return's own line and never the household's name.
+        if scope == "household" and claim_disagrees(info.name, folder_name):
             store.record(conn, household_dir, ledger.new(
                 ledger.HOUSEHOLD_CHANGED, **{ledger.HOUSEHOLD_KEY: {"name": folder_name}}, **accepted))
             written.append(str(household_dir))
@@ -2879,7 +2890,8 @@ def _originals_under_another_name(household_dir: Path, returns: list[Path]) -> b
             if not entry.pbc_location:
                 continue
             place = layout.place_of(root, locate(one, entry.pbc_location))
-            if place.kind in layout.CLIENT_KINDS and place.household != household_dir.name:
+            if place.kind in layout.CLIENT_KINDS and \
+                    layout.name_key(place.household) != layout.name_key(household_dir.name):
                 return True
     return False
 

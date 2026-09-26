@@ -2903,6 +2903,12 @@ def test_every_write_into_the_client_tree_went_through_the_door(tmp_path, sample
         return found
 
     engagement = build_engagement(tmp_path, samples)
+    # A drop in a folder the client dragged in, so the pass also removes the
+    # folders it empties (the review's S2): a removal is a write too.
+    dragged = inbox_of(engagement.path) / "Bank statements" / str(YEAR)
+    dragged.mkdir(parents=True)
+    (dragged / f"W-2 John Smith {YEAR}.pdf").write_bytes(
+        (samples / f"W-2 John Smith {YEAR}.pdf").read_bytes())
     monkeypatch.setattr(door, "client_write", watching)
     before = snapshot()
     a_pass(engagement)
@@ -2911,5 +2917,88 @@ def test_every_write_into_the_client_tree_went_through_the_door(tmp_path, sample
     after = snapshot()
 
     changed = {path for path, seen in after.items() if before.get(path) != seen}
+    removed = {path for path in before if path not in after and before[path] == "folder"}
     assert changed, "the pass wrote nothing under the client tree"
-    assert changed <= approved, sorted(str(p) for p in changed - approved)
+    assert dragged in removed and dragged.parent in removed
+    assert changed | removed <= approved, sorted(str(p) for p in (changed | removed) - approved)
+
+
+
+def test_a_new_return_or_a_roll_forward_never_makes_a_gone_client_folder_again(
+        tmp_path, samples, capsys, monkeypatch):
+    """T7's twins (the review's M3): a household whose client folder was
+    renamed after an original came to rest there is refused a new return
+    and every form of Roll Forward with the one sentence, before anything
+    is written - no client folder of the old name is made again."""
+    import io
+    import runpy
+    import sys
+
+    import tracker.api as api
+    from tests.conftest import app_stdin
+    from tracker.households import CLIENT_FOLDER_MISSING
+    from tracker.layout import CLIENTS_TREE, PRIVATE_TREE
+    from tracker.manifest import ManifestError
+    from tracker.rollover import ReturnPlan, roll_household
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    # The settings beside the root, never inside it (decision 137).
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path.parent / f"{tmp_path.name} settings"))
+    engagement = build_engagement(tmp_path, samples)
+    set_clients_root(tmp_path)
+    _fabricated_filed_original(engagement.path, "Test Household")
+    (tmp_path / CLIENTS_TREE / "Test Household").rename(tmp_path / CLIENTS_TREE / "Test Hh")
+    household = tmp_path / PRIVATE_TREE / "Test Household"
+    said = CLIENT_FOLDER_MISSING.format(name="Test Household")
+    before = sorted(tmp_path.rglob("*"))
+
+    def api_run(*argv, stdin):
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr("sys.stdin", app_stdin(stdin))
+            code = api.main(list(argv))
+        return code, capsys.readouterr().out
+
+    code, out = api_run("create", stdin={
+        "household_path": str(household), "return_name": "1065 - Test LLC", "form": "1040",
+        "people": [{"kind": "taxpayer", "name": "John Smith", "spellings": ["John Smith"]}],
+        "items": [{"identifier": "A01", "document": "W-2"}]})
+    assert code == 1 and said.replace("\\", "\\\\") in out, out
+    code, out = api_run("rollover", stdin={"prior": str(engagement.path), "year": YEAR + 1})
+    assert code == 1 and said.replace("\\", "\\\\") in out, out
+    with pytest.raises(ManifestError, match="is missing"):
+        roll_household(household, target_year=YEAR + 1,
+                       plans=[ReturnPlan(prior=engagement.path)])
+    console = io.StringIO()
+    monkeypatch.setattr(sys, "stderr", console)
+    monkeypatch.setattr(sys, "argv", ["rollover", str(household), "--year", str(YEAR + 1), "--all"])
+    with pytest.raises(SystemExit):
+        runpy.run_module("tracker.rollover", run_name="__main__")
+    assert said in console.getvalue()
+    assert sorted(tmp_path.rglob("*")) == before
+
+
+def test_roll_forward_refuses_a_stopped_household_with_its_own_sentence(tmp_path, samples):
+    """The review's S4: a household whose record is gone, or one of two
+    folders claiming one household, is refused Roll Forward with the stop's
+    own sentence, and no new year is made."""
+    import shutil
+
+    from tracker.layout import PRIVATE_TREE
+    from tracker.manifest import ManifestError
+    from tracker.registry import HOUSEHOLD_RECORD_MISSING, TWO_CLAIM
+    from tracker.rollover import ReturnPlan, roll_household
+
+    engagement = build_engagement(tmp_path, samples)
+    household = tmp_path / PRIVATE_TREE / "Test Household"
+    copy = tmp_path / PRIVATE_TREE / "Test Household - Copy"
+    shutil.copytree(household, copy)
+    with pytest.raises(ManifestError) as refused:
+        roll_household(household, target_year=YEAR + 1, plans=[ReturnPlan(prior=engagement.path)])
+    assert str(refused.value) == TWO_CLAIM.format(name="Test Household", a="Test Household",
+                                                 b="Test Household - Copy")
+    shutil.rmtree(copy)
+    ledger.path_for(household).unlink()
+    with pytest.raises(ManifestError) as refused:
+        roll_household(household, target_year=YEAR + 1, plans=[ReturnPlan(prior=engagement.path)])
+    assert str(refused.value) == HOUSEHOLD_RECORD_MISSING.format(folder="Test Household")
+    assert not (household / str(YEAR + 1)).exists()

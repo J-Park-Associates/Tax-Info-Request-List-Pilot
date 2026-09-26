@@ -76,7 +76,6 @@ from pathlib import Path
 
 from tracker.fsio import make_new_folders
 from tracker.households import (
-    household_pause,
     household_returns,
     load_household_info,
     open_years,
@@ -596,11 +595,14 @@ def roll_household(
     household_dir = Path(household_dir)
     today = today or dt.date.today()
     check_tax_year(target_year)
-    # A household whose folders and record disagree is paused (decision
-    # 188): refused before anything is read further or written, because
-    # the new year would be written from one name and filed under another.
-    if paused := household_pause(household_dir):
-        raise ManifestError(paused)
+    # A household paused (its folders and its record disagree), stopped
+    # (its record gone, two folders claiming it) or whose client folder is
+    # gone (decision 188 and its review's M3, S4): refused before anything
+    # is read further or written, with the sentence the pass says.
+    from tracker.registry import held_back
+
+    if said := held_back(household_dir):
+        raise ManifestError(said)
 
     _, open_returns = open_year_returns(household_dir)
     by_folder = {_same_folder(one.path): one for one in open_returns}
@@ -787,11 +789,13 @@ if __name__ == "__main__":
     if not ledger.path_for(given).is_file():
         parser.error(f"no record in {given}")
     store.follow_the_journal(store.connect(), store.root_for(given), given)
-    # Paused (decision 188): refused before anything is written, in both
-    # forms of the command.
-    if paused := household_pause(given if store.kind(store.connect(), given) == store.KIND_HOUSEHOLD
-                                 else household_of(given)):
-        parser.error(paused)
+    # Paused, stopped or its client folder gone (decision 188): refused
+    # before anything is written, in both forms of the command.
+    from tracker.registry import held_back
+
+    if said := held_back(given if store.kind(store.connect(), given) == store.KIND_HOUSEHOLD
+                         else household_of(given)):
+        parser.error(said)
 
     if store.kind(store.connect(), given) == store.KIND_HOUSEHOLD:
         if ns.year is None:

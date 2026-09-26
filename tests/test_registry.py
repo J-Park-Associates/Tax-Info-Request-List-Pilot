@@ -578,3 +578,20 @@ def test_a_client_folder_with_no_record_is_listed_by_name_only(root, monkeypatch
     said = {m.path: m.sentence for m in found.misfits}
     assert said == {stray: MISFIT_CLIENT_NO_RECORD}
     assert touched == []
+
+
+def test_a_client_folder_is_matched_to_its_household_by_the_key(root):
+    """The review's S5, as ruled: a household's client folder is its own
+    however its case and spacing are spelled - matched by the layout's key,
+    never by exact spelling, since Windows folds case - and a folder whose
+    name is another name is still a folder no household owns."""
+    from tracker.layout import CLIENTS_TREE
+    from tracker.registry import MISFIT_CLIENT_NO_RECORD
+
+    make(root, scaffold=True)
+    clients = root / CLIENTS_TREE
+    (clients / "Smith Family").rename(clients / "SMITH  FAMILY")
+    (clients / "Smith Family Two").mkdir()
+    said = {m.path.name: m.sentence for m in discover_engagements(root).misfits}
+    assert "SMITH  FAMILY" not in said
+    assert said["Smith Family Two"] == MISFIT_CLIENT_NO_RECORD

@@ -62,6 +62,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+from tracker.layout import CLIENT_FOLDER_MISSING as _CLIENT_FOLDER_MISSING
 from tracker.layout import household_name_of, household_of, is_year_folder, name_key, year_of
 from tracker.records import HouseholdInfo, household_to_json, link_problem
 
@@ -380,9 +381,9 @@ HOUSEHOLD_PAUSED_YEAR = ("Paused: a return's folder sits under a year its record
                          "goes back under the year its record holds; a return in the wrong year is "
                          "retired and made again.")
 #: What every run of a household carries when its client folder is gone
-#: and the household had one (SPEC-162 ruling 2, kept by decision 188).
-CLIENT_FOLDER_MISSING = ("`Clients\\{name}` is missing. Was the household renamed or moved? "
-                         "Give its client folder back the name `{name}`.")
+#: and the household had one: the layout's sentence since the review of
+#: decision 188, named here still.
+CLIENT_FOLDER_MISSING = _CLIENT_FOLDER_MISSING
 
 
 def claim_disagrees(claim: object, folder_name: str) -> bool:
@@ -478,3 +479,15 @@ def client_side_expected(household_dir: Path | str, returns: Iterable[Path]) -> 
                                                                              folder.name):
                     return True
     return False
+
+
+def client_folder_missing(household_dir: Path | str, returns: Iterable[Path] | None = None) -> str:
+    """``door.client_folder_missing`` for this household, the record's half
+    read here (:func:`client_side_expected`): the one verdict every writer
+    asks before it writes (the review's M3)."""
+    from tracker import door
+
+    folder = Path(household_dir)
+    folders = list(returns) if returns is not None else household_returns(folder)
+    return door.client_folder_missing(folder.parent.parent, folder.name,
+                                      had_one=client_side_expected(folder, folders))

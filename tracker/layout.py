@@ -354,13 +354,15 @@ LOOK_ALIKES: dict[str, str] = {
     "\u0422": "T", "\u0443": "y", "\u0425": "X", "\u0445": "x", "\u04ae": "Y",
     "\u051b": "q", "\u051d": "w", "\u04bb": "h", "\u0501": "d", "\u04cf": "l",
     "\u04c0": "I",
+    # ... and the capitals of the lowercase entries above (the review's M1)
+    "\u0423": "Y", "\u051a": "Q", "\u051c": "W", "\u04ba": "H", "\u0500": "D",
     # Greek
     "\u0391": "A", "\u0392": "B", "\u0395": "E", "\u0396": "Z", "\u0397": "H",
     "\u0399": "I", "\u039a": "K", "\u039c": "M", "\u039d": "N", "\u039f": "O",
     "\u03bf": "o", "\u03a1": "P", "\u03a4": "T", "\u03a5": "Y", "\u03a7": "X",
     "\u03bd": "v",
-    # Latin
-    "\u0131": "i", "\u0251": "a", "\u0261": "g",
+    # Latin, with the capitals of the two that have one
+    "\u0131": "i", "\u0251": "a", "\u0261": "g", "\u2c6d": "A", "\ua7ac": "G",
     # Dashes and apostrophes
     "\u2010": "-", "\u2011": "-", "\u2012": "-", "\u2013": "-", "\u2014": "-",
     "\u2015": "-", "\u2212": "-", "\ufe63": "-", "\uff0d": "-",
@@ -373,7 +375,7 @@ _ASCII_LOOK_ALIKES = str.maketrans({"1": "l", "i": "l", "|": "l", "0": "o"})
 def name_key(name: str) -> str:
     """The one key two household or return names are compared by (decision
     188, R3): NFKC; every invisible character removed; white space
-    collapsed; :data:`LOOK_ALIKES` folded; case folded; ``1``, ``i`` and
+    collapsed; :data:`LOOK_ALIKES` folded and case folded, twice; ``1``, ``i`` and
     ``|`` folded to ``l``, ``0`` to ``o`` and ``rn`` to ``m``; NFKC again.
 
     Two names with one key are one name: household uniqueness, a return's
@@ -386,7 +388,13 @@ def name_key(name: str) -> str:
     """
     text = unicodedata.normalize("NFKC", str(name))
     text = " ".join("".join(c for c in text if not is_invisible(c)).split())
-    text = "".join(LOOK_ALIKES.get(c, c) for c in text).casefold()
+    # The table, case, the table again and case again (the review's M1): a
+    # capital only the table knows (Cyrillic VE is B, its lowercase is no
+    # b) is folded before case can lose it, a letter case turns into one the
+    # table knows (a narrow o, a capital the table does not list) is folded
+    # after - so the key of a key is the key.
+    for _ in range(2):
+        text = "".join(LOOK_ALIKES.get(c, c) for c in text).casefold()
     text = text.translate(_ASCII_LOOK_ALIKES).replace("rn", "m")
     return unicodedata.normalize("NFKC", text)
 
@@ -629,6 +637,14 @@ NOT_A_HOUSEHOLD = ("{name} is not a household's folder (a household sits at <cli
 #: originals are places the tracker writes in the tree a client is shared.
 OUTSIDE_CLIENT_PLACE = ("{path} is not a place the tracker writes for the household {household} "
                         "in the tree its client is shared; nothing was written")
+
+
+#: What a household whose client folder is gone, when its record shows it
+#: had one, is told by every writer (SPEC-162 ruling 2, kept by decision
+#: 188): the pass, a new return, every form of Roll Forward. Nothing is
+#: made again under the old name.
+CLIENT_FOLDER_MISSING = ("`Clients\\{name}` is missing. Was the household renamed or moved? "
+                         "Give its client folder back the name `{name}`.")
 
 
 @dataclass(frozen=True, slots=True)

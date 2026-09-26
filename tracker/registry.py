@@ -663,10 +663,12 @@ def discover_engagements(root: Path | str, *, max_depth: int = MAX_DEPTH) -> Reg
     # name (decision 188, R8): a household renamed in the firm's tree
     # leaves its old client folder here, and a folder nobody set up is
     # never adopted.
-    owned = {layout.client_household_dir(root, one.name)
+    # By the layout's one key, never by exact spelling (the review's S5):
+    # Windows folds case, so Clients\park is the household Park's.
+    owned = {layout.name_key(one.name)
              for one in [*(household.path for household in keep), *found.record_missing]}
     misfits += [Misfit(folder, MISFIT_CLIENT_NO_RECORD) for folder in found.client_folders
-                if folder not in owned]
+                if layout.name_key(folder.name) not in owned]
     return Registry(
         source=root,
         engagements=engagements,
@@ -675,6 +677,29 @@ def discover_engagements(root: Path | str, *, max_depth: int = MAX_DEPTH) -> Reg
         paused=paused,
         stopped=stopped,
     )
+
+
+def held_back(household_dir: Path | str) -> str:
+    """Why nothing may be written for this household now, or ``""``: it is
+    stopped (its record gone while its returns hold theirs, or two folders
+    claim it), paused (its folders and its record disagree), or its client
+    folder is gone when its record shows it had one (the review's M3 and
+    S4). The one question a new return into it and every form of Roll
+    Forward ask before anything is written, with the sentence each stop
+    has in the pass."""
+    from tracker.households import client_folder_missing, household_pause, household_returns
+
+    folder = Path(household_dir)
+    if not ledger.path_for(folder).is_file():
+        returns = household_returns(folder)
+        return HOUSEHOLD_RECORD_MISSING.format(folder=folder.name) if returns else ""
+    try:
+        stopped = discover_engagements(folder.parent.parent).stopped
+    except RegistryError:
+        stopped = {}
+    if said := stopped.get(folder):
+        return said
+    return household_pause(folder) or client_folder_missing(folder)
 
 
 def _two_claims(households: list[Household]) -> dict[Path, str]:

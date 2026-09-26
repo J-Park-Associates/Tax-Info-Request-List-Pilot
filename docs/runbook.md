@@ -219,17 +219,21 @@ it are refused with the same sentence.
   own when a family separates - open the household in the app and press
   **Accept the folder's name**. It writes one dated line saying so on each
   record that claimed the old name; nothing is moved or renamed.
-- **A return moved under another year** is never accepted: its year is its
-  record's. Move the folder back under the year its record says; a return in
-  the wrong year is retired and made again.
+- **A return moved under another year** is never accepted, and the card
+  shows no button for it: its year is its record's. Move the folder back
+  under the year its record says; a return in the wrong year is retired and
+  made again.
 - **A household that has received a document is not renamed this season.**
   Its originals rest under its client folder of the old name, so the app
-  refuses to accept a new name for it; give the folder back its name. The
+  refuses to accept a new name for it - for the household or for any one of
+  its returns; give the folder back its name. The
   same for its client folder: if `Clients\<name>` of a household that was
   shared, or that holds originals, disappears, every run of the household
   fails with *"`Clients\<name>` is missing. Was the household renamed or
   moved? Give its client folder back the name `<name>`."* and nothing is
-  made again under the old name.
+  made again under the old name - not by the pass, not by a new return
+  into the household, and not by Roll Forward, which all refuse with that
+  sentence.
 - **Never copy a household folder.** Two folders that claim one household -
   a copy, or two names that read as one - stop both: *"Two folders claim
   the household `<name>`: `<a>` and `<b>`. Keep one; a copy of a household
@@ -792,6 +796,11 @@ written. Open it in the app and press **Accept the folder's name**; then Roll
 Forward puts next year's return in the household it now sits in, under its
 own folder name, and next year's record names that household, so the old
 household's client never sees its requests or its documents.
+
+Roll Forward also refuses, before anything is written and with the pass's
+own sentence, a household that is **stopped** - its `_ledger.jsonl` gone, or
+two folders claiming it - and one whose client folder is gone when it had
+one (decision 188).
 
 On the command line the same two forms live in one command, told apart by
 what you point it at:

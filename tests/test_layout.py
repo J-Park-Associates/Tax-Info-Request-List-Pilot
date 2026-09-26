@@ -424,7 +424,7 @@ def test_the_key_folds_exactly_the_stated_look_alikes():
     the SPEC names fold too - so a look-alike name is the name it imitates."""
     from tracker.layout import LOOK_ALIKES, name_key
 
-    assert len([c for c in LOOK_ALIKES if "\u0400" <= c <= "\u052f"]) == 31
+    assert len([c for c in LOOK_ALIKES if "\u0400" <= c <= "\u052f"]) == 36
     assert len([c for c in LOOK_ALIKES if "\u0370" <= c <= "\u03ff"]) == 16
     for char, latin in LOOK_ALIKES.items():
         assert name_key(char) == name_key(latin), hex(ord(char))
@@ -496,3 +496,24 @@ def test_the_positional_parser_names_every_place():
     assert layout.parts_below(ROOT, ROOT) == ()
     assert layout.parts_below(ret, ROOT) is None
     assert layout.parts_below(ROOT, Path(str(ROOT) + "x")) is None
+
+
+
+def test_the_key_of_a_key_is_the_key_and_a_capital_look_alike_is_its_letter():
+    """The review's M1: the key folds case, then the table, then case again,
+    so a capital whose lowercase the table lists - an all-Cyrillic
+    ``\u051c\u041e\u041e`` beside ``Woo`` - is the same name, and the key of
+    a key is the key for every entry of the table and every letter of the
+    Greek, Cyrillic and Latin Extended-C blocks."""
+    from tracker.layout import LOOK_ALIKES, name_key
+
+    for char, latin in LOOK_ALIKES.items():
+        assert name_key(char) == name_key(latin) == name_key(name_key(char)), hex(ord(char))
+        assert name_key(char.upper()) == name_key(name_key(char.upper())), hex(ord(char))
+    for start, end in ((0x0370, 0x0400), (0x0400, 0x0530), (0x1C80, 0x1C90), (0x2C60, 0x2C80)):
+        for point in range(start, end):
+            name = f"a{chr(point)}b"
+            assert name_key(name_key(name)) == name_key(name), hex(point)
+    assert name_key("\u051c\u041e\u041e") == name_key("Woo")
+    assert name_key("\u051a\u0423\u0410") == name_key("QYA")
+    assert name_key("\u04ba\u0410\u0405") == name_key("Has")
