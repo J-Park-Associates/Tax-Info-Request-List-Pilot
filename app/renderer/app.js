@@ -1905,8 +1905,12 @@ async function rollForward() {
     }
     for (const one of result.retired) lines.push(`• ${one}: retired.`);
     for (const one of result.skipped) lines.push(`• ${one.prior}: ${one.reason}`);
+    // Decision 159: every return rolled but a retirement failed - the
+    // API's own sentence says what was rolled, retired and left open.
+    if (result.warning) lines.push(result.warning);
     const dropped = result.rolled.some((one) => one.link_dropped);
-    banner(lines.join("\n"), result.skipped.length || dropped ? "warn" : "ok");
+    banner(lines.join("\n"),
+      result.skipped.length || result.warning || dropped ? "warn" : "ok");
   } catch (err) {
     toast(err.message);
   } finally {

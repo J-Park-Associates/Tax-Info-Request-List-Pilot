@@ -117,6 +117,33 @@ def test_an_append_outside_the_engagement_lock_refuses_loudly(bare):
     assert not ledger.path_for(bare).exists()
 
 
+def test_the_record_is_written_only_by_a_process_holding_the_token(engagement):
+    """Decision 159, A-5. A lock file that says this machine and this
+    process, written by hand rather than taken, is not a lock this process
+    holds: the ledger and the store both refuse to write under it, and
+    nothing reaches the record."""
+    import os
+
+    from tracker.locking import LOCK_FILENAME, holds, lock_is_held, lock_line
+
+    lock = engagement / LOCK_FILENAME
+    lock.write_text(lock_line(os.getpid(), dt.datetime.now()), encoding="utf-8")
+    before = ledger.path_for(engagement).read_bytes()
+    assert not lock_is_held(engagement) and not holds(engagement)
+
+    with pytest.raises(ledger.LedgerError, match="engagement lock"):
+        ledger.append(engagement, a_keyword(1))
+    with pytest.raises(store.StoreError, match="engagement lock"):
+        store.record(store.connect(), engagement, a_keyword(1))
+    assert ledger.path_for(engagement).read_bytes() == before
+
+    # The same process, having taken it, holds it - and only while it does.
+    lock.unlink()
+    with engagement_lock(engagement):
+        assert lock_is_held(engagement) and holds(engagement)
+    assert not lock_is_held(engagement)
+
+
 def test_an_event_this_version_does_not_know_is_refused(bare):
     with pytest.raises(ledger.LedgerError, match="not an event"):
         ledger.new("invented")
@@ -204,6 +231,67 @@ def test_a_torn_last_line_is_ignored_by_the_reader_and_truncated_by_the_next_app
     assert path.read_bytes().startswith(whole)
     assert b"keyword_lear\n" not in path.read_bytes()
     assert [e["identifier"] for e in ledger.read_events(bare)] == ["A01", "A02"]
+
+
+def test_a_line_that_lost_only_its_newline_is_kept(bare, caplog):
+    """Decision 159, A-4. A sync client or an editor saved the record
+    without its last newline: the last event is whole, so every reader
+    reads it and the next append gives it its newline back rather than
+    dropping a decision the record had made."""
+    with engagement_lock(bare):
+        ledger.append(bare, a_keyword(1))
+        ledger.append(bare, a_keyword(2))
+    path = ledger.path_for(bare)
+    whole = path.read_bytes()
+    path.write_bytes(whole[:-1])                       # the last newline lost
+
+    assert [e["identifier"] for e in ledger.read_events(bare)] == ["A01", "A02"]
+    events, _head, chain = ledger.read_with_chain(bare)
+    assert len(events) == len(chain) == 2
+
+    with engagement_lock(bare):
+        ledger.append(bare, a_keyword(3))
+    assert path.read_bytes().startswith(whole)         # its newline back, byte for byte
+    assert [e["identifier"] for e in ledger.read_events(bare)] == ["A01", "A02", "A03"]
+    assert "without its last newline" in caplog.text and path.name in caplog.text
+    # The chain over the kept line did not change when it got its newline.
+    assert ledger.read_with_chain(bare)[2][:2] == chain
+
+
+@pytest.mark.parametrize("tail", [
+    b'{"event": "keyword_learned", "identifier": "A0',   # cut mid-value
+    b'{"identifier": "A09", "keyword": "lender"}',        # whole, but no event
+    b'["keyword_learned"]',                               # whole, but not an object
+    b"[" * 200_000,                                       # nested past the parser (review S4)
+    b'{"event": ' + b"[" * 200_000,
+])
+def test_a_torn_line_is_still_dropped(bare, tail):
+    """Decision 159 keeps only a tail that is one whole event; anything
+    else after the last newline is a torn write, ignored by every reader and
+    truncated by the next append, exactly as before."""
+    with engagement_lock(bare):
+        ledger.append(bare, a_keyword(1))
+    path = ledger.path_for(bare)
+    whole = path.read_bytes()
+    path.write_bytes(whole + tail)
+
+    assert [e["identifier"] for e in ledger.read_events(bare)] == ["A01"]
+    with engagement_lock(bare):
+        ledger.append(bare, a_keyword(2))
+    assert path.read_bytes().startswith(whole) and tail not in path.read_bytes()
+    assert [e["identifier"] for e in ledger.read_events(bare)] == ["A01", "A02"]
+
+
+def test_a_line_nested_too_deep_in_the_middle_is_refused_by_name(bare):
+    """The review's S4. A middle line the parser cannot descend is a line
+    that does not read: said as a LedgerError naming it, never a bare
+    RecursionError escaping every reader."""
+    with engagement_lock(bare):
+        ledger.append(bare, a_keyword(1))
+    path = ledger.path_for(bare)
+    path.write_bytes(path.read_bytes() + b"[" * 200_000 + b"\n")
+    with pytest.raises(ledger.LedgerError, match="line 2 does not read as an event: it is nested too deeply"):
+        ledger.read_events(bare)
 
 
 def test_a_line_that_is_not_an_event_in_the_middle_is_refused(bare):

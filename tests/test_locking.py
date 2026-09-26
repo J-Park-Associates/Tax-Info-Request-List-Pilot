@@ -605,3 +605,296 @@ def test_the_boot_time_is_in_the_past_or_unknown():
 
     booted = boot_time()
     assert booted is None or booted < time.time()
+# ---------------------------------------------- decision 159: the stale take ----
+
+
+def _a_dead_pid() -> int:
+    """The id of a process of this machine that has ended."""
+    import subprocess
+    import sys
+
+    from tracker.locking import pid_alive
+
+    child = subprocess.Popen([sys.executable, "-c", "pass"])
+    child.wait()
+    assert pid_alive(child.pid) is False
+    return child.pid
+
+
+def test_two_processes_racing_a_dead_lock_end_with_exactly_one_holder(tmp_path):
+    """Decision 159, A-2. Eight processes, released at once by a barrier,
+    all find the same stale lock and all judge it stale. Without the
+    breaker each deleted it and made its own, and one's delete could land
+    after another's create - two holders. Thirty rounds, ten at each shape
+    of stale lock - a dead owner, a dead owner behind an abandoned breaker
+    (the review's M1), an old empty lock (M2) - and every one ends with
+    exactly one holder, every other racer refused with
+    EngagementLockedError, and neither the lock nor its breaker left."""
+    from tracker.locking import RACE_SHAPES, race
+
+    assert len(RACE_SHAPES) == 3
+    assert race(tmp_path, processes=8, rounds=30, name=LOCK_FILENAME) == []
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_a_stale_lock_is_deleted_only_if_it_is_still_the_one_judged(tmp_path, monkeypatch):
+    """Decision 159, A-2. Between the look that judged a lock stale and the
+    breaker, another run took it: the take is refused and the other run's
+    lock is left exactly as it is."""
+    import tracker.locking as locking_module
+
+    lock = tmp_path / LOCK_FILENAME
+    lock.write_text(lock_line(_a_dead_pid(), dt.datetime.now()), encoding="utf-8")
+    theirs = lock_line(os.getpid() + 1, dt.datetime(2026, 3, 14, 7, 3))
+    real_take = locking_module._take_breaker
+
+    def another_run_takes_it_first(at):
+        lock.write_text(theirs, encoding="utf-8")        # it cleared and took the lock
+        return real_take(at)
+
+    monkeypatch.setattr(locking_module, "_take_breaker", another_run_takes_it_first)
+    with pytest.raises(EngagementLockedError, match="taken while it was being judged stale"):
+        acquire_lock(tmp_path)
+    assert lock.read_text(encoding="utf-8") == theirs
+    assert not locking_module.breaker_of(lock).exists()
+
+
+def test_clearing_by_hand_goes_through_the_same_comparison(tmp_path, monkeypatch):
+    """The app's Clear button is the same judge-then-delete, and is held to
+    the same rule: a lock that changed after it was judged is not deleted."""
+    import tracker.locking as locking_module
+    from tracker.locking import clear_stale_lock
+
+    lock = tmp_path / LOCK_FILENAME
+    lock.write_text(lock_line(_a_dead_pid(), dt.datetime.now()), encoding="utf-8")
+    theirs = lock_line(os.getpid() + 1, dt.datetime(2026, 3, 14, 7, 3))
+    real_take = locking_module._take_breaker
+
+    def another_run_takes_it_first(at):
+        lock.write_text(theirs, encoding="utf-8")
+        return real_take(at)
+
+    monkeypatch.setattr(locking_module, "_take_breaker", another_run_takes_it_first)
+    with pytest.raises(EngagementLockedError, match="taken while it was being judged stale"):
+        clear_stale_lock(tmp_path)
+    assert lock.read_text(encoding="utf-8") == theirs
+    monkeypatch.setattr(locking_module, "_take_breaker", real_take)
+    lock.write_text(lock_line(_a_dead_pid(), dt.datetime.now()), encoding="utf-8")
+    assert clear_stale_lock(tmp_path).owner_gone and not lock.exists()
+
+
+def test_a_breaker_left_by_a_dead_run_is_cleared(tmp_path, caplog):
+    """A run that died holding the breaker does not block the lock for
+    ever: a breaker naming a process of this machine that has ended, or one
+    older than a minute whoever it names, is cleared and the stale lock
+    taken. A live run's fresh breaker is another run clearing the lock, and
+    the take is refused."""
+    from tracker.locking import BREAKER_STALE_SECONDS, breaker_of, lock_status
+
+    lock = tmp_path / LOCK_FILENAME
+    breaker = breaker_of(lock)
+    assert breaker.name == LOCK_FILENAME + ".breaking"
+
+    lock.write_text(lock_line(_a_dead_pid(), dt.datetime.now()), encoding="utf-8")
+    breaker.write_text(lock_line(_a_dead_pid(), dt.datetime.now()), encoding="utf-8")
+    assert lock_status(tmp_path).path == lock           # the breaker is never the lock shown
+    with engagement_lock(tmp_path):
+        assert str(os.getpid()) in lock.read_text(encoding="utf-8")
+        assert not breaker.exists()
+    assert "left by a run that is gone" in caplog.text
+
+    # Another machine's breaker, an hour old: its owner cannot be asked, so its age decides.
+    lock.write_text(lock_line(_a_dead_pid(), dt.datetime.now()), encoding="utf-8")
+    breaker.write_text("pid=1 started=2026-03-14T07:03:00 host=another-machine", encoding="utf-8")
+    old = (dt.datetime.now() - dt.timedelta(seconds=BREAKER_STALE_SECONDS + 1)).timestamp()
+    os.utime(breaker, (old, old))
+    with engagement_lock(tmp_path):
+        assert not breaker.exists()
+
+    # A fresh one of a live run: the lock is being cleared by it; refused, both left.
+    lock.write_text(lock_line(_a_dead_pid(), dt.datetime.now()), encoding="utf-8")
+    breaker.write_text(lock_line(os.getpid(), dt.datetime.now()), encoding="utf-8")
+    with pytest.raises(EngagementLockedError, match="is being cleared by another run"):
+        acquire_lock(tmp_path)
+    assert lock.exists() and breaker.exists()
+
+
+def test_an_old_empty_lock_is_not_the_empty_lock_another_run_just_made(tmp_path, monkeypatch):
+    """The review's M2. Every lock is empty for an instant after its create.
+    B judged an old empty lock stale; meanwhile A cleared it and created
+    its own, still empty. By text alone the two are the same, and B deleted
+    A's live lock. Judged by text, time and file number, B is refused and
+    A's lock stays."""
+    import tracker.locking as locking_module
+
+    lock = tmp_path / LOCK_FILENAME
+    lock.write_bytes(b"")
+    old = (dt.datetime.now() - dt.timedelta(seconds=STALE_LOCK_SECONDS + 60)).timestamp()
+    os.utime(lock, (old, old))
+    real_take = locking_module._take_breaker
+
+    def a_clears_and_creates_first(at):
+        lock.unlink()
+        os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY))   # A's, not yet written
+        return real_take(at)
+
+    monkeypatch.setattr(locking_module, "_take_breaker", a_clears_and_creates_first)
+    with pytest.raises(EngagementLockedError, match="taken while it was being judged stale"):
+        acquire_lock(tmp_path)                                         # B
+    assert lock.exists() and lock.stat().st_mtime > old
+
+
+def test_an_abandoned_breaker_is_cleared_by_exactly_one_of_the_racers_that_judged_it(tmp_path):
+    """The review's M1. Two racers judged the same abandoned breaker. The
+    first clears it and makes its own; the second, still holding its
+    judgment of the old one, must not delete the new one - it loses the
+    marker named for the old breaker and is refused."""
+    import tracker.locking as locking_module
+
+    lock = tmp_path / LOCK_FILENAME
+    breaker = locking_module.breaker_of(lock)
+    breaker.write_text(lock_line(_a_dead_pid(), dt.datetime.now()), encoding="utf-8")
+    judged = locking_module._look(breaker)
+    assert locking_module._abandoned(breaker, judged)
+
+    assert locking_module._clear_abandoned(breaker, judged) is True       # C clears it ...
+    assert not breaker.exists()
+    mine, token = locking_module._take_breaker(lock)                      # ... and takes its own
+    assert locking_module._clear_abandoned(breaker, judged) is False      # D, late: refused
+    assert breaker.read_text(encoding="utf-8") == token                   # C's breaker stands
+    markers = list(tmp_path.glob(breaker.name + locking_module.BREAKER_CLEARED_INFIX + "*"))
+    assert len(markers) == 1                                              # left, swept when old
+    locking_module._release_breaker(mine, token)
+    assert not breaker.exists()
+
+
+def test_a_breaker_is_released_only_by_the_run_whose_token_it_holds(tmp_path, caplog):
+    """A run whose breaker was cleared under it (the minute rule) must not
+    delete the next run's breaker on its way out."""
+    import tracker.locking as locking_module
+
+    lock = tmp_path / LOCK_FILENAME
+    breaker, token = locking_module._take_breaker(lock)
+    theirs = lock_line(os.getpid() + 1, dt.datetime.now())
+    breaker.write_text(theirs, encoding="utf-8")                          # cleared, and taken again
+    locking_module._release_breaker(breaker, token)
+    assert breaker.read_text(encoding="utf-8") == theirs
+    assert "replaced by another run" in caplog.text
+
+
+def test_old_clearing_markers_are_swept_by_the_next_breaker(tmp_path):
+    import tracker.locking as locking_module
+
+    lock = tmp_path / LOCK_FILENAME
+    breaker = locking_module.breaker_of(lock)
+    stale = tmp_path / (breaker.name + locking_module.BREAKER_CLEARED_INFIX + "0" * 16)
+    fresh = tmp_path / (breaker.name + locking_module.BREAKER_CLEARED_INFIX + "1" * 16)
+    stale.touch()
+    fresh.touch()
+    old = (dt.datetime.now() - dt.timedelta(seconds=locking_module.BREAKER_STALE_SECONDS + 1)).timestamp()
+    os.utime(stale, (old, old))
+    held, token = locking_module._take_breaker(lock)
+    locking_module._release_breaker(held, token)
+    assert not stale.exists() and fresh.exists()
+
+
+def test_a_held_token_copied_into_another_folder_is_not_held_there(tmp_path):
+    """The review's S5, the ruling's fix: the token is recorded with the
+    lock file it was written to, and compared with ``samefile`` - so a copy
+    elsewhere is not held, and a second spelling of the same folder still
+    is."""
+    from tracker.locking import holds
+
+    here, there = tmp_path / "here", tmp_path / "there"
+    here.mkdir()
+    there.mkdir()
+    with engagement_lock(here) as lock:
+        (there / LOCK_FILENAME).write_text(lock.token, encoding="utf-8")
+        assert holds(here) and not holds(there)
+        assert holds(tmp_path / "there" / ".." / "here")          # another spelling, same folder
+
+
+def test_two_takes_in_one_clock_tick_write_two_tokens(tmp_path, monkeypatch, caplog):
+    """The review's S5. Two locks taken in the same instant used to write
+    the same line; one whose release could neither delete nor mark its
+    file then read as held while its twin was. Every take now carries its
+    own random id."""
+    import pathlib
+
+    import tracker.locking as locking_module
+    from tracker.locking import holds, lock_status
+
+    fixed = dt.datetime(2026, 9, 26, 9, 0)
+
+    class OneTick(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed
+
+    first, second = tmp_path / "first", tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    monkeypatch.setattr(locking_module.dt, "datetime", OneTick)
+    monkeypatch.setattr(locking_module, "_RELEASE_RETRY_DELAY", 0)
+    a = acquire_lock(first)
+    b = acquire_lock(second)
+    assert a.token != b.token and " id=" in a.token
+    assert lock_status(first).started == fixed.isoformat()          # the id is read by nobody
+
+    real_unlink, real_write = pathlib.Path.unlink, pathlib.Path.write_text
+
+    def stays(self, missing_ok=False):
+        if self.name != LOCK_FILENAME:
+            return real_unlink(self, missing_ok=missing_ok)
+
+    def refused(self, *args, **kwargs):
+        if self.name == LOCK_FILENAME:
+            raise PermissionError("kept open")
+        return real_write(self, *args, **kwargs)
+
+    monkeypatch.setattr(pathlib.Path, "unlink", stays)
+    monkeypatch.setattr(pathlib.Path, "write_text", refused)
+    release_lock(a)                                   # neither deleted nor marked
+    monkeypatch.setattr(pathlib.Path, "unlink", real_unlink)
+    monkeypatch.setattr(pathlib.Path, "write_text", real_write)
+    assert (first / LOCK_FILENAME).read_text(encoding="utf-8") == a.token
+    assert not holds(first) and holds(second)
+    release_lock(b)
+
+
+# ------------------------- one judgment of stale (decisions 159 and 189) ----
+
+
+def test_a_take_and_the_page_judge_a_lock_from_before_the_boot_alike(tmp_path, monkeypatch):
+    """Decision 159 carried onto 189: the take judges a lock by the very
+    status the page reads (``_status_from``), made from the handle the
+    breaker compares - so a lock this machine wrote before its last boot,
+    naming a process id that is alive again, is stale to both, and the take
+    clears it through the breaker, leaving no breaker behind."""
+    import tracker.locking as locking_module
+    from tracker.locking import breaker_of, lock_status
+
+    lock = tmp_path / LOCK_FILENAME
+    other_host_now = lock_line(os.getpid(), dt.datetime.now() - dt.timedelta(minutes=10))
+    lock.write_text(other_host_now.replace(f"pid={os.getpid()}", "pid=1"), encoding="utf-8")
+    monkeypatch.setattr(locking_module, "boot_time", lambda: time.time() - 60)
+    judged = locking_module._look(lock)
+    assert lock_status(tmp_path).stale == locking_module._status_from(lock, judged).stale is True
+    with engagement_lock(tmp_path):
+        assert not breaker_of(lock).exists()
+
+
+def test_a_breaker_from_before_the_boot_is_abandoned_whatever_its_pid_says_now(tmp_path, monkeypatch):
+    """A breaker is judged by the same rule as a lock (decision 189's boot
+    rule included): one this machine wrote before it last started is
+    abandoned, though the process id it names is running again."""
+    import tracker.locking as locking_module
+
+    breaker = locking_module.breaker_of(tmp_path / LOCK_FILENAME)
+    breaker.write_text(lock_line(os.getpid(), dt.datetime.now() - dt.timedelta(minutes=10)),
+                       encoding="utf-8")
+    seen = locking_module._look(breaker)
+    monkeypatch.setattr(locking_module, "boot_time", lambda: None)
+    assert not locking_module._abandoned(breaker, seen), "a live owner and no boot rule: held"
+    monkeypatch.setattr(locking_module, "boot_time", lambda: time.time() - 60)
+    assert locking_module._abandoned(breaker, seen)

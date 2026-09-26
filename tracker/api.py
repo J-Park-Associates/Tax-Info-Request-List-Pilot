@@ -229,6 +229,7 @@ from tracker.rollover import (
     ORIGIN_PRIOR,
     UNKNOWN_YEAR_LABEL,
     ReturnPlan,
+    RolledNotAllRetired,
     carried_link,
     carry_engagement_info,
     detect_year,
@@ -2809,13 +2810,18 @@ def _cmd_roll_household(argv: list[str]) -> dict:
          "returns": [{"prior": "<return folder>", "form": "1040",
                       "return_name": ""}, ...]}
 
-    Every ticked return is rolled into the year, one at a time, each under
-    its own lock and by the same carry rule the per-return ``rollover``
-    uses - which stays the primitive this calls. **Every open-year return
-    the list leaves out is retired** with one details edit, so the
-    household has exactly one open year again and its inbox goes on being
-    sorted (decision 126). One return's refusal is reported in ``skipped``
-    and undoes none of the others.
+    Every ticked return is rolled into the year by the same carry rule the
+    per-return ``rollover`` uses - which stays the primitive this plans
+    with. **Every open-year return the list leaves out is retired** with
+    one details edit, so the household has exactly one open year again and
+    its inbox goes on being sorted (decision 126). **Every ticked return or
+    none** (decision 159): one return's refusal is the whole call's error,
+    naming that return, and nothing is rolled; ``skipped`` stays in the
+    reply's shape and is always empty. A retirement that fails after every
+    return was rolled is not an error of the call - the new returns exist -
+    so the reply says what was done: ``not_retired`` names the returns
+    left open and ``warning`` is the rollover's own sentence
+    (``RolledNotAllRetired``), which the app shows as its banner.
 
     The year defaults to the one after the household's open year. Nothing
     under the client tree is touched but the new year's folder, and no
@@ -2846,7 +2852,12 @@ def _cmd_roll_household(argv: list[str]) -> dict:
             return_name=_folder_name(named, "return") if named else "",
         ))
 
-    done = roll_household(household_dir, target_year=target_year, plans=plans)
+    warning = ""
+    not_retired: list[Path] = []
+    try:
+        done = roll_household(household_dir, target_year=target_year, plans=plans)
+    except RolledNotAllRetired as exc:
+        done, not_retired, warning = exc.result, exc.not_retired, str(exc)
     rolled = [
         {"prior": was.name, "created": str(created),
          "label": Engagement(path=created, household_path=household_dir,
@@ -2864,6 +2875,10 @@ def _cmd_roll_household(argv: list[str]) -> dict:
         "retired": [Engagement(path=one, household_path=household_dir,
                                info=load_engagement_info(one)).label
                     for one in done.retired],
+        "not_retired": [Engagement(path=one, household_path=household_dir,
+                                   info=load_engagement_info(one)).label
+                        for one in not_retired],
+        "warning": warning,
         "target_year": target_year,
         "state": _state(landed),
     }

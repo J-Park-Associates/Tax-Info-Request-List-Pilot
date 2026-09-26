@@ -76,7 +76,10 @@ mid-append leaves at most a torn last line - bytes with no newline after
 them. :func:`read_events` ignores such a tail and the next :func:`append`
 truncates it first. Nothing else ever rewrites the file. A record's own JSON
 never contains a newline (``json.dumps`` escapes them), so an unterminated
-tail is the only shape a torn write can take.
+tail is the only shape a torn write can take. A tail that is one whole
+event is not torn - a sync client or an editor dropped only its newline -
+and is read as a line, and the next append gives it its newline back
+(decision 159).
 
 **Written only under the engagement lock.** ``O_APPEND`` is atomic for
 concurrent writers on POSIX and is *not* on Windows, where two appends can
@@ -599,11 +602,21 @@ def _write_line(path: Path, event: dict) -> None:
 
 
 def _truncate_torn_tail(path: Path) -> None:
-    """Drop bytes a killed run left with no newline after them.
+    """Drop bytes a killed run left with no newline after them - unless they
+    are a whole line that lost only its newline, which is kept.
 
     Only ever the tail, and only under the lock: a torn line is the one thing
     a crash can leave behind, and appending after it would bury the damage in
     the middle of the file where no reader could tell it from a record.
+
+    **A line that lost only its newline is not torn (decision 159, A-4).** A
+    sync client or an editor that saves a file without its last newline
+    leaves the last event whole; dropping it would delete a decision the
+    record had already made. So a tail that reads as one complete event
+    (:func:`_a_complete_tail`) gets its newline back - one write, flushed -
+    with a warning naming the file, and the next line goes after it. A
+    genuinely torn line never reads as a whole object, and is dropped as
+    before.
     """
     try:
         data = path.read_bytes()
@@ -614,6 +627,19 @@ def _truncate_torn_tail(path: Path) -> None:
     if not data or data.endswith(_NEWLINE):
         return
     keep = data.rfind(_NEWLINE) + 1
+    if _a_complete_tail(data[keep:]):
+        log.warning("%s ended without its last newline; the line is whole and is kept", path.name)
+        try:
+            fd = os.open(path, os.O_WRONLY | os.O_APPEND | _BINARY)
+            try:
+                os.write(fd, _NEWLINE)
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+        except OSError as exc:
+            # The disk's error leaves as the record's (decision 189).
+            raise _not_written(exc) from exc
+        return
     log.warning("%s ended mid-line (%d byte(s)); the torn tail is dropped", path.name, len(data) - keep)
     try:
         with open(path, "r+b") as handle:
@@ -622,6 +648,21 @@ def _truncate_torn_tail(path: Path) -> None:
             os.fsync(handle.fileno())
     except OSError as exc:
         raise _not_written(exc) from exc
+
+
+def _a_complete_tail(tail: bytes) -> bool:
+    """The bytes after the last newline are one whole event: they parse as
+    one JSON object carrying :data:`EVENT_KEY`. (Decision 159's link check
+    joins this test when every line carries its link.) A tail nested too
+    deep to parse is torn, never a crash: before 159 no tail was parsed at
+    all, and a record's tail is exactly the bytes nobody vouches for."""
+    if not tail.strip():
+        return False
+    try:
+        event = json.loads(tail.decode("utf-8"))
+    except (ValueError, RecursionError):
+        return False
+    return isinstance(event, dict) and event.get(EVENT_KEY) is not None
 
 
 # ------------------------------------------------------------------ read ----
@@ -655,9 +696,14 @@ def _parse_lines(data: bytes, name: str) -> list[tuple[dict, bytes]]:
     if not data:
         return []
     lines = data.split(_NEWLINE)
-    if lines[-1]:
-        log.warning("%s ends mid-line; the torn last line is ignored", name)
-    lines.pop()                       # the tail after the last newline: empty, or torn
+    if lines[-1] and _a_complete_tail(lines[-1]):
+        # A whole line that lost only its newline is a line (decision 159);
+        # the next append gives it its newline back.
+        log.warning("%s ends without its last newline; the last line is whole and is read", name)
+    else:
+        if lines[-1]:
+            log.warning("%s ends mid-line; the torn last line is ignored", name)
+        lines.pop()                   # the tail after the last newline: empty, or torn
     events = []
     for number, raw in enumerate(lines, start=1):
         if not raw.strip():
@@ -670,6 +716,12 @@ def _parse_lines(data: bytes, name: str) -> list[tuple[dict, bytes]]:
             # which escaped every reader as something other than a record
             # that does not read (decision 180).
             raise LedgerError(f"{name} line {number} does not read as an event: {exc}") from exc
+        except RecursionError:
+            # Nested past the interpreter's limit: a line that does not
+            # read, said as one, never a bare RecursionError (decision 159).
+            raise LedgerError(
+                f"{name} line {number} does not read as an event: it is nested too deeply"
+            ) from None
         if not isinstance(event, dict) or event.get(EVENT_KEY) is None:
             raise LedgerError(f"{name} line {number} is not an event")
         events.append((event, raw))

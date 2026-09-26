@@ -454,6 +454,9 @@ def test_the_readings_child_talks_over_a_named_pipe_never_a_socket():
 ALLOWED_SPELLINGS: dict[tuple[str, str], str] = {
     ("tracker/settings.py", "_within"): "the machine's own folders (decision 137), not a client's",
     ("tracker/settings.py", "_inside"): "the machine's own folders (decision 137), not a client's",
+    ("tracker/locking.py", "holds"): ("whether a held token was written to this very lock file, "
+                                      "under any spelling (decision 159) - one file, not a place "
+                                      "in either tree"),
     ("tools/repo_map.py", "*"): "the repository's paths, never a client's",
     ("tools/vocab_report.py", "*"): "the repository's paths, never a client's",
     ("tools/backtest.py", "*"): "the repository's paths, never a client's",

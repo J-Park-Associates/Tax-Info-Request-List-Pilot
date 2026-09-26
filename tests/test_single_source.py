@@ -1132,7 +1132,8 @@ def test_tree_diagrams_name_only_runtime_files_the_code_owns():
 #: tolerant_console(), and each of these takes it before it parses a flag.
 CONSOLE_GUARDED = ("rollover", "filer", "scanner", "registry", "review", "scaffold",
                    "store", "reminder", "runner", "router", "content_check",
-                   "view", "ledger", "validators", "names", "containers", "ocr", "door")
+                   "view", "ledger", "validators", "names", "containers", "ocr", "door",
+                   "locking")
 #: The command lines that print no client's name, each with why it is not
 #: guarded - so a new command line has to be named in one list or the other.
 CONSOLE_EXEMPT = {
@@ -1493,6 +1494,10 @@ def test_the_repository_carries_no_task_for_the_office_computer():
 DOOR_EXEMPT = {
     "tracker/settings.py": "it records the root, and holds the rule the door asks",
     "tools/backtest.py": "its folder is the firm's sorted documents, never the clients root",
+    # Decision 159's race: any folder a person races a test lock in (its own
+    # _race.lock, never a return's lock); it reads nothing there and walks
+    # nothing - a check of the lock on a drive, not a pass over clients.
+    "tracker/locking.py": "its folder is any folder a test lock is raced in; nothing is read or walked",
 }
 
 

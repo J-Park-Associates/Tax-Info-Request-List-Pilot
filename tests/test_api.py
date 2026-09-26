@@ -3092,19 +3092,31 @@ def a_park_household(capsys, root):
             ("1040 - John Park", "1040 - Sofia Park", "1120S - Park Landscaping LLC")]
 
 
-def test_roll_household_returns_the_rolled_the_skipped_and_the_retired_and_the_state_of_the_first_new_return(
+def test_roll_household_returns_the_rolled_and_the_retired_and_the_state_of_the_first_new_return(
     capsys, demo_root,
 ):
     """One call rolls the household's year: the returns it was given, the
-    ones that refused with their sentences, the ones it retired - and the
-    state of the first return it made, which is where the app lands."""
+    ones it retired - and the state of the first return it made, which is
+    where the app lands. A refusal on any ticked return is the whole call's
+    error, naming the return, and nothing is rolled or retired (decision
+    159); ``skipped`` stays in the reply and is empty."""
     from tracker.manifest import load_engagement_info
 
     john, sofia, llc = a_park_household(capsys, demo_root)
     year = default_tax_year() + 1
-    # The middle plan's target is already there, so it refuses and the
-    # others are rolled all the same.
-    where(demo_root, "1040 - Sofia Park", year=year, household="Park Family").mkdir(parents=True)
+    # The second plan's target is already there, so the whole roll refuses.
+    blocking = where(demo_root, "1040 - Sofia Park", year=year, household="Park Family")
+    blocking.mkdir(parents=True)
+    code, payload = run(capsys, "roll-household", api.ENGAGEMENT_FLAG, str(llc), stdin={
+        "year": year,
+        "returns": [{"prior": str(john)}, {"prior": str(sofia)}],
+    })
+    assert code == 1, payload
+    assert payload["error"].startswith("1040 - Sofia Park: ") and "already exists" in payload["error"]
+    assert payload["error"].endswith("Nothing was rolled.")
+    assert not where(demo_root, "1040 - John Park", year=year, household="Park Family").exists()
+    assert load_engagement_info(llc).active is True
+    blocking.rmdir()
 
     code, payload = run(capsys, "roll-household", api.ENGAGEMENT_FLAG, str(llc), stdin={
         "year": year,
@@ -3112,19 +3124,52 @@ def test_roll_household_returns_the_rolled_the_skipped_and_the_retired_and_the_s
     })
     assert code == 0, payload
 
-    assert [one["prior"] for one in payload["rolled"]] == ["1040 - John Park"]
+    assert [one["prior"] for one in payload["rolled"]] == ["1040 - John Park", "1040 - Sofia Park"]
     assert payload["rolled"][0]["label"] == f"Park Family {year} 1040 - John Park"
     assert payload["rolled"][0]["created"] == str(
         where(demo_root, "1040 - John Park", year=year, household="Park Family"))
     assert payload["rolled"][0]["carried"][0]["identifier"] == "A01"
-    [refused] = payload["skipped"]
-    assert refused["prior"] == "1040 - Sofia Park" and "already exists" in refused["reason"]
+    assert payload["skipped"] == [] and payload["not_retired"] == [] and payload["warning"] == ""
     # The one return nobody ticked is retired, by its label.
     assert payload["retired"] == [f"Park Family {default_tax_year()} 1120S - Park Landscaping LLC"]
     assert load_engagement_info(llc).active is False
     # The state is the first return this call made.
     assert payload["state"]["paths"]["engagement"] == payload["rolled"][0]["created"]
     assert payload["target_year"] == year
+
+
+def test_roll_household_after_a_failed_retirement_says_what_was_rolled_and_left_open(
+    capsys, demo_root, monkeypatch,
+):
+    """Decision 159, the review's S2. Every ticked return rolled and then a
+    retirement failed: the new returns exist, so the reply is not an error.
+    It names the return left open and carries the rollover's own sentence,
+    which the app shows as its banner, and lands on the first new return."""
+    from tracker import rollover
+    from tracker.manifest import load_engagement_info
+
+    john, sofia, llc = a_park_household(capsys, demo_root)
+    year = default_tax_year() + 1
+    real_save = rollover.save_rules
+
+    def llc_fails(folder, *args, **kwargs):
+        if folder == llc:
+            raise OSError("the disk filled")
+        return real_save(folder, *args, **kwargs)
+
+    monkeypatch.setattr(rollover, "save_rules", llc_fails)
+    code, payload = run(capsys, "roll-household", api.ENGAGEMENT_FLAG, str(llc), stdin={
+        "year": year,
+        "returns": [{"prior": str(john)}, {"prior": str(sofia)}],
+    })
+    assert code == 0, payload
+    assert [one["prior"] for one in payload["rolled"]] == ["1040 - John Park", "1040 - Sofia Park"]
+    assert payload["retired"] == []
+    assert payload["not_retired"] == [f"Park Family {default_tax_year()} 1120S - Park Landscaping LLC"]
+    assert payload["warning"].startswith(f"Rolled into {year}: 1040 - John Park, 1040 - Sofia Park.")
+    assert "Not retired: 1120S - Park Landscaping LLC (the disk filled)" in payload["warning"]
+    assert load_engagement_info(llc).active is True
+    assert payload["state"]["paths"]["engagement"] == payload["rolled"][0]["created"]
 
 
 def test_creating_a_households_first_return_hands_back_the_sharing_checklist_and_a_later_return_does_not(
