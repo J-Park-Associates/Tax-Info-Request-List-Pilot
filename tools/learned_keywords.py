@@ -48,10 +48,15 @@ keyword is one client's habit or the firm's. An engagement whose record
 cannot be read is counted by default and named, with its problem, only under
 ``--engagements``: the folder is a client's name and the problem can quote
 the record (decision 185). A report that quietly skipped it would say the
-firm has taught nothing where it may have taught most. What remains in the
-default output: the keywords themselves are words a person typed, and one
-can be a client's employer or a lender's name. They are the report's
-purpose and stay.
+firm has taught nothing where it may have taught most. A custom row - a
+request somebody added by hand - is printed by default by its number in the
+list and its counts (how many keywords, how many engagements), never its
+document or its keywords: a hand-typed request is as often a client's
+words ("K-1 from" a family trust) as a form's, and ``--engagements`` prints
+its document and keywords with the engagements. What remains in the
+default output: the catalog rows' learned keywords are words a person
+typed, and one can be a client's employer or a lender's name. They are the
+report's purpose and stay.
 
 ``--lint`` runs each candidate over the blank forms in ``tests/irs/`` the
 way ``tools/vocab_report.py`` runs the catalog's own keywords - the same
@@ -113,6 +118,10 @@ PARKS = "parks in the {catalog} catalog"
 SAID_BY = "said by: {forms}"
 #: What a row with no matching catalog row is called, and what is said of it.
 CUSTOM_ROW = "no catalog holds this row"
+#: A custom row as the default output names it: by number, never its document.
+CUSTOM_ROW_NUMBERED = "Custom row {n}"
+#: A custom row's counts, in place of its keywords, in the default output.
+CUSTOM_COUNTS = "- {keywords} keyword(s), carried by {pairs} engagement-keyword pair(s)"
 IN_CATALOGS = "in the {catalogs} catalog(s)"
 NONE = "- none"
 
@@ -373,9 +382,15 @@ def render(report: Report, *, engagements: bool = False) -> str:
     lines += ["## Custom rows", "",
               "Requests somebody added by hand, which no catalog knows at all. Every keyword they "
               "carry was typed by a person, so all of them are listed.", ""]
-    for row in report.custom:
-        lines += [f"### {row.label} — {CUSTOM_ROW}", ""]
-        lines += _keyword_lines(row, engagements=engagements)
+    for number, row in enumerate(report.custom, start=1):
+        if engagements:
+            lines += [f"### {row.label} — {CUSTOM_ROW}", ""]
+            lines += _keyword_lines(row, engagements=engagements)
+        else:
+            # By number and counts: a hand-typed request can be a client's
+            # words, and so can its keywords (decision 185).
+            lines += [f"### {CUSTOM_ROW_NUMBERED.format(n=number)} — {CUSTOM_ROW}", "",
+                      CUSTOM_COUNTS.format(keywords=len(row.keywords), pairs=row.count)]
         lines.append("")
     if not report.custom:
         lines += [NONE, ""]

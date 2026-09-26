@@ -327,7 +327,9 @@ def test_the_dry_run_names_a_persons_folder_once(tmp_path):
     from tests.conftest import make_engagement
     from tracker.scaffold import PREPARED_DIR_NAME
 
-    engagement = make_engagement(tmp_path, [PDF_ITEM])
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    engagement = make_engagement(tmp_path / "root", [PDF_ITEM])
     (engagement / PREPARED_DIR_NAME / "my notes").mkdir()
     (engagement / PREPARED_DIR_NAME / "stray.pdf").write_bytes(b"x")
     repo = Path(__file__).resolve().parents[1]

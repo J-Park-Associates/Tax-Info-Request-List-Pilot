@@ -2130,7 +2130,10 @@ def test_an_injected_database_error_in_one_household_leaves_the_others_processed
     class and code; the other is sorted and scanned; the page is written."""
     import tracker.runner as runner
 
-    first, second = _two_households(tmp_path, samples)
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
+    first, second = _two_households(root, samples)
     real = runner.load_manifest
 
     def refused_for_the_first(folder, *args, **kwargs):
@@ -2140,8 +2143,8 @@ def test_an_injected_database_error_in_one_household_leaves_the_others_processed
 
     monkeypatch.setattr(runner, "load_manifest", refused_for_the_first)
 
-    assert main([str(tmp_path), "--reminders", REMINDERS_NEVER]) == 1
-    page = _page(tmp_path)
+    assert main([str(root), "--reminders", REMINDERS_NEVER]) == 1
+    page = _page(root)
     said = RECORD_UNREADABLE.format(problem=store.STORE_UNAVAILABLE.format(code="SQLITE_ERROR"))
     assert f"{first.label}: {said}" in page
     assert "a_table_the_store_never_had" not in page, "the engine's text is never quoted"
@@ -2824,15 +2827,18 @@ def test_a_household_renamed_in_the_firm_tree_pauses_and_makes_no_client_folder(
     from tracker.layout import CLIENTS_TREE, PRIVATE_TREE
     from tracker.registry import MISFIT_CLIENT_NO_RECORD
 
-    engagement = build_engagement(tmp_path, samples)
-    (tmp_path / PRIVATE_TREE / "Test Household").rename(tmp_path / PRIVATE_TREE / "Test Home")
-    inbox = tmp_path / CLIENTS_TREE / "Test Household" / "Drop files here"
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
+    engagement = build_engagement(root, samples)
+    (root / PRIVATE_TREE / "Test Household").rename(root / PRIVATE_TREE / "Test Home")
+    inbox = root / CLIENTS_TREE / "Test Household" / "Drop files here"
     waiting = sorted(p.name for p in inbox.iterdir())
 
-    code, said = _whole_pass(tmp_path, capsys)
+    code, said = _whole_pass(root, capsys)
 
     assert code == 1 and HOUSEHOLD_PAUSED in said
-    assert not (tmp_path / CLIENTS_TREE / "Test Home").exists()
+    assert not (root / CLIENTS_TREE / "Test Home").exists()
     assert sorted(p.name for p in inbox.iterdir()) == waiting
     assert MISFIT_CLIENT_NO_RECORD in said and engagement
 
@@ -2845,14 +2851,17 @@ def test_a_household_renamed_in_the_client_tree_stops_with_one_sentence(tmp_path
     from tracker.households import CLIENT_FOLDER_MISSING
     from tracker.layout import CLIENTS_TREE
 
-    engagement = build_engagement(tmp_path, samples)
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
+    engagement = build_engagement(root, samples)
     _fabricated_filed_original(engagement.path, "Test Household")
-    (tmp_path / CLIENTS_TREE / "Test Household").rename(tmp_path / CLIENTS_TREE / "Test Hh")
+    (root / CLIENTS_TREE / "Test Household").rename(root / CLIENTS_TREE / "Test Hh")
 
-    code, said = _whole_pass(tmp_path, capsys)
+    code, said = _whole_pass(root, capsys)
 
     assert code == 1 and CLIENT_FOLDER_MISSING.format(name="Test Household") in said
-    assert not (tmp_path / CLIENTS_TREE / "Test Household").exists()
+    assert not (root / CLIENTS_TREE / "Test Household").exists()
 
 
 def test_a_new_household_is_still_scaffolded(tmp_path, capsys):
@@ -2860,11 +2869,14 @@ def test_a_new_household_is_still_scaffolded(tmp_path, capsys):
     nothing shared, nothing received - is laid out as it always was."""
     from tracker.layout import inbox_dir_for
 
-    make_engagement(tmp_path, DEMO_ITEMS, household="New Household", people=SCRATCH_PEOPLE,
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
+    make_engagement(root, DEMO_ITEMS, household="New Household", people=SCRATCH_PEOPLE,
                     scaffold=False)
-    code, said = _whole_pass(tmp_path, capsys)
+    code, said = _whole_pass(root, capsys)
     assert code == 0, said
-    assert inbox_dir_for(tmp_path, "New Household").is_dir()
+    assert inbox_dir_for(root, "New Household").is_dir()
 
 
 def test_two_folders_claiming_one_household_stop_both(tmp_path, samples, capsys):
@@ -2876,13 +2888,16 @@ def test_two_folders_claiming_one_household_stop_both(tmp_path, samples, capsys)
     from tracker.layout import CLIENTS_TREE, PRIVATE_TREE
     from tracker.registry import TWO_CLAIM
 
-    build_engagement(tmp_path, samples)
-    private = tmp_path / PRIVATE_TREE
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
+    build_engagement(root, samples)
+    private = root / PRIVATE_TREE
     shutil.copytree(private / "Test Household", private / "Test Household - Copy")
-    inbox = tmp_path / CLIENTS_TREE / "Test Household" / "Drop files here"
+    inbox = root / CLIENTS_TREE / "Test Household" / "Drop files here"
     waiting = sorted(p.name for p in inbox.iterdir())
 
-    code, said = _whole_pass(tmp_path, capsys)
+    code, said = _whole_pass(root, capsys)
 
     sentence = TWO_CLAIM.format(name="Test Household", a="Test Household",
                                 b="Test Household - Copy")
@@ -2899,11 +2914,14 @@ def test_a_household_without_its_record_fails_the_pass_and_says_restore(tmp_path
     from tracker.registry import HOUSEHOLD_RECORD_MISSING
     from tracker.runner import STATUS_MISFITS_HEADING
 
-    build_engagement(tmp_path, samples)
-    ledger.path_for(tmp_path / PRIVATE_TREE / "Test Household").unlink()
-    (tmp_path / CLIENTS_TREE / "Nobody Family").mkdir()
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
+    build_engagement(root, samples)
+    ledger.path_for(root / PRIVATE_TREE / "Test Household").unlink()
+    (root / CLIENTS_TREE / "Nobody Family").mkdir()
 
-    code, said = _whole_pass(tmp_path, capsys)
+    code, said = _whole_pass(root, capsys)
 
     assert code == 1
     assert HOUSEHOLD_RECORD_MISSING.format(folder="Test Household") in said
@@ -2918,14 +2936,17 @@ def test_a_paused_household_makes_the_run_red(tmp_path, samples, capsys):
     hides."""
     from tracker.households import HOUSEHOLD_PAUSED
 
-    engagement = build_engagement(tmp_path, samples)
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
+    engagement = build_engagement(root, samples)
     engagement.path.rename(engagement.path.parent / "1040 - Someone Else")
     # Red on every pass: 1 the first time, and from the second pass the
     # not-served-twice code, which wins over 1 (decision 189).
     from tracker.runner import NOT_SERVED_TWICE_EXIT_CODE
 
     for expected in (1, NOT_SERVED_TWICE_EXIT_CODE):
-        code, said = _whole_pass(tmp_path, capsys)
+        code, said = _whole_pass(root, capsys)
         assert code == expected and "ERROR   " in said and HOUSEHOLD_PAUSED in said
 
 

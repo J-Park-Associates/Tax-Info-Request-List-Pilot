@@ -138,7 +138,25 @@ def test_a_keyword_on_a_row_no_catalog_knows_is_a_custom_row(tmp_path):
     (row,) = report.custom
     assert row.catalogs == () and list(row.keywords) == ["slip lease"]
     text = render(report)
-    assert "## Custom rows" in text and "Z01 - Boat Slip Lease" in text
+    assert "## Custom rows" in text and "Custom row 1" in text
+    named = render(report, engagements=True)
+    assert "Z01 - Boat Slip Lease" in named and "`slip lease`" in named
+
+
+def test_a_custom_row_is_printed_by_number_and_counts_and_its_document_only_on_request(tmp_path):
+    """Decision 185: a request typed by hand can name a client, so the
+    default report says the custom row by its number and its counts; its
+    document and its keywords appear only under ``--engagements``."""
+    root = tmp_path / "Clients"
+    engagement(root, "Trust 2025", items=[RequestItem(
+        identifier="Z07", document="K-1 from Quillfeather Trust", any_keywords=("quillfeather",))])
+
+    report = collect(root)
+    text = render(report)
+    assert "K-1 from Quillfeather Trust" not in text and "Quillfeather" not in text
+    assert "Custom row 1" in text and "1 keyword(s), carried by 1 engagement-keyword pair(s)" in text
+    named = render(report, engagements=True)
+    assert "K-1 from Quillfeather Trust" in named
 
 
 def test_a_row_is_compared_against_every_catalog_that_holds_it(tmp_path):

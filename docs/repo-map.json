@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 160,
     "edges": 993,
-    "reused": 0
+    "reused": 105
   },
   "node_types": [
     "artifact",
@@ -2091,8 +2091,8 @@
       "id": "tracker/registry.py",
       "type": "module",
       "layer": "core",
-      "sha256": "b5601f70ab30516b",
-      "lines": 893,
+      "sha256": "c48be33ee1840281",
+      "lines": 895,
       "cli": "python -m tracker.registry",
       "exports": [
         "EmptyRoot",
@@ -3362,7 +3362,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "3ff88be56f47d8e1",
+      "sha256": "391684949ebfc9e0",
       "lines": 435,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -3380,7 +3380,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "06701dde80991895",
+      "sha256": "91fd032013d35533",
       "lines": 984,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -3407,14 +3407,14 @@
       "id": "docs/tools.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "1e023ea558eb04c4",
-      "lines": 102
+      "sha256": "3c0dca44cf2670a8",
+      "lines": 106
     },
     {
       "id": "docs/vocab-coverage.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "495bb61de970d403",
+      "sha256": "c61f6011487ebdd9",
       "lines": 9415,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
@@ -3745,8 +3745,8 @@
       "id": "tests/conftest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "54a01e256455d9d1",
-      "lines": 738,
+      "sha256": "78881f8cf755a6b1",
+      "lines": 764,
       "exports": [
         "APP_FOLDER",
         "ENV_OFFICE_SHAPED_FULL",
@@ -3758,6 +3758,7 @@
         "TEST_YEAR",
         "TRIPWIRE_DIR",
         "TRIPWIRE_HEADING",
+        "UNREADABLE_LOG_LINE",
         "WINDOWS_PIPE_ENCODING",
         "an_app_folder_of_its_own",
         "app_stdin",
@@ -3783,6 +3784,7 @@
         "sort_all",
         "the_store_agrees_with_the_record",
         "the_view_agrees_with_the_readers",
+        "tripwire_log_said",
         "written_elsewhere"
       ],
       "constants": {
@@ -3793,10 +3795,11 @@
         "TEST_CLIENT": "'Test Client'",
         "WINDOWS_PIPE_ENCODING": "'cp1252'",
         "TRIPWIRE_HEADING": "'decision 185: the suite reached a real place'",
+        "UNREADABLE_LOG_LINE": "\"the tripwire's log has a line it cannot read\"",
         "ENV_OFFICE_SHAPED_FULL": "'TRACKER_OFFICE_SHAPED_FULL'"
       },
       "role": "What every test pays for once: an app folder of its own (settings and store, via own_folders()), the tripwire's arming and its session verdict (decision 185), the store and view agreement checks, and the one way to make an engagement, sort an inbox and start a Python child (child_env()).",
-      "notes": "Decision 185: own_folders() is the one place a process is told where beside-the-app is - the session calls it in pytest_configure before collection, every test through an_app_folder_of_its_own (its own MonkeyPatch, so a test's undo cannot take it); real_places() is the one list of places a real settings file, store, scratch or client tree resolves to, from the constants that name them, and 186 adds the data home to both. pytest_sessionfinish fails the session on any tripwire record, the pytest process's or a child's (the session log), and on any folder the session left in the checkout (checkout_folders(), which never lists a guarded place). office_shaped_copy is the checkout copied with fabricated real-looking files beside it, for the nested proofs."
+      "notes": "Decision 185: own_folders() is the one place a process is told where beside-the-app is - the session calls it in pytest_configure before collection, every test through an_app_folder_of_its_own (its own MonkeyPatch, so a test's undo cannot take it); real_places() is the one list of places a real settings file, store, scratch or client tree resolves to, from the constants that name them, and 186 adds the data home to both. pytest_configure installs the hook with the session's TRACKER_TEST_TRIPWIRE value, so this process also judges every Python child it starts. pytest_sessionfinish fails the session on any tripwire record, the pytest process's or a child's (the session log; a line it cannot read is itself said as a violation, tripwire_log_said(), never an internal error), and on any folder the session left in the checkout (checkout_folders(), which never lists a guarded place). office_shaped_copy is the checkout copied with fabricated real-looking files beside it, for the nested proofs."
     },
     {
       "id": "tests/samples.py",
@@ -5023,8 +5026,8 @@
       "id": "tests/test_layers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9663d02f9d8457e5",
-      "lines": 699,
+      "sha256": "c252209c5a579b00",
+      "lines": 698,
       "exports": [
         "PACKAGE",
         "REPO",
@@ -5101,8 +5104,8 @@
       "id": "tests/test_learned_keywords.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "4f223531924864e8",
-      "lines": 343,
+      "sha256": "206b0a5329e73bbc",
+      "lines": 361,
       "exports": [
         "CARRIED",
         "REPO",
@@ -5112,6 +5115,7 @@
         "line_for",
         "recorded_root",
         "taught",
+        "test_a_custom_row_is_printed_by_number_and_counts_and_its_document_only_on_request",
         "test_a_keyword_on_a_row_no_catalog_knows_is_a_custom_row",
         "test_a_keyword_the_catalog_already_carries_on_that_row_is_not_learned",
         "test_a_report_that_was_not_linted_says_so",
@@ -5140,8 +5144,8 @@
       "id": "tests/test_ledger.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "44b78f16699b3af0",
-      "lines": 1017,
+      "sha256": "7428dcc9e95cfdbf",
+      "lines": 1020,
       "exports": [
         "A_ROW_ORIGINAL",
         "DAY1",
@@ -5503,8 +5507,8 @@
       "id": "tests/test_real_corpus.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "28d1fb3c4f85ed09",
-      "lines": 317,
+      "sha256": "c3bee2b6720e8dff",
+      "lines": 362,
       "exports": [
         "ENGINE",
         "NO_ENGINE",
@@ -5634,8 +5638,8 @@
       "id": "tests/test_reminder.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "33512652fe6e0379",
-      "lines": 1870,
+      "sha256": "3e80302af97cf362",
+      "lines": 1878,
       "exports": [
         "A_WRITE_KILLED_HALF_WAY",
         "DEADLINE",
@@ -5840,8 +5844,8 @@
       "id": "tests/test_review.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "14623681e9d0fd07",
-      "lines": 510,
+      "sha256": "7c9e7e0d5066cb0f",
+      "lines": 513,
       "exports": [
         "DAY1",
         "ITEMS",
@@ -5879,8 +5883,8 @@
       "id": "tests/test_rollover.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9d44652e1282f80b",
-      "lines": 1548,
+      "sha256": "3f5b7f8f8533e003",
+      "lines": 1552,
       "exports": [
         "PARK",
         "PRIOR",
@@ -6083,8 +6087,8 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "91fe7efef19e03cb",
-      "lines": 3815,
+      "sha256": "78729042b5b9a61e",
+      "lines": 3836,
       "exports": [
         "DRAFT_DAY",
         "FRIDAY",
@@ -6826,15 +6830,21 @@
       "id": "tests/test_tripwire.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "2867b7cf9f9d72cb",
-      "lines": 290,
+      "sha256": "f9654fefc98aacf2",
+      "lines": 445,
       "exports": [
+        "ALL_PASS",
         "CANARIES",
         "CANARY",
         "FOLDER_LABELS",
         "fabricated_places",
+        "test_a_line_of_the_tripwires_log_it_cannot_read_is_said_as_a_violation",
+        "test_a_link_to_or_from_a_guarded_place_is_judged",
         "test_a_place_is_judged_by_the_folder_itself_not_its_spelling",
+        "test_a_python_child_is_judged_by_its_environment_its_path_and_its_flags",
+        "test_a_session_where_every_test_passes_still_fails_for_a_reach",
         "test_a_test_that_undoes_its_monkeypatch_keeps_its_own_folders",
+        "test_a_verbatim_windows_spelling_is_the_same_place",
         "test_every_python_child_starts_with_the_tripwire_armed",
         "test_every_test_has_a_settings_folder_and_a_store_of_its_own",
         "test_no_test_sees_the_real_corpus_unless_it_names_one",
@@ -6851,8 +6861,8 @@
       "id": "tests/test_validators.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ccec9006821df693",
-      "lines": 339,
+      "sha256": "4c93f8bf710f9947",
+      "lines": 341,
       "exports": [
         "ANY_ITEM",
         "PDF_ITEM",
@@ -6886,8 +6896,8 @@
       "id": "tests/test_view.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "b91392bfd212862a",
-      "lines": 825,
+      "sha256": "c150cb805058f848",
+      "lines": 828,
       "exports": [
         "DAY1",
         "ITEMS",
@@ -6991,23 +7001,29 @@
       "id": "tests/tripwire/sitecustomize.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "01fe381467b7b379",
-      "lines": 194,
+      "sha256": "1fbb526e50b7fabb",
+      "lines": 354,
       "cli": "python -m tests.tripwire.sitecustomize",
       "exports": [
         "DIR_FDS",
         "ENV_TRIPWIRE",
+        "HERE",
+        "STARTS",
         "TripwireError",
+        "UNARMED",
+        "UNARMING_FLAGS",
         "WATCHED",
         "install",
         "judge",
+        "judge_child",
         "prepare"
       ],
       "constants": {
-        "ENV_TRIPWIRE": "'TRACKER_TEST_TRIPWIRE'"
+        "ENV_TRIPWIRE": "'TRACKER_TEST_TRIPWIRE'",
+        "UNARMED": "'unarmed Python child'"
       },
-      "role": "The suite's tripwire (decision 185): an audit hook that stops and records any open, listing, folder creation, move, removal, copy or SQLite connection at a guarded place; imported by conftest in the pytest process and found as sitecustomize on PYTHONPATH by every Python child.",
-      "notes": "It does not see non-Python children, a Python child started with -I, -E or -S or with an environment that drops PYTHONPATH or TRACKER_TEST_TRIPWIRE, a native library's own opens, os.stat/exists, an alias that does not carry the place's name (an 8.3 short name), a relative name opened against a directory descriptor, or deliberate evasion (ctypes): a guard rail in the suite, not a wall. Standard library only, imports nothing of the package, so a child is armed before its first import."
+      "role": "The suite's tripwire (decision 185): an audit hook that stops and records any open, listing, folder creation, move, removal, copy, link or SQLite connection at a guarded place, and in the pytest process records every Python child started around it; imported by conftest in the pytest process and found as sitecustomize on PYTHONPATH by every Python child.",
+      "notes": "In the pytest process (install(children=...)) it watches subprocess.Popen, os.posix_spawn, os.spawn and os.exec: a Python child (this interpreter after realpath, or a program named python*) whose environment lacks the session's TRACKER_TEST_TRIPWIRE, whose PYTHONPATH does not begin with this session's tripwire folder, or whose flags carry -I, -E or -S is recorded as an unarmed Python child and fails the session - recorded, never raised. A nested session in the office-shaped copy is its own session and judges its children against the copy's folder. A verbatim Windows prefix (\\\\?\\, \\\\?\\UNC\\) is stripped before comparing. It does not see non-Python children, a Python child started by a Python child, a native library's own opens, os.stat/exists, an alias that does not carry the place's name (an 8.3 short name, or \\\\localhost\\C$\\...), or deliberate evasion (ctypes): a guard rail in the suite, not a wall. And a relative name given to os.open (how shutil.rmtree walks with dir_fd) is not judged, since the event does not carry the descriptor. Standard library only, imports nothing of the package, so a child is armed before its first import."
     },
     {
       "id": "tools/backtest.py",
@@ -7114,12 +7130,14 @@
       "id": "tools/learned_keywords.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "36f32b8015aed6c7",
-      "lines": 470,
+      "sha256": "5fc21e6b9b09697e",
+      "lines": 485,
       "cli": "python -m tools.learned_keywords",
       "exports": [
         "CARRIED_BY",
+        "CUSTOM_COUNTS",
         "CUSTOM_ROW",
+        "CUSTOM_ROW_NUMBERED",
         "FILES_AS",
         "FLAG_INACTIVE",
         "IN_CATALOGS",
@@ -7150,6 +7168,8 @@
         "PARKS": "'parks in the {catalog} catalog'",
         "SAID_BY": "'said by: {forms}'",
         "CUSTOM_ROW": "'no catalog holds this row'",
+        "CUSTOM_ROW_NUMBERED": "'Custom row {n}'",
+        "CUSTOM_COUNTS": "'- {keywords} keyword(s), carried by {pairs} engagement-keyword pair(s)'",
         "IN_CATALOGS": "'in the {catalogs} catalog(s)'",
         "NONE": "'- none'"
       },

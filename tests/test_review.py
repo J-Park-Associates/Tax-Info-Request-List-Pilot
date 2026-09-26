@@ -370,7 +370,10 @@ def test_triage_takes_no_lock_and_writes_nothing(engagement):
     assert not list(engagement.rglob(LOCK_FILENAME)), "triage took the engagement lock"
 
 
-def test_the_cli_prints_each_parked_file_and_its_shortlist(engagement):
+def test_the_cli_prints_each_parked_file_and_its_shortlist(tmp_path):
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    engagement = make_engagement(tmp_path / "root", ITEMS, household="Smith Family")
     park(
         engagement,
         parked_row("statement.pdf", {"C01": (Evidence(RULE_REQUIRED, "1098", WHERE_TITLE, 1),)}),

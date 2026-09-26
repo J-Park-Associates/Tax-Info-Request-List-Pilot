@@ -487,7 +487,9 @@ def test_the_rollover_command_line_writes_the_carried_form_into_next_year(tmp_pa
 
     from tracker.manifest import load_engagement_info
 
-    prior = make_engagement(tmp_path, PRIOR,
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    prior = make_engagement(tmp_path / "root", PRIOR,
                             EngagementInfo(client="John Smith", form="1040"),
                             household="Smith Family", scaffold=False)
     subprocess.run(
@@ -518,7 +520,9 @@ def test_the_rollover_command_line_fills_the_new_years_dates_from_the_form(tmp_p
 
     env = child_env(PYTHONIOENCODING="utf-8")
 
-    prior = make_engagement(tmp_path, PRIOR,
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    prior = make_engagement(tmp_path / "root", PRIOR,
                             EngagementInfo(client="John Smith", form="1040"),
                             household="Smith Family", scaffold=False)
     subprocess.run(
@@ -530,7 +534,7 @@ def test_the_rollover_command_line_fills_the_new_years_dates_from_the_form(tmp_p
     assert info.due == ask_by_for(info.filing_deadline)
 
     # No form recorded and none asked for: a statutory date is never guessed.
-    unknown = make_engagement(tmp_path, PRIOR, EngagementInfo(client="Jane Jones"),
+    unknown = make_engagement(tmp_path / "root", PRIOR, EngagementInfo(client="Jane Jones"),
                               household="Jones Family", return_name="1040 - Jones",
                               scaffold=False)
     subprocess.run(

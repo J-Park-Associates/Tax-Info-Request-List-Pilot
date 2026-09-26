@@ -687,7 +687,9 @@ def discover_engagements(root: Path | str, *, max_depth: int = MAX_DEPTH) -> Reg
     if not root.is_dir():
         raise RegistryError(f"clients root is not a folder: {root}")
     found = _walk_root(root)
-    if not found.returns and not found.households and not found.misfits:
+    # A household whose record is gone is something found: its sentence says
+    # restore it, never "is this the right folder?" (decision 185's port).
+    if not found.returns and not found.households and not found.misfits and not found.record_missing:
         raise EmptyRoot(
             f"nothing found under {root} ({layout.PRIVATE_TREE}/<household>/<year>/<return> "
             f"holding {ledger.LEDGER_FILENAME}) - is this the right folder?"

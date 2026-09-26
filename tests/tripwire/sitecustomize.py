@@ -1,4 +1,4 @@
-"""The suite's tripwire (decision 185): no test, and no Python child a test
+r"""The suite's tripwire (decision 185): no test, and no Python child a test
 starts, may open, list, make, move, remove or connect to a place where a real
 settings file, store, scratch folder or client tree resolves on this machine.
 
@@ -26,32 +26,50 @@ start anywhere.
 
 **What the tripwire buys, and what it does not** (security 8).
 It **detects and stops** every open, listing, folder creation, rename, removal,
-copy and SQLite connection that Python code makes to a guarded place. That holds
-in the pytest process and in every Python child that inherits the suite's
-environment: `subprocess` children and the reading child. It then fails the
-session. It **does not see**:
+copy, link and SQLite connection that Python code makes to a guarded place.
+That holds in the pytest process and in every Python child that inherits the
+suite's environment: `subprocess` children and the reading child. It then
+fails the session.
+
+It also **watches every Python child the pytest process starts**
+(``subprocess.Popen``, ``os.posix_spawn``, ``os.spawn``, ``os.exec``). A child
+is a Python interpreter when its program is this interpreter (after
+``realpath`` and ``normcase``) or its name starts with ``python``. Such a child
+is recorded - not stopped, so a test that wanted the child's result gets the
+session's plain verdict rather than a confusing error - when its environment
+(``env``, or this process's when none is given) lacks
+:data:`ENV_TRIPWIRE` or carries a value other than the session's, when its
+``PYTHONPATH`` does not begin with the tripwire folder of the process's own
+session (the folder this module lives in), or when its flags carry ``-I``,
+``-E`` or ``-S``, alone or combined. Only the pytest process enforces this; a
+child need not. A nested session in the office-shaped copy is its own
+session: its pytest process imports the copy's module, so its children must
+begin with the copy's tripwire folder, which is what its ``pytest_configure``
+gives them; the outer session sees the nested run started with its own.
+
+It **does not see**:
 - children that are not Python (`node`, `git`, `cmd`, `icacls` in
   `tests/test_single_source.py`, `tests/test_api.py:4232`, `tests/samples.py`,
   `tests/test_ocr.py`), which are never pointed at a guarded place today;
-- a Python child started with `-I`, `-E` or `-S`, or with an environment that
-  drops `PYTHONPATH`/`TRACKER_TEST_TRIPWIRE`. Proof test 10 fails the suite on
-  the second shape in `tests/`; the first appears nowhere in `tests/` today;
+- a Python child started by a Python child, unarmed: only the pytest process
+  judges how a child starts;
 - a native library that opens a file itself (pdfium, ONNX Runtime), unless
   Python opened it first. Such a library is only handed a path a test chose;
 - `os.stat`/`exists` (no audit event): existence is learned, never content. §3.2
   moves the one existence check that mattered to an open;
+- a relative name given to os.open (how shutil.rmtree walks with dir_fd) is not
+  judged, since the event does not carry the descriptor: every ``open`` event
+  with no mode and a path that is not absolute is passed over. The walk's own
+  top folder, named in full, is judged;
 - an alias that does not contain the place's name (a Windows 8.3 short name
-  such as `SETTIN~1.JSO`);
+  such as `SETTIN~1.JSO`), or an administrative share naming a local disk
+  (``\\localhost\C$\...``). A verbatim prefix (``\\?\``, ``\\?\UNC\``) is
+  stripped before comparing, so that spelling is seen;
 - code that deliberately goes around it (`ctypes`). It is a guard rail in the
   suite, not a wall. The wall is 186's placement plus the account boundary
   (Jason's decision (a)).
 In a child it shadows another `sitecustomize` on the path while the suite runs.
 CI's `setup-python` installs none.
-
-One more it cannot place: a relative name opened against a directory
-descriptor (``os.open(name, dir_fd=...)``, how ``shutil.rmtree`` walks a tree),
-because ``os.open``'s audit event does not carry the descriptor. Such a name is
-not judged; the walk's own top folder, named in full, is.
 """
 import json
 import os
@@ -63,11 +81,23 @@ WATCHED = {
     "open": (0,), "os.listdir": (0,), "os.scandir": (0,), "os.mkdir": (0,),
     "os.rename": (0, 1), "os.remove": (0,), "os.rmdir": (0,),
     "shutil.copyfile": (0, 1), "shutil.copytree": (0, 1), "shutil.rmtree": (0,),
-    "sqlite3.connect": (0,),
+    "sqlite3.connect": (0,), "os.link": (0, 1), "os.symlink": (0, 1),
 }
 #: Where an event carries the directory descriptor a relative path is
 #: resolved against. A relative path with one is not the working folder's.
-DIR_FDS = {"os.mkdir": (2,), "os.rmdir": (1,), "os.remove": (1,), "os.rename": (2, 3)}
+DIR_FDS = {"os.mkdir": (2,), "os.rmdir": (1,), "os.remove": (1,), "os.rename": (2, 3),
+           "os.link": (2, 3), "os.symlink": (2,)}
+#: The audit events that start a program: where its path, its arguments and
+#: its environment sit in the event's arguments.
+STARTS = {"subprocess.Popen": (0, 1, 3), "os.posix_spawn": (0, 1, 2),
+          "os.spawn": (1, 2, 3), "os.exec": (0, 1, 2)}
+#: The label a Python child started around the tripwire is recorded under.
+UNARMED = "unarmed Python child"
+#: The interpreter flags that start a child without its sitecustomize or its
+#: environment: isolated, no ``PYTHON*`` variables, no ``site``.
+UNARMING_FLAGS = frozenset("IES")
+#: The folder this module lives in: the tripwire folder of this session.
+HERE = os.path.dirname(os.path.abspath(__file__))
 SEEN: list[tuple[str, str, str]] = []      # (test, event, label), this process
 
 _IN_HOOK = [False]                         # the re-entry guard for the log
@@ -78,8 +108,27 @@ class TripwireError(RuntimeError):
     OSError, and this must not read as one."""
 
 
-def _norm(path: str) -> str:
-    return os.path.normcase(os.path.abspath(path))
+def _unverbatim(path: str) -> str:
+    """``path`` without a Windows verbatim prefix: ``\\\\?\\UNC\\server\\share``
+    is ``\\\\server\\share`` and ``\\\\?\\C:\\x`` is ``C:\\x``, so a place is
+    not missed for being spelled the long way."""
+    if path[:8].upper() == "\\\\?\\UNC\\":
+        return "\\\\" + path[8:]
+    if path.startswith("\\\\?\\"):
+        return path[4:]
+    return path
+
+
+def _norm(path: str, pathmod=os.path) -> str:
+    """``path`` absolute, case-folded where the filesystem folds case, and
+    without a verbatim prefix. ``pathmod`` is for a test that feeds another
+    platform's spelling (``ntpath`` on Linux)."""
+    return pathmod.normcase(pathmod.abspath(_unverbatim(path)))
+
+
+def _resolved(path: str, pathmod=os.path) -> str:
+    """``path`` as the filesystem resolves it, compared the way :func:`_norm` compares."""
+    return pathmod.normcase(_unverbatim(pathmod.realpath(path)))
 
 
 def prepare(places) -> tuple:
@@ -88,8 +137,7 @@ def prepare(places) -> tuple:
     out = []
     for label, path in places:
         path = os.fspath(path)
-        out.append((label, _norm(path),
-                    os.path.normcase(os.path.realpath(path)),
+        out.append((label, _norm(path), _resolved(path),
                     os.path.normcase(os.path.basename(os.path.abspath(path)))))
     return tuple(out)
 
@@ -143,40 +191,152 @@ def judge(event: str, args: tuple, prepared: tuple) -> str | None:
             continue
         if not os.path.isabs(text) and _against_a_descriptor(event, args):
             continue
+        if event == "os.symlink" and index == 0 and not os.path.isabs(text):
+            # A link's relative target is read from the link's own folder.
+            destination = _as_path(event, args[1]) if len(args) > 1 else None
+            if destination is None:
+                continue
+            text = os.path.join(os.path.dirname(os.path.abspath(destination)), text)
         spelled = _norm(text)
         for label, place, _real, name in prepared:
             if _hits(spelled, place, name):
                 return label
         if any(name and name in spelled for _l, _p, _r, name in prepared):
-            real = os.path.normcase(os.path.realpath(text))
+            real = _resolved(text)
             for label, _place, place_real, name in prepared:
                 if _hits(real, place_real, name):
                     return label
     return None
 
 
-def install(prepared: tuple, log: str | None) -> None:
+def _is_python(program) -> bool:
+    """Whether ``program`` is a Python interpreter: this one, or one named so."""
+    try:
+        text = os.fsdecode(os.fspath(program))
+    except TypeError:
+        return False
+    if os.path.basename(text).lower().startswith("python"):
+        return True
+    try:
+        return _resolved(text) == _resolved(sys.executable)
+    except (OSError, ValueError):
+        return False
+
+
+def _split(args) -> list[str]:
+    """A command line as its words: a list as given, a string (Windows) split
+    on spaces outside double quotes."""
+    if isinstance(args, (str, bytes)):
+        text = os.fsdecode(args)
+        words, word, quoted = [], "", False
+        for char in text:
+            if char == '"':
+                quoted = not quoted
+            elif char.isspace() and not quoted:
+                if word:
+                    words.append(word)
+                word = ""
+            else:
+                word += char
+        return words + ([word] if word else [])
+    try:
+        return [os.fsdecode(os.fspath(a)) if not isinstance(a, str) else a for a in args]
+    except TypeError:
+        return []
+
+
+def _unarming_flags(words: list[str]) -> list[str]:
+    """The flags among an interpreter's arguments that start it unarmed, read
+    up to the script, ``-m``, ``-c`` or ``-`` the way the interpreter reads them."""
+    found = []
+    rest = iter(words)
+    for word in rest:
+        if word == "--" or not word.startswith("-") or word == "-":
+            break
+        if word.startswith("--"):
+            if word == "--check-hash-based-pycs":
+                next(rest, None)
+            continue
+        for at, letter in enumerate(word[1:], start=1):
+            if letter in UNARMING_FLAGS:
+                found.append(f"-{letter}")
+            elif letter in "cm":
+                return found
+            elif letter in "WX":
+                if at == len(word) - 1:
+                    next(rest, None)
+                break
+    return found
+
+
+def judge_child(event: str, args: tuple, session: str, folder: str = HERE) -> str | None:
+    """Why the program ``event`` starts is a Python child around the
+    tripwire, or None: its environment lacks the session's value or its
+    path the tripwire ``folder`` first, or its flags drop either."""
+    where = STARTS.get(event)
+    if where is None:
+        return None
+    program_at, argv_at, env_at = where
+    program = args[program_at] if program_at < len(args) else None
+    argv = _split(args[argv_at]) if argv_at < len(args) and args[argv_at] is not None else []
+    if program is None:
+        if not argv:
+            return None
+        program = argv[0]
+    if not _is_python(program):
+        return None
+    env = args[env_at] if env_at < len(args) else None
+    if env is None:
+        env = os.environ
+    env = {os.fsdecode(k): os.fsdecode(v) for k, v in dict(env).items()}
+    if os.name == "nt":
+        env = {k.upper(): v for k, v in env.items()}
+    if env.get(ENV_TRIPWIRE) != session:
+        return f"{UNARMED}: its environment lacks the session's {ENV_TRIPWIRE}"
+    first = (env.get("PYTHONPATH") or "").split(os.pathsep)[0]
+    if not first or _resolved(first) != _resolved(folder):
+        return f"{UNARMED}: its PYTHONPATH does not begin with the tripwire folder"
+    flags = _unarming_flags(argv[1:])
+    if flags:
+        return f"{UNARMED}: started with {' '.join(flags)}"
+    return None
+
+
+def _record(test: str, event: str, label: str, log: str | None) -> None:
+    SEEN.append((test, event, label))
+    if log and not _IN_HOOK[0]:
+        _IN_HOOK[0] = True
+        try:
+            with open(log, "a", encoding="utf-8") as out:
+                out.write(json.dumps({"test": test, "event": event,
+                                      "label": label, "pid": os.getpid()}) + "\n")
+        except OSError:
+            pass            # the raise that follows still fails the test
+        finally:
+            _IN_HOOK[0] = False
+
+
+def install(prepared: tuple, log: str | None, *, children: str | None = None) -> None:
     """Add the hook: on a hit, record it in :data:`SEEN` (and ``log``) and
-    raise :class:`TripwireError`, which stops the operation."""
+    raise :class:`TripwireError`, which stops the operation.
+
+    ``children`` is the session's :data:`ENV_TRIPWIRE` value, given only by
+    the pytest process: every Python child started without it, or without
+    this folder first on its path, is recorded (never raised on)."""
 
     def hook(event, args):
+        if children is not None and event in STARTS:
+            reason = judge_child(event, args, children)
+            if reason is not None:
+                _record(os.environ.get("PYTEST_CURRENT_TEST", "outside any test"), event, reason, log)
+            return
         if event not in WATCHED:
             return
         label = judge(event, args, prepared)
         if label is None:
             return
         test = os.environ.get("PYTEST_CURRENT_TEST", "outside any test")
-        SEEN.append((test, event, label))
-        if log and not _IN_HOOK[0]:
-            _IN_HOOK[0] = True
-            try:
-                with open(log, "a", encoding="utf-8") as out:
-                    out.write(json.dumps({"test": test, "event": event,
-                                          "label": label, "pid": os.getpid()}) + "\n")
-            except OSError:
-                pass            # the raise below still fails the test
-            finally:
-                _IN_HOOK[0] = False
+        _record(test, event, label, log)
         raise TripwireError(f"decision 185: the suite may not {event} the checkout's {label} ({test})")
 
     sys.addaudithook(hook)

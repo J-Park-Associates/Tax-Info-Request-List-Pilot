@@ -633,22 +633,48 @@ def pytest_configure(config):
     patch.setenv("PYTHONPATH", os.pathsep.join(
         [str(TRIPWIRE_DIR), *filter(None, [os.environ.get("PYTHONPATH")])]))
     before = checkout_folders(REPO, places)
-    tripwire.install(tripwire.prepare(places), log=None)   # in-process: SEEN
+    # In-process: SEEN, and every Python child this process starts is judged.
+    tripwire.install(tripwire.prepare(places), log=None, children=os.environ[tripwire.ENV_TRIPWIRE])
     config.stash[_STATE] = {"patch": patch, "session": session, "log": log,
                             "places": places, "before": before, "said": []}
+
+
+#: What the session says of a line in the tripwire's log it cannot read.
+UNREADABLE_LOG_LINE = "the tripwire's log has a line it cannot read"
+
+
+def _hit_said(test: str, event: str, label: str) -> str:
+    """One hit as the session says it: a reach for a place, or a child
+    started around the wire."""
+    if label.startswith(tripwire.UNARMED):
+        return f"{test}: {event} started an {label}"
+    return f"{test}: {event} of the checkout's {label}"
+
+
+def tripwire_log_said(lines) -> list[str]:
+    """Each line of the session's tripwire log as the session says it. A line
+    that is not a hit the wire wrote - a torn write, a stray byte - is said
+    plainly as a violation, never an internal error: an unread line might
+    have been a hit."""
+    said = []
+    for number, line in enumerate(lines, start=1):
+        try:
+            hit = json.loads(line)
+            said.append(f"{_hit_said(hit['test'], hit['event'], hit['label'])} (pid {hit['pid']})")
+        except (ValueError, TypeError, KeyError, AttributeError):
+            said.append(f"{UNREADABLE_LOG_LINE} (line {number})")
+    return said
 
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_sessionfinish(session):
     state = session.config.stash[_STATE]
-    said = [f"{test}: {event} of the checkout's {label}" for test, event, label in tripwire.SEEN]
+    said = [_hit_said(test, event, label) for test, event, label in tripwire.SEEN]
     try:
-        lines = state["log"].read_text(encoding="utf-8").splitlines()
+        lines = state["log"].read_text(encoding="utf-8", errors="replace").splitlines()
     except FileNotFoundError:
         lines = []
-    for line in lines:
-        hit = json.loads(line)
-        said.append(f"{hit['test']}: {hit['event']} of the checkout's {hit['label']} (pid {hit['pid']})")
+    said += tripwire_log_said(lines)
     said += [f"the session left a new folder in the checkout: {rel}"
              for rel in sorted(checkout_folders(REPO, state["places"]) - state["before"])]
     if said:
