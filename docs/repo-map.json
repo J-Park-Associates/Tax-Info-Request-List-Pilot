@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "generated": "2026-09-25",
+  "generated": "2026-09-26",
   "generator": "tools/repo_map.py",
   "generator_sha256": "54d924057e3b3de9",
   "module_table_sha256": "1036125e4b43ea9a",
@@ -2474,8 +2474,8 @@
       "id": "CLAUDE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "d8066ee9247f2232",
-      "lines": 228,
+      "sha256": "0ce1f33f089570cc",
+      "lines": 229,
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
     },
@@ -2516,8 +2516,8 @@
       "id": "docs/local-update-2026-09-25.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ac802207db5ed6f0",
-      "lines": 103
+      "sha256": "db1a05294d0c69b0",
+      "lines": 234
     },
     {
       "id": "docs/repo-map.curated.json",

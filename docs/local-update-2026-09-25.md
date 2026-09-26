@@ -1,9 +1,18 @@
 # One-time update for the office computer — 2026-09-25
 
-Set by Jason on 2026-09-25. It is written for the next Claude Code session
-on the office computer, which can see files this cloud session could not.
-Do every step, tell Jason in plain English what changed, then delete this
-file and the matching section at the end of `CLAUDE.md` in one commit.
+Set by Jason on 2026-09-25. It is written for Claude Code on the office
+computer, which can see files this cloud session could not. It is two jobs,
+each in its own fresh session, under the "How to run work" rule Step 1 adds:
+
+- **Job 1 — Steps 1 to 5**: the instruction files and the Figma install.
+  Ends with Step 7's Job 1 report and a handoff note for Job 2.
+- **Job 2 — Step 6**: the design system audit and SPEC. Ends with Step 7's
+  Job 2 report, then deletes this file and the matching section at the end
+  of `CLAUDE.md` in one commit.
+
+Within each job, consider which steps can run in parallel (Steps 2 and 3
+touch different files; Step 6's audit of the design system folder and of the
+repository are independent) and say which you chose.
 
 ## Why
 
@@ -17,6 +26,11 @@ less than Opus 5, writing faster and less wordily. Jason has decided:
 - **Instruction files are trimmed for efficiency**: no dead rules, no
   duplicated text, and no instruction to read a very large file whole when a
   targeted lookup will do.
+- **Every job gets a fresh session and hands off through files** (set by
+  Jason on 2026-09-26), in every workspace on his account: keep each
+  session's context clear, don't re-read what a handoff already records, and
+  consider parallel work for each task. Step 1 puts this in the global
+  `CLAUDE.md`; Step 7 covers the cloud sessions, which never read that file.
 
 ## Step 1 — the global CLAUDE.md (applies to every project)
 
@@ -47,6 +61,12 @@ projects use those). If you add something back, list it for Jason.
 - Sonnet 5: routine lookups, Excel formulas and cleanup, client-facing drafts. Escalate to Opus 5.5 if it struggles.
 - Haiku 4.5: throwaway scripts and formatting only — never tax or regulation (its knowledge ends Feb 2025).
 - Fable is not used.
+
+## How to run work
+- One job per session. Each job starts in a fresh session and hands off through files — the SPEC, a handoff note, the commits — never through the conversation. The next session reads those files, not the previous session's transcript.
+- Keep the context window clear. Use targeted lookups (one map node, a search, a line range) instead of reading whole files, and don't redo or re-read what a handoff already records. Trust the handoff; check only what the job changes.
+- For every job, consider parallelization: independent parts go to separate agents or sessions, each with its own input and output files; dependent steps stay in order. Say in one line which you chose and why.
+- Before a session ends, write its handoff file: what was done, what is left, and which files the next session needs.
 ```
 
 ## Step 2 — Claude Code settings and agents
@@ -95,9 +115,120 @@ Per the same guide, also remove from any local prompt:
   declines those. (Asking for the *reasons behind a design* in a SPEC or a
   docstring is fine; that is not the same thing.)
 
-## Step 5 — report
+## Step 5 — install the Figma plugin for this project only
 
-Tell Jason, in plain English, which files changed and what changed in each,
-and record the same list in the next CODE UPDATE in Handoffs. Then delete
+Jason needs Figma for the design system redesign in Step 6, and only now
+and then after that. It must **not** be installed globally (user scope),
+where it would load in every project. A cloud session tried it on
+2026-09-25, but that container was temporary, and its network policy
+refused the connection to `mcp.figma.com`.
+
+From this repository's folder, run:
+
+```
+claude plugin marketplace add anthropics/claude-plugins-official
+claude plugin install figma@claude-plugins-official --scope local
+claude plugin list
+```
+
+`--scope local` records the plugin in this folder's
+`.claude\settings.local.json`, for Jason on this computer only. The
+repository ignores `.claude/`, so it is never committed and no other
+project or person gets it. `claude plugin list` must show
+`figma@claude-plugins-official` with scope `local` and status enabled, and
+no `user` scope entry. If an earlier user-scope install exists, remove it
+with `claude plugin uninstall figma@claude-plugins-official --scope user`.
+
+Restart Claude Code so the plugin loads. Then check that its connection to
+Figma works: sign in to Figma when asked, and have a read-only Figma tool
+answer. If the connection still fails, give Jason the exact error; Job 2
+(Step 6) waits until Figma connects. Do not install a different Figma tool
+as a workaround.
+
+Tell Jason how to switch it off between uses and back on when he needs it,
+without reinstalling:
+
+```
+claude plugin disable figma@claude-plugins-official --scope local
+claude plugin enable figma@claude-plugins-official --scope local
+```
+
+## Step 6 — start the design system redesign (SPEC first)
+
+Jason wants the J Park & Associates design system brought up to modern
+standards, with the "AI slop" removed, using the Figma plugin. The scope is
+everything: tokens, components, the desktop app's screens and the client
+reminder emails. Nothing is built without a written SPEC, so this session
+writes the SPEC, gets Jason's approval, and stops there. Building happens
+in later sessions, from the approved SPEC. Work at high effort.
+
+This is Job 2, in its own fresh session. Start from Job 1's handoff note
+and this step; do not re-read Steps 1 to 5 or redo their checks.
+
+The design system is a folder on this computer, beside the repository
+(`tracker/page.py` says so). The cloud session could not see it. Find it,
+and confirm the location with Jason before reading anything else in it.
+
+1. **Audit, and show the evidence.** Read the design system folder and the
+   two places the repository draws its look:
+   - `app/renderer/style.css`. It is older than the design system and does
+     not use it (decision 118 kept "the app's own page palette, older than
+     the design system" as it was). It has its own navy and bright-blue
+     palette, a navy gradient across the top bar and many hand-typed colors.
+   - `PALETTE`, `FONT_SANS` and `FONT_SERIF` in `tracker/page.py`. These
+     mirror the design system's tokens for the Outlook reminder, and a test
+     holds them to the tokens.
+
+   List what reads as AI slop, one finding per line, each with the file or
+   Figma frame it is in. Examples to look for: decorative gradients,
+   rounded corners and shadows on everything, generic blue or purple accents
+   that are not the firm's colors, vague labels, emoji or icons standing in
+   for words, filler copy, inconsistent spacing, low contrast, and colors
+   typed by hand instead of taken from a token. Show Jason the list before
+   proposing fixes.
+2. **Write the SPEC.** Cover:
+   - **Tokens:** color, type, spacing, radius, elevation, and light and
+     dark modes. Each color must meet the WCAG AA contrast minimum, the
+     accessibility standard for how readable text is against its
+     background.
+   - **Components:** buttons, status chips, cards, tables, inputs, toolbar
+     and dialogs, each as a Figma component with its variants and states,
+     bound to the tokens.
+   - **Desktop app screens:** redesigned in Figma, then carried into
+     `app/renderer/style.css` using the tokens, with no hand-typed colors.
+   - **Reminder emails:** the four stages, still Outlook-safe (inline
+     styles, email-safe font stacks). `PALETTE` and its test change in the
+     same commit as the tokens.
+   - **Build order:** tokens, then components, then screens, then code.
+   - **Rules the redesign keeps:** the app stays plain JavaScript with no
+     new frameworks; pages load no fonts, stylesheets or images from the
+     network (`tracker/page.py`); the standing rules in `CLAUDE.md` are
+     unchanged.
+   - **Records to update:** a decision-log row in `docs/ROADMAP.md`, the
+     `docs/repo-map.curated.json` entries the change touches (then
+     `python tools/repo_map.py update`), and `docs/runbook.md` wherever
+     it describes what a person sees.
+3. **Get Jason's approval.** Save the SPEC where Jason keeps SPECs (ask him
+   if it is not clear), show it to him in plain English, and make any
+   changes he asks for. Do not start building in Figma or in code until he
+   approves it.
+
+## Step 7 — report
+
+**End of Job 1.** Tell Jason, in plain English, which files changed and
+what changed in each, and whether the Figma plugin is installed for this
+project only and connected. Record the same list in the next CODE UPDATE in
+Handoffs. Remind Jason that cloud sessions never read the office computer's
+global `CLAUDE.md`: for the "How to run work" rule to reach every workspace
+on his account, he pastes that section into his claude.ai profile
+preferences (Settings, then Profile), where his other standing
+instructions already live. Then write the handoff note for Job 2: whether
+Figma connects, any error text, and which files Job 2 needs. Save it
+where Jason keeps session handoffs. If Figma did not connect, tell Jason
+Job 2 waits until it does. Leave this file in place.
+
+**End of Job 2.** Tell Jason where the design system SPEC is saved and
+whether he approved it, and record that in the next CODE UPDATE in Handoffs,
+naming the SPEC as the document the redesign continues from. Then delete
 this file and the "One-time task for the office computer" section of
 `CLAUDE.md` in one commit.
