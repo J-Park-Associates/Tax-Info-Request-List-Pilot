@@ -4,17 +4,22 @@ rem Output: <OUT>\dist\<productName>-<PLATFORM>-<ARCH>\ (the variables below)
 rem Put that whole folder on the designated machine: today one machine runs a
 rem clients root, and docs\runbook.md section 1 says which and why.
 rem
-rem Reproducible: the Python packages (requirements-build.txt, and the whole
-rem tree under them in constraints.txt), the Electron
-rem packages (app\package-lock.json, installed with npm ci) and the freeze
-rem itself (api_entry.spec) are all pinned in the commit being built, and
-rem BUILD-INFO.txt records which commit and which tools made the package.
+rem Reproducible: the Python packages (requirements.lock and
+rem requirements-build.lock, the whole tree by version and by hash), the
+rem Electron packages (app\package-lock.json, installed with npm ci) and the
+rem freeze itself (api_entry.spec) are all pinned in the commit being built,
+rem and BUILD-INFO.txt records which commit and which tools made the package.
 rem
 rem A person double-clicks this, so it waits for a key before every exit and
 rem the window stays up long enough to read. CI has nobody to press one:
 rem setting TRACKER_BUILD_NONINTERACTIVE (to anything) makes every wait return
 rem at once and changes nothing else. That name is read in exactly one place,
 rem the ":wait" label at the end of this file.
+
+rem Before any other command: cmd would otherwise look for python, node, npm
+rem and git in this folder before the search path, so a file dropped here
+rem named like one of them would run instead (E-10).
+set "NoDefaultCurrentDirectoryInExePath=1"
 
 cd /d "%~dp0"
 set OUT=build-portable
@@ -28,7 +33,7 @@ for /f "usebackq delims=" %%i in (`node -p "require('./app/package.json').config
 
 echo [1/4] Freezing Python tracker API (PyInstaller, api_entry.spec)...
 rem The freeze runs in its own virtual environment holding exactly
-rem requirements-build.txt. PyInstaller follows every import it can find,
+rem the two locks. PyInstaller follows every import it can find,
 rem including a library's optional ones, so freezing from the machine's
 rem Python ships whatever else happens to be installed there (a first run
 rem from the firm's machine bundled pandas, numpy and two database drivers).
@@ -38,16 +43,17 @@ rem would be frozen into every later package.
 python -m venv --clear "%VENV%"
 if errorlevel 1 (echo Could not create the build environment & call :wait & exit /b 1)
 set PY="%VENV%\Scripts\python.exe"
-rem -c constraints.txt pins everything those packages pull in as well
-rem (decision 137): without it pip takes the newest of each on the day,
-rem and two builds of one commit freeze different code.
-%PY% -m pip install -r requirements-build.txt -c constraints.txt --quiet
-if errorlevel 1 (echo Installing requirements-build.txt failed & call :wait & exit /b 1)
+rem The locks pin the whole tree (decision 137), so two builds of one
+rem commit freeze the same code, and name the SHA-256 of every file
+rem (decision 191), so a file replaced at a pinned version is refused.
+rem --require-hashes also refuses any package the locks do not name.
+%PY% -m pip install --require-hashes -r requirements.lock -r requirements-build.lock --quiet
+if errorlevel 1 (echo Installing requirements.lock and requirements-build.lock failed & call :wait & exit /b 1)
 rem The reader's own package, without its dependencies (decision 169,
 rem R-11): its metadata asks for the GUI build of OpenCV, which the app
-rem does not ship; requirements.txt lists what it really needs.
-%PY% -m pip install --no-deps -r requirements-nodeps.txt -c constraints.txt --quiet
-if errorlevel 1 (echo Installing requirements-nodeps.txt failed & call :wait & exit /b 1)
+rem does not ship; requirements.lock holds what it really needs.
+%PY% -m pip install --require-hashes --no-deps -r requirements-nodeps.lock --quiet
+if errorlevel 1 (echo Installing requirements-nodeps.lock failed & call :wait & exit /b 1)
 %PY% -m PyInstaller --noconfirm --clean --distpath %OUT%\py --workpath %OUT%\pyi-work api_entry.spec
 if errorlevel 1 (echo PyInstaller failed & call :wait & exit /b 1)
 
@@ -67,7 +73,7 @@ if exist "%PKG%\resources\%API%" rmdir /s /q "%PKG%\resources\%API%"
 rem robocopy, not xcopy: xcopy gives up on long paths (a deep checkout plus
 rem the package's own depth is enough) and the copy would be silently
 rem incomplete. robocopy's exit codes below 8 all mean "copied".
-robocopy "%OUT%\py\%API%" "%PKG%\resources\%API%" /e /nfl /ndl /njh /njs /np >nul
+%SystemRoot%\System32\robocopy.exe "%OUT%\py\%API%" "%PKG%\resources\%API%" /e /nfl /ndl /njh /njs /np >nul
 if errorlevel 8 (echo Copying the frozen API into the package failed & call :wait & exit /b 1)
 if not exist "%PKG%\resources\%API%\%API%.exe" (echo The package has no %API%.exe & call :wait & exit /b 1)
 

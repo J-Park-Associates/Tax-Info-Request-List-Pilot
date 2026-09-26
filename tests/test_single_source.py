@@ -155,6 +155,26 @@ def test_the_packaged_app_has_no_console_and_sends_the_api_utf8_it_serialised_fi
     assert 'proc.stdin.write(body, "utf8")' in run
 
 
+def test_the_packaged_app_has_no_menu_and_the_source_app_runs_its_private_python():
+    """Decision 191. The packaged app removes Electron's default menu (E-7)
+    before its window is made - the menu carries reload, zoom and the
+    developer-tools accelerator. From source, the shell runs the Python
+    Setup.bat made, by its full path, never a bare ``python`` from the
+    search path, and when that is missing it says so in the lock tool's
+    own sentence."""
+    from tools.lockfiles import NOT_SET_UP
+
+    main_js = read("app/main.js")
+    window = main_js[main_js.index("function createWindow"):]
+    assert window.index("if (app.isPackaged) Menu.setApplicationMenu(null);") < window.index("new BrowserWindow(")
+    assert re.search(r"const \{ app, BrowserWindow, Menu,", main_js)
+    assert 'spawn("python"' not in main_js
+    assert 'path.join(REPO_ROOT, ".venv", "Scripts", "python.exe")' in main_js
+    assert 'path.join(REPO_ROOT, ".venv", "bin", "python")' in main_js
+    sentence = "".join(re.findall(r'"([^"]*)"', main_js.split("const NOT_SET_UP =", 1)[1].split(";", 1)[0]))
+    assert sentence == NOT_SET_UP
+
+
 #: The Electron module main.js is run against in the claim below: an app that
 #: answers the single-instance lock as told, and a window that records being
 #: brought forward. Every other part of the shell is left real.
@@ -254,7 +274,9 @@ def test_the_window_colour_is_read_from_the_stylesheet():
 def test_ci_tests_the_python_floor_pyproject_declares():
     floor = re.search(r'requires-python\s*=\s*">=([\d.]+)"', read("pyproject.toml")).group(1)
     assert f'python-version: "{floor}"' in read(".github/workflows/ci.yml")
-    assert f"Install Python {floor}+" in read("Start App.bat")
+    # Setup.bat is where a machine's Python is first asked (decision 191).
+    assert f"Install Python {floor}+" in read("Setup.bat")
+    assert f"sys.version_info < ({floor.replace('.', ', ')})" in read("Setup.bat")
     # Prose says "the floor pyproject.toml declares"; nobody types the number.
     for rel in ("README.md", "docs/ROADMAP.md", "CLAUDE.md", "docs/workflow.md"):
         assert not re.search(r"Python 3\.\d+\+?", read(rel)), rel
@@ -700,7 +722,8 @@ def test_prose_names_no_weekday_but_the_draft_day():
 #: file is named by the constant the filer's tidy-up still removes it by.
 RETIRED_FILES = {"_manifest.xlsx", "_index.xlsx", "_manifest.pending.json", "_index.pending.json",
                  "_index.migrated.xlsx", "_index.pending.migrated.json",
-                 "_manifest.pending.migrated.json", RETIRED_CACHE_FILENAME}
+                 "_manifest.pending.migrated.json", RETIRED_CACHE_FILENAME,
+                 "constraints.txt"}   # replaced by the hash-checked locks (decision 191)
 
 
 def test_documents_name_only_runtime_files_the_code_owns():
@@ -762,11 +785,11 @@ def test_every_dependency_is_pinned_exactly():
 def test_the_build_is_made_from_what_is_committed():
     ignored = [line.strip() for line in read(".gitignore").splitlines()]
     assert "*.spec" not in ignored and "app/package-lock.json" not in ignored
-    assert "npm ci" in read("Build App.bat") and "npm ci" in read("Start App.bat")
-    assert "npm install" not in read("Build App.bat") and "npm install" not in read("Start App.bat")
+    assert "npm ci" in read("Build App.bat") and "npm ci" in read("Setup.bat")
+    assert "npm install" not in read("Build App.bat") and "npm install" not in read("Setup.bat")
     build = read("Build App.bat")
-    assert "requirements-build.txt" in build and "api_entry.spec" in build
-    assert "pip install pyinstaller" not in build            # pinned in requirements-build.txt
+    assert "requirements-build.lock" in build and "api_entry.spec" in build
+    assert "pip install pyinstaller" not in build            # pinned in requirements-build.txt, locked by hash
     spec = read("api_entry.spec")
     api_name = json.loads(read("app/package.json"))["config"]["apiName"]
     assert api_name not in spec and "config" in spec and "apiName" in spec
@@ -926,6 +949,7 @@ def test_the_command_center_manifest_names_real_commands_and_admits_no_sending()
 #: with why: they are not this package's, so no source defines them.
 FOREIGN_FLAGS = {
     "--no-deps": "pip's: the reader's package is installed without its dependencies (decision 169, R-11)",
+    "--require-hashes": "pip's: every install checks every file against the lock's SHA-256 (decision 191)",
 }
 
 

@@ -72,9 +72,47 @@ def test_the_build_workflow_runs_the_repositorys_own_build_script():
 def test_the_build_workflow_is_never_run_per_commit():
     """Ten minutes a commit is what makes a build job get turned off."""
     triggers = workflow().split("\non:", 1)[1].split("\nconcurrency:", 1)[0]
-    assert "workflow_dispatch:" in triggers
     assert "tags:" in triggers
     assert "branches:" not in triggers and "pull_request:" not in triggers
+
+
+def test_a_package_is_built_only_from_a_version_tag():
+    """Decision 191: `v*` tags are protected, so a package built from one
+    is the build of reviewed code. No manual trigger (a run started by hand
+    from any branch), and the job's own guard refuses any other ref."""
+    triggers = "\n".join(line for line in workflow().split("\non:", 1)[1].split("\nconcurrency:", 1)[0]
+                         .splitlines() if not line.lstrip().startswith("#"))
+    assert "workflow_dispatch" not in commands()
+    assert re.fullmatch(r'\s*push:\s*tags: \["v\*"\]\s*', triggers), triggers
+    job = workflow().split("\njobs:", 1)[1]
+    assert re.search(r"^    if: startsWith\(github\.ref, 'refs/tags/v'\)$", job, re.M)
+
+
+def test_the_package_is_published_with_its_sha256_after_the_smoke_checks():
+    """Decision 191: the zip is hashed after it has answered both smoke
+    checks, the hash is written beside it and on the run's summary page (the
+    copy the runbook compares), and the upload carries the zip and the hash."""
+    run = commands()
+    step = run.index("- name: Zip the package and publish its SHA-256")
+    assert run.index("- name: The frozen executable makes one dry pass") < step < run.index(
+        "- name: Upload the package")
+    checksum = run[step:run.index("- name: Upload the package")]
+    assert "Get-FileHash" in checksum and "-Algorithm SHA256" in checksum
+    assert "GITHUB_STEP_SUMMARY" in checksum
+    assert '"$hash  $zipName"' in checksum                     # the `sha256sum` / certutil-comparable form
+    upload = run[run.index("- name: Upload the package"):]
+    assert "${{ env.PACKAGE_ZIP }}" in upload and "${{ env.PACKAGE_SHA256 }}" in upload
+    assert "${{ env.PACKAGE_DIR }}" not in upload
+    # Review M-1: the upload is wrapped in the artifact's own zip, so the
+    # runbook names the inner zip - by the name this step gives it - and
+    # compares with the summary page, never only with the file beside it.
+    runbook = read("docs/runbook.md")
+    prefix = re.search(r'\$zipName = "([\w.-]+)\$env:GITHUB_REF_NAME\.zip"', checksum).group(1)
+    artifact = re.search(r"^\s*name: (\S+)$", upload, re.M).group(1)
+    assert f"certutil -hashfile {prefix}<tag>.zip SHA256" in runbook
+    assert f"`{artifact}.zip`" in runbook
+    step = runbook[runbook.index(f"`{artifact}.zip`"):]
+    assert step.index(f"Unzip `{artifact}.zip`") < step.index("certutil -hashfile") < step.index("summary page")
 
 
 def test_the_workflow_skips_the_prompts_through_the_switch_the_script_reads():
@@ -206,7 +244,9 @@ def test_the_scratch_roots_scan_is_filed_by_the_reader_and_by_nothing_else(tmp_p
 
 # ------------------------------------------ decision 137: the whole tree pinned ----
 
-CONSTRAINTS = "constraints.txt"
+#: The locks a build installs (decision 191): its freeze is their union.
+BUILD_LOCKS = ("requirements.lock", "requirements-build.lock", "requirements-nodeps.lock")
+RUNTIME_LOCK = "requirements.lock"
 #: The line of BUILD-INFO.txt after which the build lists what it froze
 #: (written by "Build App.bat" from ``pip freeze``).
 FROZEN_HEADING = "Python packages frozen"
@@ -225,10 +265,11 @@ FLOOR_ENVIRONMENT = {"sys_platform": "linux", "python_version": "3.11"}
 
 
 def _pin_lines(lines) -> list[tuple[str, str, str]]:
-    """Every ``name==version`` line as (name, version, marker or "")."""
+    """Every ``name==version`` line as (name, version, marker or ""); a lock's
+    trailing continuation backslash is not part of the marker."""
     found = []
     for line in lines:
-        line = line.split("#", 1)[0].strip()
+        line = line.split("#", 1)[0].strip().rstrip("\\").strip()
         if "==" in line and not line.startswith("-"):
             requirement, _, marker = line.partition(";")
             package, version = requirement.split("==", 1)
@@ -252,49 +293,54 @@ def frozen_in(build_info: str) -> dict[str, str]:
     return _pins(after[1].splitlines()[1:]) if len(after) == 2 else {}
 
 
-def constraints(environment: dict[str, str] | None = None) -> dict[str, str]:
-    return _pins(read(CONSTRAINTS).splitlines(), environment)
+def locked(environment: dict[str, str] | None = None, locks: tuple[str, ...] = BUILD_LOCKS) -> dict[str, str]:
+    """What the build's locks pin in ``environment``, name -> version."""
+    pins: dict[str, str] = {}
+    for lock in locks:
+        pins.update(_pins(read(lock).splitlines(), environment))
+    return pins
 
 
 def drift(frozen: dict[str, str], pinned: dict[str, str]) -> list[str]:
-    """Every package a build froze at a version the constraints do not say,
-    or froze with no constraint at all: the build is not the commit's."""
-    return sorted(f"{name}: froze {version}, constraints say {pinned.get(name, 'nothing')}"
+    """Every package a build froze at a version the locks do not say,
+    or froze with no lock line at all: the build is not the commit's."""
+    return sorted(f"{name}: froze {version}, the locks say {pinned.get(name, 'nothing')}"
                   for name, version in frozen.items() if pinned.get(name) != version)
 
 
-def test_the_build_fails_when_a_frozen_version_differs_from_the_constraints():
-    """Decision 137 (M5): requirements*.txt pin what the tracker imports by
-    name; constraints.txt pins the whole tree under them, "Build App.bat"
-    installs with it, and a package whose BUILD-INFO.txt froze anything
-    else is not the build of its commit (the build of 09/17 froze pypdfium2
-    5.13.0 against a pinned 5.11.0). Every package BUILD-INFO.txt lists in
-    this checkout's build folder is held to it; with no build here, the rule
-    is held on the freeze that exposed it."""
-    pinned = constraints()
+def test_the_build_fails_when_a_frozen_version_differs_from_the_locks():
+    """Decision 137 (M5), on the locks of decision 191: requirements*.txt
+    pin what the tracker imports by name; the locks pin the whole tree
+    under them, by hash, "Build App.bat" installs exactly them, and a
+    package whose BUILD-INFO.txt froze anything else is not the build of
+    its commit (the build of 09/17 froze pypdfium2 5.13.0 against a pinned
+    5.11.0). Every package BUILD-INFO.txt lists in this checkout's build
+    folder is held to it; with no build here, the rule is held on the
+    freeze that exposed it."""
+    pinned = locked()
     # The tree the ruling names, and every direct pin agreeing with it.
     for package in ("pdfminer.six", "pypdfium2", "cryptography", "charset-normalizer",
                     "pillow-heif", "pyinstaller"):
         assert _name(package) in pinned, package
     for environment in (None, BUILD_ENVIRONMENT, FLOOR_ENVIRONMENT):
-        where = constraints(environment)
+        where = locked(environment)
         for requirements in ("requirements.txt", "requirements-build.txt", NODEPS):
             for name, version in _pins(read(requirements).splitlines(), environment).items():
                 assert where.get(name) == version, (environment, requirements, name, version,
                                                     where.get(name))
     script = read(BUILD_SCRIPT)
-    assert re.search(r"pip install -r requirements-build\.txt -c constraints\.txt", script)
+    assert re.search(r"pip install --require-hashes -r requirements\.lock -r requirements-build\.lock", script)
 
     # The rule, on the freeze of 09/17.
     old = ("Commit:   a1d261b\n\nPython packages frozen (pip freeze):\n"
            + "\n".join(f"{name}=={version}" for name, version in pinned.items()
                        if name != "pypdfium2") + "\npypdfium2==5.13.0\n")
-    assert drift(frozen_in(old), pinned) == ["pypdfium2: froze 5.13.0, constraints say 5.11.0"]
-    assert drift({**pinned, "pandas": "3.0"}, pinned) == ["pandas: froze 3.0, constraints say nothing"]
+    assert drift(frozen_in(old), pinned) == ["pypdfium2: froze 5.13.0, the locks say 5.11.0"]
+    assert drift({**pinned, "pandas": "3.0"}, pinned) == ["pandas: froze 3.0, the locks say nothing"]
     assert drift(dict(pinned), pinned) == []
 
     # And on whatever this checkout last built: the build's own markers.
-    built = constraints(BUILD_ENVIRONMENT)
+    built = locked(BUILD_ENVIRONMENT)
     for info in (REPO / "build-portable" / "dist").glob("*/BUILD-INFO.txt"):
         frozen = frozen_in(info.read_text(encoding="utf-8", errors="replace"))
         assert frozen, info
@@ -306,51 +352,184 @@ def test_the_build_fails_when_a_frozen_version_differs_from_the_constraints():
 #: The file holding rapidocr alone, installed with --no-deps (R-11).
 NODEPS = "requirements-nodeps.txt"
 #: The step every install of the tree makes after requirements.txt.
-NODEPS_STEP = re.compile(r"pip install --no-deps -r requirements-nodeps\.txt -c constraints\.txt")
+NODEPS_STEP = re.compile(r"pip install --require-hashes --no-deps -r requirements-nodeps\.lock")
+#: The first step: the whole tree, from its lock, in hash mode.
+TREE_STEP = re.compile(r"pip install --require-hashes -r requirements\.lock")
+SETUP_SCRIPT = "Setup.bat"
+LAUNCHER = "Start App.bat"
+
+
+def batch_files() -> list[str]:
+    return sorted(path.name for path in REPO.glob("*.bat"))
 
 
 def installing_places() -> dict[str, str]:
-    """Every file that installs the tree, by name: the batch file and each
-    workflow that runs ``pip install -r requirements``."""
-    places = {BUILD_SCRIPT: read(BUILD_SCRIPT)}
+    """Every file that installs the tree, by name: the batch files and each
+    workflow that runs ``pip install``."""
+    places = {name: read(name) for name in (BUILD_SCRIPT, SETUP_SCRIPT)}
     for path in sorted((REPO / ".github" / "workflows").glob("*.yml")):
         text = path.read_text(encoding="utf-8")
-        if re.search(r"pip install -r requirements", text):
+        if re.search(r"pip install", text):
             places[path.name] = text
     return places
 
 
 def test_the_reader_is_installed_in_two_steps_everywhere_the_tree_is_installed():
     """R-11: rapidocr's metadata asks for the GUI build of OpenCV, so it is
-    installed with --no-deps after requirements.txt, which lists what it
-    really needs. Both steps, in that order, with the constraints, in the
-    batch file and in every workflow that installs - and in the README's
-    developer setup, which is how a person installs it."""
+    installed with --no-deps after requirements.lock, which holds what it
+    really needs. Both steps, in that order, hash-checked, in the batch
+    files and in every workflow that installs - and in the README's
+    developer setup, which is how a person installs it by hand."""
     places = installing_places()
-    assert {BUILD_SCRIPT, GATE_WORKFLOW, BUILD_WORKFLOW} <= set(places)
-    for name, text in places.items():
-        first = re.search(r"pip install -r requirements(?:-build)?\.txt -c constraints\.txt", text)
-        second = NODEPS_STEP.search(text)
+    assert {BUILD_SCRIPT, SETUP_SCRIPT, GATE_WORKFLOW, BUILD_WORKFLOW} <= set(places)
+    for name, text in {**places, "README.md": read("README.md"), "CLAUDE.md": read("CLAUDE.md")}.items():
+        first, second = TREE_STEP.search(text), NODEPS_STEP.search(text)
         assert first and second and first.start() < second.start(), name
-    readme = read("README.md")
-    assert NODEPS_STEP.search(readme)
-    assert readme.index("pip install -r requirements.txt -c constraints.txt") < NODEPS_STEP.search(readme).start()
     assert [name for name, _version, _marker in _pin_lines(read(NODEPS).splitlines())] == ["rapidocr"]
 
 
-def test_the_gui_opencv_is_never_pinned_and_the_constraints_cover_every_reader_pin():
+#: A pip install however it is spelled (review S-2): ``pip``, ``pip3``,
+#: ``pip3.14``, ``pip.exe``, and ``python -m pip``, ``py -m pip`` or
+#: ``%PY% -m pip`` (each ends in ``pip``), any case, any spacing.
+PIP_INSTALL = re.compile(r"(?i)\bpip(?:\d+(?:\.\d+)?)?(?:\.exe)?\s+install\b")
+#: An npm install however it is spelled: ``npm`` or ``npm.cmd``, running
+#: ``ci``, ``install`` or its short form ``i``.
+NPM_INSTALL = re.compile(r"(?i)\bnpm(?:\.cmd)?\s+(?:ci|install|i)\b")
+#: A line that IS an npm install (not an echo of its name in an error line).
+NPM_COMMAND = re.compile(r"(?i)(?:call\s+)?npm(?:\.cmd)?\s+(?:ci|install|i)\b")
+#: The spellings the two patterns must catch, each a line a person might add.
+PIP_SPELLINGS = ("pip install -r requirements.txt", "pip3 install pyinstaller", "pip3.14 install x",
+                 "PIP.EXE Install x", "python -m pip  install -r requirements.txt",
+                 "py -m pip install x", "%PY% -m pip install x", "python3 -m   pip\tinstall x")
+NPM_SPELLINGS = ("npm ci", "call npm.cmd ci", "npm install", "npm i electron", "NPM   Install",
+                 "call npm.CMD i")
+
+
+def _commands(text: str) -> list[str]:
+    """A batch file's or workflow's lines that run something: comments and echoes aside."""
+    return [line.strip() for line in text.splitlines()
+            if line.strip() and not re.match(r"\s*(#|rem\b|echo\b|::)", line, re.I)]
+
+
+def _install_lines(text: str) -> list[str]:
+    """Every command line that runs a pip install, however it is spelled."""
+    return [line for line in _commands(text) if PIP_INSTALL.search(line)]
+
+
+def test_every_spelling_of_an_install_is_recognised():
+    """Review S-2: the proofs below are only as good as the pattern that
+    finds an install - a ``pip3`` or a doubled space must not slip past."""
+    for spelling in PIP_SPELLINGS:
+        assert _install_lines(spelling) == [spelling.strip()], spelling
+    for spelling in NPM_SPELLINGS:
+        assert NPM_INSTALL.search(spelling), spelling
+    for harmless in ("pipeline install", "rem pip install x", "echo pip install failed", "pip freeze"):
+        assert not _install_lines(harmless), harmless
+    for harmless in ("npm run build", "npm --version", "npm cache verify"):
+        assert not NPM_INSTALL.search(harmless), harmless
+
+
+def test_every_install_is_hash_checked_from_a_lock():
+    """Decision 191: every pip install in every batch file and workflow
+    reads a lock and checks every file's hash; none reads a requirements
+    file or a constraint, and none upgrades pip (an unpinned, unhashed
+    install)."""
+    sources = {name: read(name) for name in batch_files()}
+    sources.update({path.name: path.read_text(encoding="utf-8")
+                    for path in sorted((REPO / ".github" / "workflows").glob("*.yml"))})
+    seen = 0
+    for name, text in sources.items():
+        for line in _install_lines(text):
+            seen += 1
+            assert "--require-hashes" in line, (name, line)
+            files = re.findall(r"-r\s+(\S+)", line)
+            assert files and all(file.endswith(".lock") for file in files), (name, line)
+            assert not re.search(r"\s-c\s", line) and "--upgrade" not in line and not re.search(r"\s-U\b", line), (
+                name, line)
+    assert seen >= 8                                   # Setup, the build, the pack, gate and build workflows
+
+
+def test_the_launcher_never_installs_and_says_when_setup_must_run():
+    """Decision 191: a launch that installed would run a package's install
+    code and reach the network every time the app opens. The launcher runs
+    the private Python Setup.bat made, verifies its stamp, and refuses in
+    the one sentence the lock tool owns."""
+    from tools.lockfiles import NOT_SET_UP, STAMP_NAME
+
+    launcher = read(LAUNCHER)
+    assert "pip" not in launcher.lower()                    # not even in a comment
+    for line in _commands(launcher):
+        assert not PIP_INSTALL.search(line) and not NPM_INSTALL.search(line), line
+    assert r"tools\lockfiles.py verify .venv" in launcher
+    assert f"echo {NOT_SET_UP}" in launcher
+    assert r'if not exist ".venv\Scripts\python.exe" goto :not_set_up' in launcher
+    # Setup's stamp is its last command after the installs, found by the
+    # commands themselves, never by a comment that names them (review S-3).
+    setup = _commands(read(SETUP_SCRIPT))
+    # The line that runs npm, not the error line after it that echoes its name.
+    [npm] = [i for i, line in enumerate(setup) if NPM_COMMAND.match(line)]
+    assert re.fullmatch(r"call npm ci\b.*", setup[npm]), setup[npm]
+    [stamp] = [i for i, line in enumerate(setup) if re.search(r"tools\\lockfiles\.py stamp \.venv", line)]
+    installs = [i for i, line in enumerate(setup) if PIP_INSTALL.search(line)]
+    assert installs and stamp > max(installs) and stamp > npm, (stamp, installs, npm)
+    assert STAMP_NAME.endswith(".json")
+
+
+def test_every_batch_file_ignores_its_own_folder_when_it_finds_a_command():
+    """E-10: before its first command, every batch file tells cmd not to
+    look in the current folder for python, npm, node or git, so a file
+    dropped beside it cannot run in their place; Windows' own tools are
+    called by their full path."""
+    assert {SETUP_SCRIPT, LAUNCHER, BUILD_SCRIPT, "Build GPU Pack.bat"} <= set(batch_files())
+    for name in batch_files():
+        statements = [line.strip() for line in read(name).splitlines()
+                      if line.strip() and not re.match(r"\s*rem\b", line, re.I)]
+        assert statements[:2] == ["@echo off", 'set "NoDefaultCurrentDirectoryInExePath=1"'], name
+        for tool in ("where", "robocopy", "certutil"):
+            for found in re.finditer(rf"(\S*)\b{tool}(\.exe)?\s", read(name)):
+                line = read(name)[:found.start()].rsplit("\n", 1)[-1]
+                if re.match(r"\s*rem\b", line, re.I):
+                    continue
+                assert found.group(1).endswith("%SystemRoot%\\System32\\") and found.group(2), (name, tool)
+
+
+def test_every_checkout_leaves_no_credentials_behind():
+    """F-12: no workflow pushes, so no checkout leaves the token in .git/config."""
+    checkouts = 0
+    for path in sorted((REPO / ".github" / "workflows").glob("*.yml")):
+        text = path.read_text(encoding="utf-8")
+        for found in re.finditer(r"uses: actions/checkout@", text):
+            checkouts += 1
+            step = text[found.start():].split("\n      - ", 1)[0]
+            assert "persist-credentials: false" in step, path.name
+    assert checkouts >= 3
+
+
+def test_the_audit_runs_weekly_on_linux_and_never_on_a_push():
+    """Decision 191: the audit is detection, scheduled and by hand, on the
+    cheaper runner, installing nothing - it adds no CI to any change."""
+    audit = read(".github/workflows/audit.yml")
+    triggers = audit.split("\non:", 1)[1].split("\npermissions:", 1)[0]
+    assert "schedule:" in triggers and "workflow_dispatch:" in triggers
+    assert "push:" not in triggers and "pull_request" not in triggers
+    assert re.findall(r"runs-on: (\S+)", audit) == ["ubuntu-latest"]
+    assert "python tools/lockfiles.py audit" in audit and "pip install" not in audit
+    assert "contents: read" in audit
+
+
+def test_the_gui_opencv_is_never_pinned_and_the_locks_cover_every_reader_pin():
     """R-11: the headless OpenCV only - the GUI build is in no requirements
-    file and no constraint - and constraints.txt covers every package in
-    both install files, on the build and on CI's floor row."""
+    file and no lock - and requirements.lock covers every package in both
+    install files, on the build and on CI's floor row."""
     gui = _name("opencv-python")
-    for rel in ("requirements.txt", NODEPS, "requirements-build.txt", CONSTRAINTS):
+    for rel in ("requirements.txt", NODEPS, "requirements-build.txt", *BUILD_LOCKS, "requirements-gpu.lock"):
         assert gui not in {name for name, _version, _marker in _pin_lines(read(rel).splitlines())}, rel
     for environment in (BUILD_ENVIRONMENT, FLOOR_ENVIRONMENT):
-        pinned = constraints(environment)
+        pinned = locked(environment)
         for rel in ("requirements.txt", NODEPS):
             for name in _pins(read(rel).splitlines(), environment):
                 assert name in pinned, (environment, rel, name)
-    assert _name("opencv-python-headless") in constraints(BUILD_ENVIRONMENT)
+    assert _name("opencv-python-headless") in locked(BUILD_ENVIRONMENT, (RUNTIME_LOCK,))
 
 
 def test_the_onnx_runtime_and_numpy_are_pinned_by_platform_and_interpreter():
@@ -364,10 +543,10 @@ def test_the_onnx_runtime_and_numpy_are_pinned_by_platform_and_interpreter():
         ("numpy", "2.5.3", 'python_version >= "3.12"'),
         ("numpy", "2.4.6", 'python_version < "3.12"'),
     }
-    for rel in ("requirements.txt", CONSTRAINTS):
+    for rel in ("requirements.txt", RUNTIME_LOCK):
         lines = set(_pin_lines(read(rel).splitlines()))
         assert wanted <= lines, (rel, wanted - lines)
-    build, floor = constraints(BUILD_ENVIRONMENT), constraints(FLOOR_ENVIRONMENT)
+    build, floor = locked(BUILD_ENVIRONMENT), locked(FLOOR_ENVIRONMENT)
     assert build["onnxruntime-gpu"] == "1.30.0" and "onnxruntime" not in build
     assert floor["onnxruntime"] == "1.30.0" and "onnxruntime-gpu" not in floor
     assert (build["numpy"], floor["numpy"]) == ("2.5.3", "2.4.6")
@@ -375,15 +554,17 @@ def test_the_onnx_runtime_and_numpy_are_pinned_by_platform_and_interpreter():
 
 def test_the_graphics_card_pack_is_pinned_apart_and_read_by_its_own_build_step():
     """Ruling 2 and R-11: the NVIDIA wheels are pinned in
-    requirements-gpu.txt, read only by the pack's own build step, and in no
-    file the app or CI installs."""
+    requirements-gpu.txt and locked in requirements-gpu.lock, installed only
+    by the pack's own build step, and in no file the app or CI installs."""
     pack = {name for name, _version, _marker in _pin_lines(read("requirements-gpu.txt").splitlines())}
     assert pack and all(name.startswith("nvidia-") for name in pack)
-    for rel in ("requirements.txt", NODEPS, "requirements-build.txt", CONSTRAINTS):
+    assert pack == {name for name, _v, _m in _pin_lines(read("requirements-gpu.lock").splitlines())}
+    for rel in ("requirements.txt", NODEPS, "requirements-build.txt", *BUILD_LOCKS):
         assert not pack & {name for name, _v, _m in _pin_lines(read(rel).splitlines())}, rel
-    readers = [path.name for path in REPO.iterdir()
-               if path.is_file() and "requirements-gpu.txt" in path.read_text(encoding="utf-8", errors="replace")
-               and path.name != "requirements-gpu.txt"]
+    installers = {name: read(name) for name in batch_files()}
+    installers.update({path.name: path.read_text(encoding="utf-8")
+                       for path in (REPO / ".github" / "workflows").glob("*.yml")})
+    readers = sorted(name for name, text in installers.items() if "requirements-gpu" in text)
     assert readers == ["Build GPU Pack.bat"], readers
 
 
@@ -412,9 +593,9 @@ def test_the_pinned_pypdf_is_at_least_the_advisories_fix():
     (decision 137), and that pypdf must be at or past the release that
     closes them all, so a later downgrade fails here."""
     pins = {rel: _resolved_pins(rel).get("pypdf")
-            for rel in ("requirements.txt", "requirements-build.txt", CONSTRAINTS)}
+            for rel in ("requirements.txt", "requirements-build.txt", RUNTIME_LOCK)}
     assert len(set(pins.values())) == 1, pins
-    version = pins[CONSTRAINTS]
+    version = pins[RUNTIME_LOCK]
     assert version, pins
     assert tuple(int(part) for part in version.split(".")[:3]) >= PYPDF_ADVISORIES_FIXED_IN, version
 

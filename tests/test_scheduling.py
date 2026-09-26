@@ -149,6 +149,41 @@ def test_the_n8n_hour_is_validated():
         n8n_workflow(**ARGS, hour=25)
 
 
+def test_the_n8n_command_reads_the_same_in_cmd_and_sh():
+    """D-11: n8n hands the one line to cmd on Windows and to sh elsewhere.
+    Every value is quoted by the settings folder's rule, and the line holds
+    none of the characters the two shells read differently - so what is
+    inside each pair of quotes is the value itself, in either shell."""
+    from tracker.scheduling import SHELL_SPECIAL, quote_argument, runner_arguments
+
+    command = n8n_workflow(**ARGS)["nodes"][1]["parameters"]["command"]
+    assert command == (f"cd {quote_argument(ARGS['working_dir'])} && {quote_argument(ARGS['python'])} "
+                       f"{runner_arguments(ARGS['settings'])}")
+    outside = command.split('"')[0::2]                      # the text outside every quoted value
+    assert command.count('"') == 6                          # three values, each quoted once
+    for char, _kind in SHELL_SPECIAL:
+        assert all(char not in part for part in outside), char
+    drive = "D:" + chr(92)
+    assert f"cd {quote_argument(drive)} &&" in n8n_workflow(**{**ARGS, "working_dir": drive})[
+        "nodes"][1]["parameters"]["command"]
+
+
+@pytest.mark.parametrize("field", ["working_dir", "python", "settings"])
+@pytest.mark.parametrize("char, kind", [('"', "a double quote"), ("%", "a percent sign"),
+                                        ("$", "a dollar sign"), ("`", "a backtick"),
+                                        ("!", "an exclamation mark"), ("\n", "a control character"),
+                                        ("\x07", "a control character")])
+def test_a_value_that_means_something_else_in_a_shell_is_refused(field, char, kind):
+    """Refused, naming the field and the kind of character - never the value,
+    which is a path and can carry a client's name."""
+    value = ARGS[field] + char + "Secret Name"
+    with pytest.raises(ValueError) as refused:
+        n8n_workflow(**{**ARGS, field: value})
+    message = str(refused.value)
+    assert message.startswith(f"{field} holds {kind}")
+    assert "Secret Name" not in message and ARGS[field] not in message
+
+
 def test_install_runs_schtasks_on_windows_and_only_shows_the_command_elsewhere(monkeypatch, tmp_path):
     import platform
     import subprocess

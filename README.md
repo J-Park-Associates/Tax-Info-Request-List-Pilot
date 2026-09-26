@@ -287,10 +287,12 @@ button opens that same page, and the app's own pass rewrites it too.
 Generate the job itself with:
 
 ```
-python -m tracker.scheduling --working-dir "C:\Tools\tax-tracker" --out tax-tracker.xml --install
+.venv\Scripts\python.exe -m tracker.scheduling --working-dir "C:\Tools\tax-tracker" --out tax-tracker.xml --install
 ```
 
-`--settings` defaults to this checkout's own folder, whose `settings.json`
+Run it with the app's private Python, the one `Setup.bat` made (decision
+191): the job runs whichever interpreter registered it, and the machine's
+own Python holds none of the locked packages. `--settings` defaults to this checkout's own folder, whose `settings.json`
 must already name a clients root; the job carries no root of its own.
 `--install` registers the task as it writes the XML, and running the same
 line again changes the schedule. The app's **Install Schedule** button does exactly this for the
@@ -497,16 +499,30 @@ copy.
 
 ## Setup
 
+On the office's Windows machine, double-click `Setup.bat` once (it needs
+the internet): it makes the app's own private Python in `.venv` beside it,
+installs the locked packages into it, installs Electron with `npm ci`, and
+never touches the machine's own Python. By hand, in an environment of your
+own:
+
 ```
-pip install -r requirements.txt -c constraints.txt
-pip install --no-deps -r requirements-nodeps.txt -c constraints.txt
+pip install --require-hashes -r requirements.lock
+pip install --require-hashes --no-deps -r requirements-nodeps.lock
 python -m pytest -q        # verify: all green
 ```
+
+Every install reads a lock file and checks every file's SHA-256 (decision
+191): `requirements.lock` is the whole tree of `requirements.txt`, with the
+hash of every file PyPI publishes for each pinned version, so a file
+replaced at a pinned version is refused, and so is any package the lock
+does not name. The `requirements*.txt` files stay the human-edited list of
+direct pins; to move one, change it there and in its `.lock`, run
+`python tools/lockfiles.py hash` (it needs the internet) and the suite.
 
 Two steps, in that order (decision 169): the reader, RapidOCR, is
 installed without its dependencies, because its package asks for the
 desktop build of OpenCV and the tracker uses the headless one;
-`requirements.txt` lists what it really needs. Nothing else is installed
+`requirements.lock` holds what it really needs. Nothing else is installed
 for reading - the models ship in the package, and nothing is downloaded
 while it reads. On Windows it reads on the processor, or on an NVIDIA card
 with the graphics card pack beside the packaged app (`Build GPU Pack.bat`;
@@ -515,18 +531,25 @@ with the graphics card pack beside the packaged app (`Build GPU Pack.bat`;
 ## Running the app
 
 `Start App.bat` runs the desktop app from source (Python (the floor is `requires-python` in `pyproject.toml`) and Node
-installed); `Build App.bat` packages it as `<productName>.exe` (the name in `app/package.json`) for a
+installed, and `Setup.bat` run once); it installs nothing and starts
+offline, and says in one sentence when `Setup.bat` must run again because
+the lock files changed. `Build App.bat` packages it as `<productName>.exe` (the name in `app/package.json`) for a
 machine with neither. Both are reproducible from the commit: the Python
-packages are pinned in `requirements.txt` and `requirements-build.txt`, the
+packages are locked by hash in `requirements.lock` and
+`requirements-build.lock`, the
 Electron packages in `app/package-lock.json` (installed with `npm ci`), and
 the freeze is the committed `api_entry.spec`; a build-info text file in the
 package records the commit and the tool versions that made it. You do not have
-to run the build yourself: `build.yml` builds the same package on demand (the
-Actions tab, *Run workflow*, or a `v*` tag), runs the frozen executable to
+to run the build yourself: `build.yml` builds the same package from a `v*`
+tag and from nothing else (tags are protected, so a package is the build of
+reviewed code), runs the frozen executable to
 prove it answers, and leaves the package to download as the run's artifact for
-seven days. It builds and tests on the interpreter `[tool.office]` in
+seven days - one zip beside its SHA-256, which the run's summary page shows
+too. It builds and tests on the interpreter `[tool.office]` in
 `pyproject.toml` names — the one the firm's machine runs — so the package is
-proved on the interpreter it ships under. On first launch the app asks where your clients live
+proved on the interpreter it ships under. A weekly workflow (`audit.yml`)
+reads the locks and asks OSV about every locked package; it builds and
+installs nothing. On first launch the app asks where your clients live
 and writes that to `settings.json` beside itself; everything else follows
 from that one folder. Who does what, and the life of a request, is in
 [docs/workflow.md](docs/workflow.md); the decision log is

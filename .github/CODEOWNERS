@@ -1,0 +1,14 @@
+# Who reviews what decides how the app is built and installed (decision 191).
+# These routes request the owner's review; they bind nothing until "Require
+# review from Code Owners" is turned on for main, which stays off while pull
+# requests are opened from the owner's own account (GitHub does not count an
+# author's own approval).
+/CLAUDE.md                      @JPClaude99
+/docs/repo-map.curated.json     @JPClaude99
+/.github/                       @JPClaude99
+/*.bat                          @JPClaude99
+/api_entry.spec                 @JPClaude99
+/*.lock                         @JPClaude99
+/requirements*.txt              @JPClaude99
+/app/package-lock.json          @JPClaude99
+/.claude/                       @JPClaude99

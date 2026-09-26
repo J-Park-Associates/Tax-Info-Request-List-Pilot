@@ -8,7 +8,7 @@
 // for ever. Python still validates everything it is given; this is the
 // second wall, not the first.
 
-const { app, BrowserWindow, ipcMain, shell, dialog } = require("electron");
+const { app, BrowserWindow, Menu, ipcMain, shell, dialog } = require("electron");
 const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -21,12 +21,22 @@ const PRODUCT_NAME = PKG.productName;
 const API_NAME = PKG.config.apiName;
 
 // Portable build: the PyInstaller-frozen API executable (package.json's
-// config.apiName) ships inside resources/. Dev mode falls back to the system Python + repo layout.
+// config.apiName) ships inside resources/. From source, the app's private
+// Python that Setup.bat made in the checkout's .venv, by its full path
+// (decision 191): never a bare "python", which is whatever the search path
+// finds first, and never the machine's own Python, which Setup never touches.
 // The settings file (the clients root) lives beside the app either way: next
 // to the packaged executable, or in the repository root from source.
 const FROZEN_API = app.isPackaged
   ? path.join(process.resourcesPath, API_NAME, `${API_NAME}.exe`)
   : null;
+const SOURCE_PYTHON = process.platform === "win32"
+  ? path.join(REPO_ROOT, ".venv", "Scripts", "python.exe")
+  : path.join(REPO_ROOT, ".venv", "bin", "python");
+// Word for word tools/lockfiles.py's NOT_SET_UP (tests/test_single_source.py).
+const NOT_SET_UP =
+  "The app's private Python is not set up on this computer. " +
+  "Run Setup.bat once (it needs the internet), then start the app again.";
 const SETTINGS_DIR = app.isPackaged ? path.dirname(process.execPath) : REPO_ROOT;
 
 // A pass over one engagement can OCR every PDF in it; the scheduled task is
@@ -82,11 +92,12 @@ function runTracker(args, payload) {
   } catch (err) {
     return Promise.resolve({ error: `The app could not send that to the tracker: ${err.message}` });
   }
+  if (!FROZEN_API && !fs.existsSync(SOURCE_PYTHON)) return Promise.resolve({ error: NOT_SET_UP });
   return new Promise((resolve) => {
     const env = { ...process.env, TRACKER_SETTINGS_DIR: SETTINGS_DIR, TRACKER_PRODUCT_NAME: PRODUCT_NAME };
     const proc = FROZEN_API
       ? spawn(FROZEN_API, args, { windowsHide: true, env })
-      : spawn("python", ["-m", "tracker.api", ...args], {
+      : spawn(SOURCE_PYTHON, ["-m", "tracker.api", ...args], {
           cwd: REPO_ROOT,
           windowsHide: true,
           env,
@@ -151,6 +162,11 @@ function pageBackground() {
 }
 
 function createWindow() {
+  // No menu in the packaged app (the council's E-7): Electron's default one
+  // carries reload, zoom and developer-tools accelerators, and the last
+  // would open the console devTools below keeps closed. From source the
+  // menu stays, for the person working on the shell.
+  if (app.isPackaged) Menu.setApplicationMenu(null);
   const win = new BrowserWindow({
     width: 1400,
     height: 900,

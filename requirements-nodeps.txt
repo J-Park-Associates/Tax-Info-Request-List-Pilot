@@ -1,5 +1,6 @@
-# Installed with --no-deps, AFTER requirements.txt (decision 169, R-11):
-#   pip install --no-deps -r requirements-nodeps.txt -c constraints.txt
+# Installed with --no-deps, AFTER the tree (decision 169, R-11), from its
+# lock (decision 191):
+#   pip install --require-hashes --no-deps -r requirements-nodeps.lock
 # rapidocr's metadata asks for opencv-python, the GUI build of OpenCV,
 # which the app does not ship; its real runtime dependencies are listed in
 # requirements.txt instead, with the headless OpenCV. Nothing else belongs

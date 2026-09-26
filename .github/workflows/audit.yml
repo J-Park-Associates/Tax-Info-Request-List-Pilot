@@ -1,0 +1,42 @@
+# The weekly supply-chain audit (decision 191): every pin in the four lock
+# files and every package in app/package-lock.json, asked of OSV, the open
+# vulnerability database - and the two native engines that parse client
+# files (pillow, pypdfium2) held to their cadence: a newer release more than
+# 90 days old fails the run until the pin moves (tools/lockfiles.py,
+# NATIVE_ENGINES). A red run names each advisory by id, package and version.
+#
+# Detection, not prevention: the hashes stop a replaced file, this finds a
+# known flaw in a file we chose. It installs nothing - the tool is standard
+# library - and it runs on a schedule and by hand only, never on a push or a
+# pull request, so it adds no CI to any change; Linux only, because a query
+# costs the same from anywhere and a Linux minute is half the price.
+# Scheduled workflows run from the default branch, so this starts once it
+# reaches main.
+name: Supply-chain audit
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Known advisories and stale native engines
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Pinned by commit, the release beside it (decision 137, B3). The job
+      # never pushes, so the token is not left in .git/config (F-12).
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
+        with:
+          python-version: "3.14"
+
+      - name: Ask OSV about every locked package
+        run: python tools/lockfiles.py audit

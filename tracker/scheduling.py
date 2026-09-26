@@ -140,6 +140,33 @@ def quote_argument(value: str | Path) -> str:
     return f'"{text}"'
 
 
+#: What a value in the n8n command may not hold, by what it is (D-11): each
+#: means one thing to ``cmd`` and another to ``sh``, or ends the quoting in
+#: one of them, so a command holding it would not read the same in both.
+#: A Windows path cannot hold ``"``, so refusing these loses nothing real.
+SHELL_SPECIAL = (
+    ('"', "a double quote"),
+    ("%", "a percent sign"),
+    ("$", "a dollar sign"),
+    ("`", "a backtick"),
+    ("!", "an exclamation mark"),
+)
+
+
+def refuse_shell_special(field: str, value: str | Path) -> None:
+    """Refuse ``value`` if it holds a character ``cmd`` and ``sh`` read differently.
+
+    The ``ValueError`` names the field and the kind of character, never the
+    value: a path can carry a client's name, and an error is printed.
+    """
+    text = str(value)
+    for char, kind in SHELL_SPECIAL:
+        if char in text:
+            raise ValueError(f"{field} holds {kind}, which a shell would read as something else")
+    if any(ord(char) < 32 or ord(char) == 127 for char in text):
+        raise ValueError(f"{field} holds a control character, which a shell would read as something else")
+
+
 def _xml_escape(value: str) -> str:
     return escape(str(value))
 
@@ -268,13 +295,24 @@ def n8n_workflow(
     task_name: str = TASK_NAME,
     frozen: bool = False,
 ) -> dict:
-    """An n8n workflow: one cron trigger into one Execute Command node."""
+    """An n8n workflow: one cron trigger into one Execute Command node.
+
+    n8n runs the command through the host's shell - ``cmd`` on Windows,
+    ``sh`` elsewhere - so the one line has to read the same in both (D-11).
+    Every value is quoted by the rule the settings folder is
+    (:func:`quote_argument`), and a value holding a character the two
+    shells read differently is refused (:func:`refuse_shell_special`)
+    rather than escaped for one of them and wrong in the other.
+    """
     if hour is None:
         hour = start_hour()
     if not 0 <= hour <= 23:
         raise ValueError(f"hour must be 0-23, got {hour}")
+    for field, value in (("working_dir", working_dir), ("python", python), ("settings", settings)):
+        refuse_shell_special(field, value)
 
-    command = f'cd "{working_dir}" && "{python}" {runner_arguments(settings, frozen=frozen)}'
+    command = (f"cd {quote_argument(working_dir)} && {quote_argument(python)} "
+               f"{runner_arguments(settings, frozen=frozen)}")
     return {
         "name": task_name,
         "nodes": [
