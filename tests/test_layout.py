@@ -517,3 +517,30 @@ def test_the_key_of_a_key_is_the_key_and_a_capital_look_alike_is_its_letter():
     assert name_key("\u051c\u041e\u041e") == name_key("Woo")
     assert name_key("\u051a\u0423\u0410") == name_key("QYA")
     assert name_key("\u04ba\u0410\u0405") == name_key("Has")
+
+
+# ------------------------------------------------ decision 190: recorded names ----
+
+
+def test_a_recorded_name_keeps_no_invisible_or_control_character():
+    from tracker.layout import NAMELESS, recorded_name
+
+    assert recorded_name("W2‮fdp.exe") == "W2fdp.exe"
+    assert recorded_name("﻿receipt​⁦.pdf") == "receipt.pdf"
+    assert recorded_name("tab\there\x85.pdf") == "tabhere.pdf"
+    assert recorded_name("Café.pdf") == "Café.pdf"            # composed once (NFC)
+    assert recorded_name("​") == NAMELESS
+    assert recorded_name("​", fallback="") == ""
+    assert recorded_name("Mar\ud800ia.pdf") == "Mar?ia.pdf"               # mended, never refused
+    assert recorded_name("W-2 2025.pdf") == "W-2 2025.pdf"
+
+
+def test_a_recorded_name_keeps_no_line_or_paragraph_separator():
+    """The review's N2: U+2028 and U+2029 break a line where
+    ``str.splitlines`` reads it, and a recorded name now reaches a letter
+    (a file that is not a document is asked about by its name)."""
+    from tracker.layout import recorded_name
+
+    assert recorded_name("a b.pdf") == "ab.pdf"
+    assert recorded_name("a b.pdf") == "ab.pdf"
+    assert recorded_name("a b.pdf") == "a b.pdf"

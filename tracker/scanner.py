@@ -217,12 +217,14 @@ def _filed_by_a_person(
     are read through the cache's memo (decision 109), so a tree that has
     not moved since the last pass is stats and no reads.
     """
-    from tracker.filer import ASSIGNED_BY_PERSON, FILED
+    from tracker.filer import FILED
 
     newest = {row.prepared_location: row for row in rows if row.prepared_location}
     accepted = set()
     for location, row in newest.items():
-        if row.decision != FILED or not row.reason.startswith(ASSIGNED_BY_PERSON):
+        # A person's filing, by the row's code (decision 190), never by the
+        # start of its sentence.
+        if row.decision != FILED or row.code != reasons.ASSIGNED_BY_PERSON_CODE:
             continue
         path = locate(engagement_dir, location)
         if is_cloud_placeholder(path):

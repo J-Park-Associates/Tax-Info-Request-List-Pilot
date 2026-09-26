@@ -488,14 +488,14 @@ function movedRow(m, choices) {
   // offered is the person's Mark missing on the row's own request, which
   // puts the document back on the client's letter.
   if (m.gone) {
-    return el("li", { dataset: { original: m.pbc_location, seq: m.seq } },
+    return el("li", { dataset: { original: m.handle, seq: m.seq } },
       el("span", { className: "r-name" }, m.original_name),
       el("span", { className: "r-why" }, `${m.home} → ${where}`),
       m.identifier && el("button", { className: "btn r-withdraw", dataset: { identifier: m.identifier } },
         fill(vocab.review_labels.mark_missing, { identifier: m.identifier })),
     );
   }
-  return el("li", { dataset: { original: m.pbc_location, seq: m.seq } },
+  return el("li", { dataset: { original: m.handle, seq: m.seq } },
     el("span", { className: "r-name" }, m.original_name),
     el("span", { className: "r-why" }, `${m.home} → ${where}`),
     // The picker is the same picker: a person may keep the copy where it
@@ -583,10 +583,18 @@ function renderReview(state) {
   const ids = new Set(state.items.map((i) => i.identifier));
   // The triage the API computed, by the same handle every review command
   // takes. Only a parked row has one; a set-aside row is not triaged.
-  const triaged = new Map((state.review || []).map((t) => [t.pbc_location, t]));
+  const triaged = new Map((state.review || []).map((t) => [t.handle, t]));
   const people = (state.engagement || {}).people || [];
-  show("review-list", parked.map((e) =>
-    reviewRow(e, choices, ids, true, triaged.get(e.pbc_location), people)));
+  // Three buckets (decision 190), each under the API's heading and in the
+  // API's order; which bucket a row is in is the API's answer, never ours.
+  const words = vocab.review_labels;
+  show("review-list", words.bucket_order.map((bucket) => {
+    const here = parked.filter((e) => e.bucket === bucket);
+    return here.length
+      ? [el("li", { className: "r-bucket" }, words.buckets[bucket]),
+         here.map((e) => reviewRow(e, choices, ids, true, triaged.get(e.handle), people))]
+      : [];
+  }));
   // The same queue drawn the other way (decision 114), from the same state:
   // both renderings are always drawn and the mode shows one of them.
   renderDeck(state);
@@ -642,7 +650,41 @@ function requestOption(item, picked) {
 // can carry no second line, and the reason is the whole point - a person
 // reads why before they pick. Everything below the divider is every other
 // request, because a suggestion is a suggestion and nothing is taken away.
+// A row that is not a document (decision 190) is never opened and never
+// filed: it says its true type, and offers only the answer that sets it
+// aside. Any other parked row offers Open, which opens its review copy by
+// the key the API named it under in state.paths - never a path of ours.
+function notADocument(row) {
+  return Boolean(row) && row.bucket === vocab.review_labels.not_a_document;
+}
+
+function trueType(row) {
+  return notADocument(row)
+    ? el("span", { className: "r-type" },
+        fill(vocab.review_labels.true_type, { extension: row.extension }))
+    : null;
+}
+
+function openCopy(row, className) {
+  return row && row.open_key && !notADocument(row)
+    ? el("button", { className: `btn ${className}`, dataset: { key: row.open_key } },
+        vocab.review_labels.open_copy)
+    : null;
+}
+
 function reviewRow(e, choices, ids, open, triage, people = []) {
+  if (notADocument(e)) {
+    return el("li", { dataset: { original: e.handle, seq: e.seq } },
+      el("span", { className: "r-name" }, e.original_name),
+      trueType(e),
+      el("span", { className: "r-why" }, e.reason, cameFrom(e)),
+      open && el("input", {
+        type: "text", className: "r-note", placeholder: vocab.review_labels.dismiss_note,
+        "aria-label": vocab.review_labels.dismiss_note,
+      }),
+      open && el("button", { className: "btn r-dismiss" }, vocab.review_labels.dismiss),
+    );
+  }
   const shortlist = (triage && triage.shortlist) || [];
   const suggested = shortlist.map((s) => s.identifier);
   const byId = new Map(choices.map((i) => [i.identifier, i]));
@@ -654,7 +696,7 @@ function reviewRow(e, choices, ids, open, triage, people = []) {
   const picked = guess && ids.has(guess) ? guess : "";
   // The row's record version travels with the card and comes back with the
   // click, so the filer judges the decision against the row it was made on.
-  return el("li", { dataset: { original: e.pbc_location, seq: e.seq } },
+  return el("li", { dataset: { original: e.handle, seq: e.seq } },
     el("span", { className: "r-name" }, e.original_name),
     el("span", { className: "r-why" }, e.reason, cameFrom(e)),
     el("select", { "aria-label": `Request for ${e.original_name}` },
@@ -684,6 +726,7 @@ function reviewRow(e, choices, ids, open, triage, people = []) {
       type: "text", className: "r-note", placeholder: vocab.review_labels.dismiss_note,
       "aria-label": vocab.review_labels.dismiss_note,
     }),
+    open && openCopy(e, "r-open-copy"),
     el("button", { className: "btn btn-primary r-file" },
       open ? vocab.review_labels.file : vocab.review_labels.file_anyway),
     open && el("button", { className: "btn r-dismiss" }, vocab.review_labels.dismiss),
@@ -900,7 +943,7 @@ const MODE_LIST = "list";
 const MODE_CARDS = "cards";
 
 let reviewMode = storedReviewMode();
-let skipped = [];          // pbc_locations sent to the back of the deck
+let skipped = [];          // row handles sent to the back of the deck
 let deckState = null;      // the state the deck was last drawn from
 
 function storedReviewMode() {
@@ -937,26 +980,26 @@ function applyReviewMode() {
 // they were sent back. A row that has left the queue leaves the skip list
 // with it, so nothing here outlives the row it was about.
 function deckOrder(queue) {
-  const here = new Set(queue.map((t) => t.pbc_location));
+  const here = new Set(queue.map((t) => t.handle));
   skipped = skipped.filter((location) => here.has(location));
   const back = new Set(skipped);
   return [
-    ...queue.filter((t) => !back.has(t.pbc_location)),
-    ...skipped.map((location) => queue.find((t) => t.pbc_location === location)),
+    ...queue.filter((t) => !back.has(t.handle)),
+    ...skipped.map((location) => queue.find((t) => t.handle === location)),
   ];
 }
 
 function renderDeck(state) {
   deckState = state;
-  const rows = new Map((state.index || []).map((e) => [e.pbc_location, e]));
-  const queue = (state.review || []).filter((t) => rows.has(t.pbc_location));
+  const rows = new Map((state.index || []).map((e) => [e.handle, e]));
+  const queue = (state.review || []).filter((t) => rows.has(t.handle));
   const deck = deckOrder(queue);
   // The card on top is the one that gets answered; the position says how far
   // into the deck the person has walked, and the total is the queue's own -
   // sending a card to the back never changes it.
   const place = deck.length ? (skipped.length % deck.length) + 1 : 0;
   show("review-deck", deck.length
-    ? [deckCard(deck[0], rows.get(deck[0].pbc_location), place, deck.length,
+    ? [deckCard(deck[0], rows.get(deck[0].handle), place, deck.length,
                 (state.engagement || {}).people || [])]
     : []);
 }
@@ -976,12 +1019,24 @@ function cameFrom(row) {
 }
 
 function deckCard(t, row, place, total, people = []) {
+  if (notADocument(t)) {
+    // Nothing to open and nothing to file (decision 190): the card says
+    // what the file really is, why, and lets the person move on.
+    return el("div", { className: "deck-card card", dataset: { original: t.handle, seq: t.seq } },
+      el("span", { className: "r-name" }, t.original_name),
+      trueType(t),
+      el("span", { className: "r-why" }, row ? row.reason : "", row && cameFrom(row)),
+      el("span", { className: "deck-position" },
+        fill(vocab.review_labels.card_position, { n: place, total })),
+      el("button", { className: "btn c-skip" }, vocab.review_labels.skip),
+    );
+  }
   const best = (t.shortlist || [])[0];
   // The suggestion Accept files to travels on the card, as the row's record
   // version does: what comes back with the click is what was on the screen.
   const identified = best ? { identifier: best.identifier } : {};
   return el("div", { className: "deck-card card",
-                     dataset: { original: t.pbc_location, seq: t.seq, ...identified } },
+                     dataset: { original: t.handle, seq: t.seq, ...identified } },
     el("span", { className: "r-name" }, t.original_name),
     el("span", { className: "r-why" }, row ? row.reason : "", row && cameFrom(row)),
     best && el("span", { className: "deck-suggested" }, vocab.review_labels.suggested),
@@ -1000,6 +1055,7 @@ function deckCard(t, row, place, total, people = []) {
     el("span", { className: "deck-position" },
       fill(vocab.review_labels.card_position, { n: place, total })),
     best && el("button", { className: "btn btn-primary c-accept" }, vocab.review_labels.accept),
+    openCopy(t, "c-open-copy"),
     el("button", { className: "btn c-open" }, vocab.review_labels.open_in_list),
     // The deck offers what the list offers: a request of another return
     // this drop folder feeds (decision 129).
@@ -1037,6 +1093,14 @@ function openCardInList(card) {
   }
 }
 
+// Open is the review copy the API named under this key in state.paths
+// (decision 190): the shell opens only the paths the API reported, so a
+// key the state does not hold opens nothing.
+function openReviewCopy(btn) {
+  const target = paths && paths[btn.dataset.key];
+  if (target) window.tracker.open(target);
+}
+
 // Skip is a reorder and nothing else: the card goes to the back, the queue
 // is the same length, and nothing is sent anywhere.
 function skipCard(card) {
@@ -1058,7 +1122,7 @@ function renderUnfileList(state) {
   $("filed-card").classList.toggle("hidden", filed.length === 0);
   $("filed-heading").textContent = fill(vocab.review_labels.filed_heading, { n: filed.length });
   show("filed-list", filed.map((e) =>
-    el("li", { dataset: { original: e.pbc_location, seq: e.seq } },
+    el("li", { dataset: { original: e.handle, seq: e.seq } },
       el("span", { className: "r-name" }, e.original_name),
       el("span", { className: "r-why" }, `${e.identifier} — ${e.filed_names.join(", ")}`),
       el("input", {
@@ -2834,6 +2898,8 @@ $("review-list").addEventListener("click", (e) => {
     const li = waits.closest("li[data-original]");
     fileWhereItWaits(li.dataset.original, Number(li.dataset.seq), waits);
   }
+  const copy = e.target.closest(".r-open-copy");
+  if (copy) openReviewCopy(copy);
 });
 $("review-mode").addEventListener("click", (e) => {
   if (e.target.closest("#review-mode-cards")) setReviewMode(MODE_CARDS);
@@ -2846,6 +2912,8 @@ $("review-deck").addEventListener("click", (e) => {
   if (open) openCardInList(open.closest(".deck-card"));
   const skip = e.target.closest(".c-skip");
   if (skip) skipCard(skip.closest(".deck-card"));
+  const copy = e.target.closest(".c-open-copy");
+  if (copy) openReviewCopy(copy);
   const over = e.target.closest(".c-hand-over");
   if (over) {
     const card = over.closest(".deck-card");

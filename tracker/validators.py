@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import zipfile
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -49,7 +50,7 @@ from pathlib import Path
 
 from pypdf import PdfReader
 
-from tracker import errors, reasons
+from tracker import errors, layout, reasons
 from tracker.fsio import TEMP_SUFFIX
 from tracker.manifest import RequestItem
 
@@ -126,6 +127,38 @@ PDF_EXTENSION = "pdf"
 #: accepts a PDF (decision 127), so a person types nothing new on a row and
 #: a list recorded before this decision admits photos the day it lands.
 IMAGE_EXTENSIONS = ("jpg", "jpeg", "png", "heic", "heif", "tif", "tiff")
+#: Programs, and the files Windows runs, mounts or follows as if they were
+#: one (decision 190): the one list, lower case, without dots. Nothing
+#: else under tracker/ or app/ spells one of these as an extension - a
+#: guard test says so. A file of one of these types is not a document: it
+#: parks before any reading or routing, so its name never reaches a
+#: request, and it gets no review copy, because nobody here opens it.
+#: Antivirus is not the control: the tracker must not put a program in the
+#: review folder dressed as a W-2.
+PROGRAM_EXTENSIONS = frozenset({
+    "exe", "com", "scr", "pif", "bat", "cmd", "ps1", "psm1", "psd1", "vbs", "vbe", "js", "jse",
+    "wsf", "wsh", "wsc", "hta", "msi", "msp", "mst", "lnk", "url", "scf", "library-ms",
+    "searchconnector-ms", "settingcontent-ms", "reg", "cpl", "jar", "appref-ms", "application",
+    "gadget", "chm", "inf", "sct", "iso", "img", "vhd", "vhdx", "xll",
+    # The installer packages and shell types the review added (decision 190).
+    "msix", "appx", "appxbundle", "msixbundle", "appinstaller", "ps1xml", "psc1", "diagcab",
+    "website", "shb", "shs", "pyw", "vb", "ws",
+    # Access databases run their code when opened, and Protected View does
+    # not cover them, so marking a copy would not make one safe to open.
+    "mdb", "mde", "accdb", "accde", "accda", "accdr", "ade", "adp",
+})
+#: Office files that carry macros by their type alone: the macro-enabled
+#: Open XML types and the legacy binary ones, templates and add-ins
+#: (:func:`bears_macros`).
+MACRO_EXTENSIONS = frozenset({
+    "docm", "dotm", "xlsm", "xltm", "xlam", "pptm", "potm", "ppsm", "ppam", "sldm",
+    "doc", "xls", "ppt", "xlsb", "xla", "xlt", "dot", "pot", "pps", "ppa",
+})
+#: Open XML types that carry macros only when the package holds a VBA
+#: project - which a renamed ``.xlsm`` does.
+_OPEN_XML_EXTENSIONS = frozenset({"docx", "dotx", "xlsx", "xltx", "pptx", "potx", "ppsx"})
+#: The part a macro-bearing Open XML package holds, by name.
+_VBA_PROJECT = "vbaproject.bin"
 #: Google Drive stages in-flight transfers inside hidden ".tmp.drive*"
 #: folders (.tmp.driveupload / .tmp.drivedownload); anything under one is a
 #: partial transfer, not a delivered document, and the folder itself is
@@ -194,6 +227,67 @@ def is_sync_staging(name: str) -> bool:
 def extension_of(path: Path) -> str:
     """The extension the rules see: lower-case, no dot (``"pdf"``)."""
     return path.suffix.lower().lstrip(".")
+
+
+def said_extension(path: Path) -> str:
+    """The extension a sentence quotes: the one the recorded name
+    (:func:`~tracker.layout.recorded_name`) ends in, so an invisible
+    character inside a client's suffix never reaches a row's reason
+    (decision 190's review, S4). The rules still judge the raw suffix
+    (:func:`extension_of`); only what is *said* is the recorded one."""
+    return extension_of(Path(layout.recorded_name(path.name, fallback=""))) or extension_of(path)
+
+
+def is_program(name: str | Path) -> bool:
+    """Whether a file by this name is a program (:data:`PROGRAM_EXTENSIONS`).
+
+    Read from the **real last suffix** of the name on disk - what Windows
+    runs it by - so ``W-2 2025.pdf.exe`` is a program whatever it says
+    before, and a trailing dot or space, which Windows drops, hides
+    nothing (decision 190).
+
+    **And from the name as the record holds it.** An invisible character
+    after the suffix (``Pay.scr<U+FEFF>``, ``W2.ex<U+200B>e``) hides the
+    type from the raw name, but :func:`~tracker.layout.recorded_name` drops
+    it, and the review copy, the card and every sentence use the recorded
+    name - where it *is* a program. Either name saying program is enough:
+    a document named like a program is not a loss worth taking the risk
+    for, and the person asks the client for it again."""
+    for spelled in (str(name), layout.recorded_name(Path(str(name)).name, fallback="")):
+        real = Path(spelled).name.rstrip(". ")
+        if Path(real).suffix.lower().lstrip(".") in PROGRAM_EXTENSIONS:
+            return True
+    return False
+
+
+def bears_macros(path: Path) -> bool:
+    """Whether an Office file can carry macros: a macro-enabled or legacy
+    binary type (:data:`MACRO_EXTENSIONS`), or an Open XML package whose
+    zip names a VBA project (decision 190).
+
+    Only the zip's directory is read - its list of names, never a part -
+    and only for a file within :data:`MAX_READ_MB`. A package too large to
+    look at, or one whose directory will not read, answers True: the
+    answer only decides whether the firm's review copy is marked for
+    Protected View, and marking a harmless file costs nothing.
+
+    The type is read from the raw name and from the recorded one
+    (:func:`~tracker.layout.recorded_name`), which names the review copy:
+    ``book.xlsm<U+200B>`` is copied as ``book.xlsm``, so it is one."""
+    extensions = {extension_of(path),
+                  extension_of(Path(layout.recorded_name(path.name, fallback="")))}
+    if extensions & MACRO_EXTENSIONS:
+        return True
+    if not extensions & _OPEN_XML_EXTENSIONS:
+        return False
+    try:
+        if size_mb(path) > MAX_READ_MB:
+            return True
+        with zipfile.ZipFile(path) as package:
+            return any(Path(name).name.lower() == _VBA_PROJECT for name in package.namelist())
+    except (OSError, zipfile.BadZipFile) as exc:
+        errors.keep("validators: macro check", exc, name=path.name)
+        return True
 
 
 def is_ignored(path: Path) -> bool:
@@ -414,7 +508,7 @@ def check_file(
             path=path,
             ok=False,
             reason=reasons.EXTENSION_NOT_ALLOWED.format(
-                extension=extension, allowed=", ".join(item.allowed_extensions)
+                extension=said_extension(path), allowed=", ".join(item.allowed_extensions)
             ),
             code=reasons.EXTENSION_NOT_ALLOWED.code,
         )

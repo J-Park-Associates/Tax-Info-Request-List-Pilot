@@ -274,6 +274,32 @@ def copy_atomically(
             prove(temp)
 
 
+#: The alternate data stream Windows reads a file's origin from, and what
+#: it holds for a file from the internet (zone 3). Office opens a file
+#: carrying it in Protected View, macros off (decision 190).
+ZONE_STREAM = ":Zone.Identifier"
+ZONE_FROM_INTERNET = "[ZoneTransfer]\r\nZoneId=3\r\n"
+
+
+def mark_from_internet(path: Path, *, _opener: Callable | None = None) -> bool:
+    """Mark ``path`` as a file from the internet, so Office opens it in
+    Protected View: True once marked, False where there is no such mark to
+    write (anything but Windows).
+
+    **Fails loudly, never quietly** (decision 190). On Windows an error
+    writing the stream - a volume that holds no streams, FAT or a network
+    share that drops them - is raised, and the caller does not make the
+    copy: an unmarked copy of a macro workbook in the review folder is the
+    thing this exists to stop. Read ``os.name`` when called, so a test can
+    stand in for Windows with ``_opener``, the one thing it touches."""
+    if os.name != "nt":
+        return False
+    opener = _opener or open
+    with opener(str(path) + ZONE_STREAM, "w", encoding="ascii", newline="") as stream:
+        stream.write(ZONE_FROM_INTERNET)
+    return True
+
+
 def _born(info: os.stat_result) -> float:
     """When a file came to be, as near as the platform says: the later of
     its modification time and its creation (Windows) or change (POSIX)

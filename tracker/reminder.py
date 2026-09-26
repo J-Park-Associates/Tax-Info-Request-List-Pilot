@@ -279,7 +279,7 @@ HELD_REFUSAL = (
 #: exactly what was asked for - only of a person here confirming it. Said
 #: of the confirm-held rows alone; a draft held both ways says both.
 CONFIRM_REFUSAL = (
-    "the reminder is held until a person confirms the parked file (open it in Needs Review) "
+    "the reminder is held until a person confirms the parked file (open it from its card) "
     "- {listed}; nothing was written"
 )
 #: The one line the app shows for a held reminder (through the API's vocabulary).
@@ -329,6 +329,9 @@ SECTION_PARTIAL = "STARTED, BUT NOT COMPLETE"
 #: since decision 115 - a Failed row with no firm-side code holds the
 #: draft instead - so it is not in ``SECTION_ORDER``; the name stays because
 #: an "ask the client again" action a person records would put a row here.
+#: Since decision 190 it heads the files that are not documents
+#: (:func:`unusable_files`), which name no request and are asked about
+#: after every request's section.
 SECTION_FAILED = "RECEIVED, BUT WE COULD NOT USE IT"
 
 SECTION_ORDER = (SECTION_MISSING, SECTION_PARTIAL)
@@ -681,6 +684,9 @@ class ReminderDraft:
     #: and 0 on a quiet week - there is no ladder when we have everything.
     stage: int = 0
     lines: list[ReminderLine] = field(default_factory=list)
+    #: The files the letter asks about that are not documents (decision
+    #: 190), by their recorded names (:func:`unusable_files`).
+    unusable: list[str] = field(default_factory=list)
     needs_attention: list[FirmSideFlag] = field(default_factory=list)
     #: The ambiguous rows (decision 115). One of these holds the whole draft.
     held: list[FirmSideFlag] = field(default_factory=list)
@@ -707,7 +713,13 @@ class ReminderDraft:
 
     @property
     def has_outstanding(self) -> bool:
-        return bool(self.lines)
+        """Whether the letter asks the client for anything: a request, or
+        a file that is not a document (decision 190's re-check, S-N1). The
+        scheduler writes the draft, and the app's card offers it, on this
+        one answer, so a letter that only asks about a program is written
+        and editable like any other - never refreshed over as "nothing
+        outstanding"."""
+        return bool(self.lines or self.unusable)
 
     @property
     def is_held(self) -> bool:
@@ -859,6 +871,39 @@ def _ambiguous_reason(item: RequestItem) -> str:
     return ""
 
 
+def _still_parked(row) -> bool:
+    """Whether an index row is still a question for a person: parked, or a
+    parked row whose copy and original are both gone (decision 157) that
+    nobody filed or set aside - read from its decision and its code
+    (decision 190), never from its sentence."""
+    from tracker.filer import NEEDS_REVIEW, both_gone
+
+    if row.decision == NEEDS_REVIEW:
+        return True
+    return (both_gone(row) and not row.identifier
+            and row.code != reasons.DISMISSED_BY_PERSON_CODE)
+
+
+def unusable_files(parked: Sequence) -> list[str]:
+    """The files the client sent that are not documents (decision 190's
+    ``reasons.NOT_A_DOCUMENT``), by their recorded names, each once, in the
+    record's order - what the letter asks about under
+    :data:`SECTION_FAILED`.
+
+    SPEC-190 R3 and the review's S1: a program names no request, so no
+    request line can carry its ask and it holds nothing (``holds=False``):
+    the letter is still written. It is asked about in the words any
+    unusable file gets (``NOT_A_DOCUMENT.ask``, which *is*
+    ``EXTENSION_NOT_ALLOWED``'s) - no new client words - beside the name
+    the client gave it, the only way they can tell which file it was. A row
+    a person has set aside is their answer and is not asked again."""
+    names: dict[str, None] = {}
+    for row in parked:
+        if _still_parked(row) and row.code == reasons.NOT_A_DOCUMENT.code:
+            names.setdefault(row.original_name, None)
+    return list(names)
+
+
 def _parked_holds(items: Sequence[RequestItem], parked: Sequence) -> dict[str, FirmSideFlag]:
     """Which requests a parked file the client could fix holds, and why.
 
@@ -913,23 +958,18 @@ def _parked_holds(items: Sequence[RequestItem], parked: Sequence) -> dict[str, F
     the file either, so the question it raised is still open: the request
     it points at stays held until a person decides (an override, or the
     file coming back). A set-aside row that went the same way does not: its
-    Reason still starts with the person's answer.
+    code is still the person's answer (``reasons.DISMISSED_BY_PERSON_CODE``),
+    read from the Code column and never from the start of its Reason.
     """
-    from tracker.filer import DISMISSED_BY_PERSON, NEEDS_REVIEW, both_gone
     from tracker.review import shortlist_for
-
-    def still_parked(row) -> bool:
-        if row.decision == NEEDS_REVIEW:
-            return True
-        return (both_gone(row) and not row.identifier
-                and not (row.reason or "").startswith(DISMISSED_BY_PERSON))
 
     rows = {item.identifier: item for item in items}
     listed = list(items)
     holds: dict[str, FirmSideFlag] = {}
     for row in parked:
-        if not still_parked(row):
+        if not _still_parked(row):
             continue
+
         code = row.code or ""
         reason = reasons.BY_CODE.get(code)
         if code and code not in reasons.HOLDS:
@@ -1172,19 +1212,26 @@ def _compose_letter(
     filing_deadline: dt.date | None = None,
     phone: str = "",
     also_received: int = 0,
+    unusable: Sequence[str] = (),
 ) -> Letter:
     """The letter as a shape: the greeting, the stage's own three sentences
     around the list, and the sign-off.
 
-    ``stage`` is None only on a quiet week, where there is nothing to chase
-    and no ladder to be on. The deadline paragraph is written only when the
+    ``stage`` is None on a week with no request to chase, where there is
+    no ladder to be on: a quiet week, or one whose only asks are files that
+    are not documents (decision 190's re-check, S-N1). The deadline paragraph is written only when the
     engagement has a Due Date to name: a stage the caller forced with no
     date to put in it drops the paragraph rather than printing half of it.
+
+    ``unusable`` is the files that are not documents (:func:`unusable_files`),
+    asked about under :data:`SECTION_FAILED`, after the requests, one line
+    each in the shape a request's line has: the client's name for the file
+    and the unusable-file ask.
     """
     greeting = f"Hi {client_name}," if client_name else "Hello,"
     signoff = (SIGN_OFF, *(name for name in (sender, firm) if name))
 
-    if not lines or stage is None:
+    if not (lines or unusable) or (stage is None and not unusable):
         return Letter(greeting=greeting, intro=NOTHING_OWED.format(engagement=engagement),
                       signoff=signoff)
 
@@ -1199,7 +1246,24 @@ def _compose_letter(
         Section(name, tuple(line.render() for line in lines if line.section == name))
         for name in SECTION_ORDER
         if any(line.section == name for line in lines)
-    )
+    ) + ((Section(SECTION_FAILED, tuple(f"  - {name} - {reasons.NOT_A_DOCUMENT.ask}"
+                                        for name in unusable)),) if unusable else ())
+    if stage is None:
+        # Only files that are not documents to ask about (decision 190's
+        # re-check, S-N1): they are no rung of the ladder, so the letter
+        # has none - the quiet week's paragraph, the ask under its heading
+        # and where to drop the replacement, and no deadline and no close.
+        # Every sentence is one the letters already use; other words are
+        # Jason's call.
+        return Letter(
+            greeting=greeting,
+            progress=progress_line(received, total, also_received),
+            intro=NOTHING_OWED.format(engagement=engagement),
+            sections=sections,
+            drop=(DROP_ANYWHERE, DROP_WITH_LINK if share_link else DROP_NO_LINK),
+            link=share_link,
+            signoff=signoff,
+        )
     return Letter(
         greeting=greeting,
         progress=progress_line(received, total, also_received),
@@ -1343,7 +1407,11 @@ def draft_reminder(
             f"`python -m tracker.scanner {engagement_dir}` first"
         )
 
-    lines, attention, held = triage(items, _parked_index_rows(engagement_dir))
+    parked = _parked_index_rows(engagement_dir)
+    lines, attention, held = triage(items, parked)
+    # A file that is not a document holds nothing and names no request, so
+    # it is asked about on its own (decision 190's review, S1).
+    unusable = unusable_files(parked)
     summary = summarize(items)
     received, total = summary.received, summary.total
     # The household, the year and the return, as everything that names one
@@ -1356,7 +1424,10 @@ def draft_reminder(
     )
 
     # The stage is the letter's, so a week with nothing to chase has none:
-    # "we have everything" is not a rung of a ladder.
+    # "we have everything" is not a rung of a ladder. Nor is a file that is
+    # not a document (decision 190's re-check, S-N1): it is asked about,
+    # and the stage, the subject's count and the progress line are the
+    # requests' alone - a stray program never climbs to a final notice.
     number = (stage if stage is not None else stage_for(due_date, today)) if lines else 0
     rung = stage_named(number) if number else None
 
@@ -1374,6 +1445,7 @@ def draft_reminder(
         stage=rung,
         filing_deadline=filing_deadline,
         phone=phone,
+        unusable=unusable,
     )
     body = letter.text()
 
@@ -1388,6 +1460,7 @@ def draft_reminder(
         body=body,
         stage=number,
         lines=lines,
+        unusable=unusable,
         needs_attention=attention,
         held=held,
         unsorted=unsorted_in_inbox(engagement_dir),

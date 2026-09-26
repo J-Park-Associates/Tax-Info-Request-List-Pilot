@@ -59,7 +59,7 @@ from collections.abc import Callable
 from contextlib import ExitStack
 from dataclasses import asdict, replace
 from functools import cache
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from tracker import (
     STANDING_RULES,
@@ -77,6 +77,7 @@ from tracker import (
     review,
     store,
 )
+from tracker.containers import is_container
 from tracker.filer import (
     DUPLICATE,
     FILE_MOVED,
@@ -140,6 +141,7 @@ from tracker.layout import (
     locate,
     originals_dir_for,
     private_household_dir,
+    recorded_name,
     return_dir_for,
     year_of,
 )
@@ -316,6 +318,7 @@ from tracker.templates import (  # the catalog; re-exported for the wizard
     shift_item,
     template_items,
 )
+from tracker.validators import extension_of, is_program
 from tracker.view import (
     NOT_APPLICABLE_SECTION,
     NOT_ASKED_SECTION,
@@ -503,6 +506,25 @@ OPEN_IN_LIST_LABEL = "Pick another request"
 CARD_MODE_LABEL = "One at a time"
 LIST_MODE_LABEL = "All at once"
 CARD_POSITION = "{n} of {total}"
+
+#: The review card's three buckets (decision 190), decided here from the
+#: row's code and its name on disk - never by the renderer: a document, an
+#: email or a zip, and a file that is not a document at all. The keys
+#: travel on each parked row as ``bucket``; the headings are the words the
+#: card groups them under.
+BUCKET_DOCUMENT = "document"
+BUCKET_CONTAINER = "container"
+BUCKET_NOT_A_DOCUMENT = "not_a_document"
+BUCKET_HEADINGS = {
+    BUCKET_DOCUMENT: "Documents",
+    BUCKET_CONTAINER: "Emails and zips",
+    BUCKET_NOT_A_DOCUMENT: "Not documents - do not open; ask the client what they meant to send",
+}
+#: The action that opens a parked row's review copy - the firm's copy in
+#: the private tree, marked for Protected View when it can carry macros -
+#: and what the card says beside a not-a-document row's true type.
+OPEN_COPY_LABEL = "Open"
+TRUE_TYPE = "a .{extension} file"
 #: What a review command says when it was sent without the row's sequence
 #: number (decision 112). The app is drawn from ``state``, which carries one
 #: for every row, so a spec without it is a caller acting on no view at all -
@@ -880,7 +902,13 @@ def _vocab() -> dict:
                           # Decision 204's one click: a row that names
                           # another household's person, filed where it
                           # waits, with nothing picked on the page.
-                          "file_where_it_waits": FILE_WHERE_IT_WAITS_LABEL},
+                          "file_where_it_waits": FILE_WHERE_IT_WAITS_LABEL,
+                          # Decision 190's three buckets, the action that
+                          # opens a review copy, and a program's true type.
+                          "buckets": dict(BUCKET_HEADINGS),
+                          "bucket_order": list(BUCKET_HEADINGS),
+                          "not_a_document": BUCKET_NOT_A_DOCUMENT,
+                          "open_copy": OPEN_COPY_LABEL, "true_type": TRUE_TYPE},
         # Every word tracker.review gives the card, from the module that
         # owns it: what is said when the evidence suggests nothing, the one
         # separator between an identifier and what follows it (the reason
@@ -1264,13 +1292,83 @@ def _evidence_payload(entry: IndexEntry) -> dict[str, list[dict]]:
             for identifier, found in entry.evidence_record.items()}
 
 
+#: The codes a parked email or zip is refused with (decision 143).
+_CONTAINER_CODES = frozenset(reason.code for reason in (
+    reasons.CONTAINER_LOCKED, reasons.CONTAINER_DAMAGED, reasons.CONTAINER_EMPTY,
+    reasons.CONTAINER_LIMIT))
+
+
+def _name_on_disk(entry: IndexEntry) -> str:
+    """The name the row's original has on disk - raw, as the client named
+    it - or, for a program never written out of its email or zip, the name
+    it was recorded by."""
+    return PurePosixPath(entry.pbc_location).name if entry.pbc_location else entry.original_name
+
+
+def true_extension(entry: IndexEntry) -> str:
+    """The row's real type: the last suffix of its name on disk, lower case
+    and without the dot - what Windows would run it by (decision 190) -
+    as the recorded name spells it, so the card never prints an invisible
+    character (decision 190's review, M1)."""
+    return extension_of(Path(recorded_name(_name_on_disk(entry)).rstrip(". ")))
+
+
+def handle_of(entry: IndexEntry) -> str:
+    """The one handle a review command names a row by (decision 190's
+    review, M3): its original's location, or - for a program never written
+    out of its email or zip, which has none - the record's key for the row
+    (:func:`tracker.records.ledger_key`), which is unique where ``""``
+    would name every such row at once. Every lookup the review commands
+    make (:func:`tracker.filer.find_parked` and its siblings) accepts it."""
+    return ledger_key(entry)
+
+
+def review_bucket(entry: IndexEntry) -> str:
+    """Which of the review card's buckets a parked row sits in (decision
+    190): read from its code, and from its type on disk, never from its
+    sentence. A program recorded before the code existed is still not a
+    document, because the card must never offer to open one."""
+    name = _name_on_disk(entry)
+    # Either name saying program is enough (decision 190's review, M1): the
+    # raw one on disk, and the recorded one the review copy was named by.
+    if (entry.code == reasons.NOT_A_DOCUMENT.code or is_program(name)
+            or is_program(entry.original_name)):
+        return BUCKET_NOT_A_DOCUMENT
+    if entry.code in _CONTAINER_CODES or is_container(name):
+        return BUCKET_CONTAINER
+    return BUCKET_DOCUMENT
+
+
+def _review_copy_key(entry: IndexEntry) -> str:
+    """The key under ``paths`` of a parked row's review copy, or ``""``
+    where the card offers no Open: a not-a-document row, or a row with no
+    copy. The shell opens only a path the API has named (``paths``), so
+    the copy is named there and the row carries only its key."""
+    if entry.decision != NEEDS_REVIEW or not entry.prepared_location:
+        return ""
+    if review_bucket(entry) == BUCKET_NOT_A_DOCUMENT:
+        return ""
+    return f"review_copy {ledger_key(entry)}"
+
+
+def _review_payload(entry: IndexEntry) -> dict:
+    """What a parked row carries for the card beside its record: its
+    bucket, its true type and the key of the copy it opens. A set-aside
+    row carries its bucket too, so a program set aside is never offered
+    *File anyway*."""
+    if entry.decision not in (NEEDS_REVIEW, NOT_REQUESTED):
+        return {}
+    return {"bucket": review_bucket(entry), "extension": true_extension(entry),
+            "open_key": _review_copy_key(entry)}
+
+
 def _triage_payload(triaged: review.Triage, seqs: dict[str, int],
                     waiting: tuple[dict | None, str] = (None, "")) -> dict:
     """One parked file's shortlist as JSON, in triage order.
 
     The row itself is already in ``state["index"]``; what travels here is
     the part only :mod:`tracker.review` knows, joined back to that row by
-    ``pbc_location`` - the same handle every review command takes. The
+    ``handle`` (:func:`handle_of`) - the same handle every review command takes. The
     row's sequence number travels here too, beside the row rather than in
     it, so the card a person acts from carries the version of the record
     it was drawn on (decision 112).
@@ -1297,6 +1395,7 @@ def _triage_payload(triaged: review.Triage, seqs: dict[str, int],
     return {
         "original_name": triaged.entry.original_name,
         "pbc_location": triaged.entry.pbc_location,
+        "handle": handle_of(triaged.entry),
         "seq": seqs.get(ledger_key(triaged.entry)),
         "shortlist": [asdict(suggestion) for suggestion in triaged.shortlist],
         # The set-aside rows the evidence points at, named with their
@@ -1306,7 +1405,7 @@ def _triage_payload(triaged: review.Triage, seqs: dict[str, int],
         "group": triaged.group,
         "waits_for": offer,
         "waits_for_refused": refused,
-    }
+    } | _review_payload(triaged.entry)
 
 
 def _waiting_payload(engagement: Path, entry: IndexEntry,
@@ -1391,6 +1490,7 @@ def _moved_payload(engagement: Path, entries: list[IndexEntry], items,
         rows.append({
             "original_name": entry.original_name,
             "pbc_location": entry.pbc_location,
+            "handle": handle_of(entry),
             "seq": seqs.get(ledger_key(entry)),
             "home": entry.prepared_location,
             "now": now,
@@ -1777,7 +1877,8 @@ def _state(engagement: Path) -> dict:
                                "candidates": e.candidate_list,
                                "answered": [identifier for identifier, _ in e.answered],
                                "evidence": _evidence_payload(e),
-                               "seq": seqs.get(ledger_key(e))}
+                               "handle": handle_of(e),
+                               "seq": seqs.get(ledger_key(e))} | _review_payload(e)
                   for e in entries],
         # The review queue, triaged: one entry per parked file, its
         # shortlist best-first with the sentence behind each suggestion.
@@ -1826,6 +1927,11 @@ def _state(engagement: Path) -> dict:
             # paths the API has named, and a person looking at one
             # engagement is one click from the whole practice.
             "status": str(root / STATUS_PAGE_FILENAME) if root else "",
+            # Each parked document's review copy (decision 190), for its
+            # card's Open: named here because the shell opens only the
+            # paths this map holds, and never for a not-a-document row.
+            **{key: str(locate(engagement, e.prepared_location)) for e in entries
+               if (key := _review_copy_key(e))},
         },
     }
 
@@ -3499,7 +3605,10 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
     else:
         recorded = last.get(reminder.STAGE_KEY) if last else None
         stage = requested if requested is not None else (recorded or day_stage)
-        if draft.has_outstanding and stage != draft.stage:
+        # Only a letter with requests on it has a rung to re-stage: one that
+        # only asks about a file that is not a document has none (decision
+        # 190's re-check, S-N1).
+        if draft.lines and stage != draft.stage:
             try:
                 draft = reminder.draft_reminder(engagement, today=today, stage=int(stage))
             except reminder.ReminderError as exc:

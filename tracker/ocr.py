@@ -578,7 +578,7 @@ class ReadingChild:
         try:
             self._jobs.send((job, args, kwargs))
         except OSError as exc:
-            return Outcome("not_started", error=f"the reading's process was gone ({exc})",
+            return Outcome("not_started", error=f"the reading's process was gone ({errors.error_class(exc)})",
                            seconds=awake_clock() - started)
         kind, answer, begun, over = "died", (), False, False
         while True:

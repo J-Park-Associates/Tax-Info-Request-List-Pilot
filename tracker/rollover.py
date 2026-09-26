@@ -80,6 +80,7 @@ from contextlib import ExitStack
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+from tracker import errors
 from tracker.fsio import make_new_folders
 from tracker.households import (
     household_returns,
@@ -702,7 +703,9 @@ def roll_household(
         # A name the layout refuses (decision 188) is the plan's refusal too,
         # in the same voice (the port review's note).
         except (ManifestError, OSError, LayoutError) as exc:
-            raise ManifestError(_nothing_rolled(one.path.name, exc)) from exc
+            errors.keep("rollover", exc, name=one.path.name)
+            raise ManifestError(_nothing_rolled(
+                one.path.name, errors.said(exc, (ManifestError, LayoutError)))) from exc
         targets.add(name_key(roll.target.name))
         rolls.append(roll)
     # What nobody ticked is finished with: one details edit on its own
@@ -718,7 +721,8 @@ def roll_household(
             # the lock (step 4), so an edit made meanwhile is never undone.
             validated(_rows_as_stored(one.path))
         except (ManifestError, OSError) as exc:
-            raise ManifestError(_nothing_rolled(one.path.name, exc)) from exc
+            errors.keep("rollover", exc, name=one.path.name)
+            raise ManifestError(_nothing_rolled(one.path.name, errors.said(exc, (ManifestError,)))) from exc
         retiring.append(one.path)
 
     result = HouseholdRollover(target_year=target_year)
@@ -737,7 +741,9 @@ def roll_household(
                 for target, folders in reversed(made):
                     _unmake(target, folders)
                 if isinstance(exc, (ManifestError, OSError)):
-                    raise ManifestError(_nothing_rolled(roll.prior.name, exc)) from exc
+                    errors.keep("rollover", exc, name=roll.prior.name)
+                    raise ManifestError(_nothing_rolled(
+                        roll.prior.name, errors.said(exc, (ManifestError,)))) from exc
                 raise
             result.rolled.append((roll.prior, roll.target, roll.report))
 
@@ -752,8 +758,10 @@ def roll_household(
                 save_rules(folder, _rows_as_stored(folder), replace(info, active=False),
                            lock_held=True)
             except Exception as exc:
+                errors.keep("rollover", exc, name=folder.name)
                 not_retired = RolledNotAllRetired(
-                    result, [one for one in retiring if one not in result.retired], exc)
+                    result, [one for one in retiring if one not in result.retired],
+                    errors.said(exc, (ManifestError,)))
                 break
             result.retired.append(folder)
 
@@ -771,7 +779,8 @@ def roll_household(
         try:
             step(household_dir)
         except Exception as exc:
-            not_retired.also.append(f"{step.__name__} failed ({exc})")
+            errors.keep("rollover", exc, name=household_dir.name)
+            not_retired.also.append(f"{step.__name__} failed ({errors.said(exc, (ManifestError,))})")
     raise not_retired
 
 

@@ -129,6 +129,7 @@ from tracker.validators import (
     extension_of,
     open_test,
     picture_too_large_reason,
+    said_extension,
     sha256_of,
     too_large_reason,
 )
@@ -1975,7 +1976,7 @@ def _extract(path: Path, *, ocr: bool) -> Extraction:
         )
     if text is None:
         return Extraction(
-            None, reason=reasons.UNCHECKABLE_TYPE.format(extension=extension), extractable=False,
+            None, reason=reasons.UNCHECKABLE_TYPE.format(extension=said_extension(path)), extractable=False,
             code=reasons.UNCHECKABLE_TYPE.code,
         )
     pages = text.count(PAGE_BREAK) + 1

@@ -211,10 +211,10 @@ from tracker.validators import (
     TEXT_READ_CAP_MB,
     PdfVerdictCache,
     check_file,
-    extension_of,
     google_stub_reason,
     is_cloud_placeholder,
     is_ignored,
+    said_extension,
     too_large_reason,
 )
 
@@ -1015,7 +1015,7 @@ def _decide(
                            evidence_record=_recorded_for(record, named),
                            code=code or reasons.UNMATCHED_CODE)
         if all(code == reasons.EXTENSION_NOT_ALLOWED.code for _reason, code in refusals):
-            ext = extension_of(path) or "(none)"
+            ext = said_extension(path) or "(none)"
             return Routing(
                 path=path,
                 identifier=None,

@@ -1688,6 +1688,12 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
         if problem := records.entry_problem(row):
             refuse(f"carries a row whose {problem}")
         a_code("code", row.get("code"), "a row")
+        # The client's subfolder is written as the record keeps a name
+        # (decision 190, layout.recorded_name): a part it would change is a
+        # name no writer wrote.
+        subfolder = row.get("subfolder")
+        if subfolder and any(layout.recorded_name(part) != part for part in str(subfolder).split("\\")):
+            refuse("carries a row whose 'subfolder' is not a name as the record keeps one")
         for field in ("pbc_location", "prepared_location", "container"):
             if row.get(field):
                 a_place(field, row[field], writes=False, what="a row")

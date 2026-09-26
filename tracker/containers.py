@@ -87,7 +87,7 @@ from pathlib import PurePath
 
 from tracker import content_check, reasons
 from tracker.errors import error_class
-from tracker.layout import WINDOWS_ILLEGAL_CHARS, is_invisible, is_reserved_name
+from tracker.layout import WINDOWS_ILLEGAL_CHARS, is_reserved_name, recorded_name
 
 #: The extensions that make a drop a container, lower case, no dot. The
 #: extension and nothing else decides (the module docstring says why).
@@ -228,7 +228,9 @@ def safe_name(raw: object, fallback: str | Callable[[], str]) -> str:
     all, is ``fallback`` (a string, or a function asked only when it is
     needed, so an unnamed part's number is spent only on an unnamed part).
     A name the record cannot hold as UTF-8 is mended first, and every
-    invisible formatting character goes (decision 176): a right-to-left
+    invisible formatting character goes (decision 176; since decision 190
+    by :func:`tracker.layout.recorded_name`, which also composes the name
+    and drops control characters, for every name the record keeps): a right-to-left
     override made ``invoice<RLO>fdp.exe`` show in Explorer as
     ``invoiceexe.pdf``, a program dressed as a PDF in the firm's review
     folder, and a zero-width space made two names that look alike two
@@ -237,11 +239,7 @@ def safe_name(raw: object, fallback: str | Callable[[], str]) -> str:
     :data:`NAME_MAX` is cut here only so that the record never holds one
     longer than a file name can be.
     """
-    text = str(raw or "").encode("utf-8", "replace").decode("utf-8")
-    # The one invisible set is the layout's (decision 188): what the name
-    # rule refuses in a folder's name goes from an attachment's, but for
-    # white space and control characters, which the rule below makes ``_``.
-    text = "".join(ch for ch in text if not is_invisible(ch) or ch.isspace() or ch < " ")
+    text = recorded_name(raw, fallback="")        # the one normaliser (decision 190)
     text = text.replace("\\", "/").rsplit("/", 1)[-1]
     text = WINDOWS_ILLEGAL_CHARS.sub("_", text).strip().rstrip(". ")
     if len(text) > NAME_MAX:

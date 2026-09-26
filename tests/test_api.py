@@ -891,6 +891,74 @@ def test_a_parked_file_the_evidence_says_nothing_about_is_offered_nothing(
     assert triaged["shortlist"] == [], "no evidence, no suggestion — the person reads it"
 
 
+def test_the_review_card_has_three_buckets_and_opens_only_a_documents_copy(capsys, demo_root, tmp_path):
+    """Decision 190's three buckets, decided here from the row's code and
+    its type on disk: each parked row and its triage carry ``bucket`` and
+    its true ``extension``; a document's and a container's row carry the
+    key its review copy is named under in ``paths`` - the only paths the
+    shell opens - and a program's carries none."""
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.bmp")
+    (inbox_of(engagement) / "W-2 2025.pdf.exe").write_bytes(b"MZ")
+    (inbox_of(engagement) / "scans.zip").write_bytes(b"PK\x03\x04 not really a zip")
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    state = payload["state"]
+
+    rows = {e["original_name"]: e for e in state["index"] if e["decision"] == NEEDS_REVIEW}
+    assert {name: (e["bucket"], e["extension"]) for name, e in rows.items()} == {
+        "vacation photo.bmp": (api.BUCKET_DOCUMENT, "bmp"),
+        "scans.zip": (api.BUCKET_CONTAINER, "zip"),
+        "W-2 2025.pdf.exe": (api.BUCKET_NOT_A_DOCUMENT, "exe"),
+    }
+    assert rows["W-2 2025.pdf.exe"]["open_key"] == ""
+    for name in ("vacation photo.bmp", "scans.zip"):
+        opened = Path(state["paths"][rows[name]["open_key"]])
+        assert opened.is_file() and opened.parent.name == REVIEW_DIR_NAME, name
+    assert {t["original_name"]: t["bucket"] for t in state["review"]} == {
+        name: e["bucket"] for name, e in rows.items()}
+
+
+def test_every_parked_row_ships_a_unique_handle_and_a_program_from_a_zip_is_answered_by_it(
+    capsys, demo_root, tmp_path,
+):
+    """The review's M3: a program taken from a zip has no location, so the
+    row, its triage and every review command travel by ``handle`` - the
+    record's key, unique where ``""`` named every such row and the API
+    refused it. Setting the first aside by its handle sets aside that row
+    and no other; the card also shows a hidden program's type clean (M1)."""
+    import io
+    import zipfile
+
+    from tracker.filer import NOT_REQUESTED
+
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.bmp")
+    packed = io.BytesIO()
+    with zipfile.ZipFile(packed, "w") as archive:
+        archive.writestr("invoice.js", b"WScript.Echo(1)")
+        archive.writestr("payroll.exe", b"MZ")
+    (inbox_of(engagement) / "docs.zip").write_bytes(packed.getvalue())
+    (inbox_of(engagement) / "Pay.scr\ufeff").write_bytes(b"MZ another program")
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    state = payload["state"]
+
+    parked = {e["original_name"]: e for e in state["index"] if e["decision"] == NEEDS_REVIEW}
+    handles = [e["handle"] for e in parked.values()]
+    assert "" not in handles and len(set(handles)) == len(handles)
+    assert {t["handle"] for t in state["review"]} == set(handles)
+    assert parked["Pay.scr"]["bucket"] == api.BUCKET_NOT_A_DOCUMENT
+    assert parked["Pay.scr"]["extension"] == "scr" and parked["Pay.scr"]["open_key"] == ""
+
+    first = parked["invoice.js"]
+    assert first["pbc_location"] == ""
+    code, payload = run(capsys, "dismiss", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": first["handle"], "note": "", "seq": first["seq"]})
+    assert code == 0, payload
+    after = {e["original_name"]: e["decision"] for e in payload["state"]["index"]
+             if e["original_name"] in ("invoice.js", "payroll.exe")}
+    assert after == {"invoice.js": NOT_REQUESTED, "payroll.exe": NEEDS_REVIEW}
+
+
 def test_dismissing_a_file_takes_it_out_of_the_review_queue(capsys, demo_root, tmp_path):
     from tracker.filer import NOT_REQUESTED
 
@@ -1909,6 +1977,9 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
         "hand_over_request": api.HAND_OVER_REQUEST_LABEL,
         "handed_over": api.HANDED_OVER_LINE,
         "file_where_it_waits": api.FILE_WHERE_IT_WAITS_LABEL,
+        "buckets": api.BUCKET_HEADINGS, "bucket_order": list(api.BUCKET_HEADINGS),
+        "not_a_document": api.BUCKET_NOT_A_DOCUMENT,
+        "open_copy": api.OPEN_COPY_LABEL, "true_type": api.TRUE_TYPE,
     }
     assert vocab["default_extensions"] == ", ".join(DEFAULT_EXTENSIONS)
     assert "carried_sheet" not in vocab
@@ -2601,6 +2672,37 @@ def test_a_held_reminder_shows_no_letter_and_offers_no_action(capsys, demo_root)
                         stdin={"stage": card["stage"], "fingerprint": card["fingerprint"]})
     assert code == 1 and "the reminder is held" in payload["error"]
     assert list(folder.glob("reminder-draft*")) == []
+
+
+def test_a_letter_that_only_asks_about_a_program_is_offered_on_the_card(capsys, demo_root):
+    """The re-check's S-N1 on this surface: every request is in and a
+    program is parked. The card offers the letter that asks about it -
+    editable, as the scheduler writes it - at no stage, and a stage asked
+    for re-stages nothing, because a file that is not a document is no
+    rung."""
+    from tests.conftest import seed_index, seed_statuses
+    from tracker import reasons
+    from tracker.filer import IndexEntry
+    from tracker.manifest import StatusUpdate
+    from tracker.reminder import SECTION_FAILED, STAGE_4_CONSEQUENCES
+
+    folder = chased_engagement(capsys, demo_root, name="Program")
+    seed_statuses(folder, {"A01": StatusUpdate(status=Status.RECEIVED, file_count=1),
+                           "B01": StatusUpdate(status=Status.RECEIVED, file_count=1)})
+    seed_index(folder, [IndexEntry(
+        received="2026-02-01", original_name="setup.exe", size_kb=0.1, digest="5" * 64,
+        identifier="", prepared_location="", pbc_location="pbc/setup.exe",
+        decision=NEEDS_REVIEW, reason=reasons.NOT_A_DOCUMENT.format(),
+        code=reasons.NOT_A_DOCUMENT.code,
+    )])
+
+    for stage in (None, 4):
+        card = reminder_card(capsys, folder, stage=stage)
+        assert card["held"] == [] and card["editable"] is True
+        assert card["asked"] == []
+        assert STAGE_4_CONSEQUENCES not in card["text"]
+        assert f"{SECTION_FAILED}\n  - setup.exe - " in card["text"]
+        assert "still needed" not in card["subject"]
 
 
 def test_the_card_shows_the_inbox_hold_in_the_apis_words_and_offers_no_approve(capsys, demo_root):
@@ -3583,7 +3685,7 @@ def test_run_now_sorts_against_the_feed_list_like_the_scheduled_pass(capsys, dem
     assert code == 0, payload
     assert read_index(llc) == []                    # the pass files nothing across
     [row] = read_index(father)
-    assert row.decision == NEEDS_REVIEW and reasons.NAMED_ACROSS_HOUSEHOLDS.matches(row.reason)
+    assert row.decision == NEEDS_REVIEW and row.code == reasons.NAMED_ACROSS_HOUSEHOLDS.code
     assert row.waiting_for.identifiers == ("B01",)
     assert payload["run"]["filed"] == 0
 

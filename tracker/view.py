@@ -87,7 +87,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tracker import ledger, review
+from tracker import errors, ledger, review
 from tracker.filer import (
     INDEX_HEADING,
     NEEDS_REVIEW,
@@ -557,7 +557,9 @@ def _readers(
         # A record the readers refuse: there is nothing to draw, and the
         # caller decides what that means. A pass says it in a log line and
         # stands.
-        raise ViewError(f"{engagement_dir.name}: the view could not be built ({exc})") from exc
+        errors.keep("view", exc, name=engagement_dir.name)
+        raise ViewError(f"{engagement_dir.name}: the view could not be built "
+                        f"({errors.said(exc, (ManifestError, FilingError, ledger.LedgerError))})") from exc
     return head, (recorded[-1] if recorded else None), items, entries
 
 

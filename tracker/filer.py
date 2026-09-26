@@ -205,6 +205,7 @@ from tracker.fsio import (
     copy_atomically,
     is_link,
     make_writable,
+    mark_from_internet,
     stranded_temps,
     temp_owner,
     write_bytes_atomically,
@@ -229,6 +230,7 @@ from tracker.layout import (
     place_of,
     place_problem,
     private_tree_of,
+    recorded_name,
     root_of,
     year_of,
 )
@@ -316,9 +318,11 @@ from tracker.scaffold import (
 from tracker.validators import (
     UNFINISHED_SUFFIXES,
     PdfVerdictCache,
+    bears_macros,
     extension_of,
     is_cloud_placeholder,
     is_ignored,
+    is_program,
     is_sync_staging,
     iter_candidate_files,
     sha256_of,
@@ -671,6 +675,12 @@ HOUSEHOLD_NO_ROOM = ("no room under {label} for even a review copy ({length} cha
 REVIEW_NO_ROOM = ("no review copy of {name} could be made: its path would be {length} characters at "
                   "its shortest, past the {limit} characters a {ext} copy may have; shorten the "
                   "clients root")
+#: A review copy of a program is never named (decision 190's review, M1):
+#: nobody here opens a program, so the one function that names a review
+#: copy refuses one - whatever road asked for it, and whatever its row
+#: says it was when it was recorded.
+REVIEW_OF_A_PROGRAM = ("no review copy of {name} was made: it is a program, not a document, and "
+                       "nobody here opens it")
 #: A review copy that could not be made for any other reason (a disk that
 #: refused, a copy that did not come out as the original).
 REVIEW_COPY_FAILED = "no review copy of {name} could be made ({problem})"
@@ -952,19 +962,80 @@ def _copy_whole(
     """
     if not expect:
         raise FilingError(COPY_UNPROVED.format(source=source.name, target=target.name))
+    mark = target.parent.name == REVIEW_DIR_NAME and _may_carry_code(source)
 
     def prove(temp: Path) -> None:
         digest = _digest_or_none(temp)
         if digest != expect:
             raise CopyMismatchError(COPY_MISMATCH.format(
-                source=source.name, target=target.name,
+                source=recorded_name(source.name), target=recorded_name(target.name),
                 expected=expect[:_DIGEST_SHOWN],
                 found=(digest or "")[:_DIGEST_SHOWN] or "nothing",
             ))
+        if mark:
+            # Marked on the temp, before the swap, so the name never holds
+            # an unmarked copy: a mark refused is a copy not made (fail
+            # closed), and the drop is a "could not be filed" row the pass
+            # report names (decision 190).
+            _mark_for_review(temp, name=target.name)
 
     copy_atomically(source, target, prove=prove, limit=MAX_PATH_LENGTH)
     if cache is not None:
         cache.remember_digest(target, expect)
+
+
+#: What a review copy that could not be marked for Protected View says: it
+#: was not made (decision 190).
+MARK_REFUSED = ("no review copy of {name} was made: it can carry macros, and it could not be "
+                "marked as from the internet so that Office opens it in Protected View ({problem})")
+
+
+#: What the person does with a drop whose review copy was refused its mark
+#: - the tail of its "could not be filed" row, in place of "file it by
+#: hand", which would send them to the unmarked original (decision 190's
+#: re-check, N-N1). No pass makes the copy later: the row keeps none.
+MARK_REFUSED_STEP = ("never open the original; ask the client for it as a PDF, and set this row "
+                     "aside in the app")
+
+
+class MarkRefusedError(FilingError):
+    """A review copy that must be marked for Protected View could not be."""
+
+
+def _may_carry_code(source: Path) -> bool:
+    """Whether the firm's review copy of ``source`` is marked as from the
+    internet (decision 190): an Office file that can carry macros, and an
+    email or a zip - what it holds is not known until a person opens it,
+    and Windows carries the mark to whatever is taken out of it. Asked of
+    the recorded name as well as the raw one, because the copy is named by
+    the recorded one: ``book.xlsm<U+200B>`` is copied as ``book.xlsm``."""
+    return (bears_macros(source) or containers.is_container(source.name)
+            or containers.is_container(recorded_name(source.name, fallback="")))
+
+
+def _shown(location: str) -> str:
+    """A client's path or name as a sentence quotes it: with the characters
+    :func:`~tracker.layout.recorded_name` drops dropped (decision 190's
+    review, S4), so no invisible or control character reaches a row's
+    reason through a quoted location. The row's ``pbc_location`` keeps the
+    raw path, which is what finds the file; ``""`` stays ``""``."""
+    return recorded_name(location, fallback="") if location else ""
+
+
+def _mark_for_review(path: Path, *, name: str) -> None:
+    """Mark ``path`` as from the internet, or raise :class:`MarkRefusedError`
+    naming the review copy (``name``) that was therefore not put there -
+    **the one marking path** (decision 190): a copy made into the review
+    folder is marked on its temp (:func:`_copy_whole`), and a working copy
+    moved into it is marked before the rename (:func:`_do_op`), so no copy
+    lands in review unmarked, made or moved, and a mark refused is a copy
+    that never got there (fail closed)."""
+    try:
+        mark_from_internet(path)
+    except OSError as exc:
+        errors.keep("filer: marking a review copy", exc, name=name)
+        raise MarkRefusedError(MARK_REFUSED.format(
+            name=name, problem=errors.error_class(exc))) from exc
 
 
 def _digest_or_none(path: Path) -> str | None:
@@ -1778,7 +1849,7 @@ def _refuse_a_step_outside(engagement_dir: Path, op: dict) -> None:
     for location, write in ledger.op_ends(op):
         code = place_problem(engagement_dir, location, writes=write, removes=removes)
         if code is not None:
-            raise FilingError(OP_OUTSIDE.format(name=Path(engagement_dir).name, location=location,
+            raise FilingError(OP_OUTSIDE.format(name=Path(engagement_dir).name, location=_shown(location),
                                                 reason=code))
 
 
@@ -1824,6 +1895,27 @@ def _door_for(root: Path, household: str, target: Path) -> None:
                 raise FilingError(str(exc)) from None
 
 
+def _mark_a_move_into_review(engagement_dir: Path, op: dict) -> None:
+    """Mark the working copy a move is carrying into review, or raise
+    :class:`MarkRefusedError` (decision 190's review, S2).
+
+    A working copy moved into review - a person's unfiling, a refused
+    put-back - is marked like a copy made there, where it stands, before
+    the rename: it is the firm's working copy, never an original, and a
+    mark refused moves nothing. Asked twice for a person's move: by
+    :func:`_intend`, before the move is written down, so a refused mark is
+    a decision that records nothing (the re-check's M-N1) - and by
+    :func:`_do_op`, which carries the move out, so a recovery that finishes
+    an older intent marks it too. A second mark is the same mark.
+    """
+    if op[ledger.OP_KEY] != ledger.OP_MOVE:
+        return
+    source = locate(engagement_dir, op[ledger.FROM_KEY])
+    target = locate(engagement_dir, op[ledger.TO_KEY])
+    if target.parent.name == REVIEW_DIR_NAME and source.is_file() and _may_carry_code(source):
+        _mark_for_review(source, name=target.name)
+
+
 def _do_op(engagement_dir: Path, op: dict, *, cache: ContentCache | None = None) -> None:
     """Carry out one operation of an intent.
 
@@ -1855,6 +1947,7 @@ def _do_op(engagement_dir: Path, op: dict, *, cache: ContentCache | None = None)
     _through_the_door(engagement_dir, target)
     target.parent.mkdir(parents=True, exist_ok=True)
     if kind == ledger.OP_MOVE:
+        _mark_a_move_into_review(engagement_dir, op)
         _move_whole(source, target, within=root_of(engagement_dir))
     else:
         _copy_whole(source, target, expect=op[ledger.DIGEST_KEY], cache=cache)
@@ -1916,6 +2009,12 @@ def _intend(
     for op in ops:
         _refuse_a_step_outside(engagement_dir, op)
     _prove(engagement_dir, ops)
+    # A working copy this decision moves into review is marked before the
+    # decision is written down (decision 190's re-check, M-N1): a refused
+    # mark is then a refusal that records nothing, never an open intent
+    # that every later pass would try to finish and fail on.
+    for op in ops:
+        _mark_a_move_into_review(engagement_dir, op)
     if not ops and then != ledger.RELEASED:
         return
     event = ledger.new(ledger.MOVING, **{
@@ -1992,6 +2091,29 @@ def _abandon(engagement_dir: Path, key: str) -> None:
             ledger.MOVE_ABANDONED, **{ledger.KEY_KEY: key}))
     except Exception as exc:          # the real error is the one the caller is raising
         log.error("Could not record that the move of %s was abandoned: %s", key, exc)
+
+
+def _carry_out_a_persons_ops(engagement_dir: Path, key: str, ops: list[dict]) -> None:
+    """Carry out the operations of a person's unfiling or put-back, whose
+    first step is the one that may go into review (decision 190's
+    re-check, M-N1).
+
+    A move into review was marked before the intent was written
+    (:func:`_intend`); a *copy* into review can only be marked on its temp,
+    so a refusal comes here, from the first step, before anything of the
+    decision has happened - and the intent is abandoned, so the refusal
+    records nothing and no later pass tries to finish it. The person sees
+    the refusal; the row stands as it was. A refusal on a later step
+    (none of today's decisions has one) leaves the intent open for the
+    recovery, which stops on it once (:func:`_finish_interrupted_moves`).
+    """
+    for index, op in enumerate(ops):
+        try:
+            _do_op(engagement_dir, op)
+        except MarkRefusedError:
+            if index == 0:
+                _abandon(engagement_dir, key)
+            raise
 
 
 def _refuse_if_a_move_is_open(engagement_dir: Path) -> None:
@@ -2079,7 +2201,9 @@ def _subfolder_of(drop: Path, inbox: Path) -> str:
     """The client's subfolder a drop sits in, below the inbox, the way the
     client sees it in Explorer (``Bank statements\\2025``); ``""`` for a
     drop at the top of the inbox (decision 147, ruling 4)."""
-    return "\\".join(parts_below(inbox, drop.parent) or ())
+    # As the record keeps it: no invisible or control character (decision
+    # 190), each part below the inbox by the layout's one test (decision 188).
+    return "\\".join(recorded_name(part) for part in parts_below(inbox, drop.parent) or ())
 
 
 def _storable(path: Path) -> bool:
@@ -2775,7 +2899,7 @@ def _remade(entry: IndexEntry, locations: Sequence[str], stamp: str) -> tuple[In
     is what it was before it went - Filed, or Needs Review where it names no
     request, :data:`MOVED_BACK_SENTENCE`'s rule - with its nowhere sentence
     taken off, as a copy dragged back has its moved sentence taken off."""
-    sentence = REMADE_SENTENCE.format(home=PLACES_JOINED.join(locations), pbc=entry.pbc_location,
+    sentence = REMADE_SENTENCE.format(home=PLACES_JOINED.join(locations), pbc=_shown(entry.pbc_location),
                                       date=stamp, prepared=PREPARED_DIR_NAME)
     if entry.decision == FILE_MOVED:
         return replace(entry, decision=FILED if entry.identifier else NEEDS_REVIEW,
@@ -2839,8 +2963,9 @@ def _make_again_or_hold(
                 _make_again(engagement_dir, entry, remade, source, absent,
                             by=ledger.BY_PASS, then=ledger.COPY_REMADE, cache=cache)
             except (OSError, FilingError) as exc:
-                problem = REMAKE_FAILED.format(home=PLACES_JOINED.join(absent),
-                                               pbc=entry.pbc_location, problem=exc)
+                problem = REMAKE_FAILED.format(home=PLACES_JOINED.join(absent), pbc=_shown(entry.pbc_location),
+                                               problem=errors.said(exc, FIRM_WRITTEN))
+                errors.keep("filer: remaking a copy", exc, name=entry.original_name)
                 log.warning("%s", problem)
                 return FileError(Path(absent[0]).name, problem, True)
         entries[position] = remade
@@ -2851,7 +2976,7 @@ def _make_again_or_hold(
     if both_gone(entry):
         return None                  # said once already, and both are gone still
     sentence = BOTH_GONE_SENTENCE.format(home=home, prepared=PREPARED_DIR_NAME,
-                                         pbc=entry.pbc_location or "(none)", date=stamp)
+                                         pbc=_shown(entry.pbc_location) or "(none)", date=stamp)
     entries[position] = replace(entry, decision=FILE_MOVED,
                                 reason=f"{_without_moved_sentence(entry.reason)}; {sentence}")
     swept[key] = ledger.COPY_MOVED
@@ -3008,11 +3133,11 @@ def _prove_working_copies(
             sentence = MOVED_SENTENCE.format(home=home, now=now, date=stamp)
         elif entry.pbc_location and not _absent(locate(engagement_dir, entry.pbc_location)):
             sentence = MOVED_GONE_SENTENCE.format(
-                home=home, prepared=PREPARED_DIR_NAME, pbc=entry.pbc_location, date=stamp)
+                home=home, prepared=PREPARED_DIR_NAME, pbc=_shown(entry.pbc_location), date=stamp)
         else:
             # "The original is safe" would be false (decision 157, B5).
             sentence = BOTH_GONE_SENTENCE.format(
-                home=home, prepared=PREPARED_DIR_NAME, pbc=entry.pbc_location or "(none)",
+                home=home, prepared=PREPARED_DIR_NAME, pbc=_shown(entry.pbc_location) or "(none)",
                 date=stamp)
         entries[position] = replace(
             entry, decision=FILE_MOVED,
@@ -3107,6 +3232,11 @@ INTERRUPTED_ORIGINAL_GONE = "is not there either"
 #: after the sync has finished.
 INTERRUPTED_SYNCING = ("an interrupted step was moving {name} and {location} is still "
                        "syncing; nothing was touched and the next pass finishes it")
+#: Attention, for an interrupted step into review whose copy could not be
+#: marked for Protected View (decision 190's re-check, M-N1): it follows
+#: :data:`MARK_REFUSED`, once, and the pass goes on.
+INTERRUPTED_MARK_REFUSED = ("an interrupted step was putting it into review; nothing was moved, "
+                            "the step was abandoned and the row stands as it was")
 _INTERRUPTED_TAIL = re.compile(
     "^(?P<base>.*); " + as_pattern(
         reasons.INTERRUPTED_MOVE.template,
@@ -3275,7 +3405,7 @@ def _a_copy_to_act_on(
     # restored copy wrote is held to the same places as its steps.
     code = place_problem(engagement_dir, entry.pbc_location, writes=False)
     if code is not None:
-        return "", OP_OUTSIDE.format(name=engagement_dir.name, location=entry.pbc_location,
+        return "", OP_OUTSIDE.format(name=engagement_dir.name, location=_shown(entry.pbc_location),
                                      reason=code)
     source = locate(engagement_dir, entry.pbc_location)
     # Nor through a link (decision 187, A-7): the place rule is lexical,
@@ -3299,9 +3429,13 @@ def _a_copy_to_act_on(
                   entry.original_name, entry.pbc_location, exc)
         return "", str(exc)
     except (OSError, FilingError) as exc:
-        log.error("Could not park a copy of %s from %s: %s",
-                  entry.original_name, entry.pbc_location, exc)
-        return "", REVIEW_COPY_FAILED.format(name=entry.original_name, problem=exc)
+        # An OS error's words spell out the path - a client's folder, and
+        # whatever its name holds - so the row says its class; a
+        # FilingError is the firm's own sentence and is said whole
+        # (decision 190).
+        errors.keep("filer: review copy", exc, name=entry.original_name)
+        return "", REVIEW_COPY_FAILED.format(name=entry.original_name,
+                                             problem=errors.said(exc, FIRM_WRITTEN))
     return prepared_location(review_dir, parked.name), past_reader
 
 
@@ -3351,7 +3485,22 @@ def _finish_interrupted_moves(
     for intent in intents:
         key = str(intent.get(ledger.KEY_KEY) or "")
         row = intent.get(ledger.ROW_KEY)
-        outcome, op = _finish_the_ops(engagement_dir, intent.get(ledger.OPS_KEY) or [], cache)
+        try:
+            outcome, op = _finish_the_ops(engagement_dir, intent.get(ledger.OPS_KEY) or [], cache)
+        except MarkRefusedError as exc:
+            # A copy this intent was carrying into review could not be
+            # marked for Protected View (decision 190's re-check, M-N1):
+            # the step moved nothing, and finishing it forward would fail
+            # on every pass after this one. The intent is abandoned - the
+            # row stands as the record held it - and the pass says so
+            # once and goes on.
+            _abandon(engagement_dir, key)
+            name = entry_from_json(row).original_name if row else key
+            attention.append(FileError(
+                name, f"{errors.said(exc, FIRM_WRITTEN)}; {INTERRUPTED_MARK_REFUSED}", True))
+            log.warning("An interrupted step on %s was abandoned: %s", name,
+                        errors.said(exc, FIRM_WRITTEN))
+            continue
         if outcome == _SYNCING:
             attention.append(FileError(Path(op[ledger.FROM_KEY]).name, INTERRUPTED_SYNCING.format(
                 name=Path(op[ledger.FROM_KEY]).name,
@@ -3421,14 +3570,14 @@ def _the_trouble(engagement_dir: Path, entry: IndexEntry, op: dict, outcome: str
         except OSError:
             size = 0.0
         return reasons.INTERRUPTED_MOVE.format(listed=INTERRUPTED_MOVE_DETAIL.format(
-            name=entry.original_name, to=where, size=size, pbc=entry.pbc_location))
+            name=entry.original_name, to=where, size=size, pbc=_shown(entry.pbc_location)))
     held = (INTERRUPTED_ORIGINAL_HELD
             if _may_touch(engagement_dir, entry.pbc_location, writes=False)
             and _the_bytes(locate(engagement_dir, entry.pbc_location)) == entry.digest
             else INTERRUPTED_ORIGINAL_GONE)
     return reasons.INTERRUPTED_MOVE_LOST.format(listed=INTERRUPTED_MOVE_LOST_DETAIL.format(
-        name=entry.original_name, source=op[ledger.FROM_KEY],
-        to=op.get(ledger.TO_KEY, ""), pbc=entry.pbc_location, held=held))
+        name=entry.original_name, source=_shown(op[ledger.FROM_KEY]),
+        to=op.get(ledger.TO_KEY, ""), pbc=_shown(entry.pbc_location), held=held))
 
 
 # ------------------------------------------------------------------- file ----
@@ -3840,7 +3989,7 @@ def _prepare_return(engagement_dir: Path, stamp: str, *, dry_run: bool) -> _Retu
     _filled, untied = (0, []) if dry_run else _record_missing_digests(engagement_dir, entries)
     for path, earlier in untied:
         report.attention.append(FileError(path.name, UNTIED_IN_PBC.format(
-            location=earlier.pbc_location, received=earlier.received,
+            location=_shown(earlier.pbc_location), received=earlier.received,
             prepared=earlier.prepared_location,
         ), True))
     # Every working copy the record names, proved against the row's own
@@ -3918,11 +4067,11 @@ def _follow_and_say(
     })
     for path, earlier in moved:
         run.report.attention.append(FileError(path.name, MOVED_IN_PBC.format(
-            location=earlier.pbc_location, now=location_of(engagement_dir, path),
+            location=_shown(earlier.pbc_location), now=location_of(engagement_dir, path),
         ), True))
     for earlier in gone:
         line = FileError(earlier.original_name, MISSING_IN_PBC.format(
-            location=earlier.pbc_location, received=earlier.received,
+            location=_shown(earlier.pbc_location), received=earlier.received,
         ), True)
         run.report.attention.append(line)
         # Kept by the row's key, so the same pass can take it back if the
@@ -3937,7 +4086,7 @@ def _follow_and_say(
         for path, earlier in (replaced_in_pbc(folder, engagement_dir, run.entries)
                               if folder.is_dir() else []):
             run.report.attention.append(FileError(path.name, REPLACED_IN_PBC.format(
-                location=earlier.pbc_location, received=earlier.received,
+                location=_shown(earlier.pbc_location), received=earlier.received,
                 prepared=earlier.prepared_location or "(none)",
             ), True))
     return strays
@@ -4151,15 +4300,17 @@ def _sort_all(
                 break
             except Exception as exc:  # the original is safe; say so and go on
                 errors.keep("filer: could not file", exc, name=drop.name)
+                # A refused mark's step never points at the unmarked original.
+                step = MARK_REFUSED_STEP if isinstance(exc, MarkRefusedError) else "file it by hand"
                 run = first
                 entry = IndexEntry(
-                    received=stamp, original_name=drop.name, size_kb=size_kb,
+                    received=stamp, original_name=recorded_name(drop.name), size_kb=size_kb,
                     digest=digest, identifier="",
                     prepared_location="", pbc_location=location_of(run.engagement_dir, original),
                     decision=NEEDS_REVIEW,
                     reason=(f"could not be filed ({errors.said(exc, FIRM_WRITTEN)}); "
                             f"original preserved in {location_of(run.engagement_dir, original)} - "
-                            f"file it by hand"),
+                            f"{step}"),
                     code=reasons.COULD_NOT_FILE_CODE, subfolder=subfolder,
                 )
                 run.report.errors.append(FileError(drop.name, entry.reason, False))
@@ -4244,11 +4395,11 @@ def _put_back_home(
         return False                 # somebody's file is there now: never over it
     key = ledger_key(entry)
     arrived = "/".join(parts_below(inbox, drop) or (drop.name,))
-    said = RETURNED_SENTENCE.format(drop=arrived, date=stamp, pbc=entry.pbc_location)
+    said = RETURNED_SENTENCE.format(drop=_shown(arrived), date=stamp, pbc=_shown(entry.pbc_location))
     copies = ([location for location in entry.filed_locations
                if _absent(locate(engagement_dir, location))] if both_gone(entry) else [])
     if copies:
-        remade = REMADE_SENTENCE.format(home=PLACES_JOINED.join(copies), pbc=entry.pbc_location,
+        remade = REMADE_SENTENCE.format(home=PLACES_JOINED.join(copies), pbc=_shown(entry.pbc_location),
                                         date=stamp, prepared=PREPARED_DIR_NAME)
         new = replace(entry, decision=FILED if entry.identifier else NEEDS_REVIEW,
                       reason=f"{_without_moved_sentence(entry.reason)}; {said}; {remade}")
@@ -4271,7 +4422,7 @@ def _put_back_home(
             _abandon(engagement_dir, key)
             first.report.errors.append(FileError(
                 drop.name,
-                f"could not be moved back to {entry.pbc_location} ({errors.error_class(exc)}); left in place",
+                f"could not be moved back to {_shown(entry.pbc_location)} ({errors.error_class(exc)}); left in place",
                 True))
             errors.keep("filer: moving it back failed", exc, name=drop.name)
             return True
@@ -4472,19 +4623,22 @@ def _open_container(
     taken: list[tuple[containers.Attachment, Path, str]] = []
     in_the_year = {} if dry_run else _taken_in_the_year(home, runs)
     for one in opened.attachments:
-        if dry_run:
+        if dry_run or is_program(one.name):
+            # A program inside is never written out of it (decision 190):
+            # its row parks as not a document, naming no file.
             taken.append((one, folder / one.name, hashlib.sha256(one.data).hexdigest()))
         else:
             taken.append((one, *_take_out(folder, one, claimed, recorded=in_the_year)))
     entry = IndexEntry(
-        received=stamp, original_name=drop.name, size_kb=size_kb, digest=digest,
+        received=stamp, original_name=recorded_name(drop.name), size_kb=size_kb, digest=digest,
         identifier="", prepared_location="", pbc_location=at[id(home)], decision=OPENED,
         reason=_opened_sentence(opened), subfolder=subfolder,
     )
     home.opened[ledger_key(entry)] = {
         ledger.ATTACHMENTS_KEY: [
             {"name": one.name, "size": len(one.data), "digest": sha,
-             "location": "" if dry_run else location_of(home.engagement_dir, path)}
+             "location": ("" if dry_run or is_program(one.name)
+                          else location_of(home.engagement_dir, path))}
             for one, path, sha in taken
         ],
         ledger.SKIPPED_KEY: [{"name": one.name, "why": one.why} for one in opened.skipped],
@@ -4562,7 +4716,14 @@ def _decide_attachment(
         run.context.container = at[id(run)]
         run.context.subfolder = ""
     try:
-        if attachment.parks and not any(digest in run.known and _may_hold(run) for run in runs):
+        known = any(digest in run.known and _may_hold(run) for run in runs)
+        if is_program(attachment.name):
+            # Never written out of its container, so there is no file for
+            # decision 111's bytes-first road to act on: it parks, every
+            # time it arrives (decision 190).
+            run, entry = _park_a_program(named, path, digest, size_kb, stamp, [first], first,
+                                         kept_at="")
+        elif attachment.parks and not known:
             run, entry = first, _park_it(named, path, digest, size_kb, stamp, first,
                                          reason=attachment.parks, code=attachment.code,
                                          candidates=(), evidence="")
@@ -4784,6 +4945,20 @@ def _by_the_name(
     return stage
 
 
+def _park_a_program(
+    drop: Path, original: Path, digest: str, size_kb: float, stamp: str, runs: list[_ReturnRun],
+    first: _ReturnRun, *, kept_at: str | None = None, resent: str = "",
+) -> tuple[_ReturnRun, IndexEntry]:
+    """Park a program (``validators.is_program``) in the dropping
+    household's own return, as ``reasons.NOT_A_DOCUMENT``, with no review
+    copy (decision 190). ``resent`` is the set-aside sentence a program
+    sent again after a person set it aside carries, as any re-send does."""
+    home = next((one for one in runs if one.home), first)
+    return home, _park_it(drop, original, digest, size_kb, stamp, home,
+                          reason=reasons.NOT_A_DOCUMENT.format(), code=reasons.NOT_A_DOCUMENT.code,
+                          candidates=(), evidence="", copy=False, kept_at=kept_at, resent=resent)
+
+
 def _decide_across(
     drop: Path, original: Path, digest: str, size_kb: float, stamp: str, runs: list[_ReturnRun],
     first: _ReturnRun,
@@ -4847,6 +5022,13 @@ def _decide_across(
                                   reason=reasons.OPENED_NOT_ACROSS.format(),
                                   code=reasons.OPENED_NOT_ACROSS.code,
                                   candidates=(), evidence="")
+
+    # A program is not a document (decision 190): parked before any
+    # reading, routing or shortlist, so nothing its name says reaches a
+    # request, and with no review copy, because nobody here opens it. Its
+    # original rests where it was moved, byte for byte.
+    if is_program(drop.name):
+        return _park_a_program(drop, original, digest, size_kb, stamp, runs, first)
 
     # One reading, however many returns judge it (decision 128). A dry run
     # judges the drop where it lies, as it always has.
@@ -5316,7 +5498,7 @@ def _file_it(
     resting = original
     locations = [location for location, _copy in planned]
     entry = IndexEntry(
-        received=stamp, original_name=drop.name, size_kb=size_kb,
+        received=stamp, original_name=recorded_name(drop.name), size_kb=size_kb,
         digest=digest, identifier=item.identifier,
         prepared_location=locations[0],
         pbc_location=location_of(run.engagement_dir, resting), decision=FILED,
@@ -5360,7 +5542,18 @@ def _review_copy_path(review_dir: Path, name: str) -> tuple[Path, str]:
     Windows's own leaves room, :class:`NoRoom` says a review copy could not
     be made (:data:`REVIEW_NO_ROOM`) - the pass's floor proves room for a
     short extension, not for every suffix a client's file can carry.
+
+    A program is never named here (:data:`REVIEW_OF_A_PROGRAM`, a
+    :class:`FilingError`): asked of the recorded name, which an invisible
+    character after the suffix cannot hide it from (decision 190's review,
+    M1), whatever road asked for the copy.
     """
+    # The copy is the firm's, so its name is the recorded one: a direction
+    # override never dresses a program as a PDF in the review folder, and
+    # a row recorded before decision 190 gets the same name (decision 190).
+    name = recorded_name(name)
+    if is_program(name):
+        raise FilingError(REVIEW_OF_A_PROGRAM.format(name=name))
     folder = len(str(review_dir)) + 1
     limit = limit_for(extension_of(Path(name)))
     try:
@@ -5374,19 +5567,25 @@ def _review_copy_path(review_dir: Path, name: str) -> tuple[Path, str]:
 def _park_it(
     drop: Path, original: Path, digest: str, size_kb: float, stamp: str,
     run: _ReturnRun, *, reason: str, code: str, candidates, evidence: str, resent: str = "",
-    waits_for: str = "",
+    copy: bool = True, kept_at: str | None = None, waits_for: str = "",
 ) -> IndexEntry:
     """Park one preserved original in this return's Needs Review, with a
     working copy a person can open, the sentence that says why and the code
     of the cause that sentence says (decision 190) - required, because a
     parked row's code is what the letter and the card read - and, for a
     document naming another household's person, what it waits for
-    (``waits_for``, decision 204)."""
+    (``waits_for``, decision 204).
+
+    ``copy=False`` parks a program (decision 190): no review copy, so the
+    row's ``prepared_location`` is empty and nothing of it reaches the
+    review folder. ``kept_at`` is where the row says its original rests
+    when that is not ``original`` - ``""`` for a program inside an email
+    or a zip, which is never written out of it."""
     context = run.context
     review_name = drop.name
     parking: list[dict] = []
     past_reader = ""
-    if not context.dry_run:
+    if copy and not context.dry_run:
         # One row, one working copy. The copy already there holding these
         # bytes is the *set-aside* row's, and two rows naming one file would
         # let filing either of them carry the other's copy away, so a re-send
@@ -5405,10 +5604,11 @@ def _park_it(
         review_name = review_target.name
     reason = "; ".join(part for part in (resent, reason, past_reader) if part)
     entry = IndexEntry(
-        received=stamp, original_name=drop.name, size_kb=size_kb,
+        received=stamp, original_name=recorded_name(drop.name), size_kb=size_kb,
         digest=digest, identifier="",
-        prepared_location=prepared_location(context.review_dir, review_name),
-        pbc_location=location_of(run.engagement_dir, original), decision=NEEDS_REVIEW,
+        prepared_location=prepared_location(context.review_dir, review_name) if copy else "",
+        pbc_location=(location_of(run.engagement_dir, original) if kept_at is None else kept_at),
+        decision=NEEDS_REVIEW,
         # The flag first: what a person opening the card should read before
         # the reason for parking it; a copy past a reader's limit, last. The
         # subfolder it came from (decision 147) is its own column.
@@ -5515,7 +5715,7 @@ def _sort_one(
         )
         said = words.format(name=earlier.original_name, copy=earlier.filed_as)
         entry = IndexEntry(
-            received=stamp, original_name=drop.name, size_kb=size_kb,
+            received=stamp, original_name=recorded_name(drop.name), size_kb=size_kb,
             digest=digest, identifier=earlier.identifier,
             prepared_location="",
             pbc_location=location_of(run.engagement_dir, original), decision=DUPLICATE,
@@ -5524,6 +5724,14 @@ def _sort_one(
         )
         run.report.duplicates.append(entry)
         return run, entry
+
+    # A program is not a document on this road either (decision 190's
+    # review, M2): a program a person set aside, or one whose filed copy
+    # went, arriving again is asked before it is read, so its name never
+    # reaches a request and it gets no review copy - the same park as its
+    # first arrival, saying it was sent again.
+    if is_program(drop.name):
+        return _park_a_program(drop, original, digest, size_kb, stamp, runs, run, resent=resent)
 
     judged = drop if context.dry_run else original
     # Judged against this return's rows, and whose it is for this one
@@ -5775,14 +5983,14 @@ def assign_review_file(
             # Decision 157, B5: nothing to keep - the copy and the original
             # are both gone - in the one sentence the three answers share.
             raise FilingError(NOTHING_TO_PUT_BACK.format(
-                prepared=PREPARED_DIR_NAME, pbc=entry.pbc_location))
+                prepared=PREPARED_DIR_NAME, pbc=_shown(entry.pbc_location)))
         source = locate(engagement_dir, entry.pbc_location)
         if not source.is_file():
             raise FilingError(
-                f"the original {entry.pbc_location} is no longer there"
+                f"the original {_shown(entry.pbc_location)} is no longer there"
             )
         if is_cloud_placeholder(source):
-            raise FilingError(f"the original {entry.pbc_location} is still syncing; try again when it is here")
+            raise FilingError(f"the original {_shown(entry.pbc_location)} is still syncing; try again when it is here")
         digest, size_kb = entry.digest, entry.size_kb
         # The copy to move is the one the record says this row's bytes are
         # at. For nearly every row that is the Prepared Location column;
@@ -5821,11 +6029,12 @@ def assign_review_file(
                 replaced = evidence is not source and sha256_of(source) != digest
             except OSError as exc:
                 raise FilingError(
-                    f"the original {entry.pbc_location} could not be read ({exc}); try again when it can"
+                    f"the original {_shown(entry.pbc_location)} could not be read "
+                    f"({errors.error_class(exc)}); try again when it can"
                 ) from exc
             if replaced:
                 raise FilingError(
-                    f"the original {entry.pbc_location} and its parked copy no longer hold the same "
+                    f"the original {_shown(entry.pbc_location)} and its parked copy no longer hold the same "
                     "bytes, and the row recorded none - one of them changed after it arrived; "
                     "look at both files first"
                 )
@@ -5835,7 +6044,7 @@ def assign_review_file(
             # old row's record would be a lie in the audit trail; a person
             # decides which document this is now.
             raise FilingError(
-                f"the original {entry.pbc_location} no longer holds the bytes this row "
+                f"the original {_shown(entry.pbc_location)} no longer holds the bytes this row "
                 "recorded - it was replaced after it arrived; look at the file first"
             )
 
@@ -6099,19 +6308,19 @@ def hand_over(
             raise FilingError(reasons.OPENED_NOT_ACROSS.format())
         source = locate(home_return, entry.pbc_location)
         if not source.is_file():
-            raise FilingError(f"the original {entry.pbc_location} is no longer there")
+            raise FilingError(f"the original {_shown(entry.pbc_location)} is no longer there")
         if is_cloud_placeholder(source):
             raise FilingError(
-                f"the original {entry.pbc_location} is still syncing; try again when it is here")
+                f"the original {_shown(entry.pbc_location)} is still syncing; try again when it is here")
         digest = entry.digest
         if not digest:
             raise FilingError(
-                f"the original {entry.pbc_location} has no fingerprint on this row; the next pass "
+                f"the original {_shown(entry.pbc_location)} has no fingerprint on this row; the next pass "
                 f"records one, and a document can only be handed over once it has one"
             )
         if sha256_of(source) != digest:
             raise FilingError(
-                f"the original {entry.pbc_location} no longer holds the bytes this row "
+                f"the original {_shown(entry.pbc_location)} no longer holds the bytes this row "
                 "recorded - it was replaced after it arrived; look at the file first"
             )
 
@@ -6322,6 +6531,34 @@ def _refuse_unless_it_waits_for(
             f"not what this click named; look at the row again")
 
 
+#: What a review command given no handle says (decision 190's review,
+#: M3/N3): an empty handle would name every row recorded as ``unnamed``,
+#: or every program taken from an email or a zip, so it names none.
+NO_HANDLE = "no file was named; pick the row again"
+
+
+def _wanted(original: str) -> str:
+    """The handle a review command was given, as a location compares it -
+    refused when empty (:data:`NO_HANDLE`), never read as "the first row
+    with no location"."""
+    wanted = (original or "").replace("\\", "/").strip()
+    if not wanted:
+        raise FilingError(NO_HANDLE)
+    return wanted
+
+
+def _names_row(entry: IndexEntry, original: str, wanted: str, *, recorded: bool = True) -> bool:
+    """Whether a review command's handle names this row: its original's
+    location, its record key (:func:`ledger_key` - the handle a row with no
+    location travels by, decision 190's review, M3), or its name - the
+    recorded one too where ``recorded``. Asked by every lookup a review
+    command makes, so a handle the API ships reaches the row it was drawn
+    from."""
+    if entry.pbc_location == wanted or (not entry.pbc_location and ledger_key(entry) == original.strip()):
+        return True
+    return entry.original_name in ((wanted, recorded_name(wanted)) if recorded else (wanted,))
+
+
 def find_parked(
     entries: list[IndexEntry], original: str, *, accepting: Sequence[str] = ()
 ) -> int:
@@ -6342,13 +6579,13 @@ def find_parked(
     to find the same row this module will act on to say what the evidence
     pointed at; the underscored name is kept for one release.
     """
-    wanted = original.replace("\\", "/").strip()
+    wanted = _wanted(original)
     for position in range(len(entries) - 1, -1, -1):
         entry = entries[position]
-        if entry.pbc_location == wanted or entry.original_name == wanted:
+        if _names_row(entry, original, wanted):
             if entry.decision in _PARKED or entry.decision in accepting:
                 return position
-            if entry.decision == DUPLICATE and entry.original_name == wanted:
+            if entry.decision == DUPLICATE and entry.original_name in (wanted, recorded_name(wanted)):
                 continue          # a re-send under the same name; the parked row is older
             raise FilingError(
                 f"{entry.original_name} is not waiting for review (it is {entry.decision}"
@@ -6593,20 +6830,20 @@ def unfile_document(
             # B5) is refused in the one sentence all three answers use.
             if both_gone(entry) and _the_original_now(engagement_dir, entry)[0] != _ORIGINAL_PROVED:
                 raise FilingError(NOTHING_TO_PUT_BACK.format(
-                    prepared=PREPARED_DIR_NAME, pbc=entry.pbc_location))
+                    prepared=PREPARED_DIR_NAME, pbc=_shown(entry.pbc_location)))
             if not source.is_file():
                 raise FilingError(
                     f"the working copy is not the one this row recorded and the original "
-                    f"{entry.pbc_location} is no longer there; there is nothing to put back"
+                    f"{_shown(entry.pbc_location)} is no longer there; there is nothing to put back"
                 )
             if is_cloud_placeholder(source):
-                raise FilingError(f"the original {entry.pbc_location} is still syncing; try again when it is here")
+                raise FilingError(f"the original {_shown(entry.pbc_location)} is still syncing; try again when it is here")
             if entry.digest and _digest_or_none(source) != entry.digest:
                 # Proved before the intent is written, not by the copy after
                 # it: a copy of other bytes would fail half way through a
                 # decision the record already holds (decision 157).
                 raise FilingError(NOTHING_TO_PUT_BACK.format(
-                    prepared=PREPARED_DIR_NAME, pbc=entry.pbc_location))
+                    prepared=PREPARED_DIR_NAME, pbc=_shown(entry.pbc_location)))
 
         # Named as every review copy is, to fit (decision 131): no room
         # refuses with the review copy's sentence, and nothing has moved.
@@ -6643,8 +6880,7 @@ def unfile_document(
         entries[position] = new_entry
         _intend(engagement_dir, ledger_key(new_entry), ops, by=ledger.BY_PERSON,
                 row=entry_to_json(new_entry), then=ledger.UNFILED_BY_PERSON)
-        for op in ops:
-            _do_op(engagement_dir, op)
+        _carry_out_a_persons_ops(engagement_dir, ledger_key(new_entry), ops)
         try:
             _record(engagement_dir, before, entries,
                     decided={ledger_key(new_entry): ledger.UNFILED_BY_PERSON})
@@ -6793,13 +7029,13 @@ def find_filed(
     Public since decision 112, beside :func:`find_parked`; the underscored
     name is kept for one release.
     """
-    wanted = original.replace("\\", "/").strip()
+    wanted = _wanted(original)
     for position in range(len(entries) - 1, -1, -1):
         entry = entries[position]
-        if entry.pbc_location == wanted or entry.original_name == wanted:
+        if _names_row(entry, original, wanted):
             if entry.decision == FILED or entry.decision in accepting:
                 return position
-            if entry.decision == DUPLICATE and entry.original_name == wanted:
+            if entry.decision == DUPLICATE and entry.original_name in (wanted, recorded_name(wanted)):
                 continue          # a re-send under the same name; the filed row is older
             raise FilingError(f"{entry.original_name} is not filed (it is {entry.decision})")
     raise FilingError(f"nothing in the index is called {original!r}")
@@ -6860,13 +7096,13 @@ def find_moved(entries: list[IndexEntry], original: str) -> int:
     answer to "the copy is not where the record put it", and a row nobody
     said that about has nothing to put back.
     """
-    wanted = original.replace("\\", "/").strip()
+    wanted = _wanted(original)
     for position in range(len(entries) - 1, -1, -1):
         entry = entries[position]
-        if entry.pbc_location == wanted or entry.original_name == wanted:
+        if _names_row(entry, original, wanted):
             if entry.decision == FILE_MOVED:
                 return position
-            if entry.decision == DUPLICATE and entry.original_name == wanted:
+            if entry.decision == DUPLICATE and entry.original_name in (wanted, recorded_name(wanted)):
                 continue          # a re-send under the same name; the moved row is older
             raise FilingError(f"{entry.original_name} is not a moved copy (it is {entry.decision})")
     raise FilingError(f"nothing in the index is called {original!r}")
@@ -6892,12 +7128,12 @@ def _find_to_put_back(engagement_dir: Path, entries: list[IndexEntry], original:
     try:
         return find_moved(entries, original)
     except FilingError:
-        wanted = original.replace("\\", "/").strip()
+        wanted = _wanted(original)
         for position in range(len(entries) - 1, -1, -1):
             entry = entries[position]
-            if entry.pbc_location != wanted and entry.original_name != wanted:
+            if not _names_row(entry, original, wanted, recorded=False):
                 continue
-            if entry.decision == DUPLICATE and entry.original_name == wanted:
+            if entry.decision == DUPLICATE and entry.original_name in (wanted, recorded_name(wanted)):
                 continue
             if (entry.decision in (FILED, *_PARKED) and entry.digest
                     and _gone_copies(engagement_dir, entries, position)):
@@ -6923,9 +7159,9 @@ def _make_a_gone_copy_again(
     outcome, source = _the_original_now(engagement_dir, entry)
     if outcome == _ORIGINAL_GONE:
         raise FilingError(NOTHING_TO_PUT_BACK.format(prepared=PREPARED_DIR_NAME,
-                                                     pbc=entry.pbc_location))
+                                                     pbc=_shown(entry.pbc_location)))
     if outcome == _ORIGINAL_UNREAD:
-        raise FilingError(f"the original {entry.pbc_location} is still syncing or cannot be read "
+        raise FilingError(f"the original {_shown(entry.pbc_location)} is still syncing or cannot be read "
                           "now; try again when it can")
     remade, _sentence = _remade(entry, gone, stamp)
     entries[position] = remade
@@ -7080,19 +7316,19 @@ def _put_back_a_moved_copy(
             # Nothing under the firm's folder and not the original either
             # (decision 157, B5): the one sentence, naming both.
             raise FilingError(NOTHING_TO_PUT_BACK.format(
-                prepared=PREPARED_DIR_NAME, pbc=entry.pbc_location))
+                prepared=PREPARED_DIR_NAME, pbc=_shown(entry.pbc_location)))
         if not source.is_file():
             raise FilingError(
-                f"{looked} holds this row's bytes and the original {entry.pbc_location} is no "
+                f"{looked} holds this row's bytes and the original {_shown(entry.pbc_location)} is no "
                 f"longer there; there is nothing to put back"
             )
         if is_cloud_placeholder(source):
             raise FilingError(
-                f"the original {entry.pbc_location} is still syncing; try again when it is here"
+                f"the original {_shown(entry.pbc_location)} is still syncing; try again when it is here"
             )
         if sha256_of(source) != entry.digest:
             raise FilingError(
-                f"neither {looked} nor the original {entry.pbc_location} holds the bytes this "
+                f"neither {looked} nor the original {_shown(entry.pbc_location)} holds the bytes this "
                 "row recorded; look at the files first"
             )
         return source
@@ -7152,7 +7388,7 @@ def _put_back_a_moved_copy(
                            entry.digest))
             copied_from_original = True
             sentence = PUT_BACK_FROM_ORIGINAL.format(
-                home=absent[0], date=stamp, pbc=entry.pbc_location,
+                home=absent[0], date=stamp, pbc=_shown(entry.pbc_location),
                 prepared=PREPARED_DIR_NAME)
         filled.append(home)
         # Decision 94's other copies, if this row has any: each is these
@@ -7171,8 +7407,7 @@ def _put_back_a_moved_copy(
     entries[position] = new_entry
     _intend(engagement_dir, ledger_key(new_entry), ops, by=ledger.BY_PERSON,
             row=entry_to_json(new_entry), then=ledger.RESTORED_BY_PERSON)
-    for op in ops:
-        _do_op(engagement_dir, op)
+    _carry_out_a_persons_ops(engagement_dir, ledger_key(new_entry), ops)
     try:
         _record(engagement_dir, before, entries,
                 decided={ledger_key(new_entry): ledger.RESTORED_BY_PERSON})
@@ -7477,7 +7712,8 @@ def rename_request(
                     _do_op(engagement_dir, op)
                 except (OSError, FilingError) as exc:
                     raise FilingError(RENAME_UNFINISHED.format(
-                        old=old, new=new, name=Path(op[ledger.FROM_KEY]).name, problem=exc)) from exc
+                        old=old, new=new, name=Path(op[ledger.FROM_KEY]).name,
+                        problem=errors.said(exc, FIRM_WRITTEN))) from exc
                 moved += 1
         _record(engagement_dir, before, entries,
                 decided={ledger_key(one): ledger.RENAMED_BY_PERSON for one in renamed_entries})

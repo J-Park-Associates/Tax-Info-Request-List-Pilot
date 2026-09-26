@@ -2106,6 +2106,8 @@ def _engagement_status(engagement: Engagement) -> EngagementRun:
         # One bad record costs its own row, never the page (decision 189),
         # said by its class and code: the message can name the record's
         # path, a client's folder (security principle 7; the review's S2).
+        # The words are kept on the debug log (decision 190).
+        errors.keep("runner: the return's record", exc, name=engagement.path.name)
         run.error = RECORD_UNREADABLE.format(problem=errors.error_class(exc))
         return run
     run.statuses = summary.counts

@@ -337,3 +337,71 @@ def test_the_dry_run_names_a_persons_folder_once(tmp_path):
     said = reasons.PERSONS_FOLDER.format(folder="my notes", prepared=PREPARED_DIR_NAME)
     assert done.stdout.count("my notes") == 1 and f"    ? {said}" in done.stdout
     assert done.stdout.count("stray.pdf") == 1
+
+
+# ------------------------------------------- decision 190: programs and macros ----
+
+
+def test_a_program_is_known_by_its_real_last_extension():
+    from tracker.validators import is_program
+
+    assert is_program("W-2 2025.pdf.exe")
+    assert is_program("W2‮fdp.exe")
+    assert is_program("statement.pdf.LNK")
+    assert is_program("payroll.exe. ")                  # Windows drops the trailing dot and space
+    assert is_program("folder.library-ms")
+    assert not is_program("W-2 2025.exe.pdf")
+    assert not is_program("W-2.pdf")
+
+
+def test_an_office_file_bears_macros_by_its_type_or_its_vba_project(tmp_path):
+    import zipfile
+
+    from tracker.validators import bears_macros
+
+    plain = tmp_path / "budget.xlsx"
+    with zipfile.ZipFile(plain, "w") as package:
+        package.writestr("xl/workbook.xml", "<workbook/>")
+    renamed = tmp_path / "renamed.xlsx"
+    with zipfile.ZipFile(renamed, "w") as package:
+        package.writestr("xl/workbook.xml", "<workbook/>")
+        package.writestr("xl/vbaProject.bin", b"\x00")
+    broken = tmp_path / "broken.docx"
+    broken.write_bytes(b"not a zip")
+    (tmp_path / "macros.docm").write_bytes(b"")
+    (tmp_path / "old.xls").write_bytes(b"")
+
+    assert bears_macros(tmp_path / "macros.docm") and bears_macros(tmp_path / "old.xls")
+    assert bears_macros(renamed)
+    assert bears_macros(broken)                          # cannot look: marked, the safe way
+    assert not bears_macros(plain)
+    assert not bears_macros(tmp_path / "W-2.pdf")
+
+
+@pytest.mark.parametrize("raw", ["W2.exe​", "Pay.scr﻿.", "W2.ex​e", "x.lnk‬"])
+def test_a_program_is_known_by_either_name(raw):
+    """The review's M1: an invisible character after or inside the suffix
+    hides a program from its raw name; the recorded name - which names its
+    review copy and its card - shows it, and either name is enough."""
+    from tracker.validators import is_program
+
+    assert is_program(raw)
+
+
+def test_the_review_widened_the_program_and_macro_lists_and_left_web_pages_alone(tmp_path):
+    """Decision 190's review (S5, N1): the installer packages, the shell
+    types and the Access databases are programs; the legacy templates,
+    add-ins and the binary workbook bear macros; a saved web page is not
+    a program, because a client can legitimately send a statement as one."""
+    from tracker.validators import bears_macros, is_program
+
+    for name in ("app.msix", "setup.appinstaller", "run.pyw", "fix.diagcab", "books.accdb",
+                 "old.mdb", "go.website", "x.shs"):
+        assert is_program(name), name
+    for name in ("statement.html", "statement.htm", "chart.svg", "notes.one"):
+        assert not is_program(name), name
+    for name in ("book.xlsb", "addin.xla", "form.xlt", "letter.dot", "deck.pot", "show.pps",
+                 "tool.ppa", "book.xlsm​"):
+        path = tmp_path / name
+        path.write_bytes(b"not an office file")
+        assert bears_macros(path), name

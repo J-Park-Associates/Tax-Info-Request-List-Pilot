@@ -1289,8 +1289,9 @@ def test_every_review_action_the_renderer_sends_carries_the_rows_seq():
         body = re.search(rf"async function {handler}\(.*?\n\}}", js, re.S)
         assert body, handler
         assert "fileRow(" in body.group(0) and "dataset.seq" in body.group(0), handler
-    # Both row builders put it on the element the handlers read it back from.
-    assert js.count("seq: e.seq") == 2
+    # Every row builder puts it on the element the handlers read it back
+    # from - since decision 190 one more: the row that is not a document.
+    assert js.count("seq: e.seq") == 3
     # And the sentence a refusal shows is the API's, never the renderer's.
     assert api.NO_SEQ not in js
 
@@ -1573,3 +1574,94 @@ def test_the_shell_lstats_before_it_opens_and_refuses_a_link_or_a_changed_kind()
     vocab = api._vocab()
     assert vocab["shell"]["not_opened"] == api.SHELL_NOT_OPENED
     assert set(vocab["path_kinds"].values()) == {"folder", "file"}
+
+
+# ---------------------------- decision 190: programs, and the runbook's Open ----
+
+
+def _sentences(text: str) -> list[str]:
+    """``text`` as sentences and table cells, across its line breaks."""
+    return re.split(r"(?<=[.;:!?])\s+|\s\|\s", re.sub(r"\s+", " ", text))
+
+
+def test_the_runbook_sends_no_one_to_open_a_file_themselves():
+    """A parked document is opened with **Open** on its card - the firm's
+    copy, marked when it can carry macros - never from Explorer, the
+    client's folder or "this machine" (decision 190, R6). Until then six
+    sentences told a person to open a client's file "yourself"."""
+    telling = [sentence for sentence in _sentences(read("docs/runbook.md"))
+               if re.search(r"\bopen\b", sentence, re.IGNORECASE)
+               and re.search(r"\byourself\b|\bon this machine\b", sentence, re.IGNORECASE)]
+    assert telling == [], telling
+
+
+def test_the_runbook_opens_nothing_where_it_sits_and_drops_nothing_in_the_clients_folder():
+    """The review of decision 190 (S3): a "what you do" that begins **Open
+    it** or **Look at it** sends a person to a client's file where it sits,
+    unmarked and with no card, unless it says the card's **Open**; and a
+    file dropped, put or moved into "the client's folder" is a sort nobody
+    runs - the inbox is the only folder a pass sorts, and an original's own
+    place is always named as the client's folder *for the year*."""
+    runbook = read("docs/runbook.md")
+    # Widened by the re-check (its items 6 and 7): anywhere in a sentence,
+    # not only at its start, and "both", "them", "either" and "the
+    # original" as well as "it" - "Look at both" sent a person to the
+    # client's replaced original. A sentence that says not to, or says the
+    # card's **Open**, is the rule itself; three sentences open something
+    # that is not a client's file: the list editor, the firm's own review
+    # copy past a spreadsheet program's path limit, and a paused household
+    # in the app (decision 188).
+    not_a_clients_file = ("Close the editor, open it again", "open it from a shorter folder",
+                          "Open it in the app and press **Accept the folder's name**")
+    opened = [sentence for sentence in _sentences(runbook)
+              if re.search(r"(?<!not )(?<!never )\b(open|look at) (it|both|them|either|the original)\b",
+                           sentence, re.IGNORECASE)
+              and not re.search(r"on its card|from its card|\*\*Open\*\*", sentence)
+              and not any(allowed in sentence for allowed in not_a_clients_file)]
+    assert opened == [], opened
+    dropped = [sentence for sentence in _sentences(runbook)
+               if re.search(r"\b(drop|put|move|copy)\b.*\b(in|into|to) the client's folder\b"
+                            r"(?! for the year)", sentence, re.IGNORECASE)]
+    assert dropped == [], dropped
+
+
+def test_the_runbook_sends_documents_from_a_container_to_the_households_inbox():
+    """What a person takes out of an email or a zip goes into this
+    household's inbox, where the next pass sorts it - never into the
+    client's folder for the year (decision 190, G-6)."""
+    from tracker.layout import INBOX_DIR_NAME
+
+    runbook = read("docs/runbook.md")
+    assert f"into this household's `{INBOX_DIR_NAME}`" in runbook
+    assert not [sentence for sentence in _sentences(runbook)
+                if re.search(r"\bdrop\b.*\bin(to)? the client's folder for the year\b", sentence)]
+
+
+def test_the_program_list_is_spelled_once():
+    """``validators.PROGRAM_EXTENSIONS`` is the one list of programs
+    (decision 190): no other file under tracker/ or app/ spells one of them
+    as an extension - ``".exe"``, ``'*.lnk'`` - or lists one bare beside a
+    document type, as a second list would."""
+    from tracker.validators import IMAGE_EXTENSIONS, PDF_EXTENSION, PROGRAM_EXTENSIONS
+
+    alternatives = "|".join(re.escape(ext) for ext in sorted(PROGRAM_EXTENSIONS, key=len, reverse=True))
+    dotted = re.compile(rf"""["'`]\*?\.({alternatives})["'`]""", re.IGNORECASE)
+    documents = {PDF_EXTENSION, "xlsx", "csv", *IMAGE_EXTENSIONS}
+    found = []
+    for path in sorted([*(REPO / "tracker").rglob("*.py"), *(REPO / "app").rglob("*.js"),
+                        *(REPO / "app").rglob("*.html")]):
+        if "node_modules" in path.parts or path.name == "validators.py":
+            continue
+        text = path.read_text(encoding="utf-8")
+        found += [f"{path.relative_to(REPO)}: {m.group(0)}" for m in dotted.finditer(text)]
+        if path.suffix == ".py":
+            import ast
+
+            for node in ast.walk(ast.parse(text)):
+                if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+                    words = {n.value.lower() for n in node.elts
+                             if isinstance(n, ast.Constant) and isinstance(n.value, str)}
+                    if words & documents and words & PROGRAM_EXTENSIONS:
+                        found.append(f"{path.relative_to(REPO)}:{node.lineno}: "
+                                     f"{sorted(words & PROGRAM_EXTENSIONS)}")
+    assert found == [], "\n".join(found)

@@ -165,6 +165,18 @@ SAID_WHOLE_ON_PURPOSE = {
     ("runner.py", "_feeds_of"): "the household's own record (SPEC-190 R2: stays)",
     ("runner.py", "_parked_files"): "the return's own record could not be read (SPEC-190 R2: stays)",
     ("registry.py", "_children"): "listing a folder of the clients root: the OS's words, never a document's",
+    ("api.py", "main"): "KNOWN_ERRORS: the tracker's own errors, said whole (R2)",
+    ("api.py", "_cmd_install_schedule"): "Task Scheduler refusing a task: the machine's words",
+    ("ledger.py", "_bytes_of"): "the return's own event log could not be read (SPEC-190 R2: stays)",
+    ("ledger.py", "_parse_lines"): "a line of the firm's own event log that does not parse (R2: stays)",
+    ("manifest.py", "validated"): "the firm's own date pattern that does not compile",
+    ("store.py", "_refuse_a_malformed_line"): "a line of the firm's own record that does not parse (R2: stays)",
+    ("settings.py", "_read"): "the firm's own settings file",
+    ("settings.py", "product_name"): "the app's own package file",
+    ("ocr.py", "_on_the_card"): "the graphics card's engine failing to build: the machine's words",
+    ("ocr.py", "settle"): "the reader cannot run on this machine: the machine's words",
+    ("ocr.py", ""): "the reader's CLI saying why it cannot run on this machine",
+    ("scheduling.py", ""): "the scheduling CLI: a bad argument, or Task Scheduler's words",
 }
 
 
@@ -189,13 +201,18 @@ def _class_beside_its_words(parts: list[ast.AST], caught: set[str]) -> bool:
     return bool(classes & {ast.dump(part) for part in parts})
 
 
+#: The two ways an error is named: its class, or - for the tracker's own
+#: errors, which the caller lists - the firm's sentence (errors.said).
+_NAMERS = {"error_class", "said"}
+
+
 def _is_error_class(func: ast.AST) -> bool:
-    return (isinstance(func, ast.Name) and func.id == "error_class") or (
-        isinstance(func, ast.Attribute) and func.attr == "error_class")
+    return (isinstance(func, ast.Name) and func.id in _NAMERS) or (
+        isinstance(func, ast.Attribute) and func.attr in _NAMERS)
 
 
 #: An exception's attributes that are not its message.
-_NOT_WORDS = {"__name__", "errno", "error"}
+_NOT_WORDS = {"__name__", "errno", "error", "sentence", "code", "seconds"}
 
 
 def _words_reach(node: ast.AST, caught: set[str]) -> bool:
@@ -220,11 +237,73 @@ def _enclosing(tree: ast.AST) -> dict[int, str]:
     return at
 
 
+#: The tracker's own errors: a sentence the firm wrote about the firm's own
+#: files, said whole on purpose (errors.py's docstring). A handler that
+#: catches only these is not a parser's words.
+FIRM_WRITTEN = {"FilingError", "StaleRowError", "CopyMismatchError", "ManifestError", "StoreError",
+                "LedgerError", "ReminderError", "DraftsEditedError", "ReminderHeldError",
+                "SettingsError", "RegistryError", "EngagementLockedError", "ScanLockedError",
+                "ViewError", "NoRoom", "NotOpened", "TooLargeToRead", "ReadingStopped"}
+
+#: Where a string becomes something a person sees: a keyword or an
+#: attribute of these names, or a call to these.
+_SINK_KEYWORDS = {"reason", "error", "problem", "said"}
+_SINK_CALLS = {"FileError", "FilingError"}
+
+
+def _catches_only_the_firms_own(handler: ast.ExceptHandler) -> bool:
+    kinds = handler.type.elts if isinstance(handler.type, ast.Tuple) else [handler.type]
+    names = [k.attr if isinstance(k, ast.Attribute) else getattr(k, "id", "") for k in kinds]
+    return bool(names) and all(name in FIRM_WRITTEN for name in names)
+
+
+def _called(node: ast.Call) -> str:
+    func = node.func
+    return func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+
+
+def _words_into_a_sink(handler: ast.ExceptHandler) -> list[tuple[int, str]]:
+    """Inside one ``except ... as exc``: the places the caught words are
+    made into a string, or handed to something a person sees - an
+    f-string, ``.format``, ``%``, ``str(exc)``, ``exc.args``, a
+    ``reason=`` / ``error=``, a :class:`FileError` or a raised
+    :class:`FilingError` (the review's M1, decision 190)."""
+    caught = {handler.name}
+    found: list[tuple[int, str]] = []
+    for node in (n for statement in handler.body for n in ast.walk(statement)):
+        if isinstance(node, ast.FormattedValue) and _words_reach(node.value, caught):
+            found.append((node.lineno, "an exception's words in an f-string"))
+        elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod) and _words_reach(node.right, caught):
+            found.append((node.lineno, "an exception's words %-formatted into a string"))
+        elif isinstance(node, ast.Call):
+            called = _called(node)
+            values = [*node.args, *(kw.value for kw in node.keywords)]
+            if called == "format" and any(_words_reach(v, caught) for v in values):
+                found.append((node.lineno, "an exception's words handed to .format"))
+            elif called == "str" and any(_words_reach(v, caught) for v in node.args):
+                found.append((node.lineno, "an exception's words made a string"))
+            elif called in _SINK_CALLS and any(_words_reach(v, caught) for v in values):
+                found.append((node.lineno, f"an exception's words handed to {called}"))
+            elif any(kw.arg in _SINK_KEYWORDS and _words_reach(kw.value, caught) for kw in node.keywords):
+                found.append((node.lineno, "an exception's words handed to a reason"))
+        elif (isinstance(node, ast.Attribute) and node.attr == "args"
+              and isinstance(node.value, ast.Name) and node.value.id in caught):
+            found.append((node.lineno, "an exception's words read from .args"))
+        elif isinstance(node, ast.Assign) and _words_reach(node.value, caught) and any(
+                isinstance(t, ast.Attribute) and t.attr in _SINK_KEYWORDS for t in node.targets):
+            found.append((node.lineno, "an exception's words set as a reason"))
+    return found
+
+
 def _findings(source: str, file: str) -> list[str]:
     tree = ast.parse(source)
     caught = {h.name for h in ast.walk(tree) if isinstance(h, ast.ExceptHandler) and h.name}
     function = _enclosing(tree)
     found: list[tuple[int, str]] = []
+    for handler in ast.walk(tree):
+        if (isinstance(handler, ast.ExceptHandler) and handler.name
+                and not _catches_only_the_firms_own(handler)):
+            found.extend(_words_into_a_sink(handler))
     for node in ast.walk(tree):
         parts: list[ast.AST] = []
         if isinstance(node, ast.JoinedStr):
@@ -329,6 +408,10 @@ def test_the_guard_finds_a_second_definition(shape):
     'reasons.UNREADABLE_PDF.format(error=str(exc))',
     'reasons.UNREADABLE_PDF.format(error=f"({exc})")',
     'reasons.UNREADABLE_PDF.format(error=exc.args[0])',
+    'REVIEW_COPY_FAILED.format(name=n, problem=exc)',
+    'f"could not be read ({exc})"',
+    'Extraction(None, reason=str(exc))',
+    'FileError(name, f"{exc}", False)',
 ])
 def test_the_guard_sees_every_shape_of_an_exceptions_words(shape):
     source = f"def f():\n    try:\n        pass\n    except Exception as exc:\n        return {shape}\n"
@@ -340,6 +423,8 @@ def test_the_guard_sees_every_shape_of_an_exceptions_words(shape):
     "reasons.VANISHED.format(error=error_class(exc))",
     "reasons.OCR_FAILED.format(error=exc.error)",
     "reasons.CONTAINER_LIMIT.format(error=LIMIT_TOTAL)",
+    "REVIEW_COPY_FAILED.format(name=n, problem=errors.said(exc, FIRM_WRITTEN))",
+    "f'could not be read ({errors.error_class(exc)})'",
 ])
 def test_the_guard_passes_a_class_and_a_firm_constant(shape):
     source = f"def f():\n    try:\n        pass\n    except Exception as exc:\n        return {shape}\n"
@@ -462,3 +547,48 @@ def test_the_app_names_an_unexpected_error_by_its_class_and_keeps_a_firm_errors_
     monkeypatch.setitem(api.COMMANDS, "state", the_firm_says)
     assert api.main(["state"]) == 1
     assert json.loads(capsys.readouterr().out)["error"] == "A01: the firm's own words about its own list"
+
+
+# ------------------ the review copy and the filer's catch-all (review M1, S3) ----
+
+
+def _a_row(**fields):
+    import dataclasses
+
+    from tracker.filer import IndexEntry
+
+    required = {f.name: "" for f in dataclasses.fields(IndexEntry)
+                if f.default is dataclasses.MISSING and f.default_factory is dataclasses.MISSING}
+    required.update(size_kb=1.0, **fields)
+    return IndexEntry(**required)
+
+
+def test_a_review_copy_that_cannot_be_made_names_the_os_error_not_its_path(tmp_path, monkeypatch, kept):
+    from tracker import filer
+
+    where = f"/Clients/{NAME} SSN {NUMBER}/2025/W2.pdf"
+
+    def refused(*_args, **_kwargs):
+        raise PermissionError(errno.EACCES, "Permission denied", where)
+
+    monkeypatch.setattr(filer, "_may_touch", lambda *a, **k: True)
+    monkeypatch.setattr(filer, "place_problem", lambda *a, **k: None)     # decision 187's place rule
+    monkeypatch.setattr(filer, "locate", lambda folder, _location: folder / "W2.pdf")
+    monkeypatch.setattr(filer, "_existing_copy", lambda *a, **k: None)
+    monkeypatch.setattr(filer, "_copy_whole", refused)
+    row = _a_row(original_name="W2.pdf", pbc_location="x/W2.pdf", digest="ab")
+    location, reason = filer._a_copy_to_act_on(tmp_path, row, None)
+    assert location == ""
+    assert reason == filer.REVIEW_COPY_FAILED.format(name="W2.pdf", problem="PermissionError (EACCES)")
+    assert not carries_client_words(reason)
+    assert any(carries_client_words(said) for said in kept)
+
+
+def test_the_firms_own_error_is_said_whole_and_anything_else_by_its_class():
+    from tracker import filer
+
+    firm = filer.FilingError("the list changed while this pass ran; run it again")
+    assert errors.said(firm, filer.FIRM_WRITTEN) == str(firm)
+    assert errors.said(ValueError(QUOTED), filer.FIRM_WRITTEN) == "ValueError"
+    assert errors.said(PermissionError(errno.EACCES, "no", f"/{NAME}"), filer.FIRM_WRITTEN) == (
+        "PermissionError (EACCES)")

@@ -138,3 +138,76 @@ def test_the_named_across_reason_is_firm_side_holds_nothing_and_its_marker_is_in
     assert said.code == reason.code and reasons.code_of(said) == reason.code
     assert said.code != reasons.UNNAMED_ACROSS_HOUSEHOLDS.code
     assert "never the client" in reason.firm_side_note
+
+
+def test_a_program_is_asked_about_in_the_words_any_unusable_file_gets():
+    """NOT_A_DOCUMENT has no client words of its own: its ask is
+    EXTENSION_NOT_ALLOWED's, one home; it holds nothing and is the
+    client's, not the firm's (decision 190)."""
+    assert reasons.NOT_A_DOCUMENT.client_ask == reasons.EXTENSION_NOT_ALLOWED.client_ask
+    assert reasons.NOT_A_DOCUMENT.code not in HOLDS and reasons.NOT_A_DOCUMENT.code not in FIRM_SIDE
+    assert BY_CODE[reasons.NOT_A_DOCUMENT.code] is reasons.NOT_A_DOCUMENT
+    source = (Path(reasons.__file__)).read_text(encoding="utf-8")
+    assert source.count(repr(reasons.EXTENSION_NOT_ALLOWED.ask)[1:-1]) == 1
+
+
+#: The readers that still read a row's text - each for a **path** the firm
+#: itself wrote into the tail of its own sentence, never for the row's
+#: cause - by module and function, each with why (decision 190's Part 2
+#: review, S-2). A new one is a decision, made here where it shows.
+TAIL_READERS = {
+    ("filer", "moved_to"): "where the firm's moved sentence says a working copy now is",
+    ("filer", "interrupted_at"): "the path the firm's interrupted-move sentence names",
+    ("filer", "interrupted_note"): "the firm's interrupted-move sentence, said again",
+    ("review", "_label_of"): "the return's label the firm's own veto sentence names",
+    ("scanner", "_regression_why"): "the count the firm's own regression sentence names",
+    ("containers", "add"): "which limit (LIMIT_DEPTH) the firm's own container-limit sentence names",
+}
+#: What a reason or a note is called where a reader holds one.
+_TEXT_ATTRIBUTES = {"reason", "validation_notes", "sentence"}
+_TEXT_NAMES = {"reason", "note", "notes", "previous_note", "sentence"}
+_SEARCHES = {"startswith", "endswith", "find", "rfind", "index", "count"}
+_REGEX = {"search", "match", "fullmatch", "findall", "finditer", "split", "sub"}
+
+
+def _is_text(node) -> bool:
+    if isinstance(node, ast.BoolOp):          # (row.reason or "")
+        return any(_is_text(value) for value in node.values)
+    return ((isinstance(node, ast.Attribute) and node.attr in _TEXT_ATTRIBUTES)
+            or (isinstance(node, ast.Name) and node.id in _TEXT_NAMES))
+
+
+def _searches_text(node) -> bool:
+    if isinstance(node, ast.Compare) and any(isinstance(op, (ast.In, ast.NotIn)) for op in node.ops):
+        return any(_is_text(side) for side in node.comparators)
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+        if node.func.attr in _SEARCHES and _is_text(node.func.value):
+            return True
+        if node.func.attr in _REGEX and any(_is_text(arg) for arg in node.args):
+            return True
+    return False
+
+
+def test_no_reader_decides_a_rows_cause_from_its_text():
+    """Security principle 2, over all of ``tracker/`` (the Part 2 review's
+    S-2): no ``in <row>.reason``, no ``.reason.startswith``, no pattern run
+    over a reason or a note decides a branch - a row's cause is its code.
+    The few readers that recover a path from a firm-made tail are named in
+    :data:`TAIL_READERS`, each with its reason, and one that no longer
+    reads text must leave the list."""
+    found, seen = [], set()
+    for path in sorted((REASONS_PY.parent).glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for function in ast.walk(tree):
+            if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            hits = [node for node in ast.walk(function) if _searches_text(node)]
+            if not hits:
+                continue
+            key = (path.stem, function.name)
+            if key in TAIL_READERS:
+                seen.add(key)
+                continue
+            found += [f"tracker/{path.name}:{node.lineno} in {function.name}" for node in hits]
+    assert found == [], "a reader searches a row's text:\n" + "\n".join(found)
+    assert seen == set(TAIL_READERS), f"no longer a tail reader: {sorted(set(TAIL_READERS) - seen)}"

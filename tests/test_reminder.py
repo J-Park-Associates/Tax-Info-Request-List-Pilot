@@ -1187,7 +1187,7 @@ def test_a_near_miss_holds_the_reminder_and_blames_no_file(tmp_path):
             assert word not in said, word
     refusal = held_refusal(draft)
     assert refusal == CONFIRM_REFUSAL.format(listed=draft.held[0].item.label)
-    assert "held until a person confirms the parked file (open it in Needs Review)" in refusal
+    assert "held until a person confirms the parked file (open it from its card)" in refusal
     assert "resends" not in refusal and "fix it here" not in refusal
     with pytest.raises(ReminderHeldError, match="A01"):
         write_draft(draft, engagement_dir=folder)
@@ -1221,6 +1221,10 @@ HELD_BEFORE_140 = {
 #: zip, which the client can fix by sending the documents on their own -
 #: hold as a locked or damaged PDF does.
 HELD_SINCE_143 = {"container-locked", "container-damaged"}
+#: The one client-side reason that holds nothing (decision 190): a program
+#: is not a document, is decided before anything reads its name, and so
+#: names no request to hold.
+CLIENT_SIDE_NOT_HELD = {"not-a-document"}
 
 
 @pytest.mark.parametrize("reason", reasons.ALL, ids=lambda r: r.code)
@@ -1247,7 +1251,8 @@ def test_every_existing_reason_holds_exactly_as_before(reason):
         assert holds == {"A01": (CONFIRM_HOLD.format(note=reason.firm_side_note), True)}
         return
     held = HELD_BEFORE_140 | HELD_SINCE_143
-    assert reason.holds == (reason.code in held) == (not reason.firm_side)
+    assert reason.holds == (reason.code in held)
+    assert reason.holds == (not reason.firm_side) or reason.code in CLIENT_SIDE_NOT_HELD
     expected = ({"A01": (PARKED_HOLD.format(ask=_ask_for(reason, DROPPED[0])), False)}
                 if reason.code in held else {})
     assert holds == expected
@@ -2099,3 +2104,85 @@ def test_no_client_facing_text_carries_a_reason_sentence(tmp_path):
                 continue
             assert words not in letter, words
             assert words not in readme, words
+
+
+def test_an_executable_gets_no_review_copy_shows_its_true_type_and_does_not_hold_the_letter():
+    """The letter's half of G-4 (decision 190): a program named like a W-2,
+    whose name a shortlist would once have pointed at A01, holds nothing -
+    it is not a document, and no request is asked about because of it."""
+    from tests.test_review import parked_row
+    from tracker.records import RULE_REQUIRED, WHERE_TITLE, Evidence
+    from tracker.reminder import _parked_holds
+
+    record = {"A01": (Evidence(RULE_REQUIRED, "W-2", WHERE_TITLE, 1),)}
+    program = parked_row("W-2 2025.pdf.exe", record, reason=str(reasons.NOT_A_DOCUMENT.format()),
+                         code=reasons.NOT_A_DOCUMENT.code)
+    assert _parked_holds(DROPPED, [program]) == {}
+
+
+def test_a_file_that_is_not_a_document_is_asked_about_in_the_letter_and_holds_nothing(tmp_path):
+    """SPEC-190 R3 and the review's S1: a program names no request, so no
+    request line can carry its ask - it is asked about on its own, under
+    the kept "could not use it" heading, by the name the client gave it and
+    in the unusable-file words, and the letter is still written. A program
+    a person has set aside is their answer and is not asked again."""
+    from tests.conftest import seed_index
+    from tracker.filer import NEEDS_REVIEW, NOT_REQUESTED, IndexEntry
+
+    folder = engagement(tmp_path, SENDABLE)
+
+    def row(name, decision, code):
+        return IndexEntry(
+            received="2026-02-01", original_name=name, size_kb=0.1, digest=hashlib.sha256(name.encode()).hexdigest(),
+            identifier="", prepared_location="", pbc_location=f"pbc/{name}",
+            decision=decision, reason=reasons.NOT_A_DOCUMENT.format(), code=code,
+        )
+
+    seed_index(folder, [
+        row("W-2 2025.pdf.exe", NEEDS_REVIEW, reasons.NOT_A_DOCUMENT.code),
+        row("set aside.exe", NOT_REQUESTED, reasons.DISMISSED_BY_PERSON_CODE),
+    ])
+
+    draft = draft_reminder(folder)
+
+    assert not draft.is_held
+    assert draft.unusable == ["W-2 2025.pdf.exe"]
+    assert f"{SECTION_FAILED}\n  - W-2 2025.pdf.exe - {reasons.EXTENSION_NOT_ALLOWED.ask}\n" in draft.body
+    assert draft.body.count(reasons.EXTENSION_NOT_ALLOWED.ask) == 1
+    assert "set aside.exe" not in draft.body
+
+
+def test_a_program_alone_is_asked_about_but_never_climbs_the_ladder(tmp_path):
+    """The re-check's S-N1: every request is in and one program is parked.
+    It is asked about, so the draft has something outstanding - the
+    scheduler writes it and the app offers it - but it is no request: the
+    letter has no stage on any day, not even past the firm's deadline, no
+    deadline paragraph, and neither the subject nor the progress line
+    counts it as a document still needed."""
+    from tests.conftest import seed_index
+    from tracker.filer import NEEDS_REVIEW, IndexEntry
+    from tracker.reminder import NOTHING_OWED, STAGE_4_CONSEQUENCES, SUBJECT_COMPLETE
+
+    folder = engagement(tmp_path, [item("A04", "Mortgage Interest Statement", Status.RECEIVED,
+                                        period="TY2025", file_count=1,
+                                        received_date=dt.date(2026, 2, 1))])
+    seed_index(folder, [IndexEntry(
+        received="2026-02-01", original_name="setup.exe", size_kb=0.1, digest=hashlib.sha256(b"setup.exe").hexdigest(),
+        identifier="", prepared_location="", pbc_location="pbc/setup.exe",
+        decision=NEEDS_REVIEW, reason=reasons.NOT_A_DOCUMENT.format(),
+        code=reasons.NOT_A_DOCUMENT.code,
+    )])
+
+    for today in (day(20), DEADLINE + dt.timedelta(days=1)):
+        draft = draft_reminder(folder, due_date=DUE, filing_deadline=DEADLINE, today=today,
+                               phone=PHONE)
+        assert draft.has_outstanding and not draft.is_held
+        assert draft.stage == 0 and draft.asked == [] and draft.unusable == ["setup.exe"]
+        assert draft.subject == SUBJECT_COMPLETE.format(engagement=draft.engagement)
+        assert "still needed" not in draft.subject
+        assert f"{SECTION_FAILED}\n  - setup.exe - {reasons.NOT_A_DOCUMENT.ask}\n" in draft.body
+        assert NOTHING_OWED.format(engagement=draft.engagement) in draft.body
+        assert STAGE_4_CONSEQUENCES not in draft.body and "March 15" not in draft.body
+        assert "Of the 1 item we asked for, 1 is in." in draft.body
+    # A forced stage is a request's: with none on the letter, it forces nothing.
+    assert draft_reminder(folder, due_date=DUE, today=day(20), stage=4).stage == 0

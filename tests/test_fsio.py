@@ -140,3 +140,56 @@ def test_a_temp_beside_a_target_near_the_limit_fits_under_it_and_keeps_its_shape
     assert TEMP_NAME.fullmatch(temp.name) and temp_owner(temp.name) is not None
     short = tmp_path / "settings.json"
     assert temp_path_for(short, limit=limit).name.startswith("settings.json.")   # not cut: it fits
+
+
+# ------------------------------------ decision 190: the mark of the internet ----
+
+
+class _Stream:
+    """What an injected opener hands back: a stream that remembers."""
+
+    def __init__(self, written: dict, name: str):
+        self.written, self.name = written, name
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc):
+        return False
+
+    def write(self, text: str) -> None:
+        self.written[self.name] = text
+
+
+def test_a_copy_is_marked_from_the_internet_on_windows(tmp_path, monkeypatch):
+    import tracker.fsio as fsio_module
+
+    written: dict = {}
+    monkeypatch.setattr(fsio_module.os, "name", "nt")
+    target = tmp_path / "budget.xlsm"
+    assert fsio_module.mark_from_internet(
+        target, _opener=lambda name, *a, **k: _Stream(written, name)) is True
+    assert written == {str(target) + fsio_module.ZONE_STREAM: "[ZoneTransfer]\r\nZoneId=3\r\n"}
+
+
+def test_marking_is_a_no_op_that_says_so_anywhere_but_windows(tmp_path, monkeypatch):
+    import tracker.fsio as fsio_module
+
+    monkeypatch.setattr(fsio_module.os, "name", "posix")
+
+    def never(*_args, **_kwargs):
+        raise AssertionError("nothing is opened where there is no mark to write")
+
+    assert fsio_module.mark_from_internet(tmp_path / "budget.xlsm", _opener=never) is False
+
+
+def test_a_mark_that_cannot_be_written_on_windows_is_raised_never_swallowed(tmp_path, monkeypatch):
+    import tracker.fsio as fsio_module
+
+    monkeypatch.setattr(fsio_module.os, "name", "nt")
+
+    def refused(*_args, **_kwargs):
+        raise OSError(95, "Operation not supported")
+
+    with pytest.raises(OSError):
+        fsio_module.mark_from_internet(tmp_path / "budget.xlsm", _opener=refused)

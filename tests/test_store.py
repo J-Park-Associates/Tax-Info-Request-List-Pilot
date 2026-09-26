@@ -2387,6 +2387,8 @@ IMPOSSIBLE = [
     # version names, and the client's subfolder is one line of text.
     ("code", ledger.new(ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(code="not-a-cause"))),
     ("subfolder", ledger.new(ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(subfolder="Scans\n2025"))),
+    ("subfolder", ledger.new(ledger.FILED, key=A_ROW_ORIGINAL,
+                             row=a_row(subfolder="Scans\\W2\u202efdp.exe"))),
     ("note_codes", ledger.new(ledger.SCANNED, statuses={
         "A01": {"status": Status.MISSING, "note_codes": "not-a-cause"}})),
     ("at", {**learned("A01", "lender"), ledger.AT_KEY: "1900-01-01T00:00:00Z"}),

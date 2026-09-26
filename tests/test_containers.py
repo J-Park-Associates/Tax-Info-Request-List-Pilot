@@ -539,7 +539,7 @@ def test_an_email_with_nothing_attached_parks(engagement):
     ("nul", "attachment"),
     ("..", "attachment"),
     ("", "attachment"),
-    ("tab\there.pdf", "tab_here.pdf"),
+    ("tab\there.pdf", "tabhere.pdf"),        # a control character is dropped (decision 190)
     ("trailing dot. ", "trailing dot"),
 ])
 def test_an_attachment_name_cannot_leave_its_folder(raw, expected):

@@ -401,6 +401,30 @@ def test_nothing_outstanding_means_no_draft_file(tmp_path, samples):
     assert not (folder / DRAFT_FILENAME).exists()
 
 
+def test_a_week_whose_only_ask_is_a_program_writes_its_draft_at_no_stage(tmp_path, samples):
+    """The re-check's S-N1: every request is in and the client dropped a
+    program. The letter asks about it, so the week's draft is written - not
+    recorded as nothing outstanding while the file says otherwise - and it
+    is at no stage, because a file that is not a document is no rung."""
+    from tracker.reminder import SECTION_FAILED
+
+    only_the_return = [i for i in DEMO_ITEMS if i.identifier == "B01"]
+    folder = make_engagement(tmp_path, only_the_return, return_name="Settled TY2025",
+                             people=SCRATCH_PEOPLE, scaffold=False)
+    scaffolded = scaffold_engagement(folder)
+    name = f"{PRIOR_YEAR} Form 1040 Tax Return.pdf"
+    (scaffolded.inbox / name).write_bytes((samples / name).read_bytes())
+    (scaffolded.inbox / "setup.exe").write_bytes(b"MZ not a document")
+
+    run = a_pass(as_engagement(folder, client="John Smith"), today=SATURDAY)
+
+    assert run.statuses == {Status.RECEIVED: 1} and run.outstanding == 0
+    assert run.draft_note != NOTHING_OUTSTANDING
+    assert run.drafted == folder / DRAFT_FILENAME and run.stage == 0
+    text = run.drafted.read_text(encoding="utf-8")
+    assert SECTION_FAILED in text and "setup.exe" in text
+
+
 def test_the_draft_step_hands_the_pass_day_to_the_drafter_and_records_the_stage(tmp_path, samples, stamped_on):
     """Decision 117: the stage is measured from the day the pass is making,
     not from the clock - so a dated run writes the letter that day was
@@ -1678,7 +1702,7 @@ def test_the_dropping_households_pass_files_nothing_into_a_fed_return_and_the_do
     assert run.ok and run.filed == 0 and run.review == 1
     assert read_index(fed.path) == []
     [row] = read_index(personal.path)
-    assert row.decision == NEEDS_REVIEW and reasons.NAMED_ACROSS_HOUSEHOLDS.matches(row.reason)
+    assert row.decision == NEEDS_REVIEW and row.code == reasons.NAMED_ACROSS_HOUSEHOLDS.code
     assert row.waiting_for.identifiers == ("B01",)
     assert not any(fed.label in warning for warning in run.warnings)
 

@@ -201,6 +201,16 @@ EXTENSION_NOT_ALLOWED = Reason(
     "we cannot open that file type; please send it as a PDF, a photo or an Excel file",
     holds=True,
 )
+#: A program, or a file Windows runs as one (``validators.PROGRAM_EXTENSIONS``,
+#: decision 190). Decided before any reading, so nothing the file's name
+#: says reaches a request, and parked with no review copy: nobody here opens
+#: it. It holds nothing - no request is named - and the client is asked
+#: about it in the words any unusable file gets: the ask is
+#: EXTENSION_NOT_ALLOWED's own, referenced, so it has one home.
+NOT_A_DOCUMENT = Reason(
+    "not-a-document", "not a document; do not open; ask the client what they meant to send",
+    "not a document", EXTENSION_NOT_ALLOWED.ask,
+)
 TOO_SMALL = Reason(
     "too-small",
     "file is {size_kb:.1f} KB, below the {minimum} KB minimum; possible placeholder or failed upload",
@@ -699,7 +709,7 @@ TEXT_CUT = "only the first {limit} MB of this file's text was read"
 #: (:func:`first_of`).
 ALL: tuple[Reason, ...] = (
     CONTAINER_LOCKED, CONTAINER_DAMAGED, CONTAINER_EMPTY, CONTAINER_LIMIT,
-    PASSWORD_PROTECTED, GOOGLE_STUB, TOO_SMALL, TOO_LARGE, EXTENSION_NOT_ALLOWED,
+    NOT_A_DOCUMENT, PASSWORD_PROTECTED, GOOGLE_STUB, TOO_SMALL, TOO_LARGE, EXTENSION_NOT_ALLOWED,
     WRONG_DOCUMENT, NO_EXPECTED_KEYWORD, WRONG_PERIOD,
     NO_PAGES, UNREADABLE_PDF, UNREADABLE_IMAGE, HEIC_NOT_SUPPORTED, EXTRACTION_FAILED,
     UNCHECKABLE_TYPE, NO_TEXT_LAYER, NO_TEXT_AFTER_OCR, OCR_FAILED, NO_READABLE_TEXT,

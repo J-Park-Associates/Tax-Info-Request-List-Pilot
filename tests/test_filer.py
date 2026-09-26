@@ -9181,8 +9181,11 @@ def test_a_name_with_a_control_character_is_still_filed_and_recorded(engagement,
     report = sort(engagement, today=DAY1)
 
     assert report.errors == []
+    # Recorded as the record keeps a name (decision 190's recorded_name drops
+    # the control character); the original keeps its own on disk.
     assert sorted((row.original_name, row.decision) for row in read_index(engagement)) == [
-        ("other.pdf", NEEDS_REVIEW), ("w2\x01.pdf", FILED)]
+        ("other.pdf", NEEDS_REVIEW), ("w2.pdf", FILED)]
+    assert (originals(engagement) / "w2\x01.pdf").is_file()
 
 
 def test_an_interrupted_decision_65_intent_finishes_with_a_proved_copy(engagement):
@@ -9261,3 +9264,356 @@ def test_the_inbox_count_of_names_left_alone_skips_what_is_named_as_syncing(enga
 
     assert ignored_in_inbox(inbox) - before == 4
     assert ignored_in_inbox(inbox / "no such folder") == 0
+
+
+# ------------------------------- decision 190: programs, names, Protected View ----
+
+
+def _review_folder_files(engagement):
+    review = engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME
+    return sorted(p.name for p in review.iterdir()) if review.exists() else []
+
+
+def test_an_executable_gets_no_review_copy_shows_its_true_type_and_does_not_hold_the_letter(engagement):
+    """A program dressed as a W-2 (G-4): decided before any reading, so its
+    name reaches no request; parked as not a document with no review copy;
+    its original moved byte for byte; the card knows it as an .exe and the
+    letter holds nothing for it."""
+    from tracker import api, reminder
+
+    program = inbox_of(engagement) / "W-2 2025.pdf.exe"
+    program.write_bytes(b"MZ Form W-2 Wage and Tax Statement 2025")
+    before = program.read_bytes()
+
+    report = sort(engagement, today=DAY1)
+
+    [row] = read_index(engagement)
+    assert row.decision == NEEDS_REVIEW and row.code == reasons.NOT_A_DOCUMENT.code
+    assert row.reason == reasons.NOT_A_DOCUMENT.template
+    assert row.prepared_location == "" and row.candidates == "" and row.evidence == ""
+    assert (originals(engagement) / "W-2 2025.pdf.exe").read_bytes() == before
+    assert _review_folder_files(engagement) == []
+    assert report.filed == []
+    assert api.review_bucket(row) == api.BUCKET_NOT_A_DOCUMENT
+    assert api.true_extension(row) == "exe"
+    assert reminder._parked_holds(load_manifest(engagement), [row]) == {}
+
+
+def test_a_script_inside_a_zip_lands_blocked(engagement):
+    """A program inside an email or a zip is never written out of it: no
+    file of it in _Opened, and its row parks as not a document, naming no
+    file and no copy. The document beside it is taken out as before."""
+    import io
+    import zipfile
+
+    from tracker.layout import opened_dir_of
+
+    packed = io.BytesIO()
+    with zipfile.ZipFile(packed, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("W-2.pdf", text_pdf(engagement.parent / "page.pdf", named_page(
+            "Form W-2 Wage and Tax Statement 2025", TEST_CLIENT)).read_bytes())
+        archive.writestr("invoice.js", b"WScript.Echo('not a document')")
+    (inbox_of(engagement) / "docs.zip").write_bytes(packed.getvalue())
+
+    sort(engagement, today=DAY1)
+
+    taken_out = sorted(p.name for p in opened_dir_of(engagement).rglob("*") if p.is_file())
+    assert taken_out == ["W-2.pdf"]
+    [script] = [row for row in read_index(engagement) if row.original_name == "invoice.js"]
+    assert script.decision == NEEDS_REVIEW and script.code == reasons.NOT_A_DOCUMENT.code
+    assert script.pbc_location == "" and script.prepared_location == "" and script.container
+    assert "invoice.js" not in _review_folder_files(engagement)
+
+    sort(engagement, today=DAY2)           # and a pass later, nothing says it went missing
+    assert [row.original_name for row in read_index(engagement)
+            if row.original_name == "invoice.js"] == ["invoice.js"]
+
+
+def test_a_direction_override_is_not_kept_in_any_recorded_name(engagement):
+    """E-12/B-10: a right-to-left override and a zero-width space, in a
+    drop's name and in the subfolder it came from, reach no name the
+    record keeps and no review copy's name; the original on disk keeps its
+    raw name, byte for byte (standing rule 2)."""
+    import unicodedata
+
+    raw_program = "W2\u202efdp.exe"
+    raw_page = "receipt\u200b.pdf"
+    raw_suffix = "receipt.pd\u200bf"      # the review's S4: an invisible character inside the suffix
+    folder = inbox_of(engagement) / "Scans\u200b"
+    folder.mkdir()
+    (folder / raw_program).write_bytes(b"MZ")
+    text_pdf(folder / raw_page, "Photos from Maui, the hotel pool and the beach at sunset")
+    (folder / raw_suffix).write_bytes(b"%PDF-1.4 not really a statement")
+
+    sort(engagement, today=DAY1)
+
+    def invisible(text):
+        return [ch for ch in text if unicodedata.category(ch) in ("Cf", "Cc")]
+
+    rows = read_index(engagement)
+    assert sorted(row.original_name for row in rows) == ["W2fdp.exe", "receipt.pdf", "receipt.pdf"]
+    assert all(row.subfolder == "Scans" for row in rows)
+    assert not any(invisible(row.original_name + row.subfolder + row.prepared_location)
+                   for row in rows)
+    # Nor in any row's reason: the extension a sentence quotes is the
+    # recorded name's (decision 190's review, S4).
+    assert [row.reason for row in rows if invisible(row.reason)] == []
+    assert _review_folder_files(engagement) == ["receipt (2).pdf", "receipt.pdf"]
+    on_disk = sorted(p.name for p in originals(engagement).rglob("*") if p.is_file())
+    assert on_disk == sorted([raw_program, raw_page, raw_suffix])
+    # A person's command may name the row either way: as recorded, or as sent.
+    from tracker.filer import find_parked
+
+    assert find_parked(rows, raw_page) is not None
+
+
+def test_a_macro_workbook_copy_is_marked_for_protected_view(engagement, monkeypatch):
+    """A review copy that can carry macros is marked as from the internet
+    on its temp, before it takes its name; a copy of a plain PDF is not."""
+    import tracker.filer as filer_module
+
+    marked = []
+    monkeypatch.setattr(filer_module, "mark_from_internet", lambda path: marked.append(path) or True)
+    (inbox_of(engagement) / "budget.docm").write_bytes(b"PK not really a document")
+    drop(engagement, "vacation.pdf", "Photos from Maui, the hotel pool and the beach at sunset")
+
+    sort(engagement, today=DAY1)
+
+    assert _review_folder_files(engagement) == ["budget.docm", "vacation.pdf"]
+    assert len(marked) == 1 and marked[0].name.startswith("budget.docm")
+
+
+def test_a_macro_copy_that_cannot_be_marked_is_not_made(engagement, monkeypatch):
+    """Fail closed (decision 190): on a volume that will not hold the mark,
+    no review copy is made - the drop is a "could not be filed" row the
+    pass report names - and the original rests safe."""
+    import tracker.filer as filer_module
+    from tracker.filer import MARK_REFUSED_STEP
+
+    def refused(path):
+        raise OSError(95, "Operation not supported", str(path))
+
+    monkeypatch.setattr(filer_module, "mark_from_internet", refused)
+    original = inbox_of(engagement) / "budget.docm"
+    original.write_bytes(b"PK not really a document")
+
+    report = sort(engagement, today=DAY1)
+
+    [row] = read_index(engagement)
+    assert row.decision == NEEDS_REVIEW and row.prepared_location == ""
+    assert row.code == reasons.COULD_NOT_FILE_CODE
+    assert "could not be marked as from the internet" in row.reason
+    # The re-check's N-N1: the row's step never points at the unmarked original.
+    assert row.reason.endswith(MARK_REFUSED_STEP) and "file it by hand" not in row.reason
+    assert _review_folder_files(engagement) == []
+    assert (originals(engagement) / "budget.docm").read_bytes() == b"PK not really a document"
+    assert [error.name for error in report.errors] == ["budget.docm"]
+
+
+@pytest.mark.parametrize("raw", ["W2.exe\u200b", "Pay.scr\ufeff.", "W2.ex\u200be", "x.lnk\u202c"])
+def test_a_program_hidden_by_an_invisible_character_is_still_not_a_document(engagement, raw):
+    """The review's M1: an invisible character after or inside the suffix
+    hides the type from the raw name, and the recorded name - which names
+    every copy and every card - shows it. Either name saying program is
+    enough: no review copy, no Open, and the card's type is printed clean."""
+    import unicodedata
+
+    from tracker import api
+
+    (inbox_of(engagement) / raw).write_bytes(b"MZ\x90\x00 a program")
+
+    sort(engagement, today=DAY1)
+
+    [row] = read_index(engagement)
+    assert row.code == reasons.NOT_A_DOCUMENT.code, row.reason
+    assert row.prepared_location == ""
+    assert _review_folder_files(engagement) == []
+    assert api.review_bucket(row) == api.BUCKET_NOT_A_DOCUMENT
+    assert api._review_copy_key(row) == ""
+    assert not [ch for ch in api.true_extension(row) if unicodedata.category(ch) == "Cf"]
+
+
+def test_no_review_copy_is_ever_named_for_a_program(tmp_path):
+    """The review's M1, in depth: the one function that names a review copy
+    refuses a program - whatever road asked, and whatever the row says -
+    loudly, as a FilingError naming it."""
+    from tracker.filer import REVIEW_OF_A_PROGRAM, _review_copy_path
+
+    with pytest.raises(FilingError) as refused:
+        _review_copy_path(tmp_path, "Pay.scr\ufeff")
+    assert str(refused.value) == REVIEW_OF_A_PROGRAM.format(name="Pay.scr")
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_a_program_sent_again_after_it_was_set_aside_parks_again_unread_with_no_copy(engagement):
+    """The review's M2: a program a person set aside, sent again, is asked
+    before it is read - so its name reaches no request, it gets no review
+    copy and it holds nothing - and its row says it was sent again."""
+    from tracker import reminder
+    from tracker.filer import RESENT_AFTER_SET_ASIDE, dismiss_review_file
+
+    program = b"MZ Form W-2 Wage and Tax Statement 2025"
+    (inbox_of(engagement) / "W-2 2025.pdf.exe").write_bytes(program)
+    sort(engagement, today=DAY1)
+    [first] = read_index(engagement)
+    dismiss_review_file(engagement, first.pbc_location)
+
+    (inbox_of(engagement) / "W-2 2025.pdf.exe").write_bytes(program)
+    sort(engagement, today=DAY2)
+
+    again = read_index(engagement)[-1]
+    assert again.decision == NEEDS_REVIEW and again.code == reasons.NOT_A_DOCUMENT.code
+    assert again.prepared_location == "" and again.candidates == "" and again.evidence == ""
+    assert again.reason.startswith(RESENT_AFTER_SET_ASIDE.split("{")[0])
+    assert again.reason.endswith(reasons.NOT_A_DOCUMENT.template)
+    assert _review_folder_files(engagement) == []
+    assert reminder._parked_holds(load_manifest(engagement), [again]) == {}
+
+
+def test_two_programs_in_one_zip_each_answer_to_their_own_handle(engagement):
+    """The review's M3: a program taken from an email or a zip has no
+    location, so its handle is its record key - unique, where "" named
+    every such row at once. Setting the first aside by its handle and seq
+    sets aside exactly that row, and an empty handle names none."""
+    import io
+    import zipfile
+
+    from tracker.filer import NO_HANDLE, NOT_REQUESTED, dismiss_review_file, find_parked
+
+    packed = io.BytesIO()
+    with zipfile.ZipFile(packed, "w") as archive:
+        archive.writestr("invoice.js", b"WScript.Echo(1)")
+        archive.writestr("payroll.exe", b"MZ")
+    (inbox_of(engagement) / "docs.zip").write_bytes(packed.getvalue())
+    sort(engagement, today=DAY1)
+
+    rows = read_index(engagement)
+    programs = [row for row in rows if row.code == reasons.NOT_A_DOCUMENT.code]
+    assert [row.original_name for row in programs] == ["invoice.js", "payroll.exe"]
+    assert all(row.pbc_location == "" for row in programs)
+    handles = [ledger_key(row) for row in programs]
+    assert len(set(handles)) == 2 and "" not in handles
+
+    seqs = store.document_seqs(store.connect(), engagement)
+    result = dismiss_review_file(engagement, handles[0], seq=seqs[handles[0]])
+
+    assert result.entry.original_name == "invoice.js"
+    after = {row.original_name: row.decision for row in read_index(engagement)
+             if row.code in (reasons.NOT_A_DOCUMENT.code, reasons.DISMISSED_BY_PERSON_CODE)}
+    assert after == {"invoice.js": NOT_REQUESTED, "payroll.exe": NEEDS_REVIEW}
+    with pytest.raises(FilingError, match=NO_HANDLE):
+        find_parked(read_index(engagement), "")
+
+
+@pytest.mark.parametrize("refuse", [False, True], ids=["marked", "refused"])
+def test_a_macro_working_copy_moved_into_review_is_marked_or_not_moved(engagement, monkeypatch, refuse):
+    """The review's S2: a working copy moved into review - a person's
+    unfiling, a refused put-back - goes through the one marking path, like
+    a copy made there: marked before the rename, and a mark refused moves
+    nothing (fail closed)."""
+    import tracker.filer as filer_module
+    from tracker.filer import MarkRefusedError, _do_op, _op
+
+    marked = []
+
+    def mark(path):
+        if refuse:
+            raise OSError(95, "Operation not supported", str(path))
+        marked.append(path.name)
+        return True
+
+    monkeypatch.setattr(filer_module, "mark_from_internet", mark)
+    working = engagement / PREPARED_DIR_NAME / "A01 - W-2 Wage Statements.xlsm"
+    working.parent.mkdir(parents=True, exist_ok=True)
+    working.write_bytes(b"PK a workbook with macros")
+    parked = engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME / "budget.xlsm"
+    move = _op(engagement, ledger.OP_MOVE, working, parked, "")
+
+    if refuse:
+        with pytest.raises(MarkRefusedError):
+            _do_op(engagement, move)
+        assert working.exists() and not parked.exists()
+    else:
+        _do_op(engagement, move)
+        assert marked == [working.name] and parked.exists() and not working.exists()
+
+
+def _a_filed_macro_workbook(engagement, monkeypatch):
+    """A macro workbook parked, then filed under A01 by a person, with the
+    mark working; returns its row."""
+    import tracker.filer as filer_module
+    from tracker.filer import assign_review_file
+
+    monkeypatch.setattr(filer_module, "mark_from_internet", lambda path: True)
+    (inbox_of(engagement) / "budget.xlsm").write_bytes(b"PK a workbook with macros")
+    sort(engagement, today=DAY1)
+    [parked] = read_index(engagement)
+    assign_review_file(engagement, parked.pbc_location, "A01", today=DAY1)
+    [row] = read_index(engagement)
+    assert row.decision == FILED
+    return row
+
+
+def _refuse_the_mark(monkeypatch):
+    import tracker.filer as filer_module
+
+    def refused(path):
+        raise OSError(95, "Operation not supported", str(path))
+
+    monkeypatch.setattr(filer_module, "mark_from_internet", refused)
+
+
+def test_a_refused_mark_on_an_unfile_records_nothing_and_the_next_pass_runs(engagement, monkeypatch):
+    """The re-check's M-N1: unfiling a macro working copy on a volume that
+    will not hold the mark is refused before anything is written down - no
+    open intent, the row still Filed at its copy - so the passes after it
+    run, where before every one of them raised on the intent it left."""
+    from tracker.filer import MarkRefusedError, unfile_document
+
+    row = _a_filed_macro_workbook(engagement, monkeypatch)
+    _refuse_the_mark(monkeypatch)
+
+    with pytest.raises(MarkRefusedError):
+        unfile_document(engagement, row.pbc_location, today=DAY2)
+
+    assert store.open_intents(store.connect(), engagement) == []
+    assert read_index(engagement) == [row]
+    assert locate(engagement, row.prepared_location).read_bytes() == b"PK a workbook with macros"
+    for _ in range(2):
+        report = sort(engagement, today=DAY3)
+        assert report.errors == [] and report.attention == []
+    assert read_index(engagement) == [row] and _review_folder_files(engagement) == []
+
+
+def test_a_refused_mark_on_an_interrupted_step_is_said_once_and_the_pass_goes_on(engagement, monkeypatch):
+    """The re-check's M-N1, for an intent already open: an unfiling killed
+    after it was written down, finished by a pass on a volume that now
+    refuses the mark. The recovery abandons it and says so once - the
+    mark's own sentence - and the pass goes on; the row stays Filed at its
+    copy, and the next pass has nothing to say."""
+    import tracker.filer as filer_module
+    from tracker.filer import INTERRUPTED_MARK_REFUSED, unfile_document
+
+    row = _a_filed_macro_workbook(engagement, monkeypatch)
+
+    def killed(*args, **kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(filer_module, "_carry_out_a_persons_ops", killed)
+    with pytest.raises(KeyboardInterrupt):
+        unfile_document(engagement, row.pbc_location, today=DAY2)
+    assert len(store.open_intents(store.connect(), engagement)) == 1
+    monkeypatch.undo()
+    _refuse_the_mark(monkeypatch)
+
+    report = sort(engagement, today=DAY3)
+
+    [said] = report.attention
+    assert said.name == "budget.xlsm"
+    assert "could not be marked as from the internet" in said.error
+    assert said.error.endswith(INTERRUPTED_MARK_REFUSED)
+    assert store.open_intents(store.connect(), engagement) == []
+    assert read_index(engagement) == [row] and _review_folder_files(engagement) == []
+    assert locate(engagement, row.prepared_location).read_bytes() == b"PK a workbook with macros"
+    again = sort(engagement, today=DAY3)
+    assert again.errors == [] and again.attention == []

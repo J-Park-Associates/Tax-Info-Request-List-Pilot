@@ -1096,9 +1096,10 @@ def test_household_roll_forward_rolls_all_or_none(park, monkeypatch):
         return real_create(folder, items, info)
 
     monkeypatch.setattr(rollover, "create_engagement", the_third_fails)
-    with pytest.raises(ManifestError, match="the disk filled") as failed:
+    with pytest.raises(ManifestError) as failed:
         roll_household(household, target_year=2027, plans=ticked)
-    assert str(failed.value).startswith("1120S - Park Landscaping LLC: ")
+    # The OS's error by its class, never its words (decision 190).
+    assert str(failed.value) == "1120S - Park Landscaping LLC: OSError. Nothing was rolled."
     conn = store.connect()
     for target in targets:
         assert not target.exists()
@@ -1247,7 +1248,7 @@ def test_a_failed_retirement_says_what_was_rolled_and_left_open_and_still_refres
     assert said.result.retired == [] and said.not_retired == [leo, sofia]
     assert str(said) == ROLLOVER_NOT_RETIRED.format(
         year=2027, rolled="1040 - John Park, 1120S - Park Landscaping LLC", retired="none",
-        left="1040 - Leo Park, 1040 - Sofia Park", why="the disk filled")
+        left="1040 - Leo Park, 1040 - Sofia Park", why="OSError")               # its class, never its words (decision 190)
     assert return_dir_for(root, PARK, 2027, "1040 - John Park").is_dir()
     assert load_engagement_info(leo).active is True and load_engagement_info(sofia).active is True
     assert refreshed == [household]
@@ -1284,7 +1285,7 @@ def test_the_command_line_says_rolled_not_all_retired_after_a_failed_retirement(
     assert code == 1, shown
     assert NOT_ALL_RETIRED_HEADING in shown and f"  {NOT_ROLLED_HEADING}\n" not in shown
     assert "was not rolled forward" not in shown
-    assert "Not retired: 1040 - Sofia Park (the disk filled)" in shown
+    assert "Not retired: 1040 - Sofia Park (OSError)" in shown
     assert return_dir_for(root, PARK, 2027, "1040 - John Park").is_dir()
 
 
