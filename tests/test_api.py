@@ -1919,6 +1919,36 @@ def test_the_app_names_what_an_earlier_version_left_on_its_first_screen(capsys, 
     assert (app / store.STORE_FILENAME).read_bytes() == b"an old store"     # named, never deleted
 
 
+def test_a_data_home_that_cannot_be_had_is_a_banner_on_the_first_screen_never_an_error(
+        capsys, tmp_path, monkeypatch):
+    """Decision 186's review, M1: with a clients root saved, a data home that
+    cannot be had would stop the root's own check - so ``list`` still
+    answers, with its vocabulary, keeps the saved root rather than asking for
+    it again, walks nothing, and says the data home's sentence in
+    ``machine_warnings`` - the API's own words, with no class name in front."""
+    from tracker import store
+    from tracker.settings import DATA_HOME_NOT_ABSOLUTE, ENV_DATA_HOME, ENV_SETTINGS_DIR
+
+    app = tmp_path / "app"
+    app.mkdir()
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(app))
+    clients = tmp_path / "Clients"
+    clients.mkdir()
+    assert run(capsys, "set-root", stdin={"root": str(clients)})[0] == 0
+    store.close()
+    monkeypatch.delenv(store.ENV_STORE, raising=False)
+    monkeypatch.setenv(ENV_DATA_HOME, "relative-data")
+
+    code, payload = run(capsys, "list")
+    assert code == 0, payload
+    assert "error" not in payload
+    assert payload["needs_root"] is False
+    assert payload["root"] == str(clients.resolve())
+    assert payload["vocab"]
+    assert payload["engagements"] == [] and payload["households"] == []
+    assert payload["machine_warnings"] == [DATA_HOME_NOT_ABSOLUTE.format(value="relative-data")]
+
+
 def test_the_first_screen_says_every_machine_warning_in_a_banner_of_its_own():
     """The app adds no word of its own: each sentence is the API's, drawn as
     text into a banner that stays (decision 186)."""

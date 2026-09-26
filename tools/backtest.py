@@ -85,6 +85,7 @@ import sys
 import tempfile
 import time
 from collections import Counter
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -95,6 +96,7 @@ if str(ROOT) not in sys.path:
 
 from tracker.content_check import extract  # noqa: E402
 from tracker.manifest import RequestItem  # noqa: E402
+from tracker.ocr import SCRATCH_ENV  # noqa: E402
 from tracker.router import route_file  # noqa: E402
 from tracker.settings import (  # noqa: E402
     COLUMN_EXPECTED,
@@ -269,6 +271,28 @@ def route_one(path: Path, rows: list[RequestItem], *, ocr: bool) -> tuple[str | 
     return route_file(path, rows, reading=reading).identifier, False, kind
 
 
+@contextmanager
+def _temp_pointed_at(folder: Path):
+    """Point every way a library finds the temp folder - ``TMP``, ``TEMP``,
+    ``TMPDIR`` (``ocr.SCRATCH_ENV``) and :data:`tempfile.tempdir` - at
+    ``folder`` for the block, and put each back as it was afterwards, unset
+    ones unset."""
+    saved = {name: os.environ.get(name) for name in SCRATCH_ENV}
+    saved_tempdir = tempfile.tempdir
+    try:
+        for name in SCRATCH_ENV:
+            os.environ[name] = str(folder)
+        tempfile.tempdir = str(folder)
+        yield folder
+    finally:
+        for name, value in saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+        tempfile.tempdir = saved_tempdir
+
+
 def route_corpus(folder: Path, expectations: Path, *, ocr: bool = False) -> tuple[list[Outcome], float]:
     """Route every row of ``expectations``, and say how long the whole pass took.
 
@@ -277,6 +301,14 @@ def route_corpus(folder: Path, expectations: Path, *, ocr: bool = False) -> tupl
     temp folder: a link that cannot be made is a copy of a client document. It
     goes away with the pass, and a killed pass's folder is swept by its process
     number.
+
+    **The reading is in this process** (with ``ocr=True`` there is no reading
+    child), so for the pass the temp folder itself - ``TMP``, ``TEMP``,
+    ``TMPDIR`` and :data:`tempfile.tempdir` - points at that same scratch
+    folder, and is put back afterwards (decision 186's review, N5): what a
+    library writes *through the temp folder* while reading a firm document
+    lands there and goes with the pass. A library that writes to a path of
+    its own choosing is not caught, here or in the reading child.
     """
     catalog_rows, read_expectations = _harness()
     rows = read_expectations(expectations)
@@ -289,7 +321,7 @@ def route_corpus(folder: Path, expectations: Path, *, ocr: bool = False) -> tupl
     own = process_scratch()
     own.mkdir(parents=True, exist_ok=True)
     try:
-        with tempfile.TemporaryDirectory(prefix="backtest-", dir=own) as scratch_name:
+        with _temp_pointed_at(own), tempfile.TemporaryDirectory(prefix="backtest-", dir=own) as scratch_name:
             scratch = Path(scratch_name)
             workspace = scratch / "catalogs"
             workspace.mkdir()

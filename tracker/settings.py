@@ -392,7 +392,17 @@ def system_drive_root() -> Path:
 def drive_type(path: Path) -> int:
     """GetDriveTypeW for the drive ``path`` is on (DRIVE_*). Off Windows there
     are no drive letters to ask about and the program is never scheduled from
-    there (install_task only prints the command), so it answers DRIVE_FIXED."""
+    there (install_task only prints the command), so it answers DRIVE_FIXED.
+
+    What it buys (SPEC-186 section 10, the review's S2): it refuses what
+    Windows *reports* as removable, network or unknown - the stick the old
+    build script named - not every portable disk. A USB hard disk reports
+    DRIVE_FIXED and passes; so do a ``subst`` letter and a mounted VHD on a
+    fixed disk. Only ``path``'s own drive letter or share is asked, so a
+    folder junctioned onto another drive is judged by the drive its
+    spelling names: :func:`app_dir` and :func:`settings_dir` are resolved
+    first and are seen through a junction, the data home is not.
+    """
     if os.name != "nt":
         return DRIVE_FIXED
     import ctypes
@@ -473,7 +483,17 @@ def data_home() -> Path:
     machine (decision 186): the store, a reading's temporary files, the run
     log and the scheduler's task file. :func:`resolve_data_home` over this
     process's environment; not cached, so an override takes effect at once.
-    It creates nothing - each writer makes its own path when it writes."""
+    It creates nothing - each writer makes its own path when it writes.
+
+    What it buys (SPEC-186 section 10, the review's S2): it moves
+    client-derived data off the program's folder, the checkout, removable
+    media and the temp folder. It is not a wall: the folder is readable by
+    this Windows account, the machine's administrators, SYSTEM and any
+    program running as this account - which is why the AI tooling runs
+    under another account - and it is not encrypted. A ``TRACKER_DATA_HOME``
+    a person sets is trusted to be where they mean, within the two checks;
+    it is not resolved, so one junctioned elsewhere is judged by its own
+    spelling's drive (:func:`drive_type`)."""
     return resolve_data_home(os.environ, windows=os.name == "nt", home=_home(),
                              program=program_folders(), drive_type=drive_type)
 

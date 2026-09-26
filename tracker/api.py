@@ -318,6 +318,7 @@ from tracker.settings import (
     SettingsError,
     app_dir,
     clients_root,
+    data_home,
     error_log,
     error_log_path,
     firm,
@@ -2697,6 +2698,11 @@ def _machine_warnings(root: Path | None) -> list[str]:
     Windows cannot name) - said every time the app opens from there."""
     warnings = []
     try:
+        # Asked first and on its own (decision 186's review, M1): what was
+        # left behind asks the data home only when it finds something, and
+        # not at all under ``TRACKER_STORE``, so it cannot be the one to say
+        # the data home is missing.
+        data_home()
         left = left_behind_warning(root)
     except SettingsError as exc:
         left = str(exc)
@@ -2733,6 +2739,14 @@ def _cmd_list(argv: list[str]) -> dict:
     except door.DoorError as exc:
         return {**empty, "needs_root": True, "root": str(clients_root() or ""),
                 "root_problem": str(exc), "vocab": _vocab()}
+    except SettingsError:
+        # A data home that cannot be had (decision 186's review, M1): the root
+        # cannot be held to its rule without it, so it is not walked - but the
+        # first screen still arrives, and its banner (``machine_warnings``,
+        # built above with no root) already carries the sentence. The root
+        # is kept, not asked for again: it is the machine that needs fixing.
+        return {**empty, "needs_root": False, "root": str(clients_root() or ""),
+                "vocab": _vocab()}
     if root is None or not root.is_dir():
         return {**empty, "needs_root": True, "root": str(root or ""), "vocab": _vocab()}
     try:

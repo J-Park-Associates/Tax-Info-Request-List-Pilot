@@ -211,6 +211,20 @@ STORE_SHM_FILENAME = f"{STORE_FILENAME}-shm"
 #: The suite sets it per test; a person may set it to ask a question of
 #: a copy. Read by :func:`connect` and nowhere else.
 ENV_STORE = "TRACKER_STORE"
+#: What :func:`store_path` says of an :data:`ENV_STORE` the data home's own
+#: checks refuse (decision 186's review, N4): it is a second answer to
+#: "where is the store", so it is held to the same two.
+STORE_OVERRIDE_NOT_ABSOLUTE = ENV_STORE + " must name a whole path, got {value!r}"
+STORE_OVERRIDE_IN_PROGRAM = (ENV_STORE + " names {path}, inside the program's own folder {program}; "
+                             "client data never sits beside the program")
+STORE_OVERRIDE_NOT_LOCAL = (ENV_STORE + " names {path}, which is not on this computer's own disk; "
+                            "the tracker keeps its database only on a fixed disk")
+#: What the command line says of a copy named inside the app's own folder
+#: (decision 186's review, N4): client data never lives in a code checkout,
+#: and ``rebuild`` would create it there.
+COPY_INSIDE_APP = ("{path} is inside the app's own folder {app}; a copy of the database is never "
+                   "kept there. Copy it into the tracker's data folder under a new name and name "
+                   "that instead")
 
 #: What this version of the code knows how to read, written into the file as
 #: ``user_version``. A file carrying anything else is refused by name rather
@@ -821,17 +835,32 @@ _CONNECTION_PATH: Path | None = None
 def store_path() -> Path:
     """The store this process uses: :data:`ENV_STORE` if it is set, else the
     one in the data home (:func:`tracker.settings.data_home`, decision 186).
+    :data:`ENV_STORE` is held to the data home's two checks - a whole path,
+    not inside the program, on a fixed disk - and refused with a
+    :class:`~tracker.settings.SettingsError` otherwise, as the data home is.
 
     :mod:`tracker.settings` is imported here rather than at the top of the
     module: this module sits at the bottom of the package and must not pull
     in, at load time, the chain that walks folders and moves files.
     """
-    override = os.environ.get(ENV_STORE)
-    if override:
-        return Path(override)
-    from tracker.settings import data_home
+    from tracker import settings
 
-    return data_home() / STORE_FILENAME
+    override = (os.environ.get(ENV_STORE) or "").strip()
+    if not override:
+        return settings.data_home() / STORE_FILENAME
+    # Held to the data home's own two checks (decision 186's review, N4): a
+    # whole path, not inside the program, on a fixed disk - the same
+    # SettingsError, so every caller that says a data home cannot be had
+    # says this too.
+    path = Path(override)
+    if not path.is_absolute():
+        raise settings.SettingsError(STORE_OVERRIDE_NOT_ABSOLUTE.format(value=override))
+    for program in settings.program_folders():
+        if settings._inside(path, program):
+            raise settings.SettingsError(STORE_OVERRIDE_IN_PROGRAM.format(path=path, program=program))
+    if settings.drive_type(path) != settings.DRIVE_FIXED:
+        raise settings.SettingsError(STORE_OVERRIDE_NOT_LOCAL.format(path=path))
+    return path
 
 
 def connect(path: Path | str | None = None) -> sqlite3.Connection:
@@ -3662,7 +3691,10 @@ def store_named(given: Path) -> Path | str | None:
     (:data:`OLD_STORE_NAMED`) so it is never opened and a ``rebuild`` never
     recreates it; the store in use is never "old", wherever
     :data:`ENV_STORE` puts it. Another existing folder holds a copy, named
-    :data:`STORE_FILENAME` inside it. Anything else is refused rather
+    :data:`STORE_FILENAME` inside it. A copy inside the app's own folder
+    - on a source install, the checkout - is refused with
+    :data:`COPY_INSIDE_APP` (decision 186's review, N4), since ``rebuild``
+    would create client data there. Anything else is refused rather
     than resolved, because the resolution used to be ``with_name`` on
     whatever was typed, and the integration run of decision 107 typed the
     app folder as the runbook said and silently got an empty store *beside*
@@ -3684,10 +3716,14 @@ def store_named(given: Path) -> Path | str | None:
         in_use = store_path()
         if not same(whole, Path(os.path.abspath(in_use))) and any(same(whole.parent, place) for place in mine):
             return OLD_STORE_NAMED.format(path=given, store=in_use)
-        return given
-    if given.is_dir():
-        return given / STORE_FILENAME
-    return None
+        copy = given
+    elif given.is_dir():
+        copy = given / STORE_FILENAME
+    else:
+        return None
+    if settings.inside_the_app(copy):
+        return COPY_INSIDE_APP.format(path=copy, app=settings.app_dir())
+    return copy
 
 
 if __name__ == "__main__":

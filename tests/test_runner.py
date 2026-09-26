@@ -4146,6 +4146,55 @@ def test_the_run_log_lives_in_the_data_home_when_the_flag_names_no_file(tmp_path
     capsys.readouterr()
 
 
+def test_a_pass_with_no_data_home_says_so_on_the_page_and_exits_non_zero(tmp_path, samples, monkeypatch,
+                                                                       capsys):
+    """Decision 186's review, S1 (security principle 6): no data home means
+    no store and no run log, so nothing is filed - but the pass is never
+    silent. The page in the clients root carries the sentence as its one
+    problem, and the exit is non-zero with the same sentence."""
+    from tracker.runner import DATA_FOLDER_PROBLEM
+    from tracker.settings import DATA_HOME_NOT_ABSOLUTE, ENV_DATA_HOME, ENV_SETTINGS_DIR, set_clients_root
+
+    root = tmp_path / "Clients"
+    engagement = build_engagement(root, samples)
+    settings = tmp_path / "settings"
+    settings.mkdir()
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    set_clients_root(root)
+    (root / STATUS_PAGE_FILENAME).write_text("yesterday's green page", encoding="utf-8")
+    monkeypatch.setenv(ENV_DATA_HOME, "relative-data")
+    sentence = DATA_FOLDER_PROBLEM.format(problem=DATA_HOME_NOT_ABSOLUTE.format(value="relative-data"))
+
+    with pytest.raises(SystemExit) as stopped:
+        main([SETTINGS_FLAG, str(settings), "--reminders", REMINDERS_NEVER, "--log"])
+
+    assert stopped.value.code == sentence
+    page = (root / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
+    assert html.escape(sentence) in page
+    assert (inbox_of(engagement.path) / f"W-2 John Smith {YEAR}.pdf").is_file()   # nothing filed
+    capsys.readouterr()
+
+
+def test_a_pass_with_no_data_home_writes_no_page_in_a_root_the_rule_refuses(tmp_path, monkeypatch, capsys):
+    """The page is never written anywhere a pass would not walk: a typed
+    root the rule refuses (here, one holding the settings folder) gets no
+    page, and the pass still exits with the sentence."""
+    from tracker.settings import ENV_DATA_HOME, ENV_SETTINGS_DIR
+
+    root = tmp_path / "Clients"
+    settings = root / "settings"
+    settings.mkdir(parents=True)
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    monkeypatch.setenv(ENV_DATA_HOME, "relative-data")
+
+    with pytest.raises(SystemExit) as stopped:
+        main([str(root), "--reminders", REMINDERS_NEVER])
+
+    assert "Data folder problem" in str(stopped.value.code)
+    assert not (root / STATUS_PAGE_FILENAME).exists()
+    capsys.readouterr()
+
+
 def test_a_relative_log_file_is_refused_before_the_pass(tmp_path, samples, monkeypatch, capsys):
     from tracker.runner import LOG_NOT_ABSOLUTE
 

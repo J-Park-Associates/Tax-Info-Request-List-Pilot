@@ -45,6 +45,37 @@ data folder; the ledgers are the backup. A reading's temporary files, if a libra
 writes one, go to a folder of that reading's own in the data folder
 (`scratch`), removed when the reading ends — never the machine's temp folder.
 
+**What the data folder does not cover** (decision 186, SPEC-186 §10). It
+moves client data off the program's folder, the checkout, removable media
+and the temp folder; it is not a lock. It is not encrypted, and anything
+running as the schedule's Windows account can read it — which is why the AI
+tooling runs under another account. Install Schedule refuses a program on
+what Windows *reports* as removable, network or unknown: an external hard disk,
+a `subst` letter and a mounted VHD all report a fixed disk and pass, and a
+job installed from a stick before 186 keeps running from it until Install
+Schedule is pressed from the copy on the disk (the app's first screen says
+so every time it opens from the stick). A data folder set with
+`TRACKER_DATA_HOME` is trusted to be where it says, within the two checks,
+and one junctioned elsewhere is judged by the drive its own spelling names.
+A reading's `scratch` folder catches what a library writes *through the
+temp folder*; a library that writes to a path of its own choosing is not
+caught. A killed reading's folder lives until the next reading starts, and
+one whose process number Windows reused lives until that process ends.
+`TRACKER_STORE`, which points the tracker at another database, is held to
+the same checks — a whole path, not inside the program, on a fixed disk —
+and the store check refuses a copy inside the app's own folder. A `--log`
+file and the scheduler's `--out` file are a person's explicit choice and go
+where they are named: name a place in the data folder.
+
+**If the data folder cannot be had** (`LOCALAPPDATA` unset or not a folder,
+a bad `TRACKER_DATA_HOME`, a data folder not on a fixed disk), a pass files
+nothing — the database and the run log both live there. It is not silent:
+it writes the status page in the clients root, if the root can take one,
+with the one problem "Data folder problem: …", and ends with a non-zero
+Last Run Result; the app's first screen says why in its red banner. The page lists no return that morning, because each return's line
+is read from the database. The residual risk: a clients root the pass
+cannot reach at the same time leaves only Task Scheduler's Last Run Result.
+
 **A return the store refuses as "changed behind the tracker's back".** The
 store keeps a fingerprint of every line of a return's record it has read
 (decision 137). If a sync client or a person rewrote or reordered the record
@@ -925,8 +956,11 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    machine that runs the schedule (`%LOCALAPPDATA%\tax-document-tracker\logs`,
    decision 186), says of every pass — the app's button's included — when it
    ran and how many returns it filed, parked, failed, skipped or held, with a
-   short code for each kind of trouble. It names no client and no file: for
-   which client, read the status page. It keeps about a megabyte, in four
+   short code for each kind of trouble. It names no client and no file, and
+   carries no text taken from a client's document: for which client, read
+   the status page. The one exception is the reader's note, when the graphics
+   card pack could not be used: it is the machine's own error, word for
+   word, and may name a folder on this machine. It keeps about a megabyte, in four
    files. Each pass's first line ends with which device read its
    scans and photos: `reader=processor` or `reader=graphics card` (§6,
    step 5). For one client, **open the Status Report** in that

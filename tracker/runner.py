@@ -236,8 +236,10 @@ from tracker.settings import (
     firm,
     logs_dir,
     product_name,
+    root_refusal,
     settings_dir,
     settings_path,
+    system_drive_root,
 )
 from tracker.store import StoreError
 from tracker.view import VIEW_FILENAME, write_view
@@ -490,6 +492,10 @@ LOG_NOT_WRITTEN = "the run log could not be written ({kind})"
 #: What the practice page's failure says where it can be said: the app's
 #: reply after Run now, and the console (decision 189).
 PAGE_NOT_WRITTEN = "the practice page could not be written ({kind})"
+#: What a pass says when no data home can be had (decision 186): on stderr,
+#: as Task Scheduler's result, and - since the review's S1 - as the one
+#: problem on the practice page, when the clients root can take one.
+DATA_FOLDER_PROBLEM = "Data folder problem: {problem}"
 
 #: Each household's share of a pass (decision 189), on ``ocr.awake_clock``
 #: from the household's start and checked **between files**: a household
@@ -1906,11 +1912,15 @@ def append_log(path: Path | str, report: RunReport) -> Path:
     went wrong - a codes line.
 
     A name is never quoted into the run log (security principle 7): which
-    client is always read on the status page. So there is no label, no
-    file name, no error text, no draft's name and no slow reading's name
-    here - only :func:`log_counts` and :func:`log_codes` (decision 186).
-    The reader's note stays verbatim: its reason is the machine's (a
-    provider's name, a library that would not load), never a document's.
+    client is always read on the status page. The log carries **no
+    client-derived text** - no label, no file name, no draft's name, no
+    slow reading's name and no household's error - only :func:`log_counts`
+    and :func:`log_codes` (decision 186). **The one exception is the
+    reader's note**, kept verbatim, and it can hold an exception's text
+    (``ocr.PACK_UNUSABLE``'s reason, a reading child's error): a machine
+    path, a provider's message, the account's profile folder. It is the
+    machine's own, never a document's - the warm-up reads a drawn page and
+    building the engine reads no document (decision 186's review, S4).
     Appended through ``fsio.append_rotating``, so the log keeps at most
     :data:`LOG_KEEP` older files of :data:`LOG_MAX_BYTES`.
     """
@@ -2498,7 +2508,13 @@ def _pass(ns, parser, reached: dict) -> int:
     try:
         data_home()
     except SettingsError as exc:
-        raise SystemExit(f"Data folder problem: {exc}") from None
+        # Refused before anything else is read, but never in silence
+        # (security principle 6 outranks SPEC-186 section 7.3; the review's
+        # S1): the page in the clients root says it, and the exit is non-zero.
+        sentence = DATA_FOLDER_PROBLEM.format(problem=exc)
+        if not ns.dry_run:
+            _say_no_data_home_on_the_page(ns.root if ns.root and not ns.log else "", sentence)
+        raise SystemExit(sentence) from None
     root = ns.root
     if not root:
         try:
@@ -2659,6 +2675,38 @@ def _pass(ns, parser, reached: dict) -> int:
     if result.not_served_twice:
         return NOT_SERVED_TWICE_EXIT_CODE
     return 1 if failed or result.errors else 0
+
+
+def _say_no_data_home_on_the_page(given: str, sentence: str) -> Path | None:
+    """Write the practice page with ``sentence`` as the pass's one problem,
+    when no data home can be had (decision 186's review, S1), and return
+    where it went - or ``None``, said on stderr by its class, when it could
+    not be.
+
+    ``given`` is a root typed on the command line, else the saved one is
+    used. It is held to the root's rule without the data home - there is
+    none for it to hold or sit inside - and a root the rule refuses, or that
+    is not a folder, gets no page: the page is never written anywhere a pass
+    would not walk. **The page carries the sentence alone.** Each return's
+    line is read from the record, which is the store, which lives in the
+    data home; so it lists no return, and says why. There is no run log to
+    write either: that too lives in the data home. The Last Run Result in
+    Task Scheduler is the only other trace.
+    """
+    try:
+        raw = given or clients_root()
+        if raw is None:
+            return None
+        root = Path(raw).expanduser().resolve()
+        if not root.is_dir() or root_refusal(root, settings=settings_dir().resolve(),
+                                             app=app_dir(), system=system_drive_root()):
+            return None
+        report = RunReport(today=dt.date.today())
+        _warn(report, CODE_NO_DATA_HOME, sentence)
+        return write_status_page(root, report)
+    except Exception as exc:
+        log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, exc.__class__.__name__)
+        return None
 
 
 _STARTED = re.compile(r"^\[(?P<stamp>[^\]]+)\] pass started$")

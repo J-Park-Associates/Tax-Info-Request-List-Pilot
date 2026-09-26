@@ -77,10 +77,19 @@ patched function) for one document and leave it for the next.
 ``scratch_root() / <its pid>`` in the data home, before it serves anything
 (decision 186). The reader writes no temporary file today (SPEC-169 section
 6); that was a measurement, and this makes it a place: whatever a library
-writes lands in the child's folder, which is removed when the child ends, and
-never in the machine's temp folder. One folder per process, and only a folder
+writes *through the temp folder* (``tempfile``, ``GetTempPath``, ``TMPDIR``)
+lands in the child's folder, which is removed when the child ends, and never
+in the machine's temp folder. One folder per process, and only a folder
 whose process is gone is ever swept, so a preview's child can never empty the
 folder under a running pass (D-14).
+
+What this does not cover (SPEC-186 section 10, the review's S2): a library
+that writes to a path of its own choosing is not caught. A reading made in
+this process (``reading_session(in_a_child=False)``) redirects nothing - the
+backtest, which reads in its own process, points the temp folder at its own
+scratch for the run instead. A killed child's folder lives until the next
+child starts and sweeps it; a folder whose process number Windows has reused
+for a live process lives until that process ends.
 
 The pass opens its child with :func:`reading_session` (the runner for a
 pass, the app for one command); a reading made with none open gets a

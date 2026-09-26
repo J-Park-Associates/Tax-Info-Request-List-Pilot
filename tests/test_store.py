@@ -900,6 +900,58 @@ def test_the_command_line_refuses_the_old_store_beside_the_program_and_creates_n
     assert not old.exists()                                         # never opened, so never made
 
 
+def test_the_command_line_refuses_a_copy_inside_the_apps_own_folder_and_creates_nothing(
+        this_account, root, engagement):
+    """Decision 186's review, N4: a folder or a store file inside the app's
+    own folder - on a source install, the checkout - is refused in a
+    sentence, so a ``rebuild`` never creates client data there."""
+    from tracker.settings import app_dir
+
+    inside = app_dir() / "docs"
+    copy = inside / store.STORE_FILENAME
+    said = store.COPY_INSIDE_APP.format(path=copy, app=app_dir())
+    assert store.store_named(inside) == said
+    assert store.store_named(copy) == said
+
+    refused = cli(inside, "rebuild", root)
+    assert refused.returncode == 1
+    assert said in refused.stderr
+    assert "Traceback" not in refused.stderr and "Traceback" not in refused.stdout
+    assert not copy.exists()
+
+
+def test_a_store_the_environment_names_is_held_to_the_data_homes_two_checks(tmp_path, monkeypatch):
+    """Decision 186's review, N4: ``TRACKER_STORE`` is a second answer to
+    "where is the store", so it is held to the data home's checks - a whole
+    path, not inside the program, on a fixed disk - and refused, as the data
+    home is, with a SettingsError that says why."""
+    from tracker import settings
+
+    store.close()
+    allowed = tmp_path / "elsewhere" / store.STORE_FILENAME
+    monkeypatch.setenv(store.ENV_STORE, str(allowed))
+    assert store.store_path() == allowed
+
+    monkeypatch.setenv(store.ENV_STORE, "relative/tracker.db")
+    with pytest.raises(settings.SettingsError) as refused:
+        store.store_path()
+    assert str(refused.value) == store.STORE_OVERRIDE_NOT_ABSOLUTE.format(value="relative/tracker.db")
+
+    in_the_program = settings.app_dir() / store.STORE_FILENAME
+    monkeypatch.setenv(store.ENV_STORE, str(in_the_program))
+    with pytest.raises(settings.SettingsError) as refused:
+        store.store_path()
+    assert str(refused.value) == store.STORE_OVERRIDE_IN_PROGRAM.format(path=in_the_program,
+                                                                       program=settings.app_dir())
+
+    monkeypatch.setenv(store.ENV_STORE, str(allowed))
+    monkeypatch.setattr(settings, "drive_type", lambda path: settings.DRIVE_REMOVABLE)
+    with pytest.raises(settings.SettingsError) as refused:
+        store.store_path()
+    assert str(refused.value) == store.STORE_OVERRIDE_NOT_LOCAL.format(path=allowed)
+    assert not allowed.exists() and not in_the_program.exists()
+
+
 def test_the_command_line_says_a_refused_store_in_one_sentence(root, tmp_path):
     """A version newer than this code is refused by open() in a sentence;
     the command line repeats it and exits 1 - never a traceback."""

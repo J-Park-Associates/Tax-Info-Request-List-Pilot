@@ -77,6 +77,7 @@ import re
 import secrets
 import shutil
 import stat
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -362,13 +363,39 @@ def write_json_atomically(path: Path, payload: object, *, indent: int = 2) -> No
     write_text_atomically(path, json.dumps(payload, indent=indent))
 
 
+#: The file a rotation holds while it turns the log over (decision 186's
+#: review, S3): made with O_EXCL beside the log, so only one writer rotates
+#: at a time, and removed when it is done.
+ROTATION_LOCK_SUFFIX = ".rotating"
+#: How old a rotation's lock file may be before it is taken for one a
+#: killed writer left behind and removed. A rotation is a handful of
+#: renames; a minute is far longer than any takes.
+ROTATION_LOCK_STALE_SECONDS = 60
+
+
 def append_rotating(path: Path, text: str, *, max_bytes: int, keep: int) -> Path:
     """Append ``text`` to ``path``, first rotating it (path -> path.1 -> ... ->
     path.<keep>, the oldest dropped) when the append would take it past
     ``max_bytes``. Opened, written and closed each time, so no process holds it
-    between entries. A rotation another process blocks (PermissionError on a
-    rename) is skipped with a warning and tried again at the next append: the
-    entry is never lost, and the file overshoots by at most a few entries.
+    between entries. **The entry is never lost**: a rotation that fails at any
+    step - a rename another process blocks (PermissionError), a file another
+    writer has already moved (FileNotFoundError), any other OSError - is
+    abandoned with a warning, the entry is appended anyway, and the rotation
+    is tried again at the next append; the file overshoots by at most a few
+    entries.
+
+    Two writers append to the run log - the scheduled pass and the app's
+    own - and both can cross the size at once (decision 186's review, S3).
+    So only one rotates at a time: it holds a lock file made with O_EXCL
+    beside the log (:data:`ROTATION_LOCK_SUFFIX`), and, holding it, asks
+    the size again before renaming anything. A writer that finds the lock
+    held appends and leaves the turning-over to the holder, so no rename is
+    ever made from a stale view of the files, and older entries are never
+    renamed over. A writer that appends while the holder renames writes
+    into whichever file the name then points to - the entry lands in
+    ``.1`` rather than the log, but it lands. A lock older than
+    :data:`ROTATION_LOCK_STALE_SECONDS` is one a killed writer left, and is
+    removed; this pass appends, and the next one rotates.
 
     Hand-rolled rather than ``logging.handlers.RotatingFileHandler``
     (decision 186): a run log takes one whole entry per pass, not a stream
@@ -383,25 +410,57 @@ def append_rotating(path: Path, text: str, *, max_bytes: int, keep: int) -> Path
     """
     path = Path(path)
     data = text.encode("utf-8", errors="backslashreplace")
-    try:
-        size = path.stat().st_size
-    except FileNotFoundError:
-        size = 0
-    if size and size + len(data) > max_bytes:
-        older = [path.with_name(f"{path.name}.{n}") for n in range(1, keep + 1)]
+    if _too_big_for(path, len(data), max_bytes):
         try:
-            if not older:
-                path.unlink()
-            else:
-                for n in range(len(older) - 1, 0, -1):
-                    if older[n - 1].exists():
-                        os.replace(older[n - 1], older[n])
-                os.replace(path, older[0])
-        except PermissionError as exc:
+            _rotate(path, len(data), max_bytes=max_bytes, keep=keep)
+        except OSError as exc:
             log.warning("Could not rotate %s (%s); appending and trying again next time", path, exc)
     with path.open("ab") as handle:
         handle.write(data)
     return path
+
+
+def _too_big_for(path: Path, adding: int, max_bytes: int) -> bool:
+    """Whether ``adding`` more bytes would take ``path`` past ``max_bytes``;
+    an empty or missing file never is, so one entry larger than the limit
+    is still written whole."""
+    try:
+        size = path.stat().st_size
+    except FileNotFoundError:
+        return False
+    return bool(size) and size + adding > max_bytes
+
+
+def _rotate(path: Path, adding: int, *, max_bytes: int, keep: int) -> None:
+    """Turn ``path`` over under its rotation lock, if it still needs it once
+    the lock is held; do nothing when another writer holds the lock."""
+    lock = path.with_name(path.name + ROTATION_LOCK_SUFFIX)
+    try:
+        os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+    except FileExistsError:
+        try:
+            if time.time() - lock.stat().st_mtime > ROTATION_LOCK_STALE_SECONDS:
+                lock.unlink()
+                log.warning("Removed a stale rotation lock %s; rotating at the next append", lock)
+        except FileNotFoundError:
+            pass
+        return
+    try:
+        if not _too_big_for(path, adding, max_bytes):
+            return                      # another writer turned it over first
+        older = [path.with_name(f"{path.name}.{n}") for n in range(1, keep + 1)]
+        if not older:
+            path.unlink()
+            return
+        for n in range(len(older) - 1, 0, -1):
+            if older[n - 1].exists():
+                os.replace(older[n - 1], older[n])
+        os.replace(path, older[0])
+    finally:
+        try:
+            lock.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def make_new_folders(folder: Path) -> list[Path]:

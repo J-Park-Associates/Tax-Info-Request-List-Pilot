@@ -272,7 +272,9 @@ python -m tracker.runner --settings "C:\Tools\tax-tracker" --log     # what the 
 
 `--log` alone appends the pass's counts and codes — never a client's name — to `runs.log` in the
 tracker's data folder, rotated at 256 KB with three older files kept; `--log <file>` names
-another, by its whole path.
+another, by its whole path - a person's explicit choice, written where it is named, so name a
+place in the data folder. A pass that cannot have its data folder files nothing, writes the
+status page with that one problem, and exits non-zero.
 
 A root on the command line together with `--log` is the shape of the job
 installed before decision 131, and it is refused - red, naming *Install
@@ -304,7 +306,7 @@ own Python holds none of the locked packages. `--settings` defaults to this chec
 must already name a clients root; the job carries no root of its own.
 `--install` registers the task as it writes the XML, and running the same
 line again changes the schedule. It writes the task's file into the tracker's data folder unless
-`--out` names another, and refuses when the program is on a removable or network drive (decision
+`--out` names another (a person's explicit choice, written where it is named), and refuses when the program is on a removable or network drive (decision
 186). The app's **Install Schedule** button does exactly this for the
 folder it is showing - from source with the Python it runs under, and in
 the packaged app with its own executable, which runs the job when given
