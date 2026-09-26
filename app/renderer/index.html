@@ -217,13 +217,12 @@
           </thead>
           <tbody id="rows"></tbody>
         </table>
-        <!-- Decision 142: the rows nobody asked for with no document at all,
-             folded closed under the table; the heading is the API's. -->
-        <details id="rows-not-asked-group" class="rows-not-asked hidden">
-          <summary id="rows-not-asked-summary"></summary>
-          <table class="requests" id="rows-not-asked-table">
-            <tbody id="rows-not-asked"></tbody>
-          </table>
+        <!-- Decision 200: every row nobody waits on (not asked with nothing
+             in, decision 142; not applicable, decision 116), folded closed
+             under the table in one group per label; every word is the API's. -->
+        <details id="rows-set-aside-group" class="rows-set-aside hidden">
+          <summary id="rows-set-aside-summary"></summary>
+          <div id="rows-set-aside"></div>
         </details>
       </section>
 

@@ -175,10 +175,10 @@ from tracker.manifest import (
     MIN_SIZE_KB_FLOOR,
     NO_DATE_CHECK,
     NO_LIST_HEAD,
-    NOT_APPLICABLE_LABEL,
     NOT_ASKED_LABEL,
     OVERRIDE_REASON_OTHER,
     OVERRIDE_REASONS,
+    STATUS_LABELS,
     UNSCANNED_LABEL,
     YEAR_MAX,
     YEAR_MIN,
@@ -199,6 +199,7 @@ from tracker.manifest import (
     recorded_rules,
     rule_as_read,
     save_rules,
+    status_key,
     status_label,
     summarize,
     unlearn_keyword,
@@ -347,8 +348,8 @@ from tracker.templates import (  # the catalog; re-exported for the dialog
     template_items,
 )
 from tracker.view import (
-    NOT_APPLICABLE_SECTION,
-    NOT_ASKED_SECTION,
+    SET_ASIDE_GROUP,
+    SET_ASIDE_SECTION,
     VIEW_FILENAME,
     VIEW_LABEL,
     VIEW_OPEN_LABEL,
@@ -1018,6 +1019,17 @@ def _vocab() -> dict:
         "product": product_name(),
         "firm": firm(),
         "statuses": [{"value": status, "key": _slug(status)} for status in Status.ALL],
+        # What each word the record keeps for a row is shown as (decision
+        # 200): keyed by the record's word, with the chip class that word
+        # is drawn with, the preparer's label and its one sentence. Not
+        # Applicable's label is the year pattern, filled per row from the
+        # row's ``year`` - the one exposure of that constant.
+        "labels": {word: {"key": _slug(word), "label": shown.label, "sentence": shown.sentence}
+                   for word, shown in STATUS_LABELS.items()},
+        # The one fold under the request table, the Status Report's and
+        # the editor's, of every row nobody waits on, and each group's
+        # heading inside it (decision 200).
+        "set_aside": {"heading": SET_ASIDE_SECTION, "group": SET_ASIDE_GROUP},
         "unscanned_label": UNSCANNED_LABEL,
         "unscanned_key": _slug(UNSCANNED_LABEL),
         # What a row nobody asked for is called while nothing has arrived
@@ -1033,12 +1045,11 @@ def _vocab() -> dict:
         "nothing_asked": NOTHING_ASKED,
         "roll_template_label": ROLL_TEMPLATE_LABEL,
         "overrides": {"accepted": Override.ACCEPTED, "not_applicable": Override.NOT_APPLICABLE},
-        # How a set-aside row is named to a person: the value with the
-        # row's year, which travels per item as ``year`` in the state so
-        # the renderer computes nothing from the Period's text. The
-        # reasons a person may give for Accepted, and the word that opens
-        # the box for their own words - which is never itself stored.
-        "not_applicable_label": NOT_APPLICABLE_LABEL,
+        # The reasons a person may give for Accepted, and the word that
+        # opens the box for their own words - which is never itself stored.
+        # A set-aside row's name is ``labels``' Not Applicable pattern with
+        # the row's year, which travels per item as ``year`` in the state
+        # so the renderer computes nothing from the Period's text.
         "override_reasons": list(OVERRIDE_REASONS),
         "override_reason_other": OVERRIDE_REASON_OTHER,
         # The one line the roll's banner adds for last year's
@@ -1312,6 +1323,10 @@ def _vocab() -> dict:
             "palette": dict(PALETTE),
             "hold_colour": reminder.HOLD_COLOUR,
             "letter_ink": dict(reminder.LETTER_INK),
+            # Whose move each outstanding row is (decision 200): the
+            # reminder's own three lists, named for a preparer.
+            "sides": [{"key": side.key, "label": side.label, "sentence": side.sentence}
+                      for side in reminder.SIDES],
         },
         # The settings page's own box for the firm's telephone number
         # (decision 117): its label, the sentence under it, and the number
@@ -1364,16 +1379,9 @@ def _vocab() -> dict:
             # so the page never offers a number the store's gate refuses.
             "maximums": {"expected_count": records.MAX_EXPECTED_COUNT,
                          "min_size_kb": records.MAX_SIZE_KB},
-            # The folded group the editor keeps the set-aside rows in,
-            # headed as the Status Report heads its own (decision 116).
-            "set_aside_heading": NOT_APPLICABLE_SECTION,
-            # The folded group of rows nobody asked for (decision 142),
-            # headed as the Status Report heads its own, and the columns
-            # that are a yes/no pick rather than a box - so the editor
-            # sends each back as the record holds it.
-            "not_asked_heading": NOT_ASKED_SECTION,
-            # The app's request table folds the same rows the same way,
-            # closed, under the same heading.
+            # The columns that are a yes/no pick rather than a box - so the
+            # editor sends each back as the record holds it. The editor's
+            # set-aside rows fold under ``set_aside`` (decision 200).
             "yes_no_fields": [key for _, key in COLUMNS if key in RULE_FLAG_FIELDS],
         },
     }
@@ -2128,6 +2136,11 @@ def _state(engagement: Path) -> dict:
     info = load_engagement_info(engagement)
     summary = summarize(items)
     entries = read_index(engagement)
+    # The reminder's triage, run once for the whole screen (decision 200):
+    # the card's held rows and every row's side come from the same three
+    # lists, so the chips and the card cannot disagree.
+    triaged = reminder.triage(items, entries)
+    placed = reminder.sides(*triaged)
     conn = store.connect()
     rules = store.rules(conn, engagement) or []
     taught = store.learned_keywords(conn, engagement)      # keyed without case, as the store keys it
@@ -2153,18 +2166,24 @@ def _state(engagement: Path) -> dict:
         "engagement": _info_payload(info),
         "lock": _lock_payload(engagement),
         "summary": {
-            "line": summary.line, "counts": summary.counts, "total": summary.total,
+            "line": summary.shown_line, "counts": summary.counts, "total": summary.total,
             "received": summary.received, "outstanding": summary.outstanding,
             "not_applicable": summary.not_applicable, "unscanned": summary.unscanned,
             "also_received": summary.also_received, "not_asked": summary.not_asked,
         },
         # Each row with the year its own Period gives, so the renderer
         # labels a set-aside row without reading the Period's text, and
-        # the word its status is shown as - "Not asked" for a row nobody
-        # asked for with nothing in (decision 142) - so it types none.
+        # the record's word for its status (the key of ``vocab.labels``)
+        # and the preparer's word it is shown as (decision 200) - "Not
+        # asked" for a row nobody asked for with nothing in (decision
+        # 142) - so it types none. An outstanding row carries whose move
+        # it is and the row's own sentence; any other row has no side.
         "items": [
             asdict(i) | {"received_date": i.received_date.isoformat() if i.received_date else None,
-                         "year": i.year, "status_label": status_label(i),
+                         "year": i.year, "status_key": status_key(i),
+                         "status_label": status_label(i),
+                         "side": placed[i.identifier][0].key if i.identifier in placed else None,
+                         "side_sentence": placed[i.identifier][1] if i.identifier in placed else "",
                          # Decision 142, the designer's ruling on the build:
                          # a row nobody asked for folds away in the request
                          # table only while no document at all is in it; the
@@ -2229,7 +2248,7 @@ def _state(engagement: Path) -> dict:
         # draft is written - and the day of the last draft. Sorted by the
         # reminder's own triage over the rows already loaded; nothing here
         # reads a draft file, and nothing here drafts (decision 12).
-        "reminder": _reminder_payload(engagement, items, entries),
+        "reminder": _reminder_payload(engagement, triaged),
         # The Reminder card itself, at the record's stage (decision 194):
         # exactly what the ``reminder`` command answers, so a switch or a
         # write is one reply and the card cannot disagree with the table.
@@ -2277,15 +2296,16 @@ def _room_sentences(room) -> list[str]:
     return said + ([ROOM_PARKS.format(count=room.parks)] if room.parks else [])
 
 
-def _reminder_payload(engagement: Path, items, entries) -> dict:
+def _reminder_payload(engagement: Path, triaged) -> dict:
     """What holds this engagement's reminder, and when it was last drafted.
 
-    The index rows go in because a parked file the client could fix holds
-    the request it points at (decision 117), and the card must show the
-    same hold the draft day will: the rows are the ones ``state`` has
-    already read, so nothing is read twice to answer this.
+    ``triaged`` is the reminder's own triage of the rows and the index
+    ``state`` has already read - the index because a parked file the
+    client could fix holds the request it points at (decision 117) - so
+    the card shows the same hold the draft day will, and the same hold
+    the rows' sides say (decision 200): one triage for the whole screen.
     """
-    _, _, held = reminder.triage(items, entries)
+    _, _, held = triaged
     drafted = last_drafted(engagement)
     return {
         "held": _held_rows(held),

@@ -1000,7 +1000,7 @@ def test_summarize_counts_asked_rows_and_also_received_counts_the_rest():
     ``also_received``, so "N of M are in" never reads 7 of 5; and the word
     for a request nobody has scanned is never said of a row nobody asked
     for."""
-    from tracker.manifest import ALSO_RECEIVED_LABEL, NOT_ASKED_LABEL, status_label, summarize
+    from tracker.manifest import ALSO_RECEIVED_LABEL, NOT_ASKED_LABEL, status_key, summarize
 
     rows = [
         RequestItem(identifier="A01", document="W-2", status=Status.RECEIVED),
@@ -1021,7 +1021,7 @@ def test_summarize_counts_asked_rows_and_also_received_counts_the_rest():
     assert f"{ALSO_RECEIVED_LABEL}: 2" in summary.line and f"{NOT_ASKED_LABEL}: 2" in summary.line
     assert f"{UNSCANNED_LABEL}: 1" in summary.line
 
-    labels = {row.identifier: status_label(row) for row in rows}
+    labels = {row.identifier: status_key(row) for row in rows}
     assert labels["A03"] == UNSCANNED_LABEL
     assert labels["B03"] == labels["B04"] == NOT_ASKED_LABEL
     assert labels["B01"] == Status.RECEIVED and labels["B02"] == Status.PARTIAL
@@ -1161,3 +1161,58 @@ def test_a_list_read_without_following_is_the_store_as_it_stands(tmp_path):
     assert store.forget(store.connect(), other)
     assert [item.identifier for item in load_manifest(other, follow=False)] == [
         item.identifier for item in SAMPLE_ITEMS]
+
+
+# ------------------------------- statuses in a preparer's words (d200) ----
+# The record keeps the scanner's words; one table says what each is shown
+# as. Neither ever stands in for the other.
+
+
+def test_every_word_the_record_keeps_for_a_row_has_one_label_and_one_sentence():
+    from tracker.manifest import NOT_ASKED_LABEL, STATUS_LABELS
+
+    assert set(STATUS_LABELS) == set(Status.ALL) | {UNSCANNED_LABEL, NOT_ASKED_LABEL} | set(Override.ALL)
+    assert len(STATUS_LABELS) == 9
+    for word, shown in STATUS_LABELS.items():
+        assert shown.label.strip() and shown.sentence.strip(), word
+    # Not Applicable keeps its year (decision 116): its label is the pattern.
+    from tracker.manifest import NOT_APPLICABLE_LABEL
+    assert STATUS_LABELS[Override.NOT_APPLICABLE].label == NOT_APPLICABLE_LABEL
+
+
+def test_the_record_keeps_its_five_status_values():
+    assert Status.ALL == ("Missing", "Partial", "Failed Validation", "Received", "Pending Sync")
+
+
+def test_status_key_is_the_record_word_and_status_label_is_the_preparers():
+    from tracker.manifest import status_key, status_label
+
+    rows = [
+        RequestItem(identifier="A01", document="1099-C", asked=False),                # idle, not asked
+        RequestItem(identifier="A02", document="1098"),                               # unscanned
+        RequestItem(identifier="A03", document="1099-INT", status=Status.MISSING),
+        RequestItem(identifier="A04", document="1099-B", status=Status.FAILED,
+                    manual_override=Override.ACCEPTED, override_reason="Client confirmed"),
+    ]
+    assert [status_key(row) for row in rows] == ["Not asked", "Requested", "Missing", "Received"]
+    assert [status_label(row) for row in rows] == [
+        "Not asked", "Not yet checked", "Outstanding", "Received"]
+
+
+def test_the_run_log_line_keeps_the_record_words_and_the_shown_line_the_labels():
+    from tracker.manifest import STATUS_LABELS, summarize
+
+    rows = [
+        RequestItem(identifier="A01", document="W-2", status=Status.MISSING),
+        RequestItem(identifier="A02", document="1099", status=Status.MISSING),
+        RequestItem(identifier="A03", document="1098", status=Status.FAILED),
+        RequestItem(identifier="A04", document="1095-A"),
+    ]
+    summary = summarize(rows)
+    assert "Missing: 2" in summary.line and "Outstanding" not in summary.line
+    assert f"{UNSCANNED_LABEL}: 1" in summary.line
+    assert "Outstanding: 2" in summary.shown_line and "Missing" not in summary.shown_line
+    assert f"{STATUS_LABELS[Status.FAILED].label}: 1" in summary.shown_line
+    assert f"{STATUS_LABELS[UNSCANNED_LABEL].label}: 1" in summary.shown_line
+    # The same parts, in the same order: one count, two renderings.
+    assert len(summary.line.split(" · ")) == len(summary.shown_line.split(" · ")) == 3

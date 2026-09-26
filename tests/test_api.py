@@ -1057,7 +1057,8 @@ def test_the_editor_saves_a_reason_and_the_vocabulary_carries_the_list_and_the_l
     vocab = run(capsys, "list")[1]["vocab"]
     assert vocab["override_reasons"] == list(OVERRIDE_REASONS)
     assert vocab["override_reason_other"] == OVERRIDE_REASON_OTHER
-    assert vocab["not_applicable_label"] == NOT_APPLICABLE_LABEL
+    assert vocab["labels"][Override.NOT_APPLICABLE]["label"] == NOT_APPLICABLE_LABEL
+    assert "not_applicable_label" not in vocab
     assert vocab["triage"]["set_aside_note"] == SET_ASIDE_NOTE
     assert vocab["origin_not_applicable"] == ORIGIN_NOT_APPLICABLE
     assert vocab["not_applicable_carried"] == api.NOT_APPLICABLE_CARRIED
@@ -1067,7 +1068,7 @@ def test_the_editor_saves_a_reason_and_the_vocabulary_carries_the_list_and_the_l
         encoding="utf-8"
     )
     for word in (*OVERRIDE_REASONS, OVERRIDE_REASON_OTHER, *Override.ALL, NOT_APPLICABLE_LABEL,
-                 SET_ASIDE_NOTE, api.NOT_APPLICABLE_CARRIED, view.NOT_APPLICABLE_SECTION):
+                 SET_ASIDE_NOTE, api.NOT_APPLICABLE_CARRIED, view.SET_ASIDE_SECTION, view.SET_ASIDE_GROUP):
         assert f'"{word}"' not in renderer and f"'{word}'" not in renderer, word
     for word in (*Override.ALL, OVERRIDE_REASON_OTHER, "Not Applicable in"):
         assert word not in renderer, word
@@ -1085,14 +1086,15 @@ def test_the_editor_saves_a_reason_and_the_vocabulary_carries_the_list_and_the_l
     assert vocab["nothing_asked"] == api.NOTHING_ASKED
     assert vocab["origin_new"] == ORIGIN_NEW
     assert vocab["new_not_asked_carried"] == api.NEW_NOT_ASKED_CARRIED
-    assert vocab["editor"]["not_asked_heading"] == view.NOT_ASKED_SECTION
+    assert vocab["set_aside"] == {"heading": view.SET_ASIDE_SECTION, "group": view.SET_ASIDE_GROUP}
+    assert "not_asked_heading" not in vocab["editor"]
     assert vocab["editor"]["yes_no_fields"] == ["named", "asked"]
     html = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "index.html").read_text(
         encoding="utf-8")
     for word in (NOT_ASKED_LABEL, api.ASK_THE_CLIENT, api.ASK_THE_CLIENT_NOTE,
                  api.NOT_ASKED_TABLE_LABEL, api.ROLL_TEMPLATE_LABEL, api.NOTHING_ASKED,
                  api.NEW_NOT_ASKED_CARRIED.split("{n}")[1].split(" - ")[0].strip(),
-                 view.NOT_ASKED_SECTION.split("{")[0].strip() + " ("):
+                 view.SET_ASIDE_SECTION.split("{")[0].strip()):
         assert word not in renderer and word not in html, word
 
     spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [
@@ -2119,7 +2121,7 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
     # boxes stop where the store's gate would refuse.
     assert editor["maximums"] == {"expected_count": MAX_EXPECTED_COUNT, "min_size_kb": MAX_SIZE_KB}
     assert editor["any_extension"] == "*" and editor["no_date_check"] == "*"
-    assert editor["set_aside_heading"] == view.NOT_APPLICABLE_SECTION
+    assert "set_aside_heading" not in editor
     assert vocab["unscanned_key"] == api._slug(vocab["unscanned_label"])
     assert vocab["commands"] == sorted(api.COMMANDS)
     assert [r["headline"] for r in vocab["rules"]] == [h for h, _ in STANDING_RULES]
@@ -2172,6 +2174,8 @@ def _the_reminder_card_words_are_all_pythons(words):
         "palette": dict(PALETTE),
         "hold_colour": reminder.HOLD_COLOUR,
         "letter_ink": dict(reminder.LETTER_INK),
+        "sides": [{"key": side.key, "label": side.label, "sentence": side.sentence}
+                  for side in reminder.SIDES],
     }
     # Nothing the card shows is typed in the renderer, and no colour of any
     # kind reaches it: every hex it draws with is looked up in this palette.
@@ -2938,10 +2942,12 @@ def test_an_edited_drafts_footer_is_neither_shown_nor_copied(capsys, demo_root):
     from tracker.reminder import (
         DRAFT_FILENAME,
         FOOTER_RULE,
-        HELD_BACK_HEADING,
         REVIEW_ADVICE,
         REVIEW_WARNING,
+        SIDE_US,
     )
+
+    us_heading = f"{SIDE_US.label.upper()} - {SIDE_US.sentence}"
 
     folder = chased_engagement(capsys, demo_root, name="Footer")
     # B01 is ours to fix, not the client's to resend, so the draft reports
@@ -2962,7 +2968,7 @@ def test_an_edited_drafts_footer_is_neither_shown_nor_copied(capsys, demo_root):
     # The warning opens with its count, so the sentence after it is what a
     # test may look for without retyping a word of it.
     warning = REVIEW_WARNING.split("}", 1)[1]
-    assert HELD_BACK_HEADING in on_disk and warning in on_disk
+    assert us_heading in on_disk and warning in on_disk
 
     # A person adds a line to the letter, which is above the footer's rule.
     edited = on_disk.replace(f"\n{FOOTER_RULE}",
@@ -2974,7 +2980,7 @@ def test_an_edited_drafts_footer_is_neither_shown_nor_copied(capsys, demo_root):
     assert after["file"]["edited"] is True
     assert "PS: ask about the rental." in after["text"]
     assert "PS: ask about the rental." in after["html"]
-    for firm_side in (HELD_BACK_HEADING, warning, REVIEW_ADVICE, FOOTER_RULE):
+    for firm_side in (us_heading, warning, REVIEW_ADVICE, FOOTER_RULE):
         assert firm_side not in after["text"], firm_side
         assert firm_side not in after["html"], firm_side
     assert written.read_bytes() == kept, "reading the card never touches the file"
@@ -4950,11 +4956,12 @@ def test_the_apps_request_table_folds_not_asked_rows_with_no_document_into_a_clo
     here = Path(__file__).resolve().parent.parent / "app" / "renderer"
     js = (here / "app.js").read_text(encoding="utf-8")
     html = (here / "index.html").read_text(encoding="utf-8")
-    assert 'show("rows", state.items.filter((item) => !item.not_asked_idle).map(requestTableRow));' in js
-    assert 'show("rows-not-asked", idle.map(requestTableRow));' in js
-    assert "fill(vocab.editor.not_asked_heading, { n: idle.length })" in js
+    assert "const setAside = (item) => item.not_asked_idle || isSetAside(item.manual_override);" in js
+    assert 'show("rows", state.items.filter((item) => !setAside(item)).map(requestTableRow));' in js
+    assert "setAsideGroups(folded, (item) => item.not_asked_idle, (item) => item.year)" in js
+    assert "fill(vocab.set_aside.heading, { n: folded.length })" in js
     assert "known && known.has_document" in js
-    group = html[html.index('<details id="rows-not-asked-group"'):]
+    group = html[html.index('<details id="rows-set-aside-group"'):]
     group = group[:group.index(">") + 1]
     assert " open" not in group                                  # closed until a person opens it
 
@@ -6859,3 +6866,107 @@ def test_the_first_screen_says_when_the_app_runs_from_a_removable_drive(capsys, 
     assert code == 0
     assert payload["machine_warnings"] == [
         settings_module.PROGRAM_ON_REMOVABLE.format(folder=settings_module.app_dir())]
+
+
+# ------------------------------- statuses in a preparer's words (d200) ----
+
+
+def test_the_vocabulary_carries_the_one_label_table(capsys, demo_root):
+    from tracker.manifest import STATUS_LABELS
+
+    vocab = run(capsys, "list")[1]["vocab"]
+    assert vocab["labels"] == {word: {"key": api._slug(word), "label": shown.label,
+                                      "sentence": shown.sentence}
+                               for word, shown in STATUS_LABELS.items()}
+    assert vocab["statuses"] == [{"value": status, "key": api._slug(status)} for status in Status.ALL]
+
+
+def test_the_vocabulary_carries_the_three_sides(capsys, demo_root):
+    from tracker import reminder
+
+    vocab = run(capsys, "list")[1]["vocab"]
+    assert vocab["reminder"]["sides"] == [
+        {"key": "client", "label": "Client", "sentence": reminder.SIDE_CLIENT.sentence},
+        {"key": "us", "label": "Us", "sentence": reminder.SIDE_US.sentence},
+        {"key": "decide", "label": "Decide", "sentence": reminder.SIDE_DECIDE.sentence},
+    ]
+
+
+def _sided_engagement(capsys, demo_root):
+    """A return with a Client row, an Us row, a Decide row and rows with no
+    side: one in, one set aside, one nobody asked for."""
+    from tests.conftest import seed_statuses
+    from tracker import reasons
+    from tracker.manifest import Override, StatusUpdate
+
+    spec = {"household": HOUSEHOLD, "return_name": "Sided", "items": [
+        {"identifier": "A01", "document": "W-2 Wage Statements"},
+        {"identifier": "B01", "document": "Receipts"},
+        {"identifier": "C01", "document": "Form 1098 Mortgage Interest Statement"},
+        {"identifier": "D01", "document": "Bank Statements"},
+        {"identifier": "D02", "document": "Charitable Donations",
+         "manual_override": Override.NOT_APPLICABLE, "period": "TY2025"},
+        {"identifier": "D03", "document": "Tuition Statement", "asked": "no"},
+    ]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    folder = where(demo_root, "Sided")
+    seed_statuses(folder, {
+        "A01": StatusUpdate(status=Status.MISSING),
+        "B01": StatusUpdate(status=Status.FAILED, file_count=1,
+                            validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format()),
+        "C01": StatusUpdate(status=Status.FAILED, file_count=1,
+                            validation_notes="1099.pdf: " + reasons.WRONG_DOCUMENT.format(listed="'1098'")),
+        "D01": StatusUpdate(status=Status.RECEIVED, file_count=1),
+    })
+    return folder
+
+
+def test_every_outstanding_row_in_the_state_carries_its_side_and_sentence(capsys, demo_root):
+    from tracker import reminder
+    from tracker.filer import read_index
+    from tracker.manifest import load_manifest
+
+    folder = _sided_engagement(capsys, demo_root)
+    items = {one["identifier"]: one for one in payload_of_state(capsys, folder)["items"]}
+    placed = reminder.sides(*reminder.triage(load_manifest(folder), read_index(folder)))
+    assert set(placed) == {"A01", "B01", "C01"}
+    for identifier, one in items.items():
+        side, sentence = placed.get(identifier, (None, ""))
+        assert one["side"] == (side.key if side else None), identifier
+        assert one["side_sentence"] == sentence, identifier
+    assert {i: items[i]["side"] for i in ("A01", "B01", "C01")} == {
+        "A01": "client", "B01": "us", "C01": "decide"}
+    assert items["B01"]["status_key"] == Status.FAILED and items["B01"]["status_label"] == "Could not use"
+
+
+def test_the_state_triages_once(capsys, demo_root, monkeypatch):
+    """The reminder card's held rows and every row's side come from one
+    triage of the return's rows. The household card triages each return
+    for its own panel (decision 125) and is not this return's state, so
+    the calls are counted by who made them."""
+    import inspect
+
+    from tracker import reminder
+
+    folder = _sided_engagement(capsys, demo_root)
+    callers = []
+    real = reminder.triage
+
+    def counted(*args, **kwargs):
+        callers.append(inspect.stack()[1].function)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(reminder, "triage", counted)
+    state = payload_of_state(capsys, folder)
+    assert callers.count("_state") == 1 and "_reminder_payload" not in callers
+    assert [row["identifier"] for row in state["reminder"]["held"]] == ["C01"]
+
+
+def test_the_words_188_and_204_added_are_still_in_the_vocabulary(capsys, demo_root):
+    vocab = run(capsys, "list")[1]["vocab"]
+    assert vocab["review_labels"]["file_where_it_waits"] == api.FILE_WHERE_IT_WAITS_LABEL
+    assert vocab["review_labels"]["handed_over"] == api.HANDED_OVER_LINE
+    assert vocab["household"]["accept_folder_name"] == api.ACCEPT_FOLDER_NAME_LABEL
+    assert vocab["household"]["accept_folder_name_help"] == api.ACCEPT_FOLDER_NAME_HELP
+    father, _ = two_households(capsys, demo_root)
+    assert "waits_for" in waiting_document(capsys, father)

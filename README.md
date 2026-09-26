@@ -155,7 +155,10 @@ A `Manual Override` column (the values in `Override.ALL`) lets accountant
 judgment beat the rules: `Accepted` counts the row as Received and carries
 an `Override Reason` (picked from a list, or typed), `Not Applicable` takes
 the request out of every count for the year, shown as "Not Applicable in
-TY<year>" and kept in a folded section of the Status Report.
+TY<year>" and kept under **Set aside** on the Status Report, in the app
+and in the editor. The record keeps the scanner's own words for a status;
+the app shows a preparer's word for each ([docs/runbook.md](docs/runbook.md),
+*What the record says, and what the app shows*).
 
 ### Chasing what's still outstanding
 

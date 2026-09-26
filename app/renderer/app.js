@@ -26,11 +26,6 @@ const $ = (id) => document.getElementById(id);
 // Nothing here is typed twice; the CSS classes are derived from the keys.
 let vocab = null;
 
-function statusKey(status) {
-  const entry = vocab.statuses.find((s) => s.value === status);
-  return entry ? entry.key : vocab.unscanned_key;
-}
-
 // Every piece of the page is built from API data as DOM nodes, never as an
 // HTML string: a client's file name, a keyword somebody typed into the
 // request list or a folder name is text, whatever characters it contains.
@@ -83,29 +78,75 @@ function isSetAside(override) {
 }
 
 function overrideLabel(override, year) {
-  if (isSetAside(override) && year) return fill(vocab.not_applicable_label, { year });
+  if (isSetAside(override) && year) {
+    return fill(vocab.labels[vocab.overrides.not_applicable].label, { year });
+  }
   return override || "";
 }
 
-// A row nobody asked for (decision 142) has the API's own word while
-// nothing is in its folder - never the word for a request or for a gap,
-// because nobody owes it. Once a document arrives it shows its real status,
-// as any row does. The API says which (state.items[].status_label); the
-// page compares.
-function isIdleNotAsked(item) {
-  return item.status_label === vocab.not_asked_label;
-}
-
+// Decision 200: a row's chip says the preparer's word for the record's
+// word the API names (state.items[].status_key), classed by that word, so
+// no colour moves with a label. A row nobody asked for with nothing in is
+// said by the same table (decision 142); a row a person accepted reads as
+// in, as every count has it, with its override on the side line.
 function chip(item) {
   if (isSetAside(item.manual_override)) {
     return el("span", { className: `chip chip-${vocab.unscanned_key}` },
       overrideLabel(item.manual_override, item.year));
   }
-  if (isIdleNotAsked(item)) {
-    return el("span", { className: `chip chip-${vocab.not_asked_key}` }, vocab.not_asked_label);
+  const shown = vocab.labels[item.status_key];
+  return el("span", { className: `chip chip-${shown.key}` }, shown.label);
+}
+
+// The line under a row's chip (decision 200): whose move an outstanding
+// row is - the reminder's own side, bold - and the row's own sentence, as
+// text and never a tooltip; or, for a row a person accepted, which has no side,
+// the override and its sentence. A row set aside says its sentence once,
+// on its group's heading in the set-aside fold.
+function sideLine(item) {
+  if (item.manual_override && !isSetAside(item.manual_override)) {
+    return el("div", { className: "req-side" },
+      el("span", { className: "side" }, item.manual_override), " ",
+      vocab.labels[item.manual_override].sentence);
   }
-  const label = item.status || vocab.unscanned_label;
-  return el("span", { className: `chip chip-${statusKey(item.status)}` }, label);
+  const side = vocab.reminder.sides.find((one) => one.key === item.side);
+  if (!side) return null;
+  return el("div", { className: "req-side" },
+    el("span", { className: "side" }, side.label), " ", item.side_sentence);
+}
+
+// The rows nobody waits on, grouped for the one set-aside fold (decision
+// 200): the rows nobody asked for with nothing in first, then one group
+// not-applicable label, oldest year first - the Status Report's
+// order. Each group carries its label and that label's sentence from the
+// API's table. `idle` says which rows are not asked and idle, `yearOf`
+// what year a row's Period gives. `name` is what a group's table is
+// called to a screen reader.
+function setAsideGroups(rows, idle, yearOf) {
+  const notAsked = vocab.labels[vocab.not_asked_label];
+  const notApplicable = vocab.labels[vocab.overrides.not_applicable];
+  const groups = new Map();
+  const add = (label, sentence, order, name, row) => {
+    if (!groups.has(label)) groups.set(label, { label, sentence, order, name, rows: [] });
+    groups.get(label).rows.push(row);
+  };
+  for (const row of rows) {
+    if (isSetAside(row.manual_override)) {
+      const label = overrideLabel(row.manual_override, yearOf(row));
+      add(label, notApplicable.sentence, yearOf(row) || 0, label, row);
+    } else if (idle(row)) {
+      add(notAsked.label, notAsked.sentence, -1, vocab.not_asked_table_label, row);
+    }
+  }
+  return [...groups.values()].sort((a, b) => a.order - b.order || a.label.localeCompare(b.label));
+}
+
+// One group's heading inside the set-aside fold: its label and count in
+// bold, and the label's sentence beside it as text.
+function setAsideHeading(group) {
+  return el("div", { className: "req-side" },
+    el("span", { className: "side" }, fill(vocab.set_aside.group, { label: group.label, n: group.rows.length })),
+    " ", group.sentence);
 }
 
 function fill(pattern, values) {
@@ -273,14 +314,12 @@ function requestTableRow(item) {
     el("td", { className: "col-id" }, el("span", { className: "req-id" }, item.identifier)),
     el("td", {},
       el("div", { className: "req-doc" }, item.document),
-      el("div", { className: "req-period" },
-        item.period,
-        item.manual_override ? ` · override: ${overrideLabel(item.manual_override, item.year)}` : ""),
+      el("div", { className: "req-period" }, item.period),
     ),
     el("td", { className: "col-num" },
       `${item.file_count ?? "–"}${item.expected_count > 1 ? ` / ${item.expected_count}` : ""}`),
-    el("td", { className: "col-status" }, chip(item),
-      // The reason the person gave beside the override: the judgment,
+    el("td", { className: "col-status" }, chip(item), sideLine(item),
+      // The reason the person gave beside the override - the judgment,
       // not only the fact that the rules were overridden.
       item.override_reason ? el("div", { className: "req-reason", title: item.override_reason }, item.override_reason) : null),
     el("td", { className: "col-recv" }, el("span", { className: "req-recv" }, item.received_date || "—")),
@@ -293,16 +332,23 @@ function render(state) {
   paths = state.paths;
   lastState = state;
 
-  // Decision 142: a row nobody asked for with no document at all folds
-  // into one closed group under the table, as the Status
-  // Report folds it; one with any document is work and stays in the table.
-  // Which rows fold is the API's answer (state.items[].not_asked_idle).
-  const idle = state.items.filter((item) => item.not_asked_idle);
-  show("rows", state.items.filter((item) => !item.not_asked_idle).map(requestTableRow));
-  show("rows-not-asked", idle.map(requestTableRow));
-  $("rows-not-asked-summary").textContent = fill(vocab.editor.not_asked_heading, { n: idle.length });
-  $("rows-not-asked-table").setAttribute("aria-label", vocab.not_asked_table_label);
-  $("rows-not-asked-group").classList.toggle("hidden", idle.length === 0);
+  // Decision 200: every row nobody waits on folds into one closed
+  // set-aside group under the table, as the Status Report folds it - a row
+  // nobody asked for with no document at all (decision 142; one with any
+  // document is work and stays in the table), and a row set aside as not
+  // applicable (decision 116), which leaves the working table. Which rows
+  // are idle is the API's answer (state.items[].not_asked_idle).
+  const setAside = (item) => item.not_asked_idle || isSetAside(item.manual_override);
+  const folded = state.items.filter(setAside);
+  show("rows", state.items.filter((item) => !setAside(item)).map(requestTableRow));
+  show("rows-set-aside", setAsideGroups(folded, (item) => item.not_asked_idle, (item) => item.year)
+    .map((group) => [
+      setAsideHeading(group),
+      el("table", { className: "requests", "aria-label": group.name },
+        el("tbody", {}, group.rows.map(requestTableRow))),
+    ]));
+  $("rows-set-aside-summary").textContent = fill(vocab.set_aside.heading, { n: folded.length });
+  $("rows-set-aside-group").classList.toggle("hidden", folded.length === 0);
 
   // The one count, from the same summarize() the run log and the reminder use.
   // Nothing waits for anything: the statuses and the request list are both
@@ -2085,8 +2131,8 @@ async function bootstrap(preferPath) {
       if (!$("setup-card").classList.contains("hidden")) return;   // waiting for the folder
       banner(fill(vocab.household.empty_root, { root: clientsRoot, new: vocab.household.new }), "ok");
       show("rows", []);
-      show("rows-not-asked", []);
-      $("rows-not-asked-group").classList.add("hidden");
+      show("rows-set-aside", []);
+      $("rows-set-aside-group").classList.add("hidden");
       return;
     }
     const view = viewGeneration;
@@ -2870,11 +2916,12 @@ function editorGroupKey(row) {
   return row.asked === vocab.editor.no && !editorRowHasDocument(row) ? NOT_ASKED_GROUP : "";
 }
 
-// The active rows in one table; the rows set aside as not applicable in a
-// folded group per label below it, headed as the Status Report heads its
-// own folded block. Removal is by the row's place in editorRows whichever
-// group it is drawn in, and a row whose override changes moves between
-// the groups before anything is saved.
+// The active rows in one table; below it one folded set-aside group
+// (decision 200) holding a group per label - not asked first, then each
+// not-applicable year - headed as the Status Report heads its own.
+// Removal is by the row's place in editorRows whichever group it is drawn
+// in, and a row whose override or Asked changes moves between the groups
+// before anything is saved.
 function renderEditorRows() {
   const grouping = () => editorRows.map(editorGroupKey).join("\u0000");
   const drawn = grouping();
@@ -2890,27 +2937,23 @@ function renderEditorRows() {
     onTakeBack: unlearnKeyword,
   });
   const active = editorRows.filter((row) => !editorGroupKey(row));
-  const groups = new Map();
-  for (const row of editorRows) {
-    const key = editorGroupKey(row);
-    if (key) groups.set(key, [...(groups.get(key) || []), row]);
-  }
+  const aside = editorRows.filter((row) => editorGroupKey(row));
   const activeBox = el("div", { className: "editor-rows" });
   requestRows(activeBox, active, options(active));
   // The rows nobody asked for first, in one group; then the set-aside
-  // rows, one group per label. Setting Asked moves a row out before the save.
-  const ordered = [...groups.entries()]
-    .sort(([a], [b]) => (a === NOT_ASKED_GROUP ? -1 : b === NOT_ASKED_GROUP ? 1 : 0));
-  const folded = ordered.map(([label, rows]) => {
-    const box = el("div", { className: "editor-rows" });
-    requestRows(box, rows, options(rows));
-    const heading = label === NOT_ASKED_GROUP
-      ? fill(vocab.editor.not_asked_heading, { n: rows.length })
-      : fill(vocab.editor.set_aside_heading, { label, n: rows.length });
-    return el("details", { className: label === NOT_ASKED_GROUP ? "ed-unasked" : "ed-set-aside" },
-      el("summary", {}, heading), box);
-  });
-  $("ed-rows").replaceChildren(activeBox, ...folded);
+  // rows, one group per label. Setting Asked or the override moves a row
+  // between the groups before the save.
+  const groups = setAsideGroups(aside, (row) => editorGroupKey(row) === NOT_ASKED_GROUP, editorRowYear)
+    .map((group) => {
+      const box = el("div", { className: "editor-rows" });
+      requestRows(box, group.rows, options(group.rows));
+      return [setAsideHeading(group), box];
+    });
+  const folded = aside.length
+    ? el("details", { className: "ed-set-aside" },
+      el("summary", {}, fill(vocab.set_aside.heading, { n: aside.length })), groups)
+    : null;
+  $("ed-rows").replaceChildren(...[activeBox, folded].filter(Boolean));
 }
 
 // Only the learned column, drawn again from the state the API just sent.

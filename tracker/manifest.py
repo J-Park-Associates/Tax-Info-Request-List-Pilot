@@ -337,6 +337,44 @@ OVERRIDE_REASON_OTHER = "Other"
 NOT_APPLICABLE_LABEL = "Not Applicable in TY{year}"
 
 
+@dataclass(frozen=True, slots=True)
+class StatusLabel:
+    """What a preparer reads for one word the record keeps for a row."""
+
+    label: str      # what a preparer reads
+    sentence: str   # one sentence: what it means and what happens next
+
+
+#: What each word the record keeps for a row is shown as (decision 200).
+#: Keyed by the record's own word; the record never stores a label. The
+#: record, the run log and the scanner's command line keep the scanner's
+#: words - the journal stays greppable in the words the runbook explains -
+#: and the app, the Status Report and the staff lines under a draft show
+#: these. One table, so a status is never named two ways in two places.
+#: Its order is the runbook's table's order. Not Applicable's label is the
+#: year pattern itself (:data:`NOT_APPLICABLE_LABEL`, decision 116).
+STATUS_LABELS: dict[str, StatusLabel] = {
+    Status.MISSING: StatusLabel(
+        "Outstanding", "Asked for; nothing usable has arrived yet."),
+    Status.PARTIAL: StatusLabel(
+        "Partly in", "Some of the expected files are in; the rest are still to come."),
+    Status.FAILED: StatusLabel(
+        "Could not use", "Something arrived that the rules could not use."),
+    Status.PENDING_SYNC: StatusLabel(
+        "Syncing", "It is in; the cloud is still copying it down."),
+    Status.RECEIVED: StatusLabel(
+        "Received", "In, and every check passed or a person accepted it."),
+    UNSCANNED_LABEL: StatusLabel(
+        "Not yet checked", "Asked for; no pass has looked at it yet."),
+    NOT_ASKED_LABEL: StatusLabel(
+        "Not asked", "On the list, not requested; filed if it arrives."),
+    Override.ACCEPTED: StatusLabel(
+        "Accepted", "A person accepted it with a reason; the rules stop here."),
+    Override.NOT_APPLICABLE: StatusLabel(
+        NOT_APPLICABLE_LABEL, "Does not apply this year; not counted, not chased."),
+}
+
+
 
 class ManifestError(Exception):
     """A request list could not be read, parsed, or validated."""
@@ -1650,6 +1688,26 @@ class Summary:
             parts.append(f"{Override.NOT_APPLICABLE}: {self.not_applicable}")
         return SUMMARY_SEPARATOR.join(parts) or SUMMARY_EMPTY
 
+    @property
+    def shown_line(self) -> str:
+        """:attr:`line` in a preparer's words (decision 200): the same
+        parts in the same order, each said with :data:`STATUS_LABELS`'
+        label. What the app shows; ``line`` keeps the record's words for
+        the run log and the scanner's command line. Not Applicable is said
+        with the bare value, as ``line`` says it: a list may hold rows of
+        more than one year."""
+        shown = {word: label.label for word, label in STATUS_LABELS.items()}
+        parts = [f"{shown[status]}: {n}" for status, n in sorted(self.counts.items())]
+        if self.unscanned:
+            parts.append(f"{shown[UNSCANNED_LABEL]}: {self.unscanned}")
+        if self.also_received:
+            parts.append(f"{ALSO_RECEIVED_LABEL}: {self.also_received}")
+        if self.not_asked:
+            parts.append(f"{shown[NOT_ASKED_LABEL]}: {self.not_asked}")
+        if self.not_applicable:
+            parts.append(f"{Override.NOT_APPLICABLE}: {self.not_applicable}")
+        return SUMMARY_SEPARATOR.join(parts) or SUMMARY_EMPTY
+
 
 def effective_status(item: RequestItem) -> str:
     """The row's status as every count reads it: an Accepted row is
@@ -1680,16 +1738,25 @@ def is_idle_unasked(item: RequestItem) -> bool:
             and not has_a_document(item))
 
 
-def status_label(item: RequestItem) -> str:
-    """The word a person sees for a row's status: the status itself;
+def status_key(item: RequestItem) -> str:
+    """The record's word for a row's status, the key of
+    :data:`STATUS_LABELS` (decision 200): the effective status itself;
     :data:`UNSCANNED_LABEL` for an asked row with none yet; and
     :data:`NOT_ASKED_LABEL` for a row nobody asked for while nothing is in
     its folder (blank or Missing) - a document there shows its real
-    status, as on any row."""
+    status, as on any row. An Accepted row is Received, as every count
+    reads it; its override is shown beside it."""
     if (not item.asked and item.status in ("", Status.MISSING)
             and item.manual_override != Override.ACCEPTED):
         return NOT_ASKED_LABEL
     return effective_status(item) or UNSCANNED_LABEL
+
+
+def status_label(item: RequestItem) -> str:
+    """The word a preparer sees for a row's status (decision 200): the
+    label :data:`STATUS_LABELS` gives :func:`status_key`. One function per
+    question - which word the record says, and what a person reads."""
+    return STATUS_LABELS[status_key(item)].label
 
 
 def summarize(items: Iterable[RequestItem]) -> Summary:

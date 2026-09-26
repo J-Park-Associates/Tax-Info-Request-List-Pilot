@@ -672,14 +672,14 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
              api_module.NEW_NOT_ASKED_CARRIED.split("{n}")[1].split(" - ")[0].strip(),
              rollover.NEW_NOT_ASKED_NOTE, rollover.NOT_ASKED_NOTE,
              rollover.NOW_ASKED_NOTE.split("{")[0].strip(), '"' + _slug(NOT_ASKED_LABEL) + '"',
-             api_module.NOT_ASKED_SECTION.split("{")[0].strip() + " (")
+             api_module.SET_ASIDE_SECTION.split("{")[0].strip())
     for literal in added:
         assert literal and literal not in js and literal not in html, literal
     for key in ("not_asked_label", "not_asked_key", "ask_the_client", "ask_the_client_note",
                 "not_asked_table_label", "roll_template_label", "nothing_asked",
                 "new_not_asked_carried", "origin_new"):
         assert f"vocab.{key}" in js, key
-    assert "vocab.editor.not_asked_heading" in js and "vocab.editor.yes_no_fields" in js
+    assert "vocab.set_aside.heading" in js and "vocab.editor.yes_no_fields" in js
     # Decision 131: the room's heading and its two sentences are the API's.
     # The renderer fills neither pattern: the set-root reply carries each
     # return's sentences already filled.
@@ -2510,3 +2510,57 @@ def test_a_warning_about_another_return_is_said_under_its_label():
     assert js.count("ofAnother: true") == 1
     assert api._vocab()["notices"]["about"] == api.NOTICE_ABOUT
     assert set(re.findall(r"{(\w+)}", api.NOTICE_ABOUT)) == {"label", "sentence"}
+
+
+# ------------------------------- statuses in a preparer's words (d200) ----
+
+
+def _typed(word: str, text: str) -> bool:
+    """Is ``word`` written into ``text`` as a word of its own - quoted, or
+    as an element's whole text - rather than said in a comment's prose?"""
+    return any(form in text for form in (f'"{word}"', f"'{word}'", f"`{word}`", f">{word}<"))
+
+
+def test_the_renderer_types_no_status_label():
+    """Decision 200: every label and sentence the app shows for a row's
+    status, every side and the Set aside headings reach the page through
+    the API's vocabulary, and the renderer and the page type none."""
+    from tracker import reminder, view
+    from tracker.manifest import STATUS_LABELS
+
+    js = read("app/renderer/app.js")
+    # A column heading is not a status: the Received column holds a date.
+    html = re.sub(r"<th[^>]*>[^<]*</th>", "", read("app/renderer/index.html"))
+    for text in (js, html):
+        for shown in STATUS_LABELS.values():
+            assert not _typed(shown.label, text), shown.label
+            assert shown.sentence not in text, shown.sentence
+        for side in reminder.SIDES:
+            assert not _typed(side.label, text), side.label
+            assert side.sentence not in text, side.sentence
+        assert view.SET_ASIDE_SECTION.split("{")[0].strip() not in text
+        assert view.SET_ASIDE_GROUP not in text
+    assert "vocab.labels" in js and "vocab.reminder.sides" in js
+    assert "vocab.set_aside.heading" in js and "vocab.set_aside.group" in js
+
+
+def test_the_renderer_types_no_override_word():
+    """The row's override is its label on the side line (decision 200), not
+    a typed "override:" after the Period. A key such as ``manual_override:``
+    is the record's field name, not a word shown."""
+    assert re.search(r"(?<!\w)override:", read("app/renderer/app.js"), re.IGNORECASE) is None
+
+
+def test_the_runbook_status_table_is_the_label_table():
+    """The runbook's two columns - what the record says, what the app shows
+    - are the tracker's one table, row for row, in its order. Not
+    Applicable's label is said with <year>, as the README spells it."""
+    from tracker.manifest import STATUS_LABELS
+
+    runbook = read("docs/runbook.md")
+    section = runbook.split("### What the record says, and what the app shows", 1)[1]
+    lines = section.split("| The record says | The app shows |\n|---|---|\n", 1)[1].splitlines()
+    rows = lines[:next(i for i, line in enumerate(lines) if not line.startswith("|"))]
+    assert rows == [f"| **{word}** | {shown.label.replace('{year}', '<year>')} - {shown.sentence} |"
+                    for word, shown in STATUS_LABELS.items()]
+    assert "TY<year>" in read("README.md")

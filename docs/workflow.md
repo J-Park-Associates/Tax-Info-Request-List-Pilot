@@ -126,8 +126,8 @@ person types.
 6. **Accepted / Not Applicable** (Manual Override) — a person's decision. The
    scanner keeps refreshing the facts but never touches the status again,
    and the reminder never asks for the row. Accepted carries the reason the
-   person gave; Not Applicable is shown with the row's year and folded away
-   on the Status Report and in the editor.
+   person gave; Not Applicable is shown with the row's year and folded
+   under Set aside on the Status Report, in the app and in the editor.
 
 ## Rules
 
@@ -289,8 +289,8 @@ person types.
   the file itself. A draft you have edited by hand is shown as it stands
   with the toggle dead — approve it as it is, or delete it to get a
   regenerated one. What the card shows and copies is the letter alone: the
-  staff-side lines the file ends with, under their own dashed rule, are the
-  machine's note to you and never reach the clipboard. A held reminder
+  staff-side lines the file ends with, under their own dashed rule and
+  headed "US", are the machine's note to you and never reach the clipboard. A held reminder
   shows the hold and the requests holding it and nothing that reads like
   something to send.
 

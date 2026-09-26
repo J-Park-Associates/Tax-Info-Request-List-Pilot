@@ -388,6 +388,33 @@ is none yet, or it cannot be read). The app's **Open Status Report** button
 opens it, and `python -m tracker.view "<engagement folder>"` redraws it and
 prints the state. The request list is edited in the app, not on the page.
 
+### What the record says, and what the app shows
+
+The record, the run log and `python -m tracker.scanner` keep the scanner's
+own words for a request; this runbook uses them too. The app, the Status
+Report and the staff lines under a draft show a preparer's word for each,
+from one table in the tracker (`tracker.manifest.STATUS_LABELS`).
+
+| The record says | The app shows |
+|---|---|
+| **Missing** | Outstanding - Asked for; nothing usable has arrived yet. |
+| **Partial** | Partly in - Some of the expected files are in; the rest are still to come. |
+| **Failed Validation** | Could not use - Something arrived that the rules could not use. |
+| **Pending Sync** | Syncing - It is in; the cloud is still copying it down. |
+| **Received** | Received - In, and every check passed or a person accepted it. |
+| **Requested** | Not yet checked - Asked for; no pass has looked at it yet. |
+| **Not asked** | Not asked - On the list, not requested; filed if it arrives. |
+| **Accepted** | Accepted - A person accepted it with a reason; the rules stop here. |
+| **Not Applicable** | Not Applicable in TY<year> - Does not apply this year; not counted, not chased. |
+
+Beside every request that is still outstanding the app says whose move it
+is, with the one sentence behind it: **Client** (the letter asks the client
+for it), **Us** (waiting on us; the letter does not ask) or **Decide** (a
+person decides whether the client resends it or we fix it here; the letter
+is held until then). Requests nobody is waiting on - not asked, or not
+applicable this year - are folded under **Set aside** below the table, each
+under its own sub-heading.
+
 `_ledger.jsonl` is that ledger: a line the tool appends every time it
 decides something about a document, records a status, or saves a change you
 made to the request list, kept in the engagement's folder so what the
@@ -1284,7 +1311,9 @@ hand. Next week's pass writes next week's draft as before. **Open the
 draft file** is still there for anyone who would rather work in Notepad,
 and an edited file is shown as it stands with a note saying so — the card
 shows the letter alone, so the staff-side lines under the dashed rule at
-the foot of the file are never on the clipboard.
+the foot of the file are never on the clipboard. Those lines are headed **US** - the
+requests waiting on us, not the client - each with the word the app shows
+for its status.
 
 Open it, read it, edit it, paste it into Outlook and send it. Nothing in the
 tool sends anything, ever — the card has no send button, and there is no
