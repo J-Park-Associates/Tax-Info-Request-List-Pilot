@@ -15,7 +15,10 @@
 # final check before a merge:
 #
 #   * a pull request into main runs when it is opened ready, updated, or
-#     marked ready; a draft runs nothing, because both jobs require
+#     marked ready (a reopened one runs on its next push, or when set back to
+#     draft and marked ready again); a pull request based on another branch
+#     runs nothing, and retargeting it onto main starts nothing either, so a
+#     stacked pull request stays a draft until it is retargeted; a draft runs nothing, because both jobs require
 #     `draft == false` (a trigger filter cannot see it: `synchronize` fires on
 #     drafts too);
 #   * there is no run on a push to main: what merges was checked as the
@@ -33,11 +36,18 @@
 # and both call .github/workflows/gate.yml so that the gate is written once.
 # On a pull request that did not ask for Windows the second job is skipped as
 # a whole — never started, never billed, and reported as skipped rather than
-# as a check that passed. The timeout lives with the steps, in gate.yml.
+# as a check that passed - reported only as "Windows", never as the gate's
+# own name, so no Windows check may be made a required status check: it would
+# wait forever on every unlabelled pull request. The timeout lives with the
+# steps, in gate.yml.
 #
-# The trade-off taken: a Windows-only regression in an unlabelled pull request
-# is caught by the office PC's own run before the push, not by GitHub. The
-# tag build (build.yml) still builds and tests every release on GitHub.
+# The trade-off taken: main's Windows run, the old safety net, is gone. A
+# cloud session tests on Linux, and the tracker lane runs on the office PC
+# (Windows) only the tests of the files a restack touched, so a Windows-only
+# regression in an unlabelled pull request is run on Windows nowhere before
+# it merges. That is why the label goes on anything touching the lock, the
+# atomic replace, path handling or a Windows-only test. The tag build
+# (build.yml) smoke-checks the frozen package; it does not run the suite.
 name: CI
 
 on:

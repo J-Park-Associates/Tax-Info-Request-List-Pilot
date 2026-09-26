@@ -211,7 +211,8 @@ jobs alone accounting for more than 65% of that despite already being gated.
 be done on the github budget. test here and merge in bulk. make this the
 standing rule"):**
 
-- **Every session runs the whole suite before it pushes.** Run
+- **Every session runs the whole suite before it pushes** (a tracker-lane
+  restack runs the narrower set below). Run
   `python -m pytest -q`, `python -m ruff check .`, and both `check`s. A
   cloud session runs them on its own machine, which costs no GitHub minutes.
   The tracker lane runs them on the office PC: the owning tests of every
@@ -221,7 +222,10 @@ standing rule"):**
   request runs nothing. The tracker lane opens every pull request as a draft
   and marks it ready once, when the stack is final.
 - **Land in bulk.** One pull request may carry several reviewed decisions in
-  landing order, each still its own commits.
+  landing order, each still its own commits. A stacked pull request stays a
+  draft until it is retargeted onto `main`, then is marked ready: a pull
+  request based on another branch runs nothing, and retargeting starts no
+  run.
 - **Rebase merging is the default when several agents work on the same
   head** (Jason, 2026-09-26): parallel lanes branched from one `main` tip land
   by GitHub's rebase merge, so history stays one line and the next lane
