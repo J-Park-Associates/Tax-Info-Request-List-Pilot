@@ -1018,6 +1018,61 @@ def test_a_set_aside_row_never_holds(tmp_path):
     assert [line.item.identifier for line in draft.lines] == ["A01", "A02"]
 
 
+def gone_both(folder, row):
+    """Staff tidy the review folder and the client deletes the original,
+    then a pass runs (decision 157, ruling B5)."""
+    from tests.conftest import sort
+    from tracker.layout import locate
+
+    (folder / row.prepared_location).unlink()
+    locate(folder, row.pbc_location).unlink()
+    sort(folder, today=dt.date(2026, 2, 8))
+
+
+def test_a_parked_file_whose_copy_and_original_are_both_gone_still_holds(tmp_path):
+    """Decision 157's review, S-1 (its probe P2). The locked W-2 parked and
+    held A01; then its review copy and its original were both deleted. The
+    pass says so and the row reads File Moved, but nobody has looked at the
+    file: the question it raised is still open, so A01 stays held until a
+    person decides, and the client is not asked for it with nobody
+    looking."""
+    from tracker.filer import FILE_MOVED, both_gone, read_index
+
+    folder = engagement(tmp_path, DROPPED, name="Gone TY2025")
+    sorted_drop(folder, locked("W-2 Jane Smith 2025.pdf"))
+    [row] = parked_rows(folder)
+    assert [flag.item.identifier for flag in draft_reminder(folder).held] == ["A01"]
+
+    gone_both(folder, row)
+
+    [after] = read_index(folder)
+    assert after.decision == FILE_MOVED and both_gone(after) and after.identifier == ""
+    draft = draft_reminder(folder)
+    assert [flag.item.identifier for flag in draft.held] == ["A01"]
+    assert draft.held[0].reason == PARKED_HOLD.format(ask=reasons.PASSWORD_PROTECTED.client_ask)
+    assert [line.item.identifier for line in draft.lines] == ["A02"]
+    assert draft.is_held
+
+
+def test_a_set_aside_row_whose_copy_and_original_are_both_gone_still_holds_nothing(tmp_path):
+    """The other side of the same rule: a person's "no request asks for
+    this" stays their answer when the file then goes."""
+    from tracker.filer import both_gone, dismiss_review_file, read_index
+
+    folder = engagement(tmp_path, DROPPED, name="Gone dismissed TY2025")
+    sorted_drop(folder, locked("W-2 Jane Smith 2025.pdf"))
+    [row] = parked_rows(folder)
+    dismiss_review_file(folder, row.pbc_location, "the client sent it twice")
+
+    gone_both(folder, row)
+
+    [after] = read_index(folder)
+    assert both_gone(after)
+    draft = draft_reminder(folder)
+    assert draft.held == []
+    assert [line.item.identifier for line in draft.lines] == ["A01", "A02"]
+
+
 def test_a_parked_locked_file_whose_shortlist_is_partial_holds_it_too(tmp_path):
     """A locked second statement is "1 of 2" that the client believes is
     2 of 2, and a count that argues with them is worse than a question."""

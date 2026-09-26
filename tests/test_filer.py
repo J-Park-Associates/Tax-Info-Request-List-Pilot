@@ -337,9 +337,10 @@ def test_a_name_a_deleted_original_left_is_not_reused_for_a_new_drop(engagement)
 
 
 def test_the_same_bytes_dropped_back_under_a_deleted_originals_name_rest_under_it(engagement):
-    """Ruling 9's one exception, left exactly as it was: the bytes are that
-    row's own, so it is the original coming back and it rests under its
-    own name. How that is reported is decision 157's, not this one's."""
+    """Ruling 9's one exception, as decision 157 carries it: the bytes are
+    that row's own, so it is the original coming back and it rests under
+    its own name - put back there by the pass, with no new row
+    (``filer._put_back_home``), where 147 left it to the numbering."""
     page = drop(engagement, "W2.pdf", "Form W-2 Wage and Tax Statement 2025")
     body = page.read_bytes()
     sort(engagement, today=DAY1)
@@ -1028,9 +1029,19 @@ def test_a_file_dropped_straight_into_the_years_folder_is_filed_and_indexed(enga
     assert sort(engagement, today=DAY2).handled == 0
 
 
-def test_a_resend_is_refiled_when_the_working_copy_was_deleted(engagement):
+def test_a_resend_is_refiled_when_the_working_copy_was_deleted(engagement, monkeypatch):
+    """Decision 24's re-file. Since decision 157 the pass makes a deleted
+    copy again from its original before it sorts, and a re-send then finds
+    the copy home and is a duplicate; so the road this pins is the one a
+    copy takes when its original cannot be read to make it again - the sync
+    client still holding the year's folder as placeholders."""
+    import tracker.filer as filer_module
+
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     first = sort(engagement, today=DAY1).filed[0]
+    real = filer_module.is_cloud_placeholder
+    monkeypatch.setattr(filer_module, "is_cloud_placeholder",
+                        lambda p: p.parent == originals(engagement) or real(p))
     working = engagement / first.prepared_location
     working.unlink()                                          # a preparer's slip
     drop(engagement, "w2 again.pdf", "Form W-2 Wage and Tax Statement 2025")
@@ -1451,6 +1462,11 @@ def test_a_persons_filing_moves_the_parked_copy_only_while_it_holds_the_rows_byt
     # copy is gone the next drop called the same parks under that very
     # path, and filing row A carried document B into the request folder
     # under A's canonical name.
+    #
+    # Since decision 157 the pass makes a parked copy that went again from
+    # its original before it parks anything, so the freed name is taken
+    # only while A's original cannot be read - still syncing, here.
+    import tracker.filer as filer_module
     from tracker.filer import assign_review_file
     from tracker.validators import sha256_of
 
@@ -1458,7 +1474,11 @@ def test_a_persons_filing_moves_the_parked_copy_only_while_it_holds_the_rows_byt
     row_a = sort(engagement, today=DAY1).review[0]
     (engagement / row_a.prepared_location).unlink()                  # a person took it away to read
     drop(engagement, "Scan.pdf", "document B, unrelated")
-    row_b = sort(engagement, today=DAY2).review[0]
+    syncing = locate(engagement, row_a.pbc_location)
+    real = filer_module.is_cloud_placeholder
+    with pytest.MonkeyPatch.context() as sync:
+        sync.setattr(filer_module, "is_cloud_placeholder", lambda p: p == syncing or real(p))
+        row_b = sort(engagement, today=DAY2).review[0]
     assert row_b.prepared_location == row_a.prepared_location         # the freed name, taken
 
     result = assign_review_file(engagement, row_a.pbc_location, "C01", today=DAY2)
@@ -1954,6 +1974,46 @@ def test_a_resend_after_a_dismissal_files_when_the_list_now_asks_for_it(engageme
         f"{PREPARED_DIR_NAME}/{REVIEW_DIR_NAME}/notice.pdf",
         f"{PREPARED_DIR_NAME}/{filed.filed_as}",
     ]
+
+
+def test_set_aside_bytes_sent_again_after_their_original_went_are_routed_afresh(engagement):
+    """d157's review, S-2 (its probe P5). The client deletes the original
+    of a document a person set aside, the list then gains its request, and
+    the client sends the same bytes again. Decision 157's put-back is for a
+    row's own original coming home; a set-aside row is a person's answer
+    about one day's document, and decision 111 routes the same bytes sent
+    again afresh. So the re-send files to the request the list now asks
+    for, under a name of its own, the set-aside row stays as it was, and
+    the letter no longer asks for a document the client sent twice."""
+    from tracker.filer import NOT_REQUESTED, RESENT_AFTER_SET_ASIDE, dismiss_review_file
+    from tracker.manifest import Status
+
+    drop(engagement, "notice.pdf", "an agency notice about your account, 2025")
+    parked = sort(engagement, today=DAY1).review[0]
+    dismissed = dismiss_review_file(engagement, parked.pbc_location, today=DAY2).entry
+
+    rows = [RequestItem(**rule_from_json(row)) for row in store.rules(store.connect(), engagement)]
+    save_rules(engagement, [
+        RequestItem(**{**rule_from_json(rule_to_json(row)),
+                       "required_keywords": ("agency notice",)})
+        if row.identifier == "C01" else row
+        for row in rows
+    ], load_engagement_info(engagement))
+
+    (originals(engagement) / "notice.pdf").unlink()
+    drop(engagement, "notice.pdf", "an agency notice about your account, 2025")
+    report, _scanned = _a_pass(engagement, DAY2)
+
+    (filed,) = report.filed
+    assert filed.identifier == "C01" and report.review == [] and report.duplicates == []
+    assert f"; {RESENT_AFTER_SET_ASIDE.format(earlier=dismissed.reason)}" in filed.reason
+    assert filed.pbc_location == original_at(engagement, "notice (2).pdf")
+    assert events_named(engagement, ledger.ORIGINAL_RETURNED) == []
+    assert not (originals(engagement) / "notice.pdf").exists()
+    [kept] = [row for row in read_index(engagement) if ledger_key(row) == ledger_key(dismissed)]
+    assert kept.decision == NOT_REQUESTED
+    assert _status(engagement, "C01").status == Status.RECEIVED
+    assert "C01" not in _asked(engagement, DAY2)
 
 
 def test_a_third_send_of_set_aside_bytes_is_a_duplicate_of_the_parked_row(engagement):
@@ -2946,8 +3006,14 @@ def test_a_moved_row_is_written_once_per_move_and_a_quiet_pass_appends_nothing(e
     assert len(events_named(engagement, ledger.COPY_MOVED)) == 2
 
 
-def test_a_moved_copy_that_is_then_deleted_stays_file_moved_and_says_nowhere(engagement):
-    from tracker.filer import FILE_MOVED, MOVED_GONE_SENTENCE, moved_to
+def test_a_moved_copy_that_is_then_deleted_says_nowhere_once_and_is_made_again_the_pass_after(
+        engagement):
+    """Decision 109's nowhere sentence, then decision 157: the row is a
+    person's question (decision 110's card), so what happened to the
+    wanderer is said first, once; the pass after, the copy is made again
+    at home from the original and the row is Filed once more - nowhere is
+    not left standing while the original can make it."""
+    from tracker.filer import FILE_MOVED, MOVED_GONE_SENTENCE, REMADE_SENTENCE, moved_to
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     filed = sort(engagement, today=DAY1).filed[0]
@@ -2966,24 +3032,40 @@ def test_a_moved_copy_that_is_then_deleted_stays_file_moved_and_says_nowhere(eng
     assert row.reason.endswith(sentence)
     assert [e.error for e in report.attention] == [sentence]
     assert (originals(engagement) / "w2.pdf").read_bytes() == original   # the original is the record
-    lines = len(ledger.read_events(engagement))
-    sort(engagement, today=DAY2 + dt.timedelta(days=1))
-    assert len(ledger.read_events(engagement)) == lines            # nowhere, said once
+
+    later = sort(engagement, today=DAY2 + dt.timedelta(days=1))
+
+    remade = REMADE_SENTENCE.format(home=filed.prepared_location, pbc=filed.pbc_location,
+                                    date=(DAY2 + dt.timedelta(days=1)).isoformat(),
+                                    prepared=PREPARED_DIR_NAME)
+    [row] = read_index(engagement)
+    assert row.decision == FILED and row.reason == f"{filed.reason}; {remade}"
+    assert [e.error for e in later.attention] == [remade]
+    assert (engagement / filed.prepared_location).read_bytes() == original
+    assert len(events_named(engagement, ledger.COPY_REMADE)) == 1
 
 
-def test_a_copy_deleted_outright_is_todays_regression_and_no_row_changes(engagement):
-    """Nothing holds its bytes, so nothing identifies it: the row is what it
-    was and the request regresses, as it has since decision 3."""
+def test_a_copy_deleted_outright_is_made_again_and_nothing_else_moves(engagement):
+    """Nothing under the firm's folder holds its bytes, and the original in
+    the client's folder does: since decision 157 the copy is made again
+    from it - one ``copy_remade`` line, no ``copy_moved`` - and the one new
+    file is the copy, byte for byte the original, where the record put it.
+    Until 157 the row stayed as it was and the request regressed (decision
+    3's regression), and the letter asked the client."""
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     filed = sort(engagement, today=DAY1).filed[0]
     (engagement / filed.prepared_location).unlink()
-    lines = len(ledger.read_events(engagement))
+    untouched = files_under(engagement)
 
     report = sort(engagement, today=DAY2)
 
     assert events_named(engagement, ledger.COPY_MOVED) == []
-    assert len(ledger.read_events(engagement)) == lines
-    assert report.attention == []
+    assert len(events_named(engagement, ledger.COPY_REMADE)) == 1
+    assert len(report.attention) == 1
+    after = files_under(engagement)
+    assert set(after) - set(untouched) == {filed.prepared_location}
+    assert {name: held for name, held in after.items() if name in untouched} == untouched
+    assert after[filed.prepared_location][0] == (originals(engagement) / "w2.pdf").read_bytes()
     [row] = read_index(engagement)
     assert row.decision == FILED and row.prepared_location == filed.prepared_location
 
@@ -5013,13 +5095,16 @@ def test_a_name_parked_document_parks_in_the_first_return_that_accepted_it(tmp_p
 @pytest.mark.parametrize("earlier", ("set aside", "working copy deleted"))
 @pytest.mark.parametrize("who, confirms", (("Sofia Ruiz", False), ("John Park", True)))
 def test_a_re_send_after_a_set_aside_is_name_checked_before_it_files(
-        tmp_path, earlier, who, confirms):
+        tmp_path, monkeypatch, earlier, who, confirms):
     """Decision 111's two roads route a re-send afresh inside the one
     return, and both of them are name-checked before they file (decision
     128). Without the check a W-2 set aside the day the list had no row for
     it, or one whose working copy a preparer deleted, would file on its
     keywords alone whoever the page named - the very failure the name tier
-    exists to stop, arriving by the back door."""
+    exists to stop, arriving by the back door. (Since decision 157 a deleted
+    copy is made again from its original first; the re-file road is the
+    one a copy takes while its original cannot be read, as here.)"""
+    import tracker.filer as filer_module
     from tracker.filer import dismiss_review_file
 
     page = "Form W-2 Wage and Tax Statement 2025"
@@ -5042,6 +5127,9 @@ def test_a_re_send_after_a_set_aside_is_name_checked_before_it_files(
         drop(engagement, "w2.pdf", page, who=who)
         filed = sort(engagement, today=DAY1).filed[0]
         (engagement / filed.prepared_location).unlink()
+        syncing = locate(engagement, filed.pbc_location)
+        real = filer_module.is_cloud_placeholder
+        monkeypatch.setattr(filer_module, "is_cloud_placeholder", lambda p: p == syncing or real(p))
         rows = [w2]
     save_rules(engagement, rows, load_engagement_info(engagement))
 
@@ -6546,16 +6634,19 @@ def test_the_link_check_stops_at_the_clients_root(tmp_path):
     assert filer._through_a_link(tmp_path / "elsewhere" / "a.pdf", inbox)
 
 
-def test_an_unnamed_re_send_already_held_in_another_household_parks_too(tmp_path):
+def test_an_unnamed_re_send_already_held_in_another_household_parks_too(tmp_path, monkeypatch):
     """Decision 137's review of Part B (#5; the owner's "never"): the bytes
     a return in another household already holds are decided by that record
     (decision 111), and a re-send it would file again - here a person
     handed the unnamed page over, and the working copy has since gone - is
     held to the same rule as a first arrival. Unnamed, it is not filed
     into the other household; it parks in the drop's own household with the
-    same sentence."""
+    same sentence. (Since decision 157 a gone copy is made again from its
+    original first; the re-file road is the one it takes while the original
+    cannot be read, as here.)"""
     import shutil
 
+    import tracker.filer as filer_module
     from tracker.filer import hand_over
     from tracker.records import Feed
 
@@ -6573,6 +6664,8 @@ def test_an_unnamed_re_send_already_held_in_another_household_parks_too(tmp_path
     held = locate(llc, taken.pbc_location)
     (llc / taken.prepared_location).unlink()                             # the copy went
     shutil.copyfile(held, inbox_of(father) / "tb again.pdf")              # the same bytes again
+    real = filer_module.is_cloud_placeholder
+    monkeypatch.setattr(filer_module, "is_cloud_placeholder", lambda p: p == held or real(p))
 
     sort_all([father, llc], home=[father], today=DAY3)
 
@@ -7002,21 +7095,23 @@ def test_the_one_numbering_function_takes_a_name_a_row_still_names(tmp_path):
     folder.mkdir()
     gone = folder / "W2.pdf"                                    # a row names it; the file is gone
     assert _unique_path(folder, "W2.pdf", recorded={gone: "a" * 64}, digest="b" * 64).name == "W2 (2).pdf"
-    # The row's own bytes coming back take their own name, as they always did.
-    assert _unique_path(folder, "W2.pdf", recorded={gone: "a" * 64}, digest="a" * 64) == gone
+    # The row's own bytes are no exception since decision 157: they go home
+    # through _put_back_home, which writes no new row, and never here.
+    assert _unique_path(folder, "W2.pdf", recorded={gone: "a" * 64}, digest="a" * 64).name == "W2 (2).pdf"
     # A row with no fingerprint is nobody's (decision 65): its name stays taken.
     assert _unique_path(folder, "W2.pdf", recorded={gone: ""}, digest="").name == "W2 (2).pdf"
-    # The digest is asked for only when a recorded name is met.
+    # The digest is asked for only when a file on the disk might be reused.
     asked = []
-    assert _unique_path(folder, "other.pdf", recorded={gone: "a" * 64},
-                        digest=lambda: asked.append(1) or "a" * 64).name == "other.pdf"
+    assert _unique_path(folder, "W2.pdf", recorded={gone: "a" * 64},
+                        digest=lambda: asked.append(1) or "a" * 64).name == "W2 (2).pdf"
     assert asked == []
 
 
 def test_an_attachment_is_not_written_under_a_name_a_row_still_names(tmp_path):
     """Decision 143's attachments are named by the same function: a file a
-    row names and a person removed leaves its name taken, unless these are
-    that row's own bytes."""
+    row names and a person removed leaves its name taken - since decision
+    157 even for that row's own bytes, so a row whose place is taken by a
+    file of its own bytes is never replaced by the row that file gets."""
     import hashlib
 
     from tracker.containers import Attachment
@@ -7030,7 +7125,7 @@ def test_an_attachment_is_not_written_under_a_name_a_row_still_names(tmp_path):
     same = Attachment("W2.pdf", b"%PDF-1.4 the row's own")
     own = hashlib.sha256(same.data).hexdigest()
     target, _digest = _take_out(folder, same, set(), recorded={gone: own})
-    assert target == gone and gone.read_bytes() == same.data
+    assert target.name == "W2 (3).pdf" and not gone.exists()
 
 
 def test_a_name_an_open_intent_will_write_to_is_not_given_to_a_new_drop(fed, monkeypatch):
@@ -7431,3 +7526,563 @@ def test_a_rename_refused_because_the_target_name_is_taken_moves_nothing(engagem
     assert [r.prepared_location for r in read_index(engagement)] == [filed.prepared_location]
     assert [i.identifier for i in load_manifest(engagement)] == ["A01", "C01"]
     assert squatter.read_bytes() == b"a person's own file"
+
+
+# ------------- decision 157: a missing working copy is made again ----
+# A working copy is the firm's and disposable; the client's original in
+# their folder for the year is the record. So a copy that is simply gone -
+# trashed on Drive's web, lost from Drive's cache, deleted by hand, the
+# whole Prepared folder deleted - is made again from the original, proved
+# against the row's fingerprint, and the client is never asked for a
+# document the firm holds. Where the original is gone too, a person decides;
+# and an original that comes back into the inbox goes home. Every case is d157.
+
+MORTGAGE = "Form 1098 Mortgage Interest Statement 2025"
+
+
+def _filed_1098(engagement, name="1098.pdf"):
+    """C01's one document, sorted and scanned the ordinary way: Received."""
+    from tracker.manifest import Status
+    from tracker.scanner import scan_engagement
+
+    drop(engagement, name, MORTGAGE)
+    [filed] = sort(engagement, today=DAY1).filed
+    scan_engagement(engagement, today=DAY1)
+    assert filed.identifier == "C01" and _status(engagement, "C01").status == Status.RECEIVED
+    return filed
+
+
+def _a_pass(engagement, today):
+    """The pass as the runner makes it: the sort, whose sweep proves every
+    copy first, and then the scan."""
+    from tracker.scanner import scan_engagement
+
+    report = sort(engagement, today=today)
+    return report, scan_engagement(engagement, today=today)
+
+
+def _asked(engagement, today):
+    from tracker.reminder import draft_reminder
+
+    return set(draft_reminder(engagement, today=today).asked)
+
+
+def test_a_deleted_working_copy_is_remade_and_the_client_is_not_asked(engagement):
+    """d157, claim 1 (the audit's C4 and D-3). A colleague trashes the 1098's
+    working copy. The next pass makes it again from the client's original -
+    through the whole copy, proved against the row's fingerprint, under an
+    intent - says so once, and appends one ``copy_remade`` line. The request
+    stays Received with its date and no regression note, and the letter does
+    not ask the client for what the firm holds. Until 157 the scan read
+    Missing and the letter asked, with no line anywhere."""
+    from tracker.manifest import Status
+
+    filed = _filed_1098(engagement)
+    copy = engagement / filed.prepared_location
+    original = originals(engagement) / "1098.pdf"
+    copy.unlink()
+
+    report, _scanned = _a_pass(engagement, DAY2)
+
+    assert "C01" not in _asked(engagement, DAY2)
+    assert copy.is_file() and copy.read_bytes() == original.read_bytes()
+    from tracker.filer import REMADE_SENTENCE
+
+    sentence = REMADE_SENTENCE.format(home=filed.prepared_location, pbc=filed.pbc_location,
+                                      date=DAY2.isoformat(), prepared=PREPARED_DIR_NAME)
+    [row] = read_index(engagement)
+    assert row.decision == FILED and row.reason == f"{filed.reason}; {sentence}"
+    assert [(e.name, e.error, e.left_in_place) for e in report.attention] == [
+        (copy.name, sentence, True)]
+    assert len(events_named(engagement, ledger.COPY_REMADE)) == 1
+    item = _status(engagement, "C01")
+    assert item.status == Status.RECEIVED and item.received_date == DAY1
+    assert "was Received" not in item.validation_notes
+    assert open_intents(engagement) == []
+    assert store.check(store.connect(), root_of(engagement), engagement) == []
+
+    lines = len(ledger.read_events(engagement))
+    quiet, _ = _a_pass(engagement, DAY3)
+    assert quiet.attention == [] and len(ledger.read_events(engagement)) == lines
+
+
+def test_a_deleted_prepared_folder_is_remade_whole(engagement):
+    """d157, claim 2. Somebody deletes the whole Prepared folder: every copy
+    the record claims - the filed ones and the parked one waiting in the
+    review folder - is made again from its own original, byte for byte, at
+    the path it had. Every status stays where it was and nothing is asked.
+    Until 157 every request read Missing and the letter asked for all of
+    them."""
+    from tracker.manifest import Status
+    from tracker.scanner import scan_engagement
+
+    drop(engagement, "w2 acme.pdf", "Form W-2 Wage and Tax Statement 2025 Acme Corp")
+    drop(engagement, "w2 beta.pdf", "Form W-2 Wage and Tax Statement 2025 Beta LLC")
+    drop(engagement, "1098.pdf", MORTGAGE)
+    drop(engagement, "notice.pdf", "an agency notice nothing asks for")
+    first = sort(engagement, today=DAY1)
+    assert len(first.filed) == 3 and len(first.review) == 1
+    scan_engagement(engagement, today=DAY1)
+    before = {where: held for where, (held, _mtime) in files_under(engagement).items()}
+    was = {i.identifier: (i.status, i.received_date, i.file_count) for i in load_manifest(engagement)}
+    assert was["A01"][0] == was["C01"][0] == Status.RECEIVED
+    rows = read_index(engagement)
+    shutil.rmtree(engagement / PREPARED_DIR_NAME)
+
+    report, _scanned = _a_pass(engagement, DAY2)
+
+    assert {where: held for where, (held, _mtime) in files_under(engagement).items()} == before
+    assert len(events_named(engagement, ledger.COPY_REMADE)) == 4
+    assert len(report.attention) == 4
+    assert [(r.decision, r.prepared_location) for r in read_index(engagement)] == [
+        (r.decision, r.prepared_location) for r in rows]
+    assert {i.identifier: (i.status, i.received_date, i.file_count)
+            for i in load_manifest(engagement)} == was
+    assert not {"A01", "C01"} & _asked(engagement, DAY2)
+
+
+def test_a_copy_and_original_both_gone_is_named_not_chased(engagement):
+    """d157, claim 3 (ruling B5). The copy is gone and so is the client's
+    original: nothing can be made again and nothing is guessed. The row is
+    File Moved with the both-gone sentence, said once; the request reads
+    Missing with a firm-side note that is not decision 110's put-it-back
+    wording; the letter does not ask - a person looks first. Put it back,
+    keep it here and send to review each refuse in the one sentence."""
+    from tracker.manifest import Status
+    from tracker.reminder import draft_reminder
+
+    filed = _filed_1098(engagement)
+    (engagement / filed.prepared_location).unlink()
+    (originals(engagement) / "1098.pdf").unlink()
+
+    report, _scanned = _a_pass(engagement, DAY2)
+
+    draft = draft_reminder(engagement, today=DAY2)
+    assert "C01" not in draft.asked
+    assert "C01" in {flag.item.identifier for flag in draft.needs_attention}
+    from tracker.filer import (
+        BOTH_GONE_SENTENCE,
+        FILE_MOVED,
+        NOTHING_TO_PUT_BACK,
+        assign_review_file,
+        both_gone,
+        restore_working_copy,
+        unfile_document,
+    )
+
+    sentence = BOTH_GONE_SENTENCE.format(home=filed.prepared_location, prepared=PREPARED_DIR_NAME,
+                                         pbc=filed.pbc_location, date=DAY2.isoformat())
+    [row] = read_index(engagement)
+    assert row.decision == FILE_MOVED and both_gone(row)
+    assert row.reason == f"{filed.reason}; {sentence}"
+    assert sentence in [e.error for e in report.attention]
+    item = _status(engagement, "C01")
+    assert item.status == Status.MISSING
+    assert reasons.COPY_AND_ORIGINAL_GONE.matches(item.validation_notes)
+    assert not reasons.FILE_MOVED.matches(item.validation_notes)
+    assert events_named(engagement, ledger.COPY_REMADE) == []
+
+    lines = len(ledger.read_events(engagement))
+    again, _ = _a_pass(engagement, DAY3)
+    assert len(ledger.read_events(engagement)) == lines         # said once
+    assert sentence not in [e.error for e in again.attention]
+
+    files = files_under(engagement)
+    refusal = NOTHING_TO_PUT_BACK.format(prepared=PREPARED_DIR_NAME, pbc=filed.pbc_location)
+    for answer in (lambda: restore_working_copy(engagement, filed.pbc_location, today=DAY3),
+                   lambda: assign_review_file(engagement, filed.pbc_location, "C01", today=DAY3),
+                   lambda: unfile_document(engagement, filed.pbc_location, today=DAY3)):
+        with pytest.raises(FilingError) as refused:
+            answer()
+        assert str(refused.value) == refusal
+    assert files_under(engagement) == files
+    assert len(ledger.read_events(engagement)) == lines
+
+
+def test_an_original_dragged_back_into_the_inbox_returns_to_its_place(engagement):
+    """d157, claim 4 (the audit's C5). Drive undoes a refused move, or a
+    colleague drags the filed 1098 back into the drop folder. It is that
+    row's own original coming back, so it goes back to the very place the
+    row names, as one intent, and no new row is written: the Filed row
+    keeps its place and gains one sentence. The pass does not end saying
+    the original is missing, and the next pass has nothing to say. Until
+    157 it was filed as a Duplicate at the same place, which replaced the
+    Filed row, the client's README said the 1098 never arrived, and every
+    pass warned about an unrecorded copy."""
+    from tracker.filer import received_for
+    from tracker.manifest import Status
+
+    filed = _filed_1098(engagement)
+    original = originals(engagement) / "1098.pdf"
+    body = original.read_bytes()
+    original.rename(inbox_of(engagement) / "1098.pdf")
+
+    report, _scanned = _a_pass(engagement, DAY2)
+
+    [row] = read_index(engagement)
+    assert row.decision == FILED and report.duplicates == []
+    assert original.read_bytes() == body
+    assert [p.name for p in originals(engagement).iterdir()] == ["1098.pdf"]
+    assert not (inbox_of(engagement) / "1098.pdf").exists()
+    from tracker.filer import RETURNED_SENTENCE
+
+    sentence = RETURNED_SENTENCE.format(drop="1098.pdf", date=DAY2.isoformat(),
+                                        pbc=filed.pbc_location)
+    assert row.reason == f"{filed.reason}; {sentence}"
+    assert ledger_key(row) == ledger_key(filed)
+    assert report.duplicates == [] and report.filed == []
+    assert [e.error for e in report.attention] == [sentence]     # no MISSING_IN_PBC left behind
+    assert len(events_named(engagement, ledger.ORIGINAL_RETURNED)) == 1
+    assert _status(engagement, "C01").status == Status.RECEIVED
+    assert "C01" in {line.identifier for line in received_for([engagement]).lines}
+    assert open_intents(engagement) == []
+
+    quiet, _ = _a_pass(engagement, DAY3)
+    assert quiet.attention == [] and quiet.errors == []
+
+
+def test_a_true_duplicate_is_still_a_duplicate(engagement):
+    """d157, claim 5. The same bytes sent again while the row's own original
+    is still where it was are the Duplicate they always were - under the
+    same name too - each with a place and a key of its own. And where two
+    rows' originals are gone and the same bytes arrive, which of them came
+    back is not guessed: it is a Duplicate with a key of its own, never at
+    either row's place, so no row is replaced (C5's second fix - until 157
+    it took the Filed row's place, and its row replaced the Filed one)."""
+    from tracker.filer import DUPLICATE_OF_FILED
+
+    filed = _filed_1098(engagement)
+    body = (originals(engagement) / "1098.pdf").read_bytes()
+    (inbox_of(engagement) / "1098.pdf").write_bytes(body)
+    (inbox_of(engagement) / "mortgage again.pdf").write_bytes(body)
+
+    report = sort(engagement, today=DAY2)
+
+    assert report.filed == [] and len(report.duplicates) == 2
+    rows = read_index(engagement)
+    assert rows[0] == filed
+    assert [r.decision for r in rows] == [FILED, DUPLICATE, DUPLICATE]
+    assert [r.pbc_location for r in rows[1:]] == [
+        original_at(engagement, "1098 (2).pdf"), original_at(engagement, "mortgage again.pdf")]
+    for dup in rows[1:]:
+        assert dup.reason == DUPLICATE_OF_FILED.format(name=filed.original_name, copy=filed.filed_as)
+
+    # Two rows whose originals are gone hold these bytes: nothing is guessed.
+    (originals(engagement) / "1098.pdf").unlink()
+    (originals(engagement) / "mortgage again.pdf").unlink()
+    (inbox_of(engagement) / "1098.pdf").write_bytes(body)
+
+    report = sort(engagement, today=DAY3)
+
+    [dup] = report.duplicates
+    assert dup.pbc_location == original_at(engagement, "1098 (3).pdf")
+    rows = read_index(engagement)
+    assert rows[0].decision == FILED and rows[0].pbc_location == filed.pbc_location
+    assert len({ledger_key(r) for r in rows}) == len(rows) == 4
+    assert events_named(engagement, ledger.ORIGINAL_RETURNED) == []
+
+
+@pytest.mark.parametrize("at_the_top", ("the different file", "the original"))
+def test_an_original_back_beside_a_different_file_of_its_name_goes_home_in_either_order(
+        engagement, at_the_top):
+    """d157, ruling B7 over 147's review, N-4 (probe p7). R1 holds W2.pdf with
+    bytes X and the client deletes it; in one pass W2.pdf holding Y and
+    Scans\\W2.pdf holding X arrive - or the other way round. Either way X
+    goes back to W2.pdf and R1 keeps its Filed row, Y is filed at
+    W2 (2).pdf under a key of its own, no row is replaced, and no pass says
+    a copy is unrecorded. Until 157 X became a Duplicate under R1's key and
+    R1's Filed row was gone."""
+    from tracker.filer import RETURNED_SENTENCE, UNRECORDED_COPY
+
+    first = drop(engagement, "W2.pdf", "Form W-2 Wage and Tax Statement 2025 Acme Corp")
+    x_bytes = first.read_bytes()
+    [r1] = sort(engagement, today=DAY1).filed
+    (originals(engagement) / "W2.pdf").unlink()
+    y_page = named_page("Form W-2 Wage and Tax Statement 2025 Beta LLC")
+    scans = inbox_of(engagement) / "Scans"
+    scans.mkdir()
+    if at_the_top == "the different file":
+        text_pdf(inbox_of(engagement) / "W2.pdf", y_page)
+        (scans / "W2.pdf").write_bytes(x_bytes)
+        arrived = "Scans/W2.pdf"
+    else:
+        (inbox_of(engagement) / "W2.pdf").write_bytes(x_bytes)
+        text_pdf(scans / "W2.pdf", y_page)
+        arrived = "W2.pdf"
+
+    report = sort(engagement, today=DAY2)
+
+    assert (originals(engagement) / "W2.pdf").read_bytes() == x_bytes
+    rows = read_index(engagement)
+    assert [r.decision for r in rows] == [FILED, FILED] and report.duplicates == []
+    assert (rows[0].pbc_location, rows[0].digest) == (r1.pbc_location, r1.digest)
+    assert rows[0].reason == f"{r1.reason}; " + RETURNED_SENTENCE.format(
+        drop=arrived, date=DAY2.isoformat(), pbc=r1.pbc_location)
+    assert rows[1].pbc_location == original_at(engagement, "W2 (2).pdf")
+    assert rows[1].digest != r1.digest and rows[1].identifier == "A01"
+    later = sort(engagement, today=DAY3)
+    unrecorded = UNRECORDED_COPY.format(location="")
+    assert not any(unrecorded in e.error for e in report.attention + later.attention)
+    assert later.attention == []
+
+
+def test_marking_a_both_gone_row_missing_asks_the_client_and_the_readme_agrees(engagement):
+    """d157, ruling B6. Mark missing (decision 146's action) takes the row's
+    own request, on a row whose copy and original are both gone and only
+    there. The row stays on the record with the person's sentence and one
+    ``answer_withdrawn_by_person`` line; it stops counting, stops holding the
+    request firm-side and leaves the client's received list; the request
+    reads Missing and the letter asks; the pass never makes it again or
+    flags it again. The client's answer - the same bytes - is filed as a
+    new arrival under a place of its own."""
+    from tracker.filer import (
+        MARKED_MISSING,
+        REFILED_AFTER_GONE,
+        mark_missing_again,
+        marked_missing,
+        received_for,
+    )
+    from tracker.manifest import Status
+
+    filed = _filed_1098(engagement)
+    with pytest.raises(FilingError, match="does not answer C01"):
+        mark_missing_again(engagement, filed.pbc_location, "C01", today=DAY1)   # its copy is here
+    body = (originals(engagement) / "1098.pdf").read_bytes()
+    (engagement / filed.prepared_location).unlink()
+    (originals(engagement) / "1098.pdf").unlink()
+    _a_pass(engagement, DAY2)
+    assert "C01" not in _asked(engagement, DAY2)
+    assert "C01" in {line.identifier for line in received_for([engagement]).lines}
+
+    result = mark_missing_again(engagement, filed.pbc_location, "C01", note="gone from Drive",
+                                today=DAY3)
+
+    assert result.scan_note == ""
+    [row] = read_index(engagement)
+    assert marked_missing(row) and row.identifier == "C01" and row.prepared_location == ""
+    assert row.reason.endswith(MARKED_MISSING.format(
+        identifier="C01", date=DAY3.isoformat(), note=" (gone from Drive)"))
+    assert len(events_named(engagement, ledger.ANSWER_WITHDRAWN_BY_PERSON)) == 1
+    item = _status(engagement, "C01")
+    assert item.status == Status.MISSING and reasons.find(item.validation_notes) is None
+    assert "C01" in _asked(engagement, DAY3)
+    assert "C01" not in {line.identifier for line in received_for([engagement]).lines}
+    with pytest.raises(FilingError):
+        mark_missing_again(engagement, filed.pbc_location, "C01", today=DAY3)   # once is enough
+    assert store.check(store.connect(), root_of(engagement), engagement) == []
+
+    lines = len(ledger.read_events(engagement))
+    quiet, _ = _a_pass(engagement, DAY3)
+    assert quiet.attention == [] and len(ledger.read_events(engagement)) == lines
+
+    (inbox_of(engagement) / "1098.pdf").write_bytes(body)            # the client answers
+    report, _ = _a_pass(engagement, DAY3 + dt.timedelta(days=1))
+    [again] = report.filed
+    assert again.pbc_location == original_at(engagement, "1098 (2).pdf")
+    assert REFILED_AFTER_GONE.format(name="1098.pdf") in again.reason
+    assert read_index(engagement)[0] == row                          # the marked row is untouched
+    assert _status(engagement, "C01").status == Status.RECEIVED
+
+
+def test_put_it_back_on_a_filed_row_whose_copy_was_deleted_makes_it_again(engagement):
+    """d157, ruling B8 (the audit's D-3: Restore refused "not a moved copy (it
+    is Filed)"). Put it back on a Filed row whose copy is gone makes it
+    again through the pass's own function, with the pass's sentence and
+    event, decided by the person; the re-scan finds the request Received.
+    A Filed row whose copy is home has nothing to put back, as before."""
+    from tracker.filer import REMADE_SENTENCE, restore_working_copy
+    from tracker.manifest import Status
+
+    filed = _filed_1098(engagement)
+    copy = engagement / filed.prepared_location
+    copy.unlink()
+
+    result = restore_working_copy(engagement, filed.pbc_location, today=DAY2)
+
+    assert result.copied_from_original and not result.moved_home and not result.already_home
+    assert result.parked_as == "" and result.scan_note == ""
+    assert copy.read_bytes() == (originals(engagement) / "1098.pdf").read_bytes()
+    [row] = read_index(engagement)
+    assert row.decision == FILED and row.reason == "{}; {}".format(filed.reason, REMADE_SENTENCE.format(
+        home=filed.prepared_location, pbc=filed.pbc_location, date=DAY2.isoformat(),
+        prepared=PREPARED_DIR_NAME))
+    assert len(events_named(engagement, ledger.COPY_REMADE)) == 1
+    assert events_named(engagement, ledger.RESTORED_BY_PERSON) == []
+    [intent] = [e for e in events_named(engagement, ledger.MOVING)
+                if e[ledger.EVENT_KEY_AFTER] == ledger.COPY_REMADE]
+    assert intent[ledger.DECIDED_BY_KEY] == ledger.BY_PERSON
+    assert _status(engagement, "C01").status == Status.RECEIVED
+    assert open_intents(engagement) == []
+
+    with pytest.raises(FilingError, match="is not a moved copy"):
+        restore_working_copy(engagement, filed.pbc_location, today=DAY2)
+
+
+def test_an_original_that_cannot_be_read_holds_the_request_and_is_never_read(
+        engagement, monkeypatch):
+    """d157, rulings B3 and B9. The copy is gone and the original is a
+    placeholder the sync client has not brought down: it is never read
+    (that would download it), nothing is made and nothing is written. The
+    request is held firm-side - a missing copy is never by itself a letter
+    to the client - and the pass after the original is back makes the copy."""
+    import tracker.filer as filer_module
+    from tracker.manifest import Status
+
+    filed = _filed_1098(engagement)
+    copy = engagement / filed.prepared_location
+    copy.unlink()
+    original = originals(engagement) / "1098.pdf"
+    real = filer_module.is_cloud_placeholder
+    monkeypatch.setattr(filer_module, "is_cloud_placeholder", lambda p: p == original or real(p))
+    read = counting_hashes(monkeypatch)
+    lines = len(ledger.read_events(engagement))
+
+    report, _scanned = _a_pass(engagement, DAY2)
+
+    assert str(original) not in read
+    assert not copy.exists() and report.attention == [] and report.errors == []
+    assert [e[ledger.EVENT_KEY] for e in ledger.read_events(engagement)[lines:]] == [ledger.SCANNED]
+    item = _status(engagement, "C01")
+    assert item.status == Status.MISSING
+    assert reasons.COPY_MISSING.matches(item.validation_notes)
+    assert "C01" not in _asked(engagement, DAY2)
+
+    monkeypatch.undo()
+    _a_pass(engagement, DAY3)
+    assert copy.read_bytes() == original.read_bytes()
+    assert _status(engagement, "C01").status == Status.RECEIVED
+
+
+def test_a_statement_whose_copy_is_not_counted_answers_nothing_until_it_is_made_again(
+        tmp_path, monkeypatch):
+    """d157, ruling B9, from 146's restack review (finding 2). E01's
+    consolidated statement answers A02 and A04; its working copy is gone and
+    its original cannot be read this pass. The answered requests do not
+    claim a document the firm cannot open: each is held firm-side, naming
+    the statement and why, and the letter asks for none of the three. The
+    pass that can read the original makes the copy again and every answer
+    heals with it."""
+    import tracker.filer as filer_module
+    from tracker.manifest import Status
+    from tracker.reasons import IN_CONSOLIDATED
+    from tracker.scanner import ANSWER_WHY_MISSING, ANSWERED_BY, scan_engagement
+
+    engagement = _consolidated_return(tmp_path)
+    [row] = [r for r in read_index(engagement) if r.decision == FILED]
+    (engagement / row.prepared_location).unlink()
+    original = locate(engagement, row.pbc_location)
+    real = filer_module.is_cloud_placeholder
+    monkeypatch.setattr(filer_module, "is_cloud_placeholder", lambda p: p == original or real(p))
+
+    sort(engagement, today=DAY2)
+    scan_engagement(engagement, today=DAY2)
+
+    held = reasons.ANSWER_NOT_COUNTED.format(
+        listed=ANSWERED_BY.format(row="E01", why=ANSWER_WHY_MISSING))
+    for identifier in ("A02", "A04"):
+        item = _status(engagement, identifier)
+        assert item.status == Status.MISSING and item.file_count == 0
+        assert held in item.validation_notes
+        assert IN_CONSOLIDATED.format(row="E01") not in item.validation_notes
+    assert reasons.COPY_MISSING.matches(_status(engagement, "E01").validation_notes)
+    assert not {"E01", "A02", "A04"} & _asked(engagement, DAY2)
+
+    monkeypatch.undo()
+    sort(engagement, today=DAY3)
+    scan_engagement(engagement, today=DAY3)
+    for identifier, count in (("E01", 1), ("A02", 2), ("A04", 1)):
+        item = _status(engagement, identifier)
+        assert item.status == Status.RECEIVED and item.file_count == count, identifier
+
+
+def test_a_store_rebuilt_from_the_journal_agrees_after_a_remake_and_a_return(engagement):
+    """d157, B11. Both new row events fold like every other row event, so the
+    store version stays where it is and a store rebuilt from the journal is
+    the live one, row for row, with ``store check`` clean on both."""
+    filed = _filed_1098(engagement)
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    [w2] = sort(engagement, today=DAY1).filed
+    (engagement / filed.prepared_location).unlink()                  # to be made again
+    (originals(engagement) / "w2.pdf").rename(inbox_of(engagement) / "w2.pdf")   # to come back
+
+    _a_pass(engagement, DAY2)
+
+    assert len(events_named(engagement, ledger.COPY_REMADE)) == 1
+    assert len(events_named(engagement, ledger.ORIGINAL_RETURNED)) == 1
+    assert store.SCHEMA_VERSION == 16
+    live = read_index(engagement)
+    root = root_of(engagement)
+    assert store.check(store.connect(), root, engagement) == []
+    db = os.environ[store.ENV_STORE]
+    store.close()
+    os.unlink(db)
+    fresh = store.connect()
+    store.rebuild_engagement(fresh, root, engagement)
+    assert read_index(engagement) == live
+    assert [ledger_key(r) for r in live] == [ledger_key(filed), ledger_key(w2)]
+    assert store.check(fresh, root, engagement) == []
+
+
+def test_a_remake_killed_after_the_copy_is_finished_from_the_record(engagement, monkeypatch):
+    """d157 over decision 119: the re-make is written down before the copy is
+    made, so a run killed between the copy and the record is finished by the
+    next pass - the copy proved, not made twice, and the row recorded as the
+    intent said, dated the day it was decided."""
+    from tracker.filer import REMADE_SENTENCE
+
+    filed = _filed_1098(engagement)
+    copy = engagement / filed.prepared_location
+    copy.unlink()
+    before = digests_under(engagement)
+    moves = moves_made(monkeypatch)
+    killed_after_ops(monkeypatch)
+
+    with pytest.raises(KeyboardInterrupt):
+        sort(engagement, today=DAY2)
+
+    assert copy.is_file() and open_intents(engagement)
+    sort(engagement, today=DAY3)
+
+    [row] = read_index(engagement)
+    assert row.reason.endswith(REMADE_SENTENCE.format(
+        home=filed.prepared_location, pbc=filed.pbc_location, date=DAY2.isoformat(),
+        prepared=PREPARED_DIR_NAME))
+    assert len(events_named(engagement, ledger.COPY_REMADE)) == 1
+    conserved(engagement, before, moves, added=[filed.digest])
+
+
+def test_the_both_gone_sentence_is_read_behind_a_persons_marks_and_never_swallowed_by_one():
+    """d157. The both-gone sentence is read off the row the way decision
+    109's moved sentences are, from its own template. A person's mark
+    (decision 146) may sit after it or before it: after it, the sentence is
+    read behind the mark; before it, the mark's note in brackets never
+    swallows the sentence's own bracket. A sentence added to such a row goes
+    before the moved sentence, so the row still reads as it did."""
+    from tracker.filer import (
+        BOTH_GONE_SENTENCE,
+        FILE_MOVED,
+        MARKED_MISSING,
+        _before_the_moved_sentence,
+        _without_moved_sentence,
+        both_gone,
+    )
+    from tracker.records import IndexEntry
+
+    gone = BOTH_GONE_SENTENCE.format(home=f"{PREPARED_DIR_NAME}/E01 - Brokerage - TY2025.pdf",
+                                     prepared=PREPARED_DIR_NAME, pbc="../../2025/schwab.pdf",
+                                     date=DAY2.isoformat())
+    mark = MARKED_MISSING.format(identifier="A02", date=DAY1.isoformat(), note=" (no interest detail)")
+    row = IndexEntry(received=DAY1.isoformat(), original_name="schwab.pdf", size_kb=1.0,
+                     digest="a" * 64, identifier="E01",
+                     prepared_location=f"{PREPARED_DIR_NAME}/E01 - Brokerage - TY2025.pdf",
+                     pbc_location="../../2025/schwab.pdf", decision=FILE_MOVED,
+                     reason=f"filed whole; {mark}; {gone}")
+    assert both_gone(row)
+    assert _without_moved_sentence(row.reason) == f"filed whole; {mark}"
+
+    after = replace(row, reason=f"filed whole; {gone}; {mark}")
+    assert both_gone(after)
+    assert _without_moved_sentence(after.reason) == f"filed whole; {mark}"
+    assert _before_the_moved_sentence(after.reason, "said") == f"filed whole; said; {gone}; {mark}"
+    assert not both_gone(replace(after, prepared_location=""))          # marked missing
+    assert not both_gone(replace(after, decision=FILED))

@@ -103,7 +103,9 @@ the clients root, and the difference between them is the whole point:
   gets the new one as `W2 (2).pdf` with a row of its own, while the first
   row goes on saying its original is missing (`filer.MISSING_IN_PBC`) —
   the truthful state, until you look. Only the very same file sent back
-  takes its old name again.
+  takes its old name again: it is that row's original coming home, and the
+  pass moves it back to its old place with no new row (decision 157,
+  *A working copy went missing* below).
 - **One accepted limit:** the move out of the inbox is not written down
   before it happens (decision 119 left it that way on purpose). If the
   machine dies between the move and the row, the next pass finds the file
@@ -550,6 +552,64 @@ purpose (the owner's decision of 2026-09-23, a named exception to decision
 another machine, both need what is in it. Do not tidy it by hand; a file
 there that no row names is said on every pass until a person has looked.
 
+### A working copy went missing
+
+A working copy in `Prepared` is ours and can always be made again; the
+client's original in their folder for the year is the record. So when a
+copy disappears — a colleague tidies the Shared Drive in the browser and
+trashes it, Drive's cache on the designated machine is cleared or the
+account is disconnected before it uploaded, a person deletes it, or the
+whole `Prepared` folder goes — **the next pass makes it again** from the
+original, at the same place under the same name (decision 157). It checks
+the original holds exactly the bytes the record filed before it copies, and
+the copy is made whole or not at all. The row's Reason ends with
+`filer.REMADE_SENTENCE`, the run says it once, the request's status does
+not move, and **the client is never asked** for a document we hold. A
+deleted `Prepared` comes back whole, the review folder included.
+
+- **The original cannot be read right now** (Drive still bringing the
+  year's folder down, or refusing it): it is not touched and nothing is
+  made; the request's note says `reasons.COPY_MISSING` and the letter holds
+  off. The pass after makes the copy once the original is readable.
+- **The original is gone too**, or it holds a different file now: nothing
+  can be made again and nothing is guessed. The row becomes File Moved
+  with `filer.BOTH_GONE_SENTENCE`, said once; the request's note says
+  `reasons.COPY_AND_ORIGINAL_GONE`, and the letter holds off until you
+  look. Look in the Shared Drive's trash (kept 30 days) and, after a Drive
+  error notice on the designated machine, in Drive for desktop's
+  `lost_and_found` folder. If you find the original, put it back in the
+  client's folder for the year under its own name: the next pass makes the
+  copy. If it is really gone, press **Mark … missing** on that row in the
+  app's moved list (the only answer it offers; **Put it back**,
+  **Keep it here** and **Send to review** have nothing to work with and say
+  so). The row stays on the record with your sentence, stops counting, and
+  leaves the client's received list; the request reads Missing and the
+  next letter asks the client for it. What they send is filed as a new
+  arrival. Once a row is marked missing, an original you then find and put
+  back at its old place in the client's folder is not filed again (the
+  mark cannot be undone, and the row's place stays taken): move it from
+  there into `Drop files here` instead, and the pass files it as a new
+  arrival under a name of its own and the letter stops asking.
+- **The original comes back into `Drop files here`** — Drive undoing a
+  move it refused, or a colleague dragging the filed original back — under
+  its own name or any other: when its bytes are those of exactly one row
+  whose original is gone, the pass moves it back to that row's place under
+  the recorded name. No new row is written; the row's Reason gains
+  `filer.RETURNED_SENTENCE`, and anything the same pass had said about the
+  original being missing is taken back. A copy whose original was gone too
+  is made again in the same step. Where two rows could be its row, nothing
+  is guessed: it is a duplicate with a name and a row of its own, and no
+  row is ever replaced.
+- **You can make it again yourself**: **Put it back** (the `restore`
+  command) on a row whose copy was deleted makes it from the original
+  exactly as the pass would, and says so in the same words.
+
+A consolidated statement's answers (decision 146) go with its copy: while
+the statement's own copy is missing, not the one filed, or gone with its
+original, each request it answers says `reasons.ANSWER_NOT_COUNTED` instead
+of Received, and the letter holds off; the pass that makes the copy again
+puts them back.
+
 ### Rolling a household into the next year
 
 Roll Forward in the app takes the **household**, not one return: it shows the
@@ -673,7 +733,11 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    overwrites a file or deletes one — a different document already at home
    is left where it is and this one's copy goes to review instead, and a
    left-over copy is named every pass until you remove it yourself. §4 has
-   the row and what each answer means.
+   the row and what each answer means. A copy that was simply deleted is
+   not on this card: the pass makes it again from the original (decision
+   157, §1 *A working copy went missing*). One whose original is gone too
+   is, with one answer, **Mark … missing**, which puts the document back on
+   the client's letter.
 4. **A locked engagement.** The app shows a notice when a run holds one. If
    it says a run is still going, leave it — **Sort & Scan** waits for it.
    If it says a run left its lock behind, a **Clear lock** button appears;
@@ -888,13 +952,14 @@ why the rules did or did not reach the answer you would have. The words in
 it are ours — the keywords on the request list, the period asked for, the
 file's own name — never a word out of the client's document.
 
-Three more appear as warnings on the run rather than as index rows:
+These appear as warnings on the run rather than as index rows:
 
 | The run warns | In plain words | What you do |
 |---|---|---|
 | `filer.REPLACED_IN_PBC` | The client replaced an original we had already filed; the working copy was made from the earlier file. Said too for a file taken out of an email or a zip that was replaced under its own name in the hidden `_Opened` folder. | Look at both, and re-file if the new one differs. |
 | `filer.UNTIED_IN_PBC` | A row was recorded without its bytes and its working copy no longer matches the original. | Look at it. Nothing is adopted automatically, by design. |
 | `filer.UNRECORDED_OPENED` / `filer.OPENED_CONTAINER_GONE` | A file sits in a hidden `_Opened` folder that no row names, or a container's folder there whose email or zip has no row any more (decision 143). A pass killed half way that the next pass did not finish can leave one; so can a file somebody put there by hand. It is never sorted from there and never deleted. | Look at it. If it is a document the client sent, drop a copy in the client's folder for the year and the next pass sorts it; then delete the stray by hand. |
+| `filer.REMAKE_FAILED` | A working copy that was gone could not be made again from the original this pass - a full disk, a path past the limit, or an original that changed while it was read (decision 157). Nothing half made is left, nothing is recorded, and the request is held for you (`reasons.COPY_MISSING`), never asked of the client. | Nothing, if the next pass makes it. If the line comes back every pass, look at what it names: free the disk, shorten the root, or look at the original. |
 | `filer.UNRECORDED_COPY` | A file is sitting in `Prepared` under a name that begins with a request's identifier (or in the review folder) that nothing on the record put there and no row's bytes account for. It **is** counted for that request — what a request has is what `Prepared` holds under its name — but nobody can say where it came from. It is never a copy the tracker left half made: since decision 155 a copy that fails or is killed part-way (antivirus holding it, a full disk, the power going out) leaves only a temporary file, which nothing counts and the next pass removes. | Open it. If it is a document, file it in the app, or take it out and drop it in the client's folder so the next pass sorts and records it. If it is not a whole document — a partial or broken copy, say one an older version left — delete it by hand; never ask the client for it. Said every pass until you do. |
 
 And since decision 143 the Decision column has a sixth value, for an email
@@ -911,6 +976,9 @@ copy that is not where the record put it:
 | The index says | In plain words | What you do |
 |---|---|---|
 | `filer.FILE_MOVED` | Every pass proves each working copy against the fingerprint its own row carries. This row's copy is not in the folder the record filed it into, and its bytes turned up somewhere else under `Prepared/` — somebody dragged it. The Reason names where it belongs and where it is now; the Prepared Location column still says where it *belongs*. Nothing was moved to find that out and nothing is moved because of it. | Open the app: put it back where it belongs, keep it where it is, or send it to review (decision 110's three buttons, coming). Until then, drag it back yourself and the next pass files it again. The request it left reads Missing meanwhile, and the client is never asked for it. |
+| `filer.REMADE_SENTENCE` | Said at the end of a row whose working copy was gone - deleted, trashed, lost from Drive's cache - with its bytes nowhere else under `Prepared/`, and was made again from the client's original, proved against the row's fingerprint (decision 157). By the pass, or by you with **Put it back**. The request's status did not move. | Nothing. |
+| `filer.BOTH_GONE_SENTENCE` | The row is File Moved: its working copy is gone and so is the client's original, or the original holds a different file now (decision 157). Nothing could be made again; the request is held for you and the client is not asked. Said once. | Look for the original (the Shared Drive's trash, Drive's `lost_and_found`). Put it back in the client's folder for the year and the next pass makes the copy; if it is really gone, press **Mark … missing** on the row in the app, and the letter asks the client. Once marked, the row names no working copy and ends with `filer.MARKED_MISSING`. |
+| `filer.RETURNED_SENTENCE` | The row's own original came back into `Drop files here` - Drive undoing a move, or somebody dragging it back - and the pass moved it back to the place the row names, with no new row (decision 157). | Nothing. |
 
 ## 5. What the Validation Notes mean
 
@@ -934,6 +1002,8 @@ read yet.
 `reasons.UNNAMED_ACROSS_HOUSEHOLDS`,
 `reasons.UNCHECKABLE_TYPE`,
 `reasons.FILE_MOVED`, `reasons.COPY_CHANGED`,
+`reasons.COPY_MISSING`, `reasons.COPY_AND_ORIGINAL_GONE`,
+`reasons.ANSWER_NOT_COUNTED`,
 `reasons.INTERRUPTED_MOVE`, `reasons.INTERRUPTED_MOVE_LOST`. These mean the
 document may be perfectly fine and no person here has read it yet. (Until
 decision 168 there was one more, "request folder not found": no request
@@ -956,6 +1026,23 @@ or put another file in its place.
   original is in the client's folder for the year), or file whatever it
   is properly. It is on the practice page too, so you see it across every
   engagement at once.
+- `reasons.COPY_MISSING` — the request's working copy is gone and the pass
+  could not make it again this time: the client's original could not be
+  read (still syncing, or refused), or the copy could not be written
+  (decision 157). Nothing is asked of the client — we hold the original —
+  and the pass makes the copy as soon as it can. If it stays, look at the
+  original in the client's folder for the year (§1, *A working copy went
+  missing*).
+- `reasons.COPY_AND_ORIGINAL_GONE` — the working copy is gone and so is the
+  client's original (decision 157). The request reads Missing and the
+  letter holds off until you look: find the original and put it back, or
+  press **Mark … missing** on the row in the app, and the next letter asks
+  the client for it.
+- `reasons.ANSWER_NOT_COUNTED` — a consolidated statement answers this
+  request (decision 146), and the statement's own working copy is not
+  counted: it is missing, not the one filed, or gone with its original. The
+  answer is not counted either, so the request reads Missing, and the
+  letter holds off. It heals the moment the statement's copy is made again.
 - `reasons.INTERRUPTED_MOVE` — a step that was putting a working copy of
   this request's in `Prepared` was interrupted (the machine went off, the power
   went out) and that place now holds a different file. Nothing there was

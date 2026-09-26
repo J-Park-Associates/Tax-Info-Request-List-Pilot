@@ -871,15 +871,30 @@ def _parked_holds(items: Sequence[RequestItem], parked: Sequence) -> dict[str, F
 
     Only rows the filer parked are read: a row a person dismissed is their
     answer, and a row they filed or unfiled is a decision, not a question.
+
+    **A parked row whose copy and original are both gone** (decision 157,
+    ruling B5, and its review's S-1) still holds. The pass turns it into
+    ``FILE_MOVED`` with the both-gone sentence, keeping what it said before,
+    and it has no identifier because nobody filed it. Nobody has looked at
+    the file either, so the question it raised is still open: the request
+    it points at stays held until a person decides (an override, or the
+    file coming back). A set-aside row that went the same way does not: its
+    Reason still starts with the person's answer.
     """
-    from tracker.filer import NEEDS_REVIEW
+    from tracker.filer import DISMISSED_BY_PERSON, NEEDS_REVIEW, both_gone
     from tracker.review import shortlist_for
+
+    def still_parked(row) -> bool:
+        if row.decision == NEEDS_REVIEW:
+            return True
+        return (both_gone(row) and not row.identifier
+                and not (row.reason or "").startswith(DISMISSED_BY_PERSON))
 
     rows = {item.identifier: item for item in items}
     listed = list(items)
     holds: dict[str, FirmSideFlag] = {}
     for row in parked:
-        if row.decision != NEEDS_REVIEW:
+        if not still_parked(row):
             continue
         reason = reasons.find(row.reason or "")
         if reason is None or not reason.holds:

@@ -115,6 +115,17 @@ Guarantees:
   row names makes its row ``FILE_MOVED`` - a decision on the document, not
   a status of a request - and a copy dragged back is filed again. Nothing
   moves either way: the fingerprint identifies and a person decides.
+- **A working copy that is simply gone is made again, never asked for
+  again** (decision 157). A copy gone from where the record put it, whose
+  bytes are nowhere else under ``PREPARED_DIR_NAME``, is copied again from
+  the row's own original, proved against the row's fingerprint, and the
+  row says so; the request's status does not move and the client is never
+  asked. Where the original is gone too, the row says both are gone, the
+  request is held for a person, and only that person's Mark missing asks
+  the client again. An original that comes back into the inbox - the one
+  row whose recorded original is gone holds its bytes - goes back to that
+  place with no new row, and no new original ever takes a place a row
+  names.
 - **A person puts a moved copy back, keeps it, or sends it to review - on
   the record.** ``restore_working_copy()`` returns the bytes to where the
   record put them; ``assign_review_file()`` files the wanderer where it now
@@ -177,7 +188,6 @@ import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass, field, replace
-from functools import partial
 from pathlib import Path
 
 from tracker import containers, ledger, reasons, store
@@ -987,17 +997,23 @@ def _unique_path(
     will still write to, with none (:func:`_taken_names`). A client who deletes ``W2.pdf``
     from the year's folder and drops a corrected ``W2.pdf`` would otherwise
     have the new file take the old row's identity, and the old row would
-    vanish from every reader. One exception, left exactly as it was: where
-    the incoming bytes (``digest``) are that row's own, it is the original
-    coming back and it rests under its own name. ``digest`` may be a
-    function, asked only when a recorded name is met - the inbox move
-    hashes its drop only then, since it is hashed where it rests anyway.
-    A row with no fingerprint is nobody's (decision 65): its name stays
-    taken.
+    vanish from every reader.
+
+    **No exception since decision 157.** Until then the row's own bytes
+    coming back rested under its own name here - and were then sorted as a
+    new arrival whose row, keyed by that very place, replaced the row it
+    came back to (audit C5; 147's review, N-4). A name a row names is now
+    taken whatever the bytes: the one road by which an original goes back
+    to its row's recorded place is :func:`_put_back_home`, which writes no
+    new row, and a same-bytes drop it does not take - two rows would answer,
+    or the row's own original is still where it was - rests under a name of
+    its own and is the Duplicate it always was, with a key of its own.
 
     ``reuse`` is decision 143's: a file already at a name holding these
-    very bytes is that name (a pass killed after writing it). ``claimed``
-    is the names this caller has handed out already, skipped.
+    very bytes is that name (a pass killed after writing it). ``digest`` is
+    what it compares, and may be a function, asked only when such a file is
+    met. ``claimed`` is the names this caller has handed out already,
+    skipped.
     """
     stem, suffix = Path(name).stem, Path(name).suffix
     if room is not None and suffix and not _AN_EXTENSION.fullmatch(suffix):
@@ -1031,9 +1047,7 @@ def _unique_path(
                 return target
             continue
         if recorded and target in recorded:
-            held = recorded[target]
-            if not held or held != incoming():
-                continue
+            continue
         return target
 
 
@@ -1224,7 +1238,10 @@ def received_for(returns: Sequence) -> Received:
       (``reasons.IN_CONSOLIDATED_CLIENT``, Jason's Q-L), naming no request.
     - ``Needs Review`` is **Under Review**, counted by the day it arrived and
       never named: its only name is the client's own.
-    - ``Duplicate``, ``Not Requested`` and anything else is not shown.
+    - ``Duplicate``, ``Not Requested`` and anything else is not shown, and
+      neither is a row a person marked missing because its working copy and
+      its original were both gone (decision 157, :func:`marked_missing`):
+      the letter asks for that document again, and the README agrees.
 
     A document this household's inbox fed into another household's return
     is in that return's index and so on that household's list, never on
@@ -1250,7 +1267,7 @@ def received_for(returns: Sequence) -> Received:
         requests = {identifier_key(item.identifier): item for item in items}
         for entry in entries:
             day = _day_of(entry.received)
-            if entry.decision in _RECEIVED_DECISIONS:
+            if _counts_as_received(entry):
                 for identifier in _requests_of(entry, items):
                     item = requests.get(identifier_key(identifier))
                     lines.append(ReceivedLine(return_path=folder,
@@ -2055,12 +2072,18 @@ def _absent(path: Path) -> bool:
 
 
 def _missing_positions(engagement_dir: Path, entries: list[IndexEntry]) -> list[int]:
-    """Where in ``entries`` the rows sit whose recorded original is gone."""
+    """Where in ``entries`` the rows sit whose recorded original is gone.
+
+    Not a row a person marked missing (decision 157, :func:`marked_missing`):
+    they have looked, the client is asked for it again, and the same bytes
+    turning up anywhere are a new arrival rather than this row's to follow.
+    """
     newest: dict[str, int] = {}
     for position, entry in enumerate(entries):
         if entry.pbc_location:
             newest[entry.pbc_location] = position     # the newest row for a location wins
-    return [position for location, position in newest.items() if _absent(locate(engagement_dir, location))]
+    return [position for location, position in newest.items()
+            if not marked_missing(entries[position]) and _absent(locate(engagement_dir, location))]
 
 
 def missing_in_pbc(engagement_dir: Path, entries: list[IndexEntry]) -> list[IndexEntry]:
@@ -2128,10 +2151,14 @@ def _follow_moved_originals(
             kept.append(path)
             continue
         was = entries[position]
+        # Before any moved sentence the row ends with (decision 157), so a
+        # File Moved row still reads where its copy is, or that its copy and
+        # original were both gone, once its original has been found again.
         entries[position] = replace(
             was,
             pbc_location=location_of(engagement_dir, path),
-            reason=f"{was.reason}; {MOVED_FROM_IN_PBC.format(location=was.pbc_location, found=found)}",
+            reason=_before_the_moved_sentence(
+                was.reason, MOVED_FROM_IN_PBC.format(location=was.pbc_location, found=found)),
         )
         moved.append((path, was))
         followed.add(position)
@@ -2229,6 +2256,51 @@ MOVED_GONE_SENTENCE = ("{home} no longer holds this row's bytes and nothing unde
 #: others and never taken off again: a copy that moves twice carries where
 #: it has been, which is what the person reading the row wants.
 MOVED_BACK_SENTENCE = "the working copy is back at {home} ({date})"
+#: Decision 157: a working copy that is gone, whose bytes are nowhere else
+#: under the firm's folder, is made again from the row's own original,
+#: proved against the row's fingerprint - by the pass, or by a person's Put
+#: it back. Appended to the row's Reason and said once on the pass; the
+#: request's status does not move and the client is never asked. ``{home}``
+#: is every place made again, joined by ``PLACES_JOINED``.
+REMADE_SENTENCE = ("the working copy was made again at {home} from the original {pbc} on {date}; "
+                   "nothing under {prepared} held it")
+#: How ``REMADE_SENTENCE`` names more than one place (decision 94's page,
+#: filed under several requests, can lose every copy at once).
+PLACES_JOINED = " and "
+#: And when it cannot be: the copy is gone, nothing under the firm's folder
+#: holds its bytes, and the original is gone too or holds other bytes
+#: (decision 157, ruling B5). The row is ``FILE_MOVED`` with this sentence,
+#: said once, and the request is held firm-side until a person looks
+#: (``reasons.COPY_AND_ORIGINAL_GONE``); only their Mark missing asks the
+#: client again. Read back by :func:`both_gone`, from this very template.
+BOTH_GONE_SENTENCE = ("{home} no longer holds this row's bytes, nothing under {prepared} does, and "
+                      "the original {pbc} is gone or holds other bytes (found {date})")
+#: The pass's line when a copy it set out to make again could not be made
+#: (a full disk, a path past the limit, an original that changed while it
+#: was read). Nothing made is left behind and nothing is recorded; the
+#: scan holds the request firm-side (``reasons.COPY_MISSING``).
+REMAKE_FAILED = ("the working copy {home} could not be made again from the original {pbc} "
+                 "({problem}); the next pass tries again")
+#: What Put it back, Keep it here and Send to review say of a row whose
+#: copy and original are both gone (decision 157, ruling B5): there is
+#: nothing to put back, and the one answer left is the person's.
+NOTHING_TO_PUT_BACK = ("nothing under {prepared} holds this row's bytes and the original {pbc} is "
+                       "gone or holds other bytes; there is nothing to put back - mark it missing "
+                       "if the client should send it again")
+#: What Put it back says of a row a person has already marked missing
+#: (decision 157, ruling B6): it names no copy any more, on purpose.
+MARKED_REFUSAL = ("{name} was marked missing by a person: the client is asked for it again, "
+                  "and there is nothing to put back")
+#: Decision 157, ruling B7: a drop that is a row's own original coming
+#: back - the one row whose recorded original is gone holds these very
+#: bytes - is moved back to where the row says, under the recorded name,
+#: and the row says so. No new row is written. ``{drop}`` is where it
+#: arrived, below the inbox, the way the client sees it.
+RETURNED_SENTENCE = "the original came back as {drop} on {date} and was moved back to {pbc}"
+#: Decision 111's re-file, over decision 157: a re-send whose earlier row
+#: has neither its working copy nor its original any more - both gone, or a
+#: person marked it missing - is the client answering, and is filed again.
+REFILED_AFTER_GONE = "re-filed: {name} had neither its working copy nor its original any more"
 #: Attention, every pass, for a file named for a request (decision 168;
 #: under a request folder until then) or in the review folder that no row
 #: names and whose bytes match no row. It is counted
@@ -2268,6 +2340,41 @@ def _moved_tail(template: str) -> re.Pattern[str]:
 
 _MOVED_TAIL = _moved_tail(MOVED_SENTENCE)
 _MOVED_GONE_TAIL = _moved_tail(MOVED_GONE_SENTENCE)
+_BOTH_GONE_TAIL = _moved_tail(BOTH_GONE_SENTENCE)
+#: A person's mark (decision 146's MARKED_MISSING) at the end of a Reason.
+#: Decision 146 lets a person mark an answer missing on a ``FILE_MOVED``
+#: row too, and the mark is appended after whatever the row said, so the
+#: moved sentence is looked for behind any such marks (:func:`_moved_part`).
+#: The note is read up to its own closing bracket and no further: the
+#: moved sentences end in brackets too, and a mark made *before* one must
+#: never be read as swallowing it. A note that itself holds brackets is not
+#: read as a mark, and the row is read as it always was.
+_MARKED_TAIL = re.compile(
+    "^(?P<base>.*); " + as_pattern(
+        MARKED_MISSING, identifier=r"[^;]+?", date=_MOVED_DATE, note=r"(?: \([^()]*\))?",
+    ) + "$",
+    re.DOTALL,
+)
+
+
+def _moved_part(reason: str) -> tuple[str, re.Pattern[str] | None, str, str]:
+    """A Reason split round the moved sentence it ends with: what came
+    before it, which of the three it is (``None`` where there is none),
+    the sentence itself, and any person's marks after it (decision 157).
+
+    Each of the three patterns comes from the template that writes the
+    sentence (:func:`_moved_tail`), so rewording a sentence moves this
+    reader with it.
+    """
+    rest, marks = reason, ""
+    while (found := _MARKED_TAIL.match(rest)) is not None:
+        marks = rest[len(found.group("base")):] + marks
+        rest = found.group("base")
+    for pattern in (_MOVED_TAIL, _MOVED_GONE_TAIL, _BOTH_GONE_TAIL):
+        found = pattern.match(rest)
+        if found:
+            return found.group("base"), pattern, rest[len(found.group("base")) + 2:], marks
+    return reason, None, "", ""
 
 
 def moved_to(entry: IndexEntry) -> str | None:
@@ -2295,18 +2402,68 @@ def _without_moved_sentence(reason: str) -> str:
     What a row said before it moved - the routing reason, a person's own
     sentence, whatever it was - is what the next moved sentence is appended
     to, so a row that has been dragged about does not accumulate one
-    "no longer holds" after another for the same copy.
+    "no longer holds" after another for the same copy. A person's mark
+    after it (decision 146) stays, after what came before (decision 157).
     """
-    for pattern in (_MOVED_TAIL, _MOVED_GONE_TAIL):
-        found = pattern.match(reason)
-        if found:
-            return found.group("base")
-    return reason
+    base, pattern, _sentence, marks = _moved_part(reason)
+    return f"{base}{marks}" if pattern is not None else reason
+
+
+def _before_the_moved_sentence(reason: str, sentence: str) -> str:
+    """``sentence`` added to a Reason, before the moved sentence it ends
+    with where it ends with one (decision 157), so :func:`moved_to` and
+    :func:`both_gone` read that row as they did: a sentence appended after
+    it would hide where the copy is from both."""
+    base, pattern, moved, marks = _moved_part(reason)
+    if pattern is None:
+        return f"{reason}; {sentence}"
+    return f"{base}; {sentence}; {moved}{marks}"
 
 
 def _says_it_is_nowhere(entry: IndexEntry) -> bool:
-    """Whether this row already says its bytes are nowhere in the folder."""
-    return entry.decision == FILE_MOVED and _MOVED_GONE_TAIL.match(entry.reason) is not None
+    """Whether this row already says its bytes are nowhere in the folder -
+    the original safe (decision 109) or gone too (decision 157)."""
+    if entry.decision != FILE_MOVED:
+        return False
+    return _moved_part(entry.reason)[1] in (_MOVED_GONE_TAIL, _BOTH_GONE_TAIL)
+
+
+def both_gone(entry: IndexEntry) -> bool:
+    """Whether this row says its working copy and its original are both
+    gone (decision 157, ruling B5), and a person has not yet marked it
+    missing.
+
+    The scanner reads it to hold the request firm-side with
+    ``reasons.COPY_AND_ORIGINAL_GONE`` rather than decision 110's
+    put-it-back wording, the app to offer Mark missing, and Mark missing to
+    accept the row's own request. Read off the row's own sentence
+    (:data:`BOTH_GONE_SENTENCE`), behind any marks a person added.
+    """
+    return (entry.decision == FILE_MOVED and bool(entry.prepared_location)
+            and _moved_part(entry.reason)[1] is _BOTH_GONE_TAIL)
+
+
+def marked_missing(entry: IndexEntry) -> bool:
+    """Whether a person marked this row's own request missing (decision 157,
+    ruling B6): a ``FILE_MOVED`` row that names no working copy.
+
+    Mark missing takes the row's claim on its copies away - its Prepared
+    Location, its other copies and what it answered - and appends the
+    person's sentence, so the row stays on the record and counts for
+    nothing: the sweep never makes its copy again or flags it again, the
+    scanner reads no copy of it, the client README leaves it out, and the
+    same bytes sent again are filed as a new arrival. Nothing else ever
+    writes a ``FILE_MOVED`` row without a copy - the sweep moves only rows
+    that name one - so the shape is the mark.
+    """
+    return entry.decision == FILE_MOVED and not entry.prepared_location
+
+
+def _counts_as_received(entry: IndexEntry) -> bool:
+    """Whether a row is one the client README and a save of the list count
+    as a document the client sent: Filed or File Moved (decision 130), and
+    not a row a person has marked missing (decision 157)."""
+    return entry.decision in _RECEIVED_DECISIONS and not marked_missing(entry)
 
 
 def _spend_a_stray(strays: dict[str, str], digest: str, preferred: str | None = None) -> str | None:
@@ -2338,6 +2495,141 @@ def _spend_a_stray(strays: dict[str, str], digest: str, preferred: str | None = 
     return None
 
 
+#: What a row's original is when its working copy has to be made again,
+#: read in the moment (decision 157, ruling B3): proved (here, readable,
+#: the row's own bytes), not read (a placeholder, or a read refused - look
+#: again next pass), or gone (absent, or holding other bytes).
+_ORIGINAL_PROVED = "proved"
+_ORIGINAL_UNREAD = "unread"
+_ORIGINAL_GONE = "gone"
+
+
+def _the_original_now(engagement_dir: Path, entry: IndexEntry) -> tuple[str, Path | None]:
+    """Whether this row's original can be copied from, read now and never
+    remembered: the copy made from it is proved against the same digest
+    on its way in (:func:`_copy_whole`), so what is proved here is what is
+    copied. A placeholder is never read - hashing one would make the sync
+    client download it - and a read refused is not an absence
+    (:func:`_absent`'s rule): both are "not this pass", never "gone"."""
+    if not entry.pbc_location:
+        return _ORIGINAL_GONE, None
+    path = locate(engagement_dir, entry.pbc_location)
+    if _absent(path) or path.is_dir():
+        return _ORIGINAL_GONE, path
+    if is_cloud_placeholder(path):
+        return _ORIGINAL_UNREAD, path
+    digest = _digest_or_none(path)
+    if digest is None:
+        return _ORIGINAL_UNREAD, path
+    return (_ORIGINAL_PROVED if digest == entry.digest else _ORIGINAL_GONE), path
+
+
+def _may_be_made_again(entry: IndexEntry, every_one_absent: bool) -> bool:
+    """Whether the sweep makes this row's gone copies again (decision 157,
+    ruling B2): a Filed row and a parked one (Needs Review, Not Requested -
+    so a ``Prepared`` folder deleted whole comes back whole), and a File
+    Moved row that already says its bytes are nowhere, when every place it
+    claims is simply gone - a place holding some other file is somebody's
+    and is never written over. A File Moved row whose wanderer has just
+    gone is said nowhere first, as it always was, and is made again on the
+    pass after (the row is a person's question, decision 110)."""
+    if entry.decision in (FILED, *_PARKED):
+        return True
+    return entry.decision == FILE_MOVED and every_one_absent and _says_it_is_nowhere(entry)
+
+
+def _remade(entry: IndexEntry, locations: Sequence[str], stamp: str) -> tuple[IndexEntry, str]:
+    """The row once its copies at ``locations`` are made again, and the
+    sentence it gains (decision 157, ruling B4): a Filed row stays Filed, a
+    parked row keeps its decision, and a File Moved row that said nowhere
+    is what it was before it went - Filed, or Needs Review where it names no
+    request, :data:`MOVED_BACK_SENTENCE`'s rule - with its nowhere sentence
+    taken off, as a copy dragged back has its moved sentence taken off."""
+    sentence = REMADE_SENTENCE.format(home=PLACES_JOINED.join(locations), pbc=entry.pbc_location,
+                                      date=stamp, prepared=PREPARED_DIR_NAME)
+    if entry.decision == FILE_MOVED:
+        return replace(entry, decision=FILED if entry.identifier else NEEDS_REVIEW,
+                       reason=f"{_without_moved_sentence(entry.reason)}; {sentence}"), sentence
+    return replace(entry, reason=f"{entry.reason}; {sentence}"), sentence
+
+
+def _make_again(
+    engagement_dir: Path, entry: IndexEntry, remade: IndexEntry, source: Path,
+    locations: Sequence[str], *, by: str, then: str, cache: ContentCache | None,
+) -> None:
+    """Write down, then make, a working copy at each of ``locations`` from
+    the row's proved original - **the one function** the pass's sweep and a
+    person's Put it back both make a gone copy through (decision 157,
+    rulings B1 and B8).
+
+    The intent comes first (decision 119), carrying the row as it will be
+    (``remade``) and the event that completes it, so a run killed after a
+    copy is finished from the record. Each copy is decision 155's whole
+    copy, proved against the row's digest before it takes its name. All or
+    nothing: a copy that fails leaves no file under its name, the copies
+    this call already made are taken back by their bytes, the intent is
+    abandoned, and the failure is raised for the caller to say. A kill is
+    not a failure: nothing is taken back, and the next pass finishes it.
+    """
+    key = ledger_key(entry)
+    ops = [_op(engagement_dir, ledger.OP_COPY, source, locate(engagement_dir, location), entry.digest)
+           for location in locations]
+    _intend(engagement_dir, key, ops, by=by, row=entry_to_json(remade), then=then)
+    done: list[dict] = []
+    try:
+        for op in ops:
+            _do_op(engagement_dir, op, cache=cache)
+            done.append(op)
+    except (OSError, FilingError):
+        _take_back(engagement_dir, done)
+        _abandon(engagement_dir, key)
+        raise
+
+
+def _make_again_or_hold(
+    engagement_dir: Path, entries: list[IndexEntry], position: int, absent: list[str], home: str,
+    cache: ContentCache, stamp: str, swept: dict[str, str], *, dry_run: bool,
+) -> FileError | None:
+    """The sweep's answer to a row whose copy is gone and whose bytes are
+    nowhere else under the firm's folder (decision 157): made again from a
+    proved original, said as both gone where the original is gone too, and
+    nothing at all where the original cannot be read now. Mutates
+    ``entries`` and ``swept``; returns the pass's line, or None."""
+    entry = entries[position]
+    outcome, source = _the_original_now(engagement_dir, entry)
+    if outcome == _ORIGINAL_UNREAD:
+        log.info("The working copy recorded at %s is gone and its original %s cannot be read "
+                 "this pass; nothing is made", home, entry.pbc_location)
+        return None
+    key = ledger_key(entry)
+    if outcome == _ORIGINAL_PROVED:
+        remade, sentence = _remade(entry, absent, stamp)
+        if not dry_run:
+            try:
+                _make_again(engagement_dir, entry, remade, source, absent,
+                            by=ledger.BY_PASS, then=ledger.COPY_REMADE, cache=cache)
+            except (OSError, FilingError) as exc:
+                problem = REMAKE_FAILED.format(home=PLACES_JOINED.join(absent),
+                                               pbc=entry.pbc_location, problem=exc)
+                log.warning("%s", problem)
+                return FileError(Path(absent[0]).name, problem, True)
+        entries[position] = remade
+        swept[key] = ledger.COPY_REMADE
+        log.warning("The working copy recorded at %s was gone; made again from %s",
+                    PLACES_JOINED.join(absent), entry.pbc_location)
+        return FileError(Path(absent[0]).name, sentence, True)
+    if both_gone(entry):
+        return None                  # said once already, and both are gone still
+    sentence = BOTH_GONE_SENTENCE.format(home=home, prepared=PREPARED_DIR_NAME,
+                                         pbc=entry.pbc_location or "(none)", date=stamp)
+    entries[position] = replace(entry, decision=FILE_MOVED,
+                                reason=f"{_without_moved_sentence(entry.reason)}; {sentence}")
+    swept[key] = ledger.COPY_MOVED
+    log.warning("The working copy recorded at %s is gone and so is its original %s",
+                home, entry.pbc_location)
+    return FileError(Path(home).name, sentence, True)
+
+
 def _prove_working_copies(
     engagement_dir: Path,
     prepared_dir: Path,
@@ -2345,11 +2637,15 @@ def _prove_working_copies(
     cache: ContentCache,
     stamp: str,
     request_files: set[Path],
-) -> tuple[list[FileError], dict[str, str]]:
+    *,
+    dry_run: bool = False,
+) -> tuple[list[FileError], dict[str, str], dict[str, FileError]]:
     """One walk of the firm's folder: prove every copy the record names,
     identify every file it does not. Mutates ``entries``; returns the
-    attention lines and ``{ledger_key: ledger.COPY_MOVED}`` for every row
-    it rewrote.
+    attention lines, ``{ledger_key: event}`` for every row it rewrote
+    (``ledger.COPY_MOVED``, or ``ledger.COPY_REMADE`` for a copy it made
+    again), and the line it said of each row whose copy and original are
+    both gone, by key, for :func:`_put_back_home` to take back.
 
     ``request_files`` are the files whose names belong to a request
     (``tracker.scaffold.assign_files``, decision 168): an unrecorded one
@@ -2377,9 +2673,30 @@ def _prove_working_copies(
     A placeholder is never read: hashing one would make the sync client
     download it, so a dehydrated home is "not looked at this pass" rather
     than absent, and a dehydrated file no row names is passed over.
+
+    **A copy that is simply gone is made again** (decision 157). Until then
+    a row whose copy was gone with its bytes nowhere else was skipped here
+    ("decision 3's regression says this"), so the scan read the request
+    Missing and the weekly letter asked the client again for a document
+    whose original sat untouched in their own folder - after a colleague
+    trashed a copy on Drive's web, a cache cleared, a copy deleted by hand,
+    or the whole ``Prepared`` folder deleted. Now, for every row that
+    claims a copy (:func:`_may_be_made_again`: Filed, parked, and a File
+    Moved row that already says nowhere), each claimed place that is
+    absent is made again from the row's original, proved against the
+    row's fingerprint at the moment it is copied, through decision 155's
+    whole copy and under decision 119's intent (:func:`_make_again_or_hold`).
+    The request's status does not move and the pass says it once. Where the
+    original is gone too, or holds other bytes, nothing is made and the row
+    is said once as ``FILE_MOVED`` with :data:`BOTH_GONE_SENTENCE`; where
+    it cannot be read now - still syncing, or refused - nothing is written
+    at all and the scan holds the request (``reasons.COPY_MISSING``). The
+    working copy is the firm's and disposable; the original is only read.
+    A dry run decides all of it and makes nothing.
     """
     attention: list[FileError] = []
     swept: dict[str, str] = {}
+    said: dict[str, FileError] = {}
 
     # Every location the record claims, and which row claims it. Where two
     # rows name one location the newest wins - the rule the index is read
@@ -2432,28 +2749,50 @@ def _prove_working_copies(
     # decision 110 will put back, whatever else holds the same bytes.
     for position in sorted(failed):
         entry = entries[position]
-        if entry.decision == DUPLICATE:
+        if entry.decision in (DUPLICATE, OPENED):
             continue                 # a Duplicate row only points at another row
         home = failed[position][0]
         now = _spend_a_stray(strays, entry.digest, moved_to(entry))
+        if now is None:
+            # Nothing under the firm's folder holds its bytes. Where the
+            # copy is simply gone, it is made again from the original, or
+            # held for a person when the original is gone too (decision
+            # 157) - never a letter to the client.
+            absent = [location for location in failed[position]
+                      if _absent(locate(engagement_dir, location))]
+            if absent and _may_be_made_again(entry, len(absent) == len(failed[position])):
+                line = _make_again_or_hold(engagement_dir, entries, position, absent, home,
+                                           cache, stamp, swept, dry_run=dry_run)
+                if line is not None:
+                    attention.append(line)
+                    if both_gone(entries[position]):
+                        said[ledger_key(entry)] = line
+                continue
         if now is None and entry.decision != FILE_MOVED:
-            continue                 # decision 3's regression says this, as it always has
+            continue                 # a copy that holds other bytes: the scan says so (decision 155)
         if now is not None and moved_to(entry) == now:
             continue                 # the same wanderer as last pass: nothing new to say
         if now is None and _says_it_is_nowhere(entry):
             continue                 # said nowhere already, and it is nowhere still
-        sentence = (
-            MOVED_SENTENCE.format(home=home, now=now, date=stamp) if now is not None
-            else MOVED_GONE_SENTENCE.format(
-                home=home, prepared=PREPARED_DIR_NAME,
-                pbc=entry.pbc_location or "(none)", date=stamp)
-        )
+        if now is not None:
+            sentence = MOVED_SENTENCE.format(home=home, now=now, date=stamp)
+        elif entry.pbc_location and not _absent(locate(engagement_dir, entry.pbc_location)):
+            sentence = MOVED_GONE_SENTENCE.format(
+                home=home, prepared=PREPARED_DIR_NAME, pbc=entry.pbc_location, date=stamp)
+        else:
+            # "The original is safe" would be false (decision 157, B5).
+            sentence = BOTH_GONE_SENTENCE.format(
+                home=home, prepared=PREPARED_DIR_NAME, pbc=entry.pbc_location or "(none)",
+                date=stamp)
         entries[position] = replace(
             entry, decision=FILE_MOVED,
             reason=f"{_without_moved_sentence(entry.reason)}; {sentence}",
         )
         swept[ledger_key(entries[position])] = ledger.COPY_MOVED
-        attention.append(FileError(Path(now or home).name, sentence, True))
+        line = FileError(Path(now or home).name, sentence, True)
+        attention.append(line)
+        if both_gone(entries[position]):
+            said[ledger_key(entry)] = line
         log.warning("The working copy recorded at %s is not there; it is at %s", home, now or "nothing")
 
     # And a copy somebody dragged back is what it was before it went. Which
@@ -2487,7 +2826,7 @@ def _prove_working_copies(
         path = locate(engagement_dir, location)
         if path in request_files or review == path.parent or review in path.parents:
             attention.append(FileError(path.name, UNRECORDED_COPY.format(location=location), True))
-    return attention, swept
+    return attention, swept, said
 
 
 def _prune_empty_dirs(inbox: Path) -> None:
@@ -2895,6 +3234,12 @@ class _ReturnRun:
     #: pass because the reader could not start on an attachment (decision
     #: 150 over 143): what waits in them is not said as unaccounted.
     reopen: set[Path] = field(default_factory=set)
+    #: What this pass said about a row's original or working copy being
+    #: gone, by the row's key (decision 157): ``MISSING_IN_PBC`` and the
+    #: both-gone line. Taken back off the report when the same pass puts
+    #: the original back (:func:`_put_back_home`), so a pass never ends
+    #: saying something is missing that it has just put back.
+    absence_said: dict[str, list[FileError]] = field(default_factory=dict)
 
     @property
     def items(self) -> list[RequestItem]:
@@ -3221,12 +3566,13 @@ def _prepare_return(engagement_dir: Path, stamp: str, *, dry_run: bool) -> _Retu
     # request's is their names' to say (decision 168), the same reading
     # the scanner counts by.
     assigned = assign_files(run.context.prepared_dir, [i.identifier for i in items])
-    sweep, swept = _prove_working_copies(
+    sweep, swept, said = _prove_working_copies(
         engagement_dir, run.context.prepared_dir, entries, cache, stamp,
-        {path for paths in assigned.values() for path in paths},
+        {path for paths in assigned.values() for path in paths}, dry_run=dry_run,
     )
     report.attention.extend(sweep)
     run.swept = swept
+    run.absence_said = {key: [line] for key, line in said.items()}
     # The row that holds each document's bytes. A Duplicate row only points
     # at another row; letting it shadow the Filed row would hide a working
     # copy that has since been deleted, and a re-send that answers
@@ -3290,9 +3636,13 @@ def _follow_and_say(
             location=earlier.pbc_location, now=location_of(engagement_dir, path),
         ), True))
     for earlier in gone:
-        run.report.attention.append(FileError(earlier.original_name, MISSING_IN_PBC.format(
+        line = FileError(earlier.original_name, MISSING_IN_PBC.format(
             location=earlier.pbc_location, received=earlier.received,
-        ), True))
+        ), True)
+        run.report.attention.append(line)
+        # Kept by the row's key, so the same pass can take it back if the
+        # original comes home through the inbox (decision 157, ruling B7).
+        run.absence_said.setdefault(ledger_key(earlier), []).append(line)
     # An original replaced under its own name is said loudly, every run,
     # until a person has looked; it is not sorted again and not guessed.
     # An attachment taken out of an email or a zip rests under _Opened, and
@@ -3361,9 +3711,16 @@ def _sort_all(
     could not be handled at all, is the household's and belongs where a
     person looking at that household will read it - never in a return
     another household's person works.
+
+    **A row's own original coming back goes home first** (decision 157,
+    ruling B7): before a drop is moved or decided, a drop whose bytes are
+    those of exactly one row whose recorded original is gone is that
+    original, and :func:`_put_back_home` moves it back to the recorded
+    place - no new row, no Duplicate replacing the row it came back to.
     """
     dry_run = first.context.dry_run
     inbox = inbox_of(first.engagement_dir)
+    away = _originals_away(runs)
     for drop, already_filed in (
         [(d, False) for d in drops] + [(p, True) for p in strays]
     ):
@@ -3381,6 +3738,18 @@ def _sort_all(
             log.warning("Left %s in place: %s", drop.name, exc)
             continue
 
+        # A row's own original, back in the inbox (decision 157, ruling B7):
+        # its bytes are the one row's whose recorded original is gone. Asked
+        # only while some row's original is gone, so an ordinary pass hashes
+        # no drop twice. Two rows answering is a guess, and takes the
+        # ordinary road below.
+        if not already_filed and away:
+            coming_back = _digest_or_none(drop)
+            if coming_back and len(away.get(coming_back, ())) == 1:
+                [(home_run, position)] = away.pop(coming_back)
+                if _put_back_home(drop, coming_back, home_run, position, stamp, inbox, first):
+                    continue
+
         # The original moves once, out of the inbox into the folder the
         # client can see for the year, and never again (decision 125): its
         # resting place is the record's identity for the document. The move
@@ -3390,17 +3759,15 @@ def _sort_all(
         #
         # It keeps its own name unless another file has it - on the disk, or
         # on a row of any of the household's returns (decision 147): a name
-        # a deleted original left is still that row's, unless these are its
-        # very bytes coming back. The drop is hashed here only when such a
-        # name is met; it is hashed where it rests below either way.
+        # a deleted original left is still that row's, whatever the bytes
+        # (decision 157) - the row's own coming back went home above.
         if already_filed or dry_run:
             original = drop if already_filed else originals_dir / drop.name
         else:
             try:
                 original = _unique_path(
                     originals_dir, drop.name,
-                    recorded=_taken_in_the_year(first, runs),
-                    digest=partial(_digest_or_none, drop))
+                    recorded=_taken_in_the_year(first, runs))
                 _move_whole(drop, original, within=inbox)
             except OSError as exc:
                 first.report.errors.append(FileError(
@@ -3478,6 +3845,129 @@ def _sort_all(
         run.entries.append(entry)
         if entry.decision != DUPLICATE and digest:
             run.known[digest] = entry
+
+
+def _originals_away(runs: list[_ReturnRun]) -> dict[str, list[tuple[_ReturnRun, int]]]:
+    """Every row of these returns whose recorded original is gone, by its
+    bytes: what a drop may be coming back to (decision 157, ruling B7).
+
+    Read once per sort, after the rows that followed an original the client
+    moved have followed it. Left out: a row with no fingerprint (decision
+    65, nobody's), a document taken out of an email or a zip (its original
+    rests in the private ``_Opened`` folder, which no client drop goes
+    back into), a row a person marked missing (:func:`marked_missing` - the
+    client was asked again, so the same bytes are a new arrival), a row a
+    person set aside (``NOT_REQUESTED``: decision 111 routes the same bytes
+    sent again afresh, because the list may have gained their request since;
+    the review's S-2), and a place an open intent will still write to
+    (decision 147's ``intended``).
+    """
+    away: dict[str, list[tuple[_ReturnRun, int]]] = {}
+    for run in runs:
+        for position in _missing_positions(run.engagement_dir, run.entries):
+            entry = run.entries[position]
+            if not entry.digest or entry.container or entry.decision == NOT_REQUESTED:
+                continue
+            if locate(run.engagement_dir, entry.pbc_location) in run.context.intended:
+                continue
+            away.setdefault(entry.digest, []).append((run, position))
+    return away
+
+
+def _put_back_home(
+    drop: Path, digest: str, run: _ReturnRun, position: int, stamp: str, inbox: Path,
+    first: _ReturnRun,
+) -> bool:
+    """Move a row's own original, dropped back into the inbox, to the place
+    its row names, under the recorded name (decision 157, ruling B7; audit
+    C5; 147's review, N-4). True when the drop is dealt with, here or left
+    in place; False where the recorded place is no longer free, and the
+    drop takes the ordinary road.
+
+    **No new row.** Until this decision the drop rested under its own name
+    (:func:`_unique_path`'s old exception) and was then sorted as a new
+    arrival: a Duplicate row, keyed by that very place, replaced the Filed
+    row it came back to, and the client's README said the document never
+    arrived. Here the row it came back to gets one sentence
+    (:data:`RETURNED_SENTENCE`) and one row event
+    (``ledger.ORIGINAL_RETURNED``), and the move is one intent (decision
+    119), so a pass killed half way is finished from the record.
+
+    Where the row's working copy and original were both gone (ruling B5),
+    the copy is made again from the original in the same intent (ruling
+    B4) and the row is filed again, so the pass that brings the original
+    back does not end saying the row has neither. And whatever this pass
+    already said about the row being gone - ``MISSING_IN_PBC``, the
+    both-gone line - is taken back: a pass that puts an original back must
+    not end with a warning that it is missing. A dry run says it and moves
+    nothing.
+    """
+    engagement_dir = run.engagement_dir
+    entry = run.entries[position]
+    home = locate(engagement_dir, entry.pbc_location)
+    if not _absent(home):
+        return False                 # somebody's file is there now: never over it
+    key = ledger_key(entry)
+    arrived = Path(os.path.relpath(drop, inbox)).as_posix()
+    said = RETURNED_SENTENCE.format(drop=arrived, date=stamp, pbc=entry.pbc_location)
+    copies = ([location for location in entry.filed_locations
+               if _absent(locate(engagement_dir, location))] if both_gone(entry) else [])
+    if copies:
+        remade = REMADE_SENTENCE.format(home=PLACES_JOINED.join(copies), pbc=entry.pbc_location,
+                                        date=stamp, prepared=PREPARED_DIR_NAME)
+        new = replace(entry, decision=FILED if entry.identifier else NEEDS_REVIEW,
+                      reason=f"{_without_moved_sentence(entry.reason)}; {said}; {remade}")
+        said = f"{said}; {remade}"
+    else:
+        new = replace(entry, reason=_before_the_moved_sentence(entry.reason, said))
+    if not run.context.dry_run:
+        ops = [_op(engagement_dir, ledger.OP_MOVE, drop, home, digest)]
+        ops += [_op(engagement_dir, ledger.OP_COPY, home, locate(engagement_dir, location), digest)
+                for location in copies]
+        _intend(engagement_dir, key, ops, by=ledger.BY_PASS, row=entry_to_json(new),
+                then=ledger.ORIGINAL_RETURNED)
+        done: list[dict] = []
+        try:
+            for op in ops:
+                _do_op(engagement_dir, op, cache=run.cache)
+                done.append(op)
+        except (OSError, FilingError) as exc:
+            _take_back(engagement_dir, done)
+            _abandon(engagement_dir, key)
+            first.report.errors.append(FileError(
+                drop.name, f"could not be moved back to {entry.pbc_location} ({exc}); left in place",
+                True))
+            log.warning("Left %s in place: moving it back to %s failed: %s",
+                        drop.name, entry.pbc_location, exc)
+            return True
+        run.entries[position] = new
+        run.swept[key] = ledger.ORIGINAL_RETURNED
+    for line in run.absence_said.pop(key, []):
+        if line in run.report.attention:
+            run.report.attention.remove(line)
+    run.report.attention.append(FileError(drop.name, said, True))
+    log.warning("%s is the original recorded at %s, back in the inbox; moved back",
+                arrived, entry.pbc_location)
+    return True
+
+
+def _take_back(engagement_dir: Path, done: list[dict]) -> None:
+    """Undo the operations of an intent this call made before one failed,
+    newest first: a copy it made is removed while it still holds the bytes
+    it was made with, and a move is moved back. Never anything else - the
+    machine deletes only a copy it has just made, and only by its bytes."""
+    root = root_of(engagement_dir)
+    for op in reversed(done):
+        source = locate(engagement_dir, op[ledger.FROM_KEY])
+        target = locate(engagement_dir, op[ledger.TO_KEY])
+        try:
+            if op[ledger.OP_KEY] == ledger.OP_MOVE:
+                _move_whole(target, source, within=root)
+            elif _the_bytes(target) == op.get(ledger.DIGEST_KEY):
+                target.unlink()
+        except OSError as exc:
+            log.error("Could not undo %s of %s after a later step failed: %s",
+                      op[ledger.OP_KEY], target.name, exc)
 
 
 # ------------------------------------------------------ an email or a zip ----
@@ -3562,7 +4052,9 @@ def _take_out(folder: Path, attachment: containers.Attachment, claimed: set[Path
     other bytes is kept, the new one taking the next number: nothing found
     there is ever overwritten. Named by the one numbering function
     (:func:`_unique_path`, decision 147), so a name a row still names
-    (``recorded``) is taken here too, unless these are that row's bytes.
+    (``recorded``) is taken here too - whatever the bytes, since decision
+    157: a file on the disk holding these bytes is reused, a name only a
+    row holds is never handed back.
     """
     data = attachment.data
     digest = hashlib.sha256(data).hexdigest()
@@ -4298,8 +4790,8 @@ def _rests_at(run: _ReturnRun, original: Path, digest: str) -> Path:
     so it moves a second time - and that move is the first step of the
     filing, written down before it happens like every other. Its name
     there is chosen as the inbox move's is: a name the disk holds, or a row
-    of that household-year still names, is taken unless ``digest`` is that
-    row's own (decision 147, ruling 9).
+    of that household-year still names, is taken (decision 147, ruling 9) -
+    whatever the bytes, since decision 157.
     """
     if not run.dropped_in:
         return original
@@ -4348,7 +4840,8 @@ def _file_into(
     :func:`_unique_path` have already chosen the names. A name a vanished
     original left behind is still its row's (decision 147, ruling 9), so a
     different document never lands on it and never becomes that row's next
-    version; only that row's own bytes coming back do.
+    version; that row's own bytes coming back go home through
+    :func:`_put_back_home`, with no new row (decision 157).
     """
     ops = ([] if resting == original
            else [_op(target, ledger.OP_MOVE, original, resting, digest)])
@@ -4519,8 +5012,10 @@ def _sort_one(
     The road decision 111 laid: the content hash says *which* row already
     holds these bytes, and that row's decision says what this arrival is.
     A re-send whose earlier row was filed and whose copy is gone is filed
-    again; one a person set aside is routed afresh against that return's
-    list; anything else is a duplicate of the row that holds it.
+    again - and so is one whose earlier row has neither its copy nor its
+    original, or was marked missing by a person (decision 157); one a
+    person set aside is routed afresh against that return's list; anything
+    else is a duplicate of the row that holds it.
 
     An attachment (decision 143) never arrives here with a return in
     another household: :func:`_decide_across` asks only the returns
@@ -4548,10 +5043,22 @@ def _sort_one(
         # PREPARED_DIR_NAME - deleted by hand, most likely. A re-send is the
         # client answering "Missing"; calling it a duplicate would keep
         # the row Missing for ever. File it again.
+        # Since decision 157 the pass makes such a copy again from the
+        # original before it sorts, so this is the copy whose original
+        # could not be read to make it (still syncing, or refused).
         refiled = (
             f"re-filed: the earlier copy {earlier.prepared_location} "
             f"was no longer in {PREPARED_DIR_NAME}"
         )
+    elif both_gone(earlier) or marked_missing(earlier):
+        # Decision 157: the earlier row has neither its copy nor its
+        # original - said so by the sweep, or marked missing by a person, who
+        # asked the client again. The same bytes arriving are the answer:
+        # filed again, never a Duplicate of a row that holds nothing. (Where
+        # the original was simply gone, the drop went home to its row before
+        # it was sorted - ``_put_back_home``; this is the original that holds
+        # other bytes now, and the row a person marked.)
+        refiled = REFILED_AFTER_GONE.format(name=earlier.original_name)
     elif earlier.decision == NOT_REQUESTED:
         # Somebody said no request asked for this - that day. The client
         # sending it again is a new fact about it, and the request list
@@ -4821,6 +5328,11 @@ def assign_review_file(
             # "keep it here" is not the machine's to guess. Put it back
             # answers for every copy, and unfiling starts from there.
             raise FilingError(SEVERAL_COPIES_REFUSAL.format(name=entry.original_name))
+        if both_gone(entry) and _the_original_now(engagement_dir, entry)[0] != _ORIGINAL_PROVED:
+            # Decision 157, B5: nothing to keep - the copy and the original
+            # are both gone - in the one sentence the three answers share.
+            raise FilingError(NOTHING_TO_PUT_BACK.format(
+                prepared=PREPARED_DIR_NAME, pbc=entry.pbc_location))
         source = locate(engagement_dir, entry.pbc_location)
         if not source.is_file():
             raise FilingError(
@@ -5505,6 +6017,11 @@ def unfile_document(
         if not still_the_rows:
             # Nothing else can be parked but a copy of the original, so the
             # original has to be here before anything is moved or written.
+            # A row whose copy and original are both gone (decision 157,
+            # B5) is refused in the one sentence all three answers use.
+            if both_gone(entry) and _the_original_now(engagement_dir, entry)[0] != _ORIGINAL_PROVED:
+                raise FilingError(NOTHING_TO_PUT_BACK.format(
+                    prepared=PREPARED_DIR_NAME, pbc=entry.pbc_location))
             if not source.is_file():
                 raise FilingError(
                     f"the working copy is not the one this row recorded and the original "
@@ -5512,6 +6029,12 @@ def unfile_document(
                 )
             if is_cloud_placeholder(source):
                 raise FilingError(f"the original {entry.pbc_location} is still syncing; try again when it is here")
+            if entry.digest and _digest_or_none(source) != entry.digest:
+                # Proved before the intent is written, not by the copy after
+                # it: a copy of other bytes would fail half way through a
+                # decision the record already holds (decision 157).
+                raise FilingError(NOTHING_TO_PUT_BACK.format(
+                    prepared=PREPARED_DIR_NAME, pbc=entry.pbc_location))
 
         # Named as every review copy is, to fit (decision 131): no room
         # refuses with the review copy's sentence, and nothing has moved.
@@ -5617,6 +6140,18 @@ def mark_missing_again(
     draft on. A request the row does not answer is refused by name, and so
     is a row somebody re-filed since the person saw it (``seq``, decision
     112).
+
+    **A row's own request, on a row whose copy and original are both gone**
+    (decision 157, ruling B6). The pass holds such a request for a person
+    rather than asking the client (:func:`both_gone`); this is the person's
+    answer. The row stays on the record with the person's sentence, and its
+    claim on any working copy and every answer it gave come off
+    (:func:`marked_missing`): it counts for nothing, holds nothing
+    firm-side, leaves the client README, and the pass never makes it again
+    or flags it again - so the request reads Missing and the letter asks.
+    On any other row its own request is refused, as it always was. One
+    ``answer_withdrawn_by_person`` line records it, the event decision 146
+    gave a request taken off a row.
     """
     engagement_dir = Path(engagement_dir)
     today = today or dt.date.today()
@@ -5631,14 +6166,23 @@ def mark_missing_again(
         _refuse_if_stale(engagement_dir, entry, seq)
         answered = entry.answered
         kept = [one for one in answered if identifier_key(one[0]) != identifier_key(wanted)]
-        if len(kept) == len(answered):
+        own = bool(entry.identifier) and identifier_key(wanted) == identifier_key(entry.identifier)
+        if own and both_gone(entry):
+            new_entry = replace(
+                entry, prepared_location="", also_filed="", answers="",
+                reason="; ".join(part for part in (entry.reason, MARKED_MISSING.format(
+                    identifier=entry.identifier, date=today.isoformat(), note=_said(note))) if part),
+            )
+            wanted = entry.identifier
+        elif len(kept) == len(answered):
             raise FilingError(f"{entry.original_name} does not answer {wanted}")
-        new_entry = replace(
-            entry,
-            answers=format_answers(kept),
-            reason="; ".join(part for part in (entry.reason, MARKED_MISSING.format(
-                identifier=wanted, date=today.isoformat(), note=_said(note))) if part),
-        )
+        else:
+            new_entry = replace(
+                entry,
+                answers=format_answers(kept),
+                reason="; ".join(part for part in (entry.reason, MARKED_MISSING.format(
+                    identifier=wanted, date=today.isoformat(), note=_said(note))) if part),
+            )
         entries[position] = new_entry
         _record(engagement_dir, before, entries,
                 decided={ledger_key(new_entry): ledger.ANSWER_WITHDRAWN_BY_PERSON})
@@ -5755,6 +6299,81 @@ def find_moved(entries: list[IndexEntry], original: str) -> int:
     raise FilingError(f"nothing in the index is called {original!r}")
 
 
+def _gone_copies(engagement_dir: Path, entries: list[IndexEntry], position: int) -> list[str]:
+    """The places this row names as its working copies that are simply gone
+    and that no later row names instead (a later row's claim on a place is
+    the newest, as everywhere else) - what Put it back makes again on a row
+    that did not move (decision 157, ruling B8)."""
+    entry = entries[position]
+    later = {location for one in entries[position + 1:] for location in one.filed_locations}
+    return [location for location in entry.filed_locations
+            if location not in later and _absent(locate(engagement_dir, location))]
+
+
+def _find_to_put_back(engagement_dir: Path, entries: list[IndexEntry], original: str) -> int:
+    """:func:`find_moved`, widened by decision 157 (ruling B8): a Filed or
+    parked row with a fingerprint one of whose own working copies is simply
+    gone is Put it back's too. Anything else is refused exactly as
+    :func:`find_moved` refuses it - a Filed row whose copy is where the
+    record put it has nothing to put back."""
+    try:
+        return find_moved(entries, original)
+    except FilingError:
+        wanted = original.replace("\\", "/").strip()
+        for position in range(len(entries) - 1, -1, -1):
+            entry = entries[position]
+            if entry.pbc_location != wanted and entry.original_name != wanted:
+                continue
+            if entry.decision == DUPLICATE and entry.original_name == wanted:
+                continue
+            if (entry.decision in (FILED, *_PARKED) and entry.digest
+                    and _gone_copies(engagement_dir, entries, position)):
+                return position
+            break
+        raise
+
+
+def _make_a_gone_copy_again(
+    engagement_dir: Path, entries: list[IndexEntry], before: dict[str, dict], position: int,
+    stamp: str,
+) -> RestoreResult:
+    """Put it back on a Filed or parked row whose copy was deleted (decision
+    157, ruling B8), under the lock :func:`restore_working_copy` holds: the
+    copy made again from the proved original, through the pass's own
+    :func:`_make_again`, with the pass's sentence and event, decided by the
+    person. Refused before anything is written where the original cannot
+    be copied from - still syncing, unreadable, or gone (naming both, as
+    :data:`NOTHING_TO_PUT_BACK` does). A record that refuses the decision
+    takes the copies back. Mutates ``entries``; the caller re-scans."""
+    entry = entries[position]
+    gone = _gone_copies(engagement_dir, entries, position)
+    outcome, source = _the_original_now(engagement_dir, entry)
+    if outcome == _ORIGINAL_GONE:
+        raise FilingError(NOTHING_TO_PUT_BACK.format(prepared=PREPARED_DIR_NAME,
+                                                     pbc=entry.pbc_location))
+    if outcome == _ORIGINAL_UNREAD:
+        raise FilingError(f"the original {entry.pbc_location} is still syncing or cannot be read "
+                          "now; try again when it can")
+    remade, _sentence = _remade(entry, gone, stamp)
+    entries[position] = remade
+    _make_again(engagement_dir, entry, remade, source, gone,
+                by=ledger.BY_PERSON, then=ledger.COPY_REMADE, cache=None)
+    try:
+        _record(engagement_dir, before, entries, decided={ledger_key(remade): ledger.COPY_REMADE})
+    except BaseException:
+        # The record took it or it did not: a copy it did not take is
+        # removed by its bytes, so a retry makes it once.
+        if not _the_record_holds(engagement_dir, remade):
+            for location in gone:
+                made = locate(engagement_dir, location)
+                if _the_bytes(made) == entry.digest:
+                    made.unlink(missing_ok=True)
+            _abandon(engagement_dir, ledger_key(remade))
+        raise
+    return RestoreResult(entry=remade, moved_home=False, copied_from_original=True,
+                         already_home=False)
+
+
 def _holds_the_row(path: Path, digest: str) -> bool:
     """Whether this file is here, readable now, and the row's own bytes.
 
@@ -5802,18 +6421,27 @@ def restore_working_copy(
     A page decision 94 filed under several requests has a copy in each, and
     every one of them is put back - which is why keep-it-here and
     send-to-review refuse such a row and point here.
+
+    **And a copy that was simply deleted** (decision 157, ruling B8; the
+    audit's D-3, which found this refusing "not a moved copy (it is
+    Filed)"). A Filed or parked row one of whose own copies is gone is
+    accepted too, and the copy is made again from the row's proved original
+    through the very function the pass uses (:func:`_make_again`), with the
+    same sentence (:data:`REMADE_SENTENCE`) and the same event
+    (``ledger.COPY_REMADE``), decided by the person. A row whose copy and
+    original are both gone is refused naming both
+    (:data:`NOTHING_TO_PUT_BACK`); its one answer is Mark missing.
     """
     engagement_dir = Path(engagement_dir)
     today = today or dt.date.today()
     stamp = today.isoformat()
-    review_dir = engagement_dir / PREPARED_DIR_NAME / REVIEW_DIR_NAME
 
     with engagement_lock(engagement_dir):
         ensure(engagement_dir)
         _refuse_if_a_move_is_open(engagement_dir)
         entries = read_index(engagement_dir)
         before = {ledger_key(e): entry_to_json(e) for e in entries}
-        position = find_moved(entries, original)
+        position = _find_to_put_back(engagement_dir, entries, original)
         entry = entries[position]
         _refuse_if_stale(engagement_dir, entry, seq)
         if not entry.digest:
@@ -5824,155 +6452,178 @@ def restore_working_copy(
                 f"{entry.original_name} was recorded without its bytes, so nothing can be proved "
                 "to be its working copy; the pass says so every run"
             )
-        source = locate(engagement_dir, entry.pbc_location)
-        now = moved_to(entry)
-        wanderer = locate(engagement_dir, now) if now else None
-
-        # Every location this row claims - one for nearly every row, one per
-        # request for a page decision 94 filed under several - sorted into
-        # what is already right, what is not there, and what is somebody
-        # else's file. A placeholder is not read and not overwritten either:
-        # the sync client has not finished, and the answer is to wait.
-        absent: list[str] = []
-        different: list[str] = []
-        for location in entry.filed_locations:
-            path = locate(engagement_dir, location)
-            if not path.is_file():
-                absent.append(location)
-            elif is_cloud_placeholder(path):
-                raise FilingError(f"{location} is still syncing; try again when it is here")
-            elif sha256_of(path) != entry.digest:
-                different.append(location)
-
-        def the_original() -> Path:
-            """The client's original, proved, or the refusal that names why."""
-            looked = f"the copy at {now}" if now else f"nothing under {PREPARED_DIR_NAME}"
-            if not source.is_file():
-                raise FilingError(
-                    f"{looked} holds this row's bytes and the original {entry.pbc_location} is no "
-                    f"longer there; there is nothing to put back"
-                )
-            if is_cloud_placeholder(source):
-                raise FilingError(
-                    f"the original {entry.pbc_location} is still syncing; try again when it is here"
-                )
-            if sha256_of(source) != entry.digest:
-                raise FilingError(
-                    f"neither {looked} nor the original {entry.pbc_location} holds the bytes this "
-                    "row recorded; look at the files first"
-                )
-            return source
-
-        moved_home = copied_from_original = wanderer_moved = False
-        parked: Path | None = None
-        filled: list[Path] = []
-        ops: list[dict] = []
-        if different:
-            # Refused, and nothing is touched at home. This document's copy
-            # goes to review under the client's own name - the wanderer
-            # itself when it still holds the bytes, a fresh one from the
-            # original when nothing does - so the person has a working copy
-            # to act on and both files are still on disk.
-            # Named as every review copy is, to fit (decision 131): no room
-            # refuses with the review copy's sentence, nothing touched.
-            parked, past_reader = _review_copy_path(review_dir, entry.original_name)
-            review_dir.mkdir(parents=True, exist_ok=True)
-            if wanderer is not None and _holds_the_row(wanderer, entry.digest):
-                ops.append(_op(engagement_dir, ledger.OP_MOVE, wanderer, parked, entry.digest))
-                wanderer_moved = True
-            else:
-                ops.append(_op(engagement_dir, ledger.OP_COPY, the_original(), parked,
-                               entry.digest))
-                copied_from_original = True
-            sentence = PUT_BACK_REFUSED.format(
-                date=stamp, home=different[0],
-                parked=prepared_location(review_dir, parked.name))
-            if past_reader:
-                sentence = f"{sentence}; {past_reader}"
-            new_entry = replace(
-                entry, decision=NEEDS_REVIEW, identifier="", also_filed="", answers="",
-                prepared_location=prepared_location(review_dir, parked.name),
-                reason=f"{_without_moved_sentence(entry.reason)}; {sentence}",
-            )
-        elif not absent:
-            # Already home: no file operation at all, and the wanderer -
-            # a copy of the same document, by its bytes - is left for a
-            # person to remove. A row that says its bytes are nowhere and
-            # has them home again is the sweep's own sentence, worded once.
-            sentence = (PUT_BACK_ALREADY.format(home=entry.prepared_location, date=stamp, now=now)
-                        if now else MOVED_BACK_SENTENCE.format(
-                            home=entry.prepared_location, date=stamp))
-            new_entry = replace(
-                entry, decision=FILED if entry.identifier else NEEDS_REVIEW,
-                reason=f"{_without_moved_sentence(entry.reason)}; {sentence}",
-            )
+        if marked_missing(entry):
+            raise FilingError(MARKED_REFUSAL.format(name=entry.original_name))
+        if entry.decision == FILE_MOVED:
+            done = _put_back_a_moved_copy(engagement_dir, entries, before, position, stamp)
         else:
-            home = locate(engagement_dir, absent[0])
-            if wanderer is not None and _holds_the_row(wanderer, entry.digest):
-                ops.append(_op(engagement_dir, ledger.OP_MOVE, wanderer, home, entry.digest))
-                moved_home = wanderer_moved = True
-                sentence = PUT_BACK.format(home=absent[0], date=stamp, now=now)
-            else:
-                ops.append(_op(engagement_dir, ledger.OP_COPY, the_original(), home,
-                               entry.digest))
-                copied_from_original = True
-                sentence = PUT_BACK_FROM_ORIGINAL.format(
-                    home=absent[0], date=stamp, pbc=entry.pbc_location,
-                    prepared=PREPARED_DIR_NAME)
-            filled.append(home)
-            # Decision 94's other copies, if this row has any: each is these
-            # same bytes over again, and the one just put back is them - so
-            # each is copied from it, in the order the intent says, and a
-            # recovery that finishes this finds them in that order too.
-            for location in absent[1:]:
-                other = locate(engagement_dir, location)
-                ops.append(_op(engagement_dir, ledger.OP_COPY, home, other, entry.digest))
-                filled.append(other)
-            new_entry = replace(
-                entry, decision=FILED if entry.identifier else NEEDS_REVIEW,
-                reason=f"{_without_moved_sentence(entry.reason)}; {sentence}",
-            )
-
-        entries[position] = new_entry
-        _intend(engagement_dir, ledger_key(new_entry), ops, by=ledger.BY_PERSON,
-                row=entry_to_json(new_entry), then=ledger.RESTORED_BY_PERSON)
-        for op in ops:
-            _do_op(engagement_dir, op)
-        try:
-            _record(engagement_dir, before, entries,
-                    decided={ledger_key(new_entry): ledger.RESTORED_BY_PERSON})
-        except BaseException:
-            # The same rule as every other person's decision: the record
-            # took it or it did not, so exactly what moved goes back and a
-            # retry does this once rather than twice.
-            if not _the_record_holds(engagement_dir, new_entry):
-                try:
-                    if parked is not None:
-                        if wanderer_moved:
-                            _move_whole(parked, wanderer, within=engagement_dir)
-                        else:
-                            parked.unlink(missing_ok=True)
-                    else:
-                        for copy in filled[1:]:
-                            copy.unlink(missing_ok=True)
-                        if wanderer_moved and filled:
-                            _move_whole(filled[0], wanderer, within=engagement_dir)
-                        elif filled:
-                            filled[0].unlink(missing_ok=True)
-                except (OSError, FilingError) as undo:
-                    log.error("Could not put %s back after the record refused it: %s",
-                              entry.original_name, undo)
-                _abandon(engagement_dir, ledger_key(new_entry))
-            raise
+            done = _make_a_gone_copy_again(engagement_dir, entries, before, position, stamp)
 
     # Outside the lock, as the unfiling's is: the request this row answers
     # has its file again (or has lost it to review), and the status says so
     # now rather than at the next scheduled pass.
+    return replace(done, scan_note=_rescan(engagement_dir, today))
+
+
+def _put_back_a_moved_copy(
+    engagement_dir: Path, entries: list[IndexEntry], before: dict[str, dict], position: int,
+    stamp: str,
+) -> RestoreResult:
+    """Decision 110's put-it-back of a ``FILE_MOVED`` row, under the lock
+    :func:`restore_working_copy` holds: the wanderer home, a copy from the
+    original, already home, or refused and parked. Mutates ``entries``
+    and records the person's decision; the caller re-scans."""
+    review_dir = engagement_dir / PREPARED_DIR_NAME / REVIEW_DIR_NAME
+    entry = entries[position]
+    source = locate(engagement_dir, entry.pbc_location)
+    now = moved_to(entry)
+    wanderer = locate(engagement_dir, now) if now else None
+
+    # Every location this row claims - one for nearly every row, one per
+    # request for a page decision 94 filed under several - sorted into
+    # what is already right, what is not there, and what is somebody
+    # else's file. A placeholder is not read and not overwritten either:
+    # the sync client has not finished, and the answer is to wait.
+    absent: list[str] = []
+    different: list[str] = []
+    for location in entry.filed_locations:
+        path = locate(engagement_dir, location)
+        if not path.is_file():
+            absent.append(location)
+        elif is_cloud_placeholder(path):
+            raise FilingError(f"{location} is still syncing; try again when it is here")
+        elif sha256_of(path) != entry.digest:
+            different.append(location)
+
+    def the_original() -> Path:
+        """The client's original, proved, or the refusal that names why."""
+        looked = f"the copy at {now}" if now else f"nothing under {PREPARED_DIR_NAME}"
+        if not now and _the_original_now(engagement_dir, entry)[0] == _ORIGINAL_GONE:
+            # Nothing under the firm's folder and not the original either
+            # (decision 157, B5): the one sentence, naming both.
+            raise FilingError(NOTHING_TO_PUT_BACK.format(
+                prepared=PREPARED_DIR_NAME, pbc=entry.pbc_location))
+        if not source.is_file():
+            raise FilingError(
+                f"{looked} holds this row's bytes and the original {entry.pbc_location} is no "
+                f"longer there; there is nothing to put back"
+            )
+        if is_cloud_placeholder(source):
+            raise FilingError(
+                f"the original {entry.pbc_location} is still syncing; try again when it is here"
+            )
+        if sha256_of(source) != entry.digest:
+            raise FilingError(
+                f"neither {looked} nor the original {entry.pbc_location} holds the bytes this "
+                "row recorded; look at the files first"
+            )
+        return source
+
+    moved_home = copied_from_original = wanderer_moved = False
+    parked: Path | None = None
+    filled: list[Path] = []
+    ops: list[dict] = []
+    if different:
+        # Refused, and nothing is touched at home. This document's copy
+        # goes to review under the client's own name - the wanderer
+        # itself when it still holds the bytes, a fresh one from the
+        # original when nothing does - so the person has a working copy
+        # to act on and both files are still on disk.
+        # Named as every review copy is, to fit (decision 131): no room
+        # refuses with the review copy's sentence, nothing touched.
+        parked, past_reader = _review_copy_path(review_dir, entry.original_name)
+        review_dir.mkdir(parents=True, exist_ok=True)
+        if wanderer is not None and _holds_the_row(wanderer, entry.digest):
+            ops.append(_op(engagement_dir, ledger.OP_MOVE, wanderer, parked, entry.digest))
+            wanderer_moved = True
+        else:
+            ops.append(_op(engagement_dir, ledger.OP_COPY, the_original(), parked,
+                           entry.digest))
+            copied_from_original = True
+        sentence = PUT_BACK_REFUSED.format(
+            date=stamp, home=different[0],
+            parked=prepared_location(review_dir, parked.name))
+        if past_reader:
+            sentence = f"{sentence}; {past_reader}"
+        new_entry = replace(
+            entry, decision=NEEDS_REVIEW, identifier="", also_filed="", answers="",
+            prepared_location=prepared_location(review_dir, parked.name),
+            reason=f"{_without_moved_sentence(entry.reason)}; {sentence}",
+        )
+    elif not absent:
+        # Already home: no file operation at all, and the wanderer -
+        # a copy of the same document, by its bytes - is left for a
+        # person to remove. A row that says its bytes are nowhere and
+        # has them home again is the sweep's own sentence, worded once.
+        sentence = (PUT_BACK_ALREADY.format(home=entry.prepared_location, date=stamp, now=now)
+                    if now else MOVED_BACK_SENTENCE.format(
+                        home=entry.prepared_location, date=stamp))
+        new_entry = replace(
+            entry, decision=FILED if entry.identifier else NEEDS_REVIEW,
+            reason=f"{_without_moved_sentence(entry.reason)}; {sentence}",
+        )
+    else:
+        home = locate(engagement_dir, absent[0])
+        if wanderer is not None and _holds_the_row(wanderer, entry.digest):
+            ops.append(_op(engagement_dir, ledger.OP_MOVE, wanderer, home, entry.digest))
+            moved_home = wanderer_moved = True
+            sentence = PUT_BACK.format(home=absent[0], date=stamp, now=now)
+        else:
+            ops.append(_op(engagement_dir, ledger.OP_COPY, the_original(), home,
+                           entry.digest))
+            copied_from_original = True
+            sentence = PUT_BACK_FROM_ORIGINAL.format(
+                home=absent[0], date=stamp, pbc=entry.pbc_location,
+                prepared=PREPARED_DIR_NAME)
+        filled.append(home)
+        # Decision 94's other copies, if this row has any: each is these
+        # same bytes over again, and the one just put back is them - so
+        # each is copied from it, in the order the intent says, and a
+        # recovery that finishes this finds them in that order too.
+        for location in absent[1:]:
+            other = locate(engagement_dir, location)
+            ops.append(_op(engagement_dir, ledger.OP_COPY, home, other, entry.digest))
+            filled.append(other)
+        new_entry = replace(
+            entry, decision=FILED if entry.identifier else NEEDS_REVIEW,
+            reason=f"{_without_moved_sentence(entry.reason)}; {sentence}",
+        )
+
+    entries[position] = new_entry
+    _intend(engagement_dir, ledger_key(new_entry), ops, by=ledger.BY_PERSON,
+            row=entry_to_json(new_entry), then=ledger.RESTORED_BY_PERSON)
+    for op in ops:
+        _do_op(engagement_dir, op)
+    try:
+        _record(engagement_dir, before, entries,
+                decided={ledger_key(new_entry): ledger.RESTORED_BY_PERSON})
+    except BaseException:
+        # The same rule as every other person's decision: the record
+        # took it or it did not, so exactly what moved goes back and a
+        # retry does this once rather than twice.
+        if not _the_record_holds(engagement_dir, new_entry):
+            try:
+                if parked is not None:
+                    if wanderer_moved:
+                        _move_whole(parked, wanderer, within=engagement_dir)
+                    else:
+                        parked.unlink(missing_ok=True)
+                else:
+                    for copy in filled[1:]:
+                        copy.unlink(missing_ok=True)
+                    if wanderer_moved and filled:
+                        _move_whole(filled[0], wanderer, within=engagement_dir)
+                    elif filled:
+                        filled[0].unlink(missing_ok=True)
+            except (OSError, FilingError) as undo:
+                log.error("Could not put %s back after the record refused it: %s",
+                          entry.original_name, undo)
+            _abandon(engagement_dir, ledger_key(new_entry))
+        raise
     return RestoreResult(
         entry=new_entry, moved_home=moved_home, copied_from_original=copied_from_original,
         already_home=not different and not absent,
         parked_as=prepared_location(review_dir, parked.name) if parked is not None else "",
-        scan_note=_rescan(engagement_dir, today),
     )
 
 
@@ -5995,13 +6646,15 @@ def documents_by_request(engagement_dir: Path | str,
     A request a consolidated statement answers through its Also Answers
     cell (decision 146) holds that statement too, once per statement, even
     with no copy of its own (SPEC-146 R-2): the client has sent it, so a
-    save may not drop it - a person marks it missing again first.
+    save may not drop it - a person marks it missing again first. A row a
+    person marked missing because its copy and its original were both gone
+    holds nothing (decision 157): the client is being asked for it again.
     """
     folder = Path(engagement_dir)
     items = load_manifest(folder) if items is None else list(items)
     held: dict[str, int] = {}
     for entry in read_index(folder):
-        if entry.decision in _RECEIVED_DECISIONS:
+        if _counts_as_received(entry):
             for identifier in _requests_of(entry, items):
                 if identifier:
                     key = identifier_key(identifier)

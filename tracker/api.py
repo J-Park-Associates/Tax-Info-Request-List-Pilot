@@ -65,12 +65,14 @@ from tracker.filer import (
     FilingError,
     Spelling,
     assign_review_file,
+    both_gone,
     dismiss_review_file,
     documents_by_request,
     ensure,
     find_parked,
     hand_over,
     mark_missing_again,
+    marked_missing,
     moved_to,
     read_index,
     refresh_household_readme,
@@ -1209,11 +1211,18 @@ def _moved_payload(engagement: Path, entries: list[IndexEntry], items,
     renamed ``A02 - ...`` beside the other copies is offered to A02, and
     one in the review folder, in a folder a person made or under a name no
     request's identifier begins counts as nobody's.
+
+    Decision 157: ``gone`` says the row's copy and its original are both
+    gone (``filer.both_gone``), and ``identifier`` is the row's own request -
+    the card offers such a row **Mark missing** (the API's ``mark-missing``
+    with the row's own identifier) instead of three answers that would each
+    refuse: there is nothing to put back. A row a person has already marked
+    missing (``filer.marked_missing``) is answered, and is not listed.
     """
     owned = assign_files(engagement / PREPARED_DIR_NAME, [i.identifier for i in items])
     rows = []
     for entry in entries:
-        if entry.decision != FILE_MOVED:
+        if entry.decision != FILE_MOVED or marked_missing(entry):
             continue
         now = moved_to(entry)
         in_request = ""
@@ -1227,6 +1236,8 @@ def _moved_payload(engagement: Path, entries: list[IndexEntry], items,
             "home": entry.prepared_location,
             "now": now,
             "in_request": in_request,
+            "gone": both_gone(entry),
+            "identifier": entry.identifier,
         })
     return rows
 
@@ -2876,6 +2887,11 @@ def _cmd_mark_missing(argv: list[str]) -> dict:
     The statement stays filed where it is; only that request comes off its
     Also Answers cell, on the record, and the re-scan puts the request back
     to what its own folder holds, so the next draft asks for it.
+
+    Since decision 157 the same command takes a row's **own** request on a
+    row whose working copy and original are both gone - the moved card's
+    Mark missing: the row stops counting and the next draft asks the
+    client for the document. On any other row its own request is refused.
     """
     engagement = _engagement_dir(argv)
     spec = json.loads(sys.stdin.read() or "{}")
@@ -2909,7 +2925,9 @@ def _cmd_restore(argv: list[str]) -> dict:
     is left as it is and so is the wanderer; a home holding a *different*
     file is never overwritten - that file stays, this document's copy goes
     to review, and the row parks naming both. The row it comes back with
-    says which of the four happened.
+    says which of the four happened. Since decision 157 a Filed or parked
+    row whose copy was simply deleted is accepted too, and the copy is made
+    again from the original, as the pass would.
 
     ``seq`` is the row as the person saw it and is required (decision 112),
     as it is for the other three: a row the pass rewrote while the card was
