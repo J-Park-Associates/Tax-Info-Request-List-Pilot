@@ -715,8 +715,10 @@ some Persian, Arabic and Indic names and emoji use (decision 176), and so
 does every name the record keeps (decision 190): a file's, the subfolder
 it came from and its review copy's are recorded without invisible or
 control characters, so a direction override cannot make a program read as
-a PDF. The original in the client's folder keeps its own name, byte for
-byte. A program inside an email or a zip is never taken out of it: its row
+a PDF. A character Windows keeps out of a folder name, which a client on a
+Mac can still type, is recorded in the subfolder as `_`: a folder called
+`Q1: bank` shows as `Q1_ bank`. The original in the client's folder keeps
+its own name, byte for byte. A program inside an email or a zip is never taken out of it: its row
 parks as `reasons.NOT_A_DOCUMENT`, with no copy.
 
 The opening runs where the pass can stop it (decision 154), in the

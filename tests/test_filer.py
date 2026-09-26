@@ -254,6 +254,25 @@ def test_a_subfolder_file_keeps_its_name_when_nothing_else_has_it(engagement):
     assert read_index(engagement)[0].subfolder == row.subfolder     # the record's, not the report's
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows cannot name a folder with ':' in it")
+def test_a_subfolder_named_with_a_windows_illegal_character_is_recorded_with_an_underscore_and_the_pass_completes(
+        engagement):
+    """Decision 190's review of the port, S2. On Linux or macOS a client can
+    name an inbox folder ``Q1: bank``. The filer recorded it raw and the
+    store's admission refused it, after the original had already moved, so
+    the pass raised. Both now use layout.recorded_subfolder_part: the row
+    says ``Q1_ bank``, the store admits it, and the pass files the file."""
+    nested = inbox_of(engagement) / "Q1: bank"
+    nested.mkdir(parents=True)
+    text_pdf(nested / "w2.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
+
+    [row] = sort(engagement, today=DAY1).filed
+
+    assert row.subfolder == "Q1_ bank", row
+    assert [p.name for p in originals(engagement).iterdir()] == ["w2.pdf"]
+    assert [(e.original_name, e.subfolder) for e in read_index(engagement)] == [("w2.pdf", "Q1_ bank")]
+
+
 def test_a_different_file_of_the_same_name_is_the_one_numbered_and_the_row_names_its_subfolder(engagement):
     """``Scans`` sorts before ``W2.pdf`` on Windows and POSIX alike - a
     case-folded path order and a plain one agree - so the old walk moved

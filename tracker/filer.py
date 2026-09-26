@@ -231,6 +231,7 @@ from tracker.layout import (
     place_problem,
     private_tree_of,
     recorded_name,
+    recorded_subfolder_part,
     root_of,
     year_of,
 )
@@ -2209,9 +2210,11 @@ def _subfolder_of(drop: Path, inbox: Path) -> str:
     """The client's subfolder a drop sits in, below the inbox, the way the
     client sees it in Explorer (``Bank statements\\2025``); ``""`` for a
     drop at the top of the inbox (decision 147, ruling 4)."""
-    # As the record keeps it: no invisible or control character (decision
-    # 190), each part below the inbox by the layout's one test (decision 188).
-    return "\\".join(recorded_name(part) for part in parts_below(inbox, drop.parent) or ())
+    # As the record keeps it: no invisible or control character and no
+    # character Windows keeps out of a folder name (decision 190), each part
+    # below the inbox by the layout's one test (decision 188) - the rule the
+    # store's admission applies, so the two cannot disagree.
+    return "\\".join(recorded_subfolder_part(part) for part in parts_below(inbox, drop.parent) or ())
 
 
 def _storable(path: Path) -> bool:

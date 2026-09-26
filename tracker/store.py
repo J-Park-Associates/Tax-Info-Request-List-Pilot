@@ -335,6 +335,27 @@ _IN_PLACE: dict[int, tuple[str, ...]] = {
          """ALTER TABLE statuses ADD COLUMN "note_codes" TEXT"""),
 }
 
+#: The ``(table, column)`` pairs an in-place step added, read off
+#: :data:`_IN_PLACE` so that a new step is covered without a second list.
+#: In these columns only, ``store check`` holds NULL and ``''`` as the one
+#: value (decision 190's review of the port, S3): a file main's 204 step
+#: already upgraded, with its old ``DEFAULT ''``, holds ``''`` where a
+#: rebuild writes NULL, the records read both back as empty, and a person
+#: could act on the difference only by a full rebuild. Every other column
+#: still tells NULL from ``''``, and a real value still differs.
+_ADDED_IN_PLACE: frozenset[tuple[str, str]] = frozenset(
+    (words[2], words[5].strip('"'))
+    for statements in _IN_PLACE.values() for statement in statements
+    for words in (statement.split(),))
+
+
+def _agree(table: str, field: str, held: object, theirs: object) -> bool:
+    """Whether a store cell and the record's value are the same, for
+    :func:`check` - NULL and ``''`` as one in :data:`_ADDED_IN_PLACE`."""
+    if held == theirs:
+        return True
+    return (table, field) in _ADDED_IN_PLACE and held in (None, "") and theirs in (None, "")
+
 #: What a row of ``engagements`` holds the record of: one return, or one
 #: household (decision 125). Both are folders with a journal, keyed by
 #: path and folded by the same machinery, and this is what tells a reader
@@ -1688,18 +1709,17 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
         if problem := records.entry_problem(row):
             refuse(f"carries a row whose {problem}")
         a_code("code", row.get("code"), "a row")
-        # The client's subfolder is written as the record keeps a name
-        # (decision 190, layout.recorded_name), one folder name per part -
-        # the filer joins the parts below the inbox with a backslash. A part
-        # the recorded-name rule would change, "." or "..", or one holding a
-        # character Windows keeps out of a folder name ("/", ":", a control;
-        # layout.WINDOWS_ILLEGAL_CHARS) is a name no writer wrote. Not the
-        # household and return name rule (layout.segment_problem): since
+        # The client's subfolder is written one folder name per part, each
+        # through layout.recorded_subfolder_part - the filer joins the parts
+        # below the inbox with a backslash. A part that rule would change
+        # ("." or "..", one holding "/", ":" or a control, one with nothing
+        # visible) is a name no writer wrote: the writer and this admission
+        # share the one rule (decision 190's review of the port, S2). Not
+        # the household and return name rule (layout.segment_problem): since
         # decision 188 that refuses "2025", "_old" and "(scans)", which are
         # folders a client may well make in their inbox.
         subfolder = row.get("subfolder")
-        if subfolder and any(part in (".", "..") or layout.WINDOWS_ILLEGAL_CHARS.search(part)
-                             or layout.recorded_name(part) != part
+        if subfolder and any(layout.recorded_subfolder_part(part) != part
                              for part in str(subfolder).split("\\")):
             refuse("carries a row whose 'subfolder' is not a name as the record keeps one")
         for field in ("pbc_location", "prepared_location", "container"):
@@ -3090,7 +3110,7 @@ def _check_documents(
             continue
         for field in DOCUMENT_COLUMNS:
             theirs = _to_sql(row.get(field))
-            if held[field] != theirs:
+            if not _agree("documents", field, held[field], theirs):
                 problems.append(
                     f"{name}: index row {key!r}, {field}: the store says {held[field]!r}, "
                     f"the record says {theirs!r}")
@@ -3187,7 +3207,7 @@ def _check_statuses(
             continue
         for field in STATUS_COLUMNS:
             theirs = _to_sql(status.get(field))
-            if held[field] != theirs:
+            if not _agree("statuses", field, held[field], theirs):
                 problems.append(
                     f"{name}: request {identifier}, {field}: the store says {held[field]!r}, "
                     f"the record says {theirs!r}")

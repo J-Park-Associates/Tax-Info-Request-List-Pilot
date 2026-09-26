@@ -2831,6 +2831,65 @@ def test_a_version_17_store_gains_the_cause_columns_in_place_and_every_old_row_r
         assert as_a_rebuild_leaves_it(conn, tmp_path / "root", engagement, tmp_path)
     finally:
         conn.close()
+
+
+def test_a_store_that_204s_old_step_upgraded_with_empty_cells_passes_check_after_190s_step(tmp_path):
+    """Decision 190's review of the port, S3. Main's 204 step added
+    ``waits_for`` with ``DEFAULT ''``, so a file it upgraded holds ``''``
+    on every earlier row where a rebuild from the journal writes NULL. After
+    190's step that file must pass ``store check``: NULL and ``''`` are the
+    one value in the columns an in-place step added, and in those only - a
+    real value there, and NULL against ``''`` in any other column, are
+    still named."""
+    from tests.conftest import sort
+    from tests.test_scanner import text_pdf
+    from tracker.layout import inbox_of
+
+    root = tmp_path / "root"
+    engagement = make_engagement(root, [RequestItem(
+        identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),
+        min_size_kb=0, required_keywords=("W-2",))])
+    text_pdf(inbox_of(engagement) / "w2.pdf", "Form W-2 Wage and Tax Statement 2025 Test Client")
+    text_pdf(inbox_of(engagement) / "notice.pdf", "an agency notice nothing asks for")
+    sort(engagement)
+    journal_as_written_before(engagement, FIELDS_OF_190 + FIELDS_OF_204)
+
+    old = tmp_path / "v16" / store.STORE_FILENAME
+    built = store.open(old)
+    try:
+        store.rebuild_engagement(built, root, engagement)          # what version 16 held, cell for cell
+    finally:
+        built.close()
+    written = sqlite3.connect(old)
+    for statement in AS_AT_16:
+        written.execute(statement)
+    written.execute("""ALTER TABLE documents ADD COLUMN "waits_for" TEXT DEFAULT ''""")    # 204's old step
+    written.execute("PRAGMA user_version = 17")
+    written.commit()
+    assert {row[0] for row in written.execute('SELECT "waits_for" FROM documents')} == {""}
+    written.close()
+
+    conn = store.open(old)                                          # 190's step: NULL columns
+    try:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION
+        conn.execute("""UPDATE statuses SET "note_codes" = ''""")
+        conn.commit()
+        assert store.check(conn, root, engagement) == []
+
+        conn.execute("""UPDATE documents SET "waits_for" = 'A01' WHERE "position" = 0""")
+        conn.commit()
+        named = store.check(conn, root, engagement)
+        assert len(named) == 1 and "waits_for: the store says 'A01'" in named[0], named
+        conn.execute("""UPDATE documents SET "waits_for" = ''""")
+        conn.execute("""UPDATE documents SET "candidates" = NULL WHERE "candidates" = ''""")
+        conn.commit()
+        named = store.check(conn, root, engagement)
+        assert len(named) == 1 and all("candidates: the store says None, the record says ''" in one
+                             for one in named), named
+    finally:
+        conn.close()
+
+
 # ------------------------------- decision 159: the record can show it was not altered ----
 #
 # Each "refused by a fresh store" case builds a store from nothing beside the

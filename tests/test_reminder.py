@@ -2189,6 +2189,35 @@ def test_a_program_only_weeks_letter_says_one_file_could_not_be_used_and_never_t
     assert UNUSABLE_ONLY_NOTE not in staged.body and nothing_needed not in staged.body
 
 
+def test_a_program_only_week_with_two_files_says_some_files_could_not_be_used_never_one_file(tmp_path):
+    """Decision 190's review of the port, S1: the program-only sentence
+    counts. Two files that are not documents are both listed under the
+    failed heading, so the letter says "Some files you sent could not be
+    used", once, above that list - never "One file"."""
+    from tests.conftest import seed_index
+    from tracker.filer import NEEDS_REVIEW, IndexEntry
+    from tracker.reminder import UNUSABLE_ONLY_NOTE, UNUSABLE_SOME, UNUSABLE_SOME_NOTE
+
+    def program(name: str) -> IndexEntry:
+        return IndexEntry(
+            received="2026-02-01", original_name=name, size_kb=0.1,
+            digest=hashlib.sha256(name.encode()).hexdigest(), identifier="", prepared_location="",
+            pbc_location=f"pbc/{name}", decision=NEEDS_REVIEW, reason=reasons.NOT_A_DOCUMENT.format(),
+            code=reasons.NOT_A_DOCUMENT.code)
+
+    folder = engagement(tmp_path, [item("A04", "Mortgage Interest Statement", Status.RECEIVED,
+                                        period="TY2025", file_count=1,
+                                        received_date=dt.date(2026, 2, 1))])
+    seed_index(folder, [program("setup.exe"), program("helper.bat")])
+    draft = draft_reminder(folder, due_date=DUE, today=day(20))
+    assert sorted(draft.unusable) == ["helper.bat", "setup.exe"], draft.unusable
+    week = draft.body
+    assert UNUSABLE_SOME.format(engagement=draft.engagement) in week, week
+    assert week.count(UNUSABLE_SOME_NOTE) == 1, week
+    assert UNUSABLE_ONLY_NOTE not in week and "One file" not in week, week
+    assert week.index(UNUSABLE_SOME_NOTE) < week.index(SECTION_FAILED), week
+
+
 def test_a_program_alone_is_asked_about_but_never_climbs_the_ladder(tmp_path):
     """The re-check's S-N1: every request is in and one program is parked.
     It is asked about, so the draft has something outstanding - the

@@ -222,6 +222,28 @@ MACHINE_PREFIXES: tuple[str, ...] = (".", "_", "~$")
 _ILLEGAL_PUNCTUATION = '\\/:*?"<>|'
 WINDOWS_ILLEGAL_CHARS = re.compile("[" + re.escape(_ILLEGAL_PUNCTUATION) + r"\x00-\x1f]")
 WINDOWS_ILLEGAL_CHARS_TEXT = " ".join(_ILLEGAL_PUNCTUATION)
+
+
+def recorded_subfolder_part(part: object) -> str:
+    """One folder of a client's inbox subfolder as the record holds it: its
+    :func:`recorded_name`, with every character Windows keeps out of a
+    folder name made ``_``, as :func:`tracker.containers.safe_name` does.
+
+    **One rule for the writer and the admission** (decision 190's review of
+    the port, S2). On Linux or macOS a client can name an inbox folder
+    ``Q1: bank``; the filer used to record it raw and the store's admission
+    refused it, so the pass that had already moved the original raised.
+    The filer now records each part through this, and the store admits a
+    part exactly when this would not change it - so ``.``, ``..``, a part
+    holding ``/``, ``\\`` or ``:``, and one with nothing visible are refused,
+    because no writer wrote them. Not the household and return name rule
+    (:func:`segment_problem`): a client may well name an inbox folder
+    ``2025`` or ``_old``. The folder on disk keeps its name (standing rule
+    2); the field is display only, and nothing joins it to a path.
+    Idempotent: a part this returns comes back unchanged.
+    """
+    text = WINDOWS_ILLEGAL_CHARS.sub("_", recorded_name(part))
+    return text if text.strip("._ ") else NAMELESS
 #: The names Windows keeps for devices (decision 137, L6). A folder or a
 #: file named one of them - with or without an extension, in any case - is
 #: not a folder at all: ``NUL`` is the null device, ``COM1`` a serial port,

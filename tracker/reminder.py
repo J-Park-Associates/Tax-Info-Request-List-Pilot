@@ -1140,8 +1140,14 @@ NOTHING_OWED = (f"{_EVERYTHING_IN}\n"
 #: place of "nothing further is needed", which the ask below it would
 #: contradict (decision 190; Jason's answer 1b, 2026-09-26).
 UNUSABLE_ONLY_NOTE = "One file you sent could not be used; please see the note below."
-#: That week's paragraph: the quiet week's first sentence, then the note.
+#: The same note when more than one such file is listed below it: "One
+#: file" above a list of two would be a wrong count (decision 190's review
+#: of the port, S1).
+UNUSABLE_SOME_NOTE = "Some files you sent could not be used; please see the note below."
+#: That week's paragraph: the quiet week's first sentence, then the note -
+#: UNUSABLE_ONLY for one file, UNUSABLE_SOME for more than one.
 UNUSABLE_ONLY = f"{_EVERYTHING_IN}\n{UNUSABLE_ONLY_NOTE}"
+UNUSABLE_SOME = f"{_EVERYTHING_IN}\n{UNUSABLE_SOME_NOTE}"
 #: How every letter signs off, above the sender and the firm.
 SIGN_OFF = "Thank you,"
 
@@ -1262,12 +1268,14 @@ def _compose_letter(
         # Only files that are not documents to ask about (decision 190's
         # re-check, S-N1): they are no rung of the ladder, so the letter
         # has none - the quiet week's first sentence and one that points at
-        # the note below (Jason's answer 1b), the ask under its heading and
-        # where to drop the replacement, and no deadline and no close.
+        # the note below (Jason's answer 1b; "Some files" past one), the
+        # ask under its heading and where to drop the replacement, and no
+        # deadline and no close.
         return Letter(
             greeting=greeting,
             progress=progress_line(received, total, also_received),
-            intro=UNUSABLE_ONLY.format(engagement=engagement),
+            intro=(UNUSABLE_SOME if len(unusable) > 1 else UNUSABLE_ONLY).format(
+                engagement=engagement),
             sections=sections,
             drop=(DROP_ANYWHERE, DROP_WITH_LINK if share_link else DROP_NO_LINK),
             link=share_link,
