@@ -443,6 +443,16 @@ answer is to **set the root again in the app** (or
 `python -m tracker.settings <folder>`). The schedule follows by itself;
 it reads the root from the settings file at every run.
 
+**The root is the folder that holds both trees**, `Clients` and
+`J Park & Associates`, side by side. Choosing one of the trees itself, or a
+household inside one, is one level too deep and is refused with the root
+to choose instead: *`<folder>` is inside the `Clients` folder of the
+clients root `<root>`; choose `<root>`* (decision 188). The root is checked
+again every time it is read - by every command in the app, by the pass, and
+by every command line - so a root that became one level too deep after it
+was saved (the trees moved around it) is refused with *Clients folder
+problem*, and the app asks for the folder again.
+
 A longer root leaves every return less room: Windows opens a path of
 `tracker.layout.MAX_PATH_LENGTH` characters at most, and a working copy
 deep in a return with a long household name and a long return name can

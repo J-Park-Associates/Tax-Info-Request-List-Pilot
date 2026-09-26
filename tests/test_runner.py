@@ -168,14 +168,15 @@ def test_the_runners_console_guard_is_the_pages(tmp_path, samples, monkeypatch):
     import io
     import sys
 
-    build_engagement(tmp_path, samples, name="Smith TY2025 \u2192 Ω")
+    # An arrow and a check mark: no letter of a second alphabet (decision 188).
+    build_engagement(tmp_path, samples, name="Smith TY2025 \u2192 \u2713")
     console = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
     monkeypatch.setattr(sys, "stdout", console)
     code = main([str(tmp_path), "--dry-run", "--reminders", REMINDERS_NEVER])
     console.flush()
     shown = console.buffer.getvalue().decode("cp1252")
     assert code == 0
-    assert "Smith TY2025 \\u2192 \\u03a9" in shown
+    assert "Smith TY2025 \\u2192 \\u2713" in shown
 
 
 def build_engagement(tmp_path, samples, drops=(f"W-2 John Smith {YEAR}.pdf",),

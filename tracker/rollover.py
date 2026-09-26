@@ -760,7 +760,19 @@ if __name__ == "__main__":
         except ManifestError as exc:
             parser.error(str(exc))
 
-    given = Path(ns.folder).resolve()
+    # A typed folder is parsed, never trusted (decision 188): a household's
+    # or a return's place under the checked clients root, rebuilt from its
+    # own names - a folder in the client tree is neither, whatever journal
+    # somebody put in it.
+    from tracker import door
+
+    try:
+        try:
+            given = door.household_dir(Path(ns.folder).absolute())
+        except ValueError:
+            given = door.return_dir(Path(ns.folder).absolute())
+    except ValueError as exc:
+        parser.error(str(exc))
     if not ledger.path_for(given).is_file():
         parser.error(f"no record in {given}")
     store.follow_the_journal(store.connect(), store.root_for(given), given)

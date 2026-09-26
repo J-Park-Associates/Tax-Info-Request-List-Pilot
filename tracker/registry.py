@@ -339,11 +339,12 @@ def _walk_root(root: Path) -> _Walk:
     if children is None:
         return found
     for child in children:
-        if child.name == layout.CLIENTS_TREE:
+        kind = layout.place_of(root, child).kind
+        if kind == layout.CLIENTS:
             continue                        # the client tree holds no record, by design
         if _skip(child):
             continue
-        if child.name != layout.PRIVATE_TREE:
+        if kind != layout.PRIVATE:
             found.misfits.append(Misfit(child, MISFIT_NOT_A_TREE.format(
                 clients=layout.CLIENTS_TREE, private=layout.PRIVATE_TREE)))
             continue
@@ -630,8 +631,14 @@ if __name__ == "__main__":
     parser.add_argument("root", help="the folder the firm keeps its clients in")
     ns = parser.parse_args()
 
+    # The root through the one door (decision 188): held to the settings'
+    # rule, one level too deep included.
+    from tracker import door
+
     try:
-        loaded = discover_engagements(ns.root)
+        loaded = discover_engagements(door.checked_root(ns.root))
+    except door.DoorError as exc:
+        raise SystemExit(str(exc)) from None
     except RegistryError as exc:
         raise SystemExit(f"Registry problem: {exc}") from None
 

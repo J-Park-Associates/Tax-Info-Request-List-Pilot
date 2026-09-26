@@ -10,6 +10,7 @@ the app records it, so no test touches a real one.
 import datetime as dt
 import json
 import os
+import shutil
 from pathlib import Path
 
 import pytest
@@ -17,7 +18,7 @@ import pytest
 import tracker.api as api
 from tests.conftest import TEST_CLIENT, app_stdin, make_engagement
 from tests.samples import PRIOR_YEAR, SCRATCH_PEOPLE
-from tracker import ledger, store, view
+from tracker import layout, ledger, store, view
 from tracker.filer import FILED, NEEDS_REVIEW, read_index
 from tracker.households import load_household_info
 from tracker.layout import PRIVATE_TREE, inbox_of, return_dir_for
@@ -193,7 +194,7 @@ def test_a_journal_planted_in_the_client_tree_is_never_a_prior(capsys, demo_root
     for prior in (planted, planted.parent, where(demo_root, "1040 - Smith").parent.parent):
         code, payload = run(capsys, "rollover", stdin={"prior": str(prior), "year": 2026})
         assert code == 1
-        assert payload["error"] == api.NOT_A_RETURN.format(name=prior.name, tree=PRIVATE_TREE)
+        assert payload["error"] == layout.NOT_A_RETURN.format(name=prior.name, tree=PRIVATE_TREE)
     assert sorted(p for p in (demo_root / PRIVATE_TREE).rglob("*")) == before
 
 
@@ -206,7 +207,7 @@ def test_a_household_path_must_be_a_household_of_the_private_tree(capsys, demo_r
             "household_path": str(given), "return_name": "Evil", "form": "1040",
             "items": [{"identifier": "A01", "document": "W-2"}]})
         assert code == 1
-        assert payload["error"] == api.NOT_A_HOUSEHOLD.format(name=given.name,
+        assert payload["error"] == layout.NOT_A_HOUSEHOLD.format(name=given.name,
                                                               tree=PRIVATE_TREE)
     assert not list((demo_root / PRIVATE_TREE).rglob("Evil"))
     assert not (demo_root / "Clients" / engagement.name).exists()
@@ -4940,3 +4941,93 @@ def test_a_name_the_walk_would_pass_over_is_never_created(capsys, demo_root):
         assert payload["error"] == layout.NAME_REFUSED.format(
             typed=hidden, what="household", reason=layout.NAME_FIRST_CHARACTER)
     assert not any(demo_root.rglob(ledger.LEDGER_FILENAME))
+
+
+# ------------------------------- decision 188: the door, the checked root ----
+
+
+def _tree_hashes(folder):
+    """Every file and folder under ``folder``, with each file's bytes."""
+    import hashlib
+
+    return {str(p.relative_to(folder)): (hashlib.sha256(p.read_bytes()).hexdigest()
+                                         if p.is_file() else "folder")
+            for p in sorted(folder.rglob("*"))}
+
+
+def test_a_rollover_from_a_client_inbox_fails_closed(capsys, demo_root):
+    """T3: a return's place is the parser's, so a folder in the client's
+    inbox holding a fabricated ``_ledger.jsonl`` is never a prior and
+    never a household - for ``rollover``, ``roll-household`` and ``create``
+    by ``household_path`` alike - and both trees are as they were."""
+    from tracker.templates import template_items
+
+    assert run(capsys, "create", stdin={"household": "Park Family", "return_name": "1040 - Park",
+                                        "form": "1040",
+                                        "items": [{"identifier": "A01", "document": "W-2"}]})[0] == 0
+    real = where(demo_root, "1040 - Park", household="Park Family")
+    planted = make_engagement(inbox_of(real) / "X", template_items("1040", year=2025),
+                              scaffold=False)
+    private, clients = demo_root / PRIVATE_TREE, demo_root / layout.CLIENTS_TREE
+    before = (_tree_hashes(private), _tree_hashes(clients))
+
+    code, payload = run(capsys, "rollover", stdin={"prior": str(planted), "year": 2026})
+    assert code == 1 and payload["error"] == layout.NOT_A_RETURN.format(name=planted.name,
+                                                                        tree=PRIVATE_TREE)
+    code, payload = run(capsys, "roll-household", api.ENGAGEMENT_FLAG, str(planted),
+                        stdin={"year": 2026, "returns": [{"prior": str(planted)}]})
+    assert code == 1 and payload["error"] == layout.NOT_A_RETURN.format(name=planted.name,
+                                                                        tree=PRIVATE_TREE)
+    code, payload = run(capsys, "roll-household", api.ENGAGEMENT_FLAG, str(real),
+                        stdin={"year": 2026, "returns": [{"prior": str(planted)}]})
+    assert code == 1 and "is not a return's folder" in payload["error"]
+    code, payload = run(capsys, "create", stdin={
+        "household_path": str(planted), "return_name": "1040 - Evil", "form": "1040",
+        "items": [{"identifier": "A01", "document": "W-2"}]})
+    assert code == 1 and payload["error"] == layout.NOT_A_HOUSEHOLD.format(name=planted.name,
+                                                                           tree=PRIVATE_TREE)
+    assert (_tree_hashes(private), _tree_hashes(clients)) == before
+
+
+def test_every_command_that_reads_the_root_rechecks_it(capsys, demo_root):
+    """E-13: a root saved while it was fine and made one level too deep
+    afterwards - the trees moved around it - is refused by every command
+    that reads it, with "Clients folder problem: " and the refusal; the
+    first call still hands the app its words and asks for the folder."""
+    from tracker.settings import ROOT_INSIDE_A_TREE
+
+    assert run(capsys, "create", stdin={"household": "Park Family", "return_name": "1040 - Park",
+                                        "items": [{"identifier": "A01", "document": "W-2"}]})[0] == 0
+    engagement = where(demo_root, "1040 - Park", household="Park Family")
+    # A person moves the whole root into the firm's tree of a folder that
+    # now holds both trees: the saved root is inside a tree of a real root.
+    above = demo_root.parent / "Real root"
+    (above / layout.CLIENTS_TREE).mkdir(parents=True)
+    (above / PRIVATE_TREE).mkdir()
+    moved = above / PRIVATE_TREE / demo_root.name
+    demo_root.rename(moved)
+    from tracker.settings import KEY_CLIENTS_ROOT, settings_path
+
+    settings = json.loads(settings_path().read_text(encoding="utf-8"))
+    settings[KEY_CLIENTS_ROOT] = str(moved)
+    settings_path().write_text(json.dumps(settings), encoding="utf-8")
+    said = "Clients folder problem: " + ROOT_INSIDE_A_TREE.format(
+        root=moved.resolve(), tree=PRIVATE_TREE, real=above.resolve())
+    engagement = moved / engagement.relative_to(demo_root)
+    try:
+        for argv, stdin in [
+            (["state", api.ENGAGEMENT_FLAG, str(engagement)], None),
+            (["edit-household", api.ENGAGEMENT_FLAG, str(engagement)], {"contact": "x"}),
+            (["create"], {"household": "Lee Family", "return_name": "1040 - Lee",
+                          "items": [{"identifier": "A01", "document": "W-2"}]}),
+            (["rollover"], {"prior": str(engagement), "year": 2026}),
+            (["priors"], None),
+        ]:
+            code, payload = run(capsys, *argv, stdin=stdin)
+            assert code == 1 and payload["error"] == said, (argv, payload)
+        code, payload = run(capsys, "list")
+        assert code == 0 and payload["needs_root"] and payload["root_problem"] == said
+        assert payload["vocab"]["commands"]
+    finally:
+        moved.rename(demo_root)
+        shutil.rmtree(above, ignore_errors=True)

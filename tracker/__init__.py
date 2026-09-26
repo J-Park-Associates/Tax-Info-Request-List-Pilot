@@ -3,6 +3,7 @@
 See docs/ROADMAP.md for the build plan. Component modules:
 
 - layout        : the shape of the clients root - the two trees, the household, the year, the return - and the one way a stored path is written and read
+- door          : the disk half of the layout - the checked root, a typed path, the link check and the one door every write into the client tree passes
 - households    : the household's own record: its members, its contact, its inbox link
 - records       : the record types every layer names - the index row, the evidence, the routing decision, the engagement - and each one's own serialisation
 - manifest      : the request list: its schema, validation, and its reading from and writing to the record

@@ -51,17 +51,24 @@ const TRACKER_TIMEOUT_MS = 30 * 60 * 1000;
 const BOOTSTRAP_COMMAND = "list";
 let allowedCommands = null;   // vocab.commands, once seen
 let engagementFlag = null;    // vocab.engagement_flag, once seen
-// Paths the API has reported (state.paths): the only ones the shell opens.
+// Paths the API has reported (state.paths): the only ones the shell opens,
+// each with the kind the API said it is (vocab.path_kinds, decision 188).
 // The renderer never names a path of its own, so anything else is refused.
-const openable = new Set();
+const openable = new Map();
+let pathKinds = {};           // vocab.path_kinds, once seen
+let notOpened = "That is no longer the folder or file the tracker reported; nothing was opened.";
 
 function learn(result) {
   const vocab = result && result.vocab;
   if (vocab && Array.isArray(vocab.commands)) allowedCommands = new Set(vocab.commands);
   if (vocab && typeof vocab.engagement_flag === "string") engagementFlag = vocab.engagement_flag;
+  if (vocab && vocab.path_kinds && typeof vocab.path_kinds === "object") pathKinds = vocab.path_kinds;
+  if (vocab && vocab.shell && typeof vocab.shell.not_opened === "string") notOpened = vocab.shell.not_opened;
   const paths = (result && result.paths) || (result && result.state && result.state.paths);
   if (paths && typeof paths === "object") {
-    for (const value of Object.values(paths)) if (typeof value === "string") openable.add(value);
+    for (const [key, value] of Object.entries(paths)) {
+      if (typeof value === "string" && value) openable.set(value, pathKinds[key] || null);
+    }
   }
 }
 
@@ -136,10 +143,23 @@ function runTracker(args, payload) {
   });
 }
 
-function openPath(p) {
+// Opened only while it is still what the API reported it as (decision 188,
+// E-14): lstat, never stat, so a link swapped in for a folder or a file -
+// Node reports a junction as a symbolic link too - is seen for what it is,
+// and a folder is opened only as a folder and a file only as a file.
+async function openPath(p) {
   if (typeof p !== "string" || !openable.has(p)) {
-    return Promise.resolve("That path is not one the tracker reported; nothing was opened.");
+    return "That path is not one the tracker reported; nothing was opened.";
   }
+  const kind = openable.get(p);
+  let info;
+  try {
+    info = await fs.promises.lstat(p);
+  } catch {
+    return notOpened;
+  }
+  const same = kind === "folder" ? info.isDirectory() : kind === "file" ? info.isFile() : false;
+  if (info.isSymbolicLink() || !same) return notOpened;
   return shell.openPath(p);
 }
 

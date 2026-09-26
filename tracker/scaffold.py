@@ -73,6 +73,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from tracker import door
 from tracker.fsio import write_text_atomically
 from tracker.layout import (
     INBOX_DIR_NAME,
@@ -81,11 +82,13 @@ from tracker.layout import (
     REVIEW_DIR_NAME,
     WINDOWS_ILLEGAL_CHARS,
     client_household_dir,
+    clients_tree_of,
     household_of,
     inbox_dir_for,
     is_reserved_name,
     originals_dir_for,
     root_of,
+    same_folder_name,
     same_return,
     year_of,
 )
@@ -284,7 +287,7 @@ def persons_folders(prepared_dir: Path) -> list[Path]:
     if not prepared_dir.is_dir():
         return []
     return [child for child in sorted(prepared_dir.iterdir())
-            if child.is_dir() and child.name.casefold() != REVIEW_DIR_NAME.casefold()]
+            if child.is_dir() and not same_folder_name(child.name, REVIEW_DIR_NAME)]
 
 
 # --------------------------------------------------------------- scaffold ----
@@ -346,15 +349,28 @@ def scaffold_household(
     household = household_dir.name
     client_dir = client_household_dir(root, household)
     inbox = inbox_dir_for(root, household)
-    inbox.mkdir(parents=True, exist_ok=True)
+    # One level at a time, each through the one door into the client tree
+    # (decision 188): the household's client folder only while it is being
+    # made, its inbox and its year folders always. The tree itself is no
+    # household's place; a new root gets it once.
+    clients_tree_of(root).mkdir(exist_ok=True)
+    _make(root, household, client_dir, making=True)
+    _make(root, household, inbox)
 
     years, _engagements = _open_year_of(household_dir, returns)
     result = HouseholdScaffold(client_dir=client_dir, inbox=inbox, readme=inbox / README_NAME)
     for year in years:
         originals = originals_dir_for(root, household, year)
-        originals.mkdir(parents=True, exist_ok=True)
+        _make(root, household, originals)
         result.originals.append(originals)
     return result
+
+
+def _make(root: Path, household: str, folder: Path, *, making: bool = False) -> None:
+    """Make one folder of a household's client side, when it is not there,
+    once the door has approved it (``door.client_write``)."""
+    if not folder.is_dir():
+        door.client_write(root, household, folder, making=making).mkdir(exist_ok=True)
 
 
 def _open_year_of(household_dir: Path, returns: list[Path] | None = None
@@ -569,9 +585,14 @@ def write_readme(
     # holding it, or a folder the client made under its name must not stop
     # the sort and the scan behind it. Written whole; a failure is a log line.
     try:
-        inbox.mkdir(parents=True, exist_ok=True)
+        # Through the one door (decision 188): the README, and so the folder
+        # its temp is written in, is this household's inbox and nothing else.
+        # The inbox is remade inside an existing client folder; the client
+        # folder itself is never made here.
+        door.client_write(root, household, readme)
+        inbox.mkdir(exist_ok=True)
         write_text_atomically(readme, text, encoding="utf-8", newline="\r\n")
-    except OSError as exc:
+    except (OSError, door.DoorError) as exc:
         log.warning("Could not refresh %s (%s); the pass goes on", readme.name, exc)
         return None
     return readme
@@ -738,6 +759,14 @@ if __name__ == "__main__":
     )
     parser.add_argument("engagement_dir", help="the return folder")
     ns = parser.parse_args()
+    # A typed folder is parsed, never trusted: it must be a return's
+    # place under the checked clients root (decision 188).
+    from tracker import door
+
+    try:
+        ns.engagement_dir = door.return_dir(Path(ns.engagement_dir).absolute())
+    except ValueError as exc:
+        parser.error(str(exc))
 
     res = scaffold_engagement(ns.engagement_dir)
     for line in res.describe():

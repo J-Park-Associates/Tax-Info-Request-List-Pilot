@@ -80,6 +80,7 @@ for _entry in (str(ROOT), str(ROOT / "tools")):
 
 from vocab_report import corpus_documents, shipped_catalogs  # noqa: E402
 
+from tracker import door  # noqa: E402
 from tracker.content_check import dominant_forms, says  # noqa: E402
 from tracker.manifest import (  # noqa: E402
     COL_ANY_KEYWORDS,
@@ -395,15 +396,16 @@ def out_path(named: str) -> Path:
 
 
 def chosen_root(named: str) -> Path:
-    """The clients root to walk: the one named, else the settings file's."""
-    if named:
-        return Path(named)
-    configured = clients_root()
-    if configured is None:
+    """The clients root to walk: the one named, else the settings file's -
+    either held to the settings' rule through the one door (decision 188)."""
+    if not named and clients_root() is None:
         raise LearnedKeywordsError(
             f"no clients root given and none in {settings_path()}; {NO_ROOT_HINT}"
         )
-    return configured
+    try:
+        return door.checked_root(named or None)
+    except door.DoorError as exc:
+        raise LearnedKeywordsError(str(exc)) from None
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -188,9 +188,9 @@ import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass, field, replace
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
-from tracker import containers, ledger, ocr, reasons, store
+from tracker import containers, door, ledger, ocr, reasons, store
 from tracker.content_check import (
     RETIRED_CACHE_FILENAME,
     ContentCache,
@@ -199,6 +199,7 @@ from tracker.content_check import (
     OutOfTime,
     before_a_judgment,
 )
+from tracker.door import through_a_link
 from tracker.fsio import (
     TEMP_SUFFIX,
     copy_atomically,
@@ -210,9 +211,9 @@ from tracker.fsio import (
 )
 from tracker.households import household_returns
 from tracker.layout import (
+    CLIENT_KINDS,
     MAX_PATH_LENGTH,
     PATH_TOO_LONG,
-    PRIVATE_TREE,
     deepest_path_length,
     household_name_of,
     household_of,
@@ -223,7 +224,10 @@ from tracker.layout import (
     lock_order_key,
     opened_dir_of,
     originals_of,
+    parts_below,
+    place_of,
     place_problem,
+    private_tree_of,
     root_of,
     year_of,
 )
@@ -988,7 +992,7 @@ def _move_whole(source: Path, target: Path, *, within: Path) -> None:
     operation, the return for a rollback); every folder from the source up
     to it is asked again, and a link anywhere on that path moves nothing.
     """
-    if is_link(source) or _through_a_link(source.parent, within):
+    if is_link(source) or through_a_link(source.parent, within):
         raise MovedThroughALinkError(MOVE_THROUGH_A_LINK.format(name=source.name, within=within))
     os.rename(source, target)
 
@@ -1509,8 +1513,12 @@ def sweep_stranded_temps(household_dir: Path | str, returns: Sequence[Path], *,
                             "leftover temps are swept on a later pass", household_dir.name)
             else:
                 try:
-                    for path in stranded_temps(inbox_of(Path(returns[0])), before=started,
+                    first = Path(returns[0])
+                    for path in stranded_temps(inbox_of(first), before=started,
                                                target=README_NAME):
+                        # A removal in the client's inbox goes through the one
+                        # door into the client tree (decision 188).
+                        door.client_write(root_of(first), household_name_of(first), path)
                         if _a_stranded_temp_to_take(path) and _remove_a_stranded_temp(path):
                             taken.append(path)
                 finally:
@@ -1730,8 +1738,26 @@ def _refuse_a_step_through_a_link(engagement_dir: Path, op: dict) -> None:
     root = root_of(engagement_dir)
     for location, writes in ledger.op_ends(op):
         path = locate(engagement_dir, location)
-        if (not writes and is_link(path)) or _through_a_link(path.parent, root):
+        if (not writes and is_link(path)) or through_a_link(path.parent, root):
             raise MovedThroughALinkError(MOVE_THROUGH_A_LINK.format(name=path.name, within=root))
+
+
+def _through_the_door(engagement_dir: Path, target: Path) -> None:
+    """Ask the one door into the client tree (``door.client_write``,
+    decision 188) for a step's destination there, and for every folder
+    that will be made above it, before anything is made. A destination in
+    the firm's tree is not the door's to ask: the place rule and the link
+    check already confined it."""
+    root = root_of(engagement_dir)
+    if place_of(root, target).kind not in CLIENT_KINDS:
+        return
+    household = household_name_of(engagement_dir)
+    for folder in (*reversed(target.parents), target):
+        if place_of(root, folder).kind in CLIENT_KINDS and (folder == target or not folder.exists()):
+            try:
+                door.client_write(root, household, folder)
+            except door.DoorError as exc:
+                raise FilingError(str(exc)) from None
 
 
 def _do_op(engagement_dir: Path, op: dict, *, cache: ContentCache | None = None) -> None:
@@ -1762,6 +1788,7 @@ def _do_op(engagement_dir: Path, op: dict, *, cache: ContentCache | None = None)
     target = locate(engagement_dir, op[ledger.TO_KEY])
     if kind == ledger.OP_COPY and not op.get(ledger.DIGEST_KEY):
         raise FilingError(COPY_UNPROVED.format(source=source.name, target=target.name))
+    _through_the_door(engagement_dir, target)
     target.parent.mkdir(parents=True, exist_ok=True)
     if kind == ledger.OP_MOVE:
         _move_whole(source, target, within=root_of(engagement_dir))
@@ -1963,7 +1990,7 @@ def iter_drops(inbox: Path, *, unread: list[Path] | None = None) -> list[Path]:
         return []
     drops = []
     for path in inbox.rglob("*"):
-        if not path.is_file() or is_ignored(path) or _through_a_link(path, inbox) or not _storable(path):
+        if not path.is_file() or is_ignored(path) or through_a_link(path, inbox) or not _storable(path):
             continue
         if path == inbox / README_NAME:
             whose = whose_readme(path)
@@ -1980,7 +2007,7 @@ def _inbox_order(path: Path, inbox: Path) -> tuple[tuple[str, ...], str, str]:
     below the inbox it sits in - none first, and a folder before its own
     subfolders, since a tuple sorts before every tuple it begins - then by
     its name."""
-    below = path.relative_to(inbox)
+    below = PurePosixPath(*(parts_below(inbox, path) or (path.name,)))
     return tuple(part.casefold() for part in below.parent.parts), below.name.casefold(), below.as_posix()
 
 
@@ -1988,11 +2015,7 @@ def _subfolder_of(drop: Path, inbox: Path) -> str:
     """The client's subfolder a drop sits in, below the inbox, the way the
     client sees it in Explorer (``Bank statements\\2025``); ``""`` for a
     drop at the top of the inbox (decision 147, ruling 4)."""
-    try:
-        below = drop.parent.relative_to(inbox)
-    except ValueError:
-        return ""
-    return "\\".join(below.parts)
+    return "\\".join(parts_below(inbox, drop.parent) or ())
 
 
 def _storable(path: Path) -> bool:
@@ -2009,31 +2032,6 @@ def _storable(path: Path) -> bool:
     except UnicodeEncodeError:
         return False
     return True
-
-
-def _through_a_link(path: Path, root: Path) -> bool:
-    """True when ``path`` is reached through a link below ``root``.
-
-    ``rglob`` follows a junction, and a junction a client (or a sync
-    client) leaves in the drop folder points anywhere: at a folder outside
-    the engagement whose files would then be *moved* into PBC as the
-    client's originals. What lies behind a link is not a drop.
-    """
-    # Only what lies between the root and the path is judged (decision
-    # 137's review, F5): the clients root may itself sit under a folder
-    # that is a link - ``G:\\Shared drives`` is Drive for desktop's own -
-    # and that must never refuse a move. A path that is not under the root
-    # at all is not a path this walk was asked about, and is refused.
-    base = os.path.normcase(os.path.normpath(str(root)))
-    here = os.path.normcase(os.path.normpath(str(path)))
-    if here != base and not here.startswith(base.rstrip(os.sep) + os.sep):
-        return True
-    for part in (path, *path.parents):
-        if os.path.normcase(os.path.normpath(str(part))) == base:
-            return False
-        if is_link(part):
-            return True
-    return False
 
 
 def unreachable_drops(inbox: Path) -> list[Path]:
@@ -2109,7 +2107,7 @@ def unrecorded_in_pbc(
     return [
         path for path in iter_candidate_files(originals_dir)
         if path not in recorded
-        and not _through_a_link(path, originals_dir) and _storable(path)
+        and not through_a_link(path, originals_dir) and _storable(path)
     ]
 
 
@@ -2148,7 +2146,7 @@ def replaced_in_pbc(
             by_path[locate(engagement_dir, entry.pbc_location)] = entry
     replaced = []
     for path in iter_candidate_files(originals_dir):
-        if _through_a_link(path, originals_dir):
+        if through_a_link(path, originals_dir):
             continue
         entry = by_path.get(path)
         if entry is None:
@@ -2994,7 +2992,7 @@ def _prune_empty_dirs(inbox: Path) -> None:
     for folder in candidates:
         if any(is_sync_staging(part) for part in folder.parts):
             continue
-        if _through_a_link(folder, inbox):
+        if through_a_link(folder, inbox):
             continue        # rmdir on a junction removes the junction, whatever it points at
         try:
             folder.rmdir()  # only succeeds when empty
@@ -3198,7 +3196,7 @@ def _a_copy_to_act_on(
     # Nor through a link (decision 187, A-7): the place rule is lexical,
     # and a junction swapped in for the year's folder would have the copy
     # read whatever it points at.
-    if is_link(source) or _through_a_link(source.parent, root_of(engagement_dir)):
+    if is_link(source) or through_a_link(source.parent, root_of(engagement_dir)):
         return "", MOVE_THROUGH_A_LINK.format(name=source.name, within=root_of(engagement_dir))
     # The copy the interrupted step was about to carry out of review is
     # still there when the step never happened: it is these bytes and it
@@ -3536,7 +3534,7 @@ def file_household_drops(
         # unrecorded in silence. On the first own return, where the inbox's
         # own notes ride.
         for path in left:
-            name = Path(os.path.relpath(path, originals_dir)).as_posix()
+            name = "/".join(parts_below(originals_dir, path) or (path.name,))
             first.report.attention.append(FileError(
                 name, LEFT_FOR_ANOTHER_RETURN.format(name=name), True))
     for run in runs:
@@ -3673,7 +3671,8 @@ def _named_by_another_records_intent(path: Path, runs: list[_ReturnRun]) -> bool
     root = root_of(runs[0].engagement_dir)
     conn = store.connect()
     digest = None
-    for household in sorted((root / PRIVATE_TREE).iterdir()) if (root / PRIVATE_TREE).is_dir() else []:
+    private = private_tree_of(root)
+    for household in sorted(private.iterdir()) if private.is_dir() else []:
         if not household.is_dir():
             continue
         for folder in household_returns(household):
@@ -4161,7 +4160,7 @@ def _put_back_home(
     if not _absent(home):
         return False                 # somebody's file is there now: never over it
     key = ledger_key(entry)
-    arrived = Path(os.path.relpath(drop, inbox)).as_posix()
+    arrived = "/".join(parts_below(inbox, drop) or (drop.name,))
     said = RETURNED_SENTENCE.format(drop=arrived, date=stamp, pbc=entry.pbc_location)
     copies = ([location for location in entry.filed_locations
                if _absent(locate(engagement_dir, location))] if both_gone(entry) else [])
@@ -7244,6 +7243,14 @@ if __name__ == "__main__":
         "--dry-run", action="store_true", help="decide everything, move nothing"
     )
     ns = parser.parse_args()
+    # A typed folder is parsed, never trusted: it must be a return's
+    # place under the checked clients root (decision 188).
+    from tracker import door
+
+    try:
+        ns.engagement_dir = door.return_dir(Path(ns.engagement_dir).absolute())
+    except ValueError as exc:
+        parser.error(str(exc))
 
     # One inbox feeds every return of the household (decision 125), so a
     # command line pointed at one return sorts the whole inbox and takes

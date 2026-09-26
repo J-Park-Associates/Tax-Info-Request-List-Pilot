@@ -894,6 +894,14 @@ if __name__ == "__main__":
         "--dry-run", action="store_true", help="report only; write nothing"
     )
     ns = parser.parse_args()
+    # A typed folder is parsed, never trusted: it must be a return's
+    # place under the checked clients root (decision 188).
+    from tracker import door
+
+    try:
+        ns.engagement_dir = door.return_dir(Path(ns.engagement_dir).absolute())
+    except ValueError as exc:
+        parser.error(str(exc))
 
     engagement = Path(ns.engagement_dir)
     # One log for the system - the runner's LOG_FILENAME. A hand-run scan just talks.

@@ -1066,6 +1066,14 @@ if __name__ == "__main__":
     parser.add_argument("engagement_dir", help="the engagement folder")
     parser.add_argument("files", nargs="+", help="the dropped file(s) to route")
     ns = parser.parse_args()
+    # A typed folder is parsed, never trusted: it must be a return's
+    # place under the checked clients root (decision 188).
+    from tracker import door
+
+    try:
+        ns.engagement_dir = door.return_dir(Path(ns.engagement_dir).absolute())
+    except ValueError as exc:
+        parser.error(str(exc))
 
     manifest_items = load_manifest(Path(ns.engagement_dir))
     for decision in route_files([Path(f) for f in ns.files], manifest_items):

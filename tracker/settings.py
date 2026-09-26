@@ -35,6 +35,7 @@ import os
 import sys
 from pathlib import Path
 
+from tracker import layout
 from tracker.fsio import write_json_atomically
 
 SETTINGS_FILENAME = "settings.json"
@@ -227,6 +228,24 @@ ROOT_INSIDE_SETTINGS = ("{root} is inside the app's settings folder ({settings})
                         "choose the folder the firm keeps its clients in")
 ROOT_HOLDS_APP = ("{root} holds the app itself ({app}); "
                   "choose the folder the firm keeps its clients in")
+#: A root one level too deep (decision 188, D-3): a folder above it holds
+#: both trees, and the root lies inside one of them.
+ROOT_INSIDE_A_TREE = "{root} is inside the {tree} folder of the clients root {real}; choose {real}"
+
+
+def _holding_both_trees(root: Path) -> tuple[Path, str] | None:
+    """The nearest folder above ``root`` that holds both trees as folders,
+    with the tree ``root`` lies inside - or ``None``.
+
+    Both trees, and not a tree's name alone: the runbook's own example
+    root is a folder named ``Clients``, and a spelling would refuse it. A
+    folder that holds the two trees is a clients root, and anything inside
+    one of them is one level (or more) too deep."""
+    for above in root.parents:
+        if (layout.clients_tree_of(above).is_dir() and layout.private_tree_of(above).is_dir()
+                and (tree := layout.tree_of(above, root)) is not None):
+            return above, tree
+    return None
 
 
 def _within(inner: Path, outer: Path) -> bool:
@@ -272,7 +291,10 @@ def root_refusal(root: Path, *, settings: Path, app: Path, system: Path) -> str:
     137): the system drive's root; the settings folder, any folder that
     holds it, and any folder inside it; the app's folder and any folder
     that holds it. **Another drive's root is allowed**: a letter mapped to
-    the clients share (``S:``, a Shared Drive letter) is a real root.
+    the clients share (``S:``, a Shared Drive letter) is a real root. And
+    since decision 188 a folder inside one of the two trees of a real root
+    (``ROOT_INSIDE_A_TREE``), which is the one rule here that looks at what
+    is on the disk: whether a folder above the root holds both trees.
     """
     if _inside(system, root) and _inside(root, system):
         return ROOT_IS_SYSTEM_DRIVE.format(root=root)
@@ -282,6 +304,8 @@ def root_refusal(root: Path, *, settings: Path, app: Path, system: Path) -> str:
         return ROOT_INSIDE_SETTINGS.format(root=root, settings=settings)
     if _inside(app, root):
         return ROOT_HOLDS_APP.format(root=root, app=app)
+    if (deeper := _holding_both_trees(root)) is not None:
+        return ROOT_INSIDE_A_TREE.format(root=root, tree=deeper[1], real=deeper[0])
     return ""
 
 

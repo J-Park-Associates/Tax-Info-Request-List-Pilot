@@ -1160,3 +1160,27 @@ def test_the_rollover_carries_asked_and_named_and_asks_what_arrived(tmp_path, mo
     assert rolled["F01"].item.asked is False
     assert rolled["G01"].item.asked is False and rolled["G01"].origin == ORIGIN_NEW
     assert rolled["A01"].item.asked is True and rolled["A01"].item.named is True
+
+
+def test_a_rollover_from_a_client_inbox_fails_closed(prior, monkeypatch):
+    """Decision 188 (T3): the command line reads a typed folder through the
+    one door, so a folder in the client's inbox holding a fabricated
+    ``_ledger.jsonl`` is neither a household nor a return - in either form
+    of the command - and nothing is written in either tree."""
+    import io
+
+    from tracker.layout import CLIENTS_TREE, PRIVATE_TREE
+    from tracker.templates import template_items
+
+    planted = make_engagement(inbox_of(prior) / "X", template_items("1040", year=2025),
+                              scaffold=False)
+    root = root_of(prior)
+    before = sorted((root / CLIENTS_TREE).rglob("*")), sorted((root / PRIVATE_TREE).rglob("*"))
+    for argv in ([str(planted), "--year", "2026"],
+                 [str(planted), "--year", "2026", "--all"]):
+        console = io.StringIO()
+        monkeypatch.setattr("sys.stderr", console)
+        assert run_the_command_line(monkeypatch, argv, io.StringIO()) == 2
+        assert "is not a return's folder" in console.getvalue(), console.getvalue()
+    assert (sorted((root / CLIENTS_TREE).rglob("*")),
+            sorted((root / PRIVATE_TREE).rglob("*"))) == before

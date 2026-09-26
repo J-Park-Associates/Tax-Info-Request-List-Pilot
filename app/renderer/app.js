@@ -1112,13 +1112,8 @@ function renderMisfits() {
   $("misfits-note").textContent = words.misfits_note;
   show("misfits-list", misfits.map((m) =>
     el("li", { className: "r-item" },
-      el("div", { className: "r-name" }, relativeToRoot(m.path)),
+      el("div", { className: "r-name" }, m.where || m.path),
       el("div", { className: "r-why" }, m.sentence))));
-}
-
-function relativeToRoot(path) {
-  if (!clientsRoot || !path.startsWith(clientsRoot)) return path;
-  return path.slice(clientsRoot.length).replace(/^[\\/]+/, "");
 }
 
 // The household this return belongs to: what the firm typed about it, the
@@ -1487,7 +1482,7 @@ async function loadEngagements(preferPath) {
     $("root-input").value = clientsRoot;
     $("firm-input").value = vocab.firm || "";
     $("phone-input").value = vocab.settings.phone || "";
-    $("setup-note").textContent = clientsRoot
+    $("setup-note").textContent = listed.root_problem ? listed.root_problem : clientsRoot
       ? `${clientsRoot} is not a folder any more. Point the app at the right one.`
       : "The scheduled job walks this same folder, so this is the only place it is set.";
     return false;

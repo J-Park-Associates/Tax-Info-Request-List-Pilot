@@ -500,6 +500,14 @@ if __name__ == "__main__":
     )
     parser.add_argument("engagement_dir", help="the engagement folder")
     ns = parser.parse_args()
+    # A typed folder is parsed, never trusted: it must be a return's
+    # place under the checked clients root (decision 188).
+    from tracker import door
+
+    try:
+        ns.engagement_dir = door.return_dir(Path(ns.engagement_dir).absolute())
+    except ValueError as exc:
+        parser.error(str(exc))
 
     engagement = Path(ns.engagement_dir)
     items = load_manifest(engagement)

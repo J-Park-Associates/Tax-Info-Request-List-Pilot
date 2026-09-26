@@ -729,16 +729,17 @@ def _recorded_root_over(folder: Path) -> Path | None:
     :func:`store_path` does it: this module must not pull in, at load time,
     the chain that walks folders and moves files.
     """
+    from tracker import layout
     from tracker.settings import clients_root
 
     root = clients_root()
     if root is None:
         return None
     try:
-        folder.resolve().relative_to(root.resolve())
-    except (OSError, ValueError):
+        under = layout.parts_below(root.resolve(), folder.resolve())
+    except OSError:
         return None
-    return root
+    return root if under is not None else None
 
 
 def key_root(engagement_dir: Path | str, root: Path | str | None = None) -> Path:
@@ -813,9 +814,8 @@ def _positional_root(folder: Path) -> Path | None:
         return None
     if len(folder.parents) < 4:
         return None
-    if not layout.is_year_folder(folder.parent.name):
-        return None
-    if folder.parent.parent.parent.name != layout.PRIVATE_TREE:
+    # The layout's own parser says whether it is a return (decision 188).
+    if layout.place_of(folder.parents[3], folder).kind != layout.RETURN:
         return None
     return layout.root_of(folder)
 
@@ -831,11 +831,13 @@ def engagement_path(root: Path | str, engagement_dir: Path | str) -> str:
     """The engagement folder as the store keys it: relative to the clients
     root, with forward slashes, so a store copied to another machine or
     another drive letter still names the same engagements."""
+    from tracker import layout
+
     root, folder = Path(root).resolve(), Path(engagement_dir).resolve()
-    try:
-        return folder.relative_to(root).as_posix()
-    except ValueError:
-        raise StoreError(f"{folder} is not under the clients root {root}") from None
+    below = layout.parts_below(root, folder)
+    if below is None:
+        raise StoreError(f"{folder} is not under the clients root {root}")
+    return "/".join(below) or "."
 
 
 def _engagement_row(conn: sqlite3.Connection, engagement_dir: Path | str,
@@ -2712,13 +2714,25 @@ if __name__ == "__main__":
     if chosen is None:
         parser.error(f"{given} is not the app folder, a settings file in it, or a {STORE_FILENAME}; "
                      f"nothing was opened and no store was created")
-    clients_root = Path(ns.root)
+    # The root and a typed folder through the one door (decision 188): the
+    # root held to the settings' rule, the folder a return's or a
+    # household's place under it, rebuilt from its own names.
+    from tracker import door
+
+    try:
+        clients_root = door.checked_root(ns.root)
+        if ns.engagement:
+            try:
+                one = door.return_dir(Path(ns.engagement).absolute(), root=clients_root)
+            except ValueError:
+                one = door.household_dir(Path(ns.engagement).absolute(), root=clients_root)
+    except ValueError as exc:
+        parser.error(str(exc))
     # Every folder with a record, households included (decision 125): a
     # household's row is held in this same table and folded by the same
     # machinery, so a check that walked only the returns would leave each
     # of them unchecked without saying so.
-    folders = ([Path(ns.engagement)] if ns.engagement
-               else registry.record_dirs(clients_root))
+    folders = [one] if ns.engagement else registry.record_dirs(clients_root)
 
     print(f"\n{chosen}")
     failures = 0

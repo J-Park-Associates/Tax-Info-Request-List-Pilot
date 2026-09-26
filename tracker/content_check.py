@@ -2551,6 +2551,14 @@ if __name__ == "__main__":
     parser.add_argument("engagement_dir", help="the engagement folder")
     parser.add_argument("file", help="the document to read")
     ns = parser.parse_args()
+    # A typed folder is parsed, never trusted: it must be a return's
+    # place under the checked clients root (decision 188).
+    from tracker import door
+
+    try:
+        ns.engagement_dir = door.return_dir(Path(ns.engagement_dir).absolute())
+    except ValueError as exc:
+        parser.error(str(exc))
 
     document = Path(ns.file)
     reading = extract(document)

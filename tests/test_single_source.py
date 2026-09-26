@@ -1132,7 +1132,7 @@ def test_tree_diagrams_name_only_runtime_files_the_code_owns():
 #: tolerant_console(), and each of these takes it before it parses a flag.
 CONSOLE_GUARDED = ("rollover", "filer", "scanner", "registry", "review", "scaffold",
                    "store", "reminder", "runner", "router", "content_check",
-                   "view", "ledger", "validators", "names", "containers", "ocr")
+                   "view", "ledger", "validators", "names", "containers", "ocr", "door")
 #: The command lines that print no client's name, each with why it is not
 #: guarded - so a new command line has to be named in one list or the other.
 CONSOLE_EXEMPT = {
@@ -1486,3 +1486,57 @@ def test_the_repository_carries_no_task_for_the_office_computer():
     assert not [rel for rel in tracked if rel.startswith("docs/local-update-")]
     headings = [line for line in read("CLAUDE.md").splitlines() if line.startswith("#")]
     assert not [line for line in headings if "office computer" in line.lower()], headings
+
+
+#: Command lines that take a folder argument and do not read it through the
+#: door, each with why (decision 188).
+DOOR_EXEMPT = {
+    "tracker/settings.py": "it records the root, and holds the rule the door asks",
+    "tools/backtest.py": "its folder is the firm's sorted documents, never the clients root",
+}
+
+
+def test_every_command_line_that_takes_a_root_or_a_folder_checks_it():
+    """Decision 188 (T17, R11, C-9/E-5): every command line that takes a
+    clients root, a household's or a return's folder reads it through the
+    one door - ``door.checked_root``, ``door.return_dir`` or
+    ``door.household_dir`` - so no command line walks a root the rule
+    refuses or reads a folder in the client tree as a return."""
+    import ast
+
+    asked = {"checked_root", "return_dir", "household_dir"}
+    taking = []
+    for path in sorted([*(REPO / "tracker").glob("*.py"), *(REPO / "tools").glob("*.py")]):
+        rel = path.relative_to(REPO).as_posix()
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        takes = any(isinstance(node, ast.Call) and getattr(node.func, "attr", "") == "add_argument"
+                    and node.args and isinstance(node.args[0], ast.Constant)
+                    and node.args[0].value in ("root", "folder", "engagement_dir")
+                    for node in ast.walk(tree))
+        if not takes:
+            continue
+        taking.append(rel)
+        through = any(isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                      and isinstance(node.func.value, ast.Name) and node.func.value.id == "door"
+                      and node.func.attr in asked for node in ast.walk(tree))
+        assert through or rel in DOOR_EXEMPT, rel
+    assert set(DOOR_EXEMPT) <= set(taking), set(DOOR_EXEMPT) - set(taking)
+
+
+def test_the_shell_lstats_before_it_opens_and_refuses_a_link_or_a_changed_kind():
+    """Decision 188 (T18, E-14): the shell opens a reported path only after
+    ``lstat`` says it is no link and still the kind the API reported - a
+    folder as a folder, a file as a file - with the kinds and the refusal
+    from the API's vocabulary."""
+    import tracker.api as api
+
+    main = read("app/main.js")
+    opener = main[main.index("async function openPath("):]
+    opener = opener[:opener.index("\n}\n")]
+    assert opener.index("fs.promises.lstat(") < opener.index("shell.openPath(")
+    assert "isSymbolicLink()" in opener and "isDirectory()" in opener and "isFile()" in opener
+    assert "vocab.path_kinds" in main and "vocab.shell.not_opened" in main
+    assert main.count("shell.openPath(") == 1
+    vocab = api._vocab()
+    assert vocab["shell"]["not_opened"] == api.SHELL_NOT_OPENED
+    assert set(vocab["path_kinds"].values()) == {"folder", "file"}

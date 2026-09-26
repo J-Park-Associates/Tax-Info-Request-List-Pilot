@@ -156,7 +156,7 @@ from contextlib import ExitStack, nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tracker import content_check, ledger, ocr, store
+from tracker import content_check, door, ledger, ocr, store
 from tracker.filer import (
     HOUSEHOLD_NO_ROOM,
     NEEDS_REVIEW,
@@ -170,7 +170,7 @@ from tracker.filer import (
 )
 from tracker.fsio import write_json_atomically, write_text_atomically
 from tracker.households import load_household_info, open_years, resolve_feeds
-from tracker.layout import household_of, inbox_of, lock_order_key, originals_dir_for, root_of
+from tracker.layout import household_of, inbox_of, lock_order_key, originals_dir_for, parts_below, root_of
 from tracker.ledger import LedgerError
 from tracker.locking import engagement_lock
 from tracker.manifest import (
@@ -213,7 +213,6 @@ from tracker.settings import (
     NO_ROOT_HINT,
     SettingsError,
     clients_root,
-    clients_root_refusal,
     firm,
     product_name,
     settings_path,
@@ -1786,10 +1785,8 @@ def _engagement_status(engagement: Engagement) -> EngagementRun:
 def _under(root: Path, path: Path) -> str:
     """A folder as a person reads it on the practice page: its path below
     the clients root, or the whole path when it is not under one."""
-    try:
-        return str(path.relative_to(root))
-    except ValueError:
-        return str(path)
+    below = parts_below(root, path)
+    return str(Path(*below)) if below else str(path)
 
 
 def status_report(registry: Registry, *, passed: Iterable[EngagementRun] = (),
@@ -1876,20 +1873,17 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(f"Clients folder problem: {exc}") from None
         if configured is None:
             raise SystemExit(f"no clients root given and none in {settings_path()}; {NO_ROOT_HINT}")
-        # A root saved before decision 137's rule is held to it here, at
-        # the start of every pass (the review's F12): a pass never walks
-        # the system drive or the app's own folder, whenever it was saved.
-        if refusal := clients_root_refusal(configured):
-            raise SystemExit(f"Clients folder problem: {refusal}")
-        root = str(configured)
-    else:
-        # A root typed on the command line - a person's, or another
-        # program's - is held to the same rule as the saved one (decision
-        # 176): a preview of the system drive is a walk of every folder on it.
-        if refusal := clients_root_refusal(root):
-            raise SystemExit(f"Clients folder problem: {refusal}")
-        if ns.log:
-            _refuse_an_old_jobs_root(root)
+    elif ns.log:
+        _refuse_an_old_jobs_root(root)
+    # A saved root is held to the rule at the start of every pass (decision
+    # a root handed straight through would otherwise be walked in full. Both
+    # a root another program hands straight through is walked in full. Both
+    # through the one door (decision 188), which also refuses a root one
+    # level too deep, inside a tree of a real root.
+    try:
+        root = str(door.checked_root(root or None))
+    except door.DoorError as exc:
+        raise SystemExit(str(exc)) from None
 
     try:
         loaded = discover_engagements(root)

@@ -718,6 +718,26 @@ def place_of(root: Path | str, path: Path | str) -> Place:
     return Place(MISPLACED)
 
 
+def same_folder_name(a: str, b: str) -> bool:
+    """Whether two names in one folder name one folder, as Windows compares
+    them: without case. For the layout's own words (the review folder);
+    two households or returns are compared by :func:`name_key`."""
+    return str(a).casefold() == str(b).casefold()
+
+
+def tree_of(root: Path | str, path: Path | str) -> str | None:
+    """The tree - :data:`CLIENTS_TREE` or :data:`PRIVATE_TREE`, as the
+    layout spells it - that ``path`` lies in or is, under ``root``; ``None``
+    for anything else."""
+    below = parts_below(root, path)
+    if not below:
+        return None
+    for tree in (CLIENTS_TREE, PRIVATE_TREE):
+        if os.path.normcase(below[0]) == os.path.normcase(tree):
+            return tree
+    return None
+
+
 def return_at(root: Path | str, path: Path | str) -> tuple[str, int, str]:
     """The household, year and return name of the return folder ``path``
     is, or a :class:`LayoutError` (:data:`NOT_A_RETURN`).

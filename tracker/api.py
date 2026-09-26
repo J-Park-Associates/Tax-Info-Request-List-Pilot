@@ -53,7 +53,7 @@ import sys
 from dataclasses import asdict, replace
 from pathlib import Path
 
-from tracker import STANDING_RULES, content_check, layout, ledger, names, ocr, records, reminder, review, store
+from tracker import STANDING_RULES, content_check, door, layout, ledger, names, ocr, records, reminder, review, store
 from tracker.filer import (
     DUPLICATE,
     FILE_MOVED,
@@ -99,8 +99,6 @@ from tracker.layout import (
     ENGAGEMENT_LABEL_PATTERN,
     INBOX_DIR_NAME,
     MAX_PATH_LENGTH,
-    NOT_A_HOUSEHOLD,
-    NOT_A_RETURN,
     PATH_TOO_LONG,
     PRIVATE_TREE,
     RETURN_NAME_PATTERN,
@@ -108,7 +106,6 @@ from tracker.layout import (
     household_of,
     inbox_dir_for,
     inbox_of,
-    is_year_folder,
     locate,
     originals_dir_for,
     private_household_dir,
@@ -293,13 +290,23 @@ log = logging.getLogger("tracker.api")
 #: executable when frozen) - the same answer tracker.settings gives.
 REPO_ROOT = settings_dir()
 def _root() -> Path:
-    """The clients root from the settings file - the one place it is kept."""
-    root = clients_root()
-    if root is None:
+    """The clients root from the settings file - the one place it is kept -
+    held to the settings' rule on every command that reads it (decision
+    188, E-13): a root saved before a rule, or one a person has since made
+    one level too deep by moving the trees around it, is refused with
+    "Clients folder problem: " and the refusal, never walked."""
+    if clients_root() is None:
         raise ManifestError(
             f"Tell the app where your clients live first (Settings, or `{SET_ROOT_HINT}`)"
         )
-    return root
+    return door.checked_root()
+
+
+def _saved_root() -> Path | None:
+    """The saved clients root held to the rule, as :func:`_root` holds it,
+    or ``None`` where none is saved - for the commands that answer without
+    one (the list before a root is chosen, the wizard's priors)."""
+    return None if clients_root() is None else door.checked_root()
 
 # ----------------------------------------------------------------- commands ----
 
@@ -625,56 +632,16 @@ def _engagement_dir(argv: list[str]) -> Path:
 
 
 def _return_dir(given: str | Path) -> Path:
-    """The return a path the app sent names, rebuilt from the clients root
-    and its own four validated names - or a ManifestError.
-
-    **A path from outside is parsed, never trusted** (decision 176). It must
-    lie under the clients root, in the private tree, four levels down,
-    under a year folder - the place discovery reads a return from. What
-    comes back is the root joined with the names the resolved path has
-    there, so no ``..``, no ``.`` and no second spelling of the same
-    folder reaches :func:`tracker.layout.household_of`,
-    :func:`~tracker.layout.root_of` or :func:`~tracker.layout.year_of`,
-    which read a return's position off the text of its path. A folder
-    under ``Clients`` - the tree the client can write into, where a
-    planted journal would otherwise read as a prior - is never one.
-    """
-    parts = _placed_under_root(given)
-    if (len(parts) != 4 or parts[0].casefold() != PRIVATE_TREE.casefold()
-            or not is_year_folder(parts[2])):
-        raise ManifestError(NOT_A_RETURN.format(name=Path(given).name or given, tree=PRIVATE_TREE))
-    return _root().joinpath(*parts)
+    """The return a path the app sent names, rebuilt from the checked
+    clients root and its own names (``door.return_dir``, decisions 176 and
+    188) - a folder in the client tree, a year or a household folder, and
+    anything outside the root are refused with the layout's sentence."""
+    return door.return_dir(given, root=_root())
 
 
 def _household_dir(given: str | Path) -> Path:
-    """The household a path the app sent names: ``<root>/<private
-    tree>/<household>``, rebuilt from the root and its validated names as
-    :func:`_return_dir` rebuilds a return (decision 176)."""
-    parts = _placed_under_root(given)
-    if len(parts) != 2 or parts[0].casefold() != PRIVATE_TREE.casefold():
-        raise ManifestError(NOT_A_HOUSEHOLD.format(name=Path(given).name or given, tree=PRIVATE_TREE))
-    return _root().joinpath(*parts)
-
-
-def _placed_under_root(given: str | Path) -> tuple[str, ...]:
-    """The names ``given`` has below the clients root, else a ManifestError.
-
-    A relative path is read from the root. Checked whether or not the
-    folder it names is reachable right now: an unplugged drive is not a
-    licence to read from anywhere. Resolved on both sides, so ``..``, a
-    junction out of the root and a case difference are all seen for what
-    they are. **With no root set it refuses** (decision 137, L1): it used
-    to pass any folder at all then, which made an unconfigured app a
-    reader of anywhere.
-    """
-    root = _root()
-    folder = Path(given)
-    if not folder.is_absolute():
-        folder = root / folder
-    try:
-        return folder.resolve().relative_to(root.resolve()).parts
-    except ValueError:
-        raise ManifestError(f"{folder} is not under the clients root {root}") from None
+    """The household a path the app sent names (``door.household_dir``)."""
+    return door.household_dir(given, root=_root())
 
 
 #: What a command is told when the app's JSON is not one object.
@@ -751,6 +718,17 @@ def standing_rules() -> list[dict]:
 #: The heading the root dialog lists the returns short of room under, after
 #: a person sets the clients root (decision 131).
 ROOM_HEADING = "Returns short of room under this root"
+
+
+#: What each key of a return's ``paths`` names: a folder or a file
+#: (decision 188, E-14). The shell ``lstat``s a path before it opens it and
+#: refuses a link, or a path that is no longer the kind reported.
+PATH_KINDS: dict[str, str] = {
+    "engagement": "folder", "inbox": "folder", "originals": "folder", "client_folder": "folder",
+    "household": "folder", "prepared": "folder", "view": "file", "draft": "file", "status": "file",
+}
+#: What the shell says when a reported path is no longer what it was.
+SHELL_NOT_OPENED = "That is no longer the folder or file the tracker reported; nothing was opened."
 
 
 def _vocab() -> dict:
@@ -954,6 +932,10 @@ def _vocab() -> dict:
         "example_root": EXAMPLE_ROOT,
         "engagement_flag": ENGAGEMENT_FLAG,
         "commands": sorted(COMMANDS),
+        # What each path the API reports is (decision 188, E-14): the shell
+        # opens one only while it is still that kind of thing and no link.
+        "path_kinds": PATH_KINDS,
+        "shell": {"not_opened": SHELL_NOT_OPENED},
         "rules": standing_rules(),
         "schedule": {
             "start": DEFAULT_START,
@@ -1395,7 +1377,7 @@ def _the_practice() -> Registry | None:
     asked for in one place and both the card (:func:`_feed_payload`) and
     *Run now* (:func:`_cmd_scan`) ask it the same way.
     """
-    root = clients_root()
+    root = _saved_root()
     try:
         return discover_engagements(root) if root and root.is_dir() else None
     except RegistryError:
@@ -1536,7 +1518,7 @@ def _rule_for_the_editor(row) -> dict:
 
 
 def _state(engagement: Path) -> dict:
-    root = clients_root()
+    root = _saved_root()
     # The store is brought up to the record before anything is read, and
     # showing an engagement stays a read - the app shows one a pass is
     # holding, and says so. The rules a person sees here are the ones the
@@ -1751,7 +1733,7 @@ def _record_pass(runs: list[EngagementRun] | EngagementRun,
     """
     every = [runs] if isinstance(runs, EngagementRun) else list(runs)
     said = list(warnings or [])
-    root = clients_root()
+    root = _saved_root()
     if root is None or not root.is_dir():
         return []
     failed: list[str] = []
@@ -2122,11 +2104,18 @@ def _cmd_list(argv: list[str]) -> dict:
     what the job walks cannot disagree (decision 125). ``engagements``
     keeps its two old keys so the picker changes as little as it can.
     """
-    root = clients_root()
     # The app's first call: an app too deep for its reader says so at once,
     # in a banner that stays (SPEC-169 section 9).
     empty = {"engagements": [], "households": [], "misfits": [],
              "reader_warning": ocr.reader_path_warning()}
+    # A saved root the rule refuses (decision 188, E-13) is never walked:
+    # the app asks for the folder again and says why, and the rest of the
+    # app - its vocabulary, its commands - still arrives with this reply.
+    try:
+        root = _saved_root()
+    except door.DoorError as exc:
+        return {**empty, "needs_root": True, "root": str(clients_root() or ""),
+                "root_problem": str(exc), "vocab": _vocab()}
     if root is None or not root.is_dir():
         return {**empty, "needs_root": True, "root": str(root or ""), "vocab": _vocab()}
     try:
@@ -2166,7 +2155,11 @@ def _cmd_list(argv: list[str]) -> dict:
     return {
         "engagements": engagements,
         "households": households,
-        "misfits": [{"path": str(misfit.path), "sentence": misfit.sentence}
+        # Where each misfit is below the root, worded by the layout (decision
+        # 188): the page never works out whether one path lies under another.
+        "misfits": [{"path": str(misfit.path), "sentence": misfit.sentence,
+                     "where": str(Path(*below)) if (below := layout.parts_below(root, misfit.path))
+                     else str(misfit.path)}
                     for misfit in registry.misfits],
         "needs_root": False, "root": str(root), "vocab": _vocab(),
         "reader_warning": empty["reader_warning"],
@@ -2449,7 +2442,7 @@ def _cmd_priors(argv: list[str]) -> dict:
     The same discovery the scheduled run uses, so what the wizard offers
     and what the job walks are one list; superseded_by comes from it too.
     """
-    root = clients_root()
+    root = _saved_root()
     if root is None or not root.is_dir():
         return {"priors": []}
     try:
@@ -3408,7 +3401,7 @@ def main(argv: list[str]) -> int:
         # read, and ended with it (decision 169, R-4).
         with ocr.reading_session(in_a_child=content_check.READ_IN_A_CHILD):
             payload = COMMANDS[argv[0]](argv[1:])
-    except (ManifestError, ScanLockedError, FilingError) as exc:
+    except (ManifestError, ScanLockedError, FilingError, door.DoorError, layout.LayoutError) as exc:
         print(json.dumps({"error": str(exc)}))
         return 1
     except Exception as exc:  # surface anything else as JSON, not a traceback
