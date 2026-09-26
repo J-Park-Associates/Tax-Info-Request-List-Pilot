@@ -3152,6 +3152,80 @@ def test_a_root_the_checkpoint_does_not_belong_to_is_refused_by_the_pass(tmp_pat
     assert not (copy / STATUS_PAGE_FILENAME).exists()
 
 
+def test_a_failure_before_the_root_is_written_to_the_last_pass_file(tmp_path, monkeypatch, capsys):
+    """The scheduled job's shape writes the last-pass file beside the store
+    (decision 159, E4): a pass that stops before it reaches a root says so
+    with a reason code, and one that runs says when and how it ended. A
+    pass run by hand writes nothing there, so it cannot make a stopped
+    schedule look alive."""
+    import json
+
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    beside_the_store = Path(store.store_path()).with_name(runner_module.LAST_PASS_FILENAME)
+    assert runner_module.last_pass_path() == beside_the_store
+
+    empty = tmp_path / "empty-settings"
+    empty.mkdir()
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(empty))
+    with pytest.raises(SystemExit):
+        main([SETTINGS_FLAG, str(empty), "--reminders", "never"])
+    failed = json.loads(beside_the_store.read_text(encoding="utf-8"))
+    assert failed["result"] == runner_module.PASS_FAILED
+    assert failed["reason_code"] == runner_module.PASS_NO_ROOT
+    assert failed["root"] == "" and failed["started"] and failed["ended"] and failed["build"]
+
+    clients = tmp_path / "Clients"
+    make_engagement(clients, [RequestItem(identifier="A01", document="W-2")])
+    settings = tmp_path / "settings"
+    settings.mkdir()
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    set_clients_root(clients)
+    assert main([SETTINGS_FLAG, str(settings), "--reminders", "never"]) == 0
+    ran = json.loads(beside_the_store.read_text(encoding="utf-8"))
+    assert ran["result"] == runner_module.PASS_SUCCEEDED and ran["reason_code"] == ""
+    assert Path(ran["root"]) == clients
+
+    # By hand, or a dry run: the file is left as the schedule wrote it.
+    before = beside_the_store.read_bytes()
+    assert main([str(clients), "--reminders", "never"]) == 0
+    assert main([SETTINGS_FLAG, str(settings), "--dry-run", "--reminders", "never"]) == 0
+    assert beside_the_store.read_bytes() == before
+    capsys.readouterr()
+
+
+def test_the_last_pass_line_is_amber_when_old_and_red_when_failed(tmp_path):
+    """The app's one line: plain when recent, amber after
+    LAST_PASS_AMBER_HOURS or when no pass has run, red on a failure or a
+    file that does not read - every word the runner's."""
+    now = dt.datetime(2026, 3, 2, 12, 0)
+    path = tmp_path / runner_module.LAST_PASS_FILENAME
+    assert runner_module.last_pass_line(path, now=now) == {
+        "text": runner_module.LAST_PASS_NEVER, "level": runner_module.LEVEL_WARN}
+
+    recent = now - dt.timedelta(hours=1)
+    runner_module.write_last_pass(path, started=recent, ended=recent, root="R",
+                                  result=runner_module.PASS_SUCCEEDED)
+    line = runner_module.last_pass_line(path, now=now)
+    assert line["level"] == runner_module.LEVEL_OK and "2026-03-02 11:00" in line["text"]
+
+    old = now - dt.timedelta(hours=runner_module.LAST_PASS_AMBER_HOURS, minutes=1)
+    runner_module.write_last_pass(path, started=old, ended=old, root="R",
+                                  result=runner_module.PASS_SUCCEEDED)
+    line = runner_module.last_pass_line(path, now=now)
+    assert line["level"] == runner_module.LEVEL_WARN and line["text"].endswith(runner_module.LAST_PASS_OLD)
+
+    runner_module.write_last_pass(path, started=recent, ended=recent, root="",
+                                  result=runner_module.PASS_FAILED,
+                                  reason_code=runner_module.PASS_SETTINGS)
+    line = runner_module.last_pass_line(path, now=now)
+    assert line["level"] == runner_module.LEVEL_ERR
+    assert runner_module.PASS_REASONS[runner_module.PASS_SETTINGS] in line["text"]
+
+    path.write_text("{not json", encoding="utf-8")
+    assert runner_module.last_pass_line(path, now=now)["level"] == runner_module.LEVEL_ERR
+
+
 def test_a_pass_over_a_root_the_checkpoint_does_not_belong_to_is_refused_however_the_root_is_given(
         tmp_path, samples, monkeypatch):
     """The review's S2 (probe C7): a copy of the root typed on the command
@@ -3248,3 +3322,93 @@ def test_a_first_pass_typed_on_one_clients_folder_claims_nothing(tmp_path, sampl
     with checkpoint.opened(where) as held:
         assert checkpoint.root_of(held) == str(clients.resolve())
 
+
+def test_a_refused_root_is_never_written_into_even_to_log_the_refusal(tmp_path, monkeypatch):
+    """The final review's SF2: a settings root refused by decision 137's
+    rule gets no run-log line; the last-pass file beside the store carries
+    the reason code."""
+    import json
+
+    from tracker.runner import LAST_PASS_FILENAME, LOG_FILENAME, last_pass_path
+    from tracker.settings import ENV_SETTINGS_DIR, KEY_CLIENTS_ROOT, settings_path
+
+    settings = tmp_path / "appdata" / "settings"
+    settings.mkdir(parents=True)
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    around = settings.parent
+    settings_path().write_text(json.dumps({KEY_CLIENTS_ROOT: str(around)}), encoding="utf-8")
+    with pytest.raises(SystemExit):
+        main([SETTINGS_FLAG, str(settings), "--reminders", "never"])
+    assert not (around / LOG_FILENAME).exists()
+    assert last_pass_path().name == LAST_PASS_FILENAME
+    assert json.loads(last_pass_path().read_text(encoding="utf-8"))["result"] == "failed"
+
+
+# ------------------- the last-pass file beside 189's log and page (159 on 189) ----
+
+
+def _a_scheduled_main(tmp_path, monkeypatch, body):
+    """Run ``main`` in the scheduled job's shape with ``_pass`` replaced by
+    ``body`` (what the pass itself does is 189's, tested above)."""
+    from tracker.settings import ENV_SETTINGS_DIR
+
+    settings = tmp_path / "settings"
+    settings.mkdir(exist_ok=True)
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    monkeypatch.setattr(runner_module, "_pass", body)
+    return main([SETTINGS_FLAG, str(settings), "--reminders", "never"])
+
+
+def test_a_household_not_served_twice_is_the_last_pass_files_reason(tmp_path, monkeypatch):
+    """Decision 189's exit 3 is its own reason in the file, not "a return
+    failed": the app's line points at the page, which names the household."""
+    import json
+
+    assert _a_scheduled_main(tmp_path, monkeypatch,
+                             lambda ns, parser, reached: runner_module.NOT_SERVED_TWICE_EXIT_CODE) == 3
+    written = json.loads(runner_module.last_pass_path().read_text(encoding="utf-8"))
+    assert written["result"] == runner_module.PASS_FAILED
+    assert written["reason_code"] == runner_module.PASS_NOT_SERVED
+    line = runner_module.last_pass_line()
+    assert runner_module.PASS_REASONS[runner_module.PASS_NOT_SERVED] in line["text"]
+
+
+def test_a_last_pass_file_that_cannot_be_written_never_stops_the_pass(tmp_path, monkeypatch):
+    """Decision 189: nothing but the pass's own work decides its exit."""
+    def refused(*args, **kwargs):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(runner_module, "write_last_pass", refused)
+    assert _a_scheduled_main(tmp_path, monkeypatch, lambda ns, parser, reached: 0) == 0
+
+
+def test_a_pass_that_stops_after_its_root_logs_the_kind_never_the_words(tmp_path, monkeypatch):
+    """The run log's early-failure line carries the reason's code, its fixed
+    sentence and the class of what stopped the pass - never the message,
+    which can name a client's folder (decision 189, security principle 7)."""
+    clients = tmp_path / "Clients"
+    clients.mkdir()
+
+    def stopped(ns, parser, reached):
+        reached["root"] = str(clients)
+        raise RuntimeError("Fabricated Client, 1040 - Fabricated Name")
+
+    with pytest.raises(RuntimeError):
+        _a_scheduled_main(tmp_path, monkeypatch, stopped)
+    said = (clients / LOG_FILENAME).read_text(encoding="utf-8")
+    assert f"pass failed ({runner_module.PASS_ENDED_EARLY})" in said and "(RuntimeError)" in said
+    assert "Fabricated" not in said
+
+
+@pytest.mark.parametrize("text", [
+    '{"started": "2026-03-02T11:00:00", "result": "Fabricated Client says hello"}',
+    "[" * 100_000,
+    '{"started": "2026-03-02T11:00:00+05:00", "result": "succeeded"}',
+], ids=["a-result-not-written-here", "nested-past-the-limit", "an-aware-time"])
+def test_the_last_pass_line_echoes_nothing_the_file_holds(tmp_path, text):
+    """Read as 189 reads its hint: bounded, never raising, and a result or
+    a reason is said only when it is one this module writes."""
+    path = tmp_path / runner_module.LAST_PASS_FILENAME
+    path.write_text(text, encoding="utf-8")
+    line = runner_module.last_pass_line(path, now=dt.datetime(2026, 3, 2, 12, 0))
+    assert line["level"] == runner_module.LEVEL_ERR and "Fabricated" not in line["text"]

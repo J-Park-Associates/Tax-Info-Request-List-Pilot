@@ -1552,6 +1552,11 @@ async function loadEngagements(preferPath) {
   // the app is moved to a shorter folder (decision 169).
   $("reader-warning").textContent = listed.reader_warning || "";
   $("reader-warning").classList.toggle("hidden", !listed.reader_warning);
+  // The schedule's one line (decision 159): the text and its level are
+  // the API's; the page only picks the banner colour it names.
+  const lastPass = listed.last_pass;
+  $("last-pass").textContent = lastPass ? lastPass.text : "";
+  $("last-pass").className = lastPass ? `banner ${lastPass.level}` : "banner hidden";
   $("setup-card").classList.toggle("hidden", !listed.needs_root);
   if (listed.needs_root) {
     $("root-input").value = clientsRoot;

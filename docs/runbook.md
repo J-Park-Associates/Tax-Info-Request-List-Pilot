@@ -20,10 +20,14 @@ working copies, the drafts and the return's own ledger,
 which holds the request list too; the originals sit in the client's own
 folder for the year, one tree over. There is no portal and no second copy of any of
 it. There *is* one database — `tracker.db`, beside the app on the
-designated machine — but it is disposable: it is rebuilt from the ledgers
-in the folders (though, until a ledger can prove its own lines, it may hold
-the only other copy of one, so it is copied aside before any rebuild, as the
-store check below says), it is never synced and nobody opens it.
+designated machine — built from the ledgers in the folders, never synced
+and never opened by a person. Beside it sits a second, small file,
+`record-heads.db` (decision 159): this machine's note of how far every
+return's record went when it last wrote or read it. It is what lets the
+tracker notice a record that came back shorter, reordered or rewritten -
+a sync client restoring an older copy, a careless hand edit - instead of
+quietly rebuilding from it. It is never synced either, and it survives
+deleting `tracker.db`.
 
 **The app's folder is private to the firm.** `tracker.db` holds every
 client's index rows. (The reader writes nothing there or anywhere else
@@ -38,18 +42,12 @@ store keeps a fingerprint of every line of a return's record it has read
 (decision 137). If a sync client or a person rewrote or reordered the record
 while keeping its length, the pass and the app refuse that return, apply
 nothing and say so. Run the store check (`python -m tracker.store "<the app folder>" check "<clients root>"`)
-to see it named. **A rebuild replays whatever the record now says.** So
-before rebuilding a refused return, copy the database file
-(`tracker.store.STORE_FILENAME`, beside the app) aside, into the same
-folder as the store under a new name with today's date (never to the
-desktop, a USB drive, an email or a chat), and keep any conflict copy of
-the record — any other file beside the return's `_ledger.jsonl` whose name begins `_ledger`, which a sync client makes when
-two copies disagree. They hold the only other copy of the lines the record
-may have lost. If there is a conflict copy, stop and have the two compared
-before anything is rebuilt. Then rebuild **that return only**, with
-`python -m tracker.store "<the app folder>" rebuild "<clients root>" --engagement "<the return's folder>"`
-- without `--engagement` it rebuilds every return, and the next pass
-re-reads every document in the firm.
+to see it named, then follow **§6, *When a record needs recovering***:
+`recover` for that return first, which saves both copies and shows the
+lines that differ, and only then, if a person agrees, the rebuild. A plain
+`rebuild` now refuses a return whose record does not match what this
+machine last saw, because rebuilding from it would silently lose the lines
+that went missing.
 
 **Once, after installing the version that holds every record line to the
 editor's bounds** (decision 187). Run the store check once
@@ -362,19 +360,23 @@ changes nothing:
   the settings file and the database sit; the settings file's own path, or
   the database file's, is taken the same way. Anything else — a mistyped
   folder, a file that is neither — is refused, so a typo can never create
-  an empty database somewhere and check it against the ledgers. If it ever disagrees, `rebuild` in place of `check` builds
-  the database again from the ledgers — it replays whatever they now say,
-  so copy the database aside first, into the same folder as the store
-  under a new name with today's date (never to the desktop, a USB drive,
-  an email or a chat), and keep any conflict copy of a record,
-  exactly as for a refused return at the top of §1. A `tracker.db` from
-  before decision 107 is refused by name; move it aside (rename it; do not
-  delete it) and run `rebuild` — the first pass after it reads every
-  document once to fill the verdict cache the database also keeps.
+  an empty database somewhere and check it against the ledgers. If it ever disagrees, do not
+  reach for `rebuild`: run `recover` for the return it names (§6, *When a
+  record needs recovering*), which saves both copies and shows the
+  difference first. `rebuild` refuses a return whose record is shorter or
+  rewritten since this machine last saw it; for a shorter one it lists the
+  lines only the database holds (decision 188), and `rebuild --discard`
+  saves recover's export of them before it drops them. **An older database is set
+  aside by itself** since decision 159: the tracker renames it
+  `tracker.db.v<N>.old` and builds a new one from the ledgers (keep the old
+  file until the first pass has finished), and a database from a *newer*
+  version is refused with "install that version again". Either way the
+  first pass after it reads every document once to fill the verdict cache
+  the database also keeps.
 - **Once, when decision 137 lands** (and again at decisions 142, 143, 144 and 146,
   `user_version` 13 to 16). Its database is a new version
-  (`user_version` 12), so the `tracker.db` already on the machine is refused
-  by name. Move it aside and run `rebuild` as above. The rebuild itself takes
+  (`user_version` 12). Since decision 159 the old one is set aside and
+  rebuilt by itself (above); before it, it was deleted by hand. The rebuild itself takes
   minutes; what takes longer is the **first pass after it**, which reads
   and OCRs every document again to refill the verdict cache - on a full
   season that can run past the scheduler's two-hour limit. A pass the
@@ -386,7 +388,8 @@ changes nothing:
 - **Decision 204** (`user_version` 17) needs nothing: a version-16
   `tracker.db` is upgraded where it stands the first time it is opened -
   one new column, nothing deleted, the verdict cache kept - so the pass
-  after it reads nothing again. Only an older one is refused as above.
+  after it reads nothing again. Only an older one is set aside and
+  rebuilt by itself, as above (one policy for both decisions).
 - **Once, when decision 169 lands** (the new reader). The database's
   version does not change, so there is nothing to delete for it (set
   `tracker.db` aside only if another decision in the same install asks).
@@ -491,11 +494,30 @@ served for N passes running (held lock)*), and that is the thing to fix.
 A Shared Drive remounted at another letter, a parent folder renamed, the
 tree copied under an archive folder: every one of these leaves the old
 path naming nothing, so the app asks where the clients live and the next
-scheduled pass stops with *Clients folder problem*. Nothing is lost - the
-record keys every return by its path below the root - and the whole
-answer is to **set the root again in the app** (or
-`python -m tracker.settings <folder>`). The schedule follows by itself;
-it reads the root from the settings file at every run.
+scheduled pass stops with *Clients folder problem*. The records are
+untouched - every return is keyed by its path below the root - and the
+answer is two steps, on the designated machine:
+
+1. **Set the root again in the app** (or
+   `python -m tracker.settings <folder>`). The schedule follows by itself;
+   it reads the root from the settings file at every run.
+2. **Tell the record checkpoint** (decision 159). This machine's
+   `record-heads.db` belongs to the root the settings named on its first
+   real pass (a folder typed by hand never claims it), and until it
+   is told, the pass - whether the schedule runs it or a person types a
+   folder by hand - and every button that writes refuse with *this
+   machine's record checkpoint belongs to <old folder>; this would work in
+   <new folder>*. (One client's folder inside the root is not refused.) Once you are sure the root really moved (and this is not
+   a second copy of the tree), run, with the app's folder and the new root:
+
+   ```
+   python -m tracker.checkpoint "<the app folder>" move-root "<the new clients root>"
+   ```
+
+   Nothing else changes: the checkpoint, like the record, names every
+   return by its path below the root. A *copy* of the tree put where the
+   old root was is not a move; its records are behind the checkpoint and
+   the practice page says so return by return.
 
 **The root is the folder that holds both trees**, `Clients` and
 `J Park & Associates`, side by side. Choosing one of the trees itself, or a
@@ -806,9 +828,25 @@ longer chased. That is deliberate — it is how the household ends up with
 exactly one open year again, which is what lets the pass go on sorting one
 inbox. Tick it later and roll it on its own if that changes.
 
-One return's refusal (a folder of that name already there, a path too long)
-is printed and undoes none of the others; nothing under `Clients\` changes
-but the new year's folder.
+**It is all or nothing** (decision 159). Every ticked return is checked
+and locked before anything is written; if one of them refuses (a folder of
+that name already there, a path too long, the return busy with a pass),
+**nothing is rolled**, and the reply names that return and why, ending
+*Nothing was rolled.* Fix that one thing - or untick that return - and
+press Roll Forward again. If something fails part-way through, the returns
+already rolled are undone, so the household is never left half in one
+year and half in the next. Nothing under `Clients\` changes but the new
+year's folder.
+
+**One exception, said in amber.** Retiring the unticked returns comes
+last, after every ticked return has rolled. A retirement is a line in that
+return's record and is never undone, so if one fails the returns stay
+rolled and the app shows a warning (the command line heads it *ROLLED, NOT
+ALL RETIRED*): *Rolled into <year>: ... Retired: ... Not retired: ...
+retire those in the editor (Active: no) so the household has one open
+year*. Do exactly that: open each return it names, set **Active** to *no*
+and save. Until you do, the household has two open years and the next
+Roll Forward refuses.
 
 **A return rolls forward where it sits - once its move is accepted.** When a
 household separates, the way to move one return into a household of its own
@@ -905,6 +943,64 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    **Run now** says the same: under the return's own result it lists the
    household's other returns' problems and the pass's own (the reader,
    the log, the page).
+
+   **The last-pass line.** The app's main screen shows one line about the
+   schedule (decision 159): *Last scheduled pass: <date and time>,
+   succeeded.* It comes from `last-pass.json`, which the scheduled job
+   writes beside `tracker.db` when it starts and when it ends; a pass given
+   a folder by hand, or a preview, does not touch it (a run naming only the
+   app's settings folder is the scheduled job's shape, and does).
+   - **Plain:** the schedule is running. Nothing to do.
+   - **Amber**, *Nothing newer for over 4 hours*: no scheduled pass has
+     started for four hours, which is one missed run at the default
+     every-two-hours and a margin. On the designated machine, open Task Scheduler and
+     check the task is there and enabled, or press **Install Schedule** in
+     the app. Amber also shows before the first scheduled pass on a new
+     machine (*No scheduled pass has run on this machine yet*), and on a
+     schedule installed as once a day. *Started <time>, not finished*
+     that turns amber means a pass was stopped part-way (the machine
+     restarted, or the scheduler's time limit): the next pass finishes what
+     it left.
+   - **Red**, *failed (<reason>)*: the last pass stopped. The reason says
+     which of the few ways it stops: the settings file could not be read,
+     no clients folder is set, the clients folder was refused, it is not
+     the one this machine's record checkpoint belongs to (see *If the
+     clients root moves*), the folder could not be walked, the pass ended
+     with a problem - a return that failed, or a run log or page it could
+     not write (the practice page and the run log name it) - or a
+     household has not been served two passes running (the page names it
+     and why). When the pass reached the clients folder, the run log has
+     the same line, with the kind of fault and never its words. The line
+     stands beside the page and the run log, which are written every pass
+     (decision 189): it is the one of the three the app shows, and the
+     only one that can speak when the pass stopped before it found the
+     clients folder.
+
+   **Records that need a person.** When there is something in it, the
+   practice page has a section of this name (decision 159), and the run log
+   a line *records that need a person: N copy(ies) beside a record, N
+   line(s) from another machine, N record(s) refused*. On a good day it is
+   not there at all. Each sentence means:
+   - ***a copy beside a record or its lock, left by a sync client or a
+     second machine***: Google Drive or a second computer saved a second
+     copy of a return's record, or of its lock file, next to the real one
+     (a name like `_ledger (1).jsonl` or `_ledger_conflict-*.jsonl`). **Never delete
+     one**, now or later. Tell Jason; a person compares the copy with the
+     record and decides which is right, and the copy is kept even then.
+   - ***line N was written on <computer> (<time>)***: a line in this
+     return's record was saved by another computer, not this one. Jason
+     decided on 2026-09-26 that such a line is named here every pass, and
+     filing goes on, until a person has looked. Check with whoever uses
+     that computer that the change was theirs, then run the command the
+     page prints, `python -m tracker.checkpoint "<the app folder>"
+     acknowledge "<the return>"`, and it stops being named.
+   - **a refused record**, a sentence ending *Run recover (runbook §6).*:
+     the pass left that return alone because its record came back
+     shorter, reordered or rewritten since this machine last saw it, or
+     carries a line that claims to be from this machine and is not, or a
+     line with no writer, or a line from a newer version. Nothing was
+     applied. Follow §6, *When a record needs
+     recovering*, for that return, today.
 2. **Clear the review folder.** Anything the rules could not be sure of is
    parked in the review folder (`tracker.scaffold.REVIEW_DIR_NAME`) with a
    reason. In the app, pick the engagement, pick the request the document
@@ -1351,28 +1447,50 @@ floors and our own folders, and a client should never see any of that.
 
 ## 6. If the designated machine dies, or you move to another one
 
-About thirty minutes.
+About thirty minutes when the old machine still starts; longer when it
+does not, and then what the new machine can prove starts from the records
+as they are that day (*The moment of trust*, below).
 
-**Nothing to restore.** Every engagement's manifest, ledger, originals,
-working copies and drafts are in the engagement folder, which syncs. Any
-machine signed into the same Drive account has all of it already.
+**The client files need no restoring.** Every engagement's manifest,
+ledger, originals, working copies and drafts are in the engagement folder,
+which syncs. Any machine signed into the same Drive account has all of it
+already.
 
 **What was only on that machine:** the settings file beside the app
 (`tracker.settings.SETTINGS_FILENAME`), the database beside it
-(`tracker.store.STORE_FILENAME`) and the pass-order hint beside it
-(`tracker.runner.PASS_ORDER_FILENAME`), the scheduled task, the app folder
-itself, and the graphics card pack if that machine had one (step 5). **The database
-is not carried over** — the new machine builds its own from the ledgers in
-the engagement folders on its first pass — **but if the old machine still
-starts, copy its database aside and keep it** - into the same folder as
-the store, under a new name with today's date, never to the desktop, a USB
-drive, an email or a chat - until the new machine's first pass has run clean: until the record can prove its own lines, it is the
-only other copy of them. The first
-pass there reads every document once - the verdicts the old machine had
-cached were in its database, not in the folders - and is slower for it,
-never wrong. The same is true of the first pass after this version, on
-whichever machine: it reads every working copy once to prove it against
-the record (decision 109), and every pass after that reads none of them.
+(`tracker.store.STORE_FILENAME`), the record checkpoint beside that
+(`record-heads.db`, `tracker.checkpoint.CHECKPOINT_FILENAME`), the folder
+`recovered` beside them if a recovery was ever run, the last-pass file
+(`last-pass.json`), the pass-order hint (`tracker.runner.PASS_ORDER_FILENAME`),
+the scheduled task, the app folder itself, and the graphics card pack if
+that machine had one (step 5). The last-pass file and the pass-order hint
+are not carried over: the new machine starts both afresh.
+
+**Carry `tracker.db` and `record-heads.db` over** (decision 159). The
+database can be built again from the ledgers, but the checkpoint cannot:
+it is this machine's own note of how far every record went, and it is the
+only thing that can tell a record that a sync client quietly put back to
+an older copy from one that is simply as it was. **Both files are client
+data.** Copy them **over the office network**, straight from the old
+machine's app folder into the new machine's app folder, with the app
+closed and the old machine's schedule off. **Never** by any other road:
+not the desktop, a USB drive, an email or a chat, the program's own folder
+in the repository or the Shared Drive. Then delete any copy left anywhere
+else. Copy `recovered` the same way if
+it is there. The first pass on the new machine still reads every
+document once - the verdicts the old machine had cached are rebuilt, not
+trusted across machines - and is slower for it, never wrong.
+
+**The moment of trust.** If the old machine cannot give up its
+`record-heads.db` (it died, the disk is gone), the new machine starts its
+checkpoint from the records **as they are on its first pass**. From then
+on it will notice any record that goes shorter or is rewritten, but it
+cannot tell whether one had already been put back to an older copy
+before that first pass. What stands behind that moment is the firm's own
+off-drive copy of the clients folder and any export in `recovered`: if a
+return looks wrong on the new machine, compare its record with those
+before trusting it. The same moment comes after an accepted recovery
+(below) for that one return.
 
 **If the machine died in the middle of a pass, nothing is half done for
 long** (decision 119). Before any of it moves a file, a pass or a person's
@@ -1434,7 +1552,9 @@ exactly as it came.
    There is no separate backup of the app, and none is needed.
    The client files are on the Shared Drive, `settings.json` holds only the
    clients folder, the firm's name and its telephone number, all three typed
-   again at step 3, and `tracker.db` rebuilds itself from the journals. Running from source needs Python and
+   again at step 3, and `tracker.db` and `record-heads.db` come across
+   the office network as above (without them the database is rebuilt
+   from the journals and the checkpoint starts at the moment of trust). Running from source needs Python and
    Node, and **`Setup.bat` run once** with the internet on: it makes the
    app's own private Python (`.venv`) and installs into it exactly the
    locked packages, each checked against its SHA-256, and never touches
@@ -1517,7 +1637,147 @@ exactly as it came.
 **Before the new machine's first pass**, turn the old machine's scheduled
 task off, or keep that machine off the clients folder entirely: from then
 on the new machine is the designated one (§1, *One machine per clients
-root*), and the table at the top of §1 is changed to name it.
+root*), and the table at the top of §1 is changed to name it. Two machines
+on one clients root can each take their own lock and each append to the
+same ledger at the same moment, and that is the one way an original ends
+up filed with no record of how it got there. If it happens anyway, the new
+machine's practice page names every line the other one wrote (*Records
+that need a person*, §2).
+
+### When a record needs recovering
+
+Something - a sync client restoring an older copy, a person editing the
+file by hand, a second machine - changed a return's record in a way this
+machine did not. The practice page or the app says so for that return in
+one sentence ending *Run recover (runbook §6).* The pass leaves that
+return alone until a person has dealt with it; every other return goes on.
+
+**Recover before you rebuild, always.** `rebuild` refuses such a return,
+because rebuilding from the record as it is now would silently throw away
+the lines this machine had and the record no longer has. It refuses too
+whenever the database holds a line the record lacks or holds differently -
+even when the checkpoint has never seen the return (the first pass after
+installing, a new machine, a damaged checkpoint set aside): `rebuild` never
+drops a line nobody has exported. Instead, on the
+designated machine:
+
+1. **Look first.** Run, with the app's folder, the clients root and the
+   return's folder:
+
+   ```
+   python -m tracker.store "<the app folder>" recover "<clients root>" --engagement "<the return's folder>"
+   ```
+
+   This changes nothing in the return. It saves two files into
+   `recovered` beside `tracker.db` - the database's copy of the record,
+   and the record's current copy (its name ending `*.record-now.jsonl`) - and lists
+   every line on which they disagree: which side has it, what kind of
+   event, when, and which computer wrote it. Keep both files; never
+   delete them.
+2. **Understand which lines would go.** A line only *the database* has
+   is a step the record no longer holds (a filing, an edit to the list):
+   accepting the loss drops it from the tracker's view. Look at the
+   return's folder and the Status Report to see whether that step still
+   matters. If it does, stop and ask Jason. If a conflict copy sits beside
+   the record (any other file whose name begins `_ledger`), stop too: have
+   it compared with both saved files before anything is accepted - it may
+   hold the only other copy of the lines the record lost (decision 184).
+3. **Accept the loss only by typing the return's name.** When you and
+   Jason agree the record as it is now is the one to keep, run the same
+   command again with the return's own folder name, typed exactly:
+
+   ```
+   python -m tracker.store "<the app folder>" recover "<clients root>" --engagement "<the return's folder>" --accept-loss "<the return's folder name>"
+   ```
+
+   Any other spelling is refused and changes nothing. Accepted, the
+   return's rows are rebuilt from the record and this machine's checkpoint
+   for that return starts again from it (the moment of trust, for that
+   return).
+
+**A record that does not read** (recover's first look says *the record
+itself does not read*, and offers no `--accept-loss`): the tracker never
+rewrites a record, so this one is a person's job. A second person looks at
+the difference first. Then do exactly what the sentence says:
+
+- if it names the database's export as a copy that may be copied over the
+  record (it does only when that export holds every line the record still
+  reads), compare the export with the `*.record-now.jsonl` copy first, then
+  copy the export over the return's record (`_ledger.jsonl` in the return's
+  own folder, the app closed and the schedule off);
+- if it says *this machine's store holds no copy of this return*, no file
+  the tracker wrote is one to restore from - it wrote no export at all when
+  the database held nothing: restore from a conflict copy or the firm's
+  off-drive copy, and ask Jason. Never copy a file shorter than the
+  record's readable part over it.
+
+Then run `recover` again to check the record now reads.
+
+**A checkpoint that will not open.** If the pass stops, or a return says,
+*the tracker cannot read this machine's record checkpoint*, naming
+`record-heads.db`, the file is damaged; the tracker never moves it by
+itself, because a damaged checkpoint is exactly what a person must see.
+Close the app, turn the schedule off, and rename the file (for example to
+`record-heads.db.damaged`) - keep it, never delete it - then run one pass:
+the checkpoint starts again from every record as it then is. That pass is
+the moment of trust, so run `verify` first and tell Jason.
+
+**Keep every conflict copy and every lock sibling.** A `_ledger (1).jsonl`,
+a `_ledger_conflict-*.jsonl`, a `_scan.lock` copy: never delete one, even
+after the recovery. It is the evidence of what happened, and the practice
+page goes on naming it so nobody forgets it is there.
+
+**A read-only look over the whole firm.** To check every return at once
+without changing anything - on a quiet day, or before trusting a new
+machine - run:
+
+```
+python -m tracker.store "<the app folder>" verify "<clients root>"
+```
+
+It prints each problem it finds (a record that does not read, one shorter
+or rewritten since this machine saw it, a line claiming this machine that
+it did not write, a line past what this machine saw that names no writer -
+the same judgment the pass makes - the database holding lines the record
+does not, a recorded file missing or holding other bytes) and exits non-zero if there
+is any. It writes nothing anywhere. `python -m tracker.checkpoint "<the app
+folder>" state` shows the root the checkpoint belongs to and what it
+vouches for.
+
+**What this protects, said plainly.** The link in every line detects
+accidents anywhere: a sync client restoring an older copy, a reorder, a
+lost tail, a careless hand edit. The checkpoint on the machine that writes
+detects a rewrite and an append that machine did not make. It does not
+protect against a writer who controls that machine itself: malware or a
+person at its keyboard can write the record and the checkpoint together;
+that is contained by decision 180, which limits what a forged line can do.
+It is not proof to a third party of who wrote a line: the host is written
+by the program and could be typed by anyone. A secret key was rejected: it
+would live on the machine it protects, and a lost key would make the
+firm's own record unwritable.
+
+**Jason's two live checks** (they need the office machine's synced drive
+and cannot be proved in the cloud; run them once after installing
+decision 159, and again after moving machines):
+
+- **L1, one holder.** Pick a return folder on `G:` that nobody is working
+  on and run:
+
+  ```
+  python -m tracker.locking race "G:\Shared drives\<clients folder>\J Park & Associates\<household>\<year>\<return>" --processes 8 --rounds 20
+  ```
+
+  It races eight processes for a test lock (`_race.lock`, never the
+  return's own `_scan.lock`) twenty times. It must print *one holder in
+  every round*; anything else prints the round that failed - send that to
+  Jason.
+- **L2, a line from another machine is named.** On a second computer
+  signed into the same Drive, make one small change to a test return
+  through the app there (for example, edit its list and save). Let Drive
+  sync, then run one pass on the office machine (**Sort & Scan**). The
+  practice page's *Records that need a person* must name that return's
+  line as *written on <the second computer>*. Acknowledge it with the
+  command the page prints, and check the next pass no longer names it.
 
 ### Package updates and the weekly audit
 

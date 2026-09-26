@@ -149,6 +149,7 @@ import json
 import logging
 import os
 import re
+import sys
 import time
 import traceback
 from collections.abc import Iterable
@@ -272,6 +273,67 @@ SETTINGS_FLAG = "--settings"
 #: until *Install Schedule* is pressed once (decision 131's review, F3).
 OLD_JOB_ROOT = ("the scheduled job still names an old clients root ({root}); open the app and "
                 "press Install Schedule")
+
+#: The scheduled pass says when it ran and how it ended (decision 159, E4):
+#: a job that stops - settings unreadable, the root gone, the task deleted -
+#: otherwise stops in silence, and the office finds out at a deadline. The
+#: file sits beside the store, the same rule the record checkpoint follows,
+#: so it moves with the store and never enters the clients tree. Only the
+#: scheduled job's shape writes it (``--settings``, no root, not a dry
+#: run): a pass run by hand must not make a stopped schedule look alive.
+#:
+#: **Beside decision 189's log and page, not instead of them.** 189 made
+#: the run log and the practice page always written - but both live in the
+#: clients root, so a pass that stops before it has a root (settings that
+#: will not read, no root, a root refused or not this machine's) writes
+#: neither, and the app, which shows neither, cannot say it. This file is
+#: the one status of the pass the app reads, it says only when and how the
+#: pass ended - by a code - and for everything else it points at the log
+#: and the page, which say the rest; ``pass-order.json`` beside it is 189's
+#: order hint per household, not a status of the pass.
+LAST_PASS_FILENAME = "last-pass.json"
+#: The app's line turns amber when the last scheduled pass started longer
+#: ago than this. The schedule repeats every two hours by default, so four
+#: hours is one missed run and a margin.
+LAST_PASS_AMBER_HOURS = 4
+#: The file's ``result``: a pass that started and has not ended (or was
+#: killed), one that ended cleanly, one that did not.
+PASS_RUNNING = "running"
+PASS_SUCCEEDED = "succeeded"
+PASS_FAILED = "failed"
+#: Why a pass failed, as a code (the file) and a sentence (the app). The
+#: codes are the file's vocabulary, so a later reader matches on them and
+#: never on words.
+PASS_SETTINGS = "settings-unreadable"
+PASS_NO_ROOT = "no-root"
+PASS_ROOT_REFUSED = "root-refused"
+PASS_ROOT_NOT_CLAIMED = "root-not-claimed"
+PASS_ROOT_UNREADABLE = "root-unreadable"
+PASS_RETURN_ERRORS = "return-errors"
+PASS_NOT_SERVED = "not-served-twice"
+PASS_ENDED_EARLY = "stopped"
+PASS_REASONS = {
+    PASS_SETTINGS: "the settings file could not be read",
+    PASS_NO_ROOT: "no clients folder is set",
+    PASS_ROOT_REFUSED: "the clients folder was refused",
+    PASS_ROOT_NOT_CLAIMED: "the clients folder is not the one this machine's record checkpoint belongs to",
+    PASS_ROOT_UNREADABLE: "the clients folder could not be walked",
+    PASS_RETURN_ERRORS: ("the pass ended with a problem - a return that failed, or a log or page it "
+                         "could not write; the practice page and runs.log say which"),
+    PASS_NOT_SERVED: ("a household has not been served two passes running; the practice page says "
+                      "which and why"),
+    PASS_ENDED_EARLY: "the pass stopped with an error before it began; runs.log names its kind",
+}
+LAST_PASS_LINE = "Last scheduled pass: {when}, {result}."
+LAST_PASS_FAILED_LINE = "Last scheduled pass: {when}, failed ({reason})."
+LAST_PASS_RUNNING_LINE = "Last scheduled pass: started {when}, not finished."
+LAST_PASS_OLD = (f" Nothing newer for over {LAST_PASS_AMBER_HOURS} hours: check that the schedule "
+                 "is still installed on the office machine (runbook, 'The last-pass line').")
+LAST_PASS_NEVER = ("No scheduled pass has run on this machine yet. If the schedule is installed "
+                   "here, one will run within two hours.")
+LAST_PASS_UNREADABLE = "The last scheduled pass could not be read ({error})."
+#: How the app colours the line: the API says it, the page only draws it.
+LEVEL_OK, LEVEL_WARN, LEVEL_ERR = "ok", "warn", "err"
 
 
 def _refuse_an_old_jobs_root(root: str) -> None:
@@ -1609,6 +1671,109 @@ def append_log(path: Path | str, report: RunReport) -> Path:
     return path
 
 
+class PassFailed(SystemExit):
+    """A pass that stops before it reaches the root, with the reason's code.
+
+    It is a ``SystemExit`` so the command line behaves exactly as it did -
+    the message printed, a non-zero exit, the scheduler's red run - and
+    :func:`main` can still write the code into the last-pass file."""
+
+    def __init__(self, reason_code: str, message: str) -> None:
+        super().__init__(message)
+        self.reason_code = reason_code
+
+
+def last_pass_path() -> Path:
+    """Where this machine's last-pass file is: beside the store, the same
+    rule as the record checkpoint, so it is right wherever the store is."""
+    return Path(store.store_path()).with_name(LAST_PASS_FILENAME)
+
+
+def _this_build() -> str:
+    """The program that ran: the packaged executable, or this source tree."""
+    if getattr(sys, "frozen", False):
+        return str(Path(sys.executable).resolve())
+    return str(Path(__file__).resolve().parent.parent)
+
+
+def write_last_pass(path: Path, *, started: dt.datetime, ended: dt.datetime | None,
+                    root: str, result: str, reason_code: str = "") -> None:
+    """Write the last-pass file all-or-nothing (decision 155's replace)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_json_atomically(path, {
+        "started": started.isoformat(timespec="seconds"),
+        "ended": ended.isoformat(timespec="seconds") if ended else None,
+        "build": _this_build(),
+        "root": root,
+        "result": result,
+        "reason_code": reason_code,
+    })
+
+
+def _log_a_failed_pass(root: str, reason_code: str, kind: str) -> None:
+    """The run log's line for a pass that stopped early: the reason's code,
+    its fixed sentence and the class of what stopped it - never the
+    exception's message, which can name a client's folder (decision 189,
+    security principle 7). The log lives in the clients root, so a pass
+    that never found a root has nowhere to write it; the last-pass file and
+    the scheduler's red run still say it."""
+    if not root or not Path(root).is_dir():
+        return
+    stamp = dt.datetime.now().isoformat(timespec="seconds")
+    said = PASS_REASONS.get(reason_code, PASS_REASONS[PASS_ENDED_EARLY])
+    try:
+        with (Path(root) / LOG_FILENAME).open("a", encoding="utf-8", errors="backslashreplace") as handle:
+            handle.write(f"[{stamp}] ! pass failed ({reason_code}): {said} ({kind})\n")
+    except OSError as exc:
+        log.warning("Could not write %s (%s)", LOG_FILENAME, exc.__class__.__name__)
+
+
+def last_pass_line(path: Path | None = None, *, now: dt.datetime | None = None) -> dict:
+    """The app's one line about the schedule: ``{"text", "level"}``.
+
+    Red when the last scheduled pass failed or the file cannot be read;
+    amber when the last one started more than :data:`LAST_PASS_AMBER_HOURS`
+    ago, or none has run; plain otherwise. The words are here so the app
+    types none of them (UX principle 6).
+
+    Read as decision 189 reads its order hint: at most
+    :data:`PASS_ORDER_MAX_BYTES`, every error - a nested file's
+    ``RecursionError`` included - is "could not be read", said by its
+    class, and nothing the file holds is echoed: a result is one of the
+    three this module writes, a reason one of its codes. Never raises: it
+    is part of the app's first call."""
+    now = now or dt.datetime.now()
+    try:
+        path = path or last_pass_path()
+        with path.open("rb") as handle:
+            raw = handle.read(PASS_ORDER_MAX_BYTES + 1)
+    except FileNotFoundError:
+        return {"text": LAST_PASS_NEVER, "level": LEVEL_WARN}
+    except Exception as exc:
+        return {"text": LAST_PASS_UNREADABLE.format(error=exc.__class__.__name__), "level": LEVEL_ERR}
+    try:
+        if len(raw) > PASS_ORDER_MAX_BYTES:
+            raise ValueError("past the file's size")
+        data = json.loads(raw.decode("utf-8"))
+        started = dt.datetime.fromisoformat(data["started"])
+        result = data["result"]
+        if result not in (PASS_RUNNING, PASS_SUCCEEDED, PASS_FAILED):
+            raise ValueError("not a result this version writes")
+        old = now - started > dt.timedelta(hours=LAST_PASS_AMBER_HOURS)
+    except Exception as exc:
+        return {"text": LAST_PASS_UNREADABLE.format(error=exc.__class__.__name__), "level": LEVEL_ERR}
+    when = started.strftime("%Y-%m-%d %H:%M")
+    if result == PASS_FAILED:
+        code = data.get("reason_code")
+        reason = PASS_REASONS.get(code if isinstance(code, str) else "", PASS_REASONS[PASS_ENDED_EARLY])
+        return {"text": LAST_PASS_FAILED_LINE.format(when=when, reason=reason), "level": LEVEL_ERR}
+    text = (LAST_PASS_RUNNING_LINE.format(when=when) if result == PASS_RUNNING
+            else LAST_PASS_LINE.format(when=when, result=result))
+    if old:
+        return {"text": text + LAST_PASS_OLD, "level": LEVEL_WARN}
+    return {"text": text, "level": LEVEL_OK}
+
+
 # ------------------------------------------------------------- status page ----
 
 #: Every word the page shows that is not data. A person reads this page and
@@ -1965,14 +2130,58 @@ def main(argv: list[str] | None = None) -> int:
     if ns.settings:
         os.environ[ENV_SETTINGS_DIR] = ns.settings
 
+    # The scheduled job's shape - the settings folder, no root, not a dry
+    # run - says when it started and how it ended (decision 159, E4). The
+    # file is written first, so a pass that dies anywhere after this line
+    # leaves "not finished" or "failed" behind, never an old "succeeded".
+    last = last_pass_path() if ns.settings and not ns.root and not ns.dry_run else None
+    started = dt.datetime.now()
+    reached = {"root": ""}
+    if last is not None:
+        _say_last_pass(last, started=started, ended=None, root="", result=PASS_RUNNING)
+    try:
+        code = _pass(ns, parser, reached)
+    except BaseException as exc:
+        if last is not None:
+            reason = getattr(exc, "reason_code", PASS_ENDED_EARLY)
+            _say_last_pass(last, started=started, ended=dt.datetime.now(), root=reached["root"],
+                           result=PASS_FAILED, reason_code=reason)
+            # Only into a root that was allowed and proved (the final
+            # review's SF2): a refused root is never written into, even
+            # to log its refusal - last-pass.json carries the reason.
+            _log_a_failed_pass(reached["root"], reason, exc.__class__.__name__)
+        raise
+    if last is not None:
+        reason = (PASS_NOT_SERVED if code == NOT_SERVED_TWICE_EXIT_CODE
+                  else PASS_RETURN_ERRORS if code else "")
+        _say_last_pass(last, started=started, ended=dt.datetime.now(), root=reached["root"],
+                       result=PASS_FAILED if code else PASS_SUCCEEDED, reason_code=reason)
+    return code
+
+
+def _say_last_pass(path: Path, **said) -> None:
+    """:func:`write_last_pass` in a guard of its own (decision 189): a file
+    that cannot be written is a log line, and never stops the pass or
+    changes its exit code."""
+    try:
+        write_last_pass(path, **said)
+    except Exception as exc:
+        log.warning("Could not write %s (%s)", path.name, exc.__class__.__name__)
+
+
+def _pass(ns, parser, reached: dict) -> int:
+    """The pass itself, after the command line is read: :func:`main`'s body,
+    apart so ``main`` can record how it ended. ``reached["root"]`` is set
+    once the root is known and allowed."""
     root = ns.root
     if not root:
         try:
             configured = clients_root()
         except SettingsError as exc:
-            raise SystemExit(f"Clients folder problem: {exc}") from None
+            raise PassFailed(PASS_SETTINGS, f"Clients folder problem: {exc}") from None
         if configured is None:
-            raise SystemExit(f"no clients root given and none in {settings_path()}; {NO_ROOT_HINT}")
+            raise PassFailed(PASS_NO_ROOT,
+                             f"no clients root given and none in {settings_path()}; {NO_ROOT_HINT}")
     elif ns.log:
         _refuse_an_old_jobs_root(root)
     # A saved root is held to the rule at the start of every pass (decision
@@ -1983,7 +2192,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         root = str(door.checked_root(root or None))
     except door.DoorError as exc:
-        raise SystemExit(str(exc)) from None
+        raise PassFailed(PASS_ROOT_REFUSED, str(exc)) from None
 
     # This machine's record checkpoint belongs to one clients root (decision
     # 159, E5). Only the settings' root claims it, on the first real pass
@@ -2001,12 +2210,13 @@ def main(argv: list[str] | None = None) -> int:
             store.prove_the_root(saved, claim=not ns.dry_run)
         store.prove_the_root(root, claim=False)
     except (StoreError, checkpoint.CheckpointError) as exc:
-        raise SystemExit(f"Clients folder problem: {exc}") from None
+        raise PassFailed(PASS_ROOT_NOT_CLAIMED, f"Clients folder problem: {exc}") from None
 
+    reached["root"] = root
     try:
         loaded = discover_engagements(root)
     except RegistryError as exc:
-        raise SystemExit(f"Clients folder problem: {exc}") from None
+        raise PassFailed(PASS_ROOT_UNREADABLE, f"Clients folder problem: {exc}") from None
 
     when = dt.date.today()
     if ns.date:

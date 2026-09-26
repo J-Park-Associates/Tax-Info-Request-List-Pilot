@@ -255,6 +255,7 @@ from tracker.runner import (
     append_log,
     last_draft_day,
     last_drafted,
+    last_pass_line,
     reader_start_warning,
     run_household,
     status_report,
@@ -2255,7 +2256,11 @@ def _cmd_list(argv: list[str]) -> dict:
     # The app's first call: an app too deep for its reader says so at once,
     # in a banner that stays (SPEC-169 section 9).
     empty = {"engagements": [], "households": [], "misfits": [],
-             "reader_warning": ocr.reader_path_warning()}
+             "reader_warning": ocr.reader_path_warning(),
+             # When the scheduled pass last ran and how it ended (decision
+             # 159, E4): one line on the main screen, in the runner's words,
+             # with or without a root - a missing root is one way it stops.
+             "last_pass": last_pass_line()}
     # A saved root the rule refuses (decision 188, E-13) is never walked:
     # the app asks for the folder again and says why, and the rest of the
     # app - its vocabulary, its commands - still arrives with this reply.
@@ -2311,6 +2316,7 @@ def _cmd_list(argv: list[str]) -> dict:
                     for misfit in registry.misfits],
         "needs_root": False, "root": str(root), "vocab": _vocab(),
         "reader_warning": empty["reader_warning"],
+        "last_pass": empty["last_pass"],
     }
 
 

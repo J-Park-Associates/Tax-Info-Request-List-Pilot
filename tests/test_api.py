@@ -1743,6 +1743,33 @@ def test_the_app_is_told_at_once_when_it_sits_too_deep_for_its_reader(capsys, tm
     assert payload["reader_warning"] == ocr.READER_PATH_WARNING
 
 
+def test_the_app_state_reports_the_last_pass(capsys, tmp_path, monkeypatch):
+    """``list``, the call the main screen is drawn from, carries the one
+    line about the scheduled pass (decision 159, E4) in the runner's words
+    and colour, with a root or without one: amber before any pass, red
+    after a failed one."""
+    import datetime as dt
+
+    from tracker import runner
+    from tracker.settings import ENV_SETTINGS_DIR
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    code, payload = run(capsys, "list")
+    assert code == 0 and payload["needs_root"] is True
+    assert payload["last_pass"] == {"text": runner.LAST_PASS_NEVER, "level": runner.LEVEL_WARN}
+
+    now = dt.datetime.now()
+    runner.write_last_pass(runner.last_pass_path(), started=now, ended=now, root="",
+                           result=runner.PASS_FAILED, reason_code=runner.PASS_ROOT_REFUSED)
+    clients = tmp_path / "Clients"
+    clients.mkdir()
+    assert run(capsys, "set-root", stdin={"root": str(clients)})[0] == 0
+    code, payload = run(capsys, "list")
+    assert code == 0 and payload["needs_root"] is False
+    assert payload["last_pass"]["level"] == runner.LEVEL_ERR
+    assert runner.PASS_REASONS[runner.PASS_ROOT_REFUSED] in payload["last_pass"]["text"]
+
+
 def test_the_short_path_warning_comes_with_the_returns_too(capsys, demo_root, monkeypatch):
     from tracker import ocr
 
