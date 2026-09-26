@@ -2096,6 +2096,9 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
         "hand_over_request": api.HAND_OVER_REQUEST_LABEL,
         "handed_over": api.HANDED_OVER_LINE,
         "file_where_it_waits": api.FILE_WHERE_IT_WAITS_LABEL,
+        "keyword": api.KEYWORD_LABEL, "keyword_help": api.KEYWORD_HELP,
+        "issuer_label": api.ISSUER_LABEL, "issuer_help": api.ISSUER_HELP,
+        "issuer_add": api.ISSUER_ADD_LABEL,
     }
     assert vocab["default_extensions"] == ", ".join(DEFAULT_EXTENSIONS)
     assert "carried_sheet" not in vocab
@@ -2131,7 +2134,9 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
     # The settings page's phone box: its label, its sentence and the
     # number as recorded (decision 117).
     assert vocab["settings"] == {"phone_label": api.FIRM_PHONE_LABEL,
-                                 "phone_help": api.FIRM_PHONE_HELP, "phone": ""}
+                                 "phone_help": api.FIRM_PHONE_HELP, "phone": "",
+                                 "firm_label": api.FIRM_NAME_LABEL, "firm_help": api.FIRM_NAME_HELP,
+                                 "root_label": api.CLIENTS_FOLDER_LABEL}
     # And every word and colour the Reminder card shows (decision 118).
     _the_reminder_card_words_are_all_pythons(vocab["reminder"])
 
@@ -6972,3 +6977,325 @@ def test_the_words_188_and_204_added_are_still_in_the_vocabulary(capsys, demo_ro
     assert vocab["household"]["accept_folder_name_help"] == api.ACCEPT_FOLDER_NAME_HELP
     father, _ = two_households(capsys, demo_root)
     assert "waits_for" in waiting_document(capsys, father)
+
+
+# ------------------------------- decision 201: an unnamed issuer's card ----
+
+
+def _issuer_return(capsys, demo_root, *, year=BASE_YEAR, items=None, name="Issuer Return"):
+    """A 1040 whose list asks for K-1s one row per issuer - the catalog's K-1
+    row and one issuer row, as the catalog builds them, for ``year`` - and a
+    K-1 from an issuer it does not name, parked for a person by a pass.
+    Returns the return and the parked row as the state shows it."""
+    from tests.samples import text_pdf
+    from tracker import templates
+
+    # Written for the catalog's year: the create shifts them to the return's.
+    rows = items or [templates.k1_row(), templates.issuer_row("F02", "Ashford Holdings")]
+    spec = {"household": HOUSEHOLD, "return_name": name, "form": "1040", "year": year,
+            "items": rows}
+    code, payload = run(capsys, "create", stdin=spec)
+    assert code == 0, payload
+    engagement = where(demo_root, name, year)
+    text_pdf(inbox_of(engagement) / "k-1 dunmore.pdf", [
+        f"Schedule K-1 {year} (Form 1065) Partner's Share of Income, Deductions, Credits, etc.",
+        "k-1 statement", "Part I Information About the Partnership", "Dunmore Capital Group",
+        "Part II Information About the Partner", TEST_CLIENT])
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    [row] = [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
+    return engagement, row
+
+
+def _add_issuer(capsys, engagement, row, issuer="Dunmore Capital", **given):
+    """The card's one button, as the app presses it: the row, its version,
+    the list's version the card was drawn from and the typed name."""
+    from tracker.manifest import list_head
+
+    spec = {"original": row["pbc_location"], "seq": row["seq"], "head": list_head(engagement),
+            "issuer": issuer, **given}
+    return run(capsys, "add-issuer-and-file", api.ENGAGEMENT_FLAG, str(engagement), stdin=spec)
+
+
+def _nothing_moved(engagement, before):
+    """The list, the index and the journal exactly as ``before`` held them."""
+    from tracker.manifest import recorded_rules
+
+    assert recorded_rules(engagement) == before["rules"]
+    assert read_index(engagement) == before["index"]
+    assert len(ledger.read_events(engagement)) == before["events"]
+
+
+def _as_it_stands(engagement):
+    from tracker.manifest import recorded_rules
+
+    return {"rules": recorded_rules(engagement), "index": read_index(engagement),
+            "events": len(ledger.read_events(engagement))}
+
+
+def test_a_card_parked_for_an_unnamed_issuer_offers_the_next_free_issuer_row(capsys, demo_root):
+    from tracker import reasons
+
+    engagement, row = _issuer_return(capsys, demo_root)
+    assert reasons.ISSUER_NOT_NAMED.matches(row["reason"])
+    [card] = api._state(engagement)["review"]
+    assert card["issuer"] == {"identifier": "F03"}
+
+
+def test_a_card_parked_for_any_other_reason_offers_no_issuer_box(capsys, demo_root):
+    from tests.samples import text_pdf
+
+    engagement, _ = _issuer_return(capsys, demo_root)
+
+    text_pdf(inbox_of(engagement) / "notice.pdf", ["an agency notice nothing asks for"])
+    run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    cards = {card["original_name"]: card for card in api._state(engagement)["review"]}
+    assert cards["notice.pdf"]["issuer"] is None
+    assert cards["k-1 dunmore.pdf"]["issuer"] == {"identifier": "F03"}
+
+
+def test_the_state_marks_which_rows_came_from_the_catalog(capsys, demo_root):
+    """A custom row is one no catalog row of the return's form has
+    (decision 201): the editor draws its Document with the plain boxes."""
+    engagement, _ = _issuer_return(capsys, demo_root)
+    marked = {item["identifier"]: item["catalog_row"] for item in api._state(engagement)["items"]}
+    assert marked == {"F01": True, "F02": False}
+    assert all("catalog_row" not in rule for rule in api._state(engagement)["rules"])
+
+
+def test_adding_the_issuer_and_filing_is_one_command_writing_two_events_in_one_transaction(
+        capsys, demo_root, monkeypatch):
+    engagement, row = _issuer_return(capsys, demo_root)
+    count = len(ledger.read_events(engagement))
+    calls = []
+    real = store.record
+
+    def counting(conn, folder, *events):
+        calls.append(tuple(e[ledger.EVENT_KEY] for e in events))
+        return real(conn, folder, *events)
+
+    monkeypatch.setattr(store, "record", counting)
+    code, payload = _add_issuer(capsys, engagement, row)
+    assert code == 0, payload
+    assert calls[:2] == [(ledger.MOVING,), (ledger.ASSIGNED_BY_PERSON, ledger.RULES_CHANGED)]
+    written = [e[ledger.EVENT_KEY] for e in ledger.read_events(engagement)[count:count + 3]]
+    assert written == [ledger.MOVING, ledger.ASSIGNED_BY_PERSON, ledger.RULES_CHANGED]
+    monkeypatch.undo()
+    # The store's rules and index agree with the journal, rebuilt from it.
+    from tracker.manifest import recorded_rules
+
+    rules, index = recorded_rules(engagement), read_index(engagement)
+    store.rebuild_engagement(store.connect(), demo_root, engagement)
+    assert recorded_rules(engagement) == rules and read_index(engagement) == index
+    [filed] = [e for e in index if e.original_name == "k-1 dunmore.pdf"]
+    assert filed.decision == FILED and filed.identifier == "F03"
+
+
+def test_the_reply_names_the_row_added_and_the_document_filed(capsys, demo_root):
+    engagement, row = _issuer_return(capsys, demo_root)
+    code, payload = _add_issuer(capsys, engagement, row, issuer="Dunmore Capital, L.P.")
+    assert code == 0, payload
+    done = payload["added_and_filed"]
+    assert done["added"] == {"identifier": "F03", "document": "Schedule K-1 - Dunmore Capital LP"}
+    assert done["assigned"]["identifier"] == "F03" and done["assigned"]["original_name"] == "k-1 dunmore.pdf"
+    assert done["said"] == api.ISSUER_ADDED_AND_FILED.format(
+        identifier="F03", document="Schedule K-1 - Dunmore Capital LP", name="k-1 dunmore.pdf")
+    assert "F03" in {rule["identifier"] for rule in payload["state"]["rules"]}
+
+
+def test_the_new_issuer_row_asks_for_the_returns_year_not_the_catalogs(capsys, demo_root):
+    later = BASE_YEAR + 1
+    engagement, row = _issuer_return(capsys, demo_root, year=later)
+    code, payload = _add_issuer(capsys, engagement, row)
+    assert code == 0, payload
+    [added] = [rule for rule in payload["state"]["rules"] if rule["identifier"] == "F03"]
+    assert added["period"] == f"TY{later}"
+
+
+def test_the_added_row_reads_back_in_the_editor_as_issuer_row_builds_it(capsys, demo_root):
+    from tracker.records import rule_to_json
+    from tracker.templates import issuer_item
+
+    engagement, row = _issuer_return(capsys, demo_root)
+    code, payload = _add_issuer(capsys, engagement, row)
+    assert code == 0, payload
+    rules = payload["state"]["rules"]
+    [added] = [rule for rule in rules if rule["identifier"] == "F03"]
+    built = rule_to_json(issuer_item("F03", "Dunmore Capital", BASE_YEAR))
+    for column in ("document", "period", "required_keywords", "any_keywords", "named",
+                   "short_title", "expected_count"):
+        assert added[column] == built[column], column
+    code, saved = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                      stdin={"items": rules, "engagement": {}})
+    assert code == 0, saved
+    assert saved["saved"]["recorded"] is False
+
+
+def test_a_stale_card_adds_no_row_and_files_nothing(capsys, demo_root):
+    engagement, row = _issuer_return(capsys, demo_root)
+    before = _as_it_stands(engagement)
+    code, payload = _add_issuer(capsys, engagement, row, seq=row["seq"] + 1)
+    assert code == 1 and "is not as you saw it" in payload["error"]
+    _nothing_moved(engagement, before)
+
+
+def test_a_list_changed_since_the_card_was_drawn_adds_no_row_and_files_nothing(capsys, demo_root):
+    from tracker.filer import ISSUER_LIST_MOVED
+
+    engagement, row = _issuer_return(capsys, demo_root)
+    before = _as_it_stands(engagement)
+    code, payload = _add_issuer(capsys, engagement, row, head="0" * 64)
+    assert code == 1 and payload["error"] == ISSUER_LIST_MOVED
+    _nothing_moved(engagement, before)
+
+
+def test_a_card_no_longer_waiting_for_an_issuer_is_refused(capsys, demo_root):
+    from tests.samples import text_pdf
+    from tracker.filer import NOT_AN_ISSUER_CARD
+
+    engagement, _ = _issuer_return(capsys, demo_root)
+    text_pdf(inbox_of(engagement) / "notice.pdf", ["an agency notice nothing asks for"])
+    run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    [notice] = [e for e in api._state(engagement)["index"] if e["original_name"] == "notice.pdf"]
+    before = _as_it_stands(engagement)
+    code, payload = _add_issuer(capsys, engagement, notice)
+    assert code == 1 and payload["error"] == NOT_AN_ISSUER_CARD.format(name="notice.pdf")
+    _nothing_moved(engagement, before)
+
+
+def test_an_issuer_name_inside_another_is_refused_and_nothing_is_filed(capsys, demo_root):
+    engagement, row = _issuer_return(capsys, demo_root)
+    before = _as_it_stands(engagement)
+    code, payload = _add_issuer(capsys, engagement, row, issuer="Ashford")
+    assert code == 1 and "Rows F03 and F02 both narrow F01, and F03's name is inside F02's" in payload["error"]
+    _nothing_moved(engagement, before)
+
+
+def test_an_issuer_name_already_listed_is_refused_and_nothing_is_filed(capsys, demo_root):
+    from tracker.manifest import ISSUER_NAMED_TWICE
+
+    engagement, row = _issuer_return(capsys, demo_root)
+    before = _as_it_stands(engagement)
+    code, payload = _add_issuer(capsys, engagement, row, issuer="Ashford Holdings")
+    assert code == 1
+    assert payload["error"] == ISSUER_NAMED_TWICE.format(inner="F02", outer="F03", broad="F01",
+                                                         name="Ashford Holdings")
+    _nothing_moved(engagement, before)
+
+
+def test_a_blank_issuer_name_is_refused_before_anything_is_read(capsys, demo_root, monkeypatch):
+    engagement, row = _issuer_return(capsys, demo_root)
+    before = _as_it_stands(engagement)
+
+    def unread(*_args, **_kwargs):
+        raise AssertionError("read before the name was checked")
+
+    for name in ("load_engagement_info", "load_manifest", "read_index", "assign_review_file"):
+        monkeypatch.setattr(api, name, unread)
+    code, payload = _add_issuer(capsys, engagement, row, issuer=" , . ")
+    assert code == 1 and payload["error"] == "an issuer row needs the name of the entity that issued the K-1"
+    monkeypatch.undo()
+    _nothing_moved(engagement, before)
+
+
+def test_an_issuer_row_that_would_not_narrow_this_returns_k1_row_is_refused(capsys, demo_root):
+    """A return whose K-1 row is its own - no Any Keyword in common with the
+    catalog's - has issuer rows copied from that row, in the editor: the
+    catalog's issuer row would not be read as one of them."""
+    from tracker.filer import ISSUER_DOES_NOT_NARROW
+
+    own = [{"identifier": "F01", "document": "K-1 statements", "period": f"TY{BASE_YEAR}",
+            "extensions": "pdf", "any_keywords": "k-1 statement"},
+           {"identifier": "F02", "document": "K-1 statement - Ashford", "period": f"TY{BASE_YEAR}",
+            "extensions": "pdf", "required_keywords": "Ashford Holdings", "any_keywords": "k-1 statement"}]
+    engagement, row = _issuer_return(capsys, demo_root, items=own)
+    before = _as_it_stands(engagement)
+    code, payload = _add_issuer(capsys, engagement, row)
+    assert code == 1
+    assert payload["error"] == ISSUER_DOES_NOT_NARROW.format(identifier="F03", listed="F01, F02")
+    _nothing_moved(engagement, before)
+
+
+def test_an_editor_opened_before_the_issuer_was_added_is_refused_on_save(capsys, demo_root):
+    from tracker.manifest import LIST_MOVED
+
+    engagement, row = _issuer_return(capsys, demo_root)
+    opened = api._state(engagement)
+    code, payload = _add_issuer(capsys, engagement, row)
+    assert code == 0, payload
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": opened["rules"], "engagement": {}, "head": opened["list_head"]})
+    assert code == 1 and payload["error"] == LIST_MOVED
+    assert "F03" in {rule["identifier"] for rule in api._state(engagement)["rules"]}
+
+
+def test_an_edit_of_a_list_already_holding_one_issuer_name_twice_saves_and_warns(capsys, demo_root):
+    """The orchestrator's ruling on R7 (decision 201): two issuer rows of
+    one name already on the list do not lock a save of anything else, and
+    the reply names both rows; a save naming a third row the same is
+    refused."""
+    from dataclasses import replace
+
+    from tracker.locking import engagement_lock
+    from tracker.manifest import ISSUER_NAMED_TWICE, list_head, validated
+    from tracker.records import rule_to_json
+    from tracker.templates import issuer_row, item_from_spec
+
+    engagement, _ = _issuer_return(capsys, demo_root)
+    [twin] = validated([item_from_spec(issuer_row("F03", "Ashford Holdings"))])
+    twin = replace(twin, row=3)
+    with engagement_lock(engagement):         # as a list recorded before decision 201 could hold it
+        store.record(store.connect(), engagement, ledger.new(ledger.RULES_CHANGED, **{
+            ledger.RULES_KEY: [rule_to_json(twin)], ledger.REMOVED_KEY: [], ledger.INFO_KEY: {},
+        }))
+    rules = api._state(engagement)["rules"]
+    rules[0] = {**rules[0], "expected_count": 2}
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": rules, "engagement": {}})
+    assert code == 0, payload
+    assert payload["saved"]["changed"] == ["F01"]
+    assert payload["warnings"][0] == ISSUER_NAMED_TWICE.format(
+        inner="F02", outer="F03", broad="F01", name="Ashford Holdings")
+    third = {**rules[1], "identifier": "F04"}
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": [*rules, third], "engagement": {}, "head": list_head(engagement)})
+    assert code == 1 and "and F04 both narrow F01 with the same name" in payload["error"]
+
+
+def test_the_vocabulary_carries_every_word_201_shows():
+    words = api._vocab()
+    assert words["dialogs"] == {"unsaved": "You have changes here that are not saved.",
+                                "keep_editing": "Keep editing", "discard": "Discard my changes"}
+    editor = words["editor"]
+    assert editor["plain_columns"] == ["expected_count", "asked", "manual_override", "override_reason",
+                                       "short_title"]
+    assert editor["routing_columns"] == ["identifier", "document", "period", "allowed_extensions",
+                                         "min_size_kb", "required_keywords", "any_keywords",
+                                         "date_pattern", "named"]
+    assert editor["routing"] == "Routing rules"
+    assert editor["routing_all"] == "Show every row's routing rules"
+    assert editor["routing_help"] == ("How the tracker recognises this document when it arrives. A save "
+                                      "checks these the same way whether the fold is open or not.")
+    labels = words["review_labels"]
+    assert labels["keyword"] == "Keyword to learn (optional)"
+    assert labels["keyword_help"] == ("A word this document contains that others like it will too. "
+                                      "Taught to the request so the next one files itself; the editor "
+                                      "shows it beside the row.")
+    assert labels["issuer_label"] == "Issuer's name, as the K-1 prints it"
+    assert labels["issuer_help"] == ("Adds {identifier}, a K-1 row for this issuer, to the request list "
+                                     "and files this document under it. Type the distinctive words and "
+                                     "leave off the suffix (L.P., LLC).")
+    assert labels["issuer_add"] == "Add the issuer and file it"
+    settings = words["settings"]
+    assert (settings["firm_label"], settings["firm_help"], settings["root_label"]) == (
+        "Firm name", "as it should sign the reminders", "Clients folder")
+    assert "add-issuer-and-file" in words["commands"]
+    # None of them is typed in the renderer.
+    here = Path(__file__).resolve().parents[1]
+    js = (here / "app" / "renderer" / "app.js").read_text(encoding="utf-8")
+    html = (here / "app" / "renderer" / "index.html").read_text(encoding="utf-8")
+    for word in (*words["dialogs"].values(), editor["routing"], editor["routing_all"], labels["keyword"],
+                 labels["issuer_label"], labels["issuer_add"], settings["firm_label"],
+                 settings["firm_help"]):
+        assert word not in js and word not in html, word
+    assert settings["root_label"] not in html

@@ -39,7 +39,7 @@ let vocab = null;
 const EL_ATTRIBUTES = new Set([
   "className", "dataset", "id", "type", "value", "title", "placeholder",
   "label", "rows", "checked", "selected", "disabled",
-  "aria-label", "aria-pressed",
+  "aria-label", "aria-pressed", "aria-expanded",
 ]);
 
 function el(tag, attrs = {}, ...children) {
@@ -687,6 +687,26 @@ function renderMoved(state) {
   show("moved-list", moved.map((m) => movedRow(m, choices)));
 }
 
+// The keyword box, one builder for its three places - a moved copy's
+// keep-it-here, the list's row and the deck's card (decision 201, D11): a
+// visible label that stays while the person types, and the sentence
+// saying what the word does as its title. Every word is the API's.
+function keywordBox() {
+  const words = vocab.review_labels;
+  return el("label", { className: "field r-keyword-box" },
+    el("span", {}, words.keyword),
+    el("input", { type: "text", className: "r-keyword", title: words.keyword_help }));
+}
+
+// A note a person may leave when setting a document aside or unfiling it, labelled with the
+// words that were its placeholder (decision 201): a placeholder is gone
+// the moment somebody types, and a box must keep its name.
+function noteBox(words) {
+  return el("label", { className: "field r-note-box" },
+    el("span", {}, words),
+    el("input", { type: "text", className: "r-note" }));
+}
+
 function movedRow(m, choices) {
   const where = m.now || vocab.review_labels.moved_nowhere;
   // Decision 157: a copy whose original is gone too has nothing to put
@@ -709,11 +729,7 @@ function movedRow(m, choices) {
     // whose folder holds it.
     m.in_request && el("select", { "aria-label": `Request for ${m.original_name}` },
       choices.map((i) => requestOption(i, m.in_request))),
-    m.in_request && el("input", {
-      type: "text", className: "r-keyword", placeholder: "keyword to learn (optional)",
-      "aria-label": "Keyword to add to the request",
-      title: "A word this document contains that others like it will too. Taught to the request so the next one files itself; the editor shows it beside the row.",
-    }),
+    m.in_request && keywordBox(),
     el("button", { className: "btn btn-primary r-restore" }, vocab.review_labels.restore),
     m.in_request && el("button", { className: "btn r-keep" }, vocab.review_labels.keep),
     el("button", { className: "btn r-review" }, vocab.review_labels.send_to_review),
@@ -819,10 +835,9 @@ function teachSpelling(triage, people) {
     el("span", { className: "tmpl-rules" }, words.teach),
     el("select", { className: "r-person", "aria-label": words.teach },
       people.map((p) => el("option", { value: p.name }, p.name))),
-    el("input", {
-      type: "text", className: "r-spelling", placeholder: words.teach_hint,
-      "aria-label": words.teach_hint,
-    }));
+    el("label", { className: "field r-spelling-box" },
+      el("span", {}, words.teach_hint),
+      el("input", { type: "text", className: "r-spelling" })));
 }
 
 // What the card is sending about a spelling, or nothing at all.
@@ -882,16 +897,10 @@ function reviewRow(e, choices, ids, open, triage, people = []) {
       // the API's sentence, with the row's year label, one line each.
       ((triage && triage.set_aside) || []).map((s) =>
         el("li", { className: "r-set-aside" }, fill(vocab.triage.set_aside_note, s)))),
+    open && issuerBox(triage),
     open && teachSpelling(triage, people),
-    open && el("input", {
-      type: "text", className: "r-keyword", placeholder: "keyword to learn (optional)",
-      "aria-label": "Keyword to add to the request",
-      title: "A word this document contains that others like it will too. Taught to the request so the next one files itself; the editor shows it beside the row.",
-    }),
-    open && el("input", {
-      type: "text", className: "r-note", placeholder: vocab.review_labels.dismiss_note,
-      "aria-label": vocab.review_labels.dismiss_note,
-    }),
+    open && keywordBox(),
+    open && noteBox(vocab.review_labels.dismiss_note),
     el("button", { className: "btn btn-primary r-file" },
       open ? vocab.review_labels.file : vocab.review_labels.file_anyway),
     open && el("button", { className: "btn r-dismiss" }, vocab.review_labels.dismiss),
@@ -977,6 +986,47 @@ async function fileRow(original, identifier, seq, keyword, spelling) {
       ? "warn" : "ok");
 }
 
+// ── An unnamed issuer: one box, one button (decision 201) ───────────────
+// A K-1 parked because it names none of the list's issuers carries the row
+// the API will add - the next free one in F's block, named before anything
+// is pressed - one box for the issuer's name as the K-1 prints it, and one
+// button. The page sends the row, its version, the list's version the card
+// was drawn from and the typed name: no identifier and no row, so it names
+// no column value of its own. The API builds the row, checks it by the
+// editor's own rules and files the document under it, in one step.
+function issuerBox(triage) {
+  const offer = triage && triage.issuer;
+  if (!offer) return null;
+  const words = vocab.review_labels;
+  return el("div", { className: "r-issuer", dataset: { head: (lastState && lastState.list_head) || "" } },
+    el("label", { className: "field" },
+      el("span", {}, words.issuer_label),
+      el("input", { type: "text", className: "r-issuer-name" })),
+    el("button", { className: "btn r-add-issuer" }, words.issuer_add),
+    el("p", { className: "wiz-note" }, fill(words.issuer_help, { identifier: offer.identifier })));
+}
+
+// The one place the issuer is added and the document filed. The list's
+// row and the deck's card both reach it; a refusal is said the way a
+// filing's is, and the card is drawn again from the record.
+async function addIssuerAndFile(node, btn) {
+  const box = btn.closest(".r-issuer");
+  btn.disabled = true;
+  try {
+    const result = await call(withEng("add-issuer-and-file"), {
+      original: node.dataset.original, seq: Number(node.dataset.seq),
+      head: box.dataset.head, issuer: typed(box, ".r-issuer-name"),
+    });
+    render(result.state);
+    const done = result.added_and_filed;
+    const notes = [done.said];
+    if (done.assigned.scan_note) notes.push(done.assigned.scan_note);
+    banner(notes.join("\n"), done.assigned.scan_note ? "warn" : "ok");
+  } catch (err) {
+    await refused(err, btn);
+  }
+}
+
 // ── File under another return (decision 129) ─────────────────────────────
 //
 // One decision the API carries out whole: the original moves where it must
@@ -998,7 +1048,7 @@ async function openHandOver(original, seq) {
   $("ho-request-label").textContent = words.hand_over_request;
   $("ho-file").textContent = words.file;
   show("ho-return", offered.map((one) => el("option", { value: one.path }, one.label)));
-  $("handover-modal").classList.remove("hidden");
+  openDialog("handover-modal");
   await loadHandOverRequests();
 }
 
@@ -1029,7 +1079,7 @@ async function fileHandOver() {
       original: handingOver.original, identifier, target: $("ho-return").value,
       seq: handingOver.seq,
     });
-    $("handover-modal").classList.add("hidden");
+    closeDialog("handover-modal");
   } catch (err) {
     failed(err);
   } finally {
@@ -1191,12 +1241,9 @@ function deckCard(t, row, place, total, people = []) {
         : el("li", { className: "r-nothing" }, vocab.triage.nothing_suggested),
       (t.set_aside || []).map((s) =>
         el("li", { className: "r-set-aside" }, fill(vocab.triage.set_aside_note, s)))),
+    issuerBox(t),
     teachSpelling(t, people),
-    el("input", {
-      type: "text", className: "r-keyword", placeholder: "keyword to learn (optional)",
-      "aria-label": "Keyword to add to the request",
-      title: "A word this document contains that others like it will too. Taught to the request so the next one files itself; the editor shows it beside the row.",
-    }),
+    keywordBox(),
     el("span", { className: "deck-position" },
       fill(vocab.review_labels.card_position, { n: place, total })),
     best && el("button", { className: "btn btn-primary c-accept" }, vocab.review_labels.accept),
@@ -1261,10 +1308,7 @@ function renderUnfileList(state) {
     el("li", { dataset: { original: e.pbc_location, row: e.pbc_location, seq: e.seq } },
       el("span", { className: "r-name" }, e.original_name),
       el("span", { className: "r-why" }, `${e.identifier} — ${e.filed_names.join(", ")}`),
-      el("input", {
-        type: "text", className: "r-note", placeholder: vocab.review_labels.unfile_note,
-        "aria-label": vocab.review_labels.unfile_note,
-      }),
+      noteBox(vocab.review_labels.unfile_note),
       el("button", { className: "btn r-unfile" }, vocab.review_labels.unfile),
       // Decision 146: a consolidated statement answers other requests
       // without a copy; each can be marked missing again from here.
@@ -1746,7 +1790,7 @@ function openHouseholdEditor() {
   editorFeeds = (hh.feeds || []).map((f) => ({ household: f.household, return_name: f.return_name,
                                                label: f.label }));
   renderEditorFeeds();
-  $("household-modal").classList.remove("hidden");
+  openDialog("household-modal");
 }
 
 // The return lines this drop folder feeds, and the picker of every other
@@ -1808,7 +1852,7 @@ async function saveHousehold() {
       link: $("hh-edit-link").value.trim(),
       feeds: editorFeeds.map((f) => ({ household: f.household, return_name: f.return_name })),
     });
-    $("household-modal").classList.add("hidden");
+    closeDialog("household-modal");
     if (result.list) adoptList(result.list);   // the list this write changed (decision 194)
     renderFor(view, result.state);
     const moved = result.saved.household;
@@ -2013,12 +2057,17 @@ function applyVocabulary() {
   $("btn-copy").textContent = vocab.reminder.copy;
   $("btn-approve").textContent = vocab.reminder.approve;
   $("btn-open-draft").textContent = vocab.reminder.open_draft;
+  // The setup card's three boxes, each under a label that stays while a
+  // person types (decision 201, D11); the example root stays as the
+  // folder box's placeholder, never its only name. The firm's own
+  // telephone number, beside its name: the label, the sentence under it
+  // and the number itself are all Python's.
+  $("root-label").textContent = vocab.settings.root_label;
   $("root-input").placeholder = `e.g. ${vocab.example_root}`;
-  // The firm's own telephone number, beside its name: the label, the
-  // sentence under it and the number itself are all Python's.
-  $("phone-input").placeholder = `${vocab.settings.phone_label} — ${vocab.settings.phone_help}`;
-  $("phone-input").title = vocab.settings.phone_help;
-  $("phone-input").setAttribute("aria-label", vocab.settings.phone_label);
+  $("firm-label").textContent = vocab.settings.firm_label;
+  $("firm-help").textContent = vocab.settings.firm_help;
+  $("phone-label").textContent = vocab.settings.phone_label;
+  $("phone-help").textContent = vocab.settings.phone_help;
   for (const id of ["ne-year"]) {
     $(id).min = vocab.year_min;
     $(id).max = vocab.year_max;
@@ -2343,7 +2392,7 @@ async function openAddReturn(hh) {
   $("form-title").textContent = fill(vocab.household.add_return_title, { household: hh.name });
   renderFormGrid();
   showStep("form");
-  $("modal").classList.remove("hidden");
+  openDialog("modal");
 }
 
 async function openNewHousehold() {
@@ -2360,13 +2409,34 @@ async function openNewHousehold() {
   renderHouseholdStep();
   renderFormGrid();
   showStep("household");
-  $("modal").classList.remove("hidden");
+  openDialog("modal");
 }
 
+// What Add a return / New household forgets once closeDialog has shut it
+// (decision 201): the household a return was being added to, and a refusal.
 function closeNewReturn() {
-  $("modal").classList.add("hidden");
   addingTo = null;
   hideCreateNote();
+}
+
+// Add a return / New household's model, for the unsaved guard (decision
+// 201): the household's four fields when one is being made, the form
+// picked, and the request list as the person left it. A person is their
+// kind, name, own spellings and the proposals they unticked, so a
+// proposal the API sends after the dialog opened is not somebody's typing.
+function wizardModel() {
+  const household = addingTo ? null
+    : ["hh-name", "hh-contact", "hh-members", "hh-link"].map((id) => $(id).value);
+  const items = selectedForm ? {
+    fields: ["ne-name", "ne-client", "ne-year", "ne-due"].map((id) => $(id).value),
+    ticks: [...$("tmpl-list").querySelectorAll("input[type=checkbox]")].map((box) => box.checked),
+    custom: customItems,
+    people: wizardPeople.map((one) => ({
+      kind: one.kind, name: one.name, own: one.own,
+      off: one.proposed.filter((p) => !p.on).map((p) => p.text),
+    })),
+  } : null;
+  return { household, form: selectedForm, items };
 }
 
 // A refused create stays in the dialog, in the API's words, until the
@@ -2376,10 +2446,17 @@ function hideCreateNote() {
   $("ne-note").textContent = "";
 }
 
+// The dialog is named by the heading of the step it shows (decision 201,
+// 196's review N5): New household opens on its household step, whose
+// heading is not the form step's, so a screen reader announces the step
+// the person is on.
+const STEP_HEADINGS = { household: "household-title", form: "form-title", items: "items-title" };
+
 function showStep(step) {
   $("wiz-household").classList.toggle("hidden", step !== "household");
   $("wiz-form").classList.toggle("hidden", step !== "form");
   $("wiz-items").classList.toggle("hidden", step !== "items");
+  $("modal").querySelector('[role="dialog"]').setAttribute("aria-labelledby", STEP_HEADINGS[step]);
 }
 
 // ── the household step: a new household ─────────────────────────────────
@@ -2452,6 +2529,9 @@ function chooseForm(formId) {
   // where 188's duplicate-name refusal is read: nothing typed is cleared.
   $("wi-household").classList.toggle("hidden", Boolean(addingTo));
   showStep("items");
+  // A form picked fills its defaults in; none of that is the person's
+  // typing yet, so the guard starts the list from here (decision 201).
+  rebaseline("modal", ["form", "items"]);
   $("ne-client").focus();
 }
 
@@ -2702,23 +2782,79 @@ function learnedCell(identifier, learned) {
 // keyword)` about a word taken back. `keyed` shows each row's
 // identifier as fixed text (Add a return / New household assigns them); the editor passes
 // the identifier as one of its columns instead, typed like the rest.
-function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack, learned = {}, keyed = true }) {
-  const head = el("tr", {},
-    keyed ? el("th", { className: "ed-id" }, columnsByKey(["identifier"])[0].label) : null,
-    columns.map((c) => el("th", { title: c.help }, c.label)),
-    Object.keys(learned).length ? el("th", {}, "") : null,
-    el("th", {}, ""));
-  const body = rows.map((row, index) => el("tr", {},
-    keyed ? el("td", { className: "ed-id" }, el("span", { className: "req-id" }, row.identifier)) : null,
-    columns.map((c) => el("td", { className: `ed-${c.key}` }, cellInput(row, c, () => onChange(rows)))),
-    Object.keys(learned).length
-      ? el("td", { className: "ed-learned", dataset: { identifier: row.identifier || "" } },
-          learnedCell(row.identifier, learned))
-      : null,
-    el("td", { className: "ed-remove" },
-      el("button", { className: "btn btn-small", dataset: { index: String(index) }, "aria-label": `${vocab.editor.remove_row} ${row.identifier || ""}` },
-        vocab.editor.remove_row)),
-  ));
+//
+// `fold` is the editor's plain view (decision 201, M13): each row is two
+// table rows - the row's name as text and the boxes a preparer touches
+// (`fold.plain`, and a custom row's Document), then its routing
+// fold holding the rest (`fold.routing`) and the taught keywords, closed
+// unless `fold.isOpen(row)` says otherwise. Folding hides cells and never
+// drops them: every box writes into the same row object through
+// cellInput, so a save carries every column whether a fold was opened or
+// not. Which column goes where is the API's answer, never the page's.
+function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack, learned = {}, keyed = true, fold = null }) {
+  const taught = Object.keys(learned).length > 0;
+  const learnedBox = (tag, row) => el(tag, { className: "ed-learned", dataset: { identifier: row.identifier || "" } },
+    learnedCell(row.identifier, learned));
+  const removeCell = (row, index) => el("td", { className: "ed-remove" },
+    el("button", { className: "btn btn-small", dataset: { index: String(index) }, "aria-label": `${vocab.editor.remove_row} ${row.identifier || ""}` },
+      vocab.editor.remove_row));
+  let head;
+  let body;
+  if (fold) {
+    const byKey = new Map(columns.map((c) => [c.key, c]));
+    const plain = fold.plain.map((key) => byKey.get(key)).filter(Boolean);
+    const routing = fold.routing.map((key) => byKey.get(key)).filter(Boolean);
+    const documentColumn = byKey.get("document");
+    const nameOf = (row, custom) => (custom ? row.identifier || ""
+      : `${row.identifier || ""}${vocab.triage.identifier_separator}${row.document || ""}`);
+    head = el("tr", {},
+      el("th", { title: documentColumn.help }, documentColumn.label),
+      plain.map((c) => el("th", { title: c.help }, c.label)),
+      el("th", {}, ""),
+      el("th", {}, ""));
+    body = rows.flatMap((row, index) => {
+      const custom = fold.custom(row);
+      const name = el("span", { className: "req-id" }, nameOf(row, custom));
+      const changed = () => { name.textContent = nameOf(row, custom); onChange(rows); };
+      const open = fold.isOpen(row);
+      const inFold = routing.filter((c) => !(custom && c.key === "document"));
+      const cell = el("td", {}, el("div", { className: "ed-fields" },
+        inFold.map((c) => el("label", { className: "field" },
+          el("span", { title: c.help }, c.label), cellInput(row, c, changed))),
+        taught ? learnedBox("div", row) : null));
+      cell.colSpan = plain.length + 3;
+      const routingRow = el("tr", { className: open ? "ed-routing" : "ed-routing hidden",
+                                    dataset: { row: String(index) } }, cell);
+      const toggle = el("button", {
+        type: "button", className: "btn btn-small ed-fold", title: vocab.editor.routing_help,
+        "aria-expanded": String(open),
+      }, vocab.editor.routing);
+      toggle.addEventListener("click", () => {
+        const now = routingRow.classList.toggle("hidden") === false;
+        toggle.setAttribute("aria-expanded", String(now));
+        fold.setOpen(row, now);
+      });
+      const plainRow = el("tr", { dataset: { row: String(index) } },
+        el("td", { className: "ed-name" }, name,
+          custom ? cellInput(row, documentColumn, changed) : null),
+        plain.map((c) => el("td", { className: `ed-${c.key}` }, cellInput(row, c, changed))),
+        el("td", { className: "ed-fold-cell" }, toggle),
+        removeCell(row, index));
+      return [plainRow, routingRow];
+    });
+  } else {
+    head = el("tr", {},
+      keyed ? el("th", { className: "ed-id" }, columnsByKey(["identifier"])[0].label) : null,
+      columns.map((c) => el("th", { title: c.help }, c.label)),
+      taught ? el("th", {}, "") : null,
+      el("th", {}, ""));
+    body = rows.map((row, index) => el("tr", { dataset: { row: String(index) } },
+      keyed ? el("td", { className: "ed-id" }, el("span", { className: "req-id" }, row.identifier)) : null,
+      columns.map((c) => el("td", { className: `ed-${c.key}` }, cellInput(row, c, () => onChange(rows)))),
+      taught ? learnedBox("td", row) : null,
+      removeCell(row, index),
+    ));
+  }
   const table = el("table", { className: "editor-table" }, el("thead", {}, head), el("tbody", {}, body));
   table.addEventListener("click", (e) => {
     // Taking a keyword back is its own event and lands at once; removing a
@@ -2733,7 +2869,8 @@ function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack,
   });
   table.addEventListener("keydown", (e) => {
     // Enter on the last row adds another, as Add a return / New household always has.
-    if (e.key === "Enter" && e.target.closest("tr") === table.querySelector("tbody tr:last-child")) {
+    const tr = e.target.closest("tr");
+    if (e.key === "Enter" && tr && tr.dataset.row === String(rows.length - 1) && e.target.matches("input")) {
       e.preventDefault();
       container.dispatchEvent(new CustomEvent("addrow", { bubbles: true }));
     }
@@ -2806,7 +2943,7 @@ async function createEngagement() {
       due: $("ne-due").value,
       year: Number($("ne-year").value) || null,
     });
-    closeNewReturn();
+    closeDialog("modal");
     // The list this write changed arrives with it (decision 194).
     if (result.list) adoptList(result.list);
     renderFor(select(result.state.paths.engagement), result.state);
@@ -2928,6 +3065,13 @@ function renderEditorRows() {
   const options = (rows) => ({
     columns: vocab.columns,
     keyed: false,
+    fold: {
+      plain: vocab.editor.plain_columns,
+      routing: vocab.editor.routing_columns,
+      custom: editorRowIsCustom,
+      isOpen: editorRowFoldOpen,
+      setOpen: (row, open) => editorFolds.set(row, open),
+    },
     learned: (editorState && editorState.learned) || {},
     onChange: () => { if (grouping() !== drawn) renderEditorRows(); },
     onRemove: (index) => {
@@ -2953,14 +3097,48 @@ function renderEditorRows() {
     ? el("details", { className: "ed-set-aside" },
       el("summary", {}, fill(vocab.set_aside.heading, { n: aside.length })), ...groups.flat())
     : null;
-  $("ed-rows").replaceChildren(...[activeBox, folded].filter(Boolean));
+  // The one toggle above the rows that opens every row's routing fold.
+  const all = editorRows.every(editorRowFoldOpen);
+  const every = el("button", { type: "button", className: "btn btn-small ed-fold-all",
+                               "aria-expanded": String(all) }, vocab.editor.routing_all);
+  every.addEventListener("click", showEveryFold);
+  const above = el("div", { className: "editor-actions" }, every,
+    el("span", { className: "wiz-note" }, vocab.editor.routing_help));
+  $("ed-rows").replaceChildren(...[above, activeBox, folded].filter(Boolean));
+}
+
+// The plain view's folds (decision 201): open or shut per row object, so a
+// fold stays as the person left it when the rows are drawn again. A row
+// the editor did not open on - typed or pasted since - has no items entry
+// and opens unfolded, because the person is writing it now.
+const editorFolds = new Map();
+
+function editorRowItem(row) {
+  return ((editorState && editorState.items) || []).find((i) => i.identifier === row.identifier);
+}
+
+function editorRowFoldOpen(row) {
+  return editorFolds.has(row) ? editorFolds.get(row) : !editorRowItem(row);
+}
+
+// A custom row is one no catalog row of the return's form has; the API
+// says which (state.items[].catalog_row). Its Document is in the plain
+// part, because nothing else names it.
+function editorRowIsCustom(row) {
+  const known = editorRowItem(row);
+  return !known || !known.catalog_row;
+}
+
+function showEveryFold() {
+  for (const row of editorRows) editorFolds.set(row, true);
+  renderEditorRows();
 }
 
 // Only the learned column, drawn again from the state the API just sent.
 // Nothing else is touched: an unlearn lands on its own, and whatever the
 // person has typed into the rows and not saved is theirs to keep.
 function renderLearnedCells(learned) {
-  for (const cell of $("ed-rows").querySelectorAll("td.ed-learned")) {
+  for (const cell of $("ed-rows").querySelectorAll(".ed-learned")) {
     cell.replaceChildren(...learnedCell(cell.dataset.identifier, learned));
   }
 }
@@ -3041,6 +3219,13 @@ function editorNote(text, cls) {
   note.classList.toggle("hidden", !text);
 }
 
+// The editor opens on the state already on screen (decision 201, D13):
+// lastState carries the rules, the items, the taught keywords, the details
+// and the list's version, which is everything the editor reads. A display
+// may be cached and a write never is - the save still hands back
+// list_head and is judged under the lock (decision 160) - so a stale
+// screen costs a refusal, never a write. Only when the state on screen is
+// another return's (a switch that has not landed) is it read first.
 async function openEditor() {
   if (!active) return;
   try {
@@ -3055,6 +3240,7 @@ async function openEditor() {
     failed(err, openEditor);
     return;
   }
+  editorFolds.clear();
   editorRows = (editorState.rules || []).map(editorRow);
   renderEngagementFields(editorState.engagement || {});
   // The return's people, as the record holds them (decision 128): edited
@@ -3066,7 +3252,7 @@ async function openEditor() {
   renameChoices();
   $("ed-paste").value = "";
   editorNote("", "ok");
-  $("editor").classList.remove("hidden");
+  openDialog("editor");
 }
 
 // The requests the rename can act on: the list as the record holds it,
@@ -3094,6 +3280,9 @@ async function renameRequest() {
     const renamed = result.renamed;
     editorState = { ...result.state, list_head: renamed.head };
     for (const row of editorRows) if (row.identifier === renamed.old) row.identifier = renamed.new;
+    // Recorded the moment it was made, so nothing about it is unsaved: the
+    // row is renamed in the guard's snapshot as it is on screen (decision 201).
+    for (const row of dialogSnapshot.editor.rows) if (row.identifier === renamed.old) row.identifier = renamed.new;
     renderEditorRows();
     renameChoices();
     renderFor(view, result.state);
@@ -3107,10 +3296,6 @@ async function renameRequest() {
   } finally {
     btn.disabled = false;
   }
-}
-
-function closeEditor() {
-  $("editor").classList.add("hidden");
 }
 
 // A small RFC 4180 reader: quoted fields, doubled quotes, commas inside
@@ -3173,7 +3358,7 @@ async function saveEditor() {
     // the one thing the editor saves that the list shows (decision 194).
     if (result.list) adoptList(result.list);
     renderFor(view, result.state);
-    closeEditor();
+    closeDialog("editor");
     const saved = result.saved;
     const lines = [saved.recorded
       ? fill(vocab.editor.saved, { changed: saved.changed.length, removed: saved.removed.length })
@@ -3186,10 +3371,158 @@ async function saveEditor() {
     }
     banner(lines.join("\n"), ruleWarnings.length ? "warn" : "ok");
   } catch (err) {
+    // A refusal names a row and a column, and the column it names must be
+    // on screen: every fold opens (decision 201). The sentence is never
+    // parsed; the rows stay as typed, and the dialog stays dirty.
+    showEveryFold();
     editorNote(err.message, "err");
     failed(err);   // and a notice, with Look again when the list moved (the review's S3)
   } finally {
     btn.disabled = false;
+  }
+}
+
+// ── the four dialogs: one way in, one way out (decision 201) ─────────────
+// Every dialog is in this registry, and every one opens through
+// openDialog and closes through requestClose - Cancel, Escape and a click
+// on the dim behind it alike (D10). A dialog with a model keeps a snapshot
+// taken when it opened; closing one whose model moved raises its bar, with
+// its keep button focused and its discard button the only way out, and
+// Escape while the bar shows means keep editing, so a key pressed out of
+// habit never throws work away (F-T-7). The hand-over is two picks and no
+// typing, so it has no model and is never dirty - but it goes the same way.
+// `first` is the control focus goes to when the opener names none; `closed`
+// is what a dialog forgets once it is shut.
+const DIALOGS = {
+  editor: {
+    model: () => ({ rows: editorRows, details: engagementFromFields() }),
+    first: () => $("ed-rows").querySelector("tbody input, tbody select"),
+  },
+  "household-modal": {
+    model: () => ({
+      members: $("hh-edit-members").value, contact: $("hh-edit-contact").value,
+      link: $("hh-edit-link").value,
+      feeds: editorFeeds.map((f) => [f.household, f.return_name]),
+    }),
+    first: () => $("hh-edit-members"),
+  },
+  "handover-modal": {
+    model: null,
+    first: () => $("ho-return"),
+    closed: () => { handingOver = null; },
+  },
+  modal: {
+    model: () => wizardModel(),
+    first: () => null,
+    closed: () => closeNewReturn(),
+  },
+};
+
+const dialogStack = [];      // the open dialogs, the topmost last
+const dialogOpener = {};     // id -> the element that had focus when it opened
+const dialogSnapshot = {};   // id -> its model as it opened, or as a recorded act left it
+const dialogKept = {};       // id -> the element that had focus when its bar went up
+
+function snapshotOf(id) {
+  const model = DIALOGS[id].model;
+  return model ? JSON.parse(JSON.stringify(model())) : null;
+}
+
+// A dialog's model moved since it opened: something typed or picked and
+// not saved.
+function isDirty(id) {
+  const model = DIALOGS[id].model;
+  return Boolean(model) && JSON.stringify(model()) !== JSON.stringify(dialogSnapshot[id]);
+}
+
+// Part of a dialog's model taken again as it now stands, because what
+// moved it is not unsaved work: a form picked (its defaults filled in), a
+// row renamed (recorded the moment it was made).
+function rebaseline(id, keys) {
+  const now = snapshotOf(id);
+  for (const key of keys) dialogSnapshot[id][key] = now[key];
+}
+
+// The controls Tab may reach inside a dialog: shown, and not disabled.
+function focusables(root) {
+  return [...root.querySelectorAll("button, input, select, textarea, summary, [tabindex]")]
+    .filter((node) => !node.disabled && node.tabIndex >= 0 && node.getClientRects().length);
+}
+
+function unsavedBar(id) {
+  return $(id).querySelector(".dlg-unsaved");
+}
+
+function openDialog(id, first) {
+  const overlay = $(id);
+  if (overlay.classList.contains("hidden")) {
+    dialogOpener[id] = document.activeElement;
+    dialogStack.push(id);
+  }
+  const bar = unsavedBar(id);
+  if (bar) bar.classList.add("hidden");
+  overlay.classList.remove("hidden");
+  dialogSnapshot[id] = snapshotOf(id);
+  const target = first || DIALOGS[id].first() || focusables(overlay)[0];
+  if (target) target.focus();
+}
+
+function closeDialog(id) {
+  const bar = unsavedBar(id);
+  if (bar) bar.classList.add("hidden");
+  $(id).classList.add("hidden");
+  const at = dialogStack.indexOf(id);
+  if (at >= 0) dialogStack.splice(at, 1);
+  if (DIALOGS[id].closed) DIALOGS[id].closed();
+  const back = dialogOpener[id];
+  delete dialogOpener[id];
+  if (back && document.contains(back) && typeof back.focus === "function") back.focus();
+}
+
+// Cancel, Escape and a click behind the dialog all come here. While the
+// bar is showing, every one of them means keep editing: only the bar's
+// own discard button closes a dialog with work in it.
+function requestClose(id) {
+  const bar = unsavedBar(id);
+  if (bar && !bar.classList.contains("hidden")) {
+    keepEditing(id);
+    return;
+  }
+  if (!isDirty(id)) {
+    closeDialog(id);
+    return;
+  }
+  dialogKept[id] = document.activeElement;
+  bar.querySelector(".dlg-unsaved-text").textContent = vocab.dialogs.unsaved;
+  bar.querySelector(".dlg-keep").textContent = vocab.dialogs.keep_editing;
+  bar.querySelector(".dlg-discard").textContent = vocab.dialogs.discard;
+  bar.classList.remove("hidden");
+  bar.querySelector(".dlg-keep").focus();
+}
+
+function keepEditing(id) {
+  unsavedBar(id).classList.add("hidden");
+  const back = dialogKept[id];
+  delete dialogKept[id];
+  const target = back && $(id).contains(back) && !unsavedBar(id).contains(back)
+    ? back : DIALOGS[id].first() || focusables($(id))[0];
+  if (target) target.focus();
+}
+
+// Tab and Shift+Tab go round the dialog's own controls and never behind it:
+// every dialog says aria-modal="true", and this is what makes it so.
+function trapTab(e, id) {
+  const inside = focusables($(id));
+  if (!inside.length) return;
+  const first = inside[0];
+  const last = inside[inside.length - 1];
+  const at = inside.indexOf(document.activeElement);
+  if (e.shiftKey && (at <= 0)) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && (at === -1 || at === inside.length - 1)) {
+    e.preventDefault();
+    first.focus();
   }
 }
 
@@ -3203,7 +3536,7 @@ $("btn-client-folder").addEventListener("click", () => paths && window.tracker.o
 $("btn-edit-household").addEventListener("click", openHouseholdEditor);
 $("btn-mark-shared").addEventListener("click", markShared);
 $("btn-accept-folder-name").addEventListener("click", acceptFolderName);
-$("hh-edit-cancel").addEventListener("click", () => $("household-modal").classList.add("hidden"));
+$("hh-edit-cancel").addEventListener("click", () => requestClose("household-modal"));
 $("hh-edit-save").addEventListener("click", saveHousehold);
 $("hh-edit-feed-add").addEventListener("click", addEditorFeed);
 $("hh-edit-feeds").addEventListener("click", (e) => {
@@ -3212,10 +3545,7 @@ $("hh-edit-feeds").addEventListener("click", (e) => {
   editorFeeds.splice(Number(remove.dataset.at), 1);
   renderEditorFeeds();
 });
-$("ho-cancel").addEventListener("click", () => {
-  $("handover-modal").classList.add("hidden");
-  handingOver = null;
-});
+$("ho-cancel").addEventListener("click", () => requestClose("handover-modal"));
 $("ho-return").addEventListener("change", loadHandOverRequests);
 $("ho-file").addEventListener("click", fileHandOver);
 $("household-returns").addEventListener("click", (e) => {
@@ -3243,7 +3573,7 @@ $("form-grid").addEventListener("click", (e) => {
   if (card) chooseForm(card.dataset.form);
 });
 $("wi-back").addEventListener("click", () => showStep("form"));
-$("wh-cancel").addEventListener("click", closeNewReturn);
+$("wh-cancel").addEventListener("click", () => requestClose("modal"));
 // Back from the request list, Continue returns to it as it was left; the
 // form grid is only for a household that has no form picked yet.
 $("wh-next").addEventListener("click", () => showStep(selectedForm ? "items" : "form"));
@@ -3251,7 +3581,7 @@ $("wi-household").addEventListener("click", () => {
   showStep("household");
   $("hh-name").focus();
 });
-$("wf-cancel").addEventListener("click", closeNewReturn);
+$("wf-cancel").addEventListener("click", () => requestClose("modal"));
 // A refusal in the dialog's note stands until the person edits a field.
 $("modal").addEventListener("input", hideCreateNote);
 // The household card's roll fold (decision 196): its ticks and form picks
@@ -3319,15 +3649,20 @@ $("ed-paste-btn").addEventListener("click", () => {
 });
 $("ed-rename-btn").addEventListener("click", renameRequest);
 $("ed-save").addEventListener("click", saveEditor);
-$("ed-cancel").addEventListener("click", closeEditor);
-$("editor").addEventListener("click", (e) => {
-  if (e.target === $("editor")) closeEditor();
-});
+$("ed-cancel").addEventListener("click", () => requestClose("editor"));
 $("ne-create").addEventListener("click", createEngagement);
-$("ne-cancel").addEventListener("click", closeNewReturn);
-$("modal").addEventListener("click", (e) => {
-  if (e.target === $("modal")) closeNewReturn();
-});
+$("ne-cancel").addEventListener("click", () => requestClose("modal"));
+// Every dialog the same way (decision 201): a click on the dim behind it
+// is Escape, and the bar's two answers are the only way past it.
+for (const id of Object.keys(DIALOGS)) {
+  $(id).addEventListener("click", (e) => {
+    if (e.target === $(id)) requestClose(id);
+  });
+  const bar = unsavedBar(id);
+  if (!bar) continue;
+  bar.querySelector(".dlg-keep").addEventListener("click", () => keepEditing(id));
+  bar.querySelector(".dlg-discard").addEventListener("click", () => closeDialog(id));
+}
 $("moved-list").addEventListener("click", (e) => {
   const restore = e.target.closest(".r-restore");
   if (restore) restoreMoved(restore.closest("li"));
@@ -3339,6 +3674,8 @@ $("moved-list").addEventListener("click", (e) => {
   if (withdraw) withdrawAnswer(withdraw);
 });
 $("review-list").addEventListener("click", (e) => {
+  const issuer = e.target.closest(".r-add-issuer");
+  if (issuer) addIssuerAndFile(issuer.closest("li"), issuer);
   const file = e.target.closest(".r-file");
   if (file) assignParked(file.closest("li"));
   const dismiss = e.target.closest(".r-dismiss");
@@ -3359,6 +3696,8 @@ $("review-mode").addEventListener("click", (e) => {
   if (e.target.closest("#review-mode-list")) setReviewMode(MODE_LIST);
 });
 $("review-deck").addEventListener("click", (e) => {
+  const issuer = e.target.closest(".r-add-issuer");
+  if (issuer) addIssuerAndFile(issuer.closest(".deck-card"), issuer);
   const accept = e.target.closest(".c-accept");
   if (accept) acceptCard(accept.closest(".deck-card"));
   const open = e.target.closest(".c-open");
@@ -3386,10 +3725,16 @@ $("filed-list").addEventListener("click", (e) => {
   const withdraw = e.target.closest(".r-withdraw");
   if (withdraw) withdrawAnswer(withdraw);
 });
+// The one keyboard rule for every dialog (decision 201): Escape asks the
+// topmost to close, and Tab stays inside it.
 document.addEventListener("keydown", (e) => {
+  const id = dialogStack[dialogStack.length - 1];
+  if (!id) return;
   if (e.key === "Escape") {
-    closeNewReturn();
-    closeEditor();
+    e.preventDefault();
+    requestClose(id);
+  } else if (e.key === "Tab") {
+    trapTab(e, id);
   }
 });
 

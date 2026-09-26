@@ -938,6 +938,51 @@ def test_two_issuer_rows_whose_names_nest_are_refused_when_the_list_is_validated
     assert not ledger.path_for(folder).exists()
 
 
+def test_two_issuer_rows_with_the_same_name_are_refused_when_the_list_is_validated(tmp_path):
+    """Decision 201: two rows narrowing one row under one name make every
+    K-1 naming it contested - the nested-name harm at its limit - and a
+    list that adds them is refused in its own sentence, both rows named."""
+    from tracker.manifest import ISSUER_NAMED_TWICE
+
+    folder = tmp_path / "S"
+    folder.mkdir()
+    with pytest.raises(ManifestError) as caught:
+        create_engagement(folder, k1_rows(("F02", "Ashford Holdings"), ("F03", "ASHFORD HOLDINGS")))
+
+    assert str(caught.value) == ISSUER_NAMED_TWICE.format(
+        inner="F02", outer="F03", broad="F01", name="Ashford Holdings")
+    assert not ledger.path_for(folder).exists()
+
+
+def test_a_list_already_holding_one_name_twice_saves_its_other_edits_and_warns(tmp_path):
+    """The orchestrator's ruling on R7 (decision 201): a list the record
+    already holds with two issuer rows of one name is not locked. A save
+    that touches neither row is recorded, and says which two rows share the
+    name; a save that adds a third of that name, or names another row so,
+    is refused."""
+    from tracker.manifest import ISSUER_NAMED_TWICE
+
+    folder = tmp_path / "S"
+    folder.mkdir()
+    held = k1_rows(("F02", "Ashford Holdings"), ("F03", "Ashford Holdings"), ("F04", "Birch Lane"))
+    create_engagement(folder, held, carried=True)          # as last year's list rolled forward
+    said = ISSUER_NAMED_TWICE.format(inner="F02", outer="F03", broad="F01", name="Ashford Holdings")
+
+    edited = [replace(held[0], document="Schedule K-1s, all issuers"), *held[1:]]
+    saved = save_rules(folder, edited, load_engagement_info(folder))
+    assert saved.recorded and saved.changed == ("F01",)
+    assert saved.warnings == (said,)
+
+    renamed = [*edited[:3], replace(edited[3], required_keywords=("Ashford Holdings",))]
+    with pytest.raises(ManifestError, match="Rows F02 and F04 both narrow F01 with the same name"):
+        save_rules(folder, renamed, load_engagement_info(folder))
+    added = [*edited, replace(edited[1], identifier="F05")]
+    with pytest.raises(ManifestError, match="and F05 both narrow F01 with the same name"):
+        save_rules(folder, added, load_engagement_info(folder))
+    assert [i.document for i in load_manifest(folder)][0] == "Schedule K-1s, all issuers"
+    assert {i.identifier for i in load_manifest(folder)} == {"F01", "F02", "F03", "F04"}
+
+
 def test_two_issuer_names_that_merely_share_a_word_are_allowed():
     check_narrowing_names(k1_rows(("F02", "Ashford Holdings"), ("F03", "Birch Holdings")))
 

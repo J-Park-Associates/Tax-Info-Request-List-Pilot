@@ -32,6 +32,8 @@ Commands:
             of the four stages, with the body Outlook wants (never sends)
   approve   make the text the panel showed this week's draft, and record it
   assign    file one Needs Review document under a request (a person's call)
+  add-issuer-and-file  add the issuer row a parked K-1's card offers and file
+            the document under it, in one step (a person's call, decision 201)
   dismiss   record that no request asks for one Needs Review document
   unfile    send one filed document back to Needs Review (a person's call)
   mark-missing  take one request off what a consolidated statement answers,
@@ -336,12 +338,16 @@ from tracker.templates import (  # the catalog; re-exported for the dialog
     EXTENSION_DEFAULT_NOTE,
     FORM_TEMPLATES,
     FORM_TYPES,
+    K1_IDENTIFIER,
     KEYWORD_DEFAULT_NOTE,
     PERIOD_PATTERN,
     YEAR_NOTE,
     base_year,
     default_tax_year,
+    issuer_item,
+    issuer_row,
     item_from_spec,
+    next_issuer_identifier,
     require_form,
     shift_item,
     template_items,
@@ -812,6 +818,46 @@ ASK_THE_CLIENT_NOTE = ("Every row is on the return. A ticked row is asked for an
 #: engagement's, and only the final-notice reminder ever says it.
 FIRM_PHONE_LABEL = "Firm phone"
 FIRM_PHONE_HELP = "named in the final-notice reminder; blank drops that sentence"
+#: And the setup card's other two boxes, each named by a label that stays
+#: while a person types (decision 201, D11): a placeholder is gone the
+#: moment somebody types, so no box is named by one alone.
+FIRM_NAME_LABEL = "Firm name"
+FIRM_NAME_HELP = "as it should sign the reminders"
+CLIENTS_FOLDER_LABEL = "Clients folder"
+
+# ---- the dialogs and the editor's plain view (decision 201) -----------------
+#: What every dialog says when it is asked to close with changes not saved,
+#: and its two answers: Keep editing, focused, and the only way out.
+UNSAVED_CHANGES = "You have changes here that are not saved."
+KEEP_EDITING = "Keep editing"
+DISCARD_CHANGES = "Discard my changes"
+#: The editor's plain view (M13): the boxes a preparer changes, shown on
+#: every row, and the routing columns folded per row - a custom row's
+#: Document is drawn with the plain boxes, because nothing else names it.
+#: Together they are exactly the request list's columns, asserted below.
+PLAIN_COLUMNS = ("expected_count", "asked", "manual_override", "override_reason", "short_title")
+ROUTING_COLUMNS = ("identifier", "document", "period", "allowed_extensions", "min_size_kb",
+                   "required_keywords", "any_keywords", "date_pattern", "named")
+assert (sorted((*PLAIN_COLUMNS, *ROUTING_COLUMNS)) == sorted(field for _, field in COLUMNS)
+        and not set(PLAIN_COLUMNS) & set(ROUTING_COLUMNS)), \
+    "the plain view and the routing fold must share the request list's columns between them"
+ROUTING_LABEL = "Routing rules"
+ROUTING_ALL_LABEL = "Show every row's routing rules"
+ROUTING_HELP = ("How the tracker recognises this document when it arrives. A save checks these "
+                "the same way whether the fold is open or not.")
+#: The keyword box on a parked or moved document's card (decision 201,
+#: D11): its label, and what the word does, as its title.
+KEYWORD_LABEL = "Keyword to learn (optional)"
+KEYWORD_HELP = ("A word this document contains that others like it will too. Taught to the "
+                "request so the next one files itself; the editor shows it beside the row.")
+#: The card of a K-1 parked for an unnamed issuer (decision 201): its one
+#: box, what it will add - the next free row, named before anything is
+#: pressed - and its one button; and what the banner says once it is done.
+ISSUER_LABEL = "Issuer's name, as the K-1 prints it"
+ISSUER_HELP = ("Adds {identifier}, a K-1 row for this issuer, to the request list and files this "
+               "document under it. Type the distinctive words and leave off the suffix (L.P., LLC).")
+ISSUER_ADD_LABEL = "Add the issuer and file it"
+ISSUER_ADDED_AND_FILED = "{identifier} - {document} added to the request list, and {name} filed under it."
 
 # ---- the people block (decision 128) ----------------------------------------
 #: Every word the new-return dialog's and the editor's People block shows. The record
@@ -1109,7 +1155,16 @@ def _vocab() -> dict:
                           # Decision 204's one click: a row that names
                           # another household's person, filed where it
                           # waits, with nothing picked on the page.
-                          "file_where_it_waits": FILE_WHERE_IT_WAITS_LABEL},
+                          "file_where_it_waits": FILE_WHERE_IT_WAITS_LABEL,
+                          # Decision 201: the keyword box's label and title,
+                          # and the unnamed issuer's box, sentence and button.
+                          "keyword": KEYWORD_LABEL, "keyword_help": KEYWORD_HELP,
+                          "issuer_label": ISSUER_LABEL, "issuer_help": ISSUER_HELP,
+                          "issuer_add": ISSUER_ADD_LABEL},
+        # What every dialog says when closed with changes not saved, and
+        # its two answers (decision 201).
+        "dialogs": {"unsaved": UNSAVED_CHANGES, "keep_editing": KEEP_EDITING,
+                    "discard": DISCARD_CHANGES},
         # Every word tracker.review gives the card, from the module that
         # owns it: what is said when the evidence suggests nothing, the one
         # separator between an identifier and what follows it (the reason
@@ -1332,7 +1387,10 @@ def _vocab() -> dict:
         # as recorded - so a person who re-points the app at their clients
         # folder does not save a blank over a number they typed once.
         "settings": {"phone_label": FIRM_PHONE_LABEL, "phone_help": FIRM_PHONE_HELP,
-                     "phone": firm_phone()},
+                     "phone": firm_phone(),
+                     # The setup card's other two labels (decision 201).
+                     "firm_label": FIRM_NAME_LABEL, "firm_help": FIRM_NAME_HELP,
+                     "root_label": CLIENTS_FOLDER_LABEL},
         # The page a pass regenerates, the three words that say whether the
         # one on disk still describes the engagement, and what the button
         # that opens it says. The app compares nothing itself and types
@@ -1382,6 +1440,10 @@ def _vocab() -> dict:
             # editor sends each back as the record holds it. The editor's
             # set-aside rows fold under ``set_aside`` (decision 200).
             "yes_no_fields": [key for _, key in COLUMNS if key in RULE_FLAG_FIELDS],
+            # The plain view (decision 201): which columns every row shows
+            # and which fold under its Routing rules, and the fold's words.
+            "plain_columns": list(PLAIN_COLUMNS), "routing_columns": list(ROUTING_COLUMNS),
+            "routing": ROUTING_LABEL, "routing_all": ROUTING_ALL_LABEL, "routing_help": ROUTING_HELP,
         },
     }
 
@@ -1568,8 +1630,25 @@ def _evidence_payload(entry: IndexEntry) -> dict[str, list[dict]]:
             for identifier, found in entry.evidence_record.items()}
 
 
+def _catalog_keys(form: str) -> frozenset[str]:
+    """The identifiers the catalog of ``form`` has, compared the way the
+    list compares them; none for a return with no catalog form recorded,
+    whose every row is then its own (decision 201)."""
+    return frozenset(identifier_key(str(spec["identifier"])) for spec in FORM_TEMPLATES.get(form or "", ()))
+
+
+def _next_issuer(items: list) -> str | None:
+    """The identifier a card's issuer box would add, or ``None`` when F's
+    block is full - the editor is then the place to add a row."""
+    try:
+        return next_issuer_identifier(items)
+    except ManifestError:
+        return None
+
+
 def _triage_payload(triaged: review.Triage, seqs: dict[str, int],
-                    waiting: tuple[dict | None, str] = (None, "")) -> dict:
+                    waiting: tuple[dict | None, str] = (None, ""),
+                    next_issuer: str | None = None) -> dict:
     """One parked file's shortlist as JSON, in triage order.
 
     The row itself is already in ``state["index"]``; what travels here is
@@ -1596,8 +1675,17 @@ def _triage_payload(triaged: review.Triage, seqs: dict[str, int],
     :func:`_waiting_payload` - ``{target, label, requests, answers}``, or
     null - and ``waits_for_refused`` the sentence that stands in for it
     where the claim no longer resolves.
+
+    ``issuer`` is the one box a card parked for an unnamed issuer offers
+    (decision 201): ``{"identifier"}``, the row ``add-issuer-and-file``
+    would add - ``next_issuer``, worked out once for the whole screen by
+    :func:`tracker.templates.next_issuer_identifier` - so the card names it
+    before anything is pressed; null on every other card.
     """
     offer, refused = waiting
+    entry = triaged.entry
+    unnamed = (next_issuer is not None and entry.decision == NEEDS_REVIEW
+               and reasons.ISSUER_NOT_NAMED.matches(entry.reason))
     return {
         "original_name": triaged.entry.original_name,
         "pbc_location": triaged.entry.pbc_location,
@@ -1610,6 +1698,7 @@ def _triage_payload(triaged: review.Triage, seqs: dict[str, int],
         "group": triaged.group,
         "waits_for": offer,
         "waits_for_refused": refused,
+        "issuer": {"identifier": next_issuer} if unnamed else None,
     }
 
 
@@ -2157,6 +2246,8 @@ def _state(engagement: Path) -> dict:
     # The feed list, read once and only if a parked row waits for another
     # household (decision 204).
     fed_once = cache(lambda: _fed_returns(engagement, household))
+    catalog = _catalog_keys(info.form)
+    next_issuer = _next_issuer(items)
     return {
         # The derived page, and whether it still describes this engagement.
         # Reading the stamp takes no lock and tolerates another program
@@ -2190,7 +2281,11 @@ def _state(engagement: Path) -> dict:
                          # The short name the row's copies go by
                          # (decision 144): its own, or the one its document
                          # derives - the editor's placeholder for a blank.
-                         "short_name": i.short_name}
+                         "short_name": i.short_name,
+                         # Whether a catalog row of the return's form has
+                         # this identifier (decision 201): a custom row's
+                         # Document is drawn in the editor's plain view.
+                         "catalog_row": identifier_key(i.identifier) in catalog}
             for i in items
         ],
         # The person's rows as stored - read the way every reader reads
@@ -2235,7 +2330,10 @@ def _state(engagement: Path) -> dict:
         # There is no `review` command - the card draws from the one state
         # the app already reads - and the manifest and the index are handed
         # to triage() so each is read once for the whole screen.
-        "review": [_triage_payload(t, seqs, _waiting_payload(engagement, t.entry, fed_once))
+        # A card parked for an unnamed issuer names the row it would add
+        # (decision 201): the next free one in F's block, worked out once.
+        "review": [_triage_payload(t, seqs, _waiting_payload(engagement, t.entry, fed_once),
+                                   next_issuer=next_issuer)
                    for t in review.triage(engagement, entries, items=items)],
         # The working copies that are not where the record put them
         # (decision 109 found them; decision 110 is what a person does
@@ -2652,6 +2750,11 @@ def _cmd_edit(argv: list[str]) -> dict:
                        check=lambda: _refuse_taking_away_documents(engagement, recorded, items))
     _refresh_readmes(engagement)
     state = _state(engagement)
+    # What the list already held and this save did not touch - two issuer
+    # rows of one name (decision 201) - is the envelope's to say: a notice
+    # that stays until dismissed (decision 193).
+    for sentence in saved.warnings:
+        _warn(sentence)
     reply = {
         "saved": {"changed": list(saved.changed), "removed": list(saved.removed),
                   "engagement": list(saved.info_fields), "recorded": saved.recorded},
@@ -3456,7 +3559,7 @@ def _cmd_rollover(argv: list[str]) -> dict:
         # call's own mkdir made is undone (decision 137), and the year only
         # when it is empty.
         made += make_new_folders(engagement)
-        create_engagement(engagement, report.items, info)
+        create_engagement(engagement, report.items, info, carried=True)
         scaffold_engagement(engagement)
     except Exception:
         _undo_made(made, {engagement})
@@ -3915,6 +4018,80 @@ def _cmd_assign(argv: list[str]) -> dict:
             "spelling": result.spelling,
             "spelling_note": result.spelling_note,
             "scan_note": scan_note,
+        },
+        "state": _state(engagement),
+    }
+
+
+def _cmd_add_issuer_and_file(argv: list[str]) -> dict:
+    """Add the issuer row a parked K-1's card offers, and file the K-1 under it.
+
+    JSON spec on stdin: {"original": "<PBC location or original name>",
+                         "seq": <the row's record version, as shown>,
+                         "head": <state's list_head the card was drawn from>,
+                         "issuer": "<the name as the K-1 prints it>"}
+
+    Decision 201 (F-D-7). A K-1 that names none of the list's issuers parks
+    (``reasons.ISSUER_NOT_NAMED``), and the row it needs is the one
+    :func:`tracker.templates.issuer_row` already builds; the six cells a
+    person copied by hand become one box on the card. **The app sends no
+    identifier and no row**: the identifier is the next free one in F's
+    block (:func:`tracker.templates.next_issuer_identifier`), the row is
+    ``issuer_row`` shifted to the return's year
+    (:func:`tracker.templates.issuer_item`), and a name that normalises to
+    nothing is refused here, before anything else is read.
+
+    Everything after is one filing (:func:`tracker.filer.assign_review_file`
+    with ``adding`` and ``head``): under the one engagement lock the list's
+    version, the row's, the card's reason, the editor's own ``validated()``
+    and the row's narrowing are judged before a byte is read, and the row's
+    ``assigned_by_person`` and a ``rules_changed`` carrying the new row are
+    two events in one ``store.record()`` call - the list gains the row only
+    if the filing lands. Then, as ``assign`` does, a re-scan and the
+    READMEs; the reply names the row added and the document filed.
+    """
+    engagement = _engagement_dir(argv)
+    spec = _read_spec()
+    original = str(spec.get("original", "")).strip()
+    if not original:
+        raise ManifestError("Pick the file whose issuer this is")
+    seq = _seq_of(spec)
+    head = spec.get("head")
+    if not isinstance(head, str) or not head.strip():
+        raise ManifestError(NO_LIST_HEAD)
+    issuer = str(spec.get("issuer", "") or "")
+    # A name that normalises to nothing is refused in issuer_row's own
+    # sentence, before the list or the index is read.
+    issuer_row(K1_IDENTIFIER, issuer)
+    info = load_engagement_info(engagement)
+    items = load_manifest(engagement)
+    identifier = next_issuer_identifier(items)
+    row = issuer_item(identifier, issuer, info.tax_year)
+    result = assign_review_file(
+        engagement, original, identifier, seq=seq, shortlist=_shortlist_now(engagement, original),
+        adding=row, head=head,
+    )
+    scan_note = ""
+    try:
+        scan_engagement(engagement)
+    except ScanLockedError as exc:
+        scan_note = f"not re-scanned: {exc}"
+    _refresh_readmes(engagement)
+    return {
+        "added_and_filed": {
+            "added": {"identifier": row.identifier, "document": row.document},
+            "assigned": {
+                "original_name": result.entry.original_name,
+                "identifier": result.entry.identifier,
+                "filed_as": result.entry.filed_as,
+                "prepared_location": result.entry.prepared_location,
+                "moved_review_copy": result.moved_review_copy,
+                "left_in_review": result.left_in_review,
+                "overrode_shortlist": result.overrode_shortlist,
+                "scan_note": scan_note,
+            },
+            "said": ISSUER_ADDED_AND_FILED.format(identifier=row.identifier, document=row.document,
+                                                  name=result.entry.original_name),
         },
         "state": _state(engagement),
     }
@@ -4507,6 +4684,7 @@ COMMANDS = {
     "list": _cmd_list,
     "create": _cmd_create,
     "assign": _cmd_assign,
+    "add-issuer-and-file": _cmd_add_issuer_and_file,
     "dismiss": _cmd_dismiss,
     "unfile": _cmd_unfile,
     "restore": _cmd_restore,

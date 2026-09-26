@@ -48,6 +48,7 @@ sees one: the README, the letter and the received list keep the title.
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Iterable
 from dataclasses import replace
 
 from tracker.manifest import (
@@ -60,6 +61,7 @@ from tracker.manifest import (
     RequestItem,
     detect_year,
     entity_keyword,
+    identifier_key,
     identifier_problem,
     issuer_short_title,
     item_from_fields,
@@ -656,6 +658,46 @@ def issuer_row(identifier: str, entity: str) -> dict:
         expected_count=source.get("expected_count", 1),
         short=issuer_short_title(name),
     )
+
+
+def next_issuer_identifier(items: Iterable[RequestItem]) -> str:
+    """The identifier the next issuer row takes on this list (decision 201).
+
+    The first of ``F02``, ``F03``, ... - the letter and the width of
+    :data:`K1_IDENTIFIER`, whose own number is the catalog's K-1 row - that
+    no row on the list uses, compared the way the list compares
+    identifiers (:func:`tracker.records.identifier_key`, without case), so
+    a hand-typed ``f02`` is taken too. What a card parked for an unnamed
+    issuer says it will add, before anything is pressed, and what the API
+    then adds: the page never names it.
+    """
+    taken = {identifier_key(item.identifier) for item in items}
+    letter, digits = K1_IDENTIFIER[0], K1_IDENTIFIER[1:]
+    width = len(digits)
+    for number in range(int(digits) + 1, 10 ** width):
+        candidate = f"{letter}{number:0{width}d}"
+        if identifier_key(candidate) not in taken:
+            return candidate
+    raise ManifestError(f"every identifier in {letter}'s block is taken; add the issuer's row in the editor")
+
+
+def issuer_item(identifier: str, entity: str, year: int | None) -> RequestItem:
+    """An issuer row as a request of a return for tax year ``year`` (decision 201).
+
+    :func:`issuer_row` cut from the catalog and read as a request
+    (:func:`item_from_spec`), then shifted from the catalog's base year to
+    the return's (:func:`tracker.manifest.shift_item`), exactly as
+    :func:`template_items` shifts every catalog row a return is made
+    from: a TY2026 return's issuer row asks for the TY2026 K-1, not the
+    catalog's. A return with no year of its own takes the row as written.
+    A name that normalises to nothing is refused with ``issuer_row``'s own
+    sentence.
+    """
+    item = item_from_spec(issuer_row(identifier, entity))
+    base = base_year(K1_CATALOG)
+    if year is None or not base:
+        return item
+    return shift_item(item, year - base)
 
 
 # ------------------------------------------------------------------ items ----

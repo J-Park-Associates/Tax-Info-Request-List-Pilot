@@ -867,7 +867,7 @@ def _make_one(roll: _PlannedRoll) -> list[Path]:
     # call's own mkdir made is removed again (decision 137).
     made = make_new_folders(roll.target)
     try:
-        create_engagement(roll.target, roll.report.items, roll.info)
+        create_engagement(roll.target, roll.report.items, roll.info, carried=True)
         scaffold_engagement(roll.target)
     except Exception:
         _unmake(roll.target, made)
@@ -1075,7 +1075,8 @@ if __name__ == "__main__":
     # engagement is on the reminder's ladder however it was made
     # (decision 123).
     create_engagement(target, result.items,
-                      with_default_dates(carried, carried.form or ns.form, result.target_year))
+                      with_default_dates(carried, carried.form or ns.form, result.target_year),
+                      carried=True)
 
     # All of the work before any of the report: the folders are made now,
     # so nothing about printing can leave a folder with a record and no

@@ -122,15 +122,34 @@
           <h3 id="setup-title">Where do you keep your clients?</h3>
           <span class="summary">one folder; every household, and every return in it, is found under it</span>
         </div>
+        <!-- Every box here is named by a label that stays while a person
+             types (decision 201, D11), each label and the sentence under it
+             the API's (vocab.settings). A placeholder that is an example
+             stays, but never as the box's only name. -->
         <div class="setup-row">
-          <input id="root-input" type="text" aria-label="Clients folder" />
+          <label class="field">
+            <span id="root-label"></span>
+            <input id="root-input" type="text" />
+          </label>
           <button id="btn-browse" class="btn">Browse…</button>
         </div>
         <div class="setup-row">
-          <input id="firm-input" type="text" placeholder="Your firm's name, as it should sign the reminders" aria-label="Firm name" />
+          <div class="setup-field">
+            <label class="field">
+              <span id="firm-label"></span>
+              <input id="firm-input" type="text" aria-describedby="firm-help" />
+            </label>
+            <p id="firm-help" class="wiz-note"></p>
+          </div>
         </div>
         <div class="setup-row">
-          <input id="phone-input" type="text" />
+          <div class="setup-field">
+            <label class="field">
+              <span id="phone-label"></span>
+              <input id="phone-input" type="text" aria-describedby="phone-help" />
+            </label>
+            <p id="phone-help" class="wiz-note"></p>
+          </div>
           <button id="btn-save-root" class="btn btn-primary">Use this folder</button>
         </div>
         <p id="setup-note" class="wiz-note"></p>
@@ -360,6 +379,14 @@
         <span class="toolbar-spacer"></span>
         <button id="hh-edit-save" class="btn btn-primary">Save</button>
       </div>
+      <!-- Closing with changes not saved asks first (decision 201): the
+           API's sentence and its two answers, the first focused. -->
+      <div class="dlg-unsaved banner warn hidden" role="alert">
+        <span class="dlg-unsaved-text"></span>
+        <span class="toolbar-spacer"></span>
+        <button type="button" class="btn btn-small dlg-keep"></button>
+        <button type="button" class="btn btn-small dlg-discard"></button>
+      </div>
     </div>
   </div>
 
@@ -389,7 +416,8 @@
 
   <!-- ═══════════════ Add a return / New household (decision 196) ═══════════════ -->
   <div id="modal" class="modal-overlay hidden">
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="form-title">
+    <!-- Named by the heading of the step on screen (showStep, decision 201). -->
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="household-title">
 
       <!-- New household: the four fields of a household the tracker has
            no record of, made with its first return (decisions 125 and
@@ -511,6 +539,14 @@
         </div>
       </div>
 
+      <!-- Closing with changes not saved asks first (decision 201): the
+           API's sentence and its two answers, the first focused. -->
+      <div class="dlg-unsaved banner warn hidden" role="alert">
+        <span class="dlg-unsaved-text"></span>
+        <span class="toolbar-spacer"></span>
+        <button type="button" class="btn btn-small dlg-keep"></button>
+        <button type="button" class="btn btn-small dlg-discard"></button>
+      </div>
     </div>
   </div>
 
@@ -562,6 +598,14 @@
       <div class="modal-actions">
         <button id="ed-cancel" class="btn"></button>
         <button id="ed-save" class="btn btn-primary"></button>
+      </div>
+      <!-- Closing with changes not saved asks first (decision 201): the
+           API's sentence and its two answers, the first focused. -->
+      <div class="dlg-unsaved banner warn hidden" role="alert">
+        <span class="dlg-unsaved-text"></span>
+        <span class="toolbar-spacer"></span>
+        <button type="button" class="btn btn-small dlg-keep"></button>
+        <button type="button" class="btn btn-small dlg-discard"></button>
       </div>
     </div>
   </div>

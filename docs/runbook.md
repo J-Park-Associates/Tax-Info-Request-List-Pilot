@@ -301,7 +301,11 @@ open:**
 The request list is edited in the app — **Edit Request List** — and nowhere
 else. The fourteen columns you edit there (`tracker.manifest.HEADERS`) are Identifier, Document, Period,
 Expected Count, Allowed Extensions, Min Size KB, Required Keywords, Any
-Keywords, Date Pattern, Manual Override, Override Reason, Named, Asked and Short name; **each request's status,
+Keywords, Date Pattern, Manual Override, Override Reason, Named, Asked and Short name. Each row shows the
+columns a preparer changes, and the routing columns (Identifier, Period, Allowed Extensions, Min
+Size KB, Required Keywords, Any Keywords, Date Pattern, Named, and a catalog row's Document) sit in
+its **Routing rules** fold — hidden, never dropped: a save carries every column. Closing the
+editor with changes not saved asks first. **Each request's status,
 Received Date, File Count and Validation Notes are on the Status Report**,
 not in the editor. The engagement's details — client, share link, due
 date, sender, firm, reminders, active — and the **people** the return is
@@ -1456,7 +1460,7 @@ to send. A parked document is opened as its working copy in
 | `reasons.NO_READABLE_TEXT` | Nothing in the file could be read at all — a scan or a photo the reader could not run on, an image-only PDF, an empty sheet. Nothing was matched against anything, so this is not "matched no request". | Open it and file it. If many files say it at once, the reader itself is damaged: re-install the app (§6, step 5). The shortlist shows what its **file name** suggests; the document decides. |
 | `reasons.UNREADABLE_IMAGE` | A photo arrived that would not open — a half-finished upload, most often. | Ask the client for it again; the reminder does. |
 | `reasons.HEIC_NOT_SUPPORTED` | An iPhone photo arrived and this machine's HEIC reader is missing. Ours, never the client's: they sent an ordinary photo. | Run `Setup.bat` again (it installs `pillow-heif` from the locks); for the packaged app, rebuild it. Until then, open the photo and file it by hand. |
-| `reasons.ISSUER_NOT_NAMED` | The request list asks for this document one row per issuer (§8) and this one names none of them — a K-1 from a partnership nobody listed. | File it to the right row, or add a row for that issuer (§8) and it files itself next pass. |
+| `reasons.ISSUER_NOT_NAMED` | The request list asks for this document one row per issuer (§8) and this one names none of them — a K-1 from a partnership nobody listed. | Type the issuer's name on the card and press **Add the issuer and file it** (§8), or file it to the right row. |
 | `reasons.NAME_NOT_ON_PAGE` | A request that asks for a **named** document accepted it, and the page names nobody on this return's people list (§10). | Open the page. If it does name them in a spelling the list has not got, file it and **teach the spelling** on the same card; if it is somebody else's, file it by hand on the return it belongs to. |
 | `reasons.NAMES_ANOTHER_RETURN` | The page names somebody who is on another return of this household, and nobody on this one. The sentence says who, and which return. | Switch to that return and file it there. Nothing was moved. |
 | `reasons.NO_PEOPLE_ON_FILE` | This return lists nobody yet, so nothing can confirm a named request. | Open **Edit Request List** and add the return's people (§10). Everything parked for this reason files itself on the next pass. |
@@ -2087,9 +2091,17 @@ nobody can work from, so the rule (the owner's, 2026-09-18) is **one row
 per issuing entity**. The catalog cannot do this for you: which entities a
 client is in is a fact about that client.
 
-**Adding one.** In the app, **Edit Request List**, then **Add a request**,
-and fill the same five cells as `F01` with these differences; then
-**Save**.
+**Adding one.** When a K-1 arrives from an entity no row names, it parks in `00 - Needs Review`
+and its card carries one box: type the issuer's name as the K-1 prints it and press **Add the
+issuer and file it**. The app adds the next free row in F's block - `Schedule K-1 - ` and the
+name, the entity in Required Keywords, everything else copied from `F01`, for this return's
+year - and files the document under it, in one step; the banner names both. It is refused,
+with nothing added and nothing filed, if the card is out of date, if the list changed since
+the card was drawn, or if the name is inside - or the same as - another issuer row's name.
+
+To add a row **before** a K-1 arrives, or on a return whose K-1 row is not the catalog's
+`F01`, use **Edit Request List**, **Add a request**, and fill the cells below; then **Save**.
+The routing cells are in each row's **Routing rules** fold.
 
 | Column | What to put |
 |---|---|
@@ -2111,8 +2123,9 @@ requirements and the row stops matching. Type the distinctive words and
 leave the legal suffix off: `Ashford Holdings`, not `Ashford Holdings,
 L.P.`. The suffix is the part whose punctuation differs between your
 typing and the form's printing, and the match is on whole words. Two
-issuer rows must not have one name inside the other — `Ashford` and
-`Ashford Holdings` would both claim the same K-1 — and the save is
+issuer rows must not have one name inside the other, or the same name
+twice — `Ashford` and `Ashford Holdings`, or two rows both `Ashford
+Holdings`, would all claim the same K-1 — and the save or the card is
 refused, by name, if they do.
 
 **What then happens.**
@@ -2125,7 +2138,8 @@ refused, by name, if they do.
   Share of Income" and `F01` asks for that too.
 - A K-1 from an entity **no row names** parks in `00 - Needs Review`,
   and the reason names the issuer rows you do have. File it in the app,
-  or add the row for that issuer and the next pass files it. It is not
+  or type the issuer's name on its card and add the row and file it in
+  one step. It is not
   put on `F01`, and it is not guessed onto whichever issuer row has not
   had a K-1 yet.
 - `F01` stays. A client with one K-1 and no issuer rows files on it as

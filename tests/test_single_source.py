@@ -2713,3 +2713,163 @@ def test_the_runbook_status_table_is_the_label_table():
     lines = section.split("| Whose move | The sentence beside it |\n|---|---|\n", 1)[1].splitlines()
     sides = lines[:next(i for i, line in enumerate(lines) if not line.startswith("|"))]
     assert sides == [f"| **{side.label}** | {side.sentence} |" for side in reminder.SIDES]
+
+
+# ------------------ decision 201: the editor opens on what a preparer touches ----
+
+
+_DIALOG_IDS = re.compile(r'<div id="([a-z-]+)" class="modal-overlay')
+
+
+def _registry(js: str) -> set[str]:
+    """The ids the one dialog registry names, at its top level."""
+    block = js.split("const DIALOGS = {", 1)[1].split("\n};\n", 1)[0]
+    return set(re.findall(r'^  "?([a-z-]+)"?: \{', block, flags=re.MULTILINE))
+
+
+def test_every_dialog_is_in_the_one_registry_and_closes_through_one_guard():
+    """D10: every ``.modal-overlay`` in the page is in ``DIALOGS``, and no
+    code but ``closeDialog`` hides one - and none but ``openDialog`` shows
+    one - so no dialog can close its own way again."""
+    js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
+    ids = set(_DIALOG_IDS.findall(html))
+    assert ids == {"editor", "household-modal", "handover-modal", "modal"}
+    assert _registry(js) == ids
+    for ident in ids:
+        assert f'$("{ident}").classList.add("hidden")' not in js, ident
+        assert f'$("{ident}").classList.remove("hidden")' not in js, ident
+        assert f'$("{ident}").classList.toggle("hidden"' not in js, ident
+    closing = _js_function(js, "function closeDialog(id) {")
+    opening = _js_function(js, "function openDialog(id, first) {")
+    assert '$(id).classList.add("hidden");' in closing
+    assert 'overlay.classList.remove("hidden");' in opening
+    rest = js.replace(closing, "").replace(opening, "")
+    assert '$(id).classList.add("hidden")' not in rest and "overlay.classList" not in rest
+
+
+def test_escape_and_an_overlay_click_reach_every_dialog_the_same_way():
+    """One keydown handler on the document sends Escape to ``requestClose``
+    for the topmost dialog; a click on any dialog's dim is the same call;
+    and every Cancel button makes it too."""
+    js = read("app/renderer/app.js")
+    assert js.count('document.addEventListener("keydown"') == 1
+    handler = js.split('document.addEventListener("keydown", (e) => {', 1)[1].split("\n});", 1)[0]
+    assert 'e.key === "Escape"' in handler and "requestClose(id);" in handler
+    assert "trapTab(e, id);" in handler
+    assert js.count('"Escape"') == 1
+    overlay = js.split("for (const id of Object.keys(DIALOGS)) {", 1)[1].split("\n}\n", 1)[0]
+    assert "if (e.target === $(id)) requestClose(id);" in overlay
+    assert not re.search(r"e\.target === \$\(\"[a-z-]+\"\)", js)
+    for button, dialog in (("hh-edit-cancel", "household-modal"), ("ho-cancel", "handover-modal"),
+                           ("ed-cancel", "editor"), ("wh-cancel", "modal"), ("wf-cancel", "modal"),
+                           ("ne-cancel", "modal")):
+        assert f'$("{button}").addEventListener("click", () => requestClose("{dialog}"));' in js, button
+
+
+def test_every_dialog_opens_with_focus_inside_and_gives_it_back():
+    """``openDialog`` remembers what had focus and puts it on a control
+    inside; Tab is kept inside while it is open; ``closeDialog`` gives it
+    back. Every opener goes through it."""
+    js = read("app/renderer/app.js")
+    opening = _js_function(js, "function openDialog(id, first) {")
+    assert "dialogOpener[id] = document.activeElement;" in opening
+    assert "target.focus();" in opening and "DIALOGS[id].first()" in opening
+    closing = _js_function(js, "function closeDialog(id) {")
+    assert "const back = dialogOpener[id];" in closing and "back.focus();" in closing
+    for opener, ident in (("async function openEditor() {", "editor"),
+                          ("function openHouseholdEditor() {", "household-modal"),
+                          ("async function openHandOver(original, seq) {", "handover-modal"),
+                          ("async function openAddReturn(hh) {", "modal"),
+                          ("async function openNewHousehold() {", "modal")):
+        assert f'openDialog("{ident}")' in _js_function(js, opener), opener
+    registry = js.split("const DIALOGS = {", 1)[1].split("\n};\n", 1)[0]
+    assert registry.count("first: () =>") == 4
+    trap = _js_function(js, "function trapTab(e, id) {")
+    assert "e.preventDefault();" in trap and "first.focus();" in trap and "last.focus();" in trap
+
+
+def test_escape_never_discards_unsaved_work():
+    """F-T-7: while the unsaved bar is showing, every way of asking to close
+    means Keep editing; a dialog with changes raises the bar and does not
+    close; and the bar's discard button is the only way from it to
+    ``closeDialog``."""
+    js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
+    asking = _js_function(js, "function requestClose(id) {")
+    showing, rest = asking.split("keepEditing(id);", 1)
+    assert 'bar && !bar.classList.contains("hidden")' in showing and "closeDialog" not in showing
+    clean, dirty = rest.split("if (!isDirty(id)) {", 1)[1].split("}", 1)
+    assert "closeDialog(id);" in clean
+    assert "closeDialog" not in dirty and 'bar.querySelector(".dlg-keep").focus();' in dirty
+    assert "closeDialog" not in _js_function(js, "function keepEditing(id) {")
+    assert js.count('.dlg-discard")') == 2          # its words, and its one listener
+    assert 'bar.querySelector(".dlg-discard").addEventListener("click", () => closeDialog(id));' in js
+    assert 'bar.querySelector(".dlg-keep").addEventListener("click", () => keepEditing(id));' in js
+    # Every dialog a person types in carries the bar; the hand-over is two
+    # picks and never dirty.
+    assert html.count('class="dlg-unsaved banner warn hidden" role="alert"') == 3
+    assert "model: null," in js.split("const DIALOGS = {", 1)[1].split('"handover-modal": {', 1)[1]
+    # Acts recorded at once move the snapshot: the rename renames it.
+    assert "for (const row of dialogSnapshot.editor.rows)" in _js_function(js, "async function renameRequest() {")
+
+
+def test_the_editor_opens_on_the_state_on_screen_and_spawns_none():
+    """D13: the editor opens on ``lastState`` - the reply the page is
+    showing - and starts no process, except to read the return a switch
+    has not landed on yet; the save is still judged by ``list_head``."""
+    js = read("app/renderer/app.js")
+    body = _js_function(js, "async function openEditor() {")
+    assert 'withEng("state")' not in body and "call(" not in body
+    assert "editorState = lastState;" in body
+    assert "lastState.paths.engagement !== active) await refresh(active);" in body
+    assert "head: editorState.list_head" in _js_function(js, "async function saveEditor() {")
+
+
+def test_no_text_box_is_named_only_by_its_placeholder():
+    """D11: a placeholder is gone the moment somebody types. The renderer
+    types no placeholder of its own; the keyword, spelling and note boxes
+    are each built inside a visible label, by one builder each; and the
+    setup card's three boxes sit inside labels in the page."""
+    js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
+    assert 'placeholder: "' not in js
+    assert "keyword to learn" not in js.lower() and "Keyword to add to the request" not in js
+    for cls, builder in (("r-keyword", "function keywordBox() {"),
+                         ("r-note", "function noteBox(words) {"),
+                         ("r-spelling", "function teachSpelling(triage, people) {")):
+        assert js.count(f'className: "{cls}"') == 1, cls
+        body = _js_function(js, builder)
+        label = body.split('el("label", { className: "field', 1)[1]
+        assert f'className: "{cls}"' in label, cls
+    assert len(re.findall(r"\bkeywordBox\(\)", js)) == 4        # the builder and its three places
+    for ident in ("phone-input", "firm-input", "root-input"):
+        assert re.search(rf'<label class="field">\s*<span id="[a-z]+-label"></span>\s*<input id="{ident}"', html), ident
+        tag = re.search(rf'<input id="{ident}"[^>]*>', html).group(0)
+        assert "placeholder=" not in tag and "aria-label=" not in tag, tag
+
+
+def test_the_issuer_action_has_one_call_site():
+    """Decision 201: the list's row and the deck's card add the issuer
+    through one function, as filing has one (decision 114) - the page
+    sends the row, its version, the list's version and the name, and no
+    identifier or row of its own."""
+    js = read("app/renderer/app.js")
+    assert js.count('withEng("add-issuer-and-file")') == 1
+    assert len(re.findall(r"\baddIssuerAndFile\(", js)) == 3     # the definition and its two callers
+    sent = re.search(r'call\(withEng\("add-issuer-and-file"\), \{(.*?)\}\)', js, re.S).group(1)
+    assert set(re.findall(r"(\w+):", sent)) == {"original", "seq", "head", "issuer"}
+
+
+def test_each_step_of_the_new_return_dialog_names_the_dialog_by_its_own_heading():
+    """196's review N5, carried into decision 201: New household opens on
+    its household step, where the form step's heading is hidden, so the
+    dialog is named by the heading of whichever step it shows."""
+    js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
+    assert ('const STEP_HEADINGS = { household: "household-title", form: "form-title", '
+            'items: "items-title" };') in js
+    step = _js_function(js, "function showStep(step) {")
+    assert "setAttribute(\"aria-labelledby\", STEP_HEADINGS[step])" in step
+    for heading in ("household-title", "form-title", "items-title"):
+        assert f'<h3 id="{heading}"></h3>' in html, heading

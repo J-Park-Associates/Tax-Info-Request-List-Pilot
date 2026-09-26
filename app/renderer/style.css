@@ -791,8 +791,20 @@ body {
 .review .r-reasons li { padding: 1px 0 1px 14px; text-indent: -14px; }
 .review .r-reasons .r-nothing { font-style: italic; }
 .review select { grid-area: select; max-width: 300px; }
-.review .r-keyword { grid-area: keyword; width: 190px; }
-.review .r-note { grid-area: note; width: 190px; }
+/* Each box sits in its own label (decision 201, D11), so the label takes
+   the box's place in the grid and the box keeps its width. */
+.review .r-keyword-box { grid-area: keyword; margin: 0; }
+.review .r-note-box { grid-area: note; margin: 0; }
+.review .r-keyword-box span, .review .r-note-box span,
+.r-spelling-box span, .deck-card .r-keyword-box span { margin-bottom: 2px; }
+.review .r-keyword { width: 190px; }
+.review .r-note { width: 190px; }
+.r-spelling-box { margin: 0; }
+/* The issuer's one box and one button on a card parked for an unnamed
+   issuer (decision 201): the whole width of the row, under its reasons. */
+.r-issuer { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.r-issuer .field { margin: 0; }
+.r-issuer .wiz-note { flex-basis: 100%; margin: 0; }
 .review .r-file { grid-area: file; }
 .review .r-unfile { grid-area: file; }
 .review .r-dismiss { grid-area: dismiss; }
@@ -851,8 +863,9 @@ body {
 }
 .deck-card .r-reasons li { padding: 1px 0 1px 14px; text-indent: -14px; }
 .deck-card .r-reasons .r-nothing { font-style: italic; }
-.deck-card .r-keyword {
-  grid-area: keyword;
+.deck-card .r-keyword-box { grid-area: keyword; margin: 0; }
+.deck-card .r-keyword,
+.deck-card .r-issuer input {
   width: 240px;
   font: inherit;
   font-size: 13px;
@@ -862,7 +875,8 @@ body {
   background: #fbfcfe;
   color: var(--text);
 }
-.deck-card .r-keyword:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.deck-card .r-keyword:focus-visible,
+.deck-card .r-issuer input:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 .deck-position { grid-area: position; color: var(--subtle); font-size: 12.5px; }
 .deck-card .c-accept { grid-area: accept; }
 .deck-card .c-open { grid-area: open; }
@@ -892,7 +906,10 @@ body {
 
 /* ── First-launch setup ──────────────────────────────────────────────── */
 
-.setup-row { display: flex; gap: 8px; padding: 0 18px 10px; }
+.setup-row { display: flex; align-items: flex-end; gap: 8px; padding: 0 18px 10px; }
+.setup-row > .field, .setup-field { flex: 1; }
+.setup-row .field { margin-bottom: 0; }
+.setup-field .wiz-note { margin-top: 4px; }
 .setup-row input {
   flex: 1;
   font: inherit;
@@ -964,3 +981,9 @@ body {
 #misfits-card { margin: 0 0 14px; }
 #misfits-card #misfits-note { padding: 0; }
 #misfits-list .r-name { color: var(--subtle); overflow-wrap: anywhere; }
+
+/* ── Changes not saved (decision 201) ────────────────────────────────── */
+/* One bar per dialog, in the banner's warn colours: the dialog stays
+   open until Keep editing or Discard my changes is pressed. */
+.dlg-unsaved { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.dlg-unsaved.hidden { display: none; }
