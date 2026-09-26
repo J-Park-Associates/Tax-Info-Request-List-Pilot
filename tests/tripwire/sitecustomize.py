@@ -31,10 +31,17 @@ That holds in the pytest process and in every Python child that inherits the
 suite's environment: `subprocess` children and the reading child. It then
 fails the session.
 
-It also **watches every Python child the pytest process starts**
-(``subprocess.Popen``, ``os.posix_spawn``, ``os.spawn``, ``os.exec``). A child
-is a Python interpreter when its program is this interpreter (after
-``realpath`` and ``normcase``) or its name starts with ``python``. Such a child
+It also **watches the Python children the pytest process starts** by these
+routes: ``subprocess.Popen``, ``os.posix_spawn``, ``os.spawn``, ``os.exec``
+(also when a process the pytest process forked calls it: a fork that then
+execs, and ``os.spawn*`` on POSIX, which is exactly that - such a record is
+written to the session's log, since the fork's :data:`SEEN` dies with it),
+``_winapi.CreateProcess`` (how ``multiprocessing`` starts a child on
+Windows), and on POSIX ``multiprocessing.util.spawnv_passfds``, which raises
+no audit event and so is wrapped (how ``multiprocessing`` starts the reading
+child there). A child is a Python interpreter when its program is this
+interpreter (after ``realpath`` and ``normcase``) or its name starts with
+``python``. Such a child
 is recorded - not stopped, so a test that wanted the child's result gets the
 session's plain verdict rather than a confusing error - when its environment
 (``env``, or this process's when none is given) lacks
@@ -53,6 +60,12 @@ It **does not see**:
   `tests/test_ocr.py`), which are never pointed at a guarded place today;
 - a Python child started by a Python child, unarmed: only the pytest process
   judges how a child starts;
+- a Python child started through a non-Python launcher - a shell
+  (``shell=True``, ``os.system``, ``os.popen``), ``env``, the ``py`` launcher,
+  or a bare name on PATH that does not start with ``python`` - since the
+  program judged is the launcher;
+- a Python child started by a direct call to ``_posixsubprocess.fork_exec``
+  other than through ``multiprocessing.util.spawnv_passfds`` (no audit event);
 - a native library that opens a file itself (pdfium, ONNX Runtime), unless
   Python opened it first. Such a library is only handed a path a test chose;
 - `os.stat`/`exists` (no audit event): existence is learned, never content. §3.2
@@ -62,9 +75,12 @@ It **does not see**:
   with no mode and a path that is not absolute is passed over. The walk's own
   top folder, named in full, is judged;
 - an alias that does not contain the place's name (a Windows 8.3 short name
-  such as `SETTIN~1.JSO`), or an administrative share naming a local disk
-  (``\\localhost\C$\...``). A verbatim prefix (``\\?\``, ``\\?\UNC\``) is
-  stripped before comparing, so that spelling is seen;
+  such as `SETTIN~1.JSO`), an administrative share naming a local disk
+  (``\\localhost\C$\...``), or a device path (``\\.\C:\...``). A verbatim
+  prefix (``\\?\``, ``\\?\UNC\``) is stripped before comparing, so that
+  spelling is seen;
+- the clients root a real settings file names: it is guarded only because
+  that file cannot be read, so no test ever learns the root;
 - code that deliberately goes around it (`ctypes`). It is a guard rail in the
   suite, not a wall. The wall is 186's placement plus the account boundary
   (Jason's decision (a)).
@@ -76,6 +92,10 @@ import os
 import sys
 
 ENV_TRIPWIRE = "TRACKER_TEST_TRIPWIRE"
+#: What a child started by ``multiprocessing`` on POSIX is recorded under: it
+#: goes through ``multiprocessing.util.spawnv_passfds``, which raises no audit
+#: event, so the pytest process wraps it (:func:`_watch_multiprocessing`).
+SPAWNV_PASSFDS = "multiprocessing.util.spawnv_passfds"
 #: The audit events that reach a place, and which arguments are paths.
 WATCHED = {
     "open": (0,), "os.listdir": (0,), "os.scandir": (0,), "os.mkdir": (0,),
@@ -89,8 +109,11 @@ DIR_FDS = {"os.mkdir": (2,), "os.rmdir": (1,), "os.remove": (1,), "os.rename": (
            "os.link": (2, 3), "os.symlink": (2,)}
 #: The audit events that start a program: where its path, its arguments and
 #: its environment sit in the event's arguments.
+#: ``None`` for the environment: the event carries none, and the child gets
+#: this process's (``_winapi.CreateProcess`` as multiprocessing calls it).
 STARTS = {"subprocess.Popen": (0, 1, 3), "os.posix_spawn": (0, 1, 2),
-          "os.spawn": (1, 2, 3), "os.exec": (0, 1, 2)}
+          "os.spawn": (1, 2, 3), "os.exec": (0, 1, 2),
+          "_winapi.CreateProcess": (0, 1, None), SPAWNV_PASSFDS: (0, 1, None)}
 #: The label a Python child started around the tripwire is recorded under.
 UNARMED = "unarmed Python child"
 #: The interpreter flags that start a child without its sitecustomize or its
@@ -285,7 +308,7 @@ def judge_child(event: str, args: tuple, session: str, folder: str = HERE) -> st
         program = argv[0]
     if not _is_python(program):
         return None
-    env = args[env_at] if env_at < len(args) else None
+    env = args[env_at] if env_at is not None and env_at < len(args) else None
     if env is None:
         env = os.environ
     env = {os.fsdecode(k): os.fsdecode(v) for k, v in dict(env).items()}
@@ -302,9 +325,15 @@ def judge_child(event: str, args: tuple, session: str, folder: str = HERE) -> st
     return None
 
 
-def _record(test: str, event: str, label: str, log: str | None) -> None:
+def _record(test: str, event: str, label: str, log: str | None, owner: int | None = None) -> None:
+    """Keep one hit in :data:`SEEN` and, where it must outlive this process,
+    in ``log``. A child armed from the environment (``owner`` None) always
+    writes the log. The pytest process (``owner``, its pid) keeps its own
+    hits in :data:`SEEN` and writes the log only from a process it forked -
+    a fork that then execs, ``os.spawn*`` on POSIX - whose :data:`SEEN` dies
+    with it."""
     SEEN.append((test, event, label))
-    if log and not _IN_HOOK[0]:
+    if log and (owner is None or os.getpid() != owner) and not _IN_HOOK[0]:
         _IN_HOOK[0] = True
         try:
             with open(log, "a", encoding="utf-8") as out:
@@ -322,13 +351,19 @@ def install(prepared: tuple, log: str | None, *, children: str | None = None) ->
 
     ``children`` is the session's :data:`ENV_TRIPWIRE` value, given only by
     the pytest process: every Python child started without it, or without
-    this folder first on its path, is recorded (never raised on)."""
+    this folder first on its path, is recorded (never raised on). The
+    pytest process passes its ``log`` too, which only a process it forks
+    writes (:func:`_record`)."""
+    owner = os.getpid() if children is not None else None
+
+    def child_started(event, args):
+        reason = judge_child(event, args, children)
+        if reason is not None:
+            _record(os.environ.get("PYTEST_CURRENT_TEST", "outside any test"), event, reason, log, owner)
 
     def hook(event, args):
         if children is not None and event in STARTS:
-            reason = judge_child(event, args, children)
-            if reason is not None:
-                _record(os.environ.get("PYTEST_CURRENT_TEST", "outside any test"), event, reason, log)
+            child_started(event, args)
             return
         if event not in WATCHED:
             return
@@ -336,10 +371,31 @@ def install(prepared: tuple, log: str | None, *, children: str | None = None) ->
         if label is None:
             return
         test = os.environ.get("PYTEST_CURRENT_TEST", "outside any test")
-        _record(test, event, label, log)
+        _record(test, event, label, log, owner)
         raise TripwireError(f"decision 185: the suite may not {event} the checkout's {label} ({test})")
 
     sys.addaudithook(hook)
+    if children is not None and os.name != "nt":
+        _watch_multiprocessing(child_started)
+
+
+def _watch_multiprocessing(child_started) -> None:
+    """Judge every child ``multiprocessing`` starts on POSIX - the reading
+    child among them - before it starts: ``spawnv_passfds`` calls
+    ``_posixsubprocess.fork_exec``, which raises no audit event. The child
+    gets this process's environment."""
+    import multiprocessing.util as util
+
+    started = util.spawnv_passfds
+    if getattr(started, "_tripwire", False):
+        return
+
+    def spawnv_passfds(path, args, passfds):
+        child_started(SPAWNV_PASSFDS, (path, args))
+        return started(path, args, passfds)
+
+    spawnv_passfds._tripwire = True
+    util.spawnv_passfds = spawnv_passfds
 
 
 def _from_environment() -> None:

@@ -197,6 +197,13 @@ def test_a_real_document_is_named_by_its_row_never_its_file(tmp_path, monkeypatc
     assert "entry 2" in str(raised.value) and missing not in str(raised.value)
     assert str(corpus) not in str(raised.value)
 
+    one_pdf_corpus(corpus, [f"{FABRICATED_NAME},1040,2025,A01", f"{missing},1040,,A02"])
+    with pytest.raises(vocab_report.ReportError) as raised:     # one sentence, never a traceback
+        vocab_report.real_documents()
+    # Said by its class (decision 208), never the reader's words.
+    assert f"{EXPECTATIONS_FILENAME} could not be read (ValueError)" in str(raised.value)
+    assert missing not in str(raised.value) and str(corpus) not in str(raised.value)
+
 
 def test_the_counts_add_up_across_catalogs():
     catalog = {"1040": [row("A01", "W-2", required=["w-2"])],

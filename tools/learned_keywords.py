@@ -381,7 +381,11 @@ def render(report: Report, *, engagements: bool = False) -> str:
 
     lines += ["## Custom rows", "",
               "Requests somebody added by hand, which no catalog knows at all. Every keyword they "
-              "carry was typed by a person, so all of them are listed.", ""]
+              "carry was typed by a person, so all of them are candidates"
+              + (", listed with each row's document." if engagements else
+                 ". A hand-typed request and its keywords can echo a client's own words, so each row "
+                 "is counted here by number - how many keywords, how many engagements - and "
+                 "--engagements lists its document and its keywords."), ""]
     for number, row in enumerate(report.custom, start=1):
         if engagements:
             lines += [f"### {row.label} — {CUSTOM_ROW}", ""]

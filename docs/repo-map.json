@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 160,
     "edges": 993,
-    "reused": 105
+    "reused": 114
   },
   "node_types": [
     "artifact",
@@ -3362,7 +3362,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "391684949ebfc9e0",
+      "sha256": "c4c7ef9f6562a86c",
       "lines": 435,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -3380,7 +3380,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "91fd032013d35533",
+      "sha256": "34b95c73137b4467",
       "lines": 984,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -3414,7 +3414,7 @@
       "id": "docs/vocab-coverage.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "c61f6011487ebdd9",
+      "sha256": "7cbfc7ddd31a1cef",
       "lines": 9415,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
@@ -3745,8 +3745,8 @@
       "id": "tests/conftest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "78881f8cf755a6b1",
-      "lines": 764,
+      "sha256": "0a4fe76bc827c4ef",
+      "lines": 776,
       "exports": [
         "APP_FOLDER",
         "ENV_OFFICE_SHAPED_FULL",
@@ -3758,6 +3758,7 @@
         "TEST_YEAR",
         "TRIPWIRE_DIR",
         "TRIPWIRE_HEADING",
+        "UNREADABLE_LOG",
         "UNREADABLE_LOG_LINE",
         "WINDOWS_PIPE_ENCODING",
         "an_app_folder_of_its_own",
@@ -3773,6 +3774,7 @@
         "pytest_sessionfinish",
         "pytest_terminal_summary",
         "pytest_unconfigure",
+        "read_tripwire_log",
         "reading_in_this_process",
         "real_places",
         "root_for_a_return_of",
@@ -3796,10 +3798,11 @@
         "WINDOWS_PIPE_ENCODING": "'cp1252'",
         "TRIPWIRE_HEADING": "'decision 185: the suite reached a real place'",
         "UNREADABLE_LOG_LINE": "\"the tripwire's log has a line it cannot read\"",
+        "UNREADABLE_LOG": "\"the tripwire's log could not be read\"",
         "ENV_OFFICE_SHAPED_FULL": "'TRACKER_OFFICE_SHAPED_FULL'"
       },
       "role": "What every test pays for once: an app folder of its own (settings and store, via own_folders()), the tripwire's arming and its session verdict (decision 185), the store and view agreement checks, and the one way to make an engagement, sort an inbox and start a Python child (child_env()).",
-      "notes": "Decision 185: own_folders() is the one place a process is told where beside-the-app is - the session calls it in pytest_configure before collection, every test through an_app_folder_of_its_own (its own MonkeyPatch, so a test's undo cannot take it); real_places() is the one list of places a real settings file, store, scratch or client tree resolves to, from the constants that name them, and 186 adds the data home to both. pytest_configure installs the hook with the session's TRACKER_TEST_TRIPWIRE value, so this process also judges every Python child it starts. pytest_sessionfinish fails the session on any tripwire record, the pytest process's or a child's (the session log; a line it cannot read is itself said as a violation, tripwire_log_said(), never an internal error), and on any folder the session left in the checkout (checkout_folders(), which never lists a guarded place). office_shaped_copy is the checkout copied with fabricated real-looking files beside it, for the nested proofs."
+      "notes": "Decision 185: own_folders() is the one place a process is told where beside-the-app is - the session calls it in pytest_configure before collection, every test through an_app_folder_of_its_own (its own MonkeyPatch, so a test's undo cannot take it); real_places() is the one list of places a real settings file, store, scratch or client tree resolves to, from the constants that name them, and 186 adds the data home to both. pytest_configure installs the hook with the session's TRACKER_TEST_TRIPWIRE value and the session log, so this process also judges the Python children it starts by the routes the tripwire's docstring lists (and what escapes is listed there too); a process it forks writes its records to the log. pytest_sessionfinish fails the session on any tripwire record, the pytest process's or a child's (the session log, read_tripwire_log(): a line it cannot read, or a log it cannot read at all (any OSError), is itself said as a violation, never an internal error), and on any folder the session left in the checkout (checkout_folders(), which never lists a guarded place). office_shaped_copy is the checkout copied with fabricated real-looking files beside it, for the nested proofs."
     },
     {
       "id": "tests/samples.py",
@@ -5507,8 +5510,8 @@
       "id": "tests/test_real_corpus.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c3bee2b6720e8dff",
-      "lines": 362,
+      "sha256": "0c9fafee2ee5caf0",
+      "lines": 391,
       "exports": [
         "ENGINE",
         "NO_ENGINE",
@@ -5597,8 +5600,8 @@
       "id": "tests/test_registry.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c8814ed38b1706ca",
-      "lines": 735,
+      "sha256": "f0fb3c105e8c38cd",
+      "lines": 752,
       "exports": [
         "ITEMS",
         "make",
@@ -5616,6 +5619,7 @@
         "test_a_rolled_forward_prior_stays_retired_when_the_clients_root_moves",
         "test_a_rolled_from_that_matches_nothing_is_a_warning_not_a_silence",
         "test_a_root_that_is_not_a_folder_is_an_error",
+        "test_a_root_whose_only_household_lost_its_record_says_restore_never_nothing_found",
         "test_a_root_with_nothing_under_it_is_an_error_not_a_quiet_no_op",
         "test_an_engagement_built_without_its_household_reads_it_off_its_own_path",
         "test_an_engagement_is_its_details",
@@ -6830,8 +6834,8 @@
       "id": "tests/test_tripwire.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "f9654fefc98aacf2",
-      "lines": 445,
+      "sha256": "dc07096ac561c441",
+      "lines": 491,
       "exports": [
         "ALL_PASS",
         "CANARIES",
@@ -6844,6 +6848,7 @@
         "test_a_python_child_is_judged_by_its_environment_its_path_and_its_flags",
         "test_a_session_where_every_test_passes_still_fails_for_a_reach",
         "test_a_test_that_undoes_its_monkeypatch_keeps_its_own_folders",
+        "test_a_tripwire_log_that_cannot_be_read_is_said_as_a_violation",
         "test_a_verbatim_windows_spelling_is_the_same_place",
         "test_every_python_child_starts_with_the_tripwire_armed",
         "test_every_test_has_a_settings_folder_and_a_store_of_its_own",
@@ -6950,8 +6955,8 @@
       "id": "tests/test_vocab_report.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c0907b6f60542466",
-      "lines": 404,
+      "sha256": "b1e12fe7ad4e4ecb",
+      "lines": 411,
       "exports": [
         "FABRICATED_NAME",
         "GARBAGE",
@@ -7001,13 +7006,14 @@
       "id": "tests/tripwire/sitecustomize.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "1fbb526e50b7fabb",
-      "lines": 354,
+      "sha256": "b7b083801eb9d68e",
+      "lines": 410,
       "cli": "python -m tests.tripwire.sitecustomize",
       "exports": [
         "DIR_FDS",
         "ENV_TRIPWIRE",
         "HERE",
+        "SPAWNV_PASSFDS",
         "STARTS",
         "TripwireError",
         "UNARMED",
@@ -7020,10 +7026,11 @@
       ],
       "constants": {
         "ENV_TRIPWIRE": "'TRACKER_TEST_TRIPWIRE'",
+        "SPAWNV_PASSFDS": "'multiprocessing.util.spawnv_passfds'",
         "UNARMED": "'unarmed Python child'"
       },
       "role": "The suite's tripwire (decision 185): an audit hook that stops and records any open, listing, folder creation, move, removal, copy, link or SQLite connection at a guarded place, and in the pytest process records every Python child started around it; imported by conftest in the pytest process and found as sitecustomize on PYTHONPATH by every Python child.",
-      "notes": "In the pytest process (install(children=...)) it watches subprocess.Popen, os.posix_spawn, os.spawn and os.exec: a Python child (this interpreter after realpath, or a program named python*) whose environment lacks the session's TRACKER_TEST_TRIPWIRE, whose PYTHONPATH does not begin with this session's tripwire folder, or whose flags carry -I, -E or -S is recorded as an unarmed Python child and fails the session - recorded, never raised. A nested session in the office-shaped copy is its own session and judges its children against the copy's folder. A verbatim Windows prefix (\\\\?\\, \\\\?\\UNC\\) is stripped before comparing. It does not see non-Python children, a Python child started by a Python child, a native library's own opens, os.stat/exists, an alias that does not carry the place's name (an 8.3 short name, or \\\\localhost\\C$\\...), or deliberate evasion (ctypes): a guard rail in the suite, not a wall. And a relative name given to os.open (how shutil.rmtree walks with dir_fd) is not judged, since the event does not carry the descriptor. Standard library only, imports nothing of the package, so a child is armed before its first import."
+      "notes": "In the pytest process (install(children=..., log=...)) it watches subprocess.Popen, os.posix_spawn, os.spawn, os.exec (also from a process it forked - fork then exec, POSIX os.spawn* - which writes the session log since its SEEN dies with it), _winapi.CreateProcess (multiprocessing on Windows) and, wrapped because it raises no audit event, multiprocessing.util.spawnv_passfds (multiprocessing on POSIX, the reading child): a Python child (this interpreter after realpath, or a program named python*) whose environment lacks the session's TRACKER_TEST_TRIPWIRE, whose PYTHONPATH does not begin with this session's tripwire folder, or whose flags carry -I, -E or -S is recorded as an unarmed Python child and fails the session - recorded, never raised. A nested session in the office-shaped copy is its own session and judges its children against the copy's folder. A verbatim Windows prefix (\\\\?\\, \\\\?\\UNC\\) is stripped before comparing. It does not see non-Python children, a Python child started by a Python child, a Python child started through a non-Python launcher (a shell, env, the py launcher, a bare PATH name not starting with python), a direct _posixsubprocess.fork_exec outside multiprocessing.util, a native library's own opens, os.stat/exists, an alias that does not carry the place's name (an 8.3 short name, \\\\localhost\\C$\\... or \\\\.\\C:\\...), the clients root a real settings file names (guarded only because that file cannot be read), or deliberate evasion (ctypes): a guard rail in the suite, not a wall. And a relative name given to os.open (how shutil.rmtree walks with dir_fd) is not judged, since the event does not carry the descriptor. Standard library only, imports nothing of the package, so a child is armed before its first import."
     },
     {
       "id": "tools/backtest.py",
@@ -7130,8 +7137,8 @@
       "id": "tools/learned_keywords.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "5fc21e6b9b09697e",
-      "lines": 485,
+      "sha256": "ccff904206a834bb",
+      "lines": 489,
       "cli": "python -m tools.learned_keywords",
       "exports": [
         "CARRIED_BY",

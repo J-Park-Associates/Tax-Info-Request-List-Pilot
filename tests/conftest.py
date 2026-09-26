@@ -634,13 +634,16 @@ def pytest_configure(config):
         [str(TRIPWIRE_DIR), *filter(None, [os.environ.get("PYTHONPATH")])]))
     before = checkout_folders(REPO, places)
     # In-process: SEEN, and every Python child this process starts is judged.
-    tripwire.install(tripwire.prepare(places), log=None, children=os.environ[tripwire.ENV_TRIPWIRE])
+    # The log is written only from a process this one forks (a fork that execs).
+    tripwire.install(tripwire.prepare(places), log=str(log), children=os.environ[tripwire.ENV_TRIPWIRE])
     config.stash[_STATE] = {"patch": patch, "session": session, "log": log,
                             "places": places, "before": before, "said": []}
 
 
 #: What the session says of a line in the tripwire's log it cannot read.
 UNREADABLE_LOG_LINE = "the tripwire's log has a line it cannot read"
+#: What the session says when the tripwire's log cannot be read at all.
+UNREADABLE_LOG = "the tripwire's log could not be read"
 
 
 def _hit_said(test: str, event: str, label: str) -> str:
@@ -666,15 +669,24 @@ def tripwire_log_said(lines) -> list[str]:
     return said
 
 
+def read_tripwire_log(log: Path) -> list[str]:
+    """The session's tripwire log as the session says it. No file is no hit;
+    a log that exists and cannot be read might hold one, so it is said as a
+    violation, never skipped and never an internal error."""
+    try:
+        lines = log.read_text(encoding="utf-8", errors="replace").splitlines()
+    except FileNotFoundError:
+        return []                      # nothing was ever written: no child hit anything
+    except OSError as exc:
+        return [f"{UNREADABLE_LOG} ({type(exc).__name__})"]
+    return tripwire_log_said(lines)
+
+
 @pytest.hookimpl(tryfirst=True)
 def pytest_sessionfinish(session):
     state = session.config.stash[_STATE]
     said = [_hit_said(test, event, label) for test, event, label in tripwire.SEEN]
-    try:
-        lines = state["log"].read_text(encoding="utf-8", errors="replace").splitlines()
-    except FileNotFoundError:
-        lines = []
-    said += tripwire_log_said(lines)
+    said += read_tripwire_log(state["log"])
     said += [f"the session left a new folder in the checkout: {rel}"
              for rel in sorted(checkout_folders(REPO, state["places"]) - state["before"])]
     if said:

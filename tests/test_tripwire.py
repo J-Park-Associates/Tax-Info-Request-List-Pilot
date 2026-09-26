@@ -31,9 +31,11 @@ from tests.conftest import (
     REPO,
     TRIPWIRE_DIR,
     TRIPWIRE_HEADING,
+    UNREADABLE_LOG,
     UNREADABLE_LOG_LINE,
     checkout_folders,
     child_env,
+    read_tripwire_log,
     real_places,
     run_in_copy,
     tripwire_log_said,
@@ -228,6 +230,12 @@ def test_a_python_child_is_judged_by_its_environment_its_path_and_its_flags():
     assert judge("os.spawn", (0, sys.executable, [sys.executable, "-I", "-c", "1"], armed), session)
     assert judge("os.exec", (sys.executable, [sys.executable, "-c", "1"], bare), session)
     assert judge("os.exec", (sys.executable, [sys.executable, "-c", "1"], armed), session) is None
+    # multiprocessing's two: no environment in the event, so this process's is the child's.
+    command_line = f'"{sys.executable}" -I -c "from multiprocessing.spawn import spawn_main"'
+    assert judge("_winapi.CreateProcess", (None, command_line, None), session)
+    assert judge(tripwire.SPAWNV_PASSFDS, (sys.executable, [sys.executable, "-c", "1"]),
+                 os.environ[tripwire.ENV_TRIPWIRE]) is None       # this session's own environment
+    assert judge(tripwire.SPAWNV_PASSFDS, (sys.executable, [sys.executable, "-c", "1"]), session)
 
 
 def test_a_line_of_the_tripwires_log_it_cannot_read_is_said_as_a_violation():
@@ -241,6 +249,16 @@ def test_a_line_of_the_tripwires_log_it_cannot_read_is_said_as_a_violation():
     assert said[1] == f"{UNREADABLE_LOG_LINE} (line 2)"
     assert said[2] == f"{UNREADABLE_LOG_LINE} (line 3)"
     assert said[3] == f"t::b: subprocess.Popen started an {tripwire.UNARMED}: started with -I (pid 8)"
+
+
+def test_a_tripwire_log_that_cannot_be_read_is_said_as_a_violation(tmp_path):
+    """The re-check's note: any OSError reading the log - here a folder where
+    the file should be - is a named violation; no file at all is no hit."""
+    assert read_tripwire_log(tmp_path / "never written.log") == []
+    unreadable = tmp_path / "tripwire.log"
+    unreadable.mkdir()
+    (said,) = read_tripwire_log(unreadable)
+    assert said.startswith(UNREADABLE_LOG)
 
 
 def test_no_test_starts_a_python_child_around_the_tripwire():
@@ -264,6 +282,8 @@ CANARY = textwrap.dedent('''
     import os
     import subprocess
     import sys
+
+    import pytest
 
     from tests.conftest import REPO, child_env
     from tracker import settings, store
@@ -326,6 +346,24 @@ CANARY = textwrap.dedent('''
 
     def test_j_link(tmp_path):
         os.link(REPO / settings.SETTINGS_FILENAME, tmp_path / "linked.json")
+
+
+    def test_k_unarmed_reading_child(monkeypatch):
+        monkeypatch.delenv("TRACKER_TEST_TRIPWIRE")
+        child = multiprocessing.get_context("spawn").Process(target=os.getpid)
+        child.start()
+        child.join(120)
+        assert child.exitcode == 0
+
+
+    def test_l_fork_then_exec_isolated():
+        if not hasattr(os, "fork"):
+            pytest.skip("no fork on this platform")
+        pid = os.fork()
+        if pid == 0:
+            os.execve(sys.executable, [sys.executable, "-I", "-c", "pass"], child_env())
+        _, status = os.waitpid(pid, 0)
+        assert status == 0
 ''')
 #: Each canary, and what its line under the tripwire's heading says.
 CANARIES = {"test_a_settings": "the checkout's settings file", "test_b_store": "the checkout's store",
@@ -335,7 +373,11 @@ CANARIES = {"test_a_settings": "the checkout's settings file", "test_b_store": "
             "test_g_swallowed": "the checkout's settings file",
             "test_h_child_without_the_variable": tripwire.UNARMED,
             "test_i_child_with_a_bare_environment": tripwire.UNARMED,
-            "test_j_link": "the checkout's settings file"}
+            "test_j_link": "the checkout's settings file",
+            "test_k_unarmed_reading_child": tripwire.UNARMED,
+            "test_l_fork_then_exec_isolated": tripwire.UNARMED}
+if not hasattr(os, "fork"):
+    del CANARIES["test_l_fork_then_exec_isolated"]      # skipped there: Windows has no fork
 
 
 def _unchanged(copy: Path, fabricated: dict) -> None:
@@ -368,14 +410,18 @@ def test_the_suite_in_an_office_shaped_copy_stops_every_way_to_a_real_place(offi
     output = done.stdout + done.stderr
     assert done.returncode == 1, output
     said = _section(output)
-    assert len(said) == len(CANARIES), said
+    # Every line is a canary's, and every canary has one; a start may be
+    # heard twice (``subprocess.Popen`` and then ``os.posix_spawn``).
+    named = {test for test in CANARIES for line in said if f"test_canary_185.py::{test} " in line}
+    assert named == set(CANARIES) and all("test_canary_185.py::" in line for line in said), said
     for test, label in CANARIES.items():
         assert any(f"test_canary_185.py::{test} " in line and label in line
                    for line in said), (test, said)
-    # (e), (f), (g), (h) and (i) pass on their own - the child's exit is
-    # tolerated, the error swallowed, the unarmed child's answer right - and
-    # the session fails for them all the same.
-    assert "5 failed, 5 passed" in output, output[-2000:]
+    # (e), (f), (g), (h), (i), (k) and (l) pass on their own - the child's
+    # exit is tolerated, the error swallowed, the unarmed child's answer
+    # right - and the session fails for them all the same.
+    counts = "5 failed, 7 passed" if hasattr(os, "fork") else "5 failed, 6 passed, 1 skipped"
+    assert counts in output, output[-2000:]
     _unchanged(copy, fabricated)
     assert checkout_folders(copy, ()) == folders
 
