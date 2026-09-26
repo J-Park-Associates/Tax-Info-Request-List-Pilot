@@ -284,6 +284,9 @@ HOUSEHOLD_FLAG = "--household"
 PROGRESS_LINES_FLAG = "--progress-lines"
 #: A household the walk did not find under the root: said, never guessed.
 NOT_THAT_HOUSEHOLD = "{name} is not a household the walk found in {root}"
+#: A household flag with nothing after it: refused, never read as the whole
+#: practice (decision 203's review, S1).
+NO_HOUSEHOLD_NAMED = f"{HOUSEHOLD_FLAG} names no household; Run now runs one, named by its folder"
 #: What the scheduled job installed before decision 131 is told. That job
 #: named a clients root on its command line with ``--log``; after the root
 #: moves in the app it would go on sorting the old tree silently, so a run
@@ -2255,7 +2258,7 @@ def _parser():
     which = parser.add_mutually_exclusive_group()
     which.add_argument("--only", default="",
                        help="just the engagements matching this text")
-    which.add_argument(HOUSEHOLD_FLAG, default="", metavar="FOLDER",
+    which.add_argument(HOUSEHOLD_FLAG, default=None, metavar="FOLDER",
                        help="just this household, by its folder in the firm's tree (the app's "
                             "Run now)")
     parser.add_argument("--dry-run", action="store_true",
@@ -2471,7 +2474,9 @@ def _pass(ns, parser, reached: dict) -> int:
     # Run now's household (decision 203): named, never guessed, and held
     # to the door again here, since this is a command line of its own.
     household: Path | None = None
-    if ns.household:
+    if ns.household is not None:
+        if not ns.household.strip():
+            raise SystemExit(NO_HOUSEHOLD_NAMED)
         try:
             household = door.household_dir(ns.household, root=root)
         except (door.DoorError, LayoutError) as exc:
@@ -2545,6 +2550,15 @@ def _pass(ns, parser, reached: dict) -> int:
         failed = True
     finally:
         watch.close(outcome)
+    if watch.why_stopped == APP_CLOSED:
+        # Said as the pass's own (decision 203's review, M1): the run log
+        # gives a return's warnings as a count and the page as a number,
+        # and the app that would have shown the sentence is gone - so it
+        # goes where 189's pass warnings go, into the log's text and onto
+        # the page, before either is written.
+        closed = [said for run in result.runs for said in run.warnings
+                  if said.startswith(PASS_APP_CLOSED.split("{", 1)[0])]
+        result.warnings.extend(dict.fromkeys(closed or [PASS_APP_CLOSED.format(n=0)]))
     # With progress lines the console is the shell's pipe (decision 203):
     # what is said below goes in the final line instead.
     say = (lambda text: None) if lines else print

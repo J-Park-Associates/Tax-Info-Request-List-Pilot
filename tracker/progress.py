@@ -11,7 +11,7 @@ carriers, so nothing has a second copy of the shape to drift:
 * a **progress file** - the latest line, rewritten whole - kept under
   :data:`PASSES_DIRNAME` beside the tracker's database, for any other
   process: the app's lock notice reads it to name the file a pass on this
-  machine is on, and decision 203's detached pass reuses it. It is a
+  machine is on, and decision 203's Run now reuses it. It is a
   hint: written without a sync to disk, and a write that fails is
   skipped (the next line catches it up).
 
@@ -85,7 +85,7 @@ def failure_reply(sentence: str, kind: str, *, seq: int | None = None,
     ``failure`` carries it again with its kind and the row it was about,
     and ``warnings`` is always a list. Built here, once, so ``error`` and
     ``failure.sentence`` can never disagree, and so a pass that is not the
-    API (decision 203's detached runner) says a failure the same way.
+    API (decision 203's Run now, the runner) says a failure the same way.
     ``extra`` joins ``failure`` (the lock a ``locked`` failure met)."""
     if kind not in FAILURE_KINDS:
         raise ValueError(f"not a failure kind: {kind!r}")

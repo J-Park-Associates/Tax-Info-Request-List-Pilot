@@ -178,8 +178,11 @@ def scan(capsys, engagement) -> tuple[int, dict]:
     final = one_reply(capsys.readouterr().out)
     if "error" in final:
         return code, final
-    asked = Path(engagement).resolve()
-    [run] = [one for one in final["runs"] if Path(one["path"]).resolve() == asked]
+    # Matched as the renderer matches (decision 203's review, S2): the
+    # path's own spelling, the one the API gives the app, so a mismatch
+    # fails here rather than hiding the counts on screen.
+    asked = str(api._return_dir(engagement))
+    [run] = [one for one in final["runs"] if one["path"] == asked]
     held = next((one["locked_at"] for one in final["runs"] if one["locked_at"]), None)
     assert api.main(["list"]) == 0
     listed = one_reply(capsys.readouterr().out)

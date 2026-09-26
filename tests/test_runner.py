@@ -2165,7 +2165,7 @@ def test_the_household_flag_passes_through_the_door(tmp_path, samples, monkeypat
                for one in (first.path, birch / str(YEAR) / "Birch TY2025")}
 
     for value in (first.path, client_household_dir(root, "Alder Household"), tmp_path / "elsewhere",
-                  household / ".." / "Birch Household" / ".." / ".." / "..", birch, "--dry-run"):
+                  household / ".." / "Birch Household" / ".." / ".." / "..", birch, "--dry-run", ""):
         capsys.readouterr()
         code = main([SETTINGS_FLAG, str(settings), LOG_FLAG, "--reminders", REMINDERS_NEVER,
                      PROGRESS_LINES_FLAG, f"{HOUSEHOLD_FLAG}={value}"])
@@ -2176,6 +2176,10 @@ def test_the_household_flag_passes_through_the_door(tmp_path, samples, monkeypat
     for folder, names in waiting.items():
         assert sorted(p.name for p in inbox_of(folder).iterdir()) == names
     assert not (root / LOG_FILENAME).exists(), "no pass started"
+    capsys.readouterr()
+    main([SETTINGS_FLAG, str(settings), LOG_FLAG, PROGRESS_LINES_FLAG, f"{HOUSEHOLD_FLAG}="])
+    from tracker.runner import NO_HOUSEHOLD_NAMED
+    assert _lines(capsys.readouterr().out)[-1]["error"] == NO_HOUSEHOLD_NAMED, "empty is never the practice"
 
 
 def test_run_now_arguments_are_the_schedules_plus_three(tmp_path):
@@ -2315,6 +2319,41 @@ def test_a_pass_whose_watcher_is_gone_stops_at_the_next_file(tmp_path, samples, 
     assert "pass started" in log_text and "reminders=never" in log_text
     assert lock_status(run.path) is None, "its lock was let go"
     assert code in (0, 1)
+
+
+def test_a_pass_whose_app_closed_says_so_in_the_run_log_and_on_the_page_and_leaves_the_rest_for_the_next_pass(
+        tmp_path, samples, monkeypatch, capsys):
+    """Decision 203's review, M1: the app that would have shown the sentence
+    is gone, and a return's warnings are only a count in the log and a
+    number on the page - so the pass says it as its own, in the log's text
+    and on the page. The next pass files what waited."""
+    import tracker.runner as runner
+    from tracker.runner import PASS_APP_CLOSED, run_now_arguments
+
+    root = tmp_path / "root"
+    drops = (f"W-2 John Smith {YEAR}.pdf", "1099-INT First National.pdf", "Form 1098 Mortgage Interest.pdf")
+    engagement = build_engagement(root, samples, drops=drops)
+    sorted_ = []
+
+    def emit(text: str) -> None:
+        if '"event": "file"' in text and '"step": "sort"' in text:
+            sorted_.append(text)
+            if len(sorted_) >= 2:
+                raise BrokenPipeError(32, "Broken pipe")
+
+    monkeypatch.setattr(runner, "_emit_line", emit)
+    settings = _settings_for(root, monkeypatch)
+    main(run_now_arguments(settings, household_of(engagement.path)))
+    said = PASS_APP_CLOSED.format(n=1)
+    assert f"! {said}" in (root / LOG_FILENAME).read_text(encoding="utf-8")
+    assert said in _page(root)
+    assert set(drops) & {p.name for p in inbox_of(engagement.path).iterdir()}, "the rest waited"
+
+    monkeypatch.undo()
+    _settings_for(root, monkeypatch)
+    main([SETTINGS_FLAG, str(settings), "--reminders", REMINDERS_NEVER])
+    capsys.readouterr()
+    assert not set(drops) & {p.name for p in inbox_of(engagement.path).iterdir()}, "the next pass took them"
 
 
 def test_an_injected_database_error_in_one_household_leaves_the_others_processed_and_the_page_written(

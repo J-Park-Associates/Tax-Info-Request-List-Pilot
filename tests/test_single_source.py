@@ -1766,6 +1766,55 @@ def test_the_runbooks_189_sentence_is_rewritten():
     assert runbook.count("**Run now** (Sort & Scan) is\nthe scheduled pass") == 1
 
 
+#: The renderer's lock and pass-ending functions, lifted from app.js and run
+#: by node (the review of decision 203, M2): the shown return met the pass's
+#: own lock during the pass, the pass ended, then the lock went.
+_BUTTON_PROBE = r"""
+const fs = require("fs");
+const src = fs.readFileSync(process.argv[2], "utf8");
+function grab(sig) { const i = src.indexOf(sig); const j = src.indexOf("\n}\n", i); return src.slice(i, j + 3); }
+const buttons = src.slice(src.indexOf("const LOCKED_BUTTONS"), src.indexOf("function applyLock"));
+const parts = [buttons, grab("function applyLock() {"), grab("function setLocked(on) {"), grab("function scanDone() {")];
+const nodes = {};
+const node = (id) => ({ id, classList: { add() {}, remove() {} }, textContent: "", disabled: false, dataset: {},
+                        querySelectorAll: () => [] });
+const ctx = `let locked = false; let scanning = {}; const SCAN_LABEL = "Sort & Scan";
+const $ = (id) => (nodes[id] ||= node(id));
+${parts.join("\n")}
+return { setLocked, scanDone };`;
+const r = new Function("nodes", "node", ctx)(nodes, node);
+const btn = () => (nodes["btn-scan"] ||= node("btn-scan"));
+btn().disabled = true;     // runScan
+r.setLocked(true);         // a state during the pass shows its lock
+r.scanDone();              // the pass ends while the lock notice shows
+const whileLocked = btn().disabled;
+r.setLocked(false);        // the redraw's state: the lock has gone
+process.stdout.write(JSON.stringify({ whileLocked, after: btn().disabled }));
+"""
+
+
+def test_the_end_of_a_pass_gives_sort_and_scan_back_through_the_locks_mark(tmp_path):
+    """Decision 203's review, M2: the button comes back through applyLock's
+    mark, so the lock going gives it back - never an unmarked disable that
+    nothing ever lifts."""
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not on PATH (CI installs it)")
+    probe = tmp_path / "button_probe.js"
+    probe.write_text(_BUTTON_PROBE, encoding="utf-8", newline="\n")
+    done = subprocess.run([node, str(probe), str(REPO / "app" / "renderer" / "app.js")], capture_output=True,
+                          text=True, encoding="utf-8", timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    assert json.loads(done.stdout) == {"whileLocked": True, "after": False}
+    ended = _body(read("app/renderer/app.js"), "function scanDone() {")
+    assert "btn.disabled = locked" not in ended and "applyLock();" in ended
+
+
 def test_a_pass_killed_at_its_own_limit_ends_with_the_killed_sentence(tmp_path):
     import tracker.api as api
 

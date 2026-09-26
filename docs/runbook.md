@@ -964,7 +964,9 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    system's own words, which can name a client's folder. *the practice
    page could not be written (…)* is said in `runs.log` instead, and the
    Last Run Result is `0x1`: the page you are looking at is an old one. The run log gives each return's warnings
-   as a count, *(warnings: 3)*; the page and the app have the sentences.
+   as a count, *(warnings: 3)*, and the page as a number; the app has the
+   sentences. The pass's own sentences are written out in both, among them
+   *stopped when the app that started it closed, after N file(s)* (decision 203).
    **Run now** says the same: under the return's own result it lists the
    household's other returns' problems and the pass's own (the reader,
    the log, the page).

@@ -2036,10 +2036,14 @@ async function stopPass() {
 }
 
 // The button back as Sort & Scan, and the pass's panel gone.
+// The button comes back through applyLock (decision 203's review, M2): a
+// lock the shown return met during the pass greys it with the lock's own
+// mark, which the lock going gives back - never an unmarked disable.
 function scanDone() {
   scanning = null;
   const btn = $("btn-scan");
-  btn.disabled = locked;
+  btn.disabled = false;
+  applyLock();
   btn.classList.remove("spinning");
   $("scan-label").textContent = SCAN_LABEL;
   $("btn-stop-pass").classList.add("hidden");
@@ -2094,16 +2098,21 @@ async function passEnded({ reply }) {
   const view = viewGeneration;
   let state = null;
   try {
-    const listed = await call(["list"]);
+    // The list is the practice's, not the view's: kept whichever return
+    // is shown by now (the review's note).
+    adoptList(await call(["list"]));
     if (view === viewGeneration) {
-      adoptList(listed);
       state = await call(withEng("state"));
       if (!renderFor(view, state)) state = null;
     }
   } catch (err) {
     if (view === viewGeneration) failed(err, () => showReturn(active));
   }
-  if (!run) return;
+  if (!run) {
+    // Its counts are never guessed from another return's (the review's S2).
+    if (!ended.error) notice({ sentence: vocab.scan.not_in_pass, kind: "warning" });
+    return;
+  }
   const shown = asked === active && view === viewGeneration;
   const said = scanSummary(run, runs.filter((one) => one !== run),
                            shown && state && state.summary ? state.summary.line : "");

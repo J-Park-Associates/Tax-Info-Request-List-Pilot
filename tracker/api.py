@@ -425,6 +425,10 @@ SCAN_REVIEW = "{n} to review"
 SCAN_SYNCING = "{n} still syncing"
 SCAN_NOT_SORTED = "{n} file(s) could not be sorted"
 SCAN_BUT = "But {problems}."
+#: A pass whose final line does not name the return it was asked for
+#: (decision 203's review, S2): its counts are not guessed from another's.
+SCAN_NOT_IN_PASS = ("The pass ended, but its final line does not name this return, so its counts "
+                    "are not shown; the page is drawn from the record.")
 #: A notice said more than once is one notice with a count.
 NOTICE_REPEATED = "({n} times)"
 #: A warning a reply brought about a return other than the one shown - the
@@ -1173,7 +1177,7 @@ def _vocab() -> dict:
         "scan": {"scanning": SCAN_SCANNING, "nothing_done": SCAN_NOTHING_DONE,
                  "problem": SCAN_PROBLEM, "complete": SCAN_COMPLETE, "filed": SCAN_FILED,
                  "review": SCAN_REVIEW, "syncing": SCAN_SYNCING, "not_sorted": SCAN_NOT_SORTED,
-                 "but": SCAN_BUT},
+                 "but": SCAN_BUT, "not_in_pass": SCAN_NOT_IN_PASS},
         # Sort & Scan, watched, and its Stop (decision 193).
         "progress": {"household": PROGRESS_HOUSEHOLD, "sort": PROGRESS_SORT,
                      "scan": PROGRESS_SCAN, "stop": PROGRESS_STOP,
