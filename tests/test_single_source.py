@@ -1748,7 +1748,7 @@ def test_run_now_is_cut_off_only_at_the_run_limit_its_own_first_line_states():
     assert "vocab.pass_command" in main_js and f'"{api.PASS_COMMAND}"' not in main_js
     assert api._vocab()["pass_command"] == api.PASS_COMMAND
     runner = read("tracker/runner.py")
-    main = runner[runner.index("def _main(ns, parser)"):]
+    main = runner[runner.index("def _pass(ns, parser, reached: dict)"):]
     assert "limit_seconds=RUN_TIME_LIMIT_SECONDS)" in main[:main.index('watch.say("started"')]
     assert f'"{api.PASS_COMMAND}"' not in read("app/renderer/app.js")
     assert "withEng(vocab.pass_command)" in read("app/renderer/app.js")

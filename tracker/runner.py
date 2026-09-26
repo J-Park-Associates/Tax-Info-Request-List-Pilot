@@ -2320,7 +2320,7 @@ def main(argv: list[str] | None = None) -> int:
         # when it started and how it ended (decision 159, E4). The
         # file is written first, so a pass that dies anywhere after this line
         # leaves "not finished" or "failed" behind, never an old "succeeded".
-        last = (last_pass_path() if ns.settings and not ns.root and not ns.household
+        last = (last_pass_path() if ns.settings and not ns.root and ns.household is None
                 and not ns.dry_run else None)
         started = dt.datetime.now()
         reached = {"root": ""}

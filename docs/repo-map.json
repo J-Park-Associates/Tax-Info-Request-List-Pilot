@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 158,
     "edges": 972,
-    "reused": 112
+    "reused": 120
   },
   "node_types": [
     "artifact",
@@ -2519,7 +2519,7 @@
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "d201d1d143dabe0d",
+      "sha256": "3c77e6940ef6509a",
       "lines": 2663,
       "cli": "python -m tracker.runner",
       "exports": [
@@ -6474,7 +6474,7 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "893d8a4f9c38a709",
+      "sha256": "36bc9115858a2eab",
       "lines": 2203,
       "exports": [
         "CONSOLE_EXEMPT",
