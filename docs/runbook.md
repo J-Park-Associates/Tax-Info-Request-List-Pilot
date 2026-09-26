@@ -186,7 +186,11 @@ nothing is moved, nothing is deleted. The list is at the bottom of the status
 page, in the app under the engagement picker, and at the end of every command
 line pass, under **Folders the tracker leaves alone**. Of the client tree
 only the first level is looked at, by name: nothing inside a client folder
-no household owns is read. A folder where a household would be with no
+no household owns is read. A household's client folder is the one named
+exactly as the household, case aside; a folder that only *looks* like it -
+a letter from another alphabet, a second space - is listed as *a look-alike
+of the client folder of the household …* and nothing in it is read, so a
+client who uploaded into it is found from that list, never silently. A folder where a household would be with no
 household record is left alone and the app will not set a household up over
 it (*"sits where a household would but holds no household record; left
 alone - the app will not set a household up over it, so move it aside

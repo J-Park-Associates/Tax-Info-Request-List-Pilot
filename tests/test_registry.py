@@ -580,18 +580,28 @@ def test_a_client_folder_with_no_record_is_listed_by_name_only(root, monkeypatch
     assert touched == []
 
 
-def test_a_client_folder_is_matched_to_its_household_by_the_key(root):
-    """The review's S5, as ruled: a household's client folder is its own
-    however its case and spacing are spelled - matched by the layout's key,
-    never by exact spelling, since Windows folds case - and a folder whose
-    name is another name is still a folder no household owns."""
-    from tracker.layout import CLIENTS_TREE
-    from tracker.registry import MISFIT_CLIENT_NO_RECORD
+def test_a_client_folder_that_only_looks_like_a_households_is_still_listed(root):
+    """The re-check of decision 188 (R1), correcting the review's S5: a
+    household's client folder is the one the file system takes for its
+    own name (``os.path.normcase``). A sibling that only reads as it by the
+    comparison key - ``P\u0430rk`` with a Cyrillic a beside ``Park``, a
+    second space - is another folder: listed as a look-alike, never adopted,
+    and nothing in it is read. A folder of another name is listed as before."""
+    import os
 
-    make(root, scaffold=True)
+    from tracker.layout import CLIENTS_TREE, INBOX_DIR_NAME
+    from tracker.registry import MISFIT_CLIENT_LOOK_ALIKE, MISFIT_CLIENT_NO_RECORD
+
+    make(root, household="Park", scaffold=True)
     clients = root / CLIENTS_TREE
-    (clients / "Smith Family").rename(clients / "SMITH  FAMILY")
-    (clients / "Smith Family Two").mkdir()
+    for sibling in ("P\u0430rk", "Park  Old", "Lee"):
+        (clients / sibling / INBOX_DIR_NAME).mkdir(parents=True)
+        (clients / sibling / INBOX_DIR_NAME / "w2.pdf").write_bytes(b"%PDF-1.4 an upload")
     said = {m.path.name: m.sentence for m in discover_engagements(root).misfits}
-    assert "SMITH  FAMILY" not in said
-    assert said["Smith Family Two"] == MISFIT_CLIENT_NO_RECORD
+    assert "Park" not in said
+    assert said["P\u0430rk"] == MISFIT_CLIENT_LOOK_ALIKE.format(household="Park")
+    assert said["Lee"] == MISFIT_CLIENT_NO_RECORD
+    assert "Park  Old" in said
+    if os.name == "nt":
+        (clients / "Park").rename(clients / "PARK")
+        assert "PARK" not in {m.path.name for m in discover_engagements(root).misfits}

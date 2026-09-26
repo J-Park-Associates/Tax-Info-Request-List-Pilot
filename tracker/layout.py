@@ -741,6 +741,14 @@ def same_folder_name(a: str, b: str) -> bool:
     return str(a).casefold() == str(b).casefold()
 
 
+def names_one_folder(a: str, b: str) -> bool:
+    """Whether two names in one folder are one folder as the file system
+    compares them (``os.path.normcase``). What says a client folder is a
+    household's own (the re-check of decision 188, R1): the comparison key
+    refuses a new name, it never identifies a folder on the disk."""
+    return os.path.normcase(str(a)) == os.path.normcase(str(b))
+
+
 def tree_of(root: Path | str, path: Path | str) -> str | None:
     """The tree - :data:`CLIENTS_TREE` or :data:`PRIVATE_TREE`, as the
     layout spells it - that ``path`` lies in or is, under ``root``; ``None``

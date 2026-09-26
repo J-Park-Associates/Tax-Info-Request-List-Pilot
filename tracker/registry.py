@@ -127,6 +127,11 @@ MISFIT_NO_RETURN = "holds no return the tracker can read"
 #: folder moved in from elsewhere carrying its own. Every document inside
 #: would be invisible to every list, so it is said rather than passed over.
 UNLISTED = "could not be listed ({error})"
+#: A client folder whose name only reads as a household's by the layout's
+#: key (the re-check of decision 188, R1): another folder, never adopted.
+MISFIT_CLIENT_LOOK_ALIKE = ("is a look-alike of the client folder of the household {household} but is "
+                            "another folder; nothing in it is read, and it is never taken for that "
+                            "household's")
 #: Two household folders whose names or claims are one name by the
 #: layout's key (SPEC-162 ruling 3, widened by decision 188): every one of
 #: them is stopped, naming each folder.
@@ -663,12 +668,20 @@ def discover_engagements(root: Path | str, *, max_depth: int = MAX_DEPTH) -> Reg
     # name (decision 188, R8): a household renamed in the firm's tree
     # leaves its old client folder here, and a folder nobody set up is
     # never adopted.
-    # By the layout's one key, never by exact spelling (the review's S5):
-    # Windows folds case, so Clients\park is the household Park's.
-    owned = {layout.name_key(one.name)
-             for one in [*(household.path for household in keep), *found.record_missing]}
-    misfits += [Misfit(folder, MISFIT_CLIENT_NO_RECORD) for folder in found.client_folders
-                if layout.name_key(folder.name) not in owned]
+    # A household's client folder is the one whose name the file system
+    # takes for its own (``os.path.normcase``: Windows folds case, so
+    # Clients\park is the household Park's). The comparison key refuses,
+    # it never identifies (the re-check's R1): a folder that only reads as
+    # a household's - a Cyrillic letter, a second space - is another folder,
+    # listed with its own sentence and never adopted or read.
+    names = [one.name for one in [*(household.path for household in keep), *found.record_missing]]
+    by_key = {layout.name_key(name): name for name in names}
+    for folder in found.client_folders:
+        if any(layout.names_one_folder(folder.name, name) for name in names):
+            continue
+        like = by_key.get(layout.name_key(folder.name))
+        misfits.append(Misfit(folder, MISFIT_CLIENT_LOOK_ALIKE.format(household=like)
+                              if like else MISFIT_CLIENT_NO_RECORD))
     return Registry(
         source=root,
         engagements=engagements,
