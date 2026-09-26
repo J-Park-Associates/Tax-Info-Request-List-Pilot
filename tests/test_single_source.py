@@ -286,15 +286,26 @@ def test_ci_tests_the_python_floor_pyproject_declares():
 def test_gitignore_knows_every_runtime_file_python_writes_outside_the_repo():
     """The store counts, and so do the two files SQLite keeps beside it.
 
-    It lives beside the settings file, which in a source checkout is the
-    repository root: a developer who runs the app, or a subprocess test
-    that does not name a store of its own, writes one into the tree.
+    Since decision 186 it lives in the tracker's data folder, never in a
+    checkout - but a checkout from before it may still hold one, and so
+    may the run log. A temp the tracker writes beside a target
+    (``fsio.TEMP_SUFFIX``) and the real corpus's expectations file, which
+    names the firm's own documents, are ignored too, and none is tracked.
     """
+    import fnmatch
+    import subprocess
+
+    from tracker.fsio import TEMP_SUFFIX
     from tracker.progress import PASSES_DIRNAME
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
     from tracker.runner import LOG_FILENAME, STATUS_PAGE_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
-    from tracker.settings import ERROR_LOG_FILENAME, OCR_SCRATCH_DIRNAME, SETTINGS_FILENAME
+    from tracker.settings import (
+        ERROR_LOG_FILENAME,
+        EXPECTATIONS_FILENAME,
+        OCR_SCRATCH_DIRNAME,
+        SETTINGS_FILENAME,
+    )
     from tracker.store import STORE_FILENAME, STORE_SHM_FILENAME, STORE_WAL_FILENAME
 
     ignored = [line.strip() for line in read(".gitignore").splitlines()
@@ -305,8 +316,28 @@ def test_gitignore_knows_every_runtime_file_python_writes_outside_the_repo():
                  # Decision 193: the error log, its rotated copies and the
                  # passes folder, beside the store.
                  ERROR_LOG_FILENAME, f"{ERROR_LOG_FILENAME}.*", PASSES_DIRNAME + "/",
-                 f"{OCR_SCRATCH_DIRNAME}/"):
+                 f"{OCR_SCRATCH_DIRNAME}/", f"*{TEMP_SUFFIX}", EXPECTATIONS_FILENAME):
         assert ignored.count(name) == 1, name
+    tracked = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True,
+                             check=True).stdout.splitlines()
+    assert [rel for rel in tracked
+            if fnmatch.fnmatch(Path(rel).name, f"*{TEMP_SUFFIX}")
+            or Path(rel).name == EXPECTATIONS_FILENAME] == []
+
+
+def test_the_projects_agent_settings_can_be_committed_and_nothing_else_under_claude():
+    """Decision 186: ``.claude/settings.json`` can be tracked, so the
+    project's agent settings can carry a deny list one day (a guard rail,
+    not a wall); a person's own settings and Claude Code's worktrees stay
+    ignored."""
+    import subprocess
+
+    def ignored(rel: str) -> int:
+        return subprocess.run(["git", "check-ignore", "-q", "--no-index", rel], cwd=REPO).returncode
+
+    assert ignored(".claude/settings.json") == 1
+    assert ignored(".claude/settings.local.json") == 0
+    assert ignored(".claude/worktrees/x/y") == 0
 
 
 def test_every_file_beside_the_store_is_ignored_by_git():

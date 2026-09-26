@@ -84,6 +84,13 @@ jobs:
           python -m pip install --require-hashes -r requirements.lock
           python -m pip install --require-hashes --no-deps -r requirements-nodeps.lock
 
+      # Every run of the tracker in this job keeps its data folder under the
+      # runner's temp (decision 186), never the runner account's own, so no
+      # step's store, log or scratch can follow the package anywhere. A
+      # job-level env cannot read the runner context, hence GITHUB_ENV.
+      - name: Give the tracker a data folder of this job's own
+        run: Add-Content -Path $env:GITHUB_ENV -Value "TRACKER_DATA_HOME=$(Join-Path $env:RUNNER_TEMP 'data-home')"
+
       # The batch file as a person runs it. The one difference is the switch
       # its own header documents, which skips the waits nobody is here to end.
       - name: Build the portable package
@@ -186,6 +193,15 @@ jobs:
           }
           $first = Get-Content -LiteralPath $log -TotalCount 1
           if ($first -notmatch 'reader=processor') { throw "the run log's first line names no processor: $first" }
+
+      # Proof that the package carries nothing a pass derives from clients and
+      # no settings: every name the data home or the settings folder holds
+      # (decision 186), checked before the package is zipped.
+      - name: The package holds no store, run log, task file or settings
+        run: |
+          $names = @('tracker.db', 'tracker.db-wal', 'tracker.db-shm', 'runs.log', 'pass-order.json', 'tax-tracker.xml', 'ocr-scratch', 'tax-document-tracker', 'settings.json')
+          $found = Get-ChildItem -LiteralPath $env:PACKAGE_DIR -Recurse -Force | Where-Object { $names -contains $_.Name }
+          if ($found) { throw "the package holds what belongs in a data folder or a settings folder: $($found.FullName -join ', ')" }
 
       # After both smoke checks, so only a package that answered is hashed.
       # One zip, its SHA-256 beside it in the `<hex>  <name>` form, and the

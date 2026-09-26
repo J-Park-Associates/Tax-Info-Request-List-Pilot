@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 163,
-    "edges": 1014,
-    "reused": 109
+    "edges": 1016,
+    "reused": 119
   },
   "node_types": [
     "artifact",
@@ -75,10 +75,10 @@
       "id": ".github/workflows/build.yml",
       "type": "workflow",
       "layer": "ci",
-      "sha256": "3324d6096b803eb0",
-      "lines": 217,
+      "sha256": "966d7e1f50a43dbe",
+      "lines": 233,
       "role": "Builds the portable package from a `v*` tag and nothing else (decision 191) by running Build App.bat itself on a Windows runner, proves the frozen executable answers in both of its modes, prints the build-info file, zips the package, publishes its SHA-256 beside it and on the run's summary page, and uploads the zip and the .sha256 as the run's artifact for seven days.",
-      "notes": "Decision 78. It runs the batch file rather than re-implementing the build, because a second copy of the build is the one that drifts; tests/test_build.py refuses a workflow that names PyInstaller, the packager or the copy itself. The batch file pauses for a person at every exit, so it reads one documented switch that skips the waits, named in its own header and set here. The two smoke checks run the frozen executable, not the source: `list` with the shell's two environment variables set, which must answer JSON rather than a traceback on an install with no clients root yet, and one dry pass over a scratch clients root tests/samples.py builds, which walks filing, routing, scanning and drafting. Since decision 169 the root holds a scan only the reader can file (SCRATCH_SCAN), and the step compares the package's engagement line with the source's own dry pass and reads the run log's first line for reader=processor, so a package missing the reader or a model fails here. It installs the tree in the two steps every install makes (R-11): requirements.lock then rapidocr with --no-deps from requirements-nodeps.lock, both hash-checked (decision 191). Where the package landed is read back out of the batch file's own OUT/PLATFORM/ARCH and app/package.json's two names, so no path here is a second copy of one. Not on push: a freeze, an npm install, an Electron download and a few hundred megabytes of artifact are not what a commit should cost. Decision 191: no workflow_dispatch - v* tags are protected, so a package is the build of reviewed code - and a job guard `if: startsWith(github.ref, 'refs/tags/v')`; the checksum step runs after both smoke checks, and the runbook compares the summary page's hash with certutil -hashfile before a stick is written (transport, not provenance). Its checkout keeps no credentials (F-12)."
+      "notes": "Decision 78. It runs the batch file rather than re-implementing the build, because a second copy of the build is the one that drifts; tests/test_build.py refuses a workflow that names PyInstaller, the packager or the copy itself. The batch file pauses for a person at every exit, so it reads one documented switch that skips the waits, named in its own header and set here. The two smoke checks run the frozen executable, not the source: `list` with the shell's two environment variables set, which must answer JSON rather than a traceback on an install with no clients root yet, and one dry pass over a scratch clients root tests/samples.py builds, which walks filing, routing, scanning and drafting. Since decision 169 the root holds a scan only the reader can file (SCRATCH_SCAN), and the step compares the package's engagement line with the source's own dry pass and reads the run log's first line for reader=processor, so a package missing the reader or a model fails here. It installs the tree in the two steps every install makes (R-11): requirements.lock then rapidocr with --no-deps from requirements-nodeps.lock, both hash-checked (decision 191). Where the package landed is read back out of the batch file's own OUT/PLATFORM/ARCH and app/package.json's two names, so no path here is a second copy of one. Not on push: a freeze, an npm install, an Electron download and a few hundred megabytes of artifact are not what a commit should cost. Decision 191: no workflow_dispatch - v* tags are protected, so a package is the build of reviewed code - and a job guard `if: startsWith(github.ref, 'refs/tags/v')`; the checksum step runs after both smoke checks, and the runbook compares the summary page's hash with certutil -hashfile before a stick is written (transport, not provenance). Its checkout keeps no credentials (F-12). Decision 186: a step right after the dependencies gives every run of the tracker in the job a data folder under the runner's temp (TRACKER_DATA_HOME through GITHUB_ENV, since a job-level env cannot read the runner context), and a step before the zip fails the build when the package holds any name the data home or the settings folder holds (the store and its side files, runs.log, pass-order.json, tax-tracker.xml, ocr-scratch, the data home's own name, settings.json), each pinned to its constant by tests/test_build.py."
     },
     {
       "id": ".github/workflows/ci.yml",
@@ -3467,7 +3467,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "28aa2d4be1dc72ed",
+      "sha256": "230ba7280a675d65",
       "lines": 436,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -3485,7 +3485,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "2e4b7d62854970b9",
+      "sha256": "cd7257b591345329",
       "lines": 1050,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -4314,8 +4314,8 @@
       "id": "tests/test_build.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "39209a54988fa8a4",
-      "lines": 651,
+      "sha256": "eb23f436f2bf7e5f",
+      "lines": 688,
       "exports": [
         "BUILD_ENVIRONMENT",
         "BUILD_LOCKS",
@@ -4355,6 +4355,7 @@
         "test_every_batch_file_ignores_its_own_folder_when_it_finds_a_command",
         "test_every_checkout_leaves_no_credentials_behind",
         "test_every_install_is_hash_checked_from_a_lock",
+        "test_every_run_of_the_tracker_in_the_build_has_a_data_home_of_its_own",
         "test_every_spelling_of_an_install_is_recognised",
         "test_the_audit_runs_weekly_on_linux_and_never_on_a_push",
         "test_the_build_fails_when_a_frozen_version_differs_from_the_locks",
@@ -4364,6 +4365,7 @@
         "test_the_gui_opencv_is_never_pinned_and_the_locks_cover_every_reader_pin",
         "test_the_launcher_never_installs_and_says_when_setup_must_run",
         "test_the_onnx_runtime_and_numpy_are_pinned_by_platform_and_interpreter",
+        "test_the_package_is_proved_to_hold_no_store_log_task_file_or_settings",
         "test_the_package_is_published_with_its_sha256_after_the_smoke_checks",
         "test_the_pinned_pypdf_is_at_least_the_advisories_fix",
         "test_the_reader_is_installed_in_two_steps_everywhere_the_tree_is_installed",
@@ -6643,8 +6645,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "4084a06576582f9b",
-      "lines": 2057,
+      "sha256": "12ae2f95b41f0585",
+      "lines": 2088,
       "exports": [
         "CONSOLE_EXEMPT",
         "CONSOLE_GUARDED",
@@ -6722,6 +6724,7 @@
         "test_the_pass_and_the_hand_over_file_into_another_household_through_one_function",
         "test_the_product_name_has_one_home",
         "test_the_progress_key_and_the_error_log_name_are_typed_once_per_language",
+        "test_the_projects_agent_settings_can_be_committed_and_nothing_else_under_claude",
         "test_the_readme_engagement_details_table_matches_the_fields",
         "test_the_reminder_card_is_drawn_from_state",
         "test_the_reminder_card_is_never_hidden_on_an_error",
@@ -8300,7 +8303,19 @@
     },
     {
       "from": "tests/test_build.py",
+      "to": "tracker/scheduling.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_build.py",
       "to": "tracker/settings.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_build.py",
+      "to": "tracker/store.py",
       "type": "exercises",
       "source": "derived"
     },

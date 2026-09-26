@@ -115,6 +115,43 @@ def test_the_package_is_published_with_its_sha256_after_the_smoke_checks():
     assert step.index(f"Unzip `{artifact}.zip`") < step.index("certutil -hashfile") < step.index("summary page")
 
 
+def test_every_run_of_the_tracker_in_the_build_has_a_data_home_of_its_own():
+    """Decision 186: the job sets the tracker's data folder under the
+    runner's temp before any step runs the tracker, so no store, log or
+    scratch of a smoke check lands in the runner account's own folder."""
+    from tracker.settings import ENV_DATA_HOME
+
+    run = commands()
+    lines = run.splitlines()
+    [home] = [n for n, line in enumerate(lines)
+              if f"{ENV_DATA_HOME}=" in line and "RUNNER_TEMP" in line and "GITHUB_ENV" in line]
+    tracker_runs = [n for n, line in enumerate(lines)
+                    if "API_EXE" in line and "&" in line or "python -m tracker" in line
+                    or "Build App.bat" in line]
+    assert tracker_runs and home < min(tracker_runs)
+
+
+def test_the_package_is_proved_to_hold_no_store_log_task_file_or_settings():
+    """The proof (decision 186): a step before the package is zipped and
+    uploaded fails the build when anything in it bears a name the data
+    home or the settings folder holds - each spelled by its constant."""
+    from tracker.runner import LOG_FILENAME, PASS_ORDER_FILENAME
+    from tracker.scheduling import SCHEDULE_XML_FILENAME
+    from tracker.settings import DATA_HOME_NAME, OCR_SCRATCH_DIRNAME, SETTINGS_FILENAME
+    from tracker.store import STORE_FILENAME, STORE_SHM_FILENAME, STORE_WAL_FILENAME
+
+    run = commands()
+    step = run.index("- name: The package holds no store, run log, task file or settings")
+    assert step < run.index("- name: Zip the package and publish its SHA-256") < run.index(
+        "- name: Upload the package")
+    body = run[step:run.index("- name: Zip the package and publish its SHA-256")]
+    listed = re.search(r"\$names = @\(([^)]*)\)", body).group(1)
+    assert set(re.findall(r"'([^']+)'", listed)) == {
+        STORE_FILENAME, STORE_WAL_FILENAME, STORE_SHM_FILENAME, LOG_FILENAME, PASS_ORDER_FILENAME,
+        SCHEDULE_XML_FILENAME, OCR_SCRATCH_DIRNAME, DATA_HOME_NAME, SETTINGS_FILENAME}
+    assert "$env:PACKAGE_DIR -Recurse -Force" in body and "throw" in body
+
+
 def test_the_workflow_skips_the_prompts_through_the_switch_the_script_reads():
     """One switch, read in one place, and every wait behind it."""
     script = read(BUILD_SCRIPT)
