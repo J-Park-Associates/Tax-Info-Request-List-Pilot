@@ -530,8 +530,10 @@ def real_places(repo: Path) -> tuple[tuple[str, Path], ...]:
     beside the app as the checkout resolves it, and wherever the shell running
     the suite names instead. The tripwire guards each; decision 186 adds the
     data home."""
+    from tracker.checkpoint import CHECKPOINT_FILENAME
+    from tracker.progress import PASSES_DIRNAME
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
-    from tracker.runner import LOG_FILENAME, STATUS_PAGE_FILENAME
+    from tracker.runner import LAST_PASS_FILENAME, LOG_FILENAME, STATUS_PAGE_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
 
     named = settings.settings_path()                     # the shell's, if it sets one
@@ -544,7 +546,17 @@ def real_places(repo: Path) -> tuple[tuple[str, Path], ...]:
                    ("store", store.path_for(where)),
                    ("store's write-ahead log", where.with_name(store.STORE_WAL_FILENAME)),
                    ("store's shared memory", where.with_name(store.STORE_SHM_FILENAME)),
-                   ("scheduled task file", where.with_name(SCHEDULE_XML_FILENAME))]
+                   ("scheduled task file", where.with_name(SCHEDULE_XML_FILENAME)),
+                   # Decision 159 writes these beside the store: the record
+                   # checkpoint, the last pass's outcome, and the recovered
+                   # copies of a return's lines (record-derived, like the store).
+                   ("record checkpoint", where.with_name(CHECKPOINT_FILENAME)),
+                   ("last-pass file", where.with_name(LAST_PASS_FILENAME)),
+                   ("recovered record copies", where.with_name(store.RECOVERED_DIR)),
+                   # Decision 193 writes these beside the store too: the error
+                   # log (its rotated copies share its name) and the passes' progress.
+                   ("error log", where.with_name(settings.ERROR_LOG_FILENAME)),
+                   ("passes folder", where.with_name(PASSES_DIRNAME))]
     if os.environ.get(store.ENV_STORE):
         places.append(("store", Path(os.environ[store.ENV_STORE])))
     app = settings.app_dir()

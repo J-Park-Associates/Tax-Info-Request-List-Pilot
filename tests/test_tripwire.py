@@ -43,11 +43,14 @@ from tests.conftest import (
 )
 from tests.tripwire import sitecustomize as tripwire
 from tracker import settings, store
+from tracker.checkpoint import CHECKPOINT_FILENAME
 from tracker.layout import CLIENTS_TREE, PRIVATE_TREE
+from tracker.progress import PASSES_DIRNAME
+from tracker.runner import LAST_PASS_FILENAME
 from tracker.scheduling import SCHEDULE_XML_FILENAME
 
 #: The guarded places that are folders, by their label; the rest are files.
-FOLDER_LABELS = {"OCR scratch folder", "client tree", "private tree"}
+FOLDER_LABELS = {"OCR scratch folder", "client tree", "private tree", "recovered record copies", "passes folder"}
 
 
 # ----------------------------------------------------- a folder of its own ----
@@ -80,7 +83,12 @@ def test_the_tripwire_guards_every_place_a_real_settings_file_store_or_scratch_r
     for place in (beside, store.path_for(beside), beside.with_name(store.STORE_WAL_FILENAME),
                   beside.with_name(store.STORE_SHM_FILENAME), beside.with_name(SCHEDULE_XML_FILENAME),
                   settings.app_dir() / settings.OCR_SCRATCH_DIRNAME,
-                  REPO / CLIENTS_TREE, REPO / PRIVATE_TREE):
+                  REPO / CLIENTS_TREE, REPO / PRIVATE_TREE,
+                  # decision 159's files beside the store
+                  beside.with_name(CHECKPOINT_FILENAME), beside.with_name(LAST_PASS_FILENAME),
+                  beside.with_name(store.RECOVERED_DIR),
+                  # decision 193's, beside the store
+                  beside.with_name(settings.ERROR_LOG_FILENAME), beside.with_name(PASSES_DIRNAME)):
         assert place in guarded, place
 
     named = tmp_path / "named"

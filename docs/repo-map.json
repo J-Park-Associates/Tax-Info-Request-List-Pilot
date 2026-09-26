@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 160,
-    "edges": 993,
-    "reused": 119
+    "edges": 998,
+    "reused": 124
   },
   "node_types": [
     "artifact",
@@ -3362,7 +3362,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "eaf9e52711ba551b",
+      "sha256": "9c5418356fa0bfb8",
       "lines": 435,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -3745,8 +3745,8 @@
       "id": "tests/conftest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c421de55c136ce57",
-      "lines": 778,
+      "sha256": "36f5abf942ee28c0",
+      "lines": 790,
       "exports": [
         "APP_FOLDER",
         "ENV_OFFICE_SHAPED_FULL",
@@ -6835,8 +6835,8 @@
       "id": "tests/test_tripwire.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "71754f818f233d6d",
-      "lines": 492,
+      "sha256": "0e8d8b3d04992953",
+      "lines": 500,
       "exports": [
         "ALL_PASS",
         "CANARIES",
@@ -7606,6 +7606,12 @@
     },
     {
       "from": "tests/conftest.py",
+      "to": "tracker/checkpoint.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/conftest.py",
       "to": "tracker/content_check.py",
       "type": "exercises",
       "source": "derived"
@@ -7649,6 +7655,12 @@
     {
       "from": "tests/conftest.py",
       "to": "tracker/names.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/conftest.py",
+      "to": "tracker/progress.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -10912,7 +10924,25 @@
     },
     {
       "from": "tests/test_tripwire.py",
+      "to": "tracker/checkpoint.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_tripwire.py",
       "to": "tracker/layout.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_tripwire.py",
+      "to": "tracker/progress.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_tripwire.py",
+      "to": "tracker/runner.py",
       "type": "exercises",
       "source": "derived"
     },
