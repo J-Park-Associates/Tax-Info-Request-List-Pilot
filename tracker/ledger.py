@@ -537,7 +537,9 @@ def day_of(at: str) -> dt.date:
     """
     try:
         return dt.datetime.fromisoformat(at.replace("Z", "+00:00")).astimezone().date()
-    except ValueError:
+    except (ValueError, OSError, OverflowError):
+        # OSError: Windows cannot give a time before the epoch its local
+        # day (decision 187's review, S1).
         return dt.date.min
 
 

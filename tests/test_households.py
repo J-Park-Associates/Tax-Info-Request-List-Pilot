@@ -130,14 +130,14 @@ def test_a_household_line_of_the_wrong_shape_is_one_folders_problem(household, t
     # whole record.
     with ledger.path_for(household).open("a", encoding="utf-8") as handle:
         handle.write(json.dumps({ledger.EVENT_KEY: ledger.HOUSEHOLD_CHANGED,
-                                 ledger.AT_KEY: "2026-01-01T00:00:00",
+                                 ledger.AT_KEY: "2026-01-01T00:00:00Z",
                                  ledger.HOUSEHOLD_KEY: {"members": "John Smith"}}) + "\n")
     store.rebuild_engagement(store.connect(), tmp_path, household)
     assert load_household_info(household).members == ("John Smith",)
     # A list holding something that is not a name is refused by name.
     with ledger.path_for(household).open("a", encoding="utf-8") as handle:
         handle.write(json.dumps({ledger.EVENT_KEY: ledger.HOUSEHOLD_CHANGED,
-                                 ledger.AT_KEY: "2026-01-01T00:00:00",
+                                 ledger.AT_KEY: "2026-01-01T00:00:00Z",
                                  ledger.HOUSEHOLD_KEY: {"members": [17]}}) + "\n")
     with pytest.raises(store.StoreError, match="names a member that is not text"):
         store.rebuild_engagement(store.connect(), tmp_path, household)
@@ -226,7 +226,7 @@ def test_sharing_confirmed_is_an_event_folded_by_nothing_and_read_back_by_day(ho
 
     with ledger.path_for(household).open("a", encoding="utf-8") as handle:
         handle.write(json.dumps({ledger.EVENT_KEY: ledger.SHARING_CONFIRMED,
-                                 ledger.AT_KEY: "2026-01-01T00:00:00",
+                                 ledger.AT_KEY: "2026-01-01T00:00:00Z",
                                  "members": ["John Smith"]}) + "\n")
     with pytest.raises(store.StoreError, match="it carries nothing"):
         store.rebuild_engagement(store.connect(), tmp_path, household)

@@ -321,9 +321,14 @@ STEP_NOT_A_PLACE = "not-a-place"
 STEP_OTHER_HOUSEHOLD = "other-household"
 #: A write into another year's ``_Opened``.
 STEP_OTHER_YEAR = "other-year"
+#: A removal in the client tree (decision 187, the review's M4): the only
+#: files a step ever removes are the firm's own copies, so a removal of a
+#: client's original or of anything in their inbox is never a step.
+STEP_CLIENT_TREE = "client-tree"
 #: Every code :func:`place_problem` returns.
 STEP_PROBLEMS = frozenset({STEP_BLANK, STEP_ABSOLUTE, STEP_ABOVE_ROOT, STEP_NOT_A_RETURN,
-                           STEP_NOT_A_PLACE, STEP_OTHER_HOUSEHOLD, STEP_OTHER_YEAR})
+                           STEP_NOT_A_PLACE, STEP_OTHER_HOUSEHOLD, STEP_OTHER_YEAR,
+                           STEP_CLIENT_TREE})
 
 
 def _normal_parts(path: str) -> tuple[str, ...]:
@@ -331,7 +336,8 @@ def _normal_parts(path: str) -> tuple[str, ...]:
     return PurePath(os.path.normcase(os.path.normpath(path))).parts
 
 
-def place_problem(return_dir: Path | str, location: str, *, writes: bool) -> str | None:
+def place_problem(return_dir: Path | str, location: str, *, writes: bool,
+                  removes: bool = False) -> str | None:
     """Why a location a step of this return names is not where such a step
     may act, as one of the ``STEP_`` codes - or ``None`` where it may
     (decision 180; worded here once by decision 187).
@@ -350,6 +356,14 @@ def place_problem(return_dir: Path | str, location: str, *, writes: bool) -> str
     files or anything above the clients root - is a place a step goes, so a
     line the record did not get from this code, however it got there,
     moves nothing.
+
+    **A removal is narrower** (``removes``, which implies ``writes``;
+    decision 187, the review's M4): it may act only under the return itself
+    or its own year's ``_Opened``. Every removal the tracker writes takes
+    away one of the firm's own copies; a removal naming the client tree is
+    :data:`STEP_CLIENT_TREE`, because originals are never altered. This
+    narrows the rule decision 180 wrote, which let a removal act wherever a
+    move may write.
 
     **Lexical and positional, and it touches no disk**, as :func:`locate`
     is: the filer's link check guards what lies behind a junction, and this
@@ -377,6 +391,8 @@ def place_problem(return_dir: Path | str, location: str, *, writes: bool) -> str
         return None if below[2] == own[2] or not writes else STEP_OTHER_YEAR
     if (len(below) >= 4 and below[0] == os.path.normcase(CLIENTS_TREE)
             and (is_year_folder(below[2]) or below[2] == os.path.normcase(INBOX_DIR_NAME))):
+        if removes:
+            return STEP_CLIENT_TREE
         return None if not writes or below[1] == own[1] else STEP_OTHER_HOUSEHOLD
     return STEP_NOT_A_PLACE
 

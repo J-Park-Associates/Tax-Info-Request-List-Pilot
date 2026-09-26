@@ -129,6 +129,7 @@ from tracker.records import (
     is_reserved_name,  # noqa: F401
     link_problem,
     rule_from_json,
+    rule_row_fault,
     rule_to_json,
     short_title_problem,
 )
@@ -193,6 +194,8 @@ COLUMNS: tuple[tuple[str, str], ...] = (
 #: these (``tests/test_single_source.py`` holds it to that), the Status
 #: Report draws them, and every message that names a column uses one.
 HEADERS = tuple(header for header, _ in COLUMNS)
+#: A field's column, for a refusal the record's rule names by field.
+_COLUMN_OF = {field_name: header for header, field_name in COLUMNS}
 assert tuple(field for _, field in COLUMNS) == tuple(
     f for f in RULE_FIELDS if f not in ("row", "date_pattern_derived")
 )
@@ -1082,7 +1085,7 @@ def validated(items: Iterable[RequestItem]) -> list[RequestItem]:
             date_pattern = derived_date_pattern(period)
             derived = bool(date_pattern)
         override = _override(item.manual_override, where)
-        out.append(replace(
+        checked = replace(
             item,
             identifier=identifier,
             document=document,
@@ -1092,7 +1095,14 @@ def validated(items: Iterable[RequestItem]) -> list[RequestItem]:
             manual_override=override,
             override_reason=_override_reason(item.override_reason, override, where),
             row=n,
-        ))
+        )
+        # The gate's own rule, run on the row the record will carry (decision
+        # 187, the review's M6): the editor never saves what the store's
+        # admission would refuse, so a save cannot wedge its return.
+        field, problem = rule_row_fault(rule_to_json(checked))
+        if problem:
+            raise ManifestError(f"{where}: {_COLUMN_OF.get(field, field)} {problem}")
+        out.append(checked)
     # Two issuer rows whose names nest make each other useless and say
     # nothing about it; the one moment a person can be told is now.
     check_narrowing_names(out)

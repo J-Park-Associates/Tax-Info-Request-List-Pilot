@@ -216,10 +216,14 @@ for are edited in the same place.
 The editor keeps each value inside the bounds the tracker will read back
 (decision 187): Expected Count is a whole number from 1 to 9,999, Min Size
 KB from 0 to 1,048,576, a date is a real date between 1900 and 2100, and a
-Date Pattern is at most 200 characters with at most three repetitions - no
-repetition inside another, no `|` or back-reference inside one, one
-open-ended (`+`, `*`) at most and the rest at most `{…,20}` - so a pattern
-cannot hold a pass on one page.
+Date Pattern is at most 200 characters with at most eight variable parts
+(`?`, `*`, `+`, `{m,n}`), of which at most three repeat more than once, one
+at most is open-ended (`+`, `*`) and the rest at most `{…,20}` - no
+repetition inside another, no `|` or back-reference inside one, and no more
+ways to try one line than the slowest of those allows - so a pattern cannot
+hold a pass on one page. Descriptions (Document, Period, Override Reason,
+the client and firm details) may run over several lines; identifiers, short
+names and household and return names may not.
 
 **Renaming a request** (decision 160). A request that already holds filed
 documents keeps its identifier through a save: changing `A01` to `A1` in
@@ -1594,9 +1598,16 @@ the same way.
   path), `above-root`, `not-a-place` (inside the clients root but in none
   of this return's folders), `other-household` or `other-year` (a write
   into another household's client folder or another year's `_Opened`),
-  `blank`, or `not-a-return`. "… would be copied to … with no fingerprint
-  to prove the copy against" (`tracker.filer.COPY_UNPROVED`) is the same
-  kind of line: a copy the tracker would have fingerprinted. The
+  `client-tree` (a removal naming a client's original or inbox - the
+  tracker only ever removes its own copies), `blank`, or `not-a-return`.
+  "… would be copied to … with no fingerprint to prove the copy against"
+  (`tracker.filer.COPY_UNPROVED`) is the same kind of line: a copy whose
+  source is not there to be fingerprinted. (An interrupted copy an earlier
+  version left without a fingerprint is proved against the original and
+  finished by the next pass; "… could not be read just now …, so no copy
+  was made" is an original a sync client held: the original is kept in
+  the year's folder and waits in Needs Review for a person to file, and
+  nothing in the record needs checking.) The
   pass moved, copied and removed nothing for it, and every other household
   was sorted as usual. Do not edit the record by hand: say which return and
   which path, and have the record checked
@@ -1611,7 +1622,8 @@ the same way.
   from 1 to 9999", "must be a date written YYYY-MM-DD", "must be true or
   false", a Date Pattern that "repeats something that itself repeats"); a
   step "outside this return's places"; a household or return label that
-  "is not one folder name"; or a copy with no fingerprint. Nothing was
+  "is not one folder name"; or a line stamped in a form the tracker never
+  writes. Nothing was
   moved, copied or removed for that household, and every other household
   was sorted as usual. Do not edit the record by hand: say which return and
   which line, and the store check

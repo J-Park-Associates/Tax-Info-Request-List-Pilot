@@ -22,6 +22,7 @@ from tracker.layout import (
     STEP_ABOVE_ROOT,
     STEP_ABSOLUTE,
     STEP_BLANK,
+    STEP_CLIENT_TREE,
     STEP_NOT_A_PLACE,
     STEP_NOT_A_RETURN,
     STEP_OTHER_HOUSEHOLD,
@@ -315,3 +316,20 @@ def test_the_place_rule_touches_no_disk(monkeypatch):
     assert place_problem(missing, "../../../../../x.pdf", writes=False) == STEP_ABOVE_ROOT
     assert place_problem(missing, f"../../../../{CLIENTS_TREE}/Other/2025/x.pdf", writes=True) \
         == STEP_OTHER_HOUSEHOLD
+
+
+def test_a_removal_may_act_only_under_the_return_or_its_years_opened():
+    """The review's M4: a removal takes away one of the firm's own copies,
+    so it is narrower than a write - the client tree is never a place for
+    one, not even this household's own inbox or year folder."""
+    for location, code in [
+        ("Prepared/A01 - W-2.pdf", None),
+        ("../_Opened/mail/x.pdf", None),
+        ("../../2024/_Opened/mail/x.pdf", STEP_OTHER_YEAR),
+        (f"../../../../{CLIENTS_TREE}/{HOUSEHOLD}/2025/w2.pdf", STEP_CLIENT_TREE),
+        (f"../../../../{CLIENTS_TREE}/{HOUSEHOLD}/{INBOX_DIR_NAME}/w2.pdf", STEP_CLIENT_TREE),
+        (f"../../../../{CLIENTS_TREE}/Other Household/2025/w2.pdf", STEP_CLIENT_TREE),
+        ("../../_ledger.jsonl", STEP_NOT_A_PLACE),
+    ]:
+        assert place_problem(PLACE_RETURN, location, writes=True, removes=True) == code, location
+    assert STEP_CLIENT_TREE in STEP_PROBLEMS

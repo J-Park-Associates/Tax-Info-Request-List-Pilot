@@ -797,7 +797,7 @@ def _a_malformed_line_is_one_folders_problem(tmp_path, samples, line: dict, said
     bad = build_engagement(tmp_path / "Clients", samples, name="Bad 2025", drops=())
     lines = ledger.read_events(bad.path)
     with ledger.path_for(bad.path).open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps({ledger.EVENT_KEY: line.pop("event"), ledger.AT_KEY: "2026-01-01T00:00:00",
+        handle.write(json.dumps({ledger.EVENT_KEY: line.pop("event"), ledger.AT_KEY: "2026-01-01T00:00:00Z",
                                  **line}) + "\n")
     try:
         loaded = discover_engagements(tmp_path / "Clients")

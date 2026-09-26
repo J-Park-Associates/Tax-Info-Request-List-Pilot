@@ -877,6 +877,13 @@ COPY_UNPROVED = ("{source} would be copied to {target} with no fingerprint to pr
                  "against; nothing was copied. A person checks the record")
 
 
+#: What a copy whose source is there but cannot be read just now is refused
+#: with before anything is recorded (decision 187's review, S6): the
+#: original stays where it is, and nothing is copied unproved.
+COPY_UNREAD = ("{source} could not be read just now (still syncing, or held by another "
+               "program), so no copy was made")
+
+
 class CopyMismatchError(FilingError):
     """A copy was made and the target did not hold the original's bytes."""
 
@@ -1701,8 +1708,9 @@ def _may_touch(engagement_dir: Path, location: str, *, writes: bool) -> bool:
 def _refuse_a_step_outside(engagement_dir: Path, op: dict) -> None:
     """:data:`OP_OUTSIDE` for the first place in ``op`` a step of this
     return may not touch, before any of it is done."""
+    removes = op.get(ledger.OP_KEY) == ledger.OP_REMOVE
     for location, write in ledger.op_ends(op):
-        code = place_problem(engagement_dir, location, writes=write)
+        code = place_problem(engagement_dir, location, writes=write, removes=removes)
         if code is not None:
             raise FilingError(OP_OUTSIDE.format(name=Path(engagement_dir).name, location=location,
                                                 reason=code))
@@ -1861,6 +1869,11 @@ def _prove(engagement_dir: Path, ops: list[dict]) -> None:
     for op in ops:
         if op[ledger.OP_KEY] == ledger.OP_COPY and not op.get(ledger.DIGEST_KEY):
             digest = fingerprint(op[ledger.FROM_KEY])
+            if not digest and locate(engagement_dir, op[ledger.FROM_KEY]).exists():
+                # There, and not readable now - a sync client or a scanner
+                # holding it. Said as that, never as a record to check.
+                raise FilingError(COPY_UNREAD.format(
+                    source=locate(engagement_dir, op[ledger.FROM_KEY]).name))
             if not digest:
                 raise FilingError(COPY_UNPROVED.format(
                     source=locate(engagement_dir, op[ledger.FROM_KEY]).name,
@@ -3099,20 +3112,35 @@ def _finish_the_ops(
     file either way, and the machine never overwrites and never deletes
     what it finds. A step whose row carried no digest (decision 65) can be
     proved by nothing, so the file has only to be there for the step to be
-    made and any file at the destination stops it.
+    made and any file at the destination stops it - except a copy, which
+    since decision 187 is proved against its source's bytes, read now.
     """
     # Every step is held to its return's places before any is looked at
     # (decision 180): a recovery acts on lines another machine or a
     # restored copy may have written, and a step outside them is the
     # record's problem for a person, never a move.
+    # And through no link (decision 187, the review's M3): a removal is
+    # carried out here rather than through _do_op, and its digest is read
+    # before it is removed, so both ends are asked before any byte is read.
     for op in ops:
         _refuse_a_step_outside(engagement_dir, op)
+        _refuse_a_step_through_a_link(engagement_dir, op)
     for op in ops:
         kind = op[ledger.OP_KEY]
         source = locate(engagement_dir, op[ledger.FROM_KEY])
         digest = op.get(ledger.DIGEST_KEY, "")
         if _waiting_on_sync(source):
             return _SYNCING, op
+        if kind == ledger.OP_COPY and not digest and source.is_file():
+            # An intent from before decision 187 may hold a copy with no
+            # fingerprint (decision 65). The original is the record, so the
+            # copy is proved against its bytes as _prove() would have done
+            # when the intent was written; one that cannot be read now is
+            # left for a person, never copied unproved.
+            digest = _digest_or_none(source) or ""
+            if not digest:
+                return _LOST, op
+            op = {**op, ledger.DIGEST_KEY: digest}
         if kind == ledger.OP_REMOVE:
             if digest and _the_bytes(source) == digest:
                 source.unlink(missing_ok=True)

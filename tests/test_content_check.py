@@ -1283,6 +1283,16 @@ def test_only_a_staff_date_pattern_runs_line_by_line():
     assert evaluate_rules("December 2025\n", typed).ok
 
 
+def test_a_pattern_the_record_calls_derived_runs_line_by_line_unless_it_is():
+    """Decision 187 (the review's M2): "derived" is what the pattern is -
+    the Period's own, recomputed - never what the record's flag claims. A
+    forged pattern flagged derived runs line by line like any typed one."""
+    split = "Statement period\nDecember\n2025 and more\n"
+    forged = item(period="TY2025", date_pattern=r"December\s2025", date_pattern_derived=True)
+    assert not evaluate_rules(split, forged).ok                     # line by line, whatever the flag
+    assert evaluate_rules("December 2025\n", forged).ok
+
+
 # ------------------------------------ a reading the pass can stop (150) ----
 #
 # Decision 150. The pass reads each document in a child process and waits

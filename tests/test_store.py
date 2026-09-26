@@ -2262,6 +2262,7 @@ IMPOSSIBLE = [
     ("file_count", ledger.new(ledger.SCANNED, statuses={
         "A01": {"status": Status.MISSING, "file_count": -1}})),
     ("at", {**learned("A01", "lender"), ledger.AT_KEY: 12345}),
+    ("at", {**learned("A01", "lender"), ledger.AT_KEY: "1900-01-01T00:00:00Z"}),
 ]
 
 
@@ -2305,6 +2306,8 @@ def test_a_step_that_escapes_its_return_is_refused_at_admission(conn, root, by_h
           ledger.DIGEST_KEY: "ab" * 32}, "other-household"),
         ({ledger.OP_KEY: ledger.OP_REMOVE, ledger.FROM_KEY: "../../../../../w2.pdf",
           ledger.DIGEST_KEY: "ab" * 32}, "above-root"),
+        ({ledger.OP_KEY: ledger.OP_REMOVE, ledger.FROM_KEY: A_ROW_ORIGINAL,
+          ledger.DIGEST_KEY: "ab" * 32}, "client-tree"),
     ]:
         moving = ledger.new(ledger.MOVING, key=A_ROW_ORIGINAL, ops=[step], by=ledger.BY_PASS)
         with engagement_lock(by_hand), pytest.raises(store.StoreError) as refused:
@@ -2370,6 +2373,10 @@ def test_a_refusal_never_quotes_the_value_it_refused(by_hand):
         ledger.new(ledger.HOUSEHOLD_CHANGED, household={"members": [{marker: 1}]}),
         ledger.new(ledger.HOUSEHOLD_CHANGED, household={"feeds": marker}),
         ledger.new(ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(digest=marker)),
+        # The review's S2: an event name this version does not know, and the
+        # fields a line that carries nothing carries.
+        {ledger.EVENT_KEY: f"{marker}-event", ledger.AT_KEY: 5},
+        {ledger.EVENT_KEY: ledger.SHARING_CONFIRMED, ledger.AT_KEY: ledger.stamp(), marker: 1},
     ]:
         with pytest.raises(store.StoreError) as refused:
             store._refuse_a_malformed_line(event, 2, where)

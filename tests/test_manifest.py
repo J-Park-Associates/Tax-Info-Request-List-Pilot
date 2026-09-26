@@ -1085,3 +1085,49 @@ def test_a_row_with_no_short_title_derives_one_at_a_whole_word():
     for bad in ("x" * 21, "W-2 / 1099", "Receipts.", "NUL"):
         with pytest.raises(ManifestError, match=f"Row 1: {COL_SHORT_TITLE} "):
             item_from_fields({"identifier": "X01", "document": "Doc", "short_title": bad}, where="Row 1")
+
+
+GATE_REFUSES = {
+    "identifier": "A" * 1001,
+    "document": "W-2\x00",
+    "period": "TY" * 10_001,
+    "expected_count": 10**20,
+    "allowed_extensions": ("p\x00df",),
+    "min_size_kb": 2**40,
+    "required_keywords": ("w-2\x00",),
+    "any_keywords": ("wages\x00",),
+    "date_pattern": r"\d?" * 20 + "x",
+    "manual_override": "Maybe",
+    "override_reason": "confirmed\x00",
+    "named": "no",
+    "asked": "no",
+    "short_title": "S" * 21,
+}
+
+
+@pytest.mark.parametrize("field", sorted(GATE_REFUSES))
+def test_the_editor_refuses_what_the_gate_refuses(field):
+    """The review's M6 (decision 187): the value rule is used by the writer
+    and by the gate, so a row the store's admission would refuse is never
+    saved - it is refused in the editor, naming its row and column. The two
+    fields the editor always sets itself (``row``, ``date_pattern_derived``)
+    are the ones not listed."""
+    from tracker import records
+
+    assert set(GATE_REFUSES) | {"row", "date_pattern_derived"} == set(RULE_FIELDS)
+    extra = {"manual_override": "Accepted"} if field == "override_reason" else {}
+    item = RequestItem(**{"identifier": "A01", "document": "W-2", **extra, field: GATE_REFUSES[field]})
+    assert records.rule_row_problem(rule_to_json(item)), field
+    with pytest.raises(ManifestError, match=r"^Row 1: "):
+        validated([item])
+
+
+def test_a_line_break_in_a_description_is_saved_and_admitted():
+    """A cell a person wrote on two lines (Excel's Alt+Enter, kept by the
+    reader before decision 104) is a description, not a path: the editor
+    and the gate both take it, so it can never wedge its return."""
+    from tracker import records
+
+    [item] = validated([RequestItem(identifier="A01", document="W-2\nWages", period="Jan\n2025",
+                                    required_keywords=("W-2\nform",))])
+    assert records.rule_row_problem(rule_to_json(item)) == ""

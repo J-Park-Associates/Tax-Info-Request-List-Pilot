@@ -17,7 +17,7 @@ from dataclasses import fields
 from pathlib import Path
 
 from tests.test_layers import import_edges
-from tracker import content_check, filer, manifest, records, router
+from tracker import content_check, filer, ledger, manifest, records, router
 from tracker.records import (
     CANDIDATE_SEP,
     ENGAGEMENT_FIELDS,
@@ -290,7 +290,8 @@ def test_a_nested_or_alternating_repetition_is_not_a_date_pattern():
     }
     for pattern, phrase in refused.items():
         assert records.date_pattern_problem(pattern) == phrase, pattern
-    for fine in [r"(?i)\b2025\b", r"\d+/\d{1,2}/2025", r"(?:Dec|12)?\s?2025", r"0?1/[0-3]?[0-9]/2025",
+    assert records.date_pattern_problem(r"(?:Dec|12)?\s?2025") == records.DATE_PATTERN_ALTERNATES
+    for fine in [r"(?i)\b2025\b", r"\d+/\d{1,2}/2025", r"(?:Dec|12)\s?2025", r"0?1/[0-3]?[0-9]/2025",
                  r"\d{0,20}x\d{0,20}y\d*"]:
         assert records.date_pattern_problem(fine) == "", fine
 
@@ -344,3 +345,39 @@ def test_the_editors_checks_are_the_records_own_objects():
                  "is_reserved_name", "identifier_problem", "SHORT_TITLE_MAX", "short_title_problem",
                  "Override", "MIN_EXPECTED_COUNT", "MIN_SIZE_KB_FLOOR"):
         assert getattr(manifest, name) is getattr(records, name), name
+
+
+def test_an_optional_chain_is_not_a_date_pattern():
+    """The review's M1: an optional is a choice point too. ``\\d?`` twenty
+    times over a line of digits backtracks without end though no single
+    part repeats more than once, so every variable repetition counts -
+    ``?`` included - for nesting and for the budget, and the ways one line
+    may be tried are held to the measured 0.22 s case."""
+    assert records.date_pattern_problem(r"\d?" * 20 + "x") == records.DATE_PATTERN_TOO_MANY_OPTIONAL
+    assert records.date_pattern_problem(r"\d?" * 60 + "x") == records.DATE_PATTERN_TOO_MANY_OPTIONAL
+    assert records.date_pattern_problem(r"(?:\d?){20}x") == records.DATE_PATTERN_NESTED
+    assert records.date_pattern_problem(r"\d*\d{0,20}\d{0,20}\d?x") == records.DATE_PATTERN_TOO_MANY_WAYS
+    assert records.date_pattern_problem(r"\d?" * 8 + "x") == ""
+    assert records.date_pattern_problem(r"\d*\d{0,20}\d{0,20}x") == ""
+    assert records.DATE_PATTERN_VARIABLE_MAX == 8 and records.DATE_PATTERN_OPEN_MAX == 1
+
+
+def test_a_stamp_is_the_one_form_the_ledger_writes_from_the_epoch():
+    """The review's S1: ``ledger.stamp`` has only ever written one form, and
+    Windows cannot give a time before 1970 its local day."""
+    assert records.stamp_problem(ledger.stamp()) == ""
+    for refused in ("1900-01-01T00:00:00Z", "2025-W01-1", "20250101T000000", "2025-01-01T00:00:00",
+                    "2025-01-01T00:00:00+00:00", 12345):
+        assert records.stamp_problem(refused) == records.STAMP_BOUNDS, refused
+
+
+def test_a_files_own_name_is_refused_only_for_a_nul_or_its_length():
+    """The review's M5: decision 104 files a POSIX name holding a control
+    character, so a name, a key or a location a real file gave is held only
+    to what no path can hold; a label a person types keeps the one-line rule."""
+    assert records.name_problem("w2\x01.pdf") == ""
+    assert records.name_problem("w2\x00.pdf") == records.NAME_BOUNDS
+    assert records.name_problem("x" * (records.TEXT_MAX + 1)) == records.NAME_BOUNDS
+    assert records.entry_problem({"original_name": "w2\x01.pdf",
+                                  "pbc_location": "../../../../Clients/H/2025/w2\x01.pdf"}) == ""
+    assert records.text_problem("w2\x01") == records.TEXT_BOUNDS

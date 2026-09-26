@@ -701,3 +701,20 @@ def test_a_torn_tail_that_cannot_be_repaired_is_a_ledger_error_with_its_code(bar
     monkeypatch.undo()
     assert stopped.value.code == "EACCES"
     assert bare.name not in str(stopped.value)
+
+
+def test_a_stamp_windows_cannot_give_a_local_day_reads_as_long_ago(monkeypatch):
+    """Decision 187's review (S1): on Windows, a time before the epoch has
+    no local day and ``astimezone`` raises OSError rather than ValueError.
+    A reader of a stamp treats it as long ago, as it does one that will not
+    parse, rather than failing on it."""
+    import datetime as real
+
+    class Refused(real.datetime):
+        def astimezone(self, tz=None):
+            raise OSError(22, "Invalid argument")
+
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(ledger, "dt", SimpleNamespace(datetime=Refused, date=real.date))
+    assert ledger.day_of("1969-12-31T23:59:59Z") == real.date.min

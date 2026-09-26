@@ -1399,6 +1399,9 @@ def _household_cell(name: str, info: dict) -> object:
 #: and what is wrong with it.
 MALFORMED_LINE = ("{where}: line {seq} of the record is malformed ({event} {problem}); "
                   "the journal is not applied past it")
+#: What :data:`MALFORMED_LINE` calls an event whose name this version does
+#: not know, rather than quoting it (decision 187).
+UNKNOWN_EVENT = "an event this version does not know"
 #: The key decision 129's hand-over intent carried the other record's half
 #: under. Named here, by the one reader that still speaks of it, so that
 #: the refusal says it by name (decision 132).
@@ -1448,13 +1451,19 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
 
     name = event.get(ledger.EVENT_KEY)
 
-    def refuse(problem: str) -> None:
-        raise StoreError(MALFORMED_LINE.format(where=where, seq=seq, event=name, problem=problem))
+    # The event's name is said only when it is one this version knows: an
+    # unknown one is whatever the line said (security principle 7).
+    known = name if name in ledger.EVENTS | ledger.RETIRED_EVENTS else UNKNOWN_EVENT
 
-    def a_place(field: str, location: object, *, writes: bool, what: str = "a step") -> None:
-        if (problem := records.text_problem(location)):
+    def refuse(problem: str) -> None:
+        raise StoreError(MALFORMED_LINE.format(where=where, seq=seq, event=known, problem=problem))
+
+    def a_place(field: str, location: object, *, writes: bool, what: str = "a step",
+                removes: bool = False) -> None:
+        if (problem := records.name_problem(location)):
             refuse(f"carries {what} whose {field!r} {problem}")
-        if (code := layout.place_problem(where, str(location), writes=writes)) is not None:
+        if (code := layout.place_problem(where, str(location), writes=writes,
+                                         removes=removes)) is not None:
             refuse(f"carries {what} whose {field!r} is outside this return's places ({code})")
 
     def a_segment(field: str, label: object) -> None:
@@ -1522,12 +1531,12 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
         key = event.get(ledger.KEY_KEY)
         if not isinstance(key, str) or not key:
             refuse(f"carries no {ledger.KEY_KEY!r}")
-        if records.text_problem(key):
-            refuse(f"carries {ledger.KEY_KEY!r} that is not one line of text")
+        if problem := records.name_problem(key):
+            refuse(f"carries {ledger.KEY_KEY!r} that {problem}")
         if not isinstance(event.get(ledger.ROW_KEY), dict):
             refuse(f"carries {ledger.ROW_KEY!r} that is not a row")
         leaving = event.get(ledger.WAS_KEY)
-        if leaving is not None and records.text_problem(leaving):
+        if leaving is not None and records.name_problem(leaving):
             refuse(f"carries {ledger.WAS_KEY!r} that is not a location")
         a_row(event[ledger.ROW_KEY])
     elif name == ledger.SCANNED:
@@ -1553,7 +1562,7 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
         if kind == KIND_HOUSEHOLD:
             refuse("in a household's record, which has no steps")
         key = event.get(ledger.KEY_KEY)
-        if key is not None and records.text_problem(key):
+        if key is not None and records.name_problem(key):
             refuse(f"carries {ledger.KEY_KEY!r} that is not one line of text")
         ops = event.get(ledger.OPS_KEY)
         if not isinstance(ops, list):
@@ -1574,14 +1583,14 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
                 refuse(f"carries a {step} whose {ledger.DIGEST_KEY!r} {problem}")
             named = (ledger.FROM_KEY,) if step == ledger.OP_REMOVE else (ledger.FROM_KEY, ledger.TO_KEY)
             for field, (location, writes) in zip(named, ledger.op_ends(op), strict=True):
-                a_place(field, location, writes=writes)
+                a_place(field, location, writes=writes, removes=step == ledger.OP_REMOVE)
         row = event.get(ledger.ROW_KEY)
         if row is not None and not isinstance(row, dict):
             refuse(f"carries {ledger.ROW_KEY!r} that is not a row")
         if isinstance(row, dict):
             a_row(row)
         leaving = event.get(ledger.WAS_KEY)
-        if leaving is not None and records.text_problem(leaving):
+        if leaving is not None and records.name_problem(leaving):
             refuse(f"carries {ledger.WAS_KEY!r} that is not a location")
         also = event.get(ledger.ALSO_KEY)
         if also is not None and not isinstance(also, list):
@@ -1605,7 +1614,7 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
                    f"version that began it")
     elif name == ledger.MOVE_ABANDONED:
         key = event.get(ledger.KEY_KEY)
-        if not isinstance(key, str) or not key or records.text_problem(key):
+        if not isinstance(key, str) or not key or records.name_problem(key):
             refuse(f"carries no {ledger.KEY_KEY!r}")
     elif name == ledger.RELEASED:
         # A release names the row it takes out and says where it went -
@@ -1677,9 +1686,8 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
         # version would be storing something it cannot fold - so it is
         # refused by name here rather than silently kept in the events
         # table where a reader would later trust it.
-        carried = sorted(set(event) - {ledger.EVENT_KEY, ledger.AT_KEY})
-        if carried:
-            refuse(f"carries {', '.join(repr(key) for key in carried)}; it carries nothing")
+        if set(event) - {ledger.EVENT_KEY, ledger.AT_KEY}:
+            refuse("carries fields; it carries nothing")
 
 
 def _apply(conn: sqlite3.Connection, engagement_id: int, events: list[dict], *, start: int) -> int:

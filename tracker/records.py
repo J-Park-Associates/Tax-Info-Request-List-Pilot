@@ -1312,6 +1312,9 @@ YEAR_OUT_OF_RANGE = "Tax year must be between {minimum} and {maximum}, got {year
 #: the year after the last one, where its deadlines fall.
 DATE_YEAR_MIN = YEAR_MIN
 DATE_YEAR_MAX = YEAR_MAX + 1
+#: The first year a stamp may fall in: the epoch, before which Windows
+#: cannot give a time its local day.
+STAMP_YEAR_MIN = 1970
 
 #: Characters Windows forbids in file and folder names, plus control
 #: characters - the one list, for identifiers and for sanitising names.
@@ -1430,22 +1433,37 @@ LONG_TEXT_MAX = 20_000
 #: on one document; the shape rule below admits every pattern the Period
 #: derives and every one a person plausibly types, and nothing that can run
 #: away. Measured on a 500-character line: three open-ended repetitions take
-#: 9.6 s, one open-ended and two bounded to 20 take 0.22 s.
+#: 9.6 s, one open-ended and two bounded to 20 take 0.22 s - and so does one
+#: open-ended beside seven ``?``, because an optional is a choice point too
+#: (the review's M1): ``\d?`` twenty-four times took 3.3 s on 24 digits.
 DATE_PATTERN_MAX = 200
+#: Repetitions that can repeat more than once.
 DATE_PATTERN_REPEATS_MAX = 3
+#: Every variable repetition, ``?`` included (the orchestrator's amendment
+#: of SPEC-187 ruling 5).
+DATE_PATTERN_VARIABLE_MAX = 8
 DATE_PATTERN_OPEN_MAX = 1
 DATE_PATTERN_BOUND_MAX = 20
+#: How many ways one line may be tried, at most: the product of the widths
+#: of the variable repetitions met in sequence (an alternation's branches
+#: add), an open-ended one counted as the longest line a pattern is run
+#: over (``content_check.DATE_LINE_MAX``). The limit is the measured 0.22 s
+#: case above - one open-ended and two bounded to 20 - so nothing slower is
+#: admitted, whatever mix of repetitions it is made of.
+DATE_PATTERN_OPEN_WIDTH = 500
+DATE_PATTERN_WAYS_MAX = DATE_PATTERN_OPEN_WIDTH * (DATE_PATTERN_BOUND_MAX + 1) ** 2
 
 #: The fixed phrases. Each names the class of problem; none names the value.
 COUNT_BOUNDS = "must be a whole number from {minimum} to {maximum}"
 NUMBER_BOUNDS = "must be a number from {minimum} to {maximum}"
 DATE_BOUNDS = f"must be a date written YYYY-MM-DD, from {DATE_YEAR_MIN} to {DATE_YEAR_MAX}"
-STAMP_BOUNDS = f"must be a time written YYYY-MM-DDTHH:MM:SSZ, from {DATE_YEAR_MIN} to {DATE_YEAR_MAX}"
+STAMP_BOUNDS = f"must be a time written YYYY-MM-DDTHH:MM:SSZ, from {STAMP_YEAR_MIN} to {DATE_YEAR_MAX}"
 FLAG_BOUNDS = "must be true or false"
 DIGEST_BOUNDS = "must be blank or 64 lowercase hexadecimal characters"
 TEXT_BOUNDS = f"must be one line of text of at most {TEXT_MAX} characters, with no control character"
 LONG_TEXT_BOUNDS = f"must be text of at most {LONG_TEXT_MAX} characters, with no NUL"
 TEXT_LIST_BOUNDS = "must be a list of text"
+NAME_BOUNDS = f"must be text of at most {TEXT_MAX} characters, with no NUL"
 OVERRIDE_BOUNDS = f"must be blank, {Override.ACCEPTED} or {Override.NOT_APPLICABLE}"
 BLANK_BOUNDS = "may not be blank"
 DATE_PATTERN_TOO_LONG = f"may have at most {DATE_PATTERN_MAX} characters"
@@ -1454,11 +1472,15 @@ DATE_PATTERN_NESTED = "repeats something that itself repeats"
 DATE_PATTERN_ALTERNATES = "repeats an alternation (a | inside a repetition)"
 DATE_PATTERN_REFERS_BACK = "repeats a back-reference"
 DATE_PATTERN_TOO_MANY = f"has more than {DATE_PATTERN_REPEATS_MAX} repetitions"
+DATE_PATTERN_TOO_MANY_OPTIONAL = (f"has more than {DATE_PATTERN_VARIABLE_MAX} variable repetitions "
+                                  f"(?, *, + or {{m,n}})")
+DATE_PATTERN_TOO_MANY_WAYS = "could try too many ways to match one line"
 DATE_PATTERN_TOO_OPEN = f"has more than {DATE_PATTERN_OPEN_MAX} open-ended repetition (+, * or {{n,}})"
 DATE_PATTERN_TOO_WIDE = f"repeats more than {DATE_PATTERN_BOUND_MAX} times in a bounded repetition"
 
 _HEX_DIGEST = re.compile(r"[0-9a-f]{64}")
 _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+_STAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 _ONE_LINE_REFUSED = re.compile(r"[\x00-\x1f\x7f  ]")
 
 
@@ -1501,29 +1523,33 @@ def date_problem(value: object) -> str:
 
 
 def stamp_problem(value: object) -> str:
-    """:data:`STAMP_BOUNDS` for anything but a time the readers can read, in
-    the record's years. ``ledger.stamp`` writes ``YYYY-MM-DDTHH:MM:SSZ``; any
-    ISO time is read the same way by ``ledger.day_of``, so a line an earlier
-    version stamped another ISO way is not refused for it."""
-    if not isinstance(value, str) or len(value) > 40:
+    """:data:`STAMP_BOUNDS` for anything but a stamp as ``ledger.stamp``
+    writes it - ``YYYY-MM-DDTHH:MM:SSZ``, the one form it has ever written -
+    in 1970 to 2100. Not before 1970, because Windows cannot turn a time
+    before the epoch into a local day (the review's S1)."""
+    if not isinstance(value, str) or not _STAMP.fullmatch(value):
         return STAMP_BOUNDS
     try:
-        moment = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+        moment = dt.datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
     except ValueError:
         return STAMP_BOUNDS
-    return "" if DATE_YEAR_MIN <= moment.year <= DATE_YEAR_MAX else STAMP_BOUNDS
+    return "" if STAMP_YEAR_MIN <= moment.year <= DATE_YEAR_MAX else STAMP_BOUNDS
 
 
 def received_problem(value: object) -> str:
     """:data:`DATE_BOUNDS` for an index row's Received that is neither a
-    date nor an ISO time. The pass writes the day; a row seeded from the
-    index workbook (``ledger.IMPORTED``, decisions 87 and 102) may carry the
-    cell's time after it, and a row already moved must not be refused for
-    that."""
+    date nor an ISO date and time. The pass writes the day; a row seeded
+    from the index workbook (``ledger.IMPORTED``, decisions 87 and 102) may
+    carry the cell's time after it, and a row already moved must not be
+    refused for that."""
     if not date_problem(value):
         return ""
-    if isinstance(value, str) and _ISO_DATE.match(value) and not stamp_problem(value):
-        return ""
+    if isinstance(value, str) and len(value) <= 40 and _ISO_DATE.match(value):
+        try:
+            moment = dt.datetime.fromisoformat(value)
+        except ValueError:
+            return DATE_BOUNDS
+        return "" if DATE_YEAR_MIN <= moment.year <= DATE_YEAR_MAX else DATE_BOUNDS
     return DATE_BOUNDS
 
 
@@ -1558,9 +1584,24 @@ def text_problem(value: object, *, long: bool = False) -> str:
     return ""
 
 
-def text_list_problem(value: object) -> str:
-    """:data:`TEXT_LIST_BOUNDS` for anything but a list of one-line text."""
-    if not isinstance(value, (list, tuple)) or any(text_problem(one) for one in value):
+def name_problem(value: object) -> str:
+    """:data:`NAME_BOUNDS` for anything but a file's own name, a key or a
+    location: text of at most :data:`TEXT_MAX` characters with no NUL.
+
+    Wider than one line on purpose (the review's M5): these come from real
+    files, and decision 104 files a POSIX name holding a control character.
+    They are never joined onto a path as a label is - a location is judged
+    by the layout's place rule instead - so refusing one would stop the
+    household every pass with an original already moved and no row."""
+    if not isinstance(value, str) or len(value) > TEXT_MAX or "\x00" in value:
+        return NAME_BOUNDS
+    return ""
+
+
+def text_list_problem(value: object, *, long: bool = False) -> str:
+    """:data:`TEXT_LIST_BOUNDS` for anything but a list of text - one-line,
+    or ``long``."""
+    if not isinstance(value, (list, tuple)) or any(text_problem(one, long=long) for one in value):
         return TEXT_LIST_BOUNDS
     return ""
 
@@ -1580,23 +1621,52 @@ def _walk(pattern: object):
             yield from _walk(one)
 
 
+def _ways(pattern: object) -> int:
+    """How many ways one start of a line may be tried, at most - the product
+    of the variable repetitions' widths in sequence, a branch's alternatives
+    added. Read only once nesting is refused, so a repetition holds none."""
+    if not isinstance(pattern, _re_parser.SubPattern):
+        return 1
+    total = 1
+    for op, argument in pattern:
+        if op in _REPEATS:
+            low, high, _inside = argument
+            total *= DATE_PATTERN_OPEN_WIDTH if high == _re_parser.MAXREPEAT else high - low + 1
+        elif op is _re_parser.BRANCH:
+            total *= sum(_ways(one) for one in argument[1])
+        elif op is _re_parser.GROUPREF_EXISTS:
+            total *= max(_ways(argument[1]), _ways(argument[2]))
+        elif op is _re_parser.SUBPATTERN:
+            total *= _ways(argument[-1])
+        elif op in (_re_parser.ASSERT, _re_parser.ASSERT_NOT):
+            total *= _ways(argument[1])
+        elif op is _re_parser.ATOMIC_GROUP:
+            total *= _ways(argument)
+    return total
+
+
 def date_pattern_problem(pattern: object) -> str:
     """Why a Date Pattern may not be run over a client's page, or ``""``.
 
     It must be text of at most :data:`DATE_PATTERN_MAX` characters that
     compiles, and pass a shape rule read off the standard library's own
-    parser (``re._parser``) - no second engine and no whitelist. Only a
-    repetition that can repeat more than once counts (``?`` does not):
+    parser (``re._parser``) - no second engine and no whitelist. A
+    repetition is anything that can repeat more than once or can match a
+    varying number of times - ``?`` included, because an optional is a
+    choice point (the review's M1):
 
-    - it may not contain another repetition, an alternation or a
+    - a repetition may not contain another, an alternation or a
       back-reference, at any depth;
-    - a pattern has at most :data:`DATE_PATTERN_REPEATS_MAX` of them;
-    - at most :data:`DATE_PATTERN_OPEN_MAX` is open-ended (``+``, ``*``,
-      ``{n,}``);
-    - every bounded one repeats at most :data:`DATE_PATTERN_BOUND_MAX` times.
+    - at most :data:`DATE_PATTERN_VARIABLE_MAX` variable repetitions, of
+      which at most :data:`DATE_PATTERN_REPEATS_MAX` can repeat more than
+      once and at most :data:`DATE_PATTERN_OPEN_MAX` is open-ended (``+``,
+      ``*``, ``{n,}``);
+    - every bounded one repeats at most :data:`DATE_PATTERN_BOUND_MAX` times;
+    - and the ways one line may be tried stay within
+      :data:`DATE_PATTERN_WAYS_MAX` (:func:`_ways`).
 
-    It applies to a derived pattern too: the flag that marks one derived is
-    the record's claim, and every pattern the Period derives passes.
+    It applies to a derived pattern too, and every pattern the Period
+    derives passes.
     """
     if not isinstance(pattern, str):
         return TEXT_BOUNDS
@@ -1607,22 +1677,31 @@ def date_pattern_problem(pattern: object) -> str:
         parsed = _re_parser.parse(pattern)
     except (re.error, RecursionError, OverflowError):
         return DATE_PATTERN_NOT_A_REGEX
-    repeats = [argument for op, argument in _walk(parsed) if op in _REPEATS and argument[1] > 1]
-    for _low, _high, inside in repeats:
+
+    def repeats(argument) -> bool:
+        low, high, _inside = argument
+        return low != high or high > 1
+
+    found = [argument for op, argument in _walk(parsed) if op in _REPEATS and repeats(argument)]
+    for _low, _high, inside in found:
         for op, argument in _walk(inside):
-            if op in _REPEATS and argument[1] > 1:
+            if op in _REPEATS and repeats(argument):
                 return DATE_PATTERN_NESTED
             if op is _re_parser.BRANCH:
                 return DATE_PATTERN_ALTERNATES
             if op in _REFERS_BACK:
                 return DATE_PATTERN_REFERS_BACK
-    if len(repeats) > DATE_PATTERN_REPEATS_MAX:
+    variable = [(low, high) for low, high, _inside in found if low != high]
+    if len(variable) > DATE_PATTERN_VARIABLE_MAX:
+        return DATE_PATTERN_TOO_MANY_OPTIONAL
+    if sum(high > 1 for _low, high in variable) > DATE_PATTERN_REPEATS_MAX:
         return DATE_PATTERN_TOO_MANY
-    if sum(high == _re_parser.MAXREPEAT for _low, high, _inside in repeats) > DATE_PATTERN_OPEN_MAX:
+    if sum(high == _re_parser.MAXREPEAT for _low, high in variable) > DATE_PATTERN_OPEN_MAX:
         return DATE_PATTERN_TOO_OPEN
-    if any(high != _re_parser.MAXREPEAT and high > DATE_PATTERN_BOUND_MAX
-           for _low, high, _inside in repeats):
+    if any(high != _re_parser.MAXREPEAT and high > DATE_PATTERN_BOUND_MAX for _low, high in variable):
         return DATE_PATTERN_TOO_WIDE
+    if _ways(parsed) > DATE_PATTERN_WAYS_MAX:
+        return DATE_PATTERN_TOO_MANY_WAYS
     return ""
 
 
@@ -1637,53 +1716,65 @@ def _first(*problems: str) -> str:
 #: A rule row's fields by the check each is held to: one-line text, long
 #: text, and the flags. The numbers, the word lists, the override and the
 #: Date Pattern have checks of their own below.
+#: A rule row's descriptive fields: text a person writes, never joined onto
+#: a path, so held to the long-text rule (the review's M6) - a line break
+#: typed in a cell is not a danger, and refusing it would wedge a return.
 _RULE_TEXT = ("document", "period", "override_reason")
+
+
+def rule_row_fault(row: dict) -> tuple[str, str]:
+    """The first field of a stored rule row outside the value rule and its
+    phrase, or ``("", "")``. A field the row does not carry is left to the
+    record's default and is not checked. The editor (``manifest.validated``)
+    names the field by its column; the gate by :func:`rule_row_problem`."""
+    def given(name: str) -> bool:
+        return name in row
+
+    checks: list[tuple[str, str]] = []
+    if given("identifier"):
+        value = row["identifier"]
+        checks.append(("identifier", text_problem(value)
+                       or (BLANK_BOUNDS if not value.strip() else identifier_problem(value.strip()))))
+    for name in _RULE_TEXT:
+        if given(name):
+            checks.append((name, text_problem(row[name], long=True)))
+    if given("expected_count"):
+        checks.append(("expected_count",
+                       count_problem(row["expected_count"], MIN_EXPECTED_COUNT, MAX_EXPECTED_COUNT)))
+    if given("min_size_kb"):
+        checks.append(("min_size_kb", count_problem(row["min_size_kb"], MIN_SIZE_KB_FLOOR, MAX_SIZE_KB)))
+    if given("row"):
+        checks.append(("row", count_problem(row["row"], 0, MAX_ROW)))
+    for name in RULE_LIST_FIELDS:
+        if given(name) and row[name] is not None:
+            checks.append((name, word_list_problem(row[name]) or text_list_problem(row[name], long=True)))
+    for name in sorted(RULE_FLAG_FIELDS):
+        if given(name):
+            checks.append((name, flag_problem(row[name])))
+    if given("manual_override"):
+        value = row["manual_override"]
+        known = ("", *Override.ALL, *Override.RETIRED)
+        checks.append(("manual_override", "" if value in known else OVERRIDE_BOUNDS))
+    if given("short_title"):
+        value = row["short_title"]
+        checks.append(("short_title", text_problem(value) or short_title_problem(value)))
+    if given("date_pattern"):
+        value = row["date_pattern"]
+        checks.append(("date_pattern", text_problem(value, long=True) or
+                       (date_pattern_problem(value) if value else "")))
+    return next(((name, problem) for name, problem in checks if problem), ("", ""))
 
 
 def rule_row_problem(row: dict) -> str:
     """The first field of a stored rule row outside the value rule, as
-    ``"'<field>' <phrase>"``, or ``""``. A field the row does not carry is
-    left to the record's default and is not checked."""
-    def given(name: str) -> bool:
-        return name in row
-
-    checks = []
-    if given("identifier"):
-        value = row["identifier"]
-        checks.append(_field("identifier", text_problem(value)
-                             or (BLANK_BOUNDS if not value.strip() else identifier_problem(value.strip()))))
-    for name in _RULE_TEXT:
-        if given(name):
-            checks.append(_field(name, text_problem(row[name])))
-    if given("expected_count"):
-        checks.append(_field("expected_count",
-                             count_problem(row["expected_count"], MIN_EXPECTED_COUNT, MAX_EXPECTED_COUNT)))
-    if given("min_size_kb"):
-        checks.append(_field("min_size_kb", count_problem(row["min_size_kb"], MIN_SIZE_KB_FLOOR, MAX_SIZE_KB)))
-    if given("row"):
-        checks.append(_field("row", count_problem(row["row"], 0, MAX_ROW)))
-    for name in RULE_LIST_FIELDS:
-        if given(name) and row[name] is not None:
-            checks.append(_field(name, word_list_problem(row[name]) or text_list_problem(row[name])))
-    for name in sorted(RULE_FLAG_FIELDS):
-        if given(name):
-            checks.append(_field(name, flag_problem(row[name])))
-    if given("manual_override"):
-        value = row["manual_override"]
-        known = ("", *Override.ALL, *Override.RETIRED)
-        checks.append(_field("manual_override", "" if value in known else OVERRIDE_BOUNDS))
-    if given("short_title"):
-        value = row["short_title"]
-        checks.append(_field("short_title", text_problem(value) or short_title_problem(value)))
-    if given("date_pattern"):
-        value = row["date_pattern"]
-        checks.append(_field("date_pattern", text_problem(value) or
-                             (date_pattern_problem(value) if value else "")))
-    return _first(*checks)
+    ``"'<field>' <phrase>"``, or ``""`` (:func:`rule_row_fault`)."""
+    return _field(*rule_row_fault(row))
 
 
 #: A return's details, by the check each is held to.
-_INFO_TEXT = ("client", "name", "sender", "firm", "rolled_from", "form", "household", "return_name")
+_INFO_TEXT = ("household", "return_name")
+#: Descriptive details a person writes, held to the long-text rule (M6).
+_INFO_LONG_TEXT = ("client", "name", "sender", "firm", "form")
 
 
 def info_problem(info: dict) -> str:
@@ -1692,6 +1783,11 @@ def info_problem(info: dict) -> str:
     name is the layout's to say (``layout.segment_problem``), asked by the
     store beside this."""
     checks = [_field(name, text_problem(info[name])) for name in _INFO_TEXT if name in info]
+    checks += [_field(name, text_problem(info[name], long=True)) for name in _INFO_LONG_TEXT
+               if name in info]
+    # Rolled From is a path the rollover wrote, not a label (M5).
+    if "rolled_from" in info:
+        checks.append(_field("rolled_from", name_problem(info["rolled_from"])))
     # A link is text here and nothing more: one that is not a web address is
     # dropped with the reason where it is read (decision 176), not refused.
     if "link" in info:
@@ -1714,8 +1810,9 @@ def household_problem(household: dict) -> str:
     """The first field of a household's stored details outside the value
     rule, or ``""``. Whether its name and each feed's two names are each one
     folder name is the layout's to say, asked by the store beside this."""
-    checks = [_field(name, text_problem(household[name])) for name in ("name", "contact")
-              if name in household]
+    checks = [_field("name", text_problem(household["name"]))] if "name" in household else []
+    if "contact" in household:
+        checks.append(_field("contact", text_problem(household["contact"], long=True)))
     if "link" in household:
         checks.append(_field("link", text_problem(household["link"])))
     members = household.get("members")
@@ -1727,8 +1824,9 @@ def household_problem(household: dict) -> str:
 
 #: An index row's fields by the check each is held to. Where a location
 #: points is not a value: the store asks the layout (``place_problem``).
-_ENTRY_TEXT = ("original_name", "identifier", "prepared_location", "pbc_location", "decision",
-               "candidates", "container")
+_ENTRY_TEXT = ("identifier", "decision", "candidates")
+#: A file's own name and the locations of real files (M5).
+_ENTRY_NAMES = ("original_name", "prepared_location", "pbc_location", "container")
 _ENTRY_LONG_TEXT = ("reason", "evidence", "also_filed", "answers")
 
 
@@ -1744,6 +1842,8 @@ def entry_problem(row: dict) -> str:
     if "digest" in row:
         checks.append(_field("digest", digest_problem(row["digest"])))
     checks += [_field(name, text_problem(row[name])) for name in _ENTRY_TEXT
+               if row.get(name) is not None]
+    checks += [_field(name, name_problem(row[name])) for name in _ENTRY_NAMES
                if row.get(name) is not None]
     checks += [_field(name, text_problem(row[name], long=True)) for name in _ENTRY_LONG_TEXT
                if row.get(name) is not None]
