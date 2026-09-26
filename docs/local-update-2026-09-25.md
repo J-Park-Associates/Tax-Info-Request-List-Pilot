@@ -1,9 +1,18 @@
 # One-time update for the office computer — 2026-09-25
 
-Set by Jason on 2026-09-25. It is written for the next Claude Code session
-on the office computer, which can see files this cloud session could not.
-Do every step, tell Jason in plain English what changed, then delete this
-file and the matching section at the end of `CLAUDE.md` in one commit.
+Set by Jason on 2026-09-25. It is written for Claude Code on the office
+computer, which can see files this cloud session could not. It is two jobs,
+each in its own fresh session, under the "How to run work" rule Step 1 adds:
+
+- **Job 1 — Steps 1 to 5**: the instruction files and the Figma install.
+  Ends with Step 7's Job 1 report and a handoff note for Job 2.
+- **Job 2 — Step 6**: the design system audit and SPEC. Ends with Step 7's
+  Job 2 report, then deletes this file and the matching section at the end
+  of `CLAUDE.md` in one commit.
+
+Within each job, consider which steps can run in parallel (Steps 2 and 3
+touch different files; Step 6's audit of the design system folder and of the
+repository are independent) and say which you chose.
 
 ## Why
 
@@ -17,6 +26,11 @@ less than Opus 5, writing faster and less wordily. Jason has decided:
 - **Instruction files are trimmed for efficiency**: no dead rules, no
   duplicated text, and no instruction to read a very large file whole when a
   targeted lookup will do.
+- **Every job gets a fresh session and hands off through files** (set by
+  Jason on 2026-09-26), in every workspace on his account: keep each
+  session's context clear, don't re-read what a handoff already records, and
+  consider parallel work for each task. Step 1 puts this in the global
+  `CLAUDE.md`; Step 7 covers the cloud sessions, which never read that file.
 
 ## Step 1 — the global CLAUDE.md (applies to every project)
 
@@ -47,6 +61,12 @@ projects use those). If you add something back, list it for Jason.
 - Sonnet 5: routine lookups, Excel formulas and cleanup, client-facing drafts. Escalate to Opus 5.5 if it struggles.
 - Haiku 4.5: throwaway scripts and formatting only — never tax or regulation (its knowledge ends Feb 2025).
 - Fable is not used.
+
+## How to run work
+- One job per session. Each job starts in a fresh session and hands off through files — the SPEC, a handoff note, the commits — never through the conversation. The next session reads those files, not the previous session's transcript.
+- Keep the context window clear. Use targeted lookups (one map node, a search, a line range) instead of reading whole files, and don't redo or re-read what a handoff already records. Trust the handoff; check only what the job changes.
+- For every job, consider parallelization: independent parts go to separate agents or sessions, each with its own input and output files; dependent steps stay in order. Say in one line which you chose and why.
+- Before a session ends, write its handoff file: what was done, what is left, and which files the next session needs.
 ```
 
 ## Step 2 — Claude Code settings and agents
@@ -121,8 +141,9 @@ with `claude plugin uninstall figma@claude-plugins-official --scope user`.
 
 Restart Claude Code so the plugin loads. Then check that its connection to
 Figma works: sign in to Figma when asked, and have a read-only Figma tool
-answer. If the connection still fails, give Jason the exact error, skip
-Step 6, and do not install a different Figma tool as a workaround.
+answer. If the connection still fails, give Jason the exact error; Job 2
+(Step 6) waits until Figma connects. Do not install a different Figma tool
+as a workaround.
 
 Tell Jason how to switch it off between uses and back on when he needs it,
 without reinstalling:
@@ -140,6 +161,9 @@ everything: tokens, components, the desktop app's screens and the client
 reminder emails. Nothing is built without a written SPEC, so this session
 writes the SPEC, gets Jason's approval, and stops there. Building happens
 in later sessions, from the approved SPEC. Work at high effort.
+
+This is Job 2, in its own fresh session. Start from Job 1's handoff note
+and this step; do not re-read Steps 1 to 5 or redo their checks.
 
 The design system is a folder on this computer, beside the repository
 (`tracker/page.py` says so). The cloud session could not see it. Find it,
@@ -191,9 +215,20 @@ and confirm the location with Jason before reading anything else in it.
 
 ## Step 7 — report
 
-Tell Jason, in plain English, which files changed and what changed in each,
-whether the Figma plugin is installed for this project only and connected, and where the design
-system SPEC is saved and whether he approved it. Record the same list in the
-next CODE UPDATE in Handoffs, naming the SPEC as the document the redesign
-continues from. Then delete this file and the "One-time task for the office
-computer" section of `CLAUDE.md` in one commit.
+**End of Job 1.** Tell Jason, in plain English, which files changed and
+what changed in each, and whether the Figma plugin is installed for this
+project only and connected. Record the same list in the next CODE UPDATE in
+Handoffs. Remind Jason that cloud sessions never read the office computer's
+global `CLAUDE.md`: for the "How to run work" rule to reach every workspace
+on his account, he pastes that section into his claude.ai profile
+preferences (Settings, then Profile), where his other standing
+instructions already live. Then write the handoff note for Job 2: whether
+Figma connects, any error text, and which files Job 2 needs. Save it
+where Jason keeps session handoffs. If Figma did not connect, tell Jason
+Job 2 waits until it does. Leave this file in place.
+
+**End of Job 2.** Tell Jason where the design system SPEC is saved and
+whether he approved it, and record that in the next CODE UPDATE in Handoffs,
+naming the SPEC as the document the redesign continues from. Then delete
+this file and the "One-time task for the office computer" section of
+`CLAUDE.md` in one commit.
