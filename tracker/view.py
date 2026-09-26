@@ -128,7 +128,18 @@ from tracker.manifest import (
     override_label,
     status_label,
 )
-from tracker.page import Cell, Row, details, esc, page_text, slug, table, tolerant_console, unesc
+from tracker.page import (
+    Cell,
+    Row,
+    details,
+    esc,
+    page_text,
+    policy,
+    slug,
+    table,
+    tolerant_console,
+    unesc,
+)
 from tracker.records import (
     BEHIND,
     CURRENT,
@@ -309,6 +320,9 @@ for (const th of document.querySelectorAll("th[data-sort]")) {
   });
 }
 """
+#: The page's policy (decision 190): its own style and its own sort script,
+#: each by hash, and nothing fetched.
+_POLICY = policy(style=_STYLE, script=_SORT_SCRIPT)
 
 
 class ViewError(RuntimeError):
@@ -669,6 +683,7 @@ def _page(
         '<html lang="en">',
         "<head>",
         '<meta charset="utf-8">',
+        _POLICY,
         f"<title>{esc(label_of(engagement_dir))} — {esc(VIEW_LABEL)}</title>",
         *(f'<meta name="{esc(META_NAMES[label])}" content="{esc(value)}">'
           for label, value in stamp.items() if label in META_NAMES),

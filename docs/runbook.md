@@ -896,6 +896,16 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    is that engagement's list, index and review queue as of this morning, and
    the app says beside the engagement's name whether it is still current.
 
+   The files a household's inbox holds that the sort leaves alone by their
+   name - desktop.ini, Thumbs.db, .DS_Store, an Office lock file
+   (`~$...`), anything in a sync client's `.tmp.drive...` folder - are
+   counted once a pass: *N system or temporary files in the inbox were left
+   alone*, on the return's line in the run log and under **Left alone in
+   the inboxes** on the practice page (decision 190). It is a count, never
+   the names, and nothing needs doing - unless a file you expected to be
+   sorted has a name like those (a client's own `~$W2.pdf` is left alone
+   as a lock file is): rename it in the inbox and the next pass sorts it.
+
    What the page says about room (decision 131, and *If the clients root
    moves* in §1). A return merely **short of room** is not warned at all:
    it is sorted as usual and its copies' names are cut to fit, and the
@@ -1157,7 +1167,14 @@ draft sitting beside it is renamed out of the way (never deleted), and
 nothing writes over it afterwards — not the scheduled pass, and not
 `python -m tracker.reminder <engagement_dir> --write`; each of them lands
 its fresh draft beside it exactly as it does beside one you edited by
-hand. Next week's pass writes next week's draft as before. **Open the
+hand. Next week's pass writes next week's draft as before. An approval
+covers the text you approved and nothing after it (decision 190): edit
+the file afterwards and the card, the practice page's Drafted column and
+the run log say *approved, then edited* instead of *approved*. The file is
+still left alone, because you edited it; approve it again once it reads as
+you want it. An approval given before this change reached the machine
+recorded no text, so it reads *approved, then edited* the same way: the
+file is still left alone, and you approve it again. **Open the
 draft file** is still there for anyone who would rather work in Notepad,
 and an edited file is shown as it stands with a note saying so — the card
 shows the letter alone, so the staff-side lines under the dashed rule at
@@ -1202,6 +1219,11 @@ blank and the letter never mentions it. Leave the Due Date blank and every
 letter is stage 1, because there is no date to measure from and nothing to
 tell the client. The firm's phone number lives in the app's settings beside
 the firm's name, and stage 4 leaves the sentence out when it is blank.
+The draft's header names the number, above the rule, so a number changed
+in the settings is seen before the letter goes (decision 190): *Firm phone
+in this letter: ...*, or *Firm phone on file: ...; this letter gives none.*
+at a stage that offers no call, or *No firm phone is set; this letter gives
+none.*
 
 To see what a client will get next week, ask for it today:
 `python -m tracker.reminder <engagement_dir> --stage 3` writes the same
@@ -1566,8 +1588,15 @@ that temporary file and the real one as it was - never half a statement
 under the proper name. The next pass on the household removes those
 temporary files itself, and only its own: the exact shape, left by a
 program that has since stopped, in the firm's folders or beside the
-README, never in the client's folders for the year. You never delete
-one by hand. A working copy of a read-only file the client sent (from a
+README, never in the client's folders for the year. Beside the README it
+also has to hold nothing but the README's own text (decision 190): the
+README's start, or nothing at all when the power went before the first
+line was written. The inbox is the client's, and a client's file that
+happens to carry that shape and holds anything else is left where it is.
+It is not syncing, but the pass cannot tell it from a file still arriving,
+so it is counted with them (*syncing N* on the run's line), pass after
+pass, until you open it and move it out of the inbox. You never delete
+one of the tracker's own temporary files by hand. A working copy of a read-only file the client sent (from a
 CD, or taken out of a zip by Explorer) is made writable, so a person's
 filing or hand-over can always move it; the client's original is left
 exactly as it came.

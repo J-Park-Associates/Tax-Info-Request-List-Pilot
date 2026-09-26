@@ -928,8 +928,52 @@ def test_a_real_pass_writes_the_status_page_into_the_root_and_a_dry_run_does_not
     assert product_name() in text
     assert STATUS_GENERATED.split("{")[0].strip() in text
     assert "Smith TY2025" in text
-    assert "<script" not in text and "http" not in text, "one file, nothing fetched to render it"
+    assert "<script" not in text and "://" not in text, "one file, nothing fetched to render it"
     capsys.readouterr()
+
+
+def _policy_matches_the_blocks(text: str) -> None:
+    """The page's policy, recomputed from the page as written: each inline
+    style and script is allowed by the SHA-256 of its own text, and nothing
+    else is allowed at all."""
+    import base64
+    import hashlib
+    import re
+
+    def allowed(block: str) -> str:
+        digest = hashlib.sha256(block.encode("utf-8")).digest()
+        return f"'sha256-{base64.b64encode(digest).decode('ascii')}'"
+
+    policies = re.findall(r'<meta http-equiv="Content-Security-Policy" content="([^"]*)">', text)
+    assert len(policies) == 1, "one policy per page"
+    directives = dict(part.strip().split(" ", 1) for part in policies[0].split(";"))
+    styles = re.findall(r"<style>(.*?)</style>", text, re.S)
+    scripts = re.findall(r"<script>(.*?)</script>", text, re.S)
+    assert directives.pop("default-src") == "'none'"
+    assert directives.pop("style-src") == " ".join(allowed(block) for block in styles)
+    if scripts:
+        assert directives.pop("script-src") == " ".join(allowed(block) for block in scripts)
+    assert directives == {}, "nothing beyond its own blocks"
+    assert text.index("Content-Security-Policy") < text.index("<style>")
+
+
+def test_both_pages_carry_a_policy_whose_hashes_match(tmp_path, samples, capsys):
+    """A page in a shared folder can be edited by anyone who can reach it; its
+    policy lets a browser run the page's own style and script and nothing
+    else (decision 190). Both pages a pass writes carry one, and the hashes
+    in it are the hashes of the blocks actually on the page."""
+    from tracker.view import VIEW_FILENAME
+
+    engagement = build_engagement(tmp_path, samples)
+    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 0
+    capsys.readouterr()
+
+    status = (tmp_path / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
+    report = (engagement.path / VIEW_FILENAME).read_text(encoding="utf-8")
+    _policy_matches_the_blocks(status)
+    _policy_matches_the_blocks(report)
+    assert "script-src" not in status, "the practice page runs no script"
+    assert "script-src" in report, "the engagement page's sort script is allowed by its hash"
 
 
 def test_the_page_lists_every_engagement_the_registry_finds_including_an_unreadable_one(
@@ -1168,6 +1212,27 @@ def test_an_approved_draft_is_not_overwritten_by_the_days_repeat_and_is_supersed
     assert first.read_bytes() != kept or is_unedited(first)
 
 
+def test_a_draft_edited_after_its_approval_is_left_alone_and_said_as_approved_then_edited(
+        tmp_path, samples, stamped_on):
+    """An edit after the approval lapses it (decision 190): the pass leaves
+    the file as it leaves any edited one, and the run log and the practice
+    page say "approved, then edited" rather than "approved"."""
+    from tracker.reminder import APPROVED_THEN_EDITED
+    from tracker.runner import _drafted_cell
+
+    engagement = build_engagement(tmp_path, samples)
+    first = pass_on(stamped_on, engagement, SATURDAY).drafted
+    approve_the_standing_draft(engagement.path, SATURDAY)
+    first.write_bytes(first.read_bytes() + b"\r\nPS: one more thing.\r\n")
+    kept = first.read_bytes()
+
+    repeat = pass_on(stamped_on, engagement, SATURDAY)
+    assert first.read_bytes() == kept, "an edited draft is never overwritten"
+    assert repeat.approved is False and repeat.approval_lapsed is True
+    assert APPROVED_THEN_EDITED in repeat.summary()
+    assert _drafted_cell(repeat) == APPROVED_THEN_EDITED
+
+
 def test_an_approved_draft_survives_a_hold_like_an_edited_one(tmp_path, samples, stamped_on):
     """A hold retires the run's own unedited drafts. One a person approved
     is not the run's - it is this week's answer, and it stays."""
@@ -1224,6 +1289,37 @@ def a_household(tmp_path, samples, household="Park Family", drops=()):
     for name in drops:
         (result.inbox / name).write_bytes((samples / name).read_bytes())
     return engagement_from(personal), engagement_from(business)
+
+
+def test_ignored_names_are_counted_once_per_pass(tmp_path, samples, capsys):
+    """The files the sort leaves alone by name - a system file, an Office
+    lock file (a client's own ``~$W2.pdf`` among them), anything under a
+    sync client's staging folder - are counted once per household per pass
+    (decision 190): one line in the run's report and on the practice page,
+    a count and never a name. An unfinished transfer is named as syncing
+    already, so it is not counted twice."""
+    from tracker.runner import IGNORED_NOTE, STATUS_IGNORED_HEADING
+
+    personal, business = a_household(tmp_path, samples, drops=(f"W-2 John Smith {YEAR}.pdf",))
+    inbox = inbox_of(personal.path)
+    junk = ["desktop.ini", "Thumbs.db", "~$W2 for the year.pdf"]
+    for name in junk:
+        (inbox / name).write_bytes(b"left alone")
+    staging = inbox / ".tmp.drivedownload"
+    staging.mkdir()
+    (staging / "part-of-a-statement.pdf").write_bytes(b"left alone")
+    (inbox / "bank statement.pdf.driveupload").write_bytes(b"still coming")
+
+    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 0
+    said = capsys.readouterr().out
+
+    line = IGNORED_NOTE.format(n=4)
+    assert said.count(line) == 1, said
+    page = (tmp_path / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
+    assert STATUS_IGNORED_HEADING in page and page.count(line) == 1
+    for name in [*junk, "part-of-a-statement.pdf"]:
+        assert html.escape(name) not in page and name not in said, name
+    assert (inbox / "~$W2 for the year.pdf").read_bytes() == b"left alone"
 
 
 def test_the_household_pass_takes_every_open_returns_lock_in_name_order_and_releases_them(

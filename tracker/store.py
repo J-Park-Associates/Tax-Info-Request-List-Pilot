@@ -1857,11 +1857,13 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
                 refuse(f"carries {key!r} that {problem}")
     elif name in (ledger.DRAFTED, ledger.DRAFT_APPROVED):
         # A week's draft (decision 118): what was asked and held, the file,
-        # its fingerprint and the stage - each read back by the app.
+        # its fingerprint and the stage - each read back by the app - and,
+        # on an approval, the fingerprint of the letter approved (decision
+        # 190), which the pass compares.
         for key in (ledger.ASKED_KEY, ledger.HELD_KEY):
             if key in event and (problem := records.text_list_problem(event[key])):
                 refuse(f"carries {key!r} that {problem}")
-        for key in (ledger.FILE_KEY, ledger.FINGERPRINT_KEY):
+        for key in (ledger.FILE_KEY, ledger.FINGERPRINT_KEY, ledger.TEXT_FINGERPRINT_KEY):
             if key in event and (problem := records.text_problem(event[key])):
                 refuse(f"carries {key!r} that {problem}")
         if event.get(ledger.STAGE_KEY) is not None and (

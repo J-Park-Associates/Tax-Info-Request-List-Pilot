@@ -4323,6 +4323,10 @@ def test_the_trackers_own_temp_files_are_swept_and_nothing_else(engagement):
     for path in [*ours, *theirs]:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"half")
+    # The README's own temp holds the README's text: in the client's inbox a
+    # name is not enough to make a file ours (decision 190).
+    from tracker.scaffold import README_FIRST_LINE
+    ours[-1].write_bytes(README_FIRST_LINE.encode("ascii") + b"\r\nhalf")
 
     # A temp that came to be after the pass started, and one whose writer is
     # still running, are somebody's write in progress: left.
@@ -4382,12 +4386,63 @@ def test_a_pass_sweeps_the_readme_temp_so_the_inbox_is_not_syncing(engagement):
     """The client-facing half of A-F6: the README's temp in ``Drop files
     here`` read as one more file syncing every pass. The household pass
     sweeps it before the inbox is read."""
+    from tracker.scaffold import README_FIRST_LINE
+
     stranded = inbox_of(engagement) / f"{README_NAME}.{os.getpid()}.0f1e2d3c.tmp"
-    stranded.write_text("half a list", encoding="utf-8")
+    stranded.write_text(f"{README_FIRST_LINE}\r\nhalf a li", encoding="utf-8")
 
     run = a_household_pass(engagement, DAY1)
 
     assert not stranded.exists()
+    assert run.waiting == 0 and not run.error, run
+
+
+def test_a_client_file_shaped_like_the_readme_temp_is_never_deleted(engagement, monkeypatch):
+    """The inbox is the client's, and a client's file may carry any name -
+    the README temp's exact shape, with a process number that is not
+    running, included. The sweep takes such a file only when it reads as
+    the firm's README (decision 190, revising 179's residual); a client's
+    file of that name is left byte for byte and counted with the files
+    still arriving - a short one too, when it is not a start of the
+    README's first line."""
+    import tracker.filer as filer_module
+
+    monkeypatch.setattr(filer_module, "pid_alive", lambda pid: False)
+    theirs = inbox_of(engagement) / f"{README_NAME}.4242.0f1e2d3c.tmp"
+    theirs.write_bytes(b"%PDF-1.4 a client's own document")
+    short = inbox_of(engagement) / f"{README_NAME}.4243.1a2b3c4d.tmp"
+    short.write_bytes(b"HOW TO SEND US X")
+
+    run = a_household_pass(engagement, DAY1)
+
+    assert theirs.read_bytes() == b"%PDF-1.4 a client's own document"
+    assert short.read_bytes() == b"HOW TO SEND US X", "not the firm's text, so not the machine's"
+    assert run.waiting == 2 and not run.error, run
+
+
+def test_a_readme_temp_the_firm_left_empty_or_cut_in_its_first_line_is_swept(
+        engagement, monkeypatch):
+    """A kill between making the README's temp and writing its first line
+    whole left a file that holds only the start of the firm's own text - or
+    nothing - which the README's own test reads as the client's. It sat in
+    the client's shared inbox for good, counted as still arriving every
+    pass (the review's S5). Empty, or a start of the README's first line,
+    it holds nothing of the client's, and the sweep takes it."""
+    import tracker.filer as filer_module
+    from tracker.scaffold import README_FIRST_LINE
+
+    monkeypatch.setattr(filer_module, "pid_alive", lambda pid: False)
+    empty = inbox_of(engagement) / f"{README_NAME}.4243.1a2b3c4d.tmp"
+    empty.write_bytes(b"")
+    cut = inbox_of(engagement) / f"{README_NAME}.4244.2b3c4d5e.tmp"
+    cut.write_bytes(README_FIRST_LINE.encode("ascii")[:9])
+    whole_line = inbox_of(engagement) / f"{README_NAME}.4245.3c4d5e6f.tmp"
+    whole_line.write_bytes(README_FIRST_LINE.encode("ascii"))
+
+    run = a_household_pass(engagement, DAY1)
+
+    left = [path.name for path in (empty, cut, whole_line) if path.exists()]
+    assert left == [], left
     assert run.waiting == 0 and not run.error, run
 
 
@@ -9188,3 +9243,21 @@ def test_an_original_held_for_the_whole_pass_is_parked_and_said_so(engagement, m
     assert "checks the record" not in row.reason
     assert (originals(engagement) / "w2.pdf").is_file()
     assert [error.name for error in report.errors] == ["w2.pdf"]
+
+
+def test_the_inbox_count_of_names_left_alone_skips_what_is_named_as_syncing(engagement):
+    """``ignored_in_inbox`` counts what the sort leaves alone by name and
+    nothing it already names (decision 190): an unfinished transfer is in
+    the report by name as syncing, so it is not in the count as well, and
+    the README and a real drop are neither."""
+    from tracker.filer import ignored_in_inbox
+
+    inbox = inbox_of(engagement)
+    before = ignored_in_inbox(inbox)
+    for name in ("desktop.ini", ".DS_Store", "~$budget.xlsx", "statement.pdf.driveupload", "w2.pdf"):
+        (inbox / name).write_bytes(b"x")
+    (inbox / ".tmp.drive1").mkdir()
+    (inbox / ".tmp.drive1" / "w2.pdf.tmp").write_bytes(b"x")
+
+    assert ignored_in_inbox(inbox) - before == 4
+    assert ignored_in_inbox(inbox / "no such folder") == 0

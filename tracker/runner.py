@@ -193,7 +193,7 @@ from tracker.manifest import (
     load_manifest,
     summarize,
 )
-from tracker.page import esc, page_text, table, tolerant_console
+from tracker.page import esc, page_text, policy, table, tolerant_console
 from tracker.records import ENGAGEMENT_LABELS, NO, YES
 from tracker.registry import (
     SKIP_ROLLED_FORWARD,
@@ -205,15 +205,16 @@ from tracker.registry import (
 )
 from tracker.reminder import (
     APPROVED_NOTE,
+    APPROVED_THEN_EDITED,
     DRAFT_FILENAME,
     NEW_DRAFT_FILENAME,
     DraftsEditedError,
     ReminderError,
+    approval_state,
     draft_changed,
     draft_reminder,
     drafted_event,
     held_refusal,
-    is_approved_this_week,
     is_protected,
     last_draft_event,
     record_draft,
@@ -388,6 +389,11 @@ RECORD_UNREADABLE = "the record could not be read: {problem}"
 #: What a pass says about a view whose replace did not land. Not an error:
 #: the view carries no fact, so the old one standing costs a person one pass.
 VIEW_NOT_REGENERATED = "status report open (not regenerated)"
+#: The household's system and temporary files the sort left alone by name
+#: (decision 190): one line per household per pass, in the run's own line
+#: and on the practice page. A count and never a name - a person who
+#: expected a file to be sorted sees that something was left and looks.
+IGNORED_NOTE = "{n} system or temporary files in the inbox were left alone"
 #: When a reading is slow enough to be worth saying (decision 127). A
 #: scanned page costs about a second to read on the office machine, so
 #: twenty seconds is a document doing something unusual - a long scan, a
@@ -493,6 +499,9 @@ class EngagementRun:
     #: each is counted in ``filed`` and ``review`` like any drop.
     opened: int = 0
     waiting: int = 0
+    #: The household's files left alone as system or temporary by name
+    #: (decision 190), counted on its first return's run only.
+    ignored: int = 0
     file_errors: list[str] = field(default_factory=list)  # drops that went wrong
     warnings: list[str] = field(default_factory=list)     # rows the rules cannot act on; strays in Prepared/
     #: The request list :func:`_worth_a_pass` loaded for ``check_rules``,
@@ -513,6 +522,10 @@ class EngagementRun:
     #: app (decision 118). The pass leaves it exactly as it leaves an
     #: edited one, and the practice page says so instead of a stage.
     approved: bool = False
+    #: Whether a person approved this week's draft and then edited it
+    #: (decision 190): the approval no longer covers the file, and the log
+    #: and the page say "approved, then edited" rather than "approved".
+    approval_lapsed: bool = False
     #: How many things hold this engagement's reminder: its ambiguous rows
     #: (decision 115) and the files still waiting in its household's inbox
     #: (decision 133); ``draft_note`` names them.
@@ -551,6 +564,8 @@ class EngagementRun:
             parts.append(f"review {self.review}")
         if self.waiting:
             parts.append(f"syncing {self.waiting}")
+        if self.ignored:
+            parts.append(IGNORED_NOTE.format(n=self.ignored))
         if self.file_errors:
             parts.append(f"could not sort {len(self.file_errors)}")
         if self.view_stale:
@@ -562,6 +577,8 @@ class EngagementRun:
                 parts.append(STAGE_NOTE.format(n=self.stage))
         if self.approved:
             parts.append(APPROVED_NOTE)
+        elif self.approval_lapsed:
+            parts.append(APPROVED_THEN_EDITED)
         if self.held:
             parts.append(f"held {self.held}")
         # A reading that took its time is said, once, with the document
@@ -1065,6 +1082,7 @@ def _sort_step(household: Path, sorting: list[EngagementRun], fed: list[Engageme
         run.opened = len(filed.opened)
         run.review = len(filed.review)
         run.waiting = len(filed.waiting)
+        run.ignored = filed.ignored
         run.file_errors = [f"{e.name}: {e.error}" for e in filed.errors]
         run.slowest = filed.slowest
         # An original already sorted whose record no longer fits the disk
@@ -1264,8 +1282,11 @@ def _draft_step(run: EngagementRun, *, dry_run: bool, today: dt.date,
     # A draft a person approved in the app this week is this week's answer
     # (decision 118): the pass leaves the file alone exactly as it leaves
     # one somebody edited, and the page says so.
-    run.approved = is_approved_this_week(engagement.path, engagement.path / DRAFT_FILENAME,
-                                         since=week)
+    # One edited after its approval is not approved (decision 190): it is
+    # still left alone, because it was edited, and the page says which.
+    approval = approval_state(engagement.path, engagement.path / DRAFT_FILENAME, since=week)
+    run.approved = approval == APPROVED_NOTE
+    run.approval_lapsed = approval == APPROVED_THEN_EDITED
 
     if draft.is_held:
         # One ambiguous row holds the whole reminder: nothing that reads
@@ -1842,6 +1863,9 @@ FOREIGN_UNLISTED = "Lines from other machines could not be listed this pass: {wh
 CHECKPOINT_NOT_PROVED = "No household was served this pass: {why}"
 STATUS_RECORDS_COUNTS = ("records that need a person: {copies} copy(ies) beside a record, {foreign} "
                          "line(s) from another machine, {refused} record(s) refused")
+#: The heading over each household's count of files left alone by name
+#: (decision 190), drawn only when there is one.
+STATUS_IGNORED_HEADING = "Left alone in the inboxes"
 
 #: The two tables, column by column, in the order they are drawn. There is
 #: no "Deferred writes" column any more: nothing a pass decides waits for
@@ -1869,6 +1893,8 @@ tr:hover td { background: #f6f5f2; }
 ul { margin: 0; padding-left: 1.2rem; }
 li { margin-bottom: 0.3rem; }
 """
+#: The page's policy (decision 190): its own style and nothing else, by hash.
+_STATUS_POLICY = policy(style=_STATUS_STYLE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1935,12 +1961,15 @@ def _page_title(root: Path) -> str:
 def _drafted_cell(run: EngagementRun) -> str:
     """What the practice page's Drafted column says about one engagement:
     the hold and its count, else that a person has approved this week's
-    draft, else the stage the draft was written at, else yes for a draft
+    draft, else that they approved it and then edited it (decision 190),
+    else the stage the draft was written at, else yes for a draft
     from before the stages, else nothing at all."""
     if run.held:
         return STATUS_HELD.format(n=run.held)
     if run.approved:
         return APPROVED_NOTE
+    if run.approval_lapsed:
+        return APPROVED_THEN_EDITED
     if run.stage:
         return STAGE_NOTE.format(n=run.stage)
     return YES if run.drafted else ""
@@ -1997,6 +2026,7 @@ def write_status_page(root: Path | str, report: RunReport, *,
         '<html lang="en">',
         "<head>",
         '<meta charset="utf-8">',
+        _STATUS_POLICY,
         f"<title>{esc(title)}</title>",
         f"<style>{_STATUS_STYLE}</style>",
         "</head>",
@@ -2016,6 +2046,14 @@ def write_status_page(root: Path | str, report: RunReport, *,
         f"<h2>{esc(STATUS_PROBLEMS_HEADING)} ({len(problems)})</h2>",
         *(["<ul>", *(f"<li>{esc(problem)}</li>" for problem in problems), "</ul>"]
           if problems else [f"<p>{esc(STATUS_NO_PROBLEMS)}</p>"]),
+        # What each household's inbox held that the sort leaves alone by
+        # name, as a count (decision 190). Not a problem: a person looks
+        # only when a count is not what they expected.
+        *([f"<h2>{esc(STATUS_IGNORED_HEADING)}</h2>", "<ul>",
+           *(f"<li>{esc(run.engagement.label)}: {esc(IGNORED_NOTE.format(n=run.ignored))}</li>"
+             for run in report.runs if run.ignored),
+           "</ul>"]
+          if any(run.ignored for run in report.runs) else []),
         # Every folder that does not fit the layout, with the one sentence
         # saying why it is left alone (decision 125, the owner's rule).
         # Nothing in one is ever read, moved or renamed; a person fixes it.

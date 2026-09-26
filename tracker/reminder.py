@@ -126,7 +126,14 @@ both, :func:`write_draft` puts the regenerated draft beside it, and
 rather than deleting it, because nothing under an engagement is the
 machine's to throw away. The approval is one ``ledger.DRAFT_APPROVED``
 line carrying a number, a name and identifiers, like every other line
-here. Which day the draft week began is handed in rather than worked out:
+here. **An approval covers the text that was approved and nothing after
+it** (decision 190): the event carries the fingerprint of the letter as
+the person read it, and a later edit to the file lapses the approval - it
+reads "approved, then edited", the file stays protected because it was
+edited, and the person approves again. The header's own fingerprint could
+not do this: it is the machine's body hash, and an edit never changes it.
+An approval written before 190 carries no such fingerprint and so is not
+an approval. Which day the draft week began is handed in rather than worked out:
 the runner decides the draft day (decision 12) and it sits above this
 module.
 
@@ -209,6 +216,16 @@ SUBJECT_COMPLETE = "{engagement}: we have everything - thank you"
 SUBJECT_RESPONSE = "{engagement}: {n} document(s) still needed - response requested"
 SUBJECT_URGENT = "URGENT - {engagement}: final notice, {n} document(s) still needed"
 DRAFT_BANNER = "DRAFT - NOTHING HAS BEEN SENT."
+#: The header's line about the firm's telephone number (decision 190): the
+#: number comes from the settings beside the app, typed by whoever set it,
+#: so the person about to send the letter is told which number it gives -
+#: or that it gives none - before a client calls a wrong one. Above the
+#: rule, so it is never pasted and never part of the fingerprinted body.
+#: Only the final notice offers a call, so a number that is set but that
+#: this stage's letter does not carry is said as such, not as "in this letter".
+FIRM_PHONE_LINE = "Firm phone in this letter: {phone}"
+FIRM_PHONE_UNUSED_LINE = "Firm phone on file: {phone}; this letter gives none."
+NO_FIRM_PHONE_LINE = "No firm phone is set; this letter gives none."
 #: The sentence every draft opens its instructions with.
 DROP_ANYWHERE = "Everything goes in the same place - just drop it into the shared"
 #: What is said before the stage's own opening, at every stage, whenever
@@ -344,6 +361,10 @@ APPROVED_LINE = "approved {date} at stage {n}"
 #: what the practice page's Drafted column says about an approved one.
 EDITED_BY_HAND = "edited by hand - approve it as it stands, or delete it to regenerate at a stage"
 APPROVED_NOTE = "approved"
+#: An approval whose letter was edited since (decision 190): it no longer
+#: covers the file, so the card, the practice page and the run log say so in
+#: one label rather than claiming the edited text was approved.
+APPROVED_THEN_EDITED = "approved, then edited"
 #: The sentence under the toggle: the pass chose the rung, and moving it is
 #: a person's call, made before they send and not recorded as a fact.
 STAGE_TOGGLE_HINT = ("the pass pre-selects the stage from the Due Date; move it up or down "
@@ -680,6 +701,9 @@ class ReminderDraft:
     #: :data:`LINK_DROPPED` when the recorded link was left out because it
     #: is not a web address (decision 137, L5), else ``""``.
     link_dropped: str = ""
+    #: The firm telephone number the draft was composed with, "" when none
+    #: is set; the file's header names it (decision 190).
+    phone: str = ""
 
     @property
     def has_outstanding(self) -> bool:
@@ -1373,6 +1397,7 @@ def draft_reminder(
         labels={item.identifier: item.label for item in items},
         letter=letter,
         link_dropped=link_dropped,
+        phone=phone,
     )
 
 
@@ -1562,6 +1587,25 @@ def draft_fingerprint(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
+def shown_text(subject: str, text: str) -> str:
+    """A letter as a person reads it on the card: the subject line, then the
+    body. The one composition of the two - what the app fingerprints and
+    what an approval records (decision 190)."""
+    return f"{SUBJECT_PREFIX}{subject}\n\n{text}" if subject else text
+
+
+def letter_fingerprint(path: Path | str) -> str:
+    """The fingerprint of the letter a draft file holds now, read as a
+    person reads it (:func:`pasted_text`, :func:`split_pasted`,
+    :func:`shown_text`), or "" when the file holds none or cannot be read.
+
+    Unlike the header's line this changes when anyone edits the letter,
+    which is what lets an approval lapse on an edit (decision 190).
+    """
+    body = pasted_text(path)
+    return draft_fingerprint(shown_text(*split_pasted(body))) if body else ""
+
+
 def recorded_fingerprint(path: Path | str) -> str:
     """The fingerprint in a draft file's header, or "" when it has none or
     cannot be read. The one reading of that line: ``is_unedited()``
@@ -1615,15 +1659,56 @@ def last_approved_event(engagement_dir: Path | str) -> dict | None:
 
 def approved_event(draft: ReminderDraft, written: Path) -> dict:
     """The ``DRAFT_APPROVED`` event for what a person approved: the stage,
-    the file, the fingerprint in its header and the identifiers it asks
-    for. A number, a name and identifiers - no word of the letter, as the
-    draft's own event carries none."""
+    the file, the fingerprint in its header, the fingerprint of the letter
+    it holds as they read it (:func:`letter_fingerprint`, decision 190) and
+    the identifiers it asks for. Numbers, a name and identifiers - no word
+    of the letter, as the draft's own event carries none.
+
+    The letter's fingerprint is read back from the file just written or
+    approved as it stands, not taken from the screen: the caller has
+    already refused a panel that no longer shows that text, so the two are
+    the same letter, and reading the file makes the later comparison one of
+    like with like."""
     return ledger.new(ledger.DRAFT_APPROVED, **{
         STAGE_KEY: draft.stage,
         ledger.FILE_KEY: Path(written).name,
         ledger.FINGERPRINT_KEY: recorded_fingerprint(written),
+        ledger.TEXT_FINGERPRINT_KEY: letter_fingerprint(written),
         ledger.ASKED_KEY: draft.asked,
     })
+
+
+def approval_state(engagement_dir: Path | str, path: Path | str, *,
+                   since: dt.date | None) -> str:
+    """What the last approval says about the file at ``path``:
+    :data:`APPROVED_NOTE` while it covers the letter the file holds,
+    :data:`APPROVED_THEN_EDITED` when the letter was edited after it, and
+    "" when there is no approval of this file (none, another file's, one
+    spent by the draft day ``since``, or one for a different draft written
+    to the same name).
+
+    An approval recorded before decision 190 carries no letter fingerprint,
+    so it cannot say which text the person read: it reads as
+    :data:`APPROVED_THEN_EDITED` - not approved, the person approves again -
+    rather than "". Reading it as no approval at all would also take away
+    its protection (:func:`is_protected`), and the pass would write over the
+    letter a person approved in the week of the deploy with no copy set
+    aside; an approval that has lapsed still keeps its file.
+
+    ``since`` is read as :func:`is_approved_this_week` reads it.
+    """
+    event = last_approved_event(engagement_dir)
+    if event is None or event.get(ledger.FILE_KEY) != Path(path).name:
+        return ""
+    if since is not None and ledger.day_of(str(event.get(ledger.AT_KEY, ""))) < since:
+        return ""
+    recorded = recorded_fingerprint(path)
+    if not recorded or event.get(ledger.FINGERPRINT_KEY) != recorded:
+        return ""
+    approved_text = event.get(ledger.TEXT_FINGERPRINT_KEY)
+    if not approved_text:
+        return APPROVED_THEN_EDITED
+    return APPROVED_NOTE if letter_fingerprint(path) == approved_text else APPROVED_THEN_EDITED
 
 
 def is_approved_this_week(engagement_dir: Path | str, path: Path | str, *,
@@ -1647,16 +1732,12 @@ def is_approved_this_week(engagement_dir: Path | str, path: Path | str, *,
 
     Matched on the fingerprint in the file's own header, not on its name: a
     different draft written to the same name is not the one that was
-    approved, and a file a person edited after approving it is protected
-    because they edited it.
+    approved. **And on the letter's own fingerprint** (decision 190): a
+    file a person edited after approving it is no longer approved - the
+    approval covered the text they read, not the text it became - though it
+    is still protected, because they edited it. See :func:`approval_state`.
     """
-    event = last_approved_event(engagement_dir)
-    if event is None or event.get(ledger.FILE_KEY) != Path(path).name:
-        return False
-    if since is not None and ledger.day_of(str(event.get(ledger.AT_KEY, ""))) < since:
-        return False
-    fingerprint = recorded_fingerprint(path)
-    return bool(fingerprint) and event.get(ledger.FINGERPRINT_KEY) == fingerprint
+    return approval_state(engagement_dir, path, since=since) == APPROVED_NOTE
 
 
 def is_protected(engagement_dir: Path | str, path: Path | str, *,
@@ -1670,10 +1751,14 @@ def is_protected(engagement_dir: Path | str, path: Path | str, *,
     it - the pass does, and it is what spends the approval next week.
     Without one the approval still protects the file: an approval is not
     the pass's to overrule, whichever writer is asking.
+
+    An approval that no longer counts - the letter edited since, or one
+    recorded before decision 190 with no letter fingerprint - still
+    protects: it stops being an approval, never a person's file to lose.
     """
     if not is_unedited(path):
         return True
-    return is_approved_this_week(engagement_dir, path, since=approved_since)
+    return approval_state(engagement_dir, path, since=approved_since) != ""
 
 
 def set_aside_other_draft(engagement_dir: Path | str, today: dt.date) -> Path | None:
@@ -1759,6 +1844,17 @@ def _changed_block(draft: ReminderDraft, changed_from: dict | None) -> list[str]
     return block
 
 
+def phone_line(draft: ReminderDraft) -> str:
+    """The header's telephone line for ``draft`` (decision 190): the number
+    the letter gives, a number that is set and that this letter does not
+    give, or that none is set."""
+    if not draft.phone:
+        return NO_FIRM_PHONE_LINE
+    if draft.phone in draft.text:
+        return FIRM_PHONE_LINE.format(phone=draft.phone)
+    return FIRM_PHONE_UNUSED_LINE.format(phone=draft.phone)
+
+
 def write_draft(draft: ReminderDraft, path: Path | str | None = None,
                 engagement_dir: Path | str | None = None,
                 preserve_edits: bool = False, *,
@@ -1838,6 +1934,7 @@ def write_draft(draft: ReminderDraft, path: Path | str | None = None,
         f"{_FINGERPRINT_PREFIX}{draft_fingerprint(body)}",
         "(That line is how the weekly job tells whether you have edited this",
         " draft. Edit it freely - an edited draft is never overwritten.)",
+        phone_line(draft),
         *_changed_block(draft, changed_from),
         _SEPARATOR,
         "",

@@ -300,6 +300,8 @@ from tracker.scaffold import (
     OTHER_DOCUMENT,
     PREPARED_DIR_NAME,
     README_CLIENTS,
+    README_FIRMS,
+    README_FIRST_LINE,
     README_NAME,
     README_UNKNOWN,
     REVIEW_DIR_NAME,
@@ -488,6 +490,10 @@ class FileReport:
     #: ``duplicates`` like any drop.
     opened: list[IndexEntry] = field(default_factory=list)
     waiting: list[Path] = field(default_factory=list)   # cloud-only, left alone
+    #: How many files in the inbox were left alone as system or temporary
+    #: files by name (:func:`ignored_in_inbox`, decision 190) - a count,
+    #: never names. On the household's first return's report only.
+    ignored: int = 0
     errors: list[FileError] = field(default_factory=list)
     #: Originals already sorted whose record no longer fits what is on disk
     #: (replaced under their name; recorded without bytes and now untied).
@@ -1432,6 +1438,32 @@ def _a_stranded_temp_to_take(path: Path) -> bool:
     return owner == os.getpid() or pid_alive(owner) is False
 
 
+def _holds_the_firms_readme_text(path: Path) -> bool:
+    """Whether a README temp in the client's inbox holds nothing but the
+    firm's text, so that taking it takes nothing of the client's.
+
+    Either it reads as the firm's README by the README's own test
+    (:func:`tracker.scaffold.whose_readme`), or its bytes are a start of
+    the firm's README text - empty, or cut inside the first line by a kill
+    before the rest reached the disk (the review's S5). Every README the
+    firm writes opens with :data:`tracker.scaffold.README_FIRST_LINE`, so a
+    file no longer than that line is a start of the current text exactly
+    when it is a start of that line, and one longer is the README's own
+    test's to judge; the text need not be rebuilt to ask. Such a file,
+    left, sat in the client's shared inbox for good and was counted every
+    pass as a file still arriving. Anything else is not the firm's to
+    delete. A file that cannot be read now is left, and asked again next
+    pass."""
+    first = README_FIRST_LINE.encode("ascii")
+    try:
+        if path.stat().st_size <= len(first):
+            with path.open("rb") as handle:
+                return first.startswith(handle.read(len(first) + 1))
+    except OSError:
+        return False
+    return whose_readme(path) == README_FIRMS
+
+
 def _remove_a_stranded_temp(path: Path) -> bool:
     """Take one stranded temp away; False, with a log line, where Windows
     refuses. A temp ``copy2`` carried a read-only attribute onto before the
@@ -1480,7 +1512,16 @@ def sweep_stranded_temps(household_dir: Path | str, returns: Sequence[Path], *,
       copies, the review folder, the Status Report, the draft); under the
       household-year's ``_Opened``; or in the inbox, beside the README and
       named after it, and only under the README's lock, which is what
-      every README write holds.
+      every README write holds;
+    - in the inbox, it also holds the firm's text
+      (:func:`_holds_the_firms_readme_text`): it reads as the firm's README
+      by the README's own test, or it is empty or a start of the README's
+      first line - the temp a kill left before the firm's first bytes were
+      all on the disk. The inbox is the client's, and a client file can
+      carry any name, that shape included; one that holds anything else is
+      left where it is and, ending in ``.tmp``, counted in the report with
+      the files still arriving (decision 190, revising 179's accepted
+      residual; the review's S5).
 
     Nothing in the client's year folders is ever looked at: the originals
     rest there, and nothing the tracker writes goes through a temp there.
@@ -1534,7 +1575,9 @@ def sweep_stranded_temps(household_dir: Path | str, returns: Sequence[Path], *,
                         # A removal in the client's inbox goes through the one
                         # door into the client tree (decision 188).
                         door.client_write(root_of(first), household_name_of(first), path)
-                        if _a_stranded_temp_to_take(path) and _remove_a_stranded_temp(path):
+                        if (_a_stranded_temp_to_take(path)
+                                and _holds_the_firms_readme_text(path)
+                                and _remove_a_stranded_temp(path)):
                             taken.append(path)
                 finally:
                     release_lock(lock)
@@ -2104,6 +2147,25 @@ def unfinished_drops(inbox: Path) -> list[Path]:
         if path.is_file() and path.name.lower().endswith(UNFINISHED_SUFFIXES)
         and not any(is_sync_staging(part) for part in path.parts)
     )
+
+
+def ignored_in_inbox(inbox: Path) -> int:
+    """How many files in the inbox the sort leaves alone by their name as
+    system or temporary files (:func:`tracker.validators.is_ignored`) and
+    that :func:`unfinished_drops` does not already name: ``desktop.ini``
+    and its kin, an Office lock file (``~$...``), anything under a sync
+    client's staging folder (decision 190).
+
+    A count, never names: the names are what a client's machine or sync
+    client made, and a list of them would put every lock file of every
+    household on the practice page. A count is enough for a person to see
+    that a file they expected is not being sorted - a client's own
+    ``~$W2.pdf`` is left alone like a lock file - and go and look."""
+    if not inbox.is_dir():
+        return 0
+    unfinished = set(unfinished_drops(inbox))
+    return sum(1 for path in inbox.rglob("*")
+               if path.is_file() and is_ignored(path) and path not in unfinished)
 
 
 def unrecorded_in_pbc(
@@ -3564,6 +3626,7 @@ def file_household_drops(
             path.name, README_UNREAD.format(household=dropped_in), True))
         log.warning("Left %s in place: it could not be read just now", path.name)
     first.report.waiting.extend(unfinished_drops(inbox))
+    first.report.ignored = ignored_in_inbox(inbox)
     for path in unreachable_drops(inbox):
         first.report.errors.append(FileError(
             path.name, "cannot be handled under this name (a name Windows refuses, or the index cannot hold); rename it", True

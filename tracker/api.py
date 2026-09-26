@@ -1030,6 +1030,7 @@ def _vocab() -> dict:
             "last_drafted_line": reminder.LAST_DRAFTED_LINE,
             "never_drafted_line": reminder.NEVER_DRAFTED_LINE,
             "approved_line": reminder.APPROVED_LINE,
+            "approved_then_edited": reminder.APPROVED_THEN_EDITED,
             "edited_by_hand": reminder.EDITED_BY_HAND,
             "stage_toggle_hint": reminder.STAGE_TOGGLE_HINT,
             "copied": reminder.COPIED_NOTE,
@@ -1457,16 +1458,17 @@ def _return_reminder(path: Path, today: dt.date) -> dict:
     page types nothing new. A return whose record this read cannot open
     says nothing rather than breaking the card.
     """
-    blank = {"last": None, "approved": None, "held": 0, "unsorted": 0}
+    blank = {"last": None, "approved": None, "lapsed": False, "held": 0, "unsorted": 0}
     try:
         items = load_manifest(path)
         entries = read_index(path)
         _, _, held = reminder.triage(items, entries)
         last = reminder.last_draft_event(path, carrying=ledger.FILE_KEY)
         approved = reminder.last_approved_event(path)
-        in_force = reminder.is_approved_this_week(
+        approval = reminder.approval_state(
             path, path / reminder.DRAFT_FILENAME,
             since=last_draft_day(today, DRAFT_WEEKDAY))
+        in_force = approval == reminder.APPROVED_NOTE
         unsorted = reminder.unsorted_in_inbox(path)
     except Exception:                        # said elsewhere; the card still draws
         return blank
@@ -1476,6 +1478,9 @@ def _return_reminder(path: Path, today: dt.date) -> dict:
         "approved": ({"date": ledger.day_of(str(approved.get(ledger.AT_KEY, ""))).isoformat(),
                       "stage": approved.get(reminder.STAGE_KEY) or 0}
                      if approved and in_force else None),
+        # An approval the letter was edited after (decision 190): said as
+        # ``vocab.reminder.approved_then_edited`` in place of "approved".
+        "lapsed": approval == reminder.APPROVED_THEN_EDITED,
         "held": len(held),
         "unsorted": unsorted,
     }
@@ -3485,8 +3490,9 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
     exists = path.is_file()
     edited = exists and not reminder.is_unedited(path)
     approved = reminder.last_approved_event(engagement)
-    in_force = reminder.is_approved_this_week(engagement, path,
-                                              since=last_draft_day(today, DRAFT_WEEKDAY))
+    approval = reminder.approval_state(engagement, path,
+                                       since=last_draft_day(today, DRAFT_WEEKDAY))
+    in_force = approval == reminder.APPROVED_NOTE
 
     if draft.is_held:
         stage = day_stage
@@ -3513,7 +3519,7 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
         subject, text = draft.subject, draft.body
         html, letter = reminder.render_html(draft), draft.letter
 
-    shown = f"{reminder.SUBJECT_PREFIX}{subject}\n\n{text}" if subject else text
+    shown = reminder.shown_text(subject, text)
     return {
         "draft": draft,
         "stage": stage,
@@ -3528,6 +3534,9 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
                       "stage": approved.get(reminder.STAGE_KEY) or 0,
                       "file": approved.get(ledger.FILE_KEY, "")}
                      if approved and in_force else None),
+        # The approval lapsed because the letter was edited after it
+        # (decision 190): the card says so rather than "approved".
+        "lapsed": approval == reminder.APPROVED_THEN_EDITED,
         "file": {"name": path.name, "exists": exists, "edited": edited, "path": str(path)},
         "subject": subject,
         "text": text,

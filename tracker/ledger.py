@@ -426,12 +426,17 @@ FINGERPRINT_KEY = "fingerprint"
 #: 187, beside the event it belongs to, so the store's gate can bound it
 #: without reaching up to the reminder; ``tracker.reminder`` re-exports it.
 STAGE_KEY = "stage"
+#: The fingerprint of the letter a person approved, as they read it
+#: (decision 190): carried by :data:`DRAFT_APPROVED` alone, so an edit made
+#: after the approval lapses it. A hash - no word of the letter.
+TEXT_FINGERPRINT_KEY = "text_fingerprint"
 #: A person read the week's draft in the app and approved it (decision
 #: 118). Folded by nothing, exactly as :data:`DRAFTED` is: it is a fact
 #: about a week, not a row of the index. It carries the same four keys a
 #: written draft does - the stage (:data:`STAGE_KEY`), the
 #: file, the fingerprint in that file's header and the identifiers asked -
-#: and, like every event here, not one word a client would read. Until the
+#: and the fingerprint of the letter approved (:data:`TEXT_FINGERPRINT_KEY`,
+#: decision 190), and, like every event here, not one word a client would read. Until the
 #: next draft day the pass treats the file it names as it treats one a
 #: person edited: never overwritten, a regenerated draft beside it.
 DRAFT_APPROVED = "draft_approved"

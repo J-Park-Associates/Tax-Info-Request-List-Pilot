@@ -822,6 +822,47 @@ def test_stage_four_drops_the_phone_sentence_when_the_firm_has_no_phone(tmp_path
     assert STAGES[3].close.format(phone_clause="") in without.body
 
 
+def test_the_draft_header_names_the_firm_phone(tmp_path, monkeypatch):
+    """The header says which firm number the letter gives, or that it gives
+    none (decision 190), so a number changed in the settings is seen before
+    the letter goes. The line sits above the rule: the body's fingerprint
+    is the same with or without it, and the draft still reads unedited."""
+    from tracker.reminder import (
+        FIRM_PHONE_LINE,
+        FIRM_PHONE_UNUSED_LINE,
+        NO_FIRM_PHONE_LINE,
+        pasted_text,
+    )
+
+    def header_and_body(path):
+        header, _, body = path.read_text(encoding="utf-8").partition("=" * 60)
+        return header.splitlines(), body
+
+    folder = engagement(tmp_path, SENDABLE)
+    unset = write_draft(draft_reminder(folder, due_date=DUE, today=DUE), engagement_dir=folder)
+    header, body = header_and_body(unset)
+    assert NO_FIRM_PHONE_LINE in header and NO_FIRM_PHONE_LINE not in body
+    assert is_unedited(unset)
+    quiet_line = write_draft(draft_reminder(folder, due_date=DUE, today=DUE, stage=1),
+                             engagement_dir=folder)
+    stage_one_without = (recorded_fingerprint(quiet_line), pasted_text(quiet_line))
+
+    monkeypatch.setattr(reminder_module, "firm_phone", lambda: PHONE)
+    final = write_draft(draft_reminder(folder, due_date=DUE, today=DUE), engagement_dir=folder)
+    header, body = header_and_body(final)
+    assert FIRM_PHONE_LINE.format(phone=PHONE) in header and PHONE in body
+    assert is_unedited(final)
+
+    # A stage that offers no call: the number is on file, the header does
+    # not claim the letter gives it - and only the header changed, so the
+    # body and its fingerprint are those of the same letter with no number set.
+    early = write_draft(draft_reminder(folder, due_date=DUE, today=DUE, stage=1), engagement_dir=folder)
+    header, body = header_and_body(early)
+    assert FIRM_PHONE_UNUSED_LINE.format(phone=PHONE) in header and PHONE not in body
+    assert (recorded_fingerprint(early), pasted_text(early)) == stage_one_without
+    assert is_unedited(early)
+
+
 def test_the_recipient_set_is_identical_at_every_stage_and_a_firm_side_row_is_in_none(tmp_path):
     rows = SENDABLE + [item("B01", "Receipts", Status.FAILED,
                             validation_notes=failure("scan.pdf", reasons.NO_TEXT_LAYER.format()))]
@@ -1425,6 +1466,84 @@ def test_an_approval_names_a_text_and_not_a_filename(tmp_path):
 
     written.write_bytes(written.read_bytes() + b"\r\nPS: and the boat.\r\n")
     assert is_protected(folder, written, approved_since=week), "an edit protects it anyway"
+
+
+def test_an_approval_lapses_when_the_letter_is_edited(tmp_path):
+    """An approval covers the text a person read, not what the file becomes
+    (decision 190). It records that text's fingerprint - the one the card
+    shows for it - and an edit after it lapses the approval: the file is
+    still protected, because it was edited, and it reads "approved, then
+    edited". An approval recorded before 190, with no text fingerprint,
+    reads the same way: not an approval, so the person approves again."""
+    from tracker import store
+    from tracker.locking import engagement_lock
+    from tracker.reminder import (
+        APPROVED_THEN_EDITED,
+        approval_state,
+        draft_fingerprint,
+        letter_fingerprint,
+        shown_text,
+    )
+
+    folder = engagement(tmp_path, SENDABLE, name="Lapsed TY2025")
+    draft = draft_reminder(folder, due_date=DUE, today=DUE)
+    written = write_draft(draft, engagement_dir=folder)
+    week = dt.date.today() - dt.timedelta(days=1)
+    approve(folder, draft, written)
+
+    event = approved_event(draft, written)
+    assert event[ledger.TEXT_FINGERPRINT_KEY] == draft_fingerprint(shown_text(draft.subject, draft.body))
+    assert approval_state(folder, written, since=week) == APPROVED_NOTE
+
+    written.write_bytes(written.read_bytes() + b"\r\nPS: and the boat.\r\n")
+    assert letter_fingerprint(written) != event[ledger.TEXT_FINGERPRINT_KEY]
+    assert approval_state(folder, written, since=week) == APPROVED_THEN_EDITED
+    assert not is_approved_this_week(folder, written, since=week)
+    assert not is_approved_this_week(folder, written, since=None)
+    assert is_protected(folder, written, approved_since=week), "edited, so still protected"
+
+    # Approved again as it now stands: in force, and the edit is covered.
+    approve(folder, draft, written)
+    assert approval_state(folder, written, since=week) == APPROVED_NOTE
+
+    # An event from before 190 names no text: it is not an approval.
+    legacy = {key: value for key, value in approved_event(draft, written).items()
+              if key != ledger.TEXT_FINGERPRINT_KEY}
+    with engagement_lock(folder):
+        store.record(store.connect(), folder, legacy)
+    assert approval_state(folder, written, since=week) == APPROVED_THEN_EDITED
+    assert not is_approved_this_week(folder, written, since=week)
+
+
+def test_an_approval_from_before_190_still_protects_its_letter_in_the_deploy_week(tmp_path):
+    """An approval recorded before decision 190 has no letter fingerprint,
+    so it no longer counts: the card reads "approved, then edited" and the
+    person approves again. It still protects the file it names - the pass
+    in the week of the deploy writes its draft beside the approved letter,
+    never over it, though nobody has edited it (nothing vanishes)."""
+    from tracker import store
+    from tracker.locking import engagement_lock
+    from tracker.reminder import APPROVED_THEN_EDITED, approval_state, is_unedited
+
+    folder = engagement(tmp_path, SENDABLE, name="Deploy Week TY2025")
+    draft = draft_reminder(folder, due_date=DUE, today=DUE)
+    written = write_draft(draft, engagement_dir=folder)
+    approved_letter = written.read_bytes()
+    legacy = {key: value for key, value in approved_event(draft, written).items()
+              if key != ledger.TEXT_FINGERPRINT_KEY}
+    with engagement_lock(folder):
+        store.record(store.connect(), folder, legacy)
+    week = dt.date.today() - dt.timedelta(days=1)
+
+    assert is_unedited(written), "nobody edited the approved letter"
+    assert approval_state(folder, written, since=week) == APPROVED_THEN_EDITED
+    assert not is_approved_this_week(folder, written, since=week)
+    assert is_protected(folder, written, approved_since=week)
+
+    regenerated = write_draft(draft_reminder(folder, due_date=DUE, today=DUE, stage=1),
+                              engagement_dir=folder, preserve_edits=True, approved_since=week)
+    assert regenerated.name == NEW_DRAFT_FILENAME, regenerated
+    assert written.read_bytes() == approved_letter, "the approved letter was written over"
 
 
 def test_approve_sets_the_other_draft_aside_by_name_and_never_deletes_anything(tmp_path):

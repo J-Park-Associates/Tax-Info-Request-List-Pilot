@@ -360,6 +360,7 @@ function reminderStatus(card) {
   if (card.approved) {
     return fill(words.approved_line, { date: card.approved.date, n: card.approved.stage });
   }
+  if (card.lapsed) return words.approved_then_edited;
   if (card.last) return fill(words.last_drafted_line, { date: card.last.date, n: card.last.stage });
   return words.never_drafted_line;
 }
@@ -1244,15 +1245,19 @@ function renderFeeds(hh) {
 }
 
 // One return's reminder, in the same words its own card uses: approved
-// beats last-drafted beats never, and a hold is said after it. Every
-// pattern is the API's (vocab.reminder) and the page types none of them.
+// beats approved-then-edited beats last-drafted beats never, and a hold is
+// said after it. Every pattern is the API's (vocab.reminder) and the page
+// types none of them.
 function returnReminderLine(state) {
   const words = vocab.reminder;
-  const said = state.approved
-    ? fill(words.approved_line, { date: state.approved.date, n: state.approved.stage })
-    : state.last
-      ? fill(words.last_drafted_line, { date: state.last.date, n: state.last.stage })
-      : words.never_drafted_line;
+  let said = words.never_drafted_line;
+  if (state.approved) {
+    said = fill(words.approved_line, { date: state.approved.date, n: state.approved.stage });
+  } else if (state.lapsed) {
+    said = words.approved_then_edited;
+  } else if (state.last) {
+    said = fill(words.last_drafted_line, { date: state.last.date, n: state.last.stage });
+  }
   const hold = holdLine(state.held || 0, state.unsorted || 0);
   return hold ? `${said} · ${hold}` : said;
 }

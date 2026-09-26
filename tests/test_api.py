@@ -1972,6 +1972,7 @@ def _the_reminder_card_words_are_all_pythons(words):
         "last_drafted_line": reminder.LAST_DRAFTED_LINE,
         "never_drafted_line": reminder.NEVER_DRAFTED_LINE,
         "approved_line": reminder.APPROVED_LINE,
+        "approved_then_edited": reminder.APPROVED_THEN_EDITED,
         "edited_by_hand": reminder.EDITED_BY_HAND,
         "stage_toggle_hint": reminder.STAGE_TOGGLE_HINT,
         "copied": reminder.COPIED_NOTE,
@@ -2708,12 +2709,16 @@ def test_an_edited_file_is_approved_as_it_stands_and_the_toggle_is_disabled(caps
 
     after = reminder_card(capsys, folder)
     assert after["file"]["edited"] is True and after["editable"] is False
+    # Edited after the approval, so the approval lapsed (decision 190).
+    assert after["approved"] is None and after["lapsed"] is True
     assert after["letter"] == {} and "ask about the rental" in after["text"]
     assert after["html"].startswith("<div") and "ask about the rental" in after["html"]
     assert EDITED_BY_HAND  # the sentence the card shows beside it, from the vocabulary
     assert run(capsys, "approve", api.ENGAGEMENT_FLAG, str(folder),
                stdin={"stage": after["stage"], "fingerprint": after["fingerprint"]})[0] == 0
     assert written.read_bytes() == edited, "an edited draft is approved as it stands"
+    again = reminder_card(capsys, folder)
+    assert again["approved"] is not None and again["lapsed"] is False
 
 
 def test_approve_never_sends(capsys, demo_root, monkeypatch):
@@ -3446,7 +3451,8 @@ def test_the_household_card_shows_every_returns_reminder_state(capsys, demo_root
     assert [one["return_name"] for one in returns] == [
         "1040 - John Park", "1120S - Park Landscaping"]
     for one in returns:
-        assert one["reminder"] == {"last": None, "approved": None, "held": 0, "unsorted": 0}
+        assert one["reminder"] == {"last": None, "approved": None, "lapsed": False,
+                                   "held": 0, "unsorted": 0}
     # The words the card fills those numbers into are the reminder's own.
     words = run(capsys, "list")[1]["vocab"]["reminder"]
     assert words["never_drafted_line"] == reminder.NEVER_DRAFTED_LINE
