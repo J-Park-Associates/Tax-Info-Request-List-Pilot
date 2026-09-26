@@ -134,11 +134,13 @@ def test_every_run_of_the_tracker_in_the_build_has_a_data_home_of_its_own():
 def test_the_package_is_proved_to_hold_no_store_log_task_file_or_settings():
     """The proof (decision 186): a step before the package is zipped and
     uploaded fails the build when anything in it bears a name the data
-    home or the settings folder holds - each spelled by its constant."""
-    from tracker.runner import LOG_FILENAME, PASS_ORDER_FILENAME
+    home or the settings folder holds - each spelled by its constant,
+    decision 159's three files beside the store among them."""
+    from tracker.checkpoint import CHECKPOINT_FILENAME
+    from tracker.runner import LAST_PASS_FILENAME, LOG_FILENAME, PASS_ORDER_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
     from tracker.settings import DATA_HOME_NAME, OCR_SCRATCH_DIRNAME, SETTINGS_FILENAME
-    from tracker.store import STORE_FILENAME, STORE_SHM_FILENAME, STORE_WAL_FILENAME
+    from tracker.store import RECOVERED_DIR, STORE_FILENAME, STORE_SHM_FILENAME, STORE_WAL_FILENAME
 
     run = commands()
     step = run.index("- name: The package holds no store, run log, task file or settings")
@@ -148,6 +150,7 @@ def test_the_package_is_proved_to_hold_no_store_log_task_file_or_settings():
     listed = re.search(r"\$names = @\(([^)]*)\)", body).group(1)
     assert set(re.findall(r"'([^']+)'", listed)) == {
         STORE_FILENAME, STORE_WAL_FILENAME, STORE_SHM_FILENAME, LOG_FILENAME, PASS_ORDER_FILENAME,
+        CHECKPOINT_FILENAME, RECOVERED_DIR, LAST_PASS_FILENAME,
         SCHEDULE_XML_FILENAME, OCR_SCRATCH_DIRNAME, DATA_HOME_NAME, SETTINGS_FILENAME}
     assert "$env:PACKAGE_DIR -Recurse -Force" in body and "throw" in body
 

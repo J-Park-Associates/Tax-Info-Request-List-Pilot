@@ -3888,13 +3888,17 @@ def test_a_rolled_from_naming_nothing_is_on_the_page(tmp_path, samples):
 
 
 def test_what_an_earlier_version_left_is_named_for_deletion_and_never_deleted(tmp_path, monkeypatch):
+    """Decision 186: the delete group - the store and its side files, the
+    pass-order hint, 159's last-pass file, the OCR scratch folder and the
+    root's old run log - is named in :data:`LEFT_BEHIND`, never touched."""
     from tracker.settings import ENV_SETTINGS_DIR, OCR_SCRATCH_DIRNAME, data_home
 
     settings = tmp_path / "settings"
     (settings / OCR_SCRATCH_DIRNAME).mkdir(parents=True)
     (settings / OCR_SCRATCH_DIRNAME / "page-1.png").write_bytes(b"a client's page")
     left = {name: settings / name for name in (store.STORE_FILENAME, store.STORE_WAL_FILENAME,
-                                                runner_module.PASS_ORDER_FILENAME)}
+                                                runner_module.PASS_ORDER_FILENAME,
+                                                runner_module.LAST_PASS_FILENAME)}
     for name, path in left.items():
         path.write_bytes(name.encode())
     monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
@@ -3911,28 +3915,71 @@ def test_what_an_earlier_version_left_is_named_for_deletion_and_never_deleted(tm
     assert named == [runner_module.LEFT_BEHIND.format(
         paths="; ".join(str(settings.resolve() / name) for name in (
             store.STORE_FILENAME, store.STORE_WAL_FILENAME, runner_module.PASS_ORDER_FILENAME,
-            OCR_SCRATCH_DIRNAME)) + f"; {old_log}",
+            runner_module.LAST_PASS_FILENAME, OCR_SCRATCH_DIRNAME)) + f"; {old_log}",
         home=data_home())]
+    assert runner_module.CODE_LEFT_BEHIND_TO_MOVE not in report.warning_codes    # nothing to move
     assert old_log.read_text(encoding="utf-8") == "an old log naming a client\n"
     for name, path in left.items():
         assert path.read_bytes() == name.encode()                 # named, never touched
     assert (settings / OCR_SCRATCH_DIRNAME / "page-1.png").read_bytes() == b"a client's page"
 
 
+def test_the_checkpoint_and_recovered_records_left_behind_are_named_to_move_never_to_delete(
+        tmp_path, monkeypatch):
+    """Decision 186 on 159 (security principle 10): the record checkpoint
+    cannot be made again and ``recovered`` holds evidence, so one an older
+    version left beside the settings file is named in its own sentence,
+    :data:`LEFT_BEHIND_TO_MOVE`, with its own code - never in the sentence
+    that says delete - and is never touched."""
+    from tracker import checkpoint
+    from tracker.settings import ENV_SETTINGS_DIR, data_home
+
+    settings = tmp_path / "settings"
+    (settings / store.RECOVERED_DIR).mkdir(parents=True)
+    (settings / store.RECOVERED_DIR / "Test Household-export.jsonl").write_bytes(b"a record's lines")
+    (settings / checkpoint.CHECKPOINT_FILENAME).write_bytes(b"an old checkpoint")
+    (settings / store.STORE_FILENAME).write_bytes(b"an old store")
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    monkeypatch.setenv(store.ENV_STORE, str(data_home() / store.STORE_FILENAME))
+    store.close()
+
+    report = run_registry(Registry(source=tmp_path / "Clients", engagements=[]), today=SATURDAY,
+                          dry_run=True)
+
+    home = data_home()
+    to_delete = runner_module.LEFT_BEHIND.format(paths=str(settings.resolve() / store.STORE_FILENAME),
+                                                 home=home)
+    to_move = runner_module.LEFT_BEHIND_TO_MOVE.format(
+        paths=f"{settings.resolve() / checkpoint.CHECKPOINT_FILENAME}; "
+              f"{settings.resolve() / store.RECOVERED_DIR}", home=home)
+    said = dict(zip(report.warning_codes, report.warnings, strict=True))
+    assert said[runner_module.CODE_LEFT_BEHIND] == to_delete
+    assert said[runner_module.CODE_LEFT_BEHIND_TO_MOVE] == to_move
+    assert checkpoint.CHECKPOINT_FILENAME not in to_delete and store.RECOVERED_DIR not in to_delete
+    assert "never delete" in to_move
+    assert (settings / checkpoint.CHECKPOINT_FILENAME).read_bytes() == b"an old checkpoint"
+    assert (settings / store.RECOVERED_DIR / "Test Household-export.jsonl").read_bytes() == b"a record's lines"
+
+
 def test_the_store_in_use_is_never_named_as_left_behind(tmp_path, monkeypatch):
     """The suite's own default puts the store beside a settings folder; the
-    store a pass is using, its side files and the hint beside it are never
-    "left over"."""
+    store a pass is using, its side files, the hint and decision 159's
+    checkpoint, ``recovered`` and last-pass file beside it are never "left
+    over"."""
+    from tracker import checkpoint
     from tracker.settings import ENV_SETTINGS_DIR
 
     app = tmp_path / "app"
     monkeypatch.setenv(ENV_SETTINGS_DIR, str(app))
     store.connect()                                              # the fixture's store, in use
-    for name in (store.STORE_WAL_FILENAME, runner_module.PASS_ORDER_FILENAME):
-        (app / name).write_bytes(b"")
+    for name in (store.STORE_WAL_FILENAME, runner_module.PASS_ORDER_FILENAME,
+                 checkpoint.CHECKPOINT_FILENAME, runner_module.LAST_PASS_FILENAME):
+        if not (app / name).exists():                              # the store may have made one
+            (app / name).write_bytes(b"")
+    (app / store.RECOVERED_DIR).mkdir(exist_ok=True)
     assert Path(store.store_path()).parent == app
     assert runner_module.left_behind(tmp_path) == []
-    assert runner_module.left_behind_warning(tmp_path) == ""
+    assert runner_module.left_behind_warnings(tmp_path) == []
 
 
 # ------------------------------------------------ the run log: counts and codes ----

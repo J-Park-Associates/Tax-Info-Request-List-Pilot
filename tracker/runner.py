@@ -280,6 +280,12 @@ STATUS_PAGE_FILENAME = "status.html"
 LEFT_BEHIND = ("Left over from an earlier version and no longer used: {paths}. They hold client "
                "names, and nothing deletes them for you - delete them. The tracker keeps its "
                "database and its run log in {home} now.")
+#: What an earlier version left that must be kept, not deleted: decision
+#: 159's record checkpoint cannot be made again, and the records in
+#: ``recovered`` are evidence (security principle 10). Never "delete them".
+LEFT_BEHIND_TO_MOVE = ("Left over from an earlier version beside the program: {paths}. These cannot be "
+                       "made again - move them into {home} (the runbook's decision-186 upgrade "
+                       "step says how), never delete them.")
 
 
 def _spelled(path: Path) -> str:
@@ -288,11 +294,13 @@ def _spelled(path: Path) -> str:
 
 def left_behind(root: Path | None) -> list[Path]:
     """What an earlier version left where client data no longer lives: the store
-    and its two SQLite side files, the pass-order hint and the old OCR scratch
-    folder beside the settings file (and beside the frozen executable, where a
-    package without the shell kept them). Only what exists; nothing is opened,
-    moved or deleted. The store in use, its two side files and the hint beside
-    it are never named (``TRACKER_STORE`` may point beside the settings file:
+    and its two SQLite side files, the pass-order hint, decision 159's record
+    checkpoint, ``recovered`` folder and last-pass file, and the old OCR
+    scratch folder beside the settings file (and beside the frozen
+    executable, where a package without the shell kept them). Only what
+    exists; nothing is opened, moved or deleted. The store in use and every
+    file that follows it - its two side files, the hint, the checkpoint, the
+    ``recovered`` folder and the last-pass file beside it - are never named (``TRACKER_STORE`` may point beside the settings file:
     the suite's own fixture does). In a source checkout only the settings
     folder is looked at. ``root`` is the clients root, whose old
     :data:`LOG_FILENAME` - which named clients and files - is named too:
@@ -301,11 +309,13 @@ def left_behind(root: Path | None) -> list[Path]:
     if getattr(sys, "frozen", False) and _spelled(app_dir()) != _spelled(folders[0]):
         folders.append(app_dir())
     in_use = store.store_path()
-    kept = {_spelled(in_use), _spelled(in_use.with_name(store.STORE_WAL_FILENAME)),
-            _spelled(in_use.with_name(store.STORE_SHM_FILENAME)),
-            _spelled(in_use.with_name(PASS_ORDER_FILENAME))}
-    names = (store.STORE_FILENAME, store.STORE_WAL_FILENAME, store.STORE_SHM_FILENAME,
-             PASS_ORDER_FILENAME, OCR_SCRATCH_DIRNAME)
+    # Decision 159's three files sit beside the store, so they followed it
+    # into the data home (decision 186); one beside the settings file is
+    # an older version's, and the checkpoint and ``recovered`` name clients.
+    beside = (store.STORE_WAL_FILENAME, store.STORE_SHM_FILENAME, PASS_ORDER_FILENAME,
+              checkpoint.CHECKPOINT_FILENAME, store.RECOVERED_DIR, LAST_PASS_FILENAME)
+    kept = {_spelled(in_use)} | {_spelled(in_use.with_name(name)) for name in beside}
+    names = (store.STORE_FILENAME, *beside, OCR_SCRATCH_DIRNAME)
     found = [folder / name for folder in folders for name in names
              if os.path.lexists(folder / name) and _spelled(folder / name) not in kept]
     if root is not None and (Path(root) / LOG_FILENAME).is_file():
@@ -319,10 +329,31 @@ def log_path() -> Path:
     return logs_dir() / LOG_FILENAME
 
 
-def left_behind_warning(root: Path | None) -> str:
-    """:data:`LEFT_BEHIND` naming what :func:`left_behind` found, or ``""``."""
+def _to_move(path: Path) -> bool:
+    """Whether a left-behind path is one to move into the data home rather
+    than delete: the record checkpoint and the ``recovered`` folder."""
+    return path.name in (checkpoint.CHECKPOINT_FILENAME, store.RECOVERED_DIR)
+
+
+def left_behind_warnings(root: Path | None) -> list[tuple[str, str]]:
+    """What :func:`left_behind` found, as ``(code, sentence)`` pairs, one per
+    group that is not empty: :data:`LEFT_BEHIND` for what to delete
+    (:data:`CODE_LEFT_BEHIND`), then :data:`LEFT_BEHIND_TO_MOVE` for the
+    checkpoint and ``recovered``, which are never to be deleted
+    (:data:`CODE_LEFT_BEHIND_TO_MOVE`)."""
     found = left_behind(root)
-    return LEFT_BEHIND.format(paths="; ".join(map(str, found)), home=data_home()) if found else ""
+    if not found:
+        return []
+    home = data_home()
+    delete = [path for path in found if not _to_move(path)]
+    move = [path for path in found if _to_move(path)]
+    said = []
+    if delete:
+        said.append((CODE_LEFT_BEHIND, LEFT_BEHIND.format(paths="; ".join(map(str, delete)), home=home)))
+    if move:
+        said.append((CODE_LEFT_BEHIND_TO_MOVE,
+                     LEFT_BEHIND_TO_MOVE.format(paths="; ".join(map(str, move)), home=home)))
+    return said
 #: The runner's own flags, named once so the scheduler builds a command
 #: line the parser below still accepts.
 LOG_FLAG = "--log"
@@ -570,6 +601,7 @@ CODE_FOLDER_MISSING = "folder-missing"
 CODE_RECORD_UNREADABLE = "record-unreadable"
 #: The pass's own warnings, one code per sentence.
 CODE_LEFT_BEHIND = "left-behind"
+CODE_LEFT_BEHIND_TO_MOVE = "left-behind-to-move"
 CODE_NO_DATA_HOME = "no-data-home"
 CODE_READER_PATH_WARNING = "reader-path-warning"
 CODE_GRAPHICS_CARD_FAULT = "graphics-card-fault"
@@ -1609,8 +1641,8 @@ def run_registry(
     reader_start_warning()          # this pass's count starts here
     try:
         # What an earlier version left beside the app (decision 186): named, never deleted.
-        if warning := left_behind_warning(registry.source):
-            _warn(report, CODE_LEFT_BEHIND, warning)
+        for code, warning in left_behind_warnings(registry.source):
+            _warn(report, code, warning)
     except SettingsError as exc:    # no data home: the store says so too, and this pass says it once
         _warn(report, CODE_NO_DATA_HOME, str(exc))
     if warning := ocr.reader_path_warning():
@@ -2475,7 +2507,11 @@ def main(argv: list[str] | None = None) -> int:
                 # Into the run log in the data home (decision 186), never into
                 # a clients root - so a refused root is never written into, even
                 # to log its refusal (the final review's SF2).
-                _log_a_failed_pass(_log_file(ns), reason, exc.__class__.__name__)
+                try:
+                    failed_log = _log_file(ns)
+                except SettingsError:
+                    failed_log = None           # no data home, so no run log to write
+                _log_a_failed_pass(failed_log, reason, exc.__class__.__name__)
             raise
         if last is not None:
             reason = (PASS_NOT_SERVED if code == NOT_SERVED_TWICE_EXIT_CODE

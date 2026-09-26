@@ -196,10 +196,11 @@ jobs:
 
       # Proof that the package carries nothing a pass derives from clients and
       # no settings: every name the data home or the settings folder holds
-      # (decision 186), checked before the package is zipped.
+      # (decision 186) - decision 159's checkpoint, recovered folder and
+      # last-pass file among them - checked before the package is zipped.
       - name: The package holds no store, run log, task file or settings
         run: |
-          $names = @('tracker.db', 'tracker.db-wal', 'tracker.db-shm', 'runs.log', 'pass-order.json', 'tax-tracker.xml', 'ocr-scratch', 'tax-document-tracker', 'settings.json')
+          $names = @('tracker.db', 'tracker.db-wal', 'tracker.db-shm', 'runs.log', 'pass-order.json', 'record-heads.db', 'recovered', 'last-pass.json', 'tax-tracker.xml', 'ocr-scratch', 'tax-document-tracker', 'settings.json')
           $found = Get-ChildItem -LiteralPath $env:PACKAGE_DIR -Recurse -Force | Where-Object { $names -contains $_.Name }
           if ($found) { throw "the package holds what belongs in a data folder or a settings folder: $($found.FullName -join ', ')" }
 

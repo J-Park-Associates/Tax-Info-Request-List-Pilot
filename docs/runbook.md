@@ -454,10 +454,23 @@ changes nothing:
   first pass builds it again from the ledgers and reads every document once
   to refill the verdict cache — slow once, as above, so let it run outside
   office hours. Its version does not change. Until you delete them, the
-  app's first screen names what the old version left beside the app —
-  `tracker.db`, `tracker.db-wal`, `tracker.db-shm`, `pass-order.json`, an
-  `ocr-scratch` folder — and the old `runs.log` in the clients folder, which
-  names clients. Nothing deletes them for you: delete them.
+  app's first screen names what the old version left beside the app, in
+  two sentences. **To move, never to delete:** the record checkpoint
+  `record-heads.db` and a `recovered` folder (decision 159) - the
+  checkpoint cannot be made again, and the records in `recovered` are
+  evidence. **Move them before the new version runs at all**: turn the
+  schedule off, keep the app closed, install the new version, move
+  `record-heads.db` and `recovered` from beside the app into
+  `%LOCALAPPDATA%\tax-document-tracker`, and only then open the app or let
+  the schedule run. The order matters: the first pass, or the app's first
+  button that writes, finds no checkpoint in the data folder, makes a new
+  one and trusts every record as it is that day (*the moment of trust*,
+  §6). If that has already happened, do not copy the old file over the new
+  one: move the old one into the data folder under a new name with today's
+  date, keep it, and treat that day as the moment of trust (§6). **To delete:** `tracker.db`,
+  `tracker.db-wal`, `tracker.db-shm`, `pass-order.json`, `last-pass.json`,
+  an `ocr-scratch` folder, and the old `runs.log` in the clients folder,
+  which names clients. Nothing deletes them for you: delete them.
 
 There used to be a second one, a comparison flag on the ledger's own
 statuses against the request list's. There is nothing left for it to
@@ -574,10 +587,11 @@ answer is two steps, on the designated machine:
    folder by hand - and every button that writes refuse with *this
    machine's record checkpoint belongs to <old folder>; this would work in
    <new folder>*. (One client's folder inside the root is not refused.) Once you are sure the root really moved (and this is not
-   a second copy of the tree), run, with the app's folder and the new root:
+   a second copy of the tree), run, with the tracker's data folder (where
+   `record-heads.db` sits since decision 186) and the new root:
 
    ```
-   python -m tracker.checkpoint "<the app folder>" move-root "<the new clients root>"
+   python -m tracker.checkpoint "%LOCALAPPDATA%\tax-document-tracker" move-root "<the new clients root>"
    ```
 
    Nothing else changes: the checkpoint, like the record, names every
@@ -1091,7 +1105,7 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
      decided on 2026-09-26 that such a line is named here every pass, and
      filing goes on, until a person has looked. Check with whoever uses
      that computer that the change was theirs, then run the command the
-     page prints, `python -m tracker.checkpoint "<the app folder>"
+     page prints, `python -m tracker.checkpoint "<the tracker's data folder>"
      acknowledge "<the return>"`, and it stops being named.
    - **a refused record**, a sentence ending *Run recover (runbook §6).*:
      the pass left that return alone because its record came back

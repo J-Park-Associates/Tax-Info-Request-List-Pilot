@@ -286,7 +286,7 @@ from tracker.runner import (
     last_draft_day,
     last_drafted,
     last_pass_line,
-    left_behind_warning,
+    left_behind_warnings,
     log_path,
     reader_start_warning,
     run_household,
@@ -2703,11 +2703,9 @@ def _machine_warnings(root: Path | None) -> list[str]:
         # not at all under ``TRACKER_STORE``, so it cannot be the one to say
         # the data home is missing.
         data_home()
-        left = left_behind_warning(root)
+        warnings += [sentence for _code, sentence in left_behind_warnings(root)]
     except SettingsError as exc:
-        left = str(exc)
-    if left:
-        warnings.append(left)
+        warnings.append(str(exc))
     if refusal := program_drive_refusal():
         warnings.append(refusal)
     return warnings

@@ -1894,7 +1894,7 @@ def test_the_app_names_what_an_earlier_version_left_on_its_first_screen(capsys, 
     earlier version left beside the app in ``machine_warnings`` - a banner
     that stays until the files are gone - and nothing when nothing is there."""
     from tracker import store
-    from tracker.runner import LEFT_BEHIND, left_behind_warning
+    from tracker.runner import CODE_LEFT_BEHIND, LEFT_BEHIND, left_behind_warnings
     from tracker.settings import ENV_SETTINGS_DIR, data_home
 
     app = tmp_path / "app"
@@ -1906,7 +1906,7 @@ def test_the_app_names_what_an_earlier_version_left_on_its_first_screen(capsys, 
 
     (app / store.STORE_FILENAME).write_bytes(b"an old store")
     expected = LEFT_BEHIND.format(paths=str(app.resolve() / store.STORE_FILENAME), home=data_home())
-    assert left_behind_warning(None) == expected
+    assert left_behind_warnings(None) == [(CODE_LEFT_BEHIND, expected)]
     code, payload = run(capsys, "list")
     assert code == 0 and payload["needs_root"] is True
     assert payload["machine_warnings"] == [expected]
@@ -1917,6 +1917,29 @@ def test_the_app_names_what_an_earlier_version_left_on_its_first_screen(capsys, 
     assert code == 0 and payload["needs_root"] is False
     assert payload["machine_warnings"] == [expected]
     assert (app / store.STORE_FILENAME).read_bytes() == b"an old store"     # named, never deleted
+
+
+def test_the_first_screen_says_to_move_the_checkpoint_left_behind_never_to_delete_it(
+        capsys, tmp_path, monkeypatch):
+    """Decision 186 on 159: an old record checkpoint beside the app is its
+    own banner, the move sentence, and never in the sentence that says
+    delete."""
+    from tracker import checkpoint, store
+    from tracker.runner import LEFT_BEHIND, LEFT_BEHIND_TO_MOVE
+    from tracker.settings import ENV_SETTINGS_DIR, data_home
+
+    app = tmp_path / "app"
+    app.mkdir()
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(app))
+    monkeypatch.setenv(store.ENV_STORE, str(data_home() / store.STORE_FILENAME))
+    store.close()
+    (app / checkpoint.CHECKPOINT_FILENAME).write_bytes(b"an old checkpoint")
+    code, payload = run(capsys, "list")
+    assert code == 0
+    assert payload["machine_warnings"] == [LEFT_BEHIND_TO_MOVE.format(
+        paths=str(app.resolve() / checkpoint.CHECKPOINT_FILENAME), home=data_home())]
+    assert "- delete them." not in payload["machine_warnings"][0] and "- delete them." in LEFT_BEHIND
+    assert (app / checkpoint.CHECKPOINT_FILENAME).read_bytes() == b"an old checkpoint"
 
 
 def test_a_data_home_that_cannot_be_had_is_a_banner_on_the_first_screen_never_an_error(
