@@ -1890,6 +1890,57 @@ def test_install_schedule_is_the_repair_path_and_says_its_outcome(capsys, demo_r
     assert payload["sentence"] == scheduling.SCHEDULE_ELSEWHERE.format(
         host="front-desk", removed=scheduling.SCHEDULE_REMOVED)
     assert [command[1] for command in calls] == ["/query", "/delete"]
+    assert payload["host"] == "front-desk"          # the page's offer to move it names it
+
+
+def test_move_schedule_here_moves_the_schedule_from_the_packaged_app(capsys, demo_root, monkeypatch):
+    """Decision 209, the review's S5: the packaged app has no command line,
+    so ``move-schedule-here`` is the same move as ``--move-schedule-here`` -
+    the designation names this computer, and the step runs as a repair and
+    registers here. The page asks only after Repair found another computer
+    named, in ``vocab.schedule.move_confirm`` with that computer's name."""
+    from tracker import after_install, scheduling
+    from tracker.layout import designation_file
+
+    calls = _on_the_office_computer(monkeypatch)
+    designation_file(demo_root).parent.mkdir(exist_ok=True)
+    designation_file(demo_root).write_text("front-desk\n", encoding="utf-8")
+
+    code, payload = run(capsys, "move-schedule-here", stdin={})
+
+    assert code == 0, payload
+    assert payload["moved"] is True and payload["installed"] is True
+    assert payload["sentence"] == scheduling.MOVED_FROM.format(host="front-desk", here="office-pc")
+    assert payload["outcome"] == scheduling.REGISTERED
+    assert payload["after_install"]["reason"] == after_install.REASON_REPAIR
+    assert designation_file(demo_root).read_text(encoding="utf-8") == "office-pc\n"
+    assert [command[1] for command in calls] == ["/create"]
+    js = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(encoding="utf-8")
+    assert 'call(["move-schedule-here"]' in js and "vocab.schedule.move_confirm" in js
+    assert "front-desk" not in api.SCHEDULE_MOVE_CONFIRM and "{host}" in api.SCHEDULE_MOVE_CONFIRM
+
+
+def test_a_launch_step_that_raises_is_recorded_for_the_notice(capsys, tmp_path, monkeypatch):
+    """The review's N1: the shell does not read the launch door's reply, so
+    anything the step raises is recorded in one constant sentence, which
+    the first screen's notice shows, and the next launch tries again."""
+    from tracker import after_install
+    from tracker.settings import ENV_SETTINGS_DIR
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+
+    def broken():
+        raise OSError("a pull is rewriting the modules")
+
+    monkeypatch.setattr(after_install, "program_identity", broken)
+    code, launched = run(capsys, "after-install", stdin={"reason": "launch"})
+
+    assert code == 0 and launched == {"ran": True, "failed": [after_install.LAUNCH_FAILED]}
+    notice = run(capsys, "list")[1]["after_install"]
+    assert notice["failed"] == [after_install.LAUNCH_FAILED] and "rewriting" not in str(notice)
+    monkeypatch.undo()
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    assert run(capsys, "after-install", stdin={"reason": "launch"})[1]["ran"] is True
 
 
 def test_state_carries_the_after_install_findings_until_a_clean_run(capsys, tmp_path, monkeypatch):
@@ -2021,7 +2072,8 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
                                  "repair": api.SCHEDULE_REPAIR_LABEL,
                                  "repair_help": api.SCHEDULE_REPAIR_HELP,
                                  "repair_confirm": api.SCHEDULE_REPAIR_CONFIRM.format(
-                                     draft_day=WEEKDAY_NAMES[DRAFT_WEEKDAY])}
+                                     draft_day=WEEKDAY_NAMES[DRAFT_WEEKDAY]),
+                                 "move_confirm": api.SCHEDULE_MOVE_CONFIRM}
     # The settings page's phone box: its label, its sentence and the
     # number as recorded (decision 117).
     assert vocab["settings"] == {"phone_label": api.FIRM_PHONE_LABEL,

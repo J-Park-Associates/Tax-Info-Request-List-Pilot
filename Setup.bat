@@ -68,8 +68,10 @@ rem The after-install step, last: it needs the packages just installed,
 rem and the stamp stays whatever it says - the packages are installed. It
 rem registers the schedule only on the computer that runs it, and says why
 rem not on any other. A record it names is a finding, not a failure: Setup
-rem finishes, and the household waits in the app. It exits non-zero only
-rem when a step could not run at all; the app tries it again at launch.
+rem finishes, and the household waits in the app. Last, it removes the
+rem test cache (.pytest_cache) earlier versions left in this folder, never
+rem following a link out of it. It exits non-zero only when a step could
+rem not run at all; the app tries it again at launch.
 %PY% -m tracker.after_install --reason setup
 if errorlevel 1 goto :after_install_failed
 

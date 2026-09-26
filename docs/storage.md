@@ -149,7 +149,7 @@ the rollback that puts a moved file back asks exactly that question.
 
 ## The schema
 
-One file, `PRAGMA user_version = 16` (decision 104 dropped the workbook's
+One file, `PRAGMA user_version = 18` (decision 104 dropped the workbook's
 digest column; decision 107 added the verdict cache's two tables; decision
 116 added the `override_reason` column to `requests`; decision 117 added
 the Filing Deadline to the engagement's details, and a detail is a column
@@ -166,10 +166,13 @@ two years of one return are never one row; decision 137 added the applied
 chain, `applied_digest`, to `engagements`; decision 142 added the `asked`
 mark to `requests`, decision 143 `container` to `documents`, decision 144
 `short_title` to `requests`, and decision 146 `answers` to `documents` -
-the other requests a consolidated statement answers without a copy; a file at an
-earlier version is refused by name, and is deleted and rebuilt — nothing
-is lost, the journals are what it is made
-of). A file at any other version is refused by name rather than opened
+the other requests a consolidated statement answers without a copy; decision
+204 added `waits_for` to `documents` and decision 209 (R3b) `admitted_by` to
+`engagements` - which admission judged the lines a row applied, so a line an
+earlier version applied is judged again when the rule tightens - each in
+place, where the file stands; a file at any older version is set aside and
+rebuilt (decision 159) — nothing is lost, the journals are what it is made
+of). A file at a newer version is refused by name rather than opened
 hopefully.
 
 | table | what it holds |

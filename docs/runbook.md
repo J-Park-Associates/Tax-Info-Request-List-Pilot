@@ -52,7 +52,10 @@ that went missing.
 **The record check after every install and upgrade runs itself** (decisions
 187 and 209). `Setup.bat` runs the after-install step as its last step, and
 the app runs the same step at its first start after the program changed
-(the packaged app included, which has no Setup). It judges every line of
+(the packaged app included, which has no Setup). In the app it runs in the
+background: the first screen appears at once, and the notice below appears
+when the check finishes - on a streamed Drive folder the first start after
+an upgrade can take a minute or two to check every record. It judges every line of
 every return's record by today's rule, so a line an earlier version
 accepted that the rule now refuses - a Date Pattern that could run away, a
 step outside its return's folders, a value of the wrong kind - is named on
@@ -60,10 +63,17 @@ the day of the upgrade: at the end of Setup, and in a notice at the top of
 the app's first screen headed *After installing: needs a person*. The
 notice stays until a later run finds nothing; it cannot be dismissed,
 because the finding is true until the record is repaired. A return it
-names as "malformed" is shown to Jason before that household is sorted,
-and repaired the way any malformed line is repaired (section 9); until
-then its household stops with the same sentence and the rest of the
-practice runs as normal. A finding is not a failure: Setup still
+names as "malformed", or as "changed behind the tracker's back", is shown
+to Jason before that household is sorted, and repaired the way any such
+line is repaired (section 9); until then its household stops with the same
+sentence and the rest of the practice runs as normal - the pass judges
+every line an earlier version applied again under today's rule, once per
+return, so an old line stops its household exactly as a new one would
+(decision 209, R3b). Any other line the check names (a record that is gone,
+a store that disagrees with its record) is for a person to look at and
+does not stop anything by itself. The notice counts the records it
+judged; a store that holds none yet says so rather than "nothing to
+repair". A finding is not a failure: Setup still
 finishes. If the step itself could not run - the store would not open, the
 settings could not be read - Setup says so in one sentence and the app
 tries again at its next start. The store check below is the same check,
@@ -403,6 +413,11 @@ changes nothing:
   one new column, nothing deleted, the verdict cache kept - so the pass
   after it reads nothing again. Only an older one is set aside and
   rebuilt by itself, as above (one policy for both decisions).
+- **Decision 209** (`user_version` 18) needs nothing either: a version-17
+  `tracker.db` gains one column where it stands, and the first pass after
+  it judges every line each return's record already holds by today's
+  rule, once - about two seconds for a hundred returns of two hundred
+  lines. A return whose old line the rule refuses stops, as above.
 - **Once, when decision 169 lands** (the new reader). The database's
   version does not change, so there is nothing to delete for it (set
   `tracker.db` aside only if another decision in the same install asks).
@@ -435,7 +450,14 @@ machine today is Remote Desktop into it. Which computer runs the schedule
 is written in one file in the firm's tree,
 `J Park & Associates\_Scheduling computer.txt` under the clients root
 (decision 209): the first Windows computer to set the root claims it, and
-the app registers the schedule on that computer only. Any other machine may open a
+the app registers the schedule on that computer only. **When upgrading to
+the version that holds decision 209, upgrade the office computer first and
+start its app once before any other desk's**: every desk that once pressed
+Install Schedule has a root set, and whichever starts the new version first
+claims the schedule - if that is not the office computer, the office
+computer then removes its own task. If another desk claimed first, press
+**Repair the schedule** on the office computer and answer yes when it
+offers to move the schedule there (§6). Any other machine may open a
 return's Status Report and read it; it does not run the app against the
 clients folder. This is the rule for now, while the owner decides how
 several machines may write; this paragraph changes when that decision
@@ -459,7 +481,9 @@ on purpose, for a task that was deleted or broken; its banner says what it
 did in one sentence. The file is detection, not a lock: two desks that
 set the root before the sync client carries the first claim can both
 claim, and Drive then keeps one file and renames the other, which nothing
-reads. The one-machine rule above still holds.
+reads. The one-machine rule above still holds. A computer whose own
+name cannot be written in the file (a name with a space or an accent) is
+told so in one sentence and registers nothing.
 
 **It only runs while someone is logged on.** The task is registered to run
 as the logged-on person, not as a background service, so the designated
@@ -1623,12 +1647,15 @@ exactly as it came.
    return that leaves short of room (§1, *If the clients root moves*).
 4. **Move the schedule to this machine** (decision 209). The designation
    file still names the old machine, so this one registers nothing until
-   it is told to. In the app's folder run
-   `python -m tracker.after_install --move-schedule-here` (from source,
-   with `.venv\Scripts\python.exe`). It says which machine it replaces,
-   names this one in the file and registers the task here. The old
-   machine removes its own task the next time its app starts, if it still
-   does. Since decision 131 the job names the app's settings folder and
+   it is told to. In the app press **Repair the schedule**: it says which
+   machine runs the schedule and offers to move it here; answer yes (the
+   packaged app's way, and the same move as
+   `python -m tracker.after_install --move-schedule-here` run in the app's
+   folder from source, with `.venv\Scripts\python.exe`). It says which
+   machine it replaces, names this one in the file and registers the task
+   here. The old machine removes its own task the next time its app
+   starts, if it still does - the file no longer names what that machine
+   last saw. Since decision 131 the job names the app's settings folder and
    reads the clients root from it at every run, so a later change of root
    is made in the app alone.
 5. **Reading needs nothing installed** (decision 169). The reader -

@@ -18,17 +18,42 @@ else - not a line in the runbook, not a button.
    first Windows computer to run this with a root set claims it, any other
    registers none and removes its own. No root, no Task Scheduler, or
    another computer named are outcomes, not failures; a designation that
-   is not one computer's name, or a ``schtasks`` that refuses, is a
-   failure.
+   is not one computer's name, a computer whose own name the file cannot
+   hold, or a ``schtasks`` that refuses, is a failure - each in its own
+   sentence, so a file that was written is never said to be unwritten.
 2. **The record check** - decision 187's ``store.check`` for every folder
    with a record, and ``store.gone_journals``, as the store's command line
-   runs them; read-only. It runs only when a root is set **and** the store
-   file is there: this step never creates a store (a fresh machine's first
-   pass builds it and judges every line as it goes). A folder the store has
-   never met is left to that same first catch-up rather than named - its
-   lines were never applied, so there is nothing an earlier version let
-   through, and after a store set aside by an upgrade every return would
-   otherwise be named at once.
+   runs them. It changes no record (opening the store may set an older one
+   aside, as every opener does). It runs only when a root is set **and**
+   the store file is there: this step never creates a store (a fresh
+   machine's first pass builds it and judges every line as it goes). A
+   folder the store has never met is left to that same first catch-up
+   rather than named - its lines were never applied, so there is nothing
+   an earlier version let through, and after a store set aside by an
+   upgrade every return would otherwise be named at once. It says how many
+   records it judged, and a store that held none is said as that, never as
+   "nothing to repair".
+
+3. **The test cache** (Jason's answer A (a), SPEC-209 R8) - before
+   decision 185 some test runs wrote the anonymised corpus's file names
+   into the checkout's ``.pytest_cache``; it holds nothing the app needs,
+   and pytest makes it again. Only ``<the app folder>/.pytest_cache`` of
+   the checkout this runs from (:data:`CHECKOUT`), never a path from the
+   settings, the root or the environment; from source only - the packaged
+   app has no checkout. It never follows a link out of the folder: a
+   linked cache loses only the link, and inside it a link or junction is
+   unlinked as an entry and never descended into, by a small explicit walk
+   rather than ``shutil.rmtree`` (whose handling of junctions differs by
+   version). Absent is nothing to do and says nothing.
+
+**A finding names a household that waits** - for the kinds that do. A
+line an earlier version applied that today's admission refuses stops its
+household at the pass, the app's list and its page, because the store
+judges every applied line again when its admission changes (decision 209,
+R3b, ``store.ADMISSION_VERSION``); a record changed behind the tracker's
+back is refused by the same sync. :data:`FINDINGS_WAIT` claims that for
+those two kinds and no more: a gone record or another disagreement is
+named for a person and is not said to wait.
 
 **A finding is not a failure.** The check naming a line is the step doing
 its job: exit 0, the finding printed at the end of Setup and shown in the
@@ -38,10 +63,15 @@ never the content of a file a person or a sync client wrote.
 
 **Three doors, one function.** ``Setup.bat`` runs it last (``--reason
 setup``); the app runs it at every launch through the API's
-``after-install`` command, which returns at once when the program is the
-one that last ran it cleanly (:func:`program_identity` against the
-record) - that is what makes the packaged app, which has no Setup, and a
-source checkout updated by a pull that left the locks alone, run it once;
+``after-install`` command - in the background, never holding the first
+screen - which returns at once when the program is the one that last ran
+it cleanly (:func:`program_identity` against the record) **and** the
+designation file names the computer the record says it named. That is what
+makes the packaged app, which has no Setup, and a source checkout updated
+by a pull that left the locks alone, run it once; and it is what makes the
+old computer, after the schedule was moved to a new one, remove its own
+task at its next start rather than at its next upgrade (two computers
+running the pass is the hazard this decision closes);
 and saving the clients root runs it, so the first root saved on the
 office computer registers the schedule with no button. The app's
 **Repair the schedule** runs it deliberately.
@@ -49,7 +79,7 @@ office computer registers the schedule with no button. The app's
 **It records what it did** beside the store, in :data:`RECORD_FILENAME`,
 as the scheduled pass records its own note beside the store: the program
 identity only when nothing failed, so a run that failed is tried again at
-the next launch.
+the next launch, and the computer the designation named after it.
 
 It imports ``scheduling`` and the layers below it; the API imports it, and
 nothing lower does (layer 4, ``tests/test_layers.py``).
@@ -60,6 +90,8 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import os
+import stat
 import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -70,6 +102,10 @@ from tracker.locking import this_host
 
 #: The note of the last run, beside the store.
 RECORD_FILENAME = "after-install.json"
+#: The checkout this step runs from - the folder holding ``tracker/`` - and
+#: the one folder the test-cache job may clear inside it (R8).
+CHECKOUT = Path(__file__).resolve().parent.parent
+TEST_CACHE_DIRNAME = ".pytest_cache"
 #: Written by the packaged build beside the app (``Build App.bat``): which
 #: commit and which tools made it. The packaged program's identity.
 BUILD_INFO_FILENAME = "BUILD-INFO.txt"
@@ -85,15 +121,25 @@ REASONS = (REASON_SETUP, REASON_LAUNCH, REASON_ROOT, REASON_REPAIR)
 CHECK_CLEAN_KEY = "clean"
 CHECK_NO_ROOT_KEY = "no_root"
 CHECK_NO_STORE_KEY = "no_store"
+CHECK_NOTHING_HELD_KEY = "nothing_held"
 CHECK_FOUND_KEY = "found"
 CHECK_FAILED_KEY = "failed"
-CHECK_CLEAN = "The record check found nothing to repair."
+CHECK_CLEAN = "The record check judged {n} record(s) and found nothing to repair."
+#: A store that holds no record yet (a fresh one, or one an upgrade set
+#: aside): nothing was judged, which is not the same as nothing found.
+CHECK_NOTHING_HELD = ("The record check had no record to judge: the store on this computer holds none "
+                      "yet, and the first pass judges every line as it builds it.")
 CHECK_SKIPPED_NO_ROOT = "The record check waits until the clients folder is chosen in the app."
 CHECK_SKIPPED_NO_STORE = ("There is no store on this computer yet; the first pass builds it and judges "
                           "every line as it does.")
 CHECK_FOUND = "The record check found {n} line(s) a person must look at:"
-FINDINGS_WAIT = ("These households wait in the app until a person repairs them (runbook §9); the rest "
-                 "of the practice runs as normal.")
+#: True for the two kinds it names, and proved for each in
+#: ``tests/test_after_install.py``: a malformed line (decision 209, R3b)
+#: and a record changed behind the tracker's back (decision 137) stop their
+#: household. It claims nothing for any other finding.
+FINDINGS_WAIT = ("A household named above as malformed or as changed behind the tracker's back waits "
+                 "in the app until a person repairs it (runbook §9); any other line above is for a "
+                 "person to look at. The rest of the practice runs as normal.")
 
 #: The failures, one sentence each, naming the job and what to do.
 ROOT_REFUSED = ("The clients folder saved in the app cannot be used ({refusal}); the schedule and the "
@@ -104,10 +150,27 @@ SCHEDULE_FAILED = ("The schedule could not be registered on this computer ({prob
                    "it tries again at launch, and Repair the schedule tries at once.")
 DESIGNATION_UNWRITABLE = ("The file naming the computer that runs the schedule ({file}) could not be "
                           "written; no schedule was changed. Start the app: it tries again at launch.")
+#: What :data:`SCHEDULE_FAILED` says when the job file could not be written
+#: or ``schtasks`` could not be started - the operating system's words are
+#: not a sentence for a person.
+SCHEDULE_UNREACHABLE = "the job file could not be written, or Task Scheduler could not be started"
+#: What the launch door records when the step itself raised something it
+#: does not name (the review's N1), so the notice says it rather than the
+#: launch dropping it.
+LAUNCH_FAILED = ("The after-install step stopped before it finished; the app tries again at its next "
+                 "start, and Repair the schedule tries at once.")
 CHECK_FAILED = ("The record check could not run: {problem} Nothing was changed; runbook §6 says what "
                 "to do with a store that will not open, and the app tries again at its next start.")
 RECORD_UNWRITABLE = ("What the after-install step did could not be recorded in {file}; the app runs it "
                      "again at its next start.")
+#: The test-cache job (R8): what it says when it removed something, and
+#: when it could not (no operating-system message is quoted).
+CACHE_CLEARED_KEY = "cleared"
+CACHE_FAILED_KEY = "failed"
+CACHE_CLEARED = ("Removed the test cache left in the app's folder by earlier versions (.pytest_cache); "
+                 "nothing the app uses was in it.")
+CACHE_NOT_CLEARED = ("The test cache left in the app's folder by earlier versions (.pytest_cache) could "
+                     "not be removed; the app tries again at its next start.")
 #: What Setup prints when the step exits 1 (``Setup.bat`` echoes the same words).
 SETUP_RETRY = "The after-install step could not finish (above). Start the app: it tries again at launch."
 
@@ -180,6 +243,11 @@ class AfterInstall:
     schedule_sentence: str
     check: str
     check_sentence: str
+    #: The computer the designation names when this one registers none
+    #: because of it (:data:`scheduling.ELSEWHERE`), for the app's offer to
+    #: move the schedule here; else "".
+    schedule_host: str = ""
+    cache_sentence: str = ""
     findings: tuple[str, ...] = ()
     failed: tuple[str, ...] = ()
     program: str = ""
@@ -213,6 +281,7 @@ class AfterInstall:
 class _Step:
     key: str
     sentence: str
+    host: str = ""
     findings: tuple[str, ...] = ()
     failed: bool = False
     command: tuple[str, ...] = ()
@@ -243,22 +312,31 @@ def _schedule(root: Path | None, start: str, every: int) -> _Step:
     if outcome == scheduling.UNREADABLE:
         return _Step(outcome, scheduling.DESIGNATION_UNREADABLE.format(
             file=scheduling.designation_file(root)), failed=True)
+    if outcome == scheduling.UNNAMED_HOST:
+        return _Step(outcome, scheduling.HOST_UNNAMED.format(
+            file=scheduling.designation_file(root)), failed=True)
+    if outcome == scheduling.CLAIMED:
+        # Only the claim writes the designation file, so only its OSError
+        # says that file could not be written (the review's S2).
+        try:
+            scheduling.claim(root)
+        except scheduling.DesignationError as exc:
+            return _Step(outcome, str(exc), failed=True)
+        except OSError:
+            return _Step(outcome, DESIGNATION_UNWRITABLE.format(
+                file=scheduling.designation_file(root)), failed=True)
     try:
         if outcome == scheduling.ELSEWHERE:
             removed = scheduling.remove_task()
             return _Step(outcome, scheduling.SCHEDULE_ELSEWHERE.format(
-                host=decision.host, removed=scheduling.SCHEDULE_REMOVED if removed else ""))
-        if outcome == scheduling.CLAIMED:
-            scheduling.claim(root)
+                host=decision.host, removed=scheduling.SCHEDULE_REMOVED if removed else ""),
+                host=decision.host)
         folder = settings.settings_dir()
         command = scheduling.register_here(folder, start=start, every=every)
-    except scheduling.DesignationError as exc:
-        return _Step(scheduling.UNREADABLE, str(exc), failed=True)
     except RuntimeError as exc:
         return _Step(outcome, SCHEDULE_FAILED.format(problem=exc), failed=True)
     except OSError:
-        return _Step(outcome, DESIGNATION_UNWRITABLE.format(file=scheduling.designation_file(root)),
-                     failed=True)
+        return _Step(outcome, SCHEDULE_FAILED.format(problem=SCHEDULE_UNREACHABLE), failed=True)
     sentence = (scheduling.SCHEDULE_CLAIMED if outcome == scheduling.CLAIMED
                 else scheduling.SCHEDULE_REGISTERED)
     return _Step(outcome, sentence.format(host=decision.host, start=start, every=every),
@@ -266,8 +344,9 @@ def _schedule(root: Path | None, start: str, every: int) -> _Step:
 
 
 def _check(root: Path | None) -> _Step:
-    """The second job: decision 187's record check, read-only, when a root
-    is set and the store is there. Never creates a store."""
+    """The second job: decision 187's record check, which changes no
+    record, when a root is set and the store is there. Never creates a
+    store. Says how many records it judged."""
     if root is None:
         return _Step(CHECK_NO_ROOT_KEY, CHECK_SKIPPED_NO_ROOT)
     if not Path(store.store_path()).is_file():
@@ -276,9 +355,11 @@ def _check(root: Path | None) -> _Step:
         conn = store.connect()
         folders = registry.record_dirs(root)
         findings: list[str] = []
+        judged = 0
         for folder in folders:
             try:
                 if store.holds(conn, root, folder):
+                    judged += 1
                     findings += store.check(conn, root, folder)
             except (ledger.LedgerError, OSError) as exc:
                 # A record the reader refuses is that household's to wait
@@ -288,17 +369,80 @@ def _check(root: Path | None) -> _Step:
     except (store.StoreError, ledger.LedgerError, OSError) as exc:
         problem = str(exc).rstrip(".") + "."
         return _Step(CHECK_FAILED_KEY, CHECK_FAILED.format(problem=problem), failed=True)
+    if not findings and not judged:
+        return _Step(CHECK_NOTHING_HELD_KEY, CHECK_NOTHING_HELD)
     if not findings:
-        return _Step(CHECK_CLEAN_KEY, CHECK_CLEAN)
+        return _Step(CHECK_CLEAN_KEY, CHECK_CLEAN.format(n=judged))
     return _Step(CHECK_FOUND_KEY, CHECK_FOUND.format(n=len(findings)), findings=tuple(findings))
 
 
+def _is_link(path: Path) -> bool:
+    """Whether ``path`` is a link of any kind - a symbolic link, or on
+    Windows a junction or any other reparse point - by ``lstat``, which
+    never follows it."""
+    try:
+        status = os.lstat(path)
+    except FileNotFoundError:
+        return False
+    reparse = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    return stat.S_ISLNK(status.st_mode) or bool(getattr(status, "st_file_attributes", 0) & reparse)
+
+
+def _unlink(path: Path) -> None:
+    """Remove one entry - a file or a link - never what a link points at.
+    A directory link on Windows (a junction) is removed as a directory
+    entry, which removes the link alone."""
+    try:
+        os.unlink(path)
+    except (IsADirectoryError, PermissionError):
+        if not _is_link(path):
+            raise
+        os.rmdir(path)
+
+
+def _remove_tree(folder: Path) -> None:
+    """Remove ``folder`` and everything in it, bottom up, descending only
+    into real directories: a link or junction inside is unlinked as an
+    entry and never entered."""
+    with os.scandir(folder) as scanned:
+        entries = list(scanned)
+    for entry in entries:
+        path = Path(entry.path)
+        if not _is_link(path) and entry.is_dir(follow_symlinks=False):
+            _remove_tree(path)
+        else:
+            _unlink(path)
+    os.rmdir(folder)
+
+
+def _clear_test_cache(checkout: Path | None = None) -> _Step | None:
+    """The third job (R8): remove ``<checkout>/.pytest_cache``, where
+    ``checkout`` is :data:`CHECKOUT` unless a test names its own. ``None``
+    when there is nothing to do - the packaged app, or no cache - so it
+    says nothing; its sentence when it removed something; a failure, in
+    one constant sentence, when it could not."""
+    if getattr(sys, "frozen", False):
+        return None
+    folder = Path(checkout if checkout is not None else CHECKOUT) / TEST_CACHE_DIRNAME
+    try:
+        if _is_link(folder) or folder.is_file():
+            _unlink(folder)
+        elif folder.is_dir():
+            _remove_tree(folder)
+        else:
+            return None
+    except OSError:
+        return _Step(CACHE_FAILED_KEY, CACHE_NOT_CLEARED, failed=True)
+    return _Step(CACHE_CLEARED_KEY, CACHE_CLEARED)
+
+
 def run(*, reason: str, start: str = scheduling.DEFAULT_START,
-        every: int = scheduling.DEFAULT_REPEAT_MINUTES) -> AfterInstall:
+        every: int = scheduling.DEFAULT_REPEAT_MINUTES, checkout: Path | None = None) -> AfterInstall:
     """Every one-time job, in order, and the record of what they did.
 
-    Idempotent: registering is ``schtasks /create ... /f``, the check only
-    reads, and the record is replaced whole - twice in a row is once.
+    Idempotent: registering is ``schtasks /create ... /f``, the check
+    changes no record, and the note is replaced whole - twice in a row is
+    once.
     """
     if reason not in REASONS:
         raise ValueError(f"reason must be one of {', '.join(REASONS)}, not {reason!r}")
@@ -310,14 +454,17 @@ def run(*, reason: str, start: str = scheduling.DEFAULT_START,
     else:
         schedule = _schedule(root, start, every)
         check = _check(root)
-    failed = list(dict.fromkeys(step.sentence for step in (schedule, check) if step.failed))
+    cache = _clear_test_cache(checkout)
+    failed = list(dict.fromkeys(step.sentence for step in (schedule, check, cache)
+                                if step is not None and step.failed))
     identity = "" if failed else program_identity()
+    now = designation_now(root)
     try:
         path = record_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         write_json_atomically(path, {
             "program": identity, "ran_at": ran_at, "reason": reason, "schedule": schedule.key,
-            "findings": list(check.findings), "failed": failed,
+            "designated": now if isinstance(now, str) else None, "findings": list(check.findings), "failed": failed,
         })
     except OSError:
         failed.append(RECORD_UNWRITABLE.format(file=record_path()))
@@ -328,10 +475,14 @@ def run(*, reason: str, start: str = scheduling.DEFAULT_START,
     lines += [f"  {finding}" for finding in check.findings]
     if check.findings:
         lines.append(FINDINGS_WAIT)
+    if cache is not None and not cache.failed:
+        lines.append(cache.sentence)
     lines += [sentence for sentence in failed if sentence not in lines]
     return AfterInstall(reason=reason, ran_at=ran_at, schedule=schedule.key,
                         schedule_sentence=schedule.sentence, check=check.key,
-                        check_sentence=check.sentence, findings=check.findings,
+                        check_sentence=check.sentence, schedule_host=schedule.host,
+                        cache_sentence=cache.sentence if cache is not None else "",
+                        findings=check.findings,
                         failed=tuple(failed), program=identity, command=schedule.command,
                         xml=schedule.xml, lines=tuple(lines))
 
@@ -347,13 +498,58 @@ def read_record() -> dict | None:
     return data if isinstance(data, dict) else None
 
 
+#: What :func:`designation_now` says of a file that names no computer it
+#: can read: never equal to anything a record holds, so the step runs.
+_UNREADABLE_NOW = object()
+
+
+def designation_now(root: Path | None) -> str | None | object:
+    """The computer the designation file under ``root`` names now: its
+    name, ``None`` when there is no root or no file, or a marker equal to
+    nothing when the file is not one computer's name. One small file read
+    (the review's M1: well under a millisecond)."""
+    if root is None:
+        return None
+    try:
+        return scheduling.designated_machine(root)
+    except scheduling.DesignationError:
+        return _UNREADABLE_NOW
+
+
 def launch() -> AfterInstall | None:
     """The app's launch door: nothing, at once, when this program is the
-    one that last ran the step cleanly; otherwise the step, as a launch."""
+    one that last ran the step cleanly **and** the designation names the
+    computer it named then; otherwise the step, as a launch. The second
+    condition is the review's M1: after the schedule moves to a new
+    computer nothing about the old one's program changed, and without it
+    the old computer kept its task - two computers running the pass -
+    until its next upgrade."""
     record = read_record()
     if record is not None and record.get("program") == program_identity():
-        return None
+        root, refused = _saved_root()
+        now = None if refused else designation_now(root)
+        if now is not _UNREADABLE_NOW and record.get("designated") == now:
+            return None
     return run(reason=REASON_LAUNCH)
+
+
+def record_failure(sentence: str) -> None:
+    """Record a launch the step could not finish, in ``sentence`` - one of
+    this module's constants - so the first screen's notice says it and the
+    next launch tries again (no identity is recorded). The API's launch
+    door calls it for anything :func:`launch` raised (the review's N1). A
+    note that cannot be written either is left: the next launch runs the
+    step again all the same."""
+    try:
+        path = record_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write_json_atomically(path, {
+            "program": "", "ran_at": dt.datetime.now().isoformat(timespec="seconds"),
+            "reason": REASON_LAUNCH, "schedule": "", "designated": None, "findings": [],
+            "failed": [sentence],
+        })
+    except OSError:
+        pass
 
 
 def notice() -> dict | None:
@@ -372,23 +568,29 @@ def notice() -> dict | None:
 
 
 def move_schedule_here() -> tuple[str, bool]:
-    """``--move-schedule-here``: name this computer in the designation
-    file; the sentence saying which computer it replaces, and whether the
-    file was written. The caller then runs the step, so this computer
-    registers; the old one removes its own task the next time it runs it."""
+    """``--move-schedule-here`` and the API's ``move-schedule-here``: name
+    this computer in the designation file; the sentence saying which
+    computer it replaces, and whether the file was written. The caller then
+    runs the step, so this computer registers; the old one removes its own
+    task at its next start, because the file no longer names what its
+    record says it named (:func:`launch`)."""
     root, refused = _saved_root()
     if refused:
         return refused, False
     if root is None:
         return scheduling.SCHEDULE_WAITS_FOR_ROOT, False
     try:
-        before = scheduling.move_here(root)
+        moved = scheduling.move_here(root)
+    except scheduling.DesignationError as exc:
+        return str(exc), False
     except OSError:
         return DESIGNATION_UNWRITABLE.format(file=scheduling.designation_file(root)), False
     here = this_host()
-    if before is None:
+    if moved.unreadable:
+        return scheduling.MOVED_FROM_UNREADABLE.format(here=here), True
+    if moved.before is None:
         return scheduling.MOVED_FROM_NOBODY.format(here=here), True
-    return scheduling.MOVED_FROM.format(host=before, here=here), True
+    return scheduling.MOVED_FROM.format(host=moved.before, here=here), True
 
 
 if __name__ == "__main__":

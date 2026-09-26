@@ -69,6 +69,26 @@ is written out by name in :data:`_IN_PLACE` (from-version -> statements),
 never inferred; every other older version is set aside, and a newer one
 refused.
 
+**Every applied line stands under today's admission** (decision 209,
+R3b). The store applies only lines past ``applied_seq``, so a line an
+earlier version applied was never judged again when decision 187's
+admission (:func:`_refuse_a_malformed_line`) began refusing its kind: the
+record check named it, and its household went on as normal. So each row
+remembers which admission judged it (``admitted_by``), and the sync that
+brings a record into the store judges every line it already applied again
+when that is older than :data:`ADMISSION_VERSION` - from the record's own
+lines, the authority, not the stored payloads. A refusal is the same
+:data:`MALFORMED_LINE` any new malformed line raises, so the household
+waits exactly as 187 makes it wait, pass after pass, until a person
+repairs the line; a pass records the version in the same transaction. It
+costs once per engagement per version, not every pass. A hold list beside
+the store was the rejected alternative: a second place that says a
+household waits is a second place to disagree with the first. **The rule
+for the future:** a change that makes the admission refuse something it
+used to admit raises :data:`ADMISSION_VERSION` by one in the same commit;
+``tests/test_store.py`` pins the rule's source to the version and fails,
+saying which to do, when one moves without the other.
+
 **The check is the gate.** :func:`check` compares these tables with
 :func:`tracker.ledger.replay` over the journal and names every place they
 disagree, in sentences. Each stage was built on a store that had been
@@ -303,7 +323,12 @@ ENV_STORE = "TRACKER_STORE"
 #: waits for nothing, and a version-16 file gains the column with an empty
 #: default and keeps its verdict cache. Every other earlier version is set
 #: aside and rebuilt (decision 159, E3); a newer one refused.
-SCHEMA_VERSION = 17
+#: Version 18 (decision 209, R3b) added ``admitted_by`` to ``engagements``:
+#: which admission judged the lines a row applied. In place, like 17: no
+#: journal line carries it, and every version-17 row's true value is the
+#: default 0 - judged by no admission this version knows - so its applied
+#: lines are judged again at its next sync, and nothing is set aside.
+SCHEMA_VERSION = 18
 
 #: The explicit in-place upgrades (the module docstring's rule): the
 #: version a file is at, and the statements that bring it to the next one.
@@ -311,7 +336,20 @@ SCHEMA_VERSION = 17
 #: line can carry qualifies; anything else is a delete-and-rebuild bump.
 _IN_PLACE: dict[int, tuple[str, ...]] = {
     16: ("""ALTER TABLE documents ADD COLUMN "waits_for" TEXT DEFAULT ''""",),
+    17: ("""ALTER TABLE engagements ADD COLUMN "admitted_by" INTEGER NOT NULL DEFAULT 0""",),
 }
+
+#: Which admission (:func:`_refuse_a_malformed_line`, with
+#: :func:`_line_keys_problem`) a row's applied lines were judged by
+#: (decision 209, R3b). 1 is the rule as of decision 187, with decision
+#: 159's line keys. **Raise it by one, in the same commit, whenever the
+#: admission starts refusing something it used to admit**: every row
+#: judged by an older one then has its applied lines judged again at its
+#: next sync, and a line the new rule refuses stops its household instead
+#: of standing because it was applied first. ``tests/test_store.py``
+#: (``test_admission_version_changes_with_the_admission``) pins the rule's
+#: source to this number.
+ADMISSION_VERSION = 1
 
 #: What a row of ``engagements`` holds the record of: one return, or one
 #: household (decision 125). Both are folders with a journal, keyed by
@@ -562,7 +600,8 @@ SCHEMA: tuple[str, ...] = (
         ledger_head TEXT NOT NULL DEFAULT '',
         applied_seq INTEGER NOT NULL DEFAULT 0,
         applied_digest TEXT NOT NULL DEFAULT '',
-        built_at TEXT NOT NULL
+        built_at TEXT NOT NULL,
+        "admitted_by" INTEGER NOT NULL DEFAULT 0
     )""",
     f"""CREATE TABLE IF NOT EXISTS requests (
         engagement_id INTEGER NOT NULL REFERENCES engagements(id) ON DELETE CASCADE,
@@ -1064,7 +1103,7 @@ def _to_sql(value: object) -> object:
 #: writers insert a row - the reader's top-up, the rebuild and nothing
 #: else - and a column added to either record must reach all of them.
 _NEW_ENGAGEMENT_COLUMNS = f'"path", {_names(ENGAGEMENT_COLUMNS)}, {_names(HOUSEHOLD_COLUMNS)}, ' \
-                          "kind, ledger_head, applied_seq, applied_digest, built_at"
+                          "kind, ledger_head, applied_seq, applied_digest, built_at, admitted_by"
 
 
 def _new_engagement_defaults() -> list[object]:
@@ -1878,6 +1917,22 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
             refuse("carries fields; it carries nothing")
 
 
+def _admitted(row: sqlite3.Row) -> bool:
+    """Whether the lines ``row`` applied were judged by today's admission
+    (decision 209, R3b): :data:`ADMISSION_VERSION` or later."""
+    return row["admitted_by"] >= ADMISSION_VERSION
+
+
+def _judge_the_applied_lines(row: sqlite3.Row, events: list[dict]) -> None:
+    """Judge again every line ``row`` already applied (1 .. ``applied_seq``)
+    by today's admission, from the record's own lines - the authority, not
+    the payloads the store kept. A refused line raises the same
+    :data:`MALFORMED_LINE` a new malformed line raises, so its household
+    waits exactly as decision 187 makes it wait (decision 209, R3b)."""
+    for seq, event in enumerate(events[:row["applied_seq"]], start=1):
+        _refuse_a_malformed_line(event, seq, row["path"], kind=row["kind"])
+
+
 def _apply(conn: sqlite3.Connection, engagement_id: int, events: list[dict], *, start: int) -> int:
     """Fold ``events`` into the engagement's tables. Returns the last seq used.
 
@@ -2061,6 +2116,14 @@ def record(conn: sqlite3.Connection, engagement_dir: Path | str, *events: dict) 
     # rewritten to its own length would otherwise have this call's line
     # appended to it and its head blessed.
     _refuse_a_rewrite(conn, row, lines, chain, engagement_dir.name)
+    if not _admitted(row):
+        # A record an older admission judged is judged again before a line
+        # is added to it (decision 209, R3b), so a household waiting on an
+        # applied line gets nothing appended past it.
+        try:
+            _judge_the_applied_lines(row, lines)
+        except StoreError as exc:
+            raise StoreError(f"{exc}; nothing was written") from None
     if not events:
         return row["applied_seq"]
     # The one door in (decision 187): every event is admitted by the rule
@@ -2172,7 +2235,7 @@ def _look_then_catch_up(conn: sqlite3.Connection, root: Path | str, engagement_d
     """
     row = _engagement_row(conn, engagement_dir, root)
     look = ledger.read_with_chain(engagement_dir)
-    if row is not None and len(look[0]) == row["applied_seq"]:
+    if row is not None and len(look[0]) == row["applied_seq"] and _admitted(row):
         # Equal counts are "nothing to do" only when they are the same
         # lines (decision 137, A3; SPEC-135's no-lock look): a journal
         # rewritten to its own length is refused here, and nothing is
@@ -2240,8 +2303,9 @@ def _catching_up(conn: sqlite3.Connection, root: Path | str | None, engagement_d
         defaults = _new_engagement_defaults()
         cursor = conn.execute(
             f"INSERT INTO engagements ({_NEW_ENGAGEMENT_COLUMNS}) "
-            f"VALUES ({_marks(len(defaults) + 5)})",
-            (rel, *defaults, head, len(events), ledger.chain_at(chain, len(events)), ledger.stamp()),
+            f"VALUES ({_marks(len(defaults) + 6)})",
+            (rel, *defaults, head, len(events), ledger.chain_at(chain, len(events)), ledger.stamp(),
+             ADMISSION_VERSION),
         )
         if events:
             _apply(conn, cursor.lastrowid, events, start=1)
@@ -2260,6 +2324,14 @@ def _catching_up(conn: sqlite3.Connection, root: Path | str | None, engagement_d
     foreign = _prove_against_checkpoint(conn, row["path"], events, chain, row=row, held=held)
     _refuse_a_rewrite(conn, row, events, chain,
                       engagement_path(key_root(engagement_dir, root), engagement_dir))
+    if not _admitted(row):
+        # Judged by an older admission (decision 209, R3b): every applied
+        # line again, before anything is written; a refusal rolls the
+        # caller's transaction back and the version is never recorded, so
+        # the household waits at every sync until the line is repaired.
+        _judge_the_applied_lines(row, events)
+        conn.execute("UPDATE engagements SET admitted_by = ? WHERE id = ?",
+                     (ADMISSION_VERSION, row["id"]))
     if len(events) == applied:
         return applied
     seq = _apply(conn, row["id"], events[applied:], start=applied + 1)
@@ -2345,7 +2417,7 @@ def follow_the_journal(conn: sqlite3.Connection, root: Path | str, engagement_di
     # The journal's digest first, and the lines only if it moved: this
     # runs before every read, and parsing a season of events to learn
     # that nothing has happened is the cost the store exists to remove.
-    if row is not None and row["ledger_head"] == ledger.head(engagement_dir):
+    if row is not None and _admitted(row) and row["ledger_head"] == ledger.head(engagement_dir):
         return row["applied_seq"]
     return catch_up(conn, root, engagement_dir)
 
@@ -2910,8 +2982,9 @@ def rebuild_engagement(
         # (decision 137, A3): a rebuild is how an older store upgrades.
         cursor = conn.execute(
             f"INSERT INTO engagements ({_NEW_ENGAGEMENT_COLUMNS}) "
-            f"VALUES ({_marks(len(defaults) + 5)})",
-            (rel, *defaults, head, len(events), ledger.chain_at(chain, len(events)), built_at),
+            f"VALUES ({_marks(len(defaults) + 6)})",
+            (rel, *defaults, head, len(events), ledger.chain_at(chain, len(events)), built_at,
+             ADMISSION_VERSION),
         )
         if events:
             _apply(conn, cursor.lastrowid, events, start=1)

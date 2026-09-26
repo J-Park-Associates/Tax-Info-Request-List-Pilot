@@ -201,6 +201,11 @@ A_ROW_ORIGINAL = "../../../../Clients/Smith Family/2025/w2.pdf"
 #: before the first in-place step (decision 204 upgrades a version-16 file
 #: where it stands, so "the version before this one" is not set aside).
 REFUSED_EARLIER = min(store._IN_PLACE) - 1
+#: What makes a store of today's schema one version 17 wrote: the column
+#: decision 209 (R3b) added in place, taken away again.
+AS_AT_VERSION_17 = ('ALTER TABLE engagements DROP COLUMN "admitted_by"',)
+#: And one version 16 wrote: decision 204's column too.
+AS_AT_VERSION_16 = (*AS_AT_VERSION_17, 'ALTER TABLE documents DROP COLUMN "waits_for"')
 
 
 def a_row(**fields) -> dict:
@@ -220,7 +225,7 @@ def test_opening_a_file_that_is_not_there_creates_the_schema(tmp_path):
 
     conn = store.open(path)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 17
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 18
         tables = {row[0] for row in conn.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table'")}
         assert tables == {"engagements", "requests", "statuses", "learned_keywords",
@@ -2212,7 +2217,7 @@ def test_a_row_written_without_asked_reads_as_asked(conn, root, by_hand):
 
     build(conn, root, by_hand)
     build(store.connect(), root, by_hand)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 17
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 18
     assert all(row["asked"] is True for row in store.rules(conn, by_hand))
     assert all(item.asked for item in load_manifest(by_hand))
     assert store.check(conn, root, by_hand) == []
@@ -2242,7 +2247,7 @@ def test_a_row_written_without_a_short_title_reads_as_blank(conn, root, by_hand)
 
     build(conn, root, by_hand)
     build(store.connect(), root, by_hand)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 17
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 18
     assert all(item.short_title == "" for item in load_manifest(by_hand))
     assert all(item.short_name for item in load_manifest(by_hand))
     assert store.check(conn, root, by_hand) == []
@@ -2477,6 +2482,144 @@ def test_the_store_check_names_a_line_the_gate_now_refuses(conn, root, by_hand, 
     assert "line 2 of the record is malformed" in problems[0] and "'date_pattern'" in problems[0]
 
 
+def _applied_before_the_rule(conn, root, by_hand, monkeypatch):
+    """A return with a line an earlier version applied that today's
+    admission refuses - a Date Pattern that could run away, at line 2 - as
+    a version-17 store left it: ``admitted_by`` 0, judged by no admission
+    this version knows."""
+    build(conn, root, by_hand)
+    runaway = ledger.new(ledger.RULES_CHANGED, rules=[_a_rule(date_pattern=r"(\d+)+x")])
+    monkeypatch.setattr(store, "_refuse_a_malformed_line", lambda *args, **kwargs: None)
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, runaway)
+    monkeypatch.undo()
+    conn.execute("UPDATE engagements SET admitted_by = 0")
+
+
+def admitted_by(conn, folder):
+    return conn.execute("SELECT admitted_by FROM engagements WHERE path = ?",
+                        (key_of(folder),)).fetchone()[0]
+
+
+def test_an_applied_line_the_rule_now_refuses_stops_its_household(conn, root, by_hand, monkeypatch):
+    """Decision 209, R3b: the store applies only lines past what it applied,
+    so a line an earlier version applied was never judged again. Now the
+    sync judges every applied line again when the row's admission is older
+    than today's, and a refused line stops its household exactly as a new
+    malformed line does - by the same sentence, from every door, pass after
+    pass - with nothing written: not the version, and no line appended."""
+    _applied_before_the_rule(conn, root, by_hand, monkeypatch)
+    sentence = "line 2 of the record is malformed"
+
+    for _ in range(2):
+        for reading in (store.sync, store.catch_up, store.follow_the_journal):
+            with pytest.raises(store.StoreError, match=sentence):
+                reading(conn, root, by_hand)
+    assert admitted_by(conn, by_hand) == 0
+
+    before = ledger.path_for(by_hand).read_bytes()
+    with engagement_lock(by_hand), pytest.raises(store.StoreError, match=f"{sentence}.*nothing was written"):
+        store.record(conn, by_hand, ledger.new(ledger.PARKED, key=A_ROW_ORIGINAL, row=a_row()))
+    assert ledger.path_for(by_hand).read_bytes() == before
+
+
+def test_a_repaired_line_lets_the_household_go_on_and_is_not_judged_again(conn, root, by_hand, monkeypatch):
+    """Decision 209, R3b: once the record holds no line the rule refuses -
+    here a row a version-17 store left, whose lines all pass - the next sync
+    judges them, passes, and records today's admission in the same
+    transaction; after that no sync judges an applied line again."""
+    build(conn, root, by_hand)
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, ledger.new(ledger.PARKED, key=A_ROW_ORIGINAL, row=a_row()))
+    conn.execute("UPDATE engagements SET admitted_by = 0")
+
+    assert store.sync(conn, root, by_hand) == 2
+    assert admitted_by(conn, by_hand) == store.ADMISSION_VERSION
+
+    def judged(*args, **kwargs):
+        raise AssertionError("an applied line was judged again")
+
+    monkeypatch.setattr(store, "_judge_the_applied_lines", judged)
+    for reading in (store.sync, store.catch_up, store.follow_the_journal):
+        assert reading(conn, root, by_hand) == 2
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, ledger.new(ledger.FILED, key=A_ROW_ORIGINAL,
+                                               row=a_row(decision="Filed", identifier="A01")))
+    assert said(conn, root, by_hand) == []
+
+
+def test_a_store_at_version_17_gains_admitted_by_in_place(conn, root, by_hand, tmp_path):
+    """Decision 209, R3b: version 18's column is added where the file
+    stands, like 204's - nothing set aside, the verdict cache kept - and
+    every row it held reads 0, so its applied lines are judged at its next
+    sync, which then records today's admission."""
+    build(conn, root, by_hand)
+    path = tmp_path / "app" / store.STORE_FILENAME
+    conn.close()
+    written = sqlite3.connect(path)
+    for statement in AS_AT_VERSION_17:
+        written.execute(statement)
+    written.execute("PRAGMA user_version = 17")
+    written.commit()
+    written.close()
+
+    upgraded = store.open(path)
+    try:
+        assert upgraded.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 18
+        assert not list(path.parent.glob(f"{store.STORE_FILENAME}.v*.old*"))
+        assert admitted_by(upgraded, by_hand) == 0
+        store.sync(upgraded, root, by_hand)
+        assert admitted_by(upgraded, by_hand) == store.ADMISSION_VERSION
+    finally:
+        upgraded.close()
+
+
+def test_a_new_engagement_is_admitted_by_construction(conn, root, by_hand):
+    """Decision 209, R3b: a first build and a rebuild put every line through
+    the door as they apply it, so the row is inserted as judged by today's
+    admission."""
+    store.catch_up(conn, root, by_hand)
+    assert admitted_by(conn, by_hand) == store.ADMISSION_VERSION
+    conn.execute("UPDATE engagements SET admitted_by = 0")
+    build(conn, root, by_hand)
+    assert admitted_by(conn, by_hand) == store.ADMISSION_VERSION
+
+
+#: The admission's source, as a SHA-256, by the version it is. A change to
+#: :func:`store._refuse_a_malformed_line` or :func:`store._line_keys_problem`
+#: moves the hash; the test below then says which of two things to do.
+ADMISSION_SOURCE_SHA256 = {1: "960d90a43cbad1849d47a3c18f787e728fa5d770ba607080cf4850b0ea6362a5"}
+
+
+def test_admission_version_changes_with_the_admission():
+    """Decision 209, R3b: every applied line is judged again only when
+    ``ADMISSION_VERSION`` rises, so a change that makes the admission refuse
+    something it used to admit must raise it in the same commit - or a
+    line applied before the change stands for good."""
+    import hashlib
+    import inspect
+
+    source = inspect.getsource(store._refuse_a_malformed_line) + inspect.getsource(store._line_keys_problem)
+    now = hashlib.sha256(source.encode("utf-8")).hexdigest()
+    pinned = ADMISSION_SOURCE_SHA256.get(store.ADMISSION_VERSION)
+    assert now == pinned, (
+        f"The store's admission changed (its source hashes to {now}). If it now refuses anything "
+        f"it used to admit, raise store.ADMISSION_VERSION by one and pin this hash under the new "
+        f"version, so every line an earlier version applied is judged again. If it refuses nothing "
+        f"new (a comment, a rewording, a wider admission), pin this hash under version "
+        f"{store.ADMISSION_VERSION} instead.")
+
+
+def test_holds_says_whether_the_store_has_met_a_folder(conn, root, by_hand):
+    """The after-install check asks :func:`store.holds` first (decision
+    209): a folder the store never met is left to its first catch-up."""
+    build(conn, root, by_hand)
+    assert store.holds(conn, root, by_hand) is True
+    store.forget(conn, by_hand)
+    assert store.holds(conn, root, by_hand) is False
+    assert store.holds(conn, root, by_hand.parent / "1040 - Nobody") is False
+
+
 def test_an_old_closed_copy_without_a_digest_is_still_admitted(conn, root, by_hand):
     """A copy intent with no fingerprint, closed by the row it wrote, is
     history from an earlier version and not an instruction: the store admits
@@ -2612,7 +2755,7 @@ def test_an_index_of_the_previous_version_reads_with_waits_for_empty(conn, root,
     assert "waits_for" not in ledger.path_for(by_hand).read_text(encoding="utf-8")
 
     build(conn, root, by_hand)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 17
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 18
     [row] = [entry_from_json(one) for one in store.documents(conn, by_hand)]
     assert row.waits_for == "" and row.waiting_for is None
     assert store.check(conn, root, by_hand) == []
@@ -2646,14 +2789,15 @@ def test_a_version_16_store_is_upgraded_in_place_and_keeps_its_cached_verdicts(t
     old.parent.mkdir()
     written = sqlite3.connect(old)
     live.backup(written)
-    written.execute('ALTER TABLE documents DROP COLUMN "waits_for"')     # what version 16 was
+    for statement in AS_AT_VERSION_16:                                   # what version 16 was
+        written.execute(statement)
     written.execute("PRAGMA user_version = 16")
     written.commit()
     written.close()
 
     conn = store.open(old)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 17
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 18
         assert conn.execute(f"SELECT COUNT(*) FROM {store.VERDICTS_TABLE}").fetchone()[0] == cached
         assert conn.execute(f"SELECT COUNT(*) FROM {store.FILE_MEMOS_TABLE}").fetchone()[0] == memos
         rows = [entry_from_json(one) for one in store.documents(conn, engagement)]
@@ -2679,11 +2823,12 @@ def test_two_openers_of_one_version_16_store_both_succeed(tmp_path, monkeypatch)
     """The in-place step re-reads the version under the write lock (the port
     review's should-fix): an opener that read 16 before another opener
     upgraded the file finds the step made and goes on, rather than failing
-    on the column the other added. Both end at version 17."""
+    on the column the other added. Both end at the current version."""
     path = tmp_path / "shared" / store.STORE_FILENAME
     store.open(path).close()
     written = sqlite3.connect(path)
-    written.execute('ALTER TABLE documents DROP COLUMN "waits_for"')
+    for statement in AS_AT_VERSION_16:
+        written.execute(statement)
     written.execute("PRAGMA user_version = 16")
     written.commit()
     written.close()
@@ -2700,7 +2845,7 @@ def test_two_openers_of_one_version_16_store_both_succeed(tmp_path, monkeypatch)
     conn = store.open(path)
     try:
         assert raced["done"]
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 17
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 18
         columns = [row[1] for row in conn.execute("PRAGMA table_info(documents)")]
         assert columns.count("waits_for") == 1
     finally:
@@ -3353,7 +3498,8 @@ def test_one_upgrade_policy_a_version_sixteen_store_is_upgraded_in_place_and_nev
     checkpoint.open(heads).close()
     before = heads.read_bytes()
     written_at_sixteen = sqlite3.connect(path)
-    written_at_sixteen.execute("ALTER TABLE documents DROP COLUMN waits_for")
+    for statement in AS_AT_VERSION_16:
+        written_at_sixteen.execute(statement)
     written_at_sixteen.execute("PRAGMA user_version = 16")
     written_at_sixteen.close()
 

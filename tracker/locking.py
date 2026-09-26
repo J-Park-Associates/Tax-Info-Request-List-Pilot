@@ -536,7 +536,7 @@ def _a_leftover_of_this_process(text: str) -> bool:
     Asked under ``_held_guard``."""
     fields = _fields(text)
     return (
-        fields.get(_HOST_KEY, "") == this_host()
+        is_this_host(fields.get(_HOST_KEY, ""))
         and fields.get(_PID_KEY, "") == str(os.getpid())
         and text not in _held
     )

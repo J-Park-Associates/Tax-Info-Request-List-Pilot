@@ -50,13 +50,16 @@ const TRACKER_TIMEOUT_MS = 30 * 60 * 1000;
 // to the renderer's first call by tests/test_single_source.py.
 const BOOTSTRAP_COMMAND = "list";
 // The after-install step's launch door (decision 209): the shell runs it
-// itself, once, before the page's first call is answered. It returns at
-// once when the program has not changed since it last ran cleanly; after
-// an upgrade it registers the schedule on the computer that runs it and
-// checks the record. Its findings reach the page through the first call's
-// reply (after_install), so nothing here reads its answer.
+// itself, once, at start. It returns at once when the program has not
+// changed since it last ran cleanly and the designation still names the
+// computer it named; after an upgrade it registers the schedule on the
+// computer that runs it and checks every record, which on a streamed
+// Drive folder can take minutes. So it runs in the background and no call
+// from the page waits for it (the review's S7): the first screen is drawn
+// at once, and when the step did run the page is told on
+// LAUNCH_DONE_CHANNEL and asks again, so its notice appears.
 const LAUNCH_COMMAND = "after-install";
-let launchStep = Promise.resolve();
+const LAUNCH_DONE_CHANNEL = "after-install-done";
 let allowedCommands = null;   // vocab.commands, once seen
 let engagementFlag = null;    // vocab.engagement_flag, once seen
 // Paths the API has reported (state.paths): the only ones the shell opens,
@@ -177,12 +180,7 @@ async function openPath(p) {
   return shell.openPath(p);
 }
 
-// Every call from the page waits for the launch door first, so the first
-// screen is drawn from what the after-install step left.
-ipcMain.handle("tracker-cmd", async (_event, args, payload) => {
-  await launchStep;
-  return runTracker(args, payload);
-});
+ipcMain.handle("tracker-cmd", (_event, args, payload) => runTracker(args, payload));
 ipcMain.handle("open-path", (_event, p) => openPath(p));
 ipcMain.handle("pick-folder", async (_event, title) => {
   const result = await dialog.showOpenDialog({
@@ -230,6 +228,7 @@ function createWindow() {
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.webContents.on("will-navigate", (event) => event.preventDefault());
   win.loadFile(path.join(__dirname, "renderer", "index.html"));
+  return win;
 }
 
 // One window (decision 160). A second double-click used to open a second
@@ -247,8 +246,15 @@ if (!app.requestSingleInstanceLock()) {
     win.focus();
   });
   app.whenReady().then(() => {
-    launchStep = spawnTracker([LAUNCH_COMMAND], { reason: "launch" }).catch(() => null);
-    createWindow();
+    const win = createWindow();
+    // Not awaited by anything: a step that fails records its own sentence
+    // for the notice (tracker.api's launch door), and one that cannot
+    // start is tried again at the next launch.
+    spawnTracker([LAUNCH_COMMAND], { reason: "launch" })
+      .then((result) => {
+        if (result && result.ran && !win.isDestroyed()) win.webContents.send(LAUNCH_DONE_CHANNEL);
+      })
+      .catch(() => null);
   });
 }
 app.on("window-all-closed", () => app.quit());

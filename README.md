@@ -309,11 +309,16 @@ job only on the computer that runs the schedule: the one named in
 `J Park & Associates\_Scheduling computer.txt` under the clients root,
 which the first Windows computer to set the root claims; any other
 computer registers none and removes its own. The app's
-**Repair the schedule** runs the step again, for a job that was deleted or broken, and
-`python -m tracker.after_install --move-schedule-here` moves the schedule
-to another computer (docs/runbook.md §6). The same step checks every
+**Repair the schedule** runs the step again, for a job that was deleted or broken; when
+another computer runs the schedule it offers to move it to this one, which
+is what `python -m tracker.after_install --move-schedule-here` does from
+source (docs/runbook.md §6), and the old computer removes its own task at
+its next start. Upgrade the office computer first: the first computer to
+start the upgraded app claims the schedule. The same step checks every
 record against today's rules and lists anything a person must look at, at
-the end of Setup and at the top of the app. Every pass also re-scaffolds each engagement, so a
+the end of Setup and at the top of the app (in the app it runs in the
+background, so the first screen never waits for it), and removes the
+checkout's leftover `.pytest_cache`. Every pass also re-scaffolds each engagement, so a
 deleted inbox or review folder is back by the next run, and rewrites the
 household's README once, after the sort (decision 130), and
 an engagement that has been rolled forward is retired by its successor

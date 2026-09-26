@@ -1607,8 +1607,10 @@ async function saveRoot() {
       phone: $("phone-input").value.trim(),
     });
     // What the after-install step did with the schedule (decision 209),
-    // in the API's sentence: registered here, or why not.
-    banner(`Clients folder set to ${result.root} (written to ${result.settings_path}). ${result.after_install.schedule_sentence}`, "ok");
+    // in the API's sentence: registered here, or why not - in a warning
+    // colour when a job could not run (the review's S4).
+    banner(`Clients folder set to ${result.root} (written to ${result.settings_path}). ${result.after_install.schedule_sentence}`,
+           result.after_install.failed.length ? "warn" : "ok");
     renderShortOfRoom(result.short_of_room || []);
     await refresh();
   } catch (err) {
@@ -1641,24 +1643,51 @@ function renderAfterInstall(notice) {
   show("after-install-list", [...notice.failed, ...notice.findings].map((line) => el("li", {}, line)));
 }
 
+// What one run of the step left, as the notice shows it, or nothing.
+function noticeOf(done) {
+  return done && (done.findings.length || done.failed.length)
+    ? { ...done, wait: done.findings.length ? vocab.after_install.wait : "" }
+    : null;
+}
+
 // The deliberate re-run of the after-install step (decision 209): the
 // schedule registers itself, and this is for one deleted or broken. The
-// banner says the API's sentence for what happened, as it is.
+// banner says the API's sentence for what happened, as it is. When another
+// computer runs the schedule, the page offers to move it here (the
+// review's S5) - the packaged app's only way to, in the API's words with
+// that computer's name filled in - and moves it only on yes.
 async function repairSchedule() {
   if (!confirm(vocab.schedule.repair_confirm)) return;
   const btn = $("btn-repair-schedule");
   btn.disabled = true;
   try {
-    const result = await call(["install-schedule"], {});
+    let result = await call(["install-schedule"], {});
     banner(result.sentence, result.installed ? "ok" : "warn");
-    renderAfterInstall(result.after_install && (result.after_install.findings.length || result.after_install.failed.length)
-      ? { ...result.after_install, wait: result.after_install.findings.length ? vocab.after_install.wait : "" }
-      : null);
+    renderAfterInstall(noticeOf(result.after_install));
+    if (result.host && confirm(vocab.schedule.move_confirm.split("{host}").join(result.host))) {
+      result = await call(["move-schedule-here"], {});
+      banner(result.moved ? `${result.sentence} ${result.schedule_sentence}` : result.sentence,
+             result.installed ? "ok" : "warn");
+      if (result.moved) renderAfterInstall(noticeOf(result.after_install));
+    }
   } catch (err) {
     toast(err.message);
   } finally {
     btn.disabled = false;
   }
+}
+
+// The shell's launch step ran in the background and finished (decision
+// 209, the review's S7): ask again for what it left, and show only that -
+// the rest of the page, and anything a person is editing, is left alone.
+if (window.tracker.onAfterInstallDone) {
+  window.tracker.onAfterInstallDone(async () => {
+    try {
+      renderAfterInstall((await call(["list"])).after_install);
+    } catch (err) {
+      toast(err.message);
+    }
+  });
 }
 
 async function runScan() {

@@ -8484,7 +8484,7 @@ def test_a_store_rebuilt_from_the_journal_agrees_after_a_remake_and_a_return(eng
 
     assert len(events_named(engagement, ledger.COPY_REMADE)) == 1
     assert len(events_named(engagement, ledger.ORIGINAL_RETURNED)) == 1
-    assert store.SCHEMA_VERSION == 17
+    assert store.SCHEMA_VERSION == 18
     live = read_index(engagement)
     root = root_of(engagement)
     assert store.check(store.connect(), root, engagement) == []

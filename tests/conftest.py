@@ -88,7 +88,7 @@ from pathlib import Path
 
 import pytest
 
-from tracker import content_check, ledger, scheduling, store, view
+from tracker import after_install, content_check, ledger, scheduling, store, view
 from tracker.filer import ensure, file_household_drops, refresh_household_readme
 from tracker.households import create_household
 from tracker.layout import (
@@ -188,6 +188,23 @@ def no_task_scheduler_unless_faked():
     patch = pytest.MonkeyPatch()
     patch.setattr(scheduling, "task_scheduler_here", lambda: False)
     patch.setattr(scheduling, "_schtasks", _schtasks_unfaked)
+    try:
+        yield
+    finally:
+        patch.undo()
+
+
+@pytest.fixture(autouse=True)
+def no_real_test_cache_is_cleared(tmp_path_factory):
+    """No test clears this checkout's own ``.pytest_cache`` (SPEC-209 R8).
+
+    Every door of the after-install step runs its test-cache job, and the
+    suite is running from that very checkout: left alone, the first test
+    to save a root would remove the cache pytest is writing. The job is
+    pointed at a folder that is never made; a test about the job names its
+    own fabricated checkout. Its own ``MonkeyPatch``, as above."""
+    patch = pytest.MonkeyPatch()
+    patch.setattr(after_install, "CHECKOUT", tmp_path_factory.getbasetemp() / "no-checkout-here")
     try:
         yield
     finally:

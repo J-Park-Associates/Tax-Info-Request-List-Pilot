@@ -72,6 +72,13 @@ def test_the_shell_and_the_preload_agree_on_every_ipc_channel():
     handled = set(re.findall(r'ipcMain\.handle\("([a-z-]+)"', read("app/main.js")))
     invoked = set(re.findall(r'ipcRenderer\.invoke\("([a-z-]+)"', read("app/preload.js")))
     assert handled == invoked and handled
+    # The one channel the shell sends on (decision 209, the review's S7):
+    # the launch step finished having run, and the page listens for it.
+    sent = set(re.findall(r'const [A-Z_]+_CHANNEL = "([a-z-]+)"', read("app/main.js")))
+    heard = set(re.findall(r'ipcRenderer\.on\("([a-z-]+)"', read("app/preload.js")))
+    assert sent == heard == {"after-install-done"}
+    assert "webContents.send(LAUNCH_DONE_CHANNEL)" in read("app/main.js")
+    assert "window.tracker.onAfterInstallDone(" in read("app/renderer/app.js")
 
 
 def test_the_renderer_calls_only_commands_the_api_has_and_types_no_flag():
@@ -1599,11 +1606,14 @@ AFTER_WHAT = frozenset({"installing", "upgrading", "install", "upgrade", "setup"
 def one_time_step_clauses(text: str) -> list[str]:
     """Every clause of ``text`` that tells a person to run a one-time step
     after installing or upgrading - the shape Jason's standing preference
-    retires (decision 209): the first word an instruction, the word
-    ``once``, and ``after`` followed within three words by installing,
-    upgrading or Setup. Wrapped lines are joined (a ``rem`` prefix and
-    Markdown list and quote markers dropped); clauses end at ``.``, ``:``,
-    ``;`` and blank lines."""
+    retires (decision 209): an instruction - the first word of the clause
+    or of any comma-separated part of it, so "After upgrading, press X
+    once" is one - with the word ``once``, and ``after`` followed within
+    three words by installing, upgrading or Setup; or a clause that is
+    itself the lead-in "Once, after installing ..." (the review's S1, the
+    shape of the base runbook's decision-187 heading). Wrapped lines are
+    joined (a ``rem`` prefix and Markdown list and quote markers dropped);
+    clauses end at ``.``, ``:``, ``;`` and blank lines."""
     lines = []
     for line in text.splitlines():
         line = re.sub(r"^\s*rem(\s|$)", "", line, flags=re.I)
@@ -1613,12 +1623,17 @@ def one_time_step_clauses(text: str) -> list[str]:
     caught = []
     for paragraph in re.split(r"\n\s*\n", joined):
         for clause in re.split(r"[.:;]", " ".join(paragraph.split())):
-            words = re.sub(r"[*`_(]", "", clause).strip().lower().split()
-            if not words or words[0] not in INSTRUCTIONS or "once" not in words:
+            plain = re.sub(r"[*`_(]", "", clause).strip().lower()
+            words = plain.split()
+            if not words:
                 continue
             bare = [word.strip(",)!?\"'") for word in words]
-            if any(word == "after" and set(bare[i + 1:i + 4]) & AFTER_WHAT
-                   for i, word in enumerate(bare)):
+            after = any(word == "after" and set(bare[i + 1:i + 4]) & AFTER_WHAT
+                        for i, word in enumerate(bare))
+            starts = {part.split()[0] for part in plain.split(",") if part.split()}
+            instruction = bool(starts & INSTRUCTIONS) and "once" in bare
+            lead_in = bare[0] == "once" and after and bare[1:2] == ["after"]
+            if (instruction and after) or lead_in:
                 caught.append(clause.strip())
     return caught
 
@@ -1631,6 +1646,12 @@ def one_time_step_clauses(text: str) -> list[str]:
     ("Run Setup.bat once.", False),
     ("rem Double-click it once after `Setup.bat` finishes.", True),
     ("Open the app once a week after lunch.", False),
+    # The review's S1: the base runbook's decision-187 lead-in, and the
+    # condition put first.
+    ("**Once, after installing the version that holds every record line to the\neditor's bounds** "
+     "(decision 187). Run the store check once", True),
+    ("After upgrading, press Install Schedule once.", True),
+    ("After installing, run the store check once.", True),
 ])
 def test_the_one_time_step_matcher_catches_and_spares(clause, caught):
     assert bool(one_time_step_clauses(clause)) is caught, clause
@@ -1645,14 +1666,68 @@ def test_no_document_tells_a_person_to_run_a_one_time_step():
         assert not caught, (rel, caught)
 
 
+def _package_trees():
+    """Every module under ``tracker/``, at any depth, parsed."""
+    import ast
+
+    for path in sorted((REPO / "tracker").rglob("*.py")):
+        yield path.relative_to(REPO).as_posix(), ast.parse(path.read_text(encoding="utf-8"))
+
+
 def test_only_the_lock_asks_the_platform_for_this_computers_name():
     """``platform.node`` is called in ``locking.this_host`` and nowhere else
     under the package (decision 209): the lock line and the designation of
-    the computer that runs the schedule normalise one name one way."""
-    callers = [path.relative_to(REPO).as_posix() for path in sorted((REPO / "tracker").glob("*.py"))
-               if "platform.node" in path.read_text(encoding="utf-8")]
-    assert callers == ["tracker/locking.py"], callers
+    the computer that runs the schedule normalise one name one way. By the
+    syntax tree, at any depth (the review's N7), so ``from platform import
+    node`` is caught as surely as ``platform.node()``."""
+    import ast
+
+    found = []
+    for rel, tree in _package_trees():
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and node.attr == "node" and \
+                    isinstance(node.value, ast.Name) and node.value.id == "platform":
+                found.append(rel)
+            if isinstance(node, ast.ImportFrom) and node.module == "platform" and \
+                    any(alias.name == "node" for alias in node.names):
+                found.append(f"{rel} (from platform import node)")
+    assert found == ["tracker/locking.py"], found
     locking = read("tracker/locking.py")
     this_host = locking[locking.index("def this_host"):]
     this_host = this_host[:this_host.index("\ndef ")]
-    assert locking.count("platform.node") == this_host.count("platform.node") == 1
+    assert "platform.node" in this_host
+
+
+def test_no_module_compares_a_name_with_this_host_by_hand():
+    """Every comparison of a computer's name with this one is decision 159's
+    ``locking.is_this_host`` - the one comparison of a host, in any case and
+    spacing - never ``== this_host()`` or ``!= this_host()``. ``this_host()``
+    stays where this computer's name is *written* (the lock line, the
+    designation file, a sentence)."""
+    import ast
+
+    def calls_this_host(node):
+        return isinstance(node, ast.Call) and (
+            isinstance(node.func, ast.Name) and node.func.id == "this_host"
+            or isinstance(node.func, ast.Attribute) and node.func.attr == "this_host")
+
+    found = []
+    for rel, tree in _package_trees():
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Compare) and \
+                    any(isinstance(op, (ast.Eq, ast.NotEq)) for op in node.ops) and \
+                    any(calls_this_host(side) for side in (node.left, *node.comparators)):
+                if rel == "tracker/locking.py" and node.lineno in _is_this_host_lines():
+                    continue            # the one comparison itself
+                found.append(f"{rel}:{node.lineno}")
+    assert found == [], found
+
+
+def _is_this_host_lines() -> range:
+    """The lines of ``locking.is_this_host``, which is the comparison."""
+    import ast
+
+    tree = ast.parse(read("tracker/locking.py"))
+    [function] = [node for node in tree.body
+                  if isinstance(node, ast.FunctionDef) and node.name == "is_this_host"]
+    return range(function.lineno, function.end_lineno + 1)

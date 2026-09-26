@@ -69,6 +69,7 @@ the network.
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -78,7 +79,7 @@ from xml.sax.saxutils import escape
 
 from tracker.fsio import write_text_atomically
 from tracker.layout import designation_file
-from tracker.locking import RUN_TIME_LIMIT_SECONDS, this_host
+from tracker.locking import RUN_TIME_LIMIT_SECONDS, is_this_host, this_host
 from tracker.runner import DRAFT_DAY_NAME, LOG_FLAG, RUNNER_MODE_FLAG, SETTINGS_FLAG
 from tracker.settings import SETTINGS_FILENAME, product_name
 
@@ -480,6 +481,7 @@ CLAIMED = "claimed"
 REGISTERED = "registered"
 ELSEWHERE = "elsewhere"
 UNREADABLE = "unreadable"
+UNNAMED_HOST = "unnamed_host"
 #: The outcomes that register a task on this computer.
 REGISTERING = frozenset({CLAIMED, REGISTERED})
 
@@ -495,31 +497,47 @@ SCHEDULE_REMOVED = " and removed the one it had"
 #: The file's path is named; its content never is (it is whatever was left there).
 DESIGNATION_UNREADABLE = ("The file naming the computer that runs the schedule ({file}) is not one "
                           "computer's name; a person must fix or delete it. No schedule was changed.")
+#: This computer's own name is not one the file can hold (a Windows name
+#: with a space or an accent, or none at all): asked before the file is
+#: read, so the file is never written with a name it would then refuse.
+HOST_UNNAMED = ("This computer's name cannot be written as one computer's name in {file}; the "
+                "schedule was not changed. Rename the computer, or run the schedule on the office "
+                "computer.")
 #: A claim that found another computer had claimed first.
 CLAIM_TAKEN = ("{host} claimed the schedule for this clients folder first, so this computer registers "
                "none. No schedule was changed.")
 #: What ``--move-schedule-here`` says before it registers.
 MOVED_FROM = "The schedule for this clients folder moves from {host} to this computer ({here})."
 MOVED_FROM_NOBODY = "No computer ran the schedule for this clients folder; this computer ({here}) now does."
+#: A move over a file that named no computer it could read: said as that,
+#: not as "no computer ran it" (the file was there, and was not a name).
+MOVED_FROM_UNREADABLE = ("The file naming the computer that ran the schedule for this clients folder "
+                         "was not one computer's name; this computer ({here}) now runs it.")
 
 
 class DesignationError(ValueError):
-    """The designation file is not one computer's name, or a claim lost a race.
-    The message is the whole sentence a person is shown."""
+    """The designation file is not one computer's name, this computer's name
+    cannot be written in it, or a claim lost a race. The message is always
+    the whole sentence a person is shown - one of this module's constants."""
 
 
-def checked_host(text: str) -> str:
+def _host_name(text: str) -> str | None:
     """``text`` as one computer's name - stripped and casefolded as
-    ``locking.this_host`` makes one - or ``DesignationError``. A second
-    non-blank line, more than :data:`MAX_DESIGNATION_BYTES` or a character
-    outside ``[a-z0-9._-]`` is not a name."""
+    ``locking.this_host`` makes one - or ``None``. A second non-blank line,
+    more than :data:`MAX_DESIGNATION_BYTES` or a character outside
+    ``[a-z0-9._-]`` is not a name. Private: each caller says its own whole
+    sentence (the file is unreadable, or this computer is unnamed)."""
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     if len(text.encode("utf-8", "surrogatepass")) > MAX_DESIGNATION_BYTES or len(lines) != 1:
-        raise DesignationError("not one line")
+        return None
     host = lines[0].casefold()
-    if not HOST_NAME.fullmatch(host):
-        raise DesignationError("not a computer's name")
-    return host
+    return host if HOST_NAME.fullmatch(host) else None
+
+
+def host_is_nameable() -> bool:
+    """Whether this computer's own name is one the designation file can
+    hold (:data:`HOST_NAME`)."""
+    return _host_name(this_host()) is not None
 
 
 def designated_machine(root: str | Path) -> str | None:
@@ -539,44 +557,77 @@ def designated_machine(root: str | Path) -> str | None:
     if len(raw) > MAX_DESIGNATION_BYTES:
         raise unreadable
     try:
-        return checked_host(raw.decode("utf-8-sig"))
-    except (UnicodeDecodeError, DesignationError):
+        host = _host_name(raw.decode("utf-8-sig"))
+    except UnicodeDecodeError:
         raise unreadable from None
+    if host is None:
+        raise unreadable
+    return host
 
 
-def _write_designation(root: str | Path, host: str) -> None:
-    """Write ``host`` as the one line of the designation file, whole or not
-    at all - checked as it is written, as it is when it is read. A root
-    whose firm's tree is not made yet (no household so far) gets that one
-    folder, as the first household would make it; never the root itself."""
-    path = designation_file(root)
-    path.parent.mkdir(exist_ok=True)
-    write_text_atomically(path, checked_host(host) + "\n")
+def _this_line(root: str | Path) -> str:
+    """This computer's name as the designation file's one line - checked as
+    it is written, as it is when it is read - or :data:`HOST_UNNAMED`. It
+    is the one place this computer's name is *written*; every comparison
+    of a name with this computer is ``locking.is_this_host``."""
+    host = _host_name(this_host())
+    if host is None:
+        raise DesignationError(HOST_UNNAMED.format(file=designation_file(root)))
+    return host + "\n"
 
 
 def claim(root: str | Path) -> None:
     """Name this computer as the one that runs the schedule, when no file
-    names one: read, compare, write. A file that now names another computer
-    is refused (:data:`CLAIM_TAKEN`) and left alone; one that already names
-    this computer is left as it is."""
+    names one. The file is **created exclusively** (``O_EXCL``, the review's
+    N3): of two claims on one computer's disk at once, the second finds the
+    file there and is answered by what it says - this computer, left as it
+    is, or another, refused (:data:`CLAIM_TAKEN`) and left alone. A root
+    whose firm's tree is not made yet (no household so far) gets that one
+    folder, as the first household would make it; never the root itself.
+    Two computers claiming through a sync client at once is the residual
+    race the runbook states; this closes the local half."""
+    line = _this_line(root)
     named = designated_machine(root)
-    if named is not None and named != this_host():
-        raise DesignationError(CLAIM_TAKEN.format(host=named))
     if named is None:
-        _write_designation(root, this_host())
+        path = designation_file(root)
+        path.parent.mkdir(exist_ok=True)
+        try:
+            handle = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0))
+        except FileExistsError:
+            named = designated_machine(root)
+        else:
+            with os.fdopen(handle, "wb") as written:
+                written.write(line.encode("utf-8"))
+                written.flush()
+                os.fsync(written.fileno())
+            return
+    if named is not None and not is_this_host(named):
+        raise DesignationError(CLAIM_TAKEN.format(host=named))
 
 
-def move_here(root: str | Path) -> str | None:
+@dataclass(frozen=True, slots=True)
+class Moved:
+    """What :func:`move_here` replaced: the computer the file named, or
+    ``None``; and whether the file was there but named no computer."""
+
+    before: str | None
+    unreadable: bool = False
+
+
+def move_here(root: str | Path) -> Moved:
     """Name this computer as the one that runs the schedule, whatever the
-    file said before; the computer it named, or ``None``. A deliberate act
-    (runbook §6), never an after-install step. A file that is not one
-    computer's name is replaced too - that is the repair it asks for."""
+    file said before, whole or not at all. A deliberate act (runbook §6),
+    never an after-install step. A file that is not one computer's name is
+    replaced too - that is the repair it asks for - and said as that."""
+    line = _this_line(root)
     try:
-        before = designated_machine(root)
+        moved = Moved(designated_machine(root))
     except DesignationError:
-        before = None
-    _write_designation(root, this_host())
-    return before
+        moved = Moved(None, unreadable=True)
+    path = designation_file(root)
+    path.parent.mkdir(exist_ok=True)
+    write_text_atomically(path, line)
+    return moved
 
 
 @dataclass(frozen=True, slots=True)
@@ -591,22 +642,26 @@ class ScheduleDecision:
 def schedule_decision(root: str | Path | None) -> ScheduleDecision:
     """Whether this computer registers the schedule for ``root``, in order:
     no root (:data:`NO_ROOT`); no Task Scheduler (:data:`NO_TASK_SCHEDULER`);
-    no designation, so this computer claims it (:data:`CLAIMED`); the file
-    names this computer (:data:`REGISTERED`) or another (:data:`ELSEWHERE`);
-    or the file is not one computer's name (:data:`UNREADABLE`). Decides
-    only: claiming, registering and removing are the caller's."""
+    this computer's own name is not one the file can hold
+    (:data:`UNNAMED_HOST`), asked before the file is read; no designation,
+    so this computer claims it (:data:`CLAIMED`); the file names this
+    computer (:data:`REGISTERED`, by ``locking.is_this_host``) or another
+    (:data:`ELSEWHERE`); or the file is not one computer's name
+    (:data:`UNREADABLE`). Decides only: claiming, registering and removing
+    are the caller's."""
     if root is None:
         return ScheduleDecision(NO_ROOT)
     if not task_scheduler_here():
         return ScheduleDecision(NO_TASK_SCHEDULER)
+    if not host_is_nameable():
+        return ScheduleDecision(UNNAMED_HOST)
     try:
         named = designated_machine(root)
     except DesignationError:
         return ScheduleDecision(UNREADABLE)
-    here = this_host()
     if named is None:
-        return ScheduleDecision(CLAIMED, here)
-    return ScheduleDecision(REGISTERED if named == here else ELSEWHERE, named)
+        return ScheduleDecision(CLAIMED, this_host())
+    return ScheduleDecision(REGISTERED if is_this_host(named) else ELSEWHERE, named)
 
 
 # -------------------------------------------------------------------- CLI ----

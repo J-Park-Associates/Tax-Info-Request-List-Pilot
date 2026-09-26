@@ -45,6 +45,8 @@ Commands:
             registers the daily job on the computer that runs it (decision 209)
   after-install  the app's launch door: the one-time steps after installing
             or upgrading, run when the program changed since they last ran
+  move-schedule-here  name this computer as the one that runs the schedule,
+            then run the step (a deliberate move, runbook section 6)
   unlock    clear a stale engagement lock (a fresh one is refused)
   acknowledge-foreign  a person has looked at the lines another machine wrote
             in one return's record; they stop being named (decision 159)
@@ -992,6 +994,9 @@ def _vocab() -> dict:
             "repair_help": SCHEDULE_REPAIR_HELP,
             "repair_confirm": SCHEDULE_REPAIR_CONFIRM.format(
                 draft_day=WEEKDAY_NAMES[DRAFT_WEEKDAY]),
+            # Asked when Repair finds another computer named (the review's
+            # S5): {host} is that computer, filled in by the page.
+            "move_confirm": SCHEDULE_MOVE_CONFIRM,
         },
         # The notice at the top of the first screen while the last
         # after-install run left findings or failures (decision 209).
@@ -3685,6 +3690,15 @@ SCHEDULE_REPAIR_HELP = ("Register the daily job again on this computer - only ne
 SCHEDULE_REPAIR_CONFIRM = ("Register the daily job with Task Scheduler again, on this computer, for this "
                            "clients folder?\n\nIt files, scans and (on {draft_day}s) drafts reminders. "
                            "Nothing is ever sent.")
+#: Asked when **Repair the schedule** finds that another computer runs it
+#: (decision 209, the review's S5): the packaged app's way to move the
+#: schedule, as ``--move-schedule-here`` is from source. ``{host}`` is the
+#: computer the designation names; the page fills it in and types nothing
+#: else.
+SCHEDULE_MOVE_CONFIRM = ("{host} runs the schedule for this clients folder, so this computer registered "
+                         "none.\n\nMove the schedule to this computer? Do this only when {host} has "
+                         "stopped running it for good (it removes its own task at its next start). "
+                         "Nothing is ever sent.")
 #: The heading of the first screen's notice while the last after-install
 #: run left findings or failures.
 AFTER_INSTALL_HEADING = "After installing: needs a person"
@@ -3719,21 +3733,54 @@ def _cmd_install_schedule(argv: list[str]) -> dict:
         "every": every,
         "draft_day": WEEKDAY_NAMES[DRAFT_WEEKDAY],
         "frozen": bool(getattr(sys, "frozen", False)),
+        # The computer that runs it, when that is another one, else "": the
+        # page offers to move it here (move-schedule-here) only when set.
+        "host": done.schedule_host,
         "after_install": done.reply(),
     }
+
+
+def _cmd_move_schedule_here(argv: list[str]) -> dict:
+    """A deliberate move of the schedule to this computer (decision 209, the
+    review's S5): the same function as ``python -m tracker.after_install
+    --move-schedule-here``, so the packaged app, which has no command line,
+    can move it too. The page asks first (``vocab.schedule.move_confirm``)
+    and only after **Repair the schedule** found another computer named.
+    ``moved`` says whether the designation now names this computer; when it
+    does, the step ran as a repair and its reply is here as the repair's is.
+    """
+    said, moved = after_install.move_schedule_here()
+    if not moved:
+        return {"moved": False, "sentence": said, "installed": False}
+    done = after_install.run(reason=after_install.REASON_REPAIR)
+    return {"moved": True, "sentence": said, "installed": done.installed,
+            "outcome": done.schedule, "schedule_sentence": done.schedule_sentence,
+            "after_install": done.reply()}
 
 
 def _cmd_after_install(argv: list[str]) -> dict:
     """The app's launch door (decision 209): {"reason": "launch"} on stdin.
     Nothing, at once, when this program is the one that last ran the
-    after-install step cleanly; otherwise the step, whose findings the first
-    screen then shows. The shell calls it before the page's first call."""
+    after-install step cleanly and the designation names the computer it
+    named; otherwise the step, whose findings the first screen then shows.
+    The shell calls it at start, in the background; when ``ran`` is true it
+    tells the page, which asks ``list`` again for the notice. Anything the
+    step raises is recorded as :data:`after_install.LAUNCH_FAILED`."""
     spec = _read_spec()
     reason = str(spec.get("reason") or after_install.REASON_LAUNCH)
     if reason != after_install.REASON_LAUNCH:
         raise ManifestError(f"after-install is the launch door; its reason is "
                             f"{after_install.REASON_LAUNCH!r}, not {reason!r}")
-    done = after_install.launch()
+    try:
+        done = after_install.launch()
+    except Exception:
+        # The review's N1: the shell does not read this reply, so a failure
+        # returned only here would vanish. It is logged whole and recorded
+        # in one constant sentence, which the first screen's notice shows,
+        # and the next launch tries again.
+        log.exception("the after-install step could not finish at launch")
+        after_install.record_failure(after_install.LAUNCH_FAILED)
+        return {"ran": True, "failed": [after_install.LAUNCH_FAILED]}
     return {"ran": False} if done is None else {"ran": True, **done.reply()}
 
 
@@ -3805,6 +3852,7 @@ COMMANDS = {
     "set-root": _cmd_set_root,
     "install-schedule": _cmd_install_schedule,
     "after-install": _cmd_after_install,
+    "move-schedule-here": _cmd_move_schedule_here,
     "acknowledge-foreign": _cmd_acknowledge_foreign,
 }
 

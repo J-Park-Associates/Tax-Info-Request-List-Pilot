@@ -10,6 +10,7 @@ designation is judged exactly as it is on the office computer.
 from __future__ import annotations
 
 import json
+import os
 import platform
 import runpy
 import sys
@@ -20,7 +21,7 @@ import pytest
 
 from tests.conftest import TEST_HOUSEHOLD, make_engagement
 from tracker import after_install, ledger, scheduling, store
-from tracker.layout import designation_file
+from tracker.layout import PRIVATE_TREE, designation_file
 from tracker.locking import engagement_lock
 from tracker.records import rule_to_json
 from tracker.settings import ENV_SETTINGS_DIR, set_clients_root, settings_dir
@@ -223,8 +224,10 @@ def _returns(root):
 def malformed(root, monkeypatch):
     """The return, with a line an earlier version applied that decision
     187's admission now refuses: a Date Pattern that could run away. The
-    record is removed when the test ends, as the store's own tests do, so
-    the suite's agreement check does not rebuild from it."""
+    row is left as a version-17 store left every row - judged by no
+    admission this version knows (``admitted_by`` 0) - which is what an
+    upgrade finds. The record is removed when the test ends, as the store's
+    own tests do, so the suite's agreement check does not rebuild from it."""
     [engagement] = _returns(root)
     conn = store.connect()
     store.rebuild_engagement(conn, root, engagement)
@@ -236,6 +239,7 @@ def malformed(root, monkeypatch):
             store.record(conn, engagement, ledger.new(ledger.RULES_CHANGED, rules=[rule]))
     finally:
         patch.undo()
+    conn.execute("UPDATE engagements SET admitted_by = 0")
     yield engagement
     store.close()
     ledger.path_for(engagement).unlink(missing_ok=True)
@@ -338,19 +342,280 @@ def test_a_changed_program_runs_the_step_at_launch(root, tmp_path, monkeypatch):
     assert after_install.launch() is None
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "BUILD-209's probe (SPEC-209 R3): a line an earlier version applied that decision 187 now "
-    "refuses is named by the record check, but the pass does not stop its household - it is "
-    "processed as normal and the app shows no waiting sentence for it. Reported, not patched here."))
 def test_a_household_whose_applied_line_the_rule_refuses_waits_in_the_app(malformed, capsys):
-    """R3: the check names the household at the end of Setup and in the
-    app's notice; the household itself waits because decision 187 makes it
-    wait - which this proves after a pass, on a fabricated root."""
-    from tracker import api, runner
+    """R3 and R3b: the check names the household at the end of Setup and in
+    the app's notice; the household itself waits because the store judges
+    every applied line again under today's admission (decision 209, R3b) -
+    which this proves after a pass, on a fabricated root. It was a strict
+    xfail until R3b: :data:`FINDINGS_WAIT` claims it."""
+    [finding] = after_install.run(reason=after_install.REASON_SETUP).findings
+    assert "is malformed" in finding
+    _waits(malformed, capsys, "line 2 of the record is malformed")
 
-    runner.main([runner.SETTINGS_FLAG, str(settings_dir()), "--reminders", "never"])
+
+def _waits(engagement, capsys, sentence):
+    """The household waits where 187 makes a new malformed line wait: the
+    pass sorts nothing of the return and says ``sentence`` for it, the app's
+    walk lists the return with it, and the return's page answers it - and
+    it goes on waiting at the next pass."""
+    from tracker import api, runner
+    from tracker.registry import discover_engagements
+
+    root = engagement.parents[3]
+    for _ in range(2):
+        report = runner.run_registry(discover_engagements(root), reminders="never")
+        [one] = report.runs
+        assert sentence in one.error and one.engagement.problem
+    [listed] = discover_engagements(root).engagements
+    assert sentence in listed.problem
     capsys.readouterr()
-    assert api.main(["list"]) == 0
-    listed = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
-    [household] = listed["households"]
-    assert household["problem"], "the household is not waiting"
+    assert api.main(["state", api.ENGAGEMENT_FLAG, str(engagement)]) == 1
+    assert sentence in json.loads(capsys.readouterr().out.strip().splitlines()[-1])["error"]
+
+
+def test_a_household_whose_record_changed_behind_the_trackers_back_waits_in_the_app(root, capsys):
+    """The other kind :data:`FINDINGS_WAIT` claims (decision 137): the store
+    kept a fingerprint of the lines it applied, the record no longer chains
+    to it, and the same sync that refuses a malformed line refuses this."""
+    [engagement] = _returns(root)
+    conn = store.connect()
+    store.rebuild_engagement(conn, root, engagement)
+    # What a record rewritten to its own length leaves, seen from the store:
+    # neither the head nor the chain it kept is the record's any more.
+    conn.execute("UPDATE engagements SET applied_digest = ?, ledger_head = ? WHERE path LIKE ?",
+                 ("0" * 64, "0" * 64, f"{PRIVATE_TREE}/%/%"))
+
+    [finding] = after_install.run(reason=after_install.REASON_SETUP).findings
+
+    assert "changed behind the tracker's back" in finding
+    _waits(engagement, capsys, "changed behind the tracker's back")
+    store.rebuild_engagement(store.connect(), root, engagement)     # put back for the agreement check
+
+
+# ------------------------------------------------ the review's fixes (209) ----
+
+
+def test_a_move_elsewhere_removes_this_computers_task_at_its_next_start(root, windows):
+    """The review's M1: after the schedule moves to another computer nothing
+    about this one's program changed, yet its next start removes its own
+    task - the designation no longer names what its record says it named -
+    so two computers never both run the pass until the next upgrade."""
+    assert after_install.run(reason=after_install.REASON_SETUP).schedule == scheduling.CLAIMED
+    assert after_install.launch() is None                 # nothing changed: nothing to do
+    windows["exists"] = True
+    windows["calls"].clear()
+
+    designation_file(root).write_text(f"{ELSEWHERE}\n", encoding="utf-8")   # moved on the new one
+    moved = after_install.launch()
+
+    assert moved is not None and moved.schedule == scheduling.ELSEWHERE
+    assert ["schtasks", "/delete", "/tn", scheduling.TASK_NAME, "/f"] in windows["calls"]
+    assert after_install.launch() is None                 # and once is enough
+
+
+def test_a_failed_job_file_is_not_said_to_be_an_unwritten_designation(root, windows, monkeypatch):
+    """The review's S2: only the claim writes the designation file, so only
+    its failure says that file could not be written. A job file that could
+    not be written after a claim that was, or a ``schtasks`` that cannot be
+    started, is the schedule's failure, in a constant sentence."""
+    def unwritable(*args, **kwargs):
+        raise PermissionError("the settings folder is read-only")
+
+    monkeypatch.setattr(scheduling, "register_here", unwritable)
+    done = after_install.run(reason=after_install.REASON_SETUP)
+    said = after_install.SCHEDULE_FAILED.format(problem=after_install.SCHEDULE_UNREACHABLE)
+    assert done.failed == (said,) and done.schedule_sentence == said
+    assert designation_file(root).read_text(encoding="utf-8") == f"{HERE}\n"     # it was written
+    assert "read-only" not in " ".join(done.lines)
+
+    designation_file(root).write_text(f"{ELSEWHERE}\n", encoding="utf-8")
+    windows["exists"] = True
+
+    def missing(command):
+        raise FileNotFoundError("schtasks")
+
+    monkeypatch.setattr(scheduling, "_schtasks", missing)
+    assert after_install.run(reason=after_install.REASON_LAUNCH).failed == (said,)
+
+
+def test_a_claim_that_cannot_write_says_the_designation_was_not_written(root, windows, monkeypatch):
+    real_open = os.open
+
+    def refused(path, *args, **kwargs):
+        if str(path) == str(designation_file(root)):
+            raise PermissionError("no")
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", refused)
+    done = after_install.run(reason=after_install.REASON_SETUP)
+    assert done.failed == (after_install.DESIGNATION_UNWRITABLE.format(file=designation_file(root)),)
+    assert creates(windows["calls"]) == []
+
+
+@pytest.mark.parametrize("name", ["Büro-PC", "office pc", ""])
+def test_a_computer_whose_name_the_file_cannot_hold_is_said_whole(root, windows, monkeypatch, name):
+    """The review's S3: a computer's own name the designation cannot hold
+    is asked before the file is read, and said in one whole sentence -
+    never a fragment, and never as a file that could not be read."""
+    monkeypatch.setattr(platform, "node", lambda: name)
+
+    done = after_install.run(reason=after_install.REASON_SETUP)
+
+    sentence = scheduling.HOST_UNNAMED.format(file=designation_file(root))
+    assert done.schedule == scheduling.UNNAMED_HOST and done.failed == (sentence,)
+    assert not designation_file(root).exists() and windows["calls"] == []
+
+
+def test_the_designation_asks_is_this_host(root, windows):
+    """Every comparison of the designated computer with this one is 159's
+    ``locking.is_this_host``: a name written by hand in capitals, or with a
+    space after it, is this computer."""
+    designation_file(root).write_text("OFFICE-PC \n", encoding="utf-8")
+
+    done = after_install.run(reason=after_install.REASON_SETUP)
+
+    assert done.schedule == scheduling.REGISTERED and done.installed
+    scheduling.claim(root)                   # a claim over it is no race lost
+    assert designation_file(root).read_text(encoding="utf-8") == "OFFICE-PC \n"
+
+
+def test_two_claims_on_one_disk_create_the_file_once(root, windows, monkeypatch):
+    """The review's N3: the claim creates the file exclusively, so a claim
+    that arrives after another made it is answered by what that one wrote."""
+    real_open = os.open
+
+    def another_computer_first(path, flags, *args, **kwargs):
+        if str(path) == str(designation_file(root)) and flags & os.O_EXCL:
+            designation_file(root).write_text(f"{ELSEWHERE}\n", encoding="utf-8")
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", another_computer_first)
+    with pytest.raises(scheduling.DesignationError) as lost:
+        scheduling.claim(root)
+    assert str(lost.value) == scheduling.CLAIM_TAKEN.format(host=ELSEWHERE)
+    assert designation_file(root).read_text(encoding="utf-8") == f"{ELSEWHERE}\n"
+
+
+def test_a_move_over_an_unreadable_file_says_so(root, windows, monkeypatch, capsys):
+    """The review's N4: a move over a file that named no computer it could
+    read says that, not that no computer ran the schedule."""
+    designation_file(root).write_text("not one name at all", encoding="utf-8")
+
+    code, out = cli(monkeypatch, capsys, "--move-schedule-here")
+
+    assert code == 0, out
+    assert out.splitlines()[0] == scheduling.MOVED_FROM_UNREADABLE.format(here=HERE)
+    assert "not one name" not in out
+
+
+def test_a_store_holding_no_record_is_not_said_to_be_clean(root):
+    """The review's N2: a store that holds no record yet - fresh, or set
+    aside by an upgrade - had nothing judged, and says so; a clean check
+    says how many records it judged."""
+    store.close()
+    for side in ("", "-wal", "-shm"):
+        store.store_path().with_name(store.store_path().name + side).unlink(missing_ok=True)
+    store.connect()                                  # there, and holding nothing
+
+    empty = after_install.run(reason=after_install.REASON_SETUP)
+    assert empty.check == after_install.CHECK_NOTHING_HELD_KEY
+    assert empty.check_sentence == after_install.CHECK_NOTHING_HELD
+
+    for one in _returns(root):
+        store.catch_up(store.connect(), root, one)
+    judged = after_install.run(reason=after_install.REASON_SETUP)
+    assert judged.check == after_install.CHECK_CLEAN_KEY
+    assert judged.check_sentence == after_install.CHECK_CLEAN.format(n=1)
+
+
+# ------------------------------------------------- the test cache (R8) ----
+
+
+@pytest.fixture
+def checkout(tmp_path):
+    """A fabricated checkout folder - never this checkout's own cache."""
+    folder = tmp_path / "checkout"
+    (folder / "tracker").mkdir(parents=True)
+    return folder
+
+
+def test_setup_clears_the_checkouts_test_cache(app, checkout):
+    cache = checkout / after_install.TEST_CACHE_DIRNAME
+    (cache / "v" / "cache").mkdir(parents=True)
+    (cache / "v" / "cache" / "nodeids").write_text('["tests/test_x.py::test_a_client_name"]',
+                                                   encoding="utf-8")
+    (cache / "README.md").write_text("pytest cache", encoding="utf-8")
+
+    done = after_install.run(reason=after_install.REASON_SETUP, checkout=checkout)
+
+    assert not cache.exists() and (checkout / "tracker").is_dir()
+    assert done.cache_sentence == after_install.CACHE_CLEARED and done.exit_code == 0
+    assert after_install.CACHE_CLEARED in done.lines
+    again = after_install.run(reason=after_install.REASON_SETUP, checkout=checkout)
+    assert again.cache_sentence == "" and after_install.CACHE_CLEARED not in again.lines
+
+
+def test_a_missing_test_cache_is_nothing_to_do(app, checkout):
+    done = after_install.run(reason=after_install.REASON_SETUP, checkout=checkout)
+
+    assert done.cache_sentence == "" and done.exit_code == 0
+    assert not any("pytest_cache" in line for line in done.lines)
+
+
+def _link_or_skip(link, target):
+    try:
+        link.symlink_to(target, target_is_directory=target.is_dir())
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"this machine cannot make a symbolic link ({type(exc).__name__})")
+
+
+def test_a_link_in_the_test_cache_is_removed_not_followed(app, checkout, tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("not the cache's", encoding="utf-8")
+    cache = checkout / after_install.TEST_CACHE_DIRNAME
+    cache.mkdir()
+    _link_or_skip(cache / "linked", outside)
+
+    done = after_install.run(reason=after_install.REASON_SETUP, checkout=checkout)
+
+    assert not cache.exists() and done.cache_sentence == after_install.CACHE_CLEARED
+    assert (outside / "keep.txt").read_text(encoding="utf-8") == "not the cache's"
+
+
+def test_a_linked_test_cache_removes_only_the_link(app, checkout, tmp_path):
+    outside = tmp_path / "elsewhere-cache"
+    (outside / "v").mkdir(parents=True)
+    (outside / "v" / "keep.txt").write_text("not the checkout's", encoding="utf-8")
+    cache = checkout / after_install.TEST_CACHE_DIRNAME
+    _link_or_skip(cache, outside)
+
+    done = after_install.run(reason=after_install.REASON_SETUP, checkout=checkout)
+
+    assert not os.path.lexists(cache) and done.cache_sentence == after_install.CACHE_CLEARED
+    assert (outside / "v" / "keep.txt").read_text(encoding="utf-8") == "not the checkout's"
+
+
+def test_the_packaged_app_has_no_checkout_to_clear(app, checkout, monkeypatch):
+    cache = checkout / after_install.TEST_CACHE_DIRNAME
+    cache.mkdir()
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+
+    done = after_install.run(reason=after_install.REASON_SETUP, checkout=checkout)
+
+    assert cache.is_dir() and done.cache_sentence == ""
+
+
+def test_a_test_cache_that_cannot_be_removed_is_a_failure(app, checkout, monkeypatch):
+    cache = checkout / after_install.TEST_CACHE_DIRNAME
+    cache.mkdir()
+    (cache / "held.txt").write_text("", encoding="utf-8")
+
+    def held(path):
+        raise PermissionError("in use by another process")
+
+    monkeypatch.setattr(os, "unlink", held)
+    done = after_install.run(reason=after_install.REASON_SETUP, checkout=checkout)
+
+    assert done.failed == (after_install.CACHE_NOT_CLEARED,) and done.exit_code == 1
+    assert done.program == "" and "in use" not in " ".join(done.lines)
