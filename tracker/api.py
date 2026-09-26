@@ -319,6 +319,7 @@ from tracker.settings import (
     firm,
     firm_phone,
     product_name,
+    program_drive_refusal,
     set_clients_root,
     set_firm,
     set_firm_phone,
@@ -2679,12 +2680,19 @@ def _cmd_unlock(argv: list[str]) -> dict:
 def _machine_warnings(root: Path | None) -> list[str]:
     """This machine's own problems, each a sentence the app's first screen
     keeps showing until it is fixed (decision 186): what an earlier version
-    left beside the app, or a data home that cannot be had at all."""
+    left beside the app, or a data home that cannot be had at all, and an app
+    running from a drive Install Schedule refuses (removable, network, or one
+    Windows cannot name) - said every time the app opens from there."""
+    warnings = []
     try:
         left = left_behind_warning(root)
     except SettingsError as exc:
-        return [str(exc)]
-    return [left] if left else []
+        left = str(exc)
+    if left:
+        warnings.append(left)
+    if refusal := program_drive_refusal():
+        warnings.append(refusal)
+    return warnings
 
 
 def _cmd_list(argv: list[str]) -> dict:
@@ -4236,6 +4244,11 @@ def _cmd_install_schedule(argv: list[str]) -> dict:
     none of the environment the shell gives the API.
     """
     spec = _read_spec()
+    # The schedule runs whatever program sits where the app is, every pass:
+    # never from a removable or network drive (decision 186). Asked before
+    # the root is read and before any file is written.
+    if refusal := program_drive_refusal():
+        raise ManifestError(refusal)
     root = _root()
     # The job names this app's settings folder, never the root (decision
     # 131): it reads the root from the settings file at every run, so a

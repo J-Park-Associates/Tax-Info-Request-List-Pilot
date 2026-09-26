@@ -461,7 +461,11 @@ reads the root from `settings.json` there at every run (decision 131). So
 changing the root in the app is all it takes for the schedule to follow.
 A job installed by a version before decision 131 carries the root it was
 installed with: **press Install Schedule once after upgrading**, and never
-again for a move.
+again for a move. It refuses, with a sentence saying why, when the app is on
+a removable drive, a network drive or one Windows cannot name (decision 186):
+the schedule runs whatever program sits there on every pass, so it must be
+on this computer's own disk. The app's first screen says the same for as
+long as it runs from such a drive.
 
 **It only runs while someone is logged on.** The task is registered to run
 as the logged-on person, not as a background service, so the designated
@@ -1649,7 +1653,8 @@ exactly as it came.
    number beside it. This is the one place the root is set;
    if the new machine mounts it at a longer path, the reply lists every
    return that leaves short of room (§1, *If the clients root moves*).
-4. Press **Install Schedule** - once. Since decision 131 the job names the
+4. Press **Install Schedule** - once, from the app's copy on this
+   computer's own disk (it refuses from a stick or a network drive). Since decision 131 the job names the
    app's settings folder and reads the clients root from it at every run,
    so a later change of root is made in the app alone.
 5. **Reading needs nothing installed** (decision 169). The reader -

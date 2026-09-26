@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 163,
     "edges": 1012,
-    "reused": 111
+    "reused": 114
   },
   "node_types": [
     "artifact",
@@ -135,8 +135,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "a1343cfdc40c8713",
-      "lines": 4379,
+      "sha256": "2b9bc6320b7b11e5",
+      "lines": 4392,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_FOLDER_NAME_HELP",
@@ -2835,8 +2835,8 @@
       "id": "tracker/scheduling.py",
       "type": "module",
       "layer": "core",
-      "sha256": "49dad0b5874d161e",
-      "lines": 486,
+      "sha256": "fee2d475217ae100",
+      "lines": 491,
       "cli": "python -m tracker.scheduling",
       "exports": [
         "DEFAULT_REPEAT_MINUTES",
@@ -2893,8 +2893,8 @@
       "id": "tracker/settings.py",
       "type": "module",
       "layer": "core",
-      "sha256": "88418a6c097f7826",
-      "lines": 653,
+      "sha256": "761ac15107ac8acd",
+      "lines": 701,
       "cli": "python -m tracker.settings",
       "exports": [
         "COLUMN_CATALOG",
@@ -2928,6 +2928,9 @@
         "NO_ROOT_HINT",
         "OCR_SCRATCH_DIRNAME",
         "PACKAGE_JSON",
+        "PROGRAM_DRIVE_UNKNOWN",
+        "PROGRAM_ON_NETWORK",
+        "PROGRAM_ON_REMOVABLE",
         "ROOT_HOLDS_APP",
         "ROOT_HOLDS_DATA",
         "ROOT_HOLDS_SETTINGS",
@@ -2953,6 +2956,7 @@
         "logs_dir",
         "process_scratch",
         "product_name",
+        "program_drive_refusal",
         "program_folders",
         "real_corpus_dir",
         "resolve_data_home",
@@ -2984,6 +2988,9 @@
         "LOCAL_APPDATA_NOT_A_FOLDER": "'LOCALAPPDATA names {folder}, which is not a folder on this computer'",
         "DATA_HOME_BESIDE_PROGRAM": "\"the tracker's data folder {home} would be inside the program's own folder {program}, or hold it; client data never sits beside the program\"",
         "DATA_HOME_NOT_LOCAL": "\"the tracker's data folder {home} is not on this computer's own disk; client data never sits on a removable or network drive\"",
+        "PROGRAM_ON_REMOVABLE": "\"The app is running from a removable drive ({folder}). The schedule runs whatever program sits there, every pass, so it is not installed from here: copy the app's folder to this computer's own disk (a short path, such as C:\\\\Tools), start it from there and press Install Schedule.\"",
+        "PROGRAM_ON_NETWORK": "\"The app is running from a network drive ({folder}). The schedule runs whatever program sits there, every pass, so it is not installed from here: copy the app's folder to this computer's own disk (a short path, such as C:\\\\Tools), start it from there and press Install Schedule.\"",
+        "PROGRAM_DRIVE_UNKNOWN": "\"Windows cannot say what kind of drive the app is running from ({folder}), so the schedule is not installed from here: copy the app's folder to this computer's own disk (a short path, such as C:\\\\Tools), start it from there and press Install Schedule.\"",
         "EXPECTATIONS_FILENAME": "'expectations.csv'",
         "COLUMN_FILE": "'file'",
         "COLUMN_CATALOG": "'catalog'",
@@ -3003,7 +3010,7 @@
         "ROOT_INSIDE_A_TREE": "'{root} is inside the {tree} folder of the clients root {real}; choose {real}'"
       },
       "role": "The settings file beside the app (SETTINGS_FILENAME): the one place the clients root, the firm and the firm's telephone number are kept. clients_root()/set_clients_root(), firm()/set_firm(), firm_phone()/set_firm_phone(); product_name() reads app/package.json productName (or ENV_PRODUCT_NAME from the shell). ENV_SETTINGS_DIR from the Electron shell says where beside-the-app is. ENV_REAL_CORPUS and real_corpus_dir() name the other folder outside the repository: the firm's own redacted documents, with the expectations file's name and columns beside them.",
-      "notes": "Replaced two roots (an env var for the app defaulting to a demo folder, a command-line path for the job) that nothing tied together. set_clients_root() refuses a folder that does not exist, so a typo cannot become an empty root the run walks for ever. The file is written through fsio.write_json_atomically() (decision 120; it was the manifest's until then, and that one import was the whole of this module's dependence on layer 1): the app and the scheduling CLI can both save it, and neither may swap the other's half-written temp into place. Decision 68: an empty root is refused - Path(\"\") is the working folder. Decision 69: the working folder under any spelling is refused as a root. Decision 71: real_corpus_dir() answers None when the variable is unset and when what it names is not a folder, because raising would fail the suite on every machine that has no corpus, CI included; it is an environment variable rather than a setting because it belongs to a machine, never to an engagement. Decision 117: the firm's phone is a setting for the mirror image of that reason - it belongs to the firm and not to any one engagement, so it sits beside the firm's name rather than in every client's details, and it is taken as typed because a firm writes its number its own way. Only the reminder's final notice says it, and a blank one drops that sentence. Decision 131: the scheduled job names this file's folder (runner --settings) rather than the root, and reads the root from here at every run - one home for the clients root. Decision 137 (M3) replaced decision 69's working-folder check, which meant nothing in the packaged build: root_refusal() (pure, so every rule is testable on any OS) refuses the system drive's root (system_drive_root()), the settings folder, any folder holding it and any folder inside it, and the app's own folder (app_dir(): the frozen executable's, or the repository from source) and any folder holding it, each with its own sentence. Another drive's root is allowed - a letter mapped to the clients share is a real root - and \"D:\" is still recorded as \"D:\\\\\". Review fixes (decision 137): _inside() compares the folders themselves (os.path.samefile up the parent chain) as well as their spellings, so long-path (\\\\?\\) and C$ admin-share forms are refused like plain names; clients_root_refusal() is what set_clients_root and the runner's start both ask. Decision 188: ROOT_INSIDE_A_TREE - the nearest folder above the root that holds both trees (layout.clients_tree_of and private_tree_of are folders) with the root inside one of them (layout.tree_of) is refused naming the root to choose; a lone folder named Clients is not (the runbook's example root). settings imports layout at load (same layer, reads no file). _within and _inside keep their own under-a-folder spelling for the machine's own folders, allowed by name in the layer test. Decision 193: ERROR_LOG_FILENAME and error_log(), the rotating local error log attached by api.main and runner.main for their lifetime, rotated by _ErrorLog's own few lines (not logging.handlers, which loads socket - the review's S2); error_log_path() is beside the tracker's database (store.store_path()'s folder, asked at call time), so it moves with the store. Decision 185: _read() learns the file is absent by opening it, so the suite's tripwire sees every attempt; OCR_SCRATCH_DIRNAME names the retired scratch folder once; inside_the_app() is the one answer to whether a path lies in the app's folder (the checkout from source), asked by the report tools before writing and by decision 186. Decision 186: data_home() is the one per-user local folder where client-derived data lives (ENV_DATA_HOME, else %LOCALAPPDATA%\\tax-document-tracker on Windows with no fallback, else $XDG_STATE_HOME or ~/.local/state); resolve_data_home() is its pure core, testable on any OS; it refuses a folder inside or around program_folders() or not on a fixed disk (drive_type(), GetDriveTypeW through ctypes), and creates nothing - scratch_root(), process_scratch() and logs_dir() are path answers only. root_refusal() gains data= (ROOT_HOLDS_DATA, ROOT_INSIDE_DATA). OCR_SCRATCH_DIRNAME and inside_the_app() are decision 185's names, landed with 185; 186 uses them. The settings file stays beside the app as a pointer holding nothing about a client."
+      "notes": "Replaced two roots (an env var for the app defaulting to a demo folder, a command-line path for the job) that nothing tied together. set_clients_root() refuses a folder that does not exist, so a typo cannot become an empty root the run walks for ever. The file is written through fsio.write_json_atomically() (decision 120; it was the manifest's until then, and that one import was the whole of this module's dependence on layer 1): the app and the scheduling CLI can both save it, and neither may swap the other's half-written temp into place. Decision 68: an empty root is refused - Path(\"\") is the working folder. Decision 69: the working folder under any spelling is refused as a root. Decision 71: real_corpus_dir() answers None when the variable is unset and when what it names is not a folder, because raising would fail the suite on every machine that has no corpus, CI included; it is an environment variable rather than a setting because it belongs to a machine, never to an engagement. Decision 117: the firm's phone is a setting for the mirror image of that reason - it belongs to the firm and not to any one engagement, so it sits beside the firm's name rather than in every client's details, and it is taken as typed because a firm writes its number its own way. Only the reminder's final notice says it, and a blank one drops that sentence. Decision 131: the scheduled job names this file's folder (runner --settings) rather than the root, and reads the root from here at every run - one home for the clients root. Decision 137 (M3) replaced decision 69's working-folder check, which meant nothing in the packaged build: root_refusal() (pure, so every rule is testable on any OS) refuses the system drive's root (system_drive_root()), the settings folder, any folder holding it and any folder inside it, and the app's own folder (app_dir(): the frozen executable's, or the repository from source) and any folder holding it, each with its own sentence. Another drive's root is allowed - a letter mapped to the clients share is a real root - and \"D:\" is still recorded as \"D:\\\\\". Review fixes (decision 137): _inside() compares the folders themselves (os.path.samefile up the parent chain) as well as their spellings, so long-path (\\\\?\\) and C$ admin-share forms are refused like plain names; clients_root_refusal() is what set_clients_root and the runner's start both ask. Decision 188: ROOT_INSIDE_A_TREE - the nearest folder above the root that holds both trees (layout.clients_tree_of and private_tree_of are folders) with the root inside one of them (layout.tree_of) is refused naming the root to choose; a lone folder named Clients is not (the runbook's example root). settings imports layout at load (same layer, reads no file). _within and _inside keep their own under-a-folder spelling for the machine's own folders, allowed by name in the layer test. Decision 193: ERROR_LOG_FILENAME and error_log(), the rotating local error log attached by api.main and runner.main for their lifetime, rotated by _ErrorLog's own few lines (not logging.handlers, which loads socket - the review's S2); error_log_path() is beside the tracker's database (store.store_path()'s folder, asked at call time), so it moves with the store. Decision 185: _read() learns the file is absent by opening it, so the suite's tripwire sees every attempt; OCR_SCRATCH_DIRNAME names the retired scratch folder once; inside_the_app() is the one answer to whether a path lies in the app's folder (the checkout from source), asked by the report tools before writing and by decision 186. Decision 186: data_home() is the one per-user local folder where client-derived data lives (ENV_DATA_HOME, else %LOCALAPPDATA%\\tax-document-tracker on Windows with no fallback, else $XDG_STATE_HOME or ~/.local/state); resolve_data_home() is its pure core, testable on any OS; it refuses a folder inside or around program_folders() or not on a fixed disk (drive_type(), GetDriveTypeW through ctypes), and creates nothing - scratch_root(), process_scratch() and logs_dir() are path answers only. root_refusal() gains data= (ROOT_HOLDS_DATA, ROOT_INSIDE_DATA). OCR_SCRATCH_DIRNAME and inside_the_app() are decision 185's names, landed with 185; 186 uses them. The settings file stays beside the app as a pointer holding nothing about a client. 186c: program_drive_refusal() asks drive_type() of the program's folder and its settings folder, looked up at call time so a test's patch reaches it; only DRIVE_FIXED passes (PROGRAM_ON_REMOVABLE, PROGRAM_ON_NETWORK, PROGRAM_DRIVE_UNKNOWN). Install Schedule (api, scheduling CLI) refuses on it and the app's first screen says it; the scheduled pass never asks, since a pass that refuses goes quiet."
     },
     {
       "id": "tracker/store.py",
@@ -3394,15 +3401,15 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "2828f0840337d8e2",
-      "lines": 558,
+      "sha256": "a0aed42e522aa959",
+      "lines": 560,
       "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
     },
     {
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "df59308d60696356",
+      "sha256": "838c9a054862631b",
       "lines": 436,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -3420,7 +3427,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "ea3522b621bc2e5a",
+      "sha256": "b8259961a277a1de",
       "lines": 1045,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -3429,8 +3436,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "c83e3d9ecdf25e5a",
-      "lines": 2213,
+      "sha256": "e186264db479d514",
+      "lines": 2218,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -3916,8 +3923,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "4a31b903430b639f",
-      "lines": 6575,
+      "sha256": "3668dc1e6c92e5da",
+      "lines": 6629,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -4058,6 +4065,8 @@
         "test_fed_by_names_no_household_whose_record_is_gone",
         "test_filing_a_parked_card_moves_it_from_under_review_to_received_at_once",
         "test_install_schedule_defaults_come_from_scheduling",
+        "test_install_schedule_refuses_a_network_drive_and_one_windows_cannot_name",
+        "test_install_schedule_refuses_when_the_program_is_on_a_removable_drive",
         "test_install_schedule_uses_the_same_root_as_the_app",
         "test_install_schedule_writes_the_job_from_the_apps_own_settings_folder",
         "test_install_schedule_writes_the_task_file_into_the_data_home",
@@ -4122,6 +4131,7 @@
         "test_the_error_log_rotates_and_never_syncs_to_disk",
         "test_the_firm_is_typed_once_in_settings_and_signs_every_engagement",
         "test_the_first_screen_says_every_machine_warning_in_a_banner_of_its_own",
+        "test_the_first_screen_says_when_the_app_runs_from_a_removable_drive",
         "test_the_household_card_shows_every_returns_reminder_state",
         "test_the_letter_travels_as_a_shape_with_the_emphasis_already_decided",
         "test_the_moved_card_offers_mark_missing_on_a_row_whose_copy_and_original_are_both_gone",
@@ -6484,8 +6494,8 @@
       "id": "tests/test_scheduling.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "4e986809d2b5460c",
-      "lines": 358,
+      "sha256": "8d68b72fef8e9d86",
+      "lines": 387,
       "exports": [
         "ARGS",
         "NS",
@@ -6504,6 +6514,7 @@
         "test_overlapping_runs_are_refused_by_the_task_itself",
         "test_paths_with_xml_characters_are_escaped",
         "test_relative_paths_are_not_mistaken_for_absolute",
+        "test_the_command_line_install_refuses_a_program_on_a_removable_drive",
         "test_the_command_line_is_built_once_for_both_schedulers",
         "test_the_description_names_the_drafting_day_from_the_runner",
         "test_the_description_says_it_drafts_and_does_not_send",
@@ -6527,8 +6538,8 @@
       "id": "tests/test_settings.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6209e96cd24fff68",
-      "lines": 499,
+      "sha256": "c06f89a8313afd74",
+      "lines": 522,
       "exports": [
         "beside_the_app",
         "test_a_cleared_folder_box_is_refused_not_recorded_as_the_working_folder",
@@ -6543,6 +6554,7 @@
         "test_asking_where_the_data_home_is_creates_nothing",
         "test_nothing_set_means_none_not_a_guess",
         "test_one_rule_says_what_lies_inside_the_app_folder",
+        "test_only_a_fixed_disk_may_hold_the_program_the_schedule_runs",
         "test_the_clients_root_cannot_be_the_settings_folder_the_app_folder_or_their_ancestors",
         "test_the_clients_root_is_judged_by_the_folder_itself_not_its_spelling",
         "test_the_data_home_is_named_by_the_apps_package_name",

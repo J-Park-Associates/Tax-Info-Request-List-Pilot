@@ -291,7 +291,7 @@ button opens that same page, and the app's own pass rewrites it too.
 Generate the job itself with:
 
 ```
-.venv\Scripts\python.exe -m tracker.scheduling --working-dir "C:\Tools\tax-tracker" --out tax-tracker.xml --install
+.venv\Scripts\python.exe -m tracker.scheduling --working-dir "C:\Tools\tax-tracker" --install
 ```
 
 Run it with the app's private Python, the one `Setup.bat` made (decision
@@ -299,7 +299,9 @@ Run it with the app's private Python, the one `Setup.bat` made (decision
 own Python holds none of the locked packages. `--settings` defaults to this checkout's own folder, whose `settings.json`
 must already name a clients root; the job carries no root of its own.
 `--install` registers the task as it writes the XML, and running the same
-line again changes the schedule. The app's **Install Schedule** button does exactly this for the
+line again changes the schedule. It writes the task's file into the tracker's data folder unless
+`--out` names another, and refuses when the program is on a removable or network drive (decision
+186). The app's **Install Schedule** button does exactly this for the
 folder it is showing - from source with the Python it runs under, and in
 the packaged app with its own executable, which runs the job when given
 `--run` first (there is no Python on that machine). A job registered by a

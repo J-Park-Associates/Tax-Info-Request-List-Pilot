@@ -6573,3 +6573,57 @@ def test_the_scheduled_tasks_working_folder_is_the_apps_own_not_the_settings_fol
     monkeypatch.setenv(settings.ENV_SETTINGS_DIR, str(tmp_path / "app"))
     assert api.REPO_ROOT == settings.app_dir()
     assert api.REPO_ROOT != settings.settings_dir()
+
+
+def _program_on(monkeypatch, kind):
+    """Windows answers ``kind`` for the drive the program and its settings
+    folder are on; the data home stays on the fixed disk, which it must."""
+    from tracker import settings as settings_module
+
+    program = {settings_module.app_dir(), settings_module.settings_dir().resolve()}
+    monkeypatch.setattr(settings_module, "drive_type",
+                        lambda path: kind if Path(path) in program else settings_module.DRIVE_FIXED)
+
+
+def test_install_schedule_refuses_when_the_program_is_on_a_removable_drive(capsys, demo_root, monkeypatch):
+    """Decision 186: the schedule runs whatever program sits where the app
+    is, so Install Schedule refuses a stick - in the API's own sentence,
+    before any file is written and before the task is registered."""
+    import tracker.api as api_module
+    from tracker import settings as settings_module
+    from tracker.scheduling import schedule_xml_path
+
+    calls = []
+    monkeypatch.setattr(api_module, "install_task", lambda xml, name=TASK_NAME: calls.append(xml) or ["schtasks"])
+    _program_on(monkeypatch, settings_module.DRIVE_REMOVABLE)
+    code, payload = run(capsys, "install-schedule", stdin={})
+    assert code != 0
+    assert payload["error"] == settings_module.PROGRAM_ON_REMOVABLE.format(folder=settings_module.app_dir())
+    assert calls == []
+    assert not schedule_xml_path().exists()
+
+
+def test_install_schedule_refuses_a_network_drive_and_one_windows_cannot_name(capsys, demo_root, monkeypatch):
+    import tracker.api as api_module
+    from tracker import settings as settings_module
+
+    monkeypatch.setattr(api_module, "install_task", lambda xml, name=TASK_NAME: ["schtasks"])
+    for kind, said in ((settings_module.DRIVE_REMOTE, settings_module.PROGRAM_ON_NETWORK),
+                       (settings_module.DRIVE_UNKNOWN, settings_module.PROGRAM_DRIVE_UNKNOWN)):
+        _program_on(monkeypatch, kind)
+        code, payload = run(capsys, "install-schedule", stdin={})
+        assert code != 0
+        assert payload["error"] == said.format(folder=settings_module.app_dir())
+
+
+def test_the_first_screen_says_when_the_app_runs_from_a_removable_drive(capsys, demo_root, monkeypatch):
+    """Decision 186: the scheduled pass never refuses (it would go quiet),
+    so the app's first screen says it every time it opens from a stick."""
+    from tracker import settings as settings_module
+
+    assert run(capsys, "list")[1]["machine_warnings"] == []
+    _program_on(monkeypatch, settings_module.DRIVE_REMOVABLE)
+    code, payload = run(capsys, "list")
+    assert code == 0
+    assert payload["machine_warnings"] == [
+        settings_module.PROGRAM_ON_REMOVABLE.format(folder=settings_module.app_dir())]

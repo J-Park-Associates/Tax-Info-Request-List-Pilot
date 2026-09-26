@@ -497,3 +497,26 @@ def test_a_corpus_inside_the_app_is_refused_by_name(tmp_path, monkeypatch):
     outside.mkdir()
     monkeypatch.setenv(ENV_REAL_CORPUS, str(outside))
     assert real_corpus_dir() == outside
+
+
+def test_only_a_fixed_disk_may_hold_the_program_the_schedule_runs(tmp_path):
+    """Decision 186: Install Schedule asks where the program and its settings
+    folder are; every answer Windows can give but a fixed disk is refused by
+    its own sentence, and nothing is guessed."""
+    app, settings = tmp_path / "app", tmp_path / "settings"
+    sentence = {
+        data_rules.DRIVE_UNKNOWN: data_rules.PROGRAM_DRIVE_UNKNOWN,
+        data_rules.DRIVE_NO_ROOT_DIR: data_rules.PROGRAM_DRIVE_UNKNOWN,
+        data_rules.DRIVE_REMOVABLE: data_rules.PROGRAM_ON_REMOVABLE,
+        data_rules.DRIVE_FIXED: "",
+        data_rules.DRIVE_REMOTE: data_rules.PROGRAM_ON_NETWORK,
+        data_rules.DRIVE_CDROM: data_rules.PROGRAM_ON_REMOVABLE,
+        data_rules.DRIVE_RAMDISK: data_rules.PROGRAM_DRIVE_UNKNOWN,
+    }
+    assert sorted(sentence) == list(range(7))
+    for kind, said in sentence.items():
+        for odd in (app, settings):
+            def answer(path, kind=kind, odd=odd):
+                return kind if path == odd else data_rules.DRIVE_FIXED
+            refusal = data_rules.program_drive_refusal(app=app, settings=settings, drive_type=answer)
+            assert refusal == (said.format(folder=odd) if said else "")

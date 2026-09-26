@@ -356,3 +356,32 @@ def test_install_without_out_writes_the_task_file_into_the_data_home(monkeypatch
     assert f"Wrote {written}" in out and f"/xml {written}" in out
     assert not (settings / SCHEDULE_XML_FILENAME).exists()
     assert not (tmp_path / SCHEDULE_XML_FILENAME).exists()
+
+
+def test_the_command_line_install_refuses_a_program_on_a_removable_drive(monkeypatch, tmp_path, capsys):
+    """Decision 186: the command line's ``--install`` refuses a program on a
+    stick with the app's own sentence, before any file is written."""
+    import runpy
+    import sys
+
+    from tracker import settings as settings_module
+    from tracker.runner import SETTINGS_FLAG
+    from tracker.scheduling import INSTALL_FLAG, schedule_xml_path
+
+    monkeypatch.chdir(tmp_path)
+    settings = tmp_path / "app"
+    settings.mkdir()
+    program = {settings_module.app_dir(), settings}     # the data home stays on the fixed disk
+    monkeypatch.setattr(settings_module, "drive_type",
+                        lambda path: settings_module.DRIVE_REMOVABLE if path in program
+                        else settings_module.DRIVE_FIXED)
+    monkeypatch.setattr(sys, "argv", ["tracker.scheduling", SETTINGS_FLAG, str(settings), INSTALL_FLAG])
+
+    with pytest.raises(SystemExit) as stopped:
+        runpy.run_module("tracker.scheduling", run_name="__main__")
+
+    assert stopped.value.code == 2
+    said = capsys.readouterr().err
+    assert settings_module.PROGRAM_ON_REMOVABLE.format(folder=settings_module.app_dir()) in said
+    assert not schedule_xml_path().exists()
+    assert list(settings.iterdir()) == []

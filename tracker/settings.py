@@ -110,6 +110,22 @@ DATA_HOME_BESIDE_PROGRAM = ("the tracker's data folder {home} would be inside th
                             "folder {program}, or hold it; client data never sits beside the program")
 DATA_HOME_NOT_LOCAL = ("the tracker's data folder {home} is not on this computer's own disk; "
                        "client data never sits on a removable or network drive")
+#: Why Install Schedule refuses to schedule the program from where it is
+#: (decision 186): the task runs whatever program sits at that path on every
+#: pass, so a stick or a share would carry the program - and, beside it, the
+#: settings - wherever the drive goes. One sentence per answer Windows gives.
+PROGRAM_ON_REMOVABLE = ("The app is running from a removable drive ({folder}). The schedule runs "
+                        "whatever program sits there, every pass, so it is not installed from here: "
+                        "copy the app's folder to this computer's own disk (a short path, such as "
+                        "C:\\Tools), start it from there and press Install Schedule.")
+PROGRAM_ON_NETWORK = ("The app is running from a network drive ({folder}). The schedule runs "
+                      "whatever program sits there, every pass, so it is not installed from here: "
+                      "copy the app's folder to this computer's own disk (a short path, such as "
+                      "C:\\Tools), start it from there and press Install Schedule.")
+PROGRAM_DRIVE_UNKNOWN = ("Windows cannot say what kind of drive the app is running from ({folder}), "
+                         "so the schedule is not installed from here: copy the app's folder to this "
+                         "computer's own disk (a short path, such as C:\\Tools), start it from there "
+                         "and press Install Schedule.")
 #: The file beside them that says where each one belongs, and its columns:
 #: the document's own name, the catalog it is routed against, the
 #: engagement year, and the identifier it must file under - blank for a
@@ -485,6 +501,38 @@ def process_scratch() -> Path:
 def logs_dir() -> Path:
     """The folder of the tracker's logs, in the data home."""
     return data_home() / LOGS_DIR_NAME
+
+
+def program_drive_refusal(*, app: Path | None = None, settings: Path | None = None,
+                          drive_type=None) -> str:
+    """Why the schedule may not run the program from where it is, or "".
+
+    The program's folder and its settings folder are each asked; only
+    DRIVE_FIXED passes. DRIVE_REMOVABLE and DRIVE_CDROM -> PROGRAM_ON_REMOVABLE,
+    DRIVE_REMOTE -> PROGRAM_ON_NETWORK, anything else (unknown, no root, a RAM
+    disk) -> PROGRAM_DRIVE_UNKNOWN: nothing is guessed (decision 186).
+
+    Asked by Install Schedule (the app and the command line) and said on the
+    app's first screen - never by the scheduled pass, which would only go
+    quiet if it refused: a job installed from a stick keeps running until
+    Install Schedule is pressed from the copy on the disk. ``drive_type`` is
+    looked up when called, not bound at definition, so a test's patch of
+    the module's :func:`drive_type` reaches it. Off Windows every drive is
+    fixed and the answer is "".
+    """
+    ask = drive_type if drive_type is not None else globals()["drive_type"]
+    folders = (app if app is not None else app_dir(),
+               settings if settings is not None else settings_dir().resolve())
+    for folder in folders:
+        kind = ask(Path(folder))
+        if kind == DRIVE_FIXED:
+            continue
+        if kind in (DRIVE_REMOVABLE, DRIVE_CDROM):
+            return PROGRAM_ON_REMOVABLE.format(folder=folder)
+        if kind == DRIVE_REMOTE:
+            return PROGRAM_ON_NETWORK.format(folder=folder)
+        return PROGRAM_DRIVE_UNKNOWN.format(folder=folder)
+    return ""
 
 
 #: Why a folder is refused as the clients root (decision 137). One sentence

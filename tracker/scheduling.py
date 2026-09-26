@@ -50,7 +50,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from tracker.fsio import write_text_atomically
 from tracker.locking import RUN_TIME_LIMIT_SECONDS
 from tracker.runner import DRAFT_DAY_NAME, LOG_FLAG, RUNNER_MODE_FLAG, SETTINGS_FLAG
-from tracker.settings import SETTINGS_FILENAME, data_home, product_name
+from tracker.settings import SETTINGS_FILENAME, data_home, product_name, program_drive_refusal
 
 #: The scheduled task is named after the product, wherever that is set.
 TASK_NAME = product_name()
@@ -434,6 +434,11 @@ if __name__ == "__main__":
                          f"{NO_ROOT_HINT}")
         ns.settings = str(settings_dir())
     settings_arg = resolve_folder(ns.settings, ns.working_dir)
+    if ns.install:
+        # The task runs whatever program sits there, every pass: never one on
+        # a removable or network drive (decision 186). Refused before writing.
+        if refusal := program_drive_refusal(settings=Path(settings_arg)):
+            parser.error(refusal)
 
     try:
         if ns.format == FORMAT_XML:
