@@ -400,6 +400,25 @@ def test_each_requests_readings_are_kept_before_the_next_request_is_read(tmp_pat
     assert seen[-1][0].endswith("later.pdf") and seen[-1][1] >= 1
 
 
+def test_a_scan_past_its_deadline_reads_nothing_more_and_records_only_what_it_scanned(engagement):
+    """Decision 189: the household's time is checked before each request.
+    Past it, no request is scanned; each keeps the status the record holds,
+    and the report says how many were not reached."""
+    from tracker import ocr
+
+    text_pdf(folder(engagement, "A01") / "chase.pdf", "Chase Bank Statement Dec 2025")
+    before = {i: row.status for i, row in statuses(engagement).items()}
+
+    report = scan_engagement(engagement, today=DAY1, deadline=ocr.awake_clock() - 1)
+
+    assert report.updates == {} and report.unreached == len(ITEMS)
+    assert report.recorded == 0
+    assert {i: row.status for i, row in statuses(engagement).items()} == before
+
+    report = scan_engagement(engagement, today=DAY1, deadline=ocr.awake_clock() + 600)
+    assert report.unreached == 0 and set(report.updates) == {i.identifier for i in ITEMS}
+
+
 def test_a_second_scan_over_an_unchanged_tree_hashes_nothing(engagement, monkeypatch):
     """Step 0's number: the memo makes an unchanged tree cost stats, not reads."""
     import tracker.content_check as content_check_module

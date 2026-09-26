@@ -79,7 +79,7 @@ from contextlib import nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tracker import ledger, reasons, store
+from tracker import ledger, ocr, reasons, store
 from tracker.content_check import ContentCache, check_content, open_verdict
 from tracker.layout import locate
 from tracker.locking import EngagementLockedError, engagement_lock
@@ -171,6 +171,10 @@ class ScanReport:
     #: How many statuses this scan appended to the record. Zero on a pass
     #: that found the engagement exactly as it left it, and on a dry run.
     recorded: int = 0
+    #: How many requests the household's time for this pass did not reach
+    #: (decision 189). Not scanned and not recorded: each keeps the status
+    #: the record already holds until the next pass scans it.
+    unreached: int = 0
     dry_run: bool = False
 
     @property
@@ -740,12 +744,17 @@ def scan_engagement(
     today: dt.date | None = None,
     dry_run: bool = False,
     lock_held: bool = False,
+    deadline: float | None = None,
 ) -> ScanReport:
     """Scan one engagement and (unless ``dry_run``) record what it found.
 
-    **Kept as it goes** (decision 189). The verdicts are saved after
-    every request, so a pass killed mid-scan reads again only what it was
-    killed on (a save with nothing new is no transaction at all).
+    **Kept as it goes, and bounded** (decision 189). The verdicts are
+    saved after every request, so a pass killed mid-scan reads again only
+    what it was killed on (a save with nothing new is no transaction at
+    all). ``deadline`` is a moment on ``ocr.awake_clock``, checked before
+    each request: past it no further request is scanned, what was scanned
+    is recorded, and the rest keep the status the record holds until the
+    next pass (``unreached``).
 
     Dry runs read everything but write nothing — no event, no cache save,
     no lock file — safe to run alongside a real scan.
@@ -804,7 +813,11 @@ def scan_engagement(
         interrupted = _interrupted(engagement_dir, rows)
         answered = _answered(engagement_dir, rows, cache)
         updates: dict[str, StatusUpdate] = {}
+        unreached = 0
         for item in items:
+            if deadline is not None and ocr.awake_clock() >= deadline:
+                unreached = len(items) - len(updates)
+                break
             updates[item.identifier] = _scan_item(
                 item, assigned[item.identifier], cache, today, pdf_cache, accepted=accepted,
                 claimed=claimed, excluded=excluded, interrupted=interrupted,
@@ -820,6 +833,7 @@ def scan_engagement(
             updates=updates,
             warnings=_prepared_warnings(prepared_dir, identifiers)
                      + _changed_copy_warnings(claimed, prepared_dir, cache),
+            unreached=unreached,
             dry_run=dry_run,
         )
         if dry_run:

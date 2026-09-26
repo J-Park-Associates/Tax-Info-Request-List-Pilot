@@ -192,7 +192,7 @@ from contextlib import ExitStack
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from tracker import containers, ledger, reasons, store
+from tracker import containers, ledger, ocr, reasons, store
 from tracker.content_check import RETIRED_CACHE_FILENAME, ContentCache
 from tracker.fsio import (
     TEMP_SUFFIX,
@@ -490,6 +490,10 @@ class FileReport:
     #: Decision 127 - a reading is timed and said, never cut short, and the
     #: run's summary names one of these when it passed the run's threshold.
     slowest: list[tuple[str, float]] = field(default_factory=list)
+    #: How many files the household's time for this pass did not reach
+    #: (decision 189): left where they were, unrecorded, for the next pass.
+    #: On the first own return's report, where the inbox's notes ride.
+    unreached: int = 0
     dry_run: bool = False
 
     @property
@@ -3366,13 +3370,18 @@ def file_household_drops(
     fed: Sequence[Path] = (),
     today: dt.date | None = None,
     dry_run: bool = False,
+    deadline: float | None = None,
 ) -> dict[Path, FileReport]:
     """Sort one household's inbox across every return it feeds. Returns
     what was done, per return.
 
-    **Kept as it goes** (decision 189). Each drop's verdicts are saved as
-    soon as the next drop is taken, and whatever happens at the end, so a
-    pass killed half way keeps every reading it finished.
+    **Bounded, and kept as it goes** (decision 189). ``deadline`` is a
+    moment on ``ocr.awake_clock``: past it the sort takes no further file
+    - what it did is recorded as always, and the files it did not reach
+    wait where they are for the next pass (``unreached`` on the first own
+    return's report). And each drop's verdicts are saved as soon as the
+    next drop is taken, so a pass killed half way keeps every reading it
+    finished.
 
     **One inbox, several returns** (decision 125). A household with a
     business and its owner's 1040 has one folder to drop into, so the sort
@@ -3482,7 +3491,7 @@ def file_household_drops(
                 originals_dir.mkdir(parents=True, exist_ok=True)
                 for run in runs:
                     run.context.prepared_dir.mkdir(parents=True, exist_ok=True)
-            _sort_all(drops, strays, originals_dir, stamp, runs, first)
+            _sort_all(drops, strays, originals_dir, stamp, runs, first, deadline=deadline)
         # What was taken out of emails and zips and no row names (decision
         # 143) - after the sort, so what this pass took out is named.
         first.report.attention.extend(_unaccounted_in_opened(first, runs))
@@ -3813,6 +3822,8 @@ def _sort_all(
     stamp: str,
     runs: list[_ReturnRun],
     first: _ReturnRun,
+    *,
+    deadline: float | None = None,
 ) -> None:
     """Decide and record every drop and every stray, one at a time, across
     the household's returns.
@@ -3820,7 +3831,10 @@ def _sort_all(
     **Each verdict is kept the moment the next file is taken** (decision
     189): the returns' caches are saved before every file - one small
     transaction, and none when nothing changed - so a pass killed mid-sort
-    reads again only the file it was killed on.
+    reads again only the file it was killed on. **And the household's time
+    is checked before every file**: past ``deadline`` (``ocr.awake_clock``)
+    nothing more is taken, and what was not reached stays where it is -
+    in the inbox or the year's folder, unrecorded - for the next pass.
 
     Each file is handled on its own: a file the sync client still holds
     open is left in place for the next run, and one that fails *after* it
@@ -3844,10 +3858,15 @@ def _sort_all(
     inbox = inbox_of(first.engagement_dir)
     away = _originals_away(runs)
     pending = [(d, False) for d in drops] + [(p, True) for p in strays]
-    for drop, already_filed in pending:
+    for taken, (drop, already_filed) in enumerate(pending):
         if not dry_run:
             for run in runs:
                 run.cache.save()          # the file before this one's verdicts
+        if deadline is not None and ocr.awake_clock() >= deadline:
+            first.report.unreached = len(pending) - taken
+            log.warning("The household's time ran out; %d file(s) wait for the next pass",
+                        len(pending) - taken)
+            break
         # A file the sync client has not downloaded is not a document yet.
         if is_cloud_placeholder(drop):
             first.report.waiting.append(drop)

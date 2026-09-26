@@ -80,6 +80,7 @@ settings.json
 tracker.db
 tracker.db-wal
 tracker.db-shm
+pass-order.json
 # OCR's temporary page images during a pass (decision 137, L7). Retired by
 # decision 169 - the reader writes no temporary file - but a checkout that
 # ran a pass before it may still hold the folder, with a client's page in

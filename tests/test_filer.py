@@ -542,6 +542,28 @@ def test_each_drops_verdicts_are_kept_before_the_next_drop_is_read(engagement, m
     assert seen[0] == 0 and seen[1] >= 1
 
 
+def test_a_sort_past_its_deadline_takes_no_file_and_leaves_each_where_it_was(engagement):
+    """Decision 189: the household's time is checked before each file.
+    Past it the sort takes nothing: every drop stays in the inbox,
+    unrecorded, and the first own return's report says how many."""
+    from tracker import ocr
+    from tracker.filer import file_household_drops
+    from tracker.locking import engagement_lock
+
+    drop(engagement, "a.pdf", "Form W-2 Wage and Tax Statement 2025")
+    drop(engagement, "b.pdf", "Form 1099-INT Interest Income 2025")
+    with engagement_lock(engagement):
+        reports = file_household_drops(inbox_of(engagement), originals_of(engagement),
+                                       own=[engagement], today=DAY1,
+                                       deadline=ocr.awake_clock() - 1)
+    report = reports[engagement]
+    assert report.unreached == 2 and report.handled == 0
+    assert (inbox_of(engagement) / "a.pdf").is_file() and (inbox_of(engagement) / "b.pdf").is_file()
+    assert read_index(engagement) == []
+
+    assert sort(engagement, today=DAY1).handled == 2, "the next pass takes them"
+
+
 def test_a_retired_cache_file_is_removed_by_the_next_real_pass_and_never_read(engagement, monkeypatch):
     """Decision 107: nothing is read from the old file. A well-formed cache
     of the last layout, whose memo and verdict would have spared the scan

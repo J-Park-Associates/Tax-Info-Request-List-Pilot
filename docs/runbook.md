@@ -374,6 +374,33 @@ killed on. A file the killed pass had already moved into the client's
 folder for the year shows up on the next pass as a file with no row, and
 is filed again from its kept verdict — nothing to do.
 
+**No client holds up the others** (decision 189). Each household gets
+`tracker.runner.HOUSEHOLD_BUDGET_SECONDS` (fifteen minutes) of a pass,
+counted only while the machine is awake and checked between files, so one
+can run at most about 25 minutes. A household out of time stops taking
+files, records what it did, drafts nothing this pass and says on every
+return *this household's time for this pass ran out after N file(s); the
+rest wait for the next pass* — nothing to do; the next pass carries on,
+and drafts the week's letter if it is owed. **Run now** (Sort & Scan) has
+the same fifteen minutes, so it finishes inside the app's thirty-minute
+limit and says the same sentence rather than failing. Households are
+taken **least recently completed first**, not in folder order, so the
+one that ran out of time, or was stopped, does not go first and stop the
+same clients every pass: a household the last pass was stopped in goes
+last. The order is kept in `tracker.runner.PASS_ORDER_FILENAME`
+(`pass-order.json`) beside the database; it is a hint and safe to delete
+— the next pass goes in folder order and starts counting again. A
+household skipped because another run held its lock is tried once more
+at the end of the same pass.
+
+**Task Scheduler's Last Run Result.** `0x0` is a pass that served every
+household; `0x1` is a pass in which a return failed (the page's Problems
+list says which). **`0x3`** (`tracker.runner.NOT_SERVED_TWICE_EXIT_CODE`)
+means a household has not been served for two passes running or more —
+it ran out of time, a lock was held, there was no room, or it failed. Open
+the page: its Problems list names the household and why (*… has not been
+served for N passes running (held lock)*), and that is the thing to fix.
+
 ### If the clients root moves
 
 A Shared Drive remounted at another letter, a parent folder renamed, the
@@ -730,6 +757,15 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    A scheduled run that ends red with *the scheduled job still names an
    old clients root* is the job installed before this version: open the
    app and press *Install Schedule* once.
+
+   **Every logged pass says it started** (decision 189): the run log has
+   a `[time] pass started` line before each pass's summary. When the next
+   pass finds a *started* line with no summary after it, it says *the
+   pass that started at … did not finish (it was stopped or the machine
+   went off); this pass picks up where it left off* in the log and on the
+   page. Usually nothing to do: the pass kept every reading it finished.
+   If it says so every morning, the machine is going to sleep or off
+   during the schedule — look at its power settings.
 
    **The page is always this morning's** (decision 189). Whatever went
    wrong in the pass, the page and the run log are each still written, and
@@ -1199,7 +1235,8 @@ machine signed into the same Drive account has all of it already.
 
 **What was only on that machine:** the settings file beside the app
 (`tracker.settings.SETTINGS_FILENAME`), the database beside it
-(`tracker.store.STORE_FILENAME`), the scheduled task, the app folder
+(`tracker.store.STORE_FILENAME`) and the pass-order hint beside it
+(`tracker.runner.PASS_ORDER_FILENAME`), the scheduled task, the app folder
 itself, and the graphics card pack if that machine had one (step 5). **The database
 is not carried over** — the new machine builds its own from the ledgers in
 the engagement folders on its first pass — **but if the old machine still
