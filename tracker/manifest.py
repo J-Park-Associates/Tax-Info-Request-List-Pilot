@@ -2,7 +2,7 @@
 writing to the record (component 1, docs/ROADMAP.md).
 
 **The manifest is the record's request list** (decision 104). It is the
-eleven columns an accountant edits (:data:`COLUMNS`, whose headers are
+columns an accountant edits (:data:`COLUMNS`, whose headers are
 :data:`HEADERS`) and the engagement's own details
 (:class:`tracker.records.EngagementInfo`), and it lives in exactly one
 place: the engagement's record - the journal beside the client's files
@@ -405,7 +405,7 @@ NO_LIST_HEAD = "the editor did not say which list it was opened on; close it and
 class RequestItem:
     """One request: the person's rule, and what the record says about it.
 
-    ``records.RULE_FIELDS`` names the person's half - the twelve columns
+    ``records.RULE_FIELDS`` names the person's half - the columns
     (:data:`COLUMNS`) plus ``row``, the request's 1-based position in the
     list - and that half is what a ``rules_changed`` event and the
     store's ``requests`` table carry. The four status fields are the

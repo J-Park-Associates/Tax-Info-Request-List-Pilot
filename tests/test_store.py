@@ -201,7 +201,7 @@ def test_a_store_at_a_version_this_code_does_not_know_is_refused_by_name(tmp_pat
 def test_a_version_nine_store_is_refused_and_rebuilt(tmp_path):
     """Decision 107 added the verdict cache's two tables; a file from before
     it has no ``verdicts`` table, and is refused by the same sentence a
-    version-1 file was - delete it and rebuild, nothing is lost.
+    version-1 file was - move it aside and rebuild.
 
     And so is a file at the version before this one, whatever that is
     today: decision 132 changed the fold rather than a column - a
@@ -2063,7 +2063,9 @@ def test_a_journal_rewritten_to_the_same_length_is_refused_by_sync_and_by_record
     for reading in (store.sync, store.catch_up, store.follow_the_journal):
         with pytest.raises(store.StoreError, match=re.escape(sentence)) as refused:
             reading(conn, root, by_hand)
-        assert "Nothing was applied. Run the store check, then rebuild." in str(refused.value)
+        assert ("Nothing was applied. Copy the store aside, into its own folder under a new name "
+                "with today's date (never to the desktop, a USB drive, an email or a chat), and keep "
+                "any conflict copy of the record before you rebuild") in str(refused.value)
     with engagement_lock(by_hand), pytest.raises(store.StoreError, match=re.escape(sentence)):
         store.record(conn, by_hand, ledger.new(
             ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(decision="Filed", identifier="A01")))

@@ -378,7 +378,7 @@ def test_the_stylesheet_carries_no_stage_colour():
 
 def test_the_renderer_types_no_vocabulary_of_its_own():
     """Every word Python owns reaches the page through the API's vocabulary:
-    the statuses, the overrides, the decisions, the defaults, the ten
+    the statuses, the overrides, the decisions, the defaults, the
     headers of the request list, the yes/no words, the one-character
     values, the year bounds and the editor's floors - none is typed in the
     renderer, so the app cannot disagree with the tracker about a word."""
@@ -649,8 +649,8 @@ def test_the_readme_engagement_details_table_matches_the_fields():
 
 
 def test_the_roadmap_schema_table_lists_exactly_the_manifest_headers():
-    """The list is the twelve columns a person edits (decisions 103, 116 and
-    128), and the schema table is those twelve and no others: a row left in
+    """The list is the columns a person edits (``manifest.HEADERS``), and the
+    schema table is those and no others: a row left in
     it for a column the machine stopped writing is a column somebody will go
     looking for."""
     from tracker.manifest import HEADERS
@@ -1265,3 +1265,148 @@ def test_documents_quote_the_jobs_command_line_as_the_scheduler_writes_it():
     # And nothing still tells a person the scheduler takes a root.
     for rel in ("README.md", "docs/runbook.md"):
         assert "--root" not in read(rel), rel
+
+
+#: The ROADMAP's decision-log rows are history: they quote what a document
+#: used to say, and the log never deletes (decision 184 quotes the very
+#: sentences it strikes). The guards below read the log's prose around them.
+DECISION_ROW = re.compile(r"^\| \d+ \|.*$", re.MULTILINE)
+
+
+def read_as_prose(rel: str) -> str:
+    text = read(rel)
+    return DECISION_ROW.sub("", text) if rel == "docs/ROADMAP.md" else text
+
+
+NUMBER_WORDS = ("ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+                "seventeen", "eighteen", "nineteen", "twenty")
+
+
+def test_every_document_counts_the_request_lists_columns_as_the_api_does():
+    """Decision 184 (the UX council's D2): the request list has as many
+    columns as ``manifest.HEADERS`` has headers, and the API hands the app
+    that list. The documents had counted ten, eleven and twelve. Wherever a
+    document, the page, the code's prose or a test still spells a count of
+    the columns a person edits, it is that one. A detector of the known
+    phrasings, not of every way to say it."""
+    from tracker.manifest import HEADERS
+
+    count = len(HEADERS)
+    sources = ["README.md", "docs/runbook.md", "docs/storage.md", "docs/workflow.md",
+               "CLAUDE.md", "docs/repo-map.curated.json", "app/renderer/index.html",
+               "app/renderer/app.js", "docs/ROADMAP.md",
+               *(str(p.relative_to(REPO)) for p in sorted((REPO / "tracker").glob("*.py"))),
+               *(str(p.relative_to(REPO)) for p in sorted((REPO / "tests").glob("*.py")))]
+    phrasings = (
+        r"\b(\w+)\s+(?:accountant\s+)?columns\s+(?:you\s+edit|an\s+accountant\s+edits|a\s+person\s+edits)",
+        r"\b(\w+)\s+accountant\s+columns",
+        r"person's\s+(\w+)\s+columns",
+        r"the\s+(\w+)\s+columns\s+\(:data:`COLUMNS`\)",
+        r"the\s+(\w+)\s+headers\s+of\s+the\s+request\s+list",
+        r"\bshows\s+(?://\s*)?\w+\s+of\s+the\s+(\w+)",
+    )
+    counted = 0
+    for rel in sources:
+        text = read_as_prose(rel)
+        for phrasing in phrasings:
+            for found in re.finditer(phrasing, text, re.IGNORECASE):
+                word = found.group(1).lower()
+                if word.isdigit():
+                    assert int(word) == count, (rel, found.group(0))
+                elif word in NUMBER_WORDS:
+                    assert NUMBER_WORDS.index(word) + 10 == count, (rel, found.group(0))
+                else:
+                    continue
+                counted += 1
+    assert counted, "no document counts the columns any more; the guard reads nothing"
+
+
+#: Sentences that sent a careful person to do the dangerous thing (decision
+#: 184): open what the tracker refused on the machine signed in to every
+#: client's folder, publish a file of unknown origin to a household, or
+#: rebuild a refused record as if nothing could be lost.
+STRUCK = ("open it yourself", "open it on this machine", "on this machine, and drop",
+          "drop any document you find into the client's folder",
+          "drop the documents in the client's folder",
+          "drop the documents you find in the client's folder",
+          "drop a copy in the client's folder", "drop it in the client's folder",
+          "the record itself is the truth", "nothing is lost either way",
+          "and run `rebuild` — nothing is lost")
+
+
+def test_no_document_sends_a_person_to_open_a_refused_file_or_publish_a_stray():
+    """Decision 184: each struck sentence stays struck, and what replaced it
+    - the paragraph on opening a parked file, the section on a document the
+    tracker did not file - is said once. It catches these sentences' known
+    shapes coming back, not a new one worded differently."""
+    for rel in (*DOCUMENTS, "app/renderer/index.html", "app/renderer/app.js",
+                "tracker/reasons.py", "Build App.bat"):
+        text = read_as_prose(rel).lower()
+        for sentence in STRUCK:
+            assert sentence not in text, (rel, sentence)
+    runbook = read("docs/runbook.md")
+    assert runbook.count("**Before you open anything a pass parked.**") == 1
+    assert runbook.count("### A document the tracker did not file") == 1
+
+
+def test_the_one_machine_rule_is_stated_once_as_todays_rule():
+    """Decision 184: the one-machine rule is today's rule while the owner
+    decides how several machines may write, and it is stated in one place,
+    the runbook's section 1, so the day it changes one paragraph changes.
+    Nothing tells a person to carry the app to another machine, and nothing
+    but the decision log names a viewer mode that does not exist."""
+    runbook = read("docs/runbook.md")
+    marker = "**One machine per clients root"
+    assert runbook.count(marker) == 1
+    rule = runbook[runbook.index(marker):].split("\n\n", 1)[0]
+    assert "today" in rule and "while the owner decides" in rule, rule
+    for rel in (*DOCUMENTS, "Build App.bat"):
+        # The one sanctioned "USB" is the place a copy of the store never
+        # goes (the review of decision 184, S1).
+        text = " ".join(read_as_prose(rel).split()).replace("a USB drive, an email or a chat", "")
+        for sentence in ("in the app on another machine", "any Windows laptop", "USB",
+                         "Two machines must never both run it"):
+            assert sentence not in text, (rel, sentence)
+        if rel != "docs/ROADMAP.md":
+            assert "viewer mode" not in text.lower(), rel
+    readme = read("README.md")
+    pointer = readme[readme.index("One machine per clients root"):].split("\n\n", 1)[0]
+    assert "(docs/runbook.md)" in pointer, pointer
+
+
+def test_the_runbook_pastes_the_letter_where_the_copy_button_says():
+    """The UX council's D9: the runbook told a person to paste the letter
+    into a program the app's button does not name. The program is the last
+    word of ``reminder.COPY_LABEL``, so the button and the sentence change
+    together."""
+    from tracker.reminder import COPY_LABEL
+
+    program = COPY_LABEL.rsplit(" ", 1)[-1]
+    pasted = re.findall(r"paste it into (\w+)", read("docs/runbook.md"))
+    assert pasted, "the runbook no longer says where the letter is pasted"
+    assert set(pasted) == {program}, pasted
+
+
+def test_the_setup_card_names_no_retired_word():
+    """The UX council's D3: decision 104 retired the manifest as a file and
+    decision 125 the engagement-per-folder shape; the page that sets up a
+    clients root says neither."""
+    page = re.sub(r"<!--.*?-->", "", read("app/renderer/index.html"), flags=re.DOTALL)
+    assert "manifest" not in page.lower()
+
+
+def test_the_repository_carries_no_task_for_the_office_computer():
+    """Decision 184 (audit F-2): instructions to the office computer go
+    through the Handoffs folder, never a file in the repository that an
+    agent on that machine would obey. This catches the one known shape
+    coming back - a dated local-update file and a CLAUDE.md section
+    pointing at it. The real boundary is the separate Windows account the
+    agent there runs under, with no Drive sign-in (principle 11), not this
+    test."""
+    import subprocess
+
+    tracked = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True,
+                             text=True, check=True).stdout.splitlines()
+    assert not [rel for rel in tracked if rel.startswith("docs/local-update-")]
+    headings = [line for line in read("CLAUDE.md").splitlines() if line.startswith("#")]
+    assert not [line for line in headings if "office computer" in line.lower()], headings

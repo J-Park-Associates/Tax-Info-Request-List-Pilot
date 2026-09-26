@@ -1,8 +1,8 @@
 """Tier 1-2 file validation for the tracker (component 3).
 
 Pure, read-only functions over local paths — no dependency on any one sync
-provider (OneDrive and Google Drive for desktop both work). Cloud awareness
-is limited to :func:`is_cloud_placeholder`, a passive check of Windows
+provider (the placeholder check recognises both OneDrive's and Google Drive
+for desktop's). Cloud awareness is limited to :func:`is_cloud_placeholder`, a passive check of Windows
 file-attribute flags: on an ordinary desktop file it returns False and
 validation proceeds normally, so the whole layer is fully testable with
 File Explorer and Excel alone.

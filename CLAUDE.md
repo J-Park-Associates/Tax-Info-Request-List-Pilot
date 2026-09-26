@@ -221,10 +221,3 @@ jobs alone accounting for more than 65% of that despite already being gated.
   not a change to what the software does — it does not need a SPEC.
 
 Set by Jason on 2026-09-22.
-
-## One-time task for the office computer (2026-09-25)
-
-The next Claude Code session on the office computer does
-[`docs/local-update-2026-09-25.md`](docs/local-update-2026-09-25.md) first.
-It is two jobs, each in a fresh session; the second deletes that file and
-this section in one commit.

@@ -170,7 +170,8 @@ TOO_SMALL = Reason(
 TOO_LARGE = Reason(
     "too-large", "Too large to read ({size}). A person looks at it.",
     "Too large to read", firm_side=True,
-    firm_note="too large for the tracker to read; a person here opens it",
+    firm_note=("too large for the tracker to read; a person opens it, if at all, "
+               "on a machine with no Drive sign-in and no client folder"),
 )
 PENDING_SYNC = Reason(
     "pending-sync", "cloud-only placeholder; waiting for OneDrive/Google Drive to sync",
@@ -598,13 +599,16 @@ CONTAINER_EMPTY = Reason(
 #: in ``tracker.containers``, the limit in the sentence): too deep, too
 #: many attachments, too large once unpacked, or a member that unpacks far
 #: past its packed size. Ours: nothing about it is wrong for the client to
-#: fix, and a person opens it by hand.
+#: fix, and a person opens it, if at all, on a machine with no Drive
+#: sign-in and no client folder (decision 184).
 CONTAINER_LIMIT = Reason(
     "container-limit",
-    "not opened: it passes a limit for an email or a zip ({error}); a person opens it here",
+    "not opened: it passes a limit for an email or a zip ({error}); opened, if at all, "
+    "on a machine with no Drive sign-in and no client folder",
     "passes a limit for an email or a zip", firm_side=True,
-    firm_note="an email or zip was too large or too deep to open here; a person here opens "
-              "it by hand - never the client",
+    firm_note="an email or zip was too large or too deep to open here; a person opens it, "
+              "if at all, on a machine with no Drive sign-in and no client folder - never "
+              "the client",
 )
 #: A document that came out of an email or a zip, which a return in
 #: **another** household would have taken: an attachment's original is the
