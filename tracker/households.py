@@ -62,7 +62,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from tracker.layout import is_year_folder, return_dir_for
+from tracker.layout import household_name_of, household_of, is_year_folder, year_of
 from tracker.records import HouseholdInfo, household_to_json, link_problem
 
 
@@ -259,8 +259,10 @@ def resolve_feeds(
 
     **A feed is a return line** (decision 129): ``Feed(household,
     return_name)`` names the line a return keeps every year, and this is
-    where it becomes a return - the active, unsuperseded return at
-    ``<private tree>/<household>/<year>/<return name>``. So the rollover
+    where it becomes a return - the active, unsuperseded return that
+    discovery found at ``<private tree>/<household>/<year>/<return name>``,
+    matched by those folders' names and never by a path made from the
+    record's labels (decision 187). So the rollover
     carries nothing about feeds and a line the other household retired is
     said (:data:`FEED_UNRESOLVED`) rather than quietly feeding nothing.
 
@@ -280,19 +282,22 @@ def resolve_feeds(
     the record's own.
     """
     folder = Path(household_dir)
-    # The clients root, positionally: a household is
-    # ``<root>/<private tree>/<household>`` and nothing else is one.
-    root = folder.parents[1]
     every = list(getattr(registry, "engagements", []))
     wanted: list[object] = []
     said: list[str] = []
     for feed in feeds:
         if feed.household.casefold() == folder.name.casefold():
             continue
-        fed_dir = return_dir_for(root, feed.household, year, feed.return_name)
-        theirs = [one for one in every if one.household_path == fed_dir.parent.parent]
+        # **By position, never built from the labels** (decision 187): the
+        # feed's two names are compared with the folders discovery found,
+        # and a label that is not a folder name matches nothing - it is
+        # never joined onto the root to make a path of its own.
+        theirs = [one for one in every
+                  if household_of(one.path).parent == folder.parent
+                  and household_name_of(one.path).casefold() == feed.household.casefold()]
         found = next((one for one in theirs
-                      if one.active and one.tax_year == year and one.path == fed_dir), None)
+                      if one.active and one.tax_year == year and year_of(one.path) == year
+                      and Path(one.path).name.casefold() == feed.return_name.casefold()), None)
         if found is None or len(open_years(theirs)) != 1:
             said.append(FEED_UNRESOLVED.format(household=feed.household,
                                                return_name=feed.return_name, year=year))

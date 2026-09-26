@@ -53,7 +53,7 @@ import sys
 from dataclasses import asdict, replace
 from pathlib import Path
 
-from tracker import STANDING_RULES, content_check, ledger, names, ocr, reminder, review, store
+from tracker import STANDING_RULES, content_check, ledger, names, ocr, records, reminder, review, store
 from tracker.filer import (
     DUPLICATE,
     FILE_MOVED,
@@ -1051,6 +1051,10 @@ def _vocab() -> dict:
             "date_fields": list(DATE_FIELDS),
             "yes": YES, "no": NO, "any_extension": ANY_EXTENSION, "no_date_check": NO_DATE_CHECK,
             "minimums": {"expected_count": MIN_EXPECTED_COUNT, "min_size_kb": MIN_SIZE_KB_FLOOR},
+            # And where they stop: the record's own bounds (decision 187),
+            # so the page never offers a number the store's gate refuses.
+            "maximums": {"expected_count": records.MAX_EXPECTED_COUNT,
+                         "min_size_kb": records.MAX_SIZE_KB},
             # The folded group the editor keeps the set-aside rows in,
             # headed as the Status Report heads its own (decision 116).
             "set_aside_heading": NOT_APPLICABLE_SECTION,
@@ -1129,12 +1133,13 @@ def _info_from_spec(spec: dict, *, carry: EngagementInfo | None = None,
         # read by one rule and a third would be read by it too.
         typed = str(spec.get(key, "") or "").strip()
         if typed:
-            try:
-                return dt.date.fromisoformat(typed)
-            except ValueError:
+            # The record's own date rule (decision 187): a real calendar date
+            # in the years the store's gate admits, never one it refuses.
+            if records.date_problem(typed):
                 raise ManifestError(
                     f"{ENGAGEMENT_LABELS[key]} must be {ISO_DATE_HINT}, got {typed!r}"
-                ) from None
+                )
+            return dt.date.fromisoformat(typed)
         if blank_clears and key in spec:
             return None
         return getattr(base, key)

@@ -33,11 +33,20 @@ from tracker.manifest import (
     load_manifest,
 )
 from tracker.names import propose_spellings
-from tracker.records import ENGAGEMENT_LABELS
+from tracker.records import (
+    COUNT_BOUNDS,
+    ENGAGEMENT_LABELS,
+    MAX_EXPECTED_COUNT,
+    MAX_SIZE_KB,
+    MIN_EXPECTED_COUNT,
+)
 from tracker.runner import DRAFT_WEEKDAY, LOG_FILENAME, STATUS_PAGE_FILENAME, WEEKDAY_NAMES
 from tracker.scaffold import PREPARED_DIR_NAME, REVIEW_DIR_NAME
 from tracker.scheduling import SCHEDULE_XML_ENCODING, TASK_NAME
 from tracker.templates import BASE_YEAR, default_tax_year
+
+#: What a count outside the record's bounds is refused with (decision 187).
+COUNTS = COUNT_BOUNDS.format(minimum=MIN_EXPECTED_COUNT, maximum=MAX_EXPECTED_COUNT)
 
 #: The one household every spec below names unless the claim is about
 #: households. A client folder is a household since decision 125, and a
@@ -341,7 +350,7 @@ def test_create_refuses_a_non_numeric_count_with_a_sentence(capsys, demo_root):
     ]}
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 1
-    assert payload["error"] == f"A01: {COL_EXPECTED_COUNT} must be a whole number, got 'two'"
+    assert payload["error"] == f"A01: {COL_EXPECTED_COUNT} {COUNTS}"
 
 
 def test_create_refuses_a_duplicate_identifier(capsys, demo_root):
@@ -1295,7 +1304,7 @@ def test_an_invalid_row_is_refused_by_the_api_with_the_row_and_column_named_and_
     code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
                         stdin={"items": bad, "engagement": {}})
     assert code == 1
-    assert payload["error"] == f"Row 2: {COL_EXPECTED_COUNT} must be a whole number, got 'two'"
+    assert payload["error"] == f"Row 2: {COL_EXPECTED_COUNT} {COUNTS}"
     assert ledger.path_for(engagement).read_bytes() == before
     assert payload_of_state(capsys, engagement)["rules"] == rows
 
@@ -1407,7 +1416,7 @@ def test_a_count_typed_as_infinity_is_refused_with_the_row_and_column_named(caps
         spec = {"household": HOUSEHOLD, "return_name": f"Bad {typed}", "items": [
             {"identifier": "A01", "document": "W-2", "expected_count": typed}]}
         code, payload = run(capsys, "create", stdin=spec)
-        assert code == 1 and f"{COL_EXPECTED_COUNT} must be a whole number, got" in payload["error"], payload
+        assert code == 1 and payload["error"] == f"A01: {COL_EXPECTED_COUNT} {COUNTS}", payload
 
 
 def test_a_name_whose_folder_was_deleted_by_hand_can_be_created_again(capsys, demo_root):
@@ -1879,6 +1888,9 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
     # Which details take a date box is the record's answer, not the page's.
     assert editor["date_fields"] == list(DATE_FIELDS)
     assert editor["minimums"] == {"expected_count": 1, "min_size_kb": 0}
+    # And the maximums, the record's own (decision 187): the page's number
+    # boxes stop where the store's gate would refuse.
+    assert editor["maximums"] == {"expected_count": MAX_EXPECTED_COUNT, "min_size_kb": MAX_SIZE_KB}
     assert editor["any_extension"] == "*" and editor["no_date_check"] == "*"
     assert editor["set_aside_heading"] == view.NOT_APPLICABLE_SECTION
     assert vocab["unscanned_key"] == api._slug(vocab["unscanned_label"])

@@ -67,7 +67,9 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import math
 import re
+import re._parser as _re_parser
 from dataclasses import MISSING, asdict, dataclass, field, fields
 from pathlib import Path
 
@@ -1283,3 +1285,480 @@ def status_from_json(raw: dict) -> StatusUpdate:
     values["received_date"] = dt.date.fromisoformat(raw["received_date"]) if raw.get("received_date") else None
     values["file_count"] = int(values["file_count"] or 0)
     return StatusUpdate(status=raw["status"], **values)
+
+
+# ------------------------------------------------------------ the value rule ----
+#
+# Decision 187: the record is untrusted input. A journal is a synced file, so
+# a line may have been written by another machine, restored from a copy or
+# typed by hand - and every value in it is obeyed by something: a count is
+# stored in a column SQLite bounds, a date is parsed by the readers, a Date
+# Pattern is run over a client's pages. So each value is held here to the
+# bounds the editor holds a person to, worded once: the editor
+# (``tracker.manifest``) refuses a value it would never write with these, and
+# the store's gate (``tracker.store._refuse_a_malformed_line``) refuses a line
+# carrying one before a table is touched. Each check returns a fixed phrase
+# naming the class of problem and never the value, because the value is
+# whatever the line said, and ``""`` for a value that is fine.
+
+#: The years a tax year can be. ``tracker.manifest.YEAR_PATTERN`` is built from
+#: them, the app's year inputs are bounded by them, and every path that takes a
+#: year from a person checks it against them (``manifest.check_tax_year``).
+YEAR_MIN = 1900
+YEAR_MAX = 2099
+#: What a year outside those bounds is told, wherever it was typed.
+YEAR_OUT_OF_RANGE = "Tax year must be between {minimum} and {maximum}, got {year}"
+#: The years a date or a stamp in the record may fall in: a tax year's, and
+#: the year after the last one, where its deadlines fall.
+DATE_YEAR_MIN = YEAR_MIN
+DATE_YEAR_MAX = YEAR_MAX + 1
+
+#: Characters Windows forbids in file and folder names, plus control
+#: characters - the one list, for identifiers and for sanitising names.
+_ILLEGAL_PUNCTUATION = '\\/:*?"<>|'
+WINDOWS_ILLEGAL_CHARS = re.compile("[" + re.escape(_ILLEGAL_PUNCTUATION) + r"\x00-\x1f]")
+WINDOWS_ILLEGAL_CHARS_TEXT = " ".join(_ILLEGAL_PUNCTUATION)
+#: The names Windows keeps for devices (decision 137, L6). A folder or a
+#: file named one of them - with or without an extension, in any case - is
+#: not a folder at all: ``NUL`` is the null device, ``COM1`` a serial port,
+#: and a working copy, a household or a return named one could never
+#: hold a document.
+WINDOWS_RESERVED_NAMES: frozenset[str] = frozenset(
+    {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"}
+    | {f"COM{n}" for n in range(1, 10)}
+    | {f"LPT{n}" for n in range(1, 10)}
+    # The superscript digits Windows reserves too (the review's F6).
+    | {f"{port}{digit}" for port in ("COM", "LPT") for digit in "¹²³"}
+)
+WINDOWS_RESERVED_NAMES_TEXT = ("CON, PRN, AUX, NUL, CONIN$, CONOUT$, COM1-COM9, LPT1-LPT9 "
+                               "and their superscript-1, 2 and 3 forms")
+
+
+def is_reserved_name(name: str) -> bool:
+    """Whether Windows reads ``name`` as a device rather than a file or a
+    folder: a reserved name, alone or before an extension (``nul.txt``),
+    whatever its case and any spaces before the dot."""
+    stem = str(name).split(".", 1)[0].rstrip(" ")
+    return stem.upper() in WINDOWS_RESERVED_NAMES
+
+
+def identifier_problem(identifier: str) -> str:
+    """Why ``identifier`` cannot begin a working copy's name, or "" if it can.
+
+    Shared by ``manifest.validated``, the desktop app's create path and the
+    store's gate, so a bad identifier is refused with the same sentence
+    wherever it is typed or read.
+    """
+    if WINDOWS_ILLEGAL_CHARS.search(identifier):
+        return f"may not contain any of {WINDOWS_ILLEGAL_CHARS_TEXT} (it begins a file name)"
+    if identifier != identifier.rstrip(". "):
+        return "may not end with a dot or a space (Windows drops them from file names)"
+    if is_reserved_name(identifier):
+        return (f"may not be a name Windows keeps for a device ({WINDOWS_RESERVED_NAMES_TEXT}); "
+                f"it begins a file name")
+    return ""
+
+
+#: The most characters a short title may have (decision 144). The owner's
+#: style: ``A01 - W-2\A01 - W-2 - TY2025.pdf``, a short title of about
+#: twenty characters, so a real household's name fits under the real root.
+SHORT_TITLE_MAX = 20
+
+
+def short_title_problem(short_title: str) -> str:
+    """Why ``short_title`` cannot name a working copy, or "" if it can.
+
+    Refused rather than sanitised, as an identifier is: the name a person
+    types is the name every working copy carries, or they are told why not.
+    """
+    if len(short_title) > SHORT_TITLE_MAX:
+        return f"may have at most {SHORT_TITLE_MAX} characters, got {len(short_title)}"
+    if WINDOWS_ILLEGAL_CHARS.search(short_title):
+        return f"may not contain any of {WINDOWS_ILLEGAL_CHARS_TEXT} (it is part of a file name)"
+    if short_title != short_title.rstrip(". "):
+        return "may not end with a dot or a space (Windows drops them from file names)"
+    if short_title and is_reserved_name(short_title):
+        return (f"may not be a name Windows keeps for a device ({WINDOWS_RESERVED_NAMES_TEXT}); "
+                f"it is part of a file name")
+    return ""
+
+
+class Override:
+    """Accountant judgment values that beat the automated rules.
+
+    ``ACCEPTED`` treats the row as Received despite the checks, and carries
+    a reason (``manifest.OVERRIDE_REASONS``, decision 116). ``NOT_APPLICABLE``
+    says the request does not apply this year - shown to people with the
+    row's own year (``manifest.override_label``) - and takes the row out of
+    every count, every reminder and the active table.
+
+    ``RETIRED`` is the retired-value rule of decision 104 applied to a
+    value: the spelling journals written before decision 116 hold for the
+    second value, folded to its successor on every read by
+    ``manifest._override`` and never written again.
+    """
+
+    ACCEPTED = "Accepted"
+    NOT_APPLICABLE = "Not Applicable"
+
+    ALL = (ACCEPTED, NOT_APPLICABLE)
+    RETIRED: dict[str, str] = {"Waived": NOT_APPLICABLE}
+
+
+#: The bounds on a request's two numbers, and where the editor's number
+#: inputs take theirs from - through the API's vocabulary, never typed in
+#: the page. The maximums are decision 187's: a count no statement reaches
+#: and a size past any document, so no value a person typed is refused, and
+#: SQLite's own limit (past 2**63) is never met.
+MIN_EXPECTED_COUNT = 1
+MAX_EXPECTED_COUNT = 9_999
+MIN_SIZE_KB_FLOOR = 0
+MAX_SIZE_KB = 1_048_576
+#: The other numbers the record holds: how many files a request has, the
+#: stage of a draft, a request's position in its list.
+MAX_FILE_COUNT = 9_999
+MAX_STAGE = 9
+MAX_ROW = 9_999
+#: An original's size as its row records it: any file the inbox can hold.
+MAX_ROW_SIZE_KB = 1_073_741_824
+#: One line of text (a name, a label, a location) and long text (a reason,
+#: a note, the evidence).
+TEXT_MAX = 1_000
+LONG_TEXT_MAX = 20_000
+#: A Date Pattern's shape (decision 187). It is run over every line of a
+#: client's page, so a pattern that backtracks without end would hold a pass
+#: on one document; the shape rule below admits every pattern the Period
+#: derives and every one a person plausibly types, and nothing that can run
+#: away. Measured on a 500-character line: three open-ended repetitions take
+#: 9.6 s, one open-ended and two bounded to 20 take 0.22 s.
+DATE_PATTERN_MAX = 200
+DATE_PATTERN_REPEATS_MAX = 3
+DATE_PATTERN_OPEN_MAX = 1
+DATE_PATTERN_BOUND_MAX = 20
+
+#: The fixed phrases. Each names the class of problem; none names the value.
+COUNT_BOUNDS = "must be a whole number from {minimum} to {maximum}"
+NUMBER_BOUNDS = "must be a number from {minimum} to {maximum}"
+DATE_BOUNDS = f"must be a date written YYYY-MM-DD, from {DATE_YEAR_MIN} to {DATE_YEAR_MAX}"
+STAMP_BOUNDS = f"must be a time written YYYY-MM-DDTHH:MM:SSZ, from {DATE_YEAR_MIN} to {DATE_YEAR_MAX}"
+FLAG_BOUNDS = "must be true or false"
+DIGEST_BOUNDS = "must be blank or 64 lowercase hexadecimal characters"
+TEXT_BOUNDS = f"must be one line of text of at most {TEXT_MAX} characters, with no control character"
+LONG_TEXT_BOUNDS = f"must be text of at most {LONG_TEXT_MAX} characters, with no NUL"
+TEXT_LIST_BOUNDS = "must be a list of text"
+OVERRIDE_BOUNDS = f"must be blank, {Override.ACCEPTED} or {Override.NOT_APPLICABLE}"
+BLANK_BOUNDS = "may not be blank"
+DATE_PATTERN_TOO_LONG = f"may have at most {DATE_PATTERN_MAX} characters"
+DATE_PATTERN_NOT_A_REGEX = "is not a valid regex"
+DATE_PATTERN_NESTED = "repeats something that itself repeats"
+DATE_PATTERN_ALTERNATES = "repeats an alternation (a | inside a repetition)"
+DATE_PATTERN_REFERS_BACK = "repeats a back-reference"
+DATE_PATTERN_TOO_MANY = f"has more than {DATE_PATTERN_REPEATS_MAX} repetitions"
+DATE_PATTERN_TOO_OPEN = f"has more than {DATE_PATTERN_OPEN_MAX} open-ended repetition (+, * or {{n,}})"
+DATE_PATTERN_TOO_WIDE = f"repeats more than {DATE_PATTERN_BOUND_MAX} times in a bounded repetition"
+
+_HEX_DIGEST = re.compile(r"[0-9a-f]{64}")
+_ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+_ONE_LINE_REFUSED = re.compile(r"[\x00-\x1f\x7f  ]")
+
+
+def _is_number(value: object) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def count_problem(value: object, minimum: int, maximum: int) -> str:
+    """:data:`COUNT_BOUNDS` for anything but a whole number from ``minimum``
+    to ``maximum`` - a number, never its text, never a boolean."""
+    if (not _is_number(value) or not math.isfinite(value) or value != int(value)
+            or not minimum <= value <= maximum):
+        return COUNT_BOUNDS.format(minimum=minimum, maximum=maximum)
+    return ""
+
+
+def number_problem(value: object, minimum: float, maximum: float) -> str:
+    """:data:`NUMBER_BOUNDS` for anything but a finite number in the bounds."""
+    if not _is_number(value) or not math.isfinite(value) or not minimum <= value <= maximum:
+        return NUMBER_BOUNDS.format(minimum=minimum, maximum=maximum)
+    return ""
+
+
+def date_problem(value: object) -> str:
+    """:data:`DATE_BOUNDS` for anything but a real calendar date in the
+    record's years, as a date or as its ISO text. Blank is the caller's to
+    allow."""
+    if isinstance(value, dt.datetime):
+        return DATE_BOUNDS
+    if isinstance(value, dt.date):
+        day = value
+    elif isinstance(value, str) and _ISO_DATE.fullmatch(value):
+        try:
+            day = dt.date.fromisoformat(value)
+        except ValueError:
+            return DATE_BOUNDS
+    else:
+        return DATE_BOUNDS
+    return "" if DATE_YEAR_MIN <= day.year <= DATE_YEAR_MAX else DATE_BOUNDS
+
+
+def stamp_problem(value: object) -> str:
+    """:data:`STAMP_BOUNDS` for anything but a time the readers can read, in
+    the record's years. ``ledger.stamp`` writes ``YYYY-MM-DDTHH:MM:SSZ``; any
+    ISO time is read the same way by ``ledger.day_of``, so a line an earlier
+    version stamped another ISO way is not refused for it."""
+    if not isinstance(value, str) or len(value) > 40:
+        return STAMP_BOUNDS
+    try:
+        moment = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return STAMP_BOUNDS
+    return "" if DATE_YEAR_MIN <= moment.year <= DATE_YEAR_MAX else STAMP_BOUNDS
+
+
+def received_problem(value: object) -> str:
+    """:data:`DATE_BOUNDS` for an index row's Received that is neither a
+    date nor an ISO time. The pass writes the day; a row seeded from the
+    index workbook (``ledger.IMPORTED``, decisions 87 and 102) may carry the
+    cell's time after it, and a row already moved must not be refused for
+    that."""
+    if not date_problem(value):
+        return ""
+    if isinstance(value, str) and _ISO_DATE.match(value) and not stamp_problem(value):
+        return ""
+    return DATE_BOUNDS
+
+
+def flag_problem(value: object) -> str:
+    """:data:`FLAG_BOUNDS` for anything but ``true``, ``false``, 0 or 1. Never
+    ``"no"``: the word is truthy, so a reader that asked ``bool()`` would
+    read a hand-typed no as yes."""
+    if isinstance(value, bool) or (type(value) is int and value in (0, 1)):
+        return ""
+    return FLAG_BOUNDS
+
+
+def digest_problem(value: object) -> str:
+    """:data:`DIGEST_BOUNDS` for anything but blank or a SHA-256 in hex."""
+    if value == "" or (isinstance(value, str) and _HEX_DIGEST.fullmatch(value)):
+        return ""
+    return DIGEST_BOUNDS
+
+
+def text_problem(value: object, *, long: bool = False) -> str:
+    """Why ``value`` is not text the record may hold, or ``""``.
+
+    One line (a name, a label, a location): no line break or control
+    character, at most :data:`TEXT_MAX` characters. ``long`` (a reason, a
+    note, the evidence): no NUL, at most :data:`LONG_TEXT_MAX`."""
+    if long:
+        if not isinstance(value, str) or len(value) > LONG_TEXT_MAX or "\x00" in value:
+            return LONG_TEXT_BOUNDS
+        return ""
+    if not isinstance(value, str) or len(value) > TEXT_MAX or _ONE_LINE_REFUSED.search(value):
+        return TEXT_BOUNDS
+    return ""
+
+
+def text_list_problem(value: object) -> str:
+    """:data:`TEXT_LIST_BOUNDS` for anything but a list of one-line text."""
+    if not isinstance(value, (list, tuple)) or any(text_problem(one) for one in value):
+        return TEXT_LIST_BOUNDS
+    return ""
+
+
+_REPEATS = frozenset({_re_parser.MAX_REPEAT, _re_parser.MIN_REPEAT, _re_parser.POSSESSIVE_REPEAT})
+_REFERS_BACK = frozenset({_re_parser.GROUPREF, _re_parser.GROUPREF_EXISTS})
+
+
+def _walk(pattern: object):
+    """Every ``(op, argument)`` of a parsed pattern, at any depth."""
+    if isinstance(pattern, _re_parser.SubPattern):
+        for op, argument in pattern:
+            yield op, argument
+            yield from _walk(argument)
+    elif isinstance(pattern, (tuple, list)):
+        for one in pattern:
+            yield from _walk(one)
+
+
+def date_pattern_problem(pattern: object) -> str:
+    """Why a Date Pattern may not be run over a client's page, or ``""``.
+
+    It must be text of at most :data:`DATE_PATTERN_MAX` characters that
+    compiles, and pass a shape rule read off the standard library's own
+    parser (``re._parser``) - no second engine and no whitelist. Only a
+    repetition that can repeat more than once counts (``?`` does not):
+
+    - it may not contain another repetition, an alternation or a
+      back-reference, at any depth;
+    - a pattern has at most :data:`DATE_PATTERN_REPEATS_MAX` of them;
+    - at most :data:`DATE_PATTERN_OPEN_MAX` is open-ended (``+``, ``*``,
+      ``{n,}``);
+    - every bounded one repeats at most :data:`DATE_PATTERN_BOUND_MAX` times.
+
+    It applies to a derived pattern too: the flag that marks one derived is
+    the record's claim, and every pattern the Period derives passes.
+    """
+    if not isinstance(pattern, str):
+        return TEXT_BOUNDS
+    if len(pattern) > DATE_PATTERN_MAX:
+        return DATE_PATTERN_TOO_LONG
+    try:
+        re.compile(pattern)
+        parsed = _re_parser.parse(pattern)
+    except (re.error, RecursionError, OverflowError):
+        return DATE_PATTERN_NOT_A_REGEX
+    repeats = [argument for op, argument in _walk(parsed) if op in _REPEATS and argument[1] > 1]
+    for _low, _high, inside in repeats:
+        for op, argument in _walk(inside):
+            if op in _REPEATS and argument[1] > 1:
+                return DATE_PATTERN_NESTED
+            if op is _re_parser.BRANCH:
+                return DATE_PATTERN_ALTERNATES
+            if op in _REFERS_BACK:
+                return DATE_PATTERN_REFERS_BACK
+    if len(repeats) > DATE_PATTERN_REPEATS_MAX:
+        return DATE_PATTERN_TOO_MANY
+    if sum(high == _re_parser.MAXREPEAT for _low, high, _inside in repeats) > DATE_PATTERN_OPEN_MAX:
+        return DATE_PATTERN_TOO_OPEN
+    if any(high != _re_parser.MAXREPEAT and high > DATE_PATTERN_BOUND_MAX
+           for _low, high, _inside in repeats):
+        return DATE_PATTERN_TOO_WIDE
+    return ""
+
+
+def _field(name: str, problem: str) -> str:
+    return f"'{name}' {problem}" if problem else ""
+
+
+def _first(*problems: str) -> str:
+    return next((one for one in problems if one), "")
+
+
+#: A rule row's fields by the check each is held to: one-line text, long
+#: text, and the flags. The numbers, the word lists, the override and the
+#: Date Pattern have checks of their own below.
+_RULE_TEXT = ("document", "period", "override_reason")
+
+
+def rule_row_problem(row: dict) -> str:
+    """The first field of a stored rule row outside the value rule, as
+    ``"'<field>' <phrase>"``, or ``""``. A field the row does not carry is
+    left to the record's default and is not checked."""
+    def given(name: str) -> bool:
+        return name in row
+
+    checks = []
+    if given("identifier"):
+        value = row["identifier"]
+        checks.append(_field("identifier", text_problem(value)
+                             or (BLANK_BOUNDS if not value.strip() else identifier_problem(value.strip()))))
+    for name in _RULE_TEXT:
+        if given(name):
+            checks.append(_field(name, text_problem(row[name])))
+    if given("expected_count"):
+        checks.append(_field("expected_count",
+                             count_problem(row["expected_count"], MIN_EXPECTED_COUNT, MAX_EXPECTED_COUNT)))
+    if given("min_size_kb"):
+        checks.append(_field("min_size_kb", count_problem(row["min_size_kb"], MIN_SIZE_KB_FLOOR, MAX_SIZE_KB)))
+    if given("row"):
+        checks.append(_field("row", count_problem(row["row"], 0, MAX_ROW)))
+    for name in RULE_LIST_FIELDS:
+        if given(name) and row[name] is not None:
+            checks.append(_field(name, word_list_problem(row[name]) or text_list_problem(row[name])))
+    for name in sorted(RULE_FLAG_FIELDS):
+        if given(name):
+            checks.append(_field(name, flag_problem(row[name])))
+    if given("manual_override"):
+        value = row["manual_override"]
+        known = ("", *Override.ALL, *Override.RETIRED)
+        checks.append(_field("manual_override", "" if value in known else OVERRIDE_BOUNDS))
+    if given("short_title"):
+        value = row["short_title"]
+        checks.append(_field("short_title", text_problem(value) or short_title_problem(value)))
+    if given("date_pattern"):
+        value = row["date_pattern"]
+        checks.append(_field("date_pattern", text_problem(value) or
+                             (date_pattern_problem(value) if value else "")))
+    return _first(*checks)
+
+
+#: A return's details, by the check each is held to.
+_INFO_TEXT = ("client", "name", "sender", "firm", "rolled_from", "form", "household", "return_name")
+
+
+def info_problem(info: dict) -> str:
+    """The first field of a return's stored details outside the value rule,
+    or ``""``. Whether ``household`` and ``return_name`` are each one folder
+    name is the layout's to say (``layout.segment_problem``), asked by the
+    store beside this."""
+    checks = [_field(name, text_problem(info[name])) for name in _INFO_TEXT if name in info]
+    # A link is text here and nothing more: one that is not a web address is
+    # dropped with the reason where it is read (decision 176), not refused.
+    if "link" in info:
+        checks.append(_field("link", text_problem(info["link"])))
+    for name in DATE_FIELDS:
+        if info.get(name) not in (None, ""):
+            checks.append(_field(name, date_problem(info[name])))
+    for name in ("reminders", "active"):
+        if name in info:
+            checks.append(_field(name, flag_problem(info[name])))
+    year = info.get("tax_year")
+    if year not in (None, ""):
+        if isinstance(year, str) and year.isascii() and year.isdigit():
+            year = int(year)
+        checks.append(_field("tax_year", count_problem(year, YEAR_MIN, YEAR_MAX)))
+    return _first(*checks)
+
+
+def household_problem(household: dict) -> str:
+    """The first field of a household's stored details outside the value
+    rule, or ``""``. Whether its name and each feed's two names are each one
+    folder name is the layout's to say, asked by the store beside this."""
+    checks = [_field(name, text_problem(household[name])) for name in ("name", "contact")
+              if name in household]
+    if "link" in household:
+        checks.append(_field("link", text_problem(household["link"])))
+    members = household.get("members")
+    if members is not None:
+        checks.append(_field("members", text_problem(members) if isinstance(members, str)
+                             else text_list_problem(members)))
+    return _first(*checks)
+
+
+#: An index row's fields by the check each is held to. Where a location
+#: points is not a value: the store asks the layout (``place_problem``).
+_ENTRY_TEXT = ("original_name", "identifier", "prepared_location", "pbc_location", "decision",
+               "candidates", "container")
+_ENTRY_LONG_TEXT = ("reason", "evidence", "also_filed", "answers")
+
+
+def entry_problem(row: dict) -> str:
+    """The first value of a stored index row outside the value rule, or
+    ``""``. Values only: whether its locations are this return's places is
+    the store's to judge, through the layout."""
+    checks = []
+    if row.get("received") not in (None, ""):
+        checks.append(_field("received", received_problem(row["received"])))
+    if "size_kb" in row:
+        checks.append(_field("size_kb", number_problem(row["size_kb"], 0, MAX_ROW_SIZE_KB)))
+    if "digest" in row:
+        checks.append(_field("digest", digest_problem(row["digest"])))
+    checks += [_field(name, text_problem(row[name])) for name in _ENTRY_TEXT
+               if row.get(name) is not None]
+    checks += [_field(name, text_problem(row[name], long=True)) for name in _ENTRY_LONG_TEXT
+               if row.get(name) is not None]
+    return _first(*checks)
+
+
+def status_problem(status: dict) -> str:
+    """The first field of one identifier's stored status outside the value
+    rule, or ``""``."""
+    # Blank is a status: a scan writes it for a row it did not judge.
+    checks = [_field("status", text_problem(status.get("status")))]
+    if status.get("file_count") is not None:
+        checks.append(_field("file_count", count_problem(status["file_count"], 0, MAX_FILE_COUNT)))
+    if status.get("received_date") not in (None, ""):
+        checks.append(_field("received_date", date_problem(status["received_date"])))
+    if status.get("validation_notes") is not None:
+        checks.append(_field("validation_notes", text_problem(status["validation_notes"], long=True)))
+    return _first(*checks)

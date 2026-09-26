@@ -381,6 +381,35 @@ def place_problem(return_dir: Path | str, location: str, *, writes: bool) -> str
     return STEP_NOT_A_PLACE
 
 
+#: Why :func:`segment_problem` refuses a label as one folder name.
+SEGMENT_SEPARATOR = "separator"
+SEGMENT_DOT = "dot"
+SEGMENT_DRIVE = "drive"
+SEGMENT_CONTROL = "control"
+
+
+def segment_problem(name: str) -> str | None:
+    """Why ``name`` is not exactly one folder name, as a code - or ``None``
+    where it is (decision 187).
+
+    A household or return label a record line carries is joined onto a
+    path somewhere, so a label holding a separator, naming ``.`` or ``..``,
+    a drive, or a control character would be a path of its own. Blank is
+    the caller's to allow. Decision 188 widens this into the one name rule
+    (the Windows characters, invisible and look-alike characters).
+    """
+    text = str(name)
+    if "/" in text or "\\" in text:
+        return SEGMENT_SEPARATOR
+    if text.strip() in (os.curdir, os.pardir):
+        return SEGMENT_DOT
+    if ":" in text:
+        return SEGMENT_DRIVE
+    if any(ord(char) < 0x20 or ord(char) == 0x7F for char in text):
+        return SEGMENT_CONTROL
+    return None
+
+
 def deepest_path_length(return_dir: Path | str, subpaths: Iterable[str]) -> int:
     """The longest path the tracker would write under ``return_dir``, in
     characters, over ``subpaths``.

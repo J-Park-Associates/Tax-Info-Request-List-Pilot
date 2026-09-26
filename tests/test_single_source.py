@@ -590,12 +590,13 @@ def test_the_retired_override_word_survives_only_in_the_decision_logs_history():
                 name = getattr(node, "id", None) or getattr(node, "attr", None) or getattr(node, "name", None) \
                     or getattr(node, "arg", None)
                 assert retired.lower() not in (name or "").lower(), (path.name, name)
-    # The one literal is the fold's own key.
-    literals = [node.value for node in ast.walk(ast.parse(read("tracker/manifest.py")))
+    # The one literal is the fold's own key, where ``Override`` lives since
+    # decision 187 moved it to the record's value rule.
+    literals = [node.value for node in ast.walk(ast.parse(read("tracker/records.py")))
                 if isinstance(node, ast.Constant) and node.value == retired]
     assert literals == [retired]
     for path in (REPO / "tracker").glob("*.py"):
-        if path.name != "manifest.py":
+        if path.name != "records.py":
             assert retired not in path.read_text(encoding="utf-8"), path.name
     # The roadmap: the schema table and the component table say the new value; the
     # decision log's rows are history.

@@ -359,3 +359,32 @@ def test_a_household_cannot_feed_itself_and_a_duplicate_feed_is_refused(tmp_path
 
     assert _feeds_from_spec([{"household": "Park & Lee LLC", "return_name": "1120S - L"}],
                             household) == (Feed("Park & Lee LLC", "1120S - L"),)
+
+
+def test_a_feed_is_resolved_by_position_never_built_from_its_labels(tmp_path):
+    """Decision 187 (C-14): a feed's two names are compared with the folders
+    discovery found - household, year and return, by position - and never
+    joined onto the root to make a path. A label spelled in another case
+    names the same folder, as Windows would; a label that climbs or holds a
+    separator names no folder and is said, never followed."""
+    import tracker.households as households
+    from tracker.households import FEED_UNRESOLVED, resolve_feeds
+    from tracker.records import Feed
+    from tracker.registry import discover_engagements
+
+    make_engagement(tmp_path, ITEMS, household="Park Family",
+                    return_name="1040 - John Park", year=2025, scaffold=False)
+    llc = make_engagement(tmp_path, ITEMS, household="Park & Lee LLC",
+                          return_name="1120S - Park & Lee LLC", year=2025, scaffold=False)
+    household = private_household_dir(tmp_path, "Park Family")
+    registry = discover_engagements(tmp_path)
+    climbing = Feed("Park Family/../Park & Lee LLC", "1120S - Park & Lee LLC")
+    nested = Feed("Park & Lee LLC", "../2025/1120S - Park & Lee LLC")
+
+    found, said = resolve_feeds(household, [Feed("park & lee llc", "1120s - PARK & LEE LLC"),
+                                            climbing, nested], 2025, registry)
+
+    assert [one.path for one in found] == [llc]
+    assert said == [FEED_UNRESOLVED.format(household=one.household, return_name=one.return_name,
+                                           year=2025) for one in (climbing, nested)]
+    assert not hasattr(households, "return_dir_for")

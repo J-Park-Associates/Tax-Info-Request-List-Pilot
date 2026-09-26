@@ -215,12 +215,16 @@ def test_nothing_here_reaches_a_file_or_a_workbook():
     `re` only because as_pattern() turns a sentence's template into the
     pattern that reads it back (decision 109), and `json` only because the
     return's people come back as JSON text from the one column that holds
-    them (decision 128) - reading a value is not knowing where it lives."""
+    them (decision 128) - reading a value is not knowing where it lives.
+    `math` and `re._parser` are the value rule's (decision 187): a count is
+    finite, and a Date Pattern's shape is read off the standard library's
+    own parser rather than a second engine."""
     source = (Path(records.__file__)).read_text(encoding="utf-8")
     imported = {line.split()[1] for line in source.splitlines()
                 if line.startswith("import ") or line.startswith("from ")}
 
-    assert imported == {"__future__", "datetime", "dataclasses", "json", "pathlib", "re"}, imported
+    assert imported == {"__future__", "datetime", "dataclasses", "json", "math", "pathlib", "re",
+                        "re._parser"}, imported
     assert isinstance(records.EngagementInfo().due, type(None))
     assert EngagementInfo(due=dt.date(2026, 4, 15)).due.year == 2026
 
@@ -262,3 +266,81 @@ def test_the_also_answers_cell_reads_back_as_it_was_written():
     assert IndexEntry(received="", original_name="x.pdf", size_kb=1, digest="", identifier="E01",
                       prepared_location="", pbc_location="", decision="Filed", reason="",
                       answers=cell).answered == answers
+
+
+# Decision 187: the value rule, worded once here, for the editor and the gate.
+
+
+def test_a_nested_or_alternating_repetition_is_not_a_date_pattern():
+    """The shape rule is read off the standard library's own parser: a
+    repetition that can repeat more than once may hold no other such
+    repetition, no alternation and no back-reference, at any depth; at most
+    three of them, one open-ended, the rest at most twenty."""
+    refused = {
+        r"(\d+)+x": records.DATE_PATTERN_NESTED,
+        r"(?:(?:\d{1,4}\s)*)x": records.DATE_PATTERN_NESTED,
+        r"(?:Dec|12)+": records.DATE_PATTERN_ALTERNATES,
+        r"(\d)(?:\1x)+": records.DATE_PATTERN_REFERS_BACK,
+        r"\d{1,2}\d{1,2}\d{1,2}\d{1,2}": records.DATE_PATTERN_TOO_MANY,
+        r"\d*-\d*": records.DATE_PATTERN_TOO_OPEN,
+        r"\d{0,21}": records.DATE_PATTERN_TOO_WIDE,
+        "x" * (records.DATE_PATTERN_MAX + 1): records.DATE_PATTERN_TOO_LONG,
+        "([unclosed": records.DATE_PATTERN_NOT_A_REGEX,
+        5: records.TEXT_BOUNDS,
+    }
+    for pattern, phrase in refused.items():
+        assert records.date_pattern_problem(pattern) == phrase, pattern
+    for fine in [r"(?i)\b2025\b", r"\d+/\d{1,2}/2025", r"(?:Dec|12)?\s?2025", r"0?1/[0-3]?[0-9]/2025",
+                 r"\d{0,20}x\d{0,20}y\d*"]:
+        assert records.date_pattern_problem(fine) == "", fine
+
+
+def test_every_derived_date_pattern_passes_the_shape_rule():
+    """The flag that marks a pattern derived is the record's claim, so a
+    derived pattern is held to the same rule - and every one the Period
+    derives passes it."""
+    months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    periods = [f"{month} {year}" for month in months for year in (2025, 2099)] + ["TY2025", "TY1900"]
+    for period in periods:
+        pattern = manifest.derived_date_pattern(period)
+        assert pattern, period
+        assert records.date_pattern_problem(pattern) == "", period
+
+
+def test_a_flag_is_true_false_zero_or_one_and_nothing_else():
+    for fine in (True, False, 0, 1):
+        assert records.flag_problem(fine) == ""
+    for refused in ("no", "yes", "false", 2, 1.0, None, [], ""):
+        assert records.flag_problem(refused) == records.FLAG_BOUNDS, refused
+
+
+def test_a_count_past_its_bound_is_refused_by_one_phrase():
+    phrase = records.COUNT_BOUNDS.format(minimum=records.MIN_EXPECTED_COUNT,
+                                         maximum=records.MAX_EXPECTED_COUNT)
+    for refused in (10**20, "3", 0, records.MAX_EXPECTED_COUNT + 1, 2.5, True, float("inf"),
+                    float("nan"), None):
+        assert records.count_problem(refused, records.MIN_EXPECTED_COUNT,
+                                     records.MAX_EXPECTED_COUNT) == phrase, refused
+    assert records.count_problem(3, records.MIN_EXPECTED_COUNT, records.MAX_EXPECTED_COUNT) == ""
+    assert records.count_problem(3.0, records.MIN_EXPECTED_COUNT, records.MAX_EXPECTED_COUNT) == ""
+    assert records.rule_row_problem({"expected_count": 10**20}) == f"'expected_count' {phrase}"
+    assert records.date_problem("2025-02-30") == records.DATE_BOUNDS
+    assert records.date_problem("13/45/2025") == records.DATE_BOUNDS
+    assert records.date_problem("2025-02-28") == ""
+    assert records.stamp_problem(12345) == records.STAMP_BOUNDS
+    assert records.stamp_problem("2025-02-28T10:00:00Z") == ""
+    assert records.digest_problem(5) == records.DIGEST_BOUNDS
+    assert records.digest_problem("a" * 64) == records.digest_problem("") == ""
+    assert records.text_problem("two\nlines") == records.TEXT_BOUNDS
+    assert records.text_problem("two\nlines", long=True) == ""
+    assert records.text_problem("nul\x00", long=True) == records.LONG_TEXT_BOUNDS
+
+
+def test_the_editors_checks_are_the_records_own_objects():
+    """The editor re-exports each check it used to define: the same object,
+    not a copy, so the editor and the gate can never hold two rules."""
+    for name in ("YEAR_MIN", "YEAR_MAX", "YEAR_OUT_OF_RANGE", "WINDOWS_ILLEGAL_CHARS",
+                 "WINDOWS_ILLEGAL_CHARS_TEXT", "WINDOWS_RESERVED_NAMES", "WINDOWS_RESERVED_NAMES_TEXT",
+                 "is_reserved_name", "identifier_problem", "SHORT_TITLE_MAX", "short_title_problem",
+                 "Override", "MIN_EXPECTED_COUNT", "MIN_SIZE_KB_FLOOR"):
+        assert getattr(manifest, name) is getattr(records, name), name

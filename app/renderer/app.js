@@ -2030,13 +2030,15 @@ function columnsByKey(keys) {
   return keys.map((key) => vocab.columns.find((c) => c.key === key)).filter(Boolean);
 }
 
-// One input for one cell. The two numbers take their floor from the
-// vocabulary (never typed here); the override is a pick of the API's two
+// One input for one cell. The two numbers take their floor and their
+// ceiling (the record's own bounds, decision 187) from the vocabulary
+// (never typed here); the override is a pick of the API's two
 // values or nothing; everything else is text. Typing writes straight into
 // the row object, so the rows are always what the inputs say.
 function cellInput(row, column, onChange) {
   const key = column.key;
   const minimum = vocab.editor.minimums[key];
+  const maximum = (vocab.editor.maximums || {})[key];
   if (key === "manual_override") {
     const select = el("select", { "aria-label": column.label },
       el("option", { value: "", selected: !row[key] }, ""),
@@ -2092,6 +2094,7 @@ function cellInput(row, column, onChange) {
     placeholder: key === "short_title" ? editorRowShortName(row) : undefined,
   });
   if (minimum !== undefined) input.min = minimum;
+  if (maximum !== undefined) input.max = maximum;
   input.addEventListener("input", () => { row[key] = input.value; onChange(); });
   return input;
 }

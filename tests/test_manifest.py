@@ -56,7 +56,17 @@ from tracker.manifest import (
     unlearn_keyword,
     validated,
 )
-from tracker.records import RULE_FIELDS, info_to_json, rule_to_json
+from tracker.records import (
+    COUNT_BOUNDS,
+    DATE_PATTERN_ALTERNATES,
+    DATE_PATTERN_NESTED,
+    DATE_PATTERN_TOO_OPEN,
+    MAX_EXPECTED_COUNT,
+    MAX_SIZE_KB,
+    RULE_FIELDS,
+    info_to_json,
+    rule_to_json,
+)
 
 SAMPLE_ITEMS = [
     RequestItem(
@@ -223,12 +233,43 @@ def test_bad_regex_rejected():
 
 
 def test_bad_expected_count_rejected():
-    with pytest.raises(ManifestError, match=f"Row 2: {COL_EXPECTED_COUNT} must be a whole number, got 'twelve'"):
+    counts = COUNT_BOUNDS.format(minimum=MIN_EXPECTED_COUNT, maximum=MAX_EXPECTED_COUNT)
+    sizes = COUNT_BOUNDS.format(minimum=MIN_SIZE_KB_FLOOR, maximum=MAX_SIZE_KB)
+    with pytest.raises(ManifestError, match=f"Row 2: {COL_EXPECTED_COUNT} {counts}$"):
         item_from_fields({"identifier": "A01", "document": "x", "expected_count": "twelve"}, where="Row 2")
-    with pytest.raises(ManifestError, match=f"Row 3: {COL_EXPECTED_COUNT} must be at least {MIN_EXPECTED_COUNT}"):
+    with pytest.raises(ManifestError, match=f"Row 3: {COL_EXPECTED_COUNT} {counts}$"):
         item_from_fields({"identifier": "A01", "document": "x", "expected_count": 0}, where="Row 3")
-    with pytest.raises(ManifestError, match=f"Row 1: {COL_MIN_SIZE_KB} must be at least {MIN_SIZE_KB_FLOOR}"):
+    with pytest.raises(ManifestError, match=f"Row 1: {COL_MIN_SIZE_KB} {sizes}$"):
         validated([RequestItem(identifier="A01", document="x", min_size_kb=-1)])
+
+
+def test_the_editor_refuses_an_expected_count_the_store_could_not_hold():
+    """Decision 187 (A-10): ``1e20`` passed the editor, and SQLite then
+    refused it after the line was in the journal, so every later sync
+    failed. The editor holds a count to the record's own bound."""
+    counts = COUNT_BOUNDS.format(minimum=MIN_EXPECTED_COUNT, maximum=MAX_EXPECTED_COUNT)
+    for typed in ("1e20", 10**20, MAX_EXPECTED_COUNT + 1, "2.5"):
+        with pytest.raises(ManifestError, match=f"Row 1: {COL_EXPECTED_COUNT} {counts}$"):
+            item_from_fields({"identifier": "A01", "document": "x", "expected_count": typed},
+                             where="Row 1")
+    with pytest.raises(ManifestError, match=f"Row 1: {COL_EXPECTED_COUNT} {counts}$"):
+        validated([RequestItem(identifier="A01", document="x", expected_count=10**20)])
+    assert item_from_fields({"identifier": "A01", "document": "x",
+                             "expected_count": str(MAX_EXPECTED_COUNT)},
+                            where="Row 1").expected_count == MAX_EXPECTED_COUNT
+
+
+def test_the_editor_refuses_a_runaway_date_pattern_by_name():
+    """Decision 187 (C-5): ``(\\d+)+x`` compiles, and doubles its time with
+    every digit on a page. The editor refuses it with the record's own
+    phrase, naming the column and never the pattern."""
+    for pattern, phrase in [(r"(\d+)+x", DATE_PATTERN_NESTED),
+                            (r"\d*-\d*-\d*", DATE_PATTERN_TOO_OPEN),
+                            (r"(?:Dec|12)+", DATE_PATTERN_ALTERNATES)]:
+        with pytest.raises(ManifestError) as refused:
+            validated([RequestItem(identifier="A01", document="x", date_pattern=pattern)])
+        assert str(refused.value) == f"Row 1: {COL_DATE_PATTERN} {phrase}"
+        assert pattern not in str(refused.value)
 
 
 def test_unknown_override_rejected():

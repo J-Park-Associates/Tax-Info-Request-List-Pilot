@@ -51,6 +51,17 @@ before anything is rebuilt. Then rebuild **that return only**, with
 - without `--engagement` it rebuilds every return, and the next pass
 re-reads every document in the firm.
 
+**Once, after installing the version that holds every record line to the
+editor's bounds** (decision 187). Run the store check once
+(`python -m tracker.store "<the app folder>" check "<clients root>"`). It
+judges every line of every return's record by today's rule, so a line an
+earlier version accepted that the rule now refuses - a Date Pattern that
+could run away, a step outside its return's folders, a value of the wrong
+kind - is named on the day of the upgrade. A return it names as
+"malformed" is shown to Jason before that household is sorted, and
+repaired the way any malformed line is repaired (section 9); until then
+its household stops with the same sentence.
+
 **The clients root is a folder of clients, and only that.** The app refuses
 the system drive's root (`C:\`), the app's own folder, the folder holding its
 settings and store, and any folder that holds one of them, and says which
@@ -202,6 +213,13 @@ Received Date, File Count and Validation Notes are on the Status Report**,
 not in the editor. The engagement's details — client, share link, due
 date, sender, firm, reminders, active — and the **people** the return is
 for are edited in the same place.
+The editor keeps each value inside the bounds the tracker will read back
+(decision 187): Expected Count is a whole number from 1 to 9,999, Min Size
+KB from 0 to 1,048,576, a date is a real date between 1900 and 2100, and a
+Date Pattern is at most 200 characters with at most three repetitions - no
+repetition inside another, no `|` or back-reference inside one, one
+open-ended (`+`, `*`) at most and the rest at most `{…,20}` - so a pattern
+cannot hold a pass on one page.
 
 **Renaming a request** (decision 160). A request that already holds filed
 documents keeps its identifier through a save: changing `A01` to `A1` in
@@ -1576,12 +1594,29 @@ the same way.
   path), `above-root`, `not-a-place` (inside the clients root but in none
   of this return's folders), `other-household` or `other-year` (a write
   into another household's client folder or another year's `_Opened`),
-  `blank`, or `not-a-return`. The
+  `blank`, or `not-a-return`. "… would be copied to … with no fingerprint
+  to prove the copy against" (`tracker.filer.COPY_UNPROVED`) is the same
+  kind of line: a copy the tracker would have fingerprinted. The
   pass moved, copied and removed nothing for it, and every other household
   was sorted as usual. Do not edit the record by hand: say which return and
   which path, and have the record checked
   (`python -m tracker.store <store> check <clients root>`) before that
   household is sorted again.
+
+- **A household the pass stopped with "line N of the record is malformed
+  (…)"** (`tracker.store.MALFORMED_LINE`, shown as "the record could not be
+  read"; decision 187): the record holds a line the tracker will not obey.
+  The words in brackets say which field and which kind of problem, never
+  the value: a value outside the editor's bounds ("must be a whole number
+  from 1 to 9999", "must be a date written YYYY-MM-DD", "must be true or
+  false", a Date Pattern that "repeats something that itself repeats"); a
+  step "outside this return's places"; a household or return label that
+  "is not one folder name"; or a copy with no fingerprint. Nothing was
+  moved, copied or removed for that household, and every other household
+  was sorted as usual. Do not edit the record by hand: say which return and
+  which line, and the store check
+  (`python -m tracker.store "<the app folder>" check "<clients root>"`)
+  names every such line in every return.
 
 Nothing here sends an email, moves money, or tells a client anything. Every
 message a client gets was read and sent by a person at this firm.

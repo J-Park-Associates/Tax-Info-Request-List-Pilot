@@ -366,10 +366,15 @@ ASKED_KEY = "asked"
 HELD_KEY = "held"
 FILE_KEY = "file"
 FINGERPRINT_KEY = "fingerprint"
+#: The key a :data:`DRAFTED` or :data:`DRAFT_APPROVED` line carries the
+#: stage under: a number, never a word of the letter. Here since decision
+#: 187, beside the event it belongs to, so the store's gate can bound it
+#: without reaching up to the reminder; ``tracker.reminder`` re-exports it.
+STAGE_KEY = "stage"
 #: A person read the week's draft in the app and approved it (decision
 #: 118). Folded by nothing, exactly as :data:`DRAFTED` is: it is a fact
 #: about a week, not a row of the index. It carries the same four keys a
-#: written draft does - the stage (``tracker.reminder.STAGE_KEY``), the
+#: written draft does - the stage (:data:`STAGE_KEY`), the
 #: file, the fingerprint in that file's header and the identifiers asked -
 #: and, like every event here, not one word a client would read. Until the
 #: next draft day the pass treats the file it names as it treats one a
@@ -462,6 +467,27 @@ class RecordNotWritten(LedgerError):
 
 def _not_written(exc: OSError) -> RecordNotWritten:
     return RecordNotWritten(errno.errorcode.get(exc.errno or 0, "OSError"))
+
+
+def op_ends(op: dict) -> tuple[tuple[str, bool], ...]:
+    """The places one step of an intent names, each with whether the step
+    writes there: ``(location, writes)`` for its ``from`` and its ``to``
+    (decision 187).
+
+    Said once, here, because both the filer - before it carries a step out
+    - and the store - before it admits the line - ask where a step reads
+    and where it writes. A copy or a move reads its ``from`` and writes its
+    ``to``; a removal writes its ``from``, because taking a file away is a
+    write to the place it was. A missing ``from`` is the blank location, so
+    it is refused as blank rather than skipped.
+    """
+    source = str(op.get(FROM_KEY, ""))
+    if op.get(OP_KEY) == OP_REMOVE:
+        return ((source, True),)
+    ends: tuple[tuple[str, bool], ...] = ((source, False),)
+    if TO_KEY in op:
+        ends += ((str(op[TO_KEY]), True),)
+    return ends
 
 
 def path_for(engagement_dir: Path | str) -> Path:
