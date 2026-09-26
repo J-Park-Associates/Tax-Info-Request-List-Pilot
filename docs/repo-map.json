@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 154,
     "edges": 951,
-    "reused": 119
+    "reused": 118
   },
   "node_types": [
     "artifact",
@@ -57,8 +57,8 @@
       "id": ".github/dependabot.yml",
       "type": "workflow",
       "layer": "ci",
-      "sha256": "4413464b02bde0b6",
-      "lines": 39,
+      "sha256": "2cda0e5b3e29dbcb",
+      "lines": 43,
       "role": "Dependency updates (decision 191): pip at the root, npm in app/, github-actions, each weekly, each grouped into one pull request with open-pull-requests-limit 2.",
       "notes": "A pip update bumps a requirements*.txt pin and the lock check then fails until a person moves the same pin in its .lock and runs tools/lockfiles.py hash - the intended stop: no hash enters the repository without a person running the tool that fetched it."
     },
@@ -3210,7 +3210,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "f637b08903f8a009",
+      "sha256": "866a42aed8411b6f",
       "lines": 429,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
