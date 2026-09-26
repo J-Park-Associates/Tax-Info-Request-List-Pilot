@@ -1130,10 +1130,18 @@ RUN_CONSEQUENCES = "consequences"
 #: to give, and without one.
 DROP_WITH_LINK = "folder. One folder, no sorting and no naming needed; we do that:"
 DROP_NO_LINK = "folder we set up. One folder, no sorting and no naming needed."
+#: The quiet week's first sentence, which both of its paragraphs open with.
+_EVERYTHING_IN = "Good news - we have everything we asked for on {engagement}."
 #: The quiet week's paragraph, wrapped as it is written into the file.
-NOTHING_OWED = ("Good news - we have everything we asked for on {engagement}.\n"
+NOTHING_OWED = (f"{_EVERYTHING_IN}\n"
                 "Nothing further is needed from you right now, and we will be in\n"
                 "touch if anything else comes up.")
+#: What a week whose only problem is a file that is not a document says in
+#: place of "nothing further is needed", which the ask below it would
+#: contradict (decision 190; Jason's answer 1b, 2026-09-26).
+UNUSABLE_ONLY_NOTE = "One file you sent could not be used; please see the note below."
+#: That week's paragraph: the quiet week's first sentence, then the note.
+UNUSABLE_ONLY = f"{_EVERYTHING_IN}\n{UNUSABLE_ONLY_NOTE}"
 #: How every letter signs off, above the sender and the firm.
 SIGN_OFF = "Thank you,"
 
@@ -1253,14 +1261,13 @@ def _compose_letter(
     if stage is None:
         # Only files that are not documents to ask about (decision 190's
         # re-check, S-N1): they are no rung of the ladder, so the letter
-        # has none - the quiet week's paragraph, the ask under its heading
-        # and where to drop the replacement, and no deadline and no close.
-        # Every sentence is one the letters already use; other words are
-        # Jason's call.
+        # has none - the quiet week's first sentence and one that points at
+        # the note below (Jason's answer 1b), the ask under its heading and
+        # where to drop the replacement, and no deadline and no close.
         return Letter(
             greeting=greeting,
             progress=progress_line(received, total, also_received),
-            intro=NOTHING_OWED.format(engagement=engagement),
+            intro=UNUSABLE_ONLY.format(engagement=engagement),
             sections=sections,
             drop=(DROP_ANYWHERE, DROP_WITH_LINK if share_link else DROP_NO_LINK),
             link=share_link,

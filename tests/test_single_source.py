@@ -1666,6 +1666,23 @@ def test_the_runbook_sends_documents_from_a_container_to_the_households_inbox():
                 if re.search(r"\bdrop\b.*\bin(to)? the client's folder for the year\b", sentence)]
 
 
+def test_the_runbook_reads_a_file_with_open_on_its_card_never_in_a_folder_of_ones_own():
+    """Jason's answer 2b (2026-09-26, decision 190): decision 184's route of
+    reading a file kept in "a folder of your own" inside a return's
+    `Prepared` is gone - it had no card and no mark. A file is read with
+    **Open** on its card, and a card with no **Open** goes to 184's other
+    machine or to the client. No sentence may offer a folder of one's own,
+    or send a file into one inside `Prepared`, again."""
+    runbook = read("docs/runbook.md")
+    offered = [sentence for sentence in _sentences(runbook)
+               if re.search(r"\bfolder of your own\b", sentence, re.IGNORECASE)
+               or ("`Prepared`" in sentence and re.search(r"\byour own\b", sentence, re.IGNORECASE))]
+    assert offered == [], offered
+    section = runbook[runbook.index("### A document the tracker did not file"):]
+    section = section[:section.index("\n### ", 4)]
+    assert "**Open** on its" in section and "decision 184" in section, section
+
+
 def test_the_program_list_is_spelled_once():
     """``validators.PROGRAM_EXTENSIONS`` is the one list of programs
     (decision 190): no other file under tracker/ or app/ spells one of them

@@ -2152,6 +2152,43 @@ def test_a_file_that_is_not_a_document_is_asked_about_in_the_letter_and_holds_no
     assert "set aside.exe" not in draft.body
 
 
+def test_a_program_only_weeks_letter_says_one_file_could_not_be_used_and_never_that_nothing_is_needed(
+        tmp_path):
+    """Jason's answer 1b (decision 190): a week whose only problem is a file
+    that is not a document does not say "Nothing further is needed from you
+    right now" and then ask about the file. That sentence is replaced by the
+    one new sentence pointing at the note below; a week with no problem at
+    all still says it, and a week with a request outstanding and a program
+    keeps its staged letter."""
+    from tests.conftest import seed_index
+    from tracker.filer import NEEDS_REVIEW, IndexEntry
+    from tracker.reminder import NOTHING_OWED, UNUSABLE_ONLY_NOTE
+
+    nothing_needed = "Nothing further is needed from you right now"
+    assert nothing_needed in NOTHING_OWED
+    program = IndexEntry(
+        received="2026-02-01", original_name="setup.exe", size_kb=0.1,
+        digest=hashlib.sha256(b"setup.exe").hexdigest(), identifier="", prepared_location="",
+        pbc_location="pbc/setup.exe", decision=NEEDS_REVIEW, reason=reasons.NOT_A_DOCUMENT.format(),
+        code=reasons.NOT_A_DOCUMENT.code)
+
+    all_in = engagement(tmp_path / "in", [item("A04", "Mortgage Interest Statement", Status.RECEIVED,
+                                               period="TY2025", file_count=1,
+                                               received_date=dt.date(2026, 2, 1))])
+    assert nothing_needed in draft_reminder(all_in, due_date=DUE, today=day(20)).body
+    seed_index(all_in, [program])
+    week = draft_reminder(all_in, due_date=DUE, today=day(20)).body
+    assert UNUSABLE_ONLY_NOTE in week and week.count(UNUSABLE_ONLY_NOTE) == 1
+    assert nothing_needed not in week
+    assert week.index(UNUSABLE_ONLY_NOTE) < week.index(SECTION_FAILED)
+
+    owed = engagement(tmp_path / "owed", SENDABLE)
+    seed_index(owed, [program])
+    staged = draft_reminder(owed, due_date=DUE, today=day(20))
+    assert staged.stage and staged.asked and staged.unusable == ["setup.exe"]
+    assert UNUSABLE_ONLY_NOTE not in staged.body and nothing_needed not in staged.body
+
+
 def test_a_program_alone_is_asked_about_but_never_climbs_the_ladder(tmp_path):
     """The re-check's S-N1: every request is in and one program is parked.
     It is asked about, so the draft has something outstanding - the
@@ -2161,7 +2198,7 @@ def test_a_program_alone_is_asked_about_but_never_climbs_the_ladder(tmp_path):
     counts it as a document still needed."""
     from tests.conftest import seed_index
     from tracker.filer import NEEDS_REVIEW, IndexEntry
-    from tracker.reminder import NOTHING_OWED, STAGE_4_CONSEQUENCES, SUBJECT_COMPLETE
+    from tracker.reminder import STAGE_4_CONSEQUENCES, SUBJECT_COMPLETE, UNUSABLE_ONLY
 
     folder = engagement(tmp_path, [item("A04", "Mortgage Interest Statement", Status.RECEIVED,
                                         period="TY2025", file_count=1,
@@ -2181,7 +2218,7 @@ def test_a_program_alone_is_asked_about_but_never_climbs_the_ladder(tmp_path):
         assert draft.subject == SUBJECT_COMPLETE.format(engagement=draft.engagement)
         assert "still needed" not in draft.subject
         assert f"{SECTION_FAILED}\n  - setup.exe - {reasons.NOT_A_DOCUMENT.ask}\n" in draft.body
-        assert NOTHING_OWED.format(engagement=draft.engagement) in draft.body
+        assert UNUSABLE_ONLY.format(engagement=draft.engagement) in draft.body
         assert STAGE_4_CONSEQUENCES not in draft.body and "March 15" not in draft.body
         assert "Of the 1 item we asked for, 1 is in." in draft.body
     # A forced stage is a request's: with none on the letter, it forces nothing.

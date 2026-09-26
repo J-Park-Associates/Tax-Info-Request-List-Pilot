@@ -766,20 +766,22 @@ the run's line say whose it is. Then:
   the year: it is already this household's, so nothing is published
   anywhere new. The next pass sorts it, and if it parks it gets a card,
   with **Open** when the tracker read it (decision 190). Then delete the stray by hand.
-- **It is this return's, and you would rather the pass did not sort it.**
-  Keep it in a folder of your own inside the return's `Prepared` — the tracker counts nothing there and names the
-  folder on each run (*The layout*, above) — and in **Edit Request List**
-  set the request's Manual Override to Accepted, with the Override Reason
-  for a document received outside the system. The save is recorded, the
-  request reads Received, and the letter stops asking.
 - **It is another return's, or another household's.** Do the same
-  there: that household's `Drop files here`, or a folder of your own in
-  that return's `Prepared`.
+  there: that household's `Drop files here`, and nowhere else.
 - **You cannot tell whose it is.** Leave it where it is and ask whoever
   would know. Never put it in a client's folder to see where the pass
   sends it.
 - **It is not a whole document** — a partial or broken copy: delete it by
   hand, and never ask the client for it.
+
+To read such a file, let the pass give it a card and use **Open** on its
+card: the firm's review copy, marked for Protected View, offered on a row
+the tracker read and parked for a filing reason (decision 190's
+allow-list). That replaces decision 184's reading of a copy set aside by
+hand (Jason's answer of 2026-09-26). A card with no **Open** - an email
+or a zip, a reading the tracker refused, a file that is not a document -
+is read on a machine with no Drive sign-in and no client folder (decision
+184), or you ask the client what they meant to send.
 
 ### A working copy went missing
 
