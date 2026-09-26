@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 154,
     "edges": 951,
-    "reused": 119
+    "reused": 116
   },
   "node_types": [
     "artifact",
@@ -402,8 +402,8 @@
       "id": "tracker/checkpoint.py",
       "type": "module",
       "layer": "core",
-      "sha256": "424ac0e3521dad71",
-      "lines": 575,
+      "sha256": "9a9680800d6a651d",
+      "lines": 591,
       "cli": "python -m tracker.checkpoint",
       "exports": [
         "BUSY",
@@ -2819,8 +2819,8 @@
       "id": "tracker/store.py",
       "type": "module",
       "layer": "core",
-      "sha256": "b82a926d2d6866b0",
-      "lines": 3805,
+      "sha256": "7e6828158affc895",
+      "lines": 3832,
       "cli": "python -m tracker.store",
       "exports": [
         "ACCEPTED",
@@ -3210,7 +3210,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "a21eea5025f6590a",
+      "sha256": "0b0d58b1e40e5f71",
       "lines": 430,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -4061,8 +4061,8 @@
       "id": "tests/test_checkpoint.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "acebf63dcdbacb57",
-      "lines": 209,
+      "sha256": "cc01a760f0bf0f90",
+      "lines": 228,
       "exports": [
         "KEY",
         "REPO",
@@ -4072,6 +4072,7 @@
         "test_a_checkpoint_that_will_not_open_is_refused_by_name_and_never_set_aside",
         "test_a_line_from_another_machine_is_named_until_it_is_acknowledged",
         "test_a_line_from_another_machine_is_not_refused_until_the_study_is_decided",
+        "test_a_refused_checkpoint_can_be_set_aside_while_its_error_is_still_held",
         "test_an_engine_error_after_the_open_leaves_as_the_checkpoints_own_error",
         "test_an_older_checkpoint_is_set_aside_and_a_newer_one_refused",
         "test_the_checkpoint_lives_beside_the_store_and_is_not_the_store",

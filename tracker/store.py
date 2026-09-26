@@ -364,46 +364,73 @@ def _unavailable(exc: sqlite3.Error) -> StoreUnavailable:
     return StoreUnavailable(getattr(exc, "sqlite_errorname", None) or "SQLITE_ERROR")
 
 
+def _let_go_of(cursor: sqlite3.Cursor) -> None:
+    """Close a cursor whose statement failed, before the error leaves it.
+
+    Why (decision 159, Python 3.11 on Windows): the error's traceback holds
+    the frame that raised it, the frame holds the cursor, and on Python
+    3.11 the cursor holds its prepared statement. Closing the connection
+    does not close the file while a statement is outstanding - SQLite
+    keeps the handle until the statement is finalized - so anything that
+    keeps the error (a caller, a log record, a report of the pass) kept the
+    file open, and Windows refused to rename or delete it (WinError 32).
+    Python 3.14 lets go regardless; 3.11, the floor, does not. A closed
+    cursor holds no statement.
+    """
+    try:
+        cursor.close()
+    except sqlite3.Error:
+        pass
+
+
 class _Cursor(sqlite3.Cursor):
     """A cursor whose rows fail as :class:`StoreUnavailable` too: SQLite
     steps a query as its rows are read, so a disk error can arrive on the
-    second row as well as on the statement."""
+    second row as well as on the statement.
+
+    A cursor that failed is closed before its error is raised
+    (:meth:`_say`, decision 159, Python 3.11 on Windows).
+    """
+
+    def _say(self, exc: sqlite3.Error) -> StoreUnavailable:
+        _let_go_of(self)
+        return _unavailable(exc)
 
     def execute(self, sql, parameters=(), /):
         try:
             return super().execute(sql, parameters)
         except sqlite3.Error as exc:
-            raise _unavailable(exc) from exc
+            raise self._say(exc) from exc
 
     def executemany(self, sql, parameters, /):
         try:
             return super().executemany(sql, parameters)
         except sqlite3.Error as exc:
-            raise _unavailable(exc) from exc
+            raise self._say(exc) from exc
 
     def fetchone(self):
         try:
             return super().fetchone()
         except sqlite3.Error as exc:
-            raise _unavailable(exc) from exc
+            raise self._say(exc) from exc
 
     def fetchall(self):
         try:
             return super().fetchall()
         except sqlite3.Error as exc:
-            raise _unavailable(exc) from exc
+            raise self._say(exc) from exc
 
     def fetchmany(self, size=None):
         try:
             return super().fetchmany(self.arraysize if size is None else size)
         except sqlite3.Error as exc:
-            raise _unavailable(exc) from exc
+            raise self._say(exc) from exc
 
     def __next__(self):
         try:
             return super().__next__()
         except sqlite3.Error as exc:
-            raise _unavailable(exc) from exc
+            raise self._say(exc) from exc
 
 
 class _Connection(sqlite3.Connection):

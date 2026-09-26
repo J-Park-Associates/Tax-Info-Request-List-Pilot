@@ -153,10 +153,25 @@ def _unavailable(exc: sqlite3.Error, path: Path | str) -> CheckpointUnavailable:
     return CheckpointUnavailable(path, getattr(exc, "sqlite_errorname", None) or type(exc).__name__)
 
 
+def _let_go_of(cursor: sqlite3.Cursor) -> None:
+    """Close a failed cursor, so it holds no statement (see ``_Cursor._say``)."""
+    try:
+        cursor.close()
+    except sqlite3.Error:
+        pass
+
+
 class _Cursor(sqlite3.Cursor):
     """A cursor whose statements and rows fail as :class:`CheckpointUnavailable`."""
 
     def _say(self, exc: sqlite3.Error) -> CheckpointUnavailable:
+        # Closed before the error leaves: on Python 3.11 a failed cursor
+        # kept by the error's traceback holds its statement, and SQLite
+        # keeps the file open for it after the connection is closed - a
+        # damaged checkpoint stayed locked (WinError 32) for as long as
+        # anything kept the error. See store._let_go_of (decision 159,
+        # Python 3.11 on Windows).
+        _let_go_of(self)
         return _unavailable(exc, getattr(self.connection, "where", "record checkpoint"))
 
     def execute(self, sql, parameters=(), /):
@@ -204,6 +219,7 @@ class _Connection(sqlite3.Connection):
         try:
             return cursor.executemany(sql, parameters)
         except sqlite3.Error as exc:
+            _let_go_of(cursor)
             raise _unavailable(exc, self.where) from exc
 
     def close(self):
