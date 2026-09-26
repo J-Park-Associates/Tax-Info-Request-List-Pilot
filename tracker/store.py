@@ -1336,6 +1336,28 @@ def _household_from_sql(row: sqlite3.Row) -> dict:
     return out
 
 
+def households(conn: sqlite3.Connection) -> list[tuple[str, HouseholdInfo]]:
+    """Every household row the store holds, as (stored path, details),
+    read as it stands - nothing is followed (decision 192).
+
+    The one question a return's card asks of every household - who feeds
+    this one - needs every household's feed list, and a card may not walk
+    the practice to learn it: a click costs the client in question, not
+    the practice. Every walk tops these rows up, so they answer as of the
+    last time this computer listed the clients or ran a pass. That makes
+    this a display's source and never a writer's: a click that files
+    through a feed reads the other household's record fresh. The paths are
+    the stored keys, relative to the recorded clients root; the caller
+    places them under the root it holds.
+    """
+    return [
+        (row["path"], household_from_json(_household_from_sql(row)))
+        for row in conn.execute(
+            "SELECT * FROM engagements WHERE kind = ? ORDER BY path", (KIND_HOUSEHOLD,)
+        )
+    ]
+
+
 def kind(conn: sqlite3.Connection, folder: Path | str) -> str | None:
     """Whether the store holds this folder as a return or as a household,
     or ``None`` when it holds it at all.

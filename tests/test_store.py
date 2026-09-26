@@ -3469,3 +3469,45 @@ def test_an_export_that_cannot_be_written_is_refused_by_name_and_discards_nothin
                                                r"\(PermissionError\); nothing was discarded"):
         store.recover(conn, root, by_hand, accept_loss=by_hand.name)
     assert rows(conn, "events") == before
+
+
+def test_households_are_every_stored_household_row_read_as_it_stands(root, monkeypatch):
+    """Decision 192: the card's *Fed by* asks every household who feeds it,
+    and may not walk the practice or read every journal to learn it. The
+    store answers with its household rows - never a return's - exactly as
+    they stand, even with a line behind them it has not applied."""
+    from dataclasses import replace
+
+    from tracker.households import load_household_info, save_household
+    from tracker.layout import private_household_dir
+    from tracker.records import Feed
+
+    make_engagement(root, ITEMS, household="Park Family")
+    make_engagement(root, ITEMS, household="Park & Lee LLC")
+    family = private_household_dir(root, "Park Family")
+    feed = Feed("Park & Lee LLC", "1120S - Park & Lee LLC")
+    save_household(family, replace(load_household_info(family), feeds=(feed,)))
+    with engagement_lock(family):
+        ledger.append(family, ledger.new(ledger.HOUSEHOLD_CHANGED, **{
+            ledger.HOUSEHOLD_KEY: {"feeds": []}}))
+    read: list[Path] = []
+    real = Path.read_bytes
+
+    def counting(self):
+        if self.name == ledger.LEDGER_FILENAME:
+            read.append(Path(self))
+        return real(self)
+
+    monkeypatch.setattr(Path, "read_bytes", counting)
+
+    rows = dict(store.households(store.connect()))
+
+    assert sorted(key.rsplit("/", 1)[-1] for key in rows) == ["Park & Lee LLC", "Park Family"]
+    by_name = {key.rsplit("/", 1)[-1]: info for key, info in rows.items()}
+    assert by_name["Park Family"].feeds == (feed,)       # the store's, not the line behind it
+    assert by_name["Park & Lee LLC"].feeds == ()
+    assert read == []
+    # The recorder sees a journal read when one is made, and the line
+    # behind the store is there to be read.
+    assert load_household_info(family).feeds == ()
+    assert ledger.path_for(family) in read

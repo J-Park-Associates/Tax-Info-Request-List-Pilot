@@ -1892,16 +1892,24 @@ def _parked_files(report: RunReport) -> tuple[dict[Path, list[ParkedFile]], list
     pass that is filing one. An index that cannot be read is said rather
     than skipped: an engagement missing from the queue for a reason nobody
     can see is how a document waits a month.
+
+    **Read from the store as the walk left it** (decision 192): the walk
+    that found these engagements followed every journal moments before,
+    and the pass's own writes went into the same store, so the index is
+    read without following the journal again (``follow=False``, the
+    page's alone); a return the store does not hold is followed as ever.
+    An index that cannot be read is said by its class and code, never its
+    message, which can name a client's folder (security principle 7).
     """
     parked: dict[Path, list[ParkedFile]] = {}
     problems: list[str] = []
     for run in report.runs:
         engagement = run.engagement
         try:
-            ensure(engagement.path)
-            entries = read_index(engagement.path)
+            entries = read_index(engagement.path, follow=False)
         except Exception as exc:
-            problems.append(STATUS_INDEX_UNREADABLE.format(label=engagement.label, error=exc))
+            problems.append(STATUS_INDEX_UNREADABLE.format(
+                label=engagement.label, error=content_check.said_as_class(exc)))
             continue
         parked[engagement.path] = [
             ParkedFile(engagement=engagement.label, received=entry.received,
@@ -1973,7 +1981,9 @@ def write_status_page(root: Path | str, report: RunReport, *,
 
     Drawn from ``report``, never from a fresh pass: the caller decides what
     was run and what was only read (see :func:`status_report`), so nothing
-    here takes a lock or writes anything but this page.
+    here takes a lock or writes anything but this page. The parked files
+    are each return's index as the store holds it after the walk and the
+    pass (decision 192), read once per return and never followed again.
     """
     root = Path(root)
     stamp = (now or dt.datetime.now()).isoformat(sep=" ", timespec="seconds")
@@ -2063,7 +2073,7 @@ def _engagement_status(engagement: Engagement) -> EngagementRun:
         run.error = RECORD_UNREADABLE.format(problem=engagement.problem)
         return run
     try:
-        summary = summarize(load_manifest(engagement.path))
+        summary = summarize(load_manifest(engagement.path, follow=False))
     except (ManifestError, LedgerError, StoreError, OSError) as exc:
         # One bad record costs its own row, never the page (decision 189),
         # said by its class and code: the message can name the record's
@@ -2097,6 +2107,17 @@ def status_report(registry: Registry, *, passed: Iterable[EngagementRun] = (),
     pass's own sentences, for the page's problems list (decision 189);
     ``unread`` what the pass could not ask of the record checkpoint, drawn
     first in the records section.
+
+    **Each part from one source** (decision 192). Which returns exist,
+    their labels, the problem rows, a stopped household's returns and the
+    misfits come from the walk, ``registry``: discovery is positional and
+    only a walk knows (decision 125). A return the pass ran is the pass's
+    own run. Every other return's counts are read from the store as the
+    walk left it - the walk followed every journal, moments before for
+    *Run now* and at the start for the schedule - with no second read of
+    its journal; a return the store does not hold is followed. So a
+    return the pass did not run shows as its record stood when the pass
+    began, plus anything recorded on this computer since.
     """
     ran = {run.engagement.path: run for run in passed}
     siblings, foreign, not_listed = records_needing_a_person(registry)

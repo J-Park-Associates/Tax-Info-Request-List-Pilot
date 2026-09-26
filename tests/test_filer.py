@@ -9118,3 +9118,33 @@ def test_an_original_held_for_the_whole_pass_is_parked_and_said_so(engagement, m
     assert "checks the record" not in row.reason
     assert (originals(engagement) / "w2.pdf").is_file()
     assert [error.name for error in report.errors] == ["w2.pdf"]
+
+
+def test_an_index_read_without_following_is_the_store_as_it_stands(tmp_path):
+    """Decision 192: the practice page reads each return's index as the
+    walk left the store, without reading its journal again. A line behind
+    the store is not seen that way and is seen by every other reader; a
+    return the store does not hold is followed either way."""
+    from tests.conftest import seed_index
+    from tracker.locking import engagement_lock
+    from tracker.records import IndexEntry, entry_to_json, ledger_key
+
+    engagement = make_engagement(tmp_path / "Clients", ITEMS, scaffold=False)
+
+    def parked(name):
+        return IndexEntry(received="2026-02-02", original_name=name, size_kb=5.0, digest="ef" * 32,
+                          identifier="", prepared_location="", pbc_location=name,
+                          decision=NEEDS_REVIEW, reason="no request matched")
+
+    seed_index(engagement, [parked("first.pdf")])
+    behind = parked("second.pdf")
+    with engagement_lock(engagement):
+        ledger.append(engagement, ledger.new(ledger.IMPORTED, **{
+            ledger.KEY_KEY: ledger_key(behind), ledger.ROW_KEY: entry_to_json(behind)}))
+
+    assert [one.original_name for one in read_index(engagement, follow=False)] == ["first.pdf"]
+    assert [one.original_name for one in read_index(engagement)] == ["first.pdf", "second.pdf"]
+
+    assert store.forget(store.connect(), engagement)
+    assert [one.original_name for one in read_index(engagement, follow=False)] == [
+        "first.pdf", "second.pdf"]

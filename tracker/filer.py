@@ -1170,7 +1170,7 @@ def clients_root_of(engagement_dir: Path | str) -> Path:
     return store.root_for(engagement_dir)
 
 
-def read_index(engagement: Path | str) -> list[IndexEntry]:
+def read_index(engagement: Path | str, *, follow: bool = True) -> list[IndexEntry]:
     """Every index row, oldest first. Empty where nothing is recorded yet.
 
     **The record answers this, and there is no workbook behind it**
@@ -1187,10 +1187,17 @@ def read_index(engagement: Path | str) -> list[IndexEntry]:
     first: the pass, the app's state, the triage, the reminder, the
     rollover and the Status Report all come through here and all get the
     same rows.
+
+    Reading with ``follow`` false is the practice page's alone (decision
+    192): the walk has just followed every journal, so the page reads the
+    rows as the store holds them; a return the store does not hold is
+    followed all the same. Nothing that files, parks or tells the client
+    passes it.
     """
     folder = Path(engagement)
     conn = store.connect()
-    store.follow_the_journal(conn, clients_root_of(folder), folder)
+    if follow or store.kind(conn, folder) is None:
+        store.follow_the_journal(conn, clients_root_of(folder), folder)
     return [entry_from_json(row) for row in store.documents(conn, folder)]
 
 

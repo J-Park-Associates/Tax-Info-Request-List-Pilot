@@ -3517,3 +3517,103 @@ def test_lines_from_other_machines_that_cannot_be_listed_are_said_where_they_wou
     page = html.unescape(write_status_page(clients, report).read_text(encoding="utf-8"))
     assert "Lines from other machines could not be listed this pass: record-heads.db" in page
     assert "SQLITE_IOERR_READ" in page
+
+
+# ------------------- the page reads the store the walk left (decision 192) ----
+
+
+def _count_journal_reads(monkeypatch) -> list[Path]:
+    """Every journal read from now on: each goes through ``Path.read_bytes``
+    (``ledger._bytes_of``)."""
+    read: list[Path] = []
+    real = Path.read_bytes
+
+    def counting(self):
+        if self.name == ledger.LEDGER_FILENAME:
+            read.append(Path(self))
+        return real(self)
+
+    monkeypatch.setattr(Path, "read_bytes", counting)
+    return read
+
+
+def _a_parked_file(engagement_dir) -> str:
+    """One file parked for a person in this return's record."""
+    seed_index(engagement_dir, [IndexEntry(
+        received="2026-02-02", original_name="unclear scan.pdf", size_kb=5.0, digest="cd" * 32,
+        identifier="", prepared_location="", pbc_location="unclear scan.pdf",
+        decision=NEEDS_REVIEW, reason="no request matched")])
+    return "unclear scan.pdf"
+
+
+def test_the_practice_page_reads_no_journal_the_walk_has_followed(tmp_path, samples, monkeypatch):
+    """F-M-3: the page read every return's journal four more times after
+    the walk had followed each one. It now reads the store the walk left -
+    and still carries each return's counts and parked files."""
+    first, second = _two_households(tmp_path, samples)
+    for one in (first, second):
+        a_pass(one, today=FRIDAY, reminders=REMINDERS_NEVER)
+    parked = _a_parked_file(first.path)
+    registry = discover_engagements(tmp_path)
+    read = _count_journal_reads(monkeypatch)
+
+    report = runner_module.status_report(registry)
+    write_status_page(tmp_path, report)
+
+    assert read == []
+    assert all(run.statuses for run in report.runs)
+    assert parked in _page(tmp_path)
+    # The recorder sees a journal read when one is made.
+    read_index(first.path)
+    assert ledger.path_for(first.path) in read
+
+
+def test_the_page_follows_a_journal_the_store_does_not_hold(tmp_path, samples):
+    """R5: a return the store has no row for is built from its journal
+    for the page, as every reader builds one - never shown blank."""
+    first, second = _two_households(tmp_path, samples)
+    earlier = a_pass(first, today=FRIDAY, reminders=REMINDERS_NEVER)
+    parked = _a_parked_file(first.path)
+    registry = discover_engagements(tmp_path)
+    assert store.forget(store.connect(), first.path)
+
+    report = runner_module.status_report(registry)
+    write_status_page(tmp_path, report)
+
+    row = next(run for run in report.runs if run.engagement.path == first.path)
+    assert row.statuses == earlier.statuses and row.outstanding == earlier.outstanding
+    assert parked in _page(tmp_path)
+
+
+def test_an_index_the_page_cannot_read_is_said_by_its_class_never_its_message(
+        tmp_path, samples, monkeypatch):
+    """R7: the page's unreadable-index sentence names the class and the
+    errno's code - an OSError's message names a client's folder (security
+    principle 7)."""
+    import errno
+
+    import tracker.runner as runner
+
+    engagement = build_engagement(tmp_path, samples)
+    where = str(engagement.path / "somewhere private")
+
+    def refused(folder, *args, **kwargs):
+        raise PermissionError(errno.EACCES, "Permission denied", where)
+
+    monkeypatch.setattr(runner, "read_index", refused)
+    write_status_page(tmp_path, runner_module.status_report(discover_engagements(tmp_path)))
+
+    page = _page(tmp_path)
+    assert runner.STATUS_INDEX_UNREADABLE.format(
+        label=engagement.label, error="PermissionError (EACCES)") in page
+    assert where not in page
+
+
+def test_only_the_practice_page_reads_the_store_without_following_the_journal():
+    """R6: a writer or a card that read without following could act on
+    rows behind the journal, so ``follow=False`` is passed in the runner's
+    page and nowhere else in the package."""
+    package = Path(runner_module.__file__).parent
+    passing = sorted(one.name for one in package.glob("*.py")
+                     if "follow=False" in one.read_text(encoding="utf-8"))
+    assert passing == ["runner.py"]

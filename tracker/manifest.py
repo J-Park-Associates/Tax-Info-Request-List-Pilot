@@ -1112,7 +1112,7 @@ def validated(items: Iterable[RequestItem]) -> list[RequestItem]:
 # --------------------------------------------------------------- reading ----
 
 
-def _the_record(engagement_dir: Path | str):
+def _the_record(engagement_dir: Path | str, *, follow: bool = True):
     """The store's connection, brought up to this engagement's journal.
 
     Imported here, not at the top: this module owns the list, the store
@@ -1128,11 +1128,12 @@ def _the_record(engagement_dir: Path | str):
     if not ledger.path_for(folder).exists():
         raise ManifestError(NOT_AN_ENGAGEMENT.format(name=folder.name, ledger=ledger.LEDGER_FILENAME))
     conn = store.connect()
-    store.follow_the_journal(conn, store.root_for(folder), folder)
+    if follow or store.kind(conn, folder) is None:
+        store.follow_the_journal(conn, store.root_for(folder), folder)
     return conn
 
 
-def load_manifest(engagement_dir: Path | str) -> list[RequestItem]:
+def load_manifest(engagement_dir: Path | str, *, follow: bool = True) -> list[RequestItem]:
     """Every request, as the record answers it now, in the list's order.
 
     The rules are the ones the last edit left in the store's ``requests``
@@ -1144,12 +1145,18 @@ def load_manifest(engagement_dir: Path | str) -> list[RequestItem]:
     no reader has to know whether a pass prepared this engagement -
     exactly as ``tracker.filer.read_index`` does for the index.
 
+    Reading with ``follow`` false is the practice page's (decision 192):
+    the walk has just followed every journal, so the page reads the store
+    as it stands, and a return the store does not hold at all is still
+    followed. A writer never passes it - a writer acting on rows behind
+    the journal would act on a list that is no longer the record.
+
     Raises :class:`ManifestError` for a folder that holds no record.
     """
     from tracker import store
 
     folder = Path(engagement_dir)
-    conn = _the_record(folder)
+    conn = _the_record(folder, follow=follow)
     items = [item_from_record(row) for row in store.rules(conn, folder) or []]
     return _with_the_record(
         items, store.statuses(conn, folder), store.learned_keywords(conn, folder)

@@ -1131,3 +1131,32 @@ def test_a_line_break_in_a_description_is_saved_and_admitted():
     [item] = validated([RequestItem(identifier="A01", document="W-2\nWages", period="Jan\n2025",
                                     required_keywords=("W-2\nform",))])
     assert records.rule_row_problem(rule_to_json(item)) == ""
+
+
+def test_a_list_read_without_following_is_the_store_as_it_stands(tmp_path):
+    """Decision 192: the practice page reads each return's list as the
+    walk left the store, without reading its journal again. A line behind
+    the store is not seen that way and is seen by every other reader; a
+    return the store does not hold is followed either way, never shown
+    empty."""
+    from tracker.locking import engagement_lock
+    from tracker.manifest import Status
+    from tracker.records import StatusUpdate, status_to_json
+
+    engagement = make_engagement(tmp_path / "Clients", SAMPLE_ITEMS, scaffold=False)
+    before = {item.identifier: item.status for item in load_manifest(engagement)}
+    first = SAMPLE_ITEMS[0].identifier
+    with engagement_lock(engagement):
+        ledger.append(engagement, ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: {
+            first: status_to_json(StatusUpdate(status=Status.RECEIVED, file_count=1))}}))
+
+    as_it_stands = {item.identifier: item.status for item in load_manifest(engagement, follow=False)}
+    assert as_it_stands == before and before[first] != Status.RECEIVED
+    assert {item.identifier: item.status
+            for item in load_manifest(engagement)}[first] == Status.RECEIVED
+
+    other = make_engagement(tmp_path / "Clients", SAMPLE_ITEMS, return_name="1040 - Other",
+                            scaffold=False)
+    assert store.forget(store.connect(), other)
+    assert [item.identifier for item in load_manifest(other, follow=False)] == [
+        item.identifier for item in SAMPLE_ITEMS]

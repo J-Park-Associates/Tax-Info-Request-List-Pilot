@@ -60,6 +60,7 @@ from contextlib import ExitStack
 from dataclasses import asdict, replace
 from functools import cache
 from pathlib import Path
+from types import SimpleNamespace
 
 from tracker import (
     STANDING_RULES,
@@ -217,10 +218,12 @@ from tracker.records import (
 )
 from tracker.registry import (
     Engagement,
+    Household,
     Registry,
     RegistryError,
     discover_engagements,
     engagement_from,
+    households_named,
     mark_superseded,
 )
 from tracker.registry import (
@@ -1470,13 +1473,12 @@ def _the_practice() -> Registry | None:
     """One walk of the clients root, or ``None`` where it cannot be walked
     (decision 129).
 
-    The feed list is resolved against the practice: a feed names a return
-    line in another household, and only a walk can say which return that
-    is this year. Every caller here wants the same thing and the same
-    forgiveness - a root that is unset, gone or unreadable answers with
-    nothing rather than failing the card or the pass - so the walk is
-    asked for in one place and both the card (:func:`_feed_payload`) and
-    *Run now* (:func:`_cmd_scan`) ask it the same way.
+    **The one walk a click makes, and only *Run now* makes it** (decision
+    192): :func:`_cmd_scan` walks once and hands this registry to the pass
+    and to the practice page it redraws. Showing a return walks nothing -
+    the card resolves its feeds over the households they name
+    (:func:`_feed_payload`). A root that is unset, gone or unreadable
+    answers with nothing rather than failing the pass.
     """
     root = _saved_root()
     try:
@@ -1495,22 +1497,34 @@ def _feed_payload(household_dir: Path, years: list[int]) -> tuple[list[dict], li
     nothing. ``fed_by`` is the other direction, for the destination's own
     card: who else may drop for a return that lives here.
 
-    One walk of the practice, and only for a household that has a feed or
-    might be fed - which is the question itself, so the walk is made
-    whenever the root can be walked at all. A root that cannot be walked
-    answers with nothing rather than failing the card.
+    **Nothing is walked** (decision 192). The feeds are resolved by
+    :func:`resolve_feeds`, unchanged, over
+    :func:`tracker.registry.households_named` - the households the feed
+    list names and no other, read fresh, because the hand-over and the
+    waiting row's click check their target through this same resolution
+    before they write, and a write is never answered from a cache. A
+    household with no feed, which is nearly every household, reads no
+    other folder at all. ``fed_by`` needs every household's feed list,
+    which only a walk or the store holds, so it is the store's
+    (:func:`_fed_by_payload`): a display, which may lag a feed added on
+    another computer. A private tree that cannot be listed answers the
+    feeds with nothing rather than failing the card.
     """
     try:
         info = load_household_info(household_dir)
     except ManifestError:
         info = HouseholdInfo()
-    registry = _the_practice()
-    if registry is None:
-        return ([{"household": one.household, "return_name": one.return_name,
-                  "label": "", "path": "", "warning": ""} for one in info.feeds], [])
+    fed = _fed_by_payload(household_dir)
     year = years[0] if len(years) == 1 else None
-    found, said = ((resolve_feeds(household_dir, info.feeds, year, registry))
-                   if year is not None else ([], []))
+    found: list[Engagement] = []
+    said: list[str] = []
+    if info.feeds and year is not None:
+        try:
+            practice = households_named(household_dir.parent, [one.household for one in info.feeds])
+        except RegistryError:
+            return ([{"household": one.household, "return_name": one.return_name,
+                      "label": "", "path": "", "warning": ""} for one in info.feeds], fed)
+        found, said = resolve_feeds(household_dir, info.feeds, year, practice)
     by_line = {(one.info.household or one.household_path.name, one.info.return_name or one.path.name):
                one for one in found}
     unresolved = iter(said)
@@ -1525,9 +1539,46 @@ def _feed_payload(household_dir: Path, years: list[int]) -> tuple[list[dict], li
             "path": str(match.path) if match else "",
             "warning": "" if match else next(unresolved, ""),
         })
-    fed = [{"name": one.name, "path": str(one.path), "members": list(one.info.members)}
-           for one in fed_by(registry, household_dir)]
     return feeds, fed
+
+
+def _fed_by_payload(household_dir: Path) -> list[dict]:
+    """The households whose drop folders feed a return of this one, from
+    the store's household rows as they stand (decision 192).
+
+    The question needs every household's feed list, and a card may not
+    walk the practice to learn it; every walk tops the rows up, so this
+    answers as of the last time this computer listed the clients or ran a
+    pass - a feed added on another computer is named here after the next
+    of those (the runbook says so). Removed elsewhere, the feeder stays
+    named until then: over-telling, the safe direction for a disclosure
+    line. No write reads it.
+
+    Each match is held to the walk's own tests before it is shown: a
+    household position under this household's own private tree, a name
+    the layout accepts, and a journal that is still there (one ``stat``,
+    never a read) - so a folder renamed aside or a record removed is not
+    named from a row the store still holds. With no saved root there is
+    nothing to place the rows under and the answer is nobody; a store
+    that cannot be read is logged by its class and answers nobody too,
+    because a card must not fail on its disclosure line.
+    """
+    root = _saved_root()
+    if root is None:
+        return []
+    try:
+        rows = store.households(store.connect())
+    except store.StoreError as exc:
+        log.warning("fed_by: the store's households could not be read (%s)", type(exc).__name__)
+        return []
+    built = [Household(path=root.joinpath(*key.split("/")), info=info) for key, info in rows]
+    shown = [one for one in fed_by(SimpleNamespace(households=built), household_dir)
+             if layout.place_of(root, one.path).kind == layout.HOUSEHOLD
+             and one.path.parent == household_dir.parent
+             and layout.segment_problem(one.path.name) is None
+             and ledger.path_for(one.path).is_file()]
+    return [{"name": one.name, "path": str(one.path), "members": list(one.info.members)}
+            for one in sorted(shown, key=lambda one: one.path.name.lower())]
 
 
 #: The app's action on a paused household (decision 188, R6) and its help.
@@ -1688,9 +1739,12 @@ def _state(engagement: Path) -> dict:
     # measured from the list already loaded - no second read - so a person
     # opening a return sees the number without waiting for a pass.
     room = room_for(engagement, items)
+    # The household payload, built once (decision 192): the card and the
+    # feed list a waiting row is offered from are drawn from the same one.
+    household = _household_payload(engagement)
     # The feed list, read once and only if a parked row waits for another
     # household (decision 204).
-    fed_once = cache(lambda: _fed_returns(engagement))
+    fed_once = cache(lambda: _fed_returns(engagement, household))
     return {
         # The derived page, and whether it still describes this engagement.
         # Reading the stamp takes no lock and tolerates another program
@@ -1780,7 +1834,7 @@ def _state(engagement: Path) -> dict:
         # record, the years still open across it, its returns and the one
         # queue a person works. The card is drawn from this and types
         # nothing of its own.
-        "household": _household_payload(engagement),
+        "household": household,
         "paths": {
             "engagement": str(engagement),
             # The household's one inbox and the folder the client sees for
@@ -1863,7 +1917,7 @@ def _cmd_state(argv: list[str]) -> dict:
 
 
 def _record_pass(runs: list[EngagementRun] | EngagementRun,
-                 warnings: list[str] | None = None) -> list[str]:
+                 warnings: list[str] | None = None, *, registry: Registry | None) -> list[str]:
     """Leave the record the scheduled run leaves: a line in the run log and
     the practice's status page, both in the clients root.
 
@@ -1871,7 +1925,11 @@ def _record_pass(runs: list[EngagementRun] | EngagementRun,
     same trace - a pass with no record is a pass nobody can check
     afterwards, and a page that is a night old is one nobody believes. The
     page is redrawn from every engagement under the root, because it is
-    about the practice and not about the engagement that was just run.
+    about the practice and not about the engagement that was just run -
+    drawn from the walk the pass made, ``registry``: one walk per *Run
+    now* (decision 192). With no walk (``None``: the root could not be
+    walked, and the pass was refused for it) the log line is still
+    written and the page is not, which the reply says.
 
     Neither takes a lock or touches an engagement, and neither failing is
     allowed to fail the pass: the files have already been moved and the
@@ -1896,9 +1954,12 @@ def _record_pass(runs: list[EngagementRun] | EngagementRun,
     except Exception as exc:
         log.warning("Could not write %s (%s)", LOG_FILENAME, exc)
         failed.append(LOG_NOT_WRITTEN.format(kind=exc.__class__.__name__))
+    if registry is None:
+        log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, RegistryError.__name__)
+        failed.append(PAGE_NOT_WRITTEN.format(kind=RegistryError.__name__))
+        return failed
     try:
-        write_status_page(root, status_report(discover_engagements(root), passed=every,
-                                              warnings=said + failed))
+        write_status_page(root, status_report(registry, passed=every, warnings=said + failed))
     except Exception as exc:
         log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, exc)
         failed.append(PAGE_NOT_WRITTEN.format(kind=exc.__class__.__name__))
@@ -1929,7 +1990,8 @@ def _cmd_scan(argv: list[str]) -> dict:
     honestly do. The reply is about the return that was asked for.
 
     **And the whole feed list with it** (decision 129). The practice is
-    walked and handed down, so the returns this drop folder feeds in other
+    walked once and handed down, and the page is drawn from the same walk
+    (decision 192), so the returns this drop folder feeds in other
     households are judged, locked and filed into here exactly as the
     scheduled pass does it: without the walk the same trial balance would
     file under the co-owned LLC on the schedule and park at home on Run
@@ -1944,15 +2006,15 @@ def _cmd_scan(argv: list[str]) -> dict:
     returns = mark_superseded([engagement_from(folder)
                                for folder in household_returns(household_dir)]) \
         or [engagement_from(engagement)]
-    runs = run_household(household_dir, returns, reminders=REMINDERS_NEVER,
-                         registry=_the_practice())
+    practice = _the_practice()
+    runs = run_household(household_dir, returns, reminders=REMINDERS_NEVER, registry=practice)
     run = next((one for one in runs if one.engagement.path == engagement),
                EngagementRun(engagement=engagement_from(engagement)))
     # Said once, as the pass's own (decisions 150, 169 and 189).
     pass_warnings = [w for w in (ocr.reader_path_warning(), reader_start_warning()) if w]
     if ocr_session := ocr.current_session():
         pass_warnings.extend(ocr_session.warnings())
-    pass_warnings.extend(_record_pass(runs, pass_warnings))
+    pass_warnings.extend(_record_pass(runs, pass_warnings, registry=practice))
     payload = {
         "run": {
             "ok": run.ok,
@@ -3042,9 +3104,13 @@ def _shortlist_now(engagement: Path, original: str) -> list[str]:
     return [s.identifier for s in review.shortlist_for(entry, load_manifest(engagement))]
 
 
-def _fed_returns(engagement: Path) -> dict[Path, str]:
+def _fed_returns(engagement: Path, household: dict | None = None) -> dict[Path, str]:
     """Every return this return's drop folder feeds, by folder, with its
     label (decision 129).
+
+    ``household`` is the payload :func:`_state` already built, so a state
+    builds it once (decision 192); the two clicks that write through the
+    list pass none and build it fresh.
 
     Its household's own open-year returns and the return lines a person
     extended it to. The one list that says what a hand-over may name, and
@@ -3052,7 +3118,7 @@ def _fed_returns(engagement: Path) -> dict[Path, str]:
     document where the feed list already goes.
     """
     household_dir = household_of(engagement)
-    payload = _household_payload(engagement)
+    payload = household or _household_payload(engagement)
     years = payload["open_years"]
     fed = {Path(one["path"]): one["label"] for one in payload["returns"]
            if one["active"] and one["year"] in years}

@@ -3758,6 +3758,172 @@ def test_a_pass_cannot_be_run_without_the_practice(capsys, demo_root, monkeypatc
     assert payload["run"]["filed"] == 0
     assert (inbox_of(father) / "tb.pdf").is_file()      # nothing was sorted
     assert read_index(father) == []
+    # With no walk there is no page to draw, and the reply still says so
+    # (decision 192, R4): the pass's one walk is the page's only source.
+    from tracker.runner import PAGE_NOT_WRITTEN
+    assert PAGE_NOT_WRITTEN.format(kind="RegistryError") in payload["pass_warnings"]
+
+
+# ============= a click walks nothing (decision 192) =========================
+
+
+def _count_walks(monkeypatch) -> list[Path]:
+    """Every walk of a clients root from now on: each goes through
+    ``registry._walk_root``, and ``households_named`` never does."""
+    from tracker import registry
+
+    walked: list[Path] = []
+    real = registry._walk_root
+
+    def counting(root):
+        walked.append(Path(root))
+        return real(root)
+
+    monkeypatch.setattr(registry, "_walk_root", counting)
+    return walked
+
+
+def _count_journal_reads(monkeypatch) -> list[Path]:
+    """Every journal read from now on: each goes through
+    ``Path.read_bytes`` (``ledger._bytes_of``)."""
+    read: list[Path] = []
+    real = Path.read_bytes
+
+    def counting(self):
+        if self.name == ledger.LEDGER_FILENAME:
+            read.append(Path(self))
+        return real(self)
+
+    monkeypatch.setattr(Path, "read_bytes", counting)
+    return read
+
+
+def _a_third_household(capsys, root):
+    """A household nothing feeds and that feeds nothing: the rest of the
+    practice a click on another return has no business reading."""
+    assert run(capsys, "create", stdin={
+        "household": "Kim Household", "contact": "Dana",
+        "return_name": "1040 - Dana Kim",
+        "items": [{"identifier": "C01", "document": "W-2"}]})[0] == 0
+    return where(root, "1040 - Dana Kim", household="Kim Household")
+
+
+def test_showing_a_return_walks_nothing_and_reads_no_other_households_record(
+        capsys, demo_root, monkeypatch):
+    """F-M-1: the card's two feed lines used to walk the practice and read
+    every journal in it. The LLC feeds nothing, so its card reads nothing
+    outside its own household - and is still told Park Family feeds it."""
+    _father, llc = two_households(capsys, demo_root)
+    _a_third_household(capsys, demo_root)
+    walked, read = _count_walks(monkeypatch), _count_journal_reads(monkeypatch)
+
+    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(llc))
+
+    assert code == 0, payload
+    assert walked == []
+    household = llc.parent.parent
+    assert read and ledger.path_for(llc) in read
+    assert all(household in one.parents for one in read), read
+    assert [one["name"] for one in payload["household"]["fed_by"]] == ["Park Family"]
+
+
+def test_a_return_that_feeds_another_household_reads_only_that_households_records(
+        capsys, demo_root, monkeypatch):
+    """R1: a feed is resolved fresh, over the households the feed list
+    names and no other - the third household is never opened."""
+    father, llc = two_households(capsys, demo_root)
+    third = _a_third_household(capsys, demo_root)
+    walked, read = _count_walks(monkeypatch), _count_journal_reads(monkeypatch)
+
+    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(father))
+
+    assert code == 0, payload
+    assert walked == []
+    mine, theirs = father.parent.parent, llc.parent.parent
+    assert read and ledger.path_for(father) in read
+    assert all(mine in one.parents or theirs in one.parents for one in read), read
+    assert not any(third.parent.parent in one.parents for one in read)
+    [feed] = payload["household"]["feeds"]
+    assert feed["path"] == str(llc) and feed["warning"] == ""
+    assert "1120S - Park & Lee LLC" in feed["label"]
+
+
+def test_run_now_walks_the_practice_once(capsys, demo_root, monkeypatch):
+    """F-M-3: *Run now* walked three or four times - the pass, the page,
+    the state and a waiting row. One walk now serves the pass and the
+    page, and the state walks nothing."""
+    from tests.samples import text_pdf
+
+    father, llc = two_households(capsys, demo_root)
+    third = _a_third_household(capsys, demo_root)
+    text_pdf(inbox_of(father) / "tb.pdf", ["Trial balance as of December 31 2025", TEST_CLIENT])
+    walked = _count_walks(monkeypatch)
+
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(father))
+
+    assert code == 0, payload
+    assert walked == [demo_root]
+    assert payload["state"]["household"]["returns"]
+    assert not any("RegistryError" in one for one in payload["pass_warnings"])
+    page = (demo_root / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
+    for one in (father, llc, third):
+        assert one.parent.parent.name.replace("&", "&amp;") in page
+
+
+def test_fed_by_names_no_household_whose_record_is_gone(capsys, demo_root, tmp_path, monkeypatch):
+    """R2: the store still holds Park Family's row after its folder is
+    moved aside, and the card does not name it - each row is held to a
+    journal that is still where the row says."""
+    father, llc = two_households(capsys, demo_root)
+    assert [one["name"] for one in api._state(llc)["household"]["fed_by"]] == ["Park Family"]
+    father.parent.parent.rename(tmp_path / "aside")
+    walked = _count_walks(monkeypatch)
+
+    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(llc))
+
+    assert code == 0, payload
+    assert payload["household"]["fed_by"] == []
+    assert walked == []
+
+
+def test_a_paused_household_shows_its_pause_and_accept_without_a_walk(capsys, demo_root, monkeypatch):
+    """Decision 188's pause is this household's own: its folders and its
+    record. Nothing about it needs the practice."""
+    from tracker.households import HOUSEHOLD_PAUSED
+
+    engagement = _a_renamed_household(capsys, demo_root)
+    walked = _count_walks(monkeypatch)
+
+    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))
+
+    assert code == 0, payload
+    assert walked == []
+    pause = payload["household"]["pause"]
+    assert pause["sentence"] == HOUSEHOLD_PAUSED and pause["scope"] == "household"
+    assert pause["seq"]
+
+
+def test_a_waiting_row_costs_the_state_one_household_payload(capsys, demo_root, monkeypatch):
+    """R8: the feed list a waiting row is offered from is drawn from the
+    household payload the card already built, not a second one."""
+    father, llc = two_households(capsys, demo_root)
+    waiting_document(capsys, father)
+    built: list[Path] = []
+    real = api._household_payload
+
+    def counting(engagement):
+        built.append(engagement)
+        return real(engagement)
+
+    monkeypatch.setattr(api, "_household_payload", counting)
+
+    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(father))
+
+    assert code == 0, payload
+    assert built == [father]
+    [waiting] = payload["review"]
+    assert waiting["waits_for"]["target"] == str(llc)
+    assert waiting["waits_for_refused"] == ""
 
 
 # ============== what we have received, at once (decision 130) =============

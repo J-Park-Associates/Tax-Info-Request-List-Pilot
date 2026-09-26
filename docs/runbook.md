@@ -653,6 +653,12 @@ What the tracker does and does not do:
   name, the name it keeps every year. Roll Forward carries nothing about
   feeds, and a line the other household has retired is said on the card
   rather than quietly feeding nothing.
+- The card's *Also fed by* line is drawn from what this computer last
+  read of every household: when the app last listed the clients, or a
+  Sort & Scan or a pass ran here. A feed a person added on another
+  computer is named here after the next of those. The feeds a card
+  lists as its own, and every click that files through a feed, read
+  the other household's record at that moment.
 - Nothing is ever inferred. The tracker never looks at two households and
   suggests that one feeds the other, any more than it decides who belongs
   in a household. Both are a person's assembly.
@@ -881,7 +887,8 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
 1. **Read what the last pass did.** The status page every pass writes into
    the clients root (`tracker.runner.STATUS_PAGE_FILENAME`) is the one-screen
    version — which engagements ran, which need a person, which failed, and
-   every parked file across the practice, newest first; the app's
+   every parked file across the practice, newest first. A return the pass
+   did not run is shown as its record stood when the pass began. The app's
    **Open Status** button opens it. The run log
    (`tracker.runner.LOG_FILENAME`), in the clients root beside the
    engagement folders, has the same, pass by pass, including passes made from
