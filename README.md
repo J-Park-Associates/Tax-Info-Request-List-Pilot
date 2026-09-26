@@ -114,7 +114,11 @@ what has arrived shows each attachment that filed, under its request.
 
 1. Roll a returning client's list forward from last year (the default), or
    pick the tax form type for a new client — the catalog lives in
-   `tracker/templates.py` and nowhere else
+   `tracker/templates.py` and nowhere else. A new household's name is
+   unique across both trees by how it reads, not how it is spelled: the
+   wizard refuses a name that reads as a household already in the list and
+   points at it there - add a first name or a middle initial, then the
+   city, to tell two households apart (decision 188)
 2. List the engagement's document requests (and validation rules) in the
    app's request-list editor
 3. `python -m tracker.scaffold <return_dir>` — builds the household's

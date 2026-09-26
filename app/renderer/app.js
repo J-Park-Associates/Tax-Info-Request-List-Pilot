@@ -1139,6 +1139,15 @@ function renderHousehold(state) {
   $("household-two-years").classList.toggle("hidden", !twoYears);
   $("household-two-years").textContent = twoYears
     ? fill(words.two_open_years, { years: hh.open_years.join(", ") }) : "";
+  // Paused (decision 188): the folder is the name, and the record claims
+  // another. The API's sentence and the one action; nothing else is typed.
+  const pause = hh.pause || {};
+  shownPause = pause;
+  $("household-paused").classList.toggle("hidden", !pause.sentence);
+  $("household-paused-note").textContent = pause.sentence || "";
+  $("btn-accept-folder-name").textContent = words.accept_folder_name;
+  $("btn-accept-folder-name").title = words.accept_folder_name_help;
+  $("btn-accept-folder-name").classList.toggle("hidden", !pause.scope);
   $("household-returns-head").textContent = words.returns_heading;
   const open = hh.open_years.length === 1 ? hh.open_years[0] : null;
   // Each return of the open year, with its own reminder's state beside it
@@ -1210,6 +1219,27 @@ function renderSharing(hh) {
   }
   $("btn-mark-shared").textContent = words.mark_shared;
   $("btn-mark-shared").classList.toggle("hidden", Boolean(hh.shared_on));
+}
+
+// A person's word that the folder's name is the name (decision 188): the
+// API writes one dated line per record that claimed another and moves
+// nothing. The seq is the household record's as this card was drawn, so
+// a card drawn before somebody else acted is refused, not applied.
+let shownPause = null;
+async function acceptFolderName() {
+  const pause = shownPause;
+  if (!pause || !pause.engagement) return;
+  const btn = $("btn-accept-folder-name");
+  btn.disabled = true;
+  try {
+    const result = await call(["accept-folder-name", vocab.engagement_flag, pause.engagement],
+                              { seq: pause.seq, scope: pause.scope });
+    render(result.state);
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // The firm's word, recorded once: one dated event on the household's
@@ -2593,6 +2623,7 @@ $("btn-inbox").addEventListener("click", () => paths && window.tracker.open(path
 $("btn-client-folder").addEventListener("click", () => paths && window.tracker.open(paths.client_folder));
 $("btn-edit-household").addEventListener("click", openHouseholdEditor);
 $("btn-mark-shared").addEventListener("click", markShared);
+$("btn-accept-folder-name").addEventListener("click", acceptFolderName);
 $("hh-edit-cancel").addEventListener("click", () => $("household-modal").classList.add("hidden"));
 $("hh-edit-save").addEventListener("click", saveHousehold);
 $("hh-edit-feed-add").addEventListener("click", addEditorFeed);

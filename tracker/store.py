@@ -1488,6 +1488,12 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
 
     if ledger.AT_KEY in event and (problem := records.stamp_problem(event[ledger.AT_KEY])):
         refuse(f"carries {ledger.AT_KEY!r} that {problem}")
+    # A person's word that a folder's name is accepted (decision 188): on
+    # the two events that name a household or a return, with the one value.
+    if ledger.ACCEPTED_KEY in event and (
+            name not in (ledger.RULES_CHANGED, ledger.HOUSEHOLD_CHANGED)
+            or event[ledger.ACCEPTED_KEY] != ledger.FOLDER_NAME_ACCEPTED):
+        refuse(f"carries {ledger.ACCEPTED_KEY!r} that is not a folder's name accepted")
     if name in (ledger.RULES_CHANGED, ledger.RULES_IMPORTED):
         rows = event.get(ledger.RULES_KEY)
         if rows is not None and not isinstance(rows, list):

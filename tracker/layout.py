@@ -493,8 +493,8 @@ def year_of(return_dir: Path | str) -> int | None:
 
     ``None`` rather than a guess: a year nobody can read off the layout is
     the record's to say (``EngagementInfo.tax_year``), and a folder whose
-    name disagrees with its record is processed as the record says and
-    warned (``tracker.registry.NAME_DISAGREES``).
+    name disagrees with its record pauses its household (decision 188,
+    ``tracker.households.pause_of``).
     """
     name = Path(return_dir).parent.name
     return int(name) if is_year_folder(name) else None

@@ -169,8 +169,22 @@ from tracker.filer import (
     sweep_stranded_temps,
 )
 from tracker.fsio import write_json_atomically, write_text_atomically
-from tracker.households import load_household_info, open_years, resolve_feeds
-from tracker.layout import household_of, inbox_of, lock_order_key, originals_dir_for, parts_below, root_of
+from tracker.households import (
+    CLIENT_FOLDER_MISSING,
+    client_side_expected,
+    load_household_info,
+    open_years,
+    resolve_feeds,
+)
+from tracker.layout import (
+    client_household_dir,
+    household_of,
+    inbox_of,
+    lock_order_key,
+    originals_dir_for,
+    parts_below,
+    root_of,
+)
 from tracker.ledger import LedgerError
 from tracker.locking import engagement_lock
 from tracker.manifest import (
@@ -751,6 +765,25 @@ def run_household(
     sorting: list[EngagementRun] = []
     taken = unreached = 0
     try:
+        # A household stopped (two folders claim it, its record is gone) or
+        # paused (its folders and its record disagree) is not touched at all
+        # - no sweep, no layout, no sort, no scan, no draft, no README - and
+        # every run of it is red until a person acts (decision 188, R6 and
+        # R10). Inside the household's guard and budget (decision 189), and
+        # before anything is sorted.
+        held_back = (getattr(registry, "stopped", {}).get(household)
+                     or getattr(registry, "paused", {}).get(household))
+        # A household whose client folder is gone, when it has had one, was
+        # renamed or moved in the client tree: nothing is made again under
+        # the old name (SPEC-162 ruling 2, kept by decision 188).
+        client_side_there = client_household_dir(household.parent.parent, household.name).is_dir()
+        if not held_back and not client_side_there \
+                and client_side_expected(household, [run.engagement.path for run in runs]):
+            held_back = CLIENT_FOLDER_MISSING.format(name=household.name)
+        if held_back:
+            for run in runs:
+                run.error = held_back
+            return runs
         working = [run for run in runs if _worth_a_pass(run)]
         if not working:
             return runs
@@ -802,7 +835,8 @@ def run_household(
             # out its own folders, and its request list is not this
             # client's to read.
             if not dry_run:
-                scaffold_household(household, returns=[run.engagement.path for run in working])
+                scaffold_household(household, returns=[run.engagement.path for run in working],
+                                   may_make_household=not client_side_there)
             if sorting:
                 taken, unreached = _sort_step(household, sorting, fed, today=today,
                                               dry_run=dry_run, deadline=deadline)
@@ -933,9 +967,9 @@ def _sort_step(household: Path, sorting: list[EngagementRun], fed: list[Engageme
     time did not reach (decision 189).
     """
     first = sorting[0].engagement.path
-    # The year the record says, not the year folder's name: a folder
-    # somebody renamed is processed as the record says and warned about
-    # (``tracker.registry.NAME_DISAGREES``), never renamed.
+    # The year the record says, which is the year folder's name: a folder
+    # somebody renamed pauses the household (decision 188) and never
+    # reaches here, and nothing is ever renamed.
     year = sorting[0].engagement.tax_year
     originals = originals_dir_for(root_of(first), household.name, year)
     reports = file_household_drops(
@@ -1510,6 +1544,14 @@ def format_report(report: RunReport) -> str:
     ]
     if report.drafted:
         lines.append("  Drafts are drafts: nothing has been sent to anyone.")
+    # Every folder the walk left alone, at the end of every pass, as the
+    # runbook says (decision 188): a client folder no household owns, a
+    # name the rule refuses, a household position with no record.
+    if report.misfits:
+        lines += ["", f"  {STATUS_MISFITS_HEADING} ({len(report.misfits)})"]
+        for misfit in report.misfits:
+            lines.append(f"    {misfit.path}")
+            lines.append(f"        {misfit.sentence}")
     return "\n".join(lines)
 
 

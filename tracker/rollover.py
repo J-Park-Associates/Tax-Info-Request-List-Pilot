@@ -75,7 +75,13 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from tracker.fsio import make_new_folders
-from tracker.households import household_returns, load_household_info, open_years, return_name_taken
+from tracker.households import (
+    household_pause,
+    household_returns,
+    load_household_info,
+    open_years,
+    return_name_taken,
+)
 from tracker.layout import household_of, name_key, normalised_name, return_dir_for, root_of
 from tracker.manifest import (  # shift_years/detect_year re-exported: they live in manifest
     ManifestError,
@@ -590,6 +596,11 @@ def roll_household(
     household_dir = Path(household_dir)
     today = today or dt.date.today()
     check_tax_year(target_year)
+    # A household whose folders and record disagree is paused (decision
+    # 188): refused before anything is read further or written, because
+    # the new year would be written from one name and filed under another.
+    if paused := household_pause(household_dir):
+        raise ManifestError(paused)
 
     _, open_returns = open_year_returns(household_dir)
     by_folder = {_same_folder(one.path): one for one in open_returns}
@@ -776,6 +787,11 @@ if __name__ == "__main__":
     if not ledger.path_for(given).is_file():
         parser.error(f"no record in {given}")
     store.follow_the_journal(store.connect(), store.root_for(given), given)
+    # Paused (decision 188): refused before anything is written, in both
+    # forms of the command.
+    if paused := household_pause(given if store.kind(store.connect(), given) == store.KIND_HOUSEHOLD
+                                 else household_of(given)):
+        parser.error(paused)
 
     if store.kind(store.connect(), given) == store.KIND_HOUSEHOLD:
         if ns.year is None:

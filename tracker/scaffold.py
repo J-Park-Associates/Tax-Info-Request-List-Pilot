@@ -321,10 +321,17 @@ class HouseholdScaffold:
     originals: list[Path] = field(default_factory=list)
 
 
+class ClientFolderMissing(RuntimeError):
+    """A household's client folder is gone and is not to be made again
+    (SPEC-162 ruling 2, kept by decision 188); the message is
+    ``households.CLIENT_FOLDER_MISSING``."""
+
+
 def scaffold_household(
     household_dir: Path | str,
     *,
     returns: list[Path] | None = None,
+    may_make_household: bool = True,
 ) -> HouseholdScaffold:
     """Create/refresh one household's client side: its folder, its inbox and
     a year folder per open year. **Folders only** (decision 130): the README
@@ -340,6 +347,14 @@ def scaffold_household(
 
     Idempotent: re-running makes back a folder somebody deleted and does
     nothing else. Nothing already there is touched, renamed or deleted.
+
+    **Except the household's client folder, once it has had one**
+    (``may_make_household=False``, SPEC-162 ruling 2 kept by decision 188):
+    a household that was shared, or whose originals rest in its client
+    folder, whose client folder is gone was renamed or moved, and making a
+    new empty one would hide that - :class:`ClientFolderMissing` is raised
+    and nothing is made. The inbox inside an existing client folder is
+    still remade: it lies inside the shared folder.
     """
     household_dir = Path(household_dir)
     # The private household folder is root/PRIVATE_TREE/<household>, so the
@@ -353,6 +368,10 @@ def scaffold_household(
     # (decision 188): the household's client folder only while it is being
     # made, its inbox and its year folders always. The tree itself is no
     # household's place; a new root gets it once.
+    if not may_make_household and not client_dir.is_dir():
+        from tracker.households import CLIENT_FOLDER_MISSING
+
+        raise ClientFolderMissing(CLIENT_FOLDER_MISSING.format(name=household))
     clients_tree_of(root).mkdir(exist_ok=True)
     _make(root, household, client_dir, making=True)
     _make(root, household, inbox)

@@ -1748,10 +1748,16 @@ def _through_the_door(engagement_dir: Path, target: Path) -> None:
     that will be made above it, before anything is made. A destination in
     the firm's tree is not the door's to ask: the place rule and the link
     check already confined it."""
-    root = root_of(engagement_dir)
+    _door_for(root_of(engagement_dir), household_name_of(engagement_dir), target)
+
+
+def _door_for(root: Path, household: str, target: Path) -> None:
+    """:func:`_through_the_door` for a root and a household in hand: the
+    door asked for ``target`` in the client tree and every folder a write
+    there would make above it, a :class:`FilingError` with its sentence
+    when it refuses."""
     if place_of(root, target).kind not in CLIENT_KINDS:
         return
-    household = household_name_of(engagement_dir)
     for folder in (*reversed(target.parents), target):
         if place_of(root, folder).kind in CLIENT_KINDS and (folder == target or not folder.exists()):
             try:
@@ -3565,6 +3571,9 @@ def file_household_drops(
     try:
         if drops or strays:
             if not dry_run:
+                # Through the one door into the client tree (decision 188).
+                _door_for(root_of(runs[0].engagement_dir), household_name_of(runs[0].engagement_dir),
+                          Path(originals_dir))
                 originals_dir.mkdir(parents=True, exist_ok=True)
                 for run in runs:
                     run.context.prepared_dir.mkdir(parents=True, exist_ok=True)
@@ -4004,8 +4013,11 @@ def _sort_all(
                     original = _unique_path(
                         originals_dir, drop.name,
                         recorded=_taken_in_the_year(first, runs))
+                    # Through the one door into the client tree (decision 188).
+                    _door_for(root_of(first.engagement_dir),
+                              household_name_of(first.engagement_dir), original)
                     _move_whole(drop, original, within=inbox)
-                except OSError as exc:
+                except (OSError, FilingError) as exc:
                     first.report.errors.append(FileError(
                         drop.name,
                         f"could not move it into {originals_dir.name} ({exc}); left in place",
@@ -4214,10 +4226,14 @@ def _take_back(engagement_dir: Path, done: list[dict]) -> None:
         target = locate(engagement_dir, op[ledger.TO_KEY])
         try:
             if op[ledger.OP_KEY] == ledger.OP_MOVE:
+                # Put back where it was recorded, through the one door when
+                # that is the client tree (decision 188).
+                _door_for(root, place_of(root, source).household or household_name_of(engagement_dir),
+                          source)
                 _move_whole(target, source, within=root)
             elif _the_bytes(target) == op.get(ledger.DIGEST_KEY):
                 target.unlink()
-        except OSError as exc:
+        except (OSError, FilingError) as exc:
             log.error("Could not undo %s of %s after a later step failed: %s",
                       op[ledger.OP_KEY], target.name, exc)
 

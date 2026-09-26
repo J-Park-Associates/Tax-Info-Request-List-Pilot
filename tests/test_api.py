@@ -107,8 +107,9 @@ def _head_now(argv) -> str:
 def run(capsys, *argv, stdin=None):
     """Run one command the way main.js does: argv in, one JSON object out.
 
-    A ``create`` spec that names no household is given the one these claims
-    use: since decision 125 every return belongs to a household, and most
+    A ``create`` spec that names no household, or names the one these
+    claims use, is given that one - by its folder once it exists, as the wizard picks it in the list
+    (decision 188 refuses a household name typed again): since decision 125 every return belongs to a household, and most
     of what is claimed here is about the API rather than about households.
     The same for the people it is for: since decision 128 a return is
     refused without one, and most of what is claimed here is not about the
@@ -116,8 +117,19 @@ def run(capsys, *argv, stdin=None):
     list it was made from, as the editor's does (decision 160): the current
     one, unless the claim is about a stale one and names it.
     """
-    if stdin is not None and argv and argv[0] == "create" and "household" not in stdin:
-        stdin = {"household": HOUSEHOLD, **stdin}
+    if (stdin is not None and argv and argv[0] == "create"
+            and stdin.get("household", HOUSEHOLD) == HOUSEHOLD and "household_path" not in stdin):
+        stdin = {key: value for key, value in stdin.items() if key != "household"}
+        # Picked in the list once it exists, as the wizard does: since
+        # decision 188 a household name typed again is refused.
+        from tracker.layout import private_household_dir
+        from tracker.settings import clients_root
+
+        root = clients_root()
+        known = private_household_dir(root, HOUSEHOLD) if root else None
+        stdin = ({"household_path": str(known), **stdin}
+                 if known is not None and ledger.path_for(known).is_file()
+                 else {"household": HOUSEHOLD, **stdin})
     if stdin is not None and argv and argv[0] == "create" and "people" not in stdin:
         stdin = {"people": PEOPLE, **stdin}
     if stdin is not None and argv and argv[0] in ("edit", "rename") and "head" not in stdin:
@@ -2863,10 +2875,12 @@ def test_create_adds_a_return_to_an_existing_household_and_leaves_its_record_alo
     assert len(ledger.read_events(household_dir)) == 1        # one event, still
     assert payload["state"]["household"]["returns"][1]["return_name"] == "1120S - Park Landscaping"
 
-    # A household named again by name is that household, not a refusal.
-    assert run(capsys, "create", stdin={
+    # A household named again by name is refused since decision 188 (R7):
+    # it is picked in the list, and the sentence says so and what to add.
+    code, payload = run(capsys, "create", stdin={
         "household": "Park Family", "return_name": "1065 - Park & Lee LLC",
-        "items": [{"identifier": "C01", "document": "K-1"}]})[0] == 0
+        "items": [{"identifier": "C01", "document": "K-1"}]})
+    assert code == 1 and payload["error"] == api.DUPLICATE_HOUSEHOLD.format(existing="Park Family")
     assert len(ledger.read_events(household_dir)) == 1
 
 
@@ -5031,3 +5045,170 @@ def test_every_command_that_reads_the_root_rechecks_it(capsys, demo_root):
     finally:
         moved.rename(demo_root)
         shutil.rmtree(above, ignore_errors=True)
+
+
+# ------------------------------- decision 188: the folder is the name ----
+
+
+def test_typing_an_existing_households_name_is_refused_and_points_at_the_list(capsys, demo_root):
+    """T12: a household name typed again - its folder's name or its
+    record's claim, in any case or spacing - is refused before anything is
+    written, naming the household in the list and what to add to tell two
+    households apart: a first name or a middle initial, then the city."""
+    items = [{"identifier": "A01", "document": "W-2"}]
+    assert run(capsys, "create", stdin={"household": "Park Family", "return_name": "1040 - Park",
+                                        "items": items})[0] == 0
+    said = api.DUPLICATE_HOUSEHOLD.format(existing="Park Family")
+    assert "add a first name or a middle initial" in said and "add the city" in said
+    for typed in ("Park Family", "PARK FAMILY", "  park   family "):
+        code, payload = run(capsys, "create", stdin={"household": typed, "return_name": "1040 - X",
+                                                     "items": items})
+        assert code == 1 and payload["error"] == said, typed
+    assert sorted(p.name for p in (demo_root / PRIVATE_TREE).iterdir()) == ["Park Family"]
+
+
+def test_look_alike_spellings_of_one_name_are_refused_as_one_name(capsys, demo_root):
+    """T2: once ``Park`` exists, every spelling that reads as it - case, a
+    Cyrillic letter or two (a mixed name is refused by the rule), full-width
+    letters, a soft hyphen - is refused, by the key or by the rule; and a
+    name all in one look-alike script is the name it imitates too."""
+    from tracker import layout
+
+    items = [{"identifier": "A01", "document": "W-2"}]
+    for made in ("Park", "Cox"):
+        assert run(capsys, "create", stdin={"household": made, "return_name": "1040 - One",
+                                            "items": items})[0] == 0
+    for typed in ("PARK", "\u0420\u0430rk", "P\u0430rk", "\uff30\uff41\uff52\uff4b",
+                  "Pa\u00adrk", "\u0421\u041e\u0425"):
+        code, payload = run(capsys, "create", stdin={"household": typed, "return_name": "1040 - Two",
+                                                     "items": items})
+        assert code == 1, typed
+        named = layout.normalised_name(typed)
+        assert (payload["error"].startswith(f"'{named}' is not a household name: ")
+                or payload["error"].startswith("A household with that name is already in the list")
+                ), (typed, payload["error"])
+    assert sorted(p.name for p in (demo_root / PRIVATE_TREE).iterdir()) == ["Cox", "Park"]
+
+
+def test_a_client_folder_no_household_owns_is_never_adopted(capsys, demo_root):
+    """T12 and C-2: a folder in the client tree no household owns is never
+    taken for a new household of that name (or a look-alike of it): the
+    wizard says where it is listed, and nothing is written in either tree."""
+    stray = demo_root / layout.CLIENTS_TREE / "Lee Family"
+    (stray / "2025").mkdir(parents=True)
+    (stray / "2025" / "w2.pdf").write_bytes(b"%PDF-1.4 somebody's own file")
+    for typed in ("Lee Family", "LEE  FAMILY"):
+        code, payload = run(capsys, "create", stdin={
+            "household": typed, "return_name": "1040 - Lee",
+            "items": [{"identifier": "A01", "document": "W-2"}]})
+        assert code == 1 and payload["error"] == api.CLIENT_FOLDER_TAKEN, typed
+    assert not (demo_root / PRIVATE_TREE).exists() or not any((demo_root / PRIVATE_TREE).iterdir())
+    assert sorted(p.name for p in stray.rglob("*")) == ["2025", "w2.pdf"]
+
+
+def _a_renamed_household(capsys, demo_root, *, received=False):
+    """Park Family with one return, its private folder then renamed in
+    Explorer to Park Household: the record still claims Park Family."""
+    from tests.conftest import seed_index
+    from tracker.filer import FILED
+    from tracker.records import IndexEntry
+
+    assert run(capsys, "create", stdin={"household": "Park Family", "return_name": "1040 - Park",
+                                        "items": [{"identifier": "A01", "document": "W-2"}]})[0] == 0
+    engagement = where(demo_root, "1040 - Park", household="Park Family")
+    if received:
+        seed_index(engagement, [IndexEntry(
+            received="2026-02-02", original_name="w2.pdf", size_kb=5.0, digest="ab" * 32,
+            identifier="A01", prepared_location="Prepared/A01 - W-2.pdf",
+            pbc_location=f"../../../../{layout.CLIENTS_TREE}/Park Family/2025/w2.pdf",
+            decision=FILED, reason="filed")])
+    private = demo_root / PRIVATE_TREE
+    (private / "Park Family").rename(private / "Park Household")
+    return private / "Park Household" / engagement.parent.name / engagement.name
+
+
+def test_accepting_the_folders_name_is_one_dated_event_and_lifts_the_pause(capsys, demo_root):
+    """T15: the card shows the pause and what to accept; accepting writes
+    one household_changed line naming the folder on the household's record
+    and one rules_changed line on each return whose claim disagreed, each
+    carrying the person's word - and nothing is moved or renamed. The
+    pause is lifted, and the pass would run the household again."""
+    from tracker.households import HOUSEHOLD_PAUSED, household_pause
+
+    engagement = _a_renamed_household(capsys, demo_root)
+    household = engagement.parent.parent
+    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    pause = payload["household"]["pause"]
+    assert pause["sentence"] == HOUSEHOLD_PAUSED and pause["scope"] == "household"
+    before = sorted(p.relative_to(demo_root) for p in demo_root.rglob("*")
+                    if p.name != ledger.LEDGER_FILENAME)
+    lines = (len(ledger.read_events(household)), len(ledger.read_events(engagement)))
+
+    code, payload = run(capsys, "accept-folder-name", api.ENGAGEMENT_FLAG, pause["engagement"],
+                        stdin={"seq": pause["seq"], "scope": "household"})
+    assert code == 0, payload
+    [named] = ledger.read_events(household)[lines[0]:]
+    [claimed] = ledger.read_events(engagement)[lines[1]:]
+    assert named[ledger.EVENT_KEY] == ledger.HOUSEHOLD_CHANGED
+    assert named[ledger.HOUSEHOLD_KEY] == {"name": "Park Household"}
+    assert claimed[ledger.EVENT_KEY] == ledger.RULES_CHANGED
+    assert claimed[ledger.INFO_KEY] == {"household": "Park Household"}
+    for line in (named, claimed):
+        assert line[ledger.ACCEPTED_KEY] == ledger.FOLDER_NAME_ACCEPTED and line[ledger.AT_KEY]
+    assert household_pause(household) == ""
+    assert payload["state"]["household"]["pause"]["sentence"] == ""
+    assert sorted(p.relative_to(demo_root) for p in demo_root.rglob("*")
+                  if p.name != ledger.LEDGER_FILENAME) == before
+
+
+def test_a_stale_seq_is_refused(capsys, demo_root):
+    """T15: an accept drawn from a page the household's record has moved on
+    from is refused and writes nothing."""
+    engagement = _a_renamed_household(capsys, demo_root)
+    household = engagement.parent.parent
+    lines = len(ledger.read_events(household))
+    code, payload = run(capsys, "accept-folder-name", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"seq": lines - 1, "scope": "household"})
+    assert code == 1 and payload["error"] == api.ACCEPT_STALE
+    assert len(ledger.read_events(household)) == lines
+
+
+def test_a_year_disagreement_is_not_accepted(capsys, demo_root):
+    """T15: a return's year is its record's, so a return folder moved under
+    another year is never accepted - the folder goes back - and nothing is
+    written."""
+    from tracker.households import HOUSEHOLD_PAUSED_YEAR
+
+    assert run(capsys, "create", stdin={"household": "Park Family", "return_name": "1040 - Park",
+                                        "items": [{"identifier": "A01", "document": "W-2"}]})[0] == 0
+    engagement = where(demo_root, "1040 - Park", household="Park Family")
+    moved = engagement.parent.parent / "2019" / engagement.name
+    moved.parent.mkdir()
+    engagement.rename(moved)
+    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(moved))
+    pause = payload["household"]["pause"]
+    assert pause["sentence"] == HOUSEHOLD_PAUSED_YEAR
+    journal = ledger.path_for(moved).read_bytes()
+    for scope in ("household", "return"):
+        code, payload = run(capsys, "accept-folder-name", api.ENGAGEMENT_FLAG, str(moved),
+                            stdin={"seq": pause["seq"], "scope": scope})
+        assert code == 1 and payload["error"] == api.YEAR_NOT_ACCEPTED
+    assert ledger.path_for(moved).read_bytes() == journal
+
+
+def test_accepting_a_household_whose_originals_rest_under_the_old_name_is_refused(
+        capsys, demo_root):
+    """T15: a household that has received a document is not renamed this
+    season - accepting would orphan the originals resting under its client
+    folder of the old name - so the folder goes back, and nothing is
+    written."""
+    engagement = _a_renamed_household(capsys, demo_root, received=True)
+    household = engagement.parent.parent
+    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))
+    pause = payload["household"]["pause"]
+    lines = len(ledger.read_events(household))
+    code, payload = run(capsys, "accept-folder-name", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"seq": pause["seq"], "scope": "household"})
+    assert code == 1 and payload["error"] == api.ORIGINALS_UNDER_OLD_NAME
+    assert len(ledger.read_events(household)) == lines

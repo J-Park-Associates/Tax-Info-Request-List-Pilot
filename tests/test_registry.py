@@ -25,7 +25,6 @@ from tracker.registry import (
     MISFIT_NOT_A_TREE,
     MISFIT_NOT_A_YEAR,
     MISFIT_RECORD_MISPLACED,
-    NAME_DISAGREES,
     UNLISTED,
     Engagement,
     RegistryError,
@@ -174,23 +173,35 @@ def test_a_household_with_no_return_anywhere_is_said_and_is_still_a_household(ro
     assert misfits(root)["Empty Family"] == MISFIT_NO_RETURN
 
 
-def test_a_folder_whose_name_disagrees_with_its_record_is_processed_as_the_record_says_and_warned(root):
-    """The record wins over a folder somebody renamed, and nothing is ever
-    renamed back: the return is processed as its details say and the
-    disagreement is one sentence a person reads."""
+def test_a_folder_whose_name_disagrees_with_its_record_pauses_its_household(root):
+    """Decision 188 (R6) overrules "the record wins": the folder is the
+    identity and the record's labels are a claim, and a claim that
+    disagrees pauses the whole household - a renamed return folder, a
+    renamed household folder, a year folder renamed (with its own
+    sentence) - and nothing is ever renamed back."""
+    from tracker.households import HOUSEHOLD_PAUSED, HOUSEHOLD_PAUSED_YEAR
+
     engagement = make(root, year=2025)
+    make(root, household="Jones Family", name="1040 - Jones")
     household = private_household_dir(root, "Smith Family")
+    assert discover_engagements(root).paused == {}
+
     (household / "2025").rename(household / "2027")             # a year folder, renamed
     moved = household / "2027" / "1040 - Smith"
-
-    [found] = discover_engagements(root).engagements
-    assert found.path == moved
-    assert found.problem == ""                                   # still an engagement
-    assert found.tax_year == 2025 and found.label.endswith("1040 - Smith")
-    assert found.warning == NAME_DISAGREES.format(
-        folder="Smith Family/2027/1040 - Smith", recorded=found.label)
+    found = discover_engagements(root)
+    assert found.paused == {household: HOUSEHOLD_PAUSED_YEAR}
+    [smith] = [e for e in found.engagements if e.path == moved]
+    assert smith.problem == "" and smith.tax_year == 2025        # still an engagement
+    assert smith.warning == ""
     assert moved.is_dir()                                        # nothing was renamed
-    assert engagement.parent.parent == household
+
+    (household / "2027").rename(household / "2025")
+    (household / "2025" / "1040 - Smith").rename(household / "2025" / "1040 - Smyth")
+    assert discover_engagements(root).paused == {household: HOUSEHOLD_PAUSED}
+    (household / "2025" / "1040 - Smyth").rename(engagement)
+    # Case alone, or a look-alike, is not a disagreement: one key.
+    (household / "2025" / "1040 - Smith").rename(household / "2025" / "1040 - SMITH")
+    assert discover_engagements(root).paused == {}
 
 
 def test_hidden_and_underscore_folders_are_skipped(root):
@@ -527,3 +538,43 @@ def test_a_household_or_return_folder_the_name_rule_refuses_is_a_misfit_with_the
         assert said[folder] == MISFIT_BAD_NAME.format(reason=segment_problem(folder.name)), folder
     assert [e.path.name for e in found.engagements] == ["1040 - Smith"]
     assert [h.path.name for h in found.households] == ["Smith Family"]
+
+
+def test_a_client_folder_with_no_record_is_listed_by_name_only(root, monkeypatch):
+    """Decision 188 (R8, T12): the client tree's first level is listed by
+    name, and a client folder no household owns is a misfit with its own
+    sentence - while nothing under the client tree is opened, or even
+    asked about: the walk never walks it."""
+    import builtins
+    import os
+
+    from tracker.layout import CLIENTS_TREE
+    from tracker.registry import MISFIT_CLIENT_NO_RECORD
+
+    make(root, scaffold=True)
+    stray = root / CLIENTS_TREE / "Nobody Family"
+    (stray / "2025").mkdir(parents=True)
+    (stray / "2025" / "w2.pdf").write_bytes(b"%PDF-1.4 a client's own file")
+    (root / CLIENTS_TREE / ".tmp.driveupload").mkdir()
+    clients = str(root / CLIENTS_TREE)
+    touched: list[str] = []
+    real_stat, real_open = os.stat, builtins.open
+
+    def watching_stat(path, *args, **kwargs):
+        if str(path).startswith(clients + os.sep):
+            touched.append(str(path))
+        return real_stat(path, *args, **kwargs)
+
+    def watching_open(path, *args, **kwargs):
+        if str(path).startswith(clients + os.sep):
+            touched.append(str(path))
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "stat", watching_stat)
+    monkeypatch.setattr(builtins, "open", watching_open)
+    found = discover_engagements(root)
+    monkeypatch.undo()
+
+    said = {m.path: m.sentence for m in found.misfits}
+    assert said == {stray: MISFIT_CLIENT_NO_RECORD}
+    assert touched == []

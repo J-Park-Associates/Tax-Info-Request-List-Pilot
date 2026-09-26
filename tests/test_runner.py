@@ -2747,3 +2747,169 @@ def test_a_pass_that_never_ended_is_said_by_the_next_one(tmp_path, samples, monk
     assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER, "--log") == 0
     assert "did not finish" not in _page(root), "a pass that finished is never said to have not"
     capsys.readouterr()
+
+
+# ---------------------- decision 188: the folder is the name, one door ----
+
+
+def _fabricated_filed_original(engagement_dir, household):
+    """One recorded original resting in the household's client folder."""
+    seed_index(engagement_dir, [IndexEntry(
+        received="2026-02-02", original_name="w2.pdf", size_kb=5.0, digest="ab" * 32,
+        identifier="A01", prepared_location="Prepared/A01 - W-2.pdf",
+        pbc_location=f"../../../../Clients/{household}/{YEAR}/w2.pdf", decision="filed",
+        reason="filed")])
+
+
+def _whole_pass(root, capsys):
+    """The scheduled job's command line over ``root``: exit code, console."""
+    code = main([str(root), "--reminders", REMINDERS_NEVER])
+    return code, capsys.readouterr().out
+
+
+def test_a_household_renamed_in_the_firm_tree_pauses_and_makes_no_client_folder(
+        tmp_path, samples, capsys):
+    """T6 (SPEC-162's claim, overruled by decision 188): a household folder
+    renamed in the firm's tree is paused - its record claims the old name -
+    and the pass makes no client folder for the new name, sorts nothing out
+    of the old one's inbox, and lists the old client folder as one no
+    household owns."""
+    from tracker.households import HOUSEHOLD_PAUSED
+    from tracker.layout import CLIENTS_TREE, PRIVATE_TREE
+    from tracker.registry import MISFIT_CLIENT_NO_RECORD
+
+    engagement = build_engagement(tmp_path, samples)
+    (tmp_path / PRIVATE_TREE / "Test Household").rename(tmp_path / PRIVATE_TREE / "Test Home")
+    inbox = tmp_path / CLIENTS_TREE / "Test Household" / "Drop files here"
+    waiting = sorted(p.name for p in inbox.iterdir())
+
+    code, said = _whole_pass(tmp_path, capsys)
+
+    assert code == 1 and HOUSEHOLD_PAUSED in said
+    assert not (tmp_path / CLIENTS_TREE / "Test Home").exists()
+    assert sorted(p.name for p in inbox.iterdir()) == waiting
+    assert MISFIT_CLIENT_NO_RECORD in said and engagement
+
+
+def test_a_household_renamed_in_the_client_tree_stops_with_one_sentence(tmp_path, samples, capsys):
+    """T7 (SPEC-162 ruling 2): a household that had a client folder - a
+    recorded original rests there - whose client folder was renamed is
+    stopped with the one sentence naming the folder to give back, and no
+    client folder of the old name is made again."""
+    from tracker.households import CLIENT_FOLDER_MISSING
+    from tracker.layout import CLIENTS_TREE
+
+    engagement = build_engagement(tmp_path, samples)
+    _fabricated_filed_original(engagement.path, "Test Household")
+    (tmp_path / CLIENTS_TREE / "Test Household").rename(tmp_path / CLIENTS_TREE / "Test Hh")
+
+    code, said = _whole_pass(tmp_path, capsys)
+
+    assert code == 1 and CLIENT_FOLDER_MISSING.format(name="Test Household") in said
+    assert not (tmp_path / CLIENTS_TREE / "Test Household").exists()
+
+
+def test_a_new_household_is_still_scaffolded(tmp_path, capsys):
+    """T8 (SPEC-162 ruling 2): a household that never had a client folder -
+    nothing shared, nothing received - is laid out as it always was."""
+    from tracker.layout import inbox_dir_for
+
+    make_engagement(tmp_path, DEMO_ITEMS, household="New Household", people=SCRATCH_PEOPLE,
+                    scaffold=False)
+    code, said = _whole_pass(tmp_path, capsys)
+    assert code == 0, said
+    assert inbox_dir_for(tmp_path, "New Household").is_dir()
+
+
+def test_two_folders_claiming_one_household_stop_both(tmp_path, samples, capsys):
+    """T9 (SPEC-162 ruling 3, widened by decision 188): a copy of a
+    household folder claims the household too, so both are stopped, each
+    run naming both folders - and neither's inbox is sorted."""
+    import shutil
+
+    from tracker.layout import CLIENTS_TREE, PRIVATE_TREE
+    from tracker.registry import TWO_CLAIM
+
+    build_engagement(tmp_path, samples)
+    private = tmp_path / PRIVATE_TREE
+    shutil.copytree(private / "Test Household", private / "Test Household - Copy")
+    inbox = tmp_path / CLIENTS_TREE / "Test Household" / "Drop files here"
+    waiting = sorted(p.name for p in inbox.iterdir())
+
+    code, said = _whole_pass(tmp_path, capsys)
+
+    sentence = TWO_CLAIM.format(name="Test Household", a="Test Household",
+                                b="Test Household - Copy")
+    assert code == 1 and said.count(sentence) == 2, said
+    assert sorted(p.name for p in inbox.iterdir()) == waiting
+
+
+def test_a_household_without_its_record_fails_the_pass_and_says_restore(tmp_path, samples, capsys):
+    """T10 (SPEC-162 ruling 4): a household whose record is gone and whose
+    return still holds its own fails the pass - red - with the sentence
+    that says to restore it, and the console lists what is left alone at
+    the end of the pass."""
+    from tracker.layout import CLIENTS_TREE, PRIVATE_TREE
+    from tracker.registry import HOUSEHOLD_RECORD_MISSING
+    from tracker.runner import STATUS_MISFITS_HEADING
+
+    build_engagement(tmp_path, samples)
+    ledger.path_for(tmp_path / PRIVATE_TREE / "Test Household").unlink()
+    (tmp_path / CLIENTS_TREE / "Nobody Family").mkdir()
+
+    code, said = _whole_pass(tmp_path, capsys)
+
+    assert code == 1
+    assert HOUSEHOLD_RECORD_MISSING.format(folder="Test Household") in said
+    assert said.index(STATUS_MISFITS_HEADING) > said.index("processed,")
+    assert "Nobody Family" in said.split(STATUS_MISFITS_HEADING, 1)[1]
+
+
+def test_a_paused_household_makes_the_run_red(tmp_path, samples, capsys):
+    """T16 (D-9, the part decision 188 owns): a return folder renamed by
+    hand pauses its household, and a paused household is an error on
+    every pass until a person acts - never a warning the job's exit code
+    hides."""
+    from tracker.households import HOUSEHOLD_PAUSED
+
+    engagement = build_engagement(tmp_path, samples)
+    engagement.path.rename(engagement.path.parent / "1040 - Someone Else")
+    for _ in range(2):
+        code, said = _whole_pass(tmp_path, capsys)
+        assert code == 1 and "ERROR   " in said and HOUSEHOLD_PAUSED in said
+
+
+def test_every_write_into_the_client_tree_went_through_the_door(tmp_path, samples, monkeypatch):
+    """T13 (R9): a full pass - the sweep, the layout, the sort, the README -
+    and a Roll Forward on a fabricated root create or change nothing under
+    the client tree that the one door did not approve: every file and
+    folder there, before and after, by size and time."""
+    from tracker import door
+    from tracker.layout import CLIENTS_TREE
+    from tracker.rollover import ReturnPlan, roll_household
+
+    approved: set[Path] = set()
+    real = door.client_write
+
+    def watching(root, household, target, **kwargs):
+        approved.add(Path(real(root, household, target, **kwargs)))
+        return Path(target)
+
+    def snapshot():
+        found = {}
+        for path in (tmp_path / CLIENTS_TREE).rglob("*"):
+            info = path.stat()
+            found[path] = "folder" if path.is_dir() else (info.st_size, info.st_mtime_ns)
+        return found
+
+    engagement = build_engagement(tmp_path, samples)
+    monkeypatch.setattr(door, "client_write", watching)
+    before = snapshot()
+    a_pass(engagement)
+    roll_household(household_of(engagement.path), target_year=YEAR + 1,
+                   plans=[ReturnPlan(prior=engagement.path)])
+    after = snapshot()
+
+    changed = {path for path, seen in after.items() if before.get(path) != seen}
+    assert changed, "the pass wrote nothing under the client tree"
+    assert changed <= approved, sorted(str(p) for p in changed - approved)

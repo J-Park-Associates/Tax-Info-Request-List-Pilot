@@ -195,6 +195,15 @@ RULES_KEY = "rules"
 REMOVED_KEY = "removed"
 INFO_KEY = "info"
 
+#: A person's word that a household or a return is now called by its
+#: folder's name (decision 188): carried on the ``HOUSEHOLD_CHANGED`` and
+#: ``RULES_CHANGED`` lines the app's *Accept the folder's name* writes,
+#: with the one value :data:`FOLDER_NAME_ACCEPTED`, and dated by the
+#: line's own stamp. The store admits the key on those two events with
+#: that value and no other; the pass never writes it.
+ACCEPTED_KEY = "accepted"
+FOLDER_NAME_ACCEPTED = "folder_name"
+
 #: What a ``HOUSEHOLD_CHANGED`` event carries: the household fields that
 #: moved, as ``tracker.records.household_to_json`` names them. The same
 #: shape ``RULES_CHANGED`` carries its details in, because it is the same
@@ -329,7 +338,9 @@ RULES_CHANGED = "rules_changed"
 #: shared with, the contact the letters greet and the inbox link they
 #: paste, under :data:`HOUSEHOLD_KEY`. Written into the household's
 #: journal, in the private tree, by ``tracker.households.create_household``
-#: and ``save_household`` and by nothing else. Not a row event: it carries
+#: and ``save_household`` - and, carrying only the name and
+#: :data:`ACCEPTED_KEY`, by the API's *Accept the folder's name* (decision
+#: 188) - and by nothing else. Not a row event: it carries
 #: no index row and says nothing about a document.
 HOUSEHOLD_CHANGED = "household_changed"
 #: The firm says it has shared this household's folders with the client

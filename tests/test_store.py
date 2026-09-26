@@ -2420,3 +2420,30 @@ def test_an_old_closed_copy_without_a_digest_is_still_admitted(conn, root, by_ha
         store.record(conn, by_hand, moving, filed)
 
     assert said(conn, root, by_hand) == []
+
+
+def test_the_store_admits_the_accepted_key_with_one_value():
+    """Decision 188 (T15): a person's word that a folder's name is accepted
+    is admitted on the two events that name a household or a return, with
+    its one value - and refused with any other value, or on any other
+    event, without quoting what the line said."""
+    from tracker.layout import PRIVATE_TREE
+
+    household = f"{PRIVATE_TREE}/Park Household"
+    word = {ledger.ACCEPTED_KEY: ledger.FOLDER_NAME_ACCEPTED}
+    store._refuse_a_malformed_line(ledger.new(
+        ledger.HOUSEHOLD_CHANGED, household={"name": "Park Household"}, **word), 2, household,
+        kind=store.KIND_HOUSEHOLD)
+    store._refuse_a_malformed_line(ledger.new(
+        ledger.RULES_CHANGED, info={"household": "Park Household"}, **word), 2,
+        f"{household}/2025/1040 - Park", kind=store.KIND_RETURN)
+    for event in (
+        ledger.new(ledger.HOUSEHOLD_CHANGED, household={"name": "X"},
+                   **{ledger.ACCEPTED_KEY: "everything"}),
+        ledger.new(ledger.RULES_CHANGED, info={}, **{ledger.ACCEPTED_KEY: True}),
+        ledger.new(ledger.SHARING_CONFIRMED, **word),
+    ):
+        with pytest.raises(store.StoreError) as refused:
+            store._refuse_a_malformed_line(event, 2, household, kind=store.KIND_HOUSEHOLD)
+        assert "'accepted' that is not a folder's name accepted" in str(refused.value)
+        assert "everything" not in str(refused.value)

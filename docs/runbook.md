@@ -178,13 +178,19 @@ the clients root, and the difference between them is the whole point:
 other. Anything else under the root — a stray folder beside the two trees, a
 household with no record, a folder where a year should be that is not four
 digits, a year folder with no return in it, a folder from before September
-2026 holding a `_manifest.xlsx`, a folder Windows will not let it list — is
+2026 holding a `_manifest.xlsx`, a folder Windows will not let it list, a
+client folder no household owns, a folder named in a way the tracker does
+not accept for a household or a return — is
 **listed with one sentence saying why, and left alone**. Nothing is renamed,
 nothing is moved, nothing is deleted. The list is at the bottom of the status
 page, in the app under the engagement picker, and at the end of every command
-line pass, under **Folders the tracker leaves alone**. If a client's folder
-appears there, that is the tracker telling you it is not set up — read the
-sentence and set it up in the app.
+line pass, under **Folders the tracker leaves alone**. Of the client tree
+only the first level is looked at, by name: nothing inside a client folder
+no household owns is read. A folder where a household would be with no
+household record is left alone and the app will not set a household up over
+it (*"sits where a household would but holds no household record; left
+alone - the app will not set a household up over it, so move it aside
+first"*): move it aside, then set the household up in the app.
 
 The app will not adopt one either. Creating a household whose folder is
 already there without a record is refused before anything is written, in
@@ -196,6 +202,42 @@ the folders it made itself — never one it found.
 There is no migration and no importer: a folder from an older shape is set up
 again in the app, and the old one is left where it is until somebody deletes
 it by hand.
+
+**The folder is the name** (decision 188). A household is its folder's
+name, and a return is its folder's name under its year folder; what the
+record says about them is a claim the tracker checks. Rename a household or
+return folder in Explorer, or drag a return into another household, and the
+household is **paused**: the pass sorts, lays out and drafts nothing for it,
+and every one of its returns shows red on every pass with this sentence
+until somebody acts - *"Paused: this folder's name and its record's name
+disagree. Nothing is sorted, laid out or drafted for the household until a
+person opens it in the app and accepts the folder's name, or gives the
+folder back the name its record holds."* Roll Forward and a new return into
+it are refused with the same sentence.
+
+- **When the move was meant** - a return dragged into a household of its
+  own when a family separates - open the household in the app and press
+  **Accept the folder's name**. It writes one dated line saying so on each
+  record that claimed the old name; nothing is moved or renamed.
+- **A return moved under another year** is never accepted: its year is its
+  record's. Move the folder back under the year its record says; a return in
+  the wrong year is retired and made again.
+- **A household that has received a document is not renamed this season.**
+  Its originals rest under its client folder of the old name, so the app
+  refuses to accept a new name for it; give the folder back its name. The
+  same for its client folder: if `Clients\<name>` of a household that was
+  shared, or that holds originals, disappears, every run of the household
+  fails with *"`Clients\<name>` is missing. Was the household renamed or
+  moved? Give its client folder back the name `<name>`."* and nothing is
+  made again under the old name.
+- **Never copy a household folder.** Two folders that claim one household -
+  a copy, or two names that read as one - stop both: *"Two folders claim
+  the household `<name>`: `<a>` and `<b>`. Keep one; a copy of a household
+  folder is never a second household."*
+- **A household whose `_ledger.jsonl` is gone** while its returns still hold
+  theirs fails the pass: *"The household record `_ledger.jsonl` of
+  `<folder>` is missing. Restore it from Drive's trash or version history;
+  do not create the household again."*
 
 **Two files sit in an engagement folder, and only one of them is yours to
 open:**
@@ -741,16 +783,15 @@ One return's refusal (a folder of that name already there, a path too long)
 is printed and undoes none of the others; nothing under `Clients\` changes
 but the new year's folder.
 
-**A return rolls forward where it sits.** When a household separates, the
-way to move one return into a household of its own is still to drag its
-folder there in Explorer — the app has no action for it. Its record goes on
-naming the old household, and the app shows a warning beside it ("the
-folder is named … but its record says …"). That warning is information:
-Roll Forward puts next year's return in the household it now sits in, under
-its own folder name, and next year's record names that household, so the
-old household's client never sees its requests or its documents. The
-warning is repeated in the rollover's reply, because the roll is the moment
-someone acts on that return.
+**A return rolls forward where it sits - once its move is accepted.** When a
+household separates, the way to move one return into a household of its own
+is still to drag its folder there in Explorer. Its record goes on naming the
+old household, so the household it now sits in is **paused** (decision 188):
+Roll Forward refuses it, with the pause sentence, before anything is
+written. Open it in the app and press **Accept the folder's name**; then Roll
+Forward puts next year's return in the household it now sits in, under its
+own folder name, and next year's record names that household, so the old
+household's client never sees its requests or its documents.
 
 On the command line the same two forms live in one command, told apart by
 what you point it at:
