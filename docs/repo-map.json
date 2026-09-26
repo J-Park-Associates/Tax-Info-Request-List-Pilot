@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 158,
     "edges": 973,
-    "reused": 116
+    "reused": 117
   },
   "node_types": [
     "artifact",
@@ -3361,7 +3361,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "487c6c362cdae123",
+      "sha256": "3f107f8fc6d9467c",
       "lines": 434,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -3379,7 +3379,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "25ccaa7fe4ed18fd",
+      "sha256": "932864ac88cfc225",
       "lines": 976,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -3413,7 +3413,7 @@
       "id": "docs/vocab-coverage.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "2ceda93b654dcce7",
+      "sha256": "588bf4248fc19b08",
       "lines": 9415,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
@@ -6888,8 +6888,8 @@
       "id": "tests/test_vocab_report.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6f86485e96c1c62c",
-      "lines": 304,
+      "sha256": "a5b957211d45b73a",
+      "lines": 337,
       "exports": [
         "GARBAGE",
         "HEADER",
@@ -6901,10 +6901,12 @@
         "test_a_contradicting_expectation_is_named_by_its_entry_not_its_name",
         "test_a_damaged_workbook_and_pdf_stop_the_build_by_their_entry_and_class",
         "test_a_document_from_the_firms_own_corpus_is_reported_beside_the_forms_and_the_cases",
+        "test_a_file_the_system_refuses_is_said_by_its_class",
         "test_a_form_number_quoted_in_a_sentence_does_not_reach_its_keyword",
         "test_a_keyword_a_filing_document_says_is_reached_here_and_an_unsaid_one_is_unreached",
         "test_a_keyword_said_only_by_documents_that_park_or_file_elsewhere_is_named_apart",
         "test_a_keyword_said_only_by_documents_the_suite_never_routes_here_is_reached_without_expectation",
+        "test_a_malformed_expectations_file_is_said_by_its_class_not_its_text",
         "test_a_missing_document_is_named_by_its_entry_not_its_name",
         "test_a_report_built_without_a_corpus_says_nothing_about_one",
         "test_a_sound_corpus_still_reads_and_a_type_with_no_extractor_is_no_failure",
@@ -7200,8 +7202,8 @@
       "id": "tools/vocab_report.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "473ba2463035d867",
-      "lines": 573,
+      "sha256": "6dbd4f0d5d1a2863",
+      "lines": 589,
       "cli": "python -m tools.vocab_report",
       "exports": [
         "Document",
@@ -7234,7 +7236,7 @@
         "INPUT_PATHS": "('tracker/templates.py', 'tracker/content_check.py', 'tracker/manifest.py', 'tests/test_catalog.py', 'tests/test_irs_forms.py', 'tests/test_real_corpus.py', 'tools/vocab_report.py')"
       },
       "role": "Generates the vocabulary coverage report: which keyword in each catalog is reached by which IRS form in tests/irs/ or case in tests/test_catalog.py, tested with content_check.says() the way the router reads, and which keywords nothing in the suite defends.",
-      "notes": "The map's counterpart for the routing rules (decision 70). `build` extracts the corpus and routes every keyword (about thirty seconds); `check` compares the SHA-256 of its inputs - the catalog, the matcher, the manifest's validation, the cases, the corpus, tests/test_real_corpus.py and this file - so it costs nothing and CI runs it. The committed report reads no client document: the corpus is the IRS's own blank forms and text the suite typed. Decision 71: when TRACKER_REAL_CORPUS names the firm's own redacted documents, `build` reads those too (kind `real`) and the counts name them; that report is a local reading, never the committed one, and `check` refuses a committed report that names them. Decision 73: the workbook cases are read too - as_a_sheet() renders a client spreadsheet's rows the way content_check._extract_xlsx does, so a keyword only a schedule reaches is not reported as unreached. Decision 104: shipped_catalogs() builds each catalog through manifest.validated() over template_items(), the same validation an engagement's create makes, with no temporary file and no store - which is why tracker/manifest.py is one of its inputs and the report was rebuilt with this decision at the same numbers. Decision 208: every document, the IRS forms and the firm's own, is read through content_check.extract(path, ocr=False), the router's text reading, never the bare extract_text(); a damaged firm document stops build once, with one ReportError naming each by its expectations entry and its error class - never its file name, the corpus folder or a parser's message (security principle 7) - and the missing-file and contradicting-expectation errors say the entry too. The report was rebuilt at the same numbers."
+      "notes": "The map's counterpart for the routing rules (decision 70). `build` extracts the corpus and routes every keyword (about thirty seconds); `check` compares the SHA-256 of its inputs - the catalog, the matcher, the manifest's validation, the cases, the corpus, tests/test_real_corpus.py and this file - so it costs nothing and CI runs it. The committed report reads no client document: the corpus is the IRS's own blank forms and text the suite typed. Decision 71: when TRACKER_REAL_CORPUS names the firm's own redacted documents, `build` reads those too (kind `real`) and the counts name them; that report is a local reading, never the committed one, and `check` refuses a committed report that names them. Decision 73: the workbook cases are read too - as_a_sheet() renders a client spreadsheet's rows the way content_check._extract_xlsx does, so a keyword only a schedule reaches is not reported as unreached. Decision 104: shipped_catalogs() builds each catalog through manifest.validated() over template_items(), the same validation an engagement's create makes, with no temporary file and no store - which is why tracker/manifest.py is one of its inputs and the report was rebuilt with this decision at the same numbers. Decision 208: every document, the IRS forms and the firm's own, is read through content_check.extract(path, ocr=False), the router's text reading, never the bare extract_text(); a damaged firm document stops build once, with one ReportError naming each by its expectations entry and its error class - never its file name, the corpus folder or a parser's message (security principle 7) - and the missing-file and contradicting-expectation errors say the entry too; a malformed expectations file and a file the system refuses are said as their class. The report was rebuilt at the same numbers."
     }
   ],
   "edges": [

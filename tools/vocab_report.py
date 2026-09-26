@@ -82,7 +82,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))   # run as a script: the package and the suite must import
 
 from tools.repo_map import git_text_auto_eol_lf  # noqa: E402
-from tracker.content_check import dominant_forms, extract, says  # noqa: E402
+from tracker.content_check import dominant_forms, extract, said_as_class, says  # noqa: E402
 from tracker.manifest import RequestItem, validated  # noqa: E402
 from tracker.settings import ENV_REAL_CORPUS, EXPECTATIONS_FILENAME, EXPECTED_SEP  # noqa: E402
 from tracker.templates import FORM_TEMPLATES, template_items  # noqa: E402
@@ -184,16 +184,21 @@ def _read(path: Path) -> tuple[str, str]:
     gives its thin text layer or nothing, as the bare extractor did.
     ``error`` is the parser's failure as its class (decision 189's
     ``said_as_class``), ``""`` for a document that read - a type with no
-    extractor included, which reads as no words and is no failure.
+    extractor included, which reads as no words and is no failure. The
+    size check before the reading is outside ``extract``'s own guard, so
+    an ``OSError`` there (a file locked or refused) is said the same way.
     """
-    reading = extract(path, ocr=False)
+    try:
+        reading = extract(path, ocr=False)
+    except OSError as exc:
+        return "", said_as_class(exc)
     return reading.text or "", reading.error
 
 
 def _unreadable(failures: list[str]) -> ReportError:
     """One error for every damaged document, so a person fixes them all at once (decision 208)."""
     return ReportError(
-        f"the corpus holds {len(failures)} document(s) that could not be read: "
+        f"the corpus holds {len(failures)} {'documents' if len(failures) > 1 else 'document'} that could not be read: "
         f"{', '.join(failures)}. Fix or remove them, then build again."
     )
 
@@ -231,22 +236,33 @@ def real_documents() -> list[Document]:
     """
     from tests.test_real_corpus import real_corpus
 
-    folder, rows = real_corpus()
+    try:
+        folder, rows = real_corpus()
+    except ValueError as exc:
+        # read_expectations names the file and the row's document; say the class only.
+        raise ReportError(f"{EXPECTATIONS_FILENAME} could not be read ({said_as_class(exc)}): "
+                          "check its columns and that every row has a year") from None
     if folder is None:
         return []
     entry: dict[str, int] = {}
     for number, (name, *_rest) in enumerate(rows, start=1):
         entry.setdefault(name, number)
-    documents, failures = [], []
+    documents, failures, missing = [], [], []
     placements = _placements(rows, said=lambda name: f"expectations entry {entry[name]}")
     for name, expected in sorted(placements.items()):
         path = folder / name
         if not path.is_file():
-            raise ReportError(f"{EXPECTATIONS_FILENAME} entry {entry[name]} names a file that is not in the corpus folder")
+            missing.append(entry[name])
+            continue
         text, error = _read(path)
         if error:
             failures.append((entry[name], error))
         documents.append(Document(REAL, name, text, expected))
+    if missing:
+        raise ReportError(
+            f"expectations {'entries' if len(missing) > 1 else 'entry'} "
+            f"{', '.join(str(n) for n in sorted(missing))} name a file that is not in the corpus folder"
+        )
     if failures:
         raise _unreadable([f"expectations entry {number} ({error})" for number, error in sorted(failures)])
     return documents

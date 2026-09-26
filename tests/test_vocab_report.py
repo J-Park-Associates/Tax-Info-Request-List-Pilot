@@ -241,7 +241,7 @@ def test_a_damaged_workbook_and_pdf_stop_the_build_by_their_entry_and_class(tmp_
     said = str(raised.value)
     assert "expectations entry 2 (BadZipFile)" in said
     assert "expectations entry 3 (PdfminerException)" in said
-    assert "2 document(s)" in said
+    assert "holds 2 documents" in said
     for leak in ("Client Secret", "Private Corpus Folder", "Root", ".pdf", ".xlsx"):
         assert leak not in said
 
@@ -263,11 +263,12 @@ def test_build_says_the_damaged_rows_in_one_sentence_and_exits_2(tmp_path, monke
 def test_a_missing_document_is_named_by_its_entry_not_its_name(tmp_path, monkeypatch):
     import pytest
 
-    folder = fabricated_corpus(tmp_path / "corpus", {}, ["Client Secret.pdf,1040,2025,\n"])
+    folder = fabricated_corpus(tmp_path / "corpus", {"here.csv": b"a\n"},
+                               ["Zed Secret.pdf,1040,2025,\n", "here.csv,1040,2025,\n", "Client Secret.pdf,1040,2025,\n"])
     monkeypatch.setenv(vocab_report.ENV_REAL_CORPUS, str(folder))
     with pytest.raises(vocab_report.ReportError) as raised:
         vocab_report.real_documents()
-    assert "entry 1 names a file that is not in the corpus folder" in str(raised.value)
+    assert str(raised.value) == "expectations entries 1, 3 name a file that is not in the corpus folder"
     assert "Client Secret" not in str(raised.value) and str(folder) not in str(raised.value)
 
 
@@ -302,3 +303,35 @@ def test_the_report_reads_documents_the_routers_way_only():
     traceback through, is not the report's to call."""
     assert not hasattr(vocab_report, "extract_text")
     assert vocab_report.extract.__module__ == "tracker.content_check"
+
+
+def test_a_malformed_expectations_file_is_said_by_its_class_not_its_text(tmp_path, monkeypatch, capsys):
+    """read_expectations' own message names the corpus folder and a document;
+    the report says only that the file could not be read, and what to check."""
+    folder = fabricated_corpus(tmp_path / "Private Corpus Folder", {"Client Secret.pdf": GARBAGE},
+                               ["Client Secret.pdf,1040,,\n"])
+    monkeypatch.setenv(vocab_report.ENV_REAL_CORPUS, str(folder))
+    assert vocab_report.main(["build"]) == 2
+    out, err = capsys.readouterr()
+    assert "could not be read (ValueError)" in err
+    for leak in ("Client Secret", "Private Corpus Folder", "Traceback"):
+        assert leak not in out + err
+
+
+def test_a_file_the_system_refuses_is_said_by_its_class(tmp_path, monkeypatch):
+    """The size check sits before extract's own guard; a refusal there is a class, not a path."""
+    import errno
+
+    import pytest
+
+    folder = fabricated_corpus(tmp_path / "corpus", {"Client Secret.pdf": GARBAGE}, ["Client Secret.pdf,1040,2025,\n"])
+    monkeypatch.setenv(vocab_report.ENV_REAL_CORPUS, str(folder))
+
+    def refused(path, **_kwargs):
+        raise PermissionError(errno.EACCES, "Permission denied", str(path))
+
+    monkeypatch.setattr(vocab_report, "extract", refused)
+    with pytest.raises(vocab_report.ReportError) as raised:
+        vocab_report.real_documents()
+    assert "expectations entry 1 (PermissionError (EACCES))" in str(raised.value)
+    assert "Client Secret" not in str(raised.value) and str(folder) not in str(raised.value)
