@@ -302,7 +302,7 @@ def test_unfiled_documents_from_last_year_are_surfaced(prior, tmp_path):
 
     seed_index(prior, [
         IndexEntry(received="2026-03-01", original_name="K-1 Redwood LP.pdf",
-                   size_kb=12.0, digest="abc", identifier="",
+                   size_kb=12.0, digest="ab" * 32, identifier="",
                    prepared_location=f"{PREPARED_DIR_NAME}/{REVIEW_DIR_NAME}/K-1 Redwood LP.pdf",
                    pbc_location="", decision=NEEDS_REVIEW,
                    reason=UNMATCHED),

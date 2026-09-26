@@ -8,6 +8,7 @@ for a person, and nothing that reads like a sendable email is written.
 """
 
 import datetime as dt
+import hashlib
 import os
 import subprocess
 import sys
@@ -287,7 +288,7 @@ def test_a_file_a_person_said_nothing_asks_for_is_not_counted_against_the_draft(
 
     def row(name, decision):
         return IndexEntry(
-            received="2026-02-01", original_name=name, size_kb=0.1, digest=name,
+            received="2026-02-01", original_name=name, size_kb=0.1, digest=hashlib.sha256(name.encode()).hexdigest(),
             identifier="", prepared_location=f"{PREPARED_DIR_NAME}/{REVIEW_DIR_NAME}/{name}",
             pbc_location=f"pbc/{name}", decision=decision, reason="unrecognized",
         )
