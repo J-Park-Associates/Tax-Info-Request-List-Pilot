@@ -164,6 +164,7 @@ jobs:
           $source = python -m tracker.runner $env:SCRATCH_ROOT --dry-run --reminders always | Out-String
           if ($LASTEXITCODE -ne 0) { throw "the source's dry pass exited $LASTEXITCODE" }
           $lines = { param($text) (($text -split "`r?`n") | Where-Object { $_ -match '^\s+(OK|ERROR|SKIP)\s' }) -join "`n" }
+          if (-not (& $lines $frozen)) { throw "the package's dry pass printed no OK, ERROR or SKIP line to compare:`n$frozen" }
           if ((& $lines $frozen) -ne (& $lines $source)) {
             throw "the package read the pile differently from the source:`n$frozen`n--- the source ---`n$source"
           }

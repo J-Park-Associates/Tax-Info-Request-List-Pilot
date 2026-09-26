@@ -56,10 +56,21 @@ still holds, for this child:
 
 - the document's stop ends the child, and the next document gets a fresh
   one;
-- a crash parks only the document being read;
+- a crash parks only the document being read - and only a crash on a
+  fresh processor child is the file's own. A child on the graphics card
+  that ends without an answer is a fault on the card (the pass moves to
+  the processor), and a child that had already served a document may
+  have died of what the earlier ones left behind; either way the document
+  is read once more on a fresh child before it is blamed;
 - it never outlives the pass. It watches a lifeline pipe the pass never
   writes to, and on Windows it sits in a job object that kills everything
-  in it when the pass's only handle closes.
+  in it when the pass's only handle closes. The same job caps its memory
+  (:data:`PROCESSOR_CHILD_MEMORY`, :data:`GRAPHICS_CARD_CHILD_MEMORY`): a
+  child past it fails its reading, ends and is replaced, as a crash.
+
+**Nothing a reading does may outlive it in the child.** The child serves
+many documents, so a reader must never change module state (a global, a
+patched function) for one document and leave it for the next.
 
 The pass opens its child with :func:`reading_session` (the runner for a
 pass, the app for one command); a reading made with none open gets a
@@ -101,6 +112,8 @@ PACK_UNUSABLE = ("the graphics card pack is here but could not be used: {reason}
 #: The pass's one warning after a fault on the graphics card (ruling 3).
 GPU_FAULT_WARNING = ("the graphics card failed while reading {file}; "
                      "the rest of this pass read on the processor")
+#: The run-log line when not even the processor's engine can be built.
+READER_CANNOT_RUN = "the reader could not run on this machine: {reason}"
 
 #: The three models, shipped in ``rapidocr``'s own package folder.
 MODEL_DIR_NAME = "models"
@@ -120,6 +133,38 @@ SELF_TEST_WORDS = ("wage", "statement")
 class ReaderUnavailable(Exception):
     """The reader cannot run on this machine: a package or a model file is
     missing or broken. The machine's fault, never the file's."""
+
+
+#: The longest full path a library inside the frozen app may have. Loading
+#: failed from 252-255 characters on the office machine (REVIEW-169, N-5),
+#: below Windows' 260, so this leaves a margin.
+READER_PATH_LIMIT = 240
+#: What the app and the pass say when the app sits too deep to read.
+READER_PATH_WARNING = ("Move the app to a shorter folder, for example C:\\JPA Tracker; "
+                       "scans can't be read from here")
+
+
+def reader_path_warning(root: Path | None = None) -> str:
+    """:data:`READER_PATH_WARNING` when the frozen app sits in a folder so
+    deep that the reader's libraries cannot load, else "".
+
+    It walks the app's own folder (``sys._MEIPASS``), **resolved** first -
+    a short junction to a deep folder does not help, because the app loads
+    from its real folder - and warns when any ``.dll`` or ``.pyd`` there has
+    a full path longer than :data:`READER_PATH_LIMIT`, or a folder cannot
+    even be listed. Run from source (no ``root`` given) it never warns."""
+    if root is None:
+        if not getattr(sys, "frozen", False):
+            return ""
+        root = Path(getattr(sys, "_MEIPASS", "") or Path(sys.executable).parent)
+    root = Path(root).resolve()
+    unlisted: list[OSError] = []
+    for folder, _dirs, files in os.walk(root, onerror=unlisted.append):
+        for name in files:
+            if (name.lower().endswith((".dll", ".pyd"))
+                    and len(os.path.join(folder, name)) > READER_PATH_LIMIT):
+                return READER_PATH_WARNING
+    return READER_PATH_WARNING if unlisted else ""
 
 
 def gpu_pack() -> Path | None:
@@ -399,6 +444,11 @@ def _upright_lines(page_result) -> list[str]:
 
 #: A child serves this many documents and is then replaced (R-4's hygiene).
 DOCUMENTS_PER_CHILD = 100
+#: The most memory a reading child may commit (SPEC-169 section 9), set on
+#: its job object: a processor child, and a child on the graphics card.
+#: Past it the child's allocations fail; it ends and is replaced.
+PROCESSOR_CHILD_MEMORY = 2 * 1024**3
+GRAPHICS_CARD_CHILD_MEMORY = 6 * 1024**3
 #: How long the pass gives its child to build the engine and read the
 #: self-test at the start of a pass with a graphics card pack.
 WARM_UP_STOP_SECONDS = 120.0
@@ -410,6 +460,9 @@ ORPHANED_EXIT_CODE = 86
 #: The exit code of a child handed a job it could not even unpack - a
 #: reader whose module it cannot import: the machine's, before "started".
 UNREADABLE_JOB_EXIT_CODE = 87
+#: The exit code of a child that ran out of memory and ended itself after
+#: saying so: its heap is not to be trusted with another document.
+OUT_OF_MEMORY_EXIT_CODE = 88
 
 
 @dataclass(slots=True)
@@ -443,6 +496,10 @@ class ReadingChild:
         lifeline, self._held = context.Pipe(duplex=False)
         self.served = 0
         self._done = False
+        #: A child that may build the graphics card's engine (a pack is
+        #: here and the card has not failed this pass).
+        self.on_the_card = not processor_only and gpu_pack() is not None
+        self.memory_limit = GRAPHICS_CARD_CHILD_MEMORY if self.on_the_card else PROCESSOR_CHILD_MEMORY
         self._process = context.Process(
             target=_the_child, args=(jobs, sender, lifeline, processor_only),
             name="tracker-reading", daemon=True)
@@ -456,7 +513,7 @@ class ReadingChild:
             # The child holds its own ends: end-of-file means it is gone.
             for end in (sender, jobs, lifeline):
                 end.close()
-        self._job_object = _kill_on_close_job(self._process.pid)
+        self._job_object = _kill_on_close_job(self._process.pid, memory_limit=self.memory_limit)
 
     @property
     def pid(self) -> int | None:
@@ -503,6 +560,8 @@ class ReadingChild:
             return Outcome("failed", error=answer[0], trace=answer[1], notes=answer[2],
                            seconds=seconds)
         error = f"the reading's process ended with exit code {self._exit_code()}"
+        if _job_memory(self._job_object)[1] >= self.memory_limit * 0.9:
+            error += f"; it had reached its memory limit ({self.memory_limit / 1024**3:.0f} GB)"
         self.end()
         return Outcome("died", error=error, seconds=seconds)
 
@@ -573,6 +632,10 @@ def _the_child(jobs, sender, lifeline, processor_only_: bool) -> None:
             except BaseException as exc:
                 _answer(sender, ("failed", f"{exc.__class__.__name__}: {exc}",
                                  traceback.format_exc(), take_notes()))
+                if isinstance(exc, MemoryError):
+                    # Past its memory limit: said, and done - the pass
+                    # replaces it (SPEC-169 section 9).
+                    os._exit(OUT_OF_MEMORY_EXIT_CODE)
             else:
                 _answer(sender, ("read", answer, take_notes()))
     finally:
@@ -610,17 +673,9 @@ def _orphaned() -> None:
     os._exit(ORPHANED_EXIT_CODE)
 
 
-def _kill_on_close_job(pid: int):
-    """On Windows, a job object holding the child ``pid`` that kills every
-    process in it when its last handle closes - the handle returned here,
-    which only the pass holds (it is not inheritable). None elsewhere, or
-    where Windows refuses; the lifeline still stands then, and it is said.
-
-    The standard library's ``ctypes`` and nothing else: ``kernel32``'s
-    CreateJobObject, SetInformationJobObject with
-    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, and AssignProcessToJobObject."""
-    if sys.platform != "win32":
-        return None
+def _extended_limits():
+    """``kernel32``'s JOBOBJECT_EXTENDED_LIMIT_INFORMATION, as ``ctypes``
+    lays it out (Windows only)."""
     import ctypes
     from ctypes import wintypes
 
@@ -648,6 +703,27 @@ def _kill_on_close_job(pid: int):
                     ("PeakProcessMemoryUsed", ctypes.c_size_t),
                     ("PeakJobMemoryUsed", ctypes.c_size_t)]
 
+    return ExtendedLimits
+
+
+def _kill_on_close_job(pid: int, *, memory_limit: int = 0):
+    """On Windows, a job object holding the child ``pid`` that kills every
+    process in it when its last handle closes - the handle returned here,
+    which only the pass holds (it is not inheritable) - and, given
+    ``memory_limit``, lets no process in it commit more than that many
+    bytes. None elsewhere, or where Windows refuses; the lifeline still
+    stands then, and it is said.
+
+    The standard library's ``ctypes`` and nothing else: ``kernel32``'s
+    CreateJobObject, SetInformationJobObject with
+    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE (and JOB_OBJECT_LIMIT_PROCESS_MEMORY),
+    and AssignProcessToJobObject."""
+    if sys.platform != "win32":
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    ExtendedLimits = _extended_limits()
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel32.CreateJobObjectW.restype = wintypes.HANDLE
     kernel32.CreateJobObjectW.argtypes = (wintypes.LPVOID, wintypes.LPCWSTR)
@@ -665,6 +741,9 @@ def _kill_on_close_job(pid: int):
         return None
     limits = ExtendedLimits()
     limits.BasicLimitInformation.LimitFlags = _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+    if memory_limit:
+        limits.BasicLimitInformation.LimitFlags |= _JOB_OBJECT_LIMIT_PROCESS_MEMORY
+        limits.ProcessMemoryLimit = memory_limit
     process = kernel32.OpenProcess(_PROCESS_SET_QUOTA | _PROCESS_TERMINATE, False, pid)
     placed = bool(process) and bool(
         kernel32.SetInformationJobObject(job, _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
@@ -684,8 +763,29 @@ def _kill_on_close_job(pid: int):
 #: kernel32's numbers for :func:`_kill_on_close_job`.
 _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
 _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
+_JOB_OBJECT_LIMIT_PROCESS_MEMORY = 0x0100
 _PROCESS_SET_QUOTA = 0x0100
 _PROCESS_TERMINATE = 0x0001
+
+
+def _job_memory(job) -> tuple[int, int]:
+    """A reading's job's (memory limit per process, the most any process in
+    it has committed), in bytes; (0, 0) with no job or where Windows will
+    not say. Read before the job is closed."""
+    if job is None:
+        return 0, 0
+    import ctypes
+    from ctypes import wintypes
+
+    ExtendedLimits = _extended_limits()
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.QueryInformationJobObject.argtypes = (wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID,
+                                                   wintypes.DWORD, wintypes.LPVOID)
+    limits = ExtendedLimits()
+    if not kernel32.QueryInformationJobObject(job, _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+                                              ctypes.byref(limits), ctypes.sizeof(limits), None):
+        return 0, 0
+    return limits.ProcessMemoryLimit, limits.PeakProcessMemoryUsed
 
 
 def _close_job(job) -> None:
@@ -746,21 +846,63 @@ class Session:
         starts: the reader will read on the processor."""
         if gpu_pack() is None:
             return
+        cannot_run = ""
         if self.in_a_child:
-            outcome = self.run(warm_up, (), {}, stop=WARM_UP_STOP_SECONDS)
+            outcome = self.run(warm_up, (), {}, stop=WARM_UP_STOP_SECONDS, retry=False)
             if outcome.kind == "read":
                 self.device, why = outcome.answer
             else:
                 self.device, why = DEVICE_PROCESSOR, outcome.error or "the reader did not answer"
+                if outcome.error.startswith(ReaderUnavailable.__name__):
+                    cannot_run = outcome.error.partition(": ")[2] or outcome.error
         else:
-            self.device, why = warm_up()
+            try:
+                self.device, why = warm_up()
+            except ReaderUnavailable as exc:
+                self.device, why = DEVICE_PROCESSOR, str(exc)
+                cannot_run = str(exc)
             take_notes()
-        if why:
+        if cannot_run:
+            # Not the card's fault: nothing can read here (REVIEW-169, N-1).
+            self.note = READER_CANNOT_RUN.format(reason=cannot_run)
+            self._processor_only = True
+        elif why:
             self.note = PACK_UNUSABLE.format(reason=why)
             self._processor_only = True
 
-    def run(self, job, args: tuple, kwargs: dict, stop: float) -> Outcome:
-        """Run one job in this session's child, starting one if there is none."""
+    def run(self, job, args: tuple, kwargs: dict, stop: float, *, retry: bool = True) -> Outcome:
+        """Run one job in this session's child, starting one if there is none.
+
+        A child that ends without an answer (or runs out of memory) is not
+        always the document's fault (REVIEW-169, M-1 and S-1). On the
+        graphics card it is a fault on the card: the rest of the pass reads
+        on the processor, and the pass says so once. In a child that had
+        already served a document it may be what the earlier ones left
+        behind. Either way the document is read once more, on a fresh child
+        with a fresh stop, and only what that says is kept. ``retry=False``
+        is the warm-up's: its answer settles the device instead."""
+        outcome, child = self._run_once(job, args, kwargs, stop)
+        if not retry or child is None or not _crashed(outcome):
+            return outcome
+        on_the_card, used = child.on_the_card, child.served > 1
+        if not (on_the_card or used):
+            return outcome                  # a fresh processor child: the file's own
+        name = _document_name(args)
+        if on_the_card:
+            self.gpu_failed_on = self.gpu_failed_on or name
+            self._processor_only = True
+            log.warning("The reading's process on the graphics card ended while reading %s (%s); "
+                        "reading it again on the processor", name, outcome.error)
+        else:
+            log.warning("The reading's process ended while reading %s after serving %d document(s) "
+                        "(%s); reading it again in a fresh one", name, child.served - 1, outcome.error)
+        again, _child = self._run_once(job, args, kwargs, stop)
+        again.seconds += outcome.seconds
+        return again
+
+    def _run_once(self, job, args: tuple, kwargs: dict,
+                  stop: float) -> tuple[Outcome, ReadingChild | None]:
+        """:meth:`run`'s one try: the outcome, and the child that ran it."""
         started = time.monotonic()
         fresh = self.child is None
         if fresh:
@@ -768,15 +910,18 @@ class Session:
                 self.child = ReadingChild(processor_only=self._processor_only)
             except Exception as exc:
                 return Outcome("not_started", error=f"{exc.__class__.__name__}: {exc}",
-                               seconds=time.monotonic() - started)
-        outcome = self.child.run(job, args, kwargs, stop, since=started if fresh else None)
+                               seconds=time.monotonic() - started), None
+        child = self.child
+        outcome = child.run(job, args, kwargs, stop, since=started if fresh else None)
         self.hear(outcome.notes)
-        # Replaced after a stop, a crash or a child that never started, a
-        # fault on the card, and every DOCUMENTS_PER_CHILD documents (R-4).
-        if (outcome.kind not in ("read", "failed") or self.child.served >= DOCUMENTS_PER_CHILD
+        # Replaced after a stop, a crash, running out of memory or a child
+        # that never started, a fault on the card, and every
+        # DOCUMENTS_PER_CHILD documents (R-4).
+        if (outcome.kind not in ("read", "failed") or _crashed(outcome)
+                or child.served >= DOCUMENTS_PER_CHILD
                 or (self.gpu_failed_on and not self._processor_only)):
             self._replace()
-        return outcome
+        return outcome, child
 
     def hear(self, notes: list[tuple[str, str]]) -> None:
         """Take what a reader said: a fault on the card sends the rest of the
@@ -784,8 +929,13 @@ class Session:
         for kind, what in notes:
             if kind == "gpu-fault" and not self.gpu_failed_on:
                 self.gpu_failed_on = what
-            elif kind == "pack-unusable" and not self.note:
-                self.note = PACK_UNUSABLE.format(reason=what)
+            elif kind == "pack-unusable":
+                # The card cannot be used here: no later child tries it
+                # again inside a document's own stop (REVIEW-169, S-3).
+                self.note = self.note or PACK_UNUSABLE.format(reason=what)
+                self._processor_only = True
+                if self.child is not None:
+                    self.child.on_the_card = False      # it reads on the processor now
 
     def _replace(self) -> None:
         """Let the child go; the next document starts a fresh one, on the
@@ -812,6 +962,20 @@ class Session:
             child.finish()
         if not self.in_a_child:
             reset()
+
+
+def _crashed(outcome: Outcome) -> bool:
+    """A child that ended without an answer, or ran out of memory (it then
+    says so and ends: SPEC-169 section 9)."""
+    return outcome.kind == "died" or (outcome.kind == "failed"
+                                      and outcome.error.startswith(MemoryError.__name__))
+
+
+def _document_name(args: tuple) -> str:
+    """The name of the file a job was handed, for the pass's words."""
+    if args and isinstance(args[0], (str, os.PathLike)):
+        return Path(args[0]).name
+    return "a document"
 
 
 #: The session open in this process, or None.

@@ -1121,6 +1121,10 @@ def run_registry(
     report = RunReport(today=today, dry_run=dry_run, reminders=reminders,
                        misfits=list(registry.misfits))
     reader_start_warning()          # this pass's count starts here
+    if warning := ocr.reader_path_warning():
+        # The app sits too deep for its reader: said once, loudly, rather
+        # than every scan waiting as "the reader could not run" (SPEC-169 section 9).
+        report.warnings.append(warning)
     # One reading child for the whole pass (decision 169, R-4), ended with
     # it. With a graphics card pack it starts now and settles the device,
     # so the run log's first line says which reader read.

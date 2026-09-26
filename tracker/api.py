@@ -2029,7 +2029,10 @@ def _cmd_list(argv: list[str]) -> dict:
     keeps its two old keys so the picker changes as little as it can.
     """
     root = clients_root()
-    empty = {"engagements": [], "households": [], "misfits": []}
+    # The app's first call: an app too deep for its reader says so at once,
+    # in a banner that stays (SPEC-169 section 9).
+    empty = {"engagements": [], "households": [], "misfits": [],
+             "reader_warning": ocr.reader_path_warning()}
     if root is None or not root.is_dir():
         return {**empty, "needs_root": True, "root": str(root or ""), "vocab": _vocab()}
     try:
@@ -2072,6 +2075,7 @@ def _cmd_list(argv: list[str]) -> dict:
         "misfits": [{"path": str(misfit.path), "sentence": misfit.sentence}
                     for misfit in registry.misfits],
         "needs_root": False, "root": str(root), "vocab": _vocab(),
+        "reader_warning": empty["reader_warning"],
     }
 
 

@@ -1460,6 +1460,8 @@ def _ocr_pdf(path: Path) -> str | None:
         return None
     except ReadingStopped:
         raise
+    except MemoryError:
+        raise           # the child's memory limit: a crash, not a retry (SPEC-169 section 9)
     except Exception as exc:
         log.warning("OCR failed on %s: %s", path.name, exc)
         raise OcrError(f"{exc.__class__.__name__}: {exc}") from exc
@@ -1505,6 +1507,8 @@ def _ocr_image(path: Path) -> str | None:
         # too large even to decode smaller. A size rule, so it is a kept
         # verdict for a person, not a retry every pass.
         raise TooLargeToRead(picture_too_large_reason(exc)) from exc
+    except MemoryError:
+        raise           # the child's memory limit: a crash, not a retry (SPEC-169 section 9)
     except Exception as exc:
         log.warning("OCR failed on %s: %s", path.name, exc)
         raise OcrError(f"{exc.__class__.__name__}: {exc}") from exc
@@ -1564,6 +1568,8 @@ def _extract(path: Path, *, ocr: bool) -> Extraction:
         return Extraction(None, needs_ocr=True) if not ocr else extract_by_ocr(path)
     try:
         text = extract_text(path)
+    except MemoryError:
+        raise           # the child's memory limit: a crash, not a corrupt file (SPEC-169 section 9)
     except Exception as exc:  # a corrupt file is a reason, not a crash
         error = f"{exc.__class__.__name__}: {exc}"
         return Extraction(

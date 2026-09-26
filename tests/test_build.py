@@ -436,3 +436,11 @@ def test_every_action_the_workflows_run_is_pinned_by_commit():
     for name, ref, rest in remote:
         assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", ref), (name, ref)
         assert re.search(r"#\s*v\d+", rest), (name, ref, "the tag it stood for")
+
+
+def test_the_smoke_check_fails_when_the_package_printed_nothing_to_compare():
+    """REVIEW-169 N-2: a dry pass that prints no OK, ERROR or SKIP line
+    would compare two empty strings and pass. The step throws first."""
+    run = commands()
+    guard = run.index("if (-not (& $lines $frozen)) { throw")
+    assert guard < run.index("if ((& $lines $frozen) -ne (& $lines $source))")

@@ -69,8 +69,11 @@ def libraries(site_packages: Path) -> list[Path]:
 def build_pack(site_packages: Path, out: Path) -> Path:
     """Copy the libraries into ``out`` (made, or emptied first) as one flat
     folder, and return it."""
-    found = libraries(site_packages)
     out = Path(out)
+    if out.name != PACK_DIR_NAME:
+        # It empties the folder it is given: never one mistyped.
+        raise PackError(f"the pack's folder must be named {PACK_DIR_NAME}, not {out.name!r}")
+    found = libraries(site_packages)
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)

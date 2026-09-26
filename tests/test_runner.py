@@ -677,6 +677,21 @@ def test_only_selects_a_subset(tmp_path, samples):
     assert not (smith.path / DRAFT_FILENAME).exists()
 
 
+def test_an_app_too_deep_for_its_reader_is_warned_of_once_in_the_pass(tmp_path, samples, monkeypatch):
+    """SPEC-169 section 9: an app whose folder is too deep for the
+    reader's libraries says so once in the pass's warnings - and so in the
+    console and the run log - rather than every scan waiting in silence."""
+    from tracker import ocr
+
+    monkeypatch.setattr(ocr, "reader_path_warning", lambda: ocr.READER_PATH_WARNING)
+    smith = build_engagement(tmp_path, samples, household="Smith Family", name="Smith TY2025")
+
+    report = run_registry(Registry(source=tmp_path, engagements=[smith]), today=SATURDAY)
+
+    assert report.warnings.count(ocr.READER_PATH_WARNING) == 1
+    assert ocr.READER_PATH_WARNING in format_report(report)
+
+
 def test_an_unknown_reminder_mode_fails_loudly(tmp_path):
     registry = Registry(source=tmp_path, engagements=[])
     with pytest.raises(ValueError, match="reminders must be one of"):

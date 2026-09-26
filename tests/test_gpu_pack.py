@@ -59,3 +59,16 @@ def test_a_pack_missing_a_library_onnx_runtime_loads_is_refused(tmp_path, capsys
     assert not out.exists()
     with pytest.raises(gpu_pack.PackError):
         gpu_pack.libraries(site)
+
+
+def test_the_pack_is_made_only_in_a_folder_named_for_it(tmp_path, capsys):
+    """REVIEW-169 N-3: making the pack empties its folder first, so a
+    mistyped folder is refused, and left as it was, rather than emptied."""
+    site = wheels_installed(tmp_path / "site-packages")
+    wrong = tmp_path / "Documents"
+    wrong.mkdir()
+    (wrong / "a letter.docx").write_bytes(b"keep me")
+
+    assert gpu_pack.main([str(site), str(wrong)]) == 1
+    assert gpu_pack.PACK_DIR_NAME in capsys.readouterr().err
+    assert (wrong / "a letter.docx").read_bytes() == b"keep me"

@@ -1466,6 +1466,10 @@ async function loadEngagements(preferPath) {
   households = listed.households || [];
   misfits = listed.misfits || [];
   clientsRoot = listed.root || "";
+  // Sticky, unlike banner(): nothing else writes to it, so it stays until
+  // the app is moved to a shorter folder (decision 169).
+  $("reader-warning").textContent = listed.reader_warning || "";
+  $("reader-warning").classList.toggle("hidden", !listed.reader_warning);
   $("setup-card").classList.toggle("hidden", !listed.needs_root);
   if (listed.needs_root) {
     $("root-input").value = clientsRoot;

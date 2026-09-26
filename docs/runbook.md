@@ -1099,7 +1099,19 @@ exactly as it came.
      processor, the rest of that pass reads on the processor, and the pass
      warns once ("the graphics card failed while reading ..."). Nothing is
      lost and nothing fails; the next pass tries the card again. If it
-     says so every pass, remove the pack and look at the machine.
+     says so every pass, remove the pack and look at the machine. The same
+     holds when the card's driver crashes the reading outright: that
+     document is read again on the processor rather than parked.
+   - **A crash is blamed on a document only once it is proved.** The pass
+     reads its documents in one helper process. If that process ends
+     unexpectedly after it has already read another document, the document
+     is read once more in a fresh one, and only a second crash parks it
+     for a person ("The reader could not read this file (it stopped
+     unexpectedly)").
+   - **Memory is capped:** the helper process may use at most 2 GB on the
+     processor, 6 GB on the graphics card. A document that needs more is
+     parked for a person like a crash, and the pass carries on with a
+     fresh helper, rather than the machine running short of memory.
    - **The safety stop** (decision 137) is kept between pages: no page
      starts once the page before it has overrun its minute, and a page the
      reader never finishes is ended with its whole reading at the stop for
@@ -1113,7 +1125,12 @@ exactly as it came.
      libraries sit up to about 110 characters deep inside the app, and
      Windows will not load one whose whole path passes 260: from a deeper
      folder the reader cannot run, and every scan and photo waits for a
-     person with "the reader could not run on this machine".
+     person with "the reader could not run on this machine". The app says
+     so loudly: from a folder too deep (any of its libraries past 240
+     characters, counted on the real folder, so a shortcut or junction does
+     not help) it shows a red banner that stays, "Move the app to a shorter
+     folder, for example C:\JPA Tracker; scans can't be read from here",
+     and the scheduled pass puts the same sentence in its warnings once.
 6. Run one pass — **Sort & Scan** on a single engagement — and read the run
    log before trusting the schedule.
 

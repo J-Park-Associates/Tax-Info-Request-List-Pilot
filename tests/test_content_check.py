@@ -1576,7 +1576,7 @@ from tests import child_readers
 from tracker import content_check, ocr
 content_check._CHILD_READER = child_readers.a_reader_that_starts_a_reader_of_its_own
 if sys.argv[2] == "lifeline":
-    ocr._kill_on_close_job = lambda pid: None
+    ocr._kill_on_close_job = lambda pid, **_limits: None
 content_check.extract_bounded(Path(sys.argv[1]))
 """
 
@@ -2019,3 +2019,36 @@ def test_a_1099b_section_is_read_as_a_form_label_not_as_the_word_consolidated(li
     from tracker.content_check import carries_a_1099b_section
 
     assert carries_a_1099b_section("\n".join(lines)) is carries
+
+
+def test_running_out_of_memory_is_never_a_retry_or_a_corrupt_file(tmp_path, monkeypatch):
+    """SPEC-169 section 9: a MemoryError - the reading child past its
+    memory limit - is not turned into a transient "OCR failed" (retried
+    every pass) nor into "the file is corrupt": it goes up to the child,
+    which says so and ends, and the pass handles it as a crash."""
+    import pypdfium2
+    from PIL import Image
+
+    from tracker import content_check, ocr
+
+    def out_of_memory(*_args, **_kwargs):
+        raise MemoryError
+
+    photo = tmp_path / "photo.png"
+    Image.new("RGB", (40, 40), "white").save(photo)
+    monkeypatch.setattr(ocr, "read_page", out_of_memory)
+    with pytest.raises(MemoryError):
+        content_check._ocr_image(photo)
+
+    scan = tmp_path / "scan.pdf"
+    writer = PdfWriter()
+    writer.add_blank_page(width=612, height=792)
+    with scan.open("wb") as fh:
+        writer.write(fh)
+    monkeypatch.setattr(pypdfium2.PdfPage, "render", out_of_memory)
+    with pytest.raises(MemoryError):
+        content_check._ocr_pdf(scan)
+
+    monkeypatch.setattr(content_check, "extract_text", out_of_memory)
+    with pytest.raises(MemoryError):
+        content_check._extract(scan, ocr=False)

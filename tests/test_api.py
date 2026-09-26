@@ -1573,6 +1573,36 @@ def test_without_a_root_the_app_is_told_to_set_one(capsys, tmp_path, monkeypatch
     assert code == 1 and "where your clients live" in payload["error"]
 
 
+def test_the_app_is_told_at_once_when_it_sits_too_deep_for_its_reader(capsys, tmp_path, monkeypatch):
+    """SPEC-169 section 9: ``list``, the app's first call, carries the
+    short-path warning (shown in a banner that stays), with a root or
+    without one; and nothing when the app's folder is fine."""
+    from tracker import ocr
+    from tracker.settings import ENV_SETTINGS_DIR
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    assert run(capsys, "list")[1]["reader_warning"] == ""
+    monkeypatch.setattr(ocr, "reader_path_warning", lambda: ocr.READER_PATH_WARNING)
+    assert run(capsys, "list")[1]["reader_warning"] == ocr.READER_PATH_WARNING
+    clients = tmp_path / "Clients"
+    clients.mkdir()
+    assert run(capsys, "set-root", stdin={"root": str(clients)})[0] == 0
+    code, payload = run(capsys, "list")
+    assert code == 0 and payload["needs_root"] is False
+    assert payload["reader_warning"] == ocr.READER_PATH_WARNING
+
+
+def test_the_short_path_warning_comes_with_the_returns_too(capsys, demo_root, monkeypatch):
+    from tracker import ocr
+
+    monkeypatch.setattr(ocr, "reader_path_warning", lambda: ocr.READER_PATH_WARNING)
+    spec = {"household": HOUSEHOLD, "return_name": "First", "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    code, payload = run(capsys, "list")
+    assert code == 0 and payload["engagements"]
+    assert payload["reader_warning"] == ocr.READER_PATH_WARNING
+
+
 def test_set_root_records_the_folder_the_job_will_walk(capsys, tmp_path, monkeypatch):
     from tracker.settings import ENV_SETTINGS_DIR, clients_root
 

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import datetime as dt
 import socket
+import sys
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -495,3 +496,200 @@ def test_no_reading_child_outlives_the_pass(tmp_path):
     finally:
         if the_pass.poll() is None:
             the_pass.kill()
+
+
+# -------------------------------- the graphics card, in a real child (S-2) ----
+#
+# REVIEW-169: every claim above about the card runs in the test's own
+# process, where the fakes live. These cross into a real spawned child, so
+# the path the pass takes - the child's notes, the pipe, the session's
+# hearing, the replacement - is what is proved. The child has no pack (it
+# is not the frozen app); the parent is told there is one, which is what
+# makes a child "on the card" to the session.
+
+
+def who_read(session: ocr.Session, path: Path, reader) -> tuple[int, bool]:
+    """(the child's process id, whether it was kept on the processor)."""
+    outcome = session.run(reader, (path,), {}, STOP_IN_TESTS * 6)
+    assert outcome.kind == "read", (outcome.kind, outcome.error)
+    pid, processor_only = outcome.answer.text.split()
+    return int(pid), processor_only == "True"
+
+
+@pytest.fixture
+def a_pack_here(monkeypatch, tmp_path):
+    pack = tmp_path / ocr.GPU_PACK_DIR_NAME
+    pack.mkdir()
+    monkeypatch.setattr(ocr, "gpu_pack", lambda: pack)
+    return pack
+
+
+def test_a_card_fault_in_a_child_moves_the_rest_of_the_pass_to_the_processor(tmp_path, a_pack_here):
+    """Ruling 3, end to end: the child's note of a fault crosses the pipe,
+    the session hears it, lets that child go, and the next document is read
+    by a new child told to keep to the processor. One warning."""
+    from tests import child_readers
+
+    fault, after = tmp_path / "a fault.pdf", tmp_path / "after.pdf"
+    with ocr.reading_session() as session:
+        first, first_off_the_card = who_read(session, fault, child_readers.a_reader_that_tells_the_pass)
+        second, second_off_the_card = who_read(session, after, child_readers.a_reader_that_tells_the_pass)
+        assert not first_off_the_card and second_off_the_card and second != first
+        assert session.warnings() == [ocr.GPU_FAULT_WARNING.format(file="a fault.pdf")]
+        assert session.warnings() == []
+        assert who_read(session, after, child_readers.a_reader_that_tells_the_pass) == (second, True)
+    assert no_child_left()
+
+
+def test_a_pack_found_unusable_in_a_child_keeps_every_later_child_off_the_card(tmp_path, a_pack_here):
+    """S-3: an app command opens its session without the warm-up, so the
+    first child finds the pack unusable. Every child after it - after a
+    crash, a stop or its hundred documents - reads on the processor, rather
+    than trying the card again inside a document's own stop."""
+    from tests import child_readers
+
+    unusable, crash = tmp_path / "unusable.pdf", tmp_path / "a crash.pdf"
+    with ocr.reading_session() as session:
+        _pid, off_the_card = who_read(session, unusable, child_readers.a_reader_that_tells_the_pass)
+        assert not off_the_card and "could not be used" in session.note
+        session.run(child_readers.a_reader_that_dies_on_a_crash, (crash,), {}, STOP_IN_TESTS * 6)
+        assert who_read(session, unusable, child_readers.a_reader_that_tells_the_pass)[1] is True
+        assert session.warnings() == []                   # a run-log line, not a warning
+    assert no_child_left()
+
+
+def test_a_card_child_that_dies_is_a_card_fault_and_the_document_is_read_on_the_processor(
+        tmp_path, a_pack_here):
+    """M-1: a child on the card that ends with no answer - a native CUDA
+    crash, or the card child's memory limit - is a fault on the card, not
+    the file's. The same document is read once more on a fresh processor
+    child, the pass warns once, and every later document stays there."""
+    from tests import child_readers
+
+    scan = text_pdf(tmp_path / "scan.pdf", "Form W-2 2025")
+    after = text_pdf(tmp_path / "after.pdf", "Form W-2 2025")
+    with ocr.reading_session() as session:
+        answer, failed = content_check.in_a_child(scan, child_readers.a_card_that_dies)
+        assert failed is None, failed.reason
+        pid, off_the_card = answer.text.split()
+        assert off_the_card == "True"
+        assert session.warnings() == [ocr.GPU_FAULT_WARNING.format(file="scan.pdf")]
+        assert who_read(session, after, child_readers.a_card_that_dies) == (int(pid), True)
+        assert session.warnings() == []
+    assert no_child_left()
+
+
+def test_a_death_in_a_used_child_is_retried_once_on_a_fresh_one(tmp_path):
+    """S-1: a child that has served a document may die of what the earlier
+    ones left behind. The document is read again on a fresh child before it
+    is blamed; only a death on a fresh processor child is the file's own
+    (the crash test above: its second try dies too, and it is kept)."""
+    from tests import child_readers
+
+    one, two = tmp_path / "one.pdf", tmp_path / "two.pdf"
+    with ocr.reading_session() as session:
+        first, _ = who_read(session, one, child_readers.a_reader_that_dies_once_used)
+        second, off_the_card = who_read(session, two, child_readers.a_reader_that_dies_once_used)
+        assert second != first and off_the_card is False     # no pack: not the card's
+        assert session.warnings() == []
+    assert no_child_left()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the memory cap is the Windows job object's")
+def test_the_reading_childs_job_caps_its_memory(a_pack_here):
+    """SPEC-169 section 9: 2 GB for a processor child, 6 GB for a child on
+    the graphics card, set on the job object that already ends it."""
+    for processor_only, cap in ((True, ocr.PROCESSOR_CHILD_MEMORY),
+                                (False, ocr.GRAPHICS_CARD_CHILD_MEMORY)):
+        child = ocr.ReadingChild(processor_only=processor_only)
+        try:
+            assert ocr._job_memory(child._job_object)[0] == cap
+        finally:
+            child.finish()
+    assert (ocr.PROCESSOR_CHILD_MEMORY, ocr.GRAPHICS_CARD_CHILD_MEMORY) == (2 * 1024**3, 6 * 1024**3)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the memory cap is the Windows job object's")
+def test_a_child_over_its_memory_limit_is_replaced_and_the_next_document_reads(tmp_path):
+    """SPEC-169 section 9: a document that wants more than the child's 2 GB
+    fails in that child, which says so and ends; the document gets the
+    crash's "could not be read", kept for a person, and the next document
+    is read by a fresh child."""
+    from tests import child_readers
+
+    big = text_pdf(tmp_path / "big.pdf", "Form W-2 2025")
+    after = text_pdf(tmp_path / "after.pdf", "Form W-2 2025")
+    with ocr.reading_session() as session:
+        answer, failed = content_check.in_a_child(big, child_readers.a_reader_that_needs_too_much_memory)
+        assert answer is None and failed.reason == CRASHED and not failed.transient
+        assert failed.error.startswith("MemoryError")
+        assert session.child is None                      # let go, not asked again
+        pid, _ = who_read(session, after, child_readers.a_reader_that_needs_too_much_memory)
+        assert running(pid)
+    assert no_child_left()
+
+
+def test_a_reader_that_cannot_run_is_not_blamed_on_the_card(monkeypatch, a_card):
+    """N-1: with a pack here and not even the processor's engine buildable
+    (a model missing), the run log says the reader could not run on this
+    machine - not that the card's pack could not be used."""
+    def nothing_builds(*, cuda):
+        raise ocr.ReaderUnavailable("the model PP-OCRv6_det_small.onnx is missing")
+
+    monkeypatch.setattr(ocr, "_build_engine", nothing_builds)
+    session = ocr.Session(in_a_child=False)
+    session.settle()
+    assert session.note == ocr.READER_CANNOT_RUN.format(
+        reason="the model PP-OCRv6_det_small.onnx is missing")
+    assert session.device == ocr.DEVICE_PROCESSOR and "graphics card" not in session.note
+
+    in_a_child = ocr.Session()
+    monkeypatch.setattr(ocr.Session, "run", lambda *a, **k: ocr.Outcome(
+        "failed", error="ReaderUnavailable: the model PP-OCRv6_det_small.onnx is missing"))
+    in_a_child.settle()
+    assert in_a_child.note == session.note
+
+
+# ------------------------------------------- the short-path warning (§9) ----
+
+
+def test_run_from_source_the_app_is_never_too_deep():
+    assert not getattr(sys, "frozen", False)
+    assert ocr.reader_path_warning() == ""
+
+
+def test_a_library_past_the_limit_means_the_app_must_move(tmp_path, monkeypatch):
+    """SPEC-169 section 9 and REVIEW-169 N-5: any library of the app's
+    whose full path passes the limit (240, a margin below where loading was
+    seen to fail) is the warning. (The limit is patched down to the test's
+    own folder.)"""
+    app = tmp_path / "tracker-api" / "_internal"
+    (app / "cv2").mkdir(parents=True)
+    library = app / "cv2" / "opencv_world.dll"
+    library.write_bytes(b"")
+    (app / "cv2" / "a very long name that is not a library at all.txt").write_bytes(b"")
+    monkeypatch.setattr(ocr, "READER_PATH_LIMIT", len(str(library.resolve())))
+    assert ocr.reader_path_warning(app) == ""
+    monkeypatch.setattr(ocr, "READER_PATH_LIMIT", len(str(library.resolve())) - 1)
+    assert ocr.reader_path_warning(app) == ocr.READER_PATH_WARNING
+    assert ocr.READER_PATH_WARNING.startswith(
+        "Move the app to a shorter folder, for example C:\\JPA Tracker")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="a directory junction is Windows'")
+def test_a_short_junction_to_a_deep_folder_is_still_too_deep(tmp_path, monkeypatch):
+    """N-5: the frozen app loads from its real folder, so a short junction
+    to a deep one does not help, and the check reads the real path."""
+    import subprocess
+
+    deep = tmp_path / "a deep folder a deep folder a deep folder" / "tracker-api" / "_internal"
+    deep.mkdir(parents=True)
+    (deep / "onnxruntime.dll").write_bytes(b"")
+    short = tmp_path / "s"
+    subprocess.run(["cmd", "/c", "mklink", "/J", str(short), str(deep)], check=True,
+                   capture_output=True)
+    try:
+        monkeypatch.setattr(ocr, "READER_PATH_LIMIT", len(str(short / "onnxruntime.dll")) + 5)
+        assert ocr.reader_path_warning(short) == ocr.READER_PATH_WARNING
+    finally:
+        subprocess.run(["cmd", "/c", "rmdir", str(short)], check=True, capture_output=True)
