@@ -2597,3 +2597,35 @@ def test_a_version_16_store_is_upgraded_in_place_and_keeps_its_cached_verdicts(t
     earlier.close()
     with pytest.raises(store.StoreError, match="delete it and rebuild"):
         store.open(refused)
+
+
+def test_two_openers_of_one_version_16_store_both_succeed(tmp_path, monkeypatch):
+    """The in-place step re-reads the version under the write lock (the port
+    review's should-fix): an opener that read 16 before another opener
+    upgraded the file finds the step made and goes on, rather than failing
+    on the column the other added. Both end at version 17."""
+    path = tmp_path / "shared" / store.STORE_FILENAME
+    store.open(path).close()
+    written = sqlite3.connect(path)
+    written.execute('ALTER TABLE documents DROP COLUMN "waits_for"')
+    written.execute("PRAGMA user_version = 16")
+    written.commit()
+    written.close()
+    real_execute = store._Connection.execute
+    raced = {"done": False}
+
+    def the_other_opener_first(self, sql, *args):
+        if sql == "BEGIN IMMEDIATE" and not raced["done"]:
+            raced["done"] = True
+            store.open(path).close()         # it read 16 too, and upgraded first
+        return real_execute(self, sql, *args)
+
+    monkeypatch.setattr(store._Connection, "execute", the_other_opener_first)
+    conn = store.open(path)
+    try:
+        assert raced["done"]
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 17
+        columns = [row[1] for row in conn.execute("PRAGMA table_info(documents)")]
+        assert columns.count("waits_for") == 1
+    finally:
+        conn.close()

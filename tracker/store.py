@@ -667,15 +667,22 @@ def open(path: Path | str) -> sqlite3.Connection:  # noqa: A001 - the store is o
         # together or not at all.
         conn.execute("BEGIN IMMEDIATE")
         try:
-            for statement in _IN_PLACE[version]:
-                conn.execute(statement)
-            conn.execute(f"PRAGMA user_version = {version + 1}")
+            # Read again under the write lock: another opener (the app and
+            # a pass starting at once) may have made this step since the
+            # version was read, and a step made twice would fail on the
+            # column it already added. Theirs stands; this one goes on.
+            now = conn.execute("PRAGMA user_version").fetchone()[0]
+            if now == version:
+                for statement in _IN_PLACE[version]:
+                    conn.execute(statement)
+                conn.execute(f"PRAGMA user_version = {version + 1}")
+                now = version + 1
             conn.execute("COMMIT")
         except BaseException:
             conn.execute("ROLLBACK")
             conn.close()
             raise
-        version += 1
+        version = now
     if version == 0:
         for statement in SCHEMA:
             conn.execute(statement)

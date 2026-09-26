@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 149,
     "edges": 925,
-    "reused": 117
+    "reused": 116
   },
   "node_types": [
     "artifact",
@@ -2659,8 +2659,8 @@
       "id": "tracker/store.py",
       "type": "module",
       "layer": "core",
-      "sha256": "94e465705d1fe5fe",
-      "lines": 2930,
+      "sha256": "7dae0f6d755c85e0",
+      "lines": 2937,
       "cli": "python -m tracker.store",
       "exports": [
         "ALSO_IN",
@@ -5965,8 +5965,8 @@
       "id": "tests/test_store.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "b386c605b7e2121c",
-      "lines": 2599,
+      "sha256": "f977f5595c4907fc",
+      "lines": 2631,
       "exports": [
         "A_ROW_ORIGINAL",
         "DAY1",
@@ -6090,6 +6090,7 @@
         "test_the_two_retired_names_read_once_and_are_never_written",
         "test_the_verdict_tables_are_not_in_the_check_and_not_in_the_export",
         "test_the_writer_and_the_check_use_one_rule",
+        "test_two_openers_of_one_version_16_store_both_succeed",
         "test_two_years_of_one_return_are_two_rows_when_the_settings_name_no_root",
         "the_head_of_the_first",
         "the_other_process_first",
