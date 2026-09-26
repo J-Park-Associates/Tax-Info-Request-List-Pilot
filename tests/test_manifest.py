@@ -1139,16 +1139,17 @@ def test_a_list_read_without_following_is_the_store_as_it_stands(tmp_path):
     the store is not seen that way and is seen by every other reader; a
     return the store does not hold is followed either way, never shown
     empty."""
-    from tracker.locking import engagement_lock
+    from tests.conftest import written_elsewhere
     from tracker.manifest import Status
     from tracker.records import StatusUpdate, status_to_json
 
     engagement = make_engagement(tmp_path / "Clients", SAMPLE_ITEMS, scaffold=False)
     before = {item.identifier: item.status for item in load_manifest(engagement)}
     first = SAMPLE_ITEMS[0].identifier
-    with engagement_lock(engagement):
-        ledger.append(engagement, ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: {
-            first: status_to_json(StatusUpdate(status=Status.RECEIVED, file_count=1))}}))
+    # A line behind the store is one another machine wrote: every line this
+    # machine writes goes through the store (decision 159's checkpoint).
+    written_elsewhere(engagement, ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: {
+        first: status_to_json(StatusUpdate(status=Status.RECEIVED, file_count=1))}}))
 
     as_it_stands = {item.identifier: item.status for item in load_manifest(engagement, follow=False)}
     assert as_it_stands == before and before[first] != Status.RECEIVED

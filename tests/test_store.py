@@ -3478,6 +3478,7 @@ def test_households_are_every_stored_household_row_read_as_it_stands(root, monke
     they stand, even with a line behind them it has not applied."""
     from dataclasses import replace
 
+    from tests.conftest import written_elsewhere
     from tracker.households import load_household_info, save_household
     from tracker.layout import private_household_dir
     from tracker.records import Feed
@@ -3487,9 +3488,10 @@ def test_households_are_every_stored_household_row_read_as_it_stands(root, monke
     family = private_household_dir(root, "Park Family")
     feed = Feed("Park & Lee LLC", "1120S - Park & Lee LLC")
     save_household(family, replace(load_household_info(family), feeds=(feed,)))
-    with engagement_lock(family):
-        ledger.append(family, ledger.new(ledger.HOUSEHOLD_CHANGED, **{
-            ledger.HOUSEHOLD_KEY: {"feeds": []}}))
+    # A line behind the store is one another machine wrote: every line this
+    # machine writes goes through the store (decision 159's checkpoint).
+    written_elsewhere(family, ledger.new(ledger.HOUSEHOLD_CHANGED, **{
+        ledger.HOUSEHOLD_KEY: {"feeds": []}}))
     read: list[Path] = []
     real = Path.read_bytes
 

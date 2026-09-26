@@ -4323,7 +4323,7 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "412e41eb5aec9936",
+      "sha256": "b777190cbea3e7b9",
       "lines": 9150,
       "exports": [
         "A_PASS_KILLED_MID_COPY",
@@ -5096,8 +5096,8 @@
       "id": "tests/test_manifest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "3e8551c3955de1ef",
-      "lines": 1162,
+      "sha256": "2f4ac566f669f4ca",
+      "lines": 1163,
       "exports": [
         "GATE_REFUSES",
         "K1_WORDS",
@@ -6326,8 +6326,8 @@
       "id": "tests/test_store.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6a083fa7afffd7ea",
-      "lines": 3513,
+      "sha256": "c3efdf4dfe9fd921",
+      "lines": 3515,
       "exports": [
         "A_ROW_ORIGINAL",
         "DAY1",

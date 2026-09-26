@@ -9125,8 +9125,7 @@ def test_an_index_read_without_following_is_the_store_as_it_stands(tmp_path):
     walk left the store, without reading its journal again. A line behind
     the store is not seen that way and is seen by every other reader; a
     return the store does not hold is followed either way."""
-    from tests.conftest import seed_index
-    from tracker.locking import engagement_lock
+    from tests.conftest import seed_index, written_elsewhere
     from tracker.records import IndexEntry, entry_to_json, ledger_key
 
     engagement = make_engagement(tmp_path / "Clients", ITEMS, scaffold=False)
@@ -9138,9 +9137,10 @@ def test_an_index_read_without_following_is_the_store_as_it_stands(tmp_path):
 
     seed_index(engagement, [parked("first.pdf")])
     behind = parked("second.pdf")
-    with engagement_lock(engagement):
-        ledger.append(engagement, ledger.new(ledger.IMPORTED, **{
-            ledger.KEY_KEY: ledger_key(behind), ledger.ROW_KEY: entry_to_json(behind)}))
+    # A line behind the store is one another machine wrote: every line this
+    # machine writes goes through the store (decision 159's checkpoint).
+    written_elsewhere(engagement, ledger.new(ledger.IMPORTED, **{
+        ledger.KEY_KEY: ledger_key(behind), ledger.ROW_KEY: entry_to_json(behind)}))
 
     assert [one.original_name for one in read_index(engagement, follow=False)] == ["first.pdf"]
     assert [one.original_name for one in read_index(engagement)] == ["first.pdf", "second.pdf"]
