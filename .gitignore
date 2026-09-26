@@ -94,6 +94,12 @@ last-pass.json
 last-pass.json.*
 recovered/
 tracker.db.v*.old*
+# Beside the store too (decision 193): the local error log, which can name
+# a client's folder, its rotated copies, and the running passes' progress
+# files and cancel markers.
+tracker-errors.log
+tracker-errors.log.*
+passes/
 # OCR's temporary page images during a pass (decision 137, L7). Retired by
 # decision 169 - the reader writes no temporary file - but a checkout that
 # ran a pass before it may still hold the folder, with a client's page in

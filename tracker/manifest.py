@@ -342,6 +342,13 @@ class ManifestError(Exception):
     """A request list could not be read, parsed, or validated."""
 
 
+class ListMoved(ManifestError):
+    """A write made from a list the record no longer holds (decision 160).
+    Its own class so the app says it as *stale* - look again - rather than
+    a refusal (decision 193); still a :class:`ManifestError`, so every
+    existing ``except`` holds."""
+
+
 #: What a reader says of a folder that holds no journal: it is not an
 #: engagement, whatever else is in it. The journal's file name is filled in
 #: at call time by the reader, because this module does not import the
@@ -1442,7 +1449,7 @@ def refuse_a_stale_list(conn, engagement_dir: Path | str, head: object) -> None:
     if not isinstance(head, str) or not head.strip():
         raise ManifestError(NO_LIST_HEAD)
     if head.strip() != _head_of(conn, Path(engagement_dir)):
-        raise ManifestError(LIST_MOVED)
+        raise ListMoved(LIST_MOVED)
 
 
 def recorded_rules(engagement_dir: Path | str) -> list[dict]:

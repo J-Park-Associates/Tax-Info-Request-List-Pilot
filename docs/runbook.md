@@ -474,8 +474,11 @@ files, records what it did, drafts nothing this pass and says on every
 return *this household's time for this pass ran out after N file(s); the
 rest wait for the next pass* — nothing to do; the next pass carries on,
 and drafts the week's letter if it is owed. **Run now** (Sort & Scan) has
-the same fifteen minutes, so it finishes inside the app's thirty-minute
-limit and says the same sentence rather than failing. Households are
+the same fifteen minutes and says the same sentence. While it runs the
+app shows each household and the file it is on; **Stop** ends it at the
+next file — what it did is recorded and the rest waits for the next
+pass — and the app lets it run as long as the schedule's own limit,
+`tracker.locking.RUN_TIME_LIMIT_SECONDS`. Households are
 taken **least recently completed first**, not in folder order, so the
 one that ran out of time, or was stopped, does not go first and stop the
 same clients every pass: a household the last pass was stopped in goes
@@ -1030,6 +1033,15 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
      a line from a newer version. Nothing was
      applied. Follow §6, *When a record needs
      recovering*, for that return, today.
+
+   **When the app says something went wrong.** A notice stays until it is
+   dismissed. *Look again* means the record changed under you: the row is
+   outlined, and looking again shows what it holds now. *Retry* re-runs
+   the same step. A greyed return is a pass in progress. Every unexpected
+   error's detail is in the error log (`tracker.settings.ERROR_LOG_FILENAME`)
+   beside the tracker's database, rotated at 1 MB, three kept. It can hold
+   client names: it stays on this machine, and a developer reads it at
+   this machine.
 2. **Clear the review folder.** Anything the rules could not be sure of is
    parked in the review folder (`tracker.scaffold.REVIEW_DIR_NAME`) with a
    reason. In the app, pick the engagement, pick the request the document
@@ -1099,9 +1111,11 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    157, §1 *A working copy went missing*). One whose original is gone too
    is, with one answer, **Mark … missing**, which puts the document back on
    the client's letter.
-4. **A locked engagement.** The app shows a notice when a run holds one. If
-   it says a run is still going, leave it — **Sort & Scan** waits for it.
-   If it says a run left its lock behind, a **Clear lock** button appears;
+4. **A locked engagement.** The app shows a notice when a pass holds one:
+   when it started, on which machine and — when it runs on this machine —
+   the household and the file it is on. This return's buttons are greyed
+   while it runs and come back by themselves the moment the pass lets go;
+   nothing waits, and nothing needs clearing. If it says a run left its lock behind, a **Clear lock** button appears;
    it only appears once the lock is older than
    `tracker.locking.STALE_LOCK_SECONDS`, which is past the point Task
    Scheduler must already have killed the run that made it, so clearing it
@@ -1491,9 +1505,11 @@ already.
 (`record-heads.db`, `tracker.checkpoint.CHECKPOINT_FILENAME`), the folder
 `recovered` beside them if a recovery was ever run, the last-pass file
 (`last-pass.json`), the pass-order hint (`tracker.runner.PASS_ORDER_FILENAME`),
-the scheduled task, the app folder itself, and the graphics card pack if
-that machine had one (step 5). The last-pass file and the pass-order hint
-are not carried over: the new machine starts both afresh.
+the error log (`tracker.settings.ERROR_LOG_FILENAME`) and the `passes`
+folder (`tracker.progress.PASSES_DIRNAME`) beside it, the scheduled task,
+the app folder itself, and the graphics card pack if that machine had one
+(step 5). The last-pass file, the pass-order hint, the error log and the
+`passes` folder are not carried over: the new machine starts them afresh.
 
 **Carry `tracker.db` and `record-heads.db` over** (decision 159). The
 database can be built again from the ledgers, but the checkpoint cannot:

@@ -710,3 +710,26 @@ def test_households_named_reads_no_household_it_was_not_asked_for(root, monkeypa
     household = llc.parent.parent
     assert read and ledger.path_for(household) in read
     assert all(household in one.parents or one.parent == household for one in read), read
+
+
+def test_a_folder_that_cannot_be_listed_is_said_by_class_never_by_its_text(root, monkeypatch):
+    # Decision 193 (security principle 7): the operating system's text
+    # names the folder, and the misfit's sentence reaches the app, the page
+    # and the run log - so it carries the class and the code only.
+    import errno
+    from pathlib import Path
+
+    make(root, household="Smith Family")
+    denied = private_household_dir(root, "Smith Family")
+    real = Path.iterdir
+
+    def refuse(self):
+        if self == denied:
+            raise PermissionError(errno.EACCES, "Permission denied", str(self))
+        return real(self)
+
+    monkeypatch.setattr(Path, "iterdir", refuse)
+    registry = discover_engagements(root)
+    said = next(m.sentence for m in registry.misfits if m.path == denied)
+    assert said == UNLISTED.format(error="PermissionError (EACCES)")
+    assert "Permission denied" not in said and str(denied) not in said

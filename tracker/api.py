@@ -1,7 +1,7 @@
 """JSON bridge for the desktop app (Electron) — python -m tracker.api <command>.
 
-Commands print a single JSON object to stdout and exit 0, or {"error": ...}
-and exit 1. All real logic lives in the tracker package; this module only
+Commands print a single JSON object to stdout and exit 0, or {"error": ...,
+"failure": ...} and exit 1. All real logic lives in the tracker package; this module only
 serializes it, so the UI can never disagree with the scanner.
 
 Commands:
@@ -45,6 +45,14 @@ Commands:
   unlock    clear a stale engagement lock (a fresh one is refused)
   acknowledge-foreign  a person has looked at the lines another machine wrote
             in one return's record; they stop being named (decision 159)
+  watch     whether a pass still holds this return, and where it is (a read
+            of the lock and the pass's progress file; no store)
+  cancel-pass  ask a running Sort & Scan this app started to stop at its
+            next file (JSON on stdin: {"pass": id})
+
+Every reply carries ``warnings``; every error also carries ``failure``
+({sentence, kind, seq, identifier}) beside ``error`` (decision 193).
+Sort & Scan prints progress lines before its reply (tracker.progress).
 """
 
 from __future__ import annotations
@@ -71,6 +79,7 @@ from tracker import (
     ledger,
     names,
     ocr,
+    progress,
     reasons,
     records,
     reminder,
@@ -88,6 +97,7 @@ from tracker.filer import (
     ROOM_SHORT,
     FilingError,
     Spelling,
+    StaleRowError,
     assign_review_file,
     both_gone,
     dismiss_review_file,
@@ -143,7 +153,16 @@ from tracker.layout import (
     return_dir_for,
     year_of,
 )
-from tracker.locking import STALE_LOCK_SECONDS, clear_stale_lock, engagement_lock, lock_status
+from tracker.locking import (
+    RUN_TIME_LIMIT_SECONDS,
+    STALE_LOCK_SECONDS,
+    EngagementLockedError,
+    clear_stale_lock,
+    engagement_lock,
+    is_this_host,
+    lock_status,
+    pid_alive,
+)
 from tracker.manifest import (
     ANY_EXTENSION,
     COLUMN_HELP,
@@ -162,6 +181,7 @@ from tracker.manifest import (
     UNSCANNED_LABEL,
     YEAR_MAX,
     YEAR_MIN,
+    ListMoved,
     ManifestError,
     Override,
     Status,
@@ -217,6 +237,7 @@ from tracker.records import (
     person_to_json,
 )
 from tracker.registry import (
+    EmptyRoot,
     Engagement,
     Household,
     Registry,
@@ -257,6 +278,7 @@ from tracker.runner import (
     EngagementRun,
     RunReport,
     append_log,
+    created_on,
     last_draft_day,
     last_drafted,
     last_pass_line,
@@ -284,10 +306,13 @@ from tracker.scheduling import (
     task_scheduler_xml,
 )
 from tracker.settings import (
+    ERROR_LOG_FILENAME,
     EXAMPLE_ROOT,
     SET_ROOT_HINT,
     SettingsError,
     clients_root,
+    error_log,
+    error_log_path,
     firm,
     firm_phone,
     product_name,
@@ -323,6 +348,132 @@ from tracker.view import (
 )
 
 log = logging.getLogger("tracker.api")
+
+# ------------------------------------------------------------ the envelope ----
+#
+# Every reply carries ``warnings``, and every error one ``failure`` beside
+# the unchanged ``error`` string (decision 193). How an error is said is
+# decided in one place, :func:`_failure_of`: a refusal the tracker words
+# for a person is said in its own sentence; anything else by its class and
+# code, and its full text and traceback go only to the local error log.
+
+#: This command's envelope warnings - what a person must see about the
+#: reply beyond its result - reset by :func:`main`.
+_WARNINGS: list[str] = []
+#: The spec :func:`_read_spec` parsed, so a failure can name the row the
+#: person clicked; reset by :func:`main`.
+_ASKED: dict = {}
+
+#: The usage line, a refusal like any other (its text is unchanged).
+USAGE = "usage: tracker.api {commands}"
+#: What an error the tracker did not expect is said as: its class and code,
+#: never its message, and where its detail went.
+FAILED = ("The tracker hit an error it did not expect ({kind}). What it finished is on the record; "
+          "the details are in {log} beside the tracker's database.")
+#: The notices' three buttons (decision 193, ruling 12). Static in
+#: ``index.html``'s template, pinned to these word for word, because a
+#: notice must work when the very first ``list`` fails, before any
+#: vocabulary exists.
+NOTICE_LABELS = {"retry": "Retry", "look": "Look again", "dismiss": "Dismiss"}
+
+
+#: A clients root that could not be walked (decision 193): said, never an
+#: empty answer that reads as a practice with nothing in it.
+PRACTICE_NOT_WALKED = ("The clients folder could not be walked just now, so what needs the whole "
+                       f"practice is not shown; the details are in {ERROR_LOG_FILENAME}.")
+#: The Reminder card kept on screen when its reminder cannot be read (D7).
+REMINDER_UNREADABLE = "This return's reminder could not be read just now; the notice above says why."
+#: One return's reminder line on the household card that could not be read.
+REMINDER_LINE_UNREADABLE = "{label}: its reminder could not be read ({kind})"
+#: A pass that filed and then could not redraw the page (D5): the counts
+#: stay, and the app redraws from the record.
+STATE_NOT_REDRAWN = ("The pass finished and its counts stand, but the page could not be redrawn "
+                     "({kind}); it is drawn again from the record.")
+#: Stop asked of a pass this app is not running (ruling 7 and the lane's).
+NOTHING_TO_STOP = "There is no pass this app started running to stop; nothing was changed."
+#: How often the app asks whether a lock it shows has gone (ruling 10).
+LOCK_WATCH_SECONDS = 5
+#: The lock notice's words (D4): nothing waits, and nothing needs clearing.
+LOCK_RUNNING = "A pass that started at {started} on {host} is holding this return."
+LOCK_ON = "It is on {household}: {name}."
+LOCK_GREYED = ("This return's buttons are greyed while it runs and come back by themselves the "
+               "moment it lets go.")
+LOCK_LEFT_BEHIND = ("A pass that started at {started} on {host} left its lock behind ({minutes} min "
+                    "old); it has most likely ended. The next pass replaces it, or clear it here.")
+LOCK_CLEARED = "The lock left behind was cleared ({minutes} min old)."
+LOCK_BUTTONS_BACK = "The pass let go of this return; its buttons are back."
+#: Sort & Scan, watched (decision 193).
+PROGRESS_HOUSEHOLD = "{household} ({n} of {of})"
+PROGRESS_SORT = "Sorting {name}"
+PROGRESS_SCAN = "Checking {name}"
+PROGRESS_STOP = "Stop"
+PROGRESS_STOPPING = "Stopping after this file\u2026"
+#: What the shell says when a child is killed, ends with no reply, or
+#: cannot start - learned from here, with pinned defaults for a first
+#: start (``app/main.js``).
+SHELL_KILLED = ("The pass ran past its limit of {minutes} minutes and was stopped. What it finished "
+                "is on the record, and the next pass does the rest.")
+SHELL_KILLED_AT = "It was on {household}: {name}."
+SHELL_NO_REPLY = "The tracker ended without a reply (exit code {code}); the details are in the error log."
+SHELL_COULD_NOT_START = "The tracker could not start ({code})."
+#: A notice said more than once is one notice with a count.
+NOTICE_REPEATED = "({n} times)"
+
+
+class _Stale(ManifestError):
+    """The record moved under a click that is not a row's (decision 193):
+    a household accepted from an old page, a draft approved after it
+    changed. Said as *stale* - look again - and still a ManifestError."""
+
+
+def _warn(sentence: str) -> None:
+    """Say ``sentence`` in this reply's ``warnings``, once."""
+    if sentence and sentence not in _WARNINGS:
+        _WARNINGS.append(sentence)
+
+
+def _failure_of(exc: BaseException) -> dict:
+    """The one rule for how an error is said (decision 193, ruling 3):
+    ``{"sentence", "kind", "seq", "identifier"}``, plus ``lock`` when
+    another pass holds the return. In this order: stale, locked, the
+    record's and the store's own failures by class (their text can quote
+    a journal line), the tracker's worded refusals, and anything else by
+    class."""
+    seq = getattr(exc, "seq", None)
+    identifier = getattr(exc, "identifier", None)
+    if seq is None:
+        seq = _ASKED.get("seq")
+    if identifier is None:
+        identifier = _ASKED.get("original") or _ASKED.get("identifier")
+    extra: dict = {}
+    if isinstance(exc, (StaleRowError, ListMoved, _Stale)):
+        kind, sentence = "stale", str(exc)
+    elif isinstance(exc, EngagementLockedError):
+        kind, sentence = "locked", str(exc)
+        held = getattr(exc, "lock", None)
+        extra["lock"] = _lock_payload(Path(held).parent) if held else None
+    elif isinstance(exc, (store.StoreUnavailable, ledger.RecordNotWritten, ledger.LedgerError)):
+        kind, sentence = "failed", FAILED.format(kind=content_check.said_as_class(exc),
+                                                 log=ERROR_LOG_FILENAME)
+    elif isinstance(exc, (ManifestError, FilingError, door.DoorError, layout.LayoutError,
+                          SettingsError, reminder.ReminderError, RegistryError,
+                          store.StoreError)):
+        kind, sentence = "refused", str(exc)
+    else:
+        kind, sentence = "failed", FAILED.format(kind=content_check.said_as_class(exc),
+                                                 log=ERROR_LOG_FILENAME)
+    reply = progress.failure_reply(sentence, kind, seq=seq, identifier=identifier, **extra)
+    return reply["failure"]
+
+
+def _reply_failure(exc: BaseException) -> int:
+    failure = _failure_of(exc)
+    reply = progress.failure_reply(failure["sentence"], failure["kind"], seq=failure["seq"],
+                                   identifier=failure["identifier"], warnings=_WARNINGS,
+                                   **{k: v for k, v in failure.items()
+                                      if k not in ("sentence", "kind", "seq", "identifier")})
+    print(json.dumps(reply))
+    return 1
 
 #: The folder the app runs from (the repository from source, beside the
 #: executable when frozen) - the same answer tracker.settings gives.
@@ -709,6 +860,8 @@ def _read_spec() -> dict:
     spec = json.loads(raw or "{}")
     if not isinstance(spec, dict):
         raise ManifestError(NOT_A_SPEC)
+    # Kept for the failure envelope: the row a click was about (decision 193).
+    _ASKED.update(spec)
     return spec
 
 
@@ -985,7 +1138,27 @@ def _vocab() -> dict:
         # What each path the API reports is (decision 188, E-14): the shell
         # opens one only while it is still that kind of thing and no link.
         "path_kinds": PATH_KINDS,
-        "shell": {"not_opened": SHELL_NOT_OPENED},
+        # The shell's own sentences (decision 193), learned here with pinned
+        # defaults in main.js for a first start, and the error log it appends
+        # a failed child's stderr to: beside the tracker's database, a path
+        # the shell never builds itself.
+        "shell": {"not_opened": SHELL_NOT_OPENED, "killed": SHELL_KILLED,
+                  "killed_at": SHELL_KILLED_AT, "no_reply": SHELL_NO_REPLY,
+                  "could_not_start": SHELL_COULD_NOT_START,
+                  "error_log": str(error_log_path())},
+        # The lock notice (decision 193, D4): when, where, and - on this
+        # machine - which file; nothing waits and nothing needs clearing.
+        "lock": {"running": LOCK_RUNNING, "on": LOCK_ON, "greyed": LOCK_GREYED,
+                 "left_behind": LOCK_LEFT_BEHIND, "cleared": LOCK_CLEARED,
+                 "buttons_back": LOCK_BUTTONS_BACK, "watch_seconds": LOCK_WATCH_SECONDS},
+        # Sort & Scan, watched, and its Stop (decision 193).
+        "progress": {"household": PROGRESS_HOUSEHOLD, "sort": PROGRESS_SORT,
+                     "scan": PROGRESS_SCAN, "stop": PROGRESS_STOP,
+                     "stopping": PROGRESS_STOPPING},
+        # The notices area's one word of its own; its buttons are static in
+        # index.html (NOTICE_LABELS), because a notice must work before any
+        # vocabulary has arrived.
+        "notices": {"repeated": NOTICE_REPEATED, "labels": dict(NOTICE_LABELS)},
         "rules": standing_rules(),
         "schedule": {
             "start": DEFAULT_START,
@@ -1022,6 +1195,9 @@ def _vocab() -> dict:
             "stage_toggle_hint": reminder.STAGE_TOGGLE_HINT,
             "copied": reminder.COPIED_NOTE,
             "set_aside_line": reminder.SET_ASIDE_LINE,
+            "not_yet": reminder.REMINDER_NOT_YET,
+            "unreadable": REMINDER_UNREADABLE,
+            "line_unreadable": REMINDER_LINE_UNREADABLE,
             "nothing_to_send": NOTHING_OUTSTANDING,
             "stages": _stages(),
             "palette": dict(PALETTE),
@@ -1095,14 +1271,26 @@ def _vocab() -> dict:
 
 
 def _lock_payload(engagement: Path) -> dict | None:
+    """The engagement's lock as the app's notice says it (decision 193):
+    when the pass started, on which machine, and - for a live pass on this
+    machine - the household and the file it is on, from its progress file.
+    Reads the lock file and that one small file; opens no store."""
     status = lock_status(engagement)
     if status is None:
         return None
+    this_machine = is_this_host(status.host)
+    running = None
+    if this_machine and status.pid.isdigit() and pid_alive(status.pid):
+        running = progress.read_latest(store.store_path().parent, int(status.pid))
     return {
         "started": status.started,
         "age_minutes": int(status.age_seconds // 60),
         "stale": status.stale,
         "stale_after_minutes": STALE_LOCK_SECONDS // 60,
+        "host": status.host,
+        "this_machine": this_machine,
+        "pass": running,
+        "engagement": str(engagement),
     }
 
 
@@ -1430,7 +1618,7 @@ def _sharing_checklist(root: Path, household: str) -> dict:
     }
 
 
-def _return_reminder(path: Path, today: dt.date) -> dict:
+def _return_reminder(path: Path, today: dt.date, label: str = "") -> dict:
     """One return's reminder state for the household card (decision 128):
     when it was last drafted, whether this week's draft is approved, how
     many requests are holding it, and how many files wait unsorted in the
@@ -1443,7 +1631,9 @@ def _return_reminder(path: Path, today: dt.date) -> dict:
     ``never_drafted_line`` and ``held_line``), so the returns of a
     household stand side by side in the words their own panel uses and the
     page types nothing new. A return whose record this read cannot open
-    says nothing rather than breaking the card.
+    still draws the card, but says so (decision 193): ``unreadable`` on
+    the line, and a warning on the reply, by class; the full text goes to
+    the error log.
     """
     blank = {"last": None, "approved": None, "held": 0, "unsorted": 0}
     try:
@@ -1456,8 +1646,11 @@ def _return_reminder(path: Path, today: dt.date) -> dict:
             path, path / reminder.DRAFT_FILENAME,
             since=last_draft_day(today, DRAFT_WEEKDAY))
         unsorted = reminder.unsorted_in_inbox(path)
-    except Exception:                        # said elsewhere; the card still draws
-        return blank
+    except Exception as exc:                 # the card still draws, and says so
+        kind = content_check.said_as_class(exc)
+        log.warning("A reminder line could not be read (%s)", kind, exc_info=True)
+        _warn(REMINDER_LINE_UNREADABLE.format(label=label or path.name, kind=kind))
+        return {**blank, "unreadable": True, "kind": kind}
     return {
         "last": ({"date": ledger.day_of(str(last.get(ledger.AT_KEY, ""))).isoformat(),
                   "stage": last.get(reminder.STAGE_KEY) or 0} if last else None),
@@ -1478,12 +1671,18 @@ def _the_practice() -> Registry | None:
     and to the practice page it redraws. Showing a return walks nothing -
     the card resolves its feeds over the households they name
     (:func:`_feed_payload`). A root that is unset, gone or unreadable
-    answers with nothing rather than failing the pass.
+    answers with nothing rather than failing the pass - and one that could
+    not be walked says so (decision 193, :data:`PRACTICE_NOT_WALKED`).
     """
     root = _saved_root()
     try:
         return discover_engagements(root) if root and root.is_dir() else None
-    except RegistryError:
+    except EmptyRoot:
+        return None
+    except RegistryError as exc:
+        log.warning("The clients root could not be walked (%s)", content_check.said_as_class(exc),
+                    exc_info=True)
+        _warn(PRACTICE_NOT_WALKED)
         return None
 
 
@@ -1521,9 +1720,13 @@ def _feed_payload(household_dir: Path, years: list[int]) -> tuple[list[dict], li
     if info.feeds and year is not None:
         try:
             practice = households_named(household_dir.parent, [one.household for one in info.feeds])
-        except RegistryError:
+        except RegistryError as exc:
+            log.warning("The feeds could not be resolved (%s)", content_check.said_as_class(exc),
+                        exc_info=True)
+            _warn(PRACTICE_NOT_WALKED)
             return ([{"household": one.household, "return_name": one.return_name,
-                      "label": "", "path": "", "warning": ""} for one in info.feeds], fed)
+                      "label": "", "path": "", "warning": PRACTICE_NOT_WALKED}
+                     for one in info.feeds], fed)
         found, said = resolve_feeds(household_dir, info.feeds, year, practice)
     by_line = {(one.info.household or one.household_path.name, one.info.return_name or one.path.name):
                one for one in found}
@@ -1695,6 +1898,11 @@ def _household_payload(engagement: Path) -> dict:
     # these years is finished with.
     returns = mark_superseded([engagement_from(folder)
                                for folder in household_returns(household_dir)])
+    # A Rolled From naming nothing, said on the return it is about
+    # (decision 193): the registry's own sentence, not only its CLI's.
+    for one in returns:
+        if one.path == engagement and one.warning:
+            _warn(one.warning)
     years = open_years(returns)
     queue = sum(
         sum(1 for entry in read_index(one.path) if entry.decision == NEEDS_REVIEW)
@@ -1720,7 +1928,7 @@ def _household_payload(engagement: Path) -> dict:
              "year": one.tax_year if one.tax_year is not None else year_of(one.path),
              "return_name": one.info.return_name or one.path.name,
              "active": one.active, "superseded_by": one.superseded_by,
-             "reminder": (_return_reminder(one.path, today)
+             "reminder": (_return_reminder(one.path, today, one.label)
                           if one.active and one.tax_year in years else None)}
             for one in returns
         ],
@@ -1944,11 +2152,12 @@ def _refresh_readmes(*engagements: Path) -> None:
     once each (decision 130): after an action that creates or edits a
     return or changes a document's row, what the client reads is current
     at once rather than at the next pass. A hand-over across households
-    names both. Never raises - :func:`filer.refresh_household_readme` is a
-    log line on failure - and is reached only after the action succeeded,
-    so a refused action refreshes nothing."""
+    names both. Never raises - :func:`filer.refresh_household_readme`
+    says a failure by class in this reply's warnings (decision 193) and
+    logs it in full - and is reached only after the action succeeded, so
+    a refused action refreshes nothing."""
     for household_dir in dict.fromkeys(household_of(Path(one)) for one in engagements):
-        refresh_household_readme(household_dir)
+        refresh_household_readme(household_dir, said=_WARNINGS)
 
 
 def _cmd_state(argv: list[str]) -> dict:
@@ -2039,14 +2248,34 @@ def _cmd_scan(argv: list[str]) -> dict:
     that cannot be walked is refused by the runner in one sentence
     (``tracker.runner.NO_PRACTICE``), which is this reply's ``error``, and
     nothing is sorted.
+
+    **Watched, and stoppable** (decision 193). Before its reply the pass
+    prints one progress line per household and per file or request
+    (:mod:`tracker.progress`), the first carrying the run limit the
+    shell's kill follows, and keeps the latest in its progress file beside
+    the tracker's database. ``pass`` is its id, which **Stop** names
+    (``cancel-pass``); a stopped household says so in ``run.cancelled``
+    and its warnings. A redraw that fails after the pass keeps the counts
+    (D5): ``state`` is null, and the warning says so.
     """
     engagement = _engagement_dir(argv)
     household_dir = household_of(engagement)
-    returns = mark_superseded([engagement_from(folder)
-                               for folder in household_returns(household_dir)]) \
-        or [engagement_from(engagement)]
-    practice = _the_practice()
-    runs = run_household(household_dir, returns, reminders=REMINDERS_NEVER, registry=practice)
+    watch = progress.Watch(store.store_path().parent, emit=_emit,
+                           limit_seconds=RUN_TIME_LIMIT_SECONDS)
+    outcome = "failed"
+    try:
+        watch.say("started", started=dt.datetime.now().isoformat(timespec="seconds"),
+                  households=1)
+        returns = mark_superseded([engagement_from(folder)
+                                   for folder in household_returns(household_dir)]) \
+            or [engagement_from(engagement)]
+        practice = _the_practice()
+        runs = run_household(household_dir, returns, reminders=REMINDERS_NEVER, registry=practice,
+                             watch=watch)
+        outcome = ("stopped" if any(one.cancelled for one in runs)
+                   else "out_of_time" if any(one.out_of_time for one in runs) else "finished")
+    finally:
+        watch.close(outcome)
     run = next((one for one in runs if one.engagement.path == engagement),
                EngagementRun(engagement=engagement_from(engagement)))
     # Said once, as the pass's own (decisions 150, 169 and 189).
@@ -2066,6 +2295,8 @@ def _cmd_scan(argv: list[str]) -> dict:
             "warnings": run.warnings,
             "statuses": run.statuses,
             "outstanding": run.outstanding,
+            "cancelled": run.cancelled,
+            "label": run.engagement.label,
         },
         "household": [
             {"label": one.engagement.label, "ok": one.ok, "error": one.error,
@@ -2073,14 +2304,53 @@ def _cmd_scan(argv: list[str]) -> dict:
             for one in runs if one is not run
         ],
         "pass_warnings": pass_warnings,
+        "pass": watch.pass_id,
     }
+    held = next((one.locked_at for one in runs if one.locked_out and one.locked_at), None)
+    if held is not None:
+        payload["lock"] = _lock_payload(held)
     try:
         payload["state"] = _state(engagement)
     except ManifestError:
         if run.error:
             raise ManifestError(run.error) from None
         raise
+    except Exception as exc:
+        # Filed, then could not redraw (D5): the counts are the pass's and
+        # stand; the page is drawn again from the record by the app.
+        kind = content_check.said_as_class(exc)
+        log.warning("The page could not be redrawn after a pass (%s)", kind, exc_info=True)
+        payload["state"] = None
+        _warn(STATE_NOT_REDRAWN.format(kind=kind))
     return payload
+
+
+def _emit(line: str) -> None:
+    """A progress line on stdout, flushed at once, so the shell hears it
+    while the pass runs rather than at its end."""
+    sys.stdout.write(line)
+    sys.stdout.flush()
+
+
+def _cmd_watch(argv: list[str]) -> dict:
+    """Whether a pass still holds this return, and where it is (decision
+    193): the lock file and the pass's progress file, and nothing else - no
+    store, no journal. The app asks it every ``LOCK_WATCH_SECONDS`` while a
+    live lock shows, and brings the buttons back on the first ``null``."""
+    return {"lock": _lock_payload(_engagement_dir(argv))}
+
+
+def _cmd_cancel_pass(argv: list[str]) -> dict:
+    """Ask a running pass this app started to stop at its next file
+    (decision 193). JSON on stdin: ``{"pass": <id>}``, the id its progress
+    lines carry. Refused (:data:`NOTHING_TO_STOP`) unless that pass is
+    live and may be stopped from here; the scheduled pass never may."""
+    spec = _read_spec()
+    pass_id = spec.get("pass")
+    if not isinstance(pass_id, int) or isinstance(pass_id, bool) or pass_id <= 0 \
+            or not progress.ask_to_stop(store.store_path().parent, pass_id):
+        raise ManifestError(NOTHING_TO_STOP)
+    return {"stopping": True}
 
 
 def _cmd_templates(argv: list[str]) -> dict:
@@ -2178,7 +2448,8 @@ def _cmd_edit(argv: list[str]) -> dict:
     return {
         "saved": {"changed": list(saved.changed), "removed": list(saved.removed),
                   "engagement": list(saved.info_fields), "recorded": saved.recorded},
-        "warnings": state["warnings"],
+        # The editor's rule warnings are ``state.warnings``; the reply's own
+        # ``warnings`` is the envelope's, with one meaning (decision 193).
         "state": state,
     }
 
@@ -2375,9 +2646,17 @@ def _cmd_list(argv: list[str]) -> dict:
         return {**empty, "needs_root": True, "root": str(root or ""), "vocab": _vocab()}
     try:
         registry = discover_engagements(root)
-    except RegistryError:
+    except EmptyRoot:
         # An empty root is a practice nobody has set up yet, not a failure.
         return {**empty, "needs_root": False, "root": str(root), "vocab": _vocab()}
+    except RegistryError as exc:
+        # One that could not be walked is said, never answered as empty
+        # (decision 193): the class to the log, the sentence to the page.
+        log.warning("The clients root could not be walked (%s)", content_check.said_as_class(exc),
+                    exc_info=True)
+        _warn(PRACTICE_NOT_WALKED)
+        return {**empty, "needs_root": False, "root": str(root),
+                "root_problem": PRACTICE_NOT_WALKED, "vocab": _vocab()}
     grouped = registry.by_household()
     households = []
     for household in registry.households:
@@ -3058,7 +3337,7 @@ def _cmd_accept_folder_name(argv: list[str]) -> dict:
         for folder in [household_dir, *sorted(returns, key=layout.lock_order_key)]:
             locks.enter_context(engagement_lock(folder))
         if seq != _household_seq(household_dir):
-            raise ManifestError(ACCEPT_STALE)
+            raise _Stale(ACCEPT_STALE)
         info = load_household_info(household_dir)
         details = {one: load_engagement_info(one) for one in returns}
         if not pause_of(household_dir, info, list(details.items())):
@@ -3577,6 +3856,13 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
     approved = reminder.last_approved_event(engagement)
     in_force = reminder.is_approved_this_week(engagement, path,
                                               since=last_draft_day(today, DRAFT_WEEKDAY))
+    # Said in the app, not only on the page (decision 193): a fresh draft
+    # sitting beside an edited one, and a hold older than a week.
+    if (engagement / reminder.NEW_DRAFT_FILENAME).is_file():
+        _warn(reminder.DRAFT_WRITTEN_BESIDE)
+    late = (reminder.held_too_long(engagement, today, created=created_on(engagement))
+            if draft.is_held else "")
+    _warn(late)
 
     if draft.is_held:
         stage = day_stage
@@ -3610,6 +3896,7 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
         "held": _held_rows(draft.held),
         "unsorted": draft.unsorted,
         "refusal": reminder.held_refusal(draft) if draft.is_held else "",
+        "held_too_long": late,
         "last": ({"date": ledger.day_of(str(last.get(ledger.AT_KEY, ""))).isoformat(),
                   "stage": last.get(reminder.STAGE_KEY) or 0,
                   "asked": list(last.get(ledger.ASKED_KEY) or []),
@@ -3654,6 +3941,12 @@ def _cmd_reminder(argv: list[str]) -> dict:
     """
     engagement = _engagement_dir(argv)
     spec = _read_spec()
+    # A return nobody has scanned yet has no reminder: a line on the card,
+    # not an error (D7, decision 193). Anything else that fails is a failure
+    # the app shows, and the card stays.
+    items = load_manifest(engagement)
+    if not any(item.status for item in items):
+        return {"reminder": None, "not_yet": reminder.REMINDER_NOT_YET}
     return {"reminder": _reminder_card(
         _reminder_now(engagement, _stage_asked(spec), dt.date.today()))}
 
@@ -3685,7 +3978,7 @@ def _cmd_approve(argv: list[str]) -> dict:
         if state["draft"].is_held:
             raise ManifestError(state["refusal"])
         if shown != state["fingerprint"]:
-            raise ManifestError(DRAFT_MOVED)
+            raise _Stale(DRAFT_MOVED)
         draft = state["draft"]
         path = engagement / reminder.DRAFT_FILENAME
         written = path if state["file"]["edited"] else reminder.write_draft(
@@ -3877,6 +4170,8 @@ COMMANDS = {
     "rename": _cmd_rename,
     "mark-missing": _cmd_mark_missing,
     "unlock": _cmd_unlock,
+    "watch": _cmd_watch,
+    "cancel-pass": _cmd_cancel_pass,
     "settings": _cmd_settings,
     "set-root": _cmd_set_root,
     "install-schedule": _cmd_install_schedule,
@@ -3885,29 +4180,33 @@ COMMANDS = {
 
 
 def main(argv: list[str]) -> int:
-    if not argv or argv[0] not in COMMANDS:
-        print(json.dumps({"error": f"usage: tracker.api {'|'.join(COMMANDS)}"}))
-        return 1
-    try:
-        if argv[0] in WRITING_COMMANDS:
-            _prove_the_root()
-        # One reading child for the command, started only if something is
-        # read, and ended with it (decision 169, R-4).
-        with ocr.reading_session(in_a_child=content_check.READ_IN_A_CHILD):
-            payload = COMMANDS[argv[0]](argv[1:])
-    except (ManifestError, ScanLockedError, FilingError, door.DoorError, layout.LayoutError) as exc:
-        print(json.dumps({"error": str(exc)}))
-        return 1
-    except Exception as exc:  # surface anything else as JSON, not a traceback
-        print(json.dumps({"error": f"{exc.__class__.__name__}: {exc}"}))
-        return 1
-    finally:
-        # The store is opened on first use by whatever command needed it;
-        # closing it here checkpoints the write-ahead log and takes its two
-        # side files with it, so the app's folder is left as it was found.
-        store.close()
-    print(json.dumps(payload))
-    return 0
+    """Run one command and print its one reply (decision 193's envelope):
+    ``warnings`` on every reply, ``failure`` beside ``error`` on every
+    error, the traceback of an unexpected one in the error log only."""
+    _WARNINGS.clear()
+    _ASKED.clear()
+    with error_log("tracker"):
+        if not argv or argv[0] not in COMMANDS:
+            return _reply_failure(ManifestError(USAGE.format(commands="|".join(COMMANDS))))
+        try:
+            if argv[0] in WRITING_COMMANDS:
+                _prove_the_root()
+            # One reading child for the command, started only if something is
+            # read, and ended with it (decision 169, R-4).
+            with ocr.reading_session(in_a_child=content_check.READ_IN_A_CHILD):
+                payload = COMMANDS[argv[0]](argv[1:])
+        except Exception as exc:  # said as JSON, never a traceback on screen
+            if _failure_of(exc)["kind"] == "failed":
+                log.error("%s failed", argv[0], exc_info=True)   # the whole text: the log only
+            return _reply_failure(exc)
+        finally:
+            # The store is opened on first use by whatever command needed it;
+            # closing it here checkpoints the write-ahead log and takes its two
+            # side files with it, so the app's folder is left as it was found.
+            store.close()
+        payload["warnings"] = list(_WARNINGS)
+        print(json.dumps(payload))
+        return 0
 
 
 if __name__ == "__main__":

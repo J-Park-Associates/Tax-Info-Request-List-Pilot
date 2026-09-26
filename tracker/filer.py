@@ -182,6 +182,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import logging
+import math
 import os
 import re
 import time
@@ -198,6 +199,7 @@ from tracker.content_check import (
     NameQuestion,
     OutOfTime,
     before_a_judgment,
+    said_as_class,
 )
 from tracker.door import through_a_link
 from tracker.fsio import (
@@ -265,6 +267,7 @@ from tracker.names import (
     ONE_WORD_SPELLING,
     NameVerdict,
 )
+from tracker.progress import Watch
 
 # The records themselves live in tracker/records.py (decision 100). The two
 # names this module no longer uses are re-exported from here so that every
@@ -447,7 +450,18 @@ class StaleRowError(FilingError):
     A :class:`FilingError` so the API's one ``except`` turns it into the
     sentence the app toasts: the refusal is not a different kind of
     failure, it is the ordinary one with a different cause.
+
+    ``seq`` is the record's line for the row now and ``identifier`` the
+    row's key in the state (its ``pbc_location``, which a card sends back
+    as ``original``), so the app can outline
+    the row a person clicked (decision 193).
     """
+
+    def __init__(self, message: str, *, seq: int | None = None,
+                 identifier: str | None = None) -> None:
+        super().__init__(message)
+        self.seq = seq
+        self.identifier = identifier
 
 
 #: What a person is told when the row they acted on is not the row the
@@ -1376,7 +1390,18 @@ def _readme_lock(household_dir: Path):
             time.sleep(_README_LOCK_POLL_SECONDS)
 
 
-def refresh_household_readme(household_dir: Path | str) -> Path | None:
+#: What a pass or an app action says when the client's README could not be
+#: rewritten (decision 193): by class, never by the text, which can name a
+#: client's folder; the whole of it goes to the error log.
+README_NOT_REWRITTEN = "the client's README could not be rewritten this time ({kind})"
+#: What a sweep says when some leftover temps stay (decision 193): a count,
+#: never a name.
+TEMPS_NOT_SWEPT = ("{n} leftover temporary file(s) could not be swept this pass; "
+                   "the next pass tries again")
+
+
+def refresh_household_readme(household_dir: Path | str, *,
+                             said: list[str] | None = None) -> Path | None:
     """Rewrite one household's client README from the record - **the one
     call every caller makes** (decision 130): the household pass once after
     its sort, the rollover after it rolls a household, and the app after
@@ -1397,7 +1422,10 @@ def refresh_household_readme(household_dir: Path | str) -> Path | None:
     after that skips with a log line, and the holder writes.
 
     **Never raises.** The README is client-visible and cosmetic; a failure
-    is a log line and the caller goes on.
+    is logged in full and, when the caller hands ``said``, said there by
+    class (:data:`README_NOT_REWRITTEN`, decision 193), and the caller goes
+    on. A refresh skipped because another holds the README's lock says
+    nothing: the holder writes.
     """
     household_dir = Path(household_dir)
     try:
@@ -1414,8 +1442,11 @@ def refresh_household_readme(household_dir: Path | str) -> Path | None:
         finally:
             release_lock(lock)
     except Exception as exc:
-        log.warning("Could not refresh the README of %s (%s: %s); carrying on",
-                    household_dir.name, exc.__class__.__name__, exc)
+        kind = said_as_class(exc)
+        log.warning("Could not refresh the README of %s (%s); carrying on",
+                    household_dir.name, kind, exc_info=True)
+        if said is not None and (sentence := README_NOT_REWRITTEN.format(kind=kind)) not in said:
+            said.append(sentence)
         return None
 
 
@@ -1433,10 +1464,11 @@ def _a_stranded_temp_to_take(path: Path) -> bool:
     return owner == os.getpid() or pid_alive(owner) is False
 
 
-def _remove_a_stranded_temp(path: Path) -> bool:
+def _remove_a_stranded_temp(path: Path, missed: list[Path] | None = None) -> bool:
     """Take one stranded temp away; False, with a log line, where Windows
-    refuses. A temp ``copy2`` carried a read-only attribute onto before the
-    kill is made writable first - it is the copy, never an original."""
+    refuses - and then it is counted in ``missed``. A temp ``copy2``
+    carried a read-only attribute onto before the kill is made writable
+    first - it is the copy, never an original."""
     try:
         try:
             path.unlink()
@@ -1447,13 +1479,15 @@ def _remove_a_stranded_temp(path: Path) -> bool:
         return False
     except OSError as exc:
         log.warning("A temporary file a killed write left, %s, could not be removed (%s); "
-                    "the next pass tries again", path.name, exc)
+                    "the next pass tries again", path.name, said_as_class(exc), exc_info=True)
+        if missed is not None:
+            missed.append(path)
         return False
     return True
 
 
 def sweep_stranded_temps(household_dir: Path | str, returns: Sequence[Path], *,
-                         started: float) -> list[Path]:
+                         started: float, said: list[str] | None = None) -> list[Path]:
     """Take away the temps a killed write left in this household's firm
     folders and its README's, and return what was taken (decision 155).
 
@@ -1486,11 +1520,14 @@ def sweep_stranded_temps(household_dir: Path | str, returns: Sequence[Path], *,
     Nothing in the client's year folders is ever looked at: the originals
     rest there, and nothing the tracker writes goes through a temp there.
     A temp that cannot be removed now is a log line and waits for the next
-    pass. **Never raises**: a sweep that failed the household would be a
+    pass, and - with a return whose rows could not be read - is counted in
+    ``said`` (:data:`TEMPS_NOT_SWEPT`, decision 193), never named. **Never raises**: a sweep that failed the household would be a
     leftover jamming the pass it exists to protect.
     """
     household_dir = Path(household_dir)
     taken: list[Path] = []
+    missed: list[Path] = []
+    unread: set[Path] = set()
     try:
         # Every path any row names, in any of these returns, compared as
         # Windows compares them. A parked working copy keeps the client's own
@@ -1499,14 +1536,13 @@ def sweep_stranded_temps(household_dir: Path | str, returns: Sequence[Path], *,
         # document, never a leftover (decision 155's review).
         named: set[str] = set()
         swept: list[Path] = []
-        unread: set[Path] = set()
         for folder in map(Path, returns):
             try:
                 rows = read_index(folder)
             except Exception as exc:
-                log.warning("The rows of %s could not be read (%s: %s); neither it nor its "
+                log.warning("The rows of %s could not be read (%s); neither it nor its "
                             "household's _Opened folder is swept this pass",
-                            folder.name, exc.__class__.__name__, exc)
+                            folder.name, said_as_class(exc), exc_info=True)
                 unread.add(opened_dir_of(folder))
                 continue
             swept.append(folder)
@@ -1520,7 +1556,7 @@ def sweep_stranded_temps(household_dir: Path | str, returns: Sequence[Path], *,
                       for path in stranded_temps(place, before=started, recursive=True)
                       if os.path.normcase(path) not in named]
         for path in candidates:
-            if _a_stranded_temp_to_take(path) and _remove_a_stranded_temp(path):
+            if _a_stranded_temp_to_take(path) and _remove_a_stranded_temp(path, missed):
                 taken.append(path)
         if returns:
             lock = _readme_lock(household_dir)
@@ -1535,13 +1571,18 @@ def sweep_stranded_temps(household_dir: Path | str, returns: Sequence[Path], *,
                         # A removal in the client's inbox goes through the one
                         # door into the client tree (decision 188).
                         door.client_write(root_of(first), household_name_of(first), path)
-                        if _a_stranded_temp_to_take(path) and _remove_a_stranded_temp(path):
+                        if _a_stranded_temp_to_take(path) and _remove_a_stranded_temp(path,
+                                                                                      missed):
                             taken.append(path)
                 finally:
                     release_lock(lock)
     except Exception as exc:
-        log.warning("The sweep of %s's leftover temporary files stopped (%s: %s); carrying on",
-                    household_dir.name, exc.__class__.__name__, exc)
+        log.warning("The sweep of %s's leftover temporary files stopped (%s); carrying on",
+                    household_dir.name, said_as_class(exc), exc_info=True)
+    if said is not None and (missed or unread):
+        # A count - the temps that stayed, and a return whose rows could not
+        # be read counted as one - never a name (decision 193).
+        said.append(TEMPS_NOT_SWEPT.format(n=len(missed) + len(unread)))
     for path in taken:
         log.info("Removed %s, a temporary file a killed write left", path.name)
     return taken
@@ -3466,9 +3507,14 @@ def file_household_drops(
     today: dt.date | None = None,
     dry_run: bool = False,
     deadline: float | None = None,
+    watch: Watch | None = None,
 ) -> dict[Path, FileReport]:
     """Sort one household's inbox across every return it feeds. Returns
     what was done, per return.
+
+    ``watch`` (decision 193) is told each file before it is taken, and a
+    stop a person asked for through it brings ``deadline`` to now at the
+    next file (:func:`_sort_all`).
 
     **Bounded, and kept as it goes** (decision 189). ``deadline`` is a
     moment on ``ocr.awake_clock``: past it the sort takes no file that
@@ -3595,7 +3641,8 @@ def file_household_drops(
                 originals_dir.mkdir(parents=True, exist_ok=True)
                 for run in runs:
                     run.context.prepared_dir.mkdir(parents=True, exist_ok=True)
-            _sort_all(drops, strays, originals_dir, stamp, runs, first, deadline=deadline)
+            _sort_all(drops, strays, originals_dir, stamp, runs, first, deadline=deadline,
+                      watch=watch)
         # What was taken out of emails and zips and no row names (decision
         # 143) - after the sort, so what this pass took out is named.
         first.report.attention.extend(_unaccounted_in_opened(first, runs))
@@ -3931,9 +3978,18 @@ def _sort_all(
     first: _ReturnRun,
     *,
     deadline: float | None = None,
+    watch: Watch | None = None,
 ) -> None:
     """Decide and record every drop and every stray, one at a time, across
     the household's returns.
+
+    **Watched, and stopped between files** (decision 193). ``watch`` is
+    told each file before it is taken; when a person has asked the pass to
+    stop, the deadline becomes now - ``-inf`` - and the check below does
+    the rest, exactly as when the household's time runs out: a file whose
+    bytes are on record is still taken, the first that would need a
+    judgment stops the sort before it is moved, and what was done is
+    recorded by the caller. Nothing is left half-moved (decision 119).
 
     **Each verdict is kept the moment the next file is taken** (decision
     189): the returns' caches are saved before every file - one small
@@ -3979,6 +4035,13 @@ def _sort_all(
             if not dry_run:
                 for run in runs:
                     run.cache.save()          # the file before this one's verdicts
+            if watch is not None:
+                watch.say("file", step="sort", name=drop.name)
+                if watch.stop_asked():
+                    # A person's stop is the household's deadline, now.
+                    deadline = -math.inf
+                    for run in runs:
+                        run.cache.deadline = deadline
             # A file the sync client has not downloaded is not a document yet.
             if is_cloud_placeholder(drop):
                 first.report.waiting.append(drop)
@@ -5540,7 +5603,8 @@ def _refuse_if_stale(engagement_dir: Path, entry: IndexEntry, seq: int | None) -
     held = store.document_seqs(store.connect(), engagement_dir).get(ledger_key(entry))
     if held != seq:
         raise StaleRowError(STALE_ROW.format(
-            name=entry.original_name, decision=entry.decision, reason=entry.reason))
+            name=entry.original_name, decision=entry.decision, reason=entry.reason),
+            seq=held, identifier=entry.pbc_location)
 
 
 # ----------------------------------------------------------------- assign ----

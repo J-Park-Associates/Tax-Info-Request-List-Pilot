@@ -302,8 +302,23 @@ def _age_of(identity: Identity) -> float:
     return time.time() - identity[1] / 1e9
 
 
+#: What a refused take says (decision 193, D4). It never tells a person
+#: to delete the lock file: a live pass lets go when it ends, and a stale
+#: lock is the app's **Clear lock**, which proves it stale first (decision 171).
+LOCKED = ("another pass holds this return's lock (taken {seconds} s ago); "
+          "nothing was changed, and it is let go when that pass ends")
+
+
 class EngagementLockedError(RuntimeError):
-    """Another sort or scan of this engagement appears to be running."""
+    """Another sort or scan of this engagement appears to be running.
+
+    ``lock`` is the lock file the take met (decision 193), so a caller
+    holding several of a household's locks can say which one refused.
+    """
+
+    def __init__(self, message: str, lock: Path | None = None) -> None:
+        super().__init__(message)
+        self.lock = lock
 
 
 @dataclass(frozen=True, slots=True)
@@ -465,9 +480,7 @@ def acquire_lock(engagement_dir: Path, name: str = LOCK_FILENAME) -> EngagementL
             gone = status.owner_gone
             if not status.stale:
                 raise EngagementLockedError(
-                    f"another scan or sort appears to be running ({lock.name} is "
-                    f"{age:.0f}s old); if not, delete the lock file"
-                ) from None
+                    LOCKED.format(seconds=f"{age:.0f}"), lock) from None
             _replace_stale(lock, judged, age, "; its owner is no longer running" if gone else "")
             continue
         token = lock_line(os.getpid(), dt.datetime.now())
@@ -483,7 +496,7 @@ def acquire_lock(engagement_dir: Path, name: str = LOCK_FILENAME) -> EngagementL
             lock.unlink(missing_ok=True)
             raise
         return EngagementLock(path=lock, fd=fd, token=token)
-    raise EngagementLockedError(f"could not acquire {lock.name}")
+    raise EngagementLockedError(f"could not acquire {lock.name}", lock)
 
 
 def _open_exclusively(lock: Path) -> int:
@@ -513,7 +526,7 @@ def _open_exclusively(lock: Path) -> int:
             refused_while_there += 1
             if refused_while_there >= _CHANGING_HANDS_ATTEMPTS:
                 raise EngagementLockedError(
-                    f"{lock.name} is changing hands; another scan or sort is finishing - try again"
+                    f"{lock.name} is changing hands; another scan or sort is finishing - try again", lock
                 ) from exc
             time.sleep(_CHANGING_HANDS_DELAY)
 
@@ -559,14 +572,14 @@ def _replace_stale(lock: Path, judged: Identity, age: float, why: str) -> None:
             now = _look(lock)
         except OSError as exc:
             raise EngagementLockedError(
-                f"{lock.name} could not be read again before clearing it ({exc}) - try again"
+                f"{lock.name} could not be read again before clearing it ({exc}) - try again", lock
             ) from None
         if now is None:
             return
         if now != judged:
             raise EngagementLockedError(
                 f"another scan or sort appears to be running ({lock.name} was taken "
-                "while it was being judged stale)"
+                "while it was being judged stale)", lock
             )
         log.warning("Replacing stale engagement lock (%.0f s old%s)", age, why)
         for attempt in range(1, _CHANGING_HANDS_ATTEMPTS + 1):
@@ -583,7 +596,7 @@ def _replace_stale(lock: Path, judged: Identity, age: float, why: str) -> None:
                 if attempt == _CHANGING_HANDS_ATTEMPTS:
                     raise EngagementLockedError(
                         f"{lock.name} looks stale ({age:.0f}s old) but is still held "
-                        "by a running process"
+                        "by a running process", lock
                     ) from None
             time.sleep(_CHANGING_HANDS_DELAY)
             try:
@@ -595,7 +608,7 @@ def _replace_stale(lock: Path, judged: Identity, age: float, why: str) -> None:
             if again != judged:
                 raise EngagementLockedError(
                     f"another scan or sort appears to be running ({lock.name} was taken "
-                    "while it was being judged stale)"
+                    "while it was being judged stale)", lock
                 )
             # Still the lock judged. The name cannot change hands before the
             # next delete: the dead file stands until it is deleted, and
@@ -644,7 +657,7 @@ def _take_breaker(lock: Path) -> tuple[Path, str]:
         os.close(fd)
         _sweep_markers(breaker)
         return breaker, token
-    raise EngagementLockedError(f"{lock.name} is being cleared by another run - try again")
+    raise EngagementLockedError(f"{lock.name} is being cleared by another run - try again", lock)
 
 
 def _abandoned(breaker: Path, seen: Identity) -> bool:

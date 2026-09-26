@@ -60,6 +60,7 @@ practice.
 
 from __future__ import annotations
 
+import logging
 import os
 import stat
 from collections.abc import Iterable
@@ -67,11 +68,14 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from tracker import layout, ledger, store
+from tracker.content_check import said_as_class
 from tracker.households import load_household_info, pause_of
 from tracker.ledger import LedgerError
 from tracker.manifest import ManifestError, load_engagement_info
 from tracker.records import EngagementInfo, HouseholdInfo
 from tracker.store import StoreError
+
+log = logging.getLogger(__name__)
 
 #: The workbook the request list lived in until decision 104. Its only
 #: reader in the package is the walk below, which uses it to say what a
@@ -148,6 +152,12 @@ HOUSEHOLD_RECORD_MISSING = (f"The household record `{ledger.LEDGER_FILENAME}` of
 
 class RegistryError(Exception):
     """The clients root could not be walked, or holds nothing at all."""
+
+
+class EmptyRoot(RegistryError):
+    """The clients root was walked and holds nothing at all: a practice not
+    set up yet, which the app answers as such - unlike a root that could
+    not be walked, which it says (decision 193)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -327,7 +337,12 @@ def _children(folder: Path, found: _Walk) -> list[Path] | None:
     try:
         return sorted((p for p in folder.iterdir() if p.is_dir()), key=lambda p: p.name.lower())
     except OSError as exc:
-        found.misfits.append(Misfit(folder, UNLISTED.format(error=exc.strerror or exc)))
+        # By its class and code, never its text (decision 193, security
+        # principle 7): the text names the folder, and this sentence reaches
+        # the app, the page and the run log. The whole of it goes to the
+        # local error log only.
+        found.misfits.append(Misfit(folder, UNLISTED.format(error=said_as_class(exc))))
+        log.warning("Could not list a folder (%s)", said_as_class(exc), exc_info=True)
         return None
 
 
@@ -673,7 +688,7 @@ def discover_engagements(root: Path | str, *, max_depth: int = MAX_DEPTH) -> Reg
         raise RegistryError(f"clients root is not a folder: {root}")
     found = _walk_root(root)
     if not found.returns and not found.households and not found.misfits:
-        raise RegistryError(
+        raise EmptyRoot(
             f"nothing found under {root} ({layout.PRIVATE_TREE}/<household>/<year>/<return> "
             f"holding {ledger.LEDGER_FILENAME}) - is this the right folder?"
         )

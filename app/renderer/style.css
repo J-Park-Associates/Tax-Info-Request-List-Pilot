@@ -110,6 +110,33 @@ body {
 .banner.ok    { background: #ecfdf5; border-color: #a7f3d0; color: #065f46; }
 .banner.warn  { background: #fffbeb; border-color: #fde68a; color: #92400e; }
 
+/* Notices (decision 193): each failure or warning stays until dismissed. */
+#notices { display: flex; flex-direction: column; gap: 6px; }
+#notices:empty { display: none; }
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-radius: var(--radius);
+  font-size: 13.5px;
+  font-weight: 600;
+  border: 1px solid;
+}
+.notice-text { flex: 1; white-space: pre-line; }
+.notice-failed  { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+.notice-stale   { background: #eff6ff; border-color: #bfdbfe; color: #1e3a8a; }
+.notice-locked  { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+.notice-refused { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+.notice-warning { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+/* The row a notice is about, outlined on every redraw until it is dismissed. */
+.refused { outline: 2px solid #b91c1c; outline-offset: -2px; }
+/* The Reminder card as one line: not scanned yet, or not readable (D7). */
+#reminder-card.line-only .reminder-body > :not(#reminder-status) { display: none; }
+/* Where a running pass is. */
+.pass-progress { font-size: 13px; color: var(--subtle); padding: 2px 4px; }
+.pass-progress .pp-household { font-weight: 600; }
+
 .card {
   background: var(--card);
   border: 1px solid var(--border);

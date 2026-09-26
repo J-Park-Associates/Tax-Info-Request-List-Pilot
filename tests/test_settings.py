@@ -270,3 +270,22 @@ def test_a_root_one_level_too_deep_is_refused_and_the_example_root_is_not(beside
     lone = beside_the_app / "Elsewhere" / CLIENTS_TREE
     lone.mkdir(parents=True)
     assert set_clients_root(lone) == lone.resolve()
+
+
+def test_the_error_log_lives_beside_the_tracker_database(beside_the_app, monkeypatch):
+    # Decision 193, the lane's ruling: beside the store, the folder 189's
+    # pass-order.json uses, so it moves wherever the store moves - and
+    # never in either client tree.
+    import logging
+
+    from tracker import store
+    from tracker.settings import ERROR_LOG_FILENAME, error_log, error_log_path
+
+    elsewhere = beside_the_app / "data" / store.STORE_FILENAME
+    monkeypatch.setenv(store.ENV_STORE, str(elsewhere))
+    assert error_log_path() == elsewhere.parent / ERROR_LOG_FILENAME
+    with error_log() as path:
+        logging.getLogger("tracker.test").warning("a fabricated warning")
+    assert path == elsewhere.parent / ERROR_LOG_FILENAME
+    assert "a fabricated warning" in path.read_text(encoding="utf-8")
+    assert not (settings_dir() / ERROR_LOG_FILENAME).exists()

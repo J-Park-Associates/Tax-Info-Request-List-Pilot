@@ -103,8 +103,11 @@ LAYERS: dict[int, frozenset[str]] = {
     # ``door`` joins L0 with decision 188: the disk half of the layout. It
     # imports ``layout``, ``fsio`` and ``settings``, all L0, so L0 is the
     # lowest layer the table allows it - and every layer above may ask it.
+    # ``progress`` joins L0 with decision 193: the one progress-line format
+    # and the cancel marker, stdlib only, so the filer, the scanner and the
+    # runner can take a Watch without reaching up to ``api``.
     0: frozenset({"__init__", "reasons", "locking", "checkpoint", "page", "fsio", "settings",
-                  "layout", "door"}),
+                  "layout", "door", "progress"}),
     1: frozenset({"households", "ledger", "manifest", "records", "scaffold", "store",
                   "templates", "validators"}),
     2: frozenset({"containers", "content_check", "names", "ocr", "router"}),

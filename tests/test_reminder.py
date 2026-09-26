@@ -1844,3 +1844,26 @@ def test_the_letters_count_is_jasons_sentence_in_the_singular_and_the_plural(rec
     from tracker.reminder import progress_line
 
     assert progress_line(received, total, also) == said
+
+
+def test_a_hold_is_said_only_past_a_week_counted_from_the_last_letter_else_the_creation(
+        tmp_path, monkeypatch):
+    # Decision 193: the one rule, named once - held now (the caller's
+    # word), and no letter for more than HELD_WARN_DAYS days.
+    import datetime as dt
+
+    from tracker import ledger, reminder
+    from tracker.reminder import HELD_TOO_LONG, HELD_WARN_DAYS, held_too_long
+
+    today = dt.date(2026, 3, 14)
+    monkeypatch.setattr(reminder, "last_draft_event", lambda path, carrying=None: None)
+    week = today - dt.timedelta(days=HELD_WARN_DAYS)
+    assert held_too_long(tmp_path, today, created=week) == ""
+    assert held_too_long(tmp_path, today, created=week - dt.timedelta(days=1)) == \
+        HELD_TOO_LONG.format(days=HELD_WARN_DAYS + 1)
+    assert held_too_long(tmp_path, today, created=None) == ""
+
+    letter = {ledger.AT_KEY: f"{(today - dt.timedelta(days=2)).isoformat()}T09:00:00"}
+    monkeypatch.setattr(reminder, "last_draft_event", lambda path, carrying=None: letter)
+    assert held_too_long(tmp_path, today, created=today - dt.timedelta(days=90)) == "", \
+        "the last letter, not the creation, when there is one"

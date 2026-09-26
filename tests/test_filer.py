@@ -9148,3 +9148,49 @@ def test_an_index_read_without_following_is_the_store_as_it_stands(tmp_path):
     assert store.forget(store.connect(), engagement)
     assert [one.original_name for one in read_index(engagement, follow=False)] == [
         "first.pdf", "second.pdf"]
+
+
+# ------------------------------- said, never silent (decision 193) ----
+
+
+def test_a_readme_that_cannot_be_rewritten_is_said_by_class(engagement, monkeypatch, caplog):
+    import errno
+
+    import tracker.filer as filer_module
+    from tracker.filer import README_NOT_REWRITTEN, refresh_household_readme
+
+    def denied(*args, **kwargs):
+        raise PermissionError(errno.EACCES, "a fabricated denial", str(engagement))
+
+    monkeypatch.setattr(filer_module, "write_readme", denied)
+    said: list[str] = []
+    assert refresh_household_readme(household_of(engagement), said=said) is None
+    assert said == [README_NOT_REWRITTEN.format(kind="PermissionError (EACCES)")]
+    assert "fabricated denial" in caplog.text            # the whole of it, in the log only
+    assert refresh_household_readme(household_of(engagement)) is None   # no list: a log line
+
+
+def test_a_temp_that_cannot_be_swept_is_counted_not_named(engagement, monkeypatch):
+    import os
+    import time
+    from pathlib import Path
+
+    import tracker.filer as filer_module
+    from tracker.filer import TEMPS_NOT_SWEPT, sweep_stranded_temps
+
+    stuck = engagement / f"view.html.{os.getpid()}.1a2b3c4d.tmp"
+    stuck.write_bytes(b"half")
+    real = Path.unlink
+
+    def refused(self, *args, **kwargs):
+        if self == stuck:
+            raise PermissionError(13, "a fabricated denial", str(self))
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", refused)
+    monkeypatch.setattr(filer_module, "make_writable", lambda path: None)
+    said: list[str] = []
+    assert sweep_stranded_temps(household_of(engagement), [engagement],
+                                started=time.time() + 1, said=said) == []
+    assert said == [TEMPS_NOT_SWEPT.format(n=1)]
+    assert stuck.name not in said[0] and "fabricated" not in said[0]

@@ -289,17 +289,21 @@ def test_gitignore_knows_every_runtime_file_python_writes_outside_the_repo():
     repository root: a developer who runs the app, or a subprocess test
     that does not name a store of its own, writes one into the tree.
     """
+    from tracker.progress import PASSES_DIRNAME
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
     from tracker.runner import LOG_FILENAME, STATUS_PAGE_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
-    from tracker.settings import SETTINGS_FILENAME
+    from tracker.settings import ERROR_LOG_FILENAME, SETTINGS_FILENAME
     from tracker.store import STORE_FILENAME, STORE_SHM_FILENAME, STORE_WAL_FILENAME
 
     ignored = [line.strip() for line in read(".gitignore").splitlines()
                if line.strip() and not line.startswith("#")]
     for name in (DRAFT_FILENAME, NEW_DRAFT_FILENAME, LOG_FILENAME, STATUS_PAGE_FILENAME,
                  SCHEDULE_XML_FILENAME, SETTINGS_FILENAME,
-                 STORE_FILENAME, STORE_WAL_FILENAME, STORE_SHM_FILENAME):
+                 STORE_FILENAME, STORE_WAL_FILENAME, STORE_SHM_FILENAME,
+                 # Decision 193: the error log, its rotated copies and the
+                 # passes folder, beside the store.
+                 ERROR_LOG_FILENAME, f"{ERROR_LOG_FILENAME}.*", PASSES_DIRNAME + "/"):
         assert ignored.count(name) == 1, name
 
 
@@ -771,7 +775,7 @@ def test_documents_name_only_runtime_files_the_code_owns():
     from tracker.runner import LAST_PASS_FILENAME, LOG_FILENAME, PASS_ORDER_FILENAME, STATUS_PAGE_FILENAME
     from tracker.scaffold import README_NAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
-    from tracker.settings import SETTINGS_FILENAME
+    from tracker.settings import ERROR_LOG_FILENAME, SETTINGS_FILENAME
     from tracker.store import STORE_FILENAME
     from tracker.view import VIEW_FILENAME
 
@@ -779,7 +783,7 @@ def test_documents_name_only_runtime_files_the_code_owns():
     owned = {LEDGER_FILENAME, LOCK_FILENAME, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
              LOG_FILENAME, STATUS_PAGE_FILENAME, README_NAME, README_LOCK_FILENAME,
              SCHEDULE_XML_FILENAME, SETTINGS_FILENAME, STORE_FILENAME, VIEW_FILENAME,
-             PASS_ORDER_FILENAME,
+             PASS_ORDER_FILENAME, ERROR_LOG_FILENAME,
              # Decision 159: the checkpoint, the scheduled pass's own note, the race's lock.
              CHECKPOINT_FILENAME, LAST_PASS_FILENAME, RACE_LOCK_FILENAME}
     tracked = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True).stdout.split()
@@ -1572,3 +1576,254 @@ def test_the_shell_lstats_before_it_opens_and_refuses_a_link_or_a_changed_kind()
     vocab = api._vocab()
     assert vocab["shell"]["not_opened"] == api.SHELL_NOT_OPENED
     assert set(vocab["path_kinds"].values()) == {"folder", "file"}
+
+
+# ========== decision 193: replies never go quiet, and a pass can be watched ==========
+
+#: main.js run by node against a stand-in for Electron whose ``tracker-cmd``
+#: handler is kept and called, with ``child_process.spawn`` pointed at a
+#: scripted fake tracker (``_FAKE_TRACKER``) - a real child process, so the
+#: shell's reading of stdout, its kill and its stderr are the real code.
+_SHELL_HARNESS = r"""
+const Module = require("module");
+const realSpawn = require("child_process").spawn;
+const realFs = require("fs");
+const [mainJs, fake, calls] = process.argv.slice(2);
+let handler = null;
+const sent = [];
+const electron = {
+  app: { isPackaged: false, requestSingleInstanceLock: () => true, quit() {}, on() {},
+         whenReady: () => new Promise(() => {}) },
+  BrowserWindow: class {}, Menu: { setApplicationMenu() {} },
+  ipcMain: { handle(name, fn) { if (name === "tracker-cmd") handler = fn; } },
+  shell: {}, dialog: {},
+};
+const load = Module._load;
+Module._load = function (request, ...rest) {
+  if (request === "electron") return electron;
+  if (request === "child_process") {
+    return { spawn: (cmd, args, opts) => process.env.FAKE_SPAWN_FAILS
+      ? realSpawn("/no/such/tracker-for-this-test", [], opts)
+      : realSpawn(process.execPath, [fake, ...args], { ...opts, cwd: undefined }) };
+  }
+  if (request === "fs") return { ...realFs, existsSync: () => true };
+  return load.call(this, request, ...rest);
+};
+require(mainJs);
+const event = { sender: { send: (channel, message) => sent.push({ channel, message }) } };
+(async () => {
+  const out = [];
+  for (const args of JSON.parse(calls)) {
+    const began = Date.now();
+    const reply = await handler(event, args, undefined);
+    out.push({ args, reply, ms: Date.now() - began });
+  }
+  // The shell appends a failed child's stderr without waiting on it; give
+  // that write its moment before the harness ends.
+  setTimeout(() => {
+    process.stdout.write(JSON.stringify({ out, sent }));
+    process.exit(0);
+  }, 500);
+})();
+"""
+
+#: The fake tracker: what each command prints, as the real API would.
+_FAKE_TRACKER = r"""
+const given = process.argv.slice(2);
+const command = given[given.indexOf("tracker.api") + 1];
+const say = (o) => process.stdout.write(JSON.stringify(o) + "\n");
+const line = (fields) => say({ progress: { v: 1, pass: 4242, at: "2026-01-02T03:04:05", ...fields } });
+if (command === "list") {
+  say({ vocab: { commands: ["list", "scan", "state", "templates", "priors"],
+                 engagement_flag: "--engagement",
+                 shell: { error_log: process.env.FAKE_LOG } } });
+} else if (command === "scan") {
+  line({ event: "started", limit_seconds: 7200, households: 1 });
+  line({ event: "household", household: "Sample Household", n: 1, of: 1 });
+  line({ event: "file", step: "sort", name: "W-2 Sample.pdf", household: "Sample Household" });
+  say({ run: { filed: 1 }, warnings: [] });
+} else if (command === "state") {
+  line({ event: "started", limit_seconds: 1, households: 1 });
+  line({ event: "household", household: "Sample Household", n: 1, of: 1 });
+  line({ event: "file", step: "scan", name: "A01", household: "Sample Household" });
+  setTimeout(() => {}, 60000);
+} else if (command === "templates") {
+  process.stderr.write("Traceback: a fabricated message naming Sample Client's folder\n");
+  process.exit(1);
+}
+"""
+
+
+def _run_the_shell(tmp_path, calls, **env):
+    import os
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not on PATH (CI installs it)")
+    harness = tmp_path / "shell_harness.js"
+    harness.write_text(_SHELL_HARNESS, encoding="utf-8", newline="\n")
+    fake = tmp_path / "fake_tracker.js"
+    fake.write_text(_FAKE_TRACKER, encoding="utf-8", newline="\n")
+    done = subprocess.run([node, str(harness), str(REPO / "app" / "main.js"), str(fake),
+                           json.dumps(calls)],
+                          capture_output=True, text=True, encoding="utf-8", timeout=120, check=False,
+                          env={**os.environ, "FAKE_LOG": str(tmp_path / "tracker-errors.log"), **env})
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+def test_the_shell_passes_progress_lines_on_and_keeps_the_last_line_as_the_reply(tmp_path):
+    ran = _run_the_shell(tmp_path, [["list"], ["scan", "--engagement", "/sample/return"]])
+    scan = ran["out"][1]
+    assert scan["reply"] == {"run": {"filed": 1}, "warnings": []}
+    progress = [m["message"] for m in ran["sent"] if m["channel"] == "tracker-progress"]
+    assert [m["progress"]["event"] for m in progress] == ["started", "household", "file"]
+    assert all(m["args"] == ["scan", "--engagement", "/sample/return"] for m in progress)
+
+
+def test_the_shells_kill_follows_the_limit_the_pass_reported_and_says_where_it_was(tmp_path):
+    import tracker.api as api
+
+    ran = _run_the_shell(tmp_path, [["list"], ["state", "--engagement", "/sample/return"]])
+    killed = ran["out"][1]
+    assert killed["ms"] < 20_000, "the kill follows limit_seconds, not the thirty minutes"
+    reply = killed["reply"]
+    assert reply["killed"] is True and reply["failure"]["kind"] == "failed"
+    assert reply["error"] == reply["failure"]["sentence"]
+    assert reply["error"] == (api.SHELL_KILLED.format(minutes=1) + " "
+                              + api.SHELL_KILLED_AT.format(household="Sample Household", name="A01"))
+    assert reply["progress"]["name"] == "A01"
+
+
+def test_the_shell_never_puts_stderr_on_screen_and_appends_it_to_the_error_log(tmp_path):
+    import tracker.api as api
+
+    ran = _run_the_shell(tmp_path, [["list"], ["templates"]])
+    reply = ran["out"][1]["reply"]
+    assert reply["error"] == api.SHELL_NO_REPLY.format(code=1)
+    assert reply["failure"]["kind"] == "failed" and "fabricated" not in json.dumps(reply)
+    logged = (tmp_path / "tracker-errors.log").read_text(encoding="utf-8")
+    assert "a fabricated message naming Sample Client's folder" in logged
+
+
+def test_a_failed_spawn_is_said_by_its_code(tmp_path):
+    import tracker.api as api
+
+    ran = _run_the_shell(tmp_path, [["list"]], FAKE_SPAWN_FAILS="1")
+    reply = ran["out"][0]["reply"]
+    assert reply["error"] == api.SHELL_COULD_NOT_START.format(code="ENOENT")
+    assert "/no/such" not in reply["error"] and reply["failure"]["kind"] == "failed"
+
+
+def test_the_progress_key_and_the_error_log_name_are_typed_once_per_language():
+    from tracker.progress import PROGRESS_KEY
+    from tracker.settings import ERROR_LOG_FILENAME
+
+    main_js = read("app/main.js")
+    assert f'const PROGRESS_KEY = "{PROGRESS_KEY}";' in main_js
+    assert f'const ERROR_LOG_FILENAME = "{ERROR_LOG_FILENAME}";' in main_js
+    assert main_js.count(f'"{ERROR_LOG_FILENAME}"') == 1 and main_js.count(f'"{PROGRESS_KEY}"') == 1
+    # The log's path is the API's; the shell builds it only before it has heard.
+    assert "vocab.shell" in main_js and "said.error_log" in main_js
+
+
+def test_the_shells_default_words_are_the_apis_word_for_word():
+    import tracker.api as api
+
+    main_js = read("app/main.js")
+
+    def default(name):
+        head = main_js.split(f"let {name} =", 1)[1].split(";\n", 1)[0]
+        return "".join(re.findall(r'"([^"]*)"', head))
+
+    assert default("killed") == api.SHELL_KILLED
+    assert default("killedAt") == api.SHELL_KILLED_AT
+    assert default("noReply") == api.SHELL_NO_REPLY
+    assert default("couldNotStart") == api.SHELL_COULD_NOT_START
+    shell = api._vocab()["shell"]
+    assert (shell["killed"], shell["killed_at"], shell["no_reply"], shell["could_not_start"]) == (
+        api.SHELL_KILLED, api.SHELL_KILLED_AT, api.SHELL_NO_REPLY, api.SHELL_COULD_NOT_START)
+
+
+def test_the_notice_buttons_are_the_apis_labels_word_for_word():
+    import tracker.api as api
+
+    html = read("app/renderer/index.html")
+    template = html.split('<template id="notice-buttons">', 1)[1].split("</template>", 1)[0]
+    buttons = dict(re.findall(r'data-act="([a-z]+)">([^<]+)</button>', template))
+    assert buttons == api.NOTICE_LABELS
+    assert api._vocab()["notices"]["labels"] == api.NOTICE_LABELS
+
+
+def test_no_failure_is_toasted():
+    js = read("app/renderer/app.js")
+    assert "toast(err" not in js
+    assert "throw new Error(result.error)" not in js
+
+
+def test_every_draw_after_an_await_goes_through_renderFor():
+    js = read("app/renderer/app.js")
+    calls = [m.start() for m in re.finditer(r"(?<![\w.])render\(", js)]
+    body = js.split("function renderFor(view, state) {", 1)[1].split("\n}\n", 1)[0]
+    definition = js.index("function render(state)")
+    inside = js.index("function renderFor(view, state) {")
+    assert [at for at in calls if at != definition + len("function ")] == \
+        [inside + len("function renderFor(view, state) {") + body.index("render(")]
+    assert "view !== viewGeneration" in body
+    # The shown return changes in one place, and every change bumps the view.
+    assert len(re.findall(r"(?<![\w.])(?<!let )(?<!const )active = ", js)) == 1
+    assert "select(button.dataset.path)" in js and "select(e.target.value)" in js
+
+
+def test_the_reminder_card_is_never_hidden_on_an_error():
+    js = read("app/renderer/app.js")
+    body = js.split("async function loadReminder() {", 1)[1].split("\n}\n", 1)[0]
+    caught = body.split("} catch (err) {", 1)[1]
+    assert '"hidden"' not in caught
+    assert "vocab.reminder.unreadable" in caught and "failed(err" in caught
+    assert "result.not_yet" in body
+
+
+def test_every_reply_warning_becomes_a_notice():
+    js = read("app/renderer/app.js")
+    body = js.split("async function call(args, payload) {", 1)[1].split("\n}\n", 1)[0]
+    assert "result.warnings" in body and "warningNotices(" in body
+    assert "throw new TrackerError(" in body
+    assert "warningNotices(result.pass_warnings" in js
+
+
+def test_a_failed_first_list_is_a_notice_with_retry_needing_no_vocabulary():
+    js = read("app/renderer/app.js")
+    refresh = js.split("async function refresh(preferPath) {", 1)[1].split("\n}\n", 1)[0]
+    assert "failed(err, () => refresh(preferPath))" in refresh
+    # The notice draws its buttons from the static template and reads the
+    # vocabulary only for a repeat count, and only when there is one.
+    draw = js.split("function drawNotice(entry) {", 1)[1].split("\n}\n", 1)[0]
+    assert "entry.count > 1 && vocab" in draw and "noticeButton" in draw
+    button = js.split("function noticeButton(act) {", 1)[1].split("\n}\n", 1)[0]
+    assert '$("notice-buttons").content' in button and "vocab" not in button
+
+
+def test_the_lock_notice_types_no_sentence_and_polls_only_while_a_lock_shows():
+    js = read("app/renderer/app.js")
+    for name in ("function renderLock(state) {", "function showLock(lock) {"):
+        body = js.split(name, 1)[1].split("\n}\n", 1)[0]
+        literals = re.findall(r'"([^"]*)"|`([^`]*)`', body)
+        assert not [lit for pair in literals for lit in pair if " " in lit.strip()], name
+    assert "Sort & Scan will wait" not in js and "will wait for it" not in js
+    assert js.count('withEng("watch")') == 1
+    watch = js.split("function watchLock() {", 1)[1].split("\n}\n", 1)[0]
+    assert 'withEng("watch")' in watch and "vocab.lock.watch_seconds" in watch
+    assert "view !== viewGeneration" in watch
+    show = js.split("function showLock(lock) {", 1)[1].split("\n}\n", 1)[0]
+    assert "watchLock()" in show and "stopLockWatch()" in show
+
+
+def test_the_shell_sends_on_only_the_channels_the_preload_listens_to():
+    sent = set(re.findall(r'event\.sender\.send\("([a-z-]+)"', read("app/main.js")))
+    heard = set(re.findall(r'ipcRenderer\.on\("([a-z-]+)"', read("app/preload.js")))
+    assert sent == heard == {"tracker-progress"}

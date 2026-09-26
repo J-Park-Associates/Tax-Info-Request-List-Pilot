@@ -123,10 +123,114 @@ function toast(msg) {
   el._t = setTimeout(() => el.classList.add("hidden"), 6000);
 }
 
+// A failure the tracker answered with (decision 193): its envelope, and the
+// call that met it, so Retry can make the same call again.
+class TrackerError extends Error {
+  constructor(result, args, payload) {
+    super(result.error);
+    this.result = result;
+    this.failure = result.failure || { sentence: result.error, kind: "failed", seq: null, identifier: null };
+    this.args = args;
+    this.payload = payload;
+  }
+}
+
+// Every reply's warnings become notices, and an error throws its envelope.
 async function call(args, payload) {
   const result = await window.tracker.call(args, payload);
-  if (result.error) throw new Error(result.error);
+  if (result && Array.isArray(result.warnings) && result.warnings.length) warningNotices(result.warnings);
+  if (result.error) throw new TrackerError(result, args, payload);
   return result;
+}
+
+// ── notices: a failure or a warning stays until a person dismisses it ────
+// (decision 193). Retry on a failure, Look again on a stale one, Dismiss on
+// every one; the row a notice names is outlined on every redraw until it
+// is dismissed. The buttons come from index.html's template, so a notice
+// works before any vocabulary has arrived (a failed first start).
+
+const notices = [];   // [{sentence, kind, identifier, count, retry, node}]
+
+function noticeButton(act) {
+  return $("notice-buttons").content.querySelector(`[data-act="${act}"]`).cloneNode(true);
+}
+
+function drawNotice(entry) {
+  const text = entry.count > 1 && vocab
+    ? `${entry.sentence} ${fill(vocab.notices.repeated, { n: entry.count })}`
+    : entry.sentence;
+  const acts = [];
+  if (entry.kind === "failed" && entry.retry) acts.push("retry");
+  if (entry.kind === "stale") acts.push("look");
+  acts.push("dismiss");
+  entry.node.replaceChildren(el("span", { className: "notice-text" }, text), ...acts.map(noticeButton));
+}
+
+function notice(failure, { retry } = {}) {
+  if (!failure || !failure.sentence) return null;
+  const kind = failure.kind || "failed";
+  let entry = notices.find((one) => one.sentence === failure.sentence && one.kind === kind);
+  if (entry) {
+    entry.count += 1;
+    entry.retry = retry || entry.retry;
+  } else {
+    entry = { sentence: failure.sentence, kind, identifier: failure.identifier || null, count: 1, retry };
+    entry.node = el("div", { className: `notice notice-${kind}` });
+    notices.push(entry);
+    $("notices").append(entry.node);
+  }
+  drawNotice(entry);
+  outlineRefused();
+  if (kind === "locked" && failure.lock) showLock(failure.lock);
+  return entry;
+}
+
+function warningNotices(list) {
+  for (const sentence of list) notice({ sentence, kind: "warning" });
+}
+
+// A caught error, said as a notice: the tracker's envelope, or - for an
+// error of the page's own - its message as a failure.
+function failed(err, retry) {
+  notice(err && err.failure
+    ? err.failure
+    : { sentence: String((err && err.message) || err), kind: "failed", seq: null, identifier: null },
+  { retry });
+}
+
+function dismissNotice(entry) {
+  const at = notices.indexOf(entry);
+  if (at >= 0) notices.splice(at, 1);
+  entry.node.remove();
+  outlineRefused();
+}
+
+function outlineRefused() {
+  const named = new Set(notices.map((one) => one.identifier).filter(Boolean));
+  for (const row of document.querySelectorAll("[data-row]")) {
+    row.classList.toggle("refused", named.has(row.dataset.row));
+  }
+}
+
+// ── the view generation (D6): a late reply never paints another return ──
+
+let viewGeneration = 0;
+
+// The one way the shown return changes: every reply started before it is
+// dropped when it arrives.
+function select(path) {
+  active = path;
+  return ++viewGeneration;
+}
+
+// Every draw after an await: only while the view it was asked for is
+// still the one shown.
+function renderFor(view, state) {
+  if (view !== viewGeneration) return false;
+  render(state);
+  applyLock();
+  outlineRefused();
+  return true;
 }
 
 const withEng = (cmd) => (active ? [cmd, vocab.engagement_flag, active] : [cmd]);
@@ -143,7 +247,8 @@ function ruleTooltip(item) {
 }
 
 function requestTableRow(item) {
-  return el("tr", { title: ruleTooltip(item), className: item.asked === false ? vocab.not_asked_key : "" },
+  return el("tr", { title: ruleTooltip(item), className: item.asked === false ? vocab.not_asked_key : "",
+                    dataset: { row: item.identifier } },
     el("td", { className: "col-id" }, el("span", { className: "req-id" }, item.identifier)),
     el("td", {},
       el("div", { className: "req-doc" }, item.document),
@@ -259,20 +364,38 @@ async function loadReminder() {
     $("reminder-card").classList.add("hidden");
     return;
   }
+  const view = viewGeneration;
   try {
     const result = await call(withEng("reminder"), { stage: reminderStage });
+    if (view !== viewGeneration) return;
+    if (!result.reminder) {
+      // Not scanned yet: a line on the card, not an error (D7).
+      reminderCard = null;
+      drawReminderLine(result.not_yet);
+      return;
+    }
     drawReminder(result.reminder);
   } catch (err) {
-    // An engagement nobody has scanned yet has no reminder to show, and
-    // the request table above already says so row by row. The card is
-    // simply not there until there is a draft to put in it.
+    // A reminder that cannot be read is said, and the card stays (D7).
+    if (view !== viewGeneration) return;
+    failed(err, loadReminder);
     reminderCard = null;
-    $("reminder-card").classList.add("hidden");
+    drawReminderLine(vocab.reminder.unreadable);
   }
+}
+
+// The card with one line and nothing to copy or approve (decision 193).
+function drawReminderLine(line) {
+  $("reminder-heading").textContent = vocab.reminder.heading;
+  $("reminder-card").classList.remove("hidden");
+  $("reminder-card").classList.add("line-only");
+  $("reminder-status").textContent = line;
+  $("reminder-status").classList.remove("hidden");
 }
 
 function drawReminder(card) {
   reminderCard = card;
+  $("reminder-card").classList.remove("line-only");
   const words = vocab.reminder;
   const rows = (card.held || []).length;
   const unsorted = card.unsorted || 0;
@@ -291,7 +414,9 @@ function drawReminder(card) {
   const hold = $("reminder-hold");
   hold.classList.toggle("hidden", !held);
   hold.style.setProperty("--stage-ink", words.palette[words.hold_colour]);
-  $("reminder-held").textContent = holdLine(rows, unsorted);
+  $("reminder-held").textContent = card.held_too_long
+    ? `${holdLine(rows, unsorted)}\n${card.held_too_long}`
+    : holdLine(rows, unsorted);
   show("reminder-held-rows", (card.held || []).map((row) =>
     el("li", {},
       el("span", { className: "rem-hold-id" }, row.identifier),
@@ -429,7 +554,7 @@ async function copyReminder() {
     })]);
     banner(vocab.reminder.copied, "ok");
   } catch (err) {
-    toast(err.message);
+    failed(err, copyReminder);
   } finally {
     btn.disabled = false;
   }
@@ -456,7 +581,7 @@ async function approveReminder() {
       ? `${said}. ${fill(vocab.reminder.set_aside_line, { name: result.set_aside })}.`
       : said, "ok");
   } catch (err) {
-    toast(err.message);
+    failed(err, approveReminder);
     await loadReminder();
   } finally {
     btn.disabled = false;
@@ -487,14 +612,14 @@ function movedRow(m, choices) {
   // offered is the person's Mark missing on the row's own request, which
   // puts the document back on the client's letter.
   if (m.gone) {
-    return el("li", { dataset: { original: m.pbc_location, seq: m.seq } },
+    return el("li", { dataset: { original: m.pbc_location, row: m.pbc_location, seq: m.seq } },
       el("span", { className: "r-name" }, m.original_name),
       el("span", { className: "r-why" }, `${m.home} → ${where}`),
       m.identifier && el("button", { className: "btn r-withdraw", dataset: { identifier: m.identifier } },
         fill(vocab.review_labels.mark_missing, { identifier: m.identifier })),
     );
   }
-  return el("li", { dataset: { original: m.pbc_location, seq: m.seq } },
+  return el("li", { dataset: { original: m.pbc_location, row: m.pbc_location, seq: m.seq } },
     el("span", { className: "r-name" }, m.original_name),
     el("span", { className: "r-why" }, `${m.home} → ${where}`),
     // The picker is the same picker: a person may keep the copy where it
@@ -514,6 +639,7 @@ function movedRow(m, choices) {
 }
 
 async function restoreMoved(li) {
+  const view = viewGeneration;   // drawn only if this return is still the one shown (D6)
   const btn = li.querySelector(".r-restore");
   btn.disabled = true;
   try {
@@ -521,7 +647,7 @@ async function restoreMoved(li) {
       original: li.dataset.original,
       seq: Number(li.dataset.seq),
     });
-    render(result.state);
+    renderFor(view, result.state);
     const r = result.restored;
     const notes = [`${r.original_name}: ${r.decision}`, r.reason];
     if (r.scan_note) notes.push(r.scan_note);
@@ -551,6 +677,7 @@ async function keepMoved(li) {
 // And send to review is an unfiling: the copy goes back under the client's
 // own name and the row parks.
 async function reviewMoved(li) {
+  const view = viewGeneration;   // drawn only if this return is still the one shown (D6)
   const btn = li.querySelector(".r-review");
   btn.disabled = true;
   try {
@@ -558,7 +685,7 @@ async function reviewMoved(li) {
       original: li.dataset.original,
       seq: Number(li.dataset.seq),
     });
-    render(result.state);
+    renderFor(view, result.state);
     const u = result.unfiled;
     const notes = [`${u.original_name}: ${u.decision}`];
     if (u.left_filed) notes.push(u.left_filed);
@@ -653,7 +780,7 @@ function reviewRow(e, choices, ids, open, triage, people = []) {
   const picked = guess && ids.has(guess) ? guess : "";
   // The row's record version travels with the card and comes back with the
   // click, so the filer judges the decision against the row it was made on.
-  return el("li", { dataset: { original: e.pbc_location, seq: e.seq } },
+  return el("li", { dataset: { original: e.pbc_location, row: e.pbc_location, seq: e.seq } },
     el("span", { className: "r-name" }, e.original_name),
     el("span", { className: "r-why" }, e.reason),
     el("select", { "aria-label": `Request for ${e.original_name}` },
@@ -748,8 +875,9 @@ function typed(li, className) {
 // call sites could drift apart - one cannot, and a guard in
 // tests/test_single_source.py keeps it the only one.
 async function fileRow(original, identifier, seq, keyword, spelling) {
+  const view = viewGeneration;   // drawn only if this return is still the one shown (D6)
   const result = await call(withEng("assign"), { original, identifier, keyword, spelling, seq });
-  render(result.state);
+  renderFor(view, result.state);
   const a = result.assigned;
   const notes = [`${a.original_name} filed as ${a.filed_as}`];
   if (a.keyword) notes.push(`"${a.keyword}" added to ${a.identifier} so the next one files itself`);
@@ -802,7 +930,7 @@ async function loadHandOverRequests() {
     const state = await call(["state", vocab.engagement_flag, target]);
     show("ho-request", state.items.map((i) => requestOption(i, "")));
   } catch (err) {
-    toast(err.message);
+    failed(err, loadHandOverRequests);
   }
 }
 
@@ -821,7 +949,7 @@ async function fileHandOver() {
     });
     $("handover-modal").classList.add("hidden");
   } catch (err) {
-    toast(err.message);
+    failed(err);
   } finally {
     btn.disabled = false;
     handingOver = null;
@@ -832,8 +960,9 @@ async function fileHandOver() {
 // picker's answer and the one click are one decision, so they are one call
 // and one set of sentences afterwards.
 async function handOver(spec) {
+  const view = viewGeneration;   // drawn only if this return is still the one shown (D6)
   const result = await call(withEng("assign"), spec);
-  render(result.state);
+  renderFor(view, result.state);
   const a = result.handed_over;
   const notes = [`${a.original_name}: ${fill(vocab.review_labels.handed_over,
     { label: a.label, identifier: a.identifier })}`];
@@ -873,7 +1002,7 @@ async function assignParked(li) {
 // the card is redrawn from the record so what they see next is what the
 // record now holds rather than the row they acted on.
 async function refused(err, btn) {
-  toast(err.message);
+  failed(err);
   btn.disabled = false;
   await refresh();
 }
@@ -970,7 +1099,7 @@ function deckCard(t, row, place, total, people = []) {
   // version does: what comes back with the click is what was on the screen.
   const identified = best ? { identifier: best.identifier } : {};
   return el("div", { className: "deck-card card",
-                     dataset: { original: t.pbc_location, seq: t.seq, ...identified } },
+                     dataset: { original: t.pbc_location, row: t.pbc_location, seq: t.seq, ...identified } },
     el("span", { className: "r-name" }, t.original_name),
     el("span", { className: "r-why" }, row ? row.reason : ""),
     best && el("span", { className: "deck-suggested" }, vocab.review_labels.suggested),
@@ -1047,7 +1176,7 @@ function renderUnfileList(state) {
   $("filed-card").classList.toggle("hidden", filed.length === 0);
   $("filed-heading").textContent = fill(vocab.review_labels.filed_heading, { n: filed.length });
   show("filed-list", filed.map((e) =>
-    el("li", { dataset: { original: e.pbc_location, seq: e.seq } },
+    el("li", { dataset: { original: e.pbc_location, row: e.pbc_location, seq: e.seq } },
       el("span", { className: "r-name" }, e.original_name),
       el("span", { className: "r-why" }, `${e.identifier} — ${e.filed_names.join(", ")}`),
       el("input", {
@@ -1067,6 +1196,7 @@ function renderUnfileList(state) {
 // The statement stays filed; only the one request comes off what it
 // answers, and the re-scan puts that request back to what its folder holds.
 async function withdrawAnswer(btn) {
+  const view = viewGeneration;   // drawn only if this return is still the one shown (D6)
   const li = btn.closest("li");
   btn.disabled = true;
   try {
@@ -1076,7 +1206,7 @@ async function withdrawAnswer(btn) {
       note: typed(li, ".r-note"),
       seq: Number(li.dataset.seq),
     });
-    render(result.state);
+    renderFor(view, result.state);
     const m = result.marked_missing;
     const notes = [`${m.original_name}: ${m.reason}`];
     if (m.scan_note) notes.push(m.scan_note);
@@ -1089,6 +1219,7 @@ async function withdrawAnswer(btn) {
 // Nothing is deleted and nothing is moved: the row is rewritten, so the
 // banner says what the row now reads and the file is still where it was.
 async function dismissParked(li) {
+  const view = viewGeneration;   // drawn only if this return is still the one shown (D6)
   const btn = li.querySelector(".r-dismiss");
   btn.disabled = true;
   try {
@@ -1097,7 +1228,7 @@ async function dismissParked(li) {
       note: typed(li, ".r-note"),
       seq: Number(li.dataset.seq),
     });
-    render(result.state);
+    renderFor(view, result.state);
     const d = result.dismissed;
     const notes = [`${d.original_name}: ${d.decision}`, d.reason];
     banner(notes.join(". ") + ".", "ok");
@@ -1110,6 +1241,7 @@ async function dismissParked(li) {
 // the same breath, so the banner says where the document is now, not what
 // it stopped being.
 async function unfileDocument(li) {
+  const view = viewGeneration;   // drawn only if this return is still the one shown (D6)
   const btn = li.querySelector(".r-unfile");
   btn.disabled = true;
   try {
@@ -1118,7 +1250,7 @@ async function unfileDocument(li) {
       note: typed(li, ".r-note"),
       seq: Number(li.dataset.seq),
     });
-    render(result.state);
+    renderFor(view, result.state);
     const u = result.unfiled;
     const notes = [`${u.original_name}: ${u.decision}`];
     if (u.left_filed) notes.push(u.left_filed);
@@ -1206,7 +1338,7 @@ function renderHousehold(state) {
         className: `btn btn-small${r.path === active ? " btn-primary" : ""}`,
         dataset: { path: r.path },
       }, r.label),
-      r.reminder && el("span", { className: "wiz-note" }, returnReminderLine(r.reminder)))));
+      r.reminder && el("span", { className: "wiz-note" }, returnReminderLine(r.reminder, r.label)))));
   $("household-queue").textContent = fill(words.queue_line, { n: hh.queue });
   $("btn-edit-household").textContent = words.edit;
   renderFeeds(hh);
@@ -1236,8 +1368,9 @@ function renderFeeds(hh) {
 // One return's reminder, in the same words its own card uses: approved
 // beats last-drafted beats never, and a hold is said after it. Every
 // pattern is the API's (vocab.reminder) and the page types none of them.
-function returnReminderLine(state) {
+function returnReminderLine(state, label) {
   const words = vocab.reminder;
+  if (state.unreadable) return fill(words.line_unreadable, { label, kind: state.kind });
   const said = state.approved
     ? fill(words.approved_line, { date: state.approved.date, n: state.approved.stage })
     : state.last
@@ -1272,6 +1405,7 @@ function renderSharing(hh) {
 // a card drawn before somebody else acted is refused, not applied.
 let shownPause = null;
 async function acceptFolderName() {
+  const view = viewGeneration;   // drawn only if this return is still the one shown (D6)
   const pause = shownPause;
   if (!pause || !pause.engagement) return;
   const btn = $("btn-accept-folder-name");
@@ -1279,9 +1413,9 @@ async function acceptFolderName() {
   try {
     const result = await call(["accept-folder-name", vocab.engagement_flag, pause.engagement],
                               { seq: pause.seq, scope: pause.scope });
-    render(result.state);
+    renderFor(view, result.state);
   } catch (err) {
-    toast(err.message);
+    failed(err, acceptFolderName);
   } finally {
     btn.disabled = false;
   }
@@ -1291,14 +1425,15 @@ async function acceptFolderName() {
 // record and nothing else. The API refuses it while the inbox link is
 // blank, and its sentence is what the person reads.
 async function markShared() {
+  const view = viewGeneration;   // drawn only if this return is still the one shown (D6)
   const btn = $("btn-mark-shared");
   btn.disabled = true;
   try {
     const result = await call(withEng("mark-shared"));
-    render(result.state);
+    renderFor(view, result.state);
     banner(fill(vocab.household.shared_on_line, { day: result.shared_on }), "ok");
   } catch (err) {
-    toast(err.message);
+    failed(err);
   } finally {
     btn.disabled = false;
   }
@@ -1398,6 +1533,7 @@ function addEditorFeed() {
 }
 
 async function saveHousehold() {
+  const view = viewGeneration;   // drawn only if this return is still the one shown (D6)
   const btn = $("hh-edit-save");
   btn.disabled = true;
   try {
@@ -1408,11 +1544,11 @@ async function saveHousehold() {
       feeds: editorFeeds.map((f) => ({ household: f.household, return_name: f.return_name })),
     });
     $("household-modal").classList.add("hidden");
-    render(result.state);
+    renderFor(view, result.state);
     const moved = result.saved.household;
     banner(moved.length ? `${vocab.household.heading}: ${moved.join(", ")}` : vocab.editor.nothing_changed, "ok");
   } catch (err) {
-    toast(err.message);
+    failed(err);
   } finally {
     btn.disabled = false;
   }
@@ -1427,33 +1563,125 @@ function banner(text, cls) {
 // ── the engagement lock, shown instead of left as a mystery file ─────────
 
 function renderLock(state) {
-  const lock = state.lock;
-  const notice = $("lock-notice");
-  notice.classList.toggle("hidden", !lock);
-  if (!lock) return;
-  const since = lock.started ? ` started at ${lock.started.replace("T", " ").slice(0, 16)}` : "";
+  showLock(state.lock);
+}
+
+// Every word is the API's (vocab.lock, decision 193): when the pass started,
+// on which machine and - on this machine - the household and file it is on.
+// A live lock greys this return's buttons and is watched until it goes; a
+// lock left behind keeps Clear lock.
+let locked = false;
+let lockWatch = null;
+
+function lockStarted(lock) {
+  return (lock.started || "").replace("T", " ").slice(0, 16);
+}
+
+function showLock(lock) {
+  const box = $("lock-notice");
+  box.classList.toggle("hidden", !lock);
+  if (!lock || lock.stale) stopLockWatch();
+  if (!lock) {
+    setLocked(false);
+    return;
+  }
+  const words = vocab.lock;
+  const started = lockStarted(lock);
+  box.classList.toggle("warn", lock.stale);
+  box.classList.toggle("ok", !lock.stale);
+  $("btn-unlock").classList.toggle("hidden", !lock.stale);
   if (lock.stale) {
-    $("lock-text").textContent =
-      `A run${since} left its lock behind (${lock.age_minutes} min old) — it has most likely died. The next ${SCAN_LABEL} or scheduled pass will replace it; clear it here to tidy up now.`;
-    notice.className = "banner warn";
-    $("btn-unlock").classList.remove("hidden");
-  } else {
-    $("lock-text").textContent =
-      `A run${since} is still going (${lock.age_minutes} min). ${SCAN_LABEL} will wait for it; a lock older than ${lock.stale_after_minutes} minutes can be cleared here.`;
-    notice.className = "banner ok";
-    $("btn-unlock").classList.add("hidden");
+    $("lock-text").textContent = fill(words.left_behind, { started, host: lock.host, minutes: lock.age_minutes });
+    setLocked(false);
+    return;
+  }
+  const said = [fill(words.running, { started, host: lock.host })];
+  if (lock.pass && lock.pass.name) said.push(fill(words.on, lock.pass));
+  said.push(words.greyed);
+  $("lock-text").textContent = said.join(" ");
+  setLocked(true);
+  watchLock();
+}
+
+// The controls that send a write for the shown return: greyed while a live
+// pass holds it, and again after every redraw draws them anew. Only what
+// this greyed is given back, so a control a card drew disabled stays so.
+const LOCKED_BUTTONS = ["btn-scan", "btn-edit", "btn-edit-household", "btn-mark-shared",
+                        "btn-accept-folder-name"];
+const LOCKED_CARDS = ["review-card", "moved-card", "reminder-actions", "filed-card", "dismissed-card"];
+
+function applyLock() {
+  const controls = [
+    ...LOCKED_BUTTONS.map((id) => $(id)).filter(Boolean),
+    ...LOCKED_CARDS.flatMap((id) => ($(id) ? [...$(id).querySelectorAll("button, select, input")] : [])),
+  ];
+  for (const control of controls) {
+    if (locked && !control.disabled) {
+      control.disabled = true;
+      control.dataset.lockGreyed = "1";
+    } else if (!locked && control.dataset.lockGreyed) {
+      control.disabled = false;
+      delete control.dataset.lockGreyed;
+    }
   }
 }
 
+function setLocked(on) {
+  locked = on;
+  applyLock();
+}
+
+function stopLockWatch() {
+  clearInterval(lockWatch);
+  lockWatch = null;
+}
+
+// Asks, every few seconds and only while a live lock shows, whether it has
+// gone (ruling 10): no timed wait, and nothing retried for the person. It
+// stops on a switch of return, and brings the buttons back the moment the
+// lock goes.
+function watchLock() {
+  if (lockWatch) return;
+  const view = viewGeneration;
+  let asking = false;
+  lockWatch = setInterval(async () => {
+    if (view !== viewGeneration) {
+      stopLockWatch();
+      return;
+    }
+    if (asking) return;
+    asking = true;
+    try {
+      const result = await call(withEng("watch"));
+      if (view !== viewGeneration) return;
+      if (result.lock) {
+        showLock(result.lock);
+        return;
+      }
+      stopLockWatch();
+      $("lock-notice").classList.add("hidden");
+      setLocked(false);
+      notice({ sentence: vocab.lock.buttons_back, kind: "warning" });
+      refresh(active);
+    } catch (err) {
+      stopLockWatch();
+      failed(err);
+    } finally {
+      asking = false;
+    }
+  }, vocab.lock.watch_seconds * 1000);
+}
+
 async function clearLock() {
+  const view = viewGeneration;   // drawn only if this return is still the one shown (D6)
   const btn = $("btn-unlock");
   btn.disabled = true;
   try {
     const result = await call(withEng("unlock"));
-    render(result.state);
-    banner(`Stale lock cleared (${result.age_minutes} min old). Run ${SCAN_LABEL} when ready.`, "ok");
+    renderFor(view, result.state);
+    banner(fill(vocab.lock.cleared, { minutes: result.age_minutes }), "ok");
   } catch (err) {
-    toast(err.message);
+    failed(err);
   } finally {
     btn.disabled = false;
   }
@@ -1540,8 +1768,10 @@ function applyVocabulary() {
 
 let clientsRoot = "";      // the one folder every engagement sits under
 
-async function loadEngagements(preferPath) {
+async function loadEngagements(preferPath, asked) {
   const listed = await call(["list"]);
+  // Another return was chosen while the list was on its way (D6).
+  if (asked !== undefined && asked !== viewGeneration) return null;
   vocab = listed.vocab;
   applyVocabulary();
   engagements = listed.engagements;
@@ -1568,10 +1798,11 @@ async function loadEngagements(preferPath) {
     return false;
   }
   if (!engagements.length) return false;
-  active =
+  const chosen =
     (preferPath && engagements.find((e) => e.path === preferPath)?.path) ||
     (active && engagements.find((e) => e.path === active)?.path) ||
     engagements[0].path;
+  if (chosen !== active) select(chosen);
   renderEngagements();
   renderMisfits();
   return true;
@@ -1579,7 +1810,9 @@ async function loadEngagements(preferPath) {
 
 async function refresh(preferPath) {
   try {
-    if (!(await loadEngagements(preferPath))) {
+    const listed = await loadEngagements(preferPath, viewGeneration);
+    if (listed === null) return;   // a later choice owns the page now
+    if (!listed) {
       if (!$("setup-card").classList.contains("hidden")) return;   // waiting for the folder
       banner(`No engagements under ${clientsRoot} yet — click ${$("btn-new").textContent.trim()} to create the first.`, "ok");
       show("rows", []);
@@ -1587,9 +1820,10 @@ async function refresh(preferPath) {
       $("rows-not-asked-group").classList.add("hidden");
       return;
     }
-    render(await call(withEng("state")));
+    const view = viewGeneration;
+    renderFor(view, await call(withEng("state")));
   } catch (err) {
-    toast(err.message);
+    failed(err, () => refresh(preferPath));
   }
 }
 
@@ -1606,7 +1840,7 @@ async function saveRoot() {
     renderShortOfRoom(result.short_of_room || []);
     await refresh();
   } catch (err) {
-    toast(err.message);
+    failed(err, saveRoot);
   } finally {
     btn.disabled = false;
   }
@@ -1636,58 +1870,118 @@ async function installSchedule() {
       banner(`Not Windows here. On the scheduling machine run:  ${result.command.join(" ")}`, "warn");
     }
   } catch (err) {
-    toast(err.message);
+    failed(err, installSchedule);
   } finally {
     btn.disabled = false;
   }
 }
 
+// What a Sort & Scan reply says, as the banner's lines and its colour.
+function scanSummary(result) {
+  const run = result.run;
+  const summary = result.state && result.state.summary ? result.state.summary.line : "";
+  // What the pass said beyond the asked return (decision 189): the
+  // household's other returns' problems, shown the way this return's
+  // warnings are - the API's words, each under the return's own label.
+  // The pass's own warnings are notices (decision 193), which stay.
+  const also = [];
+  for (const other of result.household || []) {
+    for (const said of [other.error, other.skipped, ...other.warnings]) {
+      if (said) also.push(`• ${other.label}: ${said}`);
+    }
+  }
+  if (run.skipped) return { text: [`Nothing done: ${run.skipped}.`, ...also].join("\n"), cls: "warn" };
+  if (run.error) return { text: [`The pass reported a problem: ${run.error}`, ...also].join("\n"), cls: "err" };
+  const did = [`filed ${run.filed}`];
+  if (run.review) did.push(`${run.review} to review`);
+  if (run.waiting) did.push(`${run.waiting} still syncing`);
+  const problems = [];
+  if (run.file_errors.length) problems.push(`${run.file_errors.length} file(s) could not be sorted`);
+  const lines = [`Pass complete — ${did.join(", ")}.   ${summary}`];
+  if (problems.length) lines.push(`But ${problems.join("; ")}.`);
+  for (const w of run.warnings) lines.push(`• ${w}`);
+  lines.push(...also);
+  return { text: lines.join("\n"),
+           cls: problems.length || run.warnings.length || also.length || run.cancelled ? "warn" : "ok" };
+}
+
+// The one Sort & Scan in flight from this window: its command line, and the
+// pass id its first progress line gave (what Stop names).
+let scanning = null;
+
+// Where the pass is (decision 193): the household, and the file or request
+// under it, in the API's words. Only the in-flight Sort & Scan's lines.
+function drawProgress(m) {
+  if (!scanning || JSON.stringify(m.args) !== JSON.stringify(scanning.args)) return;
+  const said = m.progress || {};
+  if (said.pass) scanning.pass = said.pass;
+  if (scanning.pass && !scanning.stopping) $("btn-stop-pass").disabled = false;
+  const words = vocab.progress;
+  const lines = [];
+  if (said.household) lines.push(el("div", { className: "pp-household" }, fill(words.household, said)));
+  if (said.event === "file" && words[said.step]) {
+    lines.push(el("div", { className: "pp-file" }, fill(words[said.step], said)));
+  }
+  if (lines.length) show("pass-progress", lines);
+  $("pass-progress").classList.toggle("hidden", !lines.length);
+}
+
+// Stop: only this app's own pass, at its next file (decision 193). What was
+// done is recorded and the rest waits; the reply says so when it comes.
+async function stopPass() {
+  if (!scanning || !scanning.pass || scanning.stopping) return;
+  const btn = $("btn-stop-pass");
+  scanning.stopping = true;
+  btn.disabled = true;
+  btn.textContent = vocab.progress.stopping;
+  try {
+    await call(["cancel-pass"], { pass: scanning.pass });
+  } catch (err) {
+    failed(err);
+  }
+}
+
 async function runScan() {
   const btn = $("btn-scan");
+  const stop = $("btn-stop-pass");
+  const view = viewGeneration;
+  const args = withEng("scan");
+  scanning = { args, pass: null, stopping: false };
   btn.disabled = true;
   btn.classList.add("spinning");
   $("scan-label").textContent = "Scanning…";
+  stop.textContent = vocab.progress.stop;
+  stop.disabled = true;
+  stop.classList.remove("hidden");
   try {
-    const result = await call(withEng("scan"));
-    render(result.state);
-    const run = result.run;
-    const summary = result.state.summary ? result.state.summary.line : "";
-    // What the pass said beyond the asked return (decision 189): the
-    // pass's own warnings, and the household's other returns' problems,
-    // shown the way this return's warnings are - the API's words, each
-    // under the return's own label.
-    const also = [];
-    for (const w of result.pass_warnings || []) also.push(`• ${w}`);
-    for (const other of result.household || []) {
-      for (const said of [other.error, other.skipped, ...other.warnings]) {
-        if (said) also.push(`• ${other.label}: ${said}`);
-      }
-    }
-    if (run.skipped) {
-      banner([`Nothing done: ${run.skipped}.`, ...also].join("\n"), "warn");
+    const result = await call(args);
+    // The pass's own warnings (decision 189) stay, as notices (decision 193).
+    warningNotices(result.pass_warnings || []);
+    const said = scanSummary(result);
+    if (view !== viewGeneration) {
+      // The return it scanned is no longer shown (D6): its summary is a
+      // notice under its own label, so nothing vanishes, and the return
+      // shown is drawn from the record.
+      notice({ sentence: `${result.run.label}: ${said.text}`, kind: "warning" });
+      await refresh(active);
       return;
     }
-    if (run.error) {
-      banner([`The pass reported a problem: ${run.error}`, ...also].join("\n"), "err");
-      return;
-    }
-    const did = [`filed ${run.filed}`];
-    if (run.review) did.push(`${run.review} to review`);
-    if (run.waiting) did.push(`${run.waiting} still syncing`);
-    const problems = [];
-    if (run.file_errors.length) problems.push(`${run.file_errors.length} file(s) could not be sorted`);
-    const lines = [`Pass complete — ${did.join(", ")}.   ${summary}`];
-    if (problems.length) lines.push(`But ${problems.join("; ")}.`);
-    for (const w of run.warnings) lines.push(`• ${w}`);
-    lines.push(...also);
-    banner(lines.join("\n"),
-           problems.length || run.warnings.length || also.length ? "warn" : "ok");
+    if (result.state) renderFor(view, result.state);
+    else await refresh(active);     // filed, then could not redraw (D5): the record redraws it
+    if (result.lock) showLock(result.lock);
+    banner(said.text, said.cls);
   } catch (err) {
-    toast(err.message);
+    failed(err, runScan);
+    // A pass stopped at the limit says where it was; the page is what the
+    // record holds, so it is drawn again from it.
+    if (err.result && err.result.killed && view === viewGeneration) await refresh(active);
   } finally {
-    btn.disabled = false;
+    scanning = null;
+    btn.disabled = locked;
     btn.classList.remove("spinning");
     $("scan-label").textContent = SCAN_LABEL;
+    stop.classList.add("hidden");
+    $("pass-progress").classList.add("hidden");
   }
 }
 
@@ -1705,7 +1999,7 @@ async function openWizard() {
     }
     priors = (await call(["priors"])).priors;
   } catch (err) {
-    toast(err.message);
+    failed(err, openWizard);
     return;
   }
   selectedForm = null;
@@ -1917,7 +2211,7 @@ async function rollForward() {
     banner(lines.join("\n"),
       result.skipped.length || result.warning || dropped ? "warn" : "ok");
   } catch (err) {
-    toast(err.message);
+    failed(err);
   } finally {
     btn.disabled = false;
   }
@@ -2033,7 +2327,7 @@ async function refreshProposals(person, redraw) {
   try {
     result = await call(["propose-spellings"], { name: person.name, kind: person.kind });
   } catch (err) {
-    toast(err.message);
+    failed(err);
     return;
   }
   const held = new Map(person.proposed.map((p) => [p.text, p.on]));
@@ -2330,7 +2624,7 @@ async function createEngagement() {
     if (result.link_dropped) lines.push(result.link_dropped);
     banner(lines.join("\n"), result.link_dropped ? "warn" : "ok");
   } catch (err) {
-    toast(err.message);
+    failed(err);
   } finally {
     btn.disabled = false;
   }
@@ -2537,7 +2831,7 @@ async function openEditor() {
   try {
     editorState = await call(withEng("state"));
   } catch (err) {
-    toast(err.message);
+    failed(err, openEditor);
     return;
   }
   editorRows = (editorState.rules || []).map(editorRow);
@@ -2568,6 +2862,7 @@ function renameChoices() {
 // new identifier in place - and adopts the list's version the rename left,
 // which the API checked against the one this editor opened on first.
 async function renameRequest() {
+  const view = viewGeneration;   // drawn only if this return is still the one shown (D6)
   const from = $("ed-rename-from").value;
   const to = $("ed-rename-to").value.trim();
   if (!from || !to) return;
@@ -2580,7 +2875,7 @@ async function renameRequest() {
     for (const row of editorRows) if (row.identifier === renamed.old) row.identifier = renamed.new;
     renderEditorRows();
     renameChoices();
-    render(result.state);
+    renderFor(view, result.state);
     const lines = [fill(vocab.editor.renamed_note, renamed)];
     if (renamed.left.length) lines.push(fill(vocab.editor.rename_left_note, { left: renamed.left.join(", ") }));
     if (renamed.scan_note) lines.push(renamed.scan_note);
@@ -2641,6 +2936,7 @@ function pasteRows(block) {
 }
 
 async function saveEditor() {
+  const view = viewGeneration;   // drawn only if this return is still the one shown (D6)
   const btn = $("ed-save");
   btn.disabled = true;
   try {
@@ -2651,17 +2947,19 @@ async function saveEditor() {
       engagement: engagementFromFields(),
       head: editorState.list_head,
     });
-    render(result.state);
+    renderFor(view, result.state);
     closeEditor();
     const saved = result.saved;
     const lines = [saved.recorded
       ? fill(vocab.editor.saved, { changed: saved.changed.length, removed: saved.removed.length })
       : vocab.editor.nothing_changed];
-    if (result.warnings.length) {
+    // The editor's rule warnings are the state's (decision 193, ruling 2).
+    const ruleWarnings = (result.state && result.state.warnings) || [];
+    if (ruleWarnings.length) {
       lines.push(`${vocab.editor.warnings_heading}:`);
-      for (const w of result.warnings) lines.push(`• ${w}`);
+      for (const w of ruleWarnings) lines.push(`• ${w}`);
     }
-    banner(lines.join("\n"), result.warnings.length ? "warn" : "ok");
+    banner(lines.join("\n"), ruleWarnings.length ? "warn" : "ok");
   } catch (err) {
     editorNote(err.message, "err");
   } finally {
@@ -2696,7 +2994,7 @@ $("ho-file").addEventListener("click", fileHandOver);
 $("household-returns").addEventListener("click", (e) => {
   const button = e.target.closest("button[data-path]");
   if (!button) return;
-  active = button.dataset.path;
+  select(button.dataset.path);
   refresh(active);
 });
 $("btn-edit").addEventListener("click", openEditor);
@@ -2712,7 +3010,7 @@ $("reminder-stages").addEventListener("click", (e) => {
   loadReminder();
 });
 $("eng-select").addEventListener("change", (e) => {
-  active = e.target.value;
+  select(e.target.value);
   refresh(active);
 });
 $("form-grid").addEventListener("click", (e) => {
@@ -2748,6 +3046,17 @@ $("btn-browse").addEventListener("click", async () => {
   if (picked) $("root-input").value = picked;
 });
 $("btn-unlock").addEventListener("click", clearLock);
+$("btn-stop-pass").addEventListener("click", stopPass);
+window.tracker.onProgress(drawProgress);
+$("notices").addEventListener("click", (e) => {
+  const button = e.target.closest("button[data-act]");
+  if (!button) return;
+  const entry = notices.find((one) => one.node.contains(button));
+  if (!entry) return;
+  dismissNotice(entry);
+  if (button.dataset.act === "retry" && entry.retry) entry.retry();
+  if (button.dataset.act === "look") refresh(active);
+});
 $("ne-client").addEventListener("input", syncNameDefault);
 $("ne-year").addEventListener("input", syncNameDefault);
 $("ne-name").addEventListener("input", () => {
@@ -2775,7 +3084,7 @@ $("prior-list").addEventListener("click", async (e) => {
   const button = e.target.closest("button.roll-review-people");
   if (!button) return;
   $("modal").classList.add("hidden");
-  active = button.dataset.path;
+  select(button.dataset.path);
   await refresh(active);
   openEditor();
 });

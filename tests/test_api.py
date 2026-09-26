@@ -18,11 +18,11 @@ import pytest
 import tracker.api as api
 from tests.conftest import TEST_CLIENT, app_stdin, make_engagement
 from tests.samples import PRIOR_YEAR, SCRATCH_PEOPLE
-from tracker import layout, ledger, store, view
+from tracker import layout, ledger, reminder, store, view
 from tracker.filer import FILED, NEEDS_REVIEW, read_index
 from tracker.households import load_household_info
 from tracker.layout import PRIVATE_TREE, inbox_of, return_dir_for
-from tracker.locking import STALE_LOCK_SECONDS, lock_line
+from tracker.locking import STALE_LOCK_SECONDS, lock_line, this_host
 from tracker.manifest import (
     COL_DATE_PATTERN,
     COL_EXPECTED_COUNT,
@@ -140,9 +140,27 @@ def run(capsys, *argv, stdin=None):
             code = api.main(list(argv))
     else:
         code = api.main(list(argv))
-    out = capsys.readouterr().out.strip().splitlines()
-    assert len(out) == 1, f"expected exactly one JSON line, got {out!r}"
-    return code, json.loads(out[0])
+    return code, one_reply(capsys.readouterr().out)
+
+
+def said_by_class(payload: dict, kind: str) -> bool:
+    """An unexpected error said on screen by its class alone (decision 193):
+    never its message, which stays in the error log."""
+    return payload["error"] == api.FAILED.format(kind=kind, log=api.ERROR_LOG_FILENAME) \
+        and payload["failure"]["kind"] == "failed"
+
+
+def one_reply(out: str) -> dict:
+    """The one reply a command printed, the way main.js reads stdout
+    (decision 193): every line but the last is a progress line, and the
+    last - the only one without ``progress`` - is the reply."""
+    from tracker.progress import PROGRESS_KEY
+
+    lines = [json.loads(line) for line in out.strip().splitlines()]
+    assert lines, "expected a reply, got nothing"
+    assert all(PROGRESS_KEY in line for line in lines[:-1]), lines
+    assert PROGRESS_KEY not in lines[-1], lines[-1]
+    return lines[-1]
 
 
 # ------------------------------------------------------------- the contract ----
@@ -1531,9 +1549,11 @@ def test_state_carries_the_warnings_the_pass_reports(capsys, demo_root):
         "engagement": {},
     })
     assert code == 0, payload
-    [warning] = payload["warnings"]
+    # The editor's rule warnings are the state's (decision 193, ruling 2);
+    # the reply's own warnings mean one thing, and this save said nothing.
+    [warning] = payload["state"]["warnings"]
     assert warning.startswith("Row 2 (Z01)") and "never be filed automatically" in warning
-    assert payload["state"]["warnings"] == [warning]
+    assert payload["warnings"] == []
     run_result = run_engagement(engagement_from(engagement), root=demo_root, reminders=REMINDERS_NEVER)
     assert run_result.warnings == [warning]
 
@@ -1555,7 +1575,9 @@ def test_state_shows_the_lock_and_unlock_clears_only_a_stale_one(capsys, demo_ro
     lock.write_text(lock_line(os.getpid(), started), encoding="utf-8")
     code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))
     assert payload["lock"] == {"started": started.isoformat(), "age_minutes": 0, "stale": False,
-                               "stale_after_minutes": STALE_LOCK_SECONDS // 60}
+                               "stale_after_minutes": STALE_LOCK_SECONDS // 60,
+                               "host": this_host(), "this_machine": True, "pass": None,
+                               "engagement": str(engagement)}
     code, payload = run(capsys, "unlock", api.ENGAGEMENT_FLAG, str(engagement))
     assert code == 1 and "may still be going" in payload["error"]
 
@@ -1975,6 +1997,9 @@ def _the_reminder_card_words_are_all_pythons(words):
         "stage_toggle_hint": reminder.STAGE_TOGGLE_HINT,
         "copied": reminder.COPIED_NOTE,
         "set_aside_line": reminder.SET_ASIDE_LINE,
+        "not_yet": reminder.REMINDER_NOT_YET,
+        "unreadable": api.REMINDER_UNREADABLE,
+        "line_unreadable": api.REMINDER_LINE_UNREADABLE,
         "nothing_to_send": NOTHING_OUTSTANDING,
         "stages": [{"number": stage.number, "name": stage.name,
                     "colour": reminder.STAGE_COLOURS[stage.number],
@@ -3395,7 +3420,8 @@ def test_propose_spellings_is_a_read_and_the_renderer_types_no_kind_label_or_not
     code, payload = run(capsys, "propose-spellings",
                         stdin={"name": "John A. Park", "kind": "taxpayer"})
     assert code == 0
-    assert payload == {"spellings": list(propose_spellings("John A. Park", "taxpayer"))}
+    assert payload == {"spellings": list(propose_spellings("John A. Park", "taxpayer")),
+                       "warnings": []}
     assert not list(demo_root.rglob("*_ledger.jsonl"))         # a read: nothing recorded
     assert run(capsys, "propose-spellings", stdin={"name": "x", "kind": "nope"})[0] == 1
 
@@ -4276,20 +4302,20 @@ def test_a_failed_create_removes_only_the_folders_it_made(capsys, demo_root, mon
 
     # A second return in a year the household did not have: the year goes too.
     code, payload = run(capsys, "create", stdin={**spec, "return_name": "Smith 2026", "year": 2026})
-    assert code == 1 and "the scaffold failed" in payload["error"]
+    assert code == 1 and said_by_class(payload, "OSError")
     assert not new_year.exists()
     # A second return in the year it did have: the year stays.
     code, payload = run(capsys, "create", stdin={**spec, "return_name": "Smith Trust"})
-    assert code == 1 and "the scaffold failed" in payload["error"]
+    assert code == 1 and said_by_class(payload, "OSError")
     assert prior.parent.is_dir() and not where(demo_root, "Smith Trust").exists()
     # A rollover into a new year: the same.
     code, payload = run(capsys, "rollover", stdin={"prior": str(prior), "year": 2026})
-    assert code == 1 and "the scaffold failed" in payload["error"]
+    assert code == 1 and said_by_class(payload, "OSError")
     assert not new_year.exists()
     # A new household: it goes, and the private tree it sat in - which was
     # already there - stays.
     code, payload = run(capsys, "create", stdin={**spec, "household": "New Family"})
-    assert code == 1 and "the scaffold failed" in payload["error"]
+    assert code == 1 and said_by_class(payload, "OSError")
     assert not private_household_dir(demo_root, "New Family").exists()
     assert (demo_root / PRIVATE_TREE).is_dir()
 
@@ -4418,7 +4444,7 @@ def test_a_failed_create_removes_a_year_folder_only_when_it_is_empty(capsys, dem
 
     monkeypatch.setattr(api, "scaffold_engagement", another_create_lands_then_the_scaffold_fails)
     code, payload = run(capsys, "create", stdin={**spec, "return_name": "Smith 2026", "year": 2026})
-    assert code == 1 and "the scaffold failed" in payload["error"]
+    assert code == 1 and said_by_class(payload, "OSError")
     assert not where(demo_root, "Smith 2026", year=2026).exists()        # its own return: gone
     assert (theirs / "their file.txt").read_text(encoding="utf-8") == "theirs"   # theirs: kept
     assert new_year.is_dir()                                             # and the year with it
@@ -5797,3 +5823,381 @@ def test_accepting_a_folders_name_is_refused_on_a_root_the_checkpoint_does_not_b
         assert len(ledger.read_events(household)) == before
     finally:
         set_clients_root(demo_root)
+
+
+# ================= decision 193: replies never go quiet ==================
+
+
+def _live_child():
+    """A process that is running and is not this one, for a lock or a pass
+    that must read as another's."""
+    import subprocess
+    import sys
+
+    return subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+
+
+def _raw(capsys, *argv, stdin=None):
+    """A command's whole stdout, lines and all, the way the shell reads it."""
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr("sys.stdin", app_stdin(stdin or {}))
+        code = api.main(list(argv))
+    return code, capsys.readouterr().out
+
+
+def test_every_reply_carries_a_warnings_list_and_every_error_a_failure_whose_sentence_is_the_error(
+        capsys, demo_root):
+    from tracker.progress import FAILURE_KINDS
+
+    code, payload = run(capsys, "list")
+    assert code == 0 and payload["warnings"] == [] and "failure" not in payload
+    for command in sorted(api.COMMANDS):
+        if command == "install-schedule":
+            continue    # it registers a real job; its envelope is main()'s like every other's
+        code, out = _raw(capsys, command, api.ENGAGEMENT_FLAG, str(demo_root / "nowhere"))
+        reply = one_reply(out)
+        assert isinstance(reply["warnings"], list), command
+        if code:
+            failure = reply["failure"]
+            assert failure["sentence"] == reply["error"], command
+            assert failure["kind"] in FAILURE_KINDS, command
+            assert set(failure) >= {"sentence", "kind", "seq", "identifier"}, command
+        else:
+            assert "error" not in reply, command
+    code, payload = run(capsys, "frobnicate")
+    assert code == 1 and payload["failure"]["kind"] == "refused"
+    assert payload["error"].startswith("usage:") and payload["warnings"] == []
+
+
+def test_a_stale_click_is_kind_stale_and_names_the_row_and_the_records_seq_now(
+        capsys, demo_root, tmp_path):
+    from tracker.filer import NOT_REQUESTED
+
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "Mortgage Notes.docx")
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    [parked] = [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
+    code, after = run(capsys, "dismiss", api.ENGAGEMENT_FLAG, str(engagement),
+                      stdin={"original": parked["pbc_location"], "note": "an IRS notice",
+                             "seq": parked["seq"]})
+    assert code == 0, after
+    [now] = [e for e in after["state"]["index"] if e["decision"] == NOT_REQUESTED]
+
+    code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": parked["pbc_location"], "identifier": "D01",
+                               "seq": parked["seq"]})
+    assert code == 1
+    failure = payload["failure"]
+    assert failure["kind"] == "stale" and failure["sentence"] == payload["error"]
+    # The row the person clicked, by the key the card sent, and the line the
+    # record holds for it now - not the one the card was drawn from.
+    assert failure["identifier"] == parked["pbc_location"]
+    assert failure["seq"] == now["seq"] != parked["seq"]
+
+
+def test_a_list_saved_from_an_old_version_is_kind_stale(capsys, demo_root):
+    from tracker.manifest import LIST_MOVED
+
+    spec = {"household": HOUSEHOLD, "return_name": "Smith",
+            "items": [{"identifier": "A01", "document": "W-2", "required_keywords": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = where(demo_root, "Smith")
+    state = payload_of_state(capsys, engagement)
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "items": _rows_of(state), "engagement": {}, "head": "not the head it holds"})
+    assert code == 1 and payload["error"] == LIST_MOVED
+    assert payload["failure"]["kind"] == "stale"
+
+
+def test_a_click_on_a_held_lock_is_kind_locked_with_the_passes_start_host_and_current_file(
+        capsys, demo_root):
+    from tracker import progress
+    from tracker.locking import LOCK_FILENAME
+
+    spec = {"household": HOUSEHOLD, "return_name": "Smith",
+            "items": [{"identifier": "A01", "document": "W-2", "required_keywords": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = where(demo_root, "Smith")
+    state = payload_of_state(capsys, engagement)
+    other = _live_child()
+    try:
+        started = dt.datetime.now().replace(microsecond=0)
+        (engagement / LOCK_FILENAME).write_text(lock_line(other.pid, started), encoding="utf-8")
+        watch = progress.Watch(store.store_path().parent, limit_seconds=60, pass_id=other.pid)
+        watch.say("household", household=HOUSEHOLD, n=1, of=1)
+        watch.say("file", step="sort", name="W-2 Sample.pdf")
+        code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+            "items": _rows_of(state), "engagement": {}, "head": state["list_head"]})
+        assert code == 1, payload
+        failure = payload["failure"]
+        assert failure["kind"] == "locked" and "delete" not in failure["sentence"].lower()
+        lock = failure["lock"]
+        assert lock["started"] == started.isoformat() and lock["host"] == this_host()
+        assert lock["this_machine"] is True and lock["engagement"] == str(engagement)
+        assert lock["pass"]["household"] == HOUSEHOLD and lock["pass"]["name"] == "W-2 Sample.pdf"
+        watch.close("finished")
+    finally:
+        other.kill()
+        other.wait()
+
+
+def test_a_refusal_is_kind_refused_and_keeps_its_sentence(capsys, demo_root):
+    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(demo_root / "nowhere"))
+    assert code == 1 and payload["failure"]["kind"] == "refused"
+    assert "not an engagement" in payload["error"]
+    assert not payload["error"].startswith(("ManifestError", "LayoutError", "DoorError"))
+
+
+def test_a_store_refusal_is_said_in_its_own_sentence_and_kind_refused(capsys, demo_root, monkeypatch):
+    sentence = store.REWRITTEN.format(rel="Sample Household/2025/1040 - Sample", line=7)
+
+    def rewritten(argv):
+        raise store.StoreError(sentence)
+
+    monkeypatch.setitem(api.COMMANDS, "templates", rewritten)
+    code, payload = run(capsys, "templates")
+    assert code == 1 and payload["error"] == sentence       # was "StoreError: ..."
+    assert payload["failure"]["kind"] == "refused"
+
+
+def test_an_unexpected_error_is_said_by_class_on_screen_and_in_full_only_in_the_error_log(
+        capsys, demo_root, monkeypatch):
+    from tracker.settings import error_log_path
+
+    def surprise(argv):
+        raise ValueError("a fabricated message naming Sample Client's folder")
+
+    monkeypatch.setitem(api.COMMANDS, "templates", surprise)
+    code, out = _raw(capsys, "templates")
+    payload = one_reply(out)
+    assert code == 1 and said_by_class(payload, "ValueError")
+    assert "fabricated message" not in out
+    logged = error_log_path().read_text(encoding="utf-8")
+    assert "a fabricated message naming Sample Client's folder" in logged
+    assert "Traceback" in logged and "templates failed" in logged
+
+
+def test_the_error_log_rotates_and_never_syncs_to_disk(capsys, demo_root, monkeypatch):
+    from tracker import settings
+    from tracker.settings import error_log_path
+
+    def no_sync(fd):
+        raise AssertionError("the error log is never synced to disk")
+
+    def surprise(argv):
+        raise ValueError("x" * 400)
+
+    monkeypatch.setattr(os, "fsync", no_sync)
+    monkeypatch.setattr(settings, "ERROR_LOG_MAX_BYTES", 2000)
+    monkeypatch.setitem(api.COMMANDS, "templates", surprise)
+    for _ in range(12):
+        assert run(capsys, "templates")[0] == 1
+    path = error_log_path()
+    assert path.with_name(path.name + ".1").is_file()
+    assert not path.with_name(path.name + f".{settings.ERROR_LOG_BACKUPS + 1}").exists()
+
+
+def test_run_now_prints_a_progress_line_per_household_and_file_before_its_one_reply(
+        capsys, demo_root, tmp_path):
+    from tracker.locking import RUN_TIME_LIMIT_SECONDS
+    from tracker.progress import PROGRESS_KEY
+
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "Mortgage Notes.docx")
+    code, out = _raw(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    lines = [json.loads(line) for line in out.strip().splitlines()]
+    assert code == 0
+    assert all(PROGRESS_KEY in line for line in lines[:-1]) and PROGRESS_KEY not in lines[-1]
+    said = [line[PROGRESS_KEY] for line in lines[:-1]]
+    assert said[0]["event"] == "started" and said[0]["limit_seconds"] == RUN_TIME_LIMIT_SECONDS
+    assert said[1]["event"] == "household" and (said[1]["n"], said[1]["of"]) == (1, 1)
+    files = [one for one in said if one["event"] == "file"]
+    assert {"sort", "scan"} <= {one["step"] for one in files}
+    assert "Mortgage Notes.docx" in {one["name"] for one in files if one["step"] == "sort"}
+    assert all(one["household"] == said[1]["household"] for one in files)
+    assert said[-1]["event"] == "ended" and said[-1]["outcome"] == "finished"
+    assert lines[-1]["pass"] == said[0]["pass"] and lines[-1]["run"]["cancelled"] is False
+
+
+def test_run_now_that_filed_keeps_its_counts_when_the_redraw_fails(capsys, demo_root, tmp_path,
+                                                                     monkeypatch):
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "Mortgage Notes.docx")
+
+    def cannot_redraw(folder):
+        raise RuntimeError("a fabricated redraw failure")
+
+    monkeypatch.setattr(api, "_state", cannot_redraw)
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    assert payload["state"] is None
+    assert payload["run"]["review"] == 1          # the pass's counts stand
+    assert api.STATE_NOT_REDRAWN.format(kind="RuntimeError") in payload["warnings"]
+
+
+def test_cancel_pass_refuses_a_pass_that_is_not_running(capsys, demo_root):
+    from tracker import progress
+
+    code, payload = run(capsys, "cancel-pass", stdin={"pass": 999_999_999})
+    assert code == 1 and payload["error"] == api.NOTHING_TO_STOP
+    assert payload["failure"]["kind"] == "refused"
+    other = _live_child()
+    try:
+        # The scheduled pass: live, and never this app's to stop.
+        scheduled = progress.Watch(store.store_path().parent, limit_seconds=60, pass_id=other.pid)
+        scheduled.say("started")
+        assert run(capsys, "cancel-pass", stdin={"pass": other.pid})[0] == 1
+        # One this app started: asked, and told so.
+        started = progress.Watch(store.store_path().parent, emit=lambda line: None,
+                                 limit_seconds=60, pass_id=other.pid)
+        started.say("started")
+        code, payload = run(capsys, "cancel-pass", stdin={"pass": other.pid})
+        assert code == 0 and payload["stopping"] is True
+        assert started.stop_asked()
+        started.close("stopped")
+    finally:
+        other.kill()
+        other.wait()
+
+
+def test_watch_reports_the_lock_and_then_none_once_it_is_let_go(capsys, demo_root):
+    from tracker.locking import LOCK_FILENAME
+
+    spec = {"household": HOUSEHOLD, "return_name": "Smith",
+            "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = where(demo_root, "Smith")
+    other = _live_child()
+    try:
+        (engagement / LOCK_FILENAME).write_text(lock_line(other.pid, dt.datetime.now()),
+                                                encoding="utf-8")
+        code, payload = run(capsys, "watch", api.ENGAGEMENT_FLAG, str(engagement))
+        assert code == 0 and payload["lock"]["stale"] is False
+        (engagement / LOCK_FILENAME).unlink()
+        code, payload = run(capsys, "watch", api.ENGAGEMENT_FLAG, str(engagement))
+        assert code == 0 and payload == {"lock": None, "warnings": []}
+    finally:
+        other.kill()
+        other.wait()
+
+
+def test_a_reminder_that_cannot_be_read_is_an_error_and_one_not_yet_scanned_is_a_line(
+        capsys, demo_root, monkeypatch):
+    spec = {"household": HOUSEHOLD, "return_name": "Smith",
+            "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = where(demo_root, "Smith")
+    code, payload = run(capsys, "reminder", api.ENGAGEMENT_FLAG, str(engagement), stdin={})
+    assert code == 0 and payload["reminder"] is None
+    assert payload["not_yet"] == reminder.REMINDER_NOT_YET == api._vocab()["reminder"]["not_yet"]
+
+    folder = chased_engagement(capsys, demo_root, name="Unreadable")
+
+    def unreadable(*args, **kwargs):
+        raise OSError(5, "a fabricated read failure")
+
+    monkeypatch.setattr(reminder, "draft_reminder", unreadable)
+    code, payload = run(capsys, "reminder", api.ENGAGEMENT_FLAG, str(folder), stdin={})
+    assert code == 1 and payload["failure"]["kind"] == "failed"
+    assert "fabricated" not in payload["error"]
+
+
+def test_a_returns_reminder_line_that_cannot_be_read_says_so(capsys, demo_root, monkeypatch):
+    folder = chased_engagement(capsys, demo_root, name="Line")
+
+    def unreadable(*args, **kwargs):
+        raise OSError(5, "a fabricated read failure")
+
+    monkeypatch.setattr(reminder, "last_approved_event", unreadable)
+    payload = payload_of_state(capsys, folder)
+    [line] = [r["reminder"] for r in payload["household"]["returns"] if r["path"] == str(folder)]
+    assert line["unreadable"] is True and line["kind"] == "OSError (EIO)"
+    [label] = [r["label"] for r in payload["household"]["returns"] if r["path"] == str(folder)]
+    assert api.REMINDER_LINE_UNREADABLE.format(label=label, kind="OSError (EIO)") in payload["warnings"]
+
+
+def test_a_root_that_cannot_be_walked_says_so_on_the_feeds_and_the_list(capsys, demo_root,
+                                                                         monkeypatch):
+    from tracker.registry import RegistryError
+
+    father, _llc = two_households(capsys, demo_root)
+
+    def cannot_walk(*args, **kwargs):
+        raise RegistryError("a fabricated walk failure")
+
+    monkeypatch.setattr(api, "households_named", cannot_walk)
+    payload = payload_of_state(capsys, father)
+    assert [feed["warning"] for feed in payload["household"]["feeds"]] == [api.PRACTICE_NOT_WALKED]
+    assert api.PRACTICE_NOT_WALKED in payload["warnings"]
+
+    monkeypatch.setattr(api, "discover_engagements", cannot_walk)
+    code, payload = run(capsys, "list")
+    assert code == 0 and payload["root_problem"] == api.PRACTICE_NOT_WALKED
+    assert payload["warnings"] == [api.PRACTICE_NOT_WALKED]
+    assert "fabricated" not in json.dumps(payload)
+
+
+def test_a_reminder_held_a_week_says_so(capsys, demo_root, monkeypatch):
+    from tests.conftest import seed_statuses
+    from tracker import reasons
+    from tracker.manifest import StatusUpdate
+
+    folder = chased_engagement(capsys, demo_root, name="Held Long")
+    seed_statuses(folder, {"B01": StatusUpdate(
+        status=Status.FAILED, file_count=1,
+        validation_notes="x.pdf: " + reasons.WRONG_DOCUMENT.format(listed="'1098'"))})
+    days = reminder.HELD_WARN_DAYS + 3
+    monkeypatch.setattr(api, "created_on", lambda path: dt.date.today() - dt.timedelta(days=days))
+    code, payload = run(capsys, "reminder", api.ENGAGEMENT_FLAG, str(folder), stdin={})
+    assert code == 0, payload
+    said = reminder.HELD_TOO_LONG.format(days=days)
+    assert payload["reminder"]["held_too_long"] == said and said in payload["warnings"]
+
+    monkeypatch.setattr(api, "created_on", lambda path: dt.date.today())
+    code, payload = run(capsys, "reminder", api.ENGAGEMENT_FLAG, str(folder), stdin={})
+    assert payload["reminder"]["held_too_long"] == "" and payload["warnings"] == []
+
+
+def test_a_draft_beside_an_edited_one_is_said_in_the_app(capsys, demo_root):
+    folder = chased_engagement(capsys, demo_root, name="Beside")
+    (folder / reminder.NEW_DRAFT_FILENAME).write_text("a fabricated fresh draft\n", encoding="utf-8")
+    code, payload = run(capsys, "reminder", api.ENGAGEMENT_FLAG, str(folder), stdin={})
+    assert code == 0 and payload["warnings"] == [reminder.DRAFT_WRITTEN_BESIDE]
+
+
+def test_an_action_whose_readme_cannot_be_rewritten_warns(capsys, demo_root, monkeypatch):
+    import tracker.filer as filer_module
+    from tracker.filer import README_NOT_REWRITTEN
+
+    spec = {"household": HOUSEHOLD, "return_name": "Smith",
+            "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = where(demo_root, "Smith")
+
+    def cannot_write(*args, **kwargs):
+        raise OSError(13, "a fabricated denial")
+
+    state = payload_of_state(capsys, engagement)
+    monkeypatch.setattr(filer_module, "write_readme", cannot_write)
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "items": _rows_of(state), "engagement": {"due": "2026-03-15"}, "head": state["list_head"]})
+    assert code == 0, payload
+    assert payload["warnings"] == [README_NOT_REWRITTEN.format(kind="PermissionError (EACCES)")]
+
+
+def test_a_rolled_from_naming_nothing_is_a_warning(capsys, demo_root, monkeypatch):
+    from dataclasses import replace as replaced
+
+    from tracker.registry import ROLLED_FROM_UNMATCHED
+
+    spec = {"household": HOUSEHOLD, "return_name": "Smith",
+            "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = where(demo_root, "Smith")
+    real = api.engagement_from
+
+    def rolled_from_nothing(folder):
+        found = real(folder)
+        return replaced(found, info=replaced(found.info, rolled_from="1040 - Nobody Sample"))
+
+    monkeypatch.setattr(api, "engagement_from", rolled_from_nothing)
+    payload = payload_of_state(capsys, engagement)
+    assert payload["warnings"] == [ROLLED_FROM_UNMATCHED.format(rolled_from="1040 - Nobody Sample")]

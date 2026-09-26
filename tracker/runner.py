@@ -151,7 +151,6 @@ import os
 import re
 import sys
 import time
-import traceback
 from collections.abc import Iterable
 from contextlib import ExitStack, nullcontext
 from dataclasses import dataclass, field
@@ -186,7 +185,7 @@ from tracker.layout import (
     root_of,
 )
 from tracker.ledger import LedgerError
-from tracker.locking import engagement_lock
+from tracker.locking import RUN_TIME_LIMIT_SECONDS, engagement_lock
 from tracker.manifest import (
     ISO_DATE_HINT,
     ManifestError,
@@ -195,6 +194,7 @@ from tracker.manifest import (
     summarize,
 )
 from tracker.page import esc, page_text, table, tolerant_console
+from tracker.progress import Watch
 from tracker.records import ENGAGEMENT_LABELS, NO, YES
 from tracker.registry import (
     SKIP_ROLLED_FORWARD,
@@ -207,6 +207,7 @@ from tracker.registry import (
 from tracker.reminder import (
     APPROVED_NOTE,
     DRAFT_FILENAME,
+    DRAFT_WRITTEN_BESIDE,
     NEW_DRAFT_FILENAME,
     DraftsEditedError,
     ReminderError,
@@ -214,6 +215,7 @@ from tracker.reminder import (
     draft_reminder,
     drafted_event,
     held_refusal,
+    held_too_long,
     is_approved_this_week,
     is_protected,
     last_draft_event,
@@ -227,6 +229,7 @@ from tracker.settings import (
     NO_ROOT_HINT,
     SettingsError,
     clients_root,
+    error_log,
     firm,
     product_name,
     settings_path,
@@ -442,6 +445,10 @@ OUT_OF_TIME = ("this household's time for this pass ran out after {n} file(s); t
 #: Its draft note: a letter built on an unfinished pass could chase what
 #: already arrived, and the next pass's draft rule catches the week up.
 OUT_OF_TIME_NO_DRAFT = "not drafted this pass: the household's time ran out"
+#: A pass a person stopped (decision 193): the household's deadline brought
+#: to now, so it is said as :data:`OUT_OF_TIME` is, with who stopped it.
+PASS_CANCELLED = "stopped by a person after {n} file(s); the rest wait for the next pass"
+CANCELLED_NO_DRAFT = "not drafted this pass: a person stopped it"
 #: The hint of when each household last completed a pass (decision 189),
 #: beside the store, so it holds household names only where the store
 #: already does and moves with it. A hint, never a record: nothing but the
@@ -464,6 +471,7 @@ WHY_OUT_OF_TIME = "ran out of time"
 WHY_HELD_LOCK = "held lock"
 WHY_NO_ROOM = "no room"
 WHY_FAILED = "failed"
+WHY_CANCELLED = "stopped by a person"
 #: The run log's line before a logged pass does anything, and what the
 #: next pass says when the last such line has no pass summary after it
 #: (decision 189, SPEC-161 ruling 3): killed, or the machine went off.
@@ -532,6 +540,12 @@ class EngagementRun:
     locked_out: bool = False
     #: The household's time for this pass ran out (decision 189).
     out_of_time: bool = False
+    #: A person stopped the pass before this household's work was done
+    #: (decision 193): what was done is recorded, the rest waits.
+    cancelled: bool = False
+    #: The return whose lock a take met, when ``locked_out`` (decision
+    #: 193): the app's notice says who holds it and since when.
+    locked_at: Path | None = None
     #: When this engagement was passed over. None on a row the status page
     #: read rather than ran, so the page never dates a pass that never was.
     last_pass: dt.datetime | None = None
@@ -777,9 +791,18 @@ def run_household(
     weekday: int = DRAFT_WEEKDAY,
     registry: object,
     budget: float | None = None,
+    watch: Watch | None = None,
+    place: tuple[int, int] = (1, 1),
 ) -> list[EngagementRun]:
     """One pass over a whole household: sort its one inbox across every
     return it feeds, then scan, draft and draw each of its own returns.
+
+    **Watched, and stoppable** (decision 193). ``watch`` is told the
+    household (``place``: its position in the pass) and, through the sort
+    and the scan, each file and request; a stop a person asked for through
+    it brings the household's deadline to now, and every working return
+    then says :data:`PASS_CANCELLED` instead of :data:`OUT_OF_TIME` and is
+    not drafted.
 
     **Bounded** (decision 189). ``budget`` seconds - by default
     :data:`HOUSEHOLD_BUDGET_SECONDS`, the scheduled pass and Run now alike
@@ -837,6 +860,8 @@ def run_household(
     # Stamped before anything is touched, so a return that fails its
     # pre-checks still says when it was last looked at.
     runs = [EngagementRun(engagement=one, last_pass=dt.datetime.now()) for one in returns]
+    if watch is not None:
+        watch.say("household", household=household.name, n=place[0], of=place[1])
     if registry is None:
         for run in runs:
             run.error = NO_PRACTICE
@@ -907,7 +932,7 @@ def run_household(
             # sweeps its own.
             if not dry_run:
                 sweep_stranded_temps(household, [run.engagement.path for run in working],
-                                     started=started)
+                                     started=started, said=working[0].warnings)
             # The household's own side - the inbox and the year's folder -
             # is laid out once for the lot, before the inbox is read. The
             # fed returns are not in it: a fed return's own household lays
@@ -918,11 +943,12 @@ def run_household(
                                    may_make_household=not client_side_there)
             if sorting:
                 taken, unreached = _sort_step(household, sorting, fed, today=today,
-                                              dry_run=dry_run, deadline=deadline)
+                                              dry_run=dry_run, deadline=deadline, watch=watch)
             for run in working:
                 run_engagement(run.engagement, root=root, today=today, dry_run=dry_run,
                                reminders=reminders, weekday=weekday, lock_held=not dry_run,
-                               run=run, deadline=deadline, unfinished=bool(unreached))
+                               run=run, deadline=deadline, unfinished=bool(unreached),
+                               watch=watch)
             # The README, once, after the sort and after every return's
             # scan and draft, still inside the locks (decision 130): what
             # the client reads is current as of this pass, never one pass
@@ -932,11 +958,13 @@ def run_household(
             # Each writes only when its text changed.
             if not dry_run:
                 for one in dict.fromkeys([household, *(household_of(f.path) for f in fed)]):
-                    refresh_household_readme(one)
+                    refresh_household_readme(one, said=working[0].warnings)
     except ScanLockedError as exc:
+        held = exc.lock.parent if getattr(exc, "lock", None) else None
         for run in working:
             run.skipped = f"another run is still going ({exc})"
             run.locked_out = True
+            run.locked_at = held
     except Exception as exc:  # the household's surprise must not stop the practice
         # Before ``working`` is known - a pre-check that raised - every
         # return not already skipped or failed carries it.
@@ -949,12 +977,21 @@ def run_household(
                 run.error = content_check.said_as_class(exc)
         log.error("A household stopped early (%s)", content_check.said_as_class(exc),
                   exc_info=True)
+    stopped = watch is not None and watch.stop_asked()
     if unreached or any(run.out_of_time for run in working):
-        # The household's time ran out (decision 189): every working return
-        # says so, whichever step it ran out in, and the rest waits.
+        # The household's time ran out (decision 189), or a person stopped
+        # it (decision 193, the same deadline brought to now): every working
+        # return says which, whichever step it ended in, and the rest waits.
         for run in working:
-            run.out_of_time = True
-            run.warnings.append(OUT_OF_TIME.format(n=taken))
+            if stopped:
+                run.cancelled = True
+                run.out_of_time = False
+                run.warnings.append(PASS_CANCELLED.format(n=taken))
+                if run.draft_note == OUT_OF_TIME_NO_DRAFT:
+                    run.draft_note = CANCELLED_NO_DRAFT
+            else:
+                run.out_of_time = True
+                run.warnings.append(OUT_OF_TIME.format(n=taken))
     for run in working:
         if run.file_errors and not run.error:
             # The rest of the pass went ahead, but a drop that could not be
@@ -1026,7 +1063,8 @@ def _feeds_of(household: Path, year: int, registry: object) -> tuple[list[Engage
 
 def _sort_step(household: Path, sorting: list[EngagementRun], fed: list[Engagement], *,
                today: dt.date, dry_run: bool,
-               deadline: float | None = None) -> tuple[int, int]:
+               deadline: float | None = None,
+               watch: Watch | None = None) -> tuple[int, int]:
     """The household's one inbox, sorted across the returns of its open year
     and the returns it feeds.
 
@@ -1055,7 +1093,7 @@ def _sort_step(household: Path, sorting: list[EngagementRun], fed: list[Engageme
     reports = file_household_drops(
         inbox_of(first), originals,
         own=[run.engagement.path for run in sorting], fed=[one.path for one in fed],
-        today=today, dry_run=dry_run, deadline=deadline,
+        today=today, dry_run=dry_run, deadline=deadline, watch=watch,
     )
     for run in sorting:
         filed = reports.get(run.engagement.path)
@@ -1088,6 +1126,7 @@ def run_engagement(
     run: EngagementRun | None = None,
     deadline: float | None = None,
     unfinished: bool = False,
+    watch: Watch | None = None,
 ) -> EngagementRun:
     """Scaffold, scan and (on the draft day) draft and draw one return.
 
@@ -1129,7 +1168,7 @@ def run_engagement(
             if not dry_run:
                 scaffold_engagement(engagement.path)   # contact from the household
             scanned = scan_engagement(engagement.path, root=root, today=today, dry_run=dry_run,
-                                      lock_held=not dry_run, deadline=deadline)
+                                      lock_held=not dry_run, deadline=deadline, watch=watch)
             summary = scanned.summary
             run.statuses = summary.counts
             run.outstanding = summary.outstanding
@@ -1152,11 +1191,16 @@ def run_engagement(
                 _view_step(run)
     except ScanLockedError as exc:
         run.skipped = f"another run is still going ({exc})"
+        run.locked_at = exc.lock.parent if getattr(exc, "lock", None) else None
     except (ManifestError, ReminderError) as exc:
         run.error = str(exc)
     except Exception as exc:  # one client's surprise must not stop the rest
-        run.error = f"{exc.__class__.__name__}: {exc}"
-        run.draft_note = traceback.format_exc(limit=3).strip().splitlines()[-1]
+        # Its class and code, never its message (decision 193, security
+        # principle 7): this reaches the page and the run log, and the
+        # message can name a client's folder. The whole trace goes to the
+        # local error log - the same rule as run_household's.
+        run.error = content_check.said_as_class(exc)
+        log.error("A return's pass stopped early (%s)", run.error, exc_info=True)
     return run
 
 
@@ -1279,6 +1323,10 @@ def _draft_step(run: EngagementRun, *, dry_run: bool, today: dt.date,
         # together, and the sentence names both.
         run.held = len(draft.held) + draft.unsorted
         run.draft_note = held_refusal(draft)
+        # A hold older than a week is said on the page and in the log too
+        # (decision 193), by the one rule the app says it by.
+        if late := held_too_long(engagement.path, today, created=created_on(engagement.path)):
+            run.warnings.append(late)
         _retire_unedited_drafts(engagement.path, approved_since=week)
         _record(engagement.path, previous, drafted_event(draft, None))
         return
@@ -1300,10 +1348,7 @@ def _draft_step(run: EngagementRun, *, dry_run: bool, today: dt.date,
     run.drafted = written
     run.stage = draft.stage
     if written.name == NEW_DRAFT_FILENAME:
-        run.draft_note = (
-            f"{DRAFT_FILENAME} has been edited, so this week's draft was "
-            f"written to {NEW_DRAFT_FILENAME} instead"
-        )
+        run.draft_note = DRAFT_WRITTEN_BESIDE
     _record(engagement.path, previous, drafted_event(draft, written), since=week)
 
 
@@ -1379,8 +1424,13 @@ def run_registry(
     weekday: int = DRAFT_WEEKDAY,
     only: str = "",
     report: RunReport | None = None,
+    watch: Watch | None = None,
 ) -> RunReport:
     """Run every household in the registry, least recently completed first.
+
+    ``watch`` (decision 193) is told each household and, through it, each
+    file; a stop seen through it ends the loop after the household it
+    stopped, and the lock retry at the end is not made.
 
     **The order** (decision 189, SPEC-161 ruling 2): by when each household
     last completed a pass, oldest first, one never completed first, ties in
@@ -1428,10 +1478,11 @@ def run_registry(
             if any(one.path in selected for one in returns)]
     order = sorted(range(len(walk)), key=lambda at: _completed_key(hint, walk[at][0], at))
 
-    def one_household(household: Path, returns: list[Engagement]) -> list[EngagementRun]:
+    def one_household(household: Path, returns: list[Engagement],
+                      place: tuple[int, int] = (1, 1)) -> list[EngagementRun]:
         return run_household(household, returns, root=registry.source, today=today,
                              dry_run=dry_run, reminders=reminders, weekday=weekday,
-                             registry=registry)
+                             registry=registry, watch=watch, place=place)
 
     # One reading child for the whole pass (decision 169, R-4), ended with
     # it. With a graphics card pack it starts now and settles the device,
@@ -1439,15 +1490,19 @@ def run_registry(
     served: dict[Path, list[EngagementRun]] = {}
     with ocr.reading_session(settle=True, in_a_child=content_check.READ_IN_A_CHILD) as reader:
         report.reader, report.reader_note = reader.device, reader.note
-        for at in order:
+        for n, at in enumerate(order, start=1):
             household, returns = walk[at]
             _mark_started(hint_path, hint, household, write=not dry_run)
-            served[household] = one_household(household, returns)
+            served[household] = one_household(household, returns, (n, len(order)))
             report.runs.extend(run for run in served[household]
                                if run.engagement.path in selected)
+            if watch is not None and watch.stop_asked():
+                break
         # Held by a lock the first time: once more, at the end (Dana's
         # amendment), and the second attempt is the one reported.
         for household, returns in walk:
+            if household not in served or (watch is not None and watch.stop_asked()):
+                continue
             working = _working(served[household])
             if working and all(run.locked_out for run in working):
                 first = [run for run in served[household] if run.engagement.path in selected]
@@ -1547,6 +1602,8 @@ def _why_not_served(runs: list[EngagementRun]) -> str:
     """Why a household was not served this pass, or "" when it was: every
     working return ended with no error, no skip and not out of time."""
     working = _working(runs)
+    if any(run.cancelled for run in working):
+        return WHY_CANCELLED
     if any(run.out_of_time for run in working):
         return WHY_OUT_OF_TIME
     if any(run.locked_out for run in working):
@@ -2189,34 +2246,37 @@ def main(argv: list[str] | None = None) -> int:
     # machine's record checkpoint belongs to, or inside it (decision 159).
     if ns.settings:
         os.environ[ENV_SETTINGS_DIR] = ns.settings
-
-    # The scheduled job's shape - the settings folder, no root, not a dry
-    # run - says when it started and how it ended (decision 159, E4). The
-    # file is written first, so a pass that dies anywhere after this line
-    # leaves "not finished" or "failed" behind, never an old "succeeded".
-    last = last_pass_path() if ns.settings and not ns.root and not ns.dry_run else None
-    started = dt.datetime.now()
-    reached = {"root": ""}
-    if last is not None:
-        _say_last_pass(last, started=started, ended=None, root="", result=PASS_RUNNING)
-    try:
-        code = _pass(ns, parser, reached)
-    except BaseException as exc:
+    # The local error log beside the tracker's database, for the pass's
+    # lifetime (decision 193): every warning the package logs, and a
+    # traceback in full, go there and never to the page or the run log.
+    with error_log("tracker"):
+        # The scheduled job's shape - the settings folder, no root, not a dry
+        # run - says when it started and how it ended (decision 159, E4). The
+        # file is written first, so a pass that dies anywhere after this line
+        # leaves "not finished" or "failed" behind, never an old "succeeded".
+        last = last_pass_path() if ns.settings and not ns.root and not ns.dry_run else None
+        started = dt.datetime.now()
+        reached = {"root": ""}
         if last is not None:
-            reason = getattr(exc, "reason_code", PASS_ENDED_EARLY)
+            _say_last_pass(last, started=started, ended=None, root="", result=PASS_RUNNING)
+        try:
+            code = _pass(ns, parser, reached)
+        except BaseException as exc:
+            if last is not None:
+                reason = getattr(exc, "reason_code", PASS_ENDED_EARLY)
+                _say_last_pass(last, started=started, ended=dt.datetime.now(), root=reached["root"],
+                               result=PASS_FAILED, reason_code=reason)
+                # Only into a root that was allowed and proved (the final
+                # review's SF2): a refused root is never written into, even
+                # to log its refusal - last-pass.json carries the reason.
+                _log_a_failed_pass(reached["root"], reason, exc.__class__.__name__)
+            raise
+        if last is not None:
+            reason = (PASS_NOT_SERVED if code == NOT_SERVED_TWICE_EXIT_CODE
+                      else reached.get("reason") or PASS_RETURN_ERRORS if code else "")
             _say_last_pass(last, started=started, ended=dt.datetime.now(), root=reached["root"],
-                           result=PASS_FAILED, reason_code=reason)
-            # Only into a root that was allowed and proved (the final
-            # review's SF2): a refused root is never written into, even
-            # to log its refusal - last-pass.json carries the reason.
-            _log_a_failed_pass(reached["root"], reason, exc.__class__.__name__)
-        raise
-    if last is not None:
-        reason = (PASS_NOT_SERVED if code == NOT_SERVED_TWICE_EXIT_CODE
-                  else reached.get("reason") or PASS_RETURN_ERRORS if code else "")
-        _say_last_pass(last, started=started, ended=dt.datetime.now(), root=reached["root"],
-                       result=PASS_FAILED if code else PASS_SUCCEEDED, reason_code=reason)
-    return code
+                           result=PASS_FAILED if code else PASS_SUCCEEDED, reason_code=reason)
+        return code
 
 
 def _say_last_pass(path: Path, **said) -> None:
@@ -2318,6 +2378,13 @@ def _pass(ns, parser, reached: dict) -> int:
         _say_the_pass_started(log_path, result)
     # The reader writes no temporary file (decision 169), so there is no
     # scratch folder to point it at any more (decision 137's L7 is retired).
+    # Watched from outside (decision 193): the progress file beside the
+    # tracker's database names the household and the file, for the app's
+    # lock notice; nothing is printed, and nothing here can be stopped from
+    # the app. A dry run keeps no file.
+    watch = Watch(None if ns.dry_run else store.store_path().parent,
+                  limit_seconds=RUN_TIME_LIMIT_SECONDS)
+    outcome = "failed"
     unread: list[str] = []
     try:
         if unproved is not None:
@@ -2325,8 +2392,11 @@ def _pass(ns, parser, reached: dict) -> int:
             result.warnings.append(unread[0])
             failed = True
         else:
+            watch.say("started", started=dt.datetime.now().isoformat(timespec="seconds"),
+                      households=len(loaded.by_household()))
             run_registry(loaded, today=when, dry_run=ns.dry_run, reminders=ns.reminders,
-                         weekday=day, only=ns.only, report=result)
+                         weekday=day, only=ns.only, report=result, watch=watch)
+            outcome = "out_of_time" if any(run.out_of_time for run in result.runs) else "finished"
     except Exception as exc:
         # The runner's own code, not a household's (each of those is
         # caught where it happens): said by its class, the whole trace on
@@ -2334,6 +2404,8 @@ def _pass(ns, parser, reached: dict) -> int:
         log.error("The pass stopped early", exc_info=True)
         result.warnings.append(PASS_STOPPED.format(kind=exc.__class__.__name__))
         failed = True
+    finally:
+        watch.close(outcome)
     print(format_report(result))
 
     if log_path is not None:

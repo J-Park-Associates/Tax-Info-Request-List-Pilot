@@ -31,8 +31,12 @@ on it.
 from __future__ import annotations
 
 import json
+import logging
+import logging.handlers
 import os
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from tracker import layout
@@ -104,6 +108,58 @@ def settings_dir() -> Path:
 
 def settings_path() -> Path:
     return settings_dir() / SETTINGS_FILENAME
+
+
+#: The local debug log (decision 193, security principle 7): an
+#: unexpected error's full text and traceback, and every warning the
+#: package logs, go here and nowhere else - never on screen, in the record,
+#: on the page or in the run log. It can name a client's folder, so it
+#: lives beside the tracker's database, on this machine, never in either
+#: client tree; rotated by size, and never synced to disk per line.
+ERROR_LOG_FILENAME = "tracker-errors.log"
+ERROR_LOG_MAX_BYTES = 1_000_000
+ERROR_LOG_BACKUPS = 3
+ERROR_LOG_FORMAT = "%(asctime)s pid=%(process)d %(name)s %(levelname)s %(message)s"
+
+
+def error_log_path() -> Path:
+    """Where :data:`ERROR_LOG_FILENAME` lives: beside the tracker's database
+    (the folder of ``store.store_path()``, the one the pass-order hint uses),
+    so it moves with the store wherever the store goes. ``store`` is asked
+    at call time: it sits above this module."""
+    from tracker import store
+
+    return store.store_path().parent / ERROR_LOG_FILENAME
+
+
+@contextmanager
+def error_log(logger_name: str = "tracker") -> Iterator[Path]:
+    """Attach the rotating error log to ``logger_name`` for the block.
+
+    WARNING and above, UTF-8, opened only when something is written
+    (``delay``), flushed per record and never ``fsync``-ed: it is a debug
+    aid, and a sync per line would cost the pass that is failing. A folder
+    that cannot hold it costs the log, never the command.
+    """
+    path = error_log_path()
+    logger = logging.getLogger(logger_name)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        handler: logging.Handler | None = logging.handlers.RotatingFileHandler(
+            path, maxBytes=ERROR_LOG_MAX_BYTES, backupCount=ERROR_LOG_BACKUPS,
+            encoding="utf-8", delay=True)
+    except OSError:
+        handler = None
+    if handler is not None:
+        handler.setLevel(logging.WARNING)
+        handler.setFormatter(logging.Formatter(ERROR_LOG_FORMAT))
+        logger.addHandler(handler)
+    try:
+        yield path
+    finally:
+        if handler is not None:
+            logger.removeHandler(handler)
+            handler.close()
 
 
 def _read() -> dict:

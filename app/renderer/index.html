@@ -80,8 +80,21 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.22-8.56"/><path d="M22 4 12 14l-3-3"/></svg>
           <span id="scan-label"></span>
         </button>
+        <!-- Stop, offered only while this app's own pass runs (decision 193). -->
+        <button id="btn-stop-pass" class="btn hidden"></button>
       </div>
+      <!-- Where the running pass is: the household, and the file under it. -->
+      <div id="pass-progress" class="pass-progress hidden" role="status" aria-live="polite"></div>
 
+      <!-- Failures and warnings stay until a person dismisses them (decision 193). -->
+      <div id="notices" role="alert" aria-live="polite"></div>
+      <!-- The notices' buttons: static, because a notice must work before any
+           vocabulary has arrived. Word for word tracker.api.NOTICE_LABELS. -->
+      <template id="notice-buttons">
+        <button class="btn btn-small notice-act" data-act="retry">Retry</button>
+        <button class="btn btn-small notice-act" data-act="look">Look again</button>
+        <button class="btn btn-small notice-act" data-act="dismiss">Dismiss</button>
+      </template>
       <div id="banner" class="banner hidden" role="status"></div>
       <!-- The app sits too deep for its reader (decision 169): stays until it is moved. -->
       <div id="reader-warning" class="banner err hidden" role="alert"></div>

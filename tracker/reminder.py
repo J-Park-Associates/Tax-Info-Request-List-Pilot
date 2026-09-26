@@ -186,6 +186,34 @@ STAGE_FLAG = "--stage"
 
 #: Where a fresh draft goes when the standing one has been edited by hand.
 NEW_DRAFT_FILENAME = Path(DRAFT_FILENAME).stem + ".NEW" + Path(DRAFT_FILENAME).suffix
+#: What the pass's note and the app both say while that fresh draft sits
+#: beside an edited one (decision 193): one sentence, from here.
+DRAFT_WRITTEN_BESIDE = (f"{DRAFT_FILENAME} has been edited, so this week's draft was "
+                        f"written to {NEW_DRAFT_FILENAME} instead")
+#: A hold older than this many days is said (decision 193; the number is
+#: Jason's to change): held now, and the last draft that wrote a letter -
+#: else the return's creation - more than this long ago. Display only: it
+#: changes no hold and no letter.
+HELD_WARN_DAYS = 7
+HELD_TOO_LONG = ("this return's reminder has been held for {days} days with no letter drafted; "
+                 "the requests holding it are waiting for a person")
+#: What the Reminder card says for a return with no scan yet - a line,
+#: not an error (decision 193, D7).
+REMINDER_NOT_YET = "No reminder yet: this return has not been scanned."
+
+
+def held_too_long(engagement_dir: Path | str, today: dt.date, *,
+                  created: dt.date | None) -> str:
+    """:data:`HELD_TOO_LONG` filled, when a reminder that is held now has
+    had no letter for more than :data:`HELD_WARN_DAYS` days - counted from
+    the last draft that wrote a file, else from ``created`` - or "". The
+    caller says it is held; this is the one place the rule is."""
+    last = last_draft_event(engagement_dir, carrying=ledger.FILE_KEY)
+    since = ledger.day_of(str(last.get(ledger.AT_KEY, ""))) if last else created
+    if since is None:
+        return ""
+    days = (today - since).days
+    return HELD_TOO_LONG.format(days=days) if days > HELD_WARN_DAYS else ""
 
 _FINGERPRINT_PREFIX = "Fingerprint: "
 _RULE_WIDTH = 60

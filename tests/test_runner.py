@@ -3617,3 +3617,179 @@ def test_only_the_practice_page_reads_the_store_without_following_the_journal():
     passing = sorted(one.name for one in package.glob("*.py")
                      if "follow=False" in one.read_text(encoding="utf-8"))
     assert passing == ["runner.py"]
+
+
+# ------------------------------------ watched, and stoppable (decision 193) ----
+
+
+class StopAt:
+    """A Watch that has a person ask the pass to stop just as it comes to
+    the ``at``-th file of ``step`` - after it finished the one before."""
+
+    def __init__(self, folder, step="sort", at=2, emit=None):
+        from tracker.progress import Watch, ask_to_stop
+
+        outer = self
+        self.seen: list[dict] = []
+
+        class _Watch(Watch):
+            def say(self, event, **fields):
+                super().say(event, **fields)
+                outer.seen.append({"event": event, **fields})
+                if event == "file" and fields.get("step") == step:
+                    if sum(1 for one in outer.seen
+                           if one["event"] == "file" and one.get("step") == step) == at:
+                        assert ask_to_stop(self.folder, self.pass_id)
+
+        self.watch = _Watch(folder, emit=emit or (lambda line: None), limit_seconds=60)
+
+
+THREE_DROPS = (f"W-2 John Smith {YEAR}.pdf", "Form 1098 Mortgage Interest.pdf", "1099-INT First National.pdf")
+
+
+def test_a_stop_between_files_ends_the_sort_at_the_next_file_and_the_next_pass_sorts_the_rest(
+        tmp_path, samples):
+    from tracker.runner import PASS_CANCELLED
+
+    engagement = build_engagement(tmp_path / "Clients", samples, drops=THREE_DROPS)
+    inbox = inbox_of(engagement.path)
+    stop = StopAt(tmp_path / "data")
+
+    run = a_pass(engagement, today=FRIDAY, reminders=REMINDERS_NEVER, watch=stop.watch)
+
+    assert run.cancelled and not run.out_of_time and run.ok
+    assert PASS_CANCELLED.format(n=1) in run.warnings
+    assert run.filed + run.review == 1
+    assert len([p for p in inbox.iterdir() if p.name in THREE_DROPS]) == 2, "two wait in the inbox"
+    assert len(read_index(engagement.path)) == 1
+
+    again = a_pass(engagement, today=FRIDAY, reminders=REMINDERS_NEVER)
+    assert again.ok and not again.cancelled
+    assert not [p for p in inbox.iterdir() if p.name in THREE_DROPS]
+    rows = read_index(engagement.path)
+    assert sorted(Path(row.original_name).name for row in rows) == sorted(THREE_DROPS)
+    originals = originals_of(engagement.path)
+    assert sorted(p.name for p in originals.iterdir() if p.is_file()) == sorted(THREE_DROPS), \
+        "every original once, none missing and no stray"
+
+
+def test_a_stopped_scan_keeps_the_status_the_record_holds_for_the_rest(tmp_path, samples):
+    from tracker.manifest import load_manifest
+    from tracker.runner import PASS_CANCELLED
+
+    engagement = build_engagement(tmp_path / "Clients", samples, drops=THREE_DROPS)
+    first = a_pass(engagement, today=FRIDAY, reminders=REMINDERS_NEVER)
+    assert first.ok
+    held = dict(first.statuses)
+    before = {item.identifier: item.status for item in load_manifest(engagement.path)}
+    # Nothing kept: every request that holds a document needs a new judgment.
+    conn = store.connect()
+    with conn:
+        conn.execute(f"DELETE FROM {store.VERDICTS_TABLE}")
+        conn.execute(f"DELETE FROM {store.FILE_MEMOS_TABLE}")
+    stop = StopAt(tmp_path / "data", step="scan", at=1)
+
+    run = a_pass(engagement, today=FRIDAY, reminders=REMINDERS_NEVER, watch=stop.watch)
+
+    assert run.cancelled and PASS_CANCELLED.format(n=0) in run.warnings
+    after = {item.identifier: item.status for item in load_manifest(engagement.path)}
+    assert after == before, "a request the stop did not reach keeps the status the record holds"
+    assert held
+
+
+def test_a_stopped_household_says_so_and_is_not_drafted(tmp_path, samples):
+    from tracker.runner import CANCELLED_NO_DRAFT, WHY_CANCELLED, _why_not_served
+
+    engagement = build_engagement(tmp_path / "Clients", samples, drops=THREE_DROPS)
+    run = a_pass(engagement, today=SATURDAY, reminders=REMINDERS_ALWAYS,
+                 watch=StopAt(tmp_path / "data").watch)
+    assert run.cancelled and run.drafted is None and run.draft_note == CANCELLED_NO_DRAFT
+    assert not (engagement.path / DRAFT_FILENAME).exists()
+    assert _why_not_served([run]) == WHY_CANCELLED
+
+
+def test_the_scheduled_pass_fills_the_progress_file_and_prints_no_progress_line(
+        tmp_path, samples, capsys, monkeypatch):
+    from tracker.progress import PROGRESS_KEY, Watch
+
+    build_engagement(tmp_path, samples)
+    made: list[Watch] = []
+    kept: list[dict] = []
+
+    class Spied(Watch):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            made.append(self)
+
+        def _keep(self, said):
+            super()._keep(said)
+            kept.append(said)
+
+    monkeypatch.setattr(runner_module, "Watch", Spied)
+    assert main([str(tmp_path), "--date", FRIDAY.isoformat(), "--reminders", "never"]) == 0
+    [watch] = made
+    assert watch.emit is None and not watch.stoppable
+    assert watch.folder == store.store_path().parent
+    assert {"started", "household", "file", "ended"} <= {said["event"] for said in kept}
+    assert f'"{PROGRESS_KEY}"' not in capsys.readouterr().out
+    assert not list((watch.folder / "passes").glob("*.json")), "gone when the pass ends"
+
+
+def test_run_engagement_says_an_unexpected_error_by_class_only(tmp_path, samples, monkeypatch, caplog):
+    from tracker.runner import run_engagement
+
+    engagement = build_engagement(tmp_path, samples, drops=())
+
+    def surprise(*args, **kwargs):
+        raise ValueError(f"a fabricated message naming {engagement.path}")
+
+    monkeypatch.setattr(runner_module, "scan_engagement", surprise)
+    run = run_engagement(engagement, reminders=REMINDERS_NEVER)
+    assert run.error == "ValueError"
+    assert "fabricated" not in run.error and "fabricated" not in run.draft_note
+    assert "fabricated message" in caplog.text        # the whole of it, for the log only
+
+
+def test_a_hold_older_than_seven_days_is_on_the_page(tmp_path, samples, monkeypatch):
+    from tests.conftest import seed_statuses
+    from tracker import reasons
+    from tracker.locking import engagement_lock
+    from tracker.manifest import Status, StatusUpdate
+    from tracker.reminder import HELD_TOO_LONG, HELD_WARN_DAYS
+    from tracker.runner import EngagementRun, RunReport, _draft_step, format_report
+
+    engagement = build_engagement(tmp_path, samples, drops=())
+    identifier = DEMO_ITEMS[0].identifier
+    seed_statuses(engagement.path, {identifier: StatusUpdate(
+        status=Status.FAILED, file_count=1,
+        validation_notes="x.pdf: " + reasons.WRONG_DOCUMENT.format(listed="'1098'"))})
+    days = HELD_WARN_DAYS + 2
+    monkeypatch.setattr(runner_module, "created_on", lambda path: SATURDAY - dt.timedelta(days=days))
+    run = EngagementRun(engagement=engagement)
+    with engagement_lock(engagement.path):
+        _draft_step(run, dry_run=False, today=SATURDAY)
+    said = HELD_TOO_LONG.format(days=days)
+    assert run.held and said in run.warnings
+    # The page counts it with the run's warnings; the run log says it.
+    assert said in format_report(RunReport(today=SATURDAY, runs=[run]))
+
+    fresh = EngagementRun(engagement=engagement)
+    monkeypatch.setattr(runner_module, "created_on", lambda path: SATURDAY)
+    with engagement_lock(engagement.path):
+        _draft_step(fresh, dry_run=False, today=SATURDAY)
+    assert fresh.held and not fresh.warnings
+
+
+def test_a_rolled_from_naming_nothing_is_on_the_page(tmp_path, samples):
+    from tracker.registry import ROLLED_FROM_UNMATCHED, mark_superseded
+    from tracker.runner import RunReport, format_report
+
+    engagement = build_engagement(tmp_path, samples, drops=(), rolled_from="1040 - Nobody Sample")
+    runs = run_household(household_of(engagement.path), mark_superseded([engagement]),
+                         today=FRIDAY, reminders=REMINDERS_NEVER,
+                         registry=discover_engagements(tmp_path))
+    said = ROLLED_FROM_UNMATCHED.format(rolled_from="1040 - Nobody Sample")
+    [run] = runs
+    assert said in run.warnings
+    # The page counts it with the run's warnings; the run log says it.
+    assert said in format_report(RunReport(today=FRIDAY, runs=runs))
