@@ -2026,10 +2026,8 @@ def _catch_up(conn: sqlite3.Connection, root: Path | str | None, engagement_dir:
     applied = row["applied_seq"]
     if len(events) < applied:
         rel = engagement_path(key_root(engagement_dir, root), engagement_dir)
-        raise StoreError(
-            f"{rel}: the store has applied {applied} line(s) and the journal holds {len(events)}; "
-            f"the journal was truncated or replaced - rebuild the engagement"
-        )
+        raise StoreError(TRUNCATED.format(engagement=rel, n=len(events), m=applied,
+                                          k=applied - len(events)))
     _refuse_a_rewrite(conn, row, events, chain,
                       engagement_path(key_root(engagement_dir, root), engagement_dir))
     if len(events) == applied:
@@ -2226,11 +2224,87 @@ def _write_verdict(conn: sqlite3.Connection, engagement_id: int, digest: str, fi
 # ------------------------------------------------------------- the rebuild ----
 
 
+#: What a journal shorter than what the store applied is told (SPEC-162
+#: ruling 5, kept by decision 188): restore first, and what a rebuild
+#: would lose. It replaces "rebuild the engagement", which discarded them.
+TRUNCATED = ("The journal of `{engagement}` holds fewer lines than the store has applied "
+             "(the journal {n}, the store {m}). First restore the journal from Drive's trash or "
+             "version history. `rebuild` would discard the {k} line(s) only the store still holds.")
+#: What the check says of a stored engagement whose journal is gone.
+JOURNAL_GONE = ("The store holds {n} line(s) for `{engagement}` and its record is not there. "
+                f"Restore `{ledger.LEDGER_FILENAME}` from Drive's trash or version history.")
+#: What a rebuild that would discard lines only the store holds is told
+#: (SPEC-162 ruling 6): nothing is discarded silently.
+WOULD_DISCARD = ("`{engagement}`: the store holds {k} line(s) the journal does not; rebuild would "
+                 "discard them (listed above). Nothing was changed; add --discard to discard them.")
+#: How each such line is listed before that sentence.
+DISCARDED_LINE = "  {kind}  {document}  {date}"
+
+
+class WouldDiscard(StoreError):
+    """A rebuild refused because it would discard lines only the store
+    holds; ``lines`` lists them (:data:`DISCARDED_LINE`)."""
+
+    def __init__(self, message: str, lines: list[str]) -> None:
+        super().__init__(message)
+        self.lines = lines
+
+
+def only_in_the_store(conn: sqlite3.Connection, root: Path | str,
+                      engagement_dir: Path | str) -> list[str]:
+    """The lines the store applied that the journal no longer holds at all -
+    a journal cut short, or gone - each as :data:`DISCARDED_LINE`, from the
+    store's own copy of every applied line. Empty where the journal holds
+    at least as many lines as the store applied: a journal rewritten to the
+    same length still holds its lines, and decision 137's check-then-rebuild
+    is its answer (``REWRITTEN``)."""
+    row = _engagement_row(conn, engagement_dir, root)
+    if row is None:
+        return []
+    events, _head, _chain = ledger.read_with_chain(engagement_dir)
+    if row["applied_seq"] <= len(events):
+        return []
+    stored = conn.execute("SELECT seq, payload FROM events WHERE engagement_id = ? ORDER BY seq",
+                          (row["id"],)).fetchall()
+    lines = []
+    for one in stored:
+        if one["seq"] <= len(events):
+            continue
+        event = json.loads(one["payload"])
+        document = (event.get(ledger.ROW_KEY) or {}).get("original_name", "") \
+            if isinstance(event.get(ledger.ROW_KEY), dict) else ""
+        lines.append(DISCARDED_LINE.format(kind=event.get(ledger.EVENT_KEY, ""),
+                                           document=document or "-",
+                                           date=event.get(ledger.AT_KEY, "")))
+    return lines
+
+
+def gone_journals(conn: sqlite3.Connection, root: Path | str) -> list[str]:
+    """:data:`JOURNAL_GONE` for every engagement the store holds under
+    ``root`` whose journal (``ledger.LEDGER_FILENAME``) is not there
+    (SPEC-162 ruling 5): a walk of the root cannot find a record that is
+    gone, so the store's own list is asked. Only rows keyed by their place
+    below the root - a household's or a return's, by the layout's parser -
+    are judged; a row keyed some other way names no folder under it."""
+    from tracker import layout
+
+    said = []
+    for row in conn.execute("SELECT path, applied_seq FROM engagements ORDER BY path"):
+        if layout.place_of("", row["path"]).kind not in (layout.HOUSEHOLD, layout.RETURN):
+            continue
+        folder = Path(root) / row["path"]
+        if not ledger.path_for(folder).exists():
+            said.append(JOURNAL_GONE.format(n=row["applied_seq"], engagement=row["path"]))
+    return said
+
+
 def rebuild_engagement(
     conn: sqlite3.Connection,
     root: Path | str,
     engagement_dir: Path | str,
-) -> None:
+    *,
+    discard: bool = False,
+) -> list[str]:
     """Build one engagement's rows again from the record. Idempotent.
 
     The journal is replayed from its first line, and what it says is what
@@ -2249,9 +2323,19 @@ def rebuild_engagement(
     107): its two tables cascade with the engagement like every other, and
     nothing in the journal can rebuild them, because nothing in the
     journal ever held them. The next pass reads each document once.
+
+    **Never discards silently** (SPEC-162 ruling 6, kept by decision 188).
+    Where the store holds lines the journal does not - a journal truncated,
+    replaced or gone - a rebuild would lose them, so it is refused with
+    :class:`WouldDiscard`, which lists them, unless ``discard`` says a
+    person has read the list; then it returns what it discarded. The answer
+    to a lost journal is Drive's trash or version history, never a rebuild.
     """
     engagement_dir = Path(engagement_dir)
     rel = engagement_path(key_root(engagement_dir, root), engagement_dir)
+    lost = only_in_the_store(conn, root, engagement_dir)
+    if lost and not discard:
+        raise WouldDiscard(WOULD_DISCARD.format(engagement=rel, k=len(lost)), lost)
     built_at = ledger.stamp()
     with _transaction(conn):
         # The lines and their head from one read, inside the transaction
@@ -2274,6 +2358,7 @@ def rebuild_engagement(
         )
         if events:
             _apply(conn, cursor.lastrowid, events, start=1)
+    return lost
 
 
 # --------------------------------------------------------------- the check ----
@@ -2313,6 +2398,10 @@ def check(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str
     name = Path(engagement_dir).name
     rel = engagement_path(key_root(engagement_dir, root), engagement_dir)
     engagement = _engagement_row(conn, engagement_dir, root)
+    # A journal that is gone is one sentence, not a list of every row the
+    # store holds and the record does not (SPEC-162 ruling 5).
+    if engagement is not None and not ledger.path_for(engagement_dir).exists():
+        return [JOURNAL_GONE.format(n=engagement["applied_seq"], engagement=rel)]
     events, _head, chain = ledger.read_with_chain(engagement_dir)
     folded = ledger.replay(events)
     if engagement is None:
@@ -2713,6 +2802,8 @@ if __name__ == "__main__":
     parser.add_argument("root", help="the clients root")
     parser.add_argument("--engagement", help="one engagement folder instead of every one")
     parser.add_argument("--out", help="where export writes its files")
+    parser.add_argument("--discard", action="store_true",
+                        help="rebuild: discard the lines only the store holds, once they are listed")
     ns = parser.parse_args()
 
     given = Path(ns.store)
@@ -2755,7 +2846,19 @@ if __name__ == "__main__":
         else:
             for engagement in folders:
                 if ns.command == "rebuild":
-                    rebuild_engagement(connection, clients_root, engagement)
+                    # Never discards silently (SPEC-162 ruling 6): what would
+                    # go is listed, and --discard is a person's word.
+                    try:
+                        lost = rebuild_engagement(connection, clients_root, engagement,
+                                                  discard=ns.discard)
+                    except WouldDiscard as refused:
+                        for line in refused.lines:
+                            print(line)
+                        print(f"  {refused}")
+                        failures += 1
+                        continue
+                    for line in lost:
+                        print(f"  discarded{line}")
                     print(f"  built {engagement.name}")
                 elif ns.command == "state":
                     print(f"  {state(connection, engagement, ledger_head_now=ledger.head(engagement))}"
@@ -2767,6 +2870,13 @@ if __name__ == "__main__":
                         print(f"  {line}")
                     if not said:
                         print(f"  agrees  {engagement.name}")
+            # One report (decision 188 with 187's re-judging): every stored
+            # engagement under the root whose journal is gone, which no walk
+            # of the root can find.
+            if ns.command == "check" and not ns.engagement:
+                for line in gone_journals(connection, clients_root):
+                    print(f"  {line}")
+                    failures += 1
     except StoreError as exc:
         parser.exit(1, f"{exc}\n")
     finally:

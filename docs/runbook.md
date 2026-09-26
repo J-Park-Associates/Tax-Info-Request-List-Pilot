@@ -1690,6 +1690,25 @@ the same way.
   (`python -m tracker.store "<the app folder>" check "<clients root>"`)
   names every such line in every return.
 
+**If a `_ledger.jsonl` is lost.** The record of a return or a household is
+its `_ledger.jsonl`, and a lost one comes back from **Drive's trash or
+version history** - never by creating the return or the household again,
+and never by a rebuild (decision 188, keeping SPEC-162's rulings). The
+store check names a journal that is gone: *"The store holds <n> line(s) for
+`<engagement>` and its record is not there. Restore `_ledger.jsonl` from
+Drive's trash or version history."* A journal restored from an older
+version holds fewer lines than the store applied, and the pass says so
+before it touches the return: *"The journal of `<engagement>` holds fewer
+lines than the store has applied (the journal <n>, the store <m>). First
+restore the journal from Drive's trash or version history. `rebuild` would
+discard the <k> line(s) only the store still holds."* A rebuild never
+discards those lines silently: `python -m tracker.store "<the app folder>"
+rebuild "<clients root>"` lists each one (its kind, its document, its date),
+says *"the store holds <k> line(s) the journal does not; rebuild would
+discard them (listed above). Nothing was changed; add --discard to discard
+them."* and exits 1. Only once the list has been read and the journal
+cannot be restored does `--discard` rebuild from the journal as it is.
+
 Nothing here sends an email, moves money, or tells a client anything. Every
 message a client gets was read and sent by a person at this firm.
 

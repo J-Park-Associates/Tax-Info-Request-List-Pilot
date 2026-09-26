@@ -135,8 +135,9 @@ TWO_CLAIM = ("Two folders claim the household `{name}`: `{a}` and `{b}`. Keep on
 #: A household's position holding returns' records and no household record
 #: (SPEC-162 ruling 4, kept by decision 188): a stopped entry, counted in
 #: the pass's errors, never a household to set up again.
-HOUSEHOLD_RECORD_MISSING = ("The household record `_ledger.jsonl` of `{folder}` is missing. Restore it "
-                            "from Drive's trash or version history; do not create the household again.")
+HOUSEHOLD_RECORD_MISSING = (f"The household record `{ledger.LEDGER_FILENAME}` of `{{folder}}` is missing. "
+                            "Restore it from Drive's trash or version history; do not create the "
+                            "household again.")
 
 
 class RegistryError(Exception):

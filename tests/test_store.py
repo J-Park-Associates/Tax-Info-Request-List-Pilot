@@ -2447,3 +2447,72 @@ def test_the_store_admits_the_accepted_key_with_one_value():
             store._refuse_a_malformed_line(event, 2, household, kind=store.KIND_HOUSEHOLD)
         assert "'accepted' that is not a folder's name accepted" in str(refused.value)
         assert "everything" not in str(refused.value)
+
+
+# ------------------------ SPEC-162 rulings 5 and 6, kept by decision 188 ----
+
+
+def _two_lines_then_one(conn, root, engagement):
+    """The store applies two lines; the journal is then cut back to one."""
+    build(conn, root, engagement)
+    with engagement_lock(engagement):
+        store.record(conn, engagement, ledger.new(ledger.SCANNED, statuses={}))
+    journal = ledger.path_for(engagement)
+    lines = journal.read_bytes().splitlines(keepends=True)
+    applied = store._engagement_row(conn, engagement, root)["applied_seq"]
+    journal.write_bytes(b"".join(lines[:applied - 1]))
+    return applied
+
+
+def test_store_check_reports_a_journal_that_is_gone(conn, root, by_hand, tmp_path):
+    """T11 (ruling 5): a journal that is gone is one sentence naming the
+    engagement and what the store still holds, saying where to restore it
+    from - from the check of the folder, and from the command line's check
+    of the whole root, which no walk would otherwise reach."""
+    build(conn, root, by_hand)
+    applied = store._engagement_row(conn, by_hand, root)["applied_seq"]
+    ledger.path_for(by_hand).unlink()
+    rel = store.engagement_path(root, by_hand)
+    said = store.JOURNAL_GONE.format(n=applied, engagement=rel)
+
+    assert store.check(conn, root, by_hand) == [said]
+    assert said in store.gone_journals(conn, root)
+    conn.commit()
+    result = cli(tmp_path / "app" / store.STORE_FILENAME, "check", root)
+    assert result.returncode == 1 and said in result.stdout, result.stdout + result.stderr
+
+
+def test_the_truncation_error_says_restore_first(conn, root, by_hand):
+    """T11 (ruling 5): a journal shorter than what the store applied is
+    refused with the sentence that says to restore it first, and what a
+    rebuild would discard."""
+    applied = _two_lines_then_one(conn, root, by_hand)
+    rel = store.engagement_path(root, by_hand)
+    with pytest.raises(store.StoreError) as refused:
+        store.follow_the_journal(conn, root, by_hand)
+    assert str(refused.value) == store.TRUNCATED.format(engagement=rel, n=applied - 1, m=applied,
+                                                        k=1)
+    assert "First restore the journal from Drive's trash" in str(refused.value)
+
+
+def test_rebuild_lists_what_it_would_discard_and_needs_discard(conn, root, by_hand, tmp_path):
+    """T11 (ruling 6): a rebuild never discards silently - it lists each line
+    only the store holds, refuses, and changes nothing; the command line
+    does the same and exits 1, and only ``--discard`` rebuilds."""
+    applied = _two_lines_then_one(conn, root, by_hand)
+    rel = store.engagement_path(root, by_hand)
+    with pytest.raises(store.WouldDiscard) as refused:
+        store.rebuild_engagement(conn, root, by_hand)
+    assert str(refused.value) == store.WOULD_DISCARD.format(engagement=rel, k=1)
+    [line] = refused.value.lines
+    assert line.startswith(f"  {ledger.SCANNED}  -  ")
+    assert store._engagement_row(conn, by_hand, root)["applied_seq"] == applied
+    conn.commit()
+
+    path = tmp_path / "app" / store.STORE_FILENAME
+    result = cli(path, "rebuild", root, "--engagement", by_hand)
+    assert result.returncode == 1
+    assert line in result.stdout and str(refused.value) in result.stdout, result.stdout
+    result = cli(path, "rebuild", root, "--engagement", by_hand, "--discard")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert f"built {by_hand.name}" in result.stdout
