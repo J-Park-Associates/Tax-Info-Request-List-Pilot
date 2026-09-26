@@ -82,7 +82,7 @@ from tracker.reminder import (
     triage,
     write_draft,
 )
-from tracker.scaffold import PREPARED_DIR_NAME, REVIEW_DIR_NAME
+from tracker.scaffold import PREPARED_DIR_NAME, README_FIRST_LINE, REVIEW_DIR_NAME
 from tracker.scanner import OVERRIDE_NOTE, PARTIAL_NOTE, SYNCING_NOTE
 
 
@@ -1554,7 +1554,8 @@ def test_the_readme_and_sync_junk_do_not_hold_the_reminder(tmp_path):
 
     folder = engagement(tmp_path, SENDABLE)
     inbox = waiting_in(folder)
-    (inbox / README_NAME).write_text("What we still need from you", encoding="utf-8")
+    (inbox / README_NAME).write_text(f"{README_FIRST_LINE}\nWhat we still need from you",
+                                      encoding="utf-8")
     for junk in ("desktop.ini", "Thumbs.db", ".DS_Store", "~$W-2.docx"):
         (inbox / junk).write_bytes(b"junk")
 
@@ -1630,9 +1631,9 @@ def test_the_draft_and_the_readme_are_whole_or_absent_after_a_kill(tmp_path):
     scaffold_engagement(folder)
     readme = refresh_household_readme(household_of(folder))
     assert readme is not None and readme.name == README_NAME
-    readme.write_text("an older list\r\n", encoding="utf-8", newline="")
+    readme.write_text(f"{README_FIRST_LINE}\r\nan older list\r\n", encoding="utf-8", newline="")
     killed(README_NAME, "readme")
-    assert readme.read_bytes() == b"an older list\r\n"
+    assert readme.read_bytes() == f"{README_FIRST_LINE}\r\nan older list\r\n".encode("ascii")
 
 
 def test_a_readme_write_left_behind_by_a_crash_does_not_hold_the_reminder(tmp_path):
@@ -1644,7 +1645,7 @@ def test_a_readme_write_left_behind_by_a_crash_does_not_hold_the_reminder(tmp_pa
 
     folder = engagement(tmp_path, SENDABLE)
     inbox = waiting_in(folder)
-    (inbox / README_NAME).write_text("the list", encoding="utf-8")
+    (inbox / README_NAME).write_text(f"{README_FIRST_LINE}\nthe list", encoding="utf-8")
     (inbox / f"{README_NAME}.4242.9f1c0a2b.tmp").write_text("half a list", encoding="utf-8")
 
     assert draft_reminder(folder).unsorted == 0

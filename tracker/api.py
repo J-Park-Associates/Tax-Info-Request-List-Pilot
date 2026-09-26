@@ -621,30 +621,91 @@ def _engagement_dir(argv: list[str]) -> Path:
     given = argv[position].strip() if position < len(argv) else ""
     if not given:
         raise ManifestError(hint)
-    folder = _under_root(Path(given))
-    parts = folder.resolve().relative_to(_root().resolve()).parts
+    return _return_dir(given)
+
+
+#: What a command naming a folder that is not a household is told
+#: (decision 176): a household sits at <clients root>\<private tree>\<household>.
+NOT_A_HOUSEHOLD = ("{name} is not a household's folder (a household sits at <clients root>\\{tree}"
+                   "\\<household>); nothing was changed")
+
+
+def _return_dir(given: str | Path) -> Path:
+    """The return a path the app sent names, rebuilt from the clients root
+    and its own four validated names - or a ManifestError.
+
+    **A path from outside is parsed, never trusted** (decision 176). It must
+    lie under the clients root, in the private tree, four levels down,
+    under a year folder - the place discovery reads a return from. What
+    comes back is the root joined with the names the resolved path has
+    there, so no ``..``, no ``.`` and no second spelling of the same
+    folder reaches :func:`tracker.layout.household_of`,
+    :func:`~tracker.layout.root_of` or :func:`~tracker.layout.year_of`,
+    which read a return's position off the text of its path. A folder
+    under ``Clients`` - the tree the client can write into, where a
+    planted journal would otherwise read as a prior - is never one.
+    """
+    parts = _placed_under_root(given)
     if (len(parts) != 4 or parts[0].casefold() != PRIVATE_TREE.casefold()
             or not is_year_folder(parts[2])):
-        raise ManifestError(NOT_A_RETURN.format(name=folder.name or folder, tree=PRIVATE_TREE))
-    return folder
+        raise ManifestError(NOT_A_RETURN.format(name=Path(given).name or given, tree=PRIVATE_TREE))
+    return _root().joinpath(*parts)
 
 
-def _under_root(folder: Path) -> Path:
-    """``folder`` if it lies under the clients root, else a ManifestError.
+def _household_dir(given: str | Path) -> Path:
+    """The household a path the app sent names: ``<root>/<private
+    tree>/<household>``, rebuilt from the root and its validated names as
+    :func:`_return_dir` rebuilds a return (decision 176)."""
+    parts = _placed_under_root(given)
+    if len(parts) != 2 or parts[0].casefold() != PRIVATE_TREE.casefold():
+        raise ManifestError(NOT_A_HOUSEHOLD.format(name=Path(given).name or given, tree=PRIVATE_TREE))
+    return _root().joinpath(*parts)
 
-    Checked whether or not the folder it names is reachable right now: an
-    unplugged drive is not a licence to read from anywhere. Resolved on
-    both sides, so ``..``, a junction out of the root and a case difference
-    are all seen for what they are. **With no root set it refuses**
-    (decision 137, L1): it used to pass any folder at all then, which made
-    an unconfigured app a reader of anywhere.
+
+def _placed_under_root(given: str | Path) -> tuple[str, ...]:
+    """The names ``given`` has below the clients root, else a ManifestError.
+
+    A relative path is read from the root. Checked whether or not the
+    folder it names is reachable right now: an unplugged drive is not a
+    licence to read from anywhere. Resolved on both sides, so ``..``, a
+    junction out of the root and a case difference are all seen for what
+    they are. **With no root set it refuses** (decision 137, L1): it used
+    to pass any folder at all then, which made an unconfigured app a
+    reader of anywhere.
     """
     root = _root()
+    folder = Path(given)
+    if not folder.is_absolute():
+        folder = root / folder
     try:
-        folder.resolve().relative_to(root.resolve())
+        return folder.resolve().relative_to(root.resolve()).parts
     except ValueError:
         raise ManifestError(f"{folder} is not under the clients root {root}") from None
-    return folder
+
+
+#: What a command is told when the app's JSON is not one object.
+NOT_A_SPEC = "The app sent something that is not a JSON object; nothing was changed"
+
+
+def _read_spec() -> dict:
+    """The JSON object the app wrote on stdin, read as UTF-8 bytes.
+
+    main.js writes ``JSON.stringify(payload)``, which leaves every letter
+    outside ASCII as it is, and Node writes a string to a pipe as UTF-8.
+    Python reads a pipe as text in the machine's ANSI code page, so on the
+    firm's Windows machine ``sys.stdin.read()`` turned the ``ñ`` of
+    ``Muñoz`` into ``Ã±`` - in a household folder the client is shared -
+    and refused ``Á`` outright. The bytes are read and decoded here, the
+    one reading of stdin, so no command depends on the code page. A
+    stream with no bytes under it (a test's ``StringIO``) is read as the
+    text it already is.
+    """
+    stream = sys.stdin
+    raw = stream.buffer.read().decode("utf-8") if hasattr(stream, "buffer") else stream.read()
+    spec = json.loads(raw or "{}")
+    if not isinstance(spec, dict):
+        raise ManifestError(NOT_A_SPEC)
+    return spec
 
 
 def form_label(form: str) -> str:
@@ -1785,7 +1846,7 @@ def _cmd_propose_spellings(argv: list[str]) -> dict:
     The twenty-third command, and the only one the wizard calls while
     somebody is still typing.
     """
-    spec = json.loads(sys.stdin.read() or "{}")
+    spec = _read_spec()
     kind = str(spec.get("kind", "") or "").strip()
     if kind not in PERSON_KINDS:
         raise ManifestError(f"'{kind}' is not one of {', '.join(PERSON_KINDS)}")
@@ -1826,7 +1887,7 @@ def _cmd_edit(argv: list[str]) -> dict:
     pass is holding waits on the lock the way a filing does.
     """
     engagement = _engagement_dir(argv)
-    spec = json.loads(sys.stdin.read() or "{}")
+    spec = _read_spec()
     rows = spec.get("items")
     if not isinstance(rows, list):
         raise ManifestError("The editor sent no rows")
@@ -1971,7 +2032,7 @@ def _cmd_unlearn(argv: list[str]) -> dict:
     into the rows and not saved yet.
     """
     engagement = _engagement_dir(argv)
-    spec = json.loads(sys.stdin.read() or "{}")
+    spec = _read_spec()
     identifier = str(spec.get("identifier", "")).strip()
     keyword = str(spec.get("keyword", "")).strip()
     if not identifier or not keyword:
@@ -2011,7 +2072,7 @@ def _cmd_rename(argv: list[str]) -> dict:
     against the version this rename left.
     """
     engagement = _engagement_dir(argv)
-    spec = json.loads(sys.stdin.read() or "{}")
+    spec = _read_spec()
     done = rename_request(engagement, str(spec.get("from") or ""), str(spec.get("to") or ""),
                           head=spec.get("head"))
     _refresh_readmes(engagement)
@@ -2111,7 +2172,7 @@ def _cmd_create(argv: list[str]) -> dict:
     household's contact and inbox link, so the reminder is filled in from
     the one place a person typed them (decision 125).
     """
-    spec = json.loads(sys.stdin.read() or "{}")
+    spec = _read_spec()
     root = _root()
     form = str(spec.get("form", "")).strip()
     if form:
@@ -2122,7 +2183,7 @@ def _cmd_create(argv: list[str]) -> dict:
 
     given = str(spec.get("household_path", "") or "").strip()
     if given:
-        household_dir = _under_root(Path(given))
+        household_dir = _household_dir(given)
         if not ledger.path_for(household_dir).is_file():
             raise ManifestError(f"No household record found in '{given}'")
         household = household_dir.name
@@ -2336,7 +2397,7 @@ def _cmd_edit_household(argv: list[str]) -> dict:
     """
     engagement = _engagement_dir(argv)
     household_dir = household_of(engagement)
-    spec = json.loads(sys.stdin.read() or "{}")
+    spec = _read_spec()
     unknown = set(spec) - set(HOUSEHOLD_EDITABLE)
     if unknown:
         raise ManifestError(f"Not a household field: {', '.join(sorted(unknown))}")
@@ -2416,14 +2477,11 @@ def _cmd_rollover(argv: list[str]) -> dict:
     fills blanks. Rows the client has never had are added as not asked
     (decision 142).
     """
-    spec = json.loads(sys.stdin.read() or "{}")
+    spec = _read_spec()
     prior_raw = str(spec.get("prior", "")).strip()
     if not prior_raw:
         raise ManifestError("Pick the engagement to roll forward")
-    prior = Path(prior_raw)
-    if not prior.is_absolute():
-        prior = _root() / prior_raw
-    prior = _under_root(prior)
+    prior = _return_dir(prior_raw)
     if not ledger.path_for(prior).is_file():
         raise ManifestError(f"No record found in '{prior_raw}'")
     # The prior year's rows are read out of the store, so the store has to
@@ -2447,10 +2505,11 @@ def _cmd_rollover(argv: list[str]) -> dict:
     # the layout's answer: the household's, the target year, the prior's
     # own return name unless a person gives another.
     prior_info = load_engagement_info(prior)
+    # A return rolls forward where it sits (decision 177): the folder it is
+    # in and its own folder name, never the names its record carries.
     household_dir = household_of(prior)
-    household = prior_info.household or household_dir.name
-    return_name = (str(spec.get("return_name", "") or "").strip()
-                   or prior_info.return_name or prior.name)
+    household = household_dir.name
+    return_name = str(spec.get("return_name", "") or "").strip() or prior.name
     engagement = _new_return_dir(_root(), household, report.target_year, return_name,
                                  report.items)
 
@@ -2496,16 +2555,21 @@ def _cmd_rollover(argv: list[str]) -> dict:
             "prior": prior.name,
             "prior_year": report.prior_year,
             "target_year": report.target_year,
-            **_carried_payload(report),
+            **_carried_payload(report, prior),
         },
         "state": _state(engagement),
     }
 
 
-def _carried_payload(report) -> dict:
+def _carried_payload(report, prior: Path) -> dict:
     """One return's rollover as the app reads it: every rolled row with its
-    origin, its note and whether it is asked, and last year's unfiled files."""
+    origin, its note and whether it is asked, last year's unfiled files, and
+    - since decision 177 - the prior's own warning when its folders and its
+    record disagree (``registry.NAME_DISAGREES``), because the roll is the
+    moment a person acts on that return and the new year's record, written
+    from the folder it sits in, now disagrees with the prior's."""
     return {
+        "warning": engagement_from(prior).warning,
         "carried": [
             {"identifier": r.item.identifier, "document": r.item.document,
              "origin": r.origin, "note": r.note, "asked": r.item.asked}
@@ -2542,7 +2606,7 @@ def _cmd_roll_household(argv: list[str]) -> dict:
     """
     engagement = _engagement_dir(argv)
     household_dir = household_of(engagement)
-    spec = json.loads(sys.stdin.read() or "{}")
+    spec = _read_spec()
     years, _ = open_year_returns(household_dir)
     target_year = _tax_year(spec.get("year"),
                             next_tax_year(years[0]) if years else None)
@@ -2554,7 +2618,7 @@ def _cmd_roll_household(argv: list[str]) -> dict:
         given = str((one or {}).get("prior", "") or "").strip()
         if not given:
             raise ManifestError("Pick the returns to roll forward")
-        prior = _under_root(Path(given) if Path(given).is_absolute() else _root() / given)
+        prior = _return_dir(given)
         named = str((one or {}).get("return_name", "") or "").strip()
         plans.append(ReturnPlan(
             prior=prior,
@@ -2569,7 +2633,7 @@ def _cmd_roll_household(argv: list[str]) -> dict:
         {"prior": was.name, "created": str(created),
          "label": Engagement(path=created, household_path=household_dir,
                              info=load_engagement_info(created)).label,
-         **_carried_payload(one_report)}
+         **_carried_payload(one_report, was)}
         for was, created, one_report in done.rolled
     ]
     # The state the app lands on: the first return this call made, else
@@ -2753,7 +2817,7 @@ def _cmd_assign(argv: list[str]) -> dict:
     both would be a second locking rule for no gain.
     """
     engagement = _engagement_dir(argv)
-    spec = json.loads(sys.stdin.read() or "{}")
+    spec = _read_spec()
     original = str(spec.get("original", "")).strip()
     identifier = str(spec.get("identifier", "")).strip()
     if not original or not identifier:
@@ -2819,7 +2883,7 @@ def _cmd_dismiss(argv: list[str]) -> dict:
     every working copy to prove that.
     """
     engagement = _engagement_dir(argv)
-    spec = json.loads(sys.stdin.read() or "{}")
+    spec = _read_spec()
     original = str(spec.get("original", "")).strip()
     if not original:
         raise ManifestError("Pick the file no request asks for")
@@ -2855,7 +2919,7 @@ def _cmd_unfile(argv: list[str]) -> dict:
     would undo a decision this person never saw.
     """
     engagement = _engagement_dir(argv)
-    spec = json.loads(sys.stdin.read() or "{}")
+    spec = _read_spec()
     original = str(spec.get("original", "")).strip()
     if not original:
         raise ManifestError("Pick the document to send back for review")
@@ -2894,7 +2958,7 @@ def _cmd_mark_missing(argv: list[str]) -> dict:
     client for the document. On any other row its own request is refused.
     """
     engagement = _engagement_dir(argv)
-    spec = json.loads(sys.stdin.read() or "{}")
+    spec = _read_spec()
     original = str(spec.get("original", "")).strip()
     identifier = str(spec.get("identifier", "")).strip()
     if not original or not identifier:
@@ -2934,7 +2998,7 @@ def _cmd_restore(argv: list[str]) -> dict:
     open is refused before a byte is read.
     """
     engagement = _engagement_dir(argv)
-    spec = json.loads(sys.stdin.read() or "{}")
+    spec = _read_spec()
     original = str(spec.get("original", "")).strip()
     if not original:
         raise ManifestError("Pick the working copy to put back")
@@ -3123,7 +3187,7 @@ def _cmd_reminder(argv: list[str]) -> dict:
     reading next week's letter this week; the app is used on the day.
     """
     engagement = _engagement_dir(argv)
-    spec = json.loads(sys.stdin.read() or "{}")
+    spec = _read_spec()
     return {"reminder": _reminder_card(
         _reminder_now(engagement, _stage_asked(spec), dt.date.today()))}
 
@@ -3146,7 +3210,7 @@ def _cmd_approve(argv: list[str]) -> dict:
     command line give. Nothing is sent, and no socket is opened.
     """
     engagement = _engagement_dir(argv)
-    spec = json.loads(sys.stdin.read() or "{}")
+    spec = _read_spec()
     requested = _stage_asked(spec)
     shown = str(spec.get("fingerprint", "") or "")
     today = dt.date.today()
@@ -3187,7 +3251,7 @@ def _cmd_set_root(argv: list[str]) -> dict:
     reminder (decision 117). Like the firm's name, a key that is not sent
     leaves what is recorded alone.
     """
-    spec = json.loads(sys.stdin.read() or "{}")
+    spec = _read_spec()
     try:
         root = set_clients_root(str(spec.get("root", "")))
     except SettingsError as exc:
@@ -3249,7 +3313,7 @@ def _cmd_install_schedule(argv: list[str]) -> dict:
     executable in runner mode (api_entry.py, RUNNER_MODE_FLAG), which needs
     none of the environment the shell gives the API.
     """
-    spec = json.loads(sys.stdin.read() or "{}")
+    spec = _read_spec()
     root = _root()
     # The job names this app's settings folder, never the root (decision
     # 131): it reads the root from the settings file at every run, so a

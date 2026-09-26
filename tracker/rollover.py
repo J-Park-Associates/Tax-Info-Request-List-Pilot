@@ -656,8 +656,14 @@ def _roll_one(prior: Path, prior_info: EngagementInfo, plan: ReturnPlan,
     try:
         report = roll_forward(prior, target_year=target_year,
                               template=template_items(plan.form) if plan.form else [])
-        household = prior_info.household or household_name
-        return_name = plan.return_name or prior_info.return_name or prior.name
+        # **A return rolls forward where it sits** (decision 177): the
+        # household being rolled and the prior's own folder name, never
+        # the names its record carries. A return a person dragged into
+        # another household still names the old one in its record, and
+        # the new year went back there - under the other household's
+        # inbox, README and client folder.
+        household = household_name
+        return_name = plan.return_name or prior.name
         target = return_dir_for(root_of(prior), household, target_year, return_name)
         if target.exists():
             raise ManifestError(
@@ -716,6 +722,7 @@ if __name__ == "__main__":
 
     from tracker import ledger, store
     from tracker.page import tolerant_console
+    from tracker.registry import engagement_from
     from tracker.templates import require_form
 
     # The report names the client's folders and carries an arrow a cp1252
@@ -794,6 +801,8 @@ if __name__ == "__main__":
             print(f"      {len(one_report.carried)} carried, "
                   f"{len(one_report.added)} new (not asked), "
                   f"{len(one_report.unfiled_last_year)} never filed last year")
+            if warning := engagement_from(was).warning:
+                print(f"      WARNING: {warning}")
         if done.skipped:
             print(f"\n  {NOT_ROLLED_HEADING}")
             for was, why in done.skipped:
@@ -835,12 +844,11 @@ if __name__ == "__main__":
     # household's folder, the target year, the prior's own return name.
     if result.target_year is None:
         parser.error("the prior year could not be read off the list; give --year")
-    target = return_dir_for(
-        root_of(prior_dir),
-        carried.household or household_name_of(prior_dir),
-        result.target_year,
-        carried.return_name or prior_dir.name,
-    )
+    # Where the prior sits, never what its record names (decision 177).
+    carried = replace(carried, household=household_name_of(prior_dir),
+                      return_name=prior_dir.name)
+    target = return_dir_for(root_of(prior_dir), carried.household, result.target_year,
+                            carried.return_name)
     if target.exists():
         parser.error(f"{target} already exists")
     target.mkdir(parents=True, exist_ok=True)
@@ -867,6 +875,8 @@ if __name__ == "__main__":
 
     span = f"{result.prior_year} → {result.target_year}" if result.prior_year else UNKNOWN_YEAR_LABEL
     print(f"Rolled {result.prior_dir.name} forward ({span})\n")
+    if warning := engagement_from(prior_dir).warning:
+        print(f"  WARNING: {warning}\n")      # decision 177: it rolled where it sits
     for rolled in result.carried:
         print(f"  CARRIED {rolled.item.label}")
         print(f"          {rolled.note}")

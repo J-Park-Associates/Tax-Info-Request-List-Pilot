@@ -103,6 +103,25 @@ log = logging.getLogger("tracker.scaffold")
 #: README): the list holds only the requests nothing has been received for,
 #: so a client never reads a document as both needed and received.
 README_HEADING = "REQUESTED, NOT YET RECEIVED"
+#: The first line of every README the firm writes (decision 179), and how
+#: a file at ``README_NAME`` in an inbox is told to be the firm's rather
+#: than one the client dropped under that name: the README was skipped by
+#: the sort and written over by every refresh, so a client's own file of
+#: that name was replaced unread - a client's file destroyed, which
+#: the standing rules forbid - and one past a gigabyte was read whole into
+#: memory on every refresh to decide whether to rewrite it.
+README_FIRST_LINE = "HOW TO SEND US YOUR DOCUMENTS"
+#: The most a README the firm writes could hold - every request of every
+#: return in a household is a few kilobytes. A file past it at the
+#: README's name is the client's, whatever it begins with.
+README_MAX_BYTES = 256 * 1024
+#: The three answers of :func:`whose_readme` (decision 179): the firm's
+#: README; a file the client dropped under its name; and one that could
+#: not be opened just now - held by a sync client or a viewer, access
+#: refused, gone mid-look - which is neither written over nor moved.
+README_FIRMS = "firm's"
+README_CLIENTS = "client's"
+README_UNKNOWN = "cannot tell"
 #: The one line under :data:`README_HEADING` when no request is left on it.
 NOTHING_OUTSTANDING_LINE = "  Nothing at the moment."
 #: Step 2 of the client README, in Jason's words (decision 130, D-b): no
@@ -522,13 +541,26 @@ def write_readme(
 
     inbox = inbox_dir_for(root, household)
     readme = inbox / README_NAME
+    # A client's own file of that name is never written over (decision
+    # 179): the sort takes it, as it takes every other drop, and the next
+    # refresh after it writes the README. One whose owner cannot be told
+    # just now is not written over either; the next refresh looks again.
+    whose = whose_readme(readme) if readme.exists() else README_FIRMS
+    if whose == README_CLIENTS:
+        log.warning("%s in %s's inbox is a file the client dropped; it is sorted like any "
+                    "other and the README is written after it", readme.name, household)
+        return None
+    if whose == README_UNKNOWN:
+        log.warning("%s in %s's inbox could not be read just now; it is not written over, "
+                    "and the next refresh looks again", readme.name, household)
+        return None
     # The pass and every app action refresh it; rewriting an unchanged
     # README would make the sync client push a "new" file to the client
-    # every time.
+    # every time. Read only once it is known to be the firm's, and so small.
     try:
         if readme.read_text(encoding="utf-8") == text:
             return readme
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         pass
     # Client-visible and cosmetic: a sync client uploading it, a viewer
     # holding it, or a folder the client made under its name must not stop
@@ -540,6 +572,28 @@ def write_readme(
         log.warning("Could not refresh %s (%s); the pass goes on", readme.name, exc)
         return None
     return readme
+
+
+def whose_readme(path: Path) -> str:
+    """Whose the file at ``path`` - an inbox's ``README_NAME`` - is
+    (decision 179), one of three answers. :data:`README_FIRMS`: no larger
+    than :data:`README_MAX_BYTES` and beginning with
+    :data:`README_FIRST_LINE`, a byte-order mark an editor added allowed.
+    :data:`README_CLIENTS`: larger than that, or read and beginning
+    otherwise - the sort takes it and the refresh never writes over it.
+    :data:`README_UNKNOWN`: its size or its first bytes could not be read
+    just now (a sync client or a viewer holding it, access refused, gone
+    mid-look) - it is left where it is, neither moved nor written over,
+    and looked at again next time. Only the first line is ever read."""
+    first = README_FIRST_LINE.encode("ascii")
+    try:
+        if Path(path).stat().st_size > README_MAX_BYTES:
+            return README_CLIENTS
+        with Path(path).open("rb") as handle:
+            head = handle.read(len(first) + 3)
+    except OSError:
+        return README_UNKNOWN
+    return README_FIRMS if head.removeprefix(b"\xef\xbb\xbf").startswith(first) else README_CLIENTS
 
 
 def day_text(day) -> str:
@@ -621,7 +675,7 @@ def _readme_text(
 ) -> str:
     returns = list(returns)
     lines = [
-        "HOW TO SEND US YOUR DOCUMENTS",
+        README_FIRST_LINE,
         "=" * 45,
         "",
         f"Household: {household}",

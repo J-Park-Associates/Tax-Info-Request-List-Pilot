@@ -287,14 +287,126 @@ def test_an_old_request_folder_is_left_alone(engagement):
 
 
 def test_readme_refreshed_on_rerun(engagement):
-    """A rerun rewrites the README over whatever is there - and decision 124:
-    the heading stays, so this assertion is also the pin on that choice."""
+    """A rerun rewrites the firm's own README - and decision 124: the
+    heading stays, so this assertion is also the pin on that choice."""
     scaffold_engagement(engagement)
-    readme_of(engagement)
     readme = inbox_of(engagement) / README_NAME
-    readme.write_text("client scribbled over this", encoding="utf-8")
+    readme.write_text(readme_of(engagement).replace(README_HEADING, "an older list"),
+                      encoding="utf-8")
 
     assert README_HEADING in readme_of(engagement)
+
+
+def test_a_client_file_at_the_readmes_name_is_sorted_and_never_written_over(engagement):
+    """Decision 179. The README was skipped by the sort and written over by
+    every refresh, so a client's own ``_README.txt`` - or the README the
+    client wrote their own note over - was replaced unread. A file there
+    that does not begin as the firm's does is the client's: the refresh
+    leaves it alone, the pass moves it into the year's folder byte for
+    byte as it moves every drop, and the README is written after it."""
+    import datetime as dt
+
+    from tests.conftest import sort
+    from tracker.filer import read_index
+
+    scaffold_engagement(engagement)
+    readme = inbox_of(engagement) / README_NAME
+    note = b"Hi - the W-2 is coming next week. Maria\r\n"
+    readme.write_bytes(note)
+
+    assert refresh_household_readme(household_of(engagement)) is None
+    assert readme.read_bytes() == note
+
+    sort(engagement, today=dt.date(2026, 2, 2))
+    refresh_household_readme(household_of(engagement))       # after the sort, as the pass does
+
+    [row] = read_index(engagement)
+    assert row.original_name == README_NAME
+    assert (originals_of(engagement) / README_NAME).read_bytes() == note
+    assert README_HEADING in readme.read_text(encoding="utf-8")
+
+
+def test_a_file_at_the_readmes_name_is_the_firms_the_clients_or_cannot_be_told(tmp_path, monkeypatch):
+    """Decision 179, three answers: a small file beginning with the first
+    line (a byte-order mark allowed) is the firm's; a large one, or one
+    beginning otherwise, is the client's; one whose read raises is neither."""
+    from pathlib import Path
+
+    from tracker.scaffold import (
+        README_CLIENTS,
+        README_FIRMS,
+        README_FIRST_LINE,
+        README_MAX_BYTES,
+        README_UNKNOWN,
+        whose_readme,
+    )
+
+    one = tmp_path / README_NAME
+    one.write_bytes(f"{README_FIRST_LINE}\r\n====".encode("ascii"))
+    assert whose_readme(one) == README_FIRMS
+    one.write_bytes(b"\xef\xbb\xbf" + f"{README_FIRST_LINE}\r\n".encode("ascii"))
+    assert whose_readme(one) == README_FIRMS                  # a BOM an editor added
+    one.write_bytes(b"My own notes\r\n" + f"{README_FIRST_LINE}\r\n".encode("ascii"))
+    assert whose_readme(one) == README_CLIENTS
+    one.write_bytes(f"{README_FIRST_LINE}\r\n".encode("ascii") + b"x" * README_MAX_BYTES)
+    assert whose_readme(one) == README_CLIENTS              # never read whole to find out
+    one.write_bytes(f"{README_FIRST_LINE}\r\n".encode("ascii"))
+    real_open = Path.open
+
+    def held(self, *args, **kwargs):
+        if self.name == README_NAME:
+            raise PermissionError(13, "held by another process", str(self))
+        return real_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", held)
+    assert whose_readme(one) == README_UNKNOWN              # held open: cannot be told
+    assert whose_readme(tmp_path / "missing.txt") == README_UNKNOWN
+
+
+def test_a_readme_that_cannot_be_read_just_now_waits_where_it_is(engagement, monkeypatch):
+    """The review's S-3: a README a sync client or a viewer held for a
+    moment was not known to be the firm's, so the pass moved it into the
+    year's folder and parked it as the client's drop - noise a person had
+    to dismiss, every time it happened. One that cannot be read just now
+    is left where it is, not recorded and not written over, and the pass
+    names it in its warnings; the next pass, able to read it, knows it as
+    the firm's and refreshes it."""
+    import datetime as dt
+    from pathlib import Path
+
+    from tests.conftest import sort
+    from tracker.filer import README_UNREAD, read_index
+    from tracker.scaffold import README_FIRST_LINE
+
+    scaffold_engagement(engagement)
+    readme = inbox_of(engagement) / README_NAME
+    stale = f"{README_FIRST_LINE}\r\nan older list\r\n".encode("ascii")
+    readme.write_bytes(stale)
+    real_open = Path.open
+
+    def held(self, *args, **kwargs):
+        if self.name == README_NAME and self.parent == inbox_of(engagement):
+            raise PermissionError(13, "held by another process", str(self))
+        return real_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", held)
+    report = sort(engagement, today=dt.date(2026, 2, 2))
+    refresh_household_readme(household_of(engagement))       # after the sort, as the pass does
+    monkeypatch.setattr(Path, "open", real_open)             # the file is free again
+
+    assert readme.read_bytes() == stale                       # not moved, not written over
+    assert not (originals_of(engagement) / README_NAME).exists()
+    assert read_index(engagement) == []
+    household = household_of(engagement).name
+    assert [(one.name, one.error) for one in report.attention] == [
+        (README_NAME, README_UNREAD.format(household=household))]
+
+    report = sort(engagement, today=dt.date(2026, 2, 3))
+    refresh_household_readme(household_of(engagement))
+
+    assert report.attention == [] and read_index(engagement) == []
+    assert not (originals_of(engagement) / README_NAME).exists()
+    assert README_HEADING in readme.read_text(encoding="utf-8")
 
 
 def test_a_folder_with_no_record_raises(tmp_path):

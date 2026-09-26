@@ -143,6 +143,18 @@ def test_the_shell_runs_only_commands_the_api_has():
     assert "sandbox: true" in main_js and "setWindowOpenHandler" in main_js
 
 
+def test_the_packaged_app_has_no_console_and_sends_the_api_utf8_it_serialised_first():
+    """Decision 176: DevTools in the packaged app is a console from which a
+    person at the machine calls the API with any payload; and a payload is
+    serialised before the tracker starts, in UTF-8, which is how the API
+    reads it (``tracker.api._read_spec``)."""
+    main_js = read("app/main.js")
+    assert "devTools: !app.isPackaged" in main_js
+    run = main_js[main_js.index("function runTracker"):]
+    assert run.index("JSON.stringify(payload)") < run.index("spawn(")
+    assert 'proc.stdin.write(body, "utf8")' in run
+
+
 #: The Electron module main.js is run against in the claim below: an app that
 #: answers the single-instance lock as told, and a window that records being
 #: brought forward. Every other part of the shell is left real.
@@ -266,6 +278,25 @@ def test_gitignore_knows_every_runtime_file_python_writes_outside_the_repo():
     for name in (DRAFT_FILENAME, NEW_DRAFT_FILENAME, LOG_FILENAME, STATUS_PAGE_FILENAME,
                  SCHEDULE_XML_FILENAME, SETTINGS_FILENAME,
                  STORE_FILENAME, STORE_WAL_FILENAME, STORE_SHM_FILENAME):
+        assert ignored.count(name) == 1, name
+
+
+def test_gitignore_knows_both_client_trees_and_every_file_written_inside_them():
+    """Decision 176: the list above is the files beside the settings file.
+    A pass over a client's folder copied into the checkout writes into the
+    trees themselves - the record, the lock, the page, the README and what
+    was taken out of an email - so each is ignored by the constant that
+    names it, and both trees whole."""
+    from tracker.filer import README_LOCK_FILENAME
+    from tracker.layout import CLIENTS_TREE, OPENED_DIR_NAME, PRIVATE_TREE, README_NAME
+    from tracker.ledger import LEDGER_FILENAME
+    from tracker.locking import LOCK_FILENAME
+    from tracker.view import VIEW_FILENAME
+
+    ignored = [line.strip() for line in read(".gitignore").splitlines()
+               if line.strip() and not line.startswith("#")]
+    for name in (f"{CLIENTS_TREE}/", f"{PRIVATE_TREE}/", f"{OPENED_DIR_NAME}/", LEDGER_FILENAME,
+                 LOCK_FILENAME, README_LOCK_FILENAME, README_NAME, VIEW_FILENAME):
         assert ignored.count(name) == 1, name
 
 
@@ -882,6 +913,13 @@ def test_the_command_center_manifest_names_real_commands_and_admits_no_sending()
                 assert token in known, (action["id"], token)
         if LOG_FLAG in argv:
             assert action["kind"] == "authorize", "a pass that writes is authorized, never previewed"
+        # A value the Command Center appends as a positional argument is
+        # the operator's text, and "--log=\\\\host\\share\\x" read as an
+        # option turned a preview that writes nothing into a write of the
+        # run summary anywhere (decision 176): the fixed argv ends every
+        # option before the first positional one.
+        if any(param.get("flag") is None for param in action.get("params", [])):
+            assert argv[-1] == "--", (action["id"], "a positional parameter follows '--'")
 
 
 #: Flags of other programs' command lines that the documents quote, each

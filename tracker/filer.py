@@ -182,7 +182,9 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import logging
+import ntpath
 import os
+import posixpath
 import re
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -203,13 +205,17 @@ from tracker.fsio import (
 )
 from tracker.households import household_returns
 from tracker.layout import (
+    CLIENTS_TREE,
+    INBOX_DIR_NAME,
     MAX_PATH_LENGTH,
+    OPENED_DIR_NAME,
     PATH_TOO_LONG,
     PRIVATE_TREE,
     deepest_path_length,
     household_name_of,
     household_of,
     inbox_of,
+    is_year_folder,
     limit_for,
     locate,
     location_of,
@@ -284,13 +290,16 @@ from tracker.router import read_once, route_file
 from tracker.scaffold import (
     OTHER_DOCUMENT,
     PREPARED_DIR_NAME,
+    README_CLIENTS,
     README_NAME,
+    README_UNKNOWN,
     REVIEW_DIR_NAME,
     assign_files,
     matches_identifier,
     owner_of,
     readme_returns,
     sanitize_component,
+    whose_readme,
     write_readme,
 )
 from tracker.validators import (
@@ -1656,6 +1665,68 @@ def _op(engagement_dir: Path, kind: str, source: Path,
     return op
 
 
+#: What an operation naming a place outside its return's own is refused
+#: with (decision 180).
+OP_OUTSIDE = ("the record of {name} names {location} for a step, which is outside the places "
+              "a step of this return may touch; nothing was moved, copied or removed. "
+              "A person checks the record")
+
+
+def _may_touch(engagement_dir: Path, location: str, *, writes: bool) -> bool:
+    """Whether a location an operation names lands where a step of this
+    return may act (decision 180).
+
+    Every step a decision writes is relative to the return whose record
+    holds it, and every one stays in these places, read off the layout:
+    under the return itself; under its household's ``_Opened`` of a year -
+    its own year's where the step writes, any year's where it reads,
+    because a person may hand an attachment parked in one open year to a
+    return of the next (decision 129); and in the client tree only under
+    some household's inbox or year folder - **this** return's household
+    where the step writes (a move's or a copy's destination), any
+    household where it reads, because a return a drop folder feeds takes
+    its original out of another household's inbox. Nothing else - not an absolute path, a drive, a share,
+    another return, the private tree's own files or anything above the
+    clients root - is a place a step goes, so a line the record did not get
+    from this code, however it got there, moves nothing. Lexical, as
+    :func:`tracker.layout.locate` is: the link check guards what lies
+    behind a junction, and this guards what a line says.
+    """
+    if not location or any(isabs(location) for isabs in (ntpath.isabs, posixpath.isabs)) \
+            or ntpath.splitdrive(location)[0]:
+        return False
+
+    def parts(path) -> tuple[str, ...]:
+        return Path(os.path.normcase(os.path.normpath(str(path)))).parts
+
+    root = parts(root_of(engagement_dir))
+    here = parts(locate(engagement_dir, location))
+    if here[:len(root)] != root:
+        return False
+    below = here[len(root):]
+    own = parts(engagement_dir)[len(root):]           # (private tree, household, year, return)
+    if len(below) > len(own) and below[:len(own)] == own:
+        return True
+    if (len(below) > 4 and below[:2] == own[:2] and is_year_folder(below[2])
+            and below[3] == os.path.normcase(OPENED_DIR_NAME) and (below[2] == own[2] or not writes)):
+        return True
+    return (len(below) >= 4 and below[0] == os.path.normcase(CLIENTS_TREE)
+            and (is_year_folder(below[2]) or below[2] == os.path.normcase(INBOX_DIR_NAME))
+            and (not writes or below[1] == own[1]))
+
+
+def _refuse_a_step_outside(engagement_dir: Path, op: dict) -> None:
+    """:data:`OP_OUTSIDE` for the first place in ``op`` a step of this
+    return may not touch, before any of it is done."""
+    reads = [op.get(ledger.FROM_KEY, "")]
+    writes = [op[ledger.TO_KEY]] if ledger.TO_KEY in op else []
+    if op[ledger.OP_KEY] == ledger.OP_REMOVE:
+        reads, writes = [], reads
+    for location, write in [*((one, False) for one in reads), *((one, True) for one in writes)]:
+        if not _may_touch(engagement_dir, str(location), writes=write):
+            raise FilingError(OP_OUTSIDE.format(name=Path(engagement_dir).name, location=location))
+
+
 def _do_op(engagement_dir: Path, op: dict, *, cache: ContentCache | None = None) -> None:
     """Carry out one operation of an intent.
 
@@ -1667,6 +1738,7 @@ def _do_op(engagement_dir: Path, op: dict, *, cache: ContentCache | None = None)
     (decision 109); a move is a rename and nothing else (the caller has
     checked the destination by bytes).
     """
+    _refuse_a_step_outside(engagement_dir, op)
     kind = op[ledger.OP_KEY]
     source = locate(engagement_dir, op[ledger.FROM_KEY])
     if kind == ledger.OP_REMOVE:
@@ -1692,7 +1764,9 @@ def _intend(
     also: list[dict] | None = None,
     reason: str = "",
 ) -> None:
-    """Write down what this decision is about to do, before it does it.
+    """Write down what this decision is about to do, before it does it -
+    once every step is known to stay in its return's places (decision
+    180), so a step refused is never an intent left open.
 
     **The intent is the decision** (decision 119). The record was already
     all-or-nothing and the disk was already atomic step by step; what sat
@@ -1731,6 +1805,8 @@ def _intend(
     Nothing here ever writes into another return's record: each record's
     half of a decision is that record's own intent.
     """
+    for op in ops:
+        _refuse_a_step_outside(engagement_dir, op)
     if not ops and then != ledger.RELEASED:
         return
     event = ledger.new(ledger.MOVING, **{
@@ -1800,11 +1876,14 @@ def _the_record_holds(engagement_dir: Path, entry: IndexEntry) -> bool:
 # ------------------------------------------------------------------- walk ----
 
 
-def iter_drops(inbox: Path) -> list[Path]:
+def iter_drops(inbox: Path, *, unread: list[Path] | None = None) -> list[Path]:
     """Client-dropped files awaiting sorting.
 
     Everything in the household's inbox except the generated README and
-    OS/sync junk. Subfolders are included — a client who drags a whole
+    OS/sync junk. A file at the README's name is a drop when it is the
+    client's (decision 179, :func:`tracker.scaffold.whose_readme`); one
+    that cannot be told just now is left where it is and added to
+    ``unread``, when given, for the pass to name in its warnings. Subfolders are included — a client who drags a whole
     folder in still gets it sorted. Since decision 125 the originals rest
     in the year's folder in the client tree, not inside this one, so there
     is nothing here to exclude but the note the firm wrote.
@@ -1827,7 +1906,11 @@ def iter_drops(inbox: Path) -> list[Path]:
         if not path.is_file() or is_ignored(path) or _through_a_link(path, inbox) or not _storable(path):
             continue
         if path == inbox / README_NAME:
-            continue
+            whose = whose_readme(path)
+            if whose == README_UNKNOWN and unread is not None:
+                unread.append(path)
+            if whose != README_CLIENTS:
+                continue        # a client's own file of that name is a drop (decision 179)
         drops.append(path)
     return sorted(drops, key=lambda path: _inbox_order(path, inbox))
 
@@ -2166,11 +2249,11 @@ def _follow_moved_originals(
     return kept, moved, [entries[position] for position in gone if position not in followed]
 
 
-#: The sentence a row recorded without its bytes gets when its working
-#: copy and its original no longer agree. Which is the client's document
-#: is not the filer's to guess: the copy may have been annotated, or its
-#: name taken by a later drop called the same; the original may have been
-#: replaced. Said every pass until a person has looked.
+#: What a pass says of the README in a household's inbox that could not be
+#: opened just now (decision 179): it is neither sorted nor written over,
+#: and it waits where it is, the way a file held open does.
+README_UNREAD = ("the README in {household}'s folder could not be read just now; "
+                 "it was left where it is and the next pass looks again")
 #: What a pass says of an original in the household's year folder that no
 #: row of its own names and that another return's unfinished filing names
 #: as the source of its move (decision 132, rulings R-1 and R-3). The file
@@ -2179,6 +2262,11 @@ def _follow_moved_originals(
 #: intent that never finishes is never an original nobody mentions.
 LEFT_FOR_ANOTHER_RETURN = ("{name} is left where it is: another return's unfinished filing "
                            "names it, and that return's next pass finishes it")
+#: The sentence a row recorded without its bytes gets when its working
+#: copy and its original no longer agree. Which is the client's document
+#: is not the filer's to guess: the copy may have been annotated, or its
+#: name taken by a later drop called the same; the original may have been
+#: replaced. Said every pass until a person has looked.
 UNTIED_IN_PBC = (
     "{location} was recorded without its bytes on {received} and its working copy "
     "{prepared} no longer matches it - a person should look"
@@ -2965,6 +3053,12 @@ def _finish_the_ops(
     proved by nothing, so the file has only to be there for the step to be
     made and any file at the destination stops it.
     """
+    # Every step is held to its return's places before any is looked at
+    # (decision 180): a recovery acts on lines another machine or a
+    # restored copy may have written, and a step outside them is the
+    # record's problem for a person, never a move.
+    for op in ops:
+        _refuse_a_step_outside(engagement_dir, op)
     for op in ops:
         kind = op[ledger.OP_KEY]
         source = locate(engagement_dir, op[ledger.FROM_KEY])
@@ -3013,9 +3107,15 @@ def _a_copy_to_act_on(
     an honest one that is empty.
     """
     for location in entry.filed_locations:
-        if entry.digest and _the_bytes(locate(engagement_dir, location)) == entry.digest:
+        if (entry.digest and _may_touch(engagement_dir, location, writes=False)
+                and _the_bytes(locate(engagement_dir, location)) == entry.digest):
             return location, ""
     review_dir = engagement_dir / PREPARED_DIR_NAME / REVIEW_DIR_NAME
+    # The original is read from where the row says only where a step of
+    # this return may read (decision 180): a row another machine or a
+    # restored copy wrote is held to the same places as its steps.
+    if not _may_touch(engagement_dir, entry.pbc_location, writes=False):
+        return "", OP_OUTSIDE.format(name=engagement_dir.name, location=entry.pbc_location)
     source = locate(engagement_dir, entry.pbc_location)
     # The copy the interrupted step was about to carry out of review is
     # still there when the step never happened: it is these bytes and it
@@ -3156,7 +3256,8 @@ def _the_trouble(engagement_dir: Path, entry: IndexEntry, op: dict, outcome: str
         return reasons.INTERRUPTED_MOVE.format(listed=INTERRUPTED_MOVE_DETAIL.format(
             name=entry.original_name, to=where, size=size, pbc=entry.pbc_location))
     held = (INTERRUPTED_ORIGINAL_HELD
-            if _the_bytes(locate(engagement_dir, entry.pbc_location)) == entry.digest
+            if _may_touch(engagement_dir, entry.pbc_location, writes=False)
+            and _the_bytes(locate(engagement_dir, entry.pbc_location)) == entry.digest
             else INTERRUPTED_ORIGINAL_GONE)
     return reasons.INTERRUPTED_MOVE_LOST.format(listed=INTERRUPTED_MOVE_LOST_DETAIL.format(
         name=entry.original_name, source=op[ledger.FROM_KEY],
@@ -3352,7 +3453,12 @@ def file_household_drops(
     # still in flight, a name Windows refuses, a folder this run cannot
     # list - is the household's, and rides the first return's report,
     # which is where the practice page reads it from.
-    drops = iter_drops(inbox)
+    unread: list[Path] = []
+    drops = iter_drops(inbox, unread=unread)
+    for path in unread:
+        first.report.attention.append(FileError(
+            path.name, README_UNREAD.format(household=dropped_in), True))
+        log.warning("Left %s in place: it could not be read just now", path.name)
     first.report.waiting.extend(unfinished_drops(inbox))
     for path in unreachable_drops(inbox):
         first.report.errors.append(FileError(
@@ -5715,6 +5821,14 @@ def hand_over(
             candidates="", evidence="", also_filed="", answers="",
         )
         released = RELEASED_TO.format(label=label, identifier=item.identifier)
+        # The taking return's steps are held to its places before this
+        # return's release is written (decision 180): a release recorded
+        # for a filing that is then refused would take the document off
+        # every queue.
+        for op in ([_op(target_return, ledger.OP_MOVE, source, resting, digest)]
+                   if resting != source else []) + [
+                _op(target_return, ledger.OP_COPY, resting, dest_folder / filed_as, digest)]:
+            _refuse_a_step_outside(target_return, op)
 
         keyword = keyword.strip()
         note = ""

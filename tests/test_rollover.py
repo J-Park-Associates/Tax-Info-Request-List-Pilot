@@ -1012,6 +1012,60 @@ def test_one_returns_refusal_does_not_undo_the_others_and_is_said(park):
     assert done.retired == []
 
 
+def test_a_return_moved_into_another_household_rolls_forward_where_it_sits(park, capsys):
+    """Decision 177. A household separates and a person drags one return's
+    folder into a household of its own - the only way there is to move a
+    return. Its record still names the old household, and the rollover
+    placed next year's return by the record: back under the old household,
+    whose client README then listed the moved return's requests and whose
+    client folder its originals would rest in. A return rolls forward where
+    it sits: the household being rolled, the prior's own folder name, and a
+    record that says so; the prior's disagreement is said, never refused."""
+    import shutil
+
+    from tracker import store
+    from tracker.api import _carried_payload
+    from tracker.filer import refresh_household_readme
+    from tracker.households import create_household
+    from tracker.layout import CLIENTS_TREE, private_household_dir, return_dir_for
+    from tracker.manifest import load_engagement_info
+    from tracker.records import HouseholdInfo
+    from tracker.registry import engagement_from
+    from tracker.rollover import ReturnPlan, roll_household
+    from tracker.scaffold import README_NAME
+
+    root, john, sofia, llc = park
+    household = private_household_dir(root, "Sofia Park")
+    household.mkdir()
+    create_household(household, HouseholdInfo(name="Sofia Park", contact="Sofia",
+                                              link="https://drive.example/sofia"))
+    moved = return_dir_for(root, "Sofia Park", 2026, "1040 - Sofia Park")
+    moved.parent.mkdir()
+    shutil.move(str(sofia), str(moved))
+    store.forget(store.connect(), sofia)
+    ensure(moved)
+    warning = engagement_from(moved).warning
+    assert "the record wins" in warning                      # the prior still names Park Family
+
+    done = roll_household(household, target_year=2027, plans=[ReturnPlan(prior=moved)])
+
+    [(was, created, report)] = done.rolled
+    assert created == return_dir_for(root, "Sofia Park", 2027, "1040 - Sofia Park")
+    info = load_engagement_info(created)
+    assert (info.household, info.return_name, info.tax_year) == ("Sofia Park", "1040 - Sofia Park", 2027)
+    assert info.link == "https://drive.example/sofia"
+    assert engagement_from(created).warning == ""            # next year's record agrees with its folder
+    assert not return_dir_for(root, PARK, 2027, "1040 - Sofia Park").exists()
+    assert not (root / CLIENTS_TREE / PARK / "2027").exists()
+    # What the client of the old household sees once its README is drawn
+    # again, as the next pass draws it: nothing of the moved return's.
+    refresh_household_readme(private_household_dir(root, PARK))
+    park_readme = (inbox_of(john) / README_NAME).read_text(encoding="utf-8")
+    assert "Sofia" not in park_readme
+    # The reply the app shows carries the prior's disagreement.
+    assert _carried_payload(report, was)["warning"] == warning
+
+
 def test_the_household_rollover_makes_no_change_under_the_client_tree_but_the_new_year_folder(park):
     """No permission is changed and no client file is touched: what a roll
     adds on the client side is one folder for the new year, under the same

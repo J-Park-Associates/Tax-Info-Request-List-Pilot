@@ -82,6 +82,7 @@ import json
 import logging
 import re
 import time
+import zipfile
 from collections import OrderedDict
 from dataclasses import MISSING, asdict, dataclass, fields, replace
 from pathlib import Path
@@ -202,6 +203,27 @@ RENDER_SCALE = 2.0
 #: a photo.
 READING_STOP_PAGE_SECONDS = 60.0
 READING_STOP_DOCUMENT_SECONDS = 600.0
+#: The most text one reading hands back, in characters, whatever it read
+#: (decision 178): the number of megabytes a text file is read to
+#: (``validators.TEXT_READ_CAP_MB``), counted in characters, so no reading
+#: of any kind says more than a text file may. The workbook reader had no
+#: bound at all: a 14.7 KB ``.xlsx`` whose one shared string of ten million
+#: characters sat in twenty cells read to two hundred million, and every
+#: rule the pass then asked of it ran in the pass's own process, outside
+#: the stop. A reading past it is cut there and marked ``cut``, as a text
+#: file past its cap always was.
+READING_CHAR_BUDGET = TEXT_READ_CAP_MB * 1024 * 1024
+#: The only ways a zip's part may be packed for a reading to unpack it
+#: (decision 178): stored, and deflated - what Windows, macOS, Excel and
+#: every mail client write. The standard library bounds a deflated read at
+#: the size asked for; a bzip2 or LZMA part it inflates a whole compressed
+#: chunk at a time, so one 64 KB read of 905 bytes of bzip2 grew past 2 GB
+#: before any count could stop it. A workbook is a zip and is held to the
+#: same list (:func:`_extract_xlsx`), and so is an attached zip
+#: (:mod:`tracker.containers`).
+PACKINGS = (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)
+#: What a workbook packed any other way fails with.
+UNKNOWN_PACKING = "a part of it is packed in a way only a person's zip program opens"
 #: The clock the stop reads. A name of its own so the suite can move it
 #: rather than wait ten minutes.
 _clock = time.monotonic
@@ -644,10 +666,50 @@ _HEADS_ITS_LINE = re.compile(
 )
 
 
+_A_BREAK = re.compile(rf"[{re.escape(_LINE_BREAKS)}]")
+#: Everything up to and including the last break in what it is matched
+#: against: the look back of :func:`_line_of`, one search over a window.
+_TO_THE_LAST_BREAK = re.compile(rf"(?s:.*)[{re.escape(_LINE_BREAKS)}]")
+#: How far the look back of :func:`_line_of` first reaches; each window
+#: that holds no break doubles it.
+_LOOK_BACK = 256
+#: The line :func:`_line_of` found last and the text it was found in, held
+#: by reference: a mention inside it is on it, with nothing searched.
+_last_line: tuple[str, int, int] | None = None
+
+
 def _line_of(low: str, start: int, end: int) -> tuple[int, int]:
-    """Where the line holding ``low[start:end]`` begins and ends."""
-    left = max(low.rfind(ch, 0, start) for ch in _LINE_BREAKS) + 1
-    right = min((i for i in (low.find(ch, end) for ch in _LINE_BREAKS) if i >= 0), default=len(low))
+    """Where the line holding ``low[start:end]`` begins and ends.
+
+    Each end is the nearest break of any kind, found without walking past
+    it (decision 178). Looking for the nearest of *each* kind walked the
+    whole text for every kind a page never uses - a form feed, a vertical
+    tab - so every mention cost the length of the reading and a long one
+    cost its square: a 1.9 MB text took a minute a return. The look back
+    is one search over a window that doubles from ``start`` until it holds
+    a break or reaches the start of the text; the look forward stops at
+    the first break there is; and a mention on the line found last is on
+    it, so many mentions on one long line pay for the line once. The
+    answer is the old one on every text, whatever its line ends.
+    """
+    global _last_line
+    last = _last_line
+    if last is not None and last[0] is low and last[1] <= start and end <= last[2]:
+        return last[1], last[2]
+    left, reach = 0, _LOOK_BACK
+    while True:
+        lo = max(0, start - reach)
+        found = _TO_THE_LAST_BREAK.match(low, lo, start)
+        if found is not None:
+            left = found.end()
+            break
+        if lo == 0:
+            break
+        reach *= 2
+    ahead = _A_BREAK.search(low, end)
+    right = ahead.start() if ahead else len(low)
+    if _A_BREAK.search(low, start, end) is None:     # a mention across a break is on no one line
+        _last_line = (low, left, right)
     return left, right
 
 
@@ -1269,10 +1331,24 @@ def _extract_pdf(path: Path) -> str:
     import pdfplumber  # deferred: heavy import, only needed for PDFs
 
     parts: list[str] = []
+    said = 0
     with pdfplumber.open(path) as pdf:
         for page in pdf.pages[:MAX_PAGES]:
             parts.append(page.extract_text() or "")
+            said += len(parts[-1]) + 1
+            if _past_budget(said):
+                break           # :func:`_extract` cuts it and says so
     return PAGE_BREAK.join(parts)
+
+
+def _past_budget(said: int) -> bool:
+    """Whether the parts read so far - ``said`` counts each part and the one
+    character that joins it to the next - already make a reading longer than
+    ``READING_CHAR_BUDGET``. A reader stops only then, so whatever it leaves
+    unread always leaves the reading past the budget and :func:`_extract`
+    marks it ``cut``. Stopping the moment ``said`` passed the budget left a
+    reading exactly at the budget, with more to come, marked whole."""
+    return said - 1 > READING_CHAR_BUDGET
 
 
 def _extract_xlsx(path: Path) -> str:
@@ -1283,13 +1359,21 @@ def _extract_xlsx(path: Path) -> str:
     # A sheet's row is a line and its cells are set apart by a tab: a
     # keyword's words may run across a row's cells ("Fixed Asset" beside
     # "Schedule") and never down its rows.
+    with zipfile.ZipFile(path) as archive:
+        if any(info.compress_type not in PACKINGS for info in archive.infolist()):
+            raise ValueError(UNKNOWN_PACKING)
     parts: list[str] = []
+    said = 0
     wb = load_workbook(path, read_only=True, data_only=True)
     try:
         for ws in wb.worksheets:
             parts.append(str(ws.title))
+            said += len(parts[-1]) + 1
             for row in ws.iter_rows(values_only=True):
+                if _past_budget(said):
+                    return "\n".join(parts)      # :func:`_extract` cuts it and says so
                 cells: list[str] = []
+                wide = said
                 for value in row:
                     if value is None:
                         continue
@@ -1299,8 +1383,15 @@ def _extract_xlsx(path: Path) -> str:
                         cells.append(f"{d.isoformat()} {d.month}/{d.day}/{d.year}")
                     else:
                         cells.append(str(value))
+                    # Asked after every cell, not only between rows: one row
+                    # may hold 16,384 cells of 32,767 characters each.
+                    wide += len(cells[-1]) + 1
+                    if _past_budget(wide):
+                        parts.append("\t".join(cells))
+                        return "\n".join(parts)  # :func:`_extract` cuts it and says so
                 if cells:
                     parts.append("\t".join(cells))
+                    said += len(parts[-1]) + 1
     finally:
         wb.close()
     return "\n".join(parts)
@@ -1585,7 +1676,10 @@ def _extract(path: Path, *, ocr: bool) -> Extraction:
         if not ocr:
             return Extraction(text, needs_ocr=True)
         return extract_by_ocr(path)
-    return Extraction(text, cut=extension in TEXT_EXTENSIONS and _is_cut(path))
+    cut = extension in TEXT_EXTENSIONS and _is_cut(path)
+    if len(text) > READING_CHAR_BUDGET:
+        text, cut = text[:READING_CHAR_BUDGET], True
+    return Extraction(text, cut=cut)
 
 
 def extract_by_ocr(path: Path) -> Extraction:

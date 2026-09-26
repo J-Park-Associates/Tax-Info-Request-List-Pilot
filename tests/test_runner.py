@@ -2016,3 +2016,34 @@ def test_the_pass_refuses_a_saved_clients_root_the_rule_now_refuses(tmp_path, mo
         main(["--reminders", "never"])
     assert "Clients folder problem" in str(refused.value)
     assert "holds the app's own settings" in str(refused.value)
+
+
+def test_a_root_typed_on_the_command_line_is_held_to_the_same_rule(tmp_path, monkeypatch):
+    """Decision 176: only the saved root was held to decision 137's rule, so
+    the Command Center's preview - which hands its root straight through -
+    would walk the folder holding the app's settings, or the system drive.
+    A typed root is refused in the same sentence, before anything is read."""
+    from tracker.settings import ENV_SETTINGS_DIR
+
+    settings = tmp_path / "app"
+    settings.mkdir()
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    with pytest.raises(SystemExit) as refused:
+        main(["--dry-run", "--", str(tmp_path)])
+    assert "Clients folder problem" in str(refused.value)
+    assert "holds the app's own settings" in str(refused.value)
+
+
+def test_an_option_after_the_end_of_options_is_a_root_and_writes_no_log(tmp_path, monkeypatch):
+    """Decision 176: the preview action appends its root after '--', so a
+    root the operator typed as '--log=<anywhere>' names a folder that is
+    not there and writes nothing - it used to append the run summary,
+    client names and all, to whatever path it named."""
+    from tracker.settings import ENV_SETTINGS_DIR
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    target = tmp_path / "leak" / "summary.txt"
+    with pytest.raises(SystemExit) as refused:
+        main(["--dry-run", "--", f"--log={target}"])
+    assert "Clients folder problem" in str(refused.value)
+    assert not target.exists() and not target.parent.exists()

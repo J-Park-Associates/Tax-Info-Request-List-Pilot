@@ -78,6 +78,8 @@ an engagement folder.
 from __future__ import annotations
 
 import datetime as dt
+import io
+import json
 import shutil
 import tempfile
 from contextlib import ExitStack
@@ -213,6 +215,23 @@ TEST_YEAR = 2025
 #: it there - exactly as a real W-2 carries its employee's.
 TEST_CLIENT = "Test Client"
 TEST_PEOPLE = (Person("taxpayer", TEST_CLIENT, propose_spellings(TEST_CLIENT, "taxpayer")),)
+
+
+#: The code page Python reads a pipe in on the firm's Windows machine,
+#: whatever the machine running the suite uses.
+WINDOWS_PIPE_ENCODING = "cp1252"
+
+
+def app_stdin(spec) -> io.TextIOWrapper:
+    """``spec`` as the tracker's stdin sees it when the app sends it (decision
+    176): the UTF-8 bytes ``JSON.stringify`` and Node's pipe produce, under a
+    text stream in Windows' ANSI code page. A command that reads the text
+    rather than the bytes turns ``Muñoz`` into ``MuÃ±oz`` here as it would
+    at the office, so every API claim in the suite is made through the
+    reading the office gets.
+    """
+    raw = json.dumps(spec, ensure_ascii=False).encode("utf-8")
+    return io.TextIOWrapper(io.BytesIO(raw), encoding=WINDOWS_PIPE_ENCODING)
 
 
 def named_page(text: str, who: str = TEST_CLIENT) -> str:
