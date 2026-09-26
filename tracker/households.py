@@ -62,7 +62,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from tracker.layout import household_name_of, household_of, is_year_folder, year_of
+from tracker.layout import household_name_of, household_of, is_year_folder, name_key, year_of
 from tracker.records import HouseholdInfo, household_to_json, link_problem
 
 
@@ -261,7 +261,8 @@ def resolve_feeds(
     return_name)`` names the line a return keeps every year, and this is
     where it becomes a return - the active, unsuperseded return that
     discovery found at ``<private tree>/<household>/<year>/<return name>``,
-    matched by those folders' names and never by a path made from the
+    matched by those folders' names under the layout's one comparison key
+    (``layout.name_key``, decision 188) and never by a path made from the
     record's labels (decision 187). So the rollover
     carries nothing about feeds and a line the other household retired is
     said (:data:`FEED_UNRESOLVED`) rather than quietly feeding nothing.
@@ -286,7 +287,7 @@ def resolve_feeds(
     wanted: list[object] = []
     said: list[str] = []
     for feed in feeds:
-        if feed.household.casefold() == folder.name.casefold():
+        if name_key(feed.household) == name_key(folder.name):
             continue
         # **By position, never built from the labels** (decision 187): the
         # feed's two names are compared with the folders discovery found,
@@ -294,10 +295,10 @@ def resolve_feeds(
         # never joined onto the root to make a path of its own.
         theirs = [one for one in every
                   if household_of(one.path).parent == folder.parent
-                  and household_name_of(one.path).casefold() == feed.household.casefold()]
+                  and name_key(household_name_of(one.path)) == name_key(feed.household)]
         found = next((one for one in theirs
                       if one.active and one.tax_year == year and year_of(one.path) == year
-                      and Path(one.path).name.casefold() == feed.return_name.casefold()), None)
+                      and name_key(Path(one.path).name) == name_key(feed.return_name)), None)
         if found is None or len(open_years(theirs)) != 1:
             said.append(FEED_UNRESOLVED.format(household=feed.household,
                                                return_name=feed.return_name, year=year))
@@ -319,9 +320,27 @@ def fed_by(registry: object, household_dir: Path | str) -> list[object]:
     ``registry`` is duck-typed on ``households``, as
     :func:`resolve_feeds` is on its engagements.
     """
-    name = Path(household_dir).name.casefold()
+    name = name_key(Path(household_dir).name)
     return [one for one in getattr(registry, "households", [])
-            if any(feed.household.casefold() == name for feed in one.info.feeds)]
+            if any(name_key(feed.household) == name for feed in one.info.feeds)]
+
+
+def return_name_taken(year_dir: Path | str, return_name: str) -> str | None:
+    """The name of a return folder already in ``year_dir`` that is
+    ``return_name`` by the layout's key (decision 188), or ``None``.
+
+    A return is unique within its household-year by the key and not by
+    its spelling, so ``1040 - Park`` and ``1040 - PARK`` - or a look-alike
+    typed in another script - are one return, and the second is refused
+    where the first already is. Asked by the wizard and the rollover
+    before anything is made; a year folder not there yet holds nothing.
+    """
+    wanted = name_key(return_name)
+    try:
+        folders = [one.name for one in Path(year_dir).iterdir() if one.is_dir()]
+    except FileNotFoundError:
+        return None
+    return next((name for name in sorted(folders) if name_key(name) == wanted), None)
 
 
 def open_years(returns: Iterable[object]) -> list[int]:

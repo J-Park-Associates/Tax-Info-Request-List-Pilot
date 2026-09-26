@@ -55,8 +55,11 @@ Guarantees:
 - **Rename-tolerant.** A file belongs to a request if its name starts with
   the identifier followed by a non-alphanumeric boundary, so a copy a
   person renamed ``A01 - bank stuff.pdf`` is still A01's.
-- **Windows-safe names.** Illegal characters (``manifest.WINDOWS_ILLEGAL_CHARS``)
-  are replaced and trailing dots/spaces stripped (:func:`sanitize_component`).
+- **Windows-safe names.** Illegal characters (``layout.WINDOWS_ILLEGAL_CHARS``)
+  are replaced and trailing dots/spaces stripped (:func:`sanitize_component`)
+  in a working copy's file name. A household or a return name is never
+  sanitised: it is held to the layout's one name rule and refused
+  (``layout.segment_problem``, decision 188).
 
 Not Applicable items (``Override.NOT_APPLICABLE``) are dropped from the
 README.
@@ -76,19 +79,19 @@ from tracker.layout import (
     PREPARED_DIR_NAME,
     README_NAME,
     REVIEW_DIR_NAME,
+    WINDOWS_ILLEGAL_CHARS,
     client_household_dir,
     household_of,
     inbox_dir_for,
+    is_reserved_name,
     originals_dir_for,
     root_of,
     same_return,
     year_of,
 )
 from tracker.manifest import (
-    WINDOWS_ILLEGAL_CHARS,
     Override,
     RequestItem,
-    is_reserved_name,
     load_engagement_info,
     load_manifest,
 )
@@ -183,7 +186,7 @@ _MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
 # is worded once, in tracker.layout, since decision 125. They are still
 # read from this module by the callers that have always read them from it.
 
-#: The one list of characters Windows forbids lives in tracker.manifest.
+#: The one list of characters Windows forbids lives in tracker.layout (decision 188).
 _ILLEGAL_CHARS = WINDOWS_ILLEGAL_CHARS
 
 
@@ -194,7 +197,7 @@ def sanitize_component(text: str) -> str:
     """Make ``text`` safe as (part of) a Windows folder name.
 
     A name Windows keeps for a device (``CON``, ``NUL``, ``COM1`` ...,
-    ``manifest.WINDOWS_RESERVED_NAMES``) is never handed back as itself
+    ``layout.WINDOWS_RESERVED_NAMES``) is never handed back as itself
     (decision 137, L6): it gains a trailing ``_``, so a folder is made
     rather than a device opened - and every caller that refuses a name the
     sanitiser changed (a household, a return, a feed) refuses it.

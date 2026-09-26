@@ -27,9 +27,11 @@ stay where they are: the journal is written by :mod:`tracker.filer`, the
 scanner and :mod:`tracker.manifest`, which is where the lock and the
 atomic replace belong.
 
-It sits at layer 1 and imports nothing of the package (``tests/test_layers.py``
-pins that), so every layer above may name a record without reaching for the
-module that produces it. :mod:`tracker.manifest` imports it, which is an
+It sits at layer 1 and imports nothing of the package but the layout's
+character and device rule (``tests/test_layers.py`` pins that; decision 188
+moved that rule down to :mod:`tracker.layout`, which reads no file), so
+every layer above may name a record without reaching for the module that
+produces it. :mod:`tracker.manifest` imports it, which is an
 in-layer edge and allowed; nothing here imports the manifest, so the edge
 cannot become a cycle.
 
@@ -48,7 +50,7 @@ a request row is what a ``rules_changed`` event carries - and the
 here - the serialisation is a fact about the record, the parsing is a fact
 about the list, and the two live where each belongs. The pair is
 deliberately duck-typed on the field names rather than on the class, so
-this module still imports nothing of the package.
+this module still imports nothing of the package that holds a record.
 
 **The old names still work where a module still uses them.** A module a
 record left keeps a re-export of the names it still reads - ``from
@@ -72,6 +74,14 @@ import re
 import re._parser as _re_parser
 from dataclasses import MISSING, asdict, dataclass, field, fields
 from pathlib import Path
+
+from tracker.layout import (  # noqa: F401 - re-exported: the record's names since decision 137
+    WINDOWS_ILLEGAL_CHARS,
+    WINDOWS_ILLEGAL_CHARS_TEXT,
+    WINDOWS_RESERVED_NAMES,
+    WINDOWS_RESERVED_NAMES_TEXT,
+    is_reserved_name,
+)
 
 # ------------------------------------------------------------ derivations ----
 
@@ -1316,33 +1326,10 @@ DATE_YEAR_MAX = YEAR_MAX + 1
 #: cannot give a time its local day.
 STAMP_YEAR_MIN = 1970
 
-#: Characters Windows forbids in file and folder names, plus control
-#: characters - the one list, for identifiers and for sanitising names.
-_ILLEGAL_PUNCTUATION = '\\/:*?"<>|'
-WINDOWS_ILLEGAL_CHARS = re.compile("[" + re.escape(_ILLEGAL_PUNCTUATION) + r"\x00-\x1f]")
-WINDOWS_ILLEGAL_CHARS_TEXT = " ".join(_ILLEGAL_PUNCTUATION)
-#: The names Windows keeps for devices (decision 137, L6). A folder or a
-#: file named one of them - with or without an extension, in any case - is
-#: not a folder at all: ``NUL`` is the null device, ``COM1`` a serial port,
-#: and a working copy, a household or a return named one could never
-#: hold a document.
-WINDOWS_RESERVED_NAMES: frozenset[str] = frozenset(
-    {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"}
-    | {f"COM{n}" for n in range(1, 10)}
-    | {f"LPT{n}" for n in range(1, 10)}
-    # The superscript digits Windows reserves too (the review's F6).
-    | {f"{port}{digit}" for port in ("COM", "LPT") for digit in "¹²³"}
-)
-WINDOWS_RESERVED_NAMES_TEXT = ("CON, PRN, AUX, NUL, CONIN$, CONOUT$, COM1-COM9, LPT1-LPT9 "
-                               "and their superscript-1, 2 and 3 forms")
-
-
-def is_reserved_name(name: str) -> bool:
-    """Whether Windows reads ``name`` as a device rather than a file or a
-    folder: a reserved name, alone or before an extension (``nul.txt``),
-    whatever its case and any spaces before the dot."""
-    stem = str(name).split(".", 1)[0].rstrip(" ")
-    return stem.upper() in WINDOWS_RESERVED_NAMES
+#: Characters Windows forbids in file and folder names, and the names it
+#: keeps for devices, are the layout's since decision 188 - the name rule
+#: for a household or a return is worded there - and are imported above
+#: and named here still, so every reader of them is unchanged.
 
 
 def identifier_problem(identifier: str) -> str:

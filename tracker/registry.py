@@ -66,7 +66,6 @@ from tracker.ledger import LedgerError
 from tracker.manifest import ManifestError, load_engagement_info
 from tracker.records import EngagementInfo, HouseholdInfo
 from tracker.store import StoreError
-from tracker.validators import OFFICE_LOCK_PREFIX, is_sync_staging
 
 #: The workbook the request list lived in until decision 104. Its only
 #: reader in the package is the walk below, which uses it to say what a
@@ -104,6 +103,10 @@ MISFIT_RECORD_MISPLACED = ("holds a record in the layout before decision 125; se
 #: A folder where a household would be, with nothing the tracker can read.
 MISFIT_NO_HOUSEHOLD_RECORD = ("sits where a household would but holds no household record the tracker can read; "
                               "set the household up in the app")
+#: A household or return folder whose name the layout's one rule refuses
+#: (decision 188): the reason is the rule's own phrase.
+MISFIT_BAD_NAME = ("is named in a way the tracker does not accept for a household or a return "
+                   "({reason}); left alone")
 #: A folder where a year would be, named as something else.
 MISFIT_NOT_A_YEAR = "sits where a year folder would but is not named as a four-digit year; left alone"
 #: A return folder with no record, and a household with no return under any
@@ -252,9 +255,23 @@ def _skip(folder: Path) -> bool:
     """Names the walk passes over without a word: hidden state, sync
     staging, an office lock file's folder. They are the machine's, not a
     household's, and listing them as misfits would be noise a person
-    cannot act on."""
-    name = folder.name
-    return name.startswith((".", "_", OFFICE_LOCK_PREFIX)) or is_sync_staging(name)
+    cannot act on. The one list is the layout's
+    (``layout.MACHINE_PREFIXES``, decision 188), whose name rule refuses
+    every such name for a household or a return - so a folder the walk
+    never lists is never one somebody was allowed to create."""
+    return folder.name.startswith(layout.MACHINE_PREFIXES)
+
+
+def _badly_named(folder: Path, found: _Walk) -> bool:
+    """``True`` once a household or return folder whose name the layout's
+    rule refuses (decision 188) is listed as a misfit with the reason: the
+    constructors refuse to build a path through such a name, so the pass
+    never reaches it, and a person is told why."""
+    reason = layout.segment_problem(folder.name)
+    if reason is None:
+        return False
+    found.misfits.append(Misfit(folder, MISFIT_BAD_NAME.format(reason=reason)))
+    return True
 
 
 @dataclass(slots=True)
@@ -340,7 +357,7 @@ def _walk_private(private: Path, found: _Walk) -> None:
     if children is None:
         return
     for child in children:
-        if _skip(child):
+        if _skip(child) or _badly_named(child, found):
             continue
         record = _has_record(child)
         if record is None and _cannot_be_read(child, found):
@@ -382,7 +399,7 @@ def _walk_year(year: Path, household: Path, found: _Walk) -> None:
     if children is None:
         return
     for child in children:
-        if _skip(child):
+        if _skip(child) or _badly_named(child, found):
             continue
         record = _has_record(child)
         if record is None and _cannot_be_read(child, found):

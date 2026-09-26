@@ -75,8 +75,8 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from tracker.fsio import make_new_folders
-from tracker.households import household_returns, load_household_info, open_years
-from tracker.layout import household_of, return_dir_for, root_of
+from tracker.households import household_returns, load_household_info, open_years, return_name_taken
+from tracker.layout import household_of, name_key, normalised_name, return_dir_for, root_of
 from tracker.manifest import (  # shift_years/detect_year re-exported: they live in manifest
     ManifestError,
     Override,
@@ -665,9 +665,10 @@ def _roll_one(prior: Path, prior_info: EngagementInfo, plan: ReturnPlan,
         household = household_name
         return_name = plan.return_name or prior.name
         target = return_dir_for(root_of(prior), household, target_year, return_name)
-        if target.exists():
+        # Unique by the layout's key within the household-year (decision 188).
+        if (taken := return_name_taken(target.parent, return_name)) is not None:
             raise ManifestError(
-                f"A return named '{return_name}' already exists for {household} {target_year}")
+                f"A return named '{taken}' already exists for {household} {target_year}")
         refuse_a_path_past_the_limit(target, report.items)
 
         carried = carry_engagement_info(prior_info, rolled_from=str(prior),
@@ -775,10 +776,12 @@ if __name__ == "__main__":
             parser.error(str(exc))
         chosen = list(open_now)
         if ns.only:
-            by_name = {one.path.name.lower(): one for one in open_now}
+            # By the layout's one key (decision 188): a name typed with
+            # another case or a look-alike letter is the same return.
+            by_name = {name_key(one.path.name): one for one in open_now}
             chosen = []
             for name in ns.only:
-                one = by_name.get(name.strip().lower())
+                one = by_name.get(name_key(normalised_name(name)))
                 if one is None:
                     parser.error(ROLLOVER_NOT_THIS_HOUSEHOLD.format(prior=name,
                                                                     household=given.name))

@@ -53,7 +53,7 @@ import sys
 from dataclasses import asdict, replace
 from pathlib import Path
 
-from tracker import STANDING_RULES, content_check, ledger, names, ocr, records, reminder, review, store
+from tracker import STANDING_RULES, content_check, layout, ledger, names, ocr, records, reminder, review, store
 from tracker.filer import (
     DUPLICATE,
     FILE_MOVED,
@@ -90,6 +90,7 @@ from tracker.households import (
     load_household_info,
     open_years,
     resolve_feeds,
+    return_name_taken,
     save_household,
     shared_on,
 )
@@ -98,6 +99,8 @@ from tracker.layout import (
     ENGAGEMENT_LABEL_PATTERN,
     INBOX_DIR_NAME,
     MAX_PATH_LENGTH,
+    NOT_A_HOUSEHOLD,
+    NOT_A_RETURN,
     PATH_TOO_LONG,
     PRIVATE_TREE,
     RETURN_NAME_PATTERN,
@@ -552,19 +555,20 @@ TEACH_SPELLING_LABEL = "Teach this spelling"
 TEACH_SPELLING_HINT = "the name as this page prints it"
 
 
-def _folder_name(value: str, what: str) -> str:
-    """One folder name from what a person typed, or the refusal that says
-    which box to fix.
+def _folder_name(value: object, what: str) -> str:
+    """One household or return name from what a person typed (``what`` is
+    ``household`` or ``return``), or the refusal that says why.
 
     A household and a return are each **one** folder name: the layout puts
-    them where they go (decision 125), so a name carrying a separator, or
-    one that sanitising leaves empty, is a typo and not a path.
+    them where they go (decision 125), and the layout's one name rule
+    (decision 188, ``layout.checked_name``) says what one may be - the
+    same sentence wherever a name is typed: the wizard, a new return, a
+    rolled return's new name, a feed.
     """
-    typed = str(value or "").strip()
-    name = sanitize_component(typed)
-    if not name or not any(ch.isalnum() for ch in name) or name != typed.strip():
-        raise ManifestError(f"'{typed}' is not a folder name; {what}")
-    return name
+    try:
+        return layout.checked_name(value, what)
+    except layout.LayoutError as exc:
+        raise ManifestError(str(exc)) from None
 
 
 def _new_return_dir(root: Path, household: str, year: int, return_name: str,
@@ -579,13 +583,15 @@ def _new_return_dir(root: Path, household: str, year: int, return_name: str,
     filed document in February is a failure at a filing deadline, and the
     refusal names the length so a person knows what to shorten.
     """
-    household = _folder_name(household, "type the household's name on its own")
-    return_name = _folder_name(return_name, "type the return's name on its own")
+    household = _folder_name(household, "household")
+    return_name = _folder_name(return_name, "return")
     year = check_tax_year(int(year))
     engagement = return_dir_for(root, household, year, return_name)
-    if engagement.exists():
+    # Unique by the layout's key within the household-year (decision
+    # 188), so a look-alike of a return already there is that return.
+    if (taken := return_name_taken(engagement.parent, return_name)) is not None:
         raise ManifestError(
-            f"A return named '{return_name}' already exists for {household} {year}")
+            f"A return named '{taken}' already exists for {household} {year}")
     refuse_a_path_past_the_limit(engagement, items or [])
     return engagement
 
@@ -596,14 +602,6 @@ def _new_return_dir(root: Path, household: str, year: int, return_name: str,
 #: anything is written.
 HOUSEHOLD_NOT_OURS = ("A folder named '{name}' is already there and the tracker did not make it. "
                       "Choose another name, or move that folder aside first. Nothing was changed.")
-#: What a command naming a folder that is not a return is told (decision
-#: 137, L1). A year folder or a household folder holds a journal too - the
-#: household's own record - so a folder is a return by where it sits, as
-#: discovery reads it, and not by whether some record is in it.
-NOT_A_RETURN = ("{name} is not a return's folder (a return sits at <clients root>\\{tree}"
-                "\\<household>\\<year>\\<return>); it is not an engagement")
-
-
 def _engagement_dir(argv: list[str]) -> Path:
     """The engagement a command is about: ``ENGAGEMENT_FLAG <folder>``.
 
@@ -624,12 +622,6 @@ def _engagement_dir(argv: list[str]) -> Path:
     if not given:
         raise ManifestError(hint)
     return _return_dir(given)
-
-
-#: What a command naming a folder that is not a household is told
-#: (decision 176): a household sits at <clients root>\<private tree>\<household>.
-NOT_A_HOUSEHOLD = ("{name} is not a household's folder (a household sits at <clients root>\\{tree}"
-                   "\\<household>); nothing was changed")
 
 
 def _return_dir(given: str | Path) -> Path:
@@ -727,9 +719,9 @@ def default_return_name(form: str, client: str) -> str:
     renderer fills the same pattern for its preview, so the box and the
     folder agree.
     """
-    return sanitize_component(
+    return layout.normalised_name(sanitize_component(
         RETURN_NAME_PATTERN.format(form=form, client=client or "New client").strip()
-    )
+    ))
 
 
 #: A word as a class name, from the module that owns how the firm's pages
@@ -1442,8 +1434,8 @@ def _feed_payload(household_dir: Path, years: list[int]) -> tuple[list[dict], li
     feeds = []
     for one in info.feeds:
         match = next((found_one for key, found_one in by_line.items()
-                      if key[0].casefold() == one.household.casefold()
-                      and key[1].casefold() == one.return_name.casefold()), None)
+                      if layout.name_key(key[0]) == layout.name_key(one.household)
+                      and layout.name_key(key[1]) == layout.name_key(one.return_name)), None)
         feeds.append({
             "household": one.household, "return_name": one.return_name,
             "label": match.label if match else "",
@@ -2218,7 +2210,7 @@ def _cmd_create(argv: list[str]) -> dict:
             raise ManifestError(f"No household record found in '{given}'")
         household = household_dir.name
     else:
-        household = _folder_name(spec.get("household"), "type the household's name on its own")
+        household = _folder_name(spec.get("household"), "household")
         household_dir = private_household_dir(root, household)
     # A household the record already knows is that household, whether the
     # wizard named it by its folder or a person typed its name again: its
@@ -2391,21 +2383,22 @@ def _feeds_from_spec(sent: object, household_dir: Path) -> tuple[Feed, ...]:
     wanted: list[Feed] = []
     for one in sent:
         raw = one if isinstance(one, dict) else {}
-        household = " ".join(str(raw.get("household", "") or "").split())
-        return_name = " ".join(str(raw.get("return_name", "") or "").split())
+        household = layout.normalised_name(raw.get("household", "") or "")
+        return_name = layout.normalised_name(raw.get("return_name", "") or "")
         refusal = FEED_REFUSED.format(household=household or "(blank)",
                                       return_name=return_name or "(blank)")
         if not household or not return_name:
             raise ManifestError(refusal)
-        # A feed names two folders, so each half must be a folder name the
-        # sanitiser leaves as it is (decision 137, L6): a separator, a
-        # device name or a trailing dot names no folder a pass could find.
-        if sanitize_component(household) != household or sanitize_component(return_name) != return_name:
+        # A feed names two folders, so each half is held to the layout's
+        # one name rule (decision 188), and says why as a typed name does;
+        # identity is the layout's one key, never a spelling.
+        _folder_name(household, "household")
+        _folder_name(return_name, "return")
+        if layout.name_key(household) == layout.name_key(household_dir.name):
             raise ManifestError(refusal)
-        if household.casefold() == household_dir.name.casefold():
-            raise ManifestError(refusal)
-        if any(held.household.casefold() == household.casefold()
-               and held.return_name.casefold() == return_name.casefold() for held in wanted):
+        if any(layout.name_key(held.household) == layout.name_key(household)
+               and layout.name_key(held.return_name) == layout.name_key(return_name)
+               for held in wanted):
             raise ManifestError(refusal)
         wanted.append(Feed(household=household, return_name=return_name))
     return tuple(wanted)
@@ -2655,7 +2648,7 @@ def _cmd_roll_household(argv: list[str]) -> dict:
             form=str((one or {}).get("form", "") or "").strip(),
             # A name a person typed is one folder name, checked here as
             # every other typed name is; blank keeps the prior's own.
-            return_name=_folder_name(named, "type the return's name on its own") if named else "",
+            return_name=_folder_name(named, "return") if named else "",
         ))
 
     done = roll_household(household_dir, target_year=target_year, plans=plans)

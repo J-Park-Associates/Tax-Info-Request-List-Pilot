@@ -2331,18 +2331,23 @@ def test_a_moving_line_in_a_households_record_is_refused():
 def test_a_label_that_is_not_one_segment_is_refused_at_admission(conn, root, by_hand):
     """A household or a return label is joined onto a path somewhere, so one
     that is a path of its own - a separator, a climb, a drive - is refused
-    at the door, naming the field and the layout's code."""
-    from tracker.layout import PRIVATE_TREE
+    at the door, naming the field and the layout's reason - since decision
+    188 the one name rule a person's typing gets, so an invisible or a
+    look-alike-script label is refused here too."""
+    from tracker.layout import NAME_FIRST_CHARACTER, NAME_ILLEGAL, NAME_SCRIPTS, PRIVATE_TREE
 
     household = f"{PRIVATE_TREE}/Smith Family"
     for event, field, code in [
         (ledger.new(ledger.RULES_CHANGED, rules=[], info={"household": "../Jones"}), "household",
-         "separator"),
-        (ledger.new(ledger.RULES_CHANGED, rules=[], info={"return_name": ".."}), "return_name", "dot"),
-        (ledger.new(ledger.HOUSEHOLD_CHANGED, household={"name": "C:Jones"}), "name", "drive"),
+         NAME_ILLEGAL),
+        (ledger.new(ledger.RULES_CHANGED, rules=[], info={"return_name": ".."}), "return_name",
+         NAME_FIRST_CHARACTER),
+        (ledger.new(ledger.HOUSEHOLD_CHANGED, household={"name": "C:Jones"}), "name", NAME_ILLEGAL),
         (ledger.new(ledger.HOUSEHOLD_CHANGED, household={"feeds": [
             {"household": "Jones/..", "return_name": "1040 - Jones"}]}), "feeds.household",
-         "separator"),
+         NAME_ILLEGAL),
+        (ledger.new(ledger.HOUSEHOLD_CHANGED, household={"name": "J\u043ehnson"}), "name",
+         NAME_SCRIPTS.format(first="Latin", second="Cyrillic")),
     ]:
         with pytest.raises(store.StoreError) as refused:
             store._refuse_a_malformed_line(event, 2, household, kind=store.KIND_HOUSEHOLD)

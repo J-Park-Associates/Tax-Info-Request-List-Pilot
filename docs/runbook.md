@@ -1705,3 +1705,45 @@ beside **Teach this spelling**, and the next one like it files itself.
 look at the list once — a child who now files their own return, a spouse's
 new name. Nothing waits on that look; the check simply parks what it
 cannot confirm until you give it.
+
+### Household and return names
+
+A household's name and a return's name are folder names: every path under
+them carries them, in both trees, on every machine the Shared Drive syncs
+to. So one rule says what a name may be, and the wizard, a new return, a
+rolled return's new name and a feed all hold you to it with the same
+sentence — `'<what you typed>' is not a household name: <why>` (decision 188).
+A name is refused when it:
+
+1. is empty, or longer than 80 characters;
+2. does not begin with a letter or a digit — the tracker passes over every
+   folder that begins with `.`, `_` or `~$`, so a household named so would
+   never be sorted or chased;
+3. ends with a dot or a space (Windows drops them), or contains any of
+   `< > : " / \ | ? *` or a control character;
+4. is a name Windows keeps for a device (`CON`, `NUL`, `COM1` and the rest);
+5. contains an invisible character — a zero-width space, a soft hyphen, a
+   direction mark, a no-break space. It is refused, never quietly removed,
+   and the sentence names it by its code (`U+200B ZERO WIDTH SPACE`). A
+   name that uses a zero-width non-joiner is typed without it;
+6. contains a full-width or compatibility character (`Ｐａｒｋ`, the `ﬁ`
+   ligature, a superscript) — type it plainly;
+7. mixes letters of two alphabets, such as a Cyrillic `а` inside a Latin
+   name (Chinese, Japanese and Korean count as one);
+8. is a word of the layout itself (`Clients`, `J Park & Associates`,
+   `Drop files here`, `Prepared`, `00 - Needs Review`, `_Opened`), or four
+   digits.
+
+**Look-alikes are one name.** Two names are compared as the tracker reads
+them, not as they are spelled: case, spacing, invisible characters, the
+Cyrillic and Greek letters that look like Latin ones, the dashes and the
+apostrophes all fold away, and so do `1`, `i` and `|` against `l`, `0`
+against `o`, and `rn` against `m`. So `Kim` and `Klm` are one name. That
+errs on the side of asking: a second household whose name reads as the
+first is refused, and you add a first name or a middle initial — and then,
+if the two names still match, the city — to tell them apart. Never add a
+tax identification number or any part of one to a name.
+
+A folder already on disk whose name breaks the rule is listed under
+*Folders the tracker leaves alone* with the reason, and nothing in it is
+read.

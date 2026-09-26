@@ -77,7 +77,6 @@ Each skip is named, so the container's row can say what was left and why.
 from __future__ import annotations
 
 import io
-import unicodedata
 import zipfile
 import zlib
 from collections.abc import Callable
@@ -87,7 +86,7 @@ from email.message import Message
 from pathlib import PurePath
 
 from tracker import content_check, reasons
-from tracker.manifest import WINDOWS_ILLEGAL_CHARS, is_reserved_name
+from tracker.layout import WINDOWS_ILLEGAL_CHARS, is_invisible, is_reserved_name
 
 #: The extensions that make a drop a container, lower case, no dot. The
 #: extension and nothing else decides (the module docstring says why).
@@ -218,7 +217,7 @@ def safe_name(raw: object, fallback: str | Callable[[], str]) -> str:
     ``x.pdf``; a drive letter left behind (``C:x.pdf``) goes with the
     characters Windows forbids, which become ``_``; a name Windows reads as
     a device (``CON.pdf``, decision 137's L6 rule,
-    :func:`tracker.manifest.is_reserved_name`) is refused and the part is
+    :func:`tracker.layout.is_reserved_name`) is refused and the part is
     called ``fallback`` with its extension; nothing but dots, or nothing at
     all, is ``fallback`` (a string, or a function asked only when it is
     needed, so an unnamed part's number is spent only on an unnamed part).
@@ -233,7 +232,10 @@ def safe_name(raw: object, fallback: str | Callable[[], str]) -> str:
     longer than a file name can be.
     """
     text = str(raw or "").encode("utf-8", "replace").decode("utf-8")
-    text = "".join(ch for ch in text if unicodedata.category(ch) != "Cf")
+    # The one invisible set is the layout's (decision 188): what the name
+    # rule refuses in a folder's name goes from an attachment's, but for
+    # white space and control characters, which the rule below makes ``_``.
+    text = "".join(ch for ch in text if not is_invisible(ch) or ch.isspace() or ch < " ")
     text = text.replace("\\", "/").rsplit("/", 1)[-1]
     text = WINDOWS_ILLEGAL_CHARS.sub("_", text).strip().rstrip(". ")
     if len(text) > NAME_MAX:

@@ -200,13 +200,15 @@ def test_the_filers_old_private_separator_is_the_records_own():
     assert filer._CANDIDATE_SEP is CANDIDATE_SEP
 
 
-def test_the_records_import_nothing_of_the_package():
+def test_the_records_import_nothing_of_the_package_but_the_layouts_name_rule():
     """The whole point of the module: a layer above may name a record
     without loading the machinery that writes it. `tests/test_layers.py`
-    pins the direction of every edge; this names this one."""
+    pins the direction of every edge; this names this one. Since decision
+    188 the Windows character and device rule is the layout's, which reads
+    no file, and the record imports it from there."""
     load, call = import_edges()
 
-    assert load["records"] == set(), load["records"]
+    assert load["records"] == {"layout"}, load["records"]
     assert call["records"] == set(), call["records"]
     assert "records" in load["manifest"], "the manifest names the shapes it loads"
 
@@ -220,13 +222,14 @@ def test_nothing_here_reaches_a_file_or_a_workbook():
     them (decision 128) - reading a value is not knowing where it lives.
     `math` and `re._parser` are the value rule's (decision 187): a count is
     finite, and a Date Pattern's shape is read off the standard library's
-    own parser rather than a second engine."""
+    own parser rather than a second engine. `tracker.layout` is the Windows
+    name rule's (decision 188), and it reads no file either."""
     source = (Path(records.__file__)).read_text(encoding="utf-8")
     imported = {line.split()[1] for line in source.splitlines()
                 if line.startswith("import ") or line.startswith("from ")}
 
     assert imported == {"__future__", "datetime", "dataclasses", "json", "math", "pathlib", "re",
-                        "re._parser"}, imported
+                        "re._parser", "tracker.layout"}, imported
     assert isinstance(records.EngagementInfo().due, type(None))
     assert EngagementInfo(due=dt.date(2026, 4, 15)).due.year == 2026
 

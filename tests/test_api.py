@@ -312,9 +312,9 @@ def test_create_with_no_name_builds_one_that_stays_under_the_root(capsys, demo_r
     # And a household or a return that is not one folder name is refused
     # by name, whichever separator a platform reads.
     for outside in ("../outside", "sub/child"):
-        with pytest.raises(api.ManifestError, match="not a folder name"):
+        with pytest.raises(api.ManifestError, match="is not a return name"):
             api._new_return_dir(demo_root, HOUSEHOLD, 2025, outside)
-        with pytest.raises(api.ManifestError, match="not a folder name"):
+        with pytest.raises(api.ManifestError, match="is not a household name"):
             api._new_return_dir(demo_root, outside, 2025, "1040 - Smith")
 
 
@@ -2875,8 +2875,11 @@ def test_create_refuses_a_return_whose_deepest_path_would_pass_the_limit_and_say
     a failure at a filing deadline, so it is refused now, with the length."""
     from tracker.layout import MAX_PATH_LENGTH
 
+    # Two names of the longest a name may be (decision 188) pass what
+    # Windows will open under a root that grew.
+    _a_deeper_root(demo_root)
     code, payload = run(capsys, "create", stdin={
-        "household": "Park Family", "return_name": "1040 - " + "x" * 170, "form": "1040",
+        "household": "Park Family " + "h" * 68, "return_name": "1040 - " + "x" * 73, "form": "1040",
         "items": [{"identifier": "A01", "document": "y" * 90}]})
 
     assert code == 1
@@ -2893,7 +2896,8 @@ def test_create_refuses_a_household_or_return_name_that_is_not_a_folder_name(cap
         spec = {"household": "Park Family", "return_name": "1040 - John",
                 "items": [{"identifier": "A01", "document": "W-2"}], field: value}
         code, payload = run(capsys, "create", stdin=spec)
-        assert code == 1 and "is not a folder name" in payload["error"], field
+        what = "household" if field == "household" else "return"
+        assert code == 1 and f"is not a {what} name" in payload["error"], field
     assert not any(demo_root.rglob(ledger.LEDGER_FILENAME))
 
 
@@ -3629,6 +3633,20 @@ def test_unfiling_moves_it_back_to_under_review_at_once(capsys, demo_root, tmp_p
 LONG_ROW_OVER = 10
 
 
+def _a_deeper_root(demo_root):
+    """A clients root one long folder below the suite's short one, recorded
+    as the app records it. Since decision 188 a name is at most eighty
+    characters, so under the short root no return's path can pass what
+    Windows will open; a root this deep is where a root that grew leaves
+    the firm."""
+    from tracker.settings import set_clients_root
+
+    deeper = demo_root / ("Clients root " + "d" * 80)
+    deeper.mkdir()
+    set_clients_root(deeper)
+    return deeper
+
+
 def _a_long_row_return(root, household=HOUSEHOLD):
     """A return made the way a test makes one - past creation's refusal - whose
     second row's canonical copy no longer fits under ``root``: the state a
@@ -3642,15 +3660,22 @@ def _a_long_row_return(root, household=HOUSEHOLD):
     Prepared itself, so the depth below the return is one name, not a
     folder and a name."""
     from tests.conftest import TEST_YEAR
-    from tracker.layout import MAX_PATH_LENGTH
+    from tracker.layout import MAX_PATH_LENGTH, NAME_MAX_CHARS
     from tracker.manifest import RequestItem
 
     below = len("/Prepared/B01 - " + "y" * 20 + ".pdf")
-    above = len(str(return_dir_for(Path(root), household, TEST_YEAR, "")))
-    pad = MAX_PATH_LENGTH + LONG_ROW_OVER - below - above - len("/1040 - Long ")
+    above = len(str(return_dir_for(Path(root), household, TEST_YEAR, "x"))) - len("x")
+    pad = MAX_PATH_LENGTH + LONG_ROW_OVER - below - above - len("1040 - Long ")
     if pad < 1:
         pytest.skip(f"{root} is too long to make the long-row return under it")
-    return_name = "1040 - Long " + "g" * pad
+    # A name is at most NAME_MAX_CHARS (decision 188): what the return's
+    # name cannot hold pads the household's.
+    in_return = min(pad, NAME_MAX_CHARS - len("1040 - Long "))
+    if pad > in_return:
+        household = household + "h" * (pad - in_return)
+        if len(household) > NAME_MAX_CHARS:
+            pytest.skip(f"{root} is too short to make the long-row return under it")
+    return_name = "1040 - Long " + "g" * in_return
     engagement = make_engagement(root, [
         RequestItem(identifier="A01", document="W-2", allowed_extensions=("pdf",)),
         RequestItem(identifier="B01", document="y" * 100, allowed_extensions=("pdf",)),
@@ -3683,7 +3708,7 @@ def test_set_root_answers_with_every_return_short_of_room_under_the_new_root(
     assert code == 0, payload
     assert clients_root() == root.resolve()
     [entry] = payload["short_of_room"]
-    assert entry["engagement"] == f"{HOUSEHOLD} {TEST_YEAR} {short.name}"
+    assert entry["engagement"] == f"{short.parent.parent.name} {TEST_YEAR} {short.name}"
     assert entry["short"] == room.short and entry["parks"] == room.parks
     assert entry["sentences"][0] == ROOM_SHORT.format(short=room.short)
 
@@ -3699,7 +3724,8 @@ def test_state_carries_the_returns_room_as_information_and_warns_only_what_canno
     from tracker.filer import ROOM_PARKS, ROOM_SHORT, room_for
     from tracker.manifest import RequestItem
 
-    engagement = _a_long_row_return(demo_root)
+    root = _a_deeper_root(demo_root)
+    engagement = _a_long_row_return(root)
     room = room_for(engagement, load_manifest(engagement))
 
     state = payload_of_state(capsys, engagement)
@@ -3713,7 +3739,7 @@ def test_state_carries_the_returns_room_as_information_and_warns_only_what_canno
     assert run(capsys, "list")[1]["vocab"]["room"]["short"] == ROOM_SHORT
 
     # A return with room: no note at all.
-    fits = make_engagement(demo_root, [RequestItem(identifier="A01", document="W-2")],
+    fits = make_engagement(root, [RequestItem(identifier="A01", document="W-2")],
                            return_name="1040 - Fits")
     assert payload_of_state(capsys, fits)["room_note"] == ""
 
@@ -3729,7 +3755,7 @@ def test_saving_a_list_refuses_a_changed_row_whose_path_would_pass_the_limit_and
     another."""
     from tracker.layout import PATH_TOO_LONG
 
-    engagement = _a_long_row_return(demo_root)
+    engagement = _a_long_row_return(_a_deeper_root(demo_root))
     rows = payload_of_state(capsys, engagement)["rules"]
     by_id = {row["identifier"]: row for row in rows}
 
@@ -4863,3 +4889,54 @@ def test_a_case_only_change_reads_the_same_in_the_readme_and_the_letter(capsys, 
 
     letter = reminder.draft_reminder(engagement)
     assert "c01" not in {line.item.identifier.lower() for line in letter.lines}
+
+
+# ------------------------------------ decision 188: one name rule ----
+
+
+def test_one_name_rule_gives_one_sentence_wherever_a_name_is_typed(capsys, demo_root):
+    """A household or a return name is held to the layout's one rule
+    wherever a person types one - the wizard's household and return, a
+    rolled return's new name, a feed - and each box answers with the same
+    sentence: the name as typed, what it is, and the rule's reason."""
+    from tracker import layout
+
+    bad = "Pa​rk"
+    reason = layout.segment_problem(bad)
+    said_household = layout.NAME_REFUSED.format(typed=bad, what="household", reason=reason)
+    said_return = layout.NAME_REFUSED.format(typed=bad, what="return", reason=reason)
+    items = [{"identifier": "A01", "document": "W-2"}]
+
+    code, payload = run(capsys, "create", stdin={"household": bad, "return_name": "1040 - Park",
+                                                 "items": items})
+    assert code == 1 and payload["error"] == said_household
+    code, payload = run(capsys, "create", stdin={"household": "Park Family", "return_name": bad,
+                                                 "items": items})
+    assert code == 1 and payload["error"] == said_return
+
+    assert run(capsys, "create", stdin={"household": "Park Family", "return_name": "1040 - Park",
+                                        "items": items})[0] == 0
+    prior = where(demo_root, "1040 - Park", household="Park Family")
+    code, payload = run(capsys, "roll-household", api.ENGAGEMENT_FLAG, str(prior),
+                        stdin={"year": 2026, "returns": [{"prior": str(prior), "return_name": bad}]})
+    assert code == 1 and payload["error"] == said_return
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(prior),
+                        stdin={"feeds": [{"household": bad, "return_name": "1040 - Lee"}]})
+    assert code == 1 and payload["error"] == said_household
+    assert not (demo_root / layout.PRIVATE_TREE / bad).exists()
+
+
+def test_a_name_the_walk_would_pass_over_is_never_created(capsys, demo_root):
+    """C-7: a household made under a name discovery passes over - a dot, an
+    underscore, an office lock's ``~$`` - would never be listed, sorted or
+    chased. The rule refuses every one before anything is written."""
+    from tracker import layout
+
+    for hidden in (".Park", "_Park", "~$Park"):
+        code, payload = run(capsys, "create", stdin={
+            "household": hidden, "return_name": "1040 - Park",
+            "items": [{"identifier": "A01", "document": "W-2"}]})
+        assert code == 1, hidden
+        assert payload["error"] == layout.NAME_REFUSED.format(
+            typed=hidden, what="household", reason=layout.NAME_FIRST_CHARACTER)
+    assert not any(demo_root.rglob(ledger.LEDGER_FILENAME))

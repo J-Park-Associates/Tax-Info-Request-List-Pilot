@@ -500,3 +500,30 @@ def test_fed_by_lists_the_households_whose_feeds_name_this_one(tmp_path):
     # The households come back whole, so the card that shows them can name
     # the folder and nothing about anybody's family.
     assert all(one.info.feeds for one in fed_by(registry, llc))
+
+
+def test_a_household_or_return_folder_the_name_rule_refuses_is_a_misfit_with_the_reason(root):
+    """Decision 188 (R2, R8): a folder put on disk by hand under a name the
+    rule refuses - an invisible character, letters of two alphabets, a
+    trailing dot - is listed with the rule's own reason and left alone:
+    the constructors refuse to build a path through it, so the pass never
+    reaches it, and nothing inside it is read."""
+    from tracker.layout import segment_problem
+    from tracker.registry import MISFIT_BAD_NAME
+
+    make(root)
+    private = root / PRIVATE_TREE
+    bad_household = private / "Smith​ Family"
+    (bad_household / "2025" / "1040 - Smith").mkdir(parents=True)
+    ledger.path_for(bad_household).write_text("", encoding="utf-8")
+    bad_return = private / "Smith Family" / "2025" / "1040 - Smіth Jr."
+    bad_return.mkdir(parents=True)
+    ledger.path_for(bad_return).write_text("", encoding="utf-8")
+
+    found = discover_engagements(root)
+    said = {m.path: m.sentence for m in found.misfits}
+
+    for folder in (bad_household, bad_return):
+        assert said[folder] == MISFIT_BAD_NAME.format(reason=segment_problem(folder.name)), folder
+    assert [e.path.name for e in found.engagements] == ["1040 - Smith"]
+    assert [h.path.name for h in found.households] == ["Smith Family"]
