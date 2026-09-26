@@ -2020,7 +2020,7 @@ def test_the_pass_refuses_a_saved_clients_root_the_rule_now_refuses(tmp_path, mo
 
 def test_a_root_typed_on_the_command_line_is_held_to_the_same_rule(tmp_path, monkeypatch):
     """Decision 176: only the saved root was held to decision 137's rule, so
-    the Command Center's preview - which hands its root straight through -
+    a root typed on the command line - a person's, or another program's -
     would walk the folder holding the app's settings, or the system drive.
     A typed root is refused in the same sentence, before anything is read."""
     from tracker.settings import ENV_SETTINGS_DIR

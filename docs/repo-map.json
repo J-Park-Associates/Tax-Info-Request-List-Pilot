@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 147,
-    "edges": 870,
-    "reused": 116
+    "nodes": 146,
+    "edges": 867,
+    "reused": 115
   },
   "node_types": [
     "artifact",
@@ -1978,8 +1978,8 @@
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "77dd13583bfa885c",
-      "lines": 1599,
+      "sha256": "db83ea8961011848",
+      "lines": 1598,
       "cli": "python -m tracker.runner",
       "exports": [
         "DATE_FLAG",
@@ -2082,7 +2082,7 @@
         "REVIEW_COLUMNS": "('Received', 'Engagement', 'File the client sent', 'Reason', 'Candidates')"
       },
       "role": "The unattended pass: for every engagement in the registry, file -> scan -> (on DRAFT_WEEKDAY) draft. This is the whole scheduled task. Decision 130: run_household() refreshes the client README once, after the sort and after every return's scan and draft, still inside the locks (and the README of each household it fed a document into); run_engagement() no longer touches the README.",
-      "notes": "Owns the draft-day rule (DRAFT_WEEKDAY) in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed after the scan and draft still ran. The CLI takes the clients root, not a file; an engagement whose record could not be read fails alone with the reason (RECORD_UNREADABLE), and so does a legacy folder the registry listed. _worth_a_pass() is the pre-checks: skips are not failures, and the warnings the pass reports are manifest.check_rules() over the list the record holds - the same list the app's state carries. Scaffolds each engagement before filing (a row added in the app gets its folder), leaves Override.NOT_APPLICABLE rows out of the outstanding count, and skips an engagement whose successor names it in Rolled From. run_engagement() is the one definition of a pass; the app's scan command calls it too. main(argv) is the command line as a function: python -m tracker.runner and the packaged executable in runner mode (api_entry.py, RUNNER_MODE_FLAG) both call it. Decision 55: should_draft() catches up a draft day the machine missed; an engagement never drafted waits for its first draft day. Decisions 57 and 60: a quiet draft day refreshes the run's own unedited draft (_refresh_stale_draft()) and one a person has edited is never touched. Decision 67: main() makes the console take what it cannot encode before it parses a flag; since decision 108 that guard is page.tolerant_console(), shared by every command line, and main() calls it. Decision 68: append_log() replaces what UTF-8 cannot encode; an engagement's registry warning rides the run's warnings. Decision 69: a FileReport's attention rides the run's warnings, never its error. Decision 75: every real pass ends by writing STATUS_PAGE_FILENAME into the clients root, never on a dry run; status_report() folds the runs just made into every engagement the registry found and reads the rest (no lock, nothing written), so --only and the app's one-engagement pass still draw the whole practice; skipped_because() is the one wording of why an engagement is passed over. Decision 87: the pass gained no call of its own on tracker/ledger.py. Decision 102: run_engagement() holds ONE engagement lock across scaffold, file, scan and view, and tells each step the lock is held; a dry run takes none; a lock it cannot get is a skip. Decision 89: the last thing each engagement's pass does is _view_step(), which regenerates the read-only view; a view whose replace did not land leaves run.view_stale set on a run that still succeeds. Decision 91: write_status_page() is drawn through tracker/page.py. Decision 103: the status page lost its Deferred writes column; nothing a pass decides waits for anything. Decision 104: the pass begins with filer.ensure(), the store's top-up, and nothing in it reads or writes a workbook; the 'Problem or skipped' cell shows the legacy sentence for a folder the tracker no longer reads. Decision 115: _draft_step() runs the gate - a held draft writes nothing, _retire_unedited_drafts() removes the run's own unedited drafts and leaves an edited one, run.held counts the rows and run.draft_note is the refusal (in the console, the log and the practice page's Drafted cell as STATUS_HELD); --reminders always is held too (decision 13 amended). Every draft step ends in _record(): one DRAFTED event through the reminder's record_draft() under the pass's lock, only when something changed or the week's draft is a new week's. last_drafted() answers from the last DRAFTED that wrote a file, and falls back to the files' times for a journal from before 115; draft_is_held() says whether the record's last word is a hold, and should_draft(held=True) drafts on the first pass after the hold clears, first draft or not. Decision 118: a draft a person approved in the app is protected for the rest of that draft week exactly as an edited one is - _draft_step() hands last_draft_day() to write_draft(), _retire_unedited_drafts() and _refresh_stale_draft() as approved_since, EngagementRun carries approved, and _drafted_cell() says APPROVED_NOTE where it would say the stage. The draft day stays the runner's (decision 12): the reminder module is below this one and is handed the week rather than working it out. Decision 129 gave run_household() the registry, so the feed list resolves to this year's returns and the pass takes every lock it needs - its own and the fed ones - in layout.lock_order_key order. A feed that resolves to nothing rides every own return's warnings; a fed return is judged and filed into but never scanned, drafted or drawn here, because that is its own household's pass to make. What the pass filed into a fed return is still this pass's to say, though: one FILED_INTO_FED sentence per fed return that received a filing, on the first own return's warnings, so a household that sorted a drop into somebody else's return does not report 'filed 0' of it. Decision 127: EngagementRun.slowest is the filing report's list of slow readings, and summary() adds SLOW_READING_NOTE for the slowest when it passed SLOW_READING_SECONDS (20.0) - a line the run says, not a limit it enforces; nothing anywhere cuts a reading short, because the benchmark and the owner's speed ceiling are measured in exactly these seconds. In a household the reading is said once, on the first own return's line. Decision 132: A PASS NEEDS THE PRACTICE - run_household()'s registry is required, so Run now and the schedule cannot differ by construction, and a None registry (a root that could not be walked) is refused on every run with NO_PRACTICE and nothing is touched; _feeds_of() says FEEDS_UNREAD on every own return when the household's own record will not read, rather than feeding nothing in silence; _sort_step() hands the sort own= and fed= by name. Decision 131: THE PASS MEASURES BEFORE IT READS - _no_room() runs after _worth_a_pass (which now keeps the loaded list on EngagementRun.items, so the room is measured without a second read) and before the locks: ROOM_PARKS rides the warnings (and the page's Warnings column and the run's lines); a return merely short of room (ROOM_SHORT) is NOT warned (the lead's L-1: names are cut, everything files, and a warning always on is read by nobody) and is still sorted, its names cut to fit; a return whose floor passes the limit skips the WHOLE household with HOUSEHOLD_NO_ROOM, the held-lock shape - nothing read, locked, scaffolded, scanned, drafted or drawn. ONE HOME FOR THE ROOT: main() takes SETTINGS_FLAG (--settings <folder>), sets ENV_SETTINGS_DIR for the process before anything reads settings, and with no root on the command line reads settings.clients_root(); none configured exits naming the settings file and settings.NO_ROOT_HINT (the app first, the command second); a root given by hand still wins - but a root together with --log, the shape of the job installed before 131, is refused with OLD_JOB_ROOT (naming Install Schedule) unless it is the settings file's own root (_refuse_an_old_jobs_root). Decision 137 (L7) ran the pass inside a scratch folder for OCR's temporary page images; decision 169 retired it with Tesseract (the reader writes none). Decision 169: run_registry() holds one ocr.reading_session(settle=True) for the whole pass - one reading child, ended with the pass - and RunReport.reader (the run log's first line ends reader=processor or reader=graphics card) and RunReport.reader_note (ocr.PACK_UNUSABLE, one log line, not a warning) come from it; a fault on the card mid-pass is one pass warning (ocr.GPU_FAULT_WARNING). Decision 137 Part B: READING_STOP_PAGE_SECONDS and READING_STOP_DOCUMENT_SECONDS are named beside SLOW_READING_SECONDS (the reader, content_check, owns them): a slow reading is named, one past the stop is abandoned. Review fix (F12): main() refuses to walk a saved clients root that clients_root_refusal() refuses. Decision 143: a run's line says 'opened N' when the pass opened emails or zips. Decision 155: run_household() sweeps what killed writes left (filer.sweep_stranded_temps) right after taking the locks and before the household scaffold, the sort or anything else reads a folder, with the pass's start time taken before the locks; a dry run sweeps nothing. Decision 176: a root typed on the command line is held to settings.clients_root_refusal() exactly as the saved one is, so the Command Center's preview cannot walk the system drive or the folder holding the settings."
+      "notes": "Owns the draft-day rule (DRAFT_WEEKDAY) in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed after the scan and draft still ran. The CLI takes the clients root, not a file; an engagement whose record could not be read fails alone with the reason (RECORD_UNREADABLE), and so does a legacy folder the registry listed. _worth_a_pass() is the pre-checks: skips are not failures, and the warnings the pass reports are manifest.check_rules() over the list the record holds - the same list the app's state carries. Scaffolds each engagement before filing (a row added in the app gets its folder), leaves Override.NOT_APPLICABLE rows out of the outstanding count, and skips an engagement whose successor names it in Rolled From. run_engagement() is the one definition of a pass; the app's scan command calls it too. main(argv) is the command line as a function: python -m tracker.runner and the packaged executable in runner mode (api_entry.py, RUNNER_MODE_FLAG) both call it. Decision 55: should_draft() catches up a draft day the machine missed; an engagement never drafted waits for its first draft day. Decisions 57 and 60: a quiet draft day refreshes the run's own unedited draft (_refresh_stale_draft()) and one a person has edited is never touched. Decision 67: main() makes the console take what it cannot encode before it parses a flag; since decision 108 that guard is page.tolerant_console(), shared by every command line, and main() calls it. Decision 68: append_log() replaces what UTF-8 cannot encode; an engagement's registry warning rides the run's warnings. Decision 69: a FileReport's attention rides the run's warnings, never its error. Decision 75: every real pass ends by writing STATUS_PAGE_FILENAME into the clients root, never on a dry run; status_report() folds the runs just made into every engagement the registry found and reads the rest (no lock, nothing written), so --only and the app's one-engagement pass still draw the whole practice; skipped_because() is the one wording of why an engagement is passed over. Decision 87: the pass gained no call of its own on tracker/ledger.py. Decision 102: run_engagement() holds ONE engagement lock across scaffold, file, scan and view, and tells each step the lock is held; a dry run takes none; a lock it cannot get is a skip. Decision 89: the last thing each engagement's pass does is _view_step(), which regenerates the read-only view; a view whose replace did not land leaves run.view_stale set on a run that still succeeds. Decision 91: write_status_page() is drawn through tracker/page.py. Decision 103: the status page lost its Deferred writes column; nothing a pass decides waits for anything. Decision 104: the pass begins with filer.ensure(), the store's top-up, and nothing in it reads or writes a workbook; the 'Problem or skipped' cell shows the legacy sentence for a folder the tracker no longer reads. Decision 115: _draft_step() runs the gate - a held draft writes nothing, _retire_unedited_drafts() removes the run's own unedited drafts and leaves an edited one, run.held counts the rows and run.draft_note is the refusal (in the console, the log and the practice page's Drafted cell as STATUS_HELD); --reminders always is held too (decision 13 amended). Every draft step ends in _record(): one DRAFTED event through the reminder's record_draft() under the pass's lock, only when something changed or the week's draft is a new week's. last_drafted() answers from the last DRAFTED that wrote a file, and falls back to the files' times for a journal from before 115; draft_is_held() says whether the record's last word is a hold, and should_draft(held=True) drafts on the first pass after the hold clears, first draft or not. Decision 118: a draft a person approved in the app is protected for the rest of that draft week exactly as an edited one is - _draft_step() hands last_draft_day() to write_draft(), _retire_unedited_drafts() and _refresh_stale_draft() as approved_since, EngagementRun carries approved, and _drafted_cell() says APPROVED_NOTE where it would say the stage. The draft day stays the runner's (decision 12): the reminder module is below this one and is handed the week rather than working it out. Decision 129 gave run_household() the registry, so the feed list resolves to this year's returns and the pass takes every lock it needs - its own and the fed ones - in layout.lock_order_key order. A feed that resolves to nothing rides every own return's warnings; a fed return is judged and filed into but never scanned, drafted or drawn here, because that is its own household's pass to make. What the pass filed into a fed return is still this pass's to say, though: one FILED_INTO_FED sentence per fed return that received a filing, on the first own return's warnings, so a household that sorted a drop into somebody else's return does not report 'filed 0' of it. Decision 127: EngagementRun.slowest is the filing report's list of slow readings, and summary() adds SLOW_READING_NOTE for the slowest when it passed SLOW_READING_SECONDS (20.0) - a line the run says, not a limit it enforces; nothing anywhere cuts a reading short, because the benchmark and the owner's speed ceiling are measured in exactly these seconds. In a household the reading is said once, on the first own return's line. Decision 132: A PASS NEEDS THE PRACTICE - run_household()'s registry is required, so Run now and the schedule cannot differ by construction, and a None registry (a root that could not be walked) is refused on every run with NO_PRACTICE and nothing is touched; _feeds_of() says FEEDS_UNREAD on every own return when the household's own record will not read, rather than feeding nothing in silence; _sort_step() hands the sort own= and fed= by name. Decision 131: THE PASS MEASURES BEFORE IT READS - _no_room() runs after _worth_a_pass (which now keeps the loaded list on EngagementRun.items, so the room is measured without a second read) and before the locks: ROOM_PARKS rides the warnings (and the page's Warnings column and the run's lines); a return merely short of room (ROOM_SHORT) is NOT warned (the lead's L-1: names are cut, everything files, and a warning always on is read by nobody) and is still sorted, its names cut to fit; a return whose floor passes the limit skips the WHOLE household with HOUSEHOLD_NO_ROOM, the held-lock shape - nothing read, locked, scaffolded, scanned, drafted or drawn. ONE HOME FOR THE ROOT: main() takes SETTINGS_FLAG (--settings <folder>), sets ENV_SETTINGS_DIR for the process before anything reads settings, and with no root on the command line reads settings.clients_root(); none configured exits naming the settings file and settings.NO_ROOT_HINT (the app first, the command second); a root given by hand still wins - but a root together with --log, the shape of the job installed before 131, is refused with OLD_JOB_ROOT (naming Install Schedule) unless it is the settings file's own root (_refuse_an_old_jobs_root). Decision 137 (L7) ran the pass inside a scratch folder for OCR's temporary page images; decision 169 retired it with Tesseract (the reader writes none). Decision 169: run_registry() holds one ocr.reading_session(settle=True) for the whole pass - one reading child, ended with the pass - and RunReport.reader (the run log's first line ends reader=processor or reader=graphics card) and RunReport.reader_note (ocr.PACK_UNUSABLE, one log line, not a warning) come from it; a fault on the card mid-pass is one pass warning (ocr.GPU_FAULT_WARNING). Decision 137 Part B: READING_STOP_PAGE_SECONDS and READING_STOP_DOCUMENT_SECONDS are named beside SLOW_READING_SECONDS (the reader, content_check, owns them): a slow reading is named, one past the stop is abandoned. Review fix (F12): main() refuses to walk a saved clients root that clients_root_refusal() refuses. Decision 143: a run's line says 'opened N' when the pass opened emails or zips. Decision 155: run_household() sweeps what killed writes left (filer.sweep_stranded_temps) right after taking the locks and before the household scaffold, the sort or anything else reads a folder, with the pass's start time taken before the locks; a dry run sweeps nothing. Decision 176: a root typed on the command line is held to settings.clients_root_refusal() exactly as the saved one is, so no caller - a person's or another program's - can hand a pass the system drive or the folder holding the settings."
     },
     {
       "id": "tracker/scaffold.py",
@@ -2627,16 +2627,16 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "0494677d17bd020e",
-      "lines": 556,
+      "sha256": "e024b511028a1a35",
+      "lines": 549,
       "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
     },
     {
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "8290ce8c6d232a76",
-      "lines": 422,
+      "sha256": "2956f5532776442c",
+      "lines": 423,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -2653,8 +2653,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "2b45f46e55712605",
-      "lines": 881,
+      "sha256": "bec0a6281a560c33",
+      "lines": 862,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -2662,8 +2662,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "a3178706760733f9",
-      "lines": 1578,
+      "sha256": "f85c583144b9984d",
+      "lines": 1570,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -2869,15 +2869,6 @@
       "notes": "PyInstaller needs a real script, not a -m module. Runner mode is dispatched before tracker.api is imported, because the API imports tracker.scheduling whose TASK_NAME needs the product name the Electron shell passes in the environment - and Task Scheduler passes nothing; the job needs neither of the shell's variables. api_entry.spec (committed; reads config.apiName from app/package.json) is how it is frozen. Decision 150: multiprocessing.freeze_support() is the first statement of the main block, so a reading's child - the frozen executable started again by multiprocessing's spawn - runs as the child and never as the API or the job."
     },
     {
-      "id": "automation.manifest.json",
-      "type": "file",
-      "layer": "root",
-      "sha256": "fd50483831ae355c",
-      "lines": 78,
-      "role": "The firm's Command Center integration surface, and the whole of it: the card this tool shows on the office dashboard, and the four actions it offers there - a preview pass, a real pass, the engagement list and the learned keywords. No tracker code reads this file; the Command Center discovers it under its configured roots and runs the argv arrays in it with cwd set to the repository root.",
-      "notes": "Decision 81. The Center's safety contract refuses any manifest declaring that it schedules itself, and refusing one never stopped a Task Scheduler entry - it only meant this tool stayed off the board or declared a falsehood. The owner's written exception of 2026-09-18 is declared here in safety.scheduled_exception, the dated field the contract gained the same day, and the card prints that sentence; auto_send and money_movement admit no exception, ever. Each action is an argv array, never a shell string, and every flag it names has to exist in the module it calls. The pass takes the clients root as a positional argument rather than reading settings.py, because Task Scheduler and the Center hand the process none of the shell's environment - api_entry.py's rule: the job needs nothing but its command line; tools/learned_keywords.py takes no parameter here and reads the root from the settings file itself. run-pass carries the log flag ahead of a bare -- so the root that follows is read as the positional and not swallowed as the log's optional value."
-    },
-    {
       "id": "conftest.py",
       "type": "module",
       "layer": "root",
@@ -2928,7 +2919,7 @@
       "id": "artifact:runs.log",
       "type": "artifact",
       "layer": "runtime",
-      "role": "The one run log in the clients root (LOG_FILENAME in tracker/runner.py): one summary line per pass, appended by a pass run with the log flag - the scheduled task and the Command Center's run-pass action both pass it - never on a dry run, and never read by the system; a person opens it.",
+      "role": "The one run log in the clients root (LOG_FILENAME in tracker/runner.py): one summary line per pass, appended by a pass run with the log flag - the scheduled task passes it - never on a dry run, and never read by the system; a person opens it.",
       "write_only": true
     },
     {
@@ -4674,7 +4665,7 @@
       "id": "tests/test_repo_map.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a58802713aad066b",
+      "sha256": "3ac18b16d9d19468",
       "lines": 878,
       "exports": [
         "ENFORCERS",
@@ -4993,7 +4984,7 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "8759706d08b00be0",
+      "sha256": "1a83989344b480e5",
       "lines": 2049,
       "exports": [
         "DRAFT_DAY",
@@ -5302,15 +5293,18 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "53a6f34c7b3c147e",
-      "lines": 1436,
+      "sha256": "379a6d174141a82b",
+      "lines": 1486,
       "exports": [
         "CONSOLE_EXEMPT",
         "CONSOLE_GUARDED",
         "DECISION_ROW",
+        "DELETED_REPO_FILES",
         "DOCUMENTS",
         "FOREIGN_FLAGS",
+        "GUARD_NAME",
         "NUMBER_WORDS",
+        "REMOVED_NAME",
         "REPO",
         "RETIRED_FILES",
         "STRUCK",
@@ -5343,12 +5337,15 @@
         "test_the_app_opens_one_window",
         "test_the_build_is_made_from_what_is_committed",
         "test_the_build_output_folder_is_the_one_gitignore_knows",
-        "test_the_command_center_manifest_names_real_commands_and_admits_no_sending",
+        "test_the_command_center_is_gone_from_everything_but_the_decision_log",
         "test_the_documents_list_the_forms_the_catalog_has",
         "test_the_electron_shell_uses_the_settings_env_names_python_defines",
         "test_the_example_root_is_the_same_everywhere",
         "test_the_feed_editor_picks_a_return_by_index_and_never_takes_a_value_apart",
         "test_the_frozen_api_name_has_one_home",
+        "test_the_guard_exempts_only_the_log_and_its_own_name",
+        "test_the_guard_finds_the_name_as_an_identifier",
+        "test_the_guard_finds_the_name_hard_wrapped_across_two_lines",
         "test_the_one_machine_rule_is_stated_once_as_todays_rule",
         "test_the_package_docstring_lists_every_module",
         "test_the_package_prose_names_constants_rather_than_their_values",
@@ -5388,6 +5385,7 @@
       ],
       "constants": {
         "DOCUMENTS": "('README.md', 'docs/ROADMAP.md', 'docs/workflow.md', 'docs/runbook.md', 'docs/storage.md', 'CLAUDE.md')",
+        "GUARD_NAME": "'test_the_command_center_is_gone_from_everything_but_the_decision_log'",
         "CONSOLE_GUARDED": "('rollover', 'filer', 'scanner', 'registry', 'review', 'scaffold', 'store', 'reminder', 'runner', 'router', 'content_check', 'view', 'ledger', 'validators', 'names', 'containers', 'ocr')",
         "NUMBER_WORDS": "('ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty')",
         "STRUCK": "('open it yourself', 'open it on this machine', 'on this machine, and drop', \"drop any document you find into the client's folder\", \"drop the documents in the client's folder\", \"drop the documents you find in the client's folder\", \"drop a copy in the client's folder\", \"drop it in the client's folder\", 'the record itself is the truth', 'nothing is lost either way', 'and run `rebuild` \u2014 nothing is lost')"
@@ -6145,24 +6143,6 @@
       "from": "app/renderer/index.html",
       "to": "app/renderer/style.css",
       "type": "loads",
-      "source": "curated"
-    },
-    {
-      "from": "automation.manifest.json",
-      "to": "tools/learned_keywords.py",
-      "type": "runs",
-      "source": "curated"
-    },
-    {
-      "from": "automation.manifest.json",
-      "to": "tracker/registry.py",
-      "type": "runs",
-      "source": "curated"
-    },
-    {
-      "from": "automation.manifest.json",
-      "to": "tracker/runner.py",
-      "type": "runs",
       "source": "curated"
     },
     {

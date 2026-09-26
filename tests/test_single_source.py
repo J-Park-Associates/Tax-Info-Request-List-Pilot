@@ -725,6 +725,12 @@ RETIRED_FILES = {"_manifest.xlsx", "_index.xlsx", "_manifest.pending.json", "_in
                  "_manifest.pending.migrated.json", RETIRED_CACHE_FILENAME,
                  "constraints.txt"}   # replaced by the hash-checked locks (decision 191)
 
+#: Repository files the decision log names and a later decision deleted:
+#: decision 206 removed the manifest a program outside the app ran, and row 81 still names it
+#: because rows are history. Only the log may quote one. The name is
+#: assembled at run time so the decision-206 guard does not trip on it here.
+DELETED_REPO_FILES = {".".join(("automation", "manifest", "json"))}
+
 
 def test_documents_name_only_runtime_files_the_code_owns():
     """Every `something.ext` a document quotes is a file the code names, a
@@ -754,6 +760,8 @@ def test_documents_name_only_runtime_files_the_code_owns():
             name = quoted.split("/")[-1].split("\\")[-1]
             if "<" in quoted or "*" in quoted:
                 continue                                  # a pattern, not a file
+            if rel == "docs/ROADMAP.md" and name in DELETED_REPO_FILES:
+                continue                                  # history names what 206 deleted
             assert quoted in repo_files or name in repo_files or name in owned or name in RETIRED_FILES, (rel, quoted)
 
 
@@ -911,38 +919,80 @@ def _known_flags() -> set[str]:
             | set(re.findall(r"^\w+_FLAG = \"(--[a-z-]+)\"", sources, re.M)))
 
 
-def test_the_command_center_manifest_names_real_commands_and_admits_no_sending():
-    """automation.manifest.json is argv the Command Center runs verbatim, so it is pinned here."""
-    from tracker.runner import LOG_FLAG
+#: The removed surface's name in any spelling a document or a line of code
+#: could carry it: any case, one word or two, joined by a space, a hard wrap,
+#: an underscore or a hyphen - and its manifest's file name the same way.
+#: Written as a pattern, so this source does not itself match it.
+REMOVED_NAME = re.compile(r"command[\s_-]*center|automation[\s._-]*manifest", re.IGNORECASE)
 
-    data = json.loads(read("automation.manifest.json"))
-    safety = data["safety"]
-    assert safety["auto_send"] is False
-    assert safety["money_movement"] is False
-    if safety.get("scheduled"):
-        assert re.match(r"^\d{4}-\d{2}-\d{2} ", safety["scheduled_exception"]), "a dated exception"
-    known = _known_flags()
-    for action in data["actions"]:
-        argv = action["command"]
-        assert argv[0] == "python", action["id"]
-        if argv[1] == "-m":
-            assert (REPO / (argv[2].replace(".", "/") + ".py")).is_file(), argv[2]
-            rest = argv[3:]
-        else:
-            assert (REPO / argv[1]).is_file(), argv[1]
-            rest = argv[2:]
-        for token in rest:
-            if token.startswith("--") and token != "--":
-                assert token in known, (action["id"], token)
-        if LOG_FLAG in argv:
-            assert action["kind"] == "authorize", "a pass that writes is authorized, never previewed"
-        # A value the Command Center appends as a positional argument is
-        # the operator's text, and "--log=\\\\host\\share\\x" read as an
-        # option turned a preview that writes nothing into a write of the
-        # run summary anywhere (decision 176): the fixed argv ends every
-        # option before the first positional one.
-        if any(param.get("flag") is None for param in action.get("params", [])):
-            assert argv[-1] == "--", (action["id"], "a positional parameter follows '--'")
+#: The one place the name may stand outside the log: the guard's own test
+#: name, which the SPEC fixes and the generated map lists.
+GUARD_NAME = "test_the_command_center_is_gone_from_everything_but_the_decision_log"
+
+
+def _hits_of_the_removed_name(root: Path, rels: list[str]) -> list[tuple[str, int]]:
+    """Every (file, line) under ``root`` where REMOVED_NAME matches, searched
+    over each file's whole text so a name wrapped across two lines is found;
+    the line is the one the match starts on. The decision log is exempt
+    (its rows are history), as is GUARD_NAME; a file missing from the
+    working tree or not UTF-8 text is skipped."""
+    hits = []
+    for rel in rels:
+        if rel == "docs/ROADMAP.md":
+            continue                                   # decision rows are history
+        path = root / rel
+        if not path.is_file():
+            continue                                   # deleted in the working tree
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue                                   # not a text file
+        text = text.replace(GUARD_NAME, "")            # no newline in it: line numbers hold
+        hits += [(rel, text.count("\n", 0, match.start()) + 1) for match in REMOVED_NAME.finditer(text)]
+    return hits
+
+
+def test_the_command_center_is_gone_from_everything_but_the_decision_log():
+    """Decision 206: the integration a program outside the app ran, and its
+    manifest, were removed outright, not corrected - a manifest nobody
+    maintains is argv another program runs verbatim, so the shape itself
+    goes (no stub, no reserved file). The decision log keeps its rows
+    because rows are history; every other tracked file, the generated map
+    included, names neither that surface nor its manifest, in any spelling."""
+    import subprocess
+
+    # Joined at run time: a literal file name here would be a hit of its own.
+    manifest = ".".join(("automation", "manifest", "json"))
+    assert not (REPO / manifest).exists(), "the manifest is deleted, not stubbed"
+
+    listed = subprocess.run(["git", "ls-files", "-z"], cwd=REPO, capture_output=True,
+                            text=True, check=True).stdout
+    tracked = [rel for rel in listed.split("\0") if rel]
+    assert tracked, "git ls-files listed nothing - the guard would pass vacuously"
+    assert not (hits := _hits_of_the_removed_name(REPO, tracked)), hits
+
+
+# The probes below spell the name at run time, for the reason the guard does.
+_FIRST, _SECOND = "Command", "Center"
+
+
+def test_the_guard_finds_the_name_hard_wrapped_across_two_lines(tmp_path):
+    (tmp_path / "notes.md").write_text(f"A fabricated paragraph about the firm's {_FIRST}\n"
+                                       f"{_SECOND}, wrapped the way the docs wrap.\n", encoding="utf-8")
+    assert _hits_of_the_removed_name(tmp_path, ["notes.md"]) == [("notes.md", 1)]
+
+
+def test_the_guard_finds_the_name_as_an_identifier(tmp_path):
+    (tmp_path / "x.py").write_text(f"ok = 1\n{_FIRST.lower()}_{_SECOND.lower()} = 2\n", encoding="utf-8")
+    assert _hits_of_the_removed_name(tmp_path, ["x.py"]) == [("x.py", 2)]
+
+
+def test_the_guard_exempts_only_the_log_and_its_own_name(tmp_path):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "ROADMAP.md").write_text(f"| 81 | {_FIRST} {_SECOND} |\n", encoding="utf-8")
+    (tmp_path / "t.py").write_text(f"def {GUARD_NAME}():\n    pass\n", encoding="utf-8")
+    (tmp_path / "other.md").write_text(f"{_FIRST}-{_SECOND}\n", encoding="utf-8")
+    assert _hits_of_the_removed_name(tmp_path, ["docs/ROADMAP.md", "t.py", "other.md"]) == [("other.md", 1)]
 
 
 #: Flags of other programs' command lines that the documents quote, each
