@@ -1011,3 +1011,39 @@ def test_a_recorded_attachment_named_like_a_temp_survives_the_sweep(engagement):
     [row] = [row for row in read_index(engagement) if row.pbc_location.endswith(odd)]
     assert row.filed_locations and all(locate(engagement, where).is_file()
                                        for where in row.filed_locations)
+
+
+def test_a_zip_packed_with_bzip2_or_lzma_is_a_persons_to_open(engagement):
+    """Decision 178: the standard library bounds a deflated read at the size
+    asked for, but inflates a bzip2 or LZMA part a whole compressed chunk at
+    a time - 905 bytes of bzip2 grew past two gigabytes in one read, before
+    the ratio could count it. Only stored and deflated parts are unpacked;
+    a zip holding any other is refused from its directory, before a byte of
+    it is unpacked, and parks for a person with the limit it passed."""
+    for method in (zipfile.ZIP_BZIP2, zipfile.ZIP_LZMA):
+        packed = a_zip([("W-2.pdf", b"%PDF-1.4 " + b"\0" * 1000)], method=method)
+        with pytest.raises(NotOpened) as refused:
+            open_container(packed, "zip")
+        assert refused.value.sentence == reasons.CONTAINER_LIMIT.format(
+            error=containers.LIMIT_PACKING)
+    assert len(open_container(a_zip([("W-2.pdf", b"x")], method=zipfile.ZIP_STORED),
+                              "zip").attachments) == 1
+
+    drop_bytes(engagement, "packed.zip",
+               a_zip([("W-2.pdf", b"%PDF-1.4 " + b"\0" * 1000)], method=zipfile.ZIP_BZIP2))
+    sort(engagement, today=DAY1)
+    [row] = read_index(engagement)
+    assert row.decision == NEEDS_REVIEW and containers.LIMIT_PACKING in row.reason
+    assert reasons.CONTAINER_LIMIT.matches(row.reason) and reasons.CONTAINER_LIMIT.firm_side
+
+
+def test_an_attachment_name_keeps_no_invisible_formatting_character():
+    """Decision 176: a right-to-left override shows ``invoice<RLO>fdp.exe``
+    as ``invoiceexe.pdf`` in Explorer - a program dressed as a PDF in the
+    firm's review folder - and a zero-width space makes two names that look
+    alike two files. Every formatting character goes; the letters stay."""
+    assert safe_name("invoice‮fdp.exe", "x") == "invoicefdp.exe"
+    assert safe_name("W​-2⁠ 2025.pdf", "x") == "W-2 2025.pdf"
+    assert safe_name("﻿Statement.pdf", "x") == "Statement.pdf"
+    assert safe_name("Muñoz W-2.pdf", "x") == "Muñoz W-2.pdf"
+    assert safe_name("‮​", "attachment 1") == "attachment 1"

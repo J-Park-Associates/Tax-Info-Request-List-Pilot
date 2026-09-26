@@ -641,3 +641,14 @@ def test_a_moving_event_folds_to_an_open_intent_and_the_row_event_that_names_its
     assert store.open_intents(store.connect(), engagement) == []
     assert list(ledger.fold(closed)) == [A_ROW_ORIGINAL]
     assert store.check(store.connect(), tmp_path, engagement) == []
+
+
+def test_a_line_whose_number_the_interpreter_will_not_read_is_a_record_that_does_not_read(bare):
+    """Decision 180: a number past the interpreter's digit limit raised a
+    bare ValueError out of the reader - past every reader that answers a
+    record that does not read with the record's own problem row. It is
+    that record problem now, with its line."""
+    ledger.path_for(bare).write_bytes(b'{"event": "x", "n": ' + b"9" * 5000 + b"}\n")
+    with pytest.raises(ledger.LedgerError, match="line 1 does not read as an event"):
+        ledger.read_events(bare)
+    ledger.path_for(bare).unlink()    # the suite's own fixture reads this folder too

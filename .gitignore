@@ -50,6 +50,21 @@ client-files/**
 *.qbb
 *.tlg
 
+# The clients root's two trees and every file the tracker writes inside
+# them (decision 176). A pass pointed at a copy of a client's folder made
+# inside the checkout - to debug one household - leaves the record, the
+# page, the README and what it took out of their emails there, each one
+# `git add -A` away from every clone. tests/test_single_source.py names
+# each from its constant.
+Clients/
+J Park & Associates/
+_ledger.jsonl
+_scan.lock
+_readme.lock
+_README.txt
+Status Report.html
+_Opened/
+
 # Scheduled-run artifacts. Drafts quote real clients' outstanding documents,
 # and the run log and the status page name them. None of it belongs in the
 # repo: the log and the page live in the clients root, the drafts beside

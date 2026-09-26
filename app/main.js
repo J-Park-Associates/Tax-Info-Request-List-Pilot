@@ -73,6 +73,15 @@ function commandProblem(args) {
 function runTracker(args, payload) {
   const problem = commandProblem(args);
   if (problem) return Promise.resolve({ error: problem });
+  // Serialised before anything starts (decision 176): a payload that will
+  // not serialise used to throw once the tracker was already running and
+  // waiting on stdin, which it then did until the timeout below.
+  let body;
+  try {
+    body = payload === undefined ? undefined : JSON.stringify(payload);
+  } catch (err) {
+    return Promise.resolve({ error: `The app could not send that to the tracker: ${err.message}` });
+  }
   return new Promise((resolve) => {
     const env = { ...process.env, TRACKER_SETTINGS_DIR: SETTINGS_DIR, TRACKER_PRODUCT_NAME: PRODUCT_NAME };
     const proc = FROZEN_API
@@ -111,7 +120,7 @@ function runTracker(args, payload) {
         });
       }
     });
-    if (payload !== undefined) proc.stdin.write(JSON.stringify(payload));
+    if (body !== undefined) proc.stdin.write(body, "utf8");
     proc.stdin.end();
   });
 }
@@ -156,6 +165,10 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: true,
       webSecurity: true,
+      // No developer tools in the packaged app (decision 176): they are a
+      // console on the page, and from it window.tracker.call() reaches the
+      // API with any payload a person at the machine types.
+      devTools: !app.isPackaged,
     },
   });
   // One page, no navigation, no pop-ups: the renderer has nowhere else to go.

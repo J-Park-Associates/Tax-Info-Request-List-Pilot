@@ -36,10 +36,15 @@ a misfit is ever read, moved or renamed; a person fixes it. There is no
 migration and no importer - decision 104 refused one and decision 125
 refused it again.
 
-**The record wins over a folder somebody renamed.** A return whose details
-name another household, year or return name than its folders do is still
-that return, processed as its record says, and the disagreement is a
-warning a person reads (:data:`NAME_DISAGREES`). Nothing is ever renamed.
+**The record wins over a folder somebody renamed - for what a return is:**
+its label, its year, the prior it succeeds. A return whose details name
+another household, year or return name than its folders do is still that
+return, and the disagreement is a warning a person reads
+(:data:`NAME_DISAGREES`). Nothing is ever renamed. **Where anything is
+written is positional** (decision 125) - its inbox, its originals, its
+README - and a return rolls forward where it sits, never where its record
+says it once sat (decision 177): a folder dragged into another household
+is a move a person made, and the record cannot tell a move from a rename.
 
 A record that cannot be read is still listed: with its error, so the runner
 reports it and moves on, exactly as it would for a folder-level problem. A

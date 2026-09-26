@@ -8,17 +8,18 @@ the app records it, so no test touches a real one.
 """
 
 import datetime as dt
-import io
 import json
+import os
 from pathlib import Path
 
 import pytest
 
 import tracker.api as api
-from tests.conftest import TEST_CLIENT, make_engagement
+from tests.conftest import TEST_CLIENT, app_stdin, make_engagement
 from tests.samples import PRIOR_YEAR, SCRATCH_PEOPLE
 from tracker import ledger, store, view
 from tracker.filer import FILED, NEEDS_REVIEW, read_index
+from tracker.households import load_household_info
 from tracker.layout import inbox_of, return_dir_for
 from tracker.locking import STALE_LOCK_SECONDS, lock_line
 from tracker.manifest import (
@@ -113,7 +114,7 @@ def run(capsys, *argv, stdin=None):
         stdin = {**stdin, "head": _head_now(argv)}
     if stdin is not None:
         with pytest.MonkeyPatch.context() as mp:
-            mp.setattr("sys.stdin", io.StringIO(json.dumps(stdin)))
+            mp.setattr("sys.stdin", app_stdin(stdin))
             code = api.main(list(argv))
     else:
         code = api.main(list(argv))
@@ -167,6 +168,61 @@ def test_a_rollover_takes_its_prior_only_from_under_the_root(capsys, demo_root, 
     assert code == 1 and "not under the clients root" in payload["error"]
 
 
+def test_a_journal_planted_in_the_client_tree_is_never_a_prior(capsys, demo_root):
+    # Decision 176: the rollover's prior was checked only for being under
+    # the root, and the client tree is under the root. A client can drop
+    # any file, so a _ledger.jsonl in the inbox rolled into a return built
+    # from the client's own rows and people, and the household's inbox
+    # stopped being sorted (two open years).
+    from tracker.templates import template_items
+
+    run(capsys, "create", stdin={"return_name": "1040 - Smith", "form": "1040",
+                                 "items": [{"identifier": "A01", "document": "W-2"}]})
+    planted = make_engagement(inbox_of(where(demo_root, "1040 - Smith")) / "x",
+                              template_items("1040", year=2025), scaffold=False)
+    before = sorted(p for p in (demo_root / "J Park & Associates").rglob("*"))
+    for prior in (planted, planted.parent, where(demo_root, "1040 - Smith").parent.parent):
+        code, payload = run(capsys, "rollover", stdin={"prior": str(prior), "year": 2026})
+        assert code == 1
+        assert payload["error"] == api.NOT_A_RETURN.format(name=prior.name, tree="J Park & Associates")
+    assert sorted(p for p in (demo_root / "J Park & Associates").rglob("*")) == before
+
+
+def test_a_household_path_must_be_a_household_of_the_private_tree(capsys, demo_root):
+    run(capsys, "create", stdin={"return_name": "1040 - Smith", "form": "1040",
+                                 "items": [{"identifier": "A01", "document": "W-2"}]})
+    engagement = where(demo_root, "1040 - Smith")
+    for given in (engagement, engagement.parent, inbox_of(engagement).parent):
+        code, payload = run(capsys, "create", stdin={
+            "household_path": str(given), "return_name": "Evil", "form": "1040",
+            "items": [{"identifier": "A01", "document": "W-2"}]})
+        assert code == 1
+        assert payload["error"] == api.NOT_A_HOUSEHOLD.format(name=given.name,
+                                                              tree="J Park & Associates")
+    assert not list((demo_root / "J Park & Associates").rglob("Evil"))
+    assert not (demo_root / "Clients" / engagement.name).exists()
+
+
+def test_a_return_named_through_dots_is_the_return_it_resolves_to(capsys, demo_root):
+    # Decision 176: the path was checked resolved and used as sent, and
+    # every layout helper reads position off the text - so "<return>/2031/.."
+    # passed as a return and edit-household wrote a household_changed line
+    # into the return's own journal, taking the return for its household.
+    run(capsys, "create", stdin={"return_name": "1040 - Smith", "form": "1040",
+                                 "items": [{"identifier": "A01", "document": "W-2"}]})
+    engagement = where(demo_root, "1040 - Smith")
+    dotted = f"{engagement}{os.sep}2031{os.sep}.."
+    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, dotted)
+    assert code == 0, payload
+    assert payload["paths"]["engagement"] == str(engagement)
+    journal = ledger.path_for(engagement).read_bytes()
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, dotted,
+                        stdin={"contact": "Mallory"})
+    assert code == 0, payload
+    assert ledger.path_for(engagement).read_bytes() == journal
+    assert load_household_info(engagement.parent.parent).contact == "Mallory"
+
+
 def test_templates_lists_every_form_with_its_checklist(capsys):
     code, payload = run(capsys, "templates")
     assert code == 0
@@ -202,6 +258,31 @@ def test_create_builds_the_record_and_folders(capsys, demo_root):
     assert [p.name for p in (engagement / PREPARED_DIR_NAME).iterdir()] == [REVIEW_DIR_NAME]
     assert [i["identifier"] for i in payload["state"]["items"]][-1] == "X01"
     assert [r["identifier"] for r in payload["state"]["rules"]][-1] == "X01"
+
+
+def test_a_name_outside_ascii_reaches_both_trees_as_it_was_typed(capsys, demo_root):
+    # Decision 176: the app writes UTF-8 and Windows reads a pipe in its
+    # ANSI code page, so "Muñoz" became "MuÃ±oz" in the folder the client
+    # is shared, and "Á" (0x81 in UTF-8's second byte) was refused whole.
+    for household, client in (("Muñoz", "José Muñoz"), ("Álvarez", "Ana Álvarez")):
+        spec = {"household": household, "client": client, "form": "1040",
+                "return_name": f"1040 - {client}",
+                "people": [{"kind": "taxpayer", "name": client,
+                            "spellings": propose_spellings(client, "taxpayer")}],
+                "items": [{"identifier": "A01", "document": "W-2"}]}
+        code, payload = run(capsys, "create", stdin=spec)
+        assert code == 0, payload
+        engagement = where(demo_root, f"1040 - {client}", household=household)
+        assert ledger.path_for(engagement).is_file()
+        assert inbox_of(engagement).parent.name == household
+        assert load_engagement_info(engagement).client == client
+
+
+def test_a_payload_that_is_not_one_object_is_refused_before_anything_is_read(capsys, demo_root):
+    for spec in ([], "1040", 7):
+        code, payload = run(capsys, "rollover", stdin=spec)
+        assert code == 1
+        assert payload["error"] == api.NOT_A_SPEC
 
 
 def test_create_with_no_name_builds_one_that_stays_under_the_root(capsys, demo_root):

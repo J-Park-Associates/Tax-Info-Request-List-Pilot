@@ -17,7 +17,7 @@
       "label": "Preview a pass",
       "description": "Decides everything one pass would do across every engagement under the clients folder — what would be filed, what would be parked for a person, what is still outstanding — and writes nothing, moves nothing and drafts nothing.",
       "kind": "dry-run",
-      "command": ["python", "-m", "tracker.runner", "--dry-run"],
+      "command": ["python", "-m", "tracker.runner", "--dry-run", "--"],
       "timeout_seconds": 1800,
       "params": [
         {
@@ -53,7 +53,7 @@
       "label": "List what a pass would find",
       "description": "Every engagement under the clients folder, which are active, which are chased by email, and any record that could not be read. Reads only.",
       "kind": "preview",
-      "command": ["python", "-m", "tracker.registry"],
+      "command": ["python", "-m", "tracker.registry", "--"],
       "timeout_seconds": 300,
       "params": [
         {

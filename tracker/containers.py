@@ -77,6 +77,7 @@ Each skip is named, so the container's row can say what was left and why.
 from __future__ import annotations
 
 import io
+import unicodedata
 import zipfile
 import zlib
 from collections.abc import Callable
@@ -123,6 +124,9 @@ LIMIT_COUNT = f"more than {MAX_ATTACHMENTS} attachments"
 LIMIT_TOTAL = f"more than {MAX_TOTAL_MB} MB once unpacked"
 LIMIT_RATIO = f"a file inside unpacks to more than {MAX_RATIO} times its packed size"
 LIMIT_SKIPPED = f"more than {MAX_SKIPPED} parts that are not documents"
+LIMIT_PACKING = "a file inside is packed in a way only a person's zip program opens"
+#: The packing WinZip writes for an AES-encrypted member: a password.
+_AES = 99
 
 #: Why a part was skipped, as the container's record says it.
 SKIP_INLINE = "inline image, shown in the message rather than attached"
@@ -218,12 +222,18 @@ def safe_name(raw: object, fallback: str | Callable[[], str]) -> str:
     called ``fallback`` with its extension; nothing but dots, or nothing at
     all, is ``fallback`` (a string, or a function asked only when it is
     needed, so an unnamed part's number is spent only on an unnamed part).
-    A name the record cannot hold as UTF-8 is mended first. Not cut: the
+    A name the record cannot hold as UTF-8 is mended first, and every
+    invisible formatting character goes (decision 176): a right-to-left
+    override made ``invoice<RLO>fdp.exe`` show in Explorer as
+    ``invoiceexe.pdf``, a program dressed as a PDF in the firm's review
+    folder, and a zero-width space made two names that look alike two
+    files. Not cut: the
     room a name has on disk is measured where it is written; a name past
     :data:`NAME_MAX` is cut here only so that the record never holds one
     longer than a file name can be.
     """
     text = str(raw or "").encode("utf-8", "replace").decode("utf-8")
+    text = "".join(ch for ch in text if unicodedata.category(ch) != "Cf")
     text = text.replace("\\", "/").rsplit("/", 1)[-1]
     text = WINDOWS_ILLEGAL_CHARS.sub("_", text).strip().rstrip(". ")
     if len(text) > NAME_MAX:
@@ -416,6 +426,13 @@ class _Walk:
             # Counted before a byte is decompressed: the directory lists them.
             if len(self.attachments) + len(members) > MAX_ATTACHMENTS:
                 raise NotOpened(reasons.CONTAINER_LIMIT.format(error=LIMIT_COUNT))
+            # And how each is packed, from the same directory, before any
+            # is unpacked (decision 178, ``content_check.PACKINGS``): a
+            # packing the ratio cannot stop in time is never started, and
+            # the zip is a person's to open. WinZip's AES is a password and
+            # is said as one below; the standard library never unpacks it.
+            if any(info.compress_type not in (*content_check.PACKINGS, _AES) for info in members):
+                raise NotOpened(reasons.CONTAINER_LIMIT.format(error=LIMIT_PACKING))
             for info in members:
                 if info.flag_bits & 0x1:
                     raise NotOpened(reasons.CONTAINER_LOCKED.format())

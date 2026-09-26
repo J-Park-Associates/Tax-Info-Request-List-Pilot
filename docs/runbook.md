@@ -524,7 +524,10 @@ left inside and named on the container's line in the record. An email held
 inside a zip, or a zip inside an email, is opened through; one level deeper
 is taken out whole and parks. The same email sent twice is recognised by
 its bytes and not opened again, and an attachment the client also sent on
-its own is a duplicate of it.
+its own is a duplicate of it. An attachment's name loses any invisible
+formatting character when it is saved, including the zero-width joiners
+some Persian, Arabic and Indic names and emoji use; the record keeps the
+name exactly as the email gave it (decision 176).
 
 The opening runs where the pass can stop it (decision 154), in the same
 process of its own each document is read in (decision 150), under the stop
@@ -625,6 +628,17 @@ inbox. Tick it later and roll it on its own if that changes.
 One return's refusal (a folder of that name already there, a path too long)
 is printed and undoes none of the others; nothing under `Clients\` changes
 but the new year's folder.
+
+**A return rolls forward where it sits.** When a household separates, the
+way to move one return into a household of its own is still to drag its
+folder there in Explorer — the app has no action for it. Its record goes on
+naming the old household, and the app shows a warning beside it ("the
+folder is named … but its record says …"). That warning is information:
+Roll Forward puts next year's return in the household it now sits in, under
+its own folder name, and next year's record names that household, so the
+old household's client never sees its requests or its documents. The
+warning is repeated in the rollover's reply, because the roll is the moment
+someone acts on that return.
 
 On the command line the same two forms live in one command, told apart by
 what you point it at:
@@ -1369,6 +1383,17 @@ the same way.
 - **What happened to one document**: the Index section of that
   engagement's **Status Report.html**. Every move and every rename is in
   it, and it is drawn from the ledger, which is the record itself.
+
+- **A household the pass stopped with "names … for a step, which is outside
+  the places a step of this return may touch"** (`tracker.filer.OP_OUTSIDE`,
+  decision 180): the return's record holds a step the tracker did not write
+  - a copy of the record restored over a newer one, a line another machine
+  wrote, or a hand edit - pointing outside that return's own folders. The
+  pass moved, copied and removed nothing for it, and every other household
+  was sorted as usual. Do not edit the record by hand: say which return and
+  which path, and have the record checked
+  (`python -m tracker.store <store> check <clients root>`) before that
+  household is sorted again.
 
 Nothing here sends an email, moves money, or tells a client anything. Every
 message a client gets was read and sent by a person at this firm.

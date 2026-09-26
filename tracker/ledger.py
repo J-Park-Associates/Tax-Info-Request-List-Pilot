@@ -592,7 +592,11 @@ def _parse_lines(data: bytes, name: str) -> list[tuple[dict, bytes]]:
             continue
         try:
             event = json.loads(raw.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        except ValueError as exc:
+            # Not only a decoding or a JSON error (both are ValueErrors): a
+            # number past the interpreter's digit limit raises a bare one,
+            # which escaped every reader as something other than a record
+            # that does not read (decision 180).
             raise LedgerError(f"{name} line {number} does not read as an event: {exc}") from exc
         if not isinstance(event, dict) or event.get(EVENT_KEY) is None:
             raise LedgerError(f"{name} line {number} is not an event")

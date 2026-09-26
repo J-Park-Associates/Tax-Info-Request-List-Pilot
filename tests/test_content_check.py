@@ -2060,3 +2060,115 @@ def test_running_out_of_memory_is_never_a_retry_or_a_corrupt_file(tmp_path, monk
     monkeypatch.setattr(content_check, "extract_text", out_of_memory)
     with pytest.raises(MemoryError):
         content_check._extract(scan, ocr=False)
+
+
+# Decision 178: a reading is bounded in what it hands back, whatever it
+# reads.
+
+
+def _the_old_line_of(low: str, start: int, end: int) -> tuple[int, int]:
+    """``_line_of`` as it was before decision 178, walking the whole text
+    once for every kind of break: the answer the new one must give."""
+    breaks = "\r\n\f\v"
+    left = max(low.rfind(ch, 0, start) for ch in breaks) + 1
+    right = min((i for i in (low.find(ch, end) for ch in breaks) if i >= 0), default=len(low))
+    return left, right
+
+
+def test_the_line_a_mention_is_on_is_found_as_before_without_walking_the_text():
+    """Two thousand random texts - with every kind of break, with ``\r``
+    line ends only, and with no break at all, short and past the first
+    window the look back reaches - each asked about several mentions in a
+    row, so the line remembered from one is tried on the next."""
+    import random
+
+    from tracker.content_check import _line_of
+
+    rng = random.Random(163)
+    alphabets = ("ab w-2 \r\n\f\v", "ab w-2 \r", "ab w-2 ")
+    for n in range(2000):
+        alphabet = alphabets[n % len(alphabets)]
+        size = rng.randint(0, 40) if n % 4 else rng.randint(200, 1500)
+        low = "".join(rng.choice(alphabet) for _ in range(size))
+        for _ in range(5):
+            start = rng.randint(0, len(low))
+            end = rng.randint(start, min(len(low), start + 12))
+            assert _line_of(low, start, end) == _the_old_line_of(low, start, end), (low, start, end)
+
+
+def test_the_line_finder_is_quick_on_a_text_with_no_line_feed():
+    """The review's S-5: the first quick look back was anchored on the
+    nearest line feed, so a text with none before a mention - one line, or
+    ``\r``-only line ends - was walked to its start once for every kind of
+    break, for every mention. Three texts of about 2 MB, two thousand
+    mentions each: every answer is the old one, and all of them together
+    take under half a second (the old walk takes about two seconds on the
+    office machine, and the look back anchored on the line feed as long on
+    the first two texts; the new one about a hundredth of that)."""
+    import time
+
+    from tracker.content_check import _line_of
+
+    word = "w-2 wages "
+    texts = {
+        "one line": word * 200_000,
+        "carriage returns only": (word * 7 + "\r") * 28_000,
+        "line feeds": (word * 7 + "\n") * 28_000,
+    }
+    for kind, low in texts.items():
+        step = len(low) // 2000
+        mentions = [(i * step, i * step + 3) for i in range(2000)]
+        began = time.perf_counter()
+        found = [_line_of(low, start, end) for start, end in mentions]
+        took = time.perf_counter() - began
+        assert took < 0.5, (kind, took)
+        assert found == [_the_old_line_of(low, start, end) for start, end in mentions], kind
+
+
+def test_a_workbook_reads_to_the_budget_and_says_it_was_cut(tmp_path, monkeypatch):
+    """A 14.7 KB workbook whose one shared string sat in twenty cells read
+    to two hundred million characters, all handed to the pass. A workbook
+    now stops at the reading's budget, and the reading says it was cut, as a
+    text file past its cap always did."""
+    import tracker.content_check as content_check
+    from tests.samples import sheet_xlsx
+
+    monkeypatch.setattr(content_check, "READING_CHAR_BUDGET", 500)
+    long = sheet_xlsx(tmp_path / "ledger.xlsx", [["Fixed Asset Schedule", "x" * 40]] * 200)
+    reading = content_check.extract(long, ocr=False)
+    assert reading.cut and len(reading.text) == 500
+    assert reading.text.startswith("Sheet") and "Fixed Asset Schedule" in reading.text
+    short = sheet_xlsx(tmp_path / "short.xlsx", [["Fixed Asset Schedule", "2025"]])
+    assert not content_check.extract(short, ocr=False).cut
+
+
+def test_a_pdf_reads_to_the_budget_and_says_it_was_cut(tmp_path, monkeypatch):
+    import tracker.content_check as content_check
+    from tests.samples import text_pdf
+
+    monkeypatch.setattr(content_check, "READING_CHAR_BUDGET", 300)
+    pdf = text_pdf(tmp_path / "long.pdf", [f"Line {n} of a long statement 2025" for n in range(40)])
+    reading = content_check.extract(pdf, ocr=False)
+    assert reading.cut and len(reading.text) == 300 and reading.text.startswith("Line 0")
+
+
+def test_a_workbook_packed_with_bzip2_is_never_unpacked(tmp_path):
+    """A workbook is a zip, and openpyxl unpacks whatever packing a part
+    names: a 19 KB .xlsx whose sheet was bzip2 exhausted memory the way the
+    zip did. Only stored and deflated parts are read; anything else fails
+    the reading with the sentence that says why, before a byte is unpacked."""
+    import zipfile
+
+    import tracker.content_check as content_check
+    from tests.samples import sheet_xlsx
+
+    plain = sheet_xlsx(tmp_path / "plain.xlsx", [["Fixed Asset Schedule", "2025"]])
+    packed = tmp_path / "packed.xlsx"
+    with zipfile.ZipFile(plain) as source, zipfile.ZipFile(packed, "w") as target:
+        for info in source.infolist():
+            method = zipfile.ZIP_BZIP2 if info.filename.endswith("sheet1.xml") else info.compress_type
+            target.writestr(info.filename, source.read(info), compress_type=method)
+    assert "Fixed Asset Schedule" in content_check.extract(plain, ocr=False).text
+    reading = content_check.extract(packed, ocr=False)
+    assert reading.text is None and not reading.extractable
+    assert content_check.UNKNOWN_PACKING in reading.reason

@@ -57,7 +57,7 @@ from types import SimpleNamespace
 import pytest
 
 import tracker.api as api
-from tests.conftest import make_engagement
+from tests.conftest import app_stdin, make_engagement
 from tracker import ledger, records, store, templates, view
 from tracker.manifest import (
     ANY_EXTENSION,
@@ -354,7 +354,7 @@ def _api(ctx, *argv, stdin=None) -> dict:
         stdin = {**stdin, "head": list_head(argv[argv.index(api.ENGAGEMENT_FLAG) + 1])}
     if stdin is not None:
         with pytest.MonkeyPatch.context() as mp:
-            mp.setattr("sys.stdin", io.StringIO(json.dumps(stdin)))
+            mp.setattr("sys.stdin", app_stdin(stdin))
             code = api.main(list(argv))
     else:
         code = api.main(list(argv))

@@ -6556,7 +6556,7 @@ def test_a_move_whose_source_is_now_behind_a_link_moves_nothing(engagement, tmp_
     assert (outside / "theirs.pdf").exists()
 
     # Through a pass whose listing was made before the swap: left in place.
-    monkeypatch.setattr(filer, "iter_drops", lambda folder: [behind])
+    monkeypatch.setattr(filer, "iter_drops", lambda folder, **_: [behind])
     report = sort(engagement, today=DAY1)
     assert [e.name for e in report.errors] == ["theirs.pdf"]
     assert report.errors[0].left_in_place and "reached through a link" in report.errors[0].error
@@ -8086,3 +8086,131 @@ def test_the_both_gone_sentence_is_read_behind_a_persons_marks_and_never_swallow
     assert _before_the_moved_sentence(after.reason, "said") == f"filed whole; said; {gone}; {mark}"
     assert not both_gone(replace(after, prepared_location=""))          # marked missing
     assert not both_gone(replace(after, decision=FILED))
+
+
+# Decision 180: every step an intent names stays in its return's places.
+
+
+@pytest.mark.parametrize("location, writes, allowed", [
+    ("Prepared/A01 - W-2/x.pdf", True, True),                                  # the return itself
+    ("../_Opened/mail/x.pdf", True, True),                                     # its year's _Opened
+    ("../../2024/_Opened/mail/x.pdf", False, True),                            # another year's, to read
+    ("../../2024/_Opened/mail/x.pdf", True, False),                            # never to write
+    ("../../../Other Household/2025/_Opened/mail/x.pdf", False, False),        # another household's
+    ("../../../../Clients/Test Household/Drop files here/x.pdf", False, True),  # its inbox
+    ("../../../../Clients/Test Household/Drop files here/sub/x.pdf", False, True),
+    ("../../../../Clients/Test Household/2025/x.pdf", True, True),             # its year folder
+    ("../../../../Clients/Other Household/2025/x.pdf", False, True),           # a feed's original
+    ("../../../../Clients/Other Household/2025/x.pdf", True, False),           # never written to
+    ("../../../../Clients/Test Household/x.pdf", False, False),                # beside the inbox
+    ("../1040 - Someone Else/Prepared/x.pdf", False, False),                    # another return
+    ("../../_ledger.jsonl", True, False),                                      # the household's record
+    ("../../../../../outside/secret.pdf", False, False),                       # above the root
+    ("/etc/passwd", False, False),
+    ("C:/Windows/win.ini", False, False),
+    ("C:x.pdf", False, False),
+    ("\\\\host\\share\\x.pdf", False, False),
+    ("", False, False),
+])
+def test_a_step_may_touch_only_its_returns_places(engagement, location, writes, allowed):
+    from tracker.filer import _may_touch
+
+    assert _may_touch(engagement, location, writes=writes) is allowed
+
+
+def test_a_step_outside_its_places_moves_copies_and_removes_nothing(engagement, tmp_path):
+    """The integrity review's exp6: a ``moving`` line appended to a journal
+    by hand, by another machine or from a restored copy made the next
+    recovery copy a file from outside the clients root into the client's
+    year folder, and move another household's original away. Every step is
+    now held to its return's places before anything is looked at, in the
+    recovery and in the one function every step goes through."""
+    from tracker.filer import OP_OUTSIDE, _do_op, _finish_the_ops
+    from tracker.validators import sha256_of
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    secret = outside / "secret.pdf"
+    secret.write_bytes(b"%PDF-1.4 not the client's")
+    digest = sha256_of(secret)
+    escape = location_of(engagement, secret)
+    assert escape.startswith("../")
+    forged = [
+        {ledger.OP_KEY: ledger.OP_COPY, ledger.FROM_KEY: escape,
+         ledger.TO_KEY: "../../../../Clients/Test Household/2025/secret.pdf", ledger.DIGEST_KEY: digest},
+        {ledger.OP_KEY: ledger.OP_MOVE, ledger.FROM_KEY: escape,
+         ledger.TO_KEY: "Prepared/secret.pdf", ledger.DIGEST_KEY: digest},
+        {ledger.OP_KEY: ledger.OP_REMOVE, ledger.FROM_KEY: escape, ledger.DIGEST_KEY: digest},
+    ]
+    before = sorted(p for p in tmp_path.rglob("*"))
+    for op in forged:
+        with pytest.raises(FilingError) as refused:
+            _do_op(engagement, op)
+        assert refused.value.args[0] == OP_OUTSIDE.format(name=engagement.name, location=escape)
+        with pytest.raises(FilingError):
+            _finish_the_ops(engagement, [op], None)
+    assert sorted(p for p in tmp_path.rglob("*")) == before
+    assert secret.read_bytes() == b"%PDF-1.4 not the client's"
+
+
+def test_a_parked_attachment_is_handed_to_a_return_of_another_year_of_its_household(tmp_path):
+    """The cloud branch's own review of decision 180: a person may hand an attachment parked
+    in one open year to a return of another, and the first containment
+    allowed only the return's own year's _Opened - after both records'
+    intents were written, so the release finished, the filing never did,
+    and the document was on no queue at all. Any year's _Opened of the
+    household is a place a step may read from, and every step is held to
+    its places before an intent names it."""
+    import io
+    import zipfile
+
+    from tests.samples import text_pdf
+    from tracker import store
+    from tracker.filer import hand_over
+
+    a = make_engagement(tmp_path, ITEMS, year=2025, return_name="1040 - A")
+    b = make_engagement(tmp_path, ITEMS, year=2024, return_name="1040 - B")
+    page = text_pdf(tmp_path / "page.pdf", ["Form W-2 Wage and Tax Statement 2025", "nobody"])
+    packed = io.BytesIO()
+    with zipfile.ZipFile(packed, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("W-2.pdf", page.read_bytes())
+    (inbox_of(a) / "docs.zip").write_bytes(packed.getvalue())
+    sort(a, today=DAY1)
+    parked = next(row for row in read_index(a) if row.container)
+
+    hand_over(a, parked.original_name, b, "A01")
+
+    [filed] = [row for row in read_index(b) if row.original_name == parked.original_name]
+    assert filed.decision == FILED and (b / filed.prepared_location).is_file()
+    assert store.open_intents(store.connect(), a) == [] == store.open_intents(store.connect(), b)
+
+
+def test_a_recovery_never_copies_an_original_the_row_names_outside_its_places(engagement, tmp_path):
+    """The cloud branch's own review of decision 180: the recovery's copy to act on read the
+    row's own original, not a step, so an intent whose row named a file
+    outside the clients root had that file copied into Needs Review. The
+    row's original is held to the same places as a step's source."""
+    from tracker.filer import _intend
+    from tracker.locking import engagement_lock
+    from tracker.records import IndexEntry, entry_to_json, ledger_key
+    from tracker.validators import sha256_of
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    secret = outside / "secret.pdf"
+    secret.write_bytes(b"%PDF-1.4 not the client's")
+    digest = sha256_of(secret)
+    row = IndexEntry(received="2026-07-01", original_name="secret.pdf", size_kb=0.1, digest=digest,
+                     identifier="A01", prepared_location="Prepared/A01/W-2.pdf",
+                     pbc_location=location_of(engagement, secret), decision=FILED, reason="filed")
+    lost = [{ledger.OP_KEY: ledger.OP_COPY,
+             ledger.FROM_KEY: "../../../../Clients/Test Household/2025/nothing.pdf",
+             ledger.TO_KEY: row.prepared_location, ledger.DIGEST_KEY: digest}]
+    with engagement_lock(engagement):
+        _intend(engagement, ledger_key(row), lost, by=ledger.BY_PASS, row=entry_to_json(row),
+                then=ledger.PARKED)
+
+    sort(engagement, today=DAY2)
+
+    copies = [path for path in (engagement / "Prepared").rglob("*") if path.is_file()]
+    assert not any(path.read_bytes() == secret.read_bytes() for path in copies)
