@@ -1798,7 +1798,7 @@ def test_the_reminder_card_is_never_hidden_on_an_error():
 
 def test_every_reply_warning_becomes_a_notice():
     js = read("app/renderer/app.js")
-    body = js.split("async function call(args, payload) {", 1)[1].split("\n}\n", 1)[0]
+    body = js.split("async function call(args, payload, { ofAnother = false } = {}) {", 1)[1].split("\n}\n", 1)[0]
     assert "result.warnings" in body and "warningNotices(" in body
     assert "throw new TrackerError(" in body
     assert "warningNotices(result.pass_warnings" in js
@@ -2014,3 +2014,31 @@ def test_the_editor_opens_on_the_state_on_screen():
     assert "lastState.paths.engagement === active" in body
     assert body.index("lastState") < body.index("call(")
     assert "head: editorState.list_head" in _body(js, "async function saveEditor() {")
+
+
+def test_every_editor_write_whose_reply_carries_state_redraws_through_renderFor():
+    """The editor opens on the state on screen (D13), so each editor write
+    that answers with a state redraws the page from it - an unlearned
+    keyword never comes back on the next open (the review's S2)."""
+    js = read("app/renderer/app.js")
+    for head in ("async function unlearnKeyword(identifier, keyword) {",
+                 "async function renameRequest() {", "async function saveEditor() {"):
+        body = _body(js, head)
+        assert "const view = viewGeneration;" in body and "renderFor(view, result.state)" in body, head
+
+
+def test_a_warning_about_another_return_is_said_under_its_label():
+    """The hand-over picker reads another return's state; what that reply
+    warns is about that return, so it is said under its label in the API's
+    format and never as if about the return shown (the review's S1)."""
+    import tracker.api as api
+
+    js = read("app/renderer/app.js")
+    handover = _body(js, "async function loadHandOverRequests() {")
+    assert "{ ofAnother: true }" in handover
+    head = "async function call(args, payload, { ofAnother = false } = {}) {"
+    body = _body(js, head)
+    assert "vocab.notices.about" in body and "labelOfState(result)" in body
+    assert js.count("ofAnother: true") == 1
+    assert api._vocab()["notices"]["about"] == api.NOTICE_ABOUT
+    assert set(re.findall(r"{(\w+)}", api.NOTICE_ABOUT)) == {"label", "sentence"}

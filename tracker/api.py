@@ -364,6 +364,9 @@ _WARNINGS: list[str] = []
 #: The spec :func:`_read_spec` parsed, so a failure can name the row the
 #: person clicked; reset by :func:`main`.
 _ASKED: dict = {}
+#: The command :func:`main` is running, which :func:`_with_list` holds to
+#: :data:`LIST_CHANGING` (decision 194's review, S3); set by :func:`main`.
+_RUNNING: dict = {"command": ""}
 
 #: The usage line, a refusal like any other (its text is unchanged).
 USAGE = "usage: tracker.api {commands}"
@@ -436,6 +439,10 @@ SCAN_NOT_SORTED = "{n} file(s) could not be sorted"
 SCAN_BUT = "But {problems}."
 #: A notice said more than once is one notice with a count.
 NOTICE_REPEATED = "({n} times)"
+#: A warning a reply brought about a return other than the one shown - the
+#: hand-over picker's read of its target (decision 194's review, S1): said
+#: with that return's label, so no notice reads as about the return shown.
+NOTICE_ABOUT = "{label}: {sentence}"
 
 
 class _Stale(ManifestError):
@@ -1183,7 +1190,8 @@ def _vocab() -> dict:
         # The notices area's one word of its own; its buttons are static in
         # index.html (NOTICE_LABELS), because a notice must work before any
         # vocabulary has arrived.
-        "notices": {"repeated": NOTICE_REPEATED, "labels": dict(NOTICE_LABELS)},
+        "notices": {"repeated": NOTICE_REPEATED, "about": NOTICE_ABOUT,
+                    "labels": dict(NOTICE_LABELS)},
         "rules": standing_rules(),
         "schedule": {
             "start": DEFAULT_START,
@@ -2798,7 +2806,7 @@ def _listing(registry: Registry | None = None) -> dict | None:
         except EmptyRoot:
             return {"engagements": [], "households": [], "misfits": [], "root": str(root)}
         return _list_payload(root, walked)
-    except (RegistryError, door.DoorError) as exc:
+    except (RegistryError, door.DoorError, SettingsError) as exc:   # the write stands (N4)
         log.warning("The clients root could not be walked (%s)", content_check.said_as_class(exc),
                     exc_info=True)
         _warn(PRACTICE_NOT_WALKED)
@@ -2806,7 +2814,12 @@ def _listing(registry: Registry | None = None) -> dict | None:
 
 
 def _with_list(reply: dict, registry: Registry | None = None) -> dict:
-    """``reply`` with the list added, when the root could be walked."""
+    """``reply`` with the list added, when the root could be walked - and
+    only for a command :data:`LIST_CHANGING` names, which is what decides
+    it (decision 194's review, S3): a command outside it neither walks nor
+    carries a list, whoever calls this."""
+    if _RUNNING["command"] not in LIST_CHANGING:
+        return reply
     listed = _listing(registry)
     if listed is not None:
         reply["list"] = listed
@@ -4327,6 +4340,7 @@ def main(argv: list[str]) -> int:
     error, the traceback of an unexpected one in the error log only."""
     _WARNINGS.clear()
     _ASKED.clear()
+    _RUNNING["command"] = argv[0] if argv else ""
     with error_log("tracker"):
         if not argv or argv[0] not in COMMANDS:
             return _reply_failure(ManifestError(USAGE.format(commands="|".join(COMMANDS))))

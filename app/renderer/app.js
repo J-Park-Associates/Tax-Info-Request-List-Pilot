@@ -136,9 +136,15 @@ class TrackerError extends Error {
 }
 
 // Every reply's warnings become notices, and an error throws its envelope.
-async function call(args, payload) {
+// `ofAnother`: the reply is a read of a return other than the one shown
+// (the hand-over picker's), so its warnings are said under that return's
+// label (decision 194's review, S1), never as if about the return shown.
+async function call(args, payload, { ofAnother = false } = {}) {
   const result = await window.tracker.call(args, payload);
-  if (result && Array.isArray(result.warnings) && result.warnings.length) warningNotices(result.warnings);
+  if (result && Array.isArray(result.warnings) && result.warnings.length) {
+    warningNotices(ofAnother ? result.warnings.map((sentence) =>
+      fill(vocab.notices.about, { label: labelOfState(result), sentence })) : result.warnings);
+  }
   if (result.error) throw new TrackerError(result, args, payload);
   return result;
 }
@@ -183,6 +189,13 @@ function notice(failure, { retry } = {}) {
   outlineRefused();
   if (kind === "locked" && failure.lock) showLock(failure.lock);
   return entry;
+}
+
+// The label a state reply gives its own return, from its household's list.
+function labelOfState(state) {
+  const here = state.paths ? state.paths.engagement : "";
+  const own = ((state.household || {}).returns || []).find((one) => one.path === here);
+  return own ? own.label : here;
 }
 
 function warningNotices(list) {
@@ -950,7 +963,7 @@ async function loadHandOverRequests() {
   const target = $("ho-return").value;
   show("ho-request", [el("option", { value: "" }, "…")]);
   try {
-    const state = await call(["state", vocab.engagement_flag, target]);
+    const state = await call(["state", vocab.engagement_flag, target], undefined, { ofAnother: true });
     show("ho-request", state.items.map((i) => requestOption(i, "")));
   } catch (err) {
     failed(err, loadHandOverRequests);
@@ -2834,6 +2847,7 @@ function renderLearnedCells(learned) {
 // One keyword taken back: one event, recorded at once, and the request
 // re-scanned by the API in the same breath because its rules just moved.
 async function unlearnKeyword(identifier, keyword) {
+  const view = viewGeneration;   // drawn only if this return is still the one shown (D6)
   let result;
   try {
     result = await call(withEng("unlearn"), { identifier, keyword });
@@ -2844,6 +2858,9 @@ async function unlearnKeyword(identifier, keyword) {
   }
   editorState.learned = result.state.learned || {};
   renderLearnedCells(editorState.learned);
+  // The page too, so the editor reopened on the state on screen (D13)
+  // never shows a keyword the record no longer holds (the review's S2).
+  renderFor(view, result.state);
   const said = fill(vocab.editor.unlearned_note, result.unlearned);
   editorNote(result.unlearned.scan_note ? `${said}\n${result.unlearned.scan_note}` : said,
              result.unlearned.scan_note ? "warn" : "ok");

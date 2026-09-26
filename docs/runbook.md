@@ -184,8 +184,9 @@ nothing is moved, nothing is deleted. The list is at the bottom of the status
 page, in the app under the engagement picker, and at the end of every command
 line pass, under **Folders the tracker leaves alone**. The app's picker and
 this list are as the app last walked the root: when it started, at its last
-**Sort & Scan**, or when it last created, rolled forward, renamed or retired
-a return or changed a household. So a folder made by hand shows there after
+**Sort & Scan**, or when it last created, rolled forward or retired a
+return, accepted a folder's name, changed a household, or had its clients
+folder set. So a folder made by hand shows there after
 the next **Sort & Scan**, or when the app is started again. Of the client tree
 only the first level is looked at, by name: nothing inside a client folder
 no household owns is read. A household's client folder is the one named

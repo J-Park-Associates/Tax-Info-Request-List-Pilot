@@ -6344,28 +6344,46 @@ def _the_list_now(capsys) -> dict:
 
 
 def test_the_writes_that_change_the_list_carry_it_without_the_vocabulary(capsys, demo_root):
-    """Decision 194, R5 and R6: a new return, a new year, a household's
-    details, an accepted name and a return made inactive each change what
-    the picker shows, so each reply carries the whole list from one walk -
-    the list ``list`` gives, and no vocabulary, which only ``list`` ships."""
+    """Decision 194, R5-R7: a new return, a new year (one return or the
+    household's), a household's details, an accepted name, a return made
+    inactive and Sort & Scan each change what the picker shows, so each
+    reply carries the whole list from one walk - the list ``list`` gives,
+    and no vocabulary, which only ``list`` ships. Every command
+    :data:`api.LIST_CHANGING` names is walked here (the review's S3)."""
+    carried = set()
+
+    def carries(command, payload):
+        assert payload["list"] == _the_list_now(capsys) and "vocab" not in payload["list"], command
+        carried.add(command)
+
     code, payload = run(capsys, "create", stdin={
         "household": "Other Household", "return_name": "Smith 2025", "form": "1040",
         "items": [{"identifier": "A01", "document": "W-2"}]})
     assert code == 0, payload
-    assert payload["list"] == _the_list_now(capsys) and "vocab" not in payload["list"]
+    carries("create", payload)
     prior = where(demo_root, "Smith 2025", household="Other Household")
+
+    assert run(capsys, "create", stdin={
+        "household": "Third Household", "return_name": "Lee 2025", "form": "1040",
+        "items": [{"identifier": "A01", "document": "W-2"}]})[0] == 0
+    code, payload = run(capsys, "rollover", stdin={
+        "prior": str(where(demo_root, "Lee 2025", household="Third Household")), "year": 2026})
+    assert code == 0, payload
+    carries("rollover", payload)
+    assert str(where(demo_root, "Lee 2025", year=2026, household="Third Household")) in \
+        [one["path"] for one in payload["list"]["engagements"]]
 
     code, payload = run(capsys, "roll-household", api.ENGAGEMENT_FLAG, str(prior),
                         stdin={"year": 2026, "returns": [{"prior": str(prior)}]})
     assert code == 0, payload
-    assert payload["list"] == _the_list_now(capsys) and "vocab" not in payload["list"]
+    carries("roll-household", payload)
     assert str(where(demo_root, "Smith 2025", year=2026, household="Other Household")) in \
         [one["path"] for one in payload["list"]["engagements"]]
 
     code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(prior),
                         stdin={"contact": "Pat"})
     assert code == 0, payload
-    assert payload["list"] == _the_list_now(capsys) and "vocab" not in payload["list"]
+    carries("edit-household", payload)
     [household] = [h for h in payload["list"]["households"] if h["name"] == "Other Household"]
     assert household["contact"] == "Pat"
 
@@ -6374,15 +6392,20 @@ def test_the_writes_that_change_the_list_carry_it_without_the_vocabulary(capsys,
                         stdin={"items": rows, "engagement": {"active": False}})
     assert code == 0, payload
     assert "active" in payload["saved"]["engagement"]
-    assert payload["list"] == _the_list_now(capsys) and "vocab" not in payload["list"]
+    carries("edit", payload)
 
     engagement = _a_renamed_household(capsys, demo_root)
     pause = payload_of_state(capsys, engagement)["household"]["pause"]
     code, payload = run(capsys, "accept-folder-name", api.ENGAGEMENT_FLAG, pause["engagement"],
                         stdin={"seq": pause["seq"], "scope": "household"})
     assert code == 0, payload
-    assert payload["list"] == _the_list_now(capsys) and "vocab" not in payload["list"]
+    carries("accept-folder-name", payload)
     assert "Park Household" in [h["name"] for h in payload["list"]["households"]]
+
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(prior))
+    assert code == 0, payload
+    carries("scan", payload)
+    assert carried == set(api.LIST_CHANGING)
 
 
 def test_the_writes_that_cannot_change_the_list_do_not_walk(capsys, demo_root, tmp_path,
@@ -6461,6 +6484,23 @@ def test_sort_and_scan_carries_the_list_from_its_one_walk(capsys, demo_root, mon
     assert payload["list"] == _the_list_now(capsys) and "vocab" not in payload["list"]
 
 
-def test_every_list_changing_command_is_a_command():
+def test_no_command_outside_the_list_changing_ones_carries_the_list():
+    """``LIST_CHANGING`` decides it (the review's S3): each command in it
+    is a command whose function adds the list, no other function adds one,
+    and under any other command :func:`api._with_list` walks nothing and
+    adds nothing, whoever calls it. ``set-root`` is not one: the app starts
+    again after it (R8)."""
+    import inspect
+
     assert set(api.LIST_CHANGING) <= set(api.COMMANDS)
-    assert "set-root" not in api.LIST_CHANGING   # the app starts again after it (R8)
+    assert "set-root" not in api.LIST_CHANGING
+    adders = {name for name, fn in api.COMMANDS.items() if "_with_list(" in inspect.getsource(fn)}
+    assert adders == set(api.LIST_CHANGING)
+    source = inspect.getsource(api)
+    assert source.count('["list"] =') == 1 and '"list":' not in source.replace('"list": _cmd_list', '')
+    try:
+        for command in set(api.COMMANDS) - set(api.LIST_CHANGING):
+            api._RUNNING["command"] = command
+            assert api._with_list({}) == {}, command
+    finally:
+        api._RUNNING["command"] = ""
