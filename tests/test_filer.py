@@ -8425,7 +8425,13 @@ def test_a_forged_step_is_carried_out_nowhere(engagement, tmp_path, which):
                                                      location=location_of(engagement, original),
                                                      reason="client-tree")),
     }[which]
-    before = sorted(tmp_path.rglob("*"))
+    from tracker.runner import PASS_ORDER_FILENAME
+
+    def _tree() -> list:
+        # The pass's own order hint (decision 189) is its bookkeeping, not a step.
+        return sorted(p for p in tmp_path.rglob("*") if p.name != PASS_ORDER_FILENAME)
+
+    before = _tree()
     honest = _forge_line(engagement, ledger.new(ledger.MOVING, **{
         ledger.KEY_KEY: "forged", ledger.OPS_KEY: [step], ledger.DECIDED_BY_KEY: ledger.BY_PASS}))
 
@@ -8436,9 +8442,10 @@ def test_a_forged_step_is_carried_out_nowhere(engagement, tmp_path, which):
         assert run.error.startswith(RECORD_UNREADABLE.split("{")[0])
         assert "outside this return's places" in run.error
     else:                                            # admitted, and refused where it is carried out
-        assert "reached through a link" in run.error
+        # Since decision 189 a run's error is said as its class (principle 7).
+        assert run.error == MovedThroughALinkError.__name__
     ledger.path_for(engagement).write_bytes(honest)
-    assert sorted(tmp_path.rglob("*")) == before
+    assert _tree() == before
     assert (behind / "x.pdf").is_file() and original.is_file()
 
     if isinstance(refusal, str):
@@ -8448,7 +8455,7 @@ def test_a_forged_step_is_carried_out_nowhere(engagement, tmp_path, which):
     else:
         with pytest.raises(refusal):
             _do_op(engagement, step)
-    assert sorted(tmp_path.rglob("*")) == before
+    assert _tree() == before
     assert original.read_bytes() == b"%PDF-1.4 the client's W-2"
 
 
@@ -8664,6 +8671,7 @@ def test_a_removal_never_acts_in_the_client_tree(engagement):
     assert len(ledger.read_events(engagement)) == lines and original.is_file()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows refuses a control character in a file name, so such a drop cannot exist there")
 def test_a_name_with_a_control_character_is_still_filed_and_recorded(engagement, tmp_path):
     """The review's M5: decision 104 files a POSIX name holding a control
     character, and the record's value rule holds a file's own name only to

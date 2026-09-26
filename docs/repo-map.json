@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 147,
-    "edges": 881,
-    "reused": 0
+    "edges": 883,
+    "reused": 114
   },
   "node_types": [
     "artifact",
@@ -3695,8 +3695,8 @@
       "id": "tests/test_content_check.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a1d81780cb3f91e7",
-      "lines": 2700,
+      "sha256": "62be262e7128e385",
+      "lines": 2712,
       "exports": [
         "A_PASS_READING",
         "BOMB_REFUSED",
@@ -3825,8 +3825,8 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e3fde3c60fe206e8",
-      "lines": 8739,
+      "sha256": "72f760228379a561",
+      "lines": 8747,
       "exports": [
         "A_PASS_KILLED_MID_COPY",
         "BUSINESS",
@@ -7244,6 +7244,12 @@
     },
     {
       "from": "tests/test_content_check.py",
+      "to": "tracker/ledger.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_content_check.py",
       "to": "tracker/locking.py",
       "type": "exercises",
       "source": "derived"
@@ -7269,6 +7275,12 @@
     {
       "from": "tests/test_content_check.py",
       "to": "tracker/reasons.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_content_check.py",
+      "to": "tracker/records.py",
       "type": "exercises",
       "source": "derived"
     },

@@ -2390,6 +2390,13 @@ def test_a_catastrophic_date_pattern_costs_one_stop_and_the_next_pass_takes_the_
         return real(path, questions)
 
     a_short_stop.setattr(content_check, "_read_in_a_child", counted)
+    # Decision 187 now refuses this pattern where it is typed and where the
+    # record is read. The stop is the bound that does not depend on reading
+    # a pattern (187's residual), so this test lets one through to prove it.
+    import tracker.manifest as manifest
+    import tracker.records as records
+    a_short_stop.setattr(manifest, "date_pattern_problem", lambda pattern: "")
+    a_short_stop.setattr(records, "date_pattern_problem", lambda pattern: "")
     row = RequestItem(identifier="A01", document="W-2", period="TY2025", allowed_extensions=("txt",),
                       min_size_kb=0, required_keywords=("W-2",), date_pattern=r"(\d+)+x")
     engagement = make_engagement(tmp_path, [row])
@@ -2418,6 +2425,11 @@ def test_a_catastrophic_date_pattern_costs_one_stop_and_the_next_pass_takes_the_
                          lambda *a, **k: pytest.fail("a kept verdict was judged again"))
     kept = check_content(loose, row, ContentCache(engagement))
     assert kept == content_check.ContentResult(ok=False, reason=STOPPED, extractable=False)
+    # The record now carries a pattern decision 187 refuses on read. The
+    # read-back check after every test is about honest records, so this
+    # test takes its forged one away.
+    from tracker import ledger
+    ledger.path_for(engagement).unlink()
 
 
 def test_a_one_line_workbook_parks_within_the_stop_and_never_stalls_the_pass(tmp_path, a_short_stop):
