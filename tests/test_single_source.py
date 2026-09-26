@@ -12,6 +12,8 @@ import json
 import re
 from pathlib import Path
 
+import pytest
+
 from tracker.content_check import RETIRED_CACHE_FILENAME
 
 REPO = Path(__file__).resolve().parent.parent
@@ -311,6 +313,7 @@ def test_every_file_beside_the_store_is_ignored_by_git():
     the code writes, so a pattern that does not match is caught."""
     import subprocess
 
+    from tracker.after_install import RECORD_FILENAME
     from tracker.checkpoint import CHECKPOINT_FILENAME, SET_ASIDE_SUFFIX
     from tracker.fsio import TEMP_SUFFIX
     from tracker.runner import LAST_PASS_FILENAME
@@ -319,6 +322,8 @@ def test_every_file_beside_the_store_is_ignored_by_git():
     aside = STORE_FILENAME + SET_ASIDE_SUFFIX.format(version=15)
     names = [CHECKPOINT_FILENAME, CHECKPOINT_FILENAME + "-wal", CHECKPOINT_FILENAME + "-shm",
              LAST_PASS_FILENAME, f"{LAST_PASS_FILENAME}.1234.abcd{TEMP_SUFFIX}",
+             # Decision 209's note of the last after-install run.
+             RECORD_FILENAME, f"{RECORD_FILENAME}.1234.abcd{TEMP_SUFFIX}",
              f"{RECOVERED_DIR}/J Park & Associates__Household__2025__Return-2026-09-26-120000.jsonl",
              aside, aside + ".1", aside + "-wal"]
     for name in names:
@@ -762,6 +767,7 @@ def test_documents_name_only_runtime_files_the_code_owns():
     repo file, or one of the files the log retired (``RETIRED_FILES``)."""
     import subprocess
 
+    from tracker.after_install import BUILD_INFO_FILENAME, RECORD_FILENAME
     from tracker.checkpoint import CHECKPOINT_FILENAME
     from tracker.filer import README_LOCK_FILENAME
     from tracker.ledger import LEDGER_FILENAME
@@ -781,7 +787,9 @@ def test_documents_name_only_runtime_files_the_code_owns():
              SCHEDULE_XML_FILENAME, SETTINGS_FILENAME, STORE_FILENAME, VIEW_FILENAME,
              PASS_ORDER_FILENAME,
              # Decision 159: the checkpoint, the scheduled pass's own note, the race's lock.
-             CHECKPOINT_FILENAME, LAST_PASS_FILENAME, RACE_LOCK_FILENAME}
+             CHECKPOINT_FILENAME, LAST_PASS_FILENAME, RACE_LOCK_FILENAME,
+             # Decision 209: the after-install step's note, and the build's.
+             RECORD_FILENAME, BUILD_INFO_FILENAME}
     tracked = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True).stdout.split()
     repo_files = {Path(t).name for t in tracked} | {t for t in tracked}
     for rel in DOCUMENTS:
@@ -857,6 +865,7 @@ def test_documents_name_buttons_by_their_labels():
         LIST_MODE_LABEL,
         OPEN_IN_LIST_LABEL,
         RESTORE_LABEL,
+        SCHEDULE_REPAIR_LABEL,
         SEND_TO_REVIEW_LABEL,
         SKIP_LABEL,
         UNLEARN_LABEL,
@@ -884,6 +893,8 @@ def test_documents_name_buttons_by_their_labels():
     # And the Reminder card's three, filled in at runtime from the module
     # that owns the draft (decision 118). None of them sends anything.
     labels |= {reminder.COPY_LABEL, reminder.APPROVE_LABEL, reminder.OPEN_DRAFT_LABEL}
+    # And the schedule's repair path, filled in from the API (decision 209).
+    labels.add(SCHEDULE_REPAIR_LABEL)
     labels = {label for label in labels if label and "${" not in label}
     for rel in (*DOCUMENTS, "docs/repo-map.curated.json"):
         text = read(rel)
@@ -1160,7 +1171,7 @@ def test_tree_diagrams_name_only_runtime_files_the_code_owns():
 CONSOLE_GUARDED = ("rollover", "filer", "scanner", "registry", "review", "scaffold",
                    "store", "reminder", "runner", "router", "content_check",
                    "view", "ledger", "validators", "names", "containers", "ocr", "door",
-                   "checkpoint", "locking")
+                   "checkpoint", "locking", "after_install")
 #: The command lines that print no client's name, each with why it is not
 #: guarded - so a new command line has to be named in one list or the other.
 CONSOLE_EXEMPT = {
@@ -1572,3 +1583,76 @@ def test_the_shell_lstats_before_it_opens_and_refuses_a_link_or_a_changed_kind()
     vocab = api._vocab()
     assert vocab["shell"]["not_opened"] == api.SHELL_NOT_OPENED
     assert set(vocab["path_kinds"].values()) == {"folder", "file"}
+
+
+# ------------------------------------------ one-time steps run themselves ----
+
+#: Where a person is told what to do: the two documents and the two batch
+#: files a person double-clicks (decision 209, R5).
+ONE_TIME_STEP_DOCUMENTS = ("README.md", "docs/runbook.md", "Setup.bat", "Start App.bat")
+#: The first word of a clause that is an instruction to a person.
+INSTRUCTIONS = frozenset({"press", "run", "click", "double-click", "type", "open"})
+#: What "after installing" may be said with, within three words of "after".
+AFTER_WHAT = frozenset({"installing", "upgrading", "install", "upgrade", "setup", "setup.bat"})
+
+
+def one_time_step_clauses(text: str) -> list[str]:
+    """Every clause of ``text`` that tells a person to run a one-time step
+    after installing or upgrading - the shape Jason's standing preference
+    retires (decision 209): the first word an instruction, the word
+    ``once``, and ``after`` followed within three words by installing,
+    upgrading or Setup. Wrapped lines are joined (a ``rem`` prefix and
+    Markdown list and quote markers dropped); clauses end at ``.``, ``:``,
+    ``;`` and blank lines."""
+    lines = []
+    for line in text.splitlines():
+        line = re.sub(r"^\s*rem(\s|$)", "", line, flags=re.I)
+        line = re.sub(r"^\s*(?:[-*+>]|\d+\.)\s+", "", line)
+        lines.append(line.strip())
+    joined = "\n".join(lines)
+    caught = []
+    for paragraph in re.split(r"\n\s*\n", joined):
+        for clause in re.split(r"[.:;]", " ".join(paragraph.split())):
+            words = re.sub(r"[*`_(]", "", clause).strip().lower().split()
+            if not words or words[0] not in INSTRUCTIONS or "once" not in words:
+                continue
+            bare = [word.strip(",)!?\"'") for word in words]
+            if any(word == "after" and set(bare[i + 1:i + 4]) & AFTER_WHAT
+                   for i, word in enumerate(bare)):
+                caught.append(clause.strip())
+    return caught
+
+
+@pytest.mark.parametrize(("clause", "caught"), [
+    ("Run the store check once after installing.", True),
+    ("installed with: **press Install Schedule once after upgrading**, and never", True),
+    ("Setup runs it once, after installing.", False),
+    ("Press Repair the schedule to register it again.", False),
+    ("Run Setup.bat once.", False),
+    ("rem Double-click it once after `Setup.bat` finishes.", True),
+    ("Open the app once a week after lunch.", False),
+])
+def test_the_one_time_step_matcher_catches_and_spares(clause, caught):
+    assert bool(one_time_step_clauses(clause)) is caught, clause
+
+
+def test_no_document_tells_a_person_to_run_a_one_time_step():
+    """Jason's standing preference (decision 209): any one-time step after
+    installing or upgrading is built into installation - Setup, the app's
+    launch, the first root saved - never a line telling a person to run it."""
+    for rel in ONE_TIME_STEP_DOCUMENTS:
+        caught = one_time_step_clauses(read(rel))
+        assert not caught, (rel, caught)
+
+
+def test_only_the_lock_asks_the_platform_for_this_computers_name():
+    """``platform.node`` is called in ``locking.this_host`` and nowhere else
+    under the package (decision 209): the lock line and the designation of
+    the computer that runs the schedule normalise one name one way."""
+    callers = [path.relative_to(REPO).as_posix() for path in sorted((REPO / "tracker").glob("*.py"))
+               if "platform.node" in path.read_text(encoding="utf-8")]
+    assert callers == ["tracker/locking.py"], callers
+    locking = read("tracker/locking.py")
+    this_host = locking[locking.index("def this_host"):]
+    this_host = this_host[:this_host.index("\ndef ")]
+    assert locking.count("platform.node") == this_host.count("platform.node") == 1

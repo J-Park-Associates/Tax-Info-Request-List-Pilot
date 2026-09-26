@@ -748,7 +748,11 @@ def test_the_text_rule_matches_gitattributes():
         "change it to follow the new rule, or the map goes stale on every CI checkout.")
     text_rules = [r for r in rules if any(a.split("=")[0] in ("text", "-text", "eol", "binary")
                                           for a in r[1:])]
-    assert text_rules == [["*", "text=auto", "eol=lf"]], (
+    # The one other rule (decision 209, R7): batch files check out CRLF. It
+    # changes only the working copy - ``text`` still commits LF - so the hash
+    # rule is theirs too, and the CRLF warning passes them over by suffix.
+    crlf = [["*" + suffix, "text", "eol=crlf"] for suffix in repo_map.CRLF_CHECKOUT_SUFFIXES]
+    assert text_rules == [["*", "text=auto", "eol=lf"], *crlf], (
         f"another line sets text or eol: {text_rules}. The hash rule is one rule for every "
         "path; follow it in git_text_auto_eol_lf() before adding one.")
 

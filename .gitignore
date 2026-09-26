@@ -94,6 +94,10 @@ last-pass.json
 last-pass.json.*
 recovered/
 tracker.db.v*.old*
+# Decision 209's note of the last after-install run, beside the store: it
+# names this machine's findings, which can name a client's folder.
+after-install.json
+after-install.json.*
 # OCR's temporary page images during a pass (decision 137, L7). Retired by
 # decision 169 - the reader writes no temporary file - but a checkout that
 # ran a pass before it may still hold the folder, with a client's page in

@@ -299,13 +299,21 @@ Run it with the app's private Python, the one `Setup.bat` made (decision
 own Python holds none of the locked packages. `--settings` defaults to this checkout's own folder, whose `settings.json`
 must already name a clients root; the job carries no root of its own.
 `--install` registers the task as it writes the XML, and running the same
-line again changes the schedule. The app's **Install Schedule** button does exactly this for the
-folder it is showing - from source with the Python it runs under, and in
-the packaged app with its own executable, which runs the job when given
-`--run` first (there is no Python on that machine). A job registered by a
-version before decision 131 still carries the root it was installed with:
-press **Install Schedule** once after upgrading, and never again for a
-move. Every pass also re-scaffolds each engagement, so a
+line again changes the schedule. You rarely need to: the app registers the
+job itself (decision 209) - `Setup.bat` runs its after-install step last,
+the app runs the same step at its first start after an upgrade, and saving
+the clients root runs it too - from source with the Python it runs under,
+and in the packaged app with its own executable, which runs the job when
+given `--run` first (there is no Python on that machine). It registers the
+job only on the computer that runs the schedule: the one named in
+`J Park & Associates\_Scheduling computer.txt` under the clients root,
+which the first Windows computer to set the root claims; any other
+computer registers none and removes its own. The app's
+**Repair the schedule** runs the step again, for a job that was deleted or broken, and
+`python -m tracker.after_install --move-schedule-here` moves the schedule
+to another computer (docs/runbook.md §6). The same step checks every
+record against today's rules and lists anything a person must look at, at
+the end of Setup and at the top of the app. Every pass also re-scaffolds each engagement, so a
 deleted inbox or review folder is back by the next run, and rewrites the
 household's README once, after the sort (decision 130), and
 an engagement that has been rolled forward is retired by its successor

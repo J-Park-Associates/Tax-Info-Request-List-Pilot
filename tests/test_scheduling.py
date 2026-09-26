@@ -11,6 +11,8 @@ from xml.etree import ElementTree
 
 import pytest
 
+# At collection, before any test's fixtures replace it (decision 209).
+from tests.conftest import REAL_TASK_SCHEDULER_HERE
 from tracker.scheduling import (
     DEFAULT_START,
     N8N_RUN_NODE,
@@ -184,36 +186,149 @@ def test_a_value_that_means_something_else_in_a_shell_is_refused(field, char, ki
     assert "Secret Name" not in message and ARGS[field] not in message
 
 
-def test_install_runs_schtasks_on_windows_and_only_shows_the_command_elsewhere(monkeypatch, tmp_path):
-    import platform
-    import subprocess
+class Said:
+    """What a faked ``schtasks`` answers: an exit code and what it printed."""
 
-    from tracker.scheduling import install_task
+    def __init__(self, returncode=0, stderr=""):
+        self.returncode, self.stdout, self.stderr = returncode, "", stderr
+
+
+def fake_schtasks(monkeypatch, *, exists=False, delete_fails=False, create_fails=False):
+    """This computer has Task Scheduler, and its ``schtasks`` is this fake:
+    every command it is given is kept, in order (decision 209 - no test
+    reaches the real one)."""
+    from tracker import scheduling
 
     calls = []
-    monkeypatch.setattr(platform, "system", lambda: "Linux")
+
+    def answer(command):
+        calls.append(command)
+        verb = command[1]
+        if verb == "/query":
+            return Said(0 if exists else 1)
+        if verb == "/delete":
+            return Said(1, "ERROR: Access is denied.") if delete_fails else Said()
+        return Said(1, "ERROR: Access is denied.") if create_fails else Said()
+
+    monkeypatch.setattr(scheduling, "task_scheduler_here", lambda: True)
+    monkeypatch.setattr(scheduling, "_schtasks", answer)
+    return calls
+
+
+def test_install_runs_schtasks_on_windows_and_only_shows_the_command_elsewhere(monkeypatch, tmp_path):
+    from tracker.scheduling import install_task
+
     assert install_task(tmp_path / "t.xml", "Tax Tracker")[:3] == ["schtasks", "/create", "/xml"]
-    assert calls == []
-
-    monkeypatch.setattr(platform, "system", lambda: "Windows")
-
-    class Done:
-        returncode = 0
-        stdout = "SUCCESS"
-        stderr = ""
-
-    monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: (calls.append(cmd), Done())[1])
+    calls = fake_schtasks(monkeypatch)
     command = install_task(tmp_path / "t.xml", "Tax Tracker")
     assert calls == [command]
     assert command[-3:] == ["/tn", "Tax Tracker", "/f"]
 
-    class Failed(Done):
-        returncode = 1
-        stderr = "ERROR: Access is denied."
-
-    monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: Failed())
+    fake_schtasks(monkeypatch, create_fails=True)
     with pytest.raises(RuntimeError, match="Access is denied"):
         install_task(tmp_path / "t.xml")
+
+
+def test_task_scheduler_here_answers_only_whether_windows(monkeypatch):
+    """Decision 209 renamed the function whose name said "the scheduling
+    host" and whose body asked "is this Windows": it answers the second
+    question, and nothing about which computer runs the schedule."""
+    import platform
+
+    from tracker import scheduling
+
+    assert not hasattr(scheduling, "is_scheduling_host")
+    for system, answer in (("Windows", True), ("Linux", False), ("Darwin", False)):
+        monkeypatch.setattr(platform, "system", lambda system=system: system)
+        assert REAL_TASK_SCHEDULER_HERE() is answer
+
+
+def test_remove_task_deletes_only_an_existing_task(monkeypatch):
+    from tracker import scheduling
+
+    assert scheduling.remove_task() is False              # no Task Scheduler: nothing asked
+    calls = fake_schtasks(monkeypatch, exists=False)
+    assert scheduling.remove_task() is False
+    assert calls == [["schtasks", "/query", "/tn", TASK_NAME]]
+
+    calls = fake_schtasks(monkeypatch, exists=True)
+    assert scheduling.remove_task() is True
+    assert calls == [["schtasks", "/query", "/tn", TASK_NAME],
+                     ["schtasks", "/delete", "/tn", TASK_NAME, "/f"]]
+
+    fake_schtasks(monkeypatch, exists=True, delete_fails=True)
+    with pytest.raises(RuntimeError, match="could not delete"):
+        scheduling.remove_task()
+
+
+def test_register_here_is_the_one_registration(monkeypatch, tmp_path):
+    """Decision 209: the repair path and the after-install step both come
+    through ``register_here``. The job names the app's settings folder and
+    no clients root (decision 131), from source with this Python and in the
+    packaged app with its own executable in runner mode."""
+    import sys
+
+    from tracker.runner import LOG_FLAG, RUNNER_MODE_FLAG, SETTINGS_FLAG
+    from tracker.scheduling import (
+        SCHEDULE_XML_ENCODING,
+        quote_argument,
+        register_here,
+        schedule_xml_path,
+    )
+
+    folder = tmp_path / "app"
+    folder.mkdir()
+    calls = fake_schtasks(monkeypatch)
+    command = register_here(folder, start="06:30", every=60)
+    xml_path = schedule_xml_path(folder)
+    assert calls == [command] and command[:4] == ["schtasks", "/create", "/xml", str(xml_path)]
+    xml = xml_path.read_text(encoding=SCHEDULE_XML_ENCODING)
+    assert f"{SETTINGS_FLAG} {quote_argument(folder)}" in xml
+    assert "T06:30:00" in xml and "PT60M" in xml and "-m tracker.runner" in xml
+
+    exe = tmp_path / "package" / "resources" / "api" / "api.exe"
+    exe.parent.mkdir(parents=True)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(exe))
+    register_here(folder)
+    xml = xml_path.read_text(encoding=SCHEDULE_XML_ENCODING)
+    assert f"<Command>{exe}</Command>" in xml
+    assert f"<Arguments>{RUNNER_MODE_FLAG} " in xml and LOG_FLAG in xml and str(folder) in xml
+    assert f"<WorkingDirectory>{exe.parent}</WorkingDirectory>" in xml
+    assert "-m tracker.runner" not in xml
+
+
+@pytest.mark.parametrize(("content", "named"), [
+    ("office-pc\n", "office-pc"),
+    ("  OFFICE-PC  \r\n\n", "office-pc"),
+    ("\ufeffjppc", "jppc"),
+    ("a" * 63, "a" * 63),
+    ("a" * 64, None),
+    ("", None),
+    ("office-pc\nlaptop\n", None),
+    ("office pc", None),
+    ("office-pc;rm", None),
+    ("office-pc\n" + " " * 300, None),
+])
+def test_the_designation_is_one_computer_name(tmp_path, content, named):
+    """Decision 209: the designation file is one line naming one computer as
+    ``locking.this_host`` normalises it - or it is unreadable, a failure,
+    never a guess, and its content is never quoted back."""
+    from tracker.layout import designation_file
+    from tracker.scheduling import DESIGNATION_UNREADABLE, DesignationError, designated_machine
+
+    root = tmp_path / "Clients"
+    designation_file(root).parent.mkdir(parents=True)
+    assert designated_machine(root) is None
+    designation_file(root).write_bytes(content.encode("utf-8"))
+    if named is not None:
+        assert designated_machine(root) == named
+        return
+    with pytest.raises(DesignationError) as refused:
+        designated_machine(root)
+    assert str(refused.value) == DESIGNATION_UNREADABLE.format(file=designation_file(root))
+    for word in ("office", "laptop", ";rm", "aaa"):
+        assert word not in str(refused.value)
 
 
 def test_the_command_line_is_built_once_for_both_schedulers():

@@ -270,9 +270,10 @@ SETTINGS_FLAG = "--settings"
 #: named a clients root on its command line with ``--log``; after the root
 #: moves in the app it would go on sorting the old tree silently, so a run
 #: of that shape whose root is not the settings file's is refused, red,
-#: until *Install Schedule* is pressed once (decision 131's review, F3).
-OLD_JOB_ROOT = ("the scheduled job still names an old clients root ({root}); open the app and "
-                "press Install Schedule")
+#: until the job is registered again (decision 131's review, F3) - which the
+#: app does itself at its first start after the upgrade (decision 209).
+OLD_JOB_ROOT = ("the scheduled job still names an old clients root ({root}); start the app on this "
+                "computer - it registers the job again - or press Repair the schedule")
 
 #: The scheduled pass says when it ran and how it ended (decision 159, E4):
 #: a job that stops - settings unreadable, the root gone, the task deleted -

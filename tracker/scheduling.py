@@ -7,7 +7,7 @@ Emits a Windows Task Scheduler job definition, or the n8n equivalent, for::
 **The job names no clients root** (decision 131). The root has one home,
 the settings file beside the app, and the job reads it from there at every
 run. It used to be a second home - quoted into the job's command line when
-*Install Schedule* was pressed - so a root changed in the app left the job
+the job was registered - so a root changed in the app left the job
 walking the old one, red every night, until somebody remembered to press
 the button again. Now changing the root in the app is enough.
 
@@ -24,8 +24,8 @@ committed: point it at the Python you use and the app's settings folder
 (the one whose settings file names the clients root), and ``--install``
 registers it with Task Scheduler in the same
 step (``schtasks /create /xml ... /f``, so re-running is also how you change
-the schedule). The packaged app has no Python: its Install Schedule button
-registers the app's own API executable in runner mode
+the schedule). The packaged app has no Python: it registers the app's own
+API executable in runner mode
 (``tracker.runner.RUNNER_MODE_FLAG``, dispatched by ``api_entry.py`` before
 the API - and this module - is imported, so the job needs none of the
 environment the Electron shell gives the API). ``TASK_NAME`` is read at
@@ -35,17 +35,50 @@ product name in its environment, or a source checkout beside ``app/package.json`
 
 Nothing generated here sends email. The scheduled command files documents,
 updates the manifest and writes draft text files; a person still sends them.
+
+**Which computer runs the schedule is one file** (decision 209). Setup, the
+app's first start after an upgrade and the first clients root saved all
+register the task through :func:`register_here` - but only on the computer
+the designation file names (``layout.designation_file``, in the firm's
+private tree, which every desk that has the root syncs). The first Windows
+computer to register claims it; any other registers none and removes its
+own; moving is one deliberate command on the new machine
+(``python -m tracker.after_install --move-schedule-here``). Before this,
+the question was answered by a function named for "the scheduling host"
+whose body asked only "is this Windows": every Windows desk that pressed
+the button got a second unattended pass. It is renamed
+:func:`task_scheduler_here` so the name says only what it answers.
+
+The file is **checked when it is written, read and acted on**: one
+machine name as ``locking.this_host`` normalises it, or
+:data:`DESIGNATION_UNREADABLE` - a failure, never a guess, and never the
+file's content quoted back (it is whatever a person or a sync client left
+there). **Residual risk, stated plainly:** the designation is detection,
+not a lock. Two desks that both set a root before the sync client carries
+the first claim can both claim; Drive then keeps one file and renames the
+other ("... (1).txt"), which nothing reads. The runbook's one-machine rule
+still holds; the file makes following it the default. A pass on a
+computer the file does not name is not refused here - that is the runner's
+question, left to its own decision.
+
+``schtasks`` is local and run through :mod:`subprocess` alone
+(:func:`_schtasks`, the one seam the tests replace); nothing here reaches
+the network.
 """
 
 from __future__ import annotations
 
 import json
+import re
+import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from xml.sax.saxutils import escape
 
 from tracker.fsio import write_text_atomically
-from tracker.locking import RUN_TIME_LIMIT_SECONDS
+from tracker.layout import designation_file
+from tracker.locking import RUN_TIME_LIMIT_SECONDS, this_host
 from tracker.runner import DRAFT_DAY_NAME, LOG_FLAG, RUNNER_MODE_FLAG, SETTINGS_FLAG
 from tracker.settings import SETTINGS_FILENAME, product_name
 
@@ -101,8 +134,10 @@ FORMAT_N8N = "n8n"
 FORMATS = (FORMAT_XML, FORMAT_N8N)
 INSTALL_HINT = f"{MODULE_INVOCATION} {INSTALL_FLAG}"
 
-def is_scheduling_host() -> bool:
-    """Whether this machine can register the task (Task Scheduler is Windows only)."""
+def task_scheduler_here() -> bool:
+    """Whether this computer has Task Scheduler at all - that is, whether it
+    is Windows. Nothing more: whether this is the computer that *runs* the
+    schedule is :func:`schedule_decision`'s question (decision 209)."""
     import platform
 
     return platform.system() == "Windows"
@@ -353,18 +388,225 @@ def install_task(xml_path: Path | str, task_name: str = TASK_NAME) -> list[str]:
     schedule is the whole upgrade path. Only meaningful on Windows; anywhere
     else the command is returned unrun so it can be shown.
     """
-    import subprocess
-
     command = ["schtasks", "/create", "/xml", str(xml_path), "/tn", task_name, "/f"]
-    if not is_scheduling_host():
+    if not task_scheduler_here():
         return command
-    completed = subprocess.run(command, capture_output=True, text=True)
+    completed = _schtasks(command)
     if completed.returncode != 0:
         raise RuntimeError(
             f"schtasks failed ({completed.returncode}): "
             f"{(completed.stderr or completed.stdout).strip()}"
         )
     return command
+
+
+def _schtasks(command: list[str]) -> subprocess.CompletedProcess:
+    """Run one ``schtasks`` command line and hand back what it said. The one
+    place this module starts a process: the tests replace it, so no test
+    ever reaches a real Task Scheduler."""
+    return subprocess.run(command, capture_output=True, text=True)
+
+
+def _working_dir(frozen: bool) -> Path:
+    """The folder the job runs in: the packaged executable's own folder, or
+    this checkout (the folder holding the package)."""
+    return Path(sys.executable).resolve().parent if frozen else Path(__file__).resolve().parent.parent
+
+
+def schedule_xml_path(settings_folder: str | Path) -> Path:
+    """Where the generated job definition is written: beside the settings
+    file in the app's settings folder."""
+    return Path(settings_folder) / SCHEDULE_XML_FILENAME
+
+
+def register_here(settings_folder: str | Path, *, start: str = DEFAULT_START,
+                  every: int = DEFAULT_REPEAT_MINUTES) -> list[str]:
+    """Write the job for this app's settings folder and register it with
+    Task Scheduler; the command run (or, off Windows, the one that would
+    be). **The one registration** (decision 209): the app's repair path
+    and the after-install step both come here, so the job is spelled once.
+
+    The job names the settings folder, never the root (decision 131). From
+    a source checkout it is the Python this process runs under; in the
+    packaged app it is this same executable in runner mode, which needs
+    none of the environment the shell gives the API. A ``schtasks`` that
+    refuses raises ``RuntimeError`` with what it said.
+    """
+    frozen = bool(getattr(sys, "frozen", False))
+    xml_path = schedule_xml_path(settings_folder)
+    write_text_atomically(
+        xml_path,
+        task_scheduler_xml(python=sys.executable, settings=settings_folder,
+                           working_dir=_working_dir(frozen), start_time=start,
+                           repeat_minutes=every, frozen=frozen),
+        encoding=SCHEDULE_XML_ENCODING,
+    )
+    return install_task(xml_path)
+
+
+def remove_task(task_name: str = TASK_NAME) -> bool:
+    """Delete this computer's own task, if it has one; whether one was removed.
+
+    ``schtasks /query`` first (exit 0 is "it exists"), then ``/delete /f``.
+    Off Windows there is nothing to remove. A delete that fails raises
+    ``RuntimeError``: a task left running on a computer that no longer runs
+    the schedule is a second pass, and that is said, not swallowed.
+    """
+    if not task_scheduler_here():
+        return False
+    if _schtasks(["schtasks", "/query", "/tn", task_name]).returncode != 0:
+        return False
+    completed = _schtasks(["schtasks", "/delete", "/tn", task_name, "/f"])
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"schtasks could not delete the task ({completed.returncode}): "
+            f"{(completed.stderr or completed.stdout).strip()}"
+        )
+    return True
+
+
+# ------------------------------------------- which computer runs it (209) ----
+
+#: A computer's name as the designation file holds it: what
+#: ``locking.this_host`` makes of the machine's own name, and nothing else.
+HOST_NAME = re.compile(r"[a-z0-9._-]{1,63}")
+#: More than this is not one line naming one computer, whatever it says.
+MAX_DESIGNATION_BYTES = 256
+
+#: The outcomes of :func:`schedule_decision`, by key.
+NO_ROOT = "no_root"
+NO_TASK_SCHEDULER = "no_task_scheduler"
+CLAIMED = "claimed"
+REGISTERED = "registered"
+ELSEWHERE = "elsewhere"
+UNREADABLE = "unreadable"
+#: The outcomes that register a task on this computer.
+REGISTERING = frozenset({CLAIMED, REGISTERED})
+
+SCHEDULE_WAITS_FOR_ROOT = ("The schedule will be set up when the clients folder is chosen in the app, "
+                           "on the computer that runs it.")
+SCHEDULE_NOT_HERE = ("This computer has no Task Scheduler; the schedule runs on the office computer.")
+SCHEDULE_CLAIMED = ("This computer ({host}) now runs the schedule for this clients folder: every day "
+                    "from {start}, every {every} minutes.")
+SCHEDULE_REGISTERED = ("The schedule is set: every day from {start}, every {every} minutes, with this "
+                       "computer's copy of the app.")
+SCHEDULE_ELSEWHERE = "{host} runs the schedule for this clients folder, so this computer registers none{removed}."
+SCHEDULE_REMOVED = " and removed the one it had"
+#: The file's path is named; its content never is (it is whatever was left there).
+DESIGNATION_UNREADABLE = ("The file naming the computer that runs the schedule ({file}) is not one "
+                          "computer's name; a person must fix or delete it. No schedule was changed.")
+#: A claim that found another computer had claimed first.
+CLAIM_TAKEN = ("{host} claimed the schedule for this clients folder first, so this computer registers "
+               "none. No schedule was changed.")
+#: What ``--move-schedule-here`` says before it registers.
+MOVED_FROM = "The schedule for this clients folder moves from {host} to this computer ({here})."
+MOVED_FROM_NOBODY = "No computer ran the schedule for this clients folder; this computer ({here}) now does."
+
+
+class DesignationError(ValueError):
+    """The designation file is not one computer's name, or a claim lost a race.
+    The message is the whole sentence a person is shown."""
+
+
+def checked_host(text: str) -> str:
+    """``text`` as one computer's name - stripped and casefolded as
+    ``locking.this_host`` makes one - or ``DesignationError``. A second
+    non-blank line, more than :data:`MAX_DESIGNATION_BYTES` or a character
+    outside ``[a-z0-9._-]`` is not a name."""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if len(text.encode("utf-8", "surrogatepass")) > MAX_DESIGNATION_BYTES or len(lines) != 1:
+        raise DesignationError("not one line")
+    host = lines[0].casefold()
+    if not HOST_NAME.fullmatch(host):
+        raise DesignationError("not a computer's name")
+    return host
+
+
+def designated_machine(root: str | Path) -> str | None:
+    """The computer the designation file under ``root`` names, or ``None``
+    when there is no file. **The one reader** (decisions 209 and 210): pure
+    apart from reading the file. A file that is there but is not one
+    computer's name raises :class:`DesignationError` with
+    :data:`DESIGNATION_UNREADABLE`, naming the path and never the content."""
+    path = designation_file(root)
+    unreadable = DesignationError(DESIGNATION_UNREADABLE.format(file=path))
+    try:
+        raw = path.read_bytes()
+    except FileNotFoundError:
+        return None
+    except OSError:
+        raise unreadable from None
+    if len(raw) > MAX_DESIGNATION_BYTES:
+        raise unreadable
+    try:
+        return checked_host(raw.decode("utf-8-sig"))
+    except (UnicodeDecodeError, DesignationError):
+        raise unreadable from None
+
+
+def _write_designation(root: str | Path, host: str) -> None:
+    """Write ``host`` as the one line of the designation file, whole or not
+    at all - checked as it is written, as it is when it is read. A root
+    whose firm's tree is not made yet (no household so far) gets that one
+    folder, as the first household would make it; never the root itself."""
+    path = designation_file(root)
+    path.parent.mkdir(exist_ok=True)
+    write_text_atomically(path, checked_host(host) + "\n")
+
+
+def claim(root: str | Path) -> None:
+    """Name this computer as the one that runs the schedule, when no file
+    names one: read, compare, write. A file that now names another computer
+    is refused (:data:`CLAIM_TAKEN`) and left alone; one that already names
+    this computer is left as it is."""
+    named = designated_machine(root)
+    if named is not None and named != this_host():
+        raise DesignationError(CLAIM_TAKEN.format(host=named))
+    if named is None:
+        _write_designation(root, this_host())
+
+
+def move_here(root: str | Path) -> str | None:
+    """Name this computer as the one that runs the schedule, whatever the
+    file said before; the computer it named, or ``None``. A deliberate act
+    (runbook §6), never an after-install step. A file that is not one
+    computer's name is replaced too - that is the repair it asks for."""
+    try:
+        before = designated_machine(root)
+    except DesignationError:
+        before = None
+    _write_designation(root, this_host())
+    return before
+
+
+@dataclass(frozen=True, slots=True)
+class ScheduleDecision:
+    """What :func:`schedule_decision` found: the outcome's key, and the
+    computer the designation names (this one for :data:`CLAIMED`), or ""."""
+
+    outcome: str
+    host: str = ""
+
+
+def schedule_decision(root: str | Path | None) -> ScheduleDecision:
+    """Whether this computer registers the schedule for ``root``, in order:
+    no root (:data:`NO_ROOT`); no Task Scheduler (:data:`NO_TASK_SCHEDULER`);
+    no designation, so this computer claims it (:data:`CLAIMED`); the file
+    names this computer (:data:`REGISTERED`) or another (:data:`ELSEWHERE`);
+    or the file is not one computer's name (:data:`UNREADABLE`). Decides
+    only: claiming, registering and removing are the caller's."""
+    if root is None:
+        return ScheduleDecision(NO_ROOT)
+    if not task_scheduler_here():
+        return ScheduleDecision(NO_TASK_SCHEDULER)
+    try:
+        named = designated_machine(root)
+    except DesignationError:
+        return ScheduleDecision(UNREADABLE)
+    here = this_host()
+    if named is None:
+        return ScheduleDecision(CLAIMED, here)
+    return ScheduleDecision(REGISTERED if named == here else ELSEWHERE, named)
 
 
 # -------------------------------------------------------------------- CLI ----
@@ -450,7 +692,7 @@ if __name__ == "__main__":
                 command = install_task(ns.out, ns.name)
             except RuntimeError as exc:
                 raise SystemExit(f"Not installed: {exc}") from None
-            if is_scheduling_host():
+            if task_scheduler_here():
                 print(f'Installed as "{ns.name}" - it runs daily from {ns.start}.')
             else:
                 print("Not Windows; run this on the scheduling machine:  " + " ".join(command))

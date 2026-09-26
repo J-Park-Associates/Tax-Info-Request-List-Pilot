@@ -1472,6 +1472,9 @@ function applyVocabulary() {
   // shared (decision 125): the labels are the API's, the paths are too.
   $("inbox-label").textContent = vocab.household.open_inbox;
   $("client-folder-label").textContent = vocab.household.open_client_folder;
+  // The schedule's repair path (decision 209): label and tooltip are the API's.
+  $("repair-schedule-label").textContent = vocab.schedule.repair;
+  $("btn-repair-schedule").title = vocab.schedule.repair_help;
   $("household-title").textContent = vocab.household.heading;
   $("hh-existing-head").textContent = vocab.household.existing;
   $("hh-existing-label").textContent = vocab.household.name_label;
@@ -1557,6 +1560,7 @@ async function loadEngagements(preferPath) {
   const lastPass = listed.last_pass;
   $("last-pass").textContent = lastPass ? lastPass.text : "";
   $("last-pass").className = lastPass ? `banner ${lastPass.level}` : "banner hidden";
+  renderAfterInstall(listed.after_install);
   $("setup-card").classList.toggle("hidden", !listed.needs_root);
   if (listed.needs_root) {
     $("root-input").value = clientsRoot;
@@ -1602,7 +1606,9 @@ async function saveRoot() {
       firm: $("firm-input").value.trim(),
       phone: $("phone-input").value.trim(),
     });
-    banner(`Clients folder set to ${result.root} (written to ${result.settings_path}).`, "ok");
+    // What the after-install step did with the schedule (decision 209),
+    // in the API's sentence: registered here, or why not.
+    banner(`Clients folder set to ${result.root} (written to ${result.settings_path}). ${result.after_install.schedule_sentence}`, "ok");
     renderShortOfRoom(result.short_of_room || []);
     await refresh();
   } catch (err) {
@@ -1623,18 +1629,31 @@ function renderShortOfRoom(shortOf) {
       el("div", { className: "r-why" }, one.sentences.join(" ")))));
 }
 
-async function installSchedule() {
-  const sched = vocab.schedule;
-  if (!confirm(`Register the daily job with Task Scheduler for this clients folder?\n\nIt files, scans and (on ${sched.draft_day}s) drafts reminders. Nothing is ever sent.`)) return;
-  const btn = $("btn-schedule");
+// Decision 209: what the last after-install run left for a person - the
+// record check's findings, or a step that could not run - at the top of the
+// first screen until a later run finds nothing. The words are the API's.
+function renderAfterInstall(notice) {
+  const box = $("after-install");
+  box.classList.toggle("hidden", !notice);
+  if (!notice) return;
+  $("after-install-heading").textContent = vocab.after_install.heading;
+  $("after-install-wait").textContent = notice.wait || "";
+  show("after-install-list", [...notice.failed, ...notice.findings].map((line) => el("li", {}, line)));
+}
+
+// The deliberate re-run of the after-install step (decision 209): the
+// schedule registers itself, and this is for one deleted or broken. The
+// banner says the API's sentence for what happened, as it is.
+async function repairSchedule() {
+  if (!confirm(vocab.schedule.repair_confirm)) return;
+  const btn = $("btn-repair-schedule");
   btn.disabled = true;
   try {
     const result = await call(["install-schedule"], {});
-    if (result.installed) {
-      banner(`Scheduled: every day from ${result.start}, repeating every ${result.every} minutes, over ${result.root}. Re-run this to change it.`, "ok");
-    } else {
-      banner(`Not Windows here. On the scheduling machine run:  ${result.command.join(" ")}`, "warn");
-    }
+    banner(result.sentence, result.installed ? "ok" : "warn");
+    renderAfterInstall(result.after_install && (result.after_install.findings.length || result.after_install.failed.length)
+      ? { ...result.after_install, wait: result.after_install.findings.length ? vocab.after_install.wait : "" }
+      : null);
   } catch (err) {
     toast(err.message);
   } finally {
@@ -2740,7 +2759,7 @@ $("ro-household").addEventListener("change", (e) => {
 $("ro-create").addEventListener("click", rollForward);
 $("ro-year").addEventListener("keydown", (e) => e.key === "Enter" && rollForward());
 $("ro-year").addEventListener("input", syncUntickedNote);
-$("btn-schedule").addEventListener("click", installSchedule);
+$("btn-repair-schedule").addEventListener("click", repairSchedule);
 $("btn-save-root").addEventListener("click", saveRoot);
 $("root-input").addEventListener("keydown", (e) => e.key === "Enter" && saveRoot());
 $("btn-browse").addEventListener("click", async () => {

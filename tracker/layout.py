@@ -100,6 +100,14 @@ README_NAME = "_README.txt"
 #: decision of 2026-09-23 - because a recovery (decision 119) and a move to
 #: another machine must both reach it.
 OPENED_DIR_NAME = "_Opened"
+#: The one file in the private tree that is not under a household (decision
+#: 209): it names, in one line, the computer that runs the schedule for this
+#: clients root. In the private tree because that tree is synced to every
+#: desk that has the root and shared with no client, so every desk reads the
+#: same answer. A file, not a folder: every walk of the private tree lists
+#: folders only, so discovery never names it a folder that does not fit;
+#: and the leading underscore keeps it clear of any household name.
+DESIGNATION_FILENAME = "_Scheduling computer.txt"
 
 #: How a return folder is named: the form first, the name after, so the
 #: same return line can be followed year after year. ``form`` is the
@@ -432,6 +440,12 @@ def clients_tree_of(root: Path | str) -> Path:
 def private_tree_of(root: Path | str) -> Path:
     """The firm's own tree, under a clients root."""
     return Path(root) / PRIVATE_TREE
+
+
+def designation_file(root: Path | str) -> Path:
+    """The file naming the computer that runs the schedule for this clients
+    root (decision 209): the one spelling of its path."""
+    return private_tree_of(root) / DESIGNATION_FILENAME
 
 
 def client_household_dir(root: Path | str, household: str) -> Path:

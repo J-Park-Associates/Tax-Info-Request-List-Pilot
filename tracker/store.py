@@ -2989,6 +2989,15 @@ def check(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str
     return problems
 
 
+def holds(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str) -> bool:
+    """Whether the store has met this engagement at all - by the one key
+    rule every caller is answered by. The after-install record check
+    (decision 209) asks it first: an engagement the store never met has had
+    no line applied, so there is nothing an earlier version let through, and
+    its first catch-up judges every line as it builds it."""
+    return _engagement_row(conn, engagement_dir, root) is not None
+
+
 def _check_household(
     conn: sqlite3.Connection, engagement_id: int, name: str, recorded: dict[str, object]
 ) -> list[str]:

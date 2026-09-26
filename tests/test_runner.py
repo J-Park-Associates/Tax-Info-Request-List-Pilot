@@ -1971,7 +1971,7 @@ def test_the_old_scheduled_job_naming_another_root_is_refused_and_says_install_s
     command line with ``--log``. After the root moves in the app that job
     would go on sorting the old tree without a word, so a run of that shape
     whose root is not the settings file's - or that has no settings root to
-    agree with - is refused, red, naming Install Schedule. The same root is
+    agree with - is refused, red, naming the repair path. The same root is
     run; a person's hand-run without ``--log`` is never refused."""
     import os
 
@@ -1997,7 +1997,9 @@ def test_the_old_scheduled_job_naming_another_root_is_refused_and_says_install_s
     with pytest.raises(SystemExit) as refused:
         main([str(old), LOG_FLAG, "--reminders", "never"])
     assert str(refused.value) == OLD_JOB_ROOT.format(root=str(old))
-    assert "press Install Schedule" in str(refused.value)
+    from tracker.api import SCHEDULE_REPAIR_LABEL
+
+    assert SCHEDULE_REPAIR_LABEL in str(refused.value)
     assert not (old / STATUS_PAGE_FILENAME).exists()
 
     # The settings file's own root, spelled another way, runs.

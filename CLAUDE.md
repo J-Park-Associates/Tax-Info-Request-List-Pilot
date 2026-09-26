@@ -164,6 +164,21 @@ change, so the work is not grading itself. Jason owns every decision; the
 claude.ai Project records his decisions in the Drive thread (folder
 Handoffs), and each work session ends with a CODE UPDATE there.
 
+## One-time steps run themselves
+
+Jason's standing preference (2026-09-26, decision 209): *any one-time step
+that must run after installing or upgrading is built into installation. An
+in-app reset/repair path may remain for re-running it deliberately; the
+first run never depends on a person remembering it.*
+
+The one place such a step is added is `tracker/after_install.py`, as a
+further job in its `run()`: `Setup.bat` runs it last, the app runs it at
+its first launch after the program changed, and saving the clients root
+runs it. The app's **Repair the schedule** is the deliberate re-run. Never
+add a runbook line, a README line or a button that a person must remember
+to press once after installing; `tests/test_single_source.py` fails on
+that wording.
+
 ## Working on this repo
 
 ```

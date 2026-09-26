@@ -49,6 +49,14 @@ const TRACKER_TIMEOUT_MS = 30 * 60 * 1000;
 // allowlist) and vocab.engagement_flag. Pinned to tracker.api.COMMANDS and
 // to the renderer's first call by tests/test_single_source.py.
 const BOOTSTRAP_COMMAND = "list";
+// The after-install step's launch door (decision 209): the shell runs it
+// itself, once, before the page's first call is answered. It returns at
+// once when the program has not changed since it last ran cleanly; after
+// an upgrade it registers the schedule on the computer that runs it and
+// checks the record. Its findings reach the page through the first call's
+// reply (after_install), so nothing here reads its answer.
+const LAUNCH_COMMAND = "after-install";
+let launchStep = Promise.resolve();
 let allowedCommands = null;   // vocab.commands, once seen
 let engagementFlag = null;    // vocab.engagement_flag, once seen
 // Paths the API has reported (state.paths): the only ones the shell opens,
@@ -90,6 +98,12 @@ function commandProblem(args) {
 function runTracker(args, payload) {
   const problem = commandProblem(args);
   if (problem) return Promise.resolve({ error: problem });
+  return spawnTracker(args, payload);
+}
+
+// Start the tracker with one command already allowed: the renderer's
+// through runTracker's check, and the shell's own launch door.
+function spawnTracker(args, payload) {
   // Serialised before anything starts (decision 176): a payload that will
   // not serialise used to throw once the tracker was already running and
   // waiting on stdin, which it then did until the timeout below.
@@ -163,7 +177,12 @@ async function openPath(p) {
   return shell.openPath(p);
 }
 
-ipcMain.handle("tracker-cmd", (_event, args, payload) => runTracker(args, payload));
+// Every call from the page waits for the launch door first, so the first
+// screen is drawn from what the after-install step left.
+ipcMain.handle("tracker-cmd", async (_event, args, payload) => {
+  await launchStep;
+  return runTracker(args, payload);
+});
 ipcMain.handle("open-path", (_event, p) => openPath(p));
 ipcMain.handle("pick-folder", async (_event, title) => {
   const result = await dialog.showOpenDialog({
@@ -227,6 +246,9 @@ if (!app.requestSingleInstanceLock()) {
     if (win.isMinimized()) win.restore();
     win.focus();
   });
-  app.whenReady().then(createWindow);
+  app.whenReady().then(() => {
+    launchStep = spawnTracker([LAUNCH_COMMAND], { reason: "launch" }).catch(() => null);
+    createWindow();
+  });
 }
 app.on("window-all-closed", () => app.quit());

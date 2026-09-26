@@ -311,15 +311,24 @@ def hash_file(path: Path) -> str:
     return hashlib.sha256(git_text_auto_eol_lf(path.read_bytes())).hexdigest()[:16]
 
 
+#: The files ``.gitattributes`` checks out CRLF on purpose (decision 209,
+#: R7: cmd loses its place in an LF batch file). Git still commits them as
+#: LF - the ``text`` attribute normalises on the way in - so the hash rule
+#: above is theirs too; only the working copy differs, by design.
+CRLF_CHECKOUT_SUFFIXES = (".bat",)
+
+
 def crlf_working_copies(root: Path | None = None) -> list[str]:
     """Tracked text files whose working copy has CRLF where Git commits LF.
 
     Not staleness: the hash is of the LF bytes, so the map is right about
-    them. ``check`` names them so the agent whose editor wrote CRLF knows.
+    them. ``check`` names them so the agent whose editor wrote CRLF knows -
+    all but the batch files, which check out CRLF by rule.
     """
     root = root or ROOT
     return [path for path in tracked_files(root)
-            if git_text_auto_eol_lf(raw := (root / path).read_bytes()) != raw]
+            if not path.endswith(CRLF_CHECKOUT_SUFFIXES)
+            and git_text_auto_eol_lf(raw := (root / path).read_bytes()) != raw]
 
 
 def classify(path: str) -> tuple[str, str]:

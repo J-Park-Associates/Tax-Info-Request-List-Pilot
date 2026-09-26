@@ -8,6 +8,11 @@ rem installed would run a package's install code, and reach the network,
 rem every time the app opens. It runs the app's private Python (.venv, made
 rem by Setup.bat) and refuses, in one sentence, when that is missing or when
 rem the lock files have changed since Setup ran.
+rem
+rem The app itself runs the after-install step at launch when the program
+rem changed since that step last ran (decision 209): an update pulled from
+rem the repository that left the lock files alone still registers the
+rem schedule and checks the records, with nothing to remember.
 
 rem Before any other command: cmd would otherwise look for node in this
 rem folder before the search path, so a file dropped here named like it

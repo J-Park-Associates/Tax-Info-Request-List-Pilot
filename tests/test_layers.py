@@ -109,7 +109,10 @@ LAYERS: dict[int, frozenset[str]] = {
                   "templates", "validators"}),
     2: frozenset({"containers", "content_check", "names", "ocr", "router"}),
     3: frozenset({"filer", "scanner", "reminder", "rollover", "view", "registry", "review"}),
-    4: frozenset({"runner", "scheduling"}),
+    # ``after_install`` joins L4 with decision 209, beside the scheduler it
+    # drives: it imports ``scheduling`` (L4), ``store`` (L1), ``registry``
+    # (L3) and L0; the API imports it, and nothing lower may.
+    4: frozenset({"runner", "scheduling", "after_install"}),
     5: frozenset({"api"}),
 }
 LAYER_OF: dict[str, int] = {module: layer for layer, modules in LAYERS.items() for module in modules}

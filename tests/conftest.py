@@ -88,7 +88,7 @@ from pathlib import Path
 
 import pytest
 
-from tracker import content_check, ledger, store, view
+from tracker import content_check, ledger, scheduling, store, view
 from tracker.filer import ensure, file_household_drops, refresh_household_readme
 from tracker.households import create_household
 from tracker.layout import (
@@ -158,6 +158,36 @@ def reading_in_this_process():
     """
     patch = pytest.MonkeyPatch()
     patch.setattr(content_check, "READ_IN_A_CHILD", False)
+    try:
+        yield
+    finally:
+        patch.undo()
+
+
+#: The real answer to "is there a Task Scheduler here", for the one test
+#: that asks it of the platform (decision 209).
+REAL_TASK_SCHEDULER_HERE = scheduling.task_scheduler_here
+
+
+def _schtasks_unfaked(command):
+    raise AssertionError(f"a test reached schtasks without faking it: {command}")
+
+
+@pytest.fixture(autouse=True)
+def no_task_scheduler_unless_faked():
+    """No test registers or deletes a real scheduled task (decision 209).
+
+    Saving a clients root, the app's launch and Setup all run the
+    after-install step, which registers the daily job on a Windows machine
+    that has Task Scheduler - the Windows CI runner included. Every test
+    starts on a computer with none; a test about registering says it is on
+    Windows and fakes ``schtasks`` itself, and one that forgets fails here
+    rather than reaching the real one. A ``MonkeyPatch`` of its own, like
+    the store's, so ``monkeypatch.undo()`` in a test cannot lift it.
+    """
+    patch = pytest.MonkeyPatch()
+    patch.setattr(scheduling, "task_scheduler_here", lambda: False)
+    patch.setattr(scheduling, "_schtasks", _schtasks_unfaked)
     try:
         yield
     finally:

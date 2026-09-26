@@ -2,8 +2,8 @@
   "schema": 2,
   "generated": "2026-09-26",
   "generator": "tools/repo_map.py",
-  "generator_sha256": "54d924057e3b3de9",
-  "module_table_sha256": "11a091aec4226878",
+  "generator_sha256": "78ed6f39661035ec",
+  "module_table_sha256": "6836f205bde04389",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 154,
-    "edges": 951,
-    "reused": 116
+    "nodes": 158,
+    "edges": 993,
+    "reused": 120
   },
   "node_types": [
     "artifact",
@@ -126,17 +126,87 @@
       "id": "tracker/__init__.py",
       "type": "module",
       "layer": "core",
-      "sha256": "8f8d9ac33cf1480e",
-      "lines": 70,
+      "sha256": "38763aea27f5b92d",
+      "lines": 71,
       "role": "Package docstring listing every component, and STANDING_RULES - the four rules worded once.",
       "notes": "Imports nothing of the package at load time since decision 99: the re-exports of the manifest and scaffold APIs (thirteen names no file in tracker/, tools/, tests/ or the entry point consumed) are gone, and with them the package's one load-time cycle (this package -> tracker/manifest.py -> from tracker import ledger). Its module list names the manifest as the request list - its schema, validation, and its reading from and writing to the record - and the scanner as an orchestrator that records rather than writes back (decision 104). There is no load-time cycle left to name: tests/test_layers.py pins the layer of every module and that no load-time import points upward. Every cycle the derived edges show closes through an import at call time (the map labels those separately), and tracker/filer.py <-> tracker/scanner.py inside _rescan() is the deliberate one. Standing rule 1 still says 'deterministic rules in the manifest': the manifest is the request list, and its home changed with decision 104, not the word."
+    },
+    {
+      "id": "tracker/after_install.py",
+      "type": "module",
+      "layer": "core",
+      "sha256": "0353cdf955683bc8",
+      "lines": 422,
+      "cli": "python -m tracker.after_install",
+      "exports": [
+        "AfterInstall",
+        "BUILD_INFO_FILENAME",
+        "CHECK_CLEAN",
+        "CHECK_CLEAN_KEY",
+        "CHECK_FAILED",
+        "CHECK_FAILED_KEY",
+        "CHECK_FOUND",
+        "CHECK_FOUND_KEY",
+        "CHECK_NO_ROOT_KEY",
+        "CHECK_NO_STORE_KEY",
+        "CHECK_SKIPPED_NO_ROOT",
+        "CHECK_SKIPPED_NO_STORE",
+        "DESIGNATION_UNWRITABLE",
+        "FINDINGS_WAIT",
+        "REASONS",
+        "REASON_LAUNCH",
+        "REASON_REPAIR",
+        "REASON_ROOT",
+        "REASON_SETUP",
+        "RECORD_FILENAME",
+        "RECORD_UNWRITABLE",
+        "ROOT_REFUSED",
+        "SCHEDULE_FAILED",
+        "SETTINGS_UNREADABLE",
+        "SETUP_RETRY",
+        "build_info",
+        "launch",
+        "move_schedule_here",
+        "notice",
+        "program_identity",
+        "read_record",
+        "record_path",
+        "run"
+      ],
+      "constants": {
+        "RECORD_FILENAME": "'after-install.json'",
+        "BUILD_INFO_FILENAME": "'BUILD-INFO.txt'",
+        "REASON_SETUP": "'setup'",
+        "REASON_LAUNCH": "'launch'",
+        "REASON_ROOT": "'root'",
+        "REASON_REPAIR": "'repair'",
+        "CHECK_CLEAN_KEY": "'clean'",
+        "CHECK_NO_ROOT_KEY": "'no_root'",
+        "CHECK_NO_STORE_KEY": "'no_store'",
+        "CHECK_FOUND_KEY": "'found'",
+        "CHECK_FAILED_KEY": "'failed'",
+        "CHECK_CLEAN": "'The record check found nothing to repair.'",
+        "CHECK_SKIPPED_NO_ROOT": "'The record check waits until the clients folder is chosen in the app.'",
+        "CHECK_SKIPPED_NO_STORE": "'There is no store on this computer yet; the first pass builds it and judges every line as it does.'",
+        "CHECK_FOUND": "'The record check found {n} line(s) a person must look at:'",
+        "FINDINGS_WAIT": "'These households wait in the app until a person repairs them (runbook \u00a79); the rest of the practice runs as normal.'",
+        "ROOT_REFUSED": "'The clients folder saved in the app cannot be used ({refusal}); the schedule and the record check wait until it is chosen again in the app.'",
+        "SETTINGS_UNREADABLE": "\"The app's settings file could not be read, so neither the schedule nor the record check could run; choose the clients folder again in the app.\"",
+        "SCHEDULE_FAILED": "'The schedule could not be registered on this computer ({problem}). Start the app: it tries again at launch, and Repair the schedule tries at once.'",
+        "DESIGNATION_UNWRITABLE": "'The file naming the computer that runs the schedule ({file}) could not be written; no schedule was changed. Start the app: it tries again at launch.'",
+        "CHECK_FAILED": "'The record check could not run: {problem} Nothing was changed; runbook \u00a76 says what to do with a store that will not open, and the app tries again at its next start.'",
+        "RECORD_UNWRITABLE": "'What the after-install step did could not be recorded in {file}; the app runs it again at its next start.'",
+        "SETUP_RETRY": "'The after-install step could not finish (above). Start the app: it tries again at launch.'"
+      },
+      "role": "Every one-time step after installing or upgrading, in one function (decision 209, Jason's standing preference): run(reason) registers the schedule on the computer the designation file names (scheduling.schedule_decision) and runs decision 187's record check (store.check per record folder, store.gone_journals), then records what it did in after-install.json beside the store.",
+      "notes": "Three doors, one function: Setup.bat runs it last (--reason setup, after the lock stamp); the app's shell runs the API's after-install command before the page's first call, which returns {ran: false} at once when program_identity() (sys.executable, package.json's version, store.SCHEMA_VERSION, and every tracker/*.py from source or BUILD-INFO.txt when frozen) matches the record - measured at about 7 ms; and set-root runs it, so the first root saved on the office computer registers the schedule with no button. install-schedule (the app's Repair the schedule) is the deliberate re-run. A finding is not a failure: exit 0 with the findings listed (FINDINGS_WAIT); exit 1 only when a job could not run (designation unreadable, schtasks refused, store will not open, saved root refused), each one sentence, never a traceback or a file's content. The program identity is recorded only when nothing failed, so a failed run is tried again at the next launch. It never creates a store: the check is skipped when the store file is not there, and a folder the store never met (store.holds) is left to the first catch-up rather than named. The first screen's list reply carries after_install.notice() while the record holds findings or failures; the app shows it at the top, not dismissible. --move-schedule-here rewrites the designation to this computer (runbook section 6). Layer 4: imports scheduling, store, registry, ledger, door, settings, locking, fsio; the API imports it. Residual gap found by its own probe (tests/test_after_install.py, strict xfail): a line an earlier version applied that 187 now refuses is named by the check, but the pass does not make that household wait."
     },
     {
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "fde269ac1bfcdcb2",
-      "lines": 3809,
+      "sha256": "1da09a7237d0e8bd",
+      "lines": 3839,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_FOLDER_NAME_HELP",
@@ -145,6 +215,7 @@
         "ACCEPT_STALE",
         "ADD_FEED_LABEL",
         "ADD_PERSON_LABEL",
+        "AFTER_INSTALL_HEADING",
         "ALSO_ANSWERS_LABEL",
         "ASK_THE_CLIENT",
         "ASK_THE_CLIENT_NOTE",
@@ -236,7 +307,6 @@
         "RENAME_LEFT_NOTE",
         "RENAME_TITLE",
         "RENAME_TO_LABEL",
-        "REPO_ROOT",
         "RESTORE_LABEL",
         "RETURN_WARNING",
         "REVIEW_PEOPLE_LABEL",
@@ -244,6 +314,9 @@
         "ROLL_TEMPLATE_LABEL",
         "ROOM_HEADING",
         "RULES_SAVED",
+        "SCHEDULE_REPAIR_CONFIRM",
+        "SCHEDULE_REPAIR_HELP",
+        "SCHEDULE_REPAIR_LABEL",
         "SEND_TO_REVIEW_LABEL",
         "SHARED_ON_LINE",
         "SHARE_LINK_FIRST",
@@ -393,10 +466,14 @@
         "DUPLICATE_HOUSEHOLD": "\"A household with that name is already in the list, as '{existing}'. Pick it there to add a return to it. If this is another household, add a first name or a middle initial to tell the two apart, and if the names still match, add the city. Nothing was changed.\"",
         "CLIENT_FOLDER_TAKEN": "\"A folder with that name is already in the clients' tree and no household owns it. It is listed under Folders the tracker leaves alone; give it back to its household or move it aside first. Nothing was changed.\"",
         "NOTHING_ASKED": "'Select at least one request item'",
-        "DRAFT_MOVED": "'the draft changed since it was shown; look again'"
+        "DRAFT_MOVED": "'the draft changed since it was shown; look again'",
+        "SCHEDULE_REPAIR_LABEL": "'Repair the schedule'",
+        "SCHEDULE_REPAIR_HELP": "'Register the daily job again on this computer - only needed if the schedule was deleted or broken'",
+        "SCHEDULE_REPAIR_CONFIRM": "'Register the daily job with Task Scheduler again, on this computer, for this clients folder?\\n\\nIt files, scans and (on {draft_day}s) drafts reminders. Nothing is ever sent.'",
+        "AFTER_INSTALL_HEADING": "'After installing: needs a person'"
       },
       "role": "The JSON command layer the desktop app talks to; COMMANDS is the list, and the module docstring is pinned to it. Since decision 104 it owns the request-list editor's words (EDITOR_* labels, RULES_SAVED, NOTHING_CHANGED, LEARNED_NOTE) and the edit command that saves the list and the engagement's details as one recorded event. Decision 113 added the unlearn command and the editor's two words for taking a taught keyword back (UNLEARN_LABEL, UNLEARNED_NOTE). Decision 130: create, rollover, edit, assign, hand-over (both households), dismiss, unfile and restore refresh the client README of the household they changed through filer.refresh_household_readme(), once the action has succeeded - a refused action refreshes nothing.",
-      "notes": "Every command prints one JSON object and returns an exit code - errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates rows with the same sentences the manifest's validation uses, and never leaves a half-built engagement behind: create_engagement() validates whole before a line is written, and on any later failure _undo_create() removes the folder first and then drops the store row in its own try, so a store that cannot be reached masks nothing and keeps no folder. list/priors use the same discovery as the scheduled run; create and rollover record the details from the wizard's client/link/due (rollover carries client, sender, firm and reminders, never last year's link or due); assign files a parked document by a person's choice and re-scans. unlock clears a stale lock; state carries the lock; templates carries each form's tax year and create names a new-client engagement from client, year and form when no name is given. create takes the tax year (calendar default) and shifts catalog rows to it; rollover writes Rolled From so the prior retires; priors report superseded_by. scan is run_engagement() with reminders=REMINDERS_NEVER - the app's button and the scheduled job make the same pass. The clients root comes from tracker.settings (settings, set-root, install-schedule commands); the wizard never writes Engagement Name, and reads the firm from settings.firm(). install-schedule works in the packaged app too. ENGAGEMENT_FLAG with nothing after it, or an empty folder, gets the same sentence as no flag; once a root is set the folder must lie under it. assign takes the lock twice on purpose (file, then re-scan). _vocab() hands the renderer every word it shows - the app carries no Python vocabulary of its own. Decision 55: containment is checked whenever a root is set (since decision 176 by the path's own parse, since decision 188 door.return_dir). Decision 67: a blank name falls back to the client's name sanitised. Decision 68: _tax_year() bounds the year on create and rollover alike, through manifest.check_tax_year() (decision 72). Decision 75: a pass made from the app is on the record the scheduled run leaves - _record_pass() appends the run log's line and redraws the status page. Decision 76: dismiss records that no request asks for a parked document and does not re-scan; _vocab() carries the decision under the key 'dismissed', not the word. Decision 77: unfile sends one filed document back for review. Decision 82: state's index rows carry evidence as data (_evidence_payload()). Decision 84: state carries 'review' - tracker.review.triage() over the rows state has already loaded, serialised by _triage_payload(). Decision 86: create records the wizard's catalog choice in the details; _state() ships it (_info_payload() is asdict() over EngagementInfo). Decision 89: _state() ships view: {state, path} from tracker.view.view_state(). Decision 91: paths['view'] is an .html file and _vocab()['view'] carries the button's own label. Decision 102: standing_rules() fills rule 2 from records.THE_RECORD; _state() calls filer.ensure() before reading the rows, so showing an engagement stays a read. DECISION 104: the edit command takes {items, engagement} from the editor, converts each row with manifest.item_from_fields() (each refusal naming its row), refuses any engagement key outside records.ENGAGEMENT_EDITABLE by name, and saves through manifest.save_rules(), replying with what changed, what was removed, which details moved, whether anything was recorded, and the warnings; a detail sent blank is cleared and one left out keeps its recorded value; a refusal is the usual error sentence and nothing is recorded. _state() gained 'rules' (the person's rows as stored - WITHOUT the keywords filings taught, so the editor never turns a taught word into a typed one), 'learned' (those keywords, keyed by the row's identifier) and 'warnings' (manifest.check_rules()); 'engagement' is the details from the record; paths lost the workbook. _vocab() gained 'columns' (each column's key, header and help from manifest.COLUMNS and COLUMN_HELP) and 'editor' (every word the editor shows, the details' fields with which are editable, the yes/no words, the two one-character values and the floors the number inputs take their minimum from); the check command and the Carried Forward sheet's name left with the things they named. DECISION 112: _state() reads store.document_seqs() once and hangs each row's sequence number beside it - on every 'index' row and on every 'review' item (_triage_payload takes the mapping) - never inside the row, because it is the record's bookkeeping and not a fact about the document. _cmd_assign, _cmd_dismiss and _cmd_unfile read spec['seq'] through _seq_of() and refuse a spec without one by NO_SEQ (a ManifestError): the app is always drawn from state, so a caller with no version is a caller with no view. _cmd_assign also computes the shortlist itself - _shortlist_now() reads the index, finds the row with filer.find_parked() and asks review.shortlist_for() over load_manifest() - and hands the identifiers to the filer, which imports neither; its payload gains 'overrode_shortlist'. This module is L4 and imports both, so the computation belongs here; the seq check under the lock is what makes a row that moved in between never get the handed-in shortlist written. DECISION 113: the unlearn command takes {identifier, keyword} from the editor, records one keyword_unlearned through manifest.unlearn_keyword() and then re-scans the engagement the way assign does (its own lock; a ScanLockedError becomes scan_note), because the request's rules just moved and a copy that passed only on that word should regress now rather than on Saturday. _vocab()['editor'] gained unlearn_label and unlearned_note - the button beside each taught keyword and the sentence after it - and the renderer types neither. Decision 117: _info_from_spec() and _info_payload() read records.DATE_FIELDS rather than naming the due date, _vocab()['editor']['date_fields'] tells the editor which boxes are dates, and rollover.with_default_dates() fills a blank Filing Deadline and Due Date from the form's own table on create and on rollover - so the reminder's ladder works without a person typing a date, and what a person typed is never written over. settings and set-root carry the firm's phone beside its name, and _vocab()['settings'] carries that box's label, its sentence and the number as recorded; _reminder_payload() takes the index rows state has already read, so the card shows the parked-file hold the draft day will. DECISION 110: _state() gains 'moved', its own list beside 'review' rather than a column on the index - one entry per FILE_MOVED row with the row's sequence number, the home the record put the copy at, where its bytes are now (None for a row whose bytes are nowhere under the firm's folder) and, only where the copy sits directly in Prepared under a name that belongs to a request (decision 168), which request that is, matched by scaffold.assign_files(), the same answer the filer and the scan read. The restore command is _cmd_restore(), the third review action beside assign and unfile and the only new one: it takes the row's seq like the others and returns what the put-back found (moved_home, copied_from_original, already_home, parked_as) beside the rewritten row. _vocab()['review_labels'] carries the card's every word - RESTORE_LABEL, KEEP_LABEL, SEND_TO_REVIEW_LABEL, MOVED_HEADING, MOVED_SUMMARY and MOVED_NOWHERE, the word for a copy that is nowhere - so the renderer types none of them, and _shortlist_now() finds a moved row too, because keep-it-here goes through the same assign command and the same picker. DECISION 114: _vocab()['review_labels'] carries the review card's second rendering too - ACCEPT_LABEL, SKIP_LABEL, OPEN_IN_LIST_LABEL, the two words the toggle between the renderings shows (CARD_MODE_LABEL, LIST_MODE_LABEL) and CARD_POSITION, the pattern the card's position line is filled from. The heading over the card's suggestion is SUGGESTED_HEADING, the list's own: one queue, one word for a suggestion. No command is added and no payload changes - the cards are a rendering of the 'review' list this module already ships, and Accept is the assign command the list's File it makes. Decision 123: that function is no longer defined here - it moved to tracker.rollover, beside the carry rule that clears the dates, because the module's command line built engagements without it; create and rollover import it and are otherwise unchanged. Decision 118 added the reminder and approve commands and everything the Reminder card shows. reminder reads the record and the draft file and regenerates the letter in memory at whatever stage the toggle stands on - no lock, nothing written, and a held reminder answers with no letter at all; approve takes the engagement lock, refuses a stale panel by the fingerprint of the text it showed, writes the shown text (or approves an edited file as it stands), sets any other draft aside and records one draft_approved event. _vocab() carries the card's every word, the four stages with the palette key each carries and where each spends its emphasis, and page.PALETTE itself, so the renderer types neither a word nor a colour; state's paths now name the draft file, because the shell opens only paths this map holds. Decision 126 added two commands and the sharing words: roll-household rolls every ticked return of a household's open year through rollover.roll_household() and answers with the rolled, the skipped with their sentences, the retired by their labels and the state of the first return it made; mark-shared records one sharing_confirmed event on the household's record under its lock, refusing while the inbox link is blank (SHARE_LINK_FIRST) because that is the one part of the checklist the tracker can see was done. SHARING_CHECKLIST, SHARING_HEADING, SHARING_NOTE, MARK_SHARED_LABEL, SHARED_ON_LINE, NOT_YET_SHARED_LINE and ROLLOVER_UNTICKED_NOTE are the API's words; create hands the filled checklist back with a household's FIRST return and with no other, and state['household'] carries shared_on and the same filled lines until it is given. propose-spellings is the twenty-third command and a read: it proposes the spellings a document might print one name in and records nothing, because what a return matches on is what a person ticked (decision 128). create refuses a return with nobody on it. Decision 129 added the feed words (FEEDS_LABEL, FEEDS_LINE, FED_BY_LINE, ADD_FEED_LABEL, FEED_WARNING, RETURN_WARNING, HAND_OVER_LABEL, NOT_FED), the feeds field on edit-household, the feeds and fed_by the household card is drawn from, and assign's optional target - which hands the document to a return the drop folder feeds and refuses any other by name. The review of that build added the hand-over modal's own two words (HAND_OVER_RETURN_LABEL, HAND_OVER_REQUEST_LABEL), which the page had been borrowing from the household heading and the editor's title, and gave _cmd_scan the same walk of the practice the card uses (_the_practice), so Run now sorts against the feed list exactly as the scheduled pass does rather than against the household's own returns alone; since decision 132 a root that cannot be walked is the runner's NO_PRACTICE, the reply's run error, and nothing is sorted. HANDED_OVER_LINE (review_labels.handed_over) is what the page says after a hand-over: the row here is released. Decision 131: _state() carries 'room' (room_for over the list it already loaded), 'room_note' (ROOM_SHORT filled, or '' - information the return's page shows, never a warning) and appends only ROOM_PARKS to the warnings; set-root answers 'short_of_room' - every working return short of room under the new root, in label order, with its numbers and filled sentences (one walk; the one time room is measured outside a pass) - and records the root regardless; the editor's save (_cmd_edit) refuses with PATH_TOO_LONG a CHANGED or new row whose canonical path passes 260, and never a row the person did not touch; install-schedule writes the job from settings_dir() and replies 'settings'. _vocab()['room'] holds the heading and the two sentences. Decision 137: create refuses a household folder that exists without a record (HOUSEHOLD_NOT_OURS, the misfit rule stated at the door) and makes every folder through fsio.make_new_folders(), so a failure undoes only what this call made (_undo_made); rollover the same. _engagement_dir() refuses when no clients root is set, and _engagement_dir() names a return by its place (four levels under the root, under a year) - a year or household folder is refused (NOT_A_RETURN) rather than read one level too high. _feeds_from_spec() refuses a feed whose household or return line the sanitiser would change. Review fixes: _undo_made() removes whole only the folders a call owns (its return, a household whose record it wrote) and a year folder only when empty; create drops a household's pre-137 non-web link with rollover.carried_link and returns link_dropped; the reminder card carries link_dropped. Decision 160: edit fills a key a row leaves out from the record's row of that identifier (_as_recorded(); absent means unchanged, as the details were; date_pattern_derived only with the pattern it describes), refuses a key outside _ROW_KEYS (RULE_FIELDS and extensions; UNKNOWN_COLUMN), requires the list's version (state's list_head; NO_LIST_HEAD, checked under the lock by save_rules) and refuses a save that takes a request holding filed documents off the list, removed or respelt other than by case (_refuse_taking_away_documents(), HOLDS_DOCUMENTS, from filer.documents_by_request()). The rename command (filer.rename_request) gives a request another identifier and moves its documents; its words are RENAME_* and RENAMED_NOTE in vocab.editor. The documents-held check runs as save_rules' check, inside the lock; HOLDS_DOCUMENTS points to Not Applicable. Decision 157: _moved_payload leaves out a row a person marked missing and carries gone (filer.both_gone) and the row's identifier; mark-missing takes a both-gone row's own identifier; restore accepts a Filed or parked row whose copy was deleted. Decision 176: every command reads stdin through _read_spec() - the bytes decoded as UTF-8, one JSON object or NOT_A_SPEC - because Windows reads a pipe in its ANSI code page and turned `Mu\u00f1oz` into `Mu\u00c3\u00b1oz` in a folder the client is shared. A path from the app is parsed by its place, never trusted: _return_dir() (four levels under the root, in the private tree, under a year) and _household_dir() (two levels) hand back the root joined with the resolved names, so no `..` reaches layout's text-reading helpers and a folder in the client tree - where a client can plant a journal - is never a prior or a household (NOT_A_RETURN, NOT_A_HOUSEHOLD); the old check that a path merely lay under the root is gone. Decision 177: rollover places next year under the household the prior sits in and the prior's own folder name, and _carried_payload() carries the prior's NAME_DISAGREES as `warning`. Decision 189 (E-11): scan's reply carries household (every other return of the household the pass touched: label, ok, error, skipped, warnings) and pass_warnings (the reader's path, a reader that could not start, the card, and _record_pass()'s own failures - LOG_NOT_WRITTEN, PAGE_NOT_WRITTEN - which it now returns rather than leaving on stderr); _record_pass() puts the pass's own sentences in the log and on the page. Decision 189: Run now is run_household() with the scheduled pass's own household budget, so it ends inside main.js's 30-minute kill and says OUT_OF_TIME instead of failing. Decision 187: _info_from_spec's date() refuses a date the records date rule refuses (1900-2100, a real calendar date), and the editor vocabulary carries 'maximums' (records.MAX_EXPECTED_COUNT, records.MAX_SIZE_KB) beside 'minimums', which app.js sets as the number inputs' max. Decision 188: _folder_name is layout.checked_name - one sentence wherever a household or return name is typed (create, a new return, a rolled return's name, a feed); a return is unique by the key within its household-year; feeds are compared by name_key; NOT_A_RETURN/NOT_A_HOUSEHOLD are layout's sentences. Decision 188 (part 2): _root is door.checked_root on every command (E-13) and _saved_root does the same where a missing root is an answer (list, priors, state, practice); list answers a refused saved root with needs_root, root_problem and the vocabulary; _return_dir/_household_dir are door.return_dir/household_dir; DoorError and LayoutError are answered as ManifestError is; the vocab carries path_kinds (PATH_KINDS) and shell.not_opened (SHELL_NOT_OPENED); each misfit carries 'where', its path below the root from layout.parts_below, so the page never computes it. Decision 188 (part 3): create refuses a typed household name that is, by the key, a household folder or record's name (DUPLICATE_HOUSEHOLD - pick it in the list; add a first name or a middle initial, then the city, never an identifier), a folder without a record (HOUSEHOLD_NOT_OURS) or a client folder no household owns (CLIENT_FOLDER_TAKEN); create by household_path, rollover and roll-household refuse a paused (or stopped) household. accept-folder-name (--engagement <return>, {seq, scope}) is the one action on a paused household: under the household's lock and each return's, judged by the household record's line count, it appends a household_changed {name} line and rules_changed {info} lines, each with ledger.ACCEPTED_KEY = FOLDER_NAME_ACCEPTED; refused for a year disagreement (YEAR_NOT_ACCEPTED) and, for a household, when a recorded original rests under a client folder of another name (ORIGINALS_UNDER_OLD_NAME). _household_payload carries 'pause' {sentence, scope, engagement, seq}; the vocab carries the action's label and help. Review of 188: every accept scope runs the originals check before writing and a return's accept never writes the household's name (M2); a year pause carries no scope, so no Accept button (S3); create by household_path and rollover ask registry.held_back (M3, S4). Decision 204: _triage_payload carries waits_for {target, label, requests [{identifier, document}], answers} or null, and waits_for_refused (NOT_FED with the claim's return name, or filer.requests_taking's refusal), from _waiting_payload(entry, fed) - the feed list read once per state and only when a row waits; assign with {original, seq, waiting: true} and no target or identifier goes to _hand_over_waiting(), which resolves the row's claim the same way and calls hand_over(also=, answers=, waiting=True); FILE_WHERE_IT_WAITS_LABEL is review_labels.file_where_it_waits. _waiting_payload(engagement, entry, fed) offers only on a NEEDS_REVIEW row with NAMED_ACROSS_HOUSEHOLDS (S-3) and refuses where filer.hand_over_copies would (S-1). Decision 159: WRITING_COMMANDS are held to the checkpoint's root claim (a mismatch is a JSON error naming both folders); acknowledge-foreign is a writing command under the return's lock (no app button calls it yet); rebuild refusals come back as sentences; roll-household answers a partial retirement with code 0, not_retired and a warning the app's banner shows. list carries last_pass (runner.last_pass_line) for the main screen's one line about the schedule, with a root or without one. The port review's M2: accept-folder-name is in WRITING_COMMANDS; tests/test_api.py derives every writer from COMMANDS and the package's calls (store.record, ledger.append, os.rename, shutil.copy2) and holds them to that list."
+      "notes": "Every command prints one JSON object and returns an exit code - errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates rows with the same sentences the manifest's validation uses, and never leaves a half-built engagement behind: create_engagement() validates whole before a line is written, and on any later failure _undo_create() removes the folder first and then drops the store row in its own try, so a store that cannot be reached masks nothing and keeps no folder. list/priors use the same discovery as the scheduled run; create and rollover record the details from the wizard's client/link/due (rollover carries client, sender, firm and reminders, never last year's link or due); assign files a parked document by a person's choice and re-scans. unlock clears a stale lock; state carries the lock; templates carries each form's tax year and create names a new-client engagement from client, year and form when no name is given. create takes the tax year (calendar default) and shifts catalog rows to it; rollover writes Rolled From so the prior retires; priors report superseded_by. scan is run_engagement() with reminders=REMINDERS_NEVER - the app's button and the scheduled job make the same pass. The clients root comes from tracker.settings (settings, set-root, install-schedule commands); the wizard never writes Engagement Name, and reads the firm from settings.firm(). install-schedule works in the packaged app too. ENGAGEMENT_FLAG with nothing after it, or an empty folder, gets the same sentence as no flag; once a root is set the folder must lie under it. assign takes the lock twice on purpose (file, then re-scan). _vocab() hands the renderer every word it shows - the app carries no Python vocabulary of its own. Decision 55: containment is checked whenever a root is set (since decision 176 by the path's own parse, since decision 188 door.return_dir). Decision 67: a blank name falls back to the client's name sanitised. Decision 68: _tax_year() bounds the year on create and rollover alike, through manifest.check_tax_year() (decision 72). Decision 75: a pass made from the app is on the record the scheduled run leaves - _record_pass() appends the run log's line and redraws the status page. Decision 76: dismiss records that no request asks for a parked document and does not re-scan; _vocab() carries the decision under the key 'dismissed', not the word. Decision 77: unfile sends one filed document back for review. Decision 82: state's index rows carry evidence as data (_evidence_payload()). Decision 84: state carries 'review' - tracker.review.triage() over the rows state has already loaded, serialised by _triage_payload(). Decision 86: create records the wizard's catalog choice in the details; _state() ships it (_info_payload() is asdict() over EngagementInfo). Decision 89: _state() ships view: {state, path} from tracker.view.view_state(). Decision 91: paths['view'] is an .html file and _vocab()['view'] carries the button's own label. Decision 102: standing_rules() fills rule 2 from records.THE_RECORD; _state() calls filer.ensure() before reading the rows, so showing an engagement stays a read. DECISION 104: the edit command takes {items, engagement} from the editor, converts each row with manifest.item_from_fields() (each refusal naming its row), refuses any engagement key outside records.ENGAGEMENT_EDITABLE by name, and saves through manifest.save_rules(), replying with what changed, what was removed, which details moved, whether anything was recorded, and the warnings; a detail sent blank is cleared and one left out keeps its recorded value; a refusal is the usual error sentence and nothing is recorded. _state() gained 'rules' (the person's rows as stored - WITHOUT the keywords filings taught, so the editor never turns a taught word into a typed one), 'learned' (those keywords, keyed by the row's identifier) and 'warnings' (manifest.check_rules()); 'engagement' is the details from the record; paths lost the workbook. _vocab() gained 'columns' (each column's key, header and help from manifest.COLUMNS and COLUMN_HELP) and 'editor' (every word the editor shows, the details' fields with which are editable, the yes/no words, the two one-character values and the floors the number inputs take their minimum from); the check command and the Carried Forward sheet's name left with the things they named. DECISION 112: _state() reads store.document_seqs() once and hangs each row's sequence number beside it - on every 'index' row and on every 'review' item (_triage_payload takes the mapping) - never inside the row, because it is the record's bookkeeping and not a fact about the document. _cmd_assign, _cmd_dismiss and _cmd_unfile read spec['seq'] through _seq_of() and refuse a spec without one by NO_SEQ (a ManifestError): the app is always drawn from state, so a caller with no version is a caller with no view. _cmd_assign also computes the shortlist itself - _shortlist_now() reads the index, finds the row with filer.find_parked() and asks review.shortlist_for() over load_manifest() - and hands the identifiers to the filer, which imports neither; its payload gains 'overrode_shortlist'. This module is L4 and imports both, so the computation belongs here; the seq check under the lock is what makes a row that moved in between never get the handed-in shortlist written. DECISION 113: the unlearn command takes {identifier, keyword} from the editor, records one keyword_unlearned through manifest.unlearn_keyword() and then re-scans the engagement the way assign does (its own lock; a ScanLockedError becomes scan_note), because the request's rules just moved and a copy that passed only on that word should regress now rather than on Saturday. _vocab()['editor'] gained unlearn_label and unlearned_note - the button beside each taught keyword and the sentence after it - and the renderer types neither. Decision 117: _info_from_spec() and _info_payload() read records.DATE_FIELDS rather than naming the due date, _vocab()['editor']['date_fields'] tells the editor which boxes are dates, and rollover.with_default_dates() fills a blank Filing Deadline and Due Date from the form's own table on create and on rollover - so the reminder's ladder works without a person typing a date, and what a person typed is never written over. settings and set-root carry the firm's phone beside its name, and _vocab()['settings'] carries that box's label, its sentence and the number as recorded; _reminder_payload() takes the index rows state has already read, so the card shows the parked-file hold the draft day will. DECISION 110: _state() gains 'moved', its own list beside 'review' rather than a column on the index - one entry per FILE_MOVED row with the row's sequence number, the home the record put the copy at, where its bytes are now (None for a row whose bytes are nowhere under the firm's folder) and, only where the copy sits directly in Prepared under a name that belongs to a request (decision 168), which request that is, matched by scaffold.assign_files(), the same answer the filer and the scan read. The restore command is _cmd_restore(), the third review action beside assign and unfile and the only new one: it takes the row's seq like the others and returns what the put-back found (moved_home, copied_from_original, already_home, parked_as) beside the rewritten row. _vocab()['review_labels'] carries the card's every word - RESTORE_LABEL, KEEP_LABEL, SEND_TO_REVIEW_LABEL, MOVED_HEADING, MOVED_SUMMARY and MOVED_NOWHERE, the word for a copy that is nowhere - so the renderer types none of them, and _shortlist_now() finds a moved row too, because keep-it-here goes through the same assign command and the same picker. DECISION 114: _vocab()['review_labels'] carries the review card's second rendering too - ACCEPT_LABEL, SKIP_LABEL, OPEN_IN_LIST_LABEL, the two words the toggle between the renderings shows (CARD_MODE_LABEL, LIST_MODE_LABEL) and CARD_POSITION, the pattern the card's position line is filled from. The heading over the card's suggestion is SUGGESTED_HEADING, the list's own: one queue, one word for a suggestion. No command is added and no payload changes - the cards are a rendering of the 'review' list this module already ships, and Accept is the assign command the list's File it makes. Decision 123: that function is no longer defined here - it moved to tracker.rollover, beside the carry rule that clears the dates, because the module's command line built engagements without it; create and rollover import it and are otherwise unchanged. Decision 118 added the reminder and approve commands and everything the Reminder card shows. reminder reads the record and the draft file and regenerates the letter in memory at whatever stage the toggle stands on - no lock, nothing written, and a held reminder answers with no letter at all; approve takes the engagement lock, refuses a stale panel by the fingerprint of the text it showed, writes the shown text (or approves an edited file as it stands), sets any other draft aside and records one draft_approved event. _vocab() carries the card's every word, the four stages with the palette key each carries and where each spends its emphasis, and page.PALETTE itself, so the renderer types neither a word nor a colour; state's paths now name the draft file, because the shell opens only paths this map holds. Decision 126 added two commands and the sharing words: roll-household rolls every ticked return of a household's open year through rollover.roll_household() and answers with the rolled, the skipped with their sentences, the retired by their labels and the state of the first return it made; mark-shared records one sharing_confirmed event on the household's record under its lock, refusing while the inbox link is blank (SHARE_LINK_FIRST) because that is the one part of the checklist the tracker can see was done. SHARING_CHECKLIST, SHARING_HEADING, SHARING_NOTE, MARK_SHARED_LABEL, SHARED_ON_LINE, NOT_YET_SHARED_LINE and ROLLOVER_UNTICKED_NOTE are the API's words; create hands the filled checklist back with a household's FIRST return and with no other, and state['household'] carries shared_on and the same filled lines until it is given. propose-spellings is the twenty-third command and a read: it proposes the spellings a document might print one name in and records nothing, because what a return matches on is what a person ticked (decision 128). create refuses a return with nobody on it. Decision 129 added the feed words (FEEDS_LABEL, FEEDS_LINE, FED_BY_LINE, ADD_FEED_LABEL, FEED_WARNING, RETURN_WARNING, HAND_OVER_LABEL, NOT_FED), the feeds field on edit-household, the feeds and fed_by the household card is drawn from, and assign's optional target - which hands the document to a return the drop folder feeds and refuses any other by name. The review of that build added the hand-over modal's own two words (HAND_OVER_RETURN_LABEL, HAND_OVER_REQUEST_LABEL), which the page had been borrowing from the household heading and the editor's title, and gave _cmd_scan the same walk of the practice the card uses (_the_practice), so Run now sorts against the feed list exactly as the scheduled pass does rather than against the household's own returns alone; since decision 132 a root that cannot be walked is the runner's NO_PRACTICE, the reply's run error, and nothing is sorted. HANDED_OVER_LINE (review_labels.handed_over) is what the page says after a hand-over: the row here is released. Decision 131: _state() carries 'room' (room_for over the list it already loaded), 'room_note' (ROOM_SHORT filled, or '' - information the return's page shows, never a warning) and appends only ROOM_PARKS to the warnings; set-root answers 'short_of_room' - every working return short of room under the new root, in label order, with its numbers and filled sentences (one walk; the one time room is measured outside a pass) - and records the root regardless; the editor's save (_cmd_edit) refuses with PATH_TOO_LONG a CHANGED or new row whose canonical path passes 260, and never a row the person did not touch; install-schedule writes the job from settings_dir() and replies 'settings'. _vocab()['room'] holds the heading and the two sentences. Decision 137: create refuses a household folder that exists without a record (HOUSEHOLD_NOT_OURS, the misfit rule stated at the door) and makes every folder through fsio.make_new_folders(), so a failure undoes only what this call made (_undo_made); rollover the same. _engagement_dir() refuses when no clients root is set, and _engagement_dir() names a return by its place (four levels under the root, under a year) - a year or household folder is refused (NOT_A_RETURN) rather than read one level too high. _feeds_from_spec() refuses a feed whose household or return line the sanitiser would change. Review fixes: _undo_made() removes whole only the folders a call owns (its return, a household whose record it wrote) and a year folder only when empty; create drops a household's pre-137 non-web link with rollover.carried_link and returns link_dropped; the reminder card carries link_dropped. Decision 160: edit fills a key a row leaves out from the record's row of that identifier (_as_recorded(); absent means unchanged, as the details were; date_pattern_derived only with the pattern it describes), refuses a key outside _ROW_KEYS (RULE_FIELDS and extensions; UNKNOWN_COLUMN), requires the list's version (state's list_head; NO_LIST_HEAD, checked under the lock by save_rules) and refuses a save that takes a request holding filed documents off the list, removed or respelt other than by case (_refuse_taking_away_documents(), HOLDS_DOCUMENTS, from filer.documents_by_request()). The rename command (filer.rename_request) gives a request another identifier and moves its documents; its words are RENAME_* and RENAMED_NOTE in vocab.editor. The documents-held check runs as save_rules' check, inside the lock; HOLDS_DOCUMENTS points to Not Applicable. Decision 157: _moved_payload leaves out a row a person marked missing and carries gone (filer.both_gone) and the row's identifier; mark-missing takes a both-gone row's own identifier; restore accepts a Filed or parked row whose copy was deleted. Decision 176: every command reads stdin through _read_spec() - the bytes decoded as UTF-8, one JSON object or NOT_A_SPEC - because Windows reads a pipe in its ANSI code page and turned `Mu\u00f1oz` into `Mu\u00c3\u00b1oz` in a folder the client is shared. A path from the app is parsed by its place, never trusted: _return_dir() (four levels under the root, in the private tree, under a year) and _household_dir() (two levels) hand back the root joined with the resolved names, so no `..` reaches layout's text-reading helpers and a folder in the client tree - where a client can plant a journal - is never a prior or a household (NOT_A_RETURN, NOT_A_HOUSEHOLD); the old check that a path merely lay under the root is gone. Decision 177: rollover places next year under the household the prior sits in and the prior's own folder name, and _carried_payload() carries the prior's NAME_DISAGREES as `warning`. Decision 189 (E-11): scan's reply carries household (every other return of the household the pass touched: label, ok, error, skipped, warnings) and pass_warnings (the reader's path, a reader that could not start, the card, and _record_pass()'s own failures - LOG_NOT_WRITTEN, PAGE_NOT_WRITTEN - which it now returns rather than leaving on stderr); _record_pass() puts the pass's own sentences in the log and on the page. Decision 189: Run now is run_household() with the scheduled pass's own household budget, so it ends inside main.js's 30-minute kill and says OUT_OF_TIME instead of failing. Decision 187: _info_from_spec's date() refuses a date the records date rule refuses (1900-2100, a real calendar date), and the editor vocabulary carries 'maximums' (records.MAX_EXPECTED_COUNT, records.MAX_SIZE_KB) beside 'minimums', which app.js sets as the number inputs' max. Decision 188: _folder_name is layout.checked_name - one sentence wherever a household or return name is typed (create, a new return, a rolled return's name, a feed); a return is unique by the key within its household-year; feeds are compared by name_key; NOT_A_RETURN/NOT_A_HOUSEHOLD are layout's sentences. Decision 188 (part 2): _root is door.checked_root on every command (E-13) and _saved_root does the same where a missing root is an answer (list, priors, state, practice); list answers a refused saved root with needs_root, root_problem and the vocabulary; _return_dir/_household_dir are door.return_dir/household_dir; DoorError and LayoutError are answered as ManifestError is; the vocab carries path_kinds (PATH_KINDS) and shell.not_opened (SHELL_NOT_OPENED); each misfit carries 'where', its path below the root from layout.parts_below, so the page never computes it. Decision 188 (part 3): create refuses a typed household name that is, by the key, a household folder or record's name (DUPLICATE_HOUSEHOLD - pick it in the list; add a first name or a middle initial, then the city, never an identifier), a folder without a record (HOUSEHOLD_NOT_OURS) or a client folder no household owns (CLIENT_FOLDER_TAKEN); create by household_path, rollover and roll-household refuse a paused (or stopped) household. accept-folder-name (--engagement <return>, {seq, scope}) is the one action on a paused household: under the household's lock and each return's, judged by the household record's line count, it appends a household_changed {name} line and rules_changed {info} lines, each with ledger.ACCEPTED_KEY = FOLDER_NAME_ACCEPTED; refused for a year disagreement (YEAR_NOT_ACCEPTED) and, for a household, when a recorded original rests under a client folder of another name (ORIGINALS_UNDER_OLD_NAME). _household_payload carries 'pause' {sentence, scope, engagement, seq}; the vocab carries the action's label and help. Review of 188: every accept scope runs the originals check before writing and a return's accept never writes the household's name (M2); a year pause carries no scope, so no Accept button (S3); create by household_path and rollover ask registry.held_back (M3, S4). Decision 204: _triage_payload carries waits_for {target, label, requests [{identifier, document}], answers} or null, and waits_for_refused (NOT_FED with the claim's return name, or filer.requests_taking's refusal), from _waiting_payload(entry, fed) - the feed list read once per state and only when a row waits; assign with {original, seq, waiting: true} and no target or identifier goes to _hand_over_waiting(), which resolves the row's claim the same way and calls hand_over(also=, answers=, waiting=True); FILE_WHERE_IT_WAITS_LABEL is review_labels.file_where_it_waits. _waiting_payload(engagement, entry, fed) offers only on a NEEDS_REVIEW row with NAMED_ACROSS_HOUSEHOLDS (S-3) and refuses where filer.hand_over_copies would (S-1). Decision 159: WRITING_COMMANDS are held to the checkpoint's root claim (a mismatch is a JSON error naming both folders); acknowledge-foreign is a writing command under the return's lock (no app button calls it yet); rebuild refusals come back as sentences; roll-household answers a partial retirement with code 0, not_retired and a warning the app's banner shows. list carries last_pass (runner.last_pass_line) for the main screen's one line about the schedule, with a root or without one. The port review's M2: accept-folder-name is in WRITING_COMMANDS; tests/test_api.py derives every writer from COMMANDS and the package's calls (store.record, ledger.append, os.rename, shutil.copy2) and holds them to that list. Decision 209: install-schedule is the repair path - it runs after_install.run(reason='repair') and replies with outcome, sentence (the banner's words) and installed (true only for claimed/registered); after-install is the shell's launch door ({ran: false} when the program is unchanged); set-root runs the step and adds after_install to its reply; list carries after_install.notice() with or without a root; vocab.schedule gains repair, repair_help and repair_confirm, and vocab.after_install the notice's heading and FINDINGS_WAIT."
     },
     {
       "id": "tracker/checkpoint.py",
@@ -952,14 +1029,15 @@
       "id": "tracker/layout.py",
       "type": "module",
       "layer": "core",
-      "sha256": "a13eb43657cd42dc",
-      "lines": 934,
+      "sha256": "d0e2b7015cc78a74",
+      "lines": 948,
       "exports": [
         "CLIENTS",
         "CLIENTS_TREE",
         "CLIENT_FOLDER_MISSING",
         "CLIENT_HOUSEHOLD",
         "CLIENT_KINDS",
+        "DESIGNATION_FILENAME",
         "ENGAGEMENT_LABEL_PATTERN",
         "HOUSEHOLD",
         "INBOX",
@@ -1018,6 +1096,7 @@
         "client_household_dir",
         "clients_tree_of",
         "deepest_path_length",
+        "designation_file",
         "household_at",
         "household_name_of",
         "household_of",
@@ -1061,6 +1140,7 @@
         "REVIEW_DIR_NAME": "'00 - Needs Review'",
         "README_NAME": "'_README.txt'",
         "OPENED_DIR_NAME": "'_Opened'",
+        "DESIGNATION_FILENAME": "'_Scheduling computer.txt'",
         "RETURN_NAME_PATTERN": "'{form} - {client}'",
         "ENGAGEMENT_LABEL_PATTERN": "'{household} {year} {return_name}'",
         "MAX_PATH_LENGTH": "260",
@@ -1109,7 +1189,7 @@
         "STEP_CLIENT_TREE": "'client-tree'"
       },
       "role": "The shape of the clients root, named once (decision 125): the two trees CLIENTS_TREE and PRIVATE_TREE, the household's one inbox INBOX_DIR_NAME, PREPARED_DIR_NAME, REVIEW_DIR_NAME, README_NAME, RETURN_NAME_PATTERN and ENGAGEMENT_LABEL_PATTERN, MAX_PATH_LENGTH and PATH_TOO_LONG. Builders (client_household_dir, inbox_dir_for, originals_dir_for, private_household_dir, return_dir_for) and readers that answer positionally off a return folder (root_of, household_of, household_name_of, year_of, inbox_of, originals_of). And the one convention for every path the record holds: location_of() writes it relative to the return folder in POSIX, with .. where it crosses into the client tree, and locate() reads it back. Since decision 188 it is also the one identity-and-path authority: the one name rule for a household or return (normalised_name, then segment_problem -> phrase | None, and checked_name for typed names), the one comparison key (name_key, with the LOOK_ALIKES table), constructors that refuse a bad name or year (LayoutError), clients_tree_of/private_tree_of, and the one positional parser (place_of -> Place, return_at, household_at, parts_below). Which household is this, and may this path exist: this module; the guard is in tests/test_layers.py.",
-      "notes": "Layer 0, importing nothing of the package, because every layer above needs the same answer about where a folder is and there must be exactly one. It touches no disk: every function here is arithmetic on names, which is why tests/test_layout.py opens no file. locate() normalises LEXICALLY (os.path.normpath, never resolve()): the filer's link check exists to refuse what lies behind a junction, and a resolved path would come back naming the target instead. deepest_path_length() is the measurement creation refuses on - the deepest working copy a return would hold, against the 260 characters Windows will open - and it is measured absolutely, from the return folder, because that is what Windows counts. Decision 129 added lock_order_key(): the one global order every pass takes its locks in - the household folder's name, then the return folder's, without case - so two processes that need the same two returns can never take them the other way round. It is also what 'the first return by order' means wherever the sort says it. Decision 131: OPEN_LIMITS - a reader's documented limit shorter than Windows's, by extension (xlsx, xlsm, xls, csv at 218, Microsoft's figure for Excel; the owner's Q-A ruling) - and limit_for(ext), the shortest limit that applies: a working copy's NAME is cut to it, while creation's refusal stays at MAX_PATH_LENGTH. And the rollover rule, worded once here so the registry and the scaffold read the same one: ROLLED_FROM_TAIL (3), shared_tail() (moved from the registry) and same_return(rolled_from, path) - the same path lexically, else the last three folder names - lexical, never resolved, because layer 0 reads no link. Decision 143 added OPENED_DIR_NAME and opened_dir_of(): the household-year's hidden folder in the private tree for what was taken out of emails and zips. Decision 187: place_problem(return_dir, location, *, writes) is the one wording of where a step of a return may act - the rule decision 180 wrote as filer._may_touch, moved here without change of meaning - and it returns a code, never the location: STEP_BLANK, STEP_ABSOLUTE (absolute, a drive or a share), STEP_ABOVE_ROOT (a .. still leading once the location is walked from the return's own four folders below the root, whatever it names after), STEP_NOT_A_RETURN, STEP_NOT_A_PLACE, STEP_OTHER_HOUSEHOLD, STEP_OTHER_YEAR (STEP_PROBLEMS holds them all). It takes the return absolute or relative to the clients root (the store's key) and gives the same answer, and it touches no disk. The filer asks it before a step is recorded or carried out; the store asks it at call time before it admits a record line. Decision 188 calls the same function as its containment check for every write into the client tree. Decision 187 (second commit): segment_problem(name) says whether a household or return label is exactly one folder name, as a code (SEGMENT_SEPARATOR, SEGMENT_DOT, SEGMENT_DRIVE, SEGMENT_CONTROL; blank is the caller's to allow); the store's gate asks it for info.household, info.return_name, a household's name and each feed's two names. Decision 188 widens it into the one name rule. Decision 187's review (M4): place_problem takes removes=True for a removal, which may act only under the return or its own year's _Opened; anywhere in the client tree is STEP_CLIENT_TREE ('client-tree'). This narrows the rule decision 180 wrote, where a removal went wherever a move may write. Decision 188: the ONLY place a tree word (CLIENTS_TREE, PRIVATE_TREE, INBOX_DIR_NAME, OPENED_DIR_NAME) is compared with a path. The name rule refuses empty or over NAME_MAX_CHARS (80), a first character that is not a letter or digit (every MACHINE_PREFIXES name discovery passes over), a trailing dot or space, Windows-forbidden or control characters, device names, invisible characters (is_invisible: Cc Cf Cs Co Cn Zl Zp, any space but U+0020, the default-ignorables) - refused, never stripped, named by code point - non-NFKC characters, two alphabets (first word of the Unicode name; CJK counted as one), and the layout's own words or four digits. The store's admission runs it on every label, so the phrase names a character, never the label. name_key errs wide (Kim/Klm are one): over-folding costs a refusal, under-folding two households for one family; a wider table needs the confusables file, a dependency not taken. The Windows character/device constants moved here from records (which re-exports them). place_problem is re-expressed on place_of without changing an answer. lock_order_key is an order, not an identity, and keeps its own casefold. Review of 188 (M1): name_key folds the table and case twice, and LOOK_ALIKES carries the capitals of its lowercase-only letters, so the key is idempotent over the table and the Greek, Cyrillic and Latin Extended-C blocks. CLIENT_FOLDER_MISSING is worded here. Re-check R1: names_one_folder(a, b) is the file system's compare (os.path.normcase), what says a client folder is a household's own."
+      "notes": "Layer 0, importing nothing of the package, because every layer above needs the same answer about where a folder is and there must be exactly one. It touches no disk: every function here is arithmetic on names, which is why tests/test_layout.py opens no file. locate() normalises LEXICALLY (os.path.normpath, never resolve()): the filer's link check exists to refuse what lies behind a junction, and a resolved path would come back naming the target instead. deepest_path_length() is the measurement creation refuses on - the deepest working copy a return would hold, against the 260 characters Windows will open - and it is measured absolutely, from the return folder, because that is what Windows counts. Decision 129 added lock_order_key(): the one global order every pass takes its locks in - the household folder's name, then the return folder's, without case - so two processes that need the same two returns can never take them the other way round. It is also what 'the first return by order' means wherever the sort says it. Decision 131: OPEN_LIMITS - a reader's documented limit shorter than Windows's, by extension (xlsx, xlsm, xls, csv at 218, Microsoft's figure for Excel; the owner's Q-A ruling) - and limit_for(ext), the shortest limit that applies: a working copy's NAME is cut to it, while creation's refusal stays at MAX_PATH_LENGTH. And the rollover rule, worded once here so the registry and the scaffold read the same one: ROLLED_FROM_TAIL (3), shared_tail() (moved from the registry) and same_return(rolled_from, path) - the same path lexically, else the last three folder names - lexical, never resolved, because layer 0 reads no link. Decision 143 added OPENED_DIR_NAME and opened_dir_of(): the household-year's hidden folder in the private tree for what was taken out of emails and zips. Decision 187: place_problem(return_dir, location, *, writes) is the one wording of where a step of a return may act - the rule decision 180 wrote as filer._may_touch, moved here without change of meaning - and it returns a code, never the location: STEP_BLANK, STEP_ABSOLUTE (absolute, a drive or a share), STEP_ABOVE_ROOT (a .. still leading once the location is walked from the return's own four folders below the root, whatever it names after), STEP_NOT_A_RETURN, STEP_NOT_A_PLACE, STEP_OTHER_HOUSEHOLD, STEP_OTHER_YEAR (STEP_PROBLEMS holds them all). It takes the return absolute or relative to the clients root (the store's key) and gives the same answer, and it touches no disk. The filer asks it before a step is recorded or carried out; the store asks it at call time before it admits a record line. Decision 188 calls the same function as its containment check for every write into the client tree. Decision 187 (second commit): segment_problem(name) says whether a household or return label is exactly one folder name, as a code (SEGMENT_SEPARATOR, SEGMENT_DOT, SEGMENT_DRIVE, SEGMENT_CONTROL; blank is the caller's to allow); the store's gate asks it for info.household, info.return_name, a household's name and each feed's two names. Decision 188 widens it into the one name rule. Decision 187's review (M4): place_problem takes removes=True for a removal, which may act only under the return or its own year's _Opened; anywhere in the client tree is STEP_CLIENT_TREE ('client-tree'). This narrows the rule decision 180 wrote, where a removal went wherever a move may write. Decision 188: the ONLY place a tree word (CLIENTS_TREE, PRIVATE_TREE, INBOX_DIR_NAME, OPENED_DIR_NAME) is compared with a path. The name rule refuses empty or over NAME_MAX_CHARS (80), a first character that is not a letter or digit (every MACHINE_PREFIXES name discovery passes over), a trailing dot or space, Windows-forbidden or control characters, device names, invisible characters (is_invisible: Cc Cf Cs Co Cn Zl Zp, any space but U+0020, the default-ignorables) - refused, never stripped, named by code point - non-NFKC characters, two alphabets (first word of the Unicode name; CJK counted as one), and the layout's own words or four digits. The store's admission runs it on every label, so the phrase names a character, never the label. name_key errs wide (Kim/Klm are one): over-folding costs a refusal, under-folding two households for one family; a wider table needs the confusables file, a dependency not taken. The Windows character/device constants moved here from records (which re-exports them). place_problem is re-expressed on place_of without changing an answer. lock_order_key is an order, not an identity, and keeps its own casefold. Review of 188 (M1): name_key folds the table and case twice, and LOOK_ALIKES carries the capitals of its lowercase-only letters, so the key is idempotent over the table and the Greek, Cyrillic and Latin Extended-C blocks. CLIENT_FOLDER_MISSING is worded here. Re-check R1: names_one_folder(a, b) is the file system's compare (os.path.normcase), what says a client folder is a household's own. Decision 209: DESIGNATION_FILENAME and designation_file(root) - the one file directly in the private tree, naming the computer that runs the schedule. Every walk of the private tree lists folders only, so it is never a misfit (tests/test_layout.py)."
     },
     {
       "id": "tracker/ledger.py",
@@ -2379,8 +2459,8 @@
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "ec55c8b24a8c73ce",
-      "lines": 2406,
+      "sha256": "390ec44aad8b9ee1",
+      "lines": 2407,
       "cli": "python -m tracker.runner",
       "exports": [
         "ACKNOWLEDGE_COMMAND",
@@ -2509,7 +2589,7 @@
         "LOG_FLAG": "'--log'",
         "DATE_FLAG": "'--date'",
         "SETTINGS_FLAG": "'--settings'",
-        "OLD_JOB_ROOT": "'the scheduled job still names an old clients root ({root}); open the app and press Install Schedule'",
+        "OLD_JOB_ROOT": "'the scheduled job still names an old clients root ({root}); start the app on this computer - it registers the job again - or press Repair the schedule'",
         "LAST_PASS_FILENAME": "'last-pass.json'",
         "LAST_PASS_AMBER_HOURS": "4",
         "PASS_RUNNING": "'running'",
@@ -2689,39 +2769,68 @@
       "id": "tracker/scheduling.py",
       "type": "module",
       "layer": "core",
-      "sha256": "e8cfe833d5d6daa3",
-      "lines": 461,
+      "sha256": "80cf886faea71aa0",
+      "lines": 703,
       "cli": "python -m tracker.scheduling",
       "exports": [
+        "CLAIMED",
+        "CLAIM_TAKEN",
         "DEFAULT_REPEAT_MINUTES",
         "DEFAULT_START",
+        "DESIGNATION_UNREADABLE",
+        "DesignationError",
+        "ELSEWHERE",
         "EXECUTION_TIME_LIMIT",
         "FORMATS",
         "FORMAT_FLAG",
         "FORMAT_N8N",
         "FORMAT_XML",
+        "HOST_NAME",
         "INSTALL_FLAG",
         "INSTALL_HINT",
+        "MAX_DESIGNATION_BYTES",
         "MODULE_INVOCATION",
+        "MOVED_FROM",
+        "MOVED_FROM_NOBODY",
         "N8N_RUN_NODE",
         "N8N_TRIGGER_NODE",
+        "NO_ROOT",
+        "NO_TASK_SCHEDULER",
         "OUT_FLAG",
+        "REGISTERED",
+        "REGISTERING",
+        "SCHEDULE_CLAIMED",
+        "SCHEDULE_ELSEWHERE",
+        "SCHEDULE_NOT_HERE",
+        "SCHEDULE_REGISTERED",
+        "SCHEDULE_REMOVED",
+        "SCHEDULE_WAITS_FOR_ROOT",
         "SCHEDULE_XML_ENCODING",
         "SCHEDULE_XML_FILENAME",
         "SHELL_SPECIAL",
         "START_FLAG",
+        "ScheduleDecision",
         "TASK_NAME",
         "TASK_XML_NAMESPACE",
+        "UNREADABLE",
+        "checked_host",
+        "claim",
+        "designated_machine",
         "install_task",
         "is_absolute_path",
-        "is_scheduling_host",
         "iso_duration",
+        "move_here",
         "n8n_workflow",
         "quote_argument",
         "refuse_shell_special",
+        "register_here",
+        "remove_task",
         "resolve_folder",
         "runner_arguments",
+        "schedule_decision",
+        "schedule_xml_path",
         "start_hour",
+        "task_scheduler_here",
         "task_scheduler_xml"
       ],
       "constants": {
@@ -2738,10 +2847,27 @@
         "FORMAT_FLAG": "'--format'",
         "START_FLAG": "'--start'",
         "FORMAT_XML": "'xml'",
-        "FORMAT_N8N": "'n8n'"
+        "FORMAT_N8N": "'n8n'",
+        "MAX_DESIGNATION_BYTES": "256",
+        "NO_ROOT": "'no_root'",
+        "NO_TASK_SCHEDULER": "'no_task_scheduler'",
+        "CLAIMED": "'claimed'",
+        "REGISTERED": "'registered'",
+        "ELSEWHERE": "'elsewhere'",
+        "UNREADABLE": "'unreadable'",
+        "SCHEDULE_WAITS_FOR_ROOT": "'The schedule will be set up when the clients folder is chosen in the app, on the computer that runs it.'",
+        "SCHEDULE_NOT_HERE": "'This computer has no Task Scheduler; the schedule runs on the office computer.'",
+        "SCHEDULE_CLAIMED": "'This computer ({host}) now runs the schedule for this clients folder: every day from {start}, every {every} minutes.'",
+        "SCHEDULE_REGISTERED": "\"The schedule is set: every day from {start}, every {every} minutes, with this computer's copy of the app.\"",
+        "SCHEDULE_ELSEWHERE": "'{host} runs the schedule for this clients folder, so this computer registers none{removed}.'",
+        "SCHEDULE_REMOVED": "' and removed the one it had'",
+        "DESIGNATION_UNREADABLE": "\"The file naming the computer that runs the schedule ({file}) is not one computer's name; a person must fix or delete it. No schedule was changed.\"",
+        "CLAIM_TAKEN": "'{host} claimed the schedule for this clients folder first, so this computer registers none. No schedule was changed.'",
+        "MOVED_FROM": "'The schedule for this clients folder moves from {host} to this computer ({here}).'",
+        "MOVED_FROM_NOBODY": "'No computer ran the schedule for this clients folder; this computer ({here}) now does.'"
       },
       "role": "Generates the Windows Task Scheduler XML or n8n workflow that runs tracker.runner unattended.",
-      "notes": "One daily task is enough because the runner decides the drafting day. Recognizes Windows drive-letter paths as absolute even when generating from Linux. Decision 131: THE JOB NAMES NO CLIENTS ROOT - runner_arguments(settings_dir) writes -m tracker.runner --settings \"<the app's settings folder>\" --log (runner.SETTINGS_FLAG), and the runner reads the root from settings.json there at every run, so the root has one home and a root changed in the app is the root the job walks next; the Description names the settings file. ROOT_FLAG and the CLI's root option are gone; the CLI takes --settings, defaulting to this checkout's settings folder, and refuses one that names no clients root. The folder resolver is resolve_folder() now. install_task() registers the XML with schtasks (/f, so re-running changes the schedule); --install does both steps. The task name is the product name from settings.product_name(); the defaults (start, repeat, XML file name) are module constants the API's install-schedule reports back so the app shows what was actually installed. EXECUTION_TIME_LIMIT is locking.RUN_TIME_LIMIT_SECONDS rendered by iso_duration(), not a second number, because the lock's stale threshold is derived from the same limit. runner_arguments(frozen=True) is the packaged form of the one command line: the app's executable in runner mode (runner.RUNNER_MODE_FLAG) instead of -m tracker.runner, same arguments after it. TASK_NAME at import is safe because only the shell-launched API (or a source checkout) imports this module; the frozen job never does. Decision 55: quote_argument() doubles a trailing backslash so a drive-root clients folder survives the Windows argument parser. Decision 191 (D-11): n8n runs its command through cmd on Windows and sh elsewhere, so n8n_workflow() quotes working_dir and python by quote_argument() like the settings folder, and refuse_shell_special() refuses any of the three holding a double quote, %, $, a backtick, ! or a control character - a ValueError naming the field and the kind of character, never the value."
+      "notes": "One daily task is enough because the runner decides the drafting day. Recognizes Windows drive-letter paths as absolute even when generating from Linux. Decision 131: THE JOB NAMES NO CLIENTS ROOT - runner_arguments(settings_dir) writes -m tracker.runner --settings \"<the app's settings folder>\" --log (runner.SETTINGS_FLAG), and the runner reads the root from settings.json there at every run, so the root has one home and a root changed in the app is the root the job walks next; the Description names the settings file. ROOT_FLAG and the CLI's root option are gone; the CLI takes --settings, defaulting to this checkout's settings folder, and refuses one that names no clients root. The folder resolver is resolve_folder() now. install_task() registers the XML with schtasks (/f, so re-running changes the schedule); --install does both steps. The task name is the product name from settings.product_name(); the defaults (start, repeat, XML file name) are module constants the API's install-schedule reports back so the app shows what was actually installed. EXECUTION_TIME_LIMIT is locking.RUN_TIME_LIMIT_SECONDS rendered by iso_duration(), not a second number, because the lock's stale threshold is derived from the same limit. runner_arguments(frozen=True) is the packaged form of the one command line: the app's executable in runner mode (runner.RUNNER_MODE_FLAG) instead of -m tracker.runner, same arguments after it. TASK_NAME at import is safe because only the shell-launched API (or a source checkout) imports this module; the frozen job never does. Decision 55: quote_argument() doubles a trailing backslash so a drive-root clients folder survives the Windows argument parser. Decision 191 (D-11): n8n runs its command through cmd on Windows and sh elsewhere, so n8n_workflow() quotes working_dir and python by quote_argument() like the settings folder, and refuse_shell_special() refuses any of the three holding a double quote, %, $, a backtick, ! or a control character - a ValueError naming the field and the kind of character, never the value. Decision 209: which computer runs the schedule is one file in the private tree - designated_machine() reads it, claim() writes this host when none is named (read, compare, write), move_here() rewrites it, and schedule_decision(root) decides in order: no_root, no_task_scheduler, claimed, registered, elsewhere, unreadable, each with a sentence constant. register_here() is the one registration (the API's repair path and the after-install step both call it; the XML is still written beside the settings file until decision 186 moves it) and remove_task() deletes this computer's own task (schtasks /query then /delete) when another computer is named. The function that answered 'is this Windows' under a name that said 'the scheduling host' is renamed task_scheduler_here(): it answers only whether Task Scheduler exists here. Every schtasks call goes through _schtasks(), the one seam; the suite's autouse guard (tests/conftest.py) fails a test that reaches the real one. platform.node is read only in locking.this_host."
     },
     {
       "id": "tracker/settings.py",
@@ -2819,8 +2945,8 @@
       "id": "tracker/store.py",
       "type": "module",
       "layer": "core",
-      "sha256": "b82a926d2d6866b0",
-      "lines": 3805,
+      "sha256": "581f7de16242f762",
+      "lines": 3814,
       "cli": "python -m tracker.store",
       "exports": [
         "ACCEPTED",
@@ -2898,6 +3024,7 @@
         "forget",
         "gone_journals",
         "has_rules_event",
+        "holds",
         "household_info",
         "key_root",
         "kind",
@@ -3130,10 +3257,10 @@
       "id": "app/main.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "d30487e3b31bb219",
-      "lines": 232,
+      "sha256": "b753f700c0d3da56",
+      "lines": 254,
       "role": "Electron main process. Spawns the Python API (`-m tracker.api` under the checkout's .venv interpreter, by its full path, or the frozen executable package.json's config.apiName names in the portable build) and relays its JSON to the renderer over IPC.",
-      "notes": "This is the cross-language boundary: everything the UI can do is a tracker.api command. The renderer is untrusted here: a command must be in vocab.commands (before the vocabulary arrives, only BOOTSTRAP_COMMAND, pinned to tracker.api.COMMANDS by a guard) with the one argument shape the renderer uses; open-path opens only a path the API reported in state.paths; the tracker's exit code is read, not discarded, and a tracker that outlives TRACKER_TIMEOUT_MS is killed and reported. The window is sandboxed, cannot navigate and cannot open windows. Decision 160: the shell takes app.requestSingleInstanceLock(); a second launch quits before any window is made, and the running one restores and focuses its window on second-instance - two windows were two editors, and the earlier one's save took the later one's back. Decision 176: devTools is off when packaged, and runTracker() serialises the payload before the tracker starts and writes it as UTF-8, which is how tracker.api._read_spec() reads it. Decision 191: from source it runs .venv/Scripts/python.exe (or .venv/bin/python), never a bare python, and answers with the lock tool's NOT_SET_UP sentence when that is missing; in the packaged app Menu.setApplicationMenu(null) runs before the window is made, so no reload, zoom or developer-tools accelerator exists there (E-7). Decision 188 (E-14): learn() keeps each reported path with its kind from vocab.path_kinds, and openPath lstat()s it and opens it only when it is no symbolic link (Node reports a junction as one) and still a directory for 'folder' or a regular file for 'file'; otherwise vocab.shell.not_opened. No path.relative( and no startsWith( (tests/test_layers.py)."
+      "notes": "This is the cross-language boundary: everything the UI can do is a tracker.api command. The renderer is untrusted here: a command must be in vocab.commands (before the vocabulary arrives, only BOOTSTRAP_COMMAND, pinned to tracker.api.COMMANDS by a guard) with the one argument shape the renderer uses; open-path opens only a path the API reported in state.paths; the tracker's exit code is read, not discarded, and a tracker that outlives TRACKER_TIMEOUT_MS is killed and reported. The window is sandboxed, cannot navigate and cannot open windows. Decision 160: the shell takes app.requestSingleInstanceLock(); a second launch quits before any window is made, and the running one restores and focuses its window on second-instance - two windows were two editors, and the earlier one's save took the later one's back. Decision 176: devTools is off when packaged, and runTracker() serialises the payload before the tracker starts and writes it as UTF-8, which is how tracker.api._read_spec() reads it. Decision 191: from source it runs .venv/Scripts/python.exe (or .venv/bin/python), never a bare python, and answers with the lock tool's NOT_SET_UP sentence when that is missing; in the packaged app Menu.setApplicationMenu(null) runs before the window is made, so no reload, zoom or developer-tools accelerator exists there (E-7). Decision 188 (E-14): learn() keeps each reported path with its kind from vocab.path_kinds, and openPath lstat()s it and opens it only when it is no symbolic link (Node reports a junction as one) and still a directory for 'folder' or a regular file for 'file'; otherwise vocab.shell.not_opened. No path.relative( and no startsWith( (tests/test_layers.py). Decision 209: at whenReady the shell runs the API's after-install command itself (LAUNCH_COMMAND, through spawnTracker, outside the renderer's allowlist) and every tracker-cmd waits for it, so the first screen is drawn from what the step left."
     },
     {
       "id": "app/package-lock.json",
@@ -3161,17 +3288,17 @@
       "id": "app/renderer/app.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "da54d7587067935e",
-      "lines": 2862,
+      "sha256": "c751abfff7521cf0",
+      "lines": 2881,
       "role": "The desktop UI: the form-type wizard, the request list and the scan results, and (decision 104) the request-list editor - the only place a rule is entered. Talks only to window.tracker from the preload bridge.",
-      "notes": "Every node is built with el() and placed with replaceChildren; there is no innerHTML and no escaper, so a client's file name, a keyword somebody typed into the request list or a folder name is text whatever characters it carries (a guard checks the sinks are absent). Every word it shows or compares comes from the API's vocabulary (applyVocabulary); SCAN_LABEL is the one label it owns. Decision 76: the Needs Review card asks one question of a parked and a set-aside document alike - which request does this belong to - so reviewRow() builds both, and only an open question carries the note box and the button that sets one aside; what a person has set aside is folded under its own count, never removed from the page, because the list is the only way back. Decision 77: renderUnfileList() is the same list for what is already filed - folded away, there for the one row that is wrong - and the function cannot be called after the decision it shows, because the guard on the renderer's vocabulary forbids that word anywhere in the file. Decision 84: the Needs Review card shows the shortlist. renderReview() maps state.review by pbc_location and hands each parked row its triage; reviewRow() puts the shortlist at the head of the picker under the 'suggested' heading, every other request under 'other_requests', and lists the sentence behind each suggestion beneath the row - an <option> carries no second line, and the reason is what is read before anything is picked. The picker starts on the best suggestion, falling back to the router's own first candidate. A parked file the evidence says nothing about shows the vocabulary's nothing_suggested rather than a guess, and a set-aside row is not triaged at all, so it gets no shortlist. Every word of it - the two headings and the File it label as well - comes from vocab; the renderer still types none. Decision 89: a chip beside the engagement's name says whether its own page still describes it. The word and the label are the API's (vocab.view), the chip's class is derived from the word the same way a status chip's is, and the button opens state.paths.view through the same whitelisted opener the Open Status button uses. Decision 91: that button's label is the API's too - applyVocabulary() fills #view-label from vocab.view.open, exactly as it fills the scan button - so the page carries no word for it, and the path it opens is now an .html file the shell hands to the default browser. Decision 104: requestRows() is the one row component - a table of inputs built from vocab.columns (each column's key, header and help; the two numbers as number inputs whose minimum comes from vocab.editor.minimums, the override a pick of vocab.overrides), used by the wizard's custom-request section (three columns, identifiers assigned as rows are added) and by the editor (all ten). openEditor() opens on state.rules - the person's rows as stored, a derived date pattern shown blank, the file types shown as '*' when any - with the engagement's details laid out from vocab.editor.engagement_fields (a text box, a date or a yes/no box for the editable ones, plain text for the rest) and the keywords filings taught shown beside each row as taught (vocab.editor.learned_note), never as typed. pasteRows() appends rows pasted from a spreadsheet by position - tab-separated if any line holds a tab, otherwise CSV through a small RFC 4180 reader, a first line that repeats the headings skipped - and records nothing. saveEditor() is one edit call: a refusal is shown inside the editor with its row and column and the modal stays open; a save renders the state the API returns, closes, and says what changed or that nothing did, with the warnings under vocab.editor.warnings_heading. Every heading, label, hint and button of the editor is vocab.editor's or vocab.columns'; the Check Manifest button and the button that opened the workbook are gone with the workbook. Decision 112: both row builders put the row's sequence number on the <li> (dataset.seq, from state.index[].seq and state.review[].seq) and assignParked(), dismissParked() and unfileDocument() send it back as seq; assignParked's banner shows the API's overrode_shortlist sentence as a warn note beside left_in_review. A refusal goes through refused(): the API's sentence is toasted, the button re-enabled and refresh() re-reads the state, so the card shows the row as the record now holds it. The renderer types no sentence of its own here either. Decision 113: the learned cell is a list rather than a line - learnedCell() draws the API's learned_note and then one span.ed-learned-word per taught keyword, each with its own button.ed-unlearn carrying the identifier and the word - and a click calls the unlearn command, then re-draws only the learned column from the state that comes back (renderLearnedCells), because unlearning is its own event and lands at once while the rows may hold edits the person has not saved. The note area says the API's unlearned_note, and its scan_note under it when the re-scan could not run; the renderer types no word of it. Decision 110: renderMoved() draws #moved-card above the review card from state.moved - one row per moved working copy, its home and where its bytes are now, with restoreMoved (the restore command), keepMoved (assign, with the request the picker was left on and the keyword typed) and reviewMoved (unfile) behind the three buttons, delegated on #moved-list. The picker and the keyword box are shown only where the API said which request the copy's name belongs to (in_request, decision 168), and the picker starts on it; every word is vocab.review_labels', including the word for a copy that is nowhere. Decision 114: renderReview() draws the same queue twice - the list in #review-list and, in #review-deck, one card at a time. renderDeck() builds the deck from state.review in the API's order with the rows a person sent to the back after it (skipped, pbc_locations, dropped as soon as a row leaves the queue), shows the first card, and is called again from every render, so a row filed or set aside anywhere else simply leaves the deck and the total is always the queue's. The card shows the row's reason, the top suggestion's sentence under the list's own 'suggested' heading (or the vocabulary's nothing_suggested), the set-aside sentences, a keyword box and the position line; acceptCard() files to the suggestion the card carries, openCardInList() switches to the list and outlines the row, skipCard() reorders and sends nothing. fileRow() is the one place the assign call is made - assignParked(), acceptCard() and keepMoved() all reach it, and a guard in tests/test_single_source.py keeps it the only one, so Accept and File it cannot drift apart. reviewMode is the person's choice of rendering, read and written in localStorage under REVIEW_MODE_STORAGE_KEY inside try/catch (a blocked store leaves the app on the list); it is a key and not a word, and nothing about the deck is recorded (decision 83). Decision 118: renderReminder()/loadReminder()/drawReminder() are the Reminder card - the record's last word on the draft, the four stages as a toggle coloured from the API's palette, the letter drawn from its own shape with el() (never from the clipboard's markup, which would be an HTML string), Copy for Outlook putting text/html and text/plain on the clipboard with the same words, Approve sending back the fingerprint of the text on screen, and Open the draft file on the path state.paths names. The stage a person picked is the only thing the page holds of its own and is dropped when the engagement changes. It types no colour: every hex it draws with is looked up in vocab.reminder.palette by the key a stage carries, and a guard reads the file for one. Decision 129 added the household card's two feed lines, the editor's feed list with its picker and its warning, and File under another return on both renderings of the queue - every word of it from the API's vocabulary, as always. Decision 160: the editor sends state's list_head with every save, and a Rename fold (renameChoices(), renameRequest()) calls the rename command, renames the row in place, adopts the version the rename returns and keeps what the person typed and not saved. Decision 157: movedRow() draws a gone row (its copy and its original both gone) with the one answer left, Mark <identifier> missing (vocab.review_labels.mark_missing on the .r-withdraw button the filed list uses), and the moved list's click handler sends it to withdrawAnswer(). Decision 189: runScan() shows the reply's pass_warnings and each other return's error, skip and warnings under its own label, in the same banner and the same way as the asked return's warnings, on the skipped and failed paths too. Decision 188: the household card shows the API's pause sentence and, where there is something to accept, the one 'Accept the folder's name' button, which sends accept-folder-name with the seq and scope the card was drawn from; misfits are drawn from the API's 'where' (the path below the root), never worked out here."
+      "notes": "Every node is built with el() and placed with replaceChildren; there is no innerHTML and no escaper, so a client's file name, a keyword somebody typed into the request list or a folder name is text whatever characters it carries (a guard checks the sinks are absent). Every word it shows or compares comes from the API's vocabulary (applyVocabulary); SCAN_LABEL is the one label it owns. Decision 76: the Needs Review card asks one question of a parked and a set-aside document alike - which request does this belong to - so reviewRow() builds both, and only an open question carries the note box and the button that sets one aside; what a person has set aside is folded under its own count, never removed from the page, because the list is the only way back. Decision 77: renderUnfileList() is the same list for what is already filed - folded away, there for the one row that is wrong - and the function cannot be called after the decision it shows, because the guard on the renderer's vocabulary forbids that word anywhere in the file. Decision 84: the Needs Review card shows the shortlist. renderReview() maps state.review by pbc_location and hands each parked row its triage; reviewRow() puts the shortlist at the head of the picker under the 'suggested' heading, every other request under 'other_requests', and lists the sentence behind each suggestion beneath the row - an <option> carries no second line, and the reason is what is read before anything is picked. The picker starts on the best suggestion, falling back to the router's own first candidate. A parked file the evidence says nothing about shows the vocabulary's nothing_suggested rather than a guess, and a set-aside row is not triaged at all, so it gets no shortlist. Every word of it - the two headings and the File it label as well - comes from vocab; the renderer still types none. Decision 89: a chip beside the engagement's name says whether its own page still describes it. The word and the label are the API's (vocab.view), the chip's class is derived from the word the same way a status chip's is, and the button opens state.paths.view through the same whitelisted opener the Open Status button uses. Decision 91: that button's label is the API's too - applyVocabulary() fills #view-label from vocab.view.open, exactly as it fills the scan button - so the page carries no word for it, and the path it opens is now an .html file the shell hands to the default browser. Decision 104: requestRows() is the one row component - a table of inputs built from vocab.columns (each column's key, header and help; the two numbers as number inputs whose minimum comes from vocab.editor.minimums, the override a pick of vocab.overrides), used by the wizard's custom-request section (three columns, identifiers assigned as rows are added) and by the editor (all ten). openEditor() opens on state.rules - the person's rows as stored, a derived date pattern shown blank, the file types shown as '*' when any - with the engagement's details laid out from vocab.editor.engagement_fields (a text box, a date or a yes/no box for the editable ones, plain text for the rest) and the keywords filings taught shown beside each row as taught (vocab.editor.learned_note), never as typed. pasteRows() appends rows pasted from a spreadsheet by position - tab-separated if any line holds a tab, otherwise CSV through a small RFC 4180 reader, a first line that repeats the headings skipped - and records nothing. saveEditor() is one edit call: a refusal is shown inside the editor with its row and column and the modal stays open; a save renders the state the API returns, closes, and says what changed or that nothing did, with the warnings under vocab.editor.warnings_heading. Every heading, label, hint and button of the editor is vocab.editor's or vocab.columns'; the Check Manifest button and the button that opened the workbook are gone with the workbook. Decision 112: both row builders put the row's sequence number on the <li> (dataset.seq, from state.index[].seq and state.review[].seq) and assignParked(), dismissParked() and unfileDocument() send it back as seq; assignParked's banner shows the API's overrode_shortlist sentence as a warn note beside left_in_review. A refusal goes through refused(): the API's sentence is toasted, the button re-enabled and refresh() re-reads the state, so the card shows the row as the record now holds it. The renderer types no sentence of its own here either. Decision 113: the learned cell is a list rather than a line - learnedCell() draws the API's learned_note and then one span.ed-learned-word per taught keyword, each with its own button.ed-unlearn carrying the identifier and the word - and a click calls the unlearn command, then re-draws only the learned column from the state that comes back (renderLearnedCells), because unlearning is its own event and lands at once while the rows may hold edits the person has not saved. The note area says the API's unlearned_note, and its scan_note under it when the re-scan could not run; the renderer types no word of it. Decision 110: renderMoved() draws #moved-card above the review card from state.moved - one row per moved working copy, its home and where its bytes are now, with restoreMoved (the restore command), keepMoved (assign, with the request the picker was left on and the keyword typed) and reviewMoved (unfile) behind the three buttons, delegated on #moved-list. The picker and the keyword box are shown only where the API said which request the copy's name belongs to (in_request, decision 168), and the picker starts on it; every word is vocab.review_labels', including the word for a copy that is nowhere. Decision 114: renderReview() draws the same queue twice - the list in #review-list and, in #review-deck, one card at a time. renderDeck() builds the deck from state.review in the API's order with the rows a person sent to the back after it (skipped, pbc_locations, dropped as soon as a row leaves the queue), shows the first card, and is called again from every render, so a row filed or set aside anywhere else simply leaves the deck and the total is always the queue's. The card shows the row's reason, the top suggestion's sentence under the list's own 'suggested' heading (or the vocabulary's nothing_suggested), the set-aside sentences, a keyword box and the position line; acceptCard() files to the suggestion the card carries, openCardInList() switches to the list and outlines the row, skipCard() reorders and sends nothing. fileRow() is the one place the assign call is made - assignParked(), acceptCard() and keepMoved() all reach it, and a guard in tests/test_single_source.py keeps it the only one, so Accept and File it cannot drift apart. reviewMode is the person's choice of rendering, read and written in localStorage under REVIEW_MODE_STORAGE_KEY inside try/catch (a blocked store leaves the app on the list); it is a key and not a word, and nothing about the deck is recorded (decision 83). Decision 118: renderReminder()/loadReminder()/drawReminder() are the Reminder card - the record's last word on the draft, the four stages as a toggle coloured from the API's palette, the letter drawn from its own shape with el() (never from the clipboard's markup, which would be an HTML string), Copy for Outlook putting text/html and text/plain on the clipboard with the same words, Approve sending back the fingerprint of the text on screen, and Open the draft file on the path state.paths names. The stage a person picked is the only thing the page holds of its own and is dropped when the engagement changes. It types no colour: every hex it draws with is looked up in vocab.reminder.palette by the key a stage carries, and a guard reads the file for one. Decision 129 added the household card's two feed lines, the editor's feed list with its picker and its warning, and File under another return on both renderings of the queue - every word of it from the API's vocabulary, as always. Decision 160: the editor sends state's list_head with every save, and a Rename fold (renameChoices(), renameRequest()) calls the rename command, renames the row in place, adopts the version the rename returns and keeps what the person typed and not saved. Decision 157: movedRow() draws a gone row (its copy and its original both gone) with the one answer left, Mark <identifier> missing (vocab.review_labels.mark_missing on the .r-withdraw button the filed list uses), and the moved list's click handler sends it to withdrawAnswer(). Decision 189: runScan() shows the reply's pass_warnings and each other return's error, skip and warnings under its own label, in the same banner and the same way as the asked return's warnings, on the skipped and failed paths too. Decision 188: the household card shows the API's pause sentence and, where there is something to accept, the one 'Accept the folder's name' button, which sends accept-folder-name with the seq and scope the card was drawn from; misfits are drawn from the API's 'where' (the path below the root), never worked out here. Decision 209: Install Schedule is gone; btn-repair-schedule (beside the client-folder button, because the clients-folder card shows only until a root is set) runs install-schedule after confirm(vocab.schedule.repair_confirm) and shows the reply's sentence in the banner. renderAfterInstall() shows list's after_install notice at the top of the first screen, headed vocab.after_install.heading, until a run finds nothing."
     },
     {
       "id": "app/renderer/index.html",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "cdbc813aa9b0a310",
-      "lines": 585,
+      "sha256": "35e389998e6243d1",
+      "lines": 599,
       "role": "Desktop app shell markup: empty placeholders the renderer fills from the API's vocabulary, under a Content-Security-Policy that allows nothing but the app's own files. Since decision 104 it holds the request-list editor's modal (#editor), every label of which the renderer fills, and the Edit Request List button (#btn-edit) that opens it; the min of a number input is never typed here."
     },
     {
@@ -3193,8 +3320,8 @@
       "id": "CLAUDE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "56a19b90345e5091",
-      "lines": 243,
+      "sha256": "9bdb706b5042fcaf",
+      "lines": 258,
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
     },
@@ -3202,16 +3329,16 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "6dbe35f685b01353",
-      "lines": 553,
+      "sha256": "33ccf63e4e57085e",
+      "lines": 561,
       "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
     },
     {
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "0bc61691eca9ef33",
-      "lines": 429,
+      "sha256": "22b02632ac8ae7f3",
+      "lines": 430,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -3228,8 +3355,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "b2a085c6ce27778d",
-      "lines": 936,
+      "sha256": "004e38c82abca01b",
+      "lines": 975,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -3237,8 +3364,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "91233ed8aaa9c96d",
-      "lines": 2162,
+      "sha256": "729158070c2447a2",
+      "lines": 2192,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -3419,19 +3546,19 @@
       "id": "Setup.bat",
       "type": "script",
       "layer": "root",
-      "sha256": "cae35f7e48415e23",
-      "lines": 64,
+      "sha256": "2ae6ee5ee96bf748",
+      "lines": 87,
       "role": "The one-time setup for running from source (decision 191): makes the app's private Python in .venv, installs requirements.lock then requirements-nodeps.lock (--no-deps) with --require-hashes, runs npm ci in app/, and last stamps what it installed with tools/lockfiles.py stamp.",
-      "notes": "The machine's own Python only makes the environment and is never installed into, so no other program can break the app or be broken by it. --clear, so a package an older lock named does not survive. The stamp is written last, so a Setup that stopped part-way leaves none and Start App.bat says to run it again. It is where a machine's Python is first asked: the floor check and its 'Install Python <floor>+' sentence are pinned to pyproject.toml's requires-python (tests/test_single_source.py). Sets NoDefaultCurrentDirectoryInExePath first and calls where.exe by path (E-10)."
+      "notes": "The machine's own Python only makes the environment and is never installed into, so no other program can break the app or be broken by it. --clear, so a package an older lock named does not survive. The stamp is written last, so a Setup that stopped part-way leaves none and Start App.bat says to run it again. It is where a machine's Python is first asked: the floor check and its 'Install Python <floor>+' sentence are pinned to pyproject.toml's requires-python (tests/test_single_source.py). Sets NoDefaultCurrentDirectoryInExePath first and calls where.exe by path (E-10). Decision 209: its fourth and last step, after the stamp, is python -m tracker.after_install --reason setup (registers the schedule on the computer that runs it, runs the record check); a finding does not stop Setup, and a failed step prints after_install.SETUP_RETRY and exits 1 with the stamp kept. Every .bat checks out CRLF (the Git attributes file, R7): cmd reads a batch file by byte offset."
     },
     {
       "id": "Start App.bat",
       "type": "script",
       "layer": "root",
-      "sha256": "41913f3b2e236d9a",
-      "lines": 43,
+      "sha256": "4f86a76e020644f9",
+      "lines": 48,
       "role": "Runs the desktop app from source, offline, and installs nothing (decision 191): refuses in one sentence when Setup.bat has not made .venv, when tools/lockfiles.py verify says the lock files changed since Setup ran, or when app/node_modules is missing; then starts Electron.",
-      "notes": "Electron is started through its own entry script under `node`, never the `npx` shim: the shim breaks when the folder's path contains an ampersand, which the firm's own checkout does (decision 53). Decision 191 replaced decision 55's install-every-start: a launch that installed ran a package's install code and reached the network at every start, into the machine's own Python. No pip, no npm ci and no npm install appear in it (tests/test_build.py); its not-set-up sentence is tools/lockfiles.py's NOT_SET_UP word for word. It sets NoDefaultCurrentDirectoryInExePath before its first command and calls where.exe by its full path (E-10)."
+      "notes": "Electron is started through its own entry script under `node`, never the `npx` shim: the shim breaks when the folder's path contains an ampersand, which the firm's own checkout does (decision 53). Decision 191 replaced decision 55's install-every-start: a launch that installed ran a package's install code and reached the network at every start, into the machine's own Python. No pip, no npm ci and no npm install appear in it (tests/test_build.py); its not-set-up sentence is tools/lockfiles.py's NOT_SET_UP word for word. It sets NoDefaultCurrentDirectoryInExePath before its first command and calls where.exe by its full path (E-10). Decision 209: the app itself runs the after-install step at launch when the program changed, so a pull that left the locks alone still registers the schedule and checks the records."
     },
     {
       "id": "api_entry.py",
@@ -3479,10 +3606,22 @@
       "role": "What was taken out of the emails and zips a client dropped (decision 143): J Park & Associates/<household>/<year>/_Opened/<container's stem>/<attachment>, layout.OPENED_DIR_NAME, beside the year's returns in the private tree and never in the tree the client is shared. Each file is an attachment's original - its row's pbc_location - written atomically before the container's row exists. Synced like the rest of the private tree, a named exception to decision 107 by the owner's decision of 2026-09-23, because a recovery and a move to another machine must reach it. Skipped by discovery (the underscore), never a return (no journal), outside every return's working set; a file there no row names is a warning every pass and is never re-sorted or deleted."
     },
     {
+      "id": "artifact:_Scheduling computer.txt",
+      "type": "artifact",
+      "layer": "runtime",
+      "role": "One line in the firm's private tree (layout.designation_file, DESIGNATION_FILENAME) naming the computer that runs the schedule for this clients root, as locking.this_host normalises it (decision 209). Written by scheduling.claim (the first Windows computer to run the after-install step with a root set) or scheduling.move_here (--move-schedule-here); read by scheduling.designated_machine, the one reader decision 210 will ask too. Checked when written, read and acted on; a file that is not one computer's name is DESIGNATION_UNREADABLE, a failure naming the path and never the content. A file, never a folder, so discovery never lists it as a misfit. Detection, not a lock: two desks claiming before sync carries the first can both claim."
+    },
+    {
       "id": "artifact:_ledger.jsonl",
       "type": "artifact",
       "layer": "runtime",
       "role": "The engagement's own append-only record (decision 87), in the engagement folder beside the client's files: one JSON event per line, in the order the writers wrote them - what was preserved, filed, parked, called a duplicate, decided by a person, had its bytes recorded, taught a keyword, the statuses each scan applied, and (decision 104) the request list and the engagement's details as the app's editor saved them, one rules_changed event per save carrying exactly what moved. Written only under the engagement lock, with O_APPEND and fsync, one line per event and never rewritten; a torn last line is ignored by the reader and truncated by the next append. Since decision 102 it is the whole of the index, since 103 the whole of the statuses, and since 104 the whole of the person's rules: filer.read_index(), manifest.load_manifest() and manifest.load_engagement_info() all answer from the fold of these lines (through the store, which keeps the fold so no reader pays for it twice), and there is no other copy. Its presence is what makes a folder an engagement (tracker/registry.py). A journal from before decision 104 may carry rules_imported and migrated lines; both are folded and neither is ever written again. A record that does not read as one is refused by name and the line, for every reader. A person never edits it, and `python -m tracker.store <store> check <root>` is how a person checks the database against it."
+    },
+    {
+      "id": "artifact:after-install.json",
+      "type": "artifact",
+      "layer": "runtime",
+      "role": "What the last after-install run did (decision 209): {program, ran_at, reason, schedule, findings, failed}, written atomically by tracker.after_install beside the store (the checkpoint's rule, as last-pass.json is), so it moves into the data home with the store. program is the program identity, written only when nothing failed, so the launch door runs the step again after a failed run. api list reads it for the first screen's notice. Ignored by git: it can name a client's folder."
     },
     {
       "id": "artifact:last-pass.json",
@@ -3580,9 +3719,10 @@
       "id": "tests/conftest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6027da92a877bf5d",
-      "lines": 479,
+      "sha256": "f9a7dbe633c463bf",
+      "lines": 509,
       "exports": [
+        "REAL_TASK_SCHEDULER_HERE",
         "TEST_CLIENT",
         "TEST_HOUSEHOLD",
         "TEST_PEOPLE",
@@ -3593,6 +3733,7 @@
         "app_stdin",
         "make_engagement",
         "named_page",
+        "no_task_scheduler_unless_faked",
         "reading_in_this_process",
         "root_for_a_return_of",
         "seed_index",
@@ -3660,11 +3801,51 @@
       "notes": "No fixture files in the repository and no client data, so every test starts from the same pile. It was the marketing demo's sample builder in tracker/api.py; the demo went (decision 41) and the suite still needed the pile. listing_denied() makes a folder really unlistable for the running account, because rglob and os.walk reach the file system by different calls and a monkeypatch of one proves nothing about the other. Decision 73: sheet_xlsx() is how tests/test_catalog.py routes its workbook cases - half of every catalog asks for a schedule a client keeps in Excel, and a sheet is read as rows of tab-separated cells (a phrase across two cells is one phrase, a phrase down two rows is two labels), so typing one as prose would prove the wrong reading. Decision 78: build_scratch_root() assembles the same pile into a whole clients root - one scaffolded engagement with the documents already dropped - which is what .github/workflows/build.yml runs the frozen package over; the fixture lives beside the pile rather than in a tool of its own so there is one pile and not two that drift. It records the engagement through manifest.create_engagement() directly rather than through the suite's helper, because the build workflow imports this module without conftest (decision 104). openpyxl is imported here to WRITE a client's spreadsheet for the suite to read, which is the one use of it the tree keeps. The pile's 'file nobody accepts' is a .bmp since decision 127: it was a .jpg until a photo became a document, and the claim it carries is about a file type no row takes. Decision 143 added cfb_bytes(), a compound-file writer to the letter of [MS-CFB] (version 3, a mini stream, one FAT), and msg_bytes()/msg_storage() over it, so the suite's .msg fixtures are built from nothing - olefile only reads. Decision 169: scanned_pdf() draws lines on a page and saves a PDF with no text layer, and build_scratch_root() drops one (SCRATCH_SCAN, a W-2 whose box labels and figures are drawn as separate lines) so the frozen smoke check proves the package reads."
     },
     {
+      "id": "tests/test_after_install.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "d6f37168316914b4",
+      "lines": 356,
+      "exports": [
+        "ELSEWHERE",
+        "HERE",
+        "Said",
+        "TRACEBACK",
+        "app",
+        "cli",
+        "creates",
+        "malformed",
+        "root",
+        "test_a_changed_program_runs_the_step_at_launch",
+        "test_a_clean_record_is_said_to_be_clean",
+        "test_a_computer_with_no_task_scheduler_registers_nothing",
+        "test_a_failed_run_is_tried_again_at_the_next_launch",
+        "test_a_finding_is_not_a_failure",
+        "test_a_household_whose_applied_line_the_rule_refuses_waits_in_the_app",
+        "test_a_store_that_cannot_open_is_a_failure",
+        "test_an_unreadable_designation_changes_no_schedule",
+        "test_another_computer_registers_nothing_and_removes_its_own_task",
+        "test_move_schedule_here_rewrites_the_designation",
+        "test_no_root_means_the_schedule_waits_for_the_folder",
+        "test_no_store_means_the_check_waits_for_the_first_pass",
+        "test_running_it_twice_is_the_same_as_once",
+        "test_setup_registers_the_schedule_on_the_designated_computer",
+        "test_the_first_computer_to_register_claims_the_schedule",
+        "test_the_launch_door_does_nothing_when_the_program_is_unchanged",
+        "windows"
+      ],
+      "constants": {
+        "HERE": "'office-pc'",
+        "ELSEWHERE": "'front-desk'",
+        "TRACEBACK": "'Traceback'"
+      }
+    },
+    {
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "541167e5882fdbad",
-      "lines": 5605,
+      "sha256": "6178a787f1c92d3d",
+      "lines": 5676,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -3778,9 +3959,7 @@
         "test_every_command_that_reads_the_root_rechecks_it",
         "test_every_command_that_writes_holds_the_root_to_the_checkpoint_first",
         "test_filing_a_parked_card_moves_it_from_under_review_to_received_at_once",
-        "test_install_schedule_defaults_come_from_scheduling",
-        "test_install_schedule_uses_the_same_root_as_the_app",
-        "test_install_schedule_writes_the_job_from_the_apps_own_settings_folder",
+        "test_install_schedule_is_the_repair_path_and_says_its_outcome",
         "test_item_from_spec_normalizes_extensions",
         "test_keep_it_here_is_offered_by_the_copys_name",
         "test_look_alike_spellings_of_one_name_are_refused_as_one_name",
@@ -3804,8 +3983,10 @@
         "test_run_now_reply_carries_the_households_other_returns_and_the_pass_warnings",
         "test_run_now_sorts_against_the_feed_list_like_the_scheduled_pass",
         "test_saving_a_list_refuses_a_changed_row_whose_path_would_pass_the_limit_and_leaves_an_unchanged_one_alone",
+        "test_saving_the_root_registers_the_schedule_on_the_designated_computer",
         "test_set_root_answers_with_every_return_short_of_room_under_the_new_root",
         "test_set_root_records_the_folder_the_job_will_walk",
+        "test_state_carries_the_after_install_findings_until_a_clean_run",
         "test_state_carries_the_held_rows_and_every_word_is_the_vocabularys",
         "test_state_carries_the_household_its_open_years_its_returns_and_the_queue_count",
         "test_state_carries_the_path_of_the_practices_status_page",
@@ -3837,7 +4018,6 @@
         "test_the_letter_travels_as_a_shape_with_the_emphasis_already_decided",
         "test_the_moved_card_offers_mark_missing_on_a_row_whose_copy_and_original_are_both_gone",
         "test_the_new_client_name_rule_lives_in_python_and_uses_the_form_label",
-        "test_the_packaged_app_installs_a_schedule_against_its_own_executable",
         "test_the_reminder_card_says_why_a_link_was_left_out",
         "test_the_reminder_command_reads_the_record_and_the_file_and_renders_on_demand",
         "test_the_reminder_payload_holds_on_a_parked_client_side_file",
@@ -3849,6 +4029,7 @@
         "test_the_returning_client_page_picks_the_returns_recorded_form_by_default",
         "test_the_returns_details_carry_household_year_and_return_name_and_the_editor_cannot_change_them",
         "test_the_scan_command_runs_the_household_pass_and_answers_for_the_return_it_was_asked_about",
+        "test_the_schedule_is_repaired_from_the_toolbar_in_the_apis_words",
         "test_the_settings_carry_the_firm_phone_and_the_vocabulary_names_its_box",
         "test_the_sharing_words_are_the_apis_and_the_renderer_types_none",
         "test_the_short_path_warning_comes_with_the_returns_too",
@@ -3952,8 +4133,8 @@
       "id": "tests/test_build.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "d1f7b16b5dcf34e5",
-      "lines": 638,
+      "sha256": "f754a5ab17798b55",
+      "lines": 672,
       "exports": [
         "BUILD_ENVIRONMENT",
         "BUILD_LOCKS",
@@ -3987,6 +4168,7 @@
         "test_a_package_is_built_only_from_a_version_tag",
         "test_a_scratch_root_is_one_engagement_a_whole_dry_pass_can_walk",
         "test_a_smoke_pass_that_logs_takes_its_root_from_a_settings_folder",
+        "test_batch_files_check_out_with_crlf",
         "test_both_workflows_name_the_one_interpreter_the_office_runs",
         "test_ci_runs_once_per_ready_pull_request_and_windows_only_by_label",
         "test_every_action_the_workflows_run_is_pinned_by_commit",
@@ -3994,6 +4176,7 @@
         "test_every_checkout_leaves_no_credentials_behind",
         "test_every_install_is_hash_checked_from_a_lock",
         "test_every_spelling_of_an_install_is_recognised",
+        "test_setup_runs_the_after_install_step_last_after_the_stamp",
         "test_the_audit_runs_weekly_on_linux_and_never_on_a_push",
         "test_the_build_fails_when_a_frozen_version_differs_from_the_locks",
         "test_the_build_workflow_is_never_run_per_commit",
@@ -4796,8 +4979,8 @@
       "id": "tests/test_layers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "eea0bf4a2e8ed6e8",
-      "lines": 667,
+      "sha256": "4895a6d3da8eb7c0",
+      "lines": 670,
       "exports": [
         "PACKAGE",
         "REPO",
@@ -4836,8 +5019,8 @@
       "id": "tests/test_layout.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "dd988ee874b40e97",
-      "lines": 519,
+      "sha256": "1d30bb2c514e8ae9",
+      "lines": 540,
       "exports": [
         "HOUSEHOLD",
         "PLACE_RETURN",
@@ -4854,6 +5037,7 @@
         "test_each_part_of_the_name_rule_says_its_own_reason",
         "test_every_name_discovery_passes_over_is_refused",
         "test_the_deepest_path_is_measured_from_the_return_folder",
+        "test_the_designation_file_is_never_a_misfit",
         "test_the_five_constructors_refuse_a_bad_name_or_year",
         "test_the_key_folds_exactly_the_stated_look_alikes",
         "test_the_key_of_a_key_is_the_key_and_a_capital_look_alike_is_its_letter",
@@ -5499,8 +5683,8 @@
       "id": "tests/test_repo_map.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "3ac18b16d9d19468",
-      "lines": 878,
+      "sha256": "ebf27e257305fdb2",
+      "lines": 882,
       "exports": [
         "ENFORCERS",
         "ROOT",
@@ -5829,8 +6013,8 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "415fc0627f1b0977",
-      "lines": 3519,
+      "sha256": "eda029d29db26451",
+      "lines": 3521,
       "exports": [
         "DRAFT_DAY",
         "FRIDAY",
@@ -6136,12 +6320,14 @@
       "id": "tests/test_scheduling.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ba9bb484258b9f68",
-      "lines": 313,
+      "sha256": "a6fb41f253f414ed",
+      "lines": 428,
       "exports": [
         "ARGS",
         "NS",
         "ROOT",
+        "Said",
+        "fake_schtasks",
         "parsed",
         "test_a_clients_root_ending_in_a_backslash_survives_the_argument_parser",
         "test_a_missed_run_is_picked_up_rather_than_skipped",
@@ -6154,10 +6340,14 @@
         "test_install_runs_schtasks_on_windows_and_only_shows_the_command_elsewhere",
         "test_overlapping_runs_are_refused_by_the_task_itself",
         "test_paths_with_xml_characters_are_escaped",
+        "test_register_here_is_the_one_registration",
         "test_relative_paths_are_not_mistaken_for_absolute",
+        "test_remove_task_deletes_only_an_existing_task",
+        "test_task_scheduler_here_answers_only_whether_windows",
         "test_the_command_line_is_built_once_for_both_schedulers",
         "test_the_description_names_the_drafting_day_from_the_runner",
         "test_the_description_says_it_drafts_and_does_not_send",
+        "test_the_designation_is_one_computer_name",
         "test_the_job_runs_daily_so_saturday_is_never_missed",
         "test_the_n8n_command_reads_the_same_in_cmd_and_sh",
         "test_the_n8n_command_runs_the_runner_from_the_working_directory",
@@ -6200,9 +6390,10 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "1bfefe217b4aba3f",
-      "lines": 1574,
+      "sha256": "61792cbecacb5ffe",
+      "lines": 1658,
       "exports": [
+        "AFTER_WHAT",
         "CONSOLE_EXEMPT",
         "CONSOLE_GUARDED",
         "DECISION_ROW",
@@ -6211,11 +6402,14 @@
         "DOOR_EXEMPT",
         "FOREIGN_FLAGS",
         "GUARD_NAME",
+        "INSTRUCTIONS",
         "NUMBER_WORDS",
+        "ONE_TIME_STEP_DOCUMENTS",
         "REMOVED_NAME",
         "REPO",
         "RETIRED_FILES",
         "STRUCK",
+        "one_time_step_clauses",
         "read",
         "read_as_prose",
         "test_accept_and_file_it_are_one_call_site",
@@ -6241,6 +6435,8 @@
         "test_gitignore_knows_both_client_trees_and_every_file_written_inside_them",
         "test_gitignore_knows_every_runtime_file_python_writes_outside_the_repo",
         "test_no_document_sends_a_person_to_open_a_refused_file_or_publish_a_stray",
+        "test_no_document_tells_a_person_to_run_a_one_time_step",
+        "test_only_the_lock_asks_the_platform_for_this_computers_name",
         "test_openpyxl_is_imported_only_to_read_a_clients_spreadsheet",
         "test_prose_names_no_weekday_but_the_draft_day",
         "test_the_api_docstring_lists_exactly_the_commands",
@@ -6257,6 +6453,7 @@
         "test_the_guard_finds_the_name_as_an_identifier",
         "test_the_guard_finds_the_name_hard_wrapped_across_two_lines",
         "test_the_one_machine_rule_is_stated_once_as_todays_rule",
+        "test_the_one_time_step_matcher_catches_and_spares",
         "test_the_package_docstring_lists_every_module",
         "test_the_package_prose_names_constants_rather_than_their_values",
         "test_the_packaged_app_has_no_console_and_sends_the_api_utf8_it_serialised_first",
@@ -6297,9 +6494,10 @@
       "constants": {
         "DOCUMENTS": "('README.md', 'docs/ROADMAP.md', 'docs/workflow.md', 'docs/runbook.md', 'docs/storage.md', 'CLAUDE.md')",
         "GUARD_NAME": "'test_the_command_center_is_gone_from_everything_but_the_decision_log'",
-        "CONSOLE_GUARDED": "('rollover', 'filer', 'scanner', 'registry', 'review', 'scaffold', 'store', 'reminder', 'runner', 'router', 'content_check', 'view', 'ledger', 'validators', 'names', 'containers', 'ocr', 'door', 'checkpoint', 'locking')",
+        "CONSOLE_GUARDED": "('rollover', 'filer', 'scanner', 'registry', 'review', 'scaffold', 'store', 'reminder', 'runner', 'router', 'content_check', 'view', 'ledger', 'validators', 'names', 'containers', 'ocr', 'door', 'checkpoint', 'locking', 'after_install')",
         "NUMBER_WORDS": "('ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty')",
-        "STRUCK": "('open it yourself', 'open it on this machine', 'on this machine, and drop', \"drop any document you find into the client's folder\", \"drop the documents in the client's folder\", \"drop the documents you find in the client's folder\", \"drop a copy in the client's folder\", \"drop it in the client's folder\", 'the record itself is the truth', 'nothing is lost either way', 'and run `rebuild` \u2014 nothing is lost')"
+        "STRUCK": "('open it yourself', 'open it on this machine', 'on this machine, and drop', \"drop any document you find into the client's folder\", \"drop the documents in the client's folder\", \"drop the documents you find in the client's folder\", \"drop a copy in the client's folder\", \"drop it in the client's folder\", 'the record itself is the truth', 'nothing is lost either way', 'and run `rebuild` \u2014 nothing is lost')",
+        "ONE_TIME_STEP_DOCUMENTS": "('README.md', 'docs/runbook.md', 'Setup.bat', 'Start App.bat')"
       }
     },
     {
@@ -6844,10 +7042,11 @@
       "id": "tools/repo_map.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "54d924057e3b3de9",
-      "lines": 1225,
+      "sha256": "78ed6f39661035ec",
+      "lines": 1234,
       "cli": "python -m tools.repo_map",
       "exports": [
+        "CRLF_CHECKOUT_SUFFIXES",
         "CURATED_EDGE_TYPES",
         "CURATED_LAYERS",
         "CURATED_NODE_KEYS",
@@ -6909,7 +7108,8 @@
         "IMPORTS_AT_CALL": "'imports at call time'",
         "UNMERGED_ADVICE": "'Resolve these and `git add` them first'",
         "REQUIREMENTS_FILES": "('requirements.txt', 'requirements-build.txt')",
-        "NODE_PREFIXES": "('artifact:', 'rule:')"
+        "NODE_PREFIXES": "('artifact:', 'rule:')",
+        "CRLF_CHECKOUT_SUFFIXES": "('.bat',)"
       },
       "role": "Builds and incrementally updates this map. Derives imports, exports, CLIs, test coverage and hashes from source; merges the curated layer on top.",
       "notes": "Standard library only. `update` re-parses only files whose SHA-256 changed, and a change to this file forces a full rebuild \u2014 new derivation rules must not leave edges typed by the old ones. Test edges are three-way on purpose: `tests` (the test file owning the module by name) is coverage, `exercises` (any other test importing it) is not, and a test importing another test is a plain `imports`. Decision 151: the hash is of the bytes Git commits - git_text_auto_eol_lf() copies the `text=auto eol=lf` rule in .gitattributes, so a CRLF working copy hashes as the LF file CI checks out and `check` only warns about it - and `build`, `update` and `check` refuse while a merge is half-resolved (unmerged_files()), because git ls-files lists an unmerged path once per stage. That refusal is why the resolved files are `git add`-ed before `update`. tools/vocab_report.py hashes its inputs with the same function."
@@ -7258,6 +7458,12 @@
     },
     {
       "from": "tests/conftest.py",
+      "to": "tracker/scheduling.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/conftest.py",
       "to": "tracker/store.py",
       "type": "exercises",
       "source": "derived"
@@ -7329,6 +7535,96 @@
       "source": "derived"
     },
     {
+      "from": "tests/test_after_install.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_after_install.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_after_install.py",
+      "to": "tracker/api.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_after_install.py",
+      "to": "tracker/layout.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_after_install.py",
+      "to": "tracker/ledger.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_after_install.py",
+      "to": "tracker/locking.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_after_install.py",
+      "to": "tracker/records.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_after_install.py",
+      "to": "tracker/registry.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_after_install.py",
+      "to": "tracker/runner.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_after_install.py",
+      "to": "tracker/scheduling.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_after_install.py",
+      "to": "tracker/settings.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_after_install.py",
+      "to": "tracker/store.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_after_install.py",
+      "to": "tracker/templates.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_after_install.py",
+      "to": "tests/conftest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_after_install.py",
+      "to": "tracker/after_install.py",
+      "type": "tests",
+      "source": "derived"
+    },
+    {
       "from": "tests/test_api.py",
       "to": "pkg:pytest",
       "type": "depends_on",
@@ -7337,6 +7633,12 @@
     {
       "from": "tests/test_api.py",
       "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api.py",
+      "to": "tracker/after_install.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -7636,7 +7938,19 @@
     },
     {
       "from": "tests/test_build.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_build.py",
       "to": "tools/lockfiles.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_build.py",
+      "to": "tracker/after_install.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -8458,6 +8772,12 @@
     },
     {
       "from": "tests/test_layout.py",
+      "to": "tracker/registry.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_layout.py",
       "to": "tracker/templates.py",
       "type": "exercises",
       "source": "derived"
@@ -8466,6 +8786,12 @@
       "from": "tests/test_layout.py",
       "to": "tracker/validators.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_layout.py",
+      "to": "tests/conftest.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -10024,6 +10350,18 @@
     },
     {
       "from": "tests/test_scheduling.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_scheduling.py",
+      "to": "tracker/layout.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_scheduling.py",
       "to": "tracker/locking.py",
       "type": "exercises",
       "source": "derived"
@@ -10038,6 +10376,12 @@
       "from": "tests/test_scheduling.py",
       "to": "tracker/settings.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_scheduling.py",
+      "to": "tests/conftest.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -10091,6 +10435,12 @@
     {
       "from": "tests/test_single_source.py",
       "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_single_source.py",
+      "to": "tracker/after_install.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -10749,8 +11099,86 @@
       "source": "curated"
     },
     {
+      "from": "tracker/after_install.py",
+      "to": "tracker/__init__.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/after_install.py",
+      "to": "tracker/door.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/after_install.py",
+      "to": "tracker/fsio.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/after_install.py",
+      "to": "tracker/ledger.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/after_install.py",
+      "to": "tracker/locking.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/after_install.py",
+      "to": "tracker/registry.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/after_install.py",
+      "to": "tracker/scheduling.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/after_install.py",
+      "to": "tracker/settings.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/after_install.py",
+      "to": "tracker/store.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/after_install.py",
+      "to": "tracker/page.py",
+      "type": "imports_at_call",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/after_install.py",
+      "to": "artifact:after-install.json",
+      "type": "reads",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/after_install.py",
+      "to": "artifact:after-install.json",
+      "type": "writes",
+      "source": "curated"
+    },
+    {
       "from": "tracker/api.py",
       "to": "tracker/__init__.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/api.py",
+      "to": "tracker/after_install.py",
       "type": "imports",
       "source": "derived"
     },
@@ -10919,6 +11347,12 @@
     {
       "from": "tracker/api.py",
       "to": "artifact:Status Report.html",
+      "type": "reads",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/api.py",
+      "to": "artifact:after-install.json",
       "type": "reads",
       "source": "curated"
     },
@@ -12358,6 +12792,12 @@
     },
     {
       "from": "tracker/scheduling.py",
+      "to": "tracker/layout.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/scheduling.py",
       "to": "tracker/locking.py",
       "type": "imports",
       "source": "derived"
@@ -12376,8 +12816,20 @@
     },
     {
       "from": "tracker/scheduling.py",
+      "to": "artifact:_Scheduling computer.txt",
+      "type": "reads",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/scheduling.py",
       "to": "api_entry.py",
       "type": "schedules",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/scheduling.py",
+      "to": "artifact:_Scheduling computer.txt",
+      "type": "writes",
       "source": "curated"
     },
     {
