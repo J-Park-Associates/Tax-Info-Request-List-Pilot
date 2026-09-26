@@ -1636,13 +1636,16 @@ async function rollFromCard() {
       // Decision 137: a link that was not a web address was left behind;
       // the sentence is the API's.
       if (one.link_dropped) lines.push(`  ${one.link_dropped}`);
+      // Decision 201: a same-name issuer pair last year's list held, carried
+      // as it was; the sentence is the API's.
+      for (const warning of one.warnings) lines.push(`  ${warning}`);
     }
     for (const one of result.retired) lines.push(`• ${fill(words.roll_retired_line, { label: one })}`);
     for (const one of result.skipped) lines.push(`• ${one.prior}: ${one.reason}`);
     // Decision 159: every return rolled but a retirement failed - the
     // API's own sentence says what was rolled, retired and left open.
     if (result.warning) lines.push(result.warning);
-    const dropped = result.rolled.some((one) => one.link_dropped);
+    const dropped = result.rolled.some((one) => one.link_dropped || one.warnings.length);
     banner(lines.join("\n"),
       result.skipped.length || result.warning || dropped ? "warn" : "ok");
   } catch (err) {
@@ -3226,7 +3229,9 @@ function editorNote(text, cls) {
 // may be cached and a write never is - the save still hands back
 // list_head and is judged under the lock (decision 160) - so a stale
 // screen costs a refusal, never a write. Only when the state on screen is
-// another return's (a switch that has not landed) is it read first.
+// another return's (a switch that has not landed) is it read first; if it
+// is still another's after that, the banner says so - never a button that
+// does nothing (the review's S4).
 async function openEditor() {
   if (!active) return;
   try {
@@ -3239,6 +3244,12 @@ async function openEditor() {
       : await call(withEng("state"));
   } catch (err) {
     failed(err, openEditor);
+    return;
+  }
+  // A switch landed while the state was read: the editor opens on no
+  // other return than the one on screen (the review's S4, decision 201).
+  if (!editorState.paths || editorState.paths.engagement !== active) {
+    banner(vocab.editor.not_this_return, "err");
     return;
   }
   editorFolds.clear();

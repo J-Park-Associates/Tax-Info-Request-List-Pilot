@@ -954,6 +954,22 @@ def test_two_issuer_rows_with_the_same_name_are_refused_when_the_list_is_validat
     assert not ledger.path_for(folder).exists()
 
 
+def test_a_roll_carries_only_last_years_pair_and_refuses_a_row_it_adds_under_that_name(tmp_path):
+    """Decision 201, the review's S1: the rows a roll carries are the ones
+    last year's list held. A row the roll adds - not among them - that
+    names a carried row's issuer again is refused like any other write."""
+    from tracker.manifest import ISSUER_NAMED_TWICE
+
+    folder = tmp_path / "R"
+    folder.mkdir()
+    held = k1_rows(("F02", "Ashford Holdings"))
+    added = replace(held[1], identifier="F03")
+    with pytest.raises(ManifestError, match=ISSUER_NAMED_TWICE.split(" both")[0].format(
+            inner="F02", outer="F03")):
+        create_engagement(folder, [*held, added], carried=held)
+    assert create_engagement(folder, held, carried=held) == ()
+
+
 def test_a_list_already_holding_one_name_twice_saves_its_other_edits_and_warns(tmp_path):
     """The orchestrator's ruling on R7 (decision 201): a list the record
     already holds with two issuer rows of one name is not locked. A save
@@ -965,8 +981,9 @@ def test_a_list_already_holding_one_name_twice_saves_its_other_edits_and_warns(t
     folder = tmp_path / "S"
     folder.mkdir()
     held = k1_rows(("F02", "Ashford Holdings"), ("F03", "Ashford Holdings"), ("F04", "Birch Lane"))
-    create_engagement(folder, held, carried=True)          # as last year's list rolled forward
     said = ISSUER_NAMED_TWICE.format(inner="F02", outer="F03", broad="F01", name="Ashford Holdings")
+    # As last year's list rolled forward: carried, and the pair said.
+    assert create_engagement(folder, held, carried=held) == (said,)
 
     edited = [replace(held[0], document="Schedule K-1s, all issuers"), *held[1:]]
     saved = save_rules(folder, edited, load_engagement_info(folder))

@@ -7198,6 +7198,15 @@ def test_a_blank_issuer_name_is_refused_before_anything_is_read(capsys, demo_roo
     _nothing_moved(engagement, before)
 
 
+def test_an_issuer_that_is_not_text_is_refused_rather_than_made_a_name(capsys, demo_root):
+    engagement, row = _issuer_return(capsys, demo_root)
+    before = _as_it_stands(engagement)
+    for sent in (["Dunmore Capital"], {"name": "Dunmore Capital"}, 7):
+        code, payload = _add_issuer(capsys, engagement, row, issuer=sent)
+        assert code == 1 and payload["error"] == api.ISSUER_NOT_TEXT, sent
+    _nothing_moved(engagement, before)
+
+
 def test_an_issuer_row_that_would_not_narrow_this_returns_k1_row_is_refused(capsys, demo_root):
     """A return whose K-1 row is its own - no Any Keyword in common with the
     catalog's - has issuer rows copied from that row, in the editor: the
@@ -7229,33 +7238,83 @@ def test_an_editor_opened_before_the_issuer_was_added_is_refused_on_save(capsys,
     assert "F03" in {rule["identifier"] for rule in api._state(engagement)["rules"]}
 
 
+def _hold_a_twin(engagement):
+    """F03, a second issuer row named Ashford Holdings beside F02, recorded
+    as a list written before decision 201 could hold it."""
+    from dataclasses import replace
+
+    from tracker.locking import engagement_lock
+    from tracker.manifest import validated
+    from tracker.records import rule_to_json
+    from tracker.templates import issuer_row, item_from_spec
+
+    [twin] = validated([item_from_spec(issuer_row("F03", "Ashford Holdings"))])
+    with engagement_lock(engagement):
+        store.record(store.connect(), engagement, ledger.new(ledger.RULES_CHANGED, **{
+            ledger.RULES_KEY: [rule_to_json(replace(twin, row=3))], ledger.REMOVED_KEY: [],
+            ledger.INFO_KEY: {},
+        }))
+
+
+TWIN_SAID = {"inner": "F02", "outer": "F03", "broad": "F01", "name": "Ashford Holdings"}
+
+
+def test_a_list_already_holding_one_issuer_name_twice_still_renames(capsys, demo_root):
+    """Decision 201, the review's S1: a rename changes an identifier and
+    never a name, so a same-name pair already on the list is not the
+    rename's to refuse."""
+    from tracker.manifest import list_head
+
+    engagement, _ = _issuer_return(capsys, demo_root)
+    _hold_a_twin(engagement)
+    code, payload = run(capsys, "rename", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"from": "F03", "to": "F09", "head": list_head(engagement)})
+    assert code == 0, payload
+    assert [rule["identifier"] for rule in payload["state"]["rules"]] == ["F01", "F02", "F09"]
+
+
+def test_the_issuer_card_files_a_new_issuer_on_a_list_already_holding_one_name_twice(
+        capsys, demo_root):
+    """Decision 201, the review's S1: the card checks the list with the list
+    as the record holds it, so a pair already on it does not refuse a
+    different issuer's row."""
+    engagement, row = _issuer_return(capsys, demo_root)
+    _hold_a_twin(engagement)
+    code, payload = _add_issuer(capsys, engagement, row)
+    assert code == 0, payload
+    assert payload["added_and_filed"]["added"]["identifier"] == "F04"
+
+
+def test_a_roll_of_a_list_already_holding_one_issuer_name_twice_carries_it_and_says_so(
+        capsys, demo_root):
+    """Decision 201, the review's S1: the pair rolls as it was, and the
+    roll's reply carries the sentence - not left to the first later save."""
+    from tracker.manifest import ISSUER_NAMED_TWICE
+
+    engagement, _ = _issuer_return(capsys, demo_root)
+    _hold_a_twin(engagement)
+    code, payload = run(capsys, "rollover", stdin={"prior": str(engagement), "year": BASE_YEAR + 1})
+    assert code == 0, payload
+    assert payload["rollover"]["warnings"] == [ISSUER_NAMED_TWICE.format(**TWIN_SAID)]
+    assert {"F02", "F03"} <= {rule["identifier"] for rule in payload["state"]["rules"]}
+
+
 def test_an_edit_of_a_list_already_holding_one_issuer_name_twice_saves_and_warns(capsys, demo_root):
     """The orchestrator's ruling on R7 (decision 201): two issuer rows of
     one name already on the list do not lock a save of anything else, and
     the reply names both rows; a save naming a third row the same is
     refused."""
-    from dataclasses import replace
-
-    from tracker.locking import engagement_lock
-    from tracker.manifest import ISSUER_NAMED_TWICE, list_head, validated
-    from tracker.records import rule_to_json
-    from tracker.templates import issuer_row, item_from_spec
+    from tracker.manifest import ISSUER_NAMED_TWICE, list_head
 
     engagement, _ = _issuer_return(capsys, demo_root)
-    [twin] = validated([item_from_spec(issuer_row("F03", "Ashford Holdings"))])
-    twin = replace(twin, row=3)
-    with engagement_lock(engagement):         # as a list recorded before decision 201 could hold it
-        store.record(store.connect(), engagement, ledger.new(ledger.RULES_CHANGED, **{
-            ledger.RULES_KEY: [rule_to_json(twin)], ledger.REMOVED_KEY: [], ledger.INFO_KEY: {},
-        }))
+    _hold_a_twin(engagement)
     rules = api._state(engagement)["rules"]
     rules[0] = {**rules[0], "expected_count": 2}
     code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
                         stdin={"items": rules, "engagement": {}})
     assert code == 0, payload
     assert payload["saved"]["changed"] == ["F01"]
-    assert payload["warnings"][0] == ISSUER_NAMED_TWICE.format(
-        inner="F02", outer="F03", broad="F01", name="Ashford Holdings")
+    assert payload["warnings"][0] == ISSUER_NAMED_TWICE.format(**TWIN_SAID)
     third = {**rules[1], "identifier": "F04"}
     code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
                         stdin={"items": [*rules, third], "engagement": {}, "head": list_head(engagement)})
@@ -7273,6 +7332,7 @@ def test_the_vocabulary_carries_every_word_201_shows():
                                          "min_size_kb", "required_keywords", "any_keywords",
                                          "date_pattern", "named"]
     assert editor["routing"] == "Routing rules"
+    assert editor["not_this_return"] == api.EDITOR_NOT_THIS_RETURN
     assert editor["routing_all"] == "Show every row's routing rules"
     assert editor["routing_help"] == ("How the tracker recognises this document when it arrives. A save "
                                       "checks these the same way whether the fold is open or not.")

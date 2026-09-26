@@ -1341,8 +1341,8 @@ def create_engagement(
     info: EngagementInfo | None = None,
     *,
     form: str = "",
-    carried: bool = False,
-) -> None:
+    carried: Iterable[RequestItem] = (),
+) -> tuple[str, ...]:
     """Write an engagement's first request list and details into its record.
 
     The folder must exist and hold no journal: a live engagement carries a
@@ -1356,11 +1356,16 @@ def create_engagement(
 
     ``form`` is the catalog the rows were cut from, recorded in the
     details. A keyword rather than a field of the rows because it is one
-    fact about the engagement, not a property of any request. ``carried``
-    says the rows are last year's carried forward by the rollover, whose
-    names nobody touched: two issuer rows of one name on them are carried
-    as they were rather than refusing the roll (decision 201). Optional,
+    fact about the engagement, not a property of any request. Optional,
     and a blank never clears a form ``info`` already carries.
+
+    ``carried`` is the rows of ``items`` that were on last year's list, as
+    the rollover carried them forward, names untouched: two issuer rows of
+    one name among them are carried as they were rather than refusing the
+    roll, and the pair's sentence (:data:`ISSUER_NAMED_TWICE`) is returned
+    so the roll's reply says it (decision 201, the review's S1). A row the
+    roll adds from the catalog is not in ``carried`` and gets the ordinary
+    check. Empty - every create that is not a roll - refuses every pair.
     """
     from tracker import ledger, store
     from tracker.locking import engagement_lock
@@ -1370,8 +1375,10 @@ def create_engagement(
         raise ManifestError(f"{folder} is not a folder; make it before creating the engagement")
     if ledger.path_for(folder).exists():
         raise ManifestError(f"Refusing to overwrite an engagement that already has a record: {folder}")
-    items = list(items)
-    rows = [rule_to_json(item) for item in validated(items, recorded=items if carried else None)]
+    recorded = list(carried) or None
+    checked = validated(items, recorded=recorded)
+    warnings = tuple(check_narrowing_names(checked, recorded=recorded))
+    rows = [rule_to_json(item) for item in checked]
     info = info or EngagementInfo()
     # A reminder's link is a web address or nothing (decision 137, L5).
     if problem := link_problem(info.link):
@@ -1390,6 +1397,7 @@ def create_engagement(
             ledger.REMOVED_KEY: [],
             ledger.INFO_KEY: info_to_json(info),
         }))
+    return warnings
 
 
 def save_rules(

@@ -2128,6 +2128,15 @@ twice — `Ashford` and `Ashford Holdings`, or two rows both `Ashford
 Holdings`, would all claim the same K-1 — and the save or the card is
 refused, by name, if they do.
 
+A list that **already** holds two rows of one name — written before
+this check, or rolled forward from such a year — is not locked: a save
+of anything else goes through, the roll forward carries the pair as it
+was, and the banner warns *"Rows F02 and F03 both narrow F01 with the
+same name, …: every document naming it would park."* It means every K-1
+from that issuer will sit in Needs Review until one of the two rows is
+gone. Remove one of them, or give it the other entity's name if it was
+really a different issuer, and save; the warning stops.
+
 **What then happens.**
 
 - A K-1 that prints one issuer row's name files on that row. It beats

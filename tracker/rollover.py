@@ -197,10 +197,22 @@ class RolloverReport:
     #: :data:`LINK_NOT_CARRIED` when the prior's link was left behind
     #: because it is not a web address (decision 137, L5), else ``""``.
     link_dropped: str = ""
+    #: What creating the new year said of the rows carried (decision 201):
+    #: a same-name issuer pair last year's list already held, carried as it
+    #: was, in :data:`tracker.manifest.ISSUER_NAMED_TWICE`'s words.
+    warnings: list[str] = field(default_factory=list)
 
     @property
     def items(self) -> list[RequestItem]:
         return [r.item for r in self.rolled]
+
+    @property
+    def from_last_year(self) -> list[RequestItem]:
+        """Every row that was on last year's list - active or set aside -
+        and not a row this roll added from the catalog (decision 201): the
+        rows whose names nobody touched, which ``create_engagement`` carries
+        as they were."""
+        return [r.item for r in self.rolled if r.origin != ORIGIN_NEW]
 
     @property
     def carried(self) -> list[RolledItem]:
@@ -867,7 +879,8 @@ def _make_one(roll: _PlannedRoll) -> list[Path]:
     # call's own mkdir made is removed again (decision 137).
     made = make_new_folders(roll.target)
     try:
-        create_engagement(roll.target, roll.report.items, roll.info, carried=True)
+        roll.report.warnings = list(create_engagement(roll.target, roll.report.items, roll.info,
+                                                      carried=roll.report.from_last_year))
         scaffold_engagement(roll.target)
     except Exception:
         _unmake(roll.target, made)
@@ -1074,9 +1087,10 @@ if __name__ == "__main__":
     # command line defaults them exactly as the app's rollover does, so an
     # engagement is on the reminder's ladder however it was made
     # (decision 123).
-    create_engagement(target, result.items,
-                      with_default_dates(carried, carried.form or ns.form, result.target_year),
-                      carried=True)
+    result.warnings = list(create_engagement(
+        target, result.items,
+        with_default_dates(carried, carried.form or ns.form, result.target_year),
+        carried=result.from_last_year))
 
     # All of the work before any of the report: the folders are made now,
     # so nothing about printing can leave a folder with a record and no
@@ -1095,6 +1109,8 @@ if __name__ == "__main__":
     print(f"Rolled {result.prior_dir.name} forward ({span})\n")
     if warning := engagement_from(prior_dir).warning:
         print(f"  WARNING: {warning}\n")      # decision 177: it rolled where it sits
+    for warning in result.warnings:           # decision 201: a same-name pair carried
+        print(f"  WARNING: {warning}\n")
     for rolled in result.carried:
         print(f"  CARRIED {rolled.item.label}")
         print(f"          {rolled.note}")

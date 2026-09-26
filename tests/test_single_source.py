@@ -2563,8 +2563,9 @@ class Element extends Node {
   setAttribute(key, value) { this.attributes[key] = String(value); }
   append(...nodes) { for (const n of nodes) this.childNodes.push(n instanceof Node ? n : new Text(String(n))); }
   replaceChildren(...nodes) { this.childNodes = []; this.append(...nodes); }
+  addEventListener() {}
 }
-const document = { createElement: (tag) => new Element(tag) };
+const document = { createElement: (tag) => new Element(tag), activeElement: null };
 const tree = (n) => n instanceof Text ? n.data
   : { tag: n.tag, className: n.className, attributes: n.attributes, children: n.childNodes.map(tree) };
 """
@@ -2613,7 +2614,7 @@ def test_the_editor_set_aside_fold_draws_each_group_as_elements(tmp_path):
         "function fill(pattern, values) {"), """
 const NOT_ASKED_GROUP = "not asked";
 const vocab = { columns: [], set_aside: { heading: "Set aside ({n})", group: "{label} ({n})" },
-                editor: { plain_columns: [], routing_columns: [] } };
+                editor: { plain_columns: [], routing_columns: [], routing_all: "", routing_help: "" } };
 const editorState = { learned: {} };
 const editorFolds = new Map();
 const editorRowIsCustom = () => false;
@@ -2645,6 +2646,179 @@ process.stdout.write(JSON.stringify(tree(page["ed-rows"])));
     assert not any("[object" in text for text in _texts(drawn))
     assert [box["children"][0]["children"] for box in fold["children"][2::2]] == [["B01"], ["C01"]]
     assert _texts(active) == ["A01"]
+
+
+def _class_names(node) -> list[str]:
+    """Every ``className`` in a drawn tree, in order."""
+    if isinstance(node, str):
+        return []
+    return [node["className"]] + [name for child in node["children"] for name in _class_names(child)]
+
+
+def test_the_plain_view_draws_one_box_per_column_and_a_custom_rows_document_in_the_plain_part(
+        tmp_path):
+    """Decision 201: ``requestRows`` with the fold, run as written, draws
+    one box for every column of every row across the plain part and the
+    fold - none twice, none lost - and a custom row's Document with the
+    plain boxes, because nothing else names it; a catalog row's Document
+    is in the fold."""
+    drawn = _run_renderer(tmp_path, "plain_view", (
+        "function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack, "
+        "learned = {}, keyed = true, fold = null }) {",), """
+const vocab = { editor: { routing: "Routing", routing_help: "How it is recognised.", remove_row: "Remove" },
+                triage: { identifier_separator: " - " } };
+const keys = ["identifier", "document", "required_keywords", "expected_count", "asked"];
+const columns = keys.map((key) => ({ key, label: key, help: "" }));
+const drawnBoxes = [];
+function cellInput(row, column) {
+  drawnBoxes.push([row.identifier, column.key]);
+  return el("span", { className: `cell-${column.key}` });
+}
+const rows = [{ identifier: "A01", document: "W-2", custom: false },
+              { identifier: "X01", document: "Letter from the county", custom: true }];
+const box = document.createElement("div");
+requestRows(box, rows, { columns, onChange: () => {}, onRemove: () => {}, keyed: false, fold: {
+  plain: ["expected_count", "asked"], routing: ["identifier", "document", "required_keywords"],
+  custom: (row) => row.custom, isOpen: () => false, setOpen: () => {} } });
+process.stdout.write(JSON.stringify({ boxes: drawnBoxes, tree: tree(box) }));
+""")
+    keys = ["identifier", "document", "required_keywords", "expected_count", "asked"]
+    assert sorted(map(tuple, drawn["boxes"])) == sorted((row, key) for row in ("A01", "X01") for key in keys)
+    [table] = drawn["tree"]["children"]
+    catalog_plain, catalog_fold, custom_plain, custom_fold = table["children"][1]["children"]
+    cells = {name: [c[len("cell-"):] for c in _class_names(part) if c.startswith("cell-")]
+             for name, part in (("catalog_plain", catalog_plain), ("catalog_fold", catalog_fold),
+                                ("custom_plain", custom_plain), ("custom_fold", custom_fold))}
+    assert cells == {"catalog_plain": ["expected_count", "asked"],
+                     "catalog_fold": ["identifier", "document", "required_keywords"],
+                     "custom_plain": ["document", "expected_count", "asked"],
+                     "custom_fold": ["identifier", "required_keywords"]}
+
+
+# The dialogs' guard as written: the registry, the snapshot, the dirty test
+# and requestClose, against a page of plain stand-ins.
+_DIALOG_GUARD = ("const DIALOGS = {", "function snapshotOf(id) {", "function isDirty(id) {",
+                 "function rebaseline(id, keys) {", "function unsavedBar(id) {",
+                 "function requestClose(id) {")
+_DIALOG_PAGE = """
+const vocab = { dialogs: { unsaved: "Unsaved.", keep_editing: "Keep", discard: "Discard" } };
+const classes = (...names) => { const on = new Set(names);
+  return { contains: (c) => on.has(c), add: (c) => on.add(c), remove: (c) => on.delete(c),
+           toggle: (c, force) => { if (force ?? !on.has(c)) on.add(c); else on.delete(c); } }; };
+const bar = { classList: classes("hidden"), parts: {},
+              querySelector(sel) { return this.parts[sel] ||= { textContent: "", focus() {} }; } };
+const page = new Map();
+const $ = (id) => {
+  if (!page.has(id)) page.set(id, { value: "", textContent: "", classList: classes(), focus() {},
+                                    querySelector: () => bar, querySelectorAll: () => [] });
+  return page.get(id);
+};
+const dialogSnapshot = {};
+const dialogKept = {};
+const closed = [];
+const closeDialog = (id) => closed.push(id);
+const keepEditing = () => {};
+let editorRows = [];
+let details = {};
+const engagementFromFields = () => details;
+let editorFeeds = [];
+let handingOver = null;
+const closeNewReturn = () => {};
+"""
+
+
+def _dialog_guard(tmp_path, name: str, headers: tuple[str, ...], script: str):
+    return _run_renderer(tmp_path, name, (*_DIALOG_GUARD, *headers), _DIALOG_PAGE + script)
+
+
+def test_closing_the_editor_closes_it_clean_and_raises_the_bar_on_a_changed_row_or_detail(tmp_path):
+    """F-T-7, run as written: ``requestClose`` on an editor nothing moved in
+    closes it; one whose rows moved, or whose details alone moved, shows
+    the unsaved bar and stays open."""
+    seen = _dialog_guard(tmp_path, "dialog_close", (), """
+const wizardModel = () => null;
+const outcome = () => ({ closed: closed.splice(0), bar: !bar.classList.contains("hidden") });
+const results = {};
+editorRows = [{ identifier: "A01", document: "W-2" }]; details = { client: "Pat" };
+dialogSnapshot.editor = snapshotOf("editor");
+requestClose("editor"); results.clean = outcome();
+editorRows[0].document = "W-2s"; requestClose("editor"); results.row = outcome();
+bar.classList.add("hidden"); editorRows[0].document = "W-2"; details.client = "Pat Lee";
+requestClose("editor"); results.detail = outcome();
+process.stdout.write(JSON.stringify(results));
+""")
+    assert seen["clean"] == {"closed": ["editor"], "bar": False}
+    assert seen["row"] == {"closed": [], "bar": True}
+    assert seen["detail"] == {"closed": [], "bar": True}
+
+
+def test_picking_a_form_is_not_unsaved_work_but_typing_after_it_is(tmp_path):
+    """Decision 201: picking a form fills its defaults in, which is not the
+    person's typing - ``chooseForm`` as written leaves New household clean;
+    a box typed in afterwards makes it dirty."""
+    seen = _dialog_guard(tmp_path, "choose_form", (
+        "function chooseForm(formId) {", "function wizardModel() {", "function fill(pattern, values) {"), """
+Object.assign(vocab, { household: { items_title: "{form} requests" }, ask_the_client: "Ask",
+                       ask_the_client_note: "Note" });
+const forms = [{ id: "1040", label: "1040", who: "Individuals" }];
+const templatesByForm = { "1040": [{ identifier: "A01" }] };
+let selectedForm = null, templates = [], customItems = [], nameIsAuto = false, wizardPeople = [];
+const defaultYear = 2026, addingTo = null;
+let ticks = [];
+$("tmpl-list").querySelectorAll = () => ticks;
+const householdContact = () => "Pat Lee";
+const syncNameDefault = () => { $("ne-name").value = "1040 - Pat Lee"; };
+const blankPerson = () => ({ kind: "taxpayer", name: "", own: false, proposed: [] });
+const labelPeopleBlock = () => {}, renderPeople = () => {}, refreshProposals = () => {};
+const renderTemplateList = () => { ticks = [{ checked: true }]; };
+const renderCustomRows = () => {}, showStep = () => {};
+dialogSnapshot.modal = snapshotOf("modal");
+chooseForm("1040");
+const picked = isDirty("modal");
+$("ne-due").value = "2027-04-15";
+process.stdout.write(JSON.stringify({ picked, typed: isDirty("modal") }));
+""")
+    assert seen == {"picked": False, "typed": True}
+
+
+def test_a_refused_save_opens_every_fold_and_keeps_the_editor_open(tmp_path):
+    """Decision 201, R5, run as written: a refusal names a row and a column,
+    so ``saveEditor``'s refusal opens every fold, says the API's sentence
+    in the editor and does not close it."""
+    seen = _run_renderer(tmp_path, "save_refused", ("async function saveEditor() {",), """
+const page = { "ed-save": { disabled: false } };
+const $ = (id) => page[id];
+const withEng = (command) => [command];
+const call = async () => { throw new Error("Row A01: a fabricated refusal"); };
+const editorRows = [], editorState = { list_head: "h" };
+const engagementFromFields = () => ({});
+const done = { folds: 0, notes: [], closed: [] };
+const showEveryFold = () => { done.folds += 1; };
+const editorNote = (text, cls) => done.notes.push([text, cls]);
+const closeDialog = (id) => done.closed.push(id);
+const render = () => {}, banner = () => {};
+saveEditor().then(() => process.stdout.write(JSON.stringify(done)));
+""")
+    assert seen == {"folds": 1, "notes": [["Row A01: a fabricated refusal", "err"]], "closed": []}
+
+
+def test_edit_request_list_says_so_when_the_state_is_still_another_returns(tmp_path):
+    """The review's S4: when the state on screen is still another return's
+    after reading it again, Edit Request List puts the API's sentence in
+    the banner and opens nothing - never a button that does nothing."""
+    from tracker import api
+
+    seen = _run_renderer(tmp_path, "open_editor", ("async function openEditor() {",), f"""
+const vocab = {{ editor: {{ not_this_return: {json.dumps(api.EDITOR_NOT_THIS_RETURN)} }} }};
+const active = "/root/J Park & Associates/Lee/2026/1040 - Pat Lee";
+let lastState = {{ paths: {{ engagement: "/root/J Park & Associates/Lee/2026/1120S - Lee LLC" }} }};
+const done = {{ refreshed: 0, banners: [], opened: [] }};
+const refresh = async () => {{ done.refreshed += 1; }};
+const banner = (text, cls) => done.banners.push([text, cls]);
+const openDialog = (id) => done.opened.push(id);
+openEditor().then(() => process.stdout.write(JSON.stringify(done)));
+""")
+    assert seen == {"refreshed": 1, "banners": [[api.EDITOR_NOT_THIS_RETURN, "err"]], "opened": []}
 
 
 def _side_lines(tmp_path, labels: dict, items: list[dict]) -> list:
@@ -2829,7 +3003,7 @@ def test_the_editor_opens_on_the_state_on_screen_and_spawns_none():
     body = _js_function(js, "async function openEditor() {")
     assert 'withEng("state")' not in body and "call(" not in body
     assert "editorState = lastState;" in body
-    assert "lastState.paths.engagement !== active) await refresh(active);" in body
+    assert "if (!ours()) await refresh(active);" in body
     assert "head: editorState.list_head" in _js_function(js, "async function saveEditor() {")
 
 

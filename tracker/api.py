@@ -845,6 +845,11 @@ ROUTING_LABEL = "Routing rules"
 ROUTING_ALL_LABEL = "Show every row's routing rules"
 ROUTING_HELP = ("How the tracker recognises this document when it arrives. A save checks these "
                 "the same way whether the fold is open or not.")
+#: Edit Request List pressed while the state on screen is still another
+#: return's, after reading it again (decision 201, the review's S4): said
+#: in the banner rather than a button that does nothing.
+EDITOR_NOT_THIS_RETURN = ("The request list could not be opened: what is on screen is still another "
+                          "return's. Pick the return again, then open its request list.")
 #: The keyword box on a parked or moved document's card (decision 201,
 #: D11): its label, and what the word does, as its title.
 KEYWORD_LABEL = "Keyword to learn (optional)"
@@ -858,6 +863,10 @@ ISSUER_HELP = ("Adds {identifier}, a K-1 row for this issuer, to the request lis
                "document under it. Type the distinctive words and leave off the suffix (L.P., LLC).")
 ISSUER_ADD_LABEL = "Add the issuer and file it"
 ISSUER_ADDED_AND_FILED = "{identifier} - {document} added to the request list, and {name} filed under it."
+#: A card's issuer that is not a piece of text - only a hand-written
+#: stdin can send one - refused rather than turned into a name (the
+#: review's N4, as ``_seq_of`` refuses a missing version).
+ISSUER_NOT_TEXT = "the issuer's name must be typed as text, as the K-1 prints it"
 
 # ---- the people block (decision 128) ----------------------------------------
 #: Every word the new-return dialog's and the editor's People block shows. The record
@@ -1444,6 +1453,7 @@ def _vocab() -> dict:
             # and which fold under its Routing rules, and the fold's words.
             "plain_columns": list(PLAIN_COLUMNS), "routing_columns": list(ROUTING_COLUMNS),
             "routing": ROUTING_LABEL, "routing_all": ROUTING_ALL_LABEL, "routing_help": ROUTING_HELP,
+            "not_this_return": EDITOR_NOT_THIS_RETURN,
         },
     }
 
@@ -3559,7 +3569,8 @@ def _cmd_rollover(argv: list[str]) -> dict:
         # call's own mkdir made is undone (decision 137), and the year only
         # when it is empty.
         made += make_new_folders(engagement)
-        create_engagement(engagement, report.items, info, carried=True)
+        report.warnings = list(create_engagement(engagement, report.items, info,
+                                                 carried=report.from_last_year))
         scaffold_engagement(engagement)
     except Exception:
         _undo_made(made, {engagement})
@@ -3584,7 +3595,8 @@ def _carried_payload(report, prior: Path) -> dict:
     origin, its note and whether it is asked, last year's unfiled files, and
     - since decision 177 - the prior's own warning, which decision 188
     leaves empty for a disagreement: a household whose folders and record
-    disagree is paused and never rolls."""
+    disagree is paused and never rolls - and, since decision 201, the
+    sentence for each same-name issuer pair carried as it was."""
     return {
         "warning": engagement_from(prior).warning,
         "carried": [
@@ -3595,6 +3607,9 @@ def _carried_payload(report, prior: Path) -> dict:
         "unfiled_last_year": report.unfiled_last_year,
         # Decision 137 (L5): the prior's link, when it was left behind.
         "link_dropped": report.link_dropped,
+        # Decision 201: a same-name issuer pair last year's list held,
+        # carried as it was - said here, not first on some later save.
+        "warnings": list(report.warnings),
     }
 
 
@@ -4059,7 +4074,9 @@ def _cmd_add_issuer_and_file(argv: list[str]) -> dict:
     head = spec.get("head")
     if not isinstance(head, str) or not head.strip():
         raise ManifestError(NO_LIST_HEAD)
-    issuer = str(spec.get("issuer", "") or "")
+    issuer = spec.get("issuer", "") or ""
+    if not isinstance(issuer, str):
+        raise ManifestError(ISSUER_NOT_TEXT)
     # A name that normalises to nothing is refused in issuer_row's own
     # sentence, before the list or the index is read.
     issuer_row(K1_IDENTIFIER, issuer)
