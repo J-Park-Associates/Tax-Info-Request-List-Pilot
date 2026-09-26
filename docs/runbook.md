@@ -585,7 +585,11 @@ deleted `Prepared` comes back whole, the review folder included.
   so). The row stays on the record with your sentence, stops counting, and
   leaves the client's received list; the request reads Missing and the
   next letter asks the client for it. What they send is filed as a new
-  arrival.
+  arrival. Once a row is marked missing, an original you then find and put
+  back at its old place in the client's folder is not filed again (the
+  mark cannot be undone, and the row's place stays taken): move it from
+  there into `Drop files here` instead, and the pass files it as a new
+  arrival under a name of its own and the letter stops asking.
 - **The original comes back into `Drop files here`** — Drive undoing a
   move it refused, or a colleague dragging the filed original back — under
   its own name or any other: when its bytes are those of exactly one row

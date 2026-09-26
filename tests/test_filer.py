@@ -1976,6 +1976,46 @@ def test_a_resend_after_a_dismissal_files_when_the_list_now_asks_for_it(engageme
     ]
 
 
+def test_set_aside_bytes_sent_again_after_their_original_went_are_routed_afresh(engagement):
+    """d157's review, S-2 (its probe P5). The client deletes the original
+    of a document a person set aside, the list then gains its request, and
+    the client sends the same bytes again. Decision 157's put-back is for a
+    row's own original coming home; a set-aside row is a person's answer
+    about one day's document, and decision 111 routes the same bytes sent
+    again afresh. So the re-send files to the request the list now asks
+    for, under a name of its own, the set-aside row stays as it was, and
+    the letter no longer asks for a document the client sent twice."""
+    from tracker.filer import NOT_REQUESTED, RESENT_AFTER_SET_ASIDE, dismiss_review_file
+    from tracker.manifest import Status
+
+    drop(engagement, "notice.pdf", "an agency notice about your account, 2025")
+    parked = sort(engagement, today=DAY1).review[0]
+    dismissed = dismiss_review_file(engagement, parked.pbc_location, today=DAY2).entry
+
+    rows = [RequestItem(**rule_from_json(row)) for row in store.rules(store.connect(), engagement)]
+    save_rules(engagement, [
+        RequestItem(**{**rule_from_json(rule_to_json(row)),
+                       "required_keywords": ("agency notice",)})
+        if row.identifier == "C01" else row
+        for row in rows
+    ], load_engagement_info(engagement))
+
+    (originals(engagement) / "notice.pdf").unlink()
+    drop(engagement, "notice.pdf", "an agency notice about your account, 2025")
+    report, _scanned = _a_pass(engagement, DAY2)
+
+    (filed,) = report.filed
+    assert filed.identifier == "C01" and report.review == [] and report.duplicates == []
+    assert f"; {RESENT_AFTER_SET_ASIDE.format(earlier=dismissed.reason)}" in filed.reason
+    assert filed.pbc_location == original_at(engagement, "notice (2).pdf")
+    assert events_named(engagement, ledger.ORIGINAL_RETURNED) == []
+    assert not (originals(engagement) / "notice.pdf").exists()
+    [kept] = [row for row in read_index(engagement) if ledger_key(row) == ledger_key(dismissed)]
+    assert kept.decision == NOT_REQUESTED
+    assert _status(engagement, "C01").status == Status.RECEIVED
+    assert "C01" not in _asked(engagement, DAY2)
+
+
 def test_a_third_send_of_set_aside_bytes_is_a_duplicate_of_the_parked_row(engagement):
     """The queue holds a document once: the second arrival is where the work is."""
     from tracker.filer import DUPLICATE_OF_PARKED, dismiss_review_file

@@ -3856,14 +3856,17 @@ def _originals_away(runs: list[_ReturnRun]) -> dict[str, list[tuple[_ReturnRun, 
     65, nobody's), a document taken out of an email or a zip (its original
     rests in the private ``_Opened`` folder, which no client drop goes
     back into), a row a person marked missing (:func:`marked_missing` - the
-    client was asked again, so the same bytes are a new arrival), and a
-    place an open intent will still write to (decision 147's ``intended``).
+    client was asked again, so the same bytes are a new arrival), a row a
+    person set aside (``NOT_REQUESTED``: decision 111 routes the same bytes
+    sent again afresh, because the list may have gained their request since;
+    the review's S-2), and a place an open intent will still write to
+    (decision 147's ``intended``).
     """
     away: dict[str, list[tuple[_ReturnRun, int]]] = {}
     for run in runs:
         for position in _missing_positions(run.engagement_dir, run.entries):
             entry = run.entries[position]
-            if not entry.digest or entry.container:
+            if not entry.digest or entry.container or entry.decision == NOT_REQUESTED:
                 continue
             if locate(run.engagement_dir, entry.pbc_location) in run.context.intended:
                 continue
