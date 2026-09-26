@@ -108,6 +108,7 @@ owner per fact, and no cycle.
 from __future__ import annotations
 
 import datetime as dt
+import errno
 import hashlib
 import json
 import logging
@@ -439,6 +440,30 @@ class LedgerError(RuntimeError):
     """The record could not be appended to, or does not read as one."""
 
 
+#: What a record the disk refused says (decision 189): the error's class
+#: code and nothing else. The operating system's own text names the
+#: record's path - a client's folder - so it stays on ``__cause__`` for a
+#: person debugging and is never quoted into a reason, a page or the run
+#: log.
+RECORD_NOT_WRITTEN = "the record could not be written ({code})"
+
+
+class RecordNotWritten(LedgerError):
+    """The disk refused the record's append or its torn-tail repair
+    (decision 189, A-9). A :class:`LedgerError`, so every pass that
+    already catches one catches this - a full disk or a sync client's
+    lock costs its household, never the practice pass - and ``code`` is
+    the errno's name (``ENOSPC``, ``EACCES``), data rather than prose."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(RECORD_NOT_WRITTEN.format(code=code))
+        self.code = code
+
+
+def _not_written(exc: OSError) -> RecordNotWritten:
+    return RecordNotWritten(errno.errorcode.get(exc.errno or 0, "OSError"))
+
+
 def path_for(engagement_dir: Path | str) -> Path:
     """Where one engagement's record lives."""
     return Path(engagement_dir) / LEDGER_FILENAME
@@ -523,12 +548,15 @@ def append(engagement_dir: Path | str, event: dict) -> Path:
 def _write_line(path: Path, event: dict) -> None:
     """One event, one line, one write, flushed to the platter before we go on."""
     line = json.dumps(event, ensure_ascii=False, sort_keys=True).encode("utf-8") + _NEWLINE
-    fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | _BINARY, 0o666)
     try:
-        os.write(fd, line)
-        os.fsync(fd)
-    finally:
-        os.close(fd)
+        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | _BINARY, 0o666)
+        try:
+            os.write(fd, line)
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    except OSError as exc:
+        raise _not_written(exc) from exc
 
 
 def _truncate_torn_tail(path: Path) -> None:
@@ -542,14 +570,19 @@ def _truncate_torn_tail(path: Path) -> None:
         data = path.read_bytes()
     except FileNotFoundError:
         return
+    except OSError as exc:
+        raise _not_written(exc) from exc
     if not data or data.endswith(_NEWLINE):
         return
     keep = data.rfind(_NEWLINE) + 1
     log.warning("%s ended mid-line (%d byte(s)); the torn tail is dropped", path.name, len(data) - keep)
-    with open(path, "r+b") as handle:
-        handle.truncate(keep)
-        handle.flush()
-        os.fsync(handle.fileno())
+    try:
+        with open(path, "r+b") as handle:
+            handle.truncate(keep)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except OSError as exc:
+        raise _not_written(exc) from exc
 
 
 # ------------------------------------------------------------------ read ----

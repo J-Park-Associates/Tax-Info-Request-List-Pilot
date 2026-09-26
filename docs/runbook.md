@@ -367,7 +367,12 @@ the week.
 A pass still going at `tracker.locking.RUN_TIME_LIMIT_SECONDS` is stopped
 by Task Scheduler — the task carries that as
 `tracker.scheduling.EXECUTION_TIME_LIMIT` — and the next repeat carries on
-from where it got to.
+from where it got to. **A killed pass loses at most the reading it was
+in** (decision 189): every document's verdict is kept the moment the pass
+moves on to the next file, so the next pass reads again only what it was
+killed on. A file the killed pass had already moved into the client's
+folder for the year shows up on the next pass as a file with no row, and
+is filed again from its kept verdict — nothing to do.
 
 ### If the clients root moves
 
@@ -725,6 +730,25 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    A scheduled run that ends red with *the scheduled job still names an
    old clients root* is the job installed before this version: open the
    app and press *Install Schedule* once.
+
+   **The page is always this morning's** (decision 189). Whatever went
+   wrong in the pass, the page and the run log are each still written, and
+   the page's **Problems** list starts with what the pass itself could not
+   do: *the pass stopped early (…)* names the kind of fault and means the
+   households after it were not looked at this pass — the next pass looks
+   at them; tell whoever looks after the machine if it repeats. *the run
+   log could not be written (…)* means `runs.log` is held open or the
+   disk is full — close whatever has it open. A return whose line reads
+   *the record could not be read: the database could not be used
+   (SQLITE_BUSY)* — or another `SQLITE_` code — met the app's database
+   busy or unwell; the rest of the practice ran, and the next pass tries
+   again. *the record could not be written (ENOSPC)* is a full disk; other
+   codes are the disk refusing the write (`EACCES`: a sync client or
+   antivirus holding the file). The run log gives each return's warnings
+   as a count, *(warnings: 3)*; the page and the app have the sentences.
+   **Run now** says the same: under the return's own result it lists the
+   household's other returns' problems and the pass's own (the reader,
+   the log, the page).
 2. **Clear the review folder.** Anything the rules could not be sure of is
    parked in the review folder (`tracker.scaffold.REVIEW_DIR_NAME`) with a
    reason. In the app, pick the engagement, pick the request the document
@@ -808,7 +832,13 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    met at that instant; press the button again a moment later. A run that
    says it was refused permission to create the lock is not waiting for
    another run: the account running it cannot write to that return's
-   folder, and that has to be fixed on the folder.
+   folder, and that has to be fixed on the folder. **After a power cut
+   or a restart** nothing waits (decision 189): a lock this machine wrote
+   before it last started is cleared by the next run, whatever process
+   number it names, and an empty lock file - the power went between the
+   lock being made and its line being written, which the run now forces
+   to disk at once - is cleared once it is a minute old. A lock written by
+   another machine still waits for the age rule.
 4. **Google Drive placeholders.** A file Drive has listed but not yet
    copied down is not the document; the row sits at
    `tracker.manifest.Status.PENDING_SYNC` and the pass leaves it alone
@@ -993,7 +1023,7 @@ to send. A parked document is opened as its working copy in
 | `reasons.NO_PEOPLE_ON_FILE` | This return lists nobody yet, so nothing can confirm a named request. | Open **Edit Request List** and add the return's people (§10). Everything parked for this reason files itself on the next pass. |
 | `reasons.SEVERAL_FORMS_UNSORTED` | One page prints two or more forms' own names (a stack scanned in one pass) and they will not sort one to a request: a form no row asks for, two rows wanting one form, or a row that accepted the page on a phrase rather than a form number. When they do sort, the page files a copy under each request and the row's Reason says so (`reasons.NAMES_SEVERAL_FORMS`). | Split the scan, or file the whole page to the one request that matters and note the rest. |
 | `reasons.TOO_LARGE` | The file is larger than the tracker will read (`validators.MAX_READ_MB`) — a video, a disk image, a whole mailbox, or a genuinely enormous scan. It was not opened: no text, no OCR. It is still counted and kept like any other original. | Ask the client what it was meant to be. If you must look, do it as the paragraph above this table says, then file it. |
-| `reasons.READING_STOPPED` | The reader gave up on this file at the safety stop — a minute a page, ten minutes a file (decision 137). Something in it made reading far slower than any real document, or the machine was very busy at the time; it will not be tried again until the file changes. The stop covers the whole reading - the text layer, each page's drawing and the OCR - because each document is opened and read in a process of its own that the pass ends at the stop (decision 150). An email or a zip is opened in that process too, under the stop for a file, and one stopped there parks whole with nothing taken out of it (decision 154). That process never outlives the pass: if the schedule's own time limit stops the pass, the reading stops with it. | Open its working copy as the paragraph above this table says, and file it. |
+| `reasons.READING_STOPPED` | The reader gave up on this file at the safety stop — a minute a page, ten minutes a file (decision 137). Something in it made reading far slower than any real document, or the machine was very busy at the time (time the machine spent asleep does not count, decision 189); it will not be tried again until the file changes. The stop covers the whole reading - the text layer, each page's drawing and the OCR - because each document is opened and read in a process of its own that the pass ends at the stop (decision 150). An email or a zip is opened in that process too, under the stop for a file, and one stopped there parks whole with nothing taken out of it (decision 154). That process never outlives the pass: if the schedule's own time limit stops the pass, the reading stops with it. | Open its working copy as the paragraph above this table says, and file it. |
 | `reasons.READING_CRASHED` | The reader's own process ended on this file without an answer - the PDF or OCR library crashed, the email or zip opener crashed (decision 154), or the machine ran out of memory (decision 150). Only this file is affected: the pass went on to the next one, and this file will not be tried again until it changes. | Open its working copy as the paragraph above this table says — never on the designated machine — and file it. If many files say it at once, the machine itself needs a look. |
 | `reasons.READER_UNAVAILABLE` | The reader could not start on this machine at all, so the file was never opened (decision 150). The machine's problem, never the file's: nothing is kept about the file and nothing is recorded - no index row, no Needs Review row. The file waits (in the inbox, or in the year's folder with no row) and is read again on the next pass. The pass's own summary and the run log say it once. | Look at the machine (memory, disk, antivirus, a damaged install). Once it is fixed, the next pass reads and files the waiting files; there is nothing to file by hand. |
 | `reasons.UNNAMED_ACROSS_HOUSEHOLDS` | This household's drop folder feeds a return in another household, and that return would have taken this document on its keywords alone — but the page names nobody, so it was not moved into a folder other people can open. It waits here (decision 137). The Evidence names the return and the request that wanted it, as `<return> / <request>`. The same holds for a document sent again that the other household already has. | Open it. If it is that return's, file it there with **File it**; if it is this household's, file it here. |

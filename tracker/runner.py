@@ -114,6 +114,20 @@ scan already running, a drop that would not sort — each is recorded against
 that engagement and the run moves on, because one client's problem must not
 be the reason nine other clients went unprocessed. The command exits non-zero
 if anything failed, so the scheduler shows a red run instead of a silent one.
+
+**And the pass cannot go quiet** (decision 189). Whatever stops it - a
+surprise in the runner's own code, a database the engine refuses, a run
+log that cannot be written - the run log and the practice page are each
+still attempted, in a guard of their own, and each says what the other
+could not do: :data:`PASS_STOPPED` names the class of what stopped the
+pass, :data:`LOG_NOT_WRITTEN` puts a log that failed on the page. The
+store's and the record's own errors are classes the pass catches
+(``store.StoreUnavailable``, ``ledger.RecordNotWritten``), so one bad
+database or a full disk costs the household it happened in. Every verdict
+is saved the moment the next file is taken, so a pass killed half way
+reads again only what it was killed on. The pass's own sentences name a
+class or a code, never an exception's text, which can carry a client's
+path.
 """
 
 from __future__ import annotations
@@ -298,6 +312,20 @@ SLOW_READING_NOTE = "slow reading: {name} took {seconds:.0f} s"
 READER_COULD_NOT_START = ("the reader could not start on this machine for {n} file(s) this pass "
                           "({names}); nothing was kept about them and they wait for the next "
                           "pass - look at the machine")
+
+
+#: What a pass says when something in the runner's own code stopped it
+#: (decision 189): the class of what stopped it, never its text. Every
+#: household that finished is still reported, logged and drawn.
+PASS_STOPPED = ("the pass stopped early ({kind}); the households after it were not looked at "
+                "this pass")
+#: What the run log's failure says, on the page and in the console
+#: (decision 189): the log is how an unattended failure leaves a trace,
+#: so one that could not be written is itself a problem to see.
+LOG_NOT_WRITTEN = "the run log could not be written ({kind})"
+#: What the practice page's failure says where it can be said: the app's
+#: reply after Run now, and the console (decision 189).
+PAGE_NOT_WRITTEN = "the practice page could not be written ({kind})"
 
 
 def reader_start_warning() -> str:
@@ -490,6 +518,7 @@ def should_draft(
     *,
     drafted: dt.date | None = None,
     held: bool = False,
+    created: dt.date | None = None,
 ) -> bool:
     """Whether the automated run drafts a reminder for this engagement today.
 
@@ -501,11 +530,14 @@ def should_draft(
     Weekly means once a week, not only on the day: a machine that was off
     on the draft day drafts on its next pass, when ``drafted`` (the day the
     last draft was written) is older than the draft day that went by. An
-    engagement never drafted waits for its first draft day, so a client set
-    up mid-week is not chased the same afternoon - unless the record says
-    its draft day came and the draft was ``held`` (decision 115): that
-    draft is owed, and the first pass after a person clears the question
-    writes it.
+    engagement never drafted is owed its first draft once a draft day has
+    come since it was ``created`` (the day of its first rules event,
+    :func:`created_on`), so a client set up mid-week is not chased the same
+    afternoon, and one whose first draft day the machine missed is drafted
+    on the next pass rather than a week late (decision 189, SPEC-161 A-F8).
+    The record saying its draft day came and the draft was ``held``
+    (decision 115) owes it too: the first pass after a person clears the
+    question writes it.
     """
     if not engagement.reminders or mode == REMINDERS_NEVER:
         return False
@@ -515,7 +547,24 @@ def should_draft(
         return True
     if held:
         return True
-    return drafted is not None and drafted < last_draft_day(today, weekday)
+    if drafted is None:
+        return created is not None and created <= last_draft_day(today, weekday)
+    return drafted < last_draft_day(today, weekday)
+
+
+def created_on(engagement_dir: Path) -> dt.date | None:
+    """The day this return was created: the day of the first rules event on
+    its record (``rules_changed``, or the retired ``rules_imported`` an
+    older journal opens with), or None when the record has none or cannot
+    be read - and then no first draft is owed by this rule."""
+    try:
+        events = ledger.read_events(engagement_dir)
+    except (LedgerError, OSError):
+        return None
+    for event in events:
+        if event.get(ledger.EVENT_KEY) in (ledger.RULES_CHANGED, ledger.RULES_IMPORTED):
+            return ledger.day_of(str(event.get(ledger.AT_KEY, "")))
+    return None
 
 
 # --------------------------------------------------------------- one pass ----
@@ -864,9 +913,10 @@ def run_engagement(
             run.outstanding = summary.outstanding
             run.warnings.extend(scanned.warnings)
 
+            drafted = last_drafted(engagement.path)
             if should_draft(engagement, today, reminders, weekday,
-                            drafted=last_drafted(engagement.path),
-                            held=draft_is_held(engagement.path)):
+                            drafted=drafted, held=draft_is_held(engagement.path),
+                            created=created_on(engagement.path) if drafted is None else None):
                 _draft_step(run, dry_run=dry_run, today=today, weekday=weekday)
             else:
                 run.draft_note = _why_no_draft(engagement, today, reminders, weekday)
@@ -1101,8 +1151,14 @@ def run_registry(
     reminders: str = REMINDERS_AUTO,
     weekday: int = DRAFT_WEEKDAY,
     only: str = "",
+    report: RunReport | None = None,
 ) -> RunReport:
     """Run every household in the registry, in the order it lists them.
+
+    ``report`` is the caller's, filled as each household finishes
+    (decision 189): when something in this function's own code raises,
+    the caller still holds every run that finished, and logs and draws
+    them. ``run_household`` itself never raises.
 
     **A household at a time** (decision 125), because its returns share one
     inbox and the sort has to judge a drop against all of them at once.
@@ -1118,8 +1174,9 @@ def run_registry(
     today = today or dt.date.today()
     selected = {e.path for e in (registry.find(only) if only else registry.engagements)}
 
-    report = RunReport(today=today, dry_run=dry_run, reminders=reminders,
-                       misfits=list(registry.misfits))
+    if report is None:
+        report = RunReport(today=today, dry_run=dry_run, reminders=reminders)
+    report.misfits = list(registry.misfits)
     reader_start_warning()          # this pass's count starts here
     if warning := ocr.reader_path_warning():
         # The app sits too deep for its reader: said once, loudly, rather
@@ -1195,7 +1252,10 @@ def append_log(path: Path | str, report: RunReport) -> Path:
         # 169): the machine's to look at, said once, and not a warning.
         lines.append(f"    {report.reader_note}")
     for run in report.runs:
-        lines.append(f"    {run.summary()}")
+        # A count, never the sentences (decision 189): a warning can name a
+        # client's file, and the page carries the words.
+        lines.append(f"    {run.summary()}"
+                     + (f" (warnings: {len(run.warnings)})" if run.warnings else ""))
         if run.held and not run.error:
             # A hold is said with its rows (decision 115): the log is where
             # a person finds out which request wants their decision.
@@ -1368,7 +1428,11 @@ def write_status_page(root: Path | str, report: RunReport, *,
     root = Path(root)
     stamp = (now or dt.datetime.now()).isoformat(sep=" ", timespec="seconds")
     parked, problems = _parked_files(report)
-    problems = [f"{run.engagement.label}: {run.error}" for run in report.errors] + problems
+    # The pass's own sentences first (decision 189): a pass that stopped, a
+    # run log that could not be written - what a person must see before
+    # any one return's problem.
+    problems = [*report.warnings,
+                *(f"{run.engagement.label}: {run.error}" for run in report.errors), *problems]
 
     # Newest first, across the practice: what arrived last night is what
     # nobody has looked at. Reversed first, so that among files received on
@@ -1432,8 +1496,9 @@ def _engagement_status(engagement: Engagement) -> EngagementRun:
         return run
     try:
         summary = summarize(load_manifest(engagement.path))
-    except (ManifestError, OSError) as exc:
-        run.error = str(exc)
+    except (ManifestError, LedgerError, StoreError, OSError) as exc:
+        # One bad record costs its own row, never the page (decision 189).
+        run.error = RECORD_UNREADABLE.format(problem=exc)
         return run
     run.statuses = summary.counts
     run.outstanding = summary.outstanding
@@ -1452,14 +1517,15 @@ def _under(root: Path, path: Path) -> str:
 
 
 def status_report(registry: Registry, *, passed: Iterable[EngagementRun] = (),
-                  today: dt.date | None = None) -> RunReport:
+                  today: dt.date | None = None, warnings: Iterable[str] = ()) -> RunReport:
     """Every engagement in ``registry``, with the runs in ``passed`` folded in.
 
     The page is about the practice, not about whichever engagement was
     just run: a pass over one engagement (the app's button) or over a
     subset (``--only``) still draws every engagement the registry found.
     An engagement this pass did not touch is read, not run, so the page
-    can be regenerated as often as anyone likes.
+    can be regenerated as often as anyone likes. ``warnings`` are the
+    pass's own sentences, for the page's problems list (decision 189).
     """
     ran = {run.engagement.path: run for run in passed}
     return RunReport(
@@ -1467,6 +1533,7 @@ def status_report(registry: Registry, *, passed: Iterable[EngagementRun] = (),
         runs=[ran[engagement.path] if engagement.path in ran else _engagement_status(engagement)
               for engagement in registry.engagements],
         misfits=list(registry.misfits),
+        warnings=list(warnings),
     )
 
 
@@ -1476,7 +1543,13 @@ def main(argv: list[str] | None = None) -> int:
     """The command line, as a function: ``python -m tracker.runner`` and the
     packaged executable in runner mode (``api_entry.py``) both call this.
     Returns the exit code - non-zero if any engagement failed, so the
-    scheduler shows a red run."""
+    scheduler shows a red run.
+
+    **Each ending in a guard of its own** (decision 189): the pass, the
+    console, the run log, the page and the store's close are each tried
+    whatever happened before them, so a pass that stopped still leaves its
+    log and its page, and a log that could not be written is said on the
+    page."""
     import argparse
 
     # The report names client files, and the scheduler's console is not
@@ -1558,38 +1631,67 @@ def main(argv: list[str] | None = None) -> int:
     if ns.only and not loaded.find(ns.only):
         raise SystemExit(f"Nothing in {loaded.source} matches {ns.only!r}")
 
-    # The reader writes no temporary file (decision 169), so there is no
-    # scratch folder to point it at any more (decision 137's L7 is retired).
-    result = run_registry(loaded, today=when, dry_run=ns.dry_run,
-                          reminders=ns.reminders, weekday=day, only=ns.only)
-    print(format_report(result))
-
+    log_path: Path | None = None
     if ns.log:
         log_path = Path(ns.log)
         if not log_path.is_absolute() and ns.log == LOG_FILENAME:
             log_path = loaded.source / LOG_FILENAME
-        append_log(log_path, result)
-        print(f"\n  Logged to {log_path}")
+
+    # The report is made here and filled by the pass as each household
+    # finishes (decision 189), so a pass stopped half way still hands the
+    # log and the page every household it finished.
+    result = RunReport(today=when, dry_run=ns.dry_run, reminders=ns.reminders)
+    failed = False
+    # The reader writes no temporary file (decision 169), so there is no
+    # scratch folder to point it at any more (decision 137's L7 is retired).
+    try:
+        run_registry(loaded, today=when, dry_run=ns.dry_run, reminders=ns.reminders,
+                     weekday=day, only=ns.only, report=result)
+    except Exception as exc:
+        # The runner's own code, not a household's (each of those is
+        # caught where it happens): said by its class, the whole trace on
+        # stderr for a person, and every ending below still attempted.
+        log.error("The pass stopped early", exc_info=True)
+        result.warnings.append(PASS_STOPPED.format(kind=exc.__class__.__name__))
+        failed = True
+    print(format_report(result))
+
+    if log_path is not None:
+        try:
+            append_log(log_path, result)
+        except Exception as exc:
+            log.warning("Could not write %s (%s)", log_path.name, exc.__class__.__name__)
+            result.warnings.append(LOG_NOT_WRITTEN.format(kind=exc.__class__.__name__))
+            print(f"\n  ! {result.warnings[-1]}")
+            failed = True
+        else:
+            print(f"\n  Logged to {log_path}")
 
     if not ns.dry_run:
-        # Every real pass, whether or not it was asked to log, and whether
-        # or not an engagement failed: the page is how a person finds out
-        # that one did. A dry run writes nothing, this included.
+        # Every real pass, whether or not it was asked to log, whether or
+        # not an engagement failed, and whether or not the pass itself was
+        # stopped: the page is how a person finds out that one did. A dry
+        # run writes nothing, this included.
         try:
-            page = write_status_page(loaded.source, status_report(loaded, passed=result.runs))
+            page = write_status_page(loaded.source, status_report(
+                loaded, passed=result.runs, warnings=result.warnings))
         except Exception as exc:
             # The page is a courtesy; the pass is the job. Every original has
             # already been moved and every status written by the time we get
             # here, so nothing about drawing a page may end this in a
             # traceback - it is said in the log and the run stands.
             log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, exc)
+            print(f"\n  ! {PAGE_NOT_WRITTEN.format(kind=exc.__class__.__name__)}")
         else:
             print(f"\n  The practice: {page}")
 
     # Checkpoint the store's write-ahead log and take its two side files
     # with it: a scheduled pass leaves the app's folder as it found it.
-    store.close()
-    return 1 if result.errors else 0
+    try:
+        store.close()
+    except Exception as exc:
+        log.warning("Could not close the store (%s)", exc.__class__.__name__)
+    return 1 if failed or result.errors else 0
 
 
 if __name__ == "__main__":

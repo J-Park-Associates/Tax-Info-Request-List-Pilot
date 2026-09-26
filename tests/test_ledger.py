@@ -652,3 +652,52 @@ def test_a_line_whose_number_the_interpreter_will_not_read_is_a_record_that_does
     with pytest.raises(ledger.LedgerError, match="line 1 does not read as an event"):
         ledger.read_events(bare)
     ledger.path_for(bare).unlink()    # the suite's own fixture reads this folder too
+
+
+# ------------------------------------------ the disk's refusal is a class (189) ----
+
+
+def test_an_unwritable_record_is_a_ledger_error_with_its_code(bare, monkeypatch):
+    """A-9: the disk refuses the append (a full disk). The pass hears a
+    LedgerError it already catches, with the errno's name as its code, and
+    the sentence quotes no path - the path names a client's folder."""
+    import errno
+    import os
+
+    def full(fd, data):
+        raise OSError(errno.ENOSPC, "No space left on device", str(ledger.path_for(bare)))
+
+    with engagement_lock(bare):
+        monkeypatch.setattr(ledger.os, "write", full)
+        with pytest.raises(ledger.LedgerError) as refused:
+            ledger.append(bare, a_keyword(1))
+        monkeypatch.setattr(ledger.os, "write", os.write)
+
+    assert isinstance(refused.value, ledger.RecordNotWritten)
+    assert refused.value.code == "ENOSPC"
+    assert str(refused.value) == "the record could not be written (ENOSPC)"
+    assert bare.name not in str(refused.value)
+    assert isinstance(refused.value.__cause__, OSError), "the full text stays for a person debugging"
+
+
+def test_a_torn_tail_that_cannot_be_repaired_is_a_ledger_error_with_its_code(bare, monkeypatch):
+    import errno
+
+    with engagement_lock(bare):
+        ledger.append(bare, a_keyword(1))
+    with ledger.path_for(bare).open("ab") as handle:
+        handle.write(b'{"torn')                       # a kill mid-line
+
+    real_open = open
+
+    def refused(path, mode="r", *args, **kwargs):
+        if "+" in mode:
+            raise PermissionError(errno.EACCES, "Permission denied", str(path))
+        return real_open(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.open", refused)
+    with engagement_lock(bare), pytest.raises(ledger.RecordNotWritten) as stopped:
+        ledger.append(bare, a_keyword(2))
+    monkeypatch.undo()
+    assert stopped.value.code == "EACCES"
+    assert bare.name not in str(stopped.value)

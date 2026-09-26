@@ -503,6 +503,45 @@ def test_filing_leaves_verdicts_the_scan_reuses(engagement, monkeypatch):
     assert calls["n"] == 2                                  # the scan read nothing again
 
 
+def test_a_sort_that_raises_still_keeps_its_verdicts(engagement, monkeypatch):
+    """SPEC-161 ruling 1 (E-4): the sort raises after it read the drop. The
+    rows are recorded as always, and now the verdicts are kept too, so the
+    next pass does not read the document again."""
+    import tracker.filer as filer
+    from tests.test_content_check import counting_extractor
+
+    calls = counting_extractor(monkeypatch)
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+
+    def surprise(*args, **kwargs):
+        raise RuntimeError("after the reading")
+
+    monkeypatch.setattr(filer, "_unaccounted_in_opened", surprise)
+    with pytest.raises(RuntimeError, match="after the reading"):
+        sort(engagement, today=DAY1)
+    _memos, verdicts = cache_rows(engagement)
+    assert verdicts, "the verdict reached before the exception is kept"
+    assert calls["n"] == 1
+
+
+def test_each_drops_verdicts_are_kept_before_the_next_drop_is_read(engagement, monkeypatch):
+    """Saved per drop (decision 189): when the second drop is read, the
+    first drop's verdicts are already in the store."""
+    import tracker.content_check as content_check
+
+    drop(engagement, "a.pdf", "Form W-2 Wage and Tax Statement 2025")
+    drop(engagement, "b.pdf", "Form 1099-INT Interest Income 2025")
+    real, seen = content_check.extract, []
+
+    def looking_at_the_store(path, **kwargs):
+        seen.append(len(cache_rows(engagement)[1]))
+        return real(path, **kwargs)
+
+    monkeypatch.setattr(content_check, "extract", looking_at_the_store)
+    sort(engagement, today=DAY1)
+    assert seen[0] == 0 and seen[1] >= 1
+
+
 def test_a_retired_cache_file_is_removed_by_the_next_real_pass_and_never_read(engagement, monkeypatch):
     """Decision 107: nothing is read from the old file. A well-formed cache
     of the last layout, whose memo and verdict would have spared the scan

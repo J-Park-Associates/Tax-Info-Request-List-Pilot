@@ -743,6 +743,10 @@ def scan_engagement(
 ) -> ScanReport:
     """Scan one engagement and (unless ``dry_run``) record what it found.
 
+    **Kept as it goes** (decision 189). The verdicts are saved after
+    every request, so a pass killed mid-scan reads again only what it was
+    killed on (a save with nothing new is no transaction at all).
+
     Dry runs read everything but write nothing — no event, no cache save,
     no lock file — safe to run alongside a real scan.
 
@@ -799,15 +803,16 @@ def scan_engagement(
         excluded = _wandered(engagement_dir, rows)
         interrupted = _interrupted(engagement_dir, rows)
         answered = _answered(engagement_dir, rows, cache)
-        updates = {
-            item.identifier: _scan_item(
+        updates: dict[str, StatusUpdate] = {}
+        for item in items:
+            updates[item.identifier] = _scan_item(
                 item, assigned[item.identifier], cache, today, pdf_cache, accepted=accepted,
                 claimed=claimed, excluded=excluded, interrupted=interrupted,
                 answered=answered.get(identifier_key(item.identifier), ()),
                 mine=belongs_to(item.identifier),
             )
-            for item in items
-        }
+            if not dry_run:
+                cache.save()      # this request's readings, kept the moment they are made
 
         report = ScanReport(
             engagement_dir=engagement_dir,

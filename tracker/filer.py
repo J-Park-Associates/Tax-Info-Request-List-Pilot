@@ -3370,6 +3370,10 @@ def file_household_drops(
     """Sort one household's inbox across every return it feeds. Returns
     what was done, per return.
 
+    **Kept as it goes** (decision 189). Each drop's verdicts are saved as
+    soon as the next drop is taken, and whatever happens at the end, so a
+    pass killed half way keeps every reading it finished.
+
     **One inbox, several returns** (decision 125). A household with a
     business and its owner's 1040 has one folder to drop into, so the sort
     judges each drop against every open-year return's request list and
@@ -3494,13 +3498,19 @@ def file_household_drops(
         # transactions leaves the container unrecorded, a stray the next
         # pass opens again, rather than a container on record whose
         # attachments are not.
-        if not dry_run:
-            for run in reversed(runs):
-                _record(run.engagement_dir, run.before, run.entries,
-                        moved=run.moved_keys, decided=run.swept, extra=run.opened)
+        # The verdicts are kept whatever happened too (decision 189): after
+        # the rows, so a store that refuses them cannot cost the record.
+        try:
+            if not dry_run:
+                for run in reversed(runs):
+                    _record(run.engagement_dir, run.before, run.entries,
+                            moved=run.moved_keys, decided=run.swept, extra=run.opened)
+        finally:
+            if not dry_run:
+                for run in runs:
+                    run.cache.save()
     if not dry_run:
         for run in runs:
-            run.cache.save()
             for name in _remove_the_retired_cache(run.engagement_dir):
                 run.report.attention.append(FileError(name, RETIRED_CACHE_REMOVED, False))
         # The tidy-up is owed to every pass, not only one that sorted
@@ -3807,6 +3817,11 @@ def _sort_all(
     """Decide and record every drop and every stray, one at a time, across
     the household's returns.
 
+    **Each verdict is kept the moment the next file is taken** (decision
+    189): the returns' caches are saved before every file - one small
+    transaction, and none when nothing changed - so a pass killed mid-sort
+    reads again only the file it was killed on.
+
     Each file is handled on its own: a file the sync client still holds
     open is left in place for the next run, and one that fails *after* it
     was preserved is recorded as needing review with the error, so no one
@@ -3828,9 +3843,11 @@ def _sort_all(
     dry_run = first.context.dry_run
     inbox = inbox_of(first.engagement_dir)
     away = _originals_away(runs)
-    for drop, already_filed in (
-        [(d, False) for d in drops] + [(p, True) for p in strays]
-    ):
+    pending = [(d, False) for d in drops] + [(p, True) for p in strays]
+    for drop, already_filed in pending:
+        if not dry_run:
+            for run in runs:
+                run.cache.save()          # the file before this one's verdicts
         # A file the sync client has not downloaded is not a document yet.
         if is_cloud_placeholder(drop):
             first.report.waiting.append(drop)

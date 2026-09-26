@@ -123,6 +123,17 @@ folders, which is where an edge is allowed to point the other way.
 list written out here - ``tests/test_store.py`` holds that list to the
 record's fields, so the table cannot drift away from the list in silence.
 Every other column list is derived from the frozen record it stores.
+
+**The engine's errors leave as the package's** (decision 189). Every
+``sqlite3.Error`` a statement here raises - the file locked past the busy
+timeout, a disk error, a file that is not a database - leaves as
+:class:`StoreUnavailable`, a :class:`StoreError` carrying the SQLite
+error's name as its ``code`` and a fixed sentence, because a raw
+``OperationalError`` was a class no pass caught and one bad database ended
+the whole practice pass with no log and no page. The wrap is the
+connection itself (``_Connection``, the factory :func:`open` hands
+SQLite), not each call site, so the next query written here is covered
+without anyone remembering to.
 """
 
 from __future__ import annotations
@@ -279,6 +290,114 @@ BUSY_TIMEOUT_MS = 5000
 
 class StoreError(RuntimeError):
     """The store could not be opened, written to, or read as one."""
+
+
+#: What a database the engine refused says (decision 189): the SQLite
+#: error's name and nothing else. The engine's own text can carry a path
+#: or a fragment of a statement, so it stays on ``__cause__`` for a person
+#: debugging and is never quoted into a reason, a page or the run log.
+STORE_UNAVAILABLE = "the database could not be used ({code})"
+
+
+class StoreUnavailable(StoreError):
+    """The engine refused the store: locked past the busy timeout, a disk
+    error, a file that is not a database (decision 189, A-9).
+
+    A :class:`StoreError`, so every pass that already catches one catches
+    this and the household it happened in carries it, not the practice
+    pass. ``code`` is ``sqlite3.Error.sqlite_errorname`` (``SQLITE_BUSY``,
+    ``SQLITE_IOERR_WRITE``); an error that did not come from the engine -
+    a closed connection - has none and reads ``SQLITE_ERROR``.
+    """
+
+    def __init__(self, code: str) -> None:
+        super().__init__(STORE_UNAVAILABLE.format(code=code))
+        self.code = code
+
+
+def _unavailable(exc: sqlite3.Error) -> StoreUnavailable:
+    return StoreUnavailable(getattr(exc, "sqlite_errorname", None) or "SQLITE_ERROR")
+
+
+class _Cursor(sqlite3.Cursor):
+    """A cursor whose rows fail as :class:`StoreUnavailable` too: SQLite
+    steps a query as its rows are read, so a disk error can arrive on the
+    second row as well as on the statement."""
+
+    def execute(self, sql, parameters=(), /):
+        try:
+            return super().execute(sql, parameters)
+        except sqlite3.Error as exc:
+            raise _unavailable(exc) from exc
+
+    def executemany(self, sql, parameters, /):
+        try:
+            return super().executemany(sql, parameters)
+        except sqlite3.Error as exc:
+            raise _unavailable(exc) from exc
+
+    def fetchone(self):
+        try:
+            return super().fetchone()
+        except sqlite3.Error as exc:
+            raise _unavailable(exc) from exc
+
+    def fetchall(self):
+        try:
+            return super().fetchall()
+        except sqlite3.Error as exc:
+            raise _unavailable(exc) from exc
+
+    def fetchmany(self, size=None):
+        try:
+            return super().fetchmany(self.arraysize if size is None else size)
+        except sqlite3.Error as exc:
+            raise _unavailable(exc) from exc
+
+    def __next__(self):
+        try:
+            return super().__next__()
+        except sqlite3.Error as exc:
+            raise _unavailable(exc) from exc
+
+
+class _Connection(sqlite3.Connection):
+    """The store's connection: **the one choke point** every statement in
+    this module goes through (decision 189). Every query here is
+    ``conn.execute`` on a connection :func:`open` made, so wrapping the
+    connection's own calls - rather than two hundred call sites - is what
+    makes "no ``sqlite3.Error`` leaves this module raw" true of the next
+    query somebody writes too."""
+
+    def cursor(self, factory=_Cursor):
+        try:
+            return super().cursor(factory)
+        except sqlite3.Error as exc:
+            raise _unavailable(exc) from exc
+
+    def execute(self, sql, parameters=(), /):
+        return self.cursor().execute(sql, parameters)
+
+    def executemany(self, sql, parameters, /):
+        return self.cursor().executemany(sql, parameters)
+
+    def executescript(self, script, /):
+        try:
+            return super().executescript(script)
+        except sqlite3.Error as exc:
+            raise _unavailable(exc) from exc
+
+    def commit(self):
+        try:
+            return super().commit()
+        except sqlite3.Error as exc:
+            raise _unavailable(exc) from exc
+
+    def close(self):
+        try:
+            return super().close()
+        except sqlite3.Error as exc:
+            raise _unavailable(exc) from exc
 
 
 # --------------------------------------------------------------- columns ----
@@ -503,7 +622,12 @@ def open(path: Path | str) -> sqlite3.Connection:  # noqa: A001 - the store is o
     # module says BEGIN IMMEDIATE itself, because the guarantee is the
     # whole batch or none of it and a driver-invented transaction boundary
     # is not a guarantee anybody wrote down.
-    conn = sqlite3.connect(path, isolation_level=None)
+    # The factory is the one choke point (decision 189): every statement
+    # below and in every function of this module goes through it.
+    try:
+        conn = sqlite3.connect(path, isolation_level=None, factory=_Connection)
+    except sqlite3.Error as exc:
+        raise _unavailable(exc) from exc
     conn.row_factory = sqlite3.Row
     conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
     conn.execute("PRAGMA journal_mode = WAL")

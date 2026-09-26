@@ -224,9 +224,11 @@ READING_CHAR_BUDGET = TEXT_READ_CAP_MB * 1024 * 1024
 PACKINGS = (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)
 #: What a workbook packed any other way fails with.
 UNKNOWN_PACKING = "a part of it is packed in a way only a person's zip program opens"
-#: The clock the stop reads. A name of its own so the suite can move it
-#: rather than wait ten minutes.
-_clock = time.monotonic
+#: The clock the stop reads: the awake clock every part of a reading's
+#: stop reads (decision 189), so a machine that slept does not end a
+#: reading it never gave any time to. A name of its own so the suite can
+#: move it rather than wait ten minutes.
+_clock = ocr.awake_clock
 
 
 

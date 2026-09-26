@@ -1527,9 +1527,12 @@ def test_state_shows_the_lock_and_unlock_clears_only_a_stale_one(capsys, demo_ro
     assert run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))[1]["lock"] is None
 
     lock = engagement / LOCK_FILENAME
-    lock.write_text(lock_line(os.getpid(), dt.datetime(2026, 3, 14, 7, 3)), encoding="utf-8")
+    # Started this minute: a lock this machine wrote before it last started
+    # is dead by the boot rule (decision 189), so a fixed old date would be.
+    started = dt.datetime.now().replace(microsecond=0)
+    lock.write_text(lock_line(os.getpid(), started), encoding="utf-8")
     code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))
-    assert payload["lock"] == {"started": "2026-03-14T07:03:00", "age_minutes": 0, "stale": False,
+    assert payload["lock"] == {"started": started.isoformat(), "age_minutes": 0, "stale": False,
                                "stale_after_minutes": STALE_LOCK_SECONDS // 60}
     code, payload = run(capsys, "unlock", api.ENGAGEMENT_FLAG, str(engagement))
     assert code == 1 and "may still be going" in payload["error"]
@@ -1584,6 +1587,51 @@ def test_rollover_retires_the_prior_in_the_priors_list(capsys, demo_root):
     assert by_label[f"{HOUSEHOLD} 2026 Smith 2025"]["superseded_by"] == ""
 
 
+def test_run_now_reply_carries_the_households_other_returns_and_the_pass_warnings(
+    capsys, demo_root, monkeypatch,
+):
+    """E-11 (decision 189): Run now on one return answers for the pass. The
+    household's other return's warnings, the reader's path, and a run log
+    and a page that could not be written are in the reply - not on stderr,
+    which the app discards when the reply parses."""
+    import tracker.runner as runner
+    from tracker import ocr
+    from tracker.registry import engagement_from
+    from tracker.runner import LOG_NOT_WRITTEN, PAGE_NOT_WRITTEN
+
+    for name, row in (("Smith", "A01"), ("Jones", "B01")):
+        spec = {"household": HOUSEHOLD, "return_name": name,
+                "items": [{"identifier": row, "document": "W-2"}]}
+        assert run(capsys, "create", stdin=spec)[0] == 0
+    asked = where(demo_root, "Smith")
+    other = where(demo_root, "Jones")
+
+    real_check = runner.check_rules
+    said_of_the_other = "a sentence about the other return's rows"
+    monkeypatch.setattr(runner, "check_rules", lambda items: (
+        [said_of_the_other] if items and items[0].identifier == "B01" else real_check(items)))
+    monkeypatch.setattr(ocr, "reader_path_warning", lambda: ocr.READER_PATH_WARNING)
+
+    def refused(*args, **kwargs):
+        raise PermissionError("a sync client holds it")
+
+    monkeypatch.setattr(api, "append_log", refused)
+    monkeypatch.setattr(api, "write_status_page", refused)
+
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(asked))
+
+    assert code == 0, payload
+    assert said_of_the_other not in payload["run"]["warnings"]
+    [theirs] = payload["household"]
+    assert theirs["label"] == engagement_from(other).label
+    assert theirs["ok"] and theirs["warnings"] == [said_of_the_other]
+    assert payload["pass_warnings"] == [
+        ocr.READER_PATH_WARNING,
+        LOG_NOT_WRITTEN.format(kind="PermissionError"),
+        PAGE_NOT_WRITTEN.format(kind="PermissionError"),
+    ]
+
+
 def test_the_apps_pass_is_the_runners_pass(capsys, demo_root):
     # A row added in the editor gets its folder from the scan button,
     # exactly as the scheduled run would give it: one definition of a pass.
@@ -1612,7 +1660,7 @@ def test_the_apps_pass_is_the_runners_pass(capsys, demo_root):
     from tracker.locking import LOCK_FILENAME
     other = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
     try:
-        (engagement / LOCK_FILENAME).write_text(lock_line(other.pid, dt.datetime(2026, 3, 14, 7, 3)),
+        (engagement / LOCK_FILENAME).write_text(lock_line(other.pid, dt.datetime.now()),
                                                 encoding="utf-8")
         code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
     finally:
