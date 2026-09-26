@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 154,
     "edges": 951,
-    "reused": 117
+    "reused": 115
   },
   "node_types": [
     "artifact",
@@ -84,10 +84,10 @@
       "id": ".github/workflows/ci.yml",
       "type": "workflow",
       "layer": "ci",
-      "sha256": "7f4dabcbe5b1dffb",
-      "lines": 102,
-      "role": "CI: the triggers, the concurrency rule and two jobs that both call .github/workflows/gate.yml \u2014 `linux`, a matrix of the floor interpreter and the office's, and `windows`, the office's interpreter on a pull request labelled `windows`. Since decision 207 it runs only on a pull request into main (`opened`, `synchronize`, `ready_for_review`) and both jobs skip drafts (`draft == false`); nothing runs on a push to main. It has no steps of its own.",
-      "notes": "The map check is the point. docs/repo-map.md is what agents read instead of re-scanning, its freshness is guarded by test_the_committed_map_is_current, and this workflow is what makes that guard run without anyone remembering to. Every step always reports, so a stale map and a failing test surface in the same run. Windows is checked because the firm's machine is Windows and the held lock, the atomic replace and the Windows-only tests behave differently there; the python-version lines are pinned to pyproject's floor and to [tool.office] by guards. Decision 78: the matrix carries the interpreter the office runs beside that floor, because the package is frozen on the office's Python and a suite that has never run there proves nothing about it; the rows are written out one at a time rather than crossed so the floor stays one readable literal for the guard that pins it. Decision 122: a Windows minute is billed at twice a Linux one, so the two Windows rows were four fifths of the price of a run, and a series that pushes three to five times per pull request re-ran them every time \u2014 while the gate that precedes every push already runs on Windows, so those jobs repeated a check just made. Under 122 a pull request ran Linux only, Windows ran on every push to main and on a labelled pull request, and `labeled` was a trigger (history). Decision 207 (revising 122, Jason 2026-09-26): CI is one final check before a merge, never the first test - every session runs the suite before it pushes - so there is no run on a push to main and no `labeled` trigger (it started a second, paid run beside the first); a draft runs nothing, because `synchronize` fires on drafts too and only the job condition sees `draft`; the `windows` label goes on while a pull request is a draft, so the one run it gets when marked ready sees it. A pull request based on another branch runs nothing until it is retargeted onto main, and retargeting (`edited`) is not a trigger, so a stacked pull request stays a draft until retargeted and is marked ready then. Windows on the floor interpreter is run nowhere, because the floor is a language-version check and Linux makes it. The steps moved out to gate.yml in the same decision: a job's own `if:` is evaluated before a matrix is expanded and cannot see the `matrix` context, so this could not be one matrix with a condition on its Windows rows, and two jobs that each wrote the steps out would be two copies of the gate. Windows is now skipped as a whole on a pull request that did not ask - never started, never billed, and reported as skipped rather than as a check that passed. Since 207 there is no run on main, so a Windows-only regression in an unlabelled pull request is run on Windows nowhere before it merges unless the office PC ran the tests it touches - which is why the label is put on anything touching the lock, the atomic replace or paths, and why no Windows check may be made a required status check (a skipped job reports only as \"Windows\", so a required gate name would wait forever); the gate and the package build both carry a timeout, so a hung job stops costing after it instead of after GitHub's six hours."
+      "sha256": "4e0c2bf26799eb0e",
+      "lines": 105,
+      "role": "CI: the triggers, the concurrency rule and two jobs that both call .github/workflows/gate.yml \u2014 `linux`, a matrix of the floor interpreter and the office's, and `windows`, the office's interpreter on a pull request labelled `windows`. Since decision 211 (revising 207) it runs on a push to main (Linux only) and on a pull request into main marked ready (`ready_for_review`); Windows also on `labeled` for the `windows` label; never on `opened` or `synchronize`, and both jobs skip drafts. It has no steps of its own.",
+      "notes": "The map check is the point. docs/repo-map.md is what agents read instead of re-scanning, its freshness is guarded by test_the_committed_map_is_current, and this workflow is what makes that guard run without anyone remembering to. Every step always reports, so a stale map and a failing test surface in the same run. Windows is checked because the firm's machine is Windows and the held lock, the atomic replace and the Windows-only tests behave differently there; the python-version lines are pinned to pyproject's floor and to [tool.office] by guards. Decision 78: the matrix carries the interpreter the office runs beside that floor, because the package is frozen on the office's Python and a suite that has never run there proves nothing about it; the rows are written out one at a time rather than crossed so the floor stays one readable literal for the guard that pins it. Decision 122: a Windows minute is billed at twice a Linux one, so the two Windows rows were four fifths of the price of a run, and a series that pushes three to five times per pull request re-ran them every time \u2014 while the gate that precedes every push already runs on Windows, so those jobs repeated a check just made. Under 122 a pull request ran Linux only, Windows ran on every push to main and on a labelled pull request, and `labeled` was a trigger (history). Decision 207 (revising 122) made CI one final check before a merge and dropped the push-to-main run (history). Decision 211 (revising 207, Jason 2026-09-26: CI never fires per commit): every session runs the whole local gate before it pushes; CI runs on a push to main (Linux, the net under what merged) and once when a pull request is marked ready (the run branch protection needs); no `opened` or `synchronize`, so a push to a pull request re-runs nothing; Windows only on a ready pull request with the `windows` label (`ready_for_review`, or `labeled` for `windows`), never on main; Linux never on `labeled`; a draft runs nothing. A pull request based on another branch runs nothing until it is retargeted onto main, and retargeting (`edited`) is not a trigger, so a stacked pull request stays a draft until retargeted and is marked ready then. Windows on the floor interpreter is run nowhere, because the floor is a language-version check and Linux makes it. The steps moved out to gate.yml in the same decision: a job's own `if:` is evaluated before a matrix is expanded and cannot see the `matrix` context, so this could not be one matrix with a condition on its Windows rows, and two jobs that each wrote the steps out would be two copies of the gate. Windows is now skipped as a whole on a pull request that did not ask - never started, never billed, and reported as skipped rather than as a check that passed. Since 207 there is no run on main, so a Windows-only regression in an unlabelled pull request is run on Windows nowhere before it merges unless the office PC ran the tests it touches - which is why the label is put on anything touching the lock, the atomic replace or paths, and why no Windows check may be made a required status check (a skipped job reports only as \"Windows\", so a required gate name would wait forever); the gate and the package build both carry a timeout, so a hung job stops costing after it instead of after GitHub's six hours."
     },
     {
       "id": ".github/workflows/gate.yml",
@@ -3193,8 +3193,8 @@
       "id": "CLAUDE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "56a19b90345e5091",
-      "lines": 243,
+      "sha256": "07099b378356af3e",
+      "lines": 276,
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
     },
@@ -3210,8 +3210,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "c4e05c7d79beb320",
-      "lines": 429,
+      "sha256": "e8e240411d8e8e60",
+      "lines": 430,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -3228,7 +3228,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "88c7180cefae09a1",
+      "sha256": "77fb92f4a956deda",
       "lines": 936,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -3952,8 +3952,8 @@
       "id": "tests/test_build.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "d1f7b16b5dcf34e5",
-      "lines": 638,
+      "sha256": "6706e3e84607bb7a",
+      "lines": 645,
       "exports": [
         "BUILD_ENVIRONMENT",
         "BUILD_LOCKS",
@@ -3988,7 +3988,7 @@
         "test_a_scratch_root_is_one_engagement_a_whole_dry_pass_can_walk",
         "test_a_smoke_pass_that_logs_takes_its_root_from_a_settings_folder",
         "test_both_workflows_name_the_one_interpreter_the_office_runs",
-        "test_ci_runs_once_per_ready_pull_request_and_windows_only_by_label",
+        "test_ci_never_fires_per_commit",
         "test_every_action_the_workflows_run_is_pinned_by_commit",
         "test_every_batch_file_ignores_its_own_folder_when_it_finds_a_command",
         "test_every_checkout_leaves_no_credentials_behind",

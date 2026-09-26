@@ -5,30 +5,30 @@
 # a guard nothing runs is a convention rather than a rule — this is what makes
 # it enforced before anything reaches main.
 #
-# When it runs, and why (decision 207, revising 122). GitHub's minutes are
-# paid, and they went on three things that repeated a check already made:
-# every push to main ran the Windows pair at twice the Linux price; labelling
-# or updating a pull request started a second run beside the first, and two
-# runs started at once cancel each other and are billed anyway. Every session
-# now runs the whole suite before it pushes — a cloud session on its own
-# machine, the tracker lane on the office PC, which is Windows — so CI is one
-# final check before a merge:
+# When it runs, and why (decision 211, revising 207 and 122). GitHub's
+# minutes are paid, and Jason's rule (2026-09-26) is that CI never fires per
+# commit: every session runs the whole local gate - the suite, ruff, the map
+# and vocabulary checks - before it pushes, on its own machine, and CI runs
+# only where a person explicitly asks for the safety net:
 #
-#   * a pull request into main runs when it is opened ready, updated, or
-#     marked ready (a reopened one runs on its next push, or when set back to
-#     draft and marked ready again); a pull request based on another branch
-#     runs nothing, and retargeting it onto main starts nothing either, so a
-#     stacked pull request stays a draft until it is retargeted; a draft runs nothing, because both jobs require
-#     `draft == false` (a trigger filter cannot see it: `synchronize` fires on
-#     drafts too);
-#   * there is no run on a push to main: what merges was checked as the
-#     pull request it came from;
-#   * Linux runs the floor interpreter and the office's;
-#   * Windows runs only on a pull request labelled `windows` — anything
-#     touching the held engagement lock, the atomic replace, path handling or
-#     a Windows-only test. The label goes on while the pull request is still
-#     a draft, so the one run it gets when marked ready sees it; `labeled` is
-#     not a trigger, because it started a second, paid run.
+#   * a push to main runs Linux: the net under what just merged;
+#   * a pull request into main runs once, when a person marks it ready
+#     (`ready_for_review`); main's branch protection needs its two Linux
+#     checks before a merge, so without that one run nothing could merge.
+#     A push to a ready pull request runs nothing (there is no
+#     `synchronize`, and no `opened`); to check it again, set it back to
+#     draft and mark it ready. A draft runs nothing, because both jobs
+#     require `draft == false`;
+#   * Windows runs only on a ready pull request labelled `windows` - on
+#     `ready_for_review`, or on `labeled` when the label added is
+#     `windows`, which is the person's explicit ask for it - and never on a
+#     push to main: the office PC, which is Windows, runs the gate before
+#     the push. `labeled` with any other label runs nothing, and Linux
+#     never runs on `labeled`;
+#   * a pull request based on another branch runs nothing, and retargeting
+#     it onto main starts nothing, so a stacked pull request stays a draft
+#     until it is retargeted, then is marked ready;
+#   * Linux runs the floor interpreter and the office's.
 #
 # The steps themselves are not in this file. A job's own `if:` is evaluated
 # before a matrix is expanded and cannot see the `matrix` context, so this
@@ -42,18 +42,20 @@
 # steps, in gate.yml.
 #
 # The trade-off taken: main's Windows run, the old safety net, is gone. A
-# cloud session tests on Linux, and the tracker lane runs on the office PC
-# (Windows) only the tests of the files a restack touched, so a Windows-only
-# regression in an unlabelled pull request is run on Windows nowhere before
-# it merges. That is why the label goes on anything touching the lock, the
-# atomic replace, path handling or a Windows-only test. The tag build
-# (build.yml) smoke-checks the frozen package; it does not run the suite.
+# cloud session tests on Linux, so a Windows-only regression in an
+# unlabelled pull request is caught only if the office PC ran the tests it
+# touches before the push. That is why the label goes on anything touching
+# the lock, the atomic replace, path handling or a Windows-only test (159's
+# Windows run found two real bugs Linux hides). The tag build (build.yml)
+# smoke-checks the frozen package; it does not run the suite.
 name: CI
 
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
-    types: [opened, synchronize, ready_for_review]
+    types: [ready_for_review, labeled]
 
 # A newer push makes an in-flight run irrelevant; don't pay for both.
 concurrency:
@@ -77,7 +79,7 @@ jobs:
   # floor is a language-version check, and Linux is where it is made.
   linux:
     name: Linux
-    if: github.event.pull_request.draft == false
+    if: github.event_name == 'push' || (github.event.action == 'ready_for_review' && github.event.pull_request.draft == false)
     strategy:
       fail-fast: false
       matrix:
@@ -89,10 +91,11 @@ jobs:
       os: ubuntu-latest
       python-version: ${{ matrix.python-version }}
 
-  # Windows on a ready pull request that asked, by its label.
+  # Windows on a ready pull request that asked, by its label: when it is
+  # marked ready with the label on, or when the label is added to it.
   windows:
     name: Windows
-    if: github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'windows')
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'windows') && (github.event.action == 'ready_for_review' || github.event.label.name == 'windows')
     uses: ./.github/workflows/gate.yml
     with:
       os: windows-latest
