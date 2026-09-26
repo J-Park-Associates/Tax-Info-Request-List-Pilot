@@ -110,7 +110,7 @@ def spelling_in(text: str, spelling: str) -> bool:
     The phrase test and nothing else: ``Park`` *is* a whole phrase inside
     ``Park Landscaping LLC``, which is precisely why a one-word spelling
     may never be recorded as one. That rule is kept where a spelling is
-    accepted - the editor, the wizard, a filing that teaches one, the
+    accepted - the editor, the new-return dialog, a filing that teaches one, the
     store's guard against a hand-edited journal - and again in
     :func:`check_name`, which is the thing that confirms.
     """

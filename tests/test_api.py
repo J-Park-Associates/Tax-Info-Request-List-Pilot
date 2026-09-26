@@ -3416,8 +3416,36 @@ def test_the_household_card_names_the_year_it_rolls_to_and_each_returns_form_and
     assert household["open_years"] == [default_tax_year()]
     assert household["roll_year"] == next_tax_year(default_tax_year())
     assert [r["path"] for r in household["returns"]] == [str(john), str(sofia), str(llc)]
+    # None of the three was made with a form, and the card says so rather
+    # than guessing one; every one of them is carried by the roll.
+    assert [one["form"] for one in household["returns"]] == ["", "", ""]
     for one in household["returns"]:
-        assert "form" in one and one["people"] == [TEST_CLIENT], one
+        assert one["people"] == [TEST_CLIENT] and one["rollable"] is True, one
+
+
+def test_each_return_says_whether_the_offered_roll_carries_it(capsys, demo_root, monkeypatch):
+    """Which returns a roll carries is the API's word, per return, so the
+    page filters nothing a second time: a return rolled on and a return
+    retired are never carried, the open year's are, and while no roll is
+    offered no return is."""
+    john, sofia, llc = a_park_household(capsys, demo_root)
+    year = next_tax_year(default_tax_year())
+    code, payload = run(capsys, "roll-household", api.ENGAGEMENT_FLAG, str(john), stdin={
+        "year": year, "returns": [{"prior": str(john)}]})
+    assert code == 0, payload
+    rolled = Path(payload["rolled"][0]["created"])
+    # Mid-season for the year just rolled into: nothing is carried.
+    _calendar_a_year_on(monkeypatch)
+    household = api._state(rolled)["household"]
+    assert household["roll_year"] is None
+    assert not any(one["rollable"] for one in household["returns"])
+    # Once that year has ended, the new return alone is carried: John's
+    # prior was rolled on, Sofia's and the LLC's were retired.
+    monkeypatch.setattr(api, "default_tax_year", lambda today=None: year + 1)
+    household = api._state(rolled)["household"]
+    assert household["roll_year"] == next_tax_year(year)
+    assert {one["path"]: one["rollable"] for one in household["returns"]} == {
+        str(john): False, str(sofia): False, str(llc): False, str(rolled): True}
 
 
 def test_no_roll_is_offered_mid_season_on_a_paused_household_or_with_two_open_years(

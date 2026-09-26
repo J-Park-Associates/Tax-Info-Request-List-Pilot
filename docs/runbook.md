@@ -923,7 +923,8 @@ puts them back.
 
 Rolling forward is done from the **household's card**, not from one return,
 and only once the year it rolls to has ended: the card then carries a folded
-line, **Roll forward to 2027**. Open it and it shows the open year's returns,
+line - from January 2028, say, **Roll forward to 2027**. Open it and it
+shows the open year's returns,
 every one ticked, each with the people it carries and the form template it
 will be filled from, and the sentence saying what unticking does. The button
 names the year. It rolls each ticked return into that year - its list
@@ -2292,8 +2293,11 @@ apostrophes all fold away, and so do `1`, `i` and `|` against `l`, `0`
 against `o`, and `rn` against `m`. So `Kim` and `Klm` are one name. That
 errs on the side of asking: a second household whose name reads as the
 first is refused, and you add a first name or a middle initial — and then,
-if the two names still match, the city — to tell them apart. Never add a
-tax identification number or any part of one to a name.
+if the two names still match, the city — to tell them apart. The refusal
+is shown on the request list and stays there with everything you typed;
+**Change household details** on that list takes you back to the name, and
+**Continue** brings you back to the list as you left it. Never add a tax
+identification number or any part of one to a name.
 
 A folder already on disk whose name breaks the rule is listed under
 *Folders the tracker leaves alone* with the reason, and nothing in it is

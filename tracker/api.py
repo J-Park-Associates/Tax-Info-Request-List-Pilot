@@ -9,7 +9,7 @@ Commands:
             root, plus the vocabulary the app shows
   templates the form catalog and the calendar's default tax year
   create    a new return, and its household where it is a new one, from
-            the wizard's spec (JSON on stdin)
+            the new-return dialog's spec (JSON on stdin)
   edit      save the request list and the engagement's details from the
             app's editor (JSON on stdin), as one recorded event
   edit-household  save the household's members, contact and inbox link
@@ -332,7 +332,7 @@ from tracker.settings import (
     settings_dir,
     settings_path,
 )
-from tracker.templates import (  # the catalog; re-exported for the wizard
+from tracker.templates import (  # the catalog; re-exported for the dialog
     EXTENSION_DEFAULT_NOTE,
     FORM_TEMPLATES,
     FORM_TYPES,
@@ -549,7 +549,7 @@ def _root() -> Path:
 def _saved_root() -> Path | None:
     """The saved clients root held to the rule, as :func:`_root` holds it,
     or ``None`` where none is saved - for the commands that answer without
-    one (the list before a root is chosen, the wizard's priors)."""
+    one (the list before a root is chosen, the command line's priors)."""
     return None if clients_root() is None else door.checked_root()
 
 # ----------------------------------------------------------------- commands ----
@@ -589,6 +589,8 @@ ROLL_DONE_LINE = "{rolled} return(s) rolled into {year}; {retired} retired"
 ROLL_CARRIED = "{n} request(s) carried"
 ROLL_UNFILED = "{n} file(s) sent last year were never filed"
 ROLL_RETIRED_LINE = "{label}: retired."
+ROLL_FORMS_UNLOADED = ("The return types could not be loaded, so each return keeps the form it "
+                       "recorded: {reason}")
 ADD_RETURN_LABEL = "Add a return"
 ADD_RETURN_TITLE = "Add a return to {household}"
 NEW_HOUSEHOLD_INTRO = ("A client folder is a household: one folder per tax year inside it, one "
@@ -597,6 +599,8 @@ NEW_HOUSEHOLD_INTRO = ("A client folder is a household: one folder per tax year 
 FORM_STEP_TITLE = "What type of return?"
 FORM_STEP_NOTE = "The request list is tailored to the form you pick."
 CHANGE_FORM_LABEL = "Change form type"
+CHANGE_HOUSEHOLD_LABEL = "Change household details"
+EMPTY_ROOT_LINE = "No households under {root} yet — click {new} to create the first."
 ITEMS_TITLE = "New {form} return"
 CREATE_RETURN_LABEL = "Create return"
 RETURN_CREATED_LINE = ('Return "{label}" created with {n} request(s) asked for, client README '
@@ -810,7 +814,7 @@ FIRM_PHONE_LABEL = "Firm phone"
 FIRM_PHONE_HELP = "named in the final-notice reminder; blank drops that sentence"
 
 # ---- the people block (decision 128) ----------------------------------------
-#: Every word the wizard's and the editor's People block shows. The record
+#: Every word the new-return dialog's and the editor's People block shows. The record
 #: owns the heading and what the list is for (``records.PEOPLE_LABEL`` and
 #: ``PEOPLE_HELP``) and :mod:`tracker.names` owns the two refusals; these
 #: are the block's own controls, and the page types none of them.
@@ -844,7 +848,7 @@ def _folder_name(value: object, what: str) -> str:
     A household and a return are each **one** folder name: the layout puts
     them where they go (decision 125), and the layout's one name rule
     (decision 188, ``layout.checked_name``) says what one may be - the
-    same sentence wherever a name is typed: the wizard, a new return, a
+    same sentence wherever a name is typed: the dialog, a new return, a
     rolled return's new name, a feed.
     """
     try:
@@ -858,7 +862,7 @@ def _new_return_dir(root: Path, household: str, year: int, return_name: str,
     """Where a new return goes: ``<root>/<private tree>/<household>/<year>/<return>``.
 
     Refused when the household or the return is not a single folder name,
-    when the year is outside the bounds the wizard shows, when a return of
+    when the year is outside the bounds the dialog shows, when a return of
     that name already exists for that household and year, and when the
     deepest working copy the list implies would pass what Windows will
     open (§3.9.1 of decision 125): a folder made today that cannot hold a
@@ -1020,12 +1024,12 @@ def _vocab() -> dict:
         # for it (decision 142), and the chip class it is drawn with.
         "not_asked_label": NOT_ASKED_LABEL,
         "not_asked_key": _slug(NOT_ASKED_LABEL),
-        # The wizard's heading over the catalog's ticks, and its sentence.
+        # The dialog's heading over the catalog's ticks, and its sentence.
         "ask_the_client": ASK_THE_CLIENT,
         "ask_the_client_note": ASK_THE_CLIENT_NOTE,
         "not_asked_table_label": NOT_ASKED_TABLE_LABEL,
         # The one refusal of a list nobody is asked for (R6), which the
-        # wizard also says before it calls.
+        # dialog also says before it calls.
         "nothing_asked": NOTHING_ASKED,
         "roll_template_label": ROLL_TEMPLATE_LABEL,
         "overrides": {"accepted": Override.ACCEPTED, "not_applicable": Override.NOT_APPLICABLE},
@@ -1145,7 +1149,7 @@ def _vocab() -> dict:
         "extension_default_note": EXTENSION_DEFAULT_NOTE,
         # The shape of the clients root, from the module that owns it
         # (decision 125): the two trees, the one inbox, and the two
-        # patterns the wizard's previews fill.
+        # patterns the dialog's previews fill.
         "layout": {
             "clients_tree": CLIENTS_TREE,
             "private_tree": PRIVATE_TREE,
@@ -1179,6 +1183,8 @@ def _vocab() -> dict:
             "form_step_title": FORM_STEP_TITLE,
             "form_step_note": FORM_STEP_NOTE,
             "change_form": CHANGE_FORM_LABEL,
+            "change_household": CHANGE_HOUSEHOLD_LABEL,
+            "empty_root": EMPTY_ROOT_LINE,
             "items_title": ITEMS_TITLE,
             "create_return": CREATE_RETURN_LABEL,
             "return_created": RETURN_CREATED_LINE,
@@ -1208,6 +1214,7 @@ def _vocab() -> dict:
             "roll_carried": ROLL_CARRIED,
             "roll_unfiled": ROLL_UNFILED,
             "roll_retired_line": ROLL_RETIRED_LINE,
+            "roll_forms_unloaded": ROLL_FORMS_UNLOADED,
             # The feed list (decision 129): what this drop folder also
             # feeds, who feeds it, the word that adds one, and the two
             # warnings a person reads before extending either. The page
@@ -1429,13 +1436,13 @@ def _info_payload(info: EngagementInfo) -> dict:
 
 def _info_from_spec(spec: dict, *, carry: EngagementInfo | None = None,
                     blank_clears: bool = False) -> EngagementInfo:
-    """The engagement's details: what the wizard or the editor sent, over
+    """The engagement's details: what the dialog or the editor sent, over
     what is carried (last year's details on a rollover, the details as
     recorded on an edit), over the firm default.
 
     ``blank_clears`` is the editor's rule: a key present with a blank
     value clears the recorded value, and a key absent keeps it - a person
-    who empties the Link box means the link to go. The wizard and the
+    who empties the Link box means the link to go. The dialog and the
     rollover keep their fallback: a blank there is nothing typed, and the
     carried or default value stands.
 
@@ -1485,7 +1492,7 @@ def _info_from_spec(spec: dict, *, carry: EngagementInfo | None = None,
 
 
 def _people_from_spec(sent: object) -> tuple[Person, ...]:
-    """The return's people as the wizard and the editor's block send them:
+    """The return's people as the dialog and the editor's block send them:
     a list of ``{kind, name, spellings}`` (decision 128).
 
     Every refusal is by name and in the words their one owner gives them:
@@ -1532,7 +1539,7 @@ def _placed(info: EngagementInfo, household: str, year: int, return_name: str) -
 
 def _tax_year(given, default: int | None = None) -> int | None:
     """The tax year a spec asks for: a whole number within the bounds the
-    wizard shows (``YEAR_MIN``..``YEAR_MAX``), or ``default`` when none
+    dialog shows (``YEAR_MIN``..``YEAR_MAX``), or ``default`` when none
     was given. The renderer's number box only suggests the bounds."""
     if given in (None, ""):
         return default
@@ -2001,11 +2008,14 @@ def _household_payload(engagement: Path) -> dict:
 
     And whether a roll is offered (decision 196): ``roll_year`` is the
     next year only when the household has one open year, is not paused,
-    has an active return not yet rolled on, and that next year has ended -
-    never mid-season, when a roll would retire the returns being prepared.
-    The rule is the API's, beside the pause and the two-years note, and the
-    page never computes it; the command's own refusals stay the backstop.
-    Each return carries its form and its people's names, read from the
+    and that next year has ended - never mid-season, when a roll would
+    retire the returns being prepared. One open year already means a
+    return to roll: ``open_years`` counts only active returns, and a
+    return rolled on is retired. The rule is the API's, beside the pause
+    and the two-years note, and the page never computes it; the command's
+    own refusals stay the backstop. Each return says whether that roll
+    carries it (``rollable``), so the page filters nothing a second time;
+    and each carries its form and its people's names, read from the
     records already loaded here, so the card's roll fold needs no walk of
     the practice (``priors`` walks it, and stays for the command line).
     """
@@ -2035,12 +2045,18 @@ def _household_payload(engagement: Path) -> dict:
     )
     feeds, fed = _feed_payload(household_dir, years)
     pause = _pause_payload(household_dir, info, returns)
-    rollable = [one for one in returns
-                if one.active and not one.superseded_by and one.tax_year in years]
     roll_year = None
-    if (len(years) == 1 and not pause["sentence"] and rollable
+    if (len(years) == 1 and not pause["sentence"]
             and next_tax_year(years[0]) <= default_tax_year(today)):
         roll_year = next_tax_year(years[0])
+    # The returns that roll carries: the open year's, active, not rolled on.
+    # One open year implies at least one; were a hand-edited record to say
+    # otherwise, an empty roll is not offered.
+    rollable = set() if roll_year is None else {
+        one.path for one in returns
+        if one.active and not one.superseded_by and one.tax_year in years}
+    if not rollable:
+        roll_year = None
     return {
         # Why the pass touches nothing of this household, and what a person
         # may accept (decision 188): the card draws the sentence and the
@@ -2062,6 +2078,7 @@ def _household_payload(engagement: Path) -> dict:
              "year": one.tax_year if one.tax_year is not None else year_of(one.path),
              "return_name": one.info.return_name or one.path.name,
              "active": one.active, "superseded_by": one.superseded_by,
+             "rollable": one.path in rollable,
              "form": one.info.form,
              "people": [person.name for person in one.info.people],
              "reminder": (_return_reminder(one.path, today, one.label)
@@ -2537,10 +2554,10 @@ def _cmd_propose_spellings(argv: list[str]) -> dict:
     -> ``{"spellings": [...]}``. A **read**:
     no folder is touched, no lock taken and nothing recorded, because a
     proposal is not a decision - what a return matches on is what somebody
-    ticked and the wizard or the editor then saves with the rest of the
+    ticked and the dialog or the editor then saves with the rest of the
     details (decision 128).
 
-    The twenty-third command, and the only one the wizard calls while
+    The twenty-third command, and the only one the dialog calls while
     somebody is still typing.
     """
     spec = _read_spec()
@@ -2633,7 +2650,7 @@ def _cmd_edit(argv: list[str]) -> dict:
 #: The keys a row the editor sends may carry (decision 160): the columns of
 #: ``records.RULE_FIELDS`` - the two the person never types included,
 #: because ``state`` hands them out and a caller sends the rows back - and
-#: ``extensions``, the name the wizard has always sent the file types by.
+#: ``extensions``, the name the dialog has always sent the file types by.
 _ROW_KEYS = frozenset(RULE_FIELDS) | {"extensions"}
 
 
@@ -3065,7 +3082,7 @@ def _cmd_create(argv: list[str]) -> dict:
         _refuse_a_taken_household_name(root, household)
         household_dir = private_household_dir(root, household)
     # A household the record already knows is that household, whether the
-    # wizard named it by its folder or a person typed its name again: its
+    # dialog named it by its folder or a person typed its name again: its
     # own details stand, and ``edit-household`` is where they change.
     existing = ledger.path_for(household_dir).is_file()
     made_household: Path | None = None
@@ -3086,12 +3103,12 @@ def _cmd_create(argv: list[str]) -> dict:
             link=" ".join(str(spec.get("link", "") or "").split()),
         )
 
-    # Decision 142: the wizard sends every catalog row, each with its tick
+    # Decision 142: the dialog sends every catalog row, each with its tick
     # as ``asked``, and the custom rows (always asked). A list nobody is
     # asked for is still refused - it would chase nothing.
     items = [item_from_spec(s) for s in spec.get("items", [])]
     _refuse_a_list_nobody_is_asked_for(items)
-    # The wizard sends catalog rows as written (the base year); shift them
+    # The dialog sends catalog rows as written (the base year); shift them
     # to the return's year so TY2025 does not get asked for in 2027.
     base = base_year(form) if form else None
     if base:
@@ -3100,7 +3117,7 @@ def _cmd_create(argv: list[str]) -> dict:
     return_name = str(spec.get("return_name", "") or "").strip() or default_return_name(form, client)
     engagement = _new_return_dir(root, household, year, return_name, items)
 
-    # The wizard's dates, or the form's own (decision 117) - a new return
+    # The dialog's dates, or the form's own (decision 117) - a new return
     # is on the reminder's ladder from its first draft. Its greeting and
     # its link come from the household where the spec is silent.
     # A household link recorded before decision 137's rule that is not a web
@@ -3135,7 +3152,7 @@ def _cmd_create(argv: list[str]) -> dict:
             create_household(household_dir, household_info)
             made_household = household_dir
         made += make_new_folders(engagement)
-        # The catalog the wizard chose is recorded in the details: a
+        # The catalog the dialog chose is recorded in the details: a
         # return that cannot say which checklist it came from cannot be
         # checked against it later. The list is validated whole before a
         # line is written, so a bad row leaves nothing behind.
@@ -3299,7 +3316,7 @@ def _cmd_edit_household(argv: list[str]) -> dict:
 def _cmd_priors(argv: list[str]) -> dict:
     """Engagements already on disk that a new year could be rolled from.
 
-    The same discovery the scheduled run uses, so what the wizard offers
+    The same discovery the scheduled run uses, so what the command line offers
     and what the job walks are one list; superseded_by comes from it too.
     """
     root = _saved_root()
@@ -3325,13 +3342,13 @@ def _cmd_priors(argv: list[str]) -> dict:
             "household": str(engagement.household_path),
             "household_name": engagement.info.household or engagement.household_path.name,
             "return_name": engagement.info.return_name or engagement.path.name,
-            # The catalog the return was cut from, which the returning-client
-            # page picks by default so the rows it never had arrive as not
+            # The catalog the return was cut from, which the card's roll
+            # fold picks by default so the rows it never had arrive as not
             # asked without anybody choosing (decision 142's review, R2).
             "form": engagement.info.form,
             "client": engagement.client,
-            # Who the return is for (decision 128): the returning-client
-            # page lists them under each ticked return, because the roll
+            # Who the return is for (decision 128): the card's roll fold
+            # lists them under each ticked return, because the roll
             # carries the list unchanged and it is worth one look.
             "people": [person_to_json(one) for one in engagement.info.people],
             "rolled_from": engagement.rolled_from,
@@ -3394,7 +3411,7 @@ def _cmd_rollover(argv: list[str]) -> dict:
                                  report.items)
 
     # Last year's details, carried by the one rule (tracker.rollover); the
-    # wizard's fields go over it. Rolled From is what retires the prior.
+    # plan's fields go over it. Rolled From is what retires the prior.
     carried = carry_engagement_info(prior_info, rolled_from=str(prior),
                                     tax_year=report.target_year)
     # The household's own contact and inbox link refill what the carry

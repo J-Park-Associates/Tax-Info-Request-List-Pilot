@@ -53,7 +53,7 @@ workbook. Neither exists now.)
 Nothing here writes to the prior year's engagement — it is read-only history.
 
 **A household rolls as a household** (decision 126). A client sees one
-folder and one inbox, so Roll Forward takes the household's open year and
+folder and one inbox, so Roll forward takes the household's open year and
 rolls every ticked return into the next one by the rule above, and
 retires every return left unticked with a single details edit
 (``active: no``) — so the household has exactly one open year again when
@@ -291,7 +291,7 @@ def carry_engagement_info(
     household, which is what lets one return line be followed and named.
     So do the **people** (decision 128): the same person files the same
     return next year and their documents print their name the same way, so
-    the list carries unchanged and the returning-client page asks for one
+    the list carries unchanged and the card's roll fold asks for one
     look at it - nothing blocks on that look, because strict parking is
     the safety net if nobody gives it.
     The share link, the due date and the filing
@@ -439,7 +439,7 @@ def roll_forward(
     """
     prior_dir = Path(prior_engagement_dir)
     # A year is bounded wherever it is typed (decision 68 bounded the
-    # wizard's box; the flag on this command line was the other door).
+    # app's year box; the flag on this command line was the other door).
     # Unbounded, --year 20265 shifts every Period and every document name
     # by eighteen thousand years, writes the folders under those names and
     # retires the live engagement behind them.
@@ -586,7 +586,7 @@ def roll_household(
 
     **The household is what a person rolls**, because the household is what
     the client sees: one inbox, one folder, and however many returns the
-    firm keeps under it. Roll Forward takes the open year's active returns,
+    firm keeps under it. Roll forward takes the open year's active returns,
     rolls each ticked one into ``target_year`` exactly as the per-return
     rollover does - the same carry rule, the same defaults - and sets every
     unticked one ``active: no`` with one details edit. So the household has

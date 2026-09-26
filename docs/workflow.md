@@ -69,7 +69,7 @@ an engagement's list is cut from it into the record, where the app's
 editor shows it.
 
 - **Returning client (the default):** roll the household's year forward.
-  In the desktop app, the household's card carries *Roll forward to <year>*
+  In the desktop app, the household's card carries *Roll forward to `<year>`*
   once that year has ended; it lists the household's open-year returns
   with every one ticked and rolls them all at once; a return left unticked
   is retired for that year.

@@ -9,6 +9,7 @@ let addingTo = null;       // the household a new return is added to: a path its
 let active = null;         // path of the active engagement
 let forms = [];            // tax form catalog [{id, label, who, blurb}]
 let templatesByForm = {};  // form id -> tailored request template items
+let formsUnloaded = "";    // why the catalog could not be loaded, said in the roll fold's form pick
 let defaultYear = null;    // the tax year a new engagement is for (from the calendar)
 let nameIsAuto = true;     // new-client name follows client + year + form until typed
 let selectedForm = null;   // form id chosen on the dialog's form step
@@ -1391,15 +1392,10 @@ function renderHousehold(state) {
 // ── the household's roll fold (decisions 126 and 196) ─────────────────────
 // A household rolls as a household, from its own card, and only when the
 // API names the year (state.household.roll_year: one open year, not paused,
-// a return to roll, and that year has ended). Every open-year return is
+// and that year has ended). Every return the roll carries is
 // ticked; an unticked one is retired, which the API's sentence says before
-// anything is unticked. The year is named, never typed.
-
-// The returns a roll carries: the one open year's, active, not rolled on.
-function rollableReturns(hh) {
-  const open = hh.open_years.length === 1 ? hh.open_years[0] : null;
-  return hh.returns.filter((r) => r.year === open && r.active && !r.superseded_by);
-}
+// anything is unticked. The year is named, never typed, and which returns
+// the roll carries is the API's word too (each return's rollable).
 
 function renderRollFold(hh) {
   const words = vocab.household;
@@ -1418,7 +1414,7 @@ function renderRollFold(hh) {
   show("household-roll", [
     el("summary", {}, fill(words.roll_forward_to, { year })),
     el("p", { className: "wiz-sub" }, words.roll_intro),
-    el("div", { className: "tmpl-list" }, rollableReturns(hh).map((r) => {
+    el("div", { className: "tmpl-list" }, hh.returns.filter((r) => r.rollable).map((r) => {
       const picked = choice && choice.forms.has(r.path) ? choice.forms.get(r.path) : r.form;
       const known = forms.some((f) => f.id === picked);
       return el("div", { className: "prior-item roll-return" },
@@ -1442,12 +1438,18 @@ function renderRollFold(hh) {
           // The return's own recorded form is picked by default (decision
           // 142's review, R2), so the catalog rows it never had arrive as
           // not asked without anybody choosing; "no template" is the
-          // default only for a return that never recorded one.
-          el("select", { className: "roll-form-pick", dataset: { path: r.path } },
-            el("option", { value: "", selected: !known }, words.roll_no_template),
-            forms.map((f) => el("option", { value: f.id, selected: f.id === picked },
-              `${f.label} · ${f.who}`)),
-          ),
+          // default only for a return that never recorded one. A catalog
+          // that could not be loaded is said here, where the pick is read,
+          // and no pick is drawn: the roll keeps each recorded form rather
+          // than sending "no template" for all of them.
+          formsUnloaded
+            ? el("span", { className: "wiz-note" },
+              fill(words.roll_forms_unloaded, { reason: formsUnloaded }))
+            : el("select", { className: "roll-form-pick", dataset: { path: r.path } },
+              el("option", { value: "", selected: !known }, words.roll_no_template),
+              forms.map((f) => el("option", { value: f.id, selected: f.id === picked },
+                `${f.label} · ${f.who}`)),
+            ),
         ),
       );
     })),
@@ -1464,8 +1466,7 @@ function renderRollFold(hh) {
 // is ignored; null when the API offers no roll.
 function rollHouseholdCall(hh, choice) {
   if (!hh || !hh.roll_year) return null;
-  const open = hh.open_years.length === 1 ? hh.open_years[0] : null;
-  const rollable = hh.returns.filter((r) => r.year === open && r.active && !r.superseded_by);
+  const rollable = hh.returns.filter((r) => r.rollable);
   if (!rollable.length) return null;
   const mine = choice && choice.household === hh.path ? choice : null;
   const unticked = mine ? mine.unticked : new Set();
@@ -1939,6 +1940,7 @@ function applyVocabulary() {
   $("household-new-intro").textContent = vocab.household.new_intro;
   $("form-note").textContent = vocab.household.form_step_note;
   $("wi-back").textContent = `\u2190 ${vocab.household.change_form}`;
+  $("wi-household").textContent = `\u2190 ${vocab.household.change_household}`;
   $("ne-create").textContent = vocab.household.create_return;
   $("hh-name-label").textContent = vocab.household.name_label;
   $("hh-contact-label").textContent = vocab.household.contact_label;
@@ -2081,14 +2083,20 @@ async function bootstrap(preferPath) {
     if (listed === null) return;   // a later choice owns the page now
     if (!listed) {
       if (!$("setup-card").classList.contains("hidden")) return;   // waiting for the folder
-      banner(`No engagements under ${clientsRoot} yet — click ${$("btn-new-household").textContent.trim()} to create the first.`, "ok");
+      banner(fill(vocab.household.empty_root, { root: clientsRoot, new: vocab.household.new }), "ok");
       show("rows", []);
       show("rows-not-asked", []);
       $("rows-not-asked-group").classList.add("hidden");
       return;
     }
     const view = viewGeneration;
-    await loadForms();
+    // The catalog is for the roll fold's form pick: a failure to load it
+    // is said there, and the page is drawn all the same.
+    try {
+      await loadForms();
+    } catch (err) {
+      formsUnloaded = err.message;
+    }
     renderFor(view, await call(withEng("state")));
   } catch (err) {
     failed(err, () => bootstrap(preferPath));
@@ -2269,6 +2277,7 @@ async function runScan() {
 async function loadForms() {
   if (forms.length) return;
   const result = await call(["templates"]);
+  formsUnloaded = "";
   forms = result.forms;
   templatesByForm = result.templates;
   defaultYear = result.default_year || null;
@@ -2393,6 +2402,9 @@ function chooseForm(formId) {
   if (wizardPeople[0].name) refreshProposals(wizardPeople[0], () => renderPeople("wp-people", wizardPeople, () => {}));
   renderTemplateList();
   renderCustomRows();
+  // New household's way back to its four fields from the request list,
+  // where 188's duplicate-name refusal is read: nothing typed is cleared.
+  $("wi-household").classList.toggle("hidden", Boolean(addingTo));
   showStep("items");
   $("ne-client").focus();
 }
@@ -3189,7 +3201,13 @@ $("form-grid").addEventListener("click", (e) => {
 });
 $("wi-back").addEventListener("click", () => showStep("form"));
 $("wh-cancel").addEventListener("click", closeNewReturn);
-$("wh-next").addEventListener("click", () => showStep("form"));
+// Back from the request list, Continue returns to it as it was left; the
+// form grid is only for a household that has no form picked yet.
+$("wh-next").addEventListener("click", () => showStep(selectedForm ? "items" : "form"));
+$("wi-household").addEventListener("click", () => {
+  showStep("household");
+  $("hh-name").focus();
+});
 $("wf-cancel").addEventListener("click", closeNewReturn);
 // A refusal in the dialog's note stands until the person edits a field.
 $("modal").addEventListener("input", hideCreateNote);

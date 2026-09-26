@@ -113,7 +113,7 @@ never filed into another household's return. The client README's list of
 what has arrived shows each attachment that filed, under its request.
 
 1. Roll a household's returns forward from last year on its card (**Roll
-   forward to <year>**, offered once that year has ended), or add a return
+   forward to `<year>`**, offered once that year has ended), or add a return
    to it with **Add a return** - pick the tax form type, then the request
    list; the catalog lives in `tracker/templates.py` and nowhere else. A
    household the tracker has no record of is made with **New household**

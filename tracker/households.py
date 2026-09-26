@@ -336,7 +336,7 @@ def return_name_taken(year_dir: Path | str, return_name: str) -> str | None:
     A return is unique within its household-year by the key and not by
     its spelling, so ``1040 - Park`` and ``1040 - PARK`` - or a look-alike
     typed in another script - are one return, and the second is refused
-    where the first already is. Asked by the wizard and the rollover
+    where the first already is. Asked by the new-return dialog and the rollover
     before anything is made; a year folder not there yet holds nothing.
     """
     wanted = name_key(return_name)
@@ -418,7 +418,7 @@ def pause_of(household_dir: Path | str, info: HouseholdInfo,
     household, its return name and its year. **Any disagreement pauses
     the whole household**, because its returns share one inbox, one
     client folder and one README: the pass does not sweep, lay out, sort,
-    scan, draft or refresh anything for it, and Roll Forward and a new
+    scan, draft or refresh anything for it, and Roll forward and a new
     return into it refuse, until a person accepts the folder's name in
     the app or gives the folder back its name. This overrides decision
     177's warning and decision 125's "the record wins".

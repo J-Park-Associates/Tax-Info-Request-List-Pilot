@@ -284,7 +284,7 @@ def clients_root() -> Path | None:
 
 
 def firm() -> str:
-    """The firm's name as typed once at setup; the wizard's default Firm."""
+    """The firm's name as typed once at setup; a new return's default Firm."""
     return str(_read().get(KEY_FIRM, "") or "").strip()
 
 

@@ -647,9 +647,9 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
                     UNSCANNED_LABEL, *[h for h in HEADERS if " " in h]):
         assert literal not in html, literal
     assert 'min="' not in html and 'max="' not in html
-    # Every word the household's card, the wizard's household step and the
+    # Every word the household's card, the dialog's household step and the
     # misfit list show is the API's too, and so are the two trees and the
-    # two patterns the wizard's previews fill (decision 125).
+    # two patterns the dialog's previews fill (decision 125).
     import tracker.api as api_module
 
     words = api_module._vocab()
@@ -659,7 +659,7 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
         assert f'"{literal}"' not in js and f"'{literal}'" not in js, literal
         assert f">{literal}<" not in html, literal
     # Decision 142 (its review, R1): every word it adds is the API's - the
-    # status of a row nobody asked for, the count beside it, the wizard's
+    # status of a row nobody asked for, the count beside it, the dialog's
     # heading and note, the folded table's name and heading, the rollover's
     # label and line, the one refusal, the column's help and the rollover's
     # notes. None is typed in the renderer or the page, quoted or not.
@@ -750,12 +750,12 @@ def _a_household(name: str, year: int) -> dict:
     home = f"/fabricated/{name}"
     def one(label, **more):
         return {"label": f"{name} {year} {label}", "path": f"{home}/{year}/{label}", "year": year,
-                "active": True, "superseded_by": None, "form": "1040",
+                "active": True, "superseded_by": None, "rollable": True, "form": "1040",
                 "people": [f"{label} person"], **more}
     return {"name": name, "path": home, "open_years": [year], "roll_year": year + 1,
             "returns": [one("1040 - One"), one("1120S - Two", form="1120S"),
-                        one("1040 - Rolled", superseded_by="later"),
-                        one("1040 - Retired", active=False)]}
+                        one("1040 - Rolled", superseded_by="later", rollable=False),
+                        one("1040 - Retired", active=False, rollable=False)]}
 
 
 def test_roll_forward_rolls_the_household_on_screen_and_names_no_other(tmp_path):
@@ -801,7 +801,7 @@ def test_roll_forward_rolls_the_household_on_screen_and_names_no_other(tmp_path)
     assert done.returncode == 0, done.stderr
     with_leftover, with_own, offered_none = json.loads(done.stdout)
 
-    open_year = [r["path"] for r in here["returns"] if r["active"] and not r["superseded_by"]]
+    open_year = [r["path"] for r in here["returns"] if r["rollable"]]
     for argv, spec in (with_leftover, with_own):
         assert argv[:2] == ["roll-household", api_module.ENGAGEMENT_FLAG]
         assert argv[2] in open_year
@@ -817,12 +817,79 @@ def test_roll_forward_rolls_the_household_on_screen_and_names_no_other(tmp_path)
     assert offered_none is None
 
 
+def test_the_card_hands_the_roll_call_the_household_it_shows_and_no_other(tmp_path):
+    """D1 at the caller: the card's roll button builds its call from the
+    household on screen, and from nothing else in reach. Run as written,
+    with another household first in the list the page holds, it hands
+    ``rollHouseholdCall`` the household on screen - and nothing at all
+    when no household is on screen."""
+    import shutil
+    import subprocess
+
+    js = read("app/renderer/app.js")
+    body = _js_function(js, "async function rollFromCard() {")
+    # The static half: one call site, in this function, fed from the state
+    # the card was drawn from, and no list of households or returns read.
+    calls = [m.start() for m in re.finditer(r"(?<!function )\brollHouseholdCall\(", js)]
+    assert len(calls) == 1 and "rollHouseholdCall(" in body, calls
+    assert "const hh = lastState && lastState.household;" in body
+    for name in ("households", "engagements"):
+        assert not re.search(rf"\b{name}\b", body), name
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not on PATH (CI installs it); the caller's source is still held by name")
+    here, there = _a_household("Alpha Household", 2026), _a_household("Beta Household", 2026)
+    script = tmp_path / "roll_caller.js"
+    script.write_text(
+        "const input = JSON.parse(require('fs').readFileSync(0, 'utf8'));\n"
+        "const vocab = { household: {} };\n"
+        "const handed = [];\n"
+        "let lastState = null;\n"
+        "const households = input.households;\n"
+        "const engagements = input.households.map((hh) => ({ path: hh.returns[0].path }));\n"
+        "function gatherRollChoice(hh) { return { household: hh.path, unticked: new Set(),\n"
+        "                                         forms: new Map() }; }\n"
+        "function rollHouseholdCall(hh, choice) {\n"
+        "  handed.push([hh.path, choice.household]); return null; }\n"
+        f"{body}\n"
+        "(async () => {\n"
+        "  for (const shown of input.shown) { lastState = { household: shown }; await rollFromCard(); }\n"
+        "  process.stdout.write(JSON.stringify(handed));\n"
+        "})();\n",
+        encoding="utf-8", newline="\n")
+    done = subprocess.run([node, str(script)], capture_output=True, text=True, encoding="utf-8",
+                          input=json.dumps({"households": [there, here],
+                                            "shown": [here, None, there]}),
+                          timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    assert json.loads(done.stdout) == [[here["path"], here["path"]],
+                                       [there["path"], there["path"]]]
+
+
+def test_the_roll_fold_says_what_unticking_does_and_a_paused_card_offers_neither_entry():
+    """The retire-on-untick sentence (decision 126) is drawn inside the
+    fold, beside the ticks and before the button, naming the year; the
+    fold is hidden whenever the API offers no roll (a paused household
+    among them), and Add a return is hidden while the household is paused
+    (decision 188), because then the pause is the work."""
+    js = read("app/renderer/app.js")
+    fold = _js_function(js, "function renderRollFold(hh) {")
+    assert 'fold.classList.toggle("hidden", !hh.roll_year);' in fold
+    note = fold.index('fill(words.rollover_unticked, { year })')
+    assert fold.index('className: "roll-tick"') < note < fold.index('id: "btn-roll"')
+    card = _js_function(js, "function renderHousehold(state) {")
+    assert "renderRollFold(hh);" in card
+    assert '$("btn-add-return").classList.toggle("hidden", Boolean(pause.sentence));' in card
+    assert "const pause = hh.pause || {};" in card
+
+
 #: The words decision 196 adds under ``vocab.household``.
 ROLL_AND_ADD_KEYS = ("roll_forward_to", "roll_ticked", "roll_intro", "roll_no_template",
                      "roll_done", "roll_carried", "roll_unfiled", "roll_retired_line",
-                     "add_return", "add_return_title", "new_intro", "form_step_title",
-                     "form_step_note", "change_form", "items_title", "create_return",
-                     "return_created")
+                     "roll_forms_unloaded", "add_return", "add_return_title", "new_intro",
+                     "form_step_title", "form_step_note", "change_form", "change_household",
+                     "items_title", "create_return", "return_created", "empty_root")
 
 
 def test_every_word_of_roll_forward_add_a_return_and_new_household_is_the_apis():
@@ -840,10 +907,18 @@ def test_every_word_of_roll_forward_add_a_return_and_new_household_is_the_apis()
         assert isinstance(words[key], str) and words[key], key
         assert f"vocab.household.{key}" in js or f"words.{key}" in js, key
         literal = words[key]
-        stem = literal.split("{")[0].strip() or literal.split("}")[1].split("{")[0].strip()
-        for quoted in (f'"{stem}', f"'{stem}", f"`{stem}", f">{stem}"):
-            assert quoted not in js and quoted not in html, (key, quoted)
+        stem = literal.split("{")[0].strip()
+        if stem:
+            for quoted in (f'"{stem}', f"'{stem}", f"`{stem}", f">{stem}"):
+                assert quoted not in js and quoted not in html, (key, quoted)
+        else:
+            # A text that opens on a placeholder is typed, when it is, after
+            # a `${...}` inside a template string: its words after the first
+            # placeholder are looked for bare.
+            bare = literal.split("}")[1].split("{")[0].strip()
+            assert bare not in js and bare not in html, (key, bare)
     for typed in ("New Engagement", "Create Engagement", "Roll Forward<", "returning client",
+                  "No engagements under",
                   "No template — carry", "return(s) rolled into", "request(s) carried",
                   "file(s) sent last year were never filed"):
         assert typed not in js and typed not in html, typed
@@ -862,6 +937,41 @@ def test_a_refused_create_stays_in_the_dialog():
     assert '$("ne-note")' in caught and "err.message" in caught, caught
     assert "toast(" not in caught, caught
     assert '<p id="ne-note" class="rem-hold hidden" role="alert"></p>' in html
+
+
+def test_new_households_refusal_leads_back_to_the_name_field_with_everything_typed_kept():
+    """188's duplicate-name refusal is read on the request list, and its
+    advice is to change the household's name. New household's request list
+    carries the way back to the name field, and Continue returns to the list
+    as it was left: neither clears a field, the form, the ticks or the
+    people. Add a return has no household step, so it has no such button."""
+    js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
+    assert '<button id="wi-household" class="wiz-back hidden"></button>' in html
+    assert "vocab.household.change_household" in js
+    chosen = _js_function(js, "function chooseForm(formId) {")
+    assert '$("wi-household").classList.toggle("hidden", Boolean(addingTo));' in chosen
+    back = js.split('$("wi-household").addEventListener("click", () => {', 1)[1].split("});", 1)[0]
+    assert 'showStep("household");' in back and '$("hh-name").focus();' in back, back
+    assert "renderHouseholdStep" not in back and "chooseForm" not in back, back
+    assert ('$("wh-next").addEventListener("click", () => showStep(selectedForm ? "items" : "form"));'
+            in js)
+
+
+def test_a_catalog_that_will_not_load_is_said_in_the_roll_fold_and_the_page_is_drawn():
+    """The roll fold's form pick needs the catalog; a ``templates`` call that
+    fails is said there, in the API's words, and the card is drawn all the
+    same. No pick is drawn then, so the roll keeps each return's recorded
+    form instead of sending "no template" for every one."""
+    js = read("app/renderer/app.js")
+    refreshing = _js_function(js, "async function refresh(preferPath) {")
+    guarded = refreshing.split("try {\n      await loadForms();\n    } catch (err) {", 1)
+    assert len(guarded) == 2, refreshing
+    assert guarded[1].lstrip().startswith("formsUnloaded = err.message;"), guarded[1]
+    fold = _js_function(js, "function renderRollFold(hh) {")
+    said = fold.index("fill(words.roll_forms_unloaded, { reason: formsUnloaded })")
+    assert fold.index("formsUnloaded\n") < said < fold.index('className: "roll-form-pick"')
+    assert 'formsUnloaded = "";' in _js_function(js, "async function loadForms() {")
 
 
 def test_the_renderer_names_no_catalog_of_its_own():
