@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 156,
     "edges": 1005,
-    "reused": 98
+    "reused": 117
   },
   "node_types": [
     "artifact",
@@ -2944,8 +2944,8 @@
       "id": "tracker/store.py",
       "type": "module",
       "layer": "core",
-      "sha256": "523fc5be5074c312",
-      "lines": 3851,
+      "sha256": "eebe1dcf53d82c7b",
+      "lines": 3856,
       "cli": "python -m tracker.store",
       "exports": [
         "ACCEPTED",
@@ -3340,7 +3340,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "674b2a510156a9a8",
+      "sha256": "22937aa5f34a3998",
       "lines": 430,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -3367,8 +3367,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "2ff5b2be9ad1b017",
-      "lines": 2258,
+      "sha256": "dca4eb397e6057c6",
+      "lines": 2259,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -3796,8 +3796,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "b153c3f633585468",
-      "lines": 5787,
+      "sha256": "e6d6108a50b1d052",
+      "lines": 5822,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -3863,6 +3863,7 @@
         "test_a_rollover_takes_its_prior_only_from_under_the_root",
         "test_a_save_from_a_stale_list_is_refused",
         "test_a_stale_seq_is_refused",
+        "test_a_waiting_row_keeps_its_one_click_in_the_document_bucket_with_open_and_the_handle_it_is_drawn_by",
         "test_a_waiting_row_offers_one_click_and_assign_waiting_files_it_with_no_target_from_the_page",
         "test_a_waiting_row_whose_feed_was_trimmed_offers_no_click_and_says_not_fed",
         "test_a_waiting_row_whose_return_has_no_room_offers_no_click_and_says_so_in_that_returns_words",
@@ -6578,8 +6579,8 @@
       "id": "tests/test_store.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a0d3e3fff1319c38",
-      "lines": 3595,
+      "sha256": "966b3187c70971b3",
+      "lines": 3597,
       "exports": [
         "AS_AT_16",
         "AS_AT_17",

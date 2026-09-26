@@ -2399,15 +2399,17 @@ IMPOSSIBLE = [
 @pytest.mark.parametrize("subfolder", ["a/../../x", "..", "Scans\\.", "Scans\\..\\..", "C:\\Scans"])
 def test_a_subfolder_part_that_is_a_path_of_its_own_is_a_name_no_writer_wrote(conn, root, by_hand, subfolder):
     """The filer writes a client's subfolder as its folder names joined with
-    a backslash, each one folder name (decision 187's one name rule), so a
-    part holding "/", naming "." or "..", or a drive is refused at the door
-    in and on every read, even though the recorded-name rule alone would
-    keep it (the review's S3, decision 190). A subfolder the filer does
-    write is admitted."""
+    a backslash, each one folder name, so a part holding "/", naming "." or
+    "..", or a drive is refused at the door in and on every read, even
+    though the recorded-name rule alone would keep it (the review's S3,
+    decision 190). A subfolder the filer does write is admitted - a client's
+    folder named like a year, or beginning with "_" or "(", included, which
+    decision 188's household-name rule would refuse."""
     build(conn, root, by_hand)
     with engagement_lock(by_hand):
-        store.record(conn, by_hand, ledger.new(ledger.FILED, key=A_ROW_ORIGINAL,
-                                               row=a_row(subfolder="Scans\\2025")))
+        for written in ("Scans\\2025", "2025\\_old\\(scans) \u00a0x"):
+            store.record(conn, by_hand, ledger.new(ledger.FILED, key=A_ROW_ORIGINAL,
+                                                   row=a_row(subfolder=written)))
         with pytest.raises(store.StoreError) as refused:
             store.record(conn, by_hand, ledger.new(ledger.FILED, key=A_ROW_ORIGINAL,
                                                    row=a_row(subfolder=subfolder)))

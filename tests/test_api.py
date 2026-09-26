@@ -3804,6 +3804,36 @@ def test_a_waiting_row_offers_one_click_and_assign_waiting_files_it_with_no_targ
     assert code == 1
 
 
+def test_a_waiting_row_keeps_its_one_click_in_the_document_bucket_with_open_and_the_handle_it_is_drawn_by(
+        capsys, demo_root):
+    """Decision 190's three buckets over decision 204's one click: the row
+    that waits for another household's return is a document the tracker
+    read - the document bucket, with **Open** on its marked copy (its code
+    is on the allow-list) - and its triage entry, keyed by the handle the
+    card now draws a row by, still carries the click. Sent back with that
+    handle, the click files it exactly as 204 built it."""
+    from tracker import reasons
+
+    father, llc = two_households(capsys, demo_root)
+    waiting = waiting_document(capsys, father)
+    code, state = run(capsys, "state", api.ENGAGEMENT_FLAG, str(father))
+    assert code == 0, state
+    [row] = [e for e in state["index"] if e["decision"] == NEEDS_REVIEW]
+
+    assert row["code"] == reasons.NAMED_ACROSS_HOUSEHOLDS.code in api.READ_AND_PARKED_CODES
+    assert row["bucket"] == waiting["bucket"] == api.BUCKET_DOCUMENT
+    assert row["open_key"] and Path(state["paths"][row["open_key"]]).is_file()
+    assert waiting["handle"] == row["handle"]
+    assert waiting["waits_for"]["target"] == str(llc) and waiting["waits_for_refused"] == ""
+
+    code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(father),
+                        stdin={"original": waiting["handle"], "seq": waiting["seq"], "waiting": True})
+    assert code == 0, payload
+    assert payload["handed_over"]["identifier"] == "B01"
+    [taken] = read_index(llc)
+    assert taken.decision == FILED and taken.identifier == "B01"
+
+
 def test_a_waiting_row_whose_feed_was_trimmed_offers_no_click_and_says_not_fed(capsys, demo_root):
     """R-8: a claim that no longer resolves offers nothing. The card says why
     in the words a hand-over is refused with, the click sent anyway is
@@ -3832,8 +3862,11 @@ def test_a_claim_is_offered_only_on_the_row_the_click_would_take(capsys, demo_ro
     """The review's S-3: the card offers the click on exactly the rows the
     filer's refusal lets through - still parked, with the named-across
     reason. The same claim on a row a person set aside, or under any other
-    reason, draws no button and no sentence."""
+    cause, draws no button and no sentence. The cause is the row's code
+    (decision 190): its sentence reworded changes nothing."""
     from dataclasses import replace
+
+    from tracker import reasons
 
     father, llc = two_households(capsys, demo_root)
     waiting = waiting_document(capsys, father)
@@ -3841,8 +3874,10 @@ def test_a_claim_is_offered_only_on_the_row_the_click_would_take(capsys, demo_ro
     fed = lambda: {llc: "Park & Lee LLC 2025 1120S - Park & Lee LLC"}  # noqa: E731
     offer, _said = api._waiting_payload(father, row, fed)
     assert offer == waiting["waits_for"]
-    for other in (replace(row, decision="Not Requested"), replace(row, reason="a reason of its own")):
+    for other in (replace(row, decision="Not Requested"),
+                  replace(row, code=reasons.UNNAMED_ACROSS_HOUSEHOLDS.code)):
         assert api._waiting_payload(father, other, fed) == (None, "")
+    assert api._waiting_payload(father, replace(row, reason="a reason of its own"), fed)[0] == offer
 
 
 def test_a_waiting_row_whose_return_has_no_room_offers_no_click_and_says_so_in_that_returns_words(

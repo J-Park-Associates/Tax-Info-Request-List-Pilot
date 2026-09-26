@@ -1689,12 +1689,17 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
             refuse(f"carries a row whose {problem}")
         a_code("code", row.get("code"), "a row")
         # The client's subfolder is written as the record keeps a name
-        # (decision 190, layout.recorded_name), one folder name per part
-        # (decision 187's one name rule, layout.segment_problem): a part
-        # either would change, "/", "." or ".." among them, is a name no
-        # writer wrote - the filer joins Path.parts with a backslash.
+        # (decision 190, layout.recorded_name), one folder name per part -
+        # the filer joins the parts below the inbox with a backslash. A part
+        # the recorded-name rule would change, "." or "..", or one holding a
+        # character Windows keeps out of a folder name ("/", ":", a control;
+        # layout.WINDOWS_ILLEGAL_CHARS) is a name no writer wrote. Not the
+        # household and return name rule (layout.segment_problem): since
+        # decision 188 that refuses "2025", "_old" and "(scans)", which are
+        # folders a client may well make in their inbox.
         subfolder = row.get("subfolder")
-        if subfolder and any(layout.segment_problem(part) is not None or layout.recorded_name(part) != part
+        if subfolder and any(part in (".", "..") or layout.WINDOWS_ILLEGAL_CHARS.search(part)
+                             or layout.recorded_name(part) != part
                              for part in str(subfolder).split("\\")):
             refuse("carries a row whose 'subfolder' is not a name as the record keeps one")
         for field in ("pbc_location", "prepared_location", "container"):

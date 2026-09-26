@@ -1314,8 +1314,9 @@ read-only view they give a file from outside (decision 190). **Open** is
 an allow-list, `api.READ_AND_PARKED_CODES`: it is offered only for a
 document the tracker read and parked for a filing reason - it matched no
 request or more than one, a request contested it, the name is not on the
-page or names another return, its forms would not sort, its issuer is not
-named, it shows its form number. Every other card has no **Open**: an
+page or names another return, or it names another household's person
+and waits for one click (decision 204), its forms would not sort, its
+issuer is not named, it shows its form number. Every other card has no **Open**: an
 email or a zip; a file whose reading was refused (unreadable, extraction
 or OCR failed, the reader crashed, stopped or could not start, too large,
 locked, no pages, no readable text); a file the tracker never read (an
