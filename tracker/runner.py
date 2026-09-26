@@ -128,8 +128,7 @@ from contextlib import ExitStack, nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tracker import content_check, ledger, store
-from tracker.content_check import OCR_SCRATCH_DIR_NAME, ocr_scratch
+from tracker import content_check, ledger, ocr, store
 from tracker.filer import (
     HOUSEHOLD_NO_ROOM,
     NEEDS_REVIEW,
@@ -189,7 +188,6 @@ from tracker.settings import (
     clients_root_refusal,
     firm,
     product_name,
-    settings_dir,
     settings_path,
 )
 from tracker.store import StoreError
@@ -409,8 +407,16 @@ class RunReport:
     #: is drawn from the report and never from a fresh walk.
     misfits: list[Misfit] = field(default_factory=list)
     #: What the pass says once, about the pass rather than one return: a
-    #: reader that could not start on this machine (decision 150).
+    #: reader that could not start on this machine (decision 150), the
+    #: graphics card failing mid-pass (decision 169).
     warnings: list[str] = field(default_factory=list)
+    #: Which device the reader used this pass (decision 169): the run
+    #: log's first line says it, ``reader=processor`` or
+    #: ``reader=graphics card``.
+    reader: str = ocr.DEVICE_PROCESSOR
+    #: The one run-log line when the graphics card pack is there and could
+    #: not be used (``ocr.PACK_UNUSABLE``), or "". Not a pass warning.
+    reader_note: str = ""
 
     @property
     def processed(self) -> list[EngagementRun]:
@@ -1115,15 +1121,22 @@ def run_registry(
     report = RunReport(today=today, dry_run=dry_run, reminders=reminders,
                        misfits=list(registry.misfits))
     reader_start_warning()          # this pass's count starts here
-    for household, returns in registry.by_household().items():
-        if not any(one.path in selected for one in returns):
-            continue
-        report.runs.extend(
-            run for run in run_household(household, returns, root=registry.source, today=today,
-                                         dry_run=dry_run, reminders=reminders, weekday=weekday,
-                                         registry=registry)
-            if run.engagement.path in selected
-        )
+    # One reading child for the whole pass (decision 169, R-4), ended with
+    # it. With a graphics card pack it starts now and settles the device,
+    # so the run log's first line says which reader read.
+    with ocr.reading_session(settle=True, in_a_child=content_check.READ_IN_A_CHILD) as reader:
+        report.reader, report.reader_note = reader.device, reader.note
+        for household, returns in registry.by_household().items():
+            if not any(one.path in selected for one in returns):
+                continue
+            report.runs.extend(
+                run for run in run_household(household, returns, root=registry.source,
+                                             today=today, dry_run=dry_run, reminders=reminders,
+                                             weekday=weekday, registry=registry)
+                if run.engagement.path in selected
+            )
+        report.warnings.extend(reader.warnings())
+        report.reader_note = report.reader_note or reader.note
     if warning := reader_start_warning():
         report.warnings.append(warning)
     return report
@@ -1172,7 +1185,11 @@ def append_log(path: Path | str, report: RunReport) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     stamp = dt.datetime.now().isoformat(timespec="seconds")
     lines = [f"[{stamp}] {report.today.isoformat()} "
-             f"reminders={report.reminders} dry_run={report.dry_run}"]
+             f"reminders={report.reminders} dry_run={report.dry_run} reader={report.reader}"]
+    if report.reader_note:
+        # The graphics card pack is here and could not be used (decision
+        # 169): the machine's to look at, said once, and not a warning.
+        lines.append(f"    {report.reader_note}")
     for run in report.runs:
         lines.append(f"    {run.summary()}")
         if run.held and not run.error:
@@ -1531,12 +1548,10 @@ def main(argv: list[str] | None = None) -> int:
     if ns.only and not loaded.find(ns.only):
         raise SystemExit(f"Nothing in {loaded.source} matches {ns.only!r}")
 
-    # OCR's temporary page images go to the app's own folder for the
-    # pass, which is emptied first (decision 137, L7): a pass the scheduler
-    # killed mid-page leaves a client's page there, not in %TEMP%.
-    with ocr_scratch(settings_dir() / OCR_SCRATCH_DIR_NAME):
-        result = run_registry(loaded, today=when, dry_run=ns.dry_run,
-                              reminders=ns.reminders, weekday=day, only=ns.only)
+    # The reader writes no temporary file (decision 169), so there is no
+    # scratch folder to point it at any more (decision 137's L7 is retired).
+    result = run_registry(loaded, today=when, dry_run=ns.dry_run,
+                          reminders=ns.reminders, weekday=day, only=ns.only)
     print(format_report(result))
 
     if ns.log:

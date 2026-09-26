@@ -18,7 +18,7 @@ import json
 import re
 from pathlib import Path
 
-from tests.samples import SCRATCH_HOUSEHOLD, SCRATCH_RETURN, build_scratch_root
+from tests.samples import DEMO_ITEMS, SCRATCH_HOUSEHOLD, SCRATCH_RETURN, SCRATCH_SCAN, build_scratch_root
 from tracker.registry import discover_engagements
 from tracker.runner import REMINDER_MODES, RUNNER_MODE_FLAG, main
 from tracker.settings import ENV_PRODUCT_NAME, ENV_SETTINGS_DIR
@@ -116,6 +116,19 @@ def test_the_smoke_checks_drive_the_frozen_entry_by_the_flags_the_code_owns():
         assert mode in REMINDER_MODES, mode
 
 
+def test_a_smoke_pass_that_logs_takes_its_root_from_a_settings_folder():
+    """A root on the command line together with ``--log`` is the shape of
+    the job installed before decision 131, and the runner refuses it
+    unless the settings file names that root. So a smoke pass that logs
+    names a settings folder, never a root."""
+    from tracker.runner import LOG_FLAG, SETTINGS_FLAG
+
+    for line in fired_at_the_frozen_executable().splitlines():
+        if LOG_FLAG in line.split():
+            assert SETTINGS_FLAG in line.split(), line
+            assert "SCRATCH_ROOT" not in line, line
+
+
 def test_the_smoke_checks_pass_the_environment_the_electron_shell_passes():
     """A frozen build has no package.json; the shell's two variables are how it is told."""
     text = workflow()
@@ -174,6 +187,23 @@ def test_a_scratch_root_is_one_engagement_a_whole_dry_pass_can_walk(tmp_path, ca
     assert "0 draft(s) written" in printed                    # dry: decided, not written
 
 
+def test_the_scratch_roots_scan_is_filed_by_the_reader_and_by_nothing_else(tmp_path):
+    """Decision 169: the frozen smoke check proves the package reads, so
+    the pile holds a scan whose only words are the reader's - no text
+    layer, a name that says nothing - and the reader files it. A package
+    that could not read would park it, and its line would differ from the
+    source's by one "review"."""
+    from tracker.content_check import extract
+    from tracker.router import route_file
+
+    root = build_scratch_root(tmp_path / "clients")
+    [scan] = root.rglob(SCRATCH_SCAN)
+
+    assert extract(scan, ocr=False).needs_ocr                  # no words without the reader
+    routed = route_file(scan, list(DEMO_ITEMS))
+    assert routed.identifier == "A01", routed.reason           # the W-2 row, on its required words
+
+
 # ------------------------------------------ decision 137: the whole tree pinned ----
 
 CONSTRAINTS = "constraints.txt"
@@ -187,14 +217,33 @@ def _name(package: str) -> str:
     return re.sub(r"[-_.]+", "-", package).lower()
 
 
-def _pins(lines) -> dict[str, str]:
-    pins = {}
+#: The two places the tree is installed that differ (decision 169, R-11a
+#: and R-11b): the build and the office, Windows on the office's Python, and
+#: CI's floor row, Linux on Python 3.11. A pin's marker is read for each.
+BUILD_ENVIRONMENT = {"sys_platform": "win32", "python_version": "3.14"}
+FLOOR_ENVIRONMENT = {"sys_platform": "linux", "python_version": "3.11"}
+
+
+def _pin_lines(lines) -> list[tuple[str, str, str]]:
+    """Every ``name==version`` line as (name, version, marker or "")."""
+    found = []
     for line in lines:
         line = line.split("#", 1)[0].strip()
         if "==" in line and not line.startswith("-"):
-            package, version = line.split("==", 1)
-            pins[_name(package)] = version.strip()
-    return pins
+            requirement, _, marker = line.partition(";")
+            package, version = requirement.split("==", 1)
+            found.append((_name(package), version.strip(), marker.strip()))
+    return found
+
+
+def _pins(lines, environment: dict[str, str] | None = None) -> dict[str, str]:
+    """The pins that hold in ``environment`` (by default this interpreter's):
+    a line whose marker does not hold there is not pip's there either."""
+    from packaging.markers import Marker, default_environment
+
+    where = {**default_environment(), **(environment or {})}
+    return {name: version for name, version, marker in _pin_lines(lines)
+            if not marker or Marker(marker).evaluate(where)}
 
 
 def frozen_in(build_info: str) -> dict[str, str]:
@@ -203,8 +252,8 @@ def frozen_in(build_info: str) -> dict[str, str]:
     return _pins(after[1].splitlines()[1:]) if len(after) == 2 else {}
 
 
-def constraints() -> dict[str, str]:
-    return _pins(read(CONSTRAINTS).splitlines())
+def constraints(environment: dict[str, str] | None = None) -> dict[str, str]:
+    return _pins(read(CONSTRAINTS).splitlines(), environment)
 
 
 def drift(frozen: dict[str, str], pinned: dict[str, str]) -> list[str]:
@@ -227,9 +276,12 @@ def test_the_build_fails_when_a_frozen_version_differs_from_the_constraints():
     for package in ("pdfminer.six", "pypdfium2", "cryptography", "charset-normalizer",
                     "pillow-heif", "pyinstaller"):
         assert _name(package) in pinned, package
-    for requirements in ("requirements.txt", "requirements-build.txt"):
-        for name, version in _pins(read(requirements).splitlines()).items():
-            assert pinned.get(name) == version, (requirements, name, version, pinned.get(name))
+    for environment in (None, BUILD_ENVIRONMENT, FLOOR_ENVIRONMENT):
+        where = constraints(environment)
+        for requirements in ("requirements.txt", "requirements-build.txt", NODEPS):
+            for name, version in _pins(read(requirements).splitlines(), environment).items():
+                assert where.get(name) == version, (environment, requirements, name, version,
+                                                    where.get(name))
     script = read(BUILD_SCRIPT)
     assert re.search(r"pip install -r requirements-build\.txt -c constraints\.txt", script)
 
@@ -238,14 +290,101 @@ def test_the_build_fails_when_a_frozen_version_differs_from_the_constraints():
            + "\n".join(f"{name}=={version}" for name, version in pinned.items()
                        if name != "pypdfium2") + "\npypdfium2==5.13.0\n")
     assert drift(frozen_in(old), pinned) == ["pypdfium2: froze 5.13.0, constraints say 5.11.0"]
-    assert drift({**pinned, "numpy": "2.0"}, pinned) == ["numpy: froze 2.0, constraints say nothing"]
+    assert drift({**pinned, "pandas": "3.0"}, pinned) == ["pandas: froze 3.0, constraints say nothing"]
     assert drift(dict(pinned), pinned) == []
 
-    # And on whatever this checkout last built.
+    # And on whatever this checkout last built: the build's own markers.
+    built = constraints(BUILD_ENVIRONMENT)
     for info in (REPO / "build-portable" / "dist").glob("*/BUILD-INFO.txt"):
         frozen = frozen_in(info.read_text(encoding="utf-8", errors="replace"))
         assert frozen, info
-        assert drift(frozen, pinned) == [], info
+        assert drift(frozen, built) == [], info
+
+
+# ---------------------------------- decision 169: the reader, installed in two steps ----
+
+#: The file holding rapidocr alone, installed with --no-deps (R-11).
+NODEPS = "requirements-nodeps.txt"
+#: The step every install of the tree makes after requirements.txt.
+NODEPS_STEP = re.compile(r"pip install --no-deps -r requirements-nodeps\.txt -c constraints\.txt")
+
+
+def installing_places() -> dict[str, str]:
+    """Every file that installs the tree, by name: the batch file and each
+    workflow that runs ``pip install -r requirements``."""
+    places = {BUILD_SCRIPT: read(BUILD_SCRIPT)}
+    for path in sorted((REPO / ".github" / "workflows").glob("*.yml")):
+        text = path.read_text(encoding="utf-8")
+        if re.search(r"pip install -r requirements", text):
+            places[path.name] = text
+    return places
+
+
+def test_the_reader_is_installed_in_two_steps_everywhere_the_tree_is_installed():
+    """R-11: rapidocr's metadata asks for the GUI build of OpenCV, so it is
+    installed with --no-deps after requirements.txt, which lists what it
+    really needs. Both steps, in that order, with the constraints, in the
+    batch file and in every workflow that installs - and in the README's
+    developer setup, which is how a person installs it."""
+    places = installing_places()
+    assert {BUILD_SCRIPT, GATE_WORKFLOW, BUILD_WORKFLOW} <= set(places)
+    for name, text in places.items():
+        first = re.search(r"pip install -r requirements(?:-build)?\.txt -c constraints\.txt", text)
+        second = NODEPS_STEP.search(text)
+        assert first and second and first.start() < second.start(), name
+    readme = read("README.md")
+    assert NODEPS_STEP.search(readme)
+    assert readme.index("pip install -r requirements.txt -c constraints.txt") < NODEPS_STEP.search(readme).start()
+    assert [name for name, _version, _marker in _pin_lines(read(NODEPS).splitlines())] == ["rapidocr"]
+
+
+def test_the_gui_opencv_is_never_pinned_and_the_constraints_cover_every_reader_pin():
+    """R-11: the headless OpenCV only - the GUI build is in no requirements
+    file and no constraint - and constraints.txt covers every package in
+    both install files, on the build and on CI's floor row."""
+    gui = _name("opencv-python")
+    for rel in ("requirements.txt", NODEPS, "requirements-build.txt", CONSTRAINTS):
+        assert gui not in {name for name, _version, _marker in _pin_lines(read(rel).splitlines())}, rel
+    for environment in (BUILD_ENVIRONMENT, FLOOR_ENVIRONMENT):
+        pinned = constraints(environment)
+        for rel in ("requirements.txt", NODEPS):
+            for name in _pins(read(rel).splitlines(), environment):
+                assert name in pinned, (environment, rel, name)
+    assert _name("opencv-python-headless") in constraints(BUILD_ENVIRONMENT)
+
+
+def test_the_onnx_runtime_and_numpy_are_pinned_by_platform_and_interpreter():
+    """R-11a and R-11b, as written in both files: the graphics card build
+    of ONNX Runtime on Windows and the plain one elsewhere (the same
+    module; CI has no card), and numpy 2.5.3 where Python is 3.12 or later
+    with 2.4.6 for the floor's 3.11 row."""
+    wanted = {
+        ("onnxruntime-gpu", "1.30.0", 'sys_platform == "win32"'),
+        ("onnxruntime", "1.30.0", 'sys_platform != "win32"'),
+        ("numpy", "2.5.3", 'python_version >= "3.12"'),
+        ("numpy", "2.4.6", 'python_version < "3.12"'),
+    }
+    for rel in ("requirements.txt", CONSTRAINTS):
+        lines = set(_pin_lines(read(rel).splitlines()))
+        assert wanted <= lines, (rel, wanted - lines)
+    build, floor = constraints(BUILD_ENVIRONMENT), constraints(FLOOR_ENVIRONMENT)
+    assert build["onnxruntime-gpu"] == "1.30.0" and "onnxruntime" not in build
+    assert floor["onnxruntime"] == "1.30.0" and "onnxruntime-gpu" not in floor
+    assert (build["numpy"], floor["numpy"]) == ("2.5.3", "2.4.6")
+
+
+def test_the_graphics_card_pack_is_pinned_apart_and_read_by_its_own_build_step():
+    """Ruling 2 and R-11: the NVIDIA wheels are pinned in
+    requirements-gpu.txt, read only by the pack's own build step, and in no
+    file the app or CI installs."""
+    pack = {name for name, _version, _marker in _pin_lines(read("requirements-gpu.txt").splitlines())}
+    assert pack and all(name.startswith("nvidia-") for name in pack)
+    for rel in ("requirements.txt", NODEPS, "requirements-build.txt", CONSTRAINTS):
+        assert not pack & {name for name, _v, _m in _pin_lines(read(rel).splitlines())}, rel
+    readers = [path.name for path in REPO.iterdir()
+               if path.is_file() and "requirements-gpu.txt" in path.read_text(encoding="utf-8", errors="replace")
+               and path.name != "requirements-gpu.txt"]
+    assert readers == ["Build GPU Pack.bat"], readers
 
 
 # ------------------------------------- decision 153: pypdf past its advisories ----

@@ -167,7 +167,8 @@ Handoffs), and each work session ends with a CODE UPDATE there.
 ## Working on this repo
 
 ```
-pip install -r requirements.txt
+pip install -r requirements.txt -c constraints.txt
+pip install --no-deps -r requirements-nodeps.txt -c constraints.txt   # the reader (decision 169)
 python -m pytest -q                 # the whole suite, all green
 python tools/repo_map.py check      # map matches the tree
 python -m ruff check .              # no dead code, no unused imports (CI runs this too)

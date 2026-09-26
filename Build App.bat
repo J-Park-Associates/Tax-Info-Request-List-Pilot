@@ -42,6 +42,11 @@ rem (decision 137): without it pip takes the newest of each on the day,
 rem and two builds of one commit freeze different code.
 %PY% -m pip install -r requirements-build.txt -c constraints.txt --quiet
 if errorlevel 1 (echo Installing requirements-build.txt failed & call :wait & exit /b 1)
+rem The reader's own package, without its dependencies (decision 169,
+rem R-11): its metadata asks for the GUI build of OpenCV, which the app
+rem does not ship; requirements.txt lists what it really needs.
+%PY% -m pip install --no-deps -r requirements-nodeps.txt -c constraints.txt --quiet
+if errorlevel 1 (echo Installing requirements-nodeps.txt failed & call :wait & exit /b 1)
 %PY% -m PyInstaller --noconfirm --clean --distpath %OUT%\py --workpath %OUT%\pyi-work api_entry.spec
 if errorlevel 1 (echo PyInstaller failed & call :wait & exit /b 1)
 

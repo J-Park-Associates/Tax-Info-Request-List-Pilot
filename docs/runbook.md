@@ -24,12 +24,12 @@ designated machine — but it is disposable: it is rebuilt from the ledgers
 in the folders, it is never synced and nobody opens it.
 
 **The app's folder is private to the firm.** `tracker.db` holds every
-client's index rows, and the folder beside it where OCR puts a page it is
-reading (emptied at the start of every pass) can hold a client's page. The
-folder inherits its permissions from wherever the app was unpacked: put the
-app in a folder only the firm's accounts on that machine can read, not in a
-shared or public one. This is a machine-setup step; the tracker does not
-change permissions.
+client's index rows. (The reader writes nothing there or anywhere else
+while it reads, since decision 169, so there is no longer a folder of
+pages being read beside it.) The folder inherits its permissions from
+wherever the app was unpacked: put the app in a folder only the firm's
+accounts on that machine can read, not in a shared or public one. This is
+a machine-setup step; the tracker does not change permissions.
 
 **A return the store refuses as "changed behind the tracker's back".** The
 store keeps a fingerprint of every line of a return's record it has read
@@ -288,6 +288,15 @@ changes nothing:
   do it outside office hours, and if one return matters first, rebuild it
   alone ahead of the rest with `--engagement "<the return's folder>"`. It
   happens once; later passes read only what is new.
+- **Once, when decision 169 lands** (the new reader). The database's
+  version does not change, so there is nothing to delete for it (set
+  `tracker.db` aside only if another decision in the same install asks).
+  But every verdict on a scan or a photo was reached by the old reader, so
+  the **first pass after the install reads every scan and photo again** -
+  slow once, as above. On the office machine, copy the graphics card pack
+  beside the app once (§6, step 5). And delete the folder `ocr-scratch`
+  beside the app if it is there: the old reader kept the page it was reading
+  in it, the new one writes nothing, and nothing empties that folder any more.
 
 There used to be a second one, a comparison flag on the ledger's own
 statuses against the request list's. There is nothing left for it to
@@ -575,7 +584,9 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    **Open Status** button opens it. The run log
    (`tracker.runner.LOG_FILENAME`), in the clients root beside the
    engagement folders, has the same, pass by pass, including passes made from
-   the app's button. For one client, **open the Status Report** in that
+   the app's button. Each pass's first line ends with which device read its
+   scans and photos: `reader=processor` or `reader=graphics card` (§6,
+   step 5). For one client, **open the Status Report** in that
    engagement's folder — the pass you just read about regenerated it, so it
    is that engagement's list, index and review queue as of this morning, and
    the app says beside the engagement's name whether it is still current.
@@ -633,14 +644,17 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    same answer is on the command line, without the app:
    `python -m tracker.review` against the engagement folder prints it.
 
-   **Until OCR is installed on this machine, every scanned PDF and every
-   photo is in that queue.** Nothing is filed on a file name (owner,
-   2026-09-18): a client called the file "W2 2025.pdf", the form did not,
-   and a document nobody here can read is filed by nobody. What the name
-   says is not thrown away — it is the bottom line of the shortlist, *the
-   file name says W-2* — but it is a place to start reading, never the
-   answer. Install Tesseract (§6, step 5) and those scans and photos are
-   read and filed like any other document.
+   **Scans and photos are read by the reader that ships inside the app**
+   (decision 169), so they are filed like any other document. One that the
+   reader cannot read is in that queue: nothing is filed on a file name
+   (owner, 2026-09-18) - a client called the file "W2 2025.pdf", the form
+   did not, and a document nobody here can read is filed by nobody. What
+   the name says is not thrown away — it is the bottom line of the
+   shortlist, *the file name says W-2* — but it is a place to start
+   reading, never the answer. **A page scanned sideways or upside down**
+   keeps its words, but its title may not come first in what was read, so
+   it can file less surely than an upright one or wait here for you; it is
+   never read as empty (the rule that turns such a page arrives later).
 3. **A working copy that has moved is yours, and it is the first card on
    the screen.** Every pass proves each working copy against the
    fingerprint its own index row carries (decision 109). A copy somebody
@@ -841,7 +855,7 @@ became, and — when it was not filed — why not.
 | `reasons.FILED_WHOLE` / `reasons.ALSO_ANSWERS` | A broker's consolidated 1099 (decision 146): several requests accepted it, and exactly one - E01 on a 1040, B01 on a 1041 - was accepted because of its 1099-B section, so it filed whole there, one copy in one folder. The Also Answers column names every other asked request one of its sections answers (a 1099-INT/DIV row, a 1099-MISC row) and the sections that did; each of those requests reads Received with `reasons.IN_CONSOLIDATED` in its notes, counting one document per section - so a 1099-INT/DIV row asking for three is Partial after one statement with interest and dividend sections - and the letter does not ask for them. A statement with only interest and dividend sections is not a brokerage statement and files under the 1099-INT/DIV row as before. | Nothing. If the statement does not in fact carry what one of those requests needs, press **Mark … missing** beside it in the app's filed list: the statement stays where it is, that request comes off, and the letter asks for it again. |
 | `router.CONTESTED_PREFIX` | It looks like a named request but failed one of that request's own rules — last year's W-2, say. | Read the named rule. Usually it is the wrong year or the wrong client. |
 | `router.OCR_ONLY` | A scan or a photo with no text layer; OCR read it, but only loosely enough to guess. | Confirm what it is and file it. |
-| `reasons.NO_READABLE_TEXT` | Nothing in the file could be read at all — a scan or a photo with no OCR on this machine, an image-only PDF, an empty sheet. Nothing was matched against anything, so this is not "matched no request". | Open it and file it, or install OCR (§6, step 5). The shortlist shows what its **file name** suggests; the document decides. |
+| `reasons.NO_READABLE_TEXT` | Nothing in the file could be read at all — a scan or a photo the reader could not run on, an image-only PDF, an empty sheet. Nothing was matched against anything, so this is not "matched no request". | Open it and file it. If many files say it at once, the reader itself is damaged: re-install the app (§6, step 5). The shortlist shows what its **file name** suggests; the document decides. |
 | `reasons.UNREADABLE_IMAGE` | A photo arrived that would not open — a half-finished upload, most often. | Ask the client for it again; the reminder does. |
 | `reasons.HEIC_NOT_SUPPORTED` | An iPhone photo arrived and this machine's HEIC reader is missing. Ours, never the client's: they sent an ordinary photo. | Re-install from `requirements.txt` (`pillow-heif`). Until then, open the photo and file it by hand. |
 | `reasons.ISSUER_NOT_NAMED` | The request list asks for this document one row per issuer (§8) and this one names none of them — a K-1 from a partnership nobody listed. | File it to the right row, or add a row for that issuer (§8) and it files itself next pass. |
@@ -1003,7 +1017,7 @@ machine signed into the same Drive account has all of it already.
 **What was only on that machine:** the settings file beside the app
 (`tracker.settings.SETTINGS_FILENAME`), the database beside it
 (`tracker.store.STORE_FILENAME`), the scheduled task, the app folder
-itself, and the Tesseract OCR engine if it was installed. **The database
+itself, and the graphics card pack if that machine had one (step 5). **The database
 is not worth carrying over.** It is built from the ledgers in the
 engagement folders, and the new machine builds its own on the first pass;
 copying the old one would only be copying something it can make. The first
@@ -1065,19 +1079,41 @@ exactly as it came.
 4. Press **Install Schedule** - once. Since decision 131 the job names the
    app's settings folder and reads the clients root from it at every run,
    so a later change of root is made in the app alone.
-5. Install the **Tesseract engine** (the UB Mannheim Windows installer),
-   with the `eng` and `osd` language data — `osd` is ticked by default and
-   is what turns a page the right way up before it is read. The reader
-   packages themselves ship with the app; the engine is the one thing to
-   install by hand. **Without it every scan with no text layer and every
-   photo parks for a person** — neither is filed on what its file name
-   says, because the client wrote that name and the form did not (owner,
-   2026-09-18). Nothing breaks and nothing is lost: the originals are
-   moved into the client's folder for the year as always, the shortlist on
-   each parked file says which request its name points at, and installing
-   Tesseract later means the next pass reads those scans and photos itself.
-   Photos need nothing beyond this — a JPEG, a PNG, an iPhone's HEIC and a
-   scanner's TIFF are all read by the same install.
+5. **Reading needs nothing installed** (decision 169). The reader -
+   RapidOCR and its three models - ships inside the app and reads scans and
+   photos (a JPEG, a PNG, an iPhone's HEIC, a scanner's TIFF) on the
+   processor on any machine. Nothing is downloaded while it reads, ever.
+   **On a machine with an NVIDIA graphics card**, copy the **graphics card
+   pack** once: the folder `gpu-runtime` (about 1.6 GB, made by
+   `Build GPU Pack.bat`) goes beside `tracker-api.exe`, in the app's
+   `resources\tracker-api\` folder. Reading is then about two and a half
+   times faster; what it reads is the same. Nowhere else: a machine
+   without the card reads on the processor and needs no pack.
+   - **Which reader is in use:** the run log's first line for each pass
+     ends `reader=graphics card` or `reader=processor`. With the pack there
+     and the card unusable - a driver too old, a card it does not support
+     - the pass reads on the processor and the log's next line says why
+     ("the graphics card pack is here but could not be used: ..."). That
+     is not a warning: look at the machine when convenient.
+   - **If the card fails mid-pass**, the page is read again on the
+     processor, the rest of that pass reads on the processor, and the pass
+     warns once ("the graphics card failed while reading ..."). Nothing is
+     lost and nothing fails; the next pass tries the card again. If it
+     says so every pass, remove the pack and look at the machine.
+   - **The safety stop** (decision 137) is kept between pages: no page
+     starts once the page before it has overrun its minute, and a page the
+     reader never finishes is ended with its whole reading at the stop for
+     a file (ten minutes; a photo's minute).
+   - A scan the reader cannot read at all parks for a person like any
+     unreadable document; neither is filed on what its file name says,
+     because the client wrote that name and the form did not (owner,
+     2026-09-18).
+   - **Keep the app's folder at a short path** (under about 160
+     characters, such as a folder directly under `C:\`). The reader's
+     libraries sit up to about 110 characters deep inside the app, and
+     Windows will not load one whose whole path passes 260: from a deeper
+     folder the reader cannot run, and every scan and photo waits for a
+     person with "the reader could not run on this machine".
 6. Run one pass — **Sort & Scan** on a single engagement — and read the run
    log before trusting the schedule.
 

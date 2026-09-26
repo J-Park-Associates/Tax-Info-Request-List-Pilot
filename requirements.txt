@@ -10,15 +10,42 @@ pdfplumber==0.11.10
 # no dependencies. The .eml and .zip readers are the standard library's.
 olefile==0.47
 
-# OCR readers. The packages are bundled; the Tesseract engine is a Windows
-# installer (UB Mannheim build) and must be on PATH with `eng` and `osd`
-# data: without it every scan and every photo parks for a person
-# (reasons.NO_TEXT_LAYER) and nothing breaks.
-#   https://github.com/UB-Mannheim/tesseract/wiki
+# Pictures and scans: Pillow opens a photo (pillow-heif an iPhone's HEIC),
+# pypdfium2 renders a scanned PDF's page for the reader.
 pillow==12.3.0
 pillow-heif==1.7.0
-pytesseract==0.3.13
 pypdfium2==5.11.0
+
+# The reader (decision 169): RapidOCR on ONNX Runtime, with its models
+# shipped inside the app - nothing to install on the machine, nothing
+# fetched at run time. rapidocr itself is in requirements-nodeps.txt,
+# installed with --no-deps AFTER this file: its metadata asks for the GUI
+# build of OpenCV (opencv-python), which pins alone cannot keep out, so its
+# real runtime dependencies are listed here instead, with the headless
+# OpenCV (R-11). Install this file with -c constraints.txt, then
+#   pip install --no-deps -r requirements-nodeps.txt -c constraints.txt
+# ONNX Runtime by platform (R-11b): the product ships only on Windows,
+# where onnxruntime-gpu runs on the processor and, with the graphics card
+# pack beside the app, on an NVIDIA card; everywhere else (CI) the plain
+# package, which provides the same module and never asks for a card.
+onnxruntime-gpu==1.30.0; sys_platform == "win32"
+onnxruntime==1.30.0; sys_platform != "win32"
+opencv-python-headless==5.0.0.93
+# numpy 2.5 needs Python 3.12; the floor's CI row (3.11) takes the last
+# release that supports it (R-11a). The app is frozen on 3.14.
+numpy==2.5.3; python_version >= "3.12"
+numpy==2.4.6; python_version < "3.12"
+pyclipper==1.4.0
+shapely==2.1.2
+omegaconf==2.3.1
+PyYAML==6.0.3
+six==1.17.0
+tqdm==4.70.1
+colorlog==6.12.0
+# rapidocr imports requests for its model downloader, at load time; the
+# downloader is never reached (tracker.ocr refuses it), and a full read is
+# pinned to open no socket (tests/test_ocr.py).
+requests==2.34.2
 
 # Dev / test
 pytest==9.1.1

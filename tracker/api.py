@@ -53,7 +53,7 @@ import sys
 from dataclasses import asdict, replace
 from pathlib import Path
 
-from tracker import STANDING_RULES, ledger, names, reminder, review, store
+from tracker import STANDING_RULES, content_check, ledger, names, ocr, reminder, review, store
 from tracker.filer import (
     DUPLICATE,
     FILE_MOVED,
@@ -1727,9 +1727,11 @@ def _cmd_scan(argv: list[str]) -> dict:
                          registry=_the_practice())
     run = next((one for one in runs if one.engagement.path == engagement),
                EngagementRun(engagement=engagement_from(engagement)))
-    # Said once, on the reply's own warnings (decision 150).
+    # Said once, on the reply's own warnings (decisions 150 and 169).
     if warning := reader_start_warning():
         run.warnings.append(warning)
+    if ocr_session := ocr.current_session():
+        run.warnings.extend(ocr_session.warnings())
     _record_pass(runs)
     payload = {
         "run": {
@@ -3293,7 +3295,10 @@ def main(argv: list[str]) -> int:
         print(json.dumps({"error": f"usage: tracker.api {'|'.join(COMMANDS)}"}))
         return 1
     try:
-        payload = COMMANDS[argv[0]](argv[1:])
+        # One reading child for the command, started only if something is
+        # read, and ended with it (decision 169, R-4).
+        with ocr.reading_session(in_a_child=content_check.READ_IN_A_CHILD):
+            payload = COMMANDS[argv[0]](argv[1:])
     except (ManifestError, ScanLockedError, FilingError) as exc:
         print(json.dumps({"error": str(exc)}))
         return 1

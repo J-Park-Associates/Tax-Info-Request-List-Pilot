@@ -52,6 +52,10 @@ SCRATCH_PEOPLE = (
 #: decision 125: a household, a year inside it, a return inside that.
 SCRATCH_HOUSEHOLD = "Smith Family"
 SCRATCH_RETURN = "1040 - John A. Smith"
+#: The scan in the scratch root (decision 169): a page with no text layer
+#: and a name that says nothing, so only the reader can file it. The
+#: frozen smoke check proves the package reads it on the processor.
+SCRATCH_SCAN = "scan 0001.pdf"
 
 
 def text_pdf(path: Path, lines: list[str]) -> Path:
@@ -87,6 +91,21 @@ def text_pdf(path: Path, lines: list[str]) -> Path:
         xref_at,
     )
     path.write_bytes(bytes(out))
+    return path
+
+
+def scanned_pdf(path: Path, lines: list[str]) -> Path:
+    """A scan: ``lines`` drawn on a letter page at 150 dpi and saved as a
+    PDF with no text layer, so only the reader can say what it is. Every
+    pixel is drawn here."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    page = Image.new("RGB", (1275, 1650), "white")
+    draw = ImageDraw.Draw(page)
+    font = ImageFont.load_default(size=30)
+    for i, line in enumerate(lines[:28]):
+        draw.text((80, 90 + 52 * i), line, font=font, fill="black")
+    page.save(path, "PDF", resolution=150)
     return path
 
 
@@ -323,8 +342,9 @@ def build_scratch_root(root: Path | str) -> Path:
     trees of decision 125, the catalog's core rows, the folders the
     scaffold makes, and the documents a client really sends - one that
     routes, its byte-identical copy, last year's form, a Google shortcut,
-    a photo - so a single dry pass goes through filing, routing, scanning
-    and drafting the way the scheduled job does.
+    a photo, and a scan only the reader can file (:data:`SCRATCH_SCAN`) - so
+    a single dry pass goes through filing, routing, reading, scanning and
+    drafting the way the scheduled job does.
 
     Nothing outside ``root`` is written, and nothing in it is a real
     client's: every byte comes from ``build_samples()`` above.
@@ -340,7 +360,15 @@ def build_scratch_root(root: Path | str) -> Path:
     create_engagement(engagement, DEMO_ITEMS, EngagementInfo(
         client=SCRATCH_CLIENT, firm=SCRATCH_FIRM, household=SCRATCH_HOUSEHOLD,
         tax_year=YEAR, return_name=SCRATCH_RETURN, people=SCRATCH_PEOPLE))
-    build_samples(scaffold_engagement(engagement).inbox)
+    inbox = scaffold_engagement(engagement).inbox
+    build_samples(inbox)
+    # A W-2 as a scanner hands it over. A box's label and its figure are
+    # laid out apart on a form, and drawn as separate lines here, so the
+    # reader's words are the form's (a figure run into a label reads as one
+    # word, which no keyword matches).
+    scanned_pdf(inbox / SCRATCH_SCAN,
+                [part for line in w2_lines(SCRATCH_CLIENT, "Northwind Traders", YEAR)
+                 for part in line.split("  ", 1) if part.strip()])
     return root
 
 

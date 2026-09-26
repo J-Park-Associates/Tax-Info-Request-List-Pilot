@@ -19,7 +19,6 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-import tempfile
 import threading
 from pathlib import Path
 
@@ -83,6 +82,23 @@ def a_pdf_open_that_never_finishes(path: Path, *, ocr: bool = True):
     return content_check.open_and_read(path, ocr=ocr)
 
 
+def a_page_read_that_never_finishes(path: Path, *, ocr: bool = True):
+    """The real reading, with the reader blocked for ever on the first page
+    it is handed - a page RapidOCR never finishes, which nothing inside the
+    child can interrupt (decision 169, ruling 5): the document's stop ends
+    the child."""
+    from tracker import ocr as reader
+
+    reader.read_page = lambda _image, **_kwargs: _never_finishes(path, "page")
+    return content_check.extract(path, ocr=ocr)
+
+
+def the_childs_process_id(path: Path, *, ocr: bool = True):
+    """A reading whose words are the child's own process id: which child
+    read it, for the claims about one child serving a pass."""
+    return content_check.Extraction(str(os.getpid()))
+
+
 def a_reader_that_dies_on_a_crash(path: Path, *, ocr: bool = True):
     """The real reading, except that a file named for a crash ends the
     process on the spot - no exception, no answer, as pdfium does."""
@@ -92,17 +108,12 @@ def a_reader_that_dies_on_a_crash(path: Path, *, ocr: bool = True):
 
 
 def a_reader_that_starts_a_reader_of_its_own(path: Path, *, ocr: bool = True):
-    """A reader that has started a process of its own, the way OCR starts
-    Tesseract, and then never finishes. The helper's process id is left
+    """A reader that has started a process of its own and then never
+    finishes. The helper's process id is left
     beside the document for the test to look for afterwards."""
     helper = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(600)"])
     reached(path, "helper").write_text(str(helper.pid), encoding="utf-8")
     _never_finishes(path, "waiting")
-
-
-def where_temporary_files_go(path: Path, *, ocr: bool = True):
-    """A reading whose words are the child's temporary folder."""
-    return content_check.Extraction(tempfile.gettempdir())
 
 
 # ----------------------------------------- the opener of an email or a zip ----

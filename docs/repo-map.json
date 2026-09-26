@@ -1,9 +1,9 @@
 {
   "schema": 2,
-  "generated": "2026-09-26",
+  "generated": "2026-09-25",
   "generator": "tools/repo_map.py",
   "generator_sha256": "54d924057e3b3de9",
-  "module_table_sha256": "1036125e4b43ea9a",
+  "module_table_sha256": "d482906869a5f6d3",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 132,
-    "edges": 818,
-    "reused": 105
+    "nodes": 142,
+    "edges": 854,
+    "reused": 111
   },
   "node_types": [
     "artifact",
@@ -57,10 +57,10 @@
       "id": ".github/workflows/build.yml",
       "type": "workflow",
       "layer": "ci",
-      "sha256": "b2177b3702e1f844",
-      "lines": 152,
+      "sha256": "458d70298b165cbd",
+      "lines": 181,
       "role": "Builds the portable package on demand (workflow_dispatch or a `v*` tag) by running Build App.bat itself on a Windows runner, proves the frozen executable answers in both of its modes, prints the build-info file and uploads the package as the run's artifact for seven days.",
-      "notes": "Decision 78. It runs the batch file rather than re-implementing the build, because a second copy of the build is the one that drifts; tests/test_build.py refuses a workflow that names PyInstaller, the packager or the copy itself. The batch file pauses for a person at every exit, so it reads one documented switch that skips the waits, named in its own header and set here. The two smoke checks run the frozen executable, not the source: `list` with the shell's two environment variables set, which must answer JSON rather than a traceback on an install with no clients root yet, and one dry pass over a scratch clients root tests/samples.py builds, which walks filing, routing, scanning and drafting. Where the package landed is read back out of the batch file's own OUT/PLATFORM/ARCH and app/package.json's two names, so no path here is a second copy of one. Not on push: a freeze, an npm install, an Electron download and a few hundred megabytes of artifact are not what a commit should cost."
+      "notes": "Decision 78. It runs the batch file rather than re-implementing the build, because a second copy of the build is the one that drifts; tests/test_build.py refuses a workflow that names PyInstaller, the packager or the copy itself. The batch file pauses for a person at every exit, so it reads one documented switch that skips the waits, named in its own header and set here. The two smoke checks run the frozen executable, not the source: `list` with the shell's two environment variables set, which must answer JSON rather than a traceback on an install with no clients root yet, and one dry pass over a scratch clients root tests/samples.py builds, which walks filing, routing, scanning and drafting. Since decision 169 the root holds a scan only the reader can file (SCRATCH_SCAN), and the step compares the package's engagement line with the source's own dry pass and reads the run log's first line for reader=processor, so a package missing the reader or a model fails here. It installs the tree in the two steps every install makes (R-11): requirements.txt with the constraints, then rapidocr with --no-deps from requirements-nodeps.txt. Where the package landed is read back out of the batch file's own OUT/PLATFORM/ARCH and app/package.json's two names, so no path here is a second copy of one. Not on push: a freeze, an npm install, an Electron download and a few hundred megabytes of artifact are not what a commit should cost."
     },
     {
       "id": ".github/workflows/ci.yml",
@@ -75,8 +75,8 @@
       "id": ".github/workflows/gate.yml",
       "type": "workflow",
       "layer": "ci",
-      "sha256": "9790611ba3d9516e",
-      "lines": 82,
+      "sha256": "d8f166a51b54a95f",
+      "lines": 90,
       "role": "The gate's steps, written once: the test suite, the linter, `repo_map.py check`, `vocab_report.py check` and `node --check` on the three Electron files, on whichever runner and interpreter the caller names. Called by both of ci.yml's jobs.",
       "notes": "Decision 122. `on: workflow_call` with two required string inputs, os and python-version; the job carries timeout-minutes: 30, the ceiling that stops a hung job (the longest job yet measured is 12.5 minutes). It exists because a job's own `if:` cannot see the matrix, which makes ci.yml two jobs rather than one conditional matrix - and the steps written out in each of them would be two copies of the gate, the second one to drift. Its job is named for the runner and the interpreter it was given, so the check names read as they did before the split. Every step after the suite reports whatever the suite did, and keeps its point: a stale map and a failing test are separate problems, and seeing both in one run beats finding the second after fixing the first. Decision 137 (B3): every action is pinned by a full commit SHA with its tag beside it (tests/test_build.py holds every workflow to it)."
     },
@@ -108,8 +108,8 @@
       "id": "tracker/__init__.py",
       "type": "module",
       "layer": "core",
-      "sha256": "df9f2fb8e8e74fb1",
-      "lines": 67,
+      "sha256": "218f0b4286b896ad",
+      "lines": 68,
       "role": "Package docstring listing every component, and STANDING_RULES - the four rules worded once.",
       "notes": "Imports nothing of the package at load time since decision 99: the re-exports of the manifest and scaffold APIs (thirteen names no file in tracker/, tools/, tests/ or the entry point consumed) are gone, and with them the package's one load-time cycle (this package -> tracker/manifest.py -> from tracker import ledger). Its module list names the manifest as the request list - its schema, validation, and its reading from and writing to the record - and the scanner as an orchestrator that records rather than writes back (decision 104). There is no load-time cycle left to name: tests/test_layers.py pins the layer of every module and that no load-time import points upward. Every cycle the derived edges show closes through an import at call time (the map labels those separately), and tracker/filer.py <-> tracker/scanner.py inside _rescan() is the deliberate one. Standing rule 1 still says 'deterministic rules in the manifest': the manifest is the request list, and its home changed with decision 104, not the word."
     },
@@ -117,8 +117,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "7f9ecc3ba2f688f5",
-      "lines": 3313,
+      "sha256": "3264c7c7ef565ffd",
+      "lines": 3318,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_LABEL",
@@ -422,8 +422,8 @@
       "id": "tracker/content_check.py",
       "type": "module",
       "layer": "core",
-      "sha256": "a13b50e2484744a3",
-      "lines": 2504,
+      "sha256": "19e8a722752d73fb",
+      "lines": 2076,
       "cli": "python -m tracker.content_check",
       "exports": [
         "BROKER_FORM",
@@ -433,13 +433,9 @@
         "DATE_LINE_MAX",
         "Extraction",
         "FIRST_PAGE_PHRASES",
-        "FOUR_WAY_MIN_WORDS",
         "MAX_PAGES",
         "MULTI_FORM_FAMILIES",
-        "OCR_SCRATCH_DIR_NAME",
         "OPEN_TEST_FINGERPRINT",
-        "ORPHANED_EXIT_CODE",
-        "OSD_MIN_CONFIDENCE",
         "OcrError",
         "PAGE_BREAK",
         "PIXEL_BUDGET",
@@ -449,7 +445,6 @@
         "RENDER_SCALE",
         "RETIRED_CACHE_FILENAME",
         "ReadingStopped",
-        "SCORING_LONG_SIDE",
         "TEXT_EXTENSIONS",
         "TITLE_CHARS",
         "TooLargeToRead",
@@ -473,7 +468,6 @@
         "in_a_child",
         "is_form_number",
         "keyword_pattern",
-        "ocr_scratch",
         "open_and_read",
         "open_verdict",
         "own_forms",
@@ -487,7 +481,7 @@
       ],
       "constants": {
         "RETIRED_CACHE_FILENAME": "'_content_cache.json'",
-        "CACHE_VERSION": "11",
+        "CACHE_VERSION": "12",
         "PAGE_BREAK": "'\\x0c'",
         "MAX_PAGES": "10",
         "XLSX_EXTENSIONS": "('xlsx', 'xlsm')",
@@ -496,20 +490,15 @@
         "RENDER_SCALE": "2.0",
         "READING_STOP_PAGE_SECONDS": "60.0",
         "READING_STOP_DOCUMENT_SECONDS": "600.0",
-        "OSD_MIN_CONFIDENCE": "1.0",
-        "FOUR_WAY_MIN_WORDS": "3",
         "TITLE_CHARS": "400",
         "MULTI_FORM_FAMILIES": "2",
         "BROKER_FORM": "'1099b'",
         "DATE_LINE_MAX": "500",
-        "SCORING_LONG_SIDE": "2000",
         "READ_IN_A_CHILD": "True",
-        "OPEN_TEST_FINGERPRINT": "'open-test'",
-        "ORPHANED_EXIT_CODE": "86",
-        "OCR_SCRATCH_DIR_NAME": "'ocr-scratch'"
+        "OPEN_TEST_FINGERPRINT": "'open-test'"
       },
       "role": "Tier 3: extract text (pdfplumber / openpyxl / plain text, OCR for a scan or a photo) and test it against the row's keyword and date rules. extract() is the one reading of a document, used by the router and the scanner alike; ContentCache keeps the verdicts - in the store, per engagement, since decision 107.",
-      "notes": "The cache stores verdicts only - pass/fail, the reason, and the Evidence behind them, all of it the firm's own words. Extracted client text is never persisted. Only the first MAX_PAGES pages of a PDF are read, text or OCR - the identifying words are up front and a long ledger used to stall a run. Verdicts are keyed by the file's content digest and the row's rules fingerprint (CACHE_VERSION, carried on every row; a row at another version is ignored and dropped), with a per-path memo of size/mtime/digest so an unchanged file is not re-hashed: the same bytes are read twice in this system, once as a drop the router routes and once as the working copy the scanner checks, and a verdict the router reached is the verdict the scanner finds. extract(ocr=False) hands a scan back with needs_ocr set so the router can try the file's name first; extract_by_ocr() finishes the reading. The CLI (python -m tracker.content_check <engagement> <file>) prints what the document says and which rows accept it, writing no cache. DECISION 107 - THE CACHE LEFT THE SYNCED FOLDER: ContentCache(engagement_dir) loads the engagement's memos and verdicts from the store's two tables (store.cached_verdicts()) once, works in memory as it always did, and save() writes what it learned and forgot through store.remember_verdicts() - one immediate transaction of the store's own, under the engagement lock, never store.record(), because a verdict is a derivation of the bytes and the rules and not an event; a pass killed mid-save leaves the previous rows. ContentCache() with no engagement is memory only (the CLI's, a test's) and its save() touches nothing. The engagement must already be in the store or the constructor refuses by name. The JSON cache file that used to sit in the engagement folder is never read; RETIRED_CACHE_FILENAME survives only for the filer's tidy-up, which removes it. THE STEP-0 RE-RUN'S FINDING: decision 105 had kept a two-form split's second verdict in the cache alone, so a rebuilt store read the second copy the ordinary way and failed it - the cache was carrying a decision, not a derivation. own_forms(text) is now the one reading of which forms a page counts as its own (the set of self-named forms when MULTI_FORM_FAMILIES or more families print their own name, else None; the constant moved here from the router, which re-exports it for one release); _check_uncached() reads through it, so the scan's miss verdict is the router's kept verdict for every page, split included, and a delete-and-rebuild leaves every status byte-identical. _evidence_from_json() takes a tuple as well as a list, so a verdict read back in the pass that kept it carries its evidence. Decision 55: contains_keyword() treats a hyphen-joined form variant as part of the form's name (1098 never matches 1098-T); a verdict that is the machine's (no OCR, OCR failed) is transient and never cached. Decision 57: FORM_VARIANTS is the one list of each form's real variants; _JOINER is what may sit between a number and its variant or a keyword's words; the text-layer floor is per page; CACHE_VERSION 3. Decision 60: _seams() lets a keyword typed w2 find W-2; no letters or digits means no keyword. Decision 62: says() is contains_keyword() as content evidence - a form number counts only within TITLE_CHARS; _seams() reads plurals, keeps numbers out of amounts, takes any apostrophe. Decision 63: dominant_forms() - a form number counts in the text when it is in the title or is the number the document mentions most; form <anything> is a form number. Decision 64: dominant_forms() weighs a mention by its shape - a form names itself with its year or revision and another form in a sentence. Decision 66: the title is weighed the same way (_title_forms(); _REFERENCE_BEFORE marks a form quoted after attach/forms/see/of/on/and/or), a number outside FORM_VARIANTS is a mention only after Form, a keyword's words sit on one line or wrap as a heading from a line's start (_WRAPPING_JOINER, _LINE_START), a sheet's cells are tab-separated within a row; CACHE_VERSION 5. Decision 67: what comes before a form is read before what follows it (attach Form 1098 (2025) is a reference); a title naming _LIST_OF_FORMS or more forms names none; the title window is measured on the lower-cased text; _LINE_START admits a bullet, a pipe or a rule. Decision 68: _LIST_OF_FORMS counts families (_FAMILY), so a consolidated 1099 is one family's document; _REFERENCE_BEFORE stays on one line. Decision 69: a form number set off by a dash is a reference (_REFERENCE_AFTER), a dash before the year is still dated (_SELF_AFTER), and _REFERENCE_BEFORE reads across a line break again. Decision 73: says() weighs where a plain keyword is said, not only that it is there - an occurrence that is a menu line's title (_menu_tails: a form number and the title a dash or a comma sets off from it are one reference) or what an ask-word asked for (_asked_for: attach, provide, send, see and their kin, governing the rest of their own sentence and the line a request wraps on to) is the page talking about a document rather than being one, and one occurrence that is neither is enough. A dash-set-off form that heads its line with a year beside it, where the title window holds no second such line and no ask precedes it, names itself (_titles_its_own_line), so a payer's substitute form is not read as a checklist. A form number after a comma continues a list (_LIST_CONTINUES), and enclosed/enclosure/enclosures/re: join _REFERENCE_BEFORE, which now reads a colon between the word and the form. any_keyword_matched() answers the router's question 'did this row's keywords match, apart from the year?'. CACHE_VERSION 6. Decision 82: a verdict keeps the evidence behind it. Evidence(rule, term, where, page) is the one shape - EVIDENCE_RULES (required, any, date, filename, refused) and EVIDENCE_PLACES (title, first_page, footer, deep) are the named values, imported by the router, the index and the app's vocabulary and retyped nowhere. The Evidence record, those two lists and the cell format that format_evidence() writes and parse_evidence() reads now live in tracker/records.py (decision 100) and are re-exported here for one release; what stays here is the reading of a document that produces them. says() became a thin wrapper over _says_where(), which reaches the same verdict by the same reading and also says where the word was found (_where_said(): the title window first, then a page's last _FOOTER_LINES non-blank lines, then the rest of page 1, then deep), so no placement moved. evaluate_rules() puts an Evidence per matched rule on ContentResult.evidence, on a failing verdict too, and the reason sentence is untouched; the date rule records the row's Period, not the regex it derives and not a word of the document. format_evidence()/parse_evidence() are the one owner of the index cell's compact form (term@where:page rule, candidates joined by '; '), and the page is left off when it is 0. CACHE_VERSION 7, because a version-6 verdict read back would claim a verdict with no reason behind it. Decision 85: a form heading its own line with its printed title after its number and its year after the title names itself, at the weight a bare number-then-year mention carries - _names_itself() is the one predicate, and it holds both shapes a printed title wears (a dash between number and title, decision 69/73's; or nothing between them, _SELF_TITLED). The IRS's 2024 and 2025 W-2 revisions print one copy to the page, so Copy B's only \"W-2\" is the foot's \"W-2 Wage and Tax Statement 2025 Department of the Treasury\" and the form said nothing about itself before this. The year must be a year and not a date's tail (\"Form 941 04/30/2025\" on a CP 575 is a filing deadline), and a page heading two such lines is a menu, as it is for the dashed shape - _lists_forms() counts both. CACHE_VERSION 8, because a cached verdict from before it would say a one-copy W-2 is nobody's form. Decision 90: a keyword may name alternatives and join the phrases one of them wants together, read through manifest.keyword_alternatives() - says() takes the first alternative whose every phrase is said and places the evidence at its leading phrase, contains_keyword() reads a file name the same way, and a keyword holding neither character is one phrase exactly as before. CACHE_VERSION 9, because a verdict cached before it read the '|' and the '+' as words to look for. Decision 109: ContentCache.digest_of() is now the one memo for every hash of a file under Prepared/ - the filer's sweep and its proof of each copy it makes, a person's filing as the scan reads it, and the scan's own de-duplication - so a second and a third pass over an unchanged tree cost stats rather than reads. Nothing under the tree a client is shared is ever memo'd: decision 68 reads every preserved original each pass by design, and that is the one reading the measure allows. The scan's prune() now keeps every file under Prepared/, so a parked copy's memo and a stray's survive the pass that learned them. DECISION 127 - PHOTOS, AND THE PAGE UPRIGHT: extract_text() returns None for an IMAGE_EXTENSIONS file on purpose (an image never has a text layer) and extract() reads that as 'this is a scan' rather than 'no extractor', so a photo takes the scanned-PDF path exactly - needs_ocr with ocr=False, extract_by_ocr() otherwise, which dispatches _ocr_pdf for a PDF and _ocr_image for a photo. _ocr_image() undoes the phone's EXIF rotation first (ImageOps.exif_transpose), greyscales once so the detector and the reading see the same pixels, then reads. _upright() is the one orientation step, used by both: pytesseract.image_to_osd() says the turn and its confidence, and at OSD_MIN_CONFIDENCE (1.0, Tesseract's own scale) or above the image is rotated by -rotate with expand=True; where OSD raises (no osd data, too little text) or is under the floor, _four_way() reads the page at 0/90/180/270 and keeps the rotation whose mean word confidence is highest (_score_of, words of _SCORED_WORD_LETTERS letters or more, confidences above zero, at least FOUR_WAY_MIN_WORDS of them), a tie keeping 0 and an unscorable page returned as it came. Image.rotate() returns a new image: the file on disk is never touched, because a photo is an original. CACHE_VERSION 10, because a verdict reached at 9 may have been reached on a page nobody turned. Extraction.seconds carries how long each reading took (extract() times _extract() and stamps it), which decides nothing - no reading is capped, timed out or abandoned; the router carries it into the pass. reasons.NO_TEXT_LAYER now says 'PDF or photo'. Decision 137: extract() never opens a file past validators.MAX_READ_MB (reasons.TOO_LARGE, a kept verdict); a .csv/.tsv/.txt is read to validators.TEXT_READ_CAP_MB and Extraction.cut says so, and a failing verdict on a cut text ends with reasons.TEXT_CUT. OCR renders each PDF page at render_scale() - min(RENDER_SCALE, sqrt(PIXEL_BUDGET / page area)) - so no page passes 40 Mpx, and a photo is held to the same budget before decoding (JPEG draft, else reduced on decode; Pillow's guard stays on). A Date Pattern is compiled and run line by line (date_pattern_at), lines over DATE_LINE_MAX skipped, bounding a backtracking typo. ocr_scratch() points TMPDIR and tempfile at OCR_SCRATCH_DIR_NAME beside the settings file for the runner's pass, emptied first, restored after. A picture past Pillow's own decompression-bomb limit raises TooLargeToRead and is a kept reasons.TOO_LARGE verdict, not a retry. Decision 137 Part B (B1.2): the safety stop - READING_STOP_PAGE_SECONDS (60) and READING_STOP_DOCUMENT_SECONDS (600), a photo one page - is a _SafetyStop set for each extract_by_ocr() reading; every pytesseract call goes through _tesseract() with the page's remaining budget as its timeout, a PDF page's render counts against it, and ReadingStopped becomes a kept reasons.READING_STOPPED verdict, not retried until the file changes. _clock is named so the suite moves it. Review fix (F7): a Period-derived date pattern runs over the whole text as before; only a staff pattern runs line by line. Part B review fixes: _four_way() scores the four turns on a copy whose long side is at most SCORING_LONG_SIDE and returns the chosen turn of the full page; the stop's sentence says '1 minute'; extract()'s docstring states the stop covers OCR and between-page overruns, not the text layer or one render. DECISION 150 - A READING RUNS WHERE IT CAN BE STOPPED: extract_bounded() is what the pass reads through (router.read_once and _check_uncached); it runs open_and_read() - validators.open_test() (tier 2's open test) then extract() - in a spawned child (_read_in_a_child/_the_child, over multiprocessing's Pipe: a named pipe on Windows, never a socket) and waits at most reading_stop_seconds() - READING_STOP_DOCUMENT_SECONDS for a file, READING_STOP_PAGE_SECONDS for a photo. On time the child's Extraction is returned as is; over time _end() ends the child's whole tree (taskkill /T on Windows, the child's own process group elsewhere) and the reading is abandoned() - the same kept READING_STOPPED verdict B1.2 gives; a child that ends without answering, or whose reader raised, is reading_failed() - reasons.READING_CRASHED, firm-side, kept. B1.2 stays inside the child. The child writes nothing and inherits TMPDIR (ocr_scratch). READ_IN_A_CHILD is True in the tracker and turned off for the suite by tests/conftest.py (its fakes live in the test's process); _CHILD_READER is what the child runs, open_and_read() by default, so tests/child_readers.py can hand the child a reader that blocks or dies. A cached verdict never starts a child; the benchmark and the CLI call extract() directly. The child never outlives its pass (the designer's ruling on the build): _the_child starts _watch_the_pass on a second one-way pipe (the lifeline) whose only writing end the pass holds, and ends itself through _orphaned() - os._exit(ORPHANED_EXIT_CODE), after killpg of its own group on POSIX - when that end closes or an answer finds the pipe broken; on Windows _kill_on_close_job() (ctypes, kernel32 only) puts the child in a job object with JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE whose one handle the pass holds and _close_job() closes, so a pass killed outright takes the child and Tesseract with it; a job Windows refuses is logged and the lifeline stands. The review's ruling: the open test's verdict rides back as Extraction.opened; the router hands it to every row's check_file(open_test=...) and keeps it under OPEN_TEST_FINGERPRINT by digest; the scanner's check_files asks open_verdict(), which answers from that kept verdict or reads the file in a child and holds the reading in memory (ContentCache.hold_reading, never saved) for the content check that follows; HEIC_NOT_SUPPORTED is the machine's and not kept. The child says 'started' before it touches the file: no word before the stop, an end before it, or a Process that cannot start is could_not_start() - reasons.READER_UNAVAILABLE, transient, nothing kept - and readers_that_could_not_start() is what the runner's pass (and the app's Run now) turns into one warning. Decision 141: FIRST_PAGE_PHRASES (a notice's header phrases - notice date, tax year, tax period, irs, internal revenue service) count only when first said on page 1, so a bill whose back page talks about a notice is not one; only the catalog's notices row uses them. CACHE_VERSION 11. Decision 154: in_a_child(path, job, stop=..., **kwargs) is the one child mechanism, and _read_in_a_child() is the reading's use of it; it gives (answer, None) on time or (None, the Extraction that says why - abandoned(), reading_failed() or could_not_start()), so the opening of an email or a zip (containers.open_bounded) runs in the same child, under the same stop, lifeline and job object. Decision 155 added ContentCache.remember_digest(): a digest proved on a working copy's temp is remembered for the copy's name after the rename (same size, same modification time), so the proof is still one read."
+      "notes": "The cache stores verdicts only - pass/fail, the reason, and the Evidence behind them, all of it the firm's own words. Extracted client text is never persisted. Only the first MAX_PAGES pages of a PDF are read, text or OCR - the identifying words are up front and a long ledger used to stall a run. Verdicts are keyed by the file's content digest and the row's rules fingerprint (CACHE_VERSION, carried on every row; a row at another version is ignored and dropped), with a per-path memo of size/mtime/digest so an unchanged file is not re-hashed: the same bytes are read twice in this system, once as a drop the router routes and once as the working copy the scanner checks, and a verdict the router reached is the verdict the scanner finds. extract(ocr=False) hands a scan back with needs_ocr set so the router can try the file's name first; extract_by_ocr() finishes the reading. The CLI (python -m tracker.content_check <engagement> <file>) prints what the document says and which rows accept it, writing no cache. DECISION 107 - THE CACHE LEFT THE SYNCED FOLDER: ContentCache(engagement_dir) loads the engagement's memos and verdicts from the store's two tables (store.cached_verdicts()) once, works in memory as it always did, and save() writes what it learned and forgot through store.remember_verdicts() - one immediate transaction of the store's own, under the engagement lock, never store.record(), because a verdict is a derivation of the bytes and the rules and not an event; a pass killed mid-save leaves the previous rows. ContentCache() with no engagement is memory only (the CLI's, a test's) and its save() touches nothing. The engagement must already be in the store or the constructor refuses by name. The JSON cache file that used to sit in the engagement folder is never read; RETIRED_CACHE_FILENAME survives only for the filer's tidy-up, which removes it. THE STEP-0 RE-RUN'S FINDING: decision 105 had kept a two-form split's second verdict in the cache alone, so a rebuilt store read the second copy the ordinary way and failed it - the cache was carrying a decision, not a derivation. own_forms(text) is now the one reading of which forms a page counts as its own (the set of self-named forms when MULTI_FORM_FAMILIES or more families print their own name, else None; the constant moved here from the router, which re-exports it for one release); _check_uncached() reads through it, so the scan's miss verdict is the router's kept verdict for every page, split included, and a delete-and-rebuild leaves every status byte-identical. _evidence_from_json() takes a tuple as well as a list, so a verdict read back in the pass that kept it carries its evidence. Decision 55: contains_keyword() treats a hyphen-joined form variant as part of the form's name (1098 never matches 1098-T); a verdict that is the machine's (no OCR, OCR failed) is transient and never cached. Decision 57: FORM_VARIANTS is the one list of each form's real variants; _JOINER is what may sit between a number and its variant or a keyword's words; the text-layer floor is per page; CACHE_VERSION 3. Decision 60: _seams() lets a keyword typed w2 find W-2; no letters or digits means no keyword. Decision 62: says() is contains_keyword() as content evidence - a form number counts only within TITLE_CHARS; _seams() reads plurals, keeps numbers out of amounts, takes any apostrophe. Decision 63: dominant_forms() - a form number counts in the text when it is in the title or is the number the document mentions most; form <anything> is a form number. Decision 64: dominant_forms() weighs a mention by its shape - a form names itself with its year or revision and another form in a sentence. Decision 66: the title is weighed the same way (_title_forms(); _REFERENCE_BEFORE marks a form quoted after attach/forms/see/of/on/and/or), a number outside FORM_VARIANTS is a mention only after Form, a keyword's words sit on one line or wrap as a heading from a line's start (_WRAPPING_JOINER, _LINE_START), a sheet's cells are tab-separated within a row; CACHE_VERSION 5. Decision 67: what comes before a form is read before what follows it (attach Form 1098 (2025) is a reference); a title naming _LIST_OF_FORMS or more forms names none; the title window is measured on the lower-cased text; _LINE_START admits a bullet, a pipe or a rule. Decision 68: _LIST_OF_FORMS counts families (_FAMILY), so a consolidated 1099 is one family's document; _REFERENCE_BEFORE stays on one line. Decision 69: a form number set off by a dash is a reference (_REFERENCE_AFTER), a dash before the year is still dated (_SELF_AFTER), and _REFERENCE_BEFORE reads across a line break again. Decision 73: says() weighs where a plain keyword is said, not only that it is there - an occurrence that is a menu line's title (_menu_tails: a form number and the title a dash or a comma sets off from it are one reference) or what an ask-word asked for (_asked_for: attach, provide, send, see and their kin, governing the rest of their own sentence and the line a request wraps on to) is the page talking about a document rather than being one, and one occurrence that is neither is enough. A dash-set-off form that heads its line with a year beside it, where the title window holds no second such line and no ask precedes it, names itself (_titles_its_own_line), so a payer's substitute form is not read as a checklist. A form number after a comma continues a list (_LIST_CONTINUES), and enclosed/enclosure/enclosures/re: join _REFERENCE_BEFORE, which now reads a colon between the word and the form. any_keyword_matched() answers the router's question 'did this row's keywords match, apart from the year?'. CACHE_VERSION 6. Decision 82: a verdict keeps the evidence behind it. Evidence(rule, term, where, page) is the one shape - EVIDENCE_RULES (required, any, date, filename, refused) and EVIDENCE_PLACES (title, first_page, footer, deep) are the named values, imported by the router, the index and the app's vocabulary and retyped nowhere. The Evidence record, those two lists and the cell format that format_evidence() writes and parse_evidence() reads now live in tracker/records.py (decision 100) and are re-exported here for one release; what stays here is the reading of a document that produces them. says() became a thin wrapper over _says_where(), which reaches the same verdict by the same reading and also says where the word was found (_where_said(): the title window first, then a page's last _FOOTER_LINES non-blank lines, then the rest of page 1, then deep), so no placement moved. evaluate_rules() puts an Evidence per matched rule on ContentResult.evidence, on a failing verdict too, and the reason sentence is untouched; the date rule records the row's Period, not the regex it derives and not a word of the document. format_evidence()/parse_evidence() are the one owner of the index cell's compact form (term@where:page rule, candidates joined by '; '), and the page is left off when it is 0. CACHE_VERSION 7, because a version-6 verdict read back would claim a verdict with no reason behind it. Decision 85: a form heading its own line with its printed title after its number and its year after the title names itself, at the weight a bare number-then-year mention carries - _names_itself() is the one predicate, and it holds both shapes a printed title wears (a dash between number and title, decision 69/73's; or nothing between them, _SELF_TITLED). The IRS's 2024 and 2025 W-2 revisions print one copy to the page, so Copy B's only \"W-2\" is the foot's \"W-2 Wage and Tax Statement 2025 Department of the Treasury\" and the form said nothing about itself before this. The year must be a year and not a date's tail (\"Form 941 04/30/2025\" on a CP 575 is a filing deadline), and a page heading two such lines is a menu, as it is for the dashed shape - _lists_forms() counts both. CACHE_VERSION 8, because a cached verdict from before it would say a one-copy W-2 is nobody's form. Decision 90: a keyword may name alternatives and join the phrases one of them wants together, read through manifest.keyword_alternatives() - says() takes the first alternative whose every phrase is said and places the evidence at its leading phrase, contains_keyword() reads a file name the same way, and a keyword holding neither character is one phrase exactly as before. CACHE_VERSION 9, because a verdict cached before it read the '|' and the '+' as words to look for. Decision 109: ContentCache.digest_of() is now the one memo for every hash of a file under Prepared/ - the filer's sweep and its proof of each copy it makes, a person's filing as the scan reads it, and the scan's own de-duplication - so a second and a third pass over an unchanged tree cost stats rather than reads. Nothing under the tree a client is shared is ever memo'd: decision 68 reads every preserved original each pass by design, and that is the one reading the measure allows. The scan's prune() now keeps every file under Prepared/, so a parked copy's memo and a stray's survive the pass that learned them. DECISION 127 - PHOTOS, AND THE PAGE UPRIGHT: extract_text() returns None for an IMAGE_EXTENSIONS file on purpose (an image never has a text layer) and extract() reads that as 'this is a scan' rather than 'no extractor', so a photo takes the scanned-PDF path exactly - needs_ocr with ocr=False, extract_by_ocr() otherwise, which dispatches _ocr_pdf for a PDF and _ocr_image for a photo. _ocr_image() undoes the phone's EXIF rotation first (ImageOps.exif_transpose), then reads. (Decision 127 turned every page upright with Tesseract's OSD and a four-way score; decision 169 removed both with Tesseract - see below.) The file on disk is never touched, because a photo is an original. CACHE_VERSION 10, because a verdict reached at 9 may have been reached on a page nobody turned. Extraction.seconds carries how long each reading took (extract() times _extract() and stamps it), which decides nothing - no reading is capped, timed out or abandoned; the router carries it into the pass. reasons.NO_TEXT_LAYER now says 'PDF or photo'. Decision 137: extract() never opens a file past validators.MAX_READ_MB (reasons.TOO_LARGE, a kept verdict); a .csv/.tsv/.txt is read to validators.TEXT_READ_CAP_MB and Extraction.cut says so, and a failing verdict on a cut text ends with reasons.TEXT_CUT. OCR renders each PDF page at render_scale() - min(RENDER_SCALE, sqrt(PIXEL_BUDGET / page area)) - so no page passes 40 Mpx, and a photo is held to the same budget before decoding (JPEG draft, else reduced on decode; Pillow's guard stays on). A Date Pattern is compiled and run line by line (date_pattern_at), lines over DATE_LINE_MAX skipped, bounding a backtracking typo. A picture past Pillow's own decompression-bomb limit raises TooLargeToRead and is a kept reasons.TOO_LARGE verdict, not a retry. Decision 137 Part B (B1.2): the safety stop - READING_STOP_PAGE_SECONDS (60) and READING_STOP_DOCUMENT_SECONDS (600), a photo one page - is a _SafetyStop set for each extract_by_ocr() reading; since decision 169 (ruling 5) no page starts past it (_SafetyStop.page() checks before each page), a PDF page's render counts against it, and ReadingStopped becomes a kept reasons.READING_STOPPED verdict, not retried until the file changes. _clock is named so the suite moves it. Review fix (F7): a Period-derived date pattern runs over the whole text as before; only a staff pattern runs line by line. Part B review fixes: the stop's sentence says '1 minute'; extract()'s docstring states what the stop covers in-process (between pages) and what only the child's end covers (a page being read, the text layer, one render). DECISION 150 - A READING RUNS WHERE IT CAN BE STOPPED: extract_bounded() is what the pass reads through (router.read_once and _check_uncached); it runs open_and_read() - validators.open_test() (tier 2's open test) then extract() - in a spawned child (_read_in_a_child, the child itself in tracker/ocr.py since decision 169, over multiprocessing's Pipe: a named pipe on Windows, never a socket) and waits at most reading_stop_seconds() - READING_STOP_DOCUMENT_SECONDS for a file, READING_STOP_PAGE_SECONDS for a photo. On time the child's Extraction is returned as is; over time _end() ends the child's whole tree (taskkill /T on Windows, the child's own process group elsewhere) and the reading is abandoned() - the same kept READING_STOPPED verdict B1.2 gives; a child that ends without answering, or whose reader raised, is reading_failed() - reasons.READING_CRASHED, firm-side, kept. B1.2 stays inside the child. The child writes nothing; since decision 169 neither does the reader (no temporary file), so ocr_scratch is gone. READ_IN_A_CHILD is True in the tracker and turned off for the suite by tests/conftest.py (its fakes live in the test's process); _CHILD_READER is what the child runs, open_and_read() by default, so tests/child_readers.py can hand the child a reader that blocks or dies. A cached verdict never starts a child; the benchmark and the CLI call extract() directly. The child never outlives its pass (the designer's ruling on the build): its lifeline and its job object moved with it to tracker/ocr.py in decision 169, which says how. The review's ruling: the open test's verdict rides back as Extraction.opened; the router hands it to every row's check_file(open_test=...) and keeps it under OPEN_TEST_FINGERPRINT by digest; the scanner's check_files asks open_verdict(), which answers from that kept verdict or reads the file in a child and holds the reading in memory (ContentCache.hold_reading, never saved) for the content check that follows; HEIC_NOT_SUPPORTED is the machine's and not kept. The child says 'started' before it touches the file: no word before the stop, an end before it, or a Process that cannot start is could_not_start() - reasons.READER_UNAVAILABLE, transient, nothing kept - and readers_that_could_not_start() is what the runner's pass (and the app's Run now) turns into one warning. Decision 141: FIRST_PAGE_PHRASES (a notice's header phrases - notice date, tax year, tax period, irs, internal revenue service) count only when first said on page 1, so a bill whose back page talks about a notice is not one; only the catalog's notices row uses them. CACHE_VERSION 11. Decision 154: in_a_child(path, job, stop=..., **kwargs) is the one child mechanism, and _read_in_a_child() is the reading's use of it; it gives (answer, None) on time or (None, the Extraction that says why - abandoned(), reading_failed() or could_not_start()), so the opening of an email or a zip (containers.open_bounded) runs in the same child, under the same stop, lifeline and job object. Since decision 169 it hands the job to tracker.ocr.run_in_child() - the pass's one long-lived child - and words the ocr.Outcome it gets back; it no longer makes a process of its own. Decision 155 added ContentCache.remember_digest(): a digest proved on a working copy's temp is remembered for the copy's name after the rename (same size, same modification time), so the proof is still one read. DECISION 169 - RAPIDOCR IS THE READER: _ocr_pdf() renders each page at render_scale() and hands it, in RGB, to ocr.read_page(); _ocr_image() hands the EXIF-upright photo the same way. Nothing turns a page (ruling 6 as re-ruled: RapidOCR keeps a sideways page's words; the turning rule arrives in ocr._upright_lines() as the amendment '169, upright'). ocr.ReaderUnavailable - a model missing or broken - is None from the reader, so reasons.NO_TEXT_LAYER, transient, now worded 'the reader could not run on this machine'. The pages are still joined with a line break, never PAGE_BREAK (SPEC-127.2X D9.2). pytesseract, _tesseract, _upright, _four_way, _score_of, _for_scoring and their constants are gone, and ocr_scratch with them (the reader writes no temporary file - SPEC-169 section 6). CACHE_VERSION 12: every verdict on a scan or a photo was the old reader's."
     },
     {
       "id": "tracker/filer.py",
@@ -1231,6 +1220,71 @@
       "notes": "Pure functions over text the caller already has: nothing here reads a file, takes a lock or knows what a return is. The check itself runs one layer up, in the filer's household pass, after the request lists have accepted a document and before the exactly-one rule; the router is untouched, because the router judges a request list and knows no person. A spelling is at least two words (records.MIN_SPELLING_WORDS): a family name alone is a whole phrase inside a company's name, so `Park` would confirm `Park Landscaping LLC`'s bank statement as the family's - the two-word rule is kept wherever a spelling is accepted and again in check_name(). Confirmed beats vetoed beats absent, so a joint page naming both spouses is confirmed for both returns and the exactly-one rule decides. Nothing is inferred: the app proposes and a person ticks, no spelling is ever learned from a document, and no fuzzy match is made. The CLI (python -m tracker.names \"John A. Park\") prints the proposals and records nothing."
     },
     {
+      "id": "tracker/ocr.py",
+      "type": "module",
+      "layer": "core",
+      "sha256": "c080819a242798c4",
+      "lines": 887,
+      "cli": "python -m tracker.ocr",
+      "exports": [
+        "CHILD_EXIT_SECONDS",
+        "CUDA_PROVIDER",
+        "DETECTION_MODEL",
+        "DEVICE_GRAPHICS_CARD",
+        "DEVICE_PROCESSOR",
+        "DIRECTION_MODEL",
+        "DOCUMENTS_PER_CHILD",
+        "GPU_FAULT_WARNING",
+        "GPU_PACK_DIR_NAME",
+        "MODEL_DIR_NAME",
+        "ORPHANED_EXIT_CODE",
+        "Outcome",
+        "PACK_UNUSABLE",
+        "RECOGNITION_MODEL",
+        "ReaderUnavailable",
+        "ReadingChild",
+        "SELF_TEST_TEXT",
+        "SELF_TEST_WORDS",
+        "SESSIONS",
+        "Session",
+        "UNREADABLE_JOB_EXIT_CODE",
+        "WARM_UP_STOP_SECONDS",
+        "current_session",
+        "device",
+        "gpu_pack",
+        "models_folder",
+        "processor_only",
+        "read_page",
+        "reading_session",
+        "reset",
+        "run_in_child",
+        "take_notes",
+        "warm_up"
+      ],
+      "constants": {
+        "DEVICE_PROCESSOR": "'processor'",
+        "DEVICE_GRAPHICS_CARD": "'graphics card'",
+        "GPU_PACK_DIR_NAME": "'gpu-runtime'",
+        "PACK_UNUSABLE": "'the graphics card pack is here but could not be used: {reason}; reading on the processor'",
+        "GPU_FAULT_WARNING": "'the graphics card failed while reading {file}; the rest of this pass read on the processor'",
+        "MODEL_DIR_NAME": "'models'",
+        "DETECTION_MODEL": "'PP-OCRv6_det_small.onnx'",
+        "RECOGNITION_MODEL": "'PP-OCRv6_rec_small.onnx'",
+        "DIRECTION_MODEL": "'ch_ppocr_mobile_v2.0_cls_mobile.onnx'",
+        "SESSIONS": "('text_det', 'text_cls', 'text_rec')",
+        "CUDA_PROVIDER": "'CUDAExecutionProvider'",
+        "SELF_TEST_TEXT": "'Wage and Tax Statement 2025'",
+        "SELF_TEST_WORDS": "('wage', 'statement')",
+        "DOCUMENTS_PER_CHILD": "100",
+        "WARM_UP_STOP_SECONDS": "120.0",
+        "CHILD_EXIT_SECONDS": "30.0",
+        "ORPHANED_EXIT_CODE": "86",
+        "UNREADABLE_JOB_EXIT_CODE": "87"
+      },
+      "role": "The reader (decision 169): RapidOCR on ONNX Runtime with its three models shipped in the app, on the graphics card when the pack beside the app works and on the processor otherwise - and the pass's one long-lived reading child that every parse of a client's file runs in.",
+      "notes": "Rulings 1-3 and 6, R-2 and R-4 of SPEC-169. Engine: _build_engine() names every model by path (models_folder(), inside the rapidocr package, collected as data by api_entry.spec) and _refuse_downloads() replaces rapidocr's DownloadFile.run with a refusal, so nothing is ever fetched; rapidocr imports requests at load time for that downloader, which tests/test_layers.py allows and tests/test_ocr.py pins to open no socket in a full read. Device: gpu_pack() is the gpu-runtime folder beside the frozen exe (never from source); none means the processor with no CUDA request at all (onnxruntime-gpu 'offers' CUDA everywhere, so offered is never the test). With a pack, _on_the_card() calls onnxruntime.preload_dlls() on it, builds asking for CUDA, requires each of SESSIONS (text_det, text_cls, text_rec) to have CUDAExecutionProvider first, and runs _self_test() on a line drawn in memory; any failure is the processor plus PACK_UNUSABLE (a run-log line, not a warning). read_page(): any exception from the card's engine is a fault (the card poisons the process - 'CUDA failure 999'): the engine is dropped, the processor's built, the same page read again, processor_only() for the rest of the pass, and a ('gpu-fault', file) note becomes GPU_FAULT_WARNING once in the pass; reset() lets the next pass try the card. _upright_lines() is ruling 6's seam: lines in reading order from the boxes (the harness's lines_from_boxes), never a turn. The child: ReadingChild is one spawned process serving jobs one at a time over three pipes (jobs, answers, lifeline), saying 'started' before each job touches a file, answering with take_notes(); a job it cannot unpickle exits UNREADABLE_JOB_EXIT_CODE (the machine's, before 'started'). _watch_the_pass/_orphaned (the lifeline) and _kill_on_close_job/_close_job (the Windows job object) and _end() (the whole tree) moved here from content_check. Session (reading_session(), run_in_child()) owns the child for a pass - runner.run_registry with settle=True, which with a pack starts the child at once for warm_up() so the run log's first line is settled - or for one app command (api.main); a reading with none open gets a session of its own. It replaces the child after a stop, a crash, a child that never started, a fault on the card and every DOCUMENTS_PER_CHILD (100) documents. content_check.in_a_child() words each Outcome. The CLI (python -m tracker.ocr [photo]) says which reader this machine uses and times one reading."
+    },
+    {
       "id": "tracker/page.py",
       "type": "module",
       "layer": "core",
@@ -1263,8 +1317,8 @@
       "id": "tracker/reasons.py",
       "type": "module",
       "layer": "core",
-      "sha256": "1038869c64663e3b",
-      "lines": 604,
+      "sha256": "f6973dda88e50993",
+      "lines": 608,
       "exports": [
         "ALSO_ANSWERS",
         "CONTAINER_DAMAGED",
@@ -1820,8 +1874,8 @@
       "id": "tracker/router.py",
       "type": "module",
       "layer": "core",
-      "sha256": "0e02be11ea71d354",
-      "lines": 1023,
+      "sha256": "35f0d3985d7f0570",
+      "lines": 1024,
       "cli": "python -m tracker.router",
       "exports": [
         "ALSO_ANSWERS",
@@ -1850,14 +1904,14 @@
         "CONTESTED_PREFIX": "'looks like'"
       },
       "role": "Decides which single manifest row a dropped file belongs to. Evidence order: required keywords, then any-keywords/period, read off a text layer or off OCR (OCR routes on required keywords only). There is no third tier: a file name is never evidence for a filing (decision 92), and a document nothing could be read out of parks. The router knows no person (decision 128): whose document this is is asked by the household pass against the return's own people list, not here.",
-      "notes": "Reads the document through content_check.extract() - the scanner's reading - and leaves its per-row verdicts among the engagement's verdicts in the store (content_check.ContentCache) keyed by content, so the scan finds them under the working copy's name. Every scan with no text layer is OCR'd, whatever its name says, and OCR text routes only on required keywords - an any-keyword match on OCR text is OCR_ONLY, a lead for a person, because a misread word is how a document lands under the wrong request. One PdfVerdictCache per file (or the caller's) so a PDF is parsed once, not once per row. The CLI (python -m tracker.router <engagement> <files>) says where each file would go and why, moving nothing. Extension alone never routes. A document matching one row's required keywords but failing its other rules is contested and blocks its own filing \u2014 misfiling a tax document is worse than not filing it. When nothing routes, the reason is the most useful one available: a document whose content fits a row that refused the file (size floor, type, unreadable PDF) is reported as CONTESTED_PREFIX, and a file every row refused for the same reason carries that reason. A file name is read the same whole-token way a keyword is, run-together spelling and all (W2 for W-2), but only ever as evidence for a person. Eligibility is has_routing_rules(): keywords or a typed year; a year derived from Period only checks a document a keyword already matched. Decision 55, as decision 92 left it: a text layer extract() marked needs_ocr is no text at all, so a multi-page scan is read no further than a one-page one - and where 55 then filed it on its name, it now parks. Decision 58: no run-together fallback; the keyword pattern already reads a dash or space as optional. Decision 73: a row whose any-keywords all matched and whose year alone failed is remembered as a lead, and a file that would otherwise be parked with 'matched no request' is parked as 'looks like J01 (expected period not found ...)' with J01 as its candidate - the sentence a contested file gets, so the reminder asks the client about the period. A lead pre-empts no filing, unlike a required-keyword match, so the decision is exactly as it was; only the reason and the candidates improve. The Routing record and EVIDENCE_CONTENT live in tracker/records.py (decision 100) and are re-exported here for one release: the decision is a record, this module is the deciding. Decision 82: Routing.evidence_record is why, beside Routing.evidence, the tier the decision rested on - EVIDENCE_CONTENT or nothing, since decision 92 removed EVIDENCE_FILENAME (nothing rests on a name; content_check.RULE_FILENAME, the word an index row actually carries, is untouched and still produced). Keyed by candidate identifier: the content check's own Evidence tuple for a row that was read, _filename_evidence() for what the name said (a name is all title and has no page), and _refusal_evidence() for a tier-2 refusal, which travels as reasons.Reason.code rather than the sentence a person reads. _recorded_for() cuts it down to the identifiers the decision names, because every row considered leaves something behind and one index cell must not carry the whole manifest's workings. It decides nothing: every verdict is reached exactly as it was before there was a record. Decision 84: a blocked file - content fits a row, the same row's tier-2 rules refused the file - keeps the verdict's evidence beside the refusal in record, because the refusal alone says which rule said no and never which request the document looked like. The verdict was already read there to decide the file was blocked, so nothing is computed twice and no placement moves. Decision 117: a tier-2 refusal on a file nothing could be read out of - a locked PDF, an empty upload - is asked what its NAME says, exactly as an unreadable scan is, and the name's evidence is recorded beside the refusal for the person who has to open it (and for the reminder's hold, which reads the review shortlist). The decision does not move an inch: no candidate, the same reason, nothing filed on a name. Decision 92, the owner's (2026-09-18): A DOCUMENT NOBODY CAN READ IS FILED BY NOBODY. The by-name tier is gone - when no word of the file could be read (a scan with no text layer OCR could not rescue, an image-only PDF, an empty sheet) no row is a candidate, and the file parks with reasons.NO_READABLE_TEXT (router.UNREADABLE), which is deliberately not UNMATCHED: nothing was matched against anything, and the fix is OCR or a person, never another keyword. _filename_evidence() stays and is recorded on the parked row, so review.triage() offers the request the name points at at RULE_STRENGTH's weakest tier and the app's card and the Status Report show it - a place for a person to start reading, never a filing. _read() no longer skips OCR for a sensibly named scan: nothing is filed on a name, so OCR is the only thing that can still file one, and the scan whose name says W-2 is exactly the one whose content must be read (the _filename_hit shortcut went with the skip). The cost was stated and accepted: until Tesseract is installed every scanned PDF parks - twelve rows of the firm's own corpus moved from filing to parking, and two the name had been misfiling now park instead. Decision 93 (a row per issuer): an issuer row is an ordinary row carrying the entity's name in Required Keywords, and which row wins needed no new rule - a required keyword is the strongest tier and the generic K-1 row has none, so the issuer row takes the K-1 that names it. The one rule added is the park: when any row narrows the row that accepted a document (manifest.narrowing_rows over the rows this pass considers, so an issuer row set aside as Override.NOT_APPLICABLE is nobody's issuer) and none of the narrowing rows matched, nothing is filed - reasons.ISSUER_NOT_NAMED, the narrowing rows named, shortlist led by the row that did accept it. Filing on the generic row would put two entities' K-1s in one folder; taking the row left over would be guessing by elimination. Decision 107: whether a page counts two forms as its own is content_check.own_forms(), the same reading the scanner's miss path makes; computed once in route_file() and handed to evaluate_rules() for the ordinary reading and to the split alike, so a page that prints two forms' own names never files on a third form it merely mentions (decision 94's rule, by construction); the forms are then taken in first-mention order (self_named_forms) for the filing order, and _multi_form() decides exactly as before. Decision 105: the split's verdicts are remembered too. _multi_form() takes route_file()'s keep closure and calls it for every row it files a copy under, with the second reading's verdict, after the ordinary reading has left its own refusal - the verdict the router files on is the one the scan must find, or the second copy fails validation on the next pass and the client is asked for a form they already sent. A page that parks keeps nothing new. Decision 128 gave route_file() a `reading` argument in place of `text`: the household pass reads each drop once (read_once()) and routes that one Extraction against every return it feeds, so a two-return household costs one reading rather than two, and from_ocr travels with it so decision 50's stricter rule still applies. Decision 127 changed no rule here: a photo arrives with from_ocr set, so decision 50's stricter reading applies to it unchanged, and route_file() only became two functions - itself, which makes the two refusals that must come before any reading (a cloud placeholder is never read, a Google stub is never a document) and then stamps Routing.seconds on whatever _decide() returns, and _decide(), which is the whole decision as it was. The seconds decide nothing; they let the pass name its slowest documents. Decision 137: route_file() parks a file past validators.MAX_READ_MB before any reading, with reasons.TOO_LARGE as its whole reason, and a parked file read from a cut text says so (reasons.TEXT_CUT). Decision 141: a signed return of the wrong year - a row asks_for_a_return() whose required keywords matched and whose only failure is its period - contests and parks even when another row matched strongly (this year's 1065 with its K-1s, a 1040 with a W-2G stapled behind it); return rows only, checked before the ordinary contested rule. DECISION 140: a read document that reaches the last exit (UNMATCHED) still points somewhere when a row's own form number is shown on the page - a RULE_REQUIRED/RULE_ANY evidence whose term content_check.form_key() reads as a form, said in the title, or on the first page (dominant) AND beside at least one more of the row's own keywords - dominance alone is not enough, a misread K-1's two 'W-2 wages' lines make W-2 dominant (_shows_its_form_number) - or, where no row's is, when the file's name says a row's keyword (_filename_evidence, the unreadable scan's hint): _near_miss() parks it with reasons.SHOWS_ITS_FORM_NUMBER (or, on the name's path, reasons.NAME_POINTS_AT - its own sentence, 'file name', because the page showed nothing) and those rows as the evidence record, NEVER as candidates, so a list where that row is the only one still parks. Only rows whose tier-2 rules let the file through are asked. A01's three required phrases were deliberately not loosened: every looser rule filed the W-3 family and the W-2c as W-2s. The split's self-named forms are self_named, no longer a reuse of the file-name list named. Decision 146: a broker's consolidated 1099 that several rows accept on their any-keywords files whole under the one row accepted BECAUSE OF its 1099-B section (_explained_by over the evidence, never an identifier; content_check.carries_a_1099b_section says the page carries one), after the issuer rule and never on OCR's word; two such rows or none and it parks. The other asked rows that accepted it ride on Routing.answers - no copy - and become the filed row's Also Answers cell."
+      "notes": "Reads the document through content_check.extract() - the scanner's reading - and leaves its per-row verdicts among the engagement's verdicts in the store (content_check.ContentCache) keyed by content, so the scan finds them under the working copy's name. Every scan with no text layer is OCR'd, whatever its name says, and OCR text routes only on required keywords - an any-keyword match on OCR text is OCR_ONLY, a lead for a person, because a misread word is how a document lands under the wrong request. One PdfVerdictCache per file (or the caller's) so a PDF is parsed once, not once per row. The CLI (python -m tracker.router <engagement> <files>) says where each file would go and why, moving nothing. Extension alone never routes. A document matching one row's required keywords but failing its other rules is contested and blocks its own filing \u2014 misfiling a tax document is worse than not filing it. When nothing routes, the reason is the most useful one available: a document whose content fits a row that refused the file (size floor, type, unreadable PDF) is reported as CONTESTED_PREFIX, and a file every row refused for the same reason carries that reason. A file name is read the same whole-token way a keyword is, run-together spelling and all (W2 for W-2), but only ever as evidence for a person. Eligibility is has_routing_rules(): keywords or a typed year; a year derived from Period only checks a document a keyword already matched. Decision 55, as decision 92 left it: a text layer extract() marked needs_ocr is no text at all, so a multi-page scan is read no further than a one-page one - and where 55 then filed it on its name, it now parks. Decision 58: no run-together fallback; the keyword pattern already reads a dash or space as optional. Decision 73: a row whose any-keywords all matched and whose year alone failed is remembered as a lead, and a file that would otherwise be parked with 'matched no request' is parked as 'looks like J01 (expected period not found ...)' with J01 as its candidate - the sentence a contested file gets, so the reminder asks the client about the period. A lead pre-empts no filing, unlike a required-keyword match, so the decision is exactly as it was; only the reason and the candidates improve. The Routing record and EVIDENCE_CONTENT live in tracker/records.py (decision 100) and are re-exported here for one release: the decision is a record, this module is the deciding. Decision 82: Routing.evidence_record is why, beside Routing.evidence, the tier the decision rested on - EVIDENCE_CONTENT or nothing, since decision 92 removed EVIDENCE_FILENAME (nothing rests on a name; content_check.RULE_FILENAME, the word an index row actually carries, is untouched and still produced). Keyed by candidate identifier: the content check's own Evidence tuple for a row that was read, _filename_evidence() for what the name said (a name is all title and has no page), and _refusal_evidence() for a tier-2 refusal, which travels as reasons.Reason.code rather than the sentence a person reads. _recorded_for() cuts it down to the identifiers the decision names, because every row considered leaves something behind and one index cell must not carry the whole manifest's workings. It decides nothing: every verdict is reached exactly as it was before there was a record. Decision 84: a blocked file - content fits a row, the same row's tier-2 rules refused the file - keeps the verdict's evidence beside the refusal in record, because the refusal alone says which rule said no and never which request the document looked like. The verdict was already read there to decide the file was blocked, so nothing is computed twice and no placement moves. Decision 117: a tier-2 refusal on a file nothing could be read out of - a locked PDF, an empty upload - is asked what its NAME says, exactly as an unreadable scan is, and the name's evidence is recorded beside the refusal for the person who has to open it (and for the reminder's hold, which reads the review shortlist). The decision does not move an inch: no candidate, the same reason, nothing filed on a name. Decision 92, the owner's (2026-09-18): A DOCUMENT NOBODY CAN READ IS FILED BY NOBODY. The by-name tier is gone - when no word of the file could be read (a scan with no text layer OCR could not rescue, an image-only PDF, an empty sheet) no row is a candidate, and the file parks with reasons.NO_READABLE_TEXT (router.UNREADABLE), which is deliberately not UNMATCHED: nothing was matched against anything, and the fix is OCR or a person, never another keyword. _filename_evidence() stays and is recorded on the parked row, so review.triage() offers the request the name points at at RULE_STRENGTH's weakest tier and the app's card and the Status Report show it - a place for a person to start reading, never a filing. _read() no longer skips OCR for a sensibly named scan: nothing is filed on a name, so OCR is the only thing that can still file one, and the scan whose name says W-2 is exactly the one whose content must be read (the _filename_hit shortcut went with the skip). The cost was stated and accepted: until OCR was installed every scanned PDF parked (since decision 169 the reader ships in the app) - twelve rows of the firm's own corpus moved from filing to parking, and two the name had been misfiling now park instead. Decision 93 (a row per issuer): an issuer row is an ordinary row carrying the entity's name in Required Keywords, and which row wins needed no new rule - a required keyword is the strongest tier and the generic K-1 row has none, so the issuer row takes the K-1 that names it. The one rule added is the park: when any row narrows the row that accepted a document (manifest.narrowing_rows over the rows this pass considers, so an issuer row set aside as Override.NOT_APPLICABLE is nobody's issuer) and none of the narrowing rows matched, nothing is filed - reasons.ISSUER_NOT_NAMED, the narrowing rows named, shortlist led by the row that did accept it. Filing on the generic row would put two entities' K-1s in one folder; taking the row left over would be guessing by elimination. Decision 107: whether a page counts two forms as its own is content_check.own_forms(), the same reading the scanner's miss path makes; computed once in route_file() and handed to evaluate_rules() for the ordinary reading and to the split alike, so a page that prints two forms' own names never files on a third form it merely mentions (decision 94's rule, by construction); the forms are then taken in first-mention order (self_named_forms) for the filing order, and _multi_form() decides exactly as before. Decision 105: the split's verdicts are remembered too. _multi_form() takes route_file()'s keep closure and calls it for every row it files a copy under, with the second reading's verdict, after the ordinary reading has left its own refusal - the verdict the router files on is the one the scan must find, or the second copy fails validation on the next pass and the client is asked for a form they already sent. A page that parks keeps nothing new. Decision 128 gave route_file() a `reading` argument in place of `text`: the household pass reads each drop once (read_once()) and routes that one Extraction against every return it feeds, so a two-return household costs one reading rather than two, and from_ocr travels with it so decision 50's stricter rule still applies. Decision 127 changed no rule here: a photo arrives with from_ocr set, so decision 50's stricter reading applies to it unchanged, and route_file() only became two functions - itself, which makes the two refusals that must come before any reading (a cloud placeholder is never read, a Google stub is never a document) and then stamps Routing.seconds on whatever _decide() returns, and _decide(), which is the whole decision as it was. The seconds decide nothing; they let the pass name its slowest documents. Decision 137: route_file() parks a file past validators.MAX_READ_MB before any reading, with reasons.TOO_LARGE as its whole reason, and a parked file read from a cut text says so (reasons.TEXT_CUT). Decision 141: a signed return of the wrong year - a row asks_for_a_return() whose required keywords matched and whose only failure is its period - contests and parks even when another row matched strongly (this year's 1065 with its K-1s, a 1040 with a W-2G stapled behind it); return rows only, checked before the ordinary contested rule. DECISION 140: a read document that reaches the last exit (UNMATCHED) still points somewhere when a row's own form number is shown on the page - a RULE_REQUIRED/RULE_ANY evidence whose term content_check.form_key() reads as a form, said in the title, or on the first page (dominant) AND beside at least one more of the row's own keywords - dominance alone is not enough, a misread K-1's two 'W-2 wages' lines make W-2 dominant (_shows_its_form_number) - or, where no row's is, when the file's name says a row's keyword (_filename_evidence, the unreadable scan's hint): _near_miss() parks it with reasons.SHOWS_ITS_FORM_NUMBER (or, on the name's path, reasons.NAME_POINTS_AT - its own sentence, 'file name', because the page showed nothing) and those rows as the evidence record, NEVER as candidates, so a list where that row is the only one still parks. Only rows whose tier-2 rules let the file through are asked. A01's three required phrases were deliberately not loosened: every looser rule filed the W-3 family and the W-2c as W-2s. The split's self-named forms are self_named, no longer a reuse of the file-name list named. Decision 146: a broker's consolidated 1099 that several rows accept on their any-keywords files whole under the one row accepted BECAUSE OF its 1099-B section (_explained_by over the evidence, never an identifier; content_check.carries_a_1099b_section says the page carries one), after the issuer rule and never on OCR's word; two such rows or none and it parks. The other asked rows that accepted it ride on Routing.answers - no copy - and become the filed row's Also Answers cell."
     },
     {
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "7cf7578e3d7c2449",
-      "lines": 1573,
+      "sha256": "c942ea49401b1bab",
+      "lines": 1588,
       "cli": "python -m tracker.runner",
       "exports": [
         "DATE_FLAG",
@@ -1960,7 +2014,7 @@
         "REVIEW_COLUMNS": "('Received', 'Engagement', 'File the client sent', 'Reason', 'Candidates')"
       },
       "role": "The unattended pass: for every engagement in the registry, file -> scan -> (on DRAFT_WEEKDAY) draft. This is the whole scheduled task. Decision 130: run_household() refreshes the client README once, after the sort and after every return's scan and draft, still inside the locks (and the README of each household it fed a document into); run_engagement() no longer touches the README.",
-      "notes": "Owns the draft-day rule (DRAFT_WEEKDAY) in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed after the scan and draft still ran. The CLI takes the clients root, not a file; an engagement whose record could not be read fails alone with the reason (RECORD_UNREADABLE), and so does a legacy folder the registry listed. _worth_a_pass() is the pre-checks: skips are not failures, and the warnings the pass reports are manifest.check_rules() over the list the record holds - the same list the app's state carries. Scaffolds each engagement before filing (a row added in the app gets its folder), leaves Override.NOT_APPLICABLE rows out of the outstanding count, and skips an engagement whose successor names it in Rolled From. run_engagement() is the one definition of a pass; the app's scan command calls it too. main(argv) is the command line as a function: python -m tracker.runner and the packaged executable in runner mode (api_entry.py, RUNNER_MODE_FLAG) both call it. Decision 55: should_draft() catches up a draft day the machine missed; an engagement never drafted waits for its first draft day. Decisions 57 and 60: a quiet draft day refreshes the run's own unedited draft (_refresh_stale_draft()) and one a person has edited is never touched. Decision 67: main() makes the console take what it cannot encode before it parses a flag; since decision 108 that guard is page.tolerant_console(), shared by every command line, and main() calls it. Decision 68: append_log() replaces what UTF-8 cannot encode; an engagement's registry warning rides the run's warnings. Decision 69: a FileReport's attention rides the run's warnings, never its error. Decision 75: every real pass ends by writing STATUS_PAGE_FILENAME into the clients root, never on a dry run; status_report() folds the runs just made into every engagement the registry found and reads the rest (no lock, nothing written), so --only and the app's one-engagement pass still draw the whole practice; skipped_because() is the one wording of why an engagement is passed over. Decision 87: the pass gained no call of its own on tracker/ledger.py. Decision 102: run_engagement() holds ONE engagement lock across scaffold, file, scan and view, and tells each step the lock is held; a dry run takes none; a lock it cannot get is a skip. Decision 89: the last thing each engagement's pass does is _view_step(), which regenerates the read-only view; a view whose replace did not land leaves run.view_stale set on a run that still succeeds. Decision 91: write_status_page() is drawn through tracker/page.py. Decision 103: the status page lost its Deferred writes column; nothing a pass decides waits for anything. Decision 104: the pass begins with filer.ensure(), the store's top-up, and nothing in it reads or writes a workbook; the 'Problem or skipped' cell shows the legacy sentence for a folder the tracker no longer reads. Decision 115: _draft_step() runs the gate - a held draft writes nothing, _retire_unedited_drafts() removes the run's own unedited drafts and leaves an edited one, run.held counts the rows and run.draft_note is the refusal (in the console, the log and the practice page's Drafted cell as STATUS_HELD); --reminders always is held too (decision 13 amended). Every draft step ends in _record(): one DRAFTED event through the reminder's record_draft() under the pass's lock, only when something changed or the week's draft is a new week's. last_drafted() answers from the last DRAFTED that wrote a file, and falls back to the files' times for a journal from before 115; draft_is_held() says whether the record's last word is a hold, and should_draft(held=True) drafts on the first pass after the hold clears, first draft or not. Decision 118: a draft a person approved in the app is protected for the rest of that draft week exactly as an edited one is - _draft_step() hands last_draft_day() to write_draft(), _retire_unedited_drafts() and _refresh_stale_draft() as approved_since, EngagementRun carries approved, and _drafted_cell() says APPROVED_NOTE where it would say the stage. The draft day stays the runner's (decision 12): the reminder module is below this one and is handed the week rather than working it out. Decision 129 gave run_household() the registry, so the feed list resolves to this year's returns and the pass takes every lock it needs - its own and the fed ones - in layout.lock_order_key order. A feed that resolves to nothing rides every own return's warnings; a fed return is judged and filed into but never scanned, drafted or drawn here, because that is its own household's pass to make. What the pass filed into a fed return is still this pass's to say, though: one FILED_INTO_FED sentence per fed return that received a filing, on the first own return's warnings, so a household that sorted a drop into somebody else's return does not report 'filed 0' of it. Decision 127: EngagementRun.slowest is the filing report's list of slow readings, and summary() adds SLOW_READING_NOTE for the slowest when it passed SLOW_READING_SECONDS (20.0) - a line the run says, not a limit it enforces; nothing anywhere cuts a reading short, because the benchmark and the owner's speed ceiling are measured in exactly these seconds. In a household the reading is said once, on the first own return's line. Decision 132: A PASS NEEDS THE PRACTICE - run_household()'s registry is required, so Run now and the schedule cannot differ by construction, and a None registry (a root that could not be walked) is refused on every run with NO_PRACTICE and nothing is touched; _feeds_of() says FEEDS_UNREAD on every own return when the household's own record will not read, rather than feeding nothing in silence; _sort_step() hands the sort own= and fed= by name. Decision 131: THE PASS MEASURES BEFORE IT READS - _no_room() runs after _worth_a_pass (which now keeps the loaded list on EngagementRun.items, so the room is measured without a second read) and before the locks: ROOM_PARKS rides the warnings (and the page's Warnings column and the run's lines); a return merely short of room (ROOM_SHORT) is NOT warned (the lead's L-1: names are cut, everything files, and a warning always on is read by nobody) and is still sorted, its names cut to fit; a return whose floor passes the limit skips the WHOLE household with HOUSEHOLD_NO_ROOM, the held-lock shape - nothing read, locked, scaffolded, scanned, drafted or drawn. ONE HOME FOR THE ROOT: main() takes SETTINGS_FLAG (--settings <folder>), sets ENV_SETTINGS_DIR for the process before anything reads settings, and with no root on the command line reads settings.clients_root(); none configured exits naming the settings file and settings.NO_ROOT_HINT (the app first, the command second); a root given by hand still wins - but a root together with --log, the shape of the job installed before 131, is refused with OLD_JOB_ROOT (naming Install Schedule) unless it is the settings file's own root (_refuse_an_old_jobs_root). Decision 137 (L7): main() runs the pass inside content_check.ocr_scratch(settings_dir() / OCR_SCRATCH_DIR_NAME), so OCR's temporary page images land beside the settings file and a killed pass's leftovers are emptied by the next one. Decision 137 Part B: READING_STOP_PAGE_SECONDS and READING_STOP_DOCUMENT_SECONDS are named beside SLOW_READING_SECONDS (the reader, content_check, owns them): a slow reading is named, one past the stop is abandoned. Review fix (F12): main() refuses to walk a saved clients root that clients_root_refusal() refuses. Decision 143: a run's line says 'opened N' when the pass opened emails or zips. Decision 155: run_household() sweeps what killed writes left (filer.sweep_stranded_temps) right after taking the locks and before the household scaffold, the sort or anything else reads a folder, with the pass's start time taken before the locks; a dry run sweeps nothing."
+      "notes": "Owns the draft-day rule (DRAFT_WEEKDAY) in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed after the scan and draft still ran. The CLI takes the clients root, not a file; an engagement whose record could not be read fails alone with the reason (RECORD_UNREADABLE), and so does a legacy folder the registry listed. _worth_a_pass() is the pre-checks: skips are not failures, and the warnings the pass reports are manifest.check_rules() over the list the record holds - the same list the app's state carries. Scaffolds each engagement before filing (a row added in the app gets its folder), leaves Override.NOT_APPLICABLE rows out of the outstanding count, and skips an engagement whose successor names it in Rolled From. run_engagement() is the one definition of a pass; the app's scan command calls it too. main(argv) is the command line as a function: python -m tracker.runner and the packaged executable in runner mode (api_entry.py, RUNNER_MODE_FLAG) both call it. Decision 55: should_draft() catches up a draft day the machine missed; an engagement never drafted waits for its first draft day. Decisions 57 and 60: a quiet draft day refreshes the run's own unedited draft (_refresh_stale_draft()) and one a person has edited is never touched. Decision 67: main() makes the console take what it cannot encode before it parses a flag; since decision 108 that guard is page.tolerant_console(), shared by every command line, and main() calls it. Decision 68: append_log() replaces what UTF-8 cannot encode; an engagement's registry warning rides the run's warnings. Decision 69: a FileReport's attention rides the run's warnings, never its error. Decision 75: every real pass ends by writing STATUS_PAGE_FILENAME into the clients root, never on a dry run; status_report() folds the runs just made into every engagement the registry found and reads the rest (no lock, nothing written), so --only and the app's one-engagement pass still draw the whole practice; skipped_because() is the one wording of why an engagement is passed over. Decision 87: the pass gained no call of its own on tracker/ledger.py. Decision 102: run_engagement() holds ONE engagement lock across scaffold, file, scan and view, and tells each step the lock is held; a dry run takes none; a lock it cannot get is a skip. Decision 89: the last thing each engagement's pass does is _view_step(), which regenerates the read-only view; a view whose replace did not land leaves run.view_stale set on a run that still succeeds. Decision 91: write_status_page() is drawn through tracker/page.py. Decision 103: the status page lost its Deferred writes column; nothing a pass decides waits for anything. Decision 104: the pass begins with filer.ensure(), the store's top-up, and nothing in it reads or writes a workbook; the 'Problem or skipped' cell shows the legacy sentence for a folder the tracker no longer reads. Decision 115: _draft_step() runs the gate - a held draft writes nothing, _retire_unedited_drafts() removes the run's own unedited drafts and leaves an edited one, run.held counts the rows and run.draft_note is the refusal (in the console, the log and the practice page's Drafted cell as STATUS_HELD); --reminders always is held too (decision 13 amended). Every draft step ends in _record(): one DRAFTED event through the reminder's record_draft() under the pass's lock, only when something changed or the week's draft is a new week's. last_drafted() answers from the last DRAFTED that wrote a file, and falls back to the files' times for a journal from before 115; draft_is_held() says whether the record's last word is a hold, and should_draft(held=True) drafts on the first pass after the hold clears, first draft or not. Decision 118: a draft a person approved in the app is protected for the rest of that draft week exactly as an edited one is - _draft_step() hands last_draft_day() to write_draft(), _retire_unedited_drafts() and _refresh_stale_draft() as approved_since, EngagementRun carries approved, and _drafted_cell() says APPROVED_NOTE where it would say the stage. The draft day stays the runner's (decision 12): the reminder module is below this one and is handed the week rather than working it out. Decision 129 gave run_household() the registry, so the feed list resolves to this year's returns and the pass takes every lock it needs - its own and the fed ones - in layout.lock_order_key order. A feed that resolves to nothing rides every own return's warnings; a fed return is judged and filed into but never scanned, drafted or drawn here, because that is its own household's pass to make. What the pass filed into a fed return is still this pass's to say, though: one FILED_INTO_FED sentence per fed return that received a filing, on the first own return's warnings, so a household that sorted a drop into somebody else's return does not report 'filed 0' of it. Decision 127: EngagementRun.slowest is the filing report's list of slow readings, and summary() adds SLOW_READING_NOTE for the slowest when it passed SLOW_READING_SECONDS (20.0) - a line the run says, not a limit it enforces; nothing anywhere cuts a reading short, because the benchmark and the owner's speed ceiling are measured in exactly these seconds. In a household the reading is said once, on the first own return's line. Decision 132: A PASS NEEDS THE PRACTICE - run_household()'s registry is required, so Run now and the schedule cannot differ by construction, and a None registry (a root that could not be walked) is refused on every run with NO_PRACTICE and nothing is touched; _feeds_of() says FEEDS_UNREAD on every own return when the household's own record will not read, rather than feeding nothing in silence; _sort_step() hands the sort own= and fed= by name. Decision 131: THE PASS MEASURES BEFORE IT READS - _no_room() runs after _worth_a_pass (which now keeps the loaded list on EngagementRun.items, so the room is measured without a second read) and before the locks: ROOM_PARKS rides the warnings (and the page's Warnings column and the run's lines); a return merely short of room (ROOM_SHORT) is NOT warned (the lead's L-1: names are cut, everything files, and a warning always on is read by nobody) and is still sorted, its names cut to fit; a return whose floor passes the limit skips the WHOLE household with HOUSEHOLD_NO_ROOM, the held-lock shape - nothing read, locked, scaffolded, scanned, drafted or drawn. ONE HOME FOR THE ROOT: main() takes SETTINGS_FLAG (--settings <folder>), sets ENV_SETTINGS_DIR for the process before anything reads settings, and with no root on the command line reads settings.clients_root(); none configured exits naming the settings file and settings.NO_ROOT_HINT (the app first, the command second); a root given by hand still wins - but a root together with --log, the shape of the job installed before 131, is refused with OLD_JOB_ROOT (naming Install Schedule) unless it is the settings file's own root (_refuse_an_old_jobs_root). Decision 137 (L7) ran the pass inside a scratch folder for OCR's temporary page images; decision 169 retired it with Tesseract (the reader writes none). Decision 169: run_registry() holds one ocr.reading_session(settle=True) for the whole pass - one reading child, ended with the pass - and RunReport.reader (the run log's first line ends reader=processor or reader=graphics card) and RunReport.reader_note (ocr.PACK_UNUSABLE, one log line, not a warning) come from it; a fault on the card mid-pass is one pass warning (ocr.GPU_FAULT_WARNING). Decision 137 Part B: READING_STOP_PAGE_SECONDS and READING_STOP_DOCUMENT_SECONDS are named beside SLOW_READING_SECONDS (the reader, content_check, owns them): a slow reading is named, one past the stop is abandoned. Review fix (F12): main() refuses to walk a saved clients root that clients_root_refusal() refuses. Decision 143: a run's line says 'opened N' when the pass opened emails or zips. Decision 155: run_household() sweeps what killed writes left (filer.sweep_stranded_temps) right after taking the locks and before the household scaffold, the sort or anything else reads a folder, with the pass's start time taken before the locks; a dry run sweeps nothing."
     },
     {
       "id": "tracker/scaffold.py",
@@ -2474,8 +2528,8 @@
       "id": "CLAUDE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "0ce1f33f089570cc",
-      "lines": 229,
+      "sha256": "549a60c413a6b631",
+      "lines": 230,
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
     },
@@ -2483,23 +2537,23 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "18ad236b7d6c2df0",
-      "lines": 519,
+      "sha256": "6d883fddc393a9a6",
+      "lines": 525,
       "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
     },
     {
       "id": "constraints.txt",
       "type": "doc",
       "layer": "docs",
-      "sha256": "50b90e8bd64628d2",
-      "lines": 41
+      "sha256": "c9a95f556d7cc202",
+      "lines": 65
     },
     {
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "646803756e404581",
-      "lines": 413,
+      "sha256": "b5017b677c90eb10",
+      "lines": 414,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -2523,8 +2577,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "be62bf54b623d0c8",
-      "lines": 813,
+      "sha256": "1b47258b026da611",
+      "lines": 821,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -2532,8 +2586,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "02b2e94d1c1c49fd",
-      "lines": 1298,
+      "sha256": "517840e1ee330727",
+      "lines": 1334,
       "role": "The operator's page for one tax season: the designated machine and why only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -2557,7 +2611,7 @@
       "id": "docs/vocab-coverage.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "0410507543a4968a",
+      "sha256": "82b4e12d6a0d940a",
       "lines": 9415,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
@@ -2587,13 +2641,27 @@
       "role": "What Build App.bat installs: requirements.txt plus the pinned PyInstaller."
     },
     {
+      "id": "requirements-gpu.txt",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "14df6eab5b829436",
+      "lines": 12
+    },
+    {
+      "id": "requirements-nodeps.txt",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "db772a46de09f521",
+      "lines": 7
+    },
+    {
       "id": "requirements.txt",
       "type": "doc",
       "layer": "docs",
-      "sha256": "83a77e9d4456c3f2",
-      "lines": 25,
-      "role": "Runtime and dev dependencies, pinned exactly (a guard refuses a range); the optional OCR extras are documented here too.",
-      "notes": "requirements-build.txt adds the pinned freezer on top for Build App.bat; api_entry.spec is the committed freeze and app/package-lock.json the committed Electron install, so a build is made from the commit rather than from whatever was current that day (decision 46). olefile (decision 143) reads an Outlook .msg; pinned here and in constraints.txt, and frozen by the portable build."
+      "sha256": "ab2d2304a5bab616",
+      "lines": 52,
+      "role": "Runtime and dev dependencies, pinned exactly (a guard refuses a range), including the reader's runtime closure (decision 169) - rapidocr itself is in requirements-nodeps.txt.",
+      "notes": "requirements-build.txt adds the pinned freezer on top for Build App.bat; api_entry.spec is the committed freeze and app/package-lock.json the committed Electron install, so a build is made from the commit rather than from whatever was current that day (decision 46). olefile (decision 143) reads an Outlook .msg; pinned here and in constraints.txt, and frozen by the portable build. Decision 169 (R-11): rapidocr's metadata asks for the GUI opencv-python, so its real runtime dependencies are listed here with opencv-python-headless, and rapidocr is installed afterwards with --no-deps from requirements-nodeps.txt - by Build App.bat, gate.yml, build.yml and the README's setup alike (tests/test_build.py pins both steps everywhere). Two pins carry markers: onnxruntime-gpu on Windows and the plain onnxruntime elsewhere (R-11b, CI has no card), numpy 2.5.3 from Python 3.12 and 2.4.6 for the 3.11 floor (R-11a). pytesseract is gone."
     },
     {
       "id": "pkg:PIL",
@@ -2606,16 +2674,33 @@
       "layer": "external"
     },
     {
+      "id": "pkg:numpy",
+      "type": "package",
+      "layer": "external",
+      "pin": "2.5.3; (requirements.txt)"
+    },
+    {
       "id": "pkg:olefile",
       "type": "package",
       "layer": "external",
       "pin": "0.47 (requirements.txt)"
     },
     {
+      "id": "pkg:onnxruntime",
+      "type": "package",
+      "layer": "external",
+      "pin": "1.30.0; (requirements.txt)"
+    },
+    {
       "id": "pkg:openpyxl",
       "type": "package",
       "layer": "external",
       "pin": "3.1.5 (requirements.txt)"
+    },
+    {
+      "id": "pkg:packaging",
+      "type": "package",
+      "layer": "external"
     },
     {
       "id": "pkg:pdfplumber",
@@ -2641,16 +2726,15 @@
       "pin": "5.11.0 (requirements.txt)"
     },
     {
-      "id": "pkg:pytesseract",
-      "type": "package",
-      "layer": "external",
-      "pin": "0.3.13 (requirements.txt)"
-    },
-    {
       "id": "pkg:pytest",
       "type": "package",
       "layer": "external",
       "pin": "9.1.1 (requirements.txt)"
+    },
+    {
+      "id": "pkg:rapidocr",
+      "type": "package",
+      "layer": "external"
     },
     {
       "id": "pkg:tests",
@@ -2661,10 +2745,17 @@
       "id": "Build App.bat",
       "type": "script",
       "layer": "root",
-      "sha256": "345eaa28804146a5",
-      "lines": 104,
+      "sha256": "37b259f8407daf3b",
+      "lines": 109,
       "role": "Builds the portable package: freezes the API with PyInstaller from the committed api_entry.spec inside a virtual environment holding exactly requirements-build.txt, packages the Electron shell with @electron/packager, copies the frozen API into resources/ and writes BUILD-INFO.txt.",
       "notes": "Reproducible from the commit (decision 46): the freeze runs in its own venv because PyInstaller follows optional imports and the machine's Python would otherwise leak unrelated packages into the package (decision 53). The packager runs through its entry script under `node`, not the `npx` shim, for the ampersand reason Start App.bat states; the copy into the package is `robocopy` with its exit code checked and the executable's presence asserted, because `xcopy` gave up on the package's long paths while the script still reported success (decision 53). Guards pin OUT to .gitignore and the resources path to app/main.js. Decision 55: the venv is made fresh each build; no parenthesised value is expanded inside the build-info block. Decision 78: every exit goes through one `:wait` label, which pauses for the person who double-clicked unless TRACKER_BUILD_NONINTERACTIVE is set - the one switch, named in this file's header and read nowhere else, and what lets .github/workflows/build.yml run this file rather than a copy of it."
+    },
+    {
+      "id": "Build GPU Pack.bat",
+      "type": "script",
+      "layer": "root",
+      "sha256": "47f97c2ca1a1a515",
+      "lines": 34
     },
     {
       "id": "Start App.bat",
@@ -2771,12 +2862,13 @@
       "id": "tests/child_readers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7045e08b61fdc390",
-      "lines": 149,
+      "sha256": "dbdfc01375671bdd",
+      "lines": 160,
       "exports": [
         "MARKS_VARIABLE",
         "a_container_parser_that_crashes",
         "a_container_parser_that_never_finishes",
+        "a_page_read_that_never_finishes",
         "a_pdf_open_that_never_finishes",
         "a_photo_open_that_never_finishes",
         "a_reader_that_dies_on_a_crash",
@@ -2785,7 +2877,7 @@
         "a_text_layer_that_never_finishes",
         "opener_reached",
         "reached",
-        "where_temporary_files_go"
+        "the_childs_process_id"
       ],
       "constants": {
         "MARKS_VARIABLE": "'TRACKER_TEST_MARKS'"
@@ -2827,8 +2919,8 @@
       "id": "tests/samples.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a115bfb2498f7153",
-      "lines": 515,
+      "sha256": "d45344a088eccb50",
+      "lines": 543,
       "exports": [
         "DEMO_ITEMS",
         "PRIOR_YEAR",
@@ -2837,6 +2929,7 @@
         "SCRATCH_HOUSEHOLD",
         "SCRATCH_PEOPLE",
         "SCRATCH_RETURN",
+        "SCRATCH_SCAN",
         "SCRATCH_SPOUSE",
         "YEAR",
         "brokerage_cover_lines",
@@ -2852,6 +2945,7 @@
         "prior_return_lines",
         "scanned_1098_lines",
         "scanned_1099_int_lines",
+        "scanned_pdf",
         "scanned_w2_lines",
         "sheet_xlsx",
         "text_pdf",
@@ -2862,10 +2956,11 @@
         "SCRATCH_SPOUSE": "'Jane R. Smith'",
         "SCRATCH_FIRM": "'Example CPA'",
         "SCRATCH_HOUSEHOLD": "'Smith Family'",
-        "SCRATCH_RETURN": "'1040 - John A. Smith'"
+        "SCRATCH_RETURN": "'1040 - John A. Smith'",
+        "SCRATCH_SCAN": "'scan 0001.pdf'"
       },
       "role": "The pile of client documents the suite starts from, built from nothing: text_pdf() prints lines to a real one-page PDF, sheet_xlsx() writes rows to a real workbook, and build_samples() assembles the drop folder a client would leave (a duplicate, last year's form, a Word file, a Google Sheets shortcut, a photo, a half-uploaded temp file).",
-      "notes": "No fixture files in the repository and no client data, so every test starts from the same pile. It was the marketing demo's sample builder in tracker/api.py; the demo went (decision 41) and the suite still needed the pile. listing_denied() makes a folder really unlistable for the running account, because rglob and os.walk reach the file system by different calls and a monkeypatch of one proves nothing about the other. Decision 73: sheet_xlsx() is how tests/test_catalog.py routes its workbook cases - half of every catalog asks for a schedule a client keeps in Excel, and a sheet is read as rows of tab-separated cells (a phrase across two cells is one phrase, a phrase down two rows is two labels), so typing one as prose would prove the wrong reading. Decision 78: build_scratch_root() assembles the same pile into a whole clients root - one scaffolded engagement with the documents already dropped - which is what .github/workflows/build.yml runs the frozen package over; the fixture lives beside the pile rather than in a tool of its own so there is one pile and not two that drift. It records the engagement through manifest.create_engagement() directly rather than through the suite's helper, because the build workflow imports this module without conftest (decision 104). openpyxl is imported here to WRITE a client's spreadsheet for the suite to read, which is the one use of it the tree keeps. The pile's 'file nobody accepts' is a .bmp since decision 127: it was a .jpg until a photo became a document, and the claim it carries is about a file type no row takes. Decision 143 added cfb_bytes(), a compound-file writer to the letter of [MS-CFB] (version 3, a mini stream, one FAT), and msg_bytes()/msg_storage() over it, so the suite's .msg fixtures are built from nothing - olefile only reads."
+      "notes": "No fixture files in the repository and no client data, so every test starts from the same pile. It was the marketing demo's sample builder in tracker/api.py; the demo went (decision 41) and the suite still needed the pile. listing_denied() makes a folder really unlistable for the running account, because rglob and os.walk reach the file system by different calls and a monkeypatch of one proves nothing about the other. Decision 73: sheet_xlsx() is how tests/test_catalog.py routes its workbook cases - half of every catalog asks for a schedule a client keeps in Excel, and a sheet is read as rows of tab-separated cells (a phrase across two cells is one phrase, a phrase down two rows is two labels), so typing one as prose would prove the wrong reading. Decision 78: build_scratch_root() assembles the same pile into a whole clients root - one scaffolded engagement with the documents already dropped - which is what .github/workflows/build.yml runs the frozen package over; the fixture lives beside the pile rather than in a tool of its own so there is one pile and not two that drift. It records the engagement through manifest.create_engagement() directly rather than through the suite's helper, because the build workflow imports this module without conftest (decision 104). openpyxl is imported here to WRITE a client's spreadsheet for the suite to read, which is the one use of it the tree keeps. The pile's 'file nobody accepts' is a .bmp since decision 127: it was a .jpg until a photo became a document, and the claim it carries is about a file type no row takes. Decision 143 added cfb_bytes(), a compound-file writer to the letter of [MS-CFB] (version 3, a mini stream, one FAT), and msg_bytes()/msg_storage() over it, so the suite's .msg fixtures are built from nothing - olefile only reads. Decision 169: scanned_pdf() draws lines on a page and saves a PDF with no text layer, and build_scratch_root() drops one (SCRATCH_SCAN, a W-2 whose box labels and figures are drawn as separate lines) so the frozen smoke check proves the package reads."
     },
     {
       "id": "tests/test_api.py",
@@ -3121,14 +3216,18 @@
       "id": "tests/test_build.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9021e66591e71db7",
-      "lines": 299,
+      "sha256": "3a19efe9171dd829",
+      "lines": 438,
       "exports": [
+        "BUILD_ENVIRONMENT",
         "BUILD_SCRIPT",
         "BUILD_WORKFLOW",
         "CONSTRAINTS",
+        "FLOOR_ENVIRONMENT",
         "FROZEN_HEADING",
         "GATE_WORKFLOW",
+        "NODEPS",
+        "NODEPS_STEP",
         "PYPDF_ADVISORIES_FIXED_IN",
         "REPO",
         "commands",
@@ -3136,15 +3235,22 @@
         "drift",
         "fired_at_the_frozen_executable",
         "frozen_in",
+        "installing_places",
         "office_python",
         "read",
         "test_a_scratch_root_is_one_engagement_a_whole_dry_pass_can_walk",
+        "test_a_smoke_pass_that_logs_takes_its_root_from_a_settings_folder",
         "test_both_workflows_name_the_one_interpreter_the_office_runs",
         "test_every_action_the_workflows_run_is_pinned_by_commit",
         "test_the_build_fails_when_a_frozen_version_differs_from_the_constraints",
         "test_the_build_workflow_is_never_run_per_commit",
         "test_the_build_workflow_runs_the_repositorys_own_build_script",
+        "test_the_graphics_card_pack_is_pinned_apart_and_read_by_its_own_build_step",
+        "test_the_gui_opencv_is_never_pinned_and_the_constraints_cover_every_reader_pin",
+        "test_the_onnx_runtime_and_numpy_are_pinned_by_platform_and_interpreter",
         "test_the_pinned_pypdf_is_at_least_the_advisories_fix",
+        "test_the_reader_is_installed_in_two_steps_everywhere_the_tree_is_installed",
+        "test_the_scratch_roots_scan_is_filed_by_the_reader_and_by_nothing_else",
         "test_the_smoke_checks_drive_the_frozen_entry_by_the_flags_the_code_owns",
         "test_the_smoke_checks_pass_the_environment_the_electron_shell_passes",
         "test_the_workflow_skips_the_prompts_through_the_switch_the_script_reads",
@@ -3158,6 +3264,7 @@
         "BUILD_SCRIPT": "'Build App.bat'",
         "CONSTRAINTS": "'constraints.txt'",
         "FROZEN_HEADING": "'Python packages frozen'",
+        "NODEPS": "'requirements-nodeps.txt'",
         "PYPDF_ADVISORIES_FIXED_IN": "(6, 16, 1)"
       },
       "role": "Guards what only the build workflow could otherwise discover ten minutes into a release: that it runs the batch file the repository owns rather than a copy of the build, that the switch it sets is the one that batch file reads, that the flags it fires at the frozen executable are flags tracker/runner.py declares, that it passes the two environment variables tracker/settings.py names, and that both workflows quote the one interpreter pyproject.toml writes down.",
@@ -3261,8 +3368,8 @@
       "id": "tests/test_content_check.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "b4a40b0f273f5774",
-      "lines": 2166,
+      "sha256": "fb4d1fae26cc8219",
+      "lines": 2021,
       "exports": [
         "A_PASS_READING",
         "BOMB_REFUSED",
@@ -3304,6 +3411,7 @@
         "test_a_keywords_words_are_on_one_line_or_wrap_as_a_heading",
         "test_a_long_text_file_is_read_to_the_cap_and_says_so",
         "test_a_menu_line_names_neither_the_form_nor_its_title",
+        "test_a_page_is_handed_to_the_reader_as_it_comes_and_never_turned",
         "test_a_page_tree_bomb_cannot_stall_the_pass",
         "test_a_photo_is_read_by_ocr_like_a_scanned_pdf_and_never_has_a_text_layer",
         "test_a_photo_past_the_pixel_budget_is_read_smaller",
@@ -3313,13 +3421,10 @@
         "test_a_reader_that_crashes_is_a_failed_reading_not_a_dead_pass",
         "test_a_reading_child_dies_with_its_pass",
         "test_a_reading_on_time_returns_what_it_returned_in_process",
-        "test_a_reading_past_the_safety_stop_is_abandoned_cached_and_not_retried",
         "test_a_render_that_never_finishes_is_stopped_and_abandoned",
         "test_a_resent_file_the_reader_could_not_start_on_waits_for_the_next_pass",
-        "test_a_rotated_scanned_pdf_page_goes_through_the_same_upright_step",
         "test_a_save_that_fails_leaves_the_previous_verdicts",
         "test_a_sheets_row_is_a_line_and_its_cells_are_set_apart",
-        "test_a_sideways_page_is_turned_upright_by_osd_before_reading",
         "test_a_single_dash_set_off_form_beside_its_year_names_itself",
         "test_a_slow_reading_is_said_and_never_cut_short",
         "test_a_text_layer_that_never_finishes_is_stopped_and_abandoned",
@@ -3339,13 +3444,12 @@
         "test_image_only_pdf_without_ocr",
         "test_keywords_case_insensitive",
         "test_no_child_is_left_running_after_a_stop",
+        "test_no_page_starts_past_the_safety_stop_and_the_stopped_reading_is_kept",
         "test_no_rules_short_circuits",
-        "test_ocr_temporary_images_go_to_a_private_folder_each_pass_empties",
         "test_ocr_text_used_when_available",
         "test_on_every_corpus_form_the_scans_miss_verdict_equals_the_routers_kept_verdict",
         "test_only_a_staff_date_pattern_runs_line_by_line",
         "test_only_the_first_pages_of_a_pdf_are_read",
-        "test_orientation_is_scored_on_a_small_copy_and_only_the_chosen_turn_is_full_size",
         "test_own_forms_is_none_for_one_family_and_the_named_set_for_two",
         "test_required_keywords",
         "test_the_alternatives_of_a_keyword_are_read_where_a_keyword_cell_is_read",
@@ -3356,9 +3460,7 @@
         "test_the_compact_evidence_parses_back_to_what_was_formatted",
         "test_the_date_rule_records_the_period_it_checked_never_the_document",
         "test_the_dominant_form_is_the_heaviest_then_the_first_mentioned",
-        "test_the_readers_child_puts_its_temporary_files_where_the_pass_said",
         "test_unsupported_extension",
-        "test_when_osd_cannot_say_the_four_way_score_decides_and_a_tie_keeps_the_page_as_it_is",
         "test_xlsx_extraction_with_dates",
         "text_pdf"
       ],
@@ -3367,7 +3469,7 @@
         "STOPPED": "'The reader stopped after 1 minute on this file. A person reads it.'",
         "CRASHED": "'The reader could not read this file (it stopped unexpectedly). A person reads it.'",
         "BOMB_REFUSED": "'Maximum page tree entry limit reached'",
-        "A_PASS_READING": "'\\nimport sys\\nfrom pathlib import Path\\nsys.path[:0] = [sys.argv[3]]\\nfrom tests import child_readers\\nfrom tracker import content_check\\ncontent_check._CHILD_READER = child_readers.a_reader_that_starts_a_reader_of_its_own\\nif sys.argv[2] == \"lifeline\":\\n    content_check._kill_on_close_job = lambda pid: None\\ncontent_check.extract_bounded(Path(sys.argv[1]))\\n'"
+        "A_PASS_READING": "'\\nimport sys\\nfrom pathlib import Path\\nsys.path[:0] = [sys.argv[3]]\\nfrom tests import child_readers\\nfrom tracker import content_check, ocr\\ncontent_check._CHILD_READER = child_readers.a_reader_that_starts_a_reader_of_its_own\\nif sys.argv[2] == \"lifeline\":\\n    ocr._kill_on_close_job = lambda pid: None\\ncontent_check.extract_bounded(Path(sys.argv[1]))\\n'"
       }
     },
     {
@@ -3732,6 +3834,25 @@
       ]
     },
     {
+      "id": "tests/test_gpu_pack.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "c8ced757ddae0647",
+      "lines": 61,
+      "exports": [
+        "CUDA",
+        "CUDNN",
+        "REPO",
+        "test_a_pack_missing_a_library_onnx_runtime_loads_is_refused",
+        "test_the_pack_is_one_flat_folder_of_every_library_the_wheels_installed",
+        "wheels_installed"
+      ],
+      "constants": {
+        "CUDA": "('cudart64_13.dll', 'cublas64_13.dll', 'cublasLt64_13.dll', 'cufft64_12.dll', 'curand64_10.dll', 'nvrtc64_130_0.dll', 'nvJitLink_130_0.dll')",
+        "CUDNN": "('cudnn64_9.dll', 'cudnn_ops64_9.dll', 'cudnn_cnn64_9.dll')"
+      }
+    },
+    {
       "id": "tests/test_households.py",
       "type": "test",
       "layer": "tests",
@@ -3780,8 +3901,8 @@
       "id": "tests/test_layers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "feb040409161ef46",
-      "lines": 412,
+      "sha256": "46c3a5de7cf1a35c",
+      "lines": 421,
       "exports": [
         "PACKAGE",
         "REPO",
@@ -4052,6 +4173,46 @@
       ]
     },
     {
+      "id": "tests/test_ocr.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "6248e07ba99b74f7",
+      "lines": 497,
+      "exports": [
+        "A_PASS_BETWEEN_DOCUMENTS",
+        "FakeEngine",
+        "PAGE_WORDS",
+        "W2_WORDS",
+        "a_card",
+        "a_pass",
+        "a_short_stop",
+        "in_a_child",
+        "pid_of_the_reader",
+        "scans_in_the_inbox",
+        "test_a_full_read_opens_no_socket_writes_no_temporary_file_and_fetches_nothing",
+        "test_a_gpu_fault_switches_the_rest_of_the_pass_to_the_cpu",
+        "test_a_long_lived_reader_is_replaced_after_a_crash",
+        "test_a_long_lived_reader_is_replaced_after_a_stop",
+        "test_a_long_lived_reader_is_replaced_every_hundred_documents",
+        "test_a_missing_model_means_the_reader_cannot_run_and_the_scan_waits",
+        "test_a_pack_is_used_only_when_every_session_is_on_cuda_and_the_self_test_reads",
+        "test_a_photo_is_read_by_rapidocr",
+        "test_a_scan_is_read_by_rapidocr",
+        "test_a_sideways_page_keeps_its_words",
+        "test_no_gpu_pack_means_the_cpu_without_a_word",
+        "test_no_reading_child_outlives_the_pass",
+        "test_one_child_reads_every_document_of_a_pass_and_ends_with_it",
+        "test_the_document_stop_ends_a_page_the_reader_never_finishes",
+        "test_the_lines_are_built_from_the_boxes_in_reading_order",
+        "w2_photo",
+        "w2_rows",
+        "w2_scan"
+      ],
+      "constants": {
+        "A_PASS_BETWEEN_DOCUMENTS": "'\\nimport sys, time\\nfrom pathlib import Path\\nsys.path[:0] = [sys.argv[2]]\\nfrom tests import child_readers\\nfrom tracker import content_check, ocr\\nwith ocr.reading_session():\\n    answer, failed = content_check.in_a_child(Path(sys.argv[1]), child_readers.the_childs_process_id)\\n    Path(sys.argv[1] + \".child\").write_text(answer.text, encoding=\"utf-8\")\\n    time.sleep(600)\\n'"
+      }
+    },
+    {
       "id": "tests/test_page.py",
       "type": "test",
       "layer": "tests",
@@ -4070,8 +4231,8 @@
       "id": "tests/test_real_corpus.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "b2d17daa988c1b8e",
-      "lines": 273,
+      "sha256": "60f278b8c6e17924",
+      "lines": 276,
       "exports": [
         "ENGINE",
         "NO_ENGINE",
@@ -4175,7 +4336,7 @@
       "id": "tests/test_reminder.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "815f421fc955c066",
+      "sha256": "14fcf990a83a9fc0",
       "lines": 1789,
       "exports": [
         "A_WRITE_KILLED_HALF_WAY",
@@ -4482,7 +4643,7 @@
       "id": "tests/test_router.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a2f25e97c5d71be1",
+      "sha256": "75f253cc2afea278",
       "lines": 1195,
       "exports": [
         "DONATIONS",
@@ -4909,12 +5070,13 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "3855ed9588dbb2f2",
-      "lines": 1218,
+      "sha256": "beb11d0263d0af87",
+      "lines": 1229,
       "exports": [
         "CONSOLE_EXEMPT",
         "CONSOLE_GUARDED",
         "DOCUMENTS",
+        "FOREIGN_FLAGS",
         "REPO",
         "RETIRED_FILES",
         "read",
@@ -4981,7 +5143,7 @@
       ],
       "constants": {
         "DOCUMENTS": "('README.md', 'docs/ROADMAP.md', 'docs/workflow.md', 'docs/runbook.md', 'docs/storage.md', 'CLAUDE.md')",
-        "CONSOLE_GUARDED": "('rollover', 'filer', 'scanner', 'registry', 'review', 'scaffold', 'store', 'reminder', 'runner', 'router', 'content_check', 'view', 'ledger', 'validators', 'names', 'containers')"
+        "CONSOLE_GUARDED": "('rollover', 'filer', 'scanner', 'registry', 'review', 'scaffold', 'store', 'reminder', 'runner', 'router', 'content_check', 'view', 'ledger', 'validators', 'names', 'containers', 'ocr')"
       }
     },
     {
@@ -5336,6 +5498,29 @@
       },
       "role": "Routes the firm's own already-sorted documents at the office and scores the router against them: the agreement with where a person filed each one, the confusion pairs, the per-row table, the parked and no-text shares, and the time a real pass takes.",
       "notes": "Decision 74. The measure the fifty blank IRS forms and the typed cases cannot be - decision 70's report leaves most keywords and most rows defended by nothing - and the only corpus made of documents a client actually sent. Each document is routed through a hard link (a copy where the file system refuses one) under one neutral name, so the router's by-name fallback can never read the client's name off the file and the score is the routing rules' rather than the firm's naming discipline; the link is the same bytes, so every tier-2 check still sees the real document. A document with no text layer is its own category, because the only evidence left for it would be the name being hidden - unless OCR is allowed, when nothing is handed over and the router does its own reading under its own stricter rule for OCR words. Catalogs are built the way tests/test_irs_forms.py builds them, with the size floor and the year check lifted. Nothing identifying comes back: counts, catalog identifiers and a row's number in the expectations file, never a file name, a folder name below the corpus root or a word of a document; the corpus, its expectations file and the report stay outside the repository and the tool refuses to write into the tree. Decision 127: route_one() also says which of READING_KINDS each document got - text, ocr or image - and the report's timing carries readings_by_kind, so the reader benchmark can say what a photo costs without a folder of text-layer PDFs flattening the number. The rule is unchanged: an image needs OCR_FLAG, exactly as a scan does. Decision 147: collect lists a document wherever the pass would take it - accepted() asks validators.extension_allowed() row by row (a row with no whitelist takes anything), so a photo is on the skeleton wherever a row takes a PDF and a .bmp still is not; no copy of the extension list is kept here."
+    },
+    {
+      "id": "tools/gpu_pack.py",
+      "type": "tool",
+      "layer": "tooling",
+      "sha256": "82dcffaaca448fb1",
+      "lines": 102,
+      "cli": "python -m tools.gpu_pack",
+      "exports": [
+        "LIBRARY_FOLDERS",
+        "PACK_DIR_NAME",
+        "PackError",
+        "REQUIRED",
+        "build_pack",
+        "libraries",
+        "main"
+      ],
+      "constants": {
+        "PACK_DIR_NAME": "'gpu-runtime'",
+        "REQUIRED": "('cudart64_13.dll', 'cublas64_13.dll', 'cublasLt64_13.dll', 'cufft64_12.dll', 'cudnn64_9.dll')"
+      },
+      "role": "Makes the graphics card pack (decision 169, ruling 2): one flat gpu-runtime folder of the NVIDIA libraries (CUDA 13, cuDNN 9) copied out of an environment holding requirements-gpu.txt, for Build GPU Pack.bat.",
+      "notes": "The app ships onnxruntime-gpu but not these libraries (about 1.6 GB), so a fresh install stays small and reads on the processor anywhere; the pack is copied beside tracker-api.exe only on a machine with an NVIDIA card. Flat, because onnxruntime.preload_dlls(directory=...) loads each library from one folder by name. A pack missing one of REQUIRED (the libraries ONNX Runtime's CUDA provider loads) is refused, not made. Downloads nothing itself: the batch file's pip does, from the pinned list, when a person runs it."
     },
     {
       "id": "tools/learned_keywords.py",
@@ -5711,6 +5896,12 @@
     },
     {
       "from": "tests/child_readers.py",
+      "to": "tracker/ocr.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/child_readers.py",
       "to": "tracker/validators.py",
       "type": "exercises",
       "source": "derived"
@@ -5797,6 +5988,12 @@
       "from": "tests/conftest.py",
       "to": "tracker/view.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/samples.py",
+      "to": "pkg:PIL",
+      "type": "depends_on",
       "source": "derived"
     },
     {
@@ -6143,7 +6340,25 @@
     },
     {
       "from": "tests/test_build.py",
+      "to": "pkg:packaging",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_build.py",
+      "to": "tracker/content_check.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_build.py",
       "to": "tracker/registry.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_build.py",
+      "to": "tracker/router.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -6365,18 +6580,6 @@
     },
     {
       "from": "tests/test_content_check.py",
-      "to": "pkg:pypdfium2",
-      "type": "depends_on",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_content_check.py",
-      "to": "pkg:pytesseract",
-      "type": "depends_on",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_content_check.py",
       "to": "pkg:pytest",
       "type": "depends_on",
       "source": "derived"
@@ -6414,6 +6617,12 @@
     {
       "from": "tests/test_content_check.py",
       "to": "tracker/manifest.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_content_check.py",
+      "to": "tracker/ocr.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -6696,6 +6905,30 @@
     {
       "from": "tests/test_fsio.py",
       "to": "tracker/fsio.py",
+      "type": "tests",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_gpu_pack.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_gpu_pack.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_gpu_pack.py",
+      "to": "tracker/ocr.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_gpu_pack.py",
+      "to": "tools/gpu_pack.py",
       "type": "tests",
       "source": "derived"
     },
@@ -7114,6 +7347,114 @@
       "source": "derived"
     },
     {
+      "from": "tests/test_ocr.py",
+      "to": "pkg:PIL",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_ocr.py",
+      "to": "pkg:onnxruntime",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_ocr.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_ocr.py",
+      "to": "pkg:rapidocr",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_ocr.py",
+      "to": "pkg:tests",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_ocr.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_ocr.py",
+      "to": "tracker/content_check.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_ocr.py",
+      "to": "tracker/filer.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_ocr.py",
+      "to": "tracker/layout.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_ocr.py",
+      "to": "tracker/manifest.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_ocr.py",
+      "to": "tracker/reasons.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_ocr.py",
+      "to": "tracker/registry.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_ocr.py",
+      "to": "tracker/runner.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_ocr.py",
+      "to": "tests/child_readers.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_ocr.py",
+      "to": "tests/conftest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_ocr.py",
+      "to": "tests/samples.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_ocr.py",
+      "to": "tests/test_content_check.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_ocr.py",
+      "to": "tracker/ocr.py",
+      "type": "tests",
+      "source": "derived"
+    },
+    {
       "from": "tests/test_page.py",
       "to": "tracker/page.py",
       "type": "tests",
@@ -7127,7 +7468,7 @@
     },
     {
       "from": "tests/test_real_corpus.py",
-      "to": "pkg:pytesseract",
+      "to": "pkg:onnxruntime",
       "type": "depends_on",
       "source": "derived"
     },
@@ -7139,6 +7480,12 @@
     },
     {
       "from": "tests/test_real_corpus.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_real_corpus.py",
       "to": "tracker/content_check.py",
       "type": "exercises",
       "source": "derived"
@@ -7146,6 +7493,12 @@
     {
       "from": "tests/test_real_corpus.py",
       "to": "tracker/manifest.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_real_corpus.py",
+      "to": "tracker/ocr.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -8843,6 +9196,12 @@
     },
     {
       "from": "tracker/api.py",
+      "to": "tracker/content_check.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/api.py",
       "to": "tracker/filer.py",
       "type": "imports",
       "source": "derived"
@@ -8886,6 +9245,12 @@
     {
       "from": "tracker/api.py",
       "to": "tracker/names.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/api.py",
+      "to": "tracker/ocr.py",
       "type": "imports",
       "source": "derived"
     },
@@ -9053,12 +9418,6 @@
     },
     {
       "from": "tracker/content_check.py",
-      "to": "pkg:pytesseract",
-      "type": "depends_on",
-      "source": "derived"
-    },
-    {
-      "from": "tracker/content_check.py",
       "to": "rule:no-AI-on-client-documents",
       "type": "enforces",
       "source": "curated"
@@ -9072,6 +9431,12 @@
     {
       "from": "tracker/content_check.py",
       "to": "tracker/manifest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/content_check.py",
+      "to": "tracker/ocr.py",
       "type": "imports",
       "source": "derived"
     },
@@ -9436,6 +9801,36 @@
       "source": "derived"
     },
     {
+      "from": "tracker/ocr.py",
+      "to": "pkg:PIL",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/ocr.py",
+      "to": "pkg:numpy",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/ocr.py",
+      "to": "pkg:onnxruntime",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/ocr.py",
+      "to": "pkg:rapidocr",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/ocr.py",
+      "to": "tracker/page.py",
+      "type": "imports_at_call",
+      "source": "derived"
+    },
+    {
       "from": "tracker/registry.py",
       "to": "tracker/__init__.py",
       "type": "imports",
@@ -9882,6 +10277,12 @@
     {
       "from": "tracker/runner.py",
       "to": "tracker/manifest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/runner.py",
+      "to": "tracker/ocr.py",
       "type": "imports",
       "source": "derived"
     },

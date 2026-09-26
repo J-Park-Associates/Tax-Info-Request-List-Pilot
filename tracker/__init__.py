@@ -8,6 +8,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - manifest      : the request list: its schema, validation, and its reading from and writing to the record
 - scaffold      : folder scaffolding from the request list
 - validators    : tier 1-2 file checks + dry-run preview CLI
+- ocr           : the reader (RapidOCR, on the graphics card when it works and the processor when it does not) and the one child process a pass reads in
 - content_check : tier 3 text extraction + rules + verdict cache
 - scanner       : orchestrator (scan, resolve, record)
 - router        : deterministic routing of a dropped file to one request

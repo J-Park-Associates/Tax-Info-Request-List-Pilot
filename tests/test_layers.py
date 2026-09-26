@@ -100,7 +100,7 @@ LAYERS: dict[int, frozenset[str]] = {
     0: frozenset({"__init__", "reasons", "locking", "page", "fsio", "settings", "layout"}),
     1: frozenset({"households", "ledger", "manifest", "records", "scaffold", "store",
                   "templates", "validators"}),
-    2: frozenset({"containers", "content_check", "names", "router"}),
+    2: frozenset({"containers", "content_check", "names", "ocr", "router"}),
     3: frozenset({"filer", "scanner", "reminder", "rollover", "view", "registry", "review"}),
     4: frozenset({"runner", "scheduling"}),
     5: frozenset({"api"}),
@@ -129,20 +129,29 @@ MAIL_PARSING_ALLOWED: dict[str, frozenset[str]] = {
     "containers": frozenset({"email", "email.message", "email.policy"}),
 }
 
-#: The four readers decision 127 pinned, imported inside the functions that
-#: need them (``content_check`` for the reading, ``validators`` for the HEIC
-#: opener) and named here so the test below can say what they drag in.
-READER_MODULES: tuple[str, ...] = ("PIL.Image", "pillow_heif", "pypdfium2", "pytesseract")
+#: The readers, imported inside the functions that need them
+#: (``content_check`` and ``ocr`` for the reading, ``validators`` for the
+#: HEIC opener) and named here so the test below can say what they drag in.
+#: Decision 127 pinned four; decision 169 took Tesseract's wrapper out and
+#: put RapidOCR (``rapidocr.main`` is what building its engine imports)
+#: and ONNX Runtime in.
+READER_MODULES: tuple[str, ...] = ("PIL.Image", "pillow_heif", "pypdfium2", "onnxruntime",
+                                   "rapidocr.main")
 
 #: The forbidden names the readers reach on the way in, which the package
-#: itself may still never import. ``pytesseract`` imports pandas where it is
-#: installed - for a DataFrame nothing here ever asks it for - and pandas
-#: reaches ``socket`` and ``urllib``; ``pypdfium2`` reaches ``socket``
-#: through the standard library. Neither opens anything: a reader takes a
-#: path and gives back text. Naming the two is the point - a reader that
-#: started reaching for ``http``, ``ssl``, ``requests`` or a mail module
-#: would fail the test below rather than arrive quietly in a build.
-READER_IMPORTS_ALLOWED: frozenset[str] = frozenset({"socket", "urllib"})
+#: itself may still never import. ``pypdfium2`` and ONNX Runtime reach
+#: ``socket`` through the standard library. RapidOCR imports ``requests``
+#: at load time for the model downloader it carries (decision 169), and
+#: with it what ``requests`` imports - ``urllib``, ``http``, ``ssl``,
+#: ``email`` (its header parsing) and ``socket``. None of it opens
+#: anything: every model is named by path, ``tracker.ocr`` replaces the
+#: downloader with a refusal, and tests/test_ocr.py reads a whole page with
+#: ``socket.socket`` made to raise. Naming them is the point - a reader
+#: that reached for a mail client (``smtplib``, ``imaplib``, ``poplib``)
+#: or ``ftplib`` would fail the test below rather than arrive quietly in a
+#: build.
+READER_IMPORTS_ALLOWED: frozenset[str] = frozenset(
+    {"socket", "urllib", "requests", "http", "ssl", "email"})
 
 
 def _is_main_guard(node: ast.If) -> bool:

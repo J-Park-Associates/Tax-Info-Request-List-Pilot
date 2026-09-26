@@ -25,10 +25,11 @@ cannot rescue parks with ``reasons.NO_READABLE_TEXT``, and the keywords
 its name does carry go with it as evidence for the person who will open
 it (:func:`_filename_evidence`) - a shortlist to read the document
 against, at the weakest tier :mod:`tracker.review` ranks, and never a
-filing. The cost is known and was accepted: until the Tesseract engine is
-installed, every scanned PDF parks.
+filing. The cost is known and was accepted: a scan the reader cannot
+read parks.
 
-A scan with no text layer is read by OCR, if OCR is installed - the same
+A scan with no text layer is read by OCR (the reader ships inside the app
+since decision 169, so it can run on every machine) - the same
 reading the scanner would make of it later
 (:func:`tracker.content_check.extract`), so the two never disagree about
 what the file says. Its name no longer excuses that reading: OCR is now

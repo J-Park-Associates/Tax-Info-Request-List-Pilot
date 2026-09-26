@@ -28,8 +28,8 @@ NL = chr(10)
 
 
 def no_ocr(monkeypatch):
-    """This machine has no Tesseract engine - the owner's stated cost of
-    decision 92, and the state every "it parks" claim below is about."""
+    """A reader that cannot run on this machine - the owner's stated cost
+    of decision 92, and the state every "it parks" claim below is about."""
     monkeypatch.setattr("tracker.content_check._ocr_pdf", lambda p: None)
 
 
@@ -206,8 +206,8 @@ def test_a_scan_whose_name_lies_is_read_by_ocr_and_the_content_decides(tmp_path,
     Until decision 92 a scan whose name said which request it was skipped
     OCR - the name routed it, cheaply. Nothing is filed on a name any
     more, so that shortcut only threw away the one reading that can still
-    file the file. Here the name says W-2 and the page says 1098: with
-    Tesseract installed the content decides, exactly as it does for a
+    file the file. Here the name says W-2 and the page says 1098: once
+    the reader has read it the content decides, exactly as it does for a
     document with a text layer (decision 40).
     """
     calls = []

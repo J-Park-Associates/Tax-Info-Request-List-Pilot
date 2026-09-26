@@ -146,14 +146,17 @@ NO_ENGINE = "OCR engine not on this machine"
 
 
 def ocr_engine_present() -> bool:
-    """Whether Tesseract itself is on this machine (the packages are pinned)."""
+    """Whether the reader can run here: RapidOCR and ONNX Runtime import and
+    its three models are where the app ships them (decision 169)."""
     try:
-        import pytesseract
+        from tracker import ocr
 
-        pytesseract.get_tesseract_version()
+        folder = ocr.models_folder()
+        import onnxruntime  # noqa: F401
     except Exception:
         return False
-    return True
+    return all((folder / name).is_file()
+               for name in (ocr.DETECTION_MODEL, ocr.RECOGNITION_MODEL, ocr.DIRECTION_MODEL))
 
 
 ENGINE = ocr_engine_present()

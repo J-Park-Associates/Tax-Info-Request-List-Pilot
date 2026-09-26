@@ -426,13 +426,13 @@ the wrong request.
 
 **A file name never files anything.** The client chose that name; the form
 did not. So a document nobody here can read — a scan with no text layer
-and no OCR on this machine, an image-only PDF, an empty sheet — parks for
+the reader could not read, an image-only PDF, an empty sheet — parks for
 a person with `tracker.reasons.NO_READABLE_TEXT`, which is a different
 answer from "matched no request" (there the words *were* read and nothing
 asked for them). What the name says is kept and handed over: the parked
 file's shortlist offers the request its name points at, at the weakest
 rank there is, beside a document the person then opens. The cost is
-known — until Tesseract is installed, every scanned PDF parks.
+known — a scan the reader cannot read parks.
 
 **One request can be split by who issued the document.** A person holds
 Schedule K-1s from several partnerships, and one folder with all of them in
@@ -490,13 +490,19 @@ copy.
 ## Setup
 
 ```
-pip install -r requirements.txt
+pip install -r requirements.txt -c constraints.txt
+pip install --no-deps -r requirements-nodeps.txt -c constraints.txt
 python -m pytest -q        # verify: all green
 ```
 
-Reading scans and photos needs the Tesseract engine as well as the pinned
-packages — the installer, the `eng` and `osd` data, and what happens
-without it: [docs/runbook.md](docs/runbook.md) §6, step 5.
+Two steps, in that order (decision 169): the reader, RapidOCR, is
+installed without its dependencies, because its package asks for the
+desktop build of OpenCV and the tracker uses the headless one;
+`requirements.txt` lists what it really needs. Nothing else is installed
+for reading - the models ship in the package, and nothing is downloaded
+while it reads. On Windows it reads on the processor, or on an NVIDIA card
+with the graphics card pack beside the packaged app (`Build GPU Pack.bat`;
+[docs/runbook.md](docs/runbook.md) §6, step 5).
 
 ## Running the app
 
