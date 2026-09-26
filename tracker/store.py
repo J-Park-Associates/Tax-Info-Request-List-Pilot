@@ -2371,8 +2371,16 @@ def _beside(conn: sqlite3.Connection, held: sqlite3.Connection | None = None):
         raise StoreError(str(exc)) from None
     try:
         yield opened
+    except checkpoint.CheckpointError as exc:
+        # A read or a write that failed after the open (the rebase review's
+        # MF1): the same return's problem, in the same sentence.
+        raise StoreError(str(exc)) from None
     finally:
-        opened.close()
+        try:
+            opened.close()
+        except checkpoint.CheckpointError as exc:
+            log.warning("Could not close the record checkpoint (%s)", exc.code
+                        if isinstance(exc, checkpoint.CheckpointUnavailable) else type(exc).__name__)
 
 
 @dataclass
@@ -2537,7 +2545,12 @@ def prove_the_root(root: Path | str, *, claim: bool = True) -> None:
     claimed root itself, or a folder inside it (one client's folder run by
     hand), is not a copy - asked of the layout (decision 188), which alone
     says whether one folder lies under another.
-    A checkpoint that will not open is refused by name (the review's S4).
+    A checkpoint that will not open is refused by name (the review's S4) -
+    and **left as the checkpoint's own error** (``checkpoint.CheckpointError``,
+    busy or unreadable; the rebase review's SF1), never turned into this
+    function's :class:`StoreError`, which means only "not the root this
+    machine's checkpoint belongs to": the caller says each state in its own
+    sentence.
     """
     from tracker import layout
 
@@ -2545,11 +2558,8 @@ def prove_the_root(root: Path | str, *, claim: bool = True) -> None:
     where = checkpoint.path_for(store_path())
     if not claim and not where.is_file():
         return
-    try:
-        with checkpoint.opened(where) as held:
-            claimed = checkpoint.claim_root(held, str(now)) if claim else checkpoint.root_of(held)
-    except checkpoint.CheckpointError as exc:
-        raise StoreError(str(exc)) from None
+    with checkpoint.opened(where) as held:
+        claimed = checkpoint.claim_root(held, str(now)) if claim else checkpoint.root_of(held)
     # Whether the root is the claimed one or inside it is decision 188's
     # one question of a path under another (``layout.parts_below``); only
     # whether this machine's checkpoint belongs to it is this function's.

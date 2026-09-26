@@ -160,3 +160,50 @@ def test_the_command_line_states_acknowledges_and_moves_the_root(tmp_path):
     with checkpoint.opened(checkpoint.path_for(store_file)) as held:
         assert checkpoint.unacknowledged(held) == []
         assert checkpoint.root_of(held) == str(moved.resolve())
+
+
+# ----------------- the checkpoint's own error path (the rebase review's MF1, SF1) ----
+
+
+def _damaged_past_its_first_page(where: Path) -> None:
+    """Page 1 (the header and the schema) whole, every page after it not:
+    the file opens, and the first read of a table fails."""
+    checkpoint.open(where).close()
+    data = bytearray(where.read_bytes())
+    for i in range(4096, len(data)):
+        data[i] = 0xA5
+    where.write_bytes(bytes(data))
+
+
+def test_an_engine_error_after_the_open_leaves_as_the_checkpoints_own_error(tmp_path):
+    """Every statement goes through the checkpoint's one choke point: a
+    damaged file is a CheckpointUnavailable with the engine's code and the
+    set-aside sentence - never a raw sqlite3 error, never the engine's
+    message."""
+    where = tmp_path / checkpoint.CHECKPOINT_FILENAME
+    _damaged_past_its_first_page(where)
+    with pytest.raises(checkpoint.CheckpointUnavailable) as refused, checkpoint.opened(where) as held:
+        checkpoint.root_of(held)
+    assert not refused.value.busy and refused.value.code.startswith("SQLITE_")
+    assert "Set the file aside by hand (runbook §6)" in str(refused.value)
+    assert "malformed" not in str(refused.value)
+
+
+def test_a_busy_checkpoint_is_said_as_busy_and_never_as_one_to_set_aside(tmp_path, monkeypatch):
+    """SF1: another run holding the file is not damage. Setting a healthy
+    checkpoint aside would make the next pass a moment of trust."""
+    monkeypatch.setattr(checkpoint, "BUSY_TIMEOUT_MS", 100)
+    where = tmp_path / checkpoint.CHECKPOINT_FILENAME
+    checkpoint.open(where).close()
+    holder = sqlite3.connect(where, isolation_level=None)
+    holder.execute("BEGIN EXCLUSIVE")
+    try:
+        with pytest.raises(checkpoint.CheckpointUnavailable) as refused, \
+                checkpoint.opened(where) as held:
+            checkpoint.root_of(held)
+    finally:
+        holder.execute("ROLLBACK")
+        holder.close()
+    assert refused.value.busy and refused.value.code.startswith("SQLITE_BUSY")
+    assert "the next pass tries again" in str(refused.value)
+    assert "Set the file aside" not in str(refused.value)

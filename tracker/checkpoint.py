@@ -123,6 +123,106 @@ class CheckpointError(RuntimeError):
 UNREADABLE = ("{path}: the tracker cannot read this machine's record checkpoint ({why}). Set the "
               "file aside by hand (runbook §6); the next pass seeds it again from the records - "
               "the moment of trust.")
+#: A checkpoint another run holds this moment (``verify``, ``acknowledge``,
+#: the app): nothing is wrong with it, and it must never be set aside for
+#: it - that would throw a healthy checkpoint away and make the next pass a
+#: moment of trust (the rebase review's SF1).
+BUSY = ("{path}: this machine's record checkpoint is busy - another run is using it ({why}). "
+        "Nothing was changed; the next pass tries again. Do not set the file aside for this.")
+#: The engine's codes that mean another connection holds the file.
+_BUSY_CODES = ("SQLITE_BUSY", "SQLITE_LOCKED")
+
+
+class CheckpointUnavailable(CheckpointError):
+    """The engine refused the checkpoint: busy past the timeout, or a file
+    that is damaged or not a database (the rebase review's MF1). The
+    checkpoint's own single error path, as 189 gave the store its
+    ``StoreUnavailable``: every ``sqlite3.Error`` from an open, a read or a
+    write leaves this module as this, naming the file, the engine's code -
+    never its message (principle 7) - and the runbook's step. ``busy`` says
+    which of the two sentences it is: :data:`BUSY` (try again) or
+    :data:`UNREADABLE` (set it aside by hand)."""
+
+    def __init__(self, path: Path | str, code: str) -> None:
+        self.busy = code.startswith(_BUSY_CODES)
+        super().__init__((BUSY if self.busy else UNREADABLE).format(path=path, why=code))
+        self.code = code
+
+
+def _unavailable(exc: sqlite3.Error, path: Path | str) -> CheckpointUnavailable:
+    return CheckpointUnavailable(path, getattr(exc, "sqlite_errorname", None) or type(exc).__name__)
+
+
+class _Cursor(sqlite3.Cursor):
+    """A cursor whose statements and rows fail as :class:`CheckpointUnavailable`."""
+
+    def _say(self, exc: sqlite3.Error) -> CheckpointUnavailable:
+        return _unavailable(exc, getattr(self.connection, "where", "record checkpoint"))
+
+    def execute(self, sql, parameters=(), /):
+        try:
+            return super().execute(sql, parameters)
+        except sqlite3.Error as exc:
+            raise self._say(exc) from exc
+
+    def fetchone(self):
+        try:
+            return super().fetchone()
+        except sqlite3.Error as exc:
+            raise self._say(exc) from exc
+
+    def fetchall(self):
+        try:
+            return super().fetchall()
+        except sqlite3.Error as exc:
+            raise self._say(exc) from exc
+
+    def __next__(self):
+        try:
+            return super().__next__()
+        except sqlite3.Error as exc:
+            raise self._say(exc) from exc
+
+
+class _Connection(sqlite3.Connection):
+    """The checkpoint's connection: the one choke point every statement in
+    this module goes through, so no ``sqlite3.Error`` leaves it raw."""
+
+    where: str = "record checkpoint"
+
+    def cursor(self, factory=_Cursor):
+        try:
+            return super().cursor(factory)
+        except sqlite3.Error as exc:
+            raise _unavailable(exc, self.where) from exc
+
+    def execute(self, sql, parameters=(), /):
+        return self.cursor().execute(sql, parameters)
+
+    def executemany(self, sql, parameters, /):
+        cursor = self.cursor()
+        try:
+            return cursor.executemany(sql, parameters)
+        except sqlite3.Error as exc:
+            raise _unavailable(exc, self.where) from exc
+
+    def close(self):
+        try:
+            return super().close()
+        except sqlite3.Error as exc:
+            raise _unavailable(exc, self.where) from exc
+
+
+def _connected(target: str | Path, where: Path, **options) -> _Connection:
+    """A connection through :class:`_Connection`, naming ``where``."""
+    try:
+        conn = sqlite3.connect(target, isolation_level=None, factory=_Connection, **options)
+    except sqlite3.Error as exc:
+        raise _unavailable(exc, where) from exc
+    conn.where = str(where)
+    conn.row_factory = sqlite3.Row
+    conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
+    return conn
 
 
 @dataclass(frozen=True)
@@ -201,10 +301,7 @@ def open(path: Path | str) -> sqlite3.Connection:  # noqa: A001 - the checkpoint
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        return _opened(path)
-    except sqlite3.DatabaseError as exc:
-        raise CheckpointError(UNREADABLE.format(path=path, why=type(exc).__name__)) from None
+    return _opened(path)
 
 
 def _opened(path: Path) -> sqlite3.Connection:
@@ -234,13 +331,8 @@ def open_read_only(path: Path | str) -> sqlite3.Connection | None:
     path = Path(path)
     if not path.is_file():
         return None
-    try:
-        conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True, isolation_level=None)
-        conn.row_factory = sqlite3.Row
-        conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
-        version = conn.execute("PRAGMA user_version").fetchone()[0]
-    except sqlite3.DatabaseError as exc:
-        raise CheckpointError(UNREADABLE.format(path=path, why=type(exc).__name__)) from None
+    conn = _connected(f"{path.resolve().as_uri()}?mode=ro", path, uri=True)
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
     if version != CHECKPOINT_VERSION:
         conn.close()
         raise CheckpointError(f"{path} is a record checkpoint at version {version}; this version "
@@ -249,10 +341,7 @@ def open_read_only(path: Path | str) -> sqlite3.Connection | None:
 
 
 def _connect(path: Path) -> sqlite3.Connection:
-    conn = sqlite3.connect(path, isolation_level=None)
-    conn.row_factory = sqlite3.Row
-    conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
-    return conn
+    return _connected(path, path)
 
 
 @contextmanager

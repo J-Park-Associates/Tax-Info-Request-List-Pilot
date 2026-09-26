@@ -63,6 +63,7 @@ from pathlib import Path
 
 from tracker import (
     STANDING_RULES,
+    checkpoint,
     content_check,
     door,
     layout,
@@ -3738,7 +3739,9 @@ def _prove_the_root() -> None:
         return
     try:
         store.prove_the_root(root)
-    except store.StoreError as exc:
+    except (store.StoreError, checkpoint.CheckpointError) as exc:
+        # Not this machine's root, or its checkpoint busy or unreadable -
+        # each in its own sentence (the rebase review's SF1).
         raise ManifestError(str(exc)) from None
 
 

@@ -12,6 +12,7 @@ on that day: ``stamped_on`` does, and ``pass_on`` is a pass with it.
 
 import datetime as dt
 import html
+import re
 from pathlib import Path
 
 import pytest
@@ -3253,15 +3254,19 @@ def test_a_pass_over_a_root_the_checkpoint_does_not_belong_to_is_refused_however
 
 def test_a_checkpoint_that_will_not_open_stops_the_pass_by_name(tmp_path, samples):
     """The review's S4: the file and the runbook's step, never a traceback;
-    the file is left where it is for a person."""
+    the file is left where it is for a person. Since the rebase review's
+    MF1 the pass does not stop at the proof: it serves no household, exits
+    1, and says it first on the practice page it still writes."""
     from tracker import checkpoint
 
     build_engagement(tmp_path, samples)
     where = checkpoint.path_for(store.store_path())
     where.parent.mkdir(parents=True, exist_ok=True)
     where.write_bytes(b"fabricated garbage, not a database" * 40)
-    with pytest.raises(SystemExit, match="cannot read this machine's record checkpoint.*runbook §6"):
-        main([str(tmp_path), "--date", FRIDAY.isoformat()])
+    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 1
+    page = html.unescape((tmp_path / STATUS_PAGE_FILENAME).read_text(encoding="utf-8"))
+    assert re.search("No household was served this pass: .*cannot read this machine's record "
+                     "checkpoint.*runbook §6", page)
     assert where.read_bytes().startswith(b"fabricated garbage")
     where.unlink()
 
@@ -3412,3 +3417,103 @@ def test_the_last_pass_line_echoes_nothing_the_file_holds(tmp_path, text):
     path.write_text(text, encoding="utf-8")
     line = runner_module.last_pass_line(path, now=dt.datetime(2026, 3, 2, 12, 0))
     assert line["level"] == runner_module.LEVEL_ERR and "Fabricated" not in line["text"]
+
+
+# ------------- a checkpoint that cannot be asked (the rebase review's MF1-SF3) ----
+
+
+def _the_scheduled_pass_with(tmp_path, monkeypatch, spoil):
+    """Two households, the settings naming their root, and ``spoil`` done to
+    this machine's record checkpoint; then the scheduled job's pass, logged.
+    Returns the exit, the page, the log and the last-pass file."""
+    import json
+
+    from tracker import checkpoint
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    clients = tmp_path / "Clients"
+    make_engagement(clients, [RequestItem(identifier="A01", document="W-2")], household="Smith Family")
+    make_engagement(clients, [RequestItem(identifier="A01", document="W-2")], household="Jones Family")
+    settings = tmp_path / "settings"
+    settings.mkdir()
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    set_clients_root(clients)
+    monkeypatch.setattr(checkpoint, "BUSY_TIMEOUT_MS", 100)
+    where = checkpoint.path_for(store.store_path())
+    checkpoint.open(where).close()
+    with spoil(where):
+        code = main([SETTINGS_FLAG, str(settings), "--reminders", "never", "--log"])
+    page = html.unescape((clients / STATUS_PAGE_FILENAME).read_text(encoding="utf-8"))
+    logged = (clients / LOG_FILENAME).read_text(encoding="utf-8")
+    written = json.loads(runner_module.last_pass_path().read_text(encoding="utf-8"))
+    return code, page, logged, written
+
+
+def test_a_damaged_checkpoint_ends_the_pass_named_with_its_page_and_log_written(tmp_path, monkeypatch):
+    """MF1: a record-heads.db damaged past its first page used to end every
+    scheduled pass as a traceback before the first household, with no page
+    and no log. Now the pass reaches its root, serves no household, writes
+    both - the checkpoint's own sentence first under Records that need a
+    person - and the last-pass file carries its own reason."""
+    from contextlib import contextmanager
+
+    @contextmanager
+    def damaged(where):
+        data = bytearray(where.read_bytes())
+        for i in range(4096, len(data)):
+            data[i] = 0xA5
+        where.write_bytes(bytes(data))
+        yield
+
+    code, page, logged, written = _the_scheduled_pass_with(tmp_path, monkeypatch, damaged)
+    assert code == 1
+    records = page[page.index(runner_module.STATUS_RECORDS_HEADING):]
+    first = records.split("<li>", 2)[1]
+    assert first.startswith("No household was served this pass") and "Set the file aside" in first
+    assert "No household was served this pass" in logged and "Traceback" not in logged
+    assert written["reason_code"] == runner_module.PASS_CHECKPOINT_UNREADABLE
+    assert runner_module.PASS_REASONS[runner_module.PASS_CHECKPOINT_UNREADABLE] in \
+        runner_module.last_pass_line()["text"]
+
+
+def test_a_busy_checkpoint_is_never_called_another_root(tmp_path, monkeypatch):
+    """SF1: three states, three sentences. Busy says try again and never
+    set-aside; it is never "not the root", which sends a person to
+    move-root."""
+    import sqlite3
+    from contextlib import contextmanager
+
+    @contextmanager
+    def held_elsewhere(where):
+        holder = sqlite3.connect(where, isolation_level=None)
+        holder.execute("BEGIN EXCLUSIVE")
+        try:
+            yield
+        finally:
+            holder.execute("ROLLBACK")
+            holder.close()
+
+    code, page, _logged, written = _the_scheduled_pass_with(tmp_path, monkeypatch, held_elsewhere)
+    assert code == 1
+    assert written["reason_code"] == runner_module.PASS_CHECKPOINT_BUSY
+    assert "the next pass tries again" in page and "Set the file aside" not in page
+    assert "belongs to" not in runner_module.last_pass_line()["text"]
+
+
+def test_lines_from_other_machines_that_cannot_be_listed_are_said_where_they_would_be(
+        tmp_path, samples, monkeypatch):
+    """SF3: a checkpoint that fails only when asked for the lines from other
+    machines leaves a sentence in their place on the page, never nothing."""
+    from tracker import checkpoint
+
+    clients = tmp_path / "Clients"
+    build_engagement(clients, samples)
+
+    def unlisted():
+        raise checkpoint.CheckpointUnavailable("record-heads.db", "SQLITE_IOERR_READ")
+
+    monkeypatch.setattr(store, "foreign_lines", unlisted)
+    report = runner_module.status_report(discover_engagements(clients))
+    page = html.unescape(write_status_page(clients, report).read_text(encoding="utf-8"))
+    assert "Lines from other machines could not be listed this pass: record-heads.db" in page
+    assert "SQLITE_IOERR_READ" in page

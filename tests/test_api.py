@@ -5499,3 +5499,26 @@ def test_a_writing_command_refuses_a_root_the_checkpoint_does_not_belong_to(caps
     assert not where(copy, "Jones").exists()
     assert run(capsys, "settings")[0] == 0                              # reading is not refused
     set_clients_root(demo_root)
+
+
+def test_a_writing_command_says_a_busy_checkpoint_as_busy_not_as_another_root(capsys, demo_root,
+                                                                              monkeypatch):
+    """The rebase review's SF1: the checkpoint held by another run is said
+    as busy - try again - never as a root it does not belong to, and
+    nothing is written."""
+    import sqlite3
+
+    from tracker import checkpoint
+
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    monkeypatch.setattr(checkpoint, "BUSY_TIMEOUT_MS", 100)
+    holder = sqlite3.connect(checkpoint.path_for(store.store_path()), isolation_level=None)
+    holder.execute("BEGIN EXCLUSIVE")
+    try:
+        code, payload = run(capsys, "create", stdin={**spec, "return_name": "Jones"})
+    finally:
+        holder.execute("ROLLBACK")
+        holder.close()
+    assert code == 1 and "is busy" in payload["error"] and "belongs to" not in payload["error"]
+    assert not where(demo_root, "Jones").exists()

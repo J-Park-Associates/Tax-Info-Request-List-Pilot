@@ -311,6 +311,12 @@ PASS_ROOT_NOT_CLAIMED = "root-not-claimed"
 PASS_ROOT_UNREADABLE = "root-unreadable"
 PASS_RETURN_ERRORS = "return-errors"
 PASS_NOT_SERVED = "not-served-twice"
+#: This machine's record checkpoint could not be asked whether the root is
+#: its own (the rebase review's MF1 and SF1): busy, or unreadable. Each its
+#: own code and sentence - never "not the root", which sends a person to
+#: move-root.
+PASS_CHECKPOINT_BUSY = "checkpoint-busy"
+PASS_CHECKPOINT_UNREADABLE = "checkpoint-unreadable"
 PASS_ENDED_EARLY = "stopped"
 PASS_REASONS = {
     PASS_SETTINGS: "the settings file could not be read",
@@ -323,6 +329,10 @@ PASS_REASONS = {
     PASS_NOT_SERVED: ("a household has not been served two passes running; the practice page says "
                       "which and why"),
     PASS_ENDED_EARLY: "the pass stopped with an error before it began; runs.log names its kind",
+    PASS_CHECKPOINT_BUSY: ("this machine's record checkpoint was busy - another run was using it; "
+                           "no household was served, and the next pass tries again"),
+    PASS_CHECKPOINT_UNREADABLE: ("this machine's record checkpoint could not be read; no household "
+                                 "was served - the practice page says what to do (runbook §6)"),
 }
 LAST_PASS_LINE = "Last scheduled pass: {when}, {result}."
 LAST_PASS_FAILED_LINE = "Last scheduled pass: {when}, failed ({reason})."
@@ -596,6 +606,10 @@ class RunReport:
     #: that no person has acknowledged. Named every pass until a person acts.
     siblings: list[Path] = field(default_factory=list)
     foreign: list[checkpoint.Foreign] = field(default_factory=list)
+    #: What could not be asked of this machine's record checkpoint this pass
+    #: (the rebase review's MF1 and SF3), drawn first in the page's records
+    #: section: never a list dropped in silence (UX 4).
+    unread: list[str] = field(default_factory=list)
 
     @property
     def refused(self) -> list[EngagementRun]:
@@ -1402,7 +1416,7 @@ def run_registry(
     if report is None:
         report = RunReport(today=today, dry_run=dry_run, reminders=reminders)
     report.misfits = list(registry.misfits)
-    report.siblings, report.foreign = records_needing_a_person(registry)
+    report.siblings, report.foreign, report.unread = records_needing_a_person(registry)
     reader_start_warning()          # this pass's count starts here
     if warning := ocr.reader_path_warning():
         # The app sits too deep for its reader: said once, loudly, rather
@@ -1572,23 +1586,35 @@ def _keep_the_order(report: RunReport, path: Path | None, hint: dict,
         _write_order_hint(path, hint)
 
 
-def records_needing_a_person(registry: Registry) -> tuple[list[Path], list[checkpoint.Foreign]]:
+def records_needing_a_person(
+        registry: Registry) -> tuple[list[Path], list[checkpoint.Foreign], list[str]]:
     """The copies beside every household's and every return's record and
-    lock, and the lines from another machine not yet acknowledged
-    (decision 159, §4.4). Reads only: a copy is never deleted, moved or
-    renamed, because the tracker cannot know which one is right."""
+    lock, the lines from another machine not yet acknowledged (decision
+    159, §4.4), and - when the checkpoint cannot be read - the sentence
+    that says those lines could not be listed (:data:`FOREIGN_UNLISTED`;
+    the rebase review's SF3), so they never vanish from the page in
+    silence. Reads only: a copy is never deleted, moved or renamed, because
+    the tracker cannot know which one is right."""
     folders = [household.path for household in registry.households]
     folders += [engagement.path for engagement in registry.engagements]
     siblings = [copy for folder in folders for copy in ledger.siblings(folder)]
     try:
-        foreign = store.foreign_lines()
+        return siblings, store.foreign_lines(), []
     except Exception as exc:
         # Nothing may stop a pass before its first household (decision
-        # 189): the checkpoint that will not open is said by its class -
-        # its message can name a folder - and the pass goes on.
+        # 189): the pass goes on, and the page says why the lines from
+        # other machines are not listed.
         log.warning("Could not read the record checkpoint (%s)", content_check.said_as_class(exc))
-        foreign = []
-    return siblings, foreign
+        return siblings, [], [FOREIGN_UNLISTED.format(why=checkpoint_said(exc))]
+
+
+def checkpoint_said(exc: BaseException) -> str:
+    """How a checkpoint that could not be read is said on the page: its own
+    fixed sentence (the file, the engine's code, the runbook's step - busy
+    or unreadable), or, for anything else, its class and code alone."""
+    if isinstance(exc, checkpoint.CheckpointError):
+        return str(exc)
+    return content_check.said_as_class(exc)
 
 
 # ------------------------------------------------------------------ output ----
@@ -1658,6 +1684,8 @@ def append_log(path: Path | str, report: RunReport) -> Path:
             lines.append(f"            {run.draft_note}")
     for warning in report.warnings:
         lines.append(f"    ! {warning}")
+    for unread in report.unread:
+        lines.append(f"    ! {unread}")
     if report.siblings or report.foreign or report.refused:
         # The counts; the practice page names each (decision 159).
         counts = STATUS_RECORDS_COUNTS.format(copies=len(report.siblings), foreign=len(report.foreign),
@@ -1806,6 +1834,12 @@ RECORD_FOREIGN = ("{key}: line {seq} was written on {host} ({at}). Once a person
 #: The command that acknowledges, with this machine's own store in it - no
 #: placeholder a person would have to fill in (the review's N7).
 ACKNOWLEDGE_COMMAND = 'python -m tracker.checkpoint "{store}" acknowledge "{key}"'
+#: Where the lines from other machines would be, when the checkpoint could
+#: not be read this pass (the rebase review's SF3).
+FOREIGN_UNLISTED = "Lines from other machines could not be listed this pass: {why}"
+#: What a pass that could not prove its root says, first in the records
+#: section and in the problems list (the rebase review's MF1).
+CHECKPOINT_NOT_PROVED = "No household was served this pass: {why}"
 STATUS_RECORDS_COUNTS = ("records that need a person: {copies} copy(ies) beside a record, {foreign} "
                          "line(s) from another machine, {refused} record(s) refused")
 
@@ -2001,7 +2035,8 @@ def _records_needing_a_person(root: Path, report: RunReport) -> list[str]:
     """The page's first section (decision 159), one sentence per thing a
     person must look at: a copy beside a record or a lock, a record refused
     as altered, a line from another machine. Nothing when there is none."""
-    said = [RECORD_SIBLING.format(path=_under(root, copy)) for copy in report.siblings]
+    said = list(report.unread)
+    said += [RECORD_SIBLING.format(path=_under(root, copy)) for copy in report.siblings]
     said += [f"{run.engagement.label}: {run.error}" for run in report.refused]
     said += [RECORD_FOREIGN.format(key=line.key, seq=line.seq, host=line.host, at=line.at,
                                    command=ACKNOWLEDGE_COMMAND.format(store=store.store_path(),
@@ -2050,7 +2085,8 @@ def _under(root: Path, path: Path) -> str:
 
 
 def status_report(registry: Registry, *, passed: Iterable[EngagementRun] = (),
-                  today: dt.date | None = None, warnings: Iterable[str] = ()) -> RunReport:
+                  today: dt.date | None = None, warnings: Iterable[str] = (),
+                  unread: Iterable[str] = ()) -> RunReport:
     """Every engagement in ``registry``, with the runs in ``passed`` folded in.
 
     The page is about the practice, not about whichever engagement was
@@ -2058,10 +2094,12 @@ def status_report(registry: Registry, *, passed: Iterable[EngagementRun] = (),
     subset (``--only``) still draws every engagement the registry found.
     An engagement this pass did not touch is read, not run, so the page
     can be regenerated as often as anyone likes. ``warnings`` are the
-    pass's own sentences, for the page's problems list (decision 189).
+    pass's own sentences, for the page's problems list (decision 189);
+    ``unread`` what the pass could not ask of the record checkpoint, drawn
+    first in the records section.
     """
     ran = {run.engagement.path: run for run in passed}
-    siblings, foreign = records_needing_a_person(registry)
+    siblings, foreign, not_listed = records_needing_a_person(registry)
     return RunReport(
         today=today or dt.date.today(),
         runs=[ran[engagement.path] if engagement.path in ran else _engagement_status(engagement)
@@ -2070,6 +2108,7 @@ def status_report(registry: Registry, *, passed: Iterable[EngagementRun] = (),
         warnings=list(warnings),
         siblings=siblings,
         foreign=foreign,
+        unread=[*unread, *(one for one in not_listed if one not in unread)],
     )
 
 
@@ -2153,7 +2192,7 @@ def main(argv: list[str] | None = None) -> int:
         raise
     if last is not None:
         reason = (PASS_NOT_SERVED if code == NOT_SERVED_TWICE_EXIT_CODE
-                  else PASS_RETURN_ERRORS if code else "")
+                  else reached.get("reason") or PASS_RETURN_ERRORS if code else "")
         _say_last_pass(last, started=started, ended=dt.datetime.now(), root=reached["root"],
                        result=PASS_FAILED if code else PASS_SUCCEEDED, reason_code=reason)
     return code
@@ -2205,11 +2244,22 @@ def _pass(ns, parser, reached: dict) -> int:
         saved = door.checked_root(None) if clients_root() is not None else None
     except (SettingsError, door.DoorError):
         saved = None
+    #
+    # A checkpoint that is busy or cannot be read (the rebase review's MF1
+    # and SF1) is not "another root": the root is still the one allowed
+    # above, so the pass reaches it, writes its log and its page (decision
+    # 189) with the checkpoint's own sentence first, and serves no
+    # household - none can be proved against a checkpoint nobody can read.
+    unproved: checkpoint.CheckpointError | None = None
     try:
         if saved is not None:
             store.prove_the_root(saved, claim=not ns.dry_run)
         store.prove_the_root(root, claim=False)
-    except (StoreError, checkpoint.CheckpointError) as exc:
+    except checkpoint.CheckpointError as exc:
+        unproved = exc
+        reached["reason"] = (PASS_CHECKPOINT_BUSY if getattr(exc, "busy", False)
+                             else PASS_CHECKPOINT_UNREADABLE)
+    except StoreError as exc:
         raise PassFailed(PASS_ROOT_NOT_CLAIMED, f"Clients folder problem: {exc}") from None
 
     reached["root"] = root
@@ -2247,9 +2297,15 @@ def _pass(ns, parser, reached: dict) -> int:
         _say_the_pass_started(log_path, result)
     # The reader writes no temporary file (decision 169), so there is no
     # scratch folder to point it at any more (decision 137's L7 is retired).
+    unread: list[str] = []
     try:
-        run_registry(loaded, today=when, dry_run=ns.dry_run, reminders=ns.reminders,
-                     weekday=day, only=ns.only, report=result)
+        if unproved is not None:
+            unread = [CHECKPOINT_NOT_PROVED.format(why=checkpoint_said(unproved))]
+            result.warnings.append(unread[0])
+            failed = True
+        else:
+            run_registry(loaded, today=when, dry_run=ns.dry_run, reminders=ns.reminders,
+                         weekday=day, only=ns.only, report=result)
     except Exception as exc:
         # The runner's own code, not a household's (each of those is
         # caught where it happens): said by its class, the whole trace on
@@ -2277,7 +2333,7 @@ def _pass(ns, parser, reached: dict) -> int:
         # run writes nothing, this included.
         try:
             page = write_status_page(loaded.source, status_report(
-                loaded, passed=result.runs, warnings=result.warnings))
+                loaded, passed=result.runs, warnings=result.warnings, unread=unread))
         except Exception as exc:
             # Every original has already been moved and every status written
             # by the time we get here, so nothing about drawing a page may

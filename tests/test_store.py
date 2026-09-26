@@ -3162,13 +3162,17 @@ def test_verify_names_a_line_with_no_writer_as_the_pass_refuses_it(conn, root, b
 
 def test_a_checkpoint_that_will_not_open_is_that_returns_problem_by_name(conn, root, by_hand, tmp_path):
     """S4: a damaged checkpoint is refused naming the file and the runbook's
-    step - a StoreError, one return's problem - and is never set aside."""
+    step - a StoreError, one return's problem - and is never set aside. The
+    root proof leaves it as the checkpoint's own error (the rebase review's
+    SF1), so its caller never says it as a root the checkpoint does not
+    belong to."""
     where = checkpoint.path_for(tmp_path / "app" / store.STORE_FILENAME)
     where.write_bytes(b"fabricated garbage, not a database" * 40)
     with pytest.raises(store.StoreError, match="cannot read this machine's record checkpoint"):
         build(conn, root, by_hand)
-    with pytest.raises(store.StoreError, match="runbook §6"):
+    with pytest.raises(checkpoint.CheckpointUnavailable, match="runbook §6") as refused:
         store.prove_the_root(root)
+    assert not isinstance(refused.value, store.StoreError) and not refused.value.busy
     assert where.read_bytes().startswith(b"fabricated garbage")
     where.unlink()
 

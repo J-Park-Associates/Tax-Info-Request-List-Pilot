@@ -965,7 +965,10 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
      which of the few ways it stops: the settings file could not be read,
      no clients folder is set, the clients folder was refused, it is not
      the one this machine's record checkpoint belongs to (see *If the
-     clients root moves*), the folder could not be walked, the pass ended
+     clients root moves*), this machine's record checkpoint was busy
+     (another run was using it: nothing to do, the next pass tries again)
+     or could not be read (follow §6, *A checkpoint that will not open*),
+     the folder could not be walked, the pass ended
      with a problem - a return that failed, or a run log or page it could
      not write (the practice page and the run log name it) - or a
      household has not been served two passes running (the page names it
@@ -981,6 +984,20 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    a line *records that need a person: N copy(ies) beside a record, N
    line(s) from another machine, N record(s) refused*. On a good day it is
    not there at all. Each sentence means:
+   - ***No household was served this pass: …***, first in the section: the
+     pass could not ask this machine's record checkpoint whether the
+     clients folder is its own, so it filed, scanned and drafted nothing.
+     The words after it say which of two things it was. *…is busy -
+     another run is using it*: something else (the app, `verify`, an
+     `acknowledge`) held the file at that moment; nothing is wrong, do not
+     set the file aside, and the next pass tries again - if it says so
+     twice running, tell Jason. *…cannot read this machine's record
+     checkpoint*: the file is damaged; follow §6, *A checkpoint that will
+     not open*, today.
+   - ***Lines from other machines could not be listed this pass: …***:
+     the same checkpoint could not be read for the list below; the lines
+     are not gone, and the next pass that can read it names them again.
+     The words after it say busy or damaged, as above.
    - ***a copy beside a record or its lock, left by a sync client or a
      second machine***: Google Drive or a second computer saved a second
      copy of a return's record, or of its lock file, next to the real one
@@ -997,8 +1014,9 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    - **a refused record**, a sentence ending *Run recover (runbook §6).*:
      the pass left that return alone because its record came back
      shorter, reordered or rewritten since this machine last saw it, or
-     carries a line that claims to be from this machine and is not, or a
-     line with no writer, or a line from a newer version. Nothing was
+     carries a line that claims to be from this machine and is not, or
+     (in a record written before this version) a line with no writer, or
+     a line from a newer version. Nothing was
      applied. Follow §6, *When a record needs
      recovering*, for that return, today.
 2. **Clear the review folder.** Anything the rules could not be sure of is
@@ -1713,9 +1731,19 @@ the difference first. Then do exactly what the sentence says:
 
 Then run `recover` again to check the record now reads.
 
-**A checkpoint that will not open.** If the pass stops, or a return says,
-*the tracker cannot read this machine's record checkpoint*, naming
-`record-heads.db`, the file is damaged; the tracker never moves it by
+**A checkpoint that will not open.** Three sentences name
+`record-heads.db`, and each has its own step:
+- *…is busy - another run is using it*: another run held the file for a
+  moment. **Do not set it aside** - it is healthy, and setting it aside
+  would make the next pass a moment of trust. The next pass tries again.
+- *the clients folder is not the one this machine's record checkpoint
+  belongs to*: see *If the clients root moves*.
+- *the tracker cannot read this machine's record checkpoint* (the pass
+  says *No household was served this pass*, or a return says it): the
+  file is damaged, and the steps below are for this one only.
+
+If the pass or a return says *the tracker cannot read this machine's
+record checkpoint*, the file is damaged; the tracker never moves it by
 itself, because a damaged checkpoint is exactly what a person must see.
 Close the app, turn the schedule off, and rename the file (for example to
 `record-heads.db.damaged`) - keep it, never delete it - then run one pass:
@@ -1738,7 +1766,9 @@ python -m tracker.store "<the app folder>" verify "<clients root>"
 It prints each problem it finds (a record that does not read, one shorter
 or rewritten since this machine saw it, a line claiming this machine that
 it did not write, a line past what this machine saw that names no writer -
-the same judgment the pass makes - the database holding lines the record
+the same judgment the pass makes - a line outside the record's rule, said
+as the pass says a malformed line (below, section 9: a writer that is not
+a machine's name among them), the database holding lines the record
 does not, a recorded file missing or holding other bytes) and exits non-zero if there
 is any. It writes nothing anywhere. `python -m tracker.checkpoint "<the app
 folder>" state` shows the root the checkpoint belongs to and what it
@@ -1978,8 +2008,14 @@ the same way.
   "could try too many ways to match one line", "could do too much matching
   on one line" or "has more than 8 variable repetitions"); a line naming "an event this version does not know"; a
   step "outside this return's places"; a household or return label that
-  "is not one folder name"; or a line stamped in a form the tracker never
-  writes. Nothing was
+  "is not one folder name"; a line stamped in a form the tracker never
+  writes; or one of the three things every line since decision 159
+  carries about itself, in a shape the tracker never writes - a writer
+  ('host') that "must be a machine's name" (blank, spaced, too long, or
+  holding a slash), a link ('prev') that "must be blank or 64 lowercase
+  hexadecimal characters", or a format ('fmt') that "must be a whole
+  number" this version writes. A line like that in a return's record was
+  written by hand or by something other than the tracker. Nothing was
   moved, copied or removed for that household, and every other household
   was sorted as usual. Do not edit the record by hand: say which return and
   which line, and the store check
