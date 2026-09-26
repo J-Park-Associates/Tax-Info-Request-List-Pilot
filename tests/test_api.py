@@ -20,7 +20,7 @@ from tests.samples import PRIOR_YEAR, SCRATCH_PEOPLE
 from tracker import ledger, store, view
 from tracker.filer import FILED, NEEDS_REVIEW, read_index
 from tracker.households import load_household_info
-from tracker.layout import inbox_of, return_dir_for
+from tracker.layout import PRIVATE_TREE, inbox_of, return_dir_for
 from tracker.locking import STALE_LOCK_SECONDS, lock_line
 from tracker.manifest import (
     COL_DATE_PATTERN,
@@ -180,12 +180,12 @@ def test_a_journal_planted_in_the_client_tree_is_never_a_prior(capsys, demo_root
                                  "items": [{"identifier": "A01", "document": "W-2"}]})
     planted = make_engagement(inbox_of(where(demo_root, "1040 - Smith")) / "x",
                               template_items("1040", year=2025), scaffold=False)
-    before = sorted(p for p in (demo_root / "J Park & Associates").rglob("*"))
+    before = sorted(p for p in (demo_root / PRIVATE_TREE).rglob("*"))
     for prior in (planted, planted.parent, where(demo_root, "1040 - Smith").parent.parent):
         code, payload = run(capsys, "rollover", stdin={"prior": str(prior), "year": 2026})
         assert code == 1
-        assert payload["error"] == api.NOT_A_RETURN.format(name=prior.name, tree="J Park & Associates")
-    assert sorted(p for p in (demo_root / "J Park & Associates").rglob("*")) == before
+        assert payload["error"] == api.NOT_A_RETURN.format(name=prior.name, tree=PRIVATE_TREE)
+    assert sorted(p for p in (demo_root / PRIVATE_TREE).rglob("*")) == before
 
 
 def test_a_household_path_must_be_a_household_of_the_private_tree(capsys, demo_root):
@@ -198,8 +198,8 @@ def test_a_household_path_must_be_a_household_of_the_private_tree(capsys, demo_r
             "items": [{"identifier": "A01", "document": "W-2"}]})
         assert code == 1
         assert payload["error"] == api.NOT_A_HOUSEHOLD.format(name=given.name,
-                                                              tree="J Park & Associates")
-    assert not list((demo_root / "J Park & Associates").rglob("Evil"))
+                                                              tree=PRIVATE_TREE)
+    assert not list((demo_root / PRIVATE_TREE).rglob("Evil"))
     assert not (demo_root / "Clients" / engagement.name).exists()
 
 

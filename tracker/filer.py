@@ -2249,24 +2249,24 @@ def _follow_moved_originals(
     return kept, moved, [entries[position] for position in gone if position not in followed]
 
 
-#: The sentence a row recorded without its bytes gets when its working
-#: copy and its original no longer agree. Which is the client's document
-#: is not the filer's to guess: the copy may have been annotated, or its
-#: name taken by a later drop called the same; the original may have been
-#: replaced. Said every pass until a person has looked.
+#: What a pass says of the README in a household's inbox that could not be
+#: opened just now (decision 179): it is neither sorted nor written over,
+#: and it waits where it is, the way a file held open does.
+README_UNREAD = ("the README in {household}'s folder could not be read just now; "
+                 "it was left where it is and the next pass looks again")
 #: What a pass says of an original in the household's year folder that no
 #: row of its own names and that another return's unfinished filing names
 #: as the source of its move (decision 132, rulings R-1 and R-3). The file
 #: is left where it is - never re-sorted, parked or recorded here - and
 #: said on the first own return's warnings every pass it happens, so an
 #: intent that never finishes is never an original nobody mentions.
-#: What a pass says of the README in a household's inbox that could not be
-#: opened just now (decision 179): it is neither sorted nor written over,
-#: and it waits where it is, the way a file held open does.
-README_UNREAD = ("the README in {household}'s folder could not be read just now; "
-                 "it was left where it is and the next pass looks again")
 LEFT_FOR_ANOTHER_RETURN = ("{name} is left where it is: another return's unfinished filing "
                            "names it, and that return's next pass finishes it")
+#: The sentence a row recorded without its bytes gets when its working
+#: copy and its original no longer agree. Which is the client's document
+#: is not the filer's to guess: the copy may have been annotated, or its
+#: name taken by a later drop called the same; the original may have been
+#: replaced. Said every pass until a person has looked.
 UNTIED_IN_PBC = (
     "{location} was recorded without its bytes on {received} and its working copy "
     "{prepared} no longer matches it - a person should look"

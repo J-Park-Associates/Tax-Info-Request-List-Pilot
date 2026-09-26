@@ -1336,9 +1336,19 @@ def _extract_pdf(path: Path) -> str:
         for page in pdf.pages[:MAX_PAGES]:
             parts.append(page.extract_text() or "")
             said += len(parts[-1]) + 1
-            if said > READING_CHAR_BUDGET:
+            if _past_budget(said):
                 break           # :func:`_extract` cuts it and says so
     return PAGE_BREAK.join(parts)
+
+
+def _past_budget(said: int) -> bool:
+    """Whether the parts read so far - ``said`` counts each part and the one
+    character that joins it to the next - already make a reading longer than
+    ``READING_CHAR_BUDGET``. A reader stops only then, so whatever it leaves
+    unread always leaves the reading past the budget and :func:`_extract`
+    marks it ``cut``. Stopping the moment ``said`` passed the budget left a
+    reading exactly at the budget, with more to come, marked whole."""
+    return said - 1 > READING_CHAR_BUDGET
 
 
 def _extract_xlsx(path: Path) -> str:
@@ -1360,9 +1370,10 @@ def _extract_xlsx(path: Path) -> str:
             parts.append(str(ws.title))
             said += len(parts[-1]) + 1
             for row in ws.iter_rows(values_only=True):
-                if said > READING_CHAR_BUDGET:
+                if _past_budget(said):
                     return "\n".join(parts)      # :func:`_extract` cuts it and says so
                 cells: list[str] = []
+                wide = said
                 for value in row:
                     if value is None:
                         continue
@@ -1372,6 +1383,12 @@ def _extract_xlsx(path: Path) -> str:
                         cells.append(f"{d.isoformat()} {d.month}/{d.day}/{d.year}")
                     else:
                         cells.append(str(value))
+                    # Asked after every cell, not only between rows: one row
+                    # may hold 16,384 cells of 32,767 characters each.
+                    wide += len(cells[-1]) + 1
+                    if _past_budget(wide):
+                        parts.append("\t".join(cells))
+                        return "\n".join(parts)  # :func:`_extract` cuts it and says so
                 if cells:
                     parts.append("\t".join(cells))
                     said += len(parts[-1]) + 1

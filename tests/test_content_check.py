@@ -2142,6 +2142,47 @@ def test_a_workbook_reads_to_the_budget_and_says_it_was_cut(tmp_path, monkeypatc
     assert not content_check.extract(short, ocr=False).cut
 
 
+def test_one_wide_workbook_row_stops_at_the_budget(tmp_path, monkeypatch):
+    """A row can hold 16,384 cells of 32,767 characters each: checked only
+    between rows, one wide row was read whole before the budget was asked.
+    The reader asks after every cell, so it hands back no more than the
+    budget and the cell that crossed it."""
+    import tracker.content_check as content_check
+    from tests.samples import sheet_xlsx
+
+    monkeypatch.setattr(content_check, "READING_CHAR_BUDGET", 500)
+    wide = sheet_xlsx(tmp_path / "wide.xlsx", [["x" * 40] * 200])
+    raw = content_check._extract_xlsx(wide)
+    assert 500 < len(raw) <= 500 + 41
+    reading = content_check.extract(wide, ocr=False)
+    assert reading.cut and len(reading.text) == 500
+
+
+def test_the_cut_mark_is_exact_at_the_budget(tmp_path, monkeypatch):
+    """A reading exactly as long as the budget is whole and not cut; one
+    character past it is cut. And a reading whose first lines land exactly
+    on the budget, with more lines after, is cut, never shortened in
+    silence."""
+    import tracker.content_check as content_check
+    from tests.samples import sheet_xlsx
+
+    book = sheet_xlsx(tmp_path / "book.xlsx", [["a" * 30], ["b" * 30], ["c" * 30]])
+    whole = content_check.extract(book, ocr=False).text
+    head = whole[: whole.index("c")].rstrip("\n")          # the title and two rows
+
+    monkeypatch.setattr(content_check, "READING_CHAR_BUDGET", len(whole))
+    exact = content_check.extract(book, ocr=False)
+    assert not exact.cut and exact.text == whole
+
+    monkeypatch.setattr(content_check, "READING_CHAR_BUDGET", len(whole) - 1)
+    past = content_check.extract(book, ocr=False)
+    assert past.cut and past.text == whole[:-1]
+
+    monkeypatch.setattr(content_check, "READING_CHAR_BUDGET", len(head))
+    early = content_check.extract(book, ocr=False)
+    assert early.cut and early.text == head
+
+
 def test_a_pdf_reads_to_the_budget_and_says_it_was_cut(tmp_path, monkeypatch):
     import tracker.content_check as content_check
     from tests.samples import text_pdf
