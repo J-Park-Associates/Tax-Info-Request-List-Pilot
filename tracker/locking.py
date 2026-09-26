@@ -246,7 +246,9 @@ RELEASED_LINE = "released=1"
 _RELEASE_RETRIES = 10
 _RELEASE_RETRY_DELAY = 0.2
 #: How many times, in total, taking the lock is tried while Windows refuses
-#: the create because the file is being deleted at that instant (F2).
+#: the create because the file is being deleted at that instant (F2), or a
+#: delete is tried while another process has the file open for a moment
+#: (decision 159, Windows).
 _CHANGING_HANDS_ATTEMPTS = 3
 _CHANGING_HANDS_DELAY = 0.2
 #: The tokens (the exact lock lines) of the locks this process holds right
@@ -453,6 +455,10 @@ def acquire_lock(engagement_dir: Path, name: str = LOCK_FILENAME) -> EngagementL
                 # writing its own new lock and recording it as held.
                 leftover = _a_leftover_of_this_process(text)
                 if leftover:
+                    # Other threads of this process wait on the guard while
+                    # this runs: about 3 s at worst when Windows refuses
+                    # every delete (the clear 0.6 s, the stale delete 0.4 s,
+                    # the breaker's release 1.8 s) - bounded, and rare.
                     _replace_stale(lock, judged, age, "; left by this process")
             if leftover:
                 continue
@@ -591,6 +597,9 @@ def _replace_stale(lock: Path, judged: Identity, age: float, why: str) -> None:
                     f"another scan or sort appears to be running ({lock.name} was taken "
                     "while it was being judged stale)"
                 )
+            # Still the lock judged. The name cannot change hands before the
+            # next delete: the dead file stands until it is deleted, and
+            # every other take's O_EXCL create is refused while it does.
     finally:
         _release_breaker(breaker, token)
 
@@ -662,8 +671,9 @@ def _clear_abandoned(breaker: Path, seen: Identity) -> bool:
     clears it; ``False`` when another racer is (the caller refuses).
 
     Only the creator of the marker for ``seen`` deletes, and only if the
-    breaker is still that same file. The marker stays; :func:`_sweep_markers`
-    removes it once it is old.
+    breaker is still that same file. The marker stays after a clear, and
+    :func:`_sweep_markers` removes it once it is old; it goes at once if the
+    delete was refused throughout.
     """
     marker = _marker_of(breaker, seen)
     try:
@@ -696,6 +706,11 @@ def _clear_abandoned(breaker: Path, seen: Identity) -> bool:
             return True
         if now[1:] != seen[1:]:
             return False
+        # Between this look and the next delete the name could change hands
+        # (the window a single delete always had). Safe all the same: two
+        # racers in _replace_stale cannot make two holders, because the
+        # lock's holder keeps its handle open and Windows refuses the
+        # second racer's delete of it.
     # Still refused. The marker goes with this racer's claim: kept, it would
     # refuse every later racer's claim on this very breaker, and a breaker
     # nobody may clear, and so nobody may take, would refuse every stale
@@ -728,9 +743,9 @@ def _release_breaker(breaker: Path, token: str) -> None:
     **A delete refused on Windows is waited out (decision 159, Windows).**
     Every racer refused the breaker opens it to judge whether it was
     abandoned (:func:`_look`), and Windows refuses to delete a file any
-    process has open (a sharing violation, ``PermissionError``). Seen on
-    this project's own race on NTFS: roughly one round in 200 left the
-    breaker behind, and for the next minute every stale take of that lock
+    process has open (a sharing violation, ``PermissionError``). The race
+    test left the breaker behind in 2 of 10 runs on the office PC (NTFS),
+    and for the next minute every stale take of that lock
     was refused as "being cleared by another run". A reader lets go at
     once, so the delete is tried again within the release's own budget,
     the token read again before every try - the breaker is never deleted

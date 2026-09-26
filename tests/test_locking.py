@@ -782,11 +782,12 @@ def test_a_breaker_is_released_only_by_the_run_whose_token_it_holds(tmp_path, ca
     assert "replaced by another run" in caplog.text
 
 
-
-def _refuse_deleting(monkeypatch, target, times):
+def _refuse_deleting(monkeypatch, target, times, meanwhile=None):
     """Refuse ``target``'s delete ``times`` times, as Windows does while
     another process has the file open (a sharing violation), then let it
-    go. Every refusal is counted in the list returned."""
+    go. Every refusal is counted in the list returned. ``meanwhile``, if
+    given, runs just before each refusal: what another run did to the file
+    in that moment."""
     import pathlib
 
     import tracker.locking as locking_module
@@ -797,6 +798,8 @@ def _refuse_deleting(monkeypatch, target, times):
     def unlink(self, missing_ok=False):
         if self == target and len(refused) < times:
             refused.append(self.name)
+            if meanwhile is not None:
+                meanwhile()
             raise PermissionError(13, "The process cannot access the file because it is "
                                       "being used by another process", str(self))
         return real_unlink(self, missing_ok=missing_ok)
@@ -820,6 +823,22 @@ def test_a_breaker_another_racer_is_reading_is_still_removed_on_release(tmp_path
     assert refused == [breaker.name] * 2
     assert not breaker.exists()
 
+
+def test_a_refused_release_never_deletes_the_breaker_another_run_took_meanwhile(
+        tmp_path, monkeypatch, caplog):
+    """The release reads its token again before every retried delete: a
+    breaker cleared and taken by another run while this one waited is
+    theirs, and is left in place."""
+    import tracker.locking as locking_module
+
+    lock = tmp_path / LOCK_FILENAME
+    breaker, token = locking_module._take_breaker(lock)
+    theirs = lock_line(os.getpid() + 1, dt.datetime.now())
+    _refuse_deleting(monkeypatch, breaker, 1,
+                     meanwhile=lambda: breaker.write_text(theirs, encoding="utf-8"))
+    locking_module._release_breaker(breaker, token)
+    assert breaker.read_text(encoding="utf-8") == theirs
+    assert "replaced by another run" in caplog.text
 
 
 @on_windows
@@ -853,6 +872,45 @@ def test_a_dead_lock_another_racer_is_reading_is_still_replaced(tmp_path, monkey
         assert not locking_module.breaker_of(lock).exists()
     finally:
         release_lock(taken)
+
+
+def test_a_dead_lock_gone_between_a_refused_delete_and_the_next_look_is_taken(
+        tmp_path, monkeypatch):
+    """The stale delete refused once, and the lock went in that moment: the
+    look again finds nothing, and the take goes on and holds it."""
+    import tracker.locking as locking_module
+
+    lock = tmp_path / LOCK_FILENAME
+    lock.write_text(lock_line(_a_dead_pid(), dt.datetime.now()), encoding="utf-8")
+    refused = _refuse_deleting(monkeypatch, lock, 1, meanwhile=lambda: os.remove(lock))
+    taken = acquire_lock(tmp_path)
+    try:
+        assert refused == [lock.name] and locking_module.holds(tmp_path)
+        assert not locking_module.breaker_of(lock).exists()
+    finally:
+        release_lock(taken)
+
+
+def test_a_dead_lock_taken_between_a_refused_delete_and_the_next_look_is_left_alone(
+        tmp_path, monkeypatch):
+    """The stale delete refused once, and another run took the lock in that
+    moment: the look again sees a different lock, the take is refused as
+    taken while judged, and the other run's lock is left exactly as it is."""
+    import tracker.locking as locking_module
+
+    lock = tmp_path / LOCK_FILENAME
+    lock.write_text(lock_line(_a_dead_pid(), dt.datetime.now()), encoding="utf-8")
+    theirs = lock_line(os.getpid() + 1, dt.datetime(2026, 3, 14, 7, 3))
+
+    def another_run_takes_it():
+        os.remove(lock)
+        lock.write_text(theirs, encoding="utf-8")
+
+    _refuse_deleting(monkeypatch, lock, 1, meanwhile=another_run_takes_it)
+    with pytest.raises(EngagementLockedError, match="taken while it was being judged stale"):
+        acquire_lock(tmp_path)
+    assert lock.read_text(encoding="utf-8") == theirs
+    assert not locking_module.breaker_of(lock).exists()
 
 
 def test_a_dead_lock_whose_delete_is_always_refused_is_refused_as_held(tmp_path, monkeypatch):

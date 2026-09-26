@@ -3224,7 +3224,8 @@ def test_a_file_that_will_not_open_is_not_held_open_after_the_refusal(tmp_path, 
     once. Left to the garbage collector, the connection stayed open behind
     the exception, and Windows refused the rename the refusal tells a
     person to make (WinError 32)."""
-    module, kind = (store, store._Connection) if which == "store" else         (checkpoint, checkpoint._Connection)
+    module, kind = ((store, store._Connection) if which == "store"
+                    else (checkpoint, checkpoint._Connection))
     damaged = tmp_path / f"{which}.db"
     damaged.write_bytes(b"fabricated garbage, not a database" * 40)
     before = _still_open(kind)
