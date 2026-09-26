@@ -16,6 +16,8 @@ import re
 from dataclasses import fields
 from pathlib import Path
 
+import pytest
+
 from tests.test_layers import import_edges
 from tracker import content_check, filer, ledger, manifest, records, router
 from tracker.records import (
@@ -290,9 +292,8 @@ def test_a_nested_or_alternating_repetition_is_not_a_date_pattern():
     }
     for pattern, phrase in refused.items():
         assert records.date_pattern_problem(pattern) == phrase, pattern
-    assert records.date_pattern_problem(r"(?:Dec|12)?\s?2025") == records.DATE_PATTERN_ALTERNATES
     for fine in [r"(?i)\b2025\b", r"\d+/\d{1,2}/2025", r"(?:Dec|12)\s?2025", r"0?1/[0-3]?[0-9]/2025",
-                 r"\d{0,20}x\d{0,20}y\d*"]:
+                 r"(?:Dec|12)?\s?2025", r"\d{0,20}x\d{0,20}y"]:
         assert records.date_pattern_problem(fine) == "", fine
 
 
@@ -358,7 +359,7 @@ def test_an_optional_chain_is_not_a_date_pattern():
     assert records.date_pattern_problem(r"(?:\d?){20}x") == records.DATE_PATTERN_NESTED
     assert records.date_pattern_problem(r"\d*\d{0,20}\d{0,20}\d?x") == records.DATE_PATTERN_TOO_MANY_WAYS
     assert records.date_pattern_problem(r"\d?" * 8 + "x") == ""
-    assert records.date_pattern_problem(r"\d*\d{0,20}\d{0,20}x") == ""
+    assert records.date_pattern_problem(r"\d*\d{0,20}\d{0,20}x") == records.DATE_PATTERN_TOO_MANY_WAYS
     assert records.DATE_PATTERN_VARIABLE_MAX == 8 and records.DATE_PATTERN_OPEN_MAX == 1
 
 
@@ -381,3 +382,54 @@ def test_a_files_own_name_is_refused_only_for_a_nul_or_its_length():
     assert records.entry_problem({"original_name": "w2\x01.pdf",
                                   "pbc_location": "../../../../Clients/H/2025/w2\x01.pdf"}) == ""
     assert records.text_problem("w2\x01") == records.TEXT_BOUNDS
+
+
+#: The re-check's timing corpus (decision 187's review, M1a and M1b): each
+#: took from 0.7 s to a minute on one 500-character line under the rule it
+#: broke, and each is refused now.
+RUNAWAYS = [
+    "(?:" + "(?:1|11)" * 23 + "){1}x",                  # a {1} wrapper hid the chain: 60 s at k=22
+    "(?:1|11)" * 17 + "x",                              # an alternation chain: 1.6 s
+    "(?:1|11|111)" * 11 + "x",
+    r"\d+\d{0,20}\d{0,20}\D",                           # no literal ending to short-cut: 0.85 s
+    r"\d+\d{0,20}\d{0,20}\s",
+    r"\d{0,20}" * 3 + r"\d?" * 4 + "x",
+    r"\d{0,20}" * 3 + "(?:1|11)" * 4 + "x",
+]
+
+
+@pytest.mark.parametrize("pattern", RUNAWAYS)
+def test_a_once_wrapped_alternation_is_counted(pattern):
+    """Ways are counted through every repetition - a fixed ``{1}`` too - and
+    an alternation's branches add, so no wrapping hides a chain, and the
+    limit is the one measured on lines with no literal ending."""
+    assert records.date_pattern_problem(pattern) == records.DATE_PATTERN_TOO_MANY_WAYS
+    assert records.DATE_PATTERN_WAYS_MAX == 16_384
+
+
+def test_an_optional_alternation_is_a_date_pattern():
+    """A plain optional may hold an alternation (the re-check's ruling): its
+    ways are counted like any other, and ``(?:Dec|12)?`` tries three. Only a
+    repetition that can repeat more than once may not hold one. The common
+    patterns a person types all pass."""
+    for common in [r"(?:Dec|12)?", r"12/31/20\d\d", r"20(24|25)", r"Q[1-4]",
+                   r"(0[1-9]|1[0-2])/\d{2}/\d{4}", r"Dec(ember)?\s+31", r"(?:Dec|12)?/31/2025",
+                   r"(?:Q4|4th Quarter)?\s*2025", r"\d{1,2}/\d{1,2}/\d{2,4}"]:
+        assert records.date_pattern_problem(common) == "", common
+    assert records.date_pattern_problem(r"(?:Dec|12){0,2}") == records.DATE_PATTERN_ALTERNATES
+
+
+def test_every_period_form_derives_a_pattern_the_rule_admits():
+    """As the re-check generated them: every year 1900-2100 with TY, FY, a
+    bare year and every month's abbreviation and full name, in four
+    spellings. None is refused, and none is tried more than 176 ways."""
+    forms = [*manifest._MONTHS, *manifest._MONTH_NAMES, "TY", "FY", ""]
+    most = 0
+    for year in range(1900, 2101):
+        for head in forms:
+            for period in (f"{head} {year}", f"{head}{year}", f"{head.upper()} {year}", f"{head}  {year}"):
+                pattern = manifest.derived_date_pattern(period)
+                if pattern:
+                    assert records.date_pattern_problem(pattern) == "", period
+                    most = max(most, records._ways(records._re_parser.parse(pattern)))
+    assert most <= 176

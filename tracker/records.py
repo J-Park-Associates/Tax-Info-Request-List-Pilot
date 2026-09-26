@@ -1444,14 +1444,18 @@ DATE_PATTERN_REPEATS_MAX = 3
 DATE_PATTERN_VARIABLE_MAX = 8
 DATE_PATTERN_OPEN_MAX = 1
 DATE_PATTERN_BOUND_MAX = 20
-#: How many ways one line may be tried, at most: the product of the widths
-#: of the variable repetitions met in sequence (an alternation's branches
-#: add), an open-ended one counted as the longest line a pattern is run
-#: over (``content_check.DATE_LINE_MAX``). The limit is the measured 0.22 s
-#: case above - one open-ended and two bounded to 20 - so nothing slower is
-#: admitted, whatever mix of repetitions it is made of.
+#: How many ways one start of a line may be tried, at most (:func:`_ways`):
+#: counted through every repetition - a fixed ``{1}`` included, so wrapping
+#: a chain hides nothing - an alternation's branches added, an open-ended
+#: repetition counted as the longest line a pattern is run over
+#: (``content_check.DATE_LINE_MAX``). The limit is measured on 500-character
+#: lines of digits with no literal ending the engine can short-cut (the
+#: re-check of decision 187's review, M1b): at 16,384 ways the slowest
+#: pattern admitted took about a quarter of a second, where 220,500 ways -
+#: one open-ended and two bounded to 20 - took 0.85 s. Every pattern the
+#: Period derives is tried at most 176 ways.
 DATE_PATTERN_OPEN_WIDTH = 500
-DATE_PATTERN_WAYS_MAX = DATE_PATTERN_OPEN_WIDTH * (DATE_PATTERN_BOUND_MAX + 1) ** 2
+DATE_PATTERN_WAYS_MAX = 16_384
 
 #: The fixed phrases. Each names the class of problem; none names the value.
 COUNT_BOUNDS = "must be a whole number from {minimum} to {maximum}"
@@ -1622,16 +1626,24 @@ def _walk(pattern: object):
 
 
 def _ways(pattern: object) -> int:
-    """How many ways one start of a line may be tried, at most - the product
-    of the variable repetitions' widths in sequence, a branch's alternatives
-    added. Read only once nesting is refused, so a repetition holds none."""
+    """How many ways one start of a line may be tried, at most - a
+    sequence's parts multiplied, a branch's alternatives added, and every
+    repetition counted through what it holds: an optional as skipping it or
+    any way through it, a counted ``{m,n}`` as its choice of count times the
+    ways through each copy, an open-ended one as the longest line. Nothing
+    inside a repetition is left uncounted, ``{1}`` included."""
     if not isinstance(pattern, _re_parser.SubPattern):
         return 1
     total = 1
     for op, argument in pattern:
         if op in _REPEATS:
-            low, high, _inside = argument
-            total *= DATE_PATTERN_OPEN_WIDTH if high == _re_parser.MAXREPEAT else high - low + 1
+            low, high, inside = argument
+            if high == _re_parser.MAXREPEAT:
+                total *= DATE_PATTERN_OPEN_WIDTH
+            elif high == 1:
+                total *= (1 - low) + _ways(inside)
+            else:
+                total *= (high - low + 1) * _ways(inside) ** high
         elif op is _re_parser.BRANCH:
             total *= sum(_ways(one) for one in argument[1])
         elif op is _re_parser.GROUPREF_EXISTS:
@@ -1655,15 +1667,20 @@ def date_pattern_problem(pattern: object) -> str:
     varying number of times - ``?`` included, because an optional is a
     choice point (the review's M1):
 
-    - a repetition may not contain another, an alternation or a
-      back-reference, at any depth;
+    - a repetition may not contain another or a back-reference, at any
+      depth, nor an alternation unless it is a plain optional (``?``), whose
+      ways are counted like any other (``(?:Dec|12)?`` is a date pattern);
     - at most :data:`DATE_PATTERN_VARIABLE_MAX` variable repetitions, of
       which at most :data:`DATE_PATTERN_REPEATS_MAX` can repeat more than
       once and at most :data:`DATE_PATTERN_OPEN_MAX` is open-ended (``+``,
       ``*``, ``{n,}``);
     - every bounded one repeats at most :data:`DATE_PATTERN_BOUND_MAX` times;
-    - and the ways one line may be tried stay within
-      :data:`DATE_PATTERN_WAYS_MAX` (:func:`_ways`).
+    - and the ways one start of a line may be tried, counted through every
+      repetition, stay within :data:`DATE_PATTERN_WAYS_MAX` (:func:`_ways`).
+
+    The rule bounds the cost by reading the pattern; it is not a clock
+    (principle 8). A time bound that needs no analysis comes with the
+    judgment in a child the pass can stop.
 
     It applies to a derived pattern too, and every pattern the Period
     derives passes.
@@ -1683,11 +1700,11 @@ def date_pattern_problem(pattern: object) -> str:
         return low != high or high > 1
 
     found = [argument for op, argument in _walk(parsed) if op in _REPEATS and repeats(argument)]
-    for _low, _high, inside in found:
+    for _low, high, inside in found:
         for op, argument in _walk(inside):
             if op in _REPEATS and repeats(argument):
                 return DATE_PATTERN_NESTED
-            if op is _re_parser.BRANCH:
+            if op is _re_parser.BRANCH and high > 1:
                 return DATE_PATTERN_ALTERNATES
             if op in _REFERS_BACK:
                 return DATE_PATTERN_REFERS_BACK

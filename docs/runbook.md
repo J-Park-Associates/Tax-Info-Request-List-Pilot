@@ -218,10 +218,13 @@ The editor keeps each value inside the bounds the tracker will read back
 KB from 0 to 1,048,576, a date is a real date between 1900 and 2100, and a
 Date Pattern is at most 200 characters with at most eight variable parts
 (`?`, `*`, `+`, `{m,n}`), of which at most three repeat more than once, one
-at most is open-ended (`+`, `*`) and the rest at most `{…,20}` - no
-repetition inside another, no `|` or back-reference inside one, and no more
-ways to try one line than the slowest of those allows - so a pattern cannot
-hold a pass on one page. Descriptions (Document, Period, Override Reason,
+at most is open-ended (`+`, `*`) and the rest at most `{…,20}`. No
+repetition may sit inside another, no back-reference inside one, and a `|`
+only inside a plain `?` (so `(?:Dec|12)?` is fine). And the tracker counts
+every way the pattern could try one line and refuses one with more than
+16,384: the slowest pattern that passes took about a quarter of a second
+on a 500-character line, so a pattern cannot hold a pass on one page. The
+count reads the pattern; it is not a clock. Descriptions (Document, Period, Override Reason,
 the client and firm details) may run over several lines; identifiers, short
 names and household and return names may not.
 
@@ -1620,7 +1623,9 @@ the same way.
   The words in brackets say which field and which kind of problem, never
   the value: a value outside the editor's bounds ("must be a whole number
   from 1 to 9999", "must be a date written YYYY-MM-DD", "must be true or
-  false", a Date Pattern that "repeats something that itself repeats"); a
+  false", a Date Pattern that "repeats something that itself repeats",
+  "could try too many ways to match one line" or "has more than 8 variable
+  repetitions"); a line naming "an event this version does not know"; a
   step "outside this return's places"; a household or return label that
   "is not one folder name"; or a line stamped in a form the tracker never
   writes. Nothing was

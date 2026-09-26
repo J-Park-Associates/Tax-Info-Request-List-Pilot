@@ -16,7 +16,7 @@
   ],
   "counts": {
     "nodes": 147,
-    "edges": 880,
+    "edges": 881,
     "reused": 0
   },
   "node_types": [
@@ -1506,8 +1506,8 @@
       "id": "tracker/records.py",
       "type": "module",
       "layer": "core",
-      "sha256": "618dc3bb5778251e",
-      "lines": 1866,
+      "sha256": "a8e319d33162ba22",
+      "lines": 1883,
       "exports": [
         "ANSWER_SEP",
         "BEHIND",
@@ -1706,6 +1706,7 @@
         "DATE_PATTERN_OPEN_MAX": "1",
         "DATE_PATTERN_BOUND_MAX": "20",
         "DATE_PATTERN_OPEN_WIDTH": "500",
+        "DATE_PATTERN_WAYS_MAX": "16384",
         "COUNT_BOUNDS": "'must be a whole number from {minimum} to {maximum}'",
         "NUMBER_BOUNDS": "'must be a number from {minimum} to {maximum}'",
         "FLAG_BOUNDS": "'must be true or false'",
@@ -1719,7 +1720,7 @@
         "DATE_PATTERN_TOO_MANY_WAYS": "'could try too many ways to match one line'"
       },
       "role": "The record types every layer above names, and each one's own serialisation: IndexEntry with INDEX_LAYOUT (the index's columns, header and width per field), Evidence with the one cell format format_evidence() writes and parse_evidence() reads back, Routing (where one dropped file belongs and why), EngagementInfo with ENGAGEMENT_FIELDS / LABELS / HELP / NOTES, ENGAGEMENT_EDITABLE (the details a person may change in the app's editor) and DATE_FIELDS (which of them are dates), StatusUpdate, the rule row's RULE_FIELDS with rule_to_json() / rule_from_json(), entry_to_json() / entry_from_json() for a row as it is stored, ledger_key() for the identity a row is recorded under, and THE_RECORD - the phrase standing rule 2 is worded in. Person with PERSON_KINDS / PERSON_KIND_LABELS and the people list on EngagementInfo, name_parts() - the one way a name is cut into words - and RULE_NAME, the name tier's own rule of evidence (decision 128).",
-      "notes": "Decision 100, the structural review's D4: each record lived in whichever module wrote it first, so a module that only wanted to NAME a row had to import the one that walks folders and takes the engagement lock to produce it. Nothing here reads a file, takes a lock or knows where an engagement folder is - values in, values out - which is why it imports nothing of the package at all and every layer above can name a record without loading its writer. tracker/manifest.py imports it, an in-layer edge and the only one that way round; tests/test_layers.py pins both halves. What did NOT move: RequestItem stays in the manifest because it is the schema of the list a person edits, made out of plain values with that module's defaults and validation, and means nothing away from it; FileError, FileReport and ContentResult stay where they are because they are one run's report of what it did, never stored. COL_IDENTIFIER is here rather than beside the manifest's other column headers because the request list and the index are joined by that header. The names a module still reads are re-exported from it (tests/test_records.py pins each as this module's own object); the manifest's copies of the details' field table and the yes/no words went with decision 104, because nothing read them from there. The store of decision 101 reads and writes these records from here, never from tracker/filer.py. Decision 102: THE_RECORD is here because standing rule 2 says a move is recorded in the record and the record is the journal and the store together. Decision 103: the rule half of a request row travels in the journal, so RULE_FIELDS and its two serialisers are here - the serialisation is a fact about the record, the parsing a fact about the list. Decision 104: ENGAGEMENT_EDITABLE names the details the editor may change (not the name - the folder is the name; not Rolled From - the rollover writes it; not the form - recorded once), and info_from_json() and the store's row reader hand the yes/no fields back as booleans, which the gate found they had not been while a workbook was the reader's source. Decision 109: as_pattern() is here - a note's template turned into the pattern that reads its own sentence back, every word escaped and every {name} the pattern given for it. It came from the scanner, which has read the regression sentence back this way since decision 108, because how a sentence the machine wrote is read is a fact about the shape it was stored in; the filer derives moved_to()'s pattern from the same function, so two readers share one derivation and neither retypes a word. It is why this module imports re, and it still reaches for nothing in the package. Decision 117: DATE_FIELDS is the one answer to which details are dates - the record's own serialisers, the API's reading of a wizard or editor spec and the editor's choice of box all read it instead of naming due, so the Filing Deadline added beside the Due Date cost one line in each. The deadline is the year's and the rollover clears it; the firm's phone is NOT a detail at all, because it belongs to the firm and not to an engagement. The two-word rule a spelling must keep is a fact about the record, so MIN_SPELLING_WORDS and is_a_spelling() live here and tracker.names matches with them; RULE_FLAG_DEFAULTS says what a yes/no field means when the line that wrote a row never said it, which is what makes a rule stored before decision 128 named. Decision 129 added Feed and the household's feeds: the return lines in other households a drop folder also feeds, written and read by their own functions (feed_to_json, feeds_from_json) so the journal's line and the store's column hold one shape. A feed naming no household or no return line is refused on the way back in (FEED_REFUSED), where the store's malformed-line guard sends a hand-edited journal's feeds to be judged. Decision 145: RULE_FIELDS is also what holds its hand-listing readers - tests/test_row_columns.py reads it at run time, builds a row with every column away from its default and sends it through every path that rebuilds a row by naming its columns (manifest.item_from_fields, templates._row and issuer_row, rollover._carry, view.request_row, the store and the journal fold, the API's state and edit, and app.js's editorRow, by name and run under node), so a column added here fails every path nobody taught it; a path's deliberate rewrites are listed there with the decision that makes each. The API's state hands a rule out in the form edit reads back as the same rule (an any-file-type row as [\"*\"], not the record's []), so rules sent back unchanged record nothing. Decision 143 added IndexEntry.container (Index column 'Came Inside'): the container row's location for a document taken out of an email or zip, empty otherwise. entry_from_json reads a None in a defaulted field - what the store holds for a row written before a column existed - as the field's default. Decision 187: the value rule, worded once for the editor and the store's gate. Moved here from manifest: YEAR_MIN/YEAR_MAX/YEAR_OUT_OF_RANGE, the Windows character and device-name tables and is_reserved_name, identifier_problem, SHORT_TITLE_MAX and short_title_problem, class Override, MIN_EXPECTED_COUNT and MIN_SIZE_KB_FLOOR. New: MAX_EXPECTED_COUNT (9,999), MAX_SIZE_KB, MAX_FILE_COUNT, MAX_STAGE, MAX_ROW, TEXT_MAX, LONG_TEXT_MAX, the DATE_PATTERN_ bounds and fixed phrases (COUNT_BOUNDS and the rest); count_problem, number_problem, date_problem, received_problem (a row seeded from the index workbook may carry a time), stamp_problem (any ISO time the readers read), flag_problem, digest_problem, text_problem, text_list_problem, date_pattern_problem (a shape rule read off re._parser: no repetition, alternation or back-reference inside a repetition, at most 3 repetitions, 1 open-ended, the rest at most 20) and the whole-record checks rule_row_problem, info_problem, household_problem, entry_problem, status_problem, each returning \"'<field>' <phrase>\" or ''. Still imports nothing of the package (math and re._parser are the standard library's). Decision 187's review: every variable repetition counts in date_pattern_problem, '?' included - none inside another, at most DATE_PATTERN_VARIABLE_MAX of them, and _ways() holds the ways one line may be tried to DATE_PATTERN_WAYS_MAX (M1); name_problem holds a file's own name, a key or a location only to NUL and TEXT_MAX (M5); descriptive rule and detail fields are long text (M6); rule_row_fault gives the editor the field and phrase; stamp_problem is the one form ledger.stamp writes, from STAMP_YEAR_MIN (S1)."
+      "notes": "Decision 100, the structural review's D4: each record lived in whichever module wrote it first, so a module that only wanted to NAME a row had to import the one that walks folders and takes the engagement lock to produce it. Nothing here reads a file, takes a lock or knows where an engagement folder is - values in, values out - which is why it imports nothing of the package at all and every layer above can name a record without loading its writer. tracker/manifest.py imports it, an in-layer edge and the only one that way round; tests/test_layers.py pins both halves. What did NOT move: RequestItem stays in the manifest because it is the schema of the list a person edits, made out of plain values with that module's defaults and validation, and means nothing away from it; FileError, FileReport and ContentResult stay where they are because they are one run's report of what it did, never stored. COL_IDENTIFIER is here rather than beside the manifest's other column headers because the request list and the index are joined by that header. The names a module still reads are re-exported from it (tests/test_records.py pins each as this module's own object); the manifest's copies of the details' field table and the yes/no words went with decision 104, because nothing read them from there. The store of decision 101 reads and writes these records from here, never from tracker/filer.py. Decision 102: THE_RECORD is here because standing rule 2 says a move is recorded in the record and the record is the journal and the store together. Decision 103: the rule half of a request row travels in the journal, so RULE_FIELDS and its two serialisers are here - the serialisation is a fact about the record, the parsing a fact about the list. Decision 104: ENGAGEMENT_EDITABLE names the details the editor may change (not the name - the folder is the name; not Rolled From - the rollover writes it; not the form - recorded once), and info_from_json() and the store's row reader hand the yes/no fields back as booleans, which the gate found they had not been while a workbook was the reader's source. Decision 109: as_pattern() is here - a note's template turned into the pattern that reads its own sentence back, every word escaped and every {name} the pattern given for it. It came from the scanner, which has read the regression sentence back this way since decision 108, because how a sentence the machine wrote is read is a fact about the shape it was stored in; the filer derives moved_to()'s pattern from the same function, so two readers share one derivation and neither retypes a word. It is why this module imports re, and it still reaches for nothing in the package. Decision 117: DATE_FIELDS is the one answer to which details are dates - the record's own serialisers, the API's reading of a wizard or editor spec and the editor's choice of box all read it instead of naming due, so the Filing Deadline added beside the Due Date cost one line in each. The deadline is the year's and the rollover clears it; the firm's phone is NOT a detail at all, because it belongs to the firm and not to an engagement. The two-word rule a spelling must keep is a fact about the record, so MIN_SPELLING_WORDS and is_a_spelling() live here and tracker.names matches with them; RULE_FLAG_DEFAULTS says what a yes/no field means when the line that wrote a row never said it, which is what makes a rule stored before decision 128 named. Decision 129 added Feed and the household's feeds: the return lines in other households a drop folder also feeds, written and read by their own functions (feed_to_json, feeds_from_json) so the journal's line and the store's column hold one shape. A feed naming no household or no return line is refused on the way back in (FEED_REFUSED), where the store's malformed-line guard sends a hand-edited journal's feeds to be judged. Decision 145: RULE_FIELDS is also what holds its hand-listing readers - tests/test_row_columns.py reads it at run time, builds a row with every column away from its default and sends it through every path that rebuilds a row by naming its columns (manifest.item_from_fields, templates._row and issuer_row, rollover._carry, view.request_row, the store and the journal fold, the API's state and edit, and app.js's editorRow, by name and run under node), so a column added here fails every path nobody taught it; a path's deliberate rewrites are listed there with the decision that makes each. The API's state hands a rule out in the form edit reads back as the same rule (an any-file-type row as [\"*\"], not the record's []), so rules sent back unchanged record nothing. Decision 143 added IndexEntry.container (Index column 'Came Inside'): the container row's location for a document taken out of an email or zip, empty otherwise. entry_from_json reads a None in a defaulted field - what the store holds for a row written before a column existed - as the field's default. Decision 187: the value rule, worded once for the editor and the store's gate. Moved here from manifest: YEAR_MIN/YEAR_MAX/YEAR_OUT_OF_RANGE, the Windows character and device-name tables and is_reserved_name, identifier_problem, SHORT_TITLE_MAX and short_title_problem, class Override, MIN_EXPECTED_COUNT and MIN_SIZE_KB_FLOOR. New: MAX_EXPECTED_COUNT (9,999), MAX_SIZE_KB, MAX_FILE_COUNT, MAX_STAGE, MAX_ROW, TEXT_MAX, LONG_TEXT_MAX, the DATE_PATTERN_ bounds and fixed phrases (COUNT_BOUNDS and the rest); count_problem, number_problem, date_problem, received_problem (a row seeded from the index workbook may carry a time), stamp_problem (any ISO time the readers read), flag_problem, digest_problem, text_problem, text_list_problem, date_pattern_problem (a shape rule read off re._parser: no repetition, alternation or back-reference inside a repetition, at most 3 repetitions, 1 open-ended, the rest at most 20) and the whole-record checks rule_row_problem, info_problem, household_problem, entry_problem, status_problem, each returning \"'<field>' <phrase>\" or ''. Still imports nothing of the package (math and re._parser are the standard library's). Decision 187's review: every variable repetition counts in date_pattern_problem, '?' included - none inside another, at most DATE_PATTERN_VARIABLE_MAX of them, and _ways() holds the ways one line may be tried to DATE_PATTERN_WAYS_MAX (M1); name_problem holds a file's own name, a key or a location only to NUL and TEXT_MAX (M5); descriptive rule and detail fields are long text (M6); rule_row_fault gives the editor the field and phrase; stamp_problem is the one form ledger.stamp writes, from STAMP_YEAR_MIN (S1). Decision 187's re-check (M1a, M1b): _ways counts through every repetition - a '?' as skipping it or any way through it, a counted {m,n} as its choice of count times the ways through each copy, {1} included - so no wrapper hides a chain; an alternation is refused only inside a repetition that can repeat more than once; DATE_PATTERN_WAYS_MAX is measured on lines with no literal ending (the slowest admitted, about 0.25 s)."
     },
     {
       "id": "tracker/registry.py",
@@ -2819,7 +2820,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ee50a673e68fa615",
+      "sha256": "c90abaac94253c42",
       "lines": 425,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -2837,7 +2838,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "ecc2983af2ee4b92",
+      "sha256": "e580a71db5a753f2",
       "lines": 882,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -2846,8 +2847,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "73e52eaea86ed67d",
-      "lines": 1698,
+      "sha256": "1428c95a3946021e",
+      "lines": 1703,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -4739,22 +4740,26 @@
       "id": "tests/test_records.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "307be5ac577f7869",
-      "lines": 383,
+      "sha256": "cfe6d103c0147bf0",
+      "lines": 435,
       "exports": [
         "A_ROW",
         "RE_EXPORTED",
+        "RUNAWAYS",
         "test_a_count_past_its_bound_is_refused_by_one_phrase",
         "test_a_files_own_name_is_refused_only_for_a_nul_or_its_length",
         "test_a_flag_is_true_false_zero_or_one_and_nothing_else",
         "test_a_nested_or_alternating_repetition_is_not_a_date_pattern",
+        "test_a_once_wrapped_alternation_is_counted",
         "test_a_row_round_trips_through_the_json_helpers_field_for_field",
         "test_a_stamp_is_the_one_form_the_ledger_writes_from_the_epoch",
         "test_a_stored_row_from_a_later_version_is_read_and_not_thrown_away",
+        "test_an_optional_alternation_is_a_date_pattern",
         "test_an_optional_chain_is_not_a_date_pattern",
         "test_as_pattern_reads_a_templates_own_sentence_back",
         "test_every_derived_date_pattern_passes_the_shape_rule",
         "test_every_name_a_module_re_exports_is_this_modules_own_object",
+        "test_every_period_form_derives_a_pattern_the_rule_admits",
         "test_every_rule_and_place_is_in_the_list_that_names_them",
         "test_nothing_here_reaches_a_file_or_a_workbook",
         "test_the_also_answers_cell_reads_back_as_it_was_written",
@@ -8205,6 +8210,12 @@
       "from": "tests/test_reasons.py",
       "to": "tracker/reasons.py",
       "type": "tests",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_records.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
       "source": "derived"
     },
     {
