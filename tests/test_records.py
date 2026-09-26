@@ -462,7 +462,7 @@ def test_a_fixed_count_of_matching_is_counted_in_the_cost(pattern):
 
 
 def test_every_derived_and_common_pattern_is_within_the_cost():
-    """Every pattern the Period derives costs at most 6,160, and the ten
+    """Every pattern the Period derives costs at most 6,688, and the ten
     common hand-typed patterns pass the cost rule too."""
     most = 0
     for year in range(1900, 2101):
@@ -472,8 +472,19 @@ def test_every_derived_and_common_pattern_is_within_the_cost():
                 parsed = records._re_parser.parse(pattern)
                 most = max(most, records._ways(parsed) * records._width(parsed))
                 assert records.date_pattern_problem(pattern) == "", pattern
-    assert most <= 6_160
+    assert most <= 6_688
     for common in [r"(?:Dec|12)?", r"12/31/20\d\d", r"20(24|25)", r"Q[1-4]",
                    r"(0[1-9]|1[0-2])/\d{2}/\d{4}", r"Dec(ember)?\s+31", r"(?:Dec|12)?/31/2025",
                    r"(?:Q4|4th Quarter)?\s*2025", r"\d{1,2}/\d{1,2}/\d{2,4}", r"(?:12/31|Dec(?:ember)?\s+31)"]:
         assert records.date_pattern_problem(common) == "", common
+
+
+def test_a_zero_width_assertion_counts_toward_the_width():
+    """The third re-check: ``\\B`` matches nothing yet is a test at every
+    step, so a fixed group padded with thirty of them did unbounded work per
+    counted character - 14.4 s on one 500-digit line. Every zero-width
+    assertion counts one toward the width."""
+    padded = "(?:1|11)?" * 7 + "(?:" + r"\B" * 30 + r"\d){35}\D"
+    assert records.date_pattern_problem(padded) == records.DATE_PATTERN_TOO_COSTLY
+    for assertion in (r"\b", r"\B", "^", "$", r"\A", r"\Z"):
+        assert records._width(records._re_parser.parse(assertion)) == 1, assertion

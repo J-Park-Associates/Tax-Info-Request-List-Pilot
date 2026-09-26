@@ -223,9 +223,11 @@ repetition may sit inside another, no back-reference inside one, and a `|`
 not inside anything that repeats more than once (so `(?:Dec|12)?` is fine).
 The tracker counts every way the pattern could try one line, and refuses
 one with more than 16,384, or whose ways times the longest stretch of
-matching each can do come to more than 200,000. The slowest pattern found
-by the reviews' attacks takes about 0.25 s on a 500-character line; the
-rule reads the pattern and is not a clock; the time bound that does not
+matching each can do come to more than 200,000 (an assertion such as
+`\b` counts toward that stretch). The slowest pattern found by the
+reviews' attacks - `(?:1|11)?` seven times, then `(?:\d(?=\d)){35}` and
+`(?:x|y)` - takes about 1.3 s on a 500-character line; the rule reads the
+pattern and is not a clock; the time bound that does not
 depend on analysis comes with Solution 4. Descriptions (Document, Period, Override Reason,
 the client and firm details) may run over several lines; identifiers, short
 names and household and return names may not.

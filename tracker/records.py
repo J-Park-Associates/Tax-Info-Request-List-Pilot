@@ -1462,7 +1462,7 @@ DATE_PATTERN_WAYS_MAX = 16_384
 #: M1c: ``(?:\d\d){200}`` adds no way and 400 characters of work to each,
 #: 15 s on one line). A fixed ``{n}`` and a lookaround count toward the
 #: width; an open-ended part counts one, its length being in the ways
-#: already. Every derived pattern costs at most 6,160.
+#: already. Every derived pattern costs at most 6,688.
 DATE_PATTERN_COST_MAX = 200_000
 
 #: The fixed phrases. Each names the class of problem; none names the value.
@@ -1670,7 +1670,8 @@ def _width(pattern: object) -> int:
     """The widest match of a pattern's bounded parts - how much matching may
     follow each way it is tried. A fixed ``{n}`` counts n times what it
     holds, a lookaround its own width, a branch its widest alternative, a
-    back-reference 20, and an open-ended part one."""
+    back-reference 20, an open-ended part one, and a zero-width assertion
+    one."""
     if not isinstance(pattern, _re_parser.SubPattern):
         return 1
     width = 0
@@ -1690,7 +1691,11 @@ def _width(pattern: object) -> int:
             width += max(_width(argument[1]), _width(argument[2]))
         elif op is _re_parser.GROUPREF:
             width += DATE_PATTERN_BOUND_MAX
-        elif op is not _re_parser.AT:
+        else:
+            # Everything else counts one - a zero-width assertion (\b, \B,
+            # ^, $, \A, \Z) included, because it is a test at every step
+            # though it matches nothing (the third re-check: a group padded
+            # with \B did unbounded work per counted character).
             width += 1
     return width
 
