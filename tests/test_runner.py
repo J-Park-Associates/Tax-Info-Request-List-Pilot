@@ -2362,6 +2362,37 @@ def test_run_now_uses_the_same_budget(tmp_path, samples, monkeypatch, a_clock):
     assert a_pass(engagement, today=FRIDAY).out_of_time
 
 
+def test_a_household_out_of_time_still_takes_every_cached_verdict(tmp_path, samples, monkeypatch, a_clock):
+    """Ruling 2.2: the deadline stops only a file that would need a new
+    judgment. A household already past its time from its first moment
+    still decides a re-sent drop from its record and scans every request
+    from its kept verdicts - and is not out of time, because nothing
+    waited."""
+    import tracker.runner as runner
+    from tracker import content_check
+    from tracker.manifest import load_manifest
+    from tracker.runner import OUT_OF_TIME_NO_DRAFT
+
+    w2 = f"W-2 John Smith {YEAR}.pdf"
+    engagement = build_engagement(tmp_path, samples, drops=(w2,))
+    assert a_pass(engagement, today=FRIDAY).filed == 1
+    (inbox_of(engagement.path) / w2).write_bytes((samples / w2).read_bytes())
+
+    def no_new_judgment(*args, **kwargs):
+        raise AssertionError("a new judgment was started")
+
+    monkeypatch.setattr(content_check, "judge", no_new_judgment)
+    monkeypatch.setattr(content_check, "_read_in_a_child", no_new_judgment)
+    monkeypatch.setattr(runner, "HOUSEHOLD_BUDGET_SECONDS", 0)
+
+    run = a_pass(engagement, today=SATURDAY)
+
+    assert run.ok and not run.out_of_time and run.draft_note != OUT_OF_TIME_NO_DRAFT
+    assert not (inbox_of(engagement.path) / w2).exists(), "the re-send was taken"
+    assert [row.decision for row in read_index(engagement.path)] == ["Filed", "Duplicate"]
+    assert sum(run.statuses.values()) == len(load_manifest(engagement.path))
+
+
 def test_pre_checks_that_raise_cost_only_their_household(tmp_path, samples, monkeypatch):
     import tracker.runner as runner
 

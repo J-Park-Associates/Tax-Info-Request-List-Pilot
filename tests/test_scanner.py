@@ -401,9 +401,10 @@ def test_each_requests_readings_are_kept_before_the_next_request_is_read(tmp_pat
 
 
 def test_a_scan_past_its_deadline_reads_nothing_more_and_records_only_what_it_scanned(engagement):
-    """Decision 189: the household's time is checked before each request.
-    Past it, no request is scanned; each keeps the status the record holds,
-    and the report says how many were not reached."""
+    """Decision 189: the household's time is checked where a request would
+    need a new judgment. Past it, with nothing kept, no request is scanned;
+    each keeps the status the record holds, and the report says how many
+    were not reached."""
     from tracker import ocr
 
     text_pdf(folder(engagement, "A01") / "chase.pdf", "Chase Bank Statement Dec 2025")

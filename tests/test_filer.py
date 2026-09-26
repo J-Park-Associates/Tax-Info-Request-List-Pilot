@@ -543,9 +543,10 @@ def test_each_drops_verdicts_are_kept_before_the_next_drop_is_read(engagement, m
 
 
 def test_a_sort_past_its_deadline_takes_no_file_and_leaves_each_where_it_was(engagement):
-    """Decision 189: the household's time is checked before each file.
-    Past it the sort takes nothing: every drop stays in the inbox,
-    unrecorded, and the first own return's report says how many."""
+    """Decision 189: the household's time is checked before each file that
+    would need a new judgment. Past it the sort takes no such file: every
+    new drop stays in the inbox, unrecorded, and the first own return's
+    report says how many."""
     from tracker import ocr
     from tracker.filer import file_household_drops
     from tracker.locking import engagement_lock

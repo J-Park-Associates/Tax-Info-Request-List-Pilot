@@ -2138,6 +2138,26 @@ def judge_bounded(path: Path, questions: Questions) -> Judgment:
     return _read_in_a_child(Path(path), questions)
 
 
+class OutOfTime(Exception):
+    """The household's time for this pass ran out before a new judgment
+    (decision 189, ruling 2.2).
+
+    Raised at the one point a judgment job would start - a cache miss -
+    and never at a hit: a verdict the cache holds costs no reading, so a
+    household past its deadline still takes every one of them, and stops
+    only where it would have to read. The sort and the scan catch it
+    between files, record what they did, and leave the rest for the next
+    pass."""
+
+
+def before_a_judgment(cache: ContentCache | None) -> None:
+    """Raise :class:`OutOfTime` if ``cache``'s household is past its
+    deadline (:attr:`ContentCache.deadline`, on ``ocr.awake_clock``):
+    called just before a judgment job would start, and nowhere else."""
+    if cache is not None and cache.deadline is not None and ocr.awake_clock() >= cache.deadline:
+        raise OutOfTime
+
+
 def could_not_start(seconds: float, error: str, name: str) -> Extraction:
     """The reading whose child never started (decision 150): the machine's
     doing, so transient - nothing is kept - and the pass says it once."""
@@ -2173,6 +2193,7 @@ def open_verdict(path: Path, cache: ContentCache, item: RequestItem | None = Non
         if hit is not None:
             return hit.reason
     rows = (row_question(item),) if item is not None and has_content_rules(item) else ()
+    before_a_judgment(cache)
     judgment = judge_bounded(path, Questions(rows=rows))
     reading = judgment.extraction
     verdict = reading.opened if reading.opened is not None else reading.reason
@@ -2254,14 +2275,18 @@ def check_content(
         if hit is not None:
             return hit
 
-    result = _check_uncached(path, item, cache.held_reading(path) if cache is not None else None)
+    result = _check_uncached(path, item, cache.held_reading(path) if cache is not None else None,
+                             cache=cache)
 
     if cache is not None and not result.transient:
         cache.put(path, fingerprint, result)
     return result
 
 
-def _check_uncached(path: Path, item: RequestItem, held: Judgment | None = None) -> ContentResult:
+def _check_uncached(
+    path: Path, item: RequestItem, held: Judgment | None = None,
+    cache: ContentCache | None = None,
+) -> ContentResult:
     """The scan's verdict on a cache miss: the reading the router made.
 
     A page that names two forms as itself is read with both counted as its
@@ -2273,11 +2298,14 @@ def _check_uncached(path: Path, item: RequestItem, held: Judgment | None = None)
     Judged in the reader child (decision 189): ``held`` is the judgment
     :func:`open_verdict` made of the same bytes a moment ago, used when it
     answers this row - or when there were no words to judge, which is the
-    answer whatever the row. A row it was not asked is a new judgment.
+    answer whatever the row. A row it was not asked is a new judgment, and
+    only a new judgment is stopped by the household's deadline (``cache``,
+    :func:`before_a_judgment`).
     """
     question = row_question(item)
     judgment = held
     if judgment is None or (judgment.extraction.text is not None and question not in judgment.rows):
+        before_a_judgment(cache)
         judgment = judge_bounded(path, Questions(rows=(question,)))
     reading = judgment.extraction
     if reading.text is None:
@@ -2340,6 +2368,11 @@ class ContentCache:
         #: 189 a judgment, which holds no word of the document: the
         #: scanner held up to eight whole texts here before.
         self._readings: OrderedDict[str, Judgment] = OrderedDict()
+        #: The household's deadline for this pass, on ``ocr.awake_clock``,
+        #: while the sort or the scan is taking files (decision 189): a
+        #: miss past it starts no judgment (:func:`before_a_judgment`);
+        #: a hit is answered whatever the time. None is no limit.
+        self.deadline: float | None = None
         if self._engagement is not None:
             self._files, self._verdicts = store.cached_verdicts(
                 store.connect(), self._engagement, version=CACHE_VERSION)

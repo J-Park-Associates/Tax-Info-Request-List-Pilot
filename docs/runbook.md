@@ -377,7 +377,9 @@ is filed again from its kept verdict — nothing to do.
 **No client holds up the others** (decision 189). Each household gets
 `tracker.runner.HOUSEHOLD_BUDGET_SECONDS` (fifteen minutes) of a pass,
 counted only while the machine is awake and checked between files, so one
-can run at most about 25 minutes. A household out of time stops taking
+can run at most about 25 minutes. Only a file that still has to be read is
+stopped: a file sent again, or a request whose files were read on an
+earlier pass, is taken whatever the time. A household out of time stops taking
 files, records what it did, drafts nothing this pass and says on every
 return *this household's time for this pass ran out after N file(s); the
 rest wait for the next pass* — nothing to do; the next pass carries on,

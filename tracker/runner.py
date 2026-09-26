@@ -687,8 +687,9 @@ def run_household(
     **Bounded** (decision 189). ``budget`` seconds - by default
     :data:`HOUSEHOLD_BUDGET_SECONDS`, the scheduled pass and Run now alike
     - on ``ocr.awake_clock`` from the household's start, checked by the
-    sort and the scan before each file they take. Past it they take no
-    more, what they did is recorded, every working return says
+    sort and the scan before each file that would need a new judgment (a
+    cache miss; ruling 2.2): a kept verdict is taken whatever the time.
+    Past it they read no more, what they did is recorded, every working return says
     :data:`OUT_OF_TIME` and is not drafted, and the README is still
     refreshed. And **every pre-check is inside the guard**: the record,
     the room, the years, the lock order and the feed list failing cost

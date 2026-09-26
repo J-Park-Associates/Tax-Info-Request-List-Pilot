@@ -79,8 +79,8 @@ from contextlib import nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tracker import ledger, ocr, reasons, store
-from tracker.content_check import ContentCache, check_content, open_verdict
+from tracker import ledger, reasons, store
+from tracker.content_check import ContentCache, OutOfTime, check_content, open_verdict
 from tracker.layout import locate
 from tracker.locking import EngagementLockedError, engagement_lock
 from tracker.manifest import (
@@ -753,10 +753,13 @@ def scan_engagement(
     **Kept as it goes, and bounded** (decision 189). The verdicts are
     saved after every request, so a pass killed mid-scan reads again only
     what it was killed on (a save with nothing new is no transaction at
-    all). ``deadline`` is a moment on ``ocr.awake_clock``, checked before
-    each request: past it no further request is scanned, what was scanned
-    is recorded, and the rest keep the status the record holds until the
-    next pass (``unreached``).
+    all). ``deadline`` is a moment on ``ocr.awake_clock``, checked where a
+    request would need a new judgment - a cache miss (ruling 2.2,
+    :func:`tracker.content_check.before_a_judgment`): a request whose
+    verdicts are all kept is scanned whatever the time, and past the
+    deadline the first request that would read stops the scan. What was
+    scanned is recorded, and the rest keep the status the record holds
+    until the next pass (``unreached``).
 
     Dry runs read everything but write nothing — no event, no cache save,
     no lock file — safe to run alongside a real scan.
@@ -816,18 +819,21 @@ def scan_engagement(
         answered = _answered(engagement_dir, rows, cache)
         updates: dict[str, StatusUpdate] = {}
         unreached = 0
+        cache.deadline = deadline         # a miss past it starts no judgment
         for item in items:
-            if deadline is not None and ocr.awake_clock() >= deadline:
+            try:
+                updates[item.identifier] = _scan_item(
+                    item, assigned[item.identifier], cache, today, pdf_cache, accepted=accepted,
+                    claimed=claimed, excluded=excluded, interrupted=interrupted,
+                    answered=answered.get(identifier_key(item.identifier), ()),
+                    mine=belongs_to(item.identifier),
+                )
+            except OutOfTime:
                 unreached = len(items) - len(updates)
                 break
-            updates[item.identifier] = _scan_item(
-                item, assigned[item.identifier], cache, today, pdf_cache, accepted=accepted,
-                claimed=claimed, excluded=excluded, interrupted=interrupted,
-                answered=answered.get(identifier_key(item.identifier), ()),
-                mine=belongs_to(item.identifier),
-            )
             if not dry_run:
                 cache.save()      # this request's readings, kept the moment they are made
+        cache.deadline = None
 
         report = ScanReport(
             engagement_dir=engagement_dir,

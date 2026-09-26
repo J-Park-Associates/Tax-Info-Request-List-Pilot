@@ -193,7 +193,14 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from tracker import containers, ledger, ocr, reasons, store
-from tracker.content_check import RETIRED_CACHE_FILENAME, ContentCache, Judgment, NameQuestion
+from tracker.content_check import (
+    RETIRED_CACHE_FILENAME,
+    ContentCache,
+    Judgment,
+    NameQuestion,
+    OutOfTime,
+    before_a_judgment,
+)
 from tracker.fsio import (
     TEMP_SUFFIX,
     copy_atomically,
@@ -3375,10 +3382,11 @@ def file_household_drops(
     what was done, per return.
 
     **Bounded, and kept as it goes** (decision 189). ``deadline`` is a
-    moment on ``ocr.awake_clock``: past it the sort takes no further file
-    - what it did is recorded as always, and the files it did not reach
-    wait where they are for the next pass (``unreached`` on the first own
-    return's report). And each drop's verdicts are saved as soon as the
+    moment on ``ocr.awake_clock``: past it the sort takes no file that
+    would need a new judgment (ruling 2.2; one whose bytes are on record
+    is still decided from the record) - what it did is recorded as always,
+    and the files it did not reach wait for the next pass (``unreached`` on
+    the first own return's report). And each drop's verdicts are saved as soon as the
     next drop is taken, so a pass killed half way keeps every reading it
     finished.
 
@@ -3831,9 +3839,16 @@ def _sort_all(
     189): the returns' caches are saved before every file - one small
     transaction, and none when nothing changed - so a pass killed mid-sort
     reads again only the file it was killed on. **And the household's time
-    is checked before every file**: past ``deadline`` (``ocr.awake_clock``)
-    nothing more is taken, and what was not reached stays where it is -
-    in the inbox or the year's folder, unrecorded - for the next pass.
+    stops only a new judgment** (ruling 2.2): past ``deadline``
+    (``ocr.awake_clock``) a file whose bytes a return's record already
+    holds is still decided from that record, which reads nothing, and the
+    first file that would need a judgment stops the sort before it is
+    moved - it and the rest stay where they are, in the inbox or the
+    year's folder, unrecorded, for the next pass. One whose bytes are on
+    record but must be routed afresh (a re-file, a re-send after a set
+    aside) stops at the judgment itself (:class:`OutOfTime`), after its
+    move: it rests in the year's folder with no row, a stray the next pass
+    sorts where it lies (decision 23).
 
     Each file is handled on its own: a file the sync client still holds
     open is left in place for the next run, and one that fails *after* it
@@ -3857,15 +3872,12 @@ def _sort_all(
     inbox = inbox_of(first.engagement_dir)
     away = _originals_away(runs)
     pending = [(d, False) for d in drops] + [(p, True) for p in strays]
+    for run in runs:
+        run.cache.deadline = deadline      # a judgment past it is not started
     for taken, (drop, already_filed) in enumerate(pending):
         if not dry_run:
             for run in runs:
                 run.cache.save()          # the file before this one's verdicts
-        if deadline is not None and ocr.awake_clock() >= deadline:
-            first.report.unreached = len(pending) - taken
-            log.warning("The household's time ran out; %d file(s) wait for the next pass",
-                        len(pending) - taken)
-            break
         # A file the sync client has not downloaded is not a document yet.
         if is_cloud_placeholder(drop):
             first.report.waiting.append(drop)
@@ -3891,6 +3903,16 @@ def _sort_all(
                 [(home_run, position)] = away.pop(coming_back)
                 if _put_back_home(drop, coming_back, home_run, position, stamp, inbox, first):
                     continue
+
+        # Past the household's time (decision 189, ruling 2.2), a file is
+        # taken only when its bytes are on some return's record, so the
+        # record decides it and nothing is read. Anything else would need a
+        # new judgment: it and the rest wait where they are.
+        if deadline is not None and ocr.awake_clock() >= deadline:
+            held = _digest_or_none(drop)
+            if not held or not any(held in run.known for run in runs):
+                _out_of_time(first, len(pending) - taken)
+                break
 
         # The original moves once, out of the inbox into the folder the
         # client can see for the year, and never again (decision 125): its
@@ -3965,6 +3987,11 @@ def _sort_all(
                 log.warning("Left %s for the next pass: the reader could not start", drop.name)
                 continue
             run, entry = decided
+        except OutOfTime:
+            # A drop on record that must be routed afresh, past the time:
+            # moved, unrecorded, a stray for the next pass (decision 23).
+            _out_of_time(first, len(pending) - taken)
+            break
         except Exception as exc:  # the original is safe; say so and go on
             log.exception("Could not file %s", drop.name)
             run = first
@@ -3987,6 +4014,12 @@ def _sort_all(
         run.entries.append(entry)
         if entry.decision != DUPLICATE and digest:
             run.known[digest] = entry
+
+
+def _out_of_time(first: _ReturnRun, left: int) -> None:
+    """Say that the household's time ran out with ``left`` files not taken."""
+    first.report.unreached = left
+    log.warning("The household's time ran out; %d file(s) wait for the next pass", left)
 
 
 def _originals_away(runs: list[_ReturnRun]) -> dict[str, list[tuple[_ReturnRun, int]]]:
@@ -4354,6 +4387,11 @@ def _decide_attachment(
             if decided is None:
                 return False
             run, entry = decided
+    except OutOfTime:
+        # The household's time ran out before this attachment's judgment
+        # (decision 189, ruling 2.2): it waits, as one whose reader could
+        # not start waits, and the container is opened again next pass.
+        return False
     except Exception as exc:          # the file is safe where it was written; say so and go on
         log.exception("Could not file %s", attachment.name)
         run = first
@@ -4515,6 +4553,7 @@ def _judged(judged: Path, runs: list[_ReturnRun], items: list[RequestItem]) -> J
     (decision 189): the rules and the name run under the document's stop,
     and no word of it comes back."""
     names = tuple(_name_question(run, runs) for run in runs)
+    before_a_judgment(runs[0].cache)      # the household's time (ruling 2.2)
     return read_once(judged, questions_for(items, names=names))
 
 
@@ -5259,6 +5298,7 @@ def _sort_one(
     judged = drop if context.dry_run else original
     # Judged against this return's rows, and whose it is for this one
     # return: the name tier below asks about no other (decision 189).
+    before_a_judgment(context.cache)      # the household's time (ruling 2.2)
     judgment = read_once(judged, questions_for(
         context.items, names=(_name_question(run, runs),)))
     reading = judgment.extraction
