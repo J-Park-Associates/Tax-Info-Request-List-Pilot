@@ -28,9 +28,12 @@ jobs:
   gate:
     name: Tests and repository map (${{ inputs.os }}, Python ${{ inputs.python-version }})
     runs-on: ${{ inputs.os }}
-    # A ceiling that stops a hung job, not a target: the longest job yet
-    # measured is 12.5 minutes.
-    timeout-minutes: 30
+    # A ceiling that stops a hung job, not a target. The Windows suite
+    # measured 26 to 28 minutes on main on 2026-09-26, and decision 159's
+    # tests took it past 30, so a healthy run was cut off and proved
+    # nothing. A cut-off run is billed its full 30 minutes anyway, so 45
+    # costs no more than 30 did; a real hang still stops.
+    timeout-minutes: 45
     steps:
       # Every action is pinned by the commit its tag named when it was
       # pinned (decision 137, B3): a tag can be moved to other code, a
