@@ -55,8 +55,11 @@ Guarantees:
 - **Rename-tolerant.** A file belongs to a request if its name starts with
   the identifier followed by a non-alphanumeric boundary, so a copy a
   person renamed ``A01 - bank stuff.pdf`` is still A01's.
-- **Windows-safe names.** Illegal characters (``manifest.WINDOWS_ILLEGAL_CHARS``)
-  are replaced and trailing dots/spaces stripped (:func:`sanitize_component`).
+- **Windows-safe names.** Illegal characters (``layout.WINDOWS_ILLEGAL_CHARS``)
+  are replaced and trailing dots/spaces stripped (:func:`sanitize_component`)
+  in a working copy's file name. A household or a return name is never
+  sanitised: it is held to the layout's one name rule and refused
+  (``layout.segment_problem``, decision 188).
 
 Not Applicable items (``Override.NOT_APPLICABLE``) are dropped from the
 README.
@@ -70,25 +73,28 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from tracker import door
 from tracker.fsio import write_text_atomically
 from tracker.layout import (
     INBOX_DIR_NAME,
     PREPARED_DIR_NAME,
     README_NAME,
     REVIEW_DIR_NAME,
+    WINDOWS_ILLEGAL_CHARS,
     client_household_dir,
+    clients_tree_of,
     household_of,
     inbox_dir_for,
+    is_reserved_name,
     originals_dir_for,
     root_of,
+    same_folder_name,
     same_return,
     year_of,
 )
 from tracker.manifest import (
-    WINDOWS_ILLEGAL_CHARS,
     Override,
     RequestItem,
-    is_reserved_name,
     load_engagement_info,
     load_manifest,
 )
@@ -183,7 +189,7 @@ _MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
 # is worded once, in tracker.layout, since decision 125. They are still
 # read from this module by the callers that have always read them from it.
 
-#: The one list of characters Windows forbids lives in tracker.manifest.
+#: The one list of characters Windows forbids lives in tracker.layout (decision 188).
 _ILLEGAL_CHARS = WINDOWS_ILLEGAL_CHARS
 
 
@@ -194,7 +200,7 @@ def sanitize_component(text: str) -> str:
     """Make ``text`` safe as (part of) a Windows folder name.
 
     A name Windows keeps for a device (``CON``, ``NUL``, ``COM1`` ...,
-    ``manifest.WINDOWS_RESERVED_NAMES``) is never handed back as itself
+    ``layout.WINDOWS_RESERVED_NAMES``) is never handed back as itself
     (decision 137, L6): it gains a trailing ``_``, so a folder is made
     rather than a device opened - and every caller that refuses a name the
     sanitiser changed (a household, a return, a feed) refuses it.
@@ -281,7 +287,7 @@ def persons_folders(prepared_dir: Path) -> list[Path]:
     if not prepared_dir.is_dir():
         return []
     return [child for child in sorted(prepared_dir.iterdir())
-            if child.is_dir() and child.name.casefold() != REVIEW_DIR_NAME.casefold()]
+            if child.is_dir() and not same_folder_name(child.name, REVIEW_DIR_NAME)]
 
 
 # --------------------------------------------------------------- scaffold ----
@@ -315,10 +321,17 @@ class HouseholdScaffold:
     originals: list[Path] = field(default_factory=list)
 
 
+class ClientFolderMissing(RuntimeError):
+    """A household's client folder is gone and is not to be made again
+    (SPEC-162 ruling 2, kept by decision 188); the message is
+    ``households.CLIENT_FOLDER_MISSING``."""
+
+
 def scaffold_household(
     household_dir: Path | str,
     *,
     returns: list[Path] | None = None,
+    may_make_household: bool | None = None,
 ) -> HouseholdScaffold:
     """Create/refresh one household's client side: its folder, its inbox and
     a year folder per open year. **Folders only** (decision 130): the README
@@ -334,6 +347,18 @@ def scaffold_household(
 
     Idempotent: re-running makes back a folder somebody deleted and does
     nothing else. Nothing already there is touched, renamed or deleted.
+
+    **Except the household's client folder, once it has had one**
+    (SPEC-162 ruling 2 kept by decision 188). Left as ``None``,
+    ``may_make_household`` is asked of the record (the review's M3: a new
+    return and a Roll Forward lay the household out too, and must not make
+    it again); ``False`` refuses and ``True`` makes it, for a caller that
+    has already asked:
+    a household that was shared, or whose originals rest in its client
+    folder, whose client folder is gone was renamed or moved, and making a
+    new empty one would hide that - :class:`ClientFolderMissing` is raised
+    and nothing is made. The inbox inside an existing client folder is
+    still remade: it lies inside the shared folder.
     """
     household_dir = Path(household_dir)
     # The private household folder is root/PRIVATE_TREE/<household>, so the
@@ -343,15 +368,38 @@ def scaffold_household(
     household = household_dir.name
     client_dir = client_household_dir(root, household)
     inbox = inbox_dir_for(root, household)
-    inbox.mkdir(parents=True, exist_ok=True)
+    # One level at a time, each through the one door into the client tree
+    # (decision 188): the household's client folder only while it is being
+    # made, its inbox and its year folders always. The tree itself is no
+    # household's place; a new root gets it once.
+    if not client_dir.is_dir():
+        if may_make_household is None:
+            from tracker.households import client_folder_missing
+
+            if said := client_folder_missing(household_dir, returns):
+                raise ClientFolderMissing(said)
+        elif not may_make_household:
+            from tracker.layout import CLIENT_FOLDER_MISSING
+
+            raise ClientFolderMissing(CLIENT_FOLDER_MISSING.format(name=household))
+    clients_tree_of(root).mkdir(exist_ok=True)
+    _make(root, household, client_dir, making=True)
+    _make(root, household, inbox)
 
     years, _engagements = _open_year_of(household_dir, returns)
     result = HouseholdScaffold(client_dir=client_dir, inbox=inbox, readme=inbox / README_NAME)
     for year in years:
         originals = originals_dir_for(root, household, year)
-        originals.mkdir(parents=True, exist_ok=True)
+        _make(root, household, originals)
         result.originals.append(originals)
     return result
+
+
+def _make(root: Path, household: str, folder: Path, *, making: bool = False) -> None:
+    """Make one folder of a household's client side, when it is not there,
+    once the door has approved it (``door.client_write``)."""
+    if not folder.is_dir():
+        door.client_write(root, household, folder, making=making).mkdir(exist_ok=True)
 
 
 def _open_year_of(household_dir: Path, returns: list[Path] | None = None
@@ -566,9 +614,14 @@ def write_readme(
     # holding it, or a folder the client made under its name must not stop
     # the sort and the scan behind it. Written whole; a failure is a log line.
     try:
-        inbox.mkdir(parents=True, exist_ok=True)
+        # Through the one door (decision 188): the README, and so the folder
+        # its temp is written in, is this household's inbox and nothing else.
+        # The inbox is remade inside an existing client folder; the client
+        # folder itself is never made here.
+        door.client_write(root, household, readme)
+        inbox.mkdir(exist_ok=True)
         write_text_atomically(readme, text, encoding="utf-8", newline="\r\n")
-    except OSError as exc:
+    except (OSError, door.DoorError) as exc:
         log.warning("Could not refresh %s (%s); the pass goes on", readme.name, exc)
         return None
     return readme
@@ -735,6 +788,14 @@ if __name__ == "__main__":
     )
     parser.add_argument("engagement_dir", help="the return folder")
     ns = parser.parse_args()
+    # A typed folder is parsed, never trusted: it must be a return's
+    # place under the checked clients root (decision 188).
+    from tracker import door
+
+    try:
+        ns.engagement_dir = door.return_dir(Path(ns.engagement_dir).absolute())
+    except ValueError as exc:
+        parser.error(str(exc))
 
     res = scaffold_engagement(ns.engagement_dir)
     for line in res.describe():

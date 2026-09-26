@@ -1012,25 +1012,27 @@ def test_one_returns_refusal_does_not_undo_the_others_and_is_said(park):
     assert done.retired == []
 
 
-def test_a_return_moved_into_another_household_rolls_forward_where_it_sits(park, capsys):
-    """Decision 177. A household separates and a person drags one return's
-    folder into a household of its own - the only way there is to move a
-    return. Its record still names the old household, and the rollover
-    placed next year's return by the record: back under the old household,
-    whose client README then listed the moved return's requests and whose
-    client folder its originals would rest in. A return rolls forward where
-    it sits: the household being rolled, the prior's own folder name, and a
-    record that says so; the prior's disagreement is said, never refused."""
+def test_a_return_moved_into_another_household_pauses_until_the_folders_name_is_accepted_then_rolls_where_it_sits(
+        park, capsys):
+    """Decisions 177 and 188. A household separates and a person drags one
+    return's folder into a household of its own - the only way there is to
+    move a return. Its record still names the old household: since decision
+    188 that claim pauses the new household, and Roll Forward refuses before
+    anything is written. Once a person accepts the folder's name (one dated
+    line on the return's record), the return rolls forward where it sits:
+    the household being rolled, the prior's own folder name, and a record
+    that says so."""
     import shutil
 
+    import tracker.api as api
+    from tests.conftest import app_stdin
     from tracker import store
     from tracker.api import _carried_payload
     from tracker.filer import refresh_household_readme
-    from tracker.households import create_household
+    from tracker.households import HOUSEHOLD_PAUSED, create_household
     from tracker.layout import CLIENTS_TREE, private_household_dir, return_dir_for
     from tracker.manifest import load_engagement_info
     from tracker.records import HouseholdInfo
-    from tracker.registry import engagement_from
     from tracker.rollover import ReturnPlan, roll_household
     from tracker.scaffold import README_NAME
 
@@ -1044,8 +1046,20 @@ def test_a_return_moved_into_another_household_rolls_forward_where_it_sits(park,
     shutil.move(str(sofia), str(moved))
     store.forget(store.connect(), sofia)
     ensure(moved)
-    warning = engagement_from(moved).warning
-    assert "the record wins" in warning                      # the prior still names Park Family
+    before = sorted(root.rglob("*"))
+
+    with pytest.raises(ManifestError, match="^" + HOUSEHOLD_PAUSED[:40]):
+        roll_household(household, target_year=2027, plans=[ReturnPlan(prior=moved)])
+    assert sorted(root.rglob("*")) == before
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr("sys.stdin", app_stdin({"seq": len(ledger.read_events(household)),
+                                           "scope": "return"}))
+        assert api.main(["accept-folder-name", api.ENGAGEMENT_FLAG, str(moved)]) == 0, \
+            capsys.readouterr().out
+    capsys.readouterr()
+    assert load_engagement_info(moved).household == "Sofia Park"
+    assert ledger.read_events(moved)[-1][ledger.ACCEPTED_KEY] == ledger.FOLDER_NAME_ACCEPTED
 
     done = roll_household(household, target_year=2027, plans=[ReturnPlan(prior=moved)])
 
@@ -1054,7 +1068,6 @@ def test_a_return_moved_into_another_household_rolls_forward_where_it_sits(park,
     info = load_engagement_info(created)
     assert (info.household, info.return_name, info.tax_year) == ("Sofia Park", "1040 - Sofia Park", 2027)
     assert info.link == "https://drive.example/sofia"
-    assert engagement_from(created).warning == ""            # next year's record agrees with its folder
     assert not return_dir_for(root, PARK, 2027, "1040 - Sofia Park").exists()
     assert not (root / CLIENTS_TREE / PARK / "2027").exists()
     # What the client of the old household sees once its README is drawn
@@ -1062,8 +1075,7 @@ def test_a_return_moved_into_another_household_rolls_forward_where_it_sits(park,
     refresh_household_readme(private_household_dir(root, PARK))
     park_readme = (inbox_of(john) / README_NAME).read_text(encoding="utf-8")
     assert "Sofia" not in park_readme
-    # The reply the app shows carries the prior's disagreement.
-    assert _carried_payload(report, was)["warning"] == warning
+    assert _carried_payload(report, was)["warning"] == ""
 
 
 def test_the_household_rollover_makes_no_change_under_the_client_tree_but_the_new_year_folder(park):
@@ -1160,3 +1172,99 @@ def test_the_rollover_carries_asked_and_named_and_asks_what_arrived(tmp_path, mo
     assert rolled["F01"].item.asked is False
     assert rolled["G01"].item.asked is False and rolled["G01"].origin == ORIGIN_NEW
     assert rolled["A01"].item.asked is True and rolled["A01"].item.named is True
+
+
+def test_a_rollover_from_a_client_inbox_fails_closed(prior, monkeypatch):
+    """Decision 188 (T3): the command line reads a typed folder through the
+    one door, so a folder in the client's inbox holding a fabricated
+    ``_ledger.jsonl`` is neither a household nor a return - in either form
+    of the command - and nothing is written in either tree."""
+    import io
+
+    from tracker.layout import CLIENTS_TREE, PRIVATE_TREE
+    from tracker.templates import template_items
+
+    planted = make_engagement(inbox_of(prior) / "X", template_items("1040", year=2025),
+                              scaffold=False)
+    root = root_of(prior)
+    before = sorted((root / CLIENTS_TREE).rglob("*")), sorted((root / PRIVATE_TREE).rglob("*"))
+    for argv in ([str(planted), "--year", "2026"],
+                 [str(planted), "--year", "2026", "--all"]):
+        console = io.StringIO()
+        monkeypatch.setattr("sys.stderr", console)
+        assert run_the_command_line(monkeypatch, argv, io.StringIO()) == 2
+        assert "is not a return's folder" in console.getvalue(), console.getvalue()
+    assert (sorted((root / CLIENTS_TREE).rglob("*")),
+            sorted((root / PRIVATE_TREE).rglob("*"))) == before
+
+
+def _hashes(folder):
+    """Every file and folder under ``folder``, each file with its bytes."""
+    import hashlib
+
+    return {str(p.relative_to(folder)): (hashlib.sha256(p.read_bytes()).hexdigest()
+                                         if p.is_file() else "folder")
+            for p in sorted(folder.rglob("*"))}
+
+
+def test_the_client_tree_is_byte_identical_after_a_roll_forward_whose_record_names_a_path(park):
+    """Decision 188 (T4, C-14): a prior whose details are forged to name a
+    path as its household - a line appended to its journal by hand - is
+    refused at the store's gate by the one name rule, and one forged to
+    name another household plainly pauses the household; either way Roll
+    Forward writes nothing, the client tree is byte for byte what it was,
+    and the private tree gains nothing. (SPEC-188's T4 expects the pause
+    for the path-shaped label too; the gate refuses that line first.)"""
+    import json
+
+    from tracker.households import HOUSEHOLD_PAUSED
+    from tracker.layout import CLIENTS_TREE, PRIVATE_TREE, private_household_dir
+    from tracker.rollover import ReturnPlan, roll_household
+
+    root, john, sofia, llc = park
+    household = private_household_dir(root, PARK)
+    clients, private = _hashes(root / CLIENTS_TREE), sorted((root / PRIVATE_TREE).rglob("*"))
+    journal = ledger.path_for(john)
+    original = journal.read_bytes()
+    for forged, refused in [(f"../../{CLIENTS_TREE}/{PARK}/Drop files here", "not one folder name"),
+                            ("Somebody Else", HOUSEHOLD_PAUSED[:40])]:
+        journal.write_bytes(original + (json.dumps(ledger.new(
+            ledger.RULES_CHANGED, info={"household": forged})) + "\n").encode("utf-8"))
+        with pytest.raises(Exception) as said:
+            roll_household(household, target_year=2027, plans=[ReturnPlan(prior=john)])
+        assert refused in str(said.value), said.value
+        assert _hashes(root / CLIENTS_TREE) == clients
+        assert sorted((root / PRIVATE_TREE).rglob("*")) == private
+
+
+def test_a_renamed_private_folder_pauses_roll_forward_and_the_old_client_folder_appears_as_a_misfit(
+        park, capsys, monkeypatch):
+    """Decision 188 (T5): a household folder renamed in the firm's tree is
+    one whose record claims its old name - discovery pauses it, Roll
+    Forward refuses (the app's and the command line's), and the client
+    folder of the old name is listed as one no household owns."""
+    import io
+
+    from tracker.households import HOUSEHOLD_PAUSED
+    from tracker.layout import CLIENTS_TREE, private_household_dir
+    from tracker.registry import MISFIT_CLIENT_NO_RECORD, discover_engagements
+    from tracker.rollover import ReturnPlan, roll_household
+
+    root, john, sofia, llc = park
+    old = private_household_dir(root, PARK)
+    renamed = old.parent / "Park Household"
+    old.rename(renamed)
+
+    found = discover_engagements(root)
+    assert found.paused[renamed] == HOUSEHOLD_PAUSED
+    assert {m.path: m.sentence for m in found.misfits}[root / CLIENTS_TREE / PARK] \
+        == MISFIT_CLIENT_NO_RECORD
+    moved = renamed / john.parent.name / john.name
+    with pytest.raises(ManifestError, match="^Paused: "):
+        roll_household(renamed, target_year=2027, plans=[ReturnPlan(prior=moved)])
+    console = io.StringIO()
+    monkeypatch.setattr("sys.stderr", console)
+    assert run_the_command_line(monkeypatch, [str(renamed), "--year", "2027", "--all"],
+                                io.StringIO()) == 2
+    assert HOUSEHOLD_PAUSED[:40] in console.getvalue()
+    assert not (renamed / "2027").exists()

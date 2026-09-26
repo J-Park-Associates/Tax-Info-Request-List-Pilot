@@ -2331,18 +2331,23 @@ def test_a_moving_line_in_a_households_record_is_refused():
 def test_a_label_that_is_not_one_segment_is_refused_at_admission(conn, root, by_hand):
     """A household or a return label is joined onto a path somewhere, so one
     that is a path of its own - a separator, a climb, a drive - is refused
-    at the door, naming the field and the layout's code."""
-    from tracker.layout import PRIVATE_TREE
+    at the door, naming the field and the layout's reason - since decision
+    188 the one name rule a person's typing gets, so an invisible or a
+    look-alike-script label is refused here too."""
+    from tracker.layout import NAME_FIRST_CHARACTER, NAME_ILLEGAL, NAME_SCRIPTS, PRIVATE_TREE
 
     household = f"{PRIVATE_TREE}/Smith Family"
     for event, field, code in [
         (ledger.new(ledger.RULES_CHANGED, rules=[], info={"household": "../Jones"}), "household",
-         "separator"),
-        (ledger.new(ledger.RULES_CHANGED, rules=[], info={"return_name": ".."}), "return_name", "dot"),
-        (ledger.new(ledger.HOUSEHOLD_CHANGED, household={"name": "C:Jones"}), "name", "drive"),
+         NAME_ILLEGAL),
+        (ledger.new(ledger.RULES_CHANGED, rules=[], info={"return_name": ".."}), "return_name",
+         NAME_FIRST_CHARACTER),
+        (ledger.new(ledger.HOUSEHOLD_CHANGED, household={"name": "C:Jones"}), "name", NAME_ILLEGAL),
         (ledger.new(ledger.HOUSEHOLD_CHANGED, household={"feeds": [
             {"household": "Jones/..", "return_name": "1040 - Jones"}]}), "feeds.household",
-         "separator"),
+         NAME_ILLEGAL),
+        (ledger.new(ledger.HOUSEHOLD_CHANGED, household={"name": "J\u043ehnson"}), "name",
+         NAME_SCRIPTS.format(first="Latin", second="Cyrillic")),
     ]:
         with pytest.raises(store.StoreError) as refused:
             store._refuse_a_malformed_line(event, 2, household, kind=store.KIND_HOUSEHOLD)
@@ -2415,3 +2420,99 @@ def test_an_old_closed_copy_without_a_digest_is_still_admitted(conn, root, by_ha
         store.record(conn, by_hand, moving, filed)
 
     assert said(conn, root, by_hand) == []
+
+
+def test_the_store_admits_the_accepted_key_with_one_value():
+    """Decision 188 (T15): a person's word that a folder's name is accepted
+    is admitted on the two events that name a household or a return, with
+    its one value - and refused with any other value, or on any other
+    event, without quoting what the line said."""
+    from tracker.layout import PRIVATE_TREE
+
+    household = f"{PRIVATE_TREE}/Park Household"
+    word = {ledger.ACCEPTED_KEY: ledger.FOLDER_NAME_ACCEPTED}
+    store._refuse_a_malformed_line(ledger.new(
+        ledger.HOUSEHOLD_CHANGED, household={"name": "Park Household"}, **word), 2, household,
+        kind=store.KIND_HOUSEHOLD)
+    store._refuse_a_malformed_line(ledger.new(
+        ledger.RULES_CHANGED, info={"household": "Park Household"}, **word), 2,
+        f"{household}/2025/1040 - Park", kind=store.KIND_RETURN)
+    for event in (
+        ledger.new(ledger.HOUSEHOLD_CHANGED, household={"name": "X"},
+                   **{ledger.ACCEPTED_KEY: "everything"}),
+        ledger.new(ledger.RULES_CHANGED, info={}, **{ledger.ACCEPTED_KEY: True}),
+        ledger.new(ledger.SHARING_CONFIRMED, **word),
+    ):
+        with pytest.raises(store.StoreError) as refused:
+            store._refuse_a_malformed_line(event, 2, household, kind=store.KIND_HOUSEHOLD)
+        assert "'accepted' that is not a folder's name accepted" in str(refused.value)
+        assert "everything" not in str(refused.value)
+
+
+# ------------------------ SPEC-162 rulings 5 and 6, kept by decision 188 ----
+
+
+def _two_lines_then_one(conn, root, engagement):
+    """The store applies two lines; the journal is then cut back to one."""
+    build(conn, root, engagement)
+    with engagement_lock(engagement):
+        store.record(conn, engagement, ledger.new(ledger.SCANNED, statuses={}))
+    journal = ledger.path_for(engagement)
+    lines = journal.read_bytes().splitlines(keepends=True)
+    applied = store._engagement_row(conn, engagement, root)["applied_seq"]
+    journal.write_bytes(b"".join(lines[:applied - 1]))
+    return applied
+
+
+def test_store_check_reports_a_journal_that_is_gone(conn, root, by_hand, tmp_path):
+    """T11 (ruling 5): a journal that is gone is one sentence naming the
+    engagement and what the store still holds, saying where to restore it
+    from - from the check of the folder, and from the command line's check
+    of the whole root, which no walk would otherwise reach."""
+    build(conn, root, by_hand)
+    applied = store._engagement_row(conn, by_hand, root)["applied_seq"]
+    ledger.path_for(by_hand).unlink()
+    rel = store.engagement_path(root, by_hand)
+    said = store.JOURNAL_GONE.format(n=applied, engagement=rel)
+
+    assert store.check(conn, root, by_hand) == [said]
+    assert said in store.gone_journals(conn, root)
+    conn.commit()
+    result = cli(tmp_path / "app" / store.STORE_FILENAME, "check", root)
+    assert result.returncode == 1 and said in result.stdout, result.stdout + result.stderr
+
+
+def test_the_truncation_error_says_restore_first(conn, root, by_hand):
+    """T11 (ruling 5): a journal shorter than what the store applied is
+    refused with the sentence that says to restore it first, and what a
+    rebuild would discard."""
+    applied = _two_lines_then_one(conn, root, by_hand)
+    rel = store.engagement_path(root, by_hand)
+    with pytest.raises(store.StoreError) as refused:
+        store.follow_the_journal(conn, root, by_hand)
+    assert str(refused.value) == store.TRUNCATED.format(engagement=rel, n=applied - 1, m=applied,
+                                                        k=1)
+    assert "First restore the journal from Drive's trash" in str(refused.value)
+
+
+def test_rebuild_lists_what_it_would_discard_and_needs_discard(conn, root, by_hand, tmp_path):
+    """T11 (ruling 6): a rebuild never discards silently - it lists each line
+    only the store holds, refuses, and changes nothing; the command line
+    does the same and exits 1, and only ``--discard`` rebuilds."""
+    applied = _two_lines_then_one(conn, root, by_hand)
+    rel = store.engagement_path(root, by_hand)
+    with pytest.raises(store.WouldDiscard) as refused:
+        store.rebuild_engagement(conn, root, by_hand)
+    assert str(refused.value) == store.WOULD_DISCARD.format(engagement=rel, k=1)
+    [line] = refused.value.lines
+    assert line.startswith(f"  {ledger.SCANNED}  -  ")
+    assert store._engagement_row(conn, by_hand, root)["applied_seq"] == applied
+    conn.commit()
+
+    path = tmp_path / "app" / store.STORE_FILENAME
+    result = cli(path, "rebuild", root, "--engagement", by_hand)
+    assert result.returncode == 1
+    assert line in result.stdout and str(refused.value) in result.stdout, result.stdout
+    result = cli(path, "rebuild", root, "--engagement", by_hand, "--discard")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert f"built {by_hand.name}" in result.stdout

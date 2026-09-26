@@ -240,3 +240,33 @@ def test_the_clients_root_is_judged_by_the_folder_itself_not_its_spelling(beside
     clients = beside_the_app / "Clients"
     clients.mkdir()
     assert set_clients_root("\\\\?\\" + str(clients)) is not None   # a real clients folder still is one
+
+
+def test_a_root_one_level_too_deep_is_refused_and_the_example_root_is_not(beside_the_app):
+    """Decision 188 (D-3): a folder inside either tree of a real clients
+    root - one holding both trees - is refused, naming the root to choose
+    instead. A folder named like a tree is not refused for its name: the
+    runbook's own example root is a folder called ``Clients``, and it is a
+    root like any other."""
+    from tracker.layout import CLIENTS_TREE, PRIVATE_TREE
+    from tracker.settings import ROOT_INSIDE_A_TREE
+
+    real = beside_the_app / "Clients"
+    (real / CLIENTS_TREE / "Park Family").mkdir(parents=True)
+    (real / PRIVATE_TREE / "Park Family").mkdir(parents=True)
+    assert set_clients_root(real) == real.resolve()
+    for too_deep, tree in [(real / CLIENTS_TREE, CLIENTS_TREE),
+                           (real / CLIENTS_TREE / "Park Family", CLIENTS_TREE),
+                           (real / PRIVATE_TREE, PRIVATE_TREE),
+                           (real / PRIVATE_TREE / "Park Family", PRIVATE_TREE)]:
+        with pytest.raises(SettingsError) as refused:
+            set_clients_root(too_deep)
+        assert str(refused.value).endswith(ROOT_INSIDE_A_TREE.format(
+            root=too_deep.resolve(), tree=tree, real=real.resolve())), refused.value
+    # A folder beside the trees is not inside one, and a lone tree's name
+    # above no pair of trees is a folder like any other.
+    (real / "Archive").mkdir()
+    assert set_clients_root(real / "Archive") == (real / "Archive").resolve()
+    lone = beside_the_app / "Elsewhere" / CLIENTS_TREE
+    lone.mkdir(parents=True)
+    assert set_clients_root(lone) == lone.resolve()

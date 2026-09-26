@@ -75,8 +75,13 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from tracker.fsio import make_new_folders
-from tracker.households import household_returns, load_household_info, open_years
-from tracker.layout import household_of, return_dir_for, root_of
+from tracker.households import (
+    household_returns,
+    load_household_info,
+    open_years,
+    return_name_taken,
+)
+from tracker.layout import household_of, name_key, normalised_name, return_dir_for, root_of
 from tracker.manifest import (  # shift_years/detect_year re-exported: they live in manifest
     ManifestError,
     Override,
@@ -590,6 +595,14 @@ def roll_household(
     household_dir = Path(household_dir)
     today = today or dt.date.today()
     check_tax_year(target_year)
+    # A household paused (its folders and its record disagree), stopped
+    # (its record gone, two folders claiming it) or whose client folder is
+    # gone (decision 188 and its review's M3, S4): refused before anything
+    # is read further or written, with the sentence the pass says.
+    from tracker.registry import held_back
+
+    if said := held_back(household_dir):
+        raise ManifestError(said)
 
     _, open_returns = open_year_returns(household_dir)
     by_folder = {_same_folder(one.path): one for one in open_returns}
@@ -665,9 +678,10 @@ def _roll_one(prior: Path, prior_info: EngagementInfo, plan: ReturnPlan,
         household = household_name
         return_name = plan.return_name or prior.name
         target = return_dir_for(root_of(prior), household, target_year, return_name)
-        if target.exists():
+        # Unique by the layout's key within the household-year (decision 188).
+        if (taken := return_name_taken(target.parent, return_name)) is not None:
             raise ManifestError(
-                f"A return named '{return_name}' already exists for {household} {target_year}")
+                f"A return named '{taken}' already exists for {household} {target_year}")
         refuse_a_path_past_the_limit(target, report.items)
 
         carried = carry_engagement_info(prior_info, rolled_from=str(prior),
@@ -759,10 +773,29 @@ if __name__ == "__main__":
         except ManifestError as exc:
             parser.error(str(exc))
 
-    given = Path(ns.folder).resolve()
+    # A typed folder is parsed, never trusted (decision 188): a household's
+    # or a return's place under the checked clients root, rebuilt from its
+    # own names - a folder in the client tree is neither, whatever journal
+    # somebody put in it.
+    from tracker import door
+
+    try:
+        try:
+            given = door.household_dir(Path(ns.folder).absolute())
+        except ValueError:
+            given = door.return_dir(Path(ns.folder).absolute())
+    except ValueError as exc:
+        parser.error(str(exc))
     if not ledger.path_for(given).is_file():
         parser.error(f"no record in {given}")
     store.follow_the_journal(store.connect(), store.root_for(given), given)
+    # Paused, stopped or its client folder gone (decision 188): refused
+    # before anything is written, in both forms of the command.
+    from tracker.registry import held_back
+
+    if said := held_back(given if store.kind(store.connect(), given) == store.KIND_HOUSEHOLD
+                         else household_of(given)):
+        parser.error(said)
 
     if store.kind(store.connect(), given) == store.KIND_HOUSEHOLD:
         if ns.year is None:
@@ -775,10 +808,12 @@ if __name__ == "__main__":
             parser.error(str(exc))
         chosen = list(open_now)
         if ns.only:
-            by_name = {one.path.name.lower(): one for one in open_now}
+            # By the layout's one key (decision 188): a name typed with
+            # another case or a look-alike letter is the same return.
+            by_name = {name_key(one.path.name): one for one in open_now}
             chosen = []
             for name in ns.only:
-                one = by_name.get(name.strip().lower())
+                one = by_name.get(name_key(normalised_name(name)))
                 if one is None:
                     parser.error(ROLLOVER_NOT_THIS_HOUSEHOLD.format(prior=name,
                                                                     household=given.name))

@@ -62,7 +62,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from tracker.layout import household_name_of, household_of, is_year_folder, year_of
+from tracker.layout import CLIENT_FOLDER_MISSING as _CLIENT_FOLDER_MISSING
+from tracker.layout import household_name_of, household_of, is_year_folder, name_key, year_of
 from tracker.records import HouseholdInfo, household_to_json, link_problem
 
 
@@ -159,7 +160,10 @@ def save_household(
     an event, which is ``save_rules``' rule and is what keeps a journal a
     record of decisions rather than of clicks.
 
-    The name is never a field that moves: the folder is the name.
+    The name is never a field that moves here: the folder is the name
+    (decision 188). The one writer of it after creation is the app's
+    *Accept the folder's name*, which records the folder's name with the
+    person's word (``ledger.ACCEPTED_KEY``) when a record claimed another.
     """
     from contextlib import nullcontext
 
@@ -261,7 +265,8 @@ def resolve_feeds(
     return_name)`` names the line a return keeps every year, and this is
     where it becomes a return - the active, unsuperseded return that
     discovery found at ``<private tree>/<household>/<year>/<return name>``,
-    matched by those folders' names and never by a path made from the
+    matched by those folders' names under the layout's one comparison key
+    (``layout.name_key``, decision 188) and never by a path made from the
     record's labels (decision 187). So the rollover
     carries nothing about feeds and a line the other household retired is
     said (:data:`FEED_UNRESOLVED`) rather than quietly feeding nothing.
@@ -286,7 +291,7 @@ def resolve_feeds(
     wanted: list[object] = []
     said: list[str] = []
     for feed in feeds:
-        if feed.household.casefold() == folder.name.casefold():
+        if name_key(feed.household) == name_key(folder.name):
             continue
         # **By position, never built from the labels** (decision 187): the
         # feed's two names are compared with the folders discovery found,
@@ -294,10 +299,10 @@ def resolve_feeds(
         # never joined onto the root to make a path of its own.
         theirs = [one for one in every
                   if household_of(one.path).parent == folder.parent
-                  and household_name_of(one.path).casefold() == feed.household.casefold()]
+                  and name_key(household_name_of(one.path)) == name_key(feed.household)]
         found = next((one for one in theirs
                       if one.active and one.tax_year == year and year_of(one.path) == year
-                      and Path(one.path).name.casefold() == feed.return_name.casefold()), None)
+                      and name_key(Path(one.path).name) == name_key(feed.return_name)), None)
         if found is None or len(open_years(theirs)) != 1:
             said.append(FEED_UNRESOLVED.format(household=feed.household,
                                                return_name=feed.return_name, year=year))
@@ -319,9 +324,27 @@ def fed_by(registry: object, household_dir: Path | str) -> list[object]:
     ``registry`` is duck-typed on ``households``, as
     :func:`resolve_feeds` is on its engagements.
     """
-    name = Path(household_dir).name.casefold()
+    name = name_key(Path(household_dir).name)
     return [one for one in getattr(registry, "households", [])
-            if any(feed.household.casefold() == name for feed in one.info.feeds)]
+            if any(name_key(feed.household) == name for feed in one.info.feeds)]
+
+
+def return_name_taken(year_dir: Path | str, return_name: str) -> str | None:
+    """The name of a return folder already in ``year_dir`` that is
+    ``return_name`` by the layout's key (decision 188), or ``None``.
+
+    A return is unique within its household-year by the key and not by
+    its spelling, so ``1040 - Park`` and ``1040 - PARK`` - or a look-alike
+    typed in another script - are one return, and the second is refused
+    where the first already is. Asked by the wizard and the rollover
+    before anything is made; a year folder not there yet holds nothing.
+    """
+    wanted = name_key(return_name)
+    try:
+        folders = [one.name for one in Path(year_dir).iterdir() if one.is_dir()]
+    except FileNotFoundError:
+        return None
+    return next((name for name in sorted(folders) if name_key(name) == wanted), None)
 
 
 def open_years(returns: Iterable[object]) -> list[int]:
@@ -339,3 +362,132 @@ def open_years(returns: Iterable[object]) -> list[int]:
     """
     years = {one.tax_year for one in returns if one.active and one.tax_year is not None}
     return sorted(years)
+
+
+# ------------------------------------------------ the folder is the name ----
+
+#: What every run of a household whose folders and record disagree carries
+#: as its error (decision 188, R6): the folder is the identity and the
+#: record's labels are a claim, and a claim that disagrees pauses the
+#: whole household - red, every pass - until a person acts.
+HOUSEHOLD_PAUSED = ("Paused: this folder's name and its record's name disagree. Nothing is sorted, "
+                    "laid out or drafted for the household until a person opens it in the app and "
+                    "accepts the folder's name, or gives the folder back the name its record holds.")
+#: The same pause where a return's folder sits under a year its record
+#: does not hold: a return's year is its record's (decisions 126 and 177),
+#: so it is never accepted in the app.
+HOUSEHOLD_PAUSED_YEAR = ("Paused: a return's folder sits under a year its record does not hold. "
+                         "Nothing is sorted, laid out or drafted for the household until the folder "
+                         "goes back under the year its record holds; a return in the wrong year is "
+                         "retired and made again.")
+#: What every run of a household carries when its client folder is gone
+#: and the household had one: the layout's sentence since the review of
+#: decision 188, named here still.
+CLIENT_FOLDER_MISSING = _CLIENT_FOLDER_MISSING
+
+
+def claim_disagrees(claim: object, folder_name: str) -> bool:
+    """Whether a record's label claims another name than its folder's: by
+    the layout's one key (decision 188), and never for a blank claim,
+    which claims nothing (a record from before decision 125)."""
+    return bool(claim) and name_key(str(claim)) != name_key(folder_name)
+
+
+def return_disagrees(return_dir: Path | str, info: object) -> str:
+    """``"name"`` when a return's record claims another household or return
+    name than its folders', ``"year"`` when it claims another year than
+    the folder above it, else ``""``. Duck-typed on the details' three
+    fields."""
+    folder = Path(return_dir)
+    year = getattr(info, "tax_year", None)
+    if year is not None and year != year_of(folder):
+        return "year"
+    if (claim_disagrees(getattr(info, "household", ""), household_name_of(folder))
+            or claim_disagrees(getattr(info, "return_name", ""), folder.name)):
+        return "name"
+    return ""
+
+
+def pause_of(household_dir: Path | str, info: HouseholdInfo,
+             returns: Iterable[tuple[Path, object]]) -> str:
+    """Why this household is paused - :data:`HOUSEHOLD_PAUSED` or
+    :data:`HOUSEHOLD_PAUSED_YEAR` - or ``""`` when every claim agrees
+    (decision 188, R6).
+
+    The household's claim is its record's name; each return's are its
+    household, its return name and its year. **Any disagreement pauses
+    the whole household**, because its returns share one inbox, one
+    client folder and one README: the pass does not sweep, lay out, sort,
+    scan, draft or refresh anything for it, and Roll Forward and a new
+    return into it refuse, until a person accepts the folder's name in
+    the app or gives the folder back its name. This overrides decision
+    177's warning and decision 125's "the record wins".
+    """
+    kinds = {return_disagrees(path, one) for path, one in returns} - {""}
+    if "year" in kinds:
+        return HOUSEHOLD_PAUSED_YEAR
+    if kinds or claim_disagrees(info.name, Path(household_dir).name):
+        return HOUSEHOLD_PAUSED
+    return ""
+
+
+def household_pause(household_dir: Path | str) -> str:
+    """:func:`pause_of` read off the disk: the household's record and each
+    of its returns' details. A record that cannot be read claims nothing
+    here; the pass says its own problem."""
+    from tracker.manifest import ManifestError, load_engagement_info
+
+    folder = Path(household_dir)
+    try:
+        info = load_household_info(folder)
+    except Exception:
+        info = HouseholdInfo()
+    returns = []
+    for one in household_returns(folder):
+        try:
+            returns.append((one, load_engagement_info(one)))
+        except (ManifestError, ValueError, OSError):
+            continue
+    return pause_of(folder, info, returns)
+
+
+def client_side_expected(household_dir: Path | str, returns: Iterable[Path]) -> bool:
+    """Whether this household's client folder is known to have existed
+    (SPEC-162 ruling 2, kept by decision 188): the firm said it shared the
+    household, or a recorded original of one of its returns rests under
+    ``Clients\\<its folder name>``. Then a missing client folder is a
+    household renamed or moved - :data:`CLIENT_FOLDER_MISSING`, and nothing
+    is made - and never a new household to lay out again."""
+    from tracker import layout, store
+
+    folder = Path(household_dir)
+    try:
+        if shared_on(folder) is not None:
+            return True
+    except Exception:                   # a household whose record cannot be read
+        pass
+    root = folder.parent.parent
+    for one in returns:
+        try:
+            held = store.documents(_the_record(one), one)
+        except Exception:
+            continue
+        for row in held:
+            if row.get("pbc_location"):
+                place = layout.place_of(root, layout.locate(one, row["pbc_location"]))
+                if place.kind in layout.CLIENT_KINDS and not claim_disagrees(place.household,
+                                                                             folder.name):
+                    return True
+    return False
+
+
+def client_folder_missing(household_dir: Path | str, returns: Iterable[Path] | None = None) -> str:
+    """``door.client_folder_missing`` for this household, the record's half
+    read here (:func:`client_side_expected`): the one verdict every writer
+    asks before it writes (the review's M3)."""
+    from tracker import door
+
+    folder = Path(household_dir)
+    folders = list(returns) if returns is not None else household_returns(folder)
+    return door.client_folder_missing(folder.parent.parent, folder.name,
+                                      had_one=client_side_expected(folder, folders))

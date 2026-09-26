@@ -43,6 +43,20 @@ line, and neither holds a copy of the answer. It returns a code naming the
 class of problem, never the location, because the location is whatever a
 record line said.
 
+**Which household is this, and may this path exist, is worded here once**
+(decision 188). One name rule (:func:`segment_problem`, after
+:func:`normalised_name`) is what a household or return name may be,
+wherever it is typed and wherever a record carries one; one comparison key
+(:func:`name_key`) is how two names are compared wherever identity is
+asked; the constructors refuse a name the rule refuses, or a year that is
+not four digits; and one positional parser (:func:`place_of`) says what
+kind of place a path is. This module is the only place a word of the
+layout (:data:`CLIENTS_TREE`, :data:`PRIVATE_TREE`, the inbox, ``_Opened``)
+is compared with a path; ``tests/test_layers.py`` holds every other module
+to that. What must touch the disk - resolving a path a person typed, the
+link check, the one door into the client tree - is ``tracker.door``, which
+holds no rule of its own and asks this module.
+
 The engagement remains the software's word for one return in one year: the
 return folder *is* the engagement folder. "Household" is the new word.
 """
@@ -52,7 +66,10 @@ from __future__ import annotations
 import ntpath
 import os
 import posixpath
+import re
+import unicodedata
 from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path, PurePath
 
 #: The only tree a client is ever shared. It holds the household's folder,
@@ -140,12 +157,290 @@ def is_year_folder(name: str) -> bool:
     return len(name) == 4 and name.isdigit()
 
 
+# -------------------------------------------------------------- the names ----
+
+
+class LayoutError(ValueError):
+    """A name, a year or a path the layout refuses, with the sentence that
+    says why. A ``ValueError``, so a caller that already answered a bad
+    value keeps answering this one."""
+
+
+#: The longest household or return name (decision 188): a pasted paragraph
+#: is not a name. :data:`PATH_TOO_LONG` stays the final word on a whole path.
+NAME_MAX_CHARS = 80
+#: What a name the machine made begins with - hidden state, private
+#: folders, an office lock file's, the sync client's ``.tmp.drive*``
+#: staging. The walk passes over a folder named so without a word
+#: (``tracker.registry``), and no household or return may be named so,
+#: because the walk would never list it.
+MACHINE_PREFIXES: tuple[str, ...] = (".", "_", "~$")
+
+#: Characters Windows forbids in file and folder names, plus control
+#: characters - the one list, for identifiers, for sanitising names and for
+#: the name rule (moved here from ``tracker.records`` by decision 188).
+_ILLEGAL_PUNCTUATION = '\\/:*?"<>|'
+WINDOWS_ILLEGAL_CHARS = re.compile("[" + re.escape(_ILLEGAL_PUNCTUATION) + r"\x00-\x1f]")
+WINDOWS_ILLEGAL_CHARS_TEXT = " ".join(_ILLEGAL_PUNCTUATION)
+#: The names Windows keeps for devices (decision 137, L6). A folder or a
+#: file named one of them - with or without an extension, in any case - is
+#: not a folder at all: ``NUL`` is the null device, ``COM1`` a serial port,
+#: and a working copy, a household or a return named one could never
+#: hold a document.
+WINDOWS_RESERVED_NAMES: frozenset[str] = frozenset(
+    {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"}
+    | {f"COM{n}" for n in range(1, 10)}
+    | {f"LPT{n}" for n in range(1, 10)}
+    # The superscript digits Windows reserves too (the review's F6).
+    | {f"{port}{digit}" for port in ("COM", "LPT") for digit in "¹²³"}
+)
+WINDOWS_RESERVED_NAMES_TEXT = ("CON, PRN, AUX, NUL, CONIN$, CONOUT$, COM1-COM9, LPT1-LPT9 "
+                               "and their superscript-1, 2 and 3 forms")
+
+
+def is_reserved_name(name: str) -> bool:
+    """Whether Windows reads ``name`` as a device rather than a file or a
+    folder: a reserved name, alone or before an extension (``nul.txt``),
+    whatever its case and any spaces before the dot."""
+    stem = str(name).split(".", 1)[0].rstrip(" ")
+    return stem.upper() in WINDOWS_RESERVED_NAMES
+
+
+#: The categories no name may hold a character of: control, format
+#: (soft hyphen, the zero-width and direction marks, tags), surrogate,
+#: private use, unassigned, and the line and paragraph separators.
+_INVISIBLE_CATEGORIES = frozenset({"Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp"})
+#: The default-ignorable characters outside those categories: a
+#: combining grapheme joiner, the Hangul and Khmer fillers, the Mongolian
+#: variation selectors, the blank Braille pattern and the variation
+#: selectors. Each draws nothing, so two names differing by one look alike.
+_IGNORABLE_CODES = frozenset(
+    {0x034F, 0x115F, 0x1160, 0x17B4, 0x17B5, 0x180B, 0x180C, 0x180D, 0x2800, 0x3164, 0xFFA0}
+    | set(range(0xFE00, 0xFE10)) | set(range(0xE0100, 0xE01F0))
+)
+
+
+def is_invisible(char: str) -> bool:
+    """Whether ``char`` draws nothing a person could read (decision 188, R2
+    rule 5): a control, format, surrogate, private-use or unassigned
+    character, a line or paragraph separator, a space other than U+0020,
+    or a default-ignorable one. The one set: the name rule refuses them,
+    the key removes them, and ``tracker.containers`` strips them from an
+    attachment's name."""
+    category = unicodedata.category(char)
+    return (category in _INVISIBLE_CATEGORIES or (category == "Zs" and char != " ")
+            or ord(char) in _IGNORABLE_CODES)
+
+
+#: Why the name rule refuses a household or return name (decision 188).
+#: Each is said after :data:`NAME_REFUSED`, and each names a character by
+#: its code point and Unicode name, never the name itself where a record
+#: carried it - only a person's own typing is quoted.
+NAME_EMPTY = "may not be empty"
+NAME_TOO_LONG = "may be at most {limit} characters, got {n}"
+NAME_FIRST_CHARACTER = "must begin with a letter or a digit"
+NAME_TRAILING = "may not end with a dot or a space (Windows drops them from folder names)"
+NAME_ILLEGAL = 'may not contain any of < > : " / \\ | ? * or a control character'
+NAME_DEVICE = "may not be a name Windows keeps for a device ({names})"
+NAME_INVISIBLE = "may not contain an invisible character ({character})"
+NAME_COMPATIBILITY = ("may not contain a full-width or compatibility character ({character}); "
+                      "type it plainly")
+NAME_SCRIPTS = "may not mix letters of two alphabets ({first} and {second})"
+NAME_LAYOUT_WORD = "may not be a name the folder layout uses itself"
+#: How a typed name is refused: the name as typed, what it is, and why.
+NAME_REFUSED = "'{typed}' is not a {what} name: {reason}"
+#: The scripts that count as one alphabet in a name: Chinese characters
+#: are written beside Japanese kana, and Korean beside Chinese characters.
+_ONE_SCRIPT = {"HIRAGANA": "CJK", "KATAKANA": "CJK", "HANGUL": "CJK"}
+
+
+def _character(char: str) -> str:
+    """A character as a refusal names it: its code point and its name."""
+    return f"U+{ord(char):04X} {unicodedata.name(char, 'UNNAMED')}"
+
+
+def _script(char: str) -> str:
+    """The alphabet a letter belongs to: the first word of its Unicode name,
+    with Chinese, Japanese and Korean counted as one."""
+    first = unicodedata.name(char, "UNNAMED").split()[0]
+    return _ONE_SCRIPT.get(first, first)
+
+
+def normalised_name(typed: object) -> str:
+    """A name as a person typed it, normalised once at entry (decision 188):
+    stripped, every run of white space one space, and Unicode NFC - so the
+    ``ñ`` a Mac sends as two characters is the ``ñ`` Windows sends as one."""
+    return unicodedata.normalize("NFC", " ".join(str(typed if typed is not None else "").split()))
+
+
+def segment_problem(name: str) -> str | None:
+    """Why ``name`` is not a household or return name, as a fixed phrase -
+    or ``None`` where it is one (decisions 187 and 188).
+
+    **The one name rule.** A household or a return is a folder name every
+    path under it carries, in both trees, on every machine the Shared
+    Drive syncs to, so it is exactly one folder name that Windows keeps as
+    typed, that a person can read, and that is not a word of the layout
+    itself. Refused, each with its own reason: empty or longer than
+    :data:`NAME_MAX_CHARS`; beginning with anything but a letter or a digit
+    (every name the walk passes over, :data:`MACHINE_PREFIXES`, begins so);
+    ending with a dot or a space; holding a character Windows forbids or a
+    control character; a device name; an invisible character
+    (:func:`is_invisible` - refused, never stripped, because the name is
+    what every path carries and a person is told why); a character not in
+    NFKC form (full-width letters, ligatures, superscripts); letters of two
+    alphabets; and a word of the layout, or four digits.
+
+    The store's admission asks it of every household and return label a
+    record line carries, blank excepted, so a forged label is refused at
+    the gate by the rule a person's typing gets. The phrase names a
+    character by code point, never the name, which may be whatever a line
+    said.
+    """
+    text = str(name)
+    if not text:
+        return NAME_EMPTY
+    if len(text) > NAME_MAX_CHARS:
+        return NAME_TOO_LONG.format(limit=NAME_MAX_CHARS, n=len(text))
+    if WINDOWS_ILLEGAL_CHARS.search(text) or any(unicodedata.category(c) == "Cc" for c in text):
+        return NAME_ILLEGAL
+    if (hidden := next((c for c in text if is_invisible(c)), None)) is not None:
+        return NAME_INVISIBLE.format(character=_character(hidden))
+    if not text[0].isalnum():
+        return NAME_FIRST_CHARACTER
+    if text.endswith((".", " ")):
+        return NAME_TRAILING
+    if is_reserved_name(text):
+        return NAME_DEVICE.format(names=WINDOWS_RESERVED_NAMES_TEXT)
+    if not unicodedata.is_normalized("NFKC", text):
+        odd = next((c for c in text if unicodedata.normalize("NFKC", c) != c),
+                   next((c for c in text if unicodedata.combining(c)), text[0]))
+        return NAME_COMPATIBILITY.format(character=_character(odd))
+    scripts: list[str] = []
+    for char in text:
+        if char.isalpha() and (script := _script(char)) not in scripts:
+            scripts.append(script)
+    if len(scripts) > 1:
+        return NAME_SCRIPTS.format(first=scripts[0].title(), second=scripts[1].title())
+    if is_year_folder(text) or name_key(text) in _LAYOUT_WORD_KEYS:
+        return NAME_LAYOUT_WORD
+    return None
+
+
+def checked_name(typed: object, what: str) -> str:
+    """The name a person typed, normalised - or a :class:`LayoutError`
+    saying which name and why (``what`` is ``household`` or ``return``).
+    Every box and command line a name is typed in asks this, so one rule
+    gives one sentence wherever a name is typed."""
+    name = normalised_name(typed)
+    if (reason := segment_problem(name)) is not None:
+        raise LayoutError(NAME_REFUSED.format(typed=name, what=what, reason=reason))
+    return name
+
+
+#: The look-alikes the comparison key folds (decision 188, R3): the
+#: Cyrillic, Greek and Latin letters Unicode's confusables data (UTS #39)
+#: maps to one basic Latin letter and the firm's fonts draw identically,
+#: the dashes and the apostrophes. A fixed table, stated here, because
+#: anything wider needs the confusables file, a dependency the firm does
+#: not take. It errs wide: over-folding costs a refusal a person answers
+#: by typing a fuller name; under-folding is two households for one family.
+LOOK_ALIKES: dict[str, str] = {
+    # Cyrillic
+    "\u0410": "A", "\u0430": "a", "\u0412": "B", "\u0415": "E", "\u0435": "e",
+    "\u0405": "S", "\u0455": "s", "\u0406": "I", "\u0456": "i", "\u0408": "J",
+    "\u0458": "j", "\u041a": "K", "\u041c": "M", "\u041d": "H", "\u041e": "O",
+    "\u043e": "o", "\u0420": "P", "\u0440": "p", "\u0421": "C", "\u0441": "c",
+    "\u0422": "T", "\u0443": "y", "\u0425": "X", "\u0445": "x", "\u04ae": "Y",
+    "\u051b": "q", "\u051d": "w", "\u04bb": "h", "\u0501": "d", "\u04cf": "l",
+    "\u04c0": "I",
+    # ... and the capitals of the lowercase entries above (the review's M1)
+    "\u0423": "Y", "\u051a": "Q", "\u051c": "W", "\u04ba": "H", "\u0500": "D",
+    # Greek
+    "\u0391": "A", "\u0392": "B", "\u0395": "E", "\u0396": "Z", "\u0397": "H",
+    "\u0399": "I", "\u039a": "K", "\u039c": "M", "\u039d": "N", "\u039f": "O",
+    "\u03bf": "o", "\u03a1": "P", "\u03a4": "T", "\u03a5": "Y", "\u03a7": "X",
+    "\u03bd": "v",
+    # Latin, with the capitals of the two that have one
+    "\u0131": "i", "\u0251": "a", "\u0261": "g", "\u2c6d": "A", "\ua7ac": "G",
+    # Dashes and apostrophes
+    "\u2010": "-", "\u2011": "-", "\u2012": "-", "\u2013": "-", "\u2014": "-",
+    "\u2015": "-", "\u2212": "-", "\ufe63": "-", "\uff0d": "-",
+    "\u2018": "'", "\u2019": "'", "\u02bc": "'", "\u2032": "'",
+}
+#: What the key folds after case: the ASCII look-alikes of ``l`` and ``o``.
+_ASCII_LOOK_ALIKES = str.maketrans({"1": "l", "i": "l", "|": "l", "0": "o"})
+
+
+def name_key(name: str) -> str:
+    """The one key two household or return names are compared by (decision
+    188, R3): NFKC; every invisible character removed; white space
+    collapsed; :data:`LOOK_ALIKES` folded and case folded, twice; ``1``, ``i`` and
+    ``|`` folded to ``l``, ``0`` to ``o`` and ``rn`` to ``m``; NFKC again.
+
+    Two names with one key are one name: household uniqueness, a return's
+    within its household-year, a feed, the rollover's ``--only`` and the
+    claim a record makes about its folder all ask it. The rule refuses a
+    mixed-script name at entry, so the fold is for what the rule cannot
+    see - a name all in one look-alike script, and names on disk from
+    before the rule. :func:`lock_order_key` is an order, not an identity,
+    and keeps its own.
+    """
+    text = unicodedata.normalize("NFKC", str(name))
+    text = " ".join("".join(c for c in text if not is_invisible(c)).split())
+    # The table, case, the table again and case again (the review's M1): a
+    # capital only the table knows (Cyrillic VE is B, its lowercase is no
+    # b) is folded before case can lose it, a letter case turns into one the
+    # table knows (a narrow o, a capital the table does not list) is folded
+    # after - so the key of a key is the key.
+    for _ in range(2):
+        text = "".join(LOOK_ALIKES.get(c, c) for c in text).casefold()
+    text = text.translate(_ASCII_LOOK_ALIKES).replace("rn", "m")
+    return unicodedata.normalize("NFKC", text)
+
+
+#: The words of the layout itself: no household or return is named one.
+_LAYOUT_WORD_KEYS = frozenset(name_key(word) for word in (
+    CLIENTS_TREE, PRIVATE_TREE, INBOX_DIR_NAME, PREPARED_DIR_NAME, REVIEW_DIR_NAME,
+    OPENED_DIR_NAME))
+
+
 # -------------------------------------------------------------- the trees ----
 
 
+def _named(name: str, what: str) -> str:
+    """``name``, when the name rule accepts it as a folder a constructor
+    may build - else the :class:`LayoutError` saying why."""
+    if (reason := segment_problem(name)) is not None:
+        raise LayoutError(NAME_REFUSED.format(typed=name, what=what, reason=reason))
+    return name
+
+
+def _year(year: object) -> int:
+    """``year``, when it is an ``int`` of four digits (a ``bool`` is not)."""
+    if type(year) is not int or not 1000 <= year <= 9999:
+        raise LayoutError(f"{year!r} is not a tax year of four digits")
+    return year
+
+
+def clients_tree_of(root: Path | str) -> Path:
+    """The tree a client is shared, under a clients root. The one place
+    ``root / CLIENTS_TREE`` is spelled (decision 188)."""
+    return Path(root) / CLIENTS_TREE
+
+
+def private_tree_of(root: Path | str) -> Path:
+    """The firm's own tree, under a clients root."""
+    return Path(root) / PRIVATE_TREE
+
+
 def client_household_dir(root: Path | str, household: str) -> Path:
-    """The household's folder in the tree a client is shared."""
-    return Path(root) / CLIENTS_TREE / household
+    """The household's folder in the tree a client is shared.
+
+    Like every constructor here it refuses a name the name rule refuses
+    (decision 188, :class:`LayoutError`): a folder already on disk with
+    such a name is a misfit discovery lists, and never reaches here."""
+    return clients_tree_of(root) / _named(household, "household")
 
 
 def inbox_dir_for(root: Path | str, household: str) -> Path:
@@ -163,17 +458,18 @@ def originals_dir_for(root: Path | str, household: str, year: int) -> Path:
     and 119 for a sort the client never asked for. The firm's working
     copies are sorted by request, under :data:`PREPARED_DIR_NAME` in the other tree.
     """
-    return client_household_dir(root, household) / year_folder_name(year)
+    return client_household_dir(root, household) / year_folder_name(_year(year))
 
 
 def private_household_dir(root: Path | str, household: str) -> Path:
     """The household's folder in the tree that is never shared: its record."""
-    return Path(root) / PRIVATE_TREE / household
+    return private_tree_of(root) / _named(household, "household")
 
 
 def return_dir_for(root: Path | str, household: str, year: int, return_name: str) -> Path:
     """One return's folder - the engagement folder - under its year."""
-    return private_household_dir(root, household) / year_folder_name(year) / return_name
+    return (private_household_dir(root, household) / year_folder_name(_year(year))
+            / _named(return_name, "return"))
 
 
 # ------------------------------------------------- one return, upwards ----
@@ -205,8 +501,8 @@ def year_of(return_dir: Path | str) -> int | None:
 
     ``None`` rather than a guess: a year nobody can read off the layout is
     the record's to say (``EngagementInfo.tax_year``), and a folder whose
-    name disagrees with its record is processed as the record says and
-    warned (``tracker.registry.NAME_DISAGREES``).
+    name disagrees with its record pauses its household (decision 188,
+    ``tracker.households.pause_of``).
     """
     name = Path(return_dir).parent.name
     return int(name) if is_year_folder(name) else None
@@ -303,6 +599,192 @@ def locate(engagement_dir: Path | str, location: str) -> Path:
     return Path(os.path.normpath(os.path.join(str(engagement_dir), location)))
 
 
+# ------------------------------------------------- what kind of place ----
+
+#: The kinds of place :func:`place_of` names (decision 188).
+ROOT = "root"
+CLIENTS = "clients-tree"
+CLIENT_HOUSEHOLD = "client-household"
+INBOX = "inbox"
+IN_INBOX = "in-inbox"
+ORIGINALS = "originals"
+IN_ORIGINALS = "in-originals"
+PRIVATE = "private-tree"
+HOUSEHOLD = "household"
+YEAR = "year"
+OPENED = "opened"
+IN_OPENED = "in-opened"
+RETURN = "return"
+IN_RETURN = "in-return"
+#: Under the root, and fitting none of the places above.
+MISPLACED = "misplaced"
+#: Not under the root at all.
+OUTSIDE = "outside"
+#: Every kind of place in the tree a client is shared.
+CLIENT_KINDS = frozenset({CLIENTS, CLIENT_HOUSEHOLD, INBOX, IN_INBOX, ORIGINALS, IN_ORIGINALS})
+
+#: What a path that is not a return's folder is told (decision 137, L1;
+#: moved here from the API by decision 188). A year folder or a household
+#: folder holds a journal too - the household's own record - so a folder
+#: is a return by where it sits, as discovery reads it.
+NOT_A_RETURN = ("{name} is not a return's folder (a return sits at <clients root>\\{tree}"
+                "\\<household>\\<year>\\<return>); it is not an engagement")
+#: What a path that is not a household's folder is told (decision 176).
+NOT_A_HOUSEHOLD = ("{name} is not a household's folder (a household sits at <clients root>\\{tree}"
+                   "\\<household>); nothing was changed")
+#: What a write the one door refuses is told (decision 188, R9): only a
+#: household's own client folder, its inbox and its year folders of
+#: originals are places the tracker writes in the tree a client is shared.
+OUTSIDE_CLIENT_PLACE = ("{path} is not a place the tracker writes for the household {household} "
+                        "in the tree its client is shared; nothing was written")
+
+
+#: What a household whose client folder is gone, when its record shows it
+#: had one, is told by every writer (SPEC-162 ruling 2, kept by decision
+#: 188): the pass, a new return, every form of Roll Forward. Nothing is
+#: made again under the old name.
+CLIENT_FOLDER_MISSING = ("`Clients\\{name}` is missing. Was the household renamed or moved? "
+                         "Give its client folder back the name `{name}`.")
+
+
+@dataclass(frozen=True, slots=True)
+class Place:
+    """What kind of place a path is under a clients root, and the names it
+    has there. ``household``, ``year`` and ``return_name`` are the path's
+    own spellings, filled as far as the kind reaches."""
+
+    kind: str
+    household: str = ""
+    year: int | None = None
+    return_name: str = ""
+
+
+def _parts(path: Path | str) -> tuple[str, ...]:
+    """A path's parts after lexical normalisation, in its own spelling."""
+    return PurePath(os.path.normpath(str(path))).parts
+
+
+def parts_below(outer: Path | str, inner: Path | str) -> tuple[str, ...] | None:
+    """The names ``inner`` has below ``outer`` - ``()`` for ``outer``
+    itself - or ``None`` when ``inner`` is not under it.
+
+    **Lexical**, both normalised, the parts compared as the filesystem
+    compares them (``os.path.normcase``); a caller that must see through a
+    link resolves first. The one place a path is tested for lying under
+    another (decision 188): every ``relative_to`` it replaces answered the
+    same question with its own rule about case and ``..``.
+    """
+    top, below = _parts(outer), _parts(inner)
+    if outer in ("", ".") or top == (os.curdir,):
+        top = ()
+    if len(below) < len(top) or [os.path.normcase(p) for p in below[:len(top)]] != [
+            os.path.normcase(p) for p in top]:
+        return None
+    rest = below[len(top):]
+    return None if os.pardir in rest else rest
+
+
+def place_of(root: Path | str, path: Path | str) -> Place:
+    """What kind of place ``path`` is under the clients root ``root``
+    (decision 188, R5) - pure and positional, the caller passing both
+    already resolved when a link matters.
+
+    The client tree: :data:`CLIENTS`, a :data:`CLIENT_HOUSEHOLD`, its
+    :data:`INBOX` or a year's :data:`ORIGINALS` and anything
+    :data:`IN_INBOX` or :data:`IN_ORIGINALS`. The private tree:
+    :data:`PRIVATE`, a :data:`HOUSEHOLD`, a :data:`YEAR`, a year's
+    :data:`OPENED` and what is :data:`IN_OPENED`, a :data:`RETURN` and what
+    is :data:`IN_RETURN`. :data:`ROOT` itself; :data:`MISPLACED` for what
+    is under the root and fits none of them, and :data:`OUTSIDE` for what
+    is not under it, a ``..`` left after normalisation included. The
+    trees' and the inbox's names compare as the filesystem does
+    (``os.path.normcase``).
+    """
+    below = parts_below(root, path)
+    if below is None:
+        return Place(OUTSIDE)
+    if not below:
+        return Place(ROOT)
+    same = [os.path.normcase(part) for part in below]
+    depth = len(below)
+    household = below[1] if depth > 1 else ""
+    if same[0] == os.path.normcase(CLIENTS_TREE):
+        if depth == 1:
+            return Place(CLIENTS)
+        if depth == 2:
+            return Place(CLIENT_HOUSEHOLD, household)
+        if same[2] == os.path.normcase(INBOX_DIR_NAME):
+            return Place(INBOX if depth == 3 else IN_INBOX, household)
+        if is_year_folder(below[2]):
+            return Place(ORIGINALS if depth == 3 else IN_ORIGINALS, household, int(below[2]))
+        return Place(MISPLACED, household)
+    if same[0] == os.path.normcase(PRIVATE_TREE):
+        if depth == 1:
+            return Place(PRIVATE)
+        if depth == 2:
+            return Place(HOUSEHOLD, household)
+        if not is_year_folder(below[2]):
+            return Place(MISPLACED, household)
+        year = int(below[2])
+        if depth == 3:
+            return Place(YEAR, household, year)
+        if same[3] == os.path.normcase(OPENED_DIR_NAME):
+            return Place(OPENED if depth == 4 else IN_OPENED, household, year)
+        return Place(RETURN if depth == 4 else IN_RETURN, household, year, below[3])
+    return Place(MISPLACED)
+
+
+def same_folder_name(a: str, b: str) -> bool:
+    """Whether two names in one folder name one folder, as Windows compares
+    them: without case. For the layout's own words (the review folder);
+    two households or returns are compared by :func:`name_key`."""
+    return str(a).casefold() == str(b).casefold()
+
+
+def names_one_folder(a: str, b: str) -> bool:
+    """Whether two names in one folder are one folder as the file system
+    compares them (``os.path.normcase``). What says a client folder is a
+    household's own (the re-check of decision 188, R1): the comparison key
+    refuses a new name, it never identifies a folder on the disk."""
+    return os.path.normcase(str(a)) == os.path.normcase(str(b))
+
+
+def tree_of(root: Path | str, path: Path | str) -> str | None:
+    """The tree - :data:`CLIENTS_TREE` or :data:`PRIVATE_TREE`, as the
+    layout spells it - that ``path`` lies in or is, under ``root``; ``None``
+    for anything else."""
+    below = parts_below(root, path)
+    if not below:
+        return None
+    for tree in (CLIENTS_TREE, PRIVATE_TREE):
+        if os.path.normcase(below[0]) == os.path.normcase(tree):
+            return tree
+    return None
+
+
+def return_at(root: Path | str, path: Path | str) -> tuple[str, int, str]:
+    """The household, year and return name of the return folder ``path``
+    is, or a :class:`LayoutError` (:data:`NOT_A_RETURN`).
+
+    Only a :data:`RETURN` is one: a folder in the client tree - where a
+    client can write, and where a planted journal would otherwise read as
+    a prior - is never one, nor is anything above or below a return."""
+    place = place_of(root, path)
+    if place.kind != RETURN:
+        raise LayoutError(NOT_A_RETURN.format(name=Path(path).name or path, tree=PRIVATE_TREE))
+    assert place.year is not None
+    return place.household, place.year, place.return_name
+
+
+def household_at(root: Path | str, path: Path | str) -> str:
+    """The household name of the household folder ``path`` is, or a
+    :class:`LayoutError` (:data:`NOT_A_HOUSEHOLD`)."""
+    place = place_of(root, path)
+    if place.kind != HOUSEHOLD:
+        raise LayoutError(NOT_A_HOUSEHOLD.format(name=Path(path).name or path, tree=PRIVATE_TREE))
+    return place.household
+
+
 # ------------------------------------- where a step of a return may act ----
 
 #: Why :func:`place_problem` refuses a location (decision 187). A code and
@@ -329,11 +811,6 @@ STEP_CLIENT_TREE = "client-tree"
 STEP_PROBLEMS = frozenset({STEP_BLANK, STEP_ABSOLUTE, STEP_ABOVE_ROOT, STEP_NOT_A_RETURN,
                            STEP_NOT_A_PLACE, STEP_OTHER_HOUSEHOLD, STEP_OTHER_YEAR,
                            STEP_CLIENT_TREE})
-
-
-def _normal_parts(path: str) -> tuple[str, ...]:
-    """A path's parts, normalised and compared as this system compares them."""
-    return PurePath(os.path.normcase(os.path.normpath(path))).parts
 
 
 def place_problem(return_dir: Path | str, location: str, *, writes: bool,
@@ -377,53 +854,32 @@ def place_problem(return_dir: Path | str, location: str, *, writes: bool,
         return STEP_BLANK
     if any(isabs(location) for isabs in (ntpath.isabs, posixpath.isabs)) or ntpath.splitdrive(location)[0]:
         return STEP_ABSOLUTE
-    own = _normal_parts(str(return_dir))[-4:]
-    if (len(own) < 4 or own[0] != os.path.normcase(PRIVATE_TREE) or not is_year_folder(own[2])
-            or os.pardir in own or os.path.isabs(own[0])):
+    # The return's own four folders, read as if they stood at a root of
+    # their own: the answer is the same for a return named absolutely and
+    # one named relative to the root (the store's key).
+    own_parts = _parts(return_dir)[-4:]
+    if len(own_parts) < 4 or any(os.path.isabs(part) for part in own_parts):
         return STEP_NOT_A_RETURN
-    below = _normal_parts(os.path.join(*own, location))
-    if below[:1] == (os.pardir,):
+    own = place_of("", os.path.join(*own_parts))
+    if own.kind != RETURN:
+        return STEP_NOT_A_RETURN
+    at = place_of("", os.path.join(*own_parts, location))
+    if at.kind == OUTSIDE:
         return STEP_ABOVE_ROOT
-    if len(below) > len(own) and below[:len(own)] == own:
+
+    def same(a: str, b: str) -> bool:
+        return os.path.normcase(a) == os.path.normcase(b)
+
+    if at.kind == IN_RETURN and same(at.household, own.household) and at.year == own.year \
+            and same(at.return_name, own.return_name):
         return None
-    if (len(below) > 4 and below[:2] == own[:2] and is_year_folder(below[2])
-            and below[3] == os.path.normcase(OPENED_DIR_NAME)):
-        return None if below[2] == own[2] or not writes else STEP_OTHER_YEAR
-    if (len(below) >= 4 and below[0] == os.path.normcase(CLIENTS_TREE)
-            and (is_year_folder(below[2]) or below[2] == os.path.normcase(INBOX_DIR_NAME))):
+    if at.kind == IN_OPENED and same(at.household, own.household):
+        return None if at.year == own.year or not writes else STEP_OTHER_YEAR
+    if at.kind in (IN_INBOX, IN_ORIGINALS):
         if removes:
             return STEP_CLIENT_TREE
-        return None if not writes or below[1] == own[1] else STEP_OTHER_HOUSEHOLD
+        return None if not writes or same(at.household, own.household) else STEP_OTHER_HOUSEHOLD
     return STEP_NOT_A_PLACE
-
-
-#: Why :func:`segment_problem` refuses a label as one folder name.
-SEGMENT_SEPARATOR = "separator"
-SEGMENT_DOT = "dot"
-SEGMENT_DRIVE = "drive"
-SEGMENT_CONTROL = "control"
-
-
-def segment_problem(name: str) -> str | None:
-    """Why ``name`` is not exactly one folder name, as a code - or ``None``
-    where it is (decision 187).
-
-    A household or return label a record line carries is joined onto a
-    path somewhere, so a label holding a separator, naming ``.`` or ``..``,
-    a drive, or a control character would be a path of its own. Blank is
-    the caller's to allow. Decision 188 widens this into the one name rule
-    (the Windows characters, invisible and look-alike characters).
-    """
-    text = str(name)
-    if "/" in text or "\\" in text:
-        return SEGMENT_SEPARATOR
-    if text.strip() in (os.curdir, os.pardir):
-        return SEGMENT_DOT
-    if ":" in text:
-        return SEGMENT_DRIVE
-    if any(ord(char) < 0x20 or ord(char) == 0x7F for char in text):
-        return SEGMENT_CONTROL
-    return None
 
 
 def deepest_path_length(return_dir: Path | str, subpaths: Iterable[str]) -> int:

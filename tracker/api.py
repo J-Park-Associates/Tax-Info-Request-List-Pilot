@@ -24,6 +24,8 @@ Commands:
             the next one, and retire the returns left out (JSON on stdin)
   mark-shared  record that the firm has shared this household's folder and
             inbox with the client - the firm's word, dated
+  accept-folder-name  record that a paused household (or one return) is now
+            called by its folder's name - a person's word, dated (decision 188)
   scan      one pass over this return's household, exactly as the scheduled
             run makes it (no draft)
   reminder  the week's draft as the record and the file now stand, at any
@@ -48,12 +50,14 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
+import os
 import shutil
 import sys
+from contextlib import ExitStack
 from dataclasses import asdict, replace
 from pathlib import Path
 
-from tracker import STANDING_RULES, content_check, ledger, names, ocr, records, reminder, review, store
+from tracker import STANDING_RULES, content_check, door, layout, ledger, names, ocr, records, reminder, review, store
 from tracker.filer import (
     DUPLICATE,
     FILE_MOVED,
@@ -84,12 +88,17 @@ from tracker.filer import (
 )
 from tracker.fsio import make_new_folders, write_text_atomically
 from tracker.households import (
+    HOUSEHOLD_PAUSED_YEAR,
+    claim_disagrees,
     create_household,
     fed_by,
     household_returns,
     load_household_info,
     open_years,
+    pause_of,
     resolve_feeds,
+    return_disagrees,
+    return_name_taken,
     save_household,
     shared_on,
 )
@@ -105,7 +114,6 @@ from tracker.layout import (
     household_of,
     inbox_dir_for,
     inbox_of,
-    is_year_folder,
     locate,
     originals_dir_for,
     private_household_dir,
@@ -192,6 +200,9 @@ from tracker.registry import (
     discover_engagements,
     engagement_from,
     mark_superseded,
+)
+from tracker.registry import (
+    held_back as registry_held_back,
 )
 from tracker.rollover import (
     ORIGIN_NEW,
@@ -290,13 +301,23 @@ log = logging.getLogger("tracker.api")
 #: executable when frozen) - the same answer tracker.settings gives.
 REPO_ROOT = settings_dir()
 def _root() -> Path:
-    """The clients root from the settings file - the one place it is kept."""
-    root = clients_root()
-    if root is None:
+    """The clients root from the settings file - the one place it is kept -
+    held to the settings' rule on every command that reads it (decision
+    188, E-13): a root saved before a rule, or one a person has since made
+    one level too deep by moving the trees around it, is refused with
+    "Clients folder problem: " and the refusal, never walked."""
+    if clients_root() is None:
         raise ManifestError(
             f"Tell the app where your clients live first (Settings, or `{SET_ROOT_HINT}`)"
         )
-    return root
+    return door.checked_root()
+
+
+def _saved_root() -> Path | None:
+    """The saved clients root held to the rule, as :func:`_root` holds it,
+    or ``None`` where none is saved - for the commands that answer without
+    one (the list before a root is chosen, the wizard's priors)."""
+    return None if clients_root() is None else door.checked_root()
 
 # ----------------------------------------------------------------- commands ----
 
@@ -552,19 +573,20 @@ TEACH_SPELLING_LABEL = "Teach this spelling"
 TEACH_SPELLING_HINT = "the name as this page prints it"
 
 
-def _folder_name(value: str, what: str) -> str:
-    """One folder name from what a person typed, or the refusal that says
-    which box to fix.
+def _folder_name(value: object, what: str) -> str:
+    """One household or return name from what a person typed (``what`` is
+    ``household`` or ``return``), or the refusal that says why.
 
     A household and a return are each **one** folder name: the layout puts
-    them where they go (decision 125), so a name carrying a separator, or
-    one that sanitising leaves empty, is a typo and not a path.
+    them where they go (decision 125), and the layout's one name rule
+    (decision 188, ``layout.checked_name``) says what one may be - the
+    same sentence wherever a name is typed: the wizard, a new return, a
+    rolled return's new name, a feed.
     """
-    typed = str(value or "").strip()
-    name = sanitize_component(typed)
-    if not name or not any(ch.isalnum() for ch in name) or name != typed.strip():
-        raise ManifestError(f"'{typed}' is not a folder name; {what}")
-    return name
+    try:
+        return layout.checked_name(value, what)
+    except layout.LayoutError as exc:
+        raise ManifestError(str(exc)) from None
 
 
 def _new_return_dir(root: Path, household: str, year: int, return_name: str,
@@ -579,13 +601,15 @@ def _new_return_dir(root: Path, household: str, year: int, return_name: str,
     filed document in February is a failure at a filing deadline, and the
     refusal names the length so a person knows what to shorten.
     """
-    household = _folder_name(household, "type the household's name on its own")
-    return_name = _folder_name(return_name, "type the return's name on its own")
+    household = _folder_name(household, "household")
+    return_name = _folder_name(return_name, "return")
     year = check_tax_year(int(year))
     engagement = return_dir_for(root, household, year, return_name)
-    if engagement.exists():
+    # Unique by the layout's key within the household-year (decision
+    # 188), so a look-alike of a return already there is that return.
+    if (taken := return_name_taken(engagement.parent, return_name)) is not None:
         raise ManifestError(
-            f"A return named '{return_name}' already exists for {household} {year}")
+            f"A return named '{taken}' already exists for {household} {year}")
     refuse_a_path_past_the_limit(engagement, items or [])
     return engagement
 
@@ -596,14 +620,6 @@ def _new_return_dir(root: Path, household: str, year: int, return_name: str,
 #: anything is written.
 HOUSEHOLD_NOT_OURS = ("A folder named '{name}' is already there and the tracker did not make it. "
                       "Choose another name, or move that folder aside first. Nothing was changed.")
-#: What a command naming a folder that is not a return is told (decision
-#: 137, L1). A year folder or a household folder holds a journal too - the
-#: household's own record - so a folder is a return by where it sits, as
-#: discovery reads it, and not by whether some record is in it.
-NOT_A_RETURN = ("{name} is not a return's folder (a return sits at <clients root>\\{tree}"
-                "\\<household>\\<year>\\<return>); it is not an engagement")
-
-
 def _engagement_dir(argv: list[str]) -> Path:
     """The engagement a command is about: ``ENGAGEMENT_FLAG <folder>``.
 
@@ -626,63 +642,17 @@ def _engagement_dir(argv: list[str]) -> Path:
     return _return_dir(given)
 
 
-#: What a command naming a folder that is not a household is told
-#: (decision 176): a household sits at <clients root>\<private tree>\<household>.
-NOT_A_HOUSEHOLD = ("{name} is not a household's folder (a household sits at <clients root>\\{tree}"
-                   "\\<household>); nothing was changed")
-
-
 def _return_dir(given: str | Path) -> Path:
-    """The return a path the app sent names, rebuilt from the clients root
-    and its own four validated names - or a ManifestError.
-
-    **A path from outside is parsed, never trusted** (decision 176). It must
-    lie under the clients root, in the private tree, four levels down,
-    under a year folder - the place discovery reads a return from. What
-    comes back is the root joined with the names the resolved path has
-    there, so no ``..``, no ``.`` and no second spelling of the same
-    folder reaches :func:`tracker.layout.household_of`,
-    :func:`~tracker.layout.root_of` or :func:`~tracker.layout.year_of`,
-    which read a return's position off the text of its path. A folder
-    under ``Clients`` - the tree the client can write into, where a
-    planted journal would otherwise read as a prior - is never one.
-    """
-    parts = _placed_under_root(given)
-    if (len(parts) != 4 or parts[0].casefold() != PRIVATE_TREE.casefold()
-            or not is_year_folder(parts[2])):
-        raise ManifestError(NOT_A_RETURN.format(name=Path(given).name or given, tree=PRIVATE_TREE))
-    return _root().joinpath(*parts)
+    """The return a path the app sent names, rebuilt from the checked
+    clients root and its own names (``door.return_dir``, decisions 176 and
+    188) - a folder in the client tree, a year or a household folder, and
+    anything outside the root are refused with the layout's sentence."""
+    return door.return_dir(given, root=_root())
 
 
 def _household_dir(given: str | Path) -> Path:
-    """The household a path the app sent names: ``<root>/<private
-    tree>/<household>``, rebuilt from the root and its validated names as
-    :func:`_return_dir` rebuilds a return (decision 176)."""
-    parts = _placed_under_root(given)
-    if len(parts) != 2 or parts[0].casefold() != PRIVATE_TREE.casefold():
-        raise ManifestError(NOT_A_HOUSEHOLD.format(name=Path(given).name or given, tree=PRIVATE_TREE))
-    return _root().joinpath(*parts)
-
-
-def _placed_under_root(given: str | Path) -> tuple[str, ...]:
-    """The names ``given`` has below the clients root, else a ManifestError.
-
-    A relative path is read from the root. Checked whether or not the
-    folder it names is reachable right now: an unplugged drive is not a
-    licence to read from anywhere. Resolved on both sides, so ``..``, a
-    junction out of the root and a case difference are all seen for what
-    they are. **With no root set it refuses** (decision 137, L1): it used
-    to pass any folder at all then, which made an unconfigured app a
-    reader of anywhere.
-    """
-    root = _root()
-    folder = Path(given)
-    if not folder.is_absolute():
-        folder = root / folder
-    try:
-        return folder.resolve().relative_to(root.resolve()).parts
-    except ValueError:
-        raise ManifestError(f"{folder} is not under the clients root {root}") from None
+    """The household a path the app sent names (``door.household_dir``)."""
+    return door.household_dir(given, root=_root())
 
 
 #: What a command is told when the app's JSON is not one object.
@@ -727,9 +697,9 @@ def default_return_name(form: str, client: str) -> str:
     renderer fills the same pattern for its preview, so the box and the
     folder agree.
     """
-    return sanitize_component(
+    return layout.normalised_name(sanitize_component(
         RETURN_NAME_PATTERN.format(form=form, client=client or "New client").strip()
-    )
+    ))
 
 
 #: A word as a class name, from the module that owns how the firm's pages
@@ -759,6 +729,17 @@ def standing_rules() -> list[dict]:
 #: The heading the root dialog lists the returns short of room under, after
 #: a person sets the clients root (decision 131).
 ROOM_HEADING = "Returns short of room under this root"
+
+
+#: What each key of a return's ``paths`` names: a folder or a file
+#: (decision 188, E-14). The shell ``lstat``s a path before it opens it and
+#: refuses a link, or a path that is no longer the kind reported.
+PATH_KINDS: dict[str, str] = {
+    "engagement": "folder", "inbox": "folder", "originals": "folder", "client_folder": "folder",
+    "household": "folder", "prepared": "folder", "view": "file", "draft": "file", "status": "file",
+}
+#: What the shell says when a reported path is no longer what it was.
+SHELL_NOT_OPENED = "That is no longer the folder or file the tracker reported; nothing was opened."
 
 
 def _vocab() -> dict:
@@ -956,12 +937,19 @@ def _vocab() -> dict:
             "feed_warning": FEED_WARNING,
             "return_warning": RETURN_WARNING,
             "nobody_typed": NOBODY_TYPED,
+            # A paused household (decision 188): the one action and its help.
+            "accept_folder_name": ACCEPT_FOLDER_NAME_LABEL,
+            "accept_folder_name_help": ACCEPT_FOLDER_NAME_HELP,
         },
         "year_min": YEAR_MIN,
         "year_max": YEAR_MAX,
         "example_root": EXAMPLE_ROOT,
         "engagement_flag": ENGAGEMENT_FLAG,
         "commands": sorted(COMMANDS),
+        # What each path the API reports is (decision 188, E-14): the shell
+        # opens one only while it is still that kind of thing and no link.
+        "path_kinds": PATH_KINDS,
+        "shell": {"not_opened": SHELL_NOT_OPENED},
         "rules": standing_rules(),
         "schedule": {
             "start": DEFAULT_START,
@@ -1403,7 +1391,7 @@ def _the_practice() -> Registry | None:
     asked for in one place and both the card (:func:`_feed_payload`) and
     *Run now* (:func:`_cmd_scan`) ask it the same way.
     """
-    root = clients_root()
+    root = _saved_root()
     try:
         return discover_engagements(root) if root and root.is_dir() else None
     except RegistryError:
@@ -1442,8 +1430,8 @@ def _feed_payload(household_dir: Path, years: list[int]) -> tuple[list[dict], li
     feeds = []
     for one in info.feeds:
         match = next((found_one for key, found_one in by_line.items()
-                      if key[0].casefold() == one.household.casefold()
-                      and key[1].casefold() == one.return_name.casefold()), None)
+                      if layout.name_key(key[0]) == layout.name_key(one.household)
+                      and layout.name_key(key[1]) == layout.name_key(one.return_name)), None)
         feeds.append({
             "household": one.household, "return_name": one.return_name,
             "label": match.label if match else "",
@@ -1453,6 +1441,47 @@ def _feed_payload(household_dir: Path, years: list[int]) -> tuple[list[dict], li
     fed = [{"name": one.name, "path": str(one.path), "members": list(one.info.members)}
            for one in fed_by(registry, household_dir)]
     return feeds, fed
+
+
+#: The app's action on a paused household (decision 188, R6) and its help.
+ACCEPT_FOLDER_NAME_LABEL = "Accept the folder's name"
+ACCEPT_FOLDER_NAME_HELP = ("records that this household (or this return) is now called by its folder's "
+                           "name; nothing is moved or renamed")
+#: Why the app does not accept a folder's name.
+YEAR_NOT_ACCEPTED = ("This return's folder sits under a year its record does not hold. Move it back "
+                     "under the year its record says. Nothing was changed.")
+ORIGINALS_UNDER_OLD_NAME = ("The originals of this household rest under its client folder of the old "
+                            "name. Give the folder back the name its record holds; a household is "
+                            "not renamed this season. Nothing was changed.")
+#: What an accept drawn from a household page that has since changed is told.
+ACCEPT_STALE = ("The household's record changed since this page was drawn; nothing was changed. "
+                "Look at it again.")
+#: What an accept on a household that is not paused is told.
+NOT_PAUSED = "This household's folders and its record agree; there is nothing to accept."
+
+
+def _household_seq(household_dir: Path) -> int:
+    """The household record's version as a page shows it: its line count."""
+    return len(ledger.read_events(household_dir))
+
+
+def _pause_payload(household_dir: Path, info: HouseholdInfo, returns: list) -> dict:
+    """Why the household is paused, and what accepting would record: the
+    household's own name when its record claims another, else the first
+    return whose claims disagree (decision 188)."""
+    readable = [one for one in returns if not one.problem]
+    sentence = pause_of(household_dir, info, [(one.path, one.info) for one in readable])
+    # A year is never accepted (ruling 9.3): the card shows the sentence and
+    # no button, rather than a button that can only be refused (review S3).
+    if not sentence or sentence == HOUSEHOLD_PAUSED_YEAR:
+        return {"sentence": sentence, "scope": "", "engagement": "", "seq": None}
+    household_claim = claim_disagrees(info.name, household_dir.name) or any(
+        claim_disagrees(one.info.household, household_dir.name) for one in readable)
+    which = next((one.path for one in readable if return_disagrees(one.path, one.info)), None)
+    scope = "household" if household_claim else "return"
+    return {"sentence": sentence, "scope": scope,
+            "engagement": str(which or (readable[0].path if readable else "")),
+            "seq": _household_seq(household_dir)}
 
 
 def _household_payload(engagement: Path) -> dict:
@@ -1495,7 +1524,12 @@ def _household_payload(engagement: Path) -> dict:
         for one in returns if one.active and one.tax_year in years
     )
     feeds, fed = _feed_payload(household_dir, years)
+    pause = _pause_payload(household_dir, info, returns)
     return {
+        # Why the pass touches nothing of this household, and what a person
+        # may accept (decision 188): the card draws the sentence and the
+        # one button, and sends back the seq it was drawn from.
+        "pause": pause,
         "name": household_dir.name,
         "path": str(household_dir),
         "members": list(info.members),
@@ -1544,7 +1578,7 @@ def _rule_for_the_editor(row) -> dict:
 
 
 def _state(engagement: Path) -> dict:
-    root = clients_root()
+    root = _saved_root()
     # The store is brought up to the record before anything is read, and
     # showing an engagement stays a read - the app shows one a pass is
     # holding, and says so. The rules a person sees here are the ones the
@@ -1759,7 +1793,7 @@ def _record_pass(runs: list[EngagementRun] | EngagementRun,
     """
     every = [runs] if isinstance(runs, EngagementRun) else list(runs)
     said = list(warnings or [])
-    root = clients_root()
+    root = _saved_root()
     if root is None or not root.is_dir():
         return []
     failed: list[str] = []
@@ -2130,11 +2164,18 @@ def _cmd_list(argv: list[str]) -> dict:
     what the job walks cannot disagree (decision 125). ``engagements``
     keeps its two old keys so the picker changes as little as it can.
     """
-    root = clients_root()
     # The app's first call: an app too deep for its reader says so at once,
     # in a banner that stays (SPEC-169 section 9).
     empty = {"engagements": [], "households": [], "misfits": [],
              "reader_warning": ocr.reader_path_warning()}
+    # A saved root the rule refuses (decision 188, E-13) is never walked:
+    # the app asks for the folder again and says why, and the rest of the
+    # app - its vocabulary, its commands - still arrives with this reply.
+    try:
+        root = _saved_root()
+    except door.DoorError as exc:
+        return {**empty, "needs_root": True, "root": str(clients_root() or ""),
+                "root_problem": str(exc), "vocab": _vocab()}
     if root is None or not root.is_dir():
         return {**empty, "needs_root": True, "root": str(root or ""), "vocab": _vocab()}
     try:
@@ -2174,11 +2215,63 @@ def _cmd_list(argv: list[str]) -> dict:
     return {
         "engagements": engagements,
         "households": households,
-        "misfits": [{"path": str(misfit.path), "sentence": misfit.sentence}
+        # Where each misfit is below the root, worded by the layout (decision
+        # 188): the page never works out whether one path lies under another.
+        "misfits": [{"path": str(misfit.path), "sentence": misfit.sentence,
+                     "where": str(Path(*below)) if (below := layout.parts_below(root, misfit.path))
+                     else str(misfit.path)}
                     for misfit in registry.misfits],
         "needs_root": False, "root": str(root), "vocab": _vocab(),
         "reader_warning": empty["reader_warning"],
     }
+
+
+#: What the wizard is told when a household name typed again is, by the
+#: layout's key, a household already in the list (decision 188, R7; the
+#: tie-breaker is Jason's ruling of 2026-09-26: a first name or a middle
+#: initial, then the city - never an identifier).
+DUPLICATE_HOUSEHOLD = ("A household with that name is already in the list, as '{existing}'. Pick it "
+                       "there to add a return to it. If this is another household, add a first name "
+                       "or a middle initial to tell the two apart, and if the names still match, add "
+                       "the city. Nothing was changed.")
+#: What it is told when the name is a client folder no household owns.
+CLIENT_FOLDER_TAKEN = ("A folder with that name is already in the clients' tree and no household owns "
+                       "it. It is listed under Folders the tracker leaves alone; give it back to its "
+                       "household or move it aside first. Nothing was changed.")
+
+
+def _folders_in(tree: Path) -> list[Path]:
+    """The folders directly in one tree, by name, from one listing."""
+    try:
+        with os.scandir(tree) as entries:
+            return sorted(Path(entry.path) for entry in entries if entry.is_dir(follow_symlinks=False))
+    except OSError:
+        return []
+
+
+def _refuse_a_taken_household_name(root: Path, household: str) -> None:
+    """Refuse a typed household name that is, by the layout's key, one
+    already taken in either tree (decision 188, R7): a household folder or
+    a household record's name (:data:`DUPLICATE_HOUSEHOLD` - pick it in the
+    list), a folder the tracker did not make where a household would be
+    (:data:`HOUSEHOLD_NOT_OURS`), or a client folder no household owns
+    (:data:`CLIENT_FOLDER_TAKEN`). Names are unique across both trees."""
+    key = layout.name_key(household)
+    for folder in _folders_in(layout.private_tree_of(root)):
+        recorded = ledger.path_for(folder).is_file()
+        claim = ""
+        if recorded:
+            try:
+                claim = load_household_info(folder).name
+            except ManifestError:
+                claim = ""
+        if layout.name_key(folder.name) == key or (claim and layout.name_key(claim) == key):
+            if recorded:
+                raise ManifestError(DUPLICATE_HOUSEHOLD.format(existing=folder.name))
+            raise ManifestError(HOUSEHOLD_NOT_OURS.format(name=folder.name))
+    for folder in _folders_in(layout.clients_tree_of(root)):
+        if layout.name_key(folder.name) == key:
+            raise ManifestError(CLIENT_FOLDER_TAKEN)
 
 
 def _cmd_create(argv: list[str]) -> dict:
@@ -2217,8 +2310,14 @@ def _cmd_create(argv: list[str]) -> dict:
         if not ledger.path_for(household_dir).is_file():
             raise ManifestError(f"No household record found in '{given}'")
         household = household_dir.name
+        # A household paused or stopped takes no new return (decision 188,
+        # R7): the new record would be written from one name and filed
+        # under another, or into one of two folders that claim one family.
+        if held := registry_held_back(household_dir):
+            raise ManifestError(held)
     else:
-        household = _folder_name(spec.get("household"), "type the household's name on its own")
+        household = _folder_name(spec.get("household"), "household")
+        _refuse_a_taken_household_name(root, household)
         household_dir = private_household_dir(root, household)
     # A household the record already knows is that household, whether the
     # wizard named it by its folder or a person typed its name again: its
@@ -2391,21 +2490,22 @@ def _feeds_from_spec(sent: object, household_dir: Path) -> tuple[Feed, ...]:
     wanted: list[Feed] = []
     for one in sent:
         raw = one if isinstance(one, dict) else {}
-        household = " ".join(str(raw.get("household", "") or "").split())
-        return_name = " ".join(str(raw.get("return_name", "") or "").split())
+        household = layout.normalised_name(raw.get("household", "") or "")
+        return_name = layout.normalised_name(raw.get("return_name", "") or "")
         refusal = FEED_REFUSED.format(household=household or "(blank)",
                                       return_name=return_name or "(blank)")
         if not household or not return_name:
             raise ManifestError(refusal)
-        # A feed names two folders, so each half must be a folder name the
-        # sanitiser leaves as it is (decision 137, L6): a separator, a
-        # device name or a trailing dot names no folder a pass could find.
-        if sanitize_component(household) != household or sanitize_component(return_name) != return_name:
+        # A feed names two folders, so each half is held to the layout's
+        # one name rule (decision 188), and says why as a typed name does;
+        # identity is the layout's one key, never a spelling.
+        _folder_name(household, "household")
+        _folder_name(return_name, "return")
+        if layout.name_key(household) == layout.name_key(household_dir.name):
             raise ManifestError(refusal)
-        if household.casefold() == household_dir.name.casefold():
-            raise ManifestError(refusal)
-        if any(held.household.casefold() == household.casefold()
-               and held.return_name.casefold() == return_name.casefold() for held in wanted):
+        if any(layout.name_key(held.household) == layout.name_key(household)
+               and layout.name_key(held.return_name) == layout.name_key(return_name)
+               for held in wanted):
             raise ManifestError(refusal)
         wanted.append(Feed(household=household, return_name=return_name))
     return tuple(wanted)
@@ -2456,7 +2556,7 @@ def _cmd_priors(argv: list[str]) -> dict:
     The same discovery the scheduled run uses, so what the wizard offers
     and what the job walks are one list; superseded_by comes from it too.
     """
-    root = clients_root()
+    root = _saved_root()
     if root is None or not root.is_dir():
         return {"priors": []}
     try:
@@ -2518,6 +2618,10 @@ def _cmd_rollover(argv: list[str]) -> dict:
     # describe the prior year before roll_forward() asks what never got
     # filed.
     ensure(prior)
+    # A household paused, stopped, or whose client folder is gone (decision
+    # 188 and its review's M3, S4): refused before anything is written.
+    if held := registry_held_back(household_of(prior)):
+        raise ManifestError(held)
 
     form = str(spec.get("form", "")).strip()
     template = template_items(form) if form else []
@@ -2594,10 +2698,9 @@ def _cmd_rollover(argv: list[str]) -> dict:
 def _carried_payload(report, prior: Path) -> dict:
     """One return's rollover as the app reads it: every rolled row with its
     origin, its note and whether it is asked, last year's unfiled files, and
-    - since decision 177 - the prior's own warning when its folders and its
-    record disagree (``registry.NAME_DISAGREES``), because the roll is the
-    moment a person acts on that return and the new year's record, written
-    from the folder it sits in, now disagrees with the prior's."""
+    - since decision 177 - the prior's own warning, which decision 188
+    leaves empty for a disagreement: a household whose folders and record
+    disagree is paused and never rolls."""
     return {
         "warning": engagement_from(prior).warning,
         "carried": [
@@ -2655,7 +2758,7 @@ def _cmd_roll_household(argv: list[str]) -> dict:
             form=str((one or {}).get("form", "") or "").strip(),
             # A name a person typed is one folder name, checked here as
             # every other typed name is; blank keeps the prior's own.
-            return_name=_folder_name(named, "type the return's name on its own") if named else "",
+            return_name=_folder_name(named, "return") if named else "",
         ))
 
     done = roll_household(household_dir, target_year=target_year, plans=plans)
@@ -2706,6 +2809,91 @@ def _cmd_mark_shared(argv: list[str]) -> dict:
         store.record(store.connect(), household_dir, ledger.new(ledger.SHARING_CONFIRMED))
     marked = shared_on(household_dir)
     return {"shared_on": marked.isoformat() if marked else None, "state": _state(engagement)}
+
+
+def _cmd_accept_folder_name(argv: list[str]) -> dict:
+    """Accept a paused household's (or one return's) folder name as its
+    name (decision 188, R6): ``--engagement`` names a return of the
+    household; JSON on stdin ``{"seq": n, "scope": "household" | "return"}``.
+
+    Under the household's lock and each return's, judged by the seq the
+    page was drawn from, it appends one ``household_changed`` line naming
+    the household's folder to the household record where its record
+    claimed another name, and - for ``household`` - one ``rules_changed``
+    line with the folder's name as ``info.household`` to each return whose
+    claim disagrees, or - for ``return`` - one with ``info.household`` and
+    ``info.return_name`` for that return - never the household's name.
+    Every line carries
+    ``accepted: folder_name``, the person's word, dated by its own stamp.
+    **Nothing is moved or renamed.** Refused, with nothing written, when a
+    year disagrees (:data:`YEAR_NOT_ACCEPTED`: a return's year is its
+    record's) and, whatever the scope, when a recorded original of an
+    accepted return rests under a client folder of another name
+    (:data:`ORIGINALS_UNDER_OLD_NAME`: a household that has received a
+    document is not renamed this season, and its originals are never
+    orphaned).
+    """
+    engagement = _engagement_dir(argv)
+    spec = _read_spec()
+    seq = _seq_of(spec)
+    scope = spec.get("scope")
+    if scope not in ("household", "return"):
+        raise ManifestError("Say what to accept: the household's name or this return's")
+    household_dir = household_of(engagement)
+    folder_name = household_dir.name
+    accepted = {ledger.ACCEPTED_KEY: ledger.FOLDER_NAME_ACCEPTED}
+    returns = household_returns(household_dir)
+    written: list[str] = []
+    with ExitStack() as locks:
+        for folder in [household_dir, *sorted(returns, key=layout.lock_order_key)]:
+            locks.enter_context(engagement_lock(folder))
+        if seq != _household_seq(household_dir):
+            raise ManifestError(ACCEPT_STALE)
+        info = load_household_info(household_dir)
+        details = {one: load_engagement_info(one) for one in returns}
+        if not pause_of(household_dir, info, list(details.items())):
+            raise ManifestError(NOT_PAUSED)
+        judged = returns if scope == "household" else [engagement]
+        if any(return_disagrees(one, details[one]) == "year" for one in judged):
+            raise ManifestError(YEAR_NOT_ACCEPTED)
+        # Whatever the scope, before anything is written (the review's M2):
+        # an accept whose returns hold originals under a client folder of
+        # another name would orphan them.
+        if _originals_under_another_name(household_dir, judged):
+            raise ManifestError(ORIGINALS_UNDER_OLD_NAME)
+        conn = store.connect()
+        # Only an accept of the household renames it: a return's accept
+        # writes that return's own line and never the household's name.
+        if scope == "household" and claim_disagrees(info.name, folder_name):
+            store.record(conn, household_dir, ledger.new(
+                ledger.HOUSEHOLD_CHANGED, **{ledger.HOUSEHOLD_KEY: {"name": folder_name}}, **accepted))
+            written.append(str(household_dir))
+        for one in judged:
+            if scope == "household":
+                if not claim_disagrees(details[one].household, folder_name):
+                    continue
+                named = {"household": folder_name}
+            else:
+                named = {"household": folder_name, "return_name": one.name}
+            store.record(conn, one, ledger.new(
+                ledger.RULES_CHANGED, **{ledger.INFO_KEY: named}, **accepted))
+            written.append(str(one))
+    return {"accepted": written, "state": _state(engagement)}
+
+
+def _originals_under_another_name(household_dir: Path, returns: list[Path]) -> bool:
+    """Whether a recorded original of these returns rests under a client
+    folder whose name is not this household folder's."""
+    root = household_dir.parent.parent
+    for one in returns:
+        for entry in read_index(one):
+            if not entry.pbc_location:
+                continue
+            place = layout.place_of(root, locate(one, entry.pbc_location))
+            if place.kind in layout.CLIENT_KINDS and \
+                    layout.name_key(place.household) != layout.name_key(household_dir.name):
+                return True
+    return False
 
 
 def _seq_of(spec: dict) -> int:
@@ -3383,6 +3571,7 @@ COMMANDS = {
     "rollover": _cmd_rollover,
     "roll-household": _cmd_roll_household,
     "mark-shared": _cmd_mark_shared,
+    "accept-folder-name": _cmd_accept_folder_name,
     "scan": _cmd_scan,
     "reminder": _cmd_reminder,
     "approve": _cmd_approve,
@@ -3415,7 +3604,7 @@ def main(argv: list[str]) -> int:
         # read, and ended with it (decision 169, R-4).
         with ocr.reading_session(in_a_child=content_check.READ_IN_A_CHILD):
             payload = COMMANDS[argv[0]](argv[1:])
-    except (ManifestError, ScanLockedError, FilingError) as exc:
+    except (ManifestError, ScanLockedError, FilingError, door.DoorError, layout.LayoutError) as exc:
         print(json.dumps({"error": str(exc)}))
         return 1
     except Exception as exc:  # surface anything else as JSON, not a traceback

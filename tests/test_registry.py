@@ -10,6 +10,7 @@ the owner's rule and the whole of what a misfit is.
 """
 
 import datetime as dt
+import os
 
 import pytest
 
@@ -25,7 +26,6 @@ from tracker.registry import (
     MISFIT_NOT_A_TREE,
     MISFIT_NOT_A_YEAR,
     MISFIT_RECORD_MISPLACED,
-    NAME_DISAGREES,
     UNLISTED,
     Engagement,
     RegistryError,
@@ -174,23 +174,35 @@ def test_a_household_with_no_return_anywhere_is_said_and_is_still_a_household(ro
     assert misfits(root)["Empty Family"] == MISFIT_NO_RETURN
 
 
-def test_a_folder_whose_name_disagrees_with_its_record_is_processed_as_the_record_says_and_warned(root):
-    """The record wins over a folder somebody renamed, and nothing is ever
-    renamed back: the return is processed as its details say and the
-    disagreement is one sentence a person reads."""
+def test_a_folder_whose_name_disagrees_with_its_record_pauses_its_household(root):
+    """Decision 188 (R6) overrules "the record wins": the folder is the
+    identity and the record's labels are a claim, and a claim that
+    disagrees pauses the whole household - a renamed return folder, a
+    renamed household folder, a year folder renamed (with its own
+    sentence) - and nothing is ever renamed back."""
+    from tracker.households import HOUSEHOLD_PAUSED, HOUSEHOLD_PAUSED_YEAR
+
     engagement = make(root, year=2025)
+    make(root, household="Jones Family", name="1040 - Jones")
     household = private_household_dir(root, "Smith Family")
+    assert discover_engagements(root).paused == {}
+
     (household / "2025").rename(household / "2027")             # a year folder, renamed
     moved = household / "2027" / "1040 - Smith"
-
-    [found] = discover_engagements(root).engagements
-    assert found.path == moved
-    assert found.problem == ""                                   # still an engagement
-    assert found.tax_year == 2025 and found.label.endswith("1040 - Smith")
-    assert found.warning == NAME_DISAGREES.format(
-        folder="Smith Family/2027/1040 - Smith", recorded=found.label)
+    found = discover_engagements(root)
+    assert found.paused == {household: HOUSEHOLD_PAUSED_YEAR}
+    [smith] = [e for e in found.engagements if e.path == moved]
+    assert smith.problem == "" and smith.tax_year == 2025        # still an engagement
+    assert smith.warning == ""
     assert moved.is_dir()                                        # nothing was renamed
-    assert engagement.parent.parent == household
+
+    (household / "2027").rename(household / "2025")
+    (household / "2025" / "1040 - Smith").rename(household / "2025" / "1040 - Smyth")
+    assert discover_engagements(root).paused == {household: HOUSEHOLD_PAUSED}
+    (household / "2025" / "1040 - Smyth").rename(engagement)
+    # Case alone, or a look-alike, is not a disagreement: one key.
+    (household / "2025" / "1040 - Smith").rename(household / "2025" / "1040 - SMITH")
+    assert discover_engagements(root).paused == {}
 
 
 def test_hidden_and_underscore_folders_are_skipped(root):
@@ -500,3 +512,108 @@ def test_fed_by_lists_the_households_whose_feeds_name_this_one(tmp_path):
     # The households come back whole, so the card that shows them can name
     # the folder and nothing about anybody's family.
     assert all(one.info.feeds for one in fed_by(registry, llc))
+
+
+def test_a_household_or_return_folder_the_name_rule_refuses_is_a_misfit_with_the_reason(root):
+    """Decision 188 (R2, R8): a folder put on disk by hand under a name the
+    rule refuses - an invisible character, letters of two alphabets, a
+    trailing dot - is listed with the rule's own reason and left alone:
+    the constructors refuse to build a path through it, so the pass never
+    reaches it, and nothing inside it is read."""
+    from tracker.layout import segment_problem
+    from tracker.registry import MISFIT_BAD_NAME
+
+    make(root)
+    private = root / PRIVATE_TREE
+    bad_household = private / "Smith​ Family"
+    (bad_household / "2025" / "1040 - Smith").mkdir(parents=True)
+    ledger.path_for(bad_household).write_text("", encoding="utf-8")
+    bad_return = private / "Smith Family" / "2025" / "1040 - Smіth Jr."
+    bad_return.mkdir(parents=True)
+    ledger.path_for(bad_return).write_text("", encoding="utf-8")
+
+    found = discover_engagements(root)
+    said = {os.path.normcase(m.path): m.sentence for m in found.misfits}
+
+    # On Windows the file system itself refuses some of these names: it
+    # drops a trailing dot or space (``Jr.`` is made as ``Jr``), and will
+    # not make a device name at all. So the claim is made of each folder as
+    # it actually exists on the disk, named as the disk names it - every
+    # one of them, and each still refused by the rule for what it is.
+    on_disk = [one for folder in (bad_household, bad_return) for one in folder.parent.iterdir()
+               if os.path.normcase(one.name) in {os.path.normcase(folder.name),
+                                                 os.path.normcase(folder.name.rstrip(". "))}]
+    assert len(on_disk) == 2, on_disk
+    for folder in on_disk:
+        reason = segment_problem(folder.name)
+        assert reason is not None, folder
+        assert said[os.path.normcase(folder)] == MISFIT_BAD_NAME.format(reason=reason), folder
+    assert [e.path.name for e in found.engagements] == ["1040 - Smith"]
+    assert [h.path.name for h in found.households] == ["Smith Family"]
+
+
+def test_a_client_folder_with_no_record_is_listed_by_name_only(root, monkeypatch):
+    """Decision 188 (R8, T12): the client tree's first level is listed by
+    name, and a client folder no household owns is a misfit with its own
+    sentence - while nothing under the client tree is opened, or even
+    asked about: the walk never walks it."""
+    import builtins
+    import os
+
+    from tracker.layout import CLIENTS_TREE
+    from tracker.registry import MISFIT_CLIENT_NO_RECORD
+
+    make(root, scaffold=True)
+    stray = root / CLIENTS_TREE / "Nobody Family"
+    (stray / "2025").mkdir(parents=True)
+    (stray / "2025" / "w2.pdf").write_bytes(b"%PDF-1.4 a client's own file")
+    (root / CLIENTS_TREE / ".tmp.driveupload").mkdir()
+    clients = str(root / CLIENTS_TREE)
+    touched: list[str] = []
+    real_stat, real_open = os.stat, builtins.open
+
+    def watching_stat(path, *args, **kwargs):
+        if str(path).startswith(clients + os.sep):
+            touched.append(str(path))
+        return real_stat(path, *args, **kwargs)
+
+    def watching_open(path, *args, **kwargs):
+        if str(path).startswith(clients + os.sep):
+            touched.append(str(path))
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "stat", watching_stat)
+    monkeypatch.setattr(builtins, "open", watching_open)
+    found = discover_engagements(root)
+    monkeypatch.undo()
+
+    said = {m.path: m.sentence for m in found.misfits}
+    assert said == {stray: MISFIT_CLIENT_NO_RECORD}
+    assert touched == []
+
+
+def test_a_client_folder_that_only_looks_like_a_households_is_still_listed(root):
+    """The re-check of decision 188 (R1), correcting the review's S5: a
+    household's client folder is the one the file system takes for its
+    own name (``os.path.normcase``). A sibling that only reads as it by the
+    comparison key - ``P\u0430rk`` with a Cyrillic a beside ``Park``, a
+    second space - is another folder: listed as a look-alike, never adopted,
+    and nothing in it is read. A folder of another name is listed as before."""
+    import os
+
+    from tracker.layout import CLIENTS_TREE, INBOX_DIR_NAME
+    from tracker.registry import MISFIT_CLIENT_LOOK_ALIKE, MISFIT_CLIENT_NO_RECORD
+
+    make(root, household="Park", scaffold=True)
+    clients = root / CLIENTS_TREE
+    for sibling in ("P\u0430rk", "Park  Old", "Lee"):
+        (clients / sibling / INBOX_DIR_NAME).mkdir(parents=True)
+        (clients / sibling / INBOX_DIR_NAME / "w2.pdf").write_bytes(b"%PDF-1.4 an upload")
+    said = {m.path.name: m.sentence for m in discover_engagements(root).misfits}
+    assert "Park" not in said
+    assert said["P\u0430rk"] == MISFIT_CLIENT_LOOK_ALIKE.format(household="Park")
+    assert said["Lee"] == MISFIT_CLIENT_NO_RECORD
+    assert "Park  Old" in said
+    if os.name == "nt":
+        (clients / "Park").rename(clients / "PARK")
+        assert "PARK" not in {m.path.name for m in discover_engagements(root).misfits}

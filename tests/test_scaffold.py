@@ -1038,8 +1038,8 @@ def test_windows_reserved_device_names_are_never_folder_names(tmp_path):
         cleaned = sanitize_component(name)
         assert cleaned != name and not is_reserved_name(cleaned), (name, cleaned)
         assert "device" in identifier_problem(name.split(".")[0].strip()), name
-        with pytest.raises(ManifestError, match="is not a folder name"):
-            api._folder_name(name, "type the household's name on its own")
+        with pytest.raises(ManifestError, match="is not a household name"):
+            api._folder_name(name, "household")
         with pytest.raises(ManifestError):
             api._feeds_from_spec([{"household": name, "return_name": "1040 - John"}],
                                  tmp_path / "Park Family")

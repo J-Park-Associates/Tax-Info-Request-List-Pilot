@@ -156,7 +156,7 @@ from contextlib import ExitStack, nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tracker import content_check, ledger, ocr, store
+from tracker import content_check, door, ledger, ocr, store
 from tracker.filer import (
     HOUSEHOLD_NO_ROOM,
     NEEDS_REVIEW,
@@ -169,8 +169,21 @@ from tracker.filer import (
     sweep_stranded_temps,
 )
 from tracker.fsio import write_json_atomically, write_text_atomically
-from tracker.households import load_household_info, open_years, resolve_feeds
-from tracker.layout import household_of, inbox_of, lock_order_key, originals_dir_for, root_of
+from tracker.households import (
+    client_folder_missing,
+    load_household_info,
+    open_years,
+    resolve_feeds,
+)
+from tracker.layout import (
+    client_household_dir,
+    household_of,
+    inbox_of,
+    lock_order_key,
+    originals_dir_for,
+    parts_below,
+    root_of,
+)
 from tracker.ledger import LedgerError
 from tracker.locking import engagement_lock
 from tracker.manifest import (
@@ -213,7 +226,6 @@ from tracker.settings import (
     NO_ROOT_HINT,
     SettingsError,
     clients_root,
-    clients_root_refusal,
     firm,
     product_name,
     settings_path,
@@ -752,6 +764,24 @@ def run_household(
     sorting: list[EngagementRun] = []
     taken = unreached = 0
     try:
+        # A household stopped (two folders claim it, its record is gone) or
+        # paused (its folders and its record disagree) is not touched at all
+        # - no sweep, no layout, no sort, no scan, no draft, no README - and
+        # every run of it is red until a person acts (decision 188, R6 and
+        # R10). Inside the household's guard and budget (decision 189), and
+        # before anything is sorted.
+        held_back = (getattr(registry, "stopped", {}).get(household)
+                     or getattr(registry, "paused", {}).get(household))
+        # A household whose client folder is gone, when it has had one, was
+        # renamed or moved in the client tree: nothing is made again under
+        # the old name (SPEC-162 ruling 2, kept by decision 188).
+        client_side_there = client_household_dir(household.parent.parent, household.name).is_dir()
+        if not held_back and not client_side_there:
+            held_back = client_folder_missing(household, [run.engagement.path for run in runs])
+        if held_back:
+            for run in runs:
+                run.error = held_back
+            return runs
         working = [run for run in runs if _worth_a_pass(run)]
         if not working:
             return runs
@@ -803,7 +833,8 @@ def run_household(
             # out its own folders, and its request list is not this
             # client's to read.
             if not dry_run:
-                scaffold_household(household, returns=[run.engagement.path for run in working])
+                scaffold_household(household, returns=[run.engagement.path for run in working],
+                                   may_make_household=not client_side_there)
             if sorting:
                 taken, unreached = _sort_step(household, sorting, fed, today=today,
                                               dry_run=dry_run, deadline=deadline)
@@ -934,9 +965,9 @@ def _sort_step(household: Path, sorting: list[EngagementRun], fed: list[Engageme
     time did not reach (decision 189).
     """
     first = sorting[0].engagement.path
-    # The year the record says, not the year folder's name: a folder
-    # somebody renamed is processed as the record says and warned about
-    # (``tracker.registry.NAME_DISAGREES``), never renamed.
+    # The year the record says, which is the year folder's name: a folder
+    # somebody renamed pauses the household (decision 188) and never
+    # reaches here, and nothing is ever renamed.
     year = sorting[0].engagement.tax_year
     originals = originals_dir_for(root_of(first), household.name, year)
     reports = file_household_drops(
@@ -1511,6 +1542,14 @@ def format_report(report: RunReport) -> str:
     ]
     if report.drafted:
         lines.append("  Drafts are drafts: nothing has been sent to anyone.")
+    # Every folder the walk left alone, at the end of every pass, as the
+    # runbook says (decision 188): a client folder no household owns, a
+    # name the rule refuses, a household position with no record.
+    if report.misfits:
+        lines += ["", f"  {STATUS_MISFITS_HEADING} ({len(report.misfits)})"]
+        for misfit in report.misfits:
+            lines.append(f"    {misfit.path}")
+            lines.append(f"        {misfit.sentence}")
     return "\n".join(lines)
 
 
@@ -1786,10 +1825,8 @@ def _engagement_status(engagement: Engagement) -> EngagementRun:
 def _under(root: Path, path: Path) -> str:
     """A folder as a person reads it on the practice page: its path below
     the clients root, or the whole path when it is not under one."""
-    try:
-        return str(path.relative_to(root))
-    except ValueError:
-        return str(path)
+    below = parts_below(root, path)
+    return str(Path(*below)) if below else str(path)
 
 
 def status_report(registry: Registry, *, passed: Iterable[EngagementRun] = (),
@@ -1876,20 +1913,17 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(f"Clients folder problem: {exc}") from None
         if configured is None:
             raise SystemExit(f"no clients root given and none in {settings_path()}; {NO_ROOT_HINT}")
-        # A root saved before decision 137's rule is held to it here, at
-        # the start of every pass (the review's F12): a pass never walks
-        # the system drive or the app's own folder, whenever it was saved.
-        if refusal := clients_root_refusal(configured):
-            raise SystemExit(f"Clients folder problem: {refusal}")
-        root = str(configured)
-    else:
-        # A root typed on the command line - a person's, or another
-        # program's - is held to the same rule as the saved one (decision
-        # 176): a preview of the system drive is a walk of every folder on it.
-        if refusal := clients_root_refusal(root):
-            raise SystemExit(f"Clients folder problem: {refusal}")
-        if ns.log:
-            _refuse_an_old_jobs_root(root)
+    elif ns.log:
+        _refuse_an_old_jobs_root(root)
+    # A saved root is held to the rule at the start of every pass (decision
+    # 137's review, F12), and a typed one to the same rule (decision 176): a
+    # root a person or another program hands straight through would otherwise
+    # be walked in full. Both through the one door (decision 188), which also
+    # refuses a root one level too deep, inside a tree of a real root.
+    try:
+        root = str(door.checked_root(root or None))
+    except door.DoorError as exc:
+        raise SystemExit(str(exc)) from None
 
     try:
         loaded = discover_engagements(root)

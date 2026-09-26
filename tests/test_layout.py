@@ -333,3 +333,187 @@ def test_a_removal_may_act_only_under_the_return_or_its_years_opened():
     ]:
         assert place_problem(PLACE_RETURN, location, writes=True, removes=True) == code, location
     assert STEP_CLIENT_TREE in STEP_PROBLEMS
+
+
+# ----------------------------- decision 188: one name rule, one key, one parser ----
+
+
+def test_the_five_constructors_refuse_a_bad_name_or_year():
+    """A path is never built through a name the rule refuses, nor under a
+    year that is not an ``int`` of four digits (a ``bool`` is not one) -
+    so no label, however it got into a record, becomes a path of its own."""
+    from tracker.layout import LayoutError
+
+    builders = [
+        lambda name: client_household_dir(ROOT, name),
+        lambda name: inbox_dir_for(ROOT, name),
+        lambda name: originals_dir_for(ROOT, name, 2025),
+        lambda name: private_household_dir(ROOT, name),
+        lambda name: return_dir_for(ROOT, name, 2025, RETURN),
+        lambda name: return_dir_for(ROOT, HOUSEHOLD, 2025, name),
+    ]
+    for bad in ["../Other", "Park/..", "", ".hidden", "_private", "~$lock", "NUL", "Park.",
+                f"{CLIENTS_TREE}", "2025", "Pa\u200brk", "P\u0430rk", "x" * 81]:
+        for build in builders:
+            with pytest.raises(LayoutError):
+                build(bad)
+    for year in ["2025", 25, 20250, True, 2025.0, None]:
+        with pytest.raises(LayoutError):
+            originals_dir_for(ROOT, HOUSEHOLD, year)
+        with pytest.raises(LayoutError):
+            return_dir_for(ROOT, HOUSEHOLD, year, RETURN)
+    # And a return whose folder name is refused has no inbox or originals.
+    with pytest.raises(LayoutError):
+        inbox_of(ROOT / PRIVATE_TREE / ".." / "2025" / RETURN)
+
+
+def test_every_name_discovery_passes_over_is_refused():
+    """Every name the walk passes over without a word begins with one of
+    the machine's prefixes, and the rule refuses every one - so a
+    household or a return is never a folder the walk would not list."""
+    from tracker.layout import MACHINE_PREFIXES, NAME_FIRST_CHARACTER, segment_problem
+    from tracker.validators import OFFICE_LOCK_PREFIX, is_sync_staging
+
+    assert OFFICE_LOCK_PREFIX in MACHINE_PREFIXES
+    for name in [".git", ".tmp.driveupload", ".tmp.drivedownload", "_Opened", "_archive",
+                 "~$Park Family", ".DS_Store"]:
+        assert name.startswith(MACHINE_PREFIXES), name
+        assert segment_problem(name) == NAME_FIRST_CHARACTER, name
+    assert is_sync_staging(".tmp.driveupload") and ".tmp.driveupload".startswith(MACHINE_PREFIXES)
+
+
+def test_each_part_of_the_name_rule_says_its_own_reason():
+    """Eight refusals, each with its fixed phrase; the character is named by
+    code point and Unicode name, never by quoting the name."""
+    from tracker import layout
+
+    cases = {
+        "": layout.NAME_EMPTY,
+        "x" * 81: layout.NAME_TOO_LONG.format(limit=80, n=81),
+        "-Park": layout.NAME_FIRST_CHARACTER,
+        "Park Jr.": layout.NAME_TRAILING,
+        "Park<1>": layout.NAME_ILLEGAL,
+        "Park\tFamily": layout.NAME_ILLEGAL,
+        "COM1": layout.NAME_DEVICE.format(names=layout.WINDOWS_RESERVED_NAMES_TEXT),
+        "Park\u200bFamily": layout.NAME_INVISIBLE.format(character="U+200B ZERO WIDTH SPACE"),
+        "Park\u00a0Family": layout.NAME_INVISIBLE.format(character="U+00A0 NO-BREAK SPACE"),
+        "Park\ufe0f": layout.NAME_INVISIBLE.format(character="U+FE0F VARIATION SELECTOR-16"),
+        "\uff30ark": layout.NAME_COMPATIBILITY.format(
+            character="U+FF30 FULLWIDTH LATIN CAPITAL LETTER P"),
+        "\ufb01sher": layout.NAME_COMPATIBILITY.format(
+            character="U+FB01 LATIN SMALL LIGATURE FI"),
+        "P\u0430rk": layout.NAME_SCRIPTS.format(first="Latin", second="Cyrillic"),
+        "Drop Files Here": layout.NAME_LAYOUT_WORD,
+        PRIVATE_TREE: layout.NAME_LAYOUT_WORD,
+        "2025": layout.NAME_LAYOUT_WORD,
+    }
+    for name, reason in cases.items():
+        assert layout.segment_problem(name) == reason, name
+    for fine in [HOUSEHOLD, RETURN, "Mu\u00f1oz", "\u4e2d\u6751\u3055\u3093", "1040 - O'Brien",
+                 "\u041f\u0435\u0442\u0440\u043e\u0432"]:
+        assert layout.segment_problem(fine) is None, fine
+    # Entry normalises once: stripped, one space, NFC.
+    assert layout.normalised_name("  Mun\u0303oz   Family ") == "Mu\u00f1oz Family"
+    with pytest.raises(layout.LayoutError, match="'-Park' is not a household name: must begin"):
+        layout.checked_name(" -Park", "household")
+
+
+def test_the_key_folds_exactly_the_stated_look_alikes():
+    """Every entry of the look-alike table folds to its Latin letter, the
+    key is idempotent, NFC and NFD spell one key, and the ASCII look-alikes
+    the SPEC names fold too - so a look-alike name is the name it imitates."""
+    from tracker.layout import LOOK_ALIKES, name_key
+
+    assert len([c for c in LOOK_ALIKES if "\u0400" <= c <= "\u052f"]) == 36
+    assert len([c for c in LOOK_ALIKES if "\u0370" <= c <= "\u03ff"]) == 16
+    for char, latin in LOOK_ALIKES.items():
+        assert name_key(char) == name_key(latin), hex(ord(char))
+    for name in ["Park", "PARK", "\u0420\u0430rk", "P\u0430rk",
+                 "\uff30\uff41\uff52\uff4b", "Pa\u00adrk", "Pa\u200brk"]:
+        assert name_key(name) == name_key("Park"), name
+    # A name all in one look-alike script: Cyrillic spells "COX" whole.
+    # It has no R, so "\u0420\u0410\u0420\u041a" reads PAPK, and is PAPK.
+    assert name_key("\u0421\u041e\u0425") == name_key("Cox")
+    assert name_key("\u0420\u0410\u0420\u041a") == name_key("PAPK") != name_key("Park")
+    assert name_key("Kim") == name_key("Klm") == name_key("K1m")
+    assert name_key("Mu\u00f1oz") == name_key("Mun\u0303oz")
+    assert name_key("Corn") == name_key("Com")
+    assert name_key("O'Brien") == name_key("O\u2019Brien")
+    assert name_key("Smith-Jones") == name_key("Smith\u2013Jones")
+    for name in ["Park", "\u0421\u041e\u0425", "Mu\u00f1oz", "Kim  Lee"]:
+        assert name_key(name_key(name)) == name_key(name)
+    assert name_key("Park") != name_key("Parks")
+
+
+def test_the_positional_parser_names_every_place():
+    """One parser says what kind of place a path is under the root, the
+    trees and the inbox compared as the filesystem compares them; a ``..``
+    left over is outside."""
+    from tracker import layout
+
+    home = ROOT / CLIENTS_TREE / HOUSEHOLD
+    ret = return_dir_for(ROOT, HOUSEHOLD, 2025, RETURN)
+    cases = [
+        (ROOT, layout.Place(layout.ROOT)),
+        (ROOT / CLIENTS_TREE, layout.Place(layout.CLIENTS)),
+        (home, layout.Place(layout.CLIENT_HOUSEHOLD, HOUSEHOLD)),
+        (home / INBOX_DIR_NAME, layout.Place(layout.INBOX, HOUSEHOLD)),
+        (home / INBOX_DIR_NAME / "w2.pdf", layout.Place(layout.IN_INBOX, HOUSEHOLD)),
+        (home / "2025", layout.Place(layout.ORIGINALS, HOUSEHOLD, 2025)),
+        (home / "2025" / "w2.pdf", layout.Place(layout.IN_ORIGINALS, HOUSEHOLD, 2025)),
+        (home / "Taxes", layout.Place(layout.MISPLACED, HOUSEHOLD)),
+        (ROOT / PRIVATE_TREE, layout.Place(layout.PRIVATE)),
+        (ret.parent.parent, layout.Place(layout.HOUSEHOLD, HOUSEHOLD)),
+        (ret.parent, layout.Place(layout.YEAR, HOUSEHOLD, 2025)),
+        (ret.parent / "_Opened", layout.Place(layout.OPENED, HOUSEHOLD, 2025)),
+        (ret.parent / "_Opened" / "m" / "x.pdf", layout.Place(layout.IN_OPENED, HOUSEHOLD, 2025)),
+        (ret, layout.Place(layout.RETURN, HOUSEHOLD, 2025, RETURN)),
+        (ret / "Prepared" / "x.pdf", layout.Place(layout.IN_RETURN, HOUSEHOLD, 2025, RETURN)),
+        (ret.parent.parent / "Prior", layout.Place(layout.MISPLACED, HOUSEHOLD)),
+        (ROOT / "Archive", layout.Place(layout.MISPLACED)),
+        (ROOT.parent / "Elsewhere", layout.Place(layout.OUTSIDE)),
+        (Path(str(ROOT) + "/../Elsewhere"), layout.Place(layout.OUTSIDE)),
+    ]
+    for path, place in cases:
+        assert layout.place_of(ROOT, path) == place, path
+    # A root given relative, and a path relative to it, are the same places.
+    assert layout.place_of("", Path(PRIVATE_TREE) / HOUSEHOLD).kind == layout.HOUSEHOLD
+    assert layout.place_of("", "../x").kind == layout.OUTSIDE
+    if os.name == "nt":
+        assert layout.place_of(ROOT, ROOT / "clients" / HOUSEHOLD).kind == layout.CLIENT_HOUSEHOLD
+    # Built on it: a return and a household, or the sentence refusing one -
+    # and anything in the client tree is never one.
+    assert layout.return_at(ROOT, ret) == (HOUSEHOLD, 2025, RETURN)
+    assert layout.household_at(ROOT, ret.parent.parent) == HOUSEHOLD
+    for not_a_return in [home / INBOX_DIR_NAME / "X", ret.parent, ret / "Prepared", ROOT.parent]:
+        with pytest.raises(layout.LayoutError, match="is not a return's folder"):
+            layout.return_at(ROOT, not_a_return)
+    for not_a_household in [home, ret.parent, ROOT / PRIVATE_TREE]:
+        with pytest.raises(layout.LayoutError, match="is not a household's folder"):
+            layout.household_at(ROOT, not_a_household)
+    # And the one test of lying under another path.
+    assert layout.parts_below(ROOT, ret) == (PRIVATE_TREE, HOUSEHOLD, "2025", RETURN)
+    assert layout.parts_below(ROOT, ROOT) == ()
+    assert layout.parts_below(ret, ROOT) is None
+    assert layout.parts_below(ROOT, Path(str(ROOT) + "x")) is None
+
+
+
+def test_the_key_of_a_key_is_the_key_and_a_capital_look_alike_is_its_letter():
+    """The review's M1: the key folds case, then the table, then case again,
+    so a capital whose lowercase the table lists - an all-Cyrillic
+    ``\u051c\u041e\u041e`` beside ``Woo`` - is the same name, and the key of
+    a key is the key for every entry of the table and every letter of the
+    Greek, Cyrillic and Latin Extended-C blocks."""
+    from tracker.layout import LOOK_ALIKES, name_key
+
+    for char, latin in LOOK_ALIKES.items():
+        assert name_key(char) == name_key(latin) == name_key(name_key(char)), hex(ord(char))
+        assert name_key(char.upper()) == name_key(name_key(char.upper())), hex(ord(char))
+    for start, end in ((0x0370, 0x0400), (0x0400, 0x0530), (0x1C80, 0x1C90), (0x2C60, 0x2C80)):
+        for point in range(start, end):
+            name = f"a{chr(point)}b"
+            assert name_key(name_key(name)) == name_key(name), hex(point)
+    assert name_key("\u051c\u041e\u041e") == name_key("Woo")
+    assert name_key("\u051a\u0423\u0410") == name_key("QYA")
+    assert name_key("\u04ba\u0410\u0405") == name_key("Has")

@@ -6289,11 +6289,13 @@ def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_bel
 
     # One household, three returns: home fits; ``cut`` leaves A01 ten short;
     # ``none`` leaves its Prepared 28 characters for a 29-character name.
-    root = root_for_a_return_of(tmp_path, 150, return_name="1040 - Home")
+    # Ten characters of the length are the root's, not the names': a name
+    # is at most eighty characters since decision 188.
+    root = root_for_a_return_of(tmp_path, 160, return_name="1040 - Home")
     home = make_engagement(root, ROOM_ITEMS, return_name="1040 - Home")
-    cut = make_engagement(root, ROOM_ITEMS, return_name="1040 - " + "s" * 76)
+    cut = make_engagement(root, ROOM_ITEMS, return_name="1040 - " + "s" * 66)
     none = make_engagement(root, [replace(ROOM_ITEMS[0], period=LONG_PERIOD)],
-                           return_name="1040 - " + "t" * 76)
+                           return_name="1040 - " + "t" * 66)
     assert len(str(cut)) + CANONICAL_BELOW == 270
     assert len(str(none)) + FOLDER_BELOW == 231
     drop(home, "note.pdf", "A letter the list does not ask for")
@@ -6722,6 +6724,7 @@ def test_the_link_check_stops_at_the_clients_root(tmp_path):
     any other; and a path that is not under the root it is checked against
     is refused rather than judged all the way up to the drive."""
     import tracker.filer as filer
+    from tracker import door
 
     real = tmp_path / "real"
     real.mkdir()
@@ -6735,8 +6738,10 @@ def test_the_link_check_stops_at_the_clients_root(tmp_path):
     assert [e.original_name for e in report.filed] == ["scan0012.pdf"]
     assert report.errors == []
     inbox = inbox_of(engagement)
-    assert not filer._through_a_link(inbox / "a.pdf", inbox)
-    assert filer._through_a_link(tmp_path / "elsewhere" / "a.pdf", inbox)
+    # The one link check is the door's since decision 188; the filer asks it.
+    assert filer.through_a_link is door.through_a_link
+    assert not door.through_a_link(inbox / "a.pdf", inbox)
+    assert door.through_a_link(tmp_path / "elsewhere" / "a.pdf", inbox)
 
 
 def test_an_unnamed_re_send_already_held_in_another_household_parks_too(tmp_path, monkeypatch):

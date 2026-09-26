@@ -36,12 +36,17 @@ a misfit is ever read, moved or renamed; a person fixes it. There is no
 migration and no importer - decision 104 refused one and decision 125
 refused it again.
 
-**The record wins over a folder somebody renamed - for what a return is:**
-its label, its year, the prior it succeeds. A return whose details name
-another household, year or return name than its folders do is still that
-return, and the disagreement is a warning a person reads
-(:data:`NAME_DISAGREES`). Nothing is ever renamed. **Where anything is
-written is positional** (decision 125) - its inbox, its originals, its
+**The folder is the identity and the record's labels are a claim**
+(decision 188, overruling decision 125's "the record wins"). A household
+whose record, or any of whose returns' details, names another household,
+return name or year than its folders do is paused (:attr:`Registry.paused`,
+``tracker.households.pause_of``): the pass touches nothing of it until a
+person accepts the folder's name in the app or gives the folder back its
+name. Two household folders that are one name by the layout's key are
+stopped, and so is a household position whose record is gone
+(:attr:`Registry.stopped`). The client tree's first level is listed by
+name, and a client folder no household owns is a misfit. Nothing is ever
+renamed. **Where anything is written is positional** (decision 125) - its inbox, its originals, its
 README - and a return rolls forward where it sits, never where its record
 says it once sat (decision 177): a folder dragged into another household
 is a move a person made, and the record cannot tell a move from a rename.
@@ -61,12 +66,11 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from tracker import layout, ledger, store
-from tracker.households import load_household_info
+from tracker.households import load_household_info, pause_of
 from tracker.ledger import LedgerError
 from tracker.manifest import ManifestError, load_engagement_info
 from tracker.records import EngagementInfo, HouseholdInfo
 from tracker.store import StoreError
-from tracker.validators import OFFICE_LOCK_PREFIX, is_sync_staging
 
 #: The workbook the request list lived in until decision 104. Its only
 #: reader in the package is the walk below, which uses it to say what a
@@ -102,8 +106,18 @@ MISFIT_NOT_A_TREE = "is not one of the two trees the tracker reads ({clients} an
 MISFIT_RECORD_MISPLACED = ("holds a record in the layout before decision 125; set the household up again "
                            "in the app and drop the originals into its inbox")
 #: A folder where a household would be, with nothing the tracker can read.
-MISFIT_NO_HOUSEHOLD_RECORD = ("sits where a household would but holds no household record the tracker can read; "
-                              "set the household up in the app")
+#: Corrected by decision 188: the old advice (set the household up in the
+#: app) is what decision 137 refuses over a folder the tracker did not make.
+MISFIT_NO_HOUSEHOLD_RECORD = ("sits where a household would but holds no household record; left alone - "
+                              "the app will not set a household up over it, so move it aside first")
+#: A folder in the client tree that is no discovered household's client
+#: folder (decision 188, R8): listed by name only - nothing in it is read.
+MISFIT_CLIENT_NO_RECORD = ("is a client folder no household record owns; nothing in it is read, and "
+                           "the app will not set a household up over it")
+#: A household or return folder whose name the layout's one rule refuses
+#: (decision 188): the reason is the rule's own phrase.
+MISFIT_BAD_NAME = ("is named in a way the tracker does not accept for a household or a return "
+                   "({reason}); left alone")
 #: A folder where a year would be, named as something else.
 MISFIT_NOT_A_YEAR = "sits where a year folder would but is not named as a four-digit year; left alone"
 #: A return folder with no record, and a household with no return under any
@@ -113,10 +127,22 @@ MISFIT_NO_RETURN = "holds no return the tracker can read"
 #: folder moved in from elsewhere carrying its own. Every document inside
 #: would be invisible to every list, so it is said rather than passed over.
 UNLISTED = "could not be listed ({error})"
-#: What a return whose folders and record disagree carries. The record
-#: wins - it is what the wizard wrote and what the rollover carried - and
-#: nothing is renamed, ever.
-NAME_DISAGREES = "the folder is named {folder} but its record says {recorded}; the record wins and nothing is renamed"
+#: A client folder whose name only reads as a household's by the layout's
+#: key (the re-check of decision 188, R1): another folder, never adopted.
+MISFIT_CLIENT_LOOK_ALIKE = ("is a look-alike of the client folder of the household {household} but is "
+                            "another folder; nothing in it is read, and it is never taken for that "
+                            "household's")
+#: Two household folders whose names or claims are one name by the
+#: layout's key (SPEC-162 ruling 3, widened by decision 188): every one of
+#: them is stopped, naming each folder.
+TWO_CLAIM = ("Two folders claim the household `{name}`: `{a}` and `{b}`. Keep one; a copy of a "
+             "household folder is never a second household.")
+#: A household's position holding returns' records and no household record
+#: (SPEC-162 ruling 4, kept by decision 188): a stopped entry, counted in
+#: the pass's errors, never a household to set up again.
+HOUSEHOLD_RECORD_MISSING = (f"The household record `{ledger.LEDGER_FILENAME}` of `{{folder}}` is missing. "
+                            "Restore it from Drive's trash or version history; do not create the "
+                            "household again.")
 
 
 class RegistryError(Exception):
@@ -216,6 +242,12 @@ class Registry:
     engagements: list[Engagement] = field(default_factory=list)
     households: list[Household] = field(default_factory=list)
     misfits: list[Misfit] = field(default_factory=list)
+    #: Household folder -> why it is paused: its folders and its record's
+    #: claims disagree (decision 188, R6). The pass touches nothing of it.
+    paused: dict[Path, str] = field(default_factory=dict)
+    #: Household folder -> why it is stopped: two folders claim one
+    #: household, or its record is gone (SPEC-162 rulings 3 and 4).
+    stopped: dict[Path, str] = field(default_factory=dict)
 
     @property
     def active(self) -> list[Engagement]:
@@ -252,9 +284,23 @@ def _skip(folder: Path) -> bool:
     """Names the walk passes over without a word: hidden state, sync
     staging, an office lock file's folder. They are the machine's, not a
     household's, and listing them as misfits would be noise a person
-    cannot act on."""
-    name = folder.name
-    return name.startswith((".", "_", OFFICE_LOCK_PREFIX)) or is_sync_staging(name)
+    cannot act on. The one list is the layout's
+    (``layout.MACHINE_PREFIXES``, decision 188), whose name rule refuses
+    every such name for a household or a return - so a folder the walk
+    never lists is never one somebody was allowed to create."""
+    return folder.name.startswith(layout.MACHINE_PREFIXES)
+
+
+def _badly_named(folder: Path, found: _Walk) -> bool:
+    """``True`` once a household or return folder whose name the layout's
+    rule refuses (decision 188) is listed as a misfit with the reason: the
+    constructors refuse to build a path through such a name, so the pass
+    never reaches it, and a person is told why."""
+    reason = layout.segment_problem(folder.name)
+    if reason is None:
+        return False
+    found.misfits.append(Misfit(folder, MISFIT_BAD_NAME.format(reason=reason)))
+    return True
 
 
 @dataclass(slots=True)
@@ -266,6 +312,11 @@ class _Walk:
     misfits: list[Misfit] = field(default_factory=list)
     #: household folder -> the return folders under it, in order.
     under: dict[Path, list[Path]] = field(default_factory=dict)
+    #: The client tree's first level, by name (decision 188): listed once,
+    #: never walked deeper and never read.
+    client_folders: list[Path] = field(default_factory=list)
+    #: Household positions holding returns' records and no household record.
+    record_missing: dict[Path, list[Path]] = field(default_factory=dict)
 
 
 def _children(folder: Path, found: _Walk) -> list[Path] | None:
@@ -322,16 +373,41 @@ def _walk_root(root: Path) -> _Walk:
     if children is None:
         return found
     for child in children:
-        if child.name == layout.CLIENTS_TREE:
-            continue                        # the client tree holds no record, by design
+        kind = layout.place_of(root, child).kind
+        if kind == layout.CLIENTS:
+            # The client tree holds no record, by design: its first level
+            # is listed by name and nothing below it is walked or read.
+            found.client_folders.extend(_client_folders(child))
+            continue
         if _skip(child):
             continue
-        if child.name != layout.PRIVATE_TREE:
+        if kind != layout.PRIVATE:
             found.misfits.append(Misfit(child, MISFIT_NOT_A_TREE.format(
                 clients=layout.CLIENTS_TREE, private=layout.PRIVATE_TREE)))
             continue
         _walk_private(child, found)
     return found
+
+
+def _client_folders(tree: Path) -> list[Path]:
+    """The client tree's first level: its folders, by name, from one
+    listing - ``os.scandir``'s own entry types, so nothing below is
+    opened or even asked about. The machine's own names are passed over."""
+    try:
+        with os.scandir(tree) as entries:
+            return sorted((Path(entry.path) for entry in entries
+                           if entry.is_dir(follow_symlinks=False)
+                           and not entry.name.startswith(layout.MACHINE_PREFIXES)),
+                          key=lambda p: p.name.lower())
+    except OSError:
+        return []
+
+
+def _returns_with_records(household: Path) -> list[Path]:
+    """The return folders under a household position that hold a record."""
+    from tracker.households import household_returns
+
+    return household_returns(household)
 
 
 def _walk_private(private: Path, found: _Walk) -> None:
@@ -340,7 +416,7 @@ def _walk_private(private: Path, found: _Walk) -> None:
     if children is None:
         return
     for child in children:
-        if _skip(child):
+        if _skip(child) or _badly_named(child, found):
             continue
         record = _has_record(child)
         if record is None and _cannot_be_read(child, found):
@@ -349,6 +425,11 @@ def _walk_private(private: Path, found: _Walk) -> None:
             found.households.append(child)
             found.under[child] = []
             _walk_household(child, found)
+            continue
+        # A household whose record is gone and whose returns still hold
+        # theirs is stopped, not left alone (SPEC-162 ruling 4).
+        if returns := _returns_with_records(child):
+            found.record_missing[child] = returns
             continue
         found.misfits.append(Misfit(child, MISFIT_NO_HOUSEHOLD_RECORD))
 
@@ -382,7 +463,7 @@ def _walk_year(year: Path, household: Path, found: _Walk) -> None:
     if children is None:
         return
     for child in children:
-        if _skip(child):
+        if _skip(child) or _badly_named(child, found):
             continue
         record = _has_record(child)
         if record is None and _cannot_be_read(child, found):
@@ -468,28 +549,7 @@ def engagement_from(folder: Path) -> Engagement:
     if not rules and (folder / LEGACY_MANIFEST_FILENAME).is_file():
         return Engagement(path=folder, info=info, household_path=household_path,
                           problem=LEGACY_FOLDER.format(name=LEGACY_MANIFEST_FILENAME))
-    return Engagement(path=folder, info=info, household_path=household_path,
-                      warning=_disagreement(folder, info, household_path))
-
-
-def _disagreement(folder: Path, info: EngagementInfo, household_path: Path) -> str:
-    """What a return whose folders and record disagree is warned with, or ""
-    when they agree.
-
-    The three details of decision 125 against the three folder names they
-    were filled from. The record wins: the return is processed as it says
-    and nothing is renamed - a rename the tracker made behind a person's
-    back would be exactly the thing the standing rules forbid it to do to
-    a client's file, done to the firm's own folder instead.
-    """
-    year = layout.year_of(folder)
-    recorded = Engagement(path=folder, info=info, household_path=household_path).label
-    on_disk = layout.label_for(household_path.name, year, folder.name)
-    if not (info.household or info.return_name or info.tax_year is not None):
-        return ""                  # a return recorded before the details existed
-    if recorded == on_disk:
-        return ""
-    return NAME_DISAGREES.format(folder="/".join(folder.parts[-3:]), recorded=recorded)
+    return Engagement(path=folder, info=info, household_path=household_path)
 
 
 def _same_folder(a: str, b: Path) -> bool:
@@ -589,12 +649,100 @@ def discover_engagements(root: Path | str, *, max_depth: int = MAX_DEPTH) -> Reg
         engagement_from(folder) for folder in found.returns
         if folder.parent.parent in running
     ])
+    stopped = _two_claims(keep)
+    # A household whose record is gone: its returns are listed, each
+    # carrying the sentence, so the pass counts them as failed.
+    for household, returns in found.record_missing.items():
+        said = HOUSEHOLD_RECORD_MISSING.format(folder=household.name)
+        stopped[household] = said
+        engagements.extend(Engagement(path=one, problem=said, household_path=household)
+                           for one in returns)
+    grouped: dict[Path, list[Engagement]] = {}
+    for one in engagements:
+        grouped.setdefault(one.household_path, []).append(one)
+    paused = {household.path: why for household in keep if household.path not in stopped
+              and (why := pause_of(household.path, household.info,
+                                   [(one.path, one.info) for one in grouped.get(household.path, [])
+                                    if not one.problem]))}
+    # Every client folder that is no discovered household's is listed by
+    # name (decision 188, R8): a household renamed in the firm's tree
+    # leaves its old client folder here, and a folder nobody set up is
+    # never adopted.
+    # A household's client folder is the one whose name the file system
+    # takes for its own (``os.path.normcase``: Windows folds case, so
+    # Clients\park is the household Park's). The comparison key refuses,
+    # it never identifies (the re-check's R1): a folder that only reads as
+    # a household's - a Cyrillic letter, a second space - is another folder,
+    # listed with its own sentence and never adopted or read.
+    names = [one.name for one in [*(household.path for household in keep), *found.record_missing]]
+    by_key = {layout.name_key(name): name for name in names}
+    for folder in found.client_folders:
+        if any(layout.names_one_folder(folder.name, name) for name in names):
+            continue
+        like = by_key.get(layout.name_key(folder.name))
+        misfits.append(Misfit(folder, MISFIT_CLIENT_LOOK_ALIKE.format(household=like)
+                              if like else MISFIT_CLIENT_NO_RECORD))
     return Registry(
         source=root,
         engagements=engagements,
         households=keep,
         misfits=sorted(misfits, key=lambda m: str(m.path).lower()),
+        paused=paused,
+        stopped=stopped,
     )
+
+
+def held_back(household_dir: Path | str) -> str:
+    """Why nothing may be written for this household now, or ``""``: it is
+    stopped (its record gone while its returns hold theirs, or two folders
+    claim it), paused (its folders and its record disagree), or its client
+    folder is gone when its record shows it had one (the review's M3 and
+    S4). The one question a new return into it and every form of Roll
+    Forward ask before anything is written, with the sentence each stop
+    has in the pass."""
+    from tracker.households import client_folder_missing, household_pause, household_returns
+
+    folder = Path(household_dir)
+    if not ledger.path_for(folder).is_file():
+        returns = household_returns(folder)
+        return HOUSEHOLD_RECORD_MISSING.format(folder=folder.name) if returns else ""
+    try:
+        stopped = discover_engagements(folder.parent.parent).stopped
+    except RegistryError:
+        stopped = {}
+    if said := stopped.get(folder):
+        return said
+    return household_pause(folder) or client_folder_missing(folder)
+
+
+def _two_claims(households: list[Household]) -> dict[Path, str]:
+    """Every household whose folder name or record's name is, by the
+    layout's key, another household's too - each stopped with
+    :data:`TWO_CLAIM` naming every such folder (SPEC-162 ruling 3, widened
+    by decision 188). A copy of a household folder is never a second
+    household, and which one is the real one is a person's to say."""
+    keys = [{layout.name_key(one.path.name)} | ({layout.name_key(one.info.name)} if one.info.name
+                                                 else set()) for one in households]
+    group = list(range(len(households)))
+
+    def top(i: int) -> int:
+        while group[i] != i:
+            i = group[i]
+        return i
+
+    for i in range(len(households)):
+        for j in range(i + 1, len(households)):
+            if keys[i] & keys[j]:
+                group[top(j)] = top(i)
+    stopped: dict[Path, str] = {}
+    for i, one in enumerate(households):
+        together = [other for j, other in enumerate(households) if top(j) == top(i)]
+        if len(together) > 1:
+            first = together[0]
+            stopped[one.path] = TWO_CLAIM.format(
+                name=first.info.name or first.path.name, a=first.path.name,
+                b="`, `".join(other.path.name for other in together[1:]))
+    return stopped
 
 
 # -------------------------------------------------------------------- CLI ----
@@ -613,8 +761,14 @@ if __name__ == "__main__":
     parser.add_argument("root", help="the folder the firm keeps its clients in")
     ns = parser.parse_args()
 
+    # The root through the one door (decision 188): held to the settings'
+    # rule, one level too deep included.
+    from tracker import door
+
     try:
-        loaded = discover_engagements(ns.root)
+        loaded = discover_engagements(door.checked_root(ns.root))
+    except door.DoorError as exc:
+        raise SystemExit(str(exc)) from None
     except RegistryError as exc:
         raise SystemExit(f"Registry problem: {exc}") from None
 
@@ -625,6 +779,9 @@ if __name__ == "__main__":
         head = household.name
         if household.problem:
             head += f"  (RECORD PROBLEM: {household.problem})"
+        for word, said in (("STOPPED", loaded.stopped), ("PAUSED", loaded.paused)):
+            if household.path in said:
+                head += f"  ({word}: {said[household.path]})"
         print(f"  {head}")
         for engagement in grouped.get(household.path, []):
             flags = []

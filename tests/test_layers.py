@@ -67,8 +67,10 @@ without reaching for the module that puts it there. ``households`` joins
 L1 beside ``manifest``, which it is the counterpart of - the manifest owns
 a return's list and details, this owns the household's - and it reaches
 ``store``, ``ledger`` and ``locking`` at call time for exactly the reason
-the manifest does. ``records`` and ``ledger`` do not import ``layout``:
-they hold no path arithmetic.
+the manifest does. ``ledger`` does not import ``layout``: it holds no path
+arithmetic. ``records`` may, since decision 188: the Windows character and
+device rule moved down into the layout's one name rule, and the record
+imports that rule and nothing else of it (the layout reads no file).
 
 ``names`` joins L2 with decision 128, beside ``router``: it is the matcher
 for the name on a page - normalising, whole-phrase containment, the
@@ -97,7 +99,10 @@ PACKAGE = REPO / "tracker"
 
 #: Layer -> the modules in it. Every file in tracker/ is in exactly one.
 LAYERS: dict[int, frozenset[str]] = {
-    0: frozenset({"__init__", "reasons", "locking", "page", "fsio", "settings", "layout"}),
+    # ``door`` joins L0 with decision 188: the disk half of the layout. It
+    # imports ``layout``, ``fsio`` and ``settings``, all L0, so L0 is the
+    # lowest layer the table allows it - and every layer above may ask it.
+    0: frozenset({"__init__", "reasons", "locking", "page", "fsio", "settings", "layout", "door"}),
     1: frozenset({"households", "ledger", "manifest", "records", "scaffold", "store",
                   "templates", "validators"}),
     2: frozenset({"containers", "content_check", "names", "ocr", "router"}),
@@ -267,17 +272,28 @@ def test_the_manifest_imports_the_record_and_nothing_else():
     assert {"store", "ledger", "locking"} <= call["manifest"], call["manifest"]
 
 
-def test_the_settings_import_only_the_atomic_write():
+def test_the_settings_import_only_the_atomic_write_and_the_layout():
     """Decision 120: the one import that held it a layer up is gone.
 
     ``settings`` borrowed ``write_json_atomically`` from ``manifest``, and
     that single name was the whole of its dependence on L1. The write is
     ``fsio`` now, so the settings file - which the app, the scheduler and
     every command line read before anything else - is written by a module
-    that knows nothing of request lists.
+    that knows nothing of request lists. Decision 188 adds ``layout``, at
+    the same layer and reading no file: a root one level too deep is one
+    that lies inside a tree of a real root, and the trees are the layout's.
     """
     load, _ = import_edges()
-    assert load["settings"] == {"fsio"}, load["settings"]
+    assert load["settings"] == {"fsio", "layout"}, load["settings"]
+
+
+def test_the_door_imports_only_the_layout_the_atomic_write_and_the_settings():
+    """Decision 188: ``door`` is the disk half of the layout and holds no
+    rule of its own, so it reaches the layout for every rule, ``fsio`` for
+    the one test of a link and ``settings`` for the root - nothing else."""
+    load, call = import_edges()
+    assert load["door"] == {"layout", "fsio", "settings"}, load["door"]
+    assert call["door"] <= {"page"}, call["door"]
 
 
 def test_the_atomic_write_imports_nothing_of_the_package():
@@ -429,3 +445,206 @@ def test_the_readings_child_talks_over_a_named_pipe_never_a_socket():
             if named in SOCKET_SHAPED:
                 found.append(f"{path.name}:{node.lineno} names {named}")
     assert not found, found
+
+
+# ------------------- decision 188: which household is this, and may this path exist ----
+
+#: Where a rule about the trees may still be spelled outside ``layout`` and
+#: ``door``, by (file, function) - ``"*"`` for a whole file - and why.
+ALLOWED_SPELLINGS: dict[tuple[str, str], str] = {
+    ("tracker/settings.py", "_within"): "the machine's own folders (decision 137), not a client's",
+    ("tracker/settings.py", "_inside"): "the machine's own folders (decision 137), not a client's",
+    ("tools/repo_map.py", "*"): "the repository's paths, never a client's",
+    ("tools/vocab_report.py", "*"): "the repository's paths, never a client's",
+    ("tools/backtest.py", "*"): "the repository's paths, never a client's",
+    ("tools/learned_keywords.py", "out_path"): "the repository's paths, never a client's",
+}
+#: The owners: the only modules that may spell a rule about the trees.
+SPELLING_OWNERS = ("tracker/layout.py", "tracker/door.py")
+_PATH_RELATIONS = {"relative_to", "is_relative_to", "commonpath", "commonprefix", "relpath",
+                   "samefile"}
+_TREE_WORDS = {"CLIENTS_TREE", "PRIVATE_TREE", "INBOX_DIR_NAME", "OPENED_DIR_NAME"}
+_NAME_RULES = {"WINDOWS_RESERVED_NAMES", "is_reserved_name", "segment_problem", "name_key",
+               "MACHINE_PREFIXES"}
+_FOLDS = {"casefold", "lower", "normcase"}
+_JOINS = {"joinpath", "join", "Path", "PurePath", "PureWindowsPath", "PurePosixPath"}
+
+
+def _layout_words() -> set[str]:
+    """The layout's own words, as text: a literal equal to one is the
+    layout spelled again (the review's S1)."""
+    from tracker import layout
+
+    return {layout.CLIENTS_TREE, layout.PRIVATE_TREE, layout.INBOX_DIR_NAME,
+            layout.PREPARED_DIR_NAME, layout.REVIEW_DIR_NAME, layout.OPENED_DIR_NAME}
+
+
+def _is_text_of_a_path(node: ast.AST) -> bool:
+    """``str(...)`` or ``os.fspath(...)``: a path made text to be compared."""
+    return isinstance(node, ast.Call) and (
+        (isinstance(node.func, ast.Name) and node.func.id == "str")
+        or (isinstance(node.func, ast.Attribute) and node.func.attr == "fspath"))
+
+
+def _is_parts(node: ast.AST) -> bool:
+    """A path's ``.parts``, or a subscript of it."""
+    while isinstance(node, ast.Subscript):
+        node = node.value
+    return isinstance(node, ast.Attribute) and node.attr == "parts"
+
+
+def _named(node: ast.AST) -> str:
+    """The name or attribute a node spells, or ""."""
+    return node.id if isinstance(node, ast.Name) else node.attr if isinstance(node, ast.Attribute) else ""
+
+
+def _mentions(node: ast.AST, test) -> bool:
+    return any(test(inner) for inner in ast.walk(node))
+
+
+def _is_os_path(node: ast.AST) -> bool:
+    """``os.sep``, or anything under ``os.path``."""
+    return (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
+            and node.value.id == "os" and node.attr in ("sep", "path"))
+
+
+def spellings(source: str) -> list[tuple[str, int, str]]:
+    """Every rule about the trees ``source`` spells for itself, as
+    (enclosing function, line, what) - decision 188's R13."""
+    found: list[tuple[str, int, str]] = []
+    words = _layout_words()
+
+    def tree_word(node: ast.AST) -> bool:
+        return _named(node) in _TREE_WORDS or (
+            isinstance(node, ast.Constant) and node.value in words)
+
+    def visit(node: ast.AST, where: str) -> None:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node.name in _NAME_RULES:
+                found.append((where, node.lineno, f"defines {node.name}"))
+            where = node.name
+        if isinstance(node, ast.Call):
+            called = _named(node.func)
+            if called in _PATH_RELATIONS:
+                found.append((where, node.lineno, f"calls {called}"))
+            if called in ("startswith", "endswith") and any(
+                    _mentions(arg, _is_os_path) for arg in node.args):
+                found.append((where, node.lineno, f"{called} on a path separator"))
+            elif called in ("startswith", "endswith") and isinstance(node.func, ast.Attribute) and (
+                    _is_text_of_a_path(node.func.value) or any(map(_is_text_of_a_path, node.args))):
+                found.append((where, node.lineno, f"{called} on a path's text"))
+            if called in _JOINS and any(tree_word(arg) for arg in node.args):
+                found.append((where, node.lineno, "joins a tree word onto a path"))
+        if isinstance(node, ast.Compare):
+            operands = [node.left, *node.comparators]
+            if any(tree_word(one) for one in operands):
+                found.append((where, node.lineno, "compares a tree word"))
+            if any(_is_parts(one) for one in operands):
+                found.append((where, node.lineno, "compares a path's parts"))
+            folded = [one for one in operands
+                      if isinstance(one, ast.Call) and _named(one.func) in _FOLDS]
+            if folded and _mentions(node, lambda n: (
+                    isinstance(n, ast.Attribute) and n.attr == "name")
+                    or "household" in _named(n) or "return_name" in _named(n)):
+                found.append((where, node.lineno, "compares a folded folder name"))
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div) and (
+                tree_word(node.left) or tree_word(node.right)):
+            found.append((where, node.lineno, "joins a tree word onto a path"))
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            modules = [alias.name for alias in node.names] if isinstance(node, ast.Import) \
+                else [node.module or ""]
+            if "unicodedata" in modules:
+                found.append((where, node.lineno, "imports unicodedata"))
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for target in targets:
+                if _named(target) in _NAME_RULES:
+                    found.append((where, node.lineno, f"defines {_named(target)}"))
+        for child in ast.iter_child_nodes(node):
+            visit(child, where)
+
+    visit(ast.parse(source), "<module>")
+    return found
+
+
+def _every_spelling() -> dict[tuple[str, str], list[tuple[int, str]]]:
+    """Every spelling in tracker/ and tools/, by (file, function)."""
+    by_place: dict[tuple[str, str], list[tuple[int, str]]] = {}
+    for path in sorted([*PACKAGE.glob("*.py"), *(REPO / "tools").glob("*.py")]):
+        rel = path.relative_to(REPO).as_posix()
+        if rel in SPELLING_OWNERS:
+            continue
+        for function, line, what in spellings(path.read_text(encoding="utf-8")):
+            by_place.setdefault((rel, function), []).append((line, what))
+    return by_place
+
+
+def _allowed(place: tuple[str, str]) -> bool:
+    return place in ALLOWED_SPELLINGS or (place[0], "*") in ALLOWED_SPELLINGS
+
+
+def test_no_under_the_root_decision_survives_outside_the_layout():
+    """Decision 188 (R13): which household a folder is, and whether a path
+    may exist there, is answered in ``layout`` (and on the disk by
+    ``door``) and nowhere else. Outside them no module tests one path for
+    lying under another, compares or joins a tree's word, spells the name
+    rule or the key, or compares a folded folder name - but where the
+    allow-list says why it may."""
+    offending = {place: hits for place, hits in _every_spelling().items() if not _allowed(place)}
+    assert not offending, [f"{file}:{line} {function}: {what}"
+                           for (file, function), hits in sorted(offending.items())
+                           for line, what in hits]
+
+
+def test_no_rule_about_the_trees_is_spelled_outside_the_layout():
+    """The scanner sees what it is for: a resolved path made relative to
+    the root, a tree word compared with a folder's name, a separator test
+    and a folded household name - and it passes the layout's own answer."""
+    caught = spellings(
+        "def f(p, root, x, h):\n"
+        "    a = p.resolve().relative_to(root)\n"
+        "    b = x.name == CLIENTS_TREE\n"
+        "    c = str(p).startswith(str(root) + os.sep)\n"
+        "    d = x.name.casefold() == h.household.casefold()\n"
+        "    e = root / PRIVATE_TREE\n"
+        "    import unicodedata\n"
+        "def name_key(n):\n"
+        "    return n\n")
+    assert [what for _, _, what in caught] == [
+        "calls relative_to", "compares a tree word", "startswith on a path separator",
+        "compares a folded folder name", "joins a tree word onto a path", "imports unicodedata",
+        "defines name_key"]
+    # The review's S1: the spellings the first scanner missed.
+    missed = spellings(
+        "def g(p, root, h):\n"
+        "    a = str(p).startswith(str(root))\n"
+        "    b = Path(root).joinpath(CLIENTS_TREE, h)\n"
+        "    c = os.path.join(root, PRIVATE_TREE)\n"
+        "    d = Path(root, 'Clients', h)\n"
+        "    e = p.parts[:2] == (root.name, 'x')\n"
+        "    f = root / 'Drop files here'\n")
+    assert [what for _, _, what in missed] == [
+        "startswith on a path's text", "joins a tree word onto a path",
+        "joins a tree word onto a path", "joins a tree word onto a path",
+        "compares a path's parts", "joins a tree word onto a path"]
+    assert spellings("def f(root, p):\n    return layout.place_of(root, p).kind == layout.RETURN\n"
+                     "def g(n):\n    return f'the {CLIENTS_TREE} folder'\n") == []
+
+
+def test_every_allowed_spelling_is_still_needed():
+    """An allowance nothing uses is a hole in the rule."""
+    every = _every_spelling()
+    stale = [place for place in ALLOWED_SPELLINGS
+             if not any(found == place or (place[1] == "*" and found[0] == place[0])
+                        for found in every)]
+    assert not stale, stale
+
+
+def test_the_app_never_works_out_whether_a_path_lies_under_another():
+    """The same rule for the shell and the page: no ``path.relative(`` and
+    no ``startsWith(`` in ``main.js`` or ``app.js`` - the API says where a
+    path is below the root, in the layout's words."""
+    for rel in ("app/main.js", "app/renderer/app.js"):
+        text = (REPO / rel).read_text(encoding="utf-8")
+        assert "path.relative(" not in text, rel
+        assert "startsWith(" not in text, rel

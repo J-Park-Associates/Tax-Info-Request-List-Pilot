@@ -178,13 +178,23 @@ the clients root, and the difference between them is the whole point:
 other. Anything else under the root — a stray folder beside the two trees, a
 household with no record, a folder where a year should be that is not four
 digits, a year folder with no return in it, a folder from before September
-2026 holding a `_manifest.xlsx`, a folder Windows will not let it list — is
+2026 holding a `_manifest.xlsx`, a folder Windows will not let it list, a
+client folder no household owns, a folder named in a way the tracker does
+not accept for a household or a return — is
 **listed with one sentence saying why, and left alone**. Nothing is renamed,
 nothing is moved, nothing is deleted. The list is at the bottom of the status
 page, in the app under the engagement picker, and at the end of every command
-line pass, under **Folders the tracker leaves alone**. If a client's folder
-appears there, that is the tracker telling you it is not set up — read the
-sentence and set it up in the app.
+line pass, under **Folders the tracker leaves alone**. Of the client tree
+only the first level is looked at, by name: nothing inside a client folder
+no household owns is read. A household's client folder is the one named
+exactly as the household, case aside; a folder that only *looks* like it -
+a letter from another alphabet, a second space - is listed as *a look-alike
+of the client folder of the household …* and nothing in it is read, so a
+client who uploaded into it is found from that list, never silently. A folder where a household would be with no
+household record is left alone and the app will not set a household up over
+it (*"sits where a household would but holds no household record; left
+alone - the app will not set a household up over it, so move it aside
+first"*): move it aside, then set the household up in the app.
 
 The app will not adopt one either. Creating a household whose folder is
 already there without a record is refused before anything is written, in
@@ -196,6 +206,46 @@ the folders it made itself — never one it found.
 There is no migration and no importer: a folder from an older shape is set up
 again in the app, and the old one is left where it is until somebody deletes
 it by hand.
+
+**The folder is the name** (decision 188). A household is its folder's
+name, and a return is its folder's name under its year folder; what the
+record says about them is a claim the tracker checks. Rename a household or
+return folder in Explorer, or drag a return into another household, and the
+household is **paused**: the pass sorts, lays out and drafts nothing for it,
+and every one of its returns shows red on every pass with this sentence
+until somebody acts - *"Paused: this folder's name and its record's name
+disagree. Nothing is sorted, laid out or drafted for the household until a
+person opens it in the app and accepts the folder's name, or gives the
+folder back the name its record holds."* Roll Forward and a new return into
+it are refused with the same sentence.
+
+- **When the move was meant** - a return dragged into a household of its
+  own when a family separates - open the household in the app and press
+  **Accept the folder's name**. It writes one dated line saying so on each
+  record that claimed the old name; nothing is moved or renamed.
+- **A return moved under another year** is never accepted, and the card
+  shows no button for it: its year is its record's. Move the folder back
+  under the year its record says; a return in the wrong year is retired and
+  made again.
+- **A household that has received a document is not renamed this season.**
+  Its originals rest under its client folder of the old name, so the app
+  refuses to accept a new name for it - for the household or for any one of
+  its returns; give the folder back its name. The
+  same for its client folder: if `Clients\<name>` of a household that was
+  shared, or that holds originals, disappears, every run of the household
+  fails with *"`Clients\<name>` is missing. Was the household renamed or
+  moved? Give its client folder back the name `<name>`."* and nothing is
+  made again under the old name - not by the pass, not by a new return
+  into the household, and not by Roll Forward, which all refuse with that
+  sentence.
+- **Never copy a household folder.** Two folders that claim one household -
+  a copy, or two names that read as one - stop both: *"Two folders claim
+  the household `<name>`: `<a>` and `<b>`. Keep one; a copy of a household
+  folder is never a second household."*
+- **A household whose `_ledger.jsonl` is gone** while its returns still hold
+  theirs fails the pass: *"The household record `_ledger.jsonl` of
+  `<folder>` is missing. Restore it from Drive's trash or version history;
+  do not create the household again."*
 
 **Two files sit in an engagement folder, and only one of them is yours to
 open:**
@@ -442,6 +492,16 @@ record keys every return by its path below the root - and the whole
 answer is to **set the root again in the app** (or
 `python -m tracker.settings <folder>`). The schedule follows by itself;
 it reads the root from the settings file at every run.
+
+**The root is the folder that holds both trees**, `Clients` and
+`J Park & Associates`, side by side. Choosing one of the trees itself, or a
+household inside one, is one level too deep and is refused with the root
+to choose instead: *`<folder>` is inside the `Clients` folder of the
+clients root `<root>`; choose `<root>`* (decision 188). The root is checked
+again every time it is read - by every command in the app, by the pass, and
+by every command line - so a root that became one level too deep after it
+was saved (the trees moved around it) is refused with *Clients folder
+problem*, and the app asks for the folder again.
 
 A longer root leaves every return less room: Windows opens a path of
 `tracker.layout.MAX_PATH_LENGTH` characters at most, and a working copy
@@ -731,16 +791,20 @@ One return's refusal (a folder of that name already there, a path too long)
 is printed and undoes none of the others; nothing under `Clients\` changes
 but the new year's folder.
 
-**A return rolls forward where it sits.** When a household separates, the
-way to move one return into a household of its own is still to drag its
-folder there in Explorer — the app has no action for it. Its record goes on
-naming the old household, and the app shows a warning beside it ("the
-folder is named … but its record says …"). That warning is information:
-Roll Forward puts next year's return in the household it now sits in, under
-its own folder name, and next year's record names that household, so the
-old household's client never sees its requests or its documents. The
-warning is repeated in the rollover's reply, because the roll is the moment
-someone acts on that return.
+**A return rolls forward where it sits - once its move is accepted.** When a
+household separates, the way to move one return into a household of its own
+is still to drag its folder there in Explorer. Its record goes on naming the
+old household, so the household it now sits in is **paused** (decision 188):
+Roll Forward refuses it, with the pause sentence, before anything is
+written. Open it in the app and press **Accept the folder's name**; then Roll
+Forward puts next year's return in the household it now sits in, under its
+own folder name, and next year's record names that household, so the old
+household's client never sees its requests or its documents.
+
+Roll Forward also refuses, before anything is written and with the pass's
+own sentence, a household that is **stopped** - its `_ledger.jsonl` gone, or
+two folders claiming it - and one whose client folder is gone when it had
+one (decision 188).
 
 On the command line the same two forms live in one command, told apart by
 what you point it at:
@@ -1639,6 +1703,25 @@ the same way.
   (`python -m tracker.store "<the app folder>" check "<clients root>"`)
   names every such line in every return.
 
+**If a `_ledger.jsonl` is lost.** The record of a return or a household is
+its `_ledger.jsonl`, and a lost one comes back from **Drive's trash or
+version history** - never by creating the return or the household again,
+and never by a rebuild (decision 188, keeping SPEC-162's rulings). The
+store check names a journal that is gone: *"The store holds <n> line(s) for
+`<engagement>` and its record is not there. Restore `_ledger.jsonl` from
+Drive's trash or version history."* A journal restored from an older
+version holds fewer lines than the store applied, and the pass says so
+before it touches the return: *"The journal of `<engagement>` holds fewer
+lines than the store has applied (the journal <n>, the store <m>). First
+restore the journal from Drive's trash or version history. `rebuild` would
+discard the <k> line(s) only the store still holds."* A rebuild never
+discards those lines silently: `python -m tracker.store "<the app folder>"
+rebuild "<clients root>"` lists each one (its kind, its document, its date),
+says *"the store holds <k> line(s) the journal does not; rebuild would
+discard them (listed above). Nothing was changed; add --discard to discard
+them."* and exits 1. Only once the list has been read and the journal
+cannot be restored does `--discard` rebuild from the journal as it is.
+
 Nothing here sends an email, moves money, or tells a client anything. Every
 message a client gets was read and sent by a person at this firm.
 
@@ -1705,3 +1788,45 @@ beside **Teach this spelling**, and the next one like it files itself.
 look at the list once — a child who now files their own return, a spouse's
 new name. Nothing waits on that look; the check simply parks what it
 cannot confirm until you give it.
+
+### Household and return names
+
+A household's name and a return's name are folder names: every path under
+them carries them, in both trees, on every machine the Shared Drive syncs
+to. So one rule says what a name may be, and the wizard, a new return, a
+rolled return's new name and a feed all hold you to it with the same
+sentence — `'<what you typed>' is not a household name: <why>` (decision 188).
+A name is refused when it:
+
+1. is empty, or longer than 80 characters;
+2. does not begin with a letter or a digit — the tracker passes over every
+   folder that begins with `.`, `_` or `~$`, so a household named so would
+   never be sorted or chased;
+3. ends with a dot or a space (Windows drops them), or contains any of
+   `< > : " / \ | ? *` or a control character;
+4. is a name Windows keeps for a device (`CON`, `NUL`, `COM1` and the rest);
+5. contains an invisible character — a zero-width space, a soft hyphen, a
+   direction mark, a no-break space. It is refused, never quietly removed,
+   and the sentence names it by its code (`U+200B ZERO WIDTH SPACE`). A
+   name that uses a zero-width non-joiner is typed without it;
+6. contains a full-width or compatibility character (`Ｐａｒｋ`, the `ﬁ`
+   ligature, a superscript) — type it plainly;
+7. mixes letters of two alphabets, such as a Cyrillic `а` inside a Latin
+   name (Chinese, Japanese and Korean count as one);
+8. is a word of the layout itself (`Clients`, `J Park & Associates`,
+   `Drop files here`, `Prepared`, `00 - Needs Review`, `_Opened`), or four
+   digits.
+
+**Look-alikes are one name.** Two names are compared as the tracker reads
+them, not as they are spelled: case, spacing, invisible characters, the
+Cyrillic and Greek letters that look like Latin ones, the dashes and the
+apostrophes all fold away, and so do `1`, `i` and `|` against `l`, `0`
+against `o`, and `rn` against `m`. So `Kim` and `Klm` are one name. That
+errs on the side of asking: a second household whose name reads as the
+first is refused, and you add a first name or a middle initial — and then,
+if the two names still match, the city — to tell them apart. Never add a
+tax identification number or any part of one to a name.
+
+A folder already on disk whose name breaks the rule is listed under
+*Folders the tracker leaves alone* with the reason, and nothing in it is
+read.

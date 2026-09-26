@@ -1048,3 +1048,16 @@ def test_an_attachment_name_keeps_no_invisible_formatting_character():
     assert safe_name("﻿Statement.pdf", "x") == "Statement.pdf"
     assert safe_name("Muñoz W-2.pdf", "x") == "Muñoz W-2.pdf"
     assert safe_name("‮​", "attachment 1") == "attachment 1"
+
+
+def test_an_attachment_name_loses_what_the_layouts_invisible_set_names():
+    """Decision 188: the invisible set is the layout's one set, so the
+    default-ignorables outside the format category - a variation selector,
+    a combining grapheme joiner, the Hangul filler - go from an attachment's
+    name as a zero-width space does; a space and a letter stay."""
+    from tracker.layout import is_invisible
+
+    for hidden in ("️", "͏", "ㅤ", "​"):
+        assert is_invisible(hidden)
+        assert safe_name(f"W-2{hidden} 2025.pdf", "x") == "W-2 2025.pdf", hex(ord(hidden))
+    assert safe_name("W-2 2025.pdf", "x") == "W-2 2025.pdf"

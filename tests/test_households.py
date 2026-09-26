@@ -388,3 +388,37 @@ def test_a_feed_is_resolved_by_position_never_built_from_its_labels(tmp_path):
     assert said == [FEED_UNRESOLVED.format(household=one.household, return_name=one.return_name,
                                            year=2025) for one in (climbing, nested)]
     assert not hasattr(households, "return_dir_for")
+
+
+def test_a_feed_resolves_by_the_comparison_key_and_never_builds_a_path(tmp_path, monkeypatch):
+    """Decision 188 (R3, R4): a feed is one identity comparison - the
+    layout's key - between its two names and the folders discovery found.
+    A look-alike spelling names the same return, and no path is ever built
+    from the feed's labels: every constructor of the layout refuses here."""
+    import tracker.layout as layout
+    from tracker.households import fed_by, resolve_feeds
+    from tracker.records import Feed
+    from tracker.registry import discover_engagements
+
+    make_engagement(tmp_path, ITEMS, household="Park Family",
+                    return_name="1040 - John Park", year=2025, scaffold=False)
+    llc = make_engagement(tmp_path, ITEMS, household="Park & Lee LLC",
+                          return_name="1120S - Park & Lee LLC", year=2025, scaffold=False)
+    household = _feeding(tmp_path, [Feed("Park & Lee LLC", "1120S - Park & Lee LLC")])
+    registry = discover_engagements(tmp_path)
+
+    def refuse(*_args, **_kwargs):
+        raise AssertionError("a path was built from a feed's labels")
+
+    for constructor in ("client_household_dir", "inbox_dir_for", "originals_dir_for",
+                        "private_household_dir", "return_dir_for"):
+        monkeypatch.setattr(layout, constructor, refuse)
+    # Cyrillic a and e in the household, a Greek capital Rho and an en dash
+    # in the return: one key with the folders' own names.
+    look_alike = Feed("Pаrk & Lеe LLC", "1120S – Ρark & Lee LLC")
+    found, said = resolve_feeds(household, [look_alike], 2025, registry)
+
+    assert [one.path for one in found] == [llc] and said == []
+    # And the destination's card names the household feeding it by the key.
+    assert [one.path for one in fed_by(registry, llc.parent.parent)] == [household]
+    assert [one.path for one in fed_by(registry, tmp_path / "x" / "PARK & LEE LLC")] == [household]
