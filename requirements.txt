@@ -1,6 +1,9 @@
 # Runtime. Pinned exactly: the suite passes against these, and a build made
-# next month must freeze the same code as one made today. Bump deliberately,
-# run the suite, commit the new pin. (Build-time tools: requirements-build.txt.)
+# next month must freeze the same code as one made today. Bump deliberately:
+# move the pin here and in requirements.lock, run
+# `python tools/lockfiles.py hash`, run the suite, commit both (decision 191).
+# Nothing installs this file directly: every install reads requirements.lock,
+# the whole tree by version and by hash. (Build-time tools: requirements-build.txt.)
 openpyxl==3.1.5
 pypdf==6.19.0
 pdfplumber==0.11.10
@@ -22,8 +25,9 @@ pypdfium2==5.11.0
 # installed with --no-deps AFTER this file: its metadata asks for the GUI
 # build of OpenCV (opencv-python), which pins alone cannot keep out, so its
 # real runtime dependencies are listed here instead, with the headless
-# OpenCV (R-11). Install this file with -c constraints.txt, then
-#   pip install --no-deps -r requirements-nodeps.txt -c constraints.txt
+# OpenCV (R-11). Installed from the locks, in two hash-checked steps:
+#   pip install --require-hashes -r requirements.lock
+#   pip install --require-hashes --no-deps -r requirements-nodeps.lock
 # ONNX Runtime by platform (R-11b): the product ships only on Windows,
 # where onnxruntime-gpu runs on the processor and, with the graphics card
 # pack beside the app, on an NVIDIA card; everywhere else (CI) the plain

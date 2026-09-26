@@ -1,38 +1,43 @@
 @echo off
 rem ── Run the desktop app from source ────────────────────────────────
-rem Double-click to start. First run installs Electron (needs internet
-rem once), the exact version app\package-lock.json pins; every run after
-rem that is instant and fully offline.
+rem Double-click to start. Run Setup.bat once first (it needs the internet);
+rem every start after that is offline.
+rem
+rem This file never installs anything (decision 191). A launch that
+rem installed would run a package's install code, and reach the network,
+rem every time the app opens. It runs the app's private Python (.venv, made
+rem by Setup.bat) and refuses, in one sentence, when that is missing or when
+rem the lock files have changed since Setup ran.
+
+rem Before any other command: cmd would otherwise look for node in this
+rem folder before the search path, so a file dropped here named like it
+rem would run instead (E-10).
+set "NoDefaultCurrentDirectoryInExePath=1"
 
 cd /d "%~dp0"
 
-rem Not "where python": on a fresh Windows that finds the Store's
-rem installer stub, which is not Python. Ask the interpreter itself.
-python -c "import sys" >nul 2>nul || (
-  echo Python was not found. Install Python 3.11+ and re-run.
-  pause & exit /b 1
-)
-where npm >nul 2>nul || (
-  echo Node.js was not found. Install Node.js LTS and re-run.
-  pause & exit /b 1
-)
-
-rem The Python packages requirements.txt pins, installed when they are not
-rem (a satisfied requirement costs a second and needs no network).
-python -m pip install -r requirements.txt --quiet
-if errorlevel 1 (echo. & echo pip install failed - check your internet connection. & pause & exit /b 1)
-
-if not exist "app\node_modules\electron" (
-  echo First-time setup: installing Electron ^(a few minutes^)...
-  pushd app
-  call npm ci --no-audit --no-fund
-  if errorlevel 1 (echo. & echo npm ci failed - check your internet connection. & pause & exit /b 1)
-  popd
+if not exist ".venv\Scripts\python.exe" goto :not_set_up
+rem verify prints its own sentence (tools\lockfiles.py) when the locks moved.
+".venv\Scripts\python.exe" tools\lockfiles.py verify .venv
+if errorlevel 1 goto :stop
+if not exist "app\node_modules\electron" goto :not_set_up
+%SystemRoot%\System32\where.exe node >nul 2>nul || (
+  echo Node.js was not found. Install Node.js LTS and start the app again.
+  goto :stop
 )
 
 rem Electron is started through its own entry script, not the npx shim:
 rem the shim breaks when the folder's path contains an ampersand (as a
-rem firm's name often does). The script downloads the binary on first run.
+rem firm's name often does). The shell runs .venv's Python by its full path.
 pushd app
 node node_modules\electron\cli.js .
 popd
+exit /b 0
+
+rem The sentence is tools\lockfiles.py's NOT_SET_UP, word for word
+rem (tests/test_build.py holds the two together).
+:not_set_up
+echo The app's private Python is not set up on this computer. Run Setup.bat once (it needs the internet), then start the app again.
+:stop
+pause
+exit /b 1

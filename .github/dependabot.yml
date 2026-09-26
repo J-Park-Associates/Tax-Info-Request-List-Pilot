@@ -1,0 +1,39 @@
+# Dependency updates (decision 191): one grouped pull request per ecosystem
+# per week, so the CI bill is one Linux run each (Dependabot never adds the
+# `windows` label - CLAUDE.md's cost rule).
+#
+# A pip update bumps a pin in a requirements*.txt, and the lock check then
+# fails (tests/test_lockfiles.py): a person moves the same pin in its .lock
+# file, runs `python tools/lockfiles.py hash` (it needs the internet), runs
+# the suite and pushes to the pull request. That stop is intended: no hash
+# enters the repository without a person running the tool that fetched it.
+# pillow and pypdfium2 are the native engines that parse client files; their
+# update is reviewed here each week and taken within 7 days of an advisory.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    groups:
+      python:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /app
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    groups:
+      electron-shell:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    groups:
+      actions:
+        patterns: ["*"]

@@ -1,0 +1,12 @@
+# The reader's own package, alone (decision 169, R-11; decision 191).
+# Installed AFTER requirements.lock, without its dependencies, in hash mode:
+#   pip install --require-hashes --no-deps -r requirements-nodeps.lock
+# rapidocr's metadata asks for opencv-python, the GUI build of OpenCV, which
+# the app does not ship; its real runtime dependencies are in
+# requirements.lock, with the headless OpenCV. Nothing else belongs here.
+#
+# To bump the pin: change it in requirements-nodeps.txt and here, run
+#   python tools/lockfiles.py hash
+# (it needs the internet), then run the suite. Never hand-edit a hash.
+rapidocr==3.9.2 \
+    --hash=sha256:04d6b8d151f823d930bd91910555f57bea897c0c44fa6794267b94cf9c1ef9a0

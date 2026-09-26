@@ -2,7 +2,8 @@
 # ONNX Runtime needs to read on an NVIDIA card - CUDA 13 and cuDNN 9, about
 # 1.6 GB. Read by "Build GPU Pack.bat" and nothing else: the app itself
 # never installs these, and a machine without an NVIDIA card never gets
-# them. Installed with --no-deps, so the pack is exactly this list.
+# them. Installed with --no-deps, so the pack is exactly this list, from
+# requirements-gpu.lock, by hash (decision 191).
 nvidia-cublas==13.8.0.4
 nvidia-cuda-nvrtc==13.4.92
 nvidia-cuda-runtime==13.4.92

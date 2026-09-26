@@ -90,7 +90,7 @@
     },
     "tracker/scheduling.py": {
       "role": "Generates the Windows Task Scheduler XML or n8n workflow that runs tracker.runner unattended.",
-      "notes": "One daily task is enough because the runner decides the drafting day. Recognizes Windows drive-letter paths as absolute even when generating from Linux. Decision 131: THE JOB NAMES NO CLIENTS ROOT - runner_arguments(settings_dir) writes -m tracker.runner --settings \"<the app's settings folder>\" --log (runner.SETTINGS_FLAG), and the runner reads the root from settings.json there at every run, so the root has one home and a root changed in the app is the root the job walks next; the Description names the settings file. ROOT_FLAG and the CLI's root option are gone; the CLI takes --settings, defaulting to this checkout's settings folder, and refuses one that names no clients root. The folder resolver is resolve_folder() now. install_task() registers the XML with schtasks (/f, so re-running changes the schedule); --install does both steps. The task name is the product name from settings.product_name(); the defaults (start, repeat, XML file name) are module constants the API's install-schedule reports back so the app shows what was actually installed. EXECUTION_TIME_LIMIT is locking.RUN_TIME_LIMIT_SECONDS rendered by iso_duration(), not a second number, because the lock's stale threshold is derived from the same limit. runner_arguments(frozen=True) is the packaged form of the one command line: the app's executable in runner mode (runner.RUNNER_MODE_FLAG) instead of -m tracker.runner, same arguments after it. TASK_NAME at import is safe because only the shell-launched API (or a source checkout) imports this module; the frozen job never does. Decision 55: quote_argument() doubles a trailing backslash so a drive-root clients folder survives the Windows argument parser."
+      "notes": "One daily task is enough because the runner decides the drafting day. Recognizes Windows drive-letter paths as absolute even when generating from Linux. Decision 131: THE JOB NAMES NO CLIENTS ROOT - runner_arguments(settings_dir) writes -m tracker.runner --settings \"<the app's settings folder>\" --log (runner.SETTINGS_FLAG), and the runner reads the root from settings.json there at every run, so the root has one home and a root changed in the app is the root the job walks next; the Description names the settings file. ROOT_FLAG and the CLI's root option are gone; the CLI takes --settings, defaulting to this checkout's settings folder, and refuses one that names no clients root. The folder resolver is resolve_folder() now. install_task() registers the XML with schtasks (/f, so re-running changes the schedule); --install does both steps. The task name is the product name from settings.product_name(); the defaults (start, repeat, XML file name) are module constants the API's install-schedule reports back so the app shows what was actually installed. EXECUTION_TIME_LIMIT is locking.RUN_TIME_LIMIT_SECONDS rendered by iso_duration(), not a second number, because the lock's stale threshold is derived from the same limit. runner_arguments(frozen=True) is the packaged form of the one command line: the app's executable in runner mode (runner.RUNNER_MODE_FLAG) instead of -m tracker.runner, same arguments after it. TASK_NAME at import is safe because only the shell-launched API (or a source checkout) imports this module; the frozen job never does. Decision 55: quote_argument() doubles a trailing backslash so a drive-root clients folder survives the Windows argument parser. Decision 191 (D-11): n8n runs its command through cmd on Windows and sh elsewhere, so n8n_workflow() quotes working_dir and python by quote_argument() like the settings folder, and refuse_shell_special() refuses any of the three holding a double quote, %, $, a backtick, ! or a control character - a ValueError naming the field and the kind of character, never the value."
     },
     "tracker/api.py": {
       "role": "The JSON command layer the desktop app talks to; COMMANDS is the list, and the module docstring is pinned to it. Since decision 104 it owns the request-list editor's words (EDITOR_* labels, RULES_SAVED, NOTHING_CHANGED, LEARNED_NOTE) and the edit command that saves the list and the engagement's details as one recorded event. Decision 113 added the unlearn command and the editor's two words for taking a taught keyword back (UNLEARN_LABEL, UNLEARNED_NOTE). Decision 130: create, rollover, edit, assign, hand-over (both households), dismiss, unfile and restore refresh the client README of the household they changed through filer.refresh_household_readme(), once the action has succeeded - a refused action refreshes nothing.",
@@ -114,11 +114,11 @@
     },
     ".github/workflows/gate.yml": {
       "role": "The gate's steps, written once: the test suite, the linter, `repo_map.py check`, `vocab_report.py check` and `node --check` on the three Electron files, on whichever runner and interpreter the caller names. Called by both of ci.yml's jobs.",
-      "notes": "Decision 122. `on: workflow_call` with two required string inputs, os and python-version; the job carries timeout-minutes: 30, the ceiling that stops a hung job (the longest job yet measured is 12.5 minutes). It exists because a job's own `if:` cannot see the matrix, which makes ci.yml two jobs rather than one conditional matrix - and the steps written out in each of them would be two copies of the gate, the second one to drift. Its job is named for the runner and the interpreter it was given, so the check names read as they did before the split. Every step after the suite reports whatever the suite did, and keeps its point: a stale map and a failing test are separate problems, and seeing both in one run beats finding the second after fixing the first. Decision 137 (B3): every action is pinned by a full commit SHA with its tag beside it (tests/test_build.py holds every workflow to it)."
+      "notes": "Decision 122. `on: workflow_call` with two required string inputs, os and python-version; the job carries timeout-minutes: 30, the ceiling that stops a hung job (the longest job yet measured is 12.5 minutes). It exists because a job's own `if:` cannot see the matrix, which makes ci.yml two jobs rather than one conditional matrix - and the steps written out in each of them would be two copies of the gate, the second one to drift. Its job is named for the runner and the interpreter it was given, so the check names read as they did before the split. Every step after the suite reports whatever the suite did, and keeps its point: a stale map and a failing test are separate problems, and seeing both in one run beats finding the second after fixing the first. Decision 137 (B3): every action is pinned by a full commit SHA with its tag beside it (tests/test_build.py holds every workflow to it). Decision 191: it installs requirements.lock then requirements-nodeps.lock with --require-hashes, using the runner's own pip (no --upgrade pip), caches on the lock files, and its checkout keeps no credentials (F-12)."
     },
     ".github/workflows/build.yml": {
-      "role": "Builds the portable package on demand (workflow_dispatch or a `v*` tag) by running Build App.bat itself on a Windows runner, proves the frozen executable answers in both of its modes, prints the build-info file and uploads the package as the run's artifact for seven days.",
-      "notes": "Decision 78. It runs the batch file rather than re-implementing the build, because a second copy of the build is the one that drifts; tests/test_build.py refuses a workflow that names PyInstaller, the packager or the copy itself. The batch file pauses for a person at every exit, so it reads one documented switch that skips the waits, named in its own header and set here. The two smoke checks run the frozen executable, not the source: `list` with the shell's two environment variables set, which must answer JSON rather than a traceback on an install with no clients root yet, and one dry pass over a scratch clients root tests/samples.py builds, which walks filing, routing, scanning and drafting. Since decision 169 the root holds a scan only the reader can file (SCRATCH_SCAN), and the step compares the package's engagement line with the source's own dry pass and reads the run log's first line for reader=processor, so a package missing the reader or a model fails here. It installs the tree in the two steps every install makes (R-11): requirements.txt with the constraints, then rapidocr with --no-deps from requirements-nodeps.txt. Where the package landed is read back out of the batch file's own OUT/PLATFORM/ARCH and app/package.json's two names, so no path here is a second copy of one. Not on push: a freeze, an npm install, an Electron download and a few hundred megabytes of artifact are not what a commit should cost."
+      "role": "Builds the portable package from a `v*` tag and nothing else (decision 191) by running Build App.bat itself on a Windows runner, proves the frozen executable answers in both of its modes, prints the build-info file, zips the package, publishes its SHA-256 beside it and on the run's summary page, and uploads the zip and the .sha256 as the run's artifact for seven days.",
+      "notes": "Decision 78. It runs the batch file rather than re-implementing the build, because a second copy of the build is the one that drifts; tests/test_build.py refuses a workflow that names PyInstaller, the packager or the copy itself. The batch file pauses for a person at every exit, so it reads one documented switch that skips the waits, named in its own header and set here. The two smoke checks run the frozen executable, not the source: `list` with the shell's two environment variables set, which must answer JSON rather than a traceback on an install with no clients root yet, and one dry pass over a scratch clients root tests/samples.py builds, which walks filing, routing, scanning and drafting. Since decision 169 the root holds a scan only the reader can file (SCRATCH_SCAN), and the step compares the package's engagement line with the source's own dry pass and reads the run log's first line for reader=processor, so a package missing the reader or a model fails here. It installs the tree in the two steps every install makes (R-11): requirements.lock then rapidocr with --no-deps from requirements-nodeps.lock, both hash-checked (decision 191). Where the package landed is read back out of the batch file's own OUT/PLATFORM/ARCH and app/package.json's two names, so no path here is a second copy of one. Not on push: a freeze, an npm install, an Electron download and a few hundred megabytes of artifact are not what a commit should cost. Decision 191: no workflow_dispatch - v* tags are protected, so a package is the build of reviewed code - and a job guard `if: startsWith(github.ref, 'refs/tags/v')`; the checksum step runs after both smoke checks, and the runbook compares the summary page's hash with certutil -hashfile before a stick is written (transport, not provenance). Its checkout keeps no credentials (F-12)."
     },
     "CLAUDE.md": {
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
@@ -177,7 +177,7 @@
     },
     "tests/test_build.py": {
       "role": "Guards what only the build workflow could otherwise discover ten minutes into a release: that it runs the batch file the repository owns rather than a copy of the build, that the switch it sets is the one that batch file reads, that the flags it fires at the frozen executable are flags tracker/runner.py declares, that it passes the two environment variables tracker/settings.py names, and that both workflows quote the one interpreter pyproject.toml writes down.",
-      "notes": "Decision 78. It also asserts the fixture: a scratch root is one engagement discovery finds and a whole dry pass walks, because a smoke check over an empty folder proves only that discovery does not crash. Nothing here can prove the package runs - only the Windows runner can. Decision 137 (M5): constraints.txt pins the whole tree the portable build freezes; the suite holds requirements*.txt to it, \"Build App.bat\" to installing with -c constraints.txt, and every BUILD-INFO.txt under build-portable/dist to freezing nothing else."
+      "notes": "Decision 78. It also asserts the fixture: a scratch root is one engagement discovery finds and a whole dry pass walks, because a smoke check over an empty folder proves only that discovery does not crash. Nothing here can prove the package runs - only the Windows runner can. Decision 137 (M5), on decision 191's locks: requirements.lock, requirements-build.lock and requirements-nodeps.lock pin the whole tree the portable build freezes, by hash; the suite holds requirements*.txt to them, \"Build App.bat\" to installing them with --require-hashes, and every BUILD-INFO.txt under build-portable/dist to freezing nothing else. Decision 191 also: every pip install in every batch file and workflow is --require-hashes from a .lock and none upgrades pip; the build runs from a v* tag only, with a job guard; the checksum step follows the smoke checks and the upload carries the zip and its .sha256; the launcher installs nothing and speaks the lock tool's sentence; every batch file sets NoDefaultCurrentDirectoryInExePath first and calls Windows' own tools by path (E-10); every checkout keeps no credentials (F-12); the audit workflow is scheduled, Linux-only and never on a push."
     },
     "docs/vocab-coverage.md": {
       "role": "The vocabulary coverage report as people read it: the unreached keywords, the keywords reached only by documents that file elsewhere, the rows nothing files into, then every catalog row by row. Generated by tools/vocab_report.py; never edited by hand.",
@@ -187,8 +187,8 @@
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
     "app/main.js": {
-      "role": "Electron main process. Spawns the Python API (`python -m tracker.api`, or the frozen executable package.json's config.apiName names in the portable build) and relays its JSON to the renderer over IPC.",
-      "notes": "This is the cross-language boundary: everything the UI can do is a tracker.api command. The renderer is untrusted here: a command must be in vocab.commands (before the vocabulary arrives, only BOOTSTRAP_COMMAND, pinned to tracker.api.COMMANDS by a guard) with the one argument shape the renderer uses; open-path opens only a path the API reported in state.paths; the tracker's exit code is read, not discarded, and a tracker that outlives TRACKER_TIMEOUT_MS is killed and reported. The window is sandboxed, cannot navigate and cannot open windows. Decision 160: the shell takes app.requestSingleInstanceLock(); a second launch quits before any window is made, and the running one restores and focuses its window on second-instance - two windows were two editors, and the earlier one's save took the later one's back. Decision 176: devTools is off when packaged, and runTracker() serialises the payload before the tracker starts and writes it as UTF-8, which is how tracker.api._read_spec() reads it."
+      "role": "Electron main process. Spawns the Python API (`-m tracker.api` under the checkout's .venv interpreter, by its full path, or the frozen executable package.json's config.apiName names in the portable build) and relays its JSON to the renderer over IPC.",
+      "notes": "This is the cross-language boundary: everything the UI can do is a tracker.api command. The renderer is untrusted here: a command must be in vocab.commands (before the vocabulary arrives, only BOOTSTRAP_COMMAND, pinned to tracker.api.COMMANDS by a guard) with the one argument shape the renderer uses; open-path opens only a path the API reported in state.paths; the tracker's exit code is read, not discarded, and a tracker that outlives TRACKER_TIMEOUT_MS is killed and reported. The window is sandboxed, cannot navigate and cannot open windows. Decision 160: the shell takes app.requestSingleInstanceLock(); a second launch quits before any window is made, and the running one restores and focuses its window on second-instance - two windows were two editors, and the earlier one's save took the later one's back. Decision 176: devTools is off when packaged, and runTracker() serialises the payload before the tracker starts and writes it as UTF-8, which is how tracker.api._read_spec() reads it. Decision 191: from source it runs .venv/Scripts/python.exe (or .venv/bin/python), never a bare python, and answers with the lock tool's NOT_SET_UP sentence when that is missing; in the packaged app Menu.setApplicationMenu(null) runs before the window is made, so no reload, zoom or developer-tools accelerator exists there (E-7)."
     },
     "app/preload.js": {
       "role": "Context bridge exposing only the calls tests/test_single_source.py checks against main.js.call(args, payload), tracker.open(path) and tracker.pickFolder(). Nothing else crosses."
@@ -218,11 +218,11 @@
       "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
     },
     "requirements.txt": {
-      "role": "Runtime and dev dependencies, pinned exactly (a guard refuses a range), including the reader's runtime closure (decision 169) - rapidocr itself is in requirements-nodeps.txt.",
-      "notes": "requirements-build.txt adds the pinned freezer on top for Build App.bat; api_entry.spec is the committed freeze and app/package-lock.json the committed Electron install, so a build is made from the commit rather than from whatever was current that day (decision 46). olefile (decision 143) reads an Outlook .msg; pinned here and in constraints.txt, and frozen by the portable build. Decision 169 (R-11): rapidocr's metadata asks for the GUI opencv-python, so its real runtime dependencies are listed here with opencv-python-headless, and rapidocr is installed afterwards with --no-deps from requirements-nodeps.txt - by Build App.bat, gate.yml, build.yml and the README's setup alike (tests/test_build.py pins both steps everywhere). Two pins carry markers: onnxruntime-gpu on Windows and the plain onnxruntime elsewhere (R-11b, CI has no card), numpy 2.5.3 from Python 3.12 and 2.4.6 for the 3.11 floor (R-11a). pytesseract is gone."
+      "role": "Runtime and dev dependencies, pinned exactly (a guard refuses a range), including the reader's runtime closure (decision 169) - rapidocr itself is in requirements-nodeps.txt. The human-edited list of direct pins: nothing installs it directly; every install reads requirements.lock, the whole tree by version and by SHA-256 (decision 191).",
+      "notes": "requirements-build.txt adds the pinned freezer on top for Build App.bat; api_entry.spec is the committed freeze and app/package-lock.json the committed Electron install, so a build is made from the commit rather than from whatever was current that day (decision 46). olefile (decision 143) reads an Outlook .msg; pinned here and in requirements.lock, and frozen by the portable build. Decision 169 (R-11): rapidocr's metadata asks for the GUI opencv-python, so its real runtime dependencies are listed here with opencv-python-headless, and rapidocr is installed afterwards with --no-deps from requirements-nodeps.lock - by Setup.bat, Build App.bat, gate.yml, build.yml and the README's setup alike (tests/test_build.py pins both steps everywhere). Two pins carry markers: onnxruntime-gpu on Windows and the plain onnxruntime elsewhere (R-11b, CI has no card), numpy 2.5.3 from Python 3.12 and 2.4.6 for the 3.11 floor (R-11a). pytesseract is gone. Decision 191: constraints.txt is gone; four lock files (requirements.lock, requirements-build.lock, requirements-nodeps.lock, requirements-gpu.lock - not mapped, the map takes no .lock files) carry each pin with the hash of every file PyPI publishes for it, and tools/lockfiles.py check (run by tests/test_lockfiles.py) fails when a pin here and its lock disagree. A pin moves here and in its lock together, then `python tools/lockfiles.py hash`."
     },
     "requirements-build.txt": {
-      "role": "What Build App.bat installs: requirements.txt plus the pinned PyInstaller."
+      "role": "What Build App.bat's freeze needs beyond requirements.txt: the pinned PyInstaller. Installed from requirements-build.lock (with requirements.lock), by hash (decision 191)."
     },
     "artifact:_ledger.jsonl": {
       "type": "artifact",
@@ -271,12 +271,12 @@
       "role": "Nothing is ever sent. The system drafts client emails and stops. There is no SMTP, no mail client and no network call in the reminder or scheduling path."
     },
     "Start App.bat": {
-      "role": "Runs the desktop app from source: checks for Python and Node, installs the Electron packages app/package-lock.json pins (`npm ci`, first run only) and starts Electron.",
-      "notes": "Electron is started through its own entry script under `node`, never the `npx` shim: the shim breaks when the folder's path contains an ampersand, which the firm's own checkout does (decision 53). Electron downloads its binary on the first start, so the install step needs the network once. Decision 55: installs requirements.txt every start (a second when satisfied)."
+      "role": "Runs the desktop app from source, offline, and installs nothing (decision 191): refuses in one sentence when Setup.bat has not made .venv, when tools/lockfiles.py verify says the lock files changed since Setup ran, or when app/node_modules is missing; then starts Electron.",
+      "notes": "Electron is started through its own entry script under `node`, never the `npx` shim: the shim breaks when the folder's path contains an ampersand, which the firm's own checkout does (decision 53). Decision 191 replaced decision 55's install-every-start: a launch that installed ran a package's install code and reached the network at every start, into the machine's own Python. No pip, no npm ci and no npm install appear in it (tests/test_build.py); its not-set-up sentence is tools/lockfiles.py's NOT_SET_UP word for word. It sets NoDefaultCurrentDirectoryInExePath before its first command and calls where.exe by its full path (E-10)."
     },
     "Build App.bat": {
-      "role": "Builds the portable package: freezes the API with PyInstaller from the committed api_entry.spec inside a virtual environment holding exactly requirements-build.txt, packages the Electron shell with @electron/packager, copies the frozen API into resources/ and writes BUILD-INFO.txt.",
-      "notes": "Reproducible from the commit (decision 46): the freeze runs in its own venv because PyInstaller follows optional imports and the machine's Python would otherwise leak unrelated packages into the package (decision 53). The packager runs through its entry script under `node`, not the `npx` shim, for the ampersand reason Start App.bat states; the copy into the package is `robocopy` with its exit code checked and the executable's presence asserted, because `xcopy` gave up on the package's long paths while the script still reported success (decision 53). Guards pin OUT to .gitignore and the resources path to app/main.js. Decision 55: the venv is made fresh each build; no parenthesised value is expanded inside the build-info block. Decision 78: every exit goes through one `:wait` label, which pauses for the person who double-clicked unless TRACKER_BUILD_NONINTERACTIVE is set - the one switch, named in this file's header and read nowhere else, and what lets .github/workflows/build.yml run this file rather than a copy of it."
+      "role": "Builds the portable package: freezes the API with PyInstaller from the committed api_entry.spec inside a virtual environment holding exactly requirements.lock, requirements-build.lock and requirements-nodeps.lock, installed with --require-hashes, packages the Electron shell with @electron/packager, copies the frozen API into resources/ and writes BUILD-INFO.txt.",
+      "notes": "Reproducible from the commit (decision 46): the freeze runs in its own venv because PyInstaller follows optional imports and the machine's Python would otherwise leak unrelated packages into the package (decision 53). The packager runs through its entry script under `node`, not the `npx` shim, for the ampersand reason Start App.bat states; the copy into the package is `robocopy` with its exit code checked and the executable's presence asserted, because `xcopy` gave up on the package's long paths while the script still reported success (decision 53). Guards pin OUT to .gitignore and the resources path to app/main.js. Decision 55: the venv is made fresh each build; no parenthesised value is expanded inside the build-info block. Decision 78: every exit goes through one `:wait` label, which pauses for the person who double-clicked unless TRACKER_BUILD_NONINTERACTIVE is set - the one switch, named in this file's header and read nowhere else, and what lets .github/workflows/build.yml run this file rather than a copy of it. Decision 191: the installs read the locks in hash mode (a replaced file, or a package the locks do not name, fails the build), tests/test_build.py compares BUILD-INFO.txt's freeze with the union of the locks under the build's markers, NoDefaultCurrentDirectoryInExePath is set before the first command and robocopy is called by its full path (E-10)."
     },
     "automation.manifest.json": {
       "role": "The firm's Command Center integration surface, and the whole of it: the card this tool shows on the office dashboard, and the four actions it offers there - a preview pass, a real pass, the engagement list and the learned keywords. No tracker code reads this file; the Command Center discovers it under its configured roots and runs the argv arrays in it with cwd set to the repository root.",
@@ -354,6 +354,31 @@
     "tools/gpu_pack.py": {
       "role": "Makes the graphics card pack (decision 169, ruling 2): one flat gpu-runtime folder of the NVIDIA libraries (CUDA 13, cuDNN 9) copied out of an environment holding requirements-gpu.txt, for Build GPU Pack.bat.",
       "notes": "The app ships onnxruntime-gpu but not these libraries (about 1.6 GB), so a fresh install stays small and reads on the processor anywhere; the pack is copied beside tracker-api.exe only on a machine with an NVIDIA card. Flat, because onnxruntime.preload_dlls(directory=...) loads each library from one folder by name. A pack missing one of REQUIRED (the libraries ONNX Runtime's CUDA provider loads) is refused, not made. Downloads nothing itself: the batch file's pip does, from the pinned list, when a person runs it."
+    },
+    "Setup.bat": {
+      "role": "The one-time setup for running from source (decision 191): makes the app's private Python in .venv, installs requirements.lock then requirements-nodeps.lock (--no-deps) with --require-hashes, runs npm ci in app/, and last stamps what it installed with tools/lockfiles.py stamp.",
+      "notes": "The machine's own Python only makes the environment and is never installed into, so no other program can break the app or be broken by it. --clear, so a package an older lock named does not survive. The stamp is written last, so a Setup that stopped part-way leaves none and Start App.bat says to run it again. It is where a machine's Python is first asked: the floor check and its 'Install Python <floor>+' sentence are pinned to pyproject.toml's requires-python (tests/test_single_source.py). Sets NoDefaultCurrentDirectoryInExePath first and calls where.exe by path (E-10)."
+    },
+    "Build GPU Pack.bat": {
+      "role": "Builds the graphics card pack (decision 169, ruling 2): installs exactly requirements-gpu.lock (--no-deps, --require-hashes) into its own environment and runs tools/gpu_pack.py on it.",
+      "notes": "The only reader of the GPU lock (tests/test_build.py). Build App.bat never runs it: the app is one build and the pack an optional folder. Decision 191: hash-checked, NoDefaultCurrentDirectoryInExePath first (E-10)."
+    },
+    "tools/lockfiles.py": {
+      "role": "The supply-chain lock (decision 191), standard library only: `hash` fills every lock's hashes from PyPI's JSON API, `check` holds the locks to the requirements*.txt pins (every line hashed, no name twice under one marker, the GUI OpenCV in none), `stamp`/`verify` record and compare the locks inside Setup.bat's .venv, `audit` asks OSV about every locked Python and npm package and fails a native engine (NATIVE_ENGINES: pillow, pypdfium2) behind a release older than STALE_DAYS.",
+      "notes": "hash and audit reach the network; they are a maintainer's and the weekly workflow's commands, never on the app's or the scheduled pass's path, and nothing under tracker/ imports this module (the fourth standing rule; tests/test_lockfiles.py checks). The network is one injectable fetch(url, body), so the tests run on fabricated answers. Rejected: pip-tools and uv pip compile (each re-resolves and would move pins), pip-audit (one more package to lock and trust). verify returns NOT_SET_UP when there is no stamp and CHANGED when a lock or app/package-lock.json differs from it; the CLI prints the sentence and exits 1, which is what Start App.bat shows."
+    },
+    ".github/workflows/audit.yml": {
+      "role": "The weekly supply-chain audit (decision 191): on a schedule and by hand only, on ubuntu-latest, runs `python tools/lockfiles.py audit` with no install at all.",
+      "notes": "Never on a push or a pull request, so it adds no CI to any change (the cost rule). Scheduled workflows run from the default branch. Detection, not prevention: the hashes stop a replaced file; this finds a known advisory in a file we chose, and a stale native engine."
+    },
+    ".github/dependabot.yml": {
+      "role": "Dependency updates (decision 191): pip at the root, npm in app/, github-actions, each weekly, each grouped into one pull request with open-pull-requests-limit 2.",
+      "notes": "A pip update bumps a requirements*.txt pin and the lock check then fails until a person moves the same pin in its .lock and runs tools/lockfiles.py hash - the intended stop: no hash enters the repository without a person running the tool that fetched it."
+    },
+    "artifact:.venv/tracker-lock.json": {
+      "type": "artifact",
+      "layer": "runtime",
+      "role": "Setup.bat's stamp, inside the checkout's private environment (decision 191): the SHA-256 of each lock file and of app/package-lock.json as they were when Setup installed them. Start App.bat compares it at every launch through tools/lockfiles.py verify and refuses to start, naming Setup.bat, when it is missing or differs. Not client data; .venv is gitignored."
     }
   },
   "edges": [
@@ -593,11 +618,6 @@
       "type": "writes"
     },
     {
-      "from": ".github/workflows/gate.yml",
-      "to": "requirements.txt",
-      "type": "reads"
-    },
-    {
       "from": ".github/workflows/build.yml",
       "to": "Build App.bat",
       "type": "runs"
@@ -815,6 +835,46 @@
     {
       "from": "tracker/filer.py",
       "to": "artifact:_Opened/",
+      "type": "reads"
+    },
+    {
+      "from": "Setup.bat",
+      "to": "tools/lockfiles.py",
+      "type": "runs"
+    },
+    {
+      "from": "Start App.bat",
+      "to": "tools/lockfiles.py",
+      "type": "runs"
+    },
+    {
+      "from": "tools/lockfiles.py",
+      "to": "artifact:.venv/tracker-lock.json",
+      "type": "writes"
+    },
+    {
+      "from": "tools/lockfiles.py",
+      "to": "artifact:.venv/tracker-lock.json",
+      "type": "reads"
+    },
+    {
+      "from": "Setup.bat",
+      "to": "Start App.bat",
+      "type": "precedes"
+    },
+    {
+      "from": ".github/workflows/audit.yml",
+      "to": "tools/lockfiles.py",
+      "type": "runs"
+    },
+    {
+      "from": "Build GPU Pack.bat",
+      "to": "tools/gpu_pack.py",
+      "type": "runs"
+    },
+    {
+      "from": "tools/lockfiles.py",
+      "to": "requirements.txt",
       "type": "reads"
     }
   ]

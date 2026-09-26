@@ -11,11 +11,20 @@
 #
 # Not on every commit: a freeze, an npm install, an Electron download and a
 # few hundred megabytes of artifact, on a Windows runner, are not what a commit
-# should cost. It is asked for, or made by a release tag.
+# should cost. It is made by a release tag and nothing else (decision 191):
+# `v*` tags are protected, so only an admin can make one, and a package is
+# therefore always the build of reviewed code. There is no manual trigger -
+# a run started by hand from any branch would make a package nobody reviewed -
+# and the job's own `if:` refuses any ref that is not a `v` tag.
+#
+# The package is uploaded as one zip beside its SHA-256, and the hash is
+# written on the run's summary page. Before a USB stick is written, the
+# runbook compares that page's hash with `certutil -hashfile <zip> SHA256`
+# on the downloaded zip: it proves the zip on the stick is the zip this run
+# built (transport), not that the run built reviewed code (the tag does that).
 name: Build the portable package
 
 on:
-  workflow_dispatch:
   push:
     tags: ["v*"]
 
@@ -35,6 +44,9 @@ jobs:
     # The package is a Windows package and the firm's machine is Windows;
     # there is no other host this could be built on.
     runs-on: windows-latest
+    # Tags only, again at the job: the trigger above is the rule, and this
+    # guard keeps it true if a trigger is ever added.
+    if: startsWith(github.ref, 'refs/tags/v')
     timeout-minutes: 90
     steps:
       # git comes with the checkout, and the build reads it: BUILD-INFO.txt
@@ -42,8 +54,11 @@ jobs:
       #
       # Every action is pinned by the commit of the release named beside it
       # (decision 137, B3): a tag can be moved to other code, a commit
-      # cannot. tests/test_build.py holds every workflow to that.
+      # cannot. tests/test_build.py holds every workflow to that. The job
+      # never pushes, so the token is not left in .git/config (F-12).
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          persist-credentials: false
 
       # The interpreter the firm's machine runs, which is therefore the one
       # this package IS: the batch file freezes with whatever `python` is on
@@ -59,14 +74,14 @@ jobs:
 
       # Only the scratch clients root below needs these; the packages that go
       # into the package are the virtual environment the batch file makes from
-      # requirements-build.txt, and nothing here touches that.
-      # The same two steps as the gate and the batch file (decision 169,
-      # R-11). The source's own dry pass below needs the reader too.
+      # the locks, and nothing here touches that.
+      # The same two hash-checked steps as the gate and the batch file
+      # (decisions 169 and 191), from the same locks the package freezes.
+      # The source's own dry pass below needs the reader too.
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt -c constraints.txt
-          pip install --no-deps -r requirements-nodeps.txt -c constraints.txt
+          python -m pip install --require-hashes -r requirements.lock
+          python -m pip install --require-hashes --no-deps -r requirements-nodeps.lock
 
       # The batch file as a person runs it. The one difference is the switch
       # its own header documents, which skips the waits nobody is here to end.
@@ -171,6 +186,23 @@ jobs:
           $first = Get-Content -LiteralPath $log -TotalCount 1
           if ($first -notmatch 'reader=processor') { throw "the run log's first line names no processor: $first" }
 
+      # After both smoke checks, so only a package that answered is hashed.
+      # One zip, its SHA-256 beside it in the `<hex>  <name>` form, and the
+      # hash on the run's summary page - the copy the runbook compares with
+      # `certutil -hashfile` before a stick is written, because a hash that
+      # travels only inside the download proves nothing about the download.
+      - name: Zip the package and publish its SHA-256
+        run: |
+          $zipName = "tax-document-tracker-$env:GITHUB_REF_NAME.zip"
+          $zip = Join-Path $env:RUNNER_TEMP $zipName
+          Compress-Archive -Path $env:PACKAGE_DIR -DestinationPath $zip -Force
+          $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLower()
+          $sum = "$zip.sha256"
+          Set-Content -LiteralPath $sum -Value "$hash  $zipName" -Encoding ascii -NoNewline
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "SHA-256 of ``$zipName``: ``$hash``"
+          Add-Content -Path $env:GITHUB_ENV -Value "PACKAGE_ZIP=$zip"
+          Add-Content -Path $env:GITHUB_ENV -Value "PACKAGE_SHA256=$sum"
+
       # Last, so what can be downloaded is a package that answered both ways.
       # Seven days: long enough to fetch it and copy it to the stick, short
       # enough that nobody installs a package from a forgotten run.
@@ -178,5 +210,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: portable-package
-          path: ${{ env.PACKAGE_DIR }}
+          path: |
+            ${{ env.PACKAGE_ZIP }}
+            ${{ env.PACKAGE_SHA256 }}
           retention-days: 7

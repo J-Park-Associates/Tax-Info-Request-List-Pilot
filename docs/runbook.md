@@ -994,7 +994,7 @@ to send. A parked document is opened as its working copy in
 | `router.OCR_ONLY` | A scan or a photo with no text layer; OCR read it, but only loosely enough to guess. | Confirm what it is and file it. |
 | `reasons.NO_READABLE_TEXT` | Nothing in the file could be read at all — a scan or a photo the reader could not run on, an image-only PDF, an empty sheet. Nothing was matched against anything, so this is not "matched no request". | Open it and file it. If many files say it at once, the reader itself is damaged: re-install the app (§6, step 5). The shortlist shows what its **file name** suggests; the document decides. |
 | `reasons.UNREADABLE_IMAGE` | A photo arrived that would not open — a half-finished upload, most often. | Ask the client for it again; the reminder does. |
-| `reasons.HEIC_NOT_SUPPORTED` | An iPhone photo arrived and this machine's HEIC reader is missing. Ours, never the client's: they sent an ordinary photo. | Re-install from `requirements.txt` (`pillow-heif`). Until then, open the photo and file it by hand. |
+| `reasons.HEIC_NOT_SUPPORTED` | An iPhone photo arrived and this machine's HEIC reader is missing. Ours, never the client's: they sent an ordinary photo. | Run `Setup.bat` again (it installs `pillow-heif` from the locks); for the packaged app, rebuild it. Until then, open the photo and file it by hand. |
 | `reasons.ISSUER_NOT_NAMED` | The request list asks for this document one row per issuer (§8) and this one names none of them — a K-1 from a partnership nobody listed. | File it to the right row, or add a row for that issuer (§8) and it files itself next pass. |
 | `reasons.NAME_NOT_ON_PAGE` | A request that asks for a **named** document accepted it, and the page names nobody on this return's people list (§10). | Open the page. If it does name them in a spelling the list has not got, file it and **teach the spelling** on the same card; if it is somebody else's, file it by hand on the return it belongs to. |
 | `reasons.NAMES_ANOTHER_RETURN` | The page names somebody who is on another return of this household, and nobody on this one. The sentence says who, and which return. | Switch to that return and file it there. Nothing was moved. |
@@ -1225,12 +1225,27 @@ exactly as it came.
    firm account, and wait for the clients folder to finish syncing. Do not
    start until it has.
 2. Put the app on it: rebuild it from this repository (`Build App.bat`),
-   or download the package from a `build.yml` run (the Actions tab, *Run
-   workflow*). There is no separate backup of the app, and none is needed.
+   or download the package from the `build.yml` run a `v*` release tag
+   started (decision 191: a package is built from a tag and from nothing
+   else, and only an admin can make one, so it is the build of reviewed
+   code). The run leaves one zip and, beside it, its SHA-256. **Before
+   writing the USB stick, check the zip:** in a Command Prompt, run
+   `certutil -hashfile <zip> SHA256` on the downloaded zip and compare
+   the answer with the hash on the run's own summary page on GitHub - not
+   only with the copy inside the download, which travelled with the zip.
+   They differ: do not install it; download it again, and if they still
+   differ, ask. There is no separate backup of the app, and none is needed.
    The client files are on the Shared Drive, `settings.json` holds only the
    clients folder, the firm's name and its telephone number, all three typed
    again at step 3, and `tracker.db` rebuilds itself from the journals. Running from source needs Python and
-   Node; the packaged build needs neither. Keep the folder's path short — a
+   Node, and **`Setup.bat` run once** with the internet on: it makes the
+   app's own private Python (`.venv`) and installs into it exactly the
+   locked packages, each checked against its SHA-256, and never touches
+   the machine's own Python. After that `Start App.bat` starts offline and
+   installs nothing; when the lock files change (an update pulled from
+   the repository), it says "The package list changed since Setup ran on
+   this computer" - run `Setup.bat` again. The packaged build needs
+   neither. Keep the folder's path short — a
    few levels deep at most, like the `C:\Tools\tax-tracker` the README's
    scheduling example uses: past the classic Windows path limit the packaged
    program silently loses its command line and answers every call with a
@@ -1302,6 +1317,26 @@ exactly as it came.
 task off, or keep that machine off the clients folder entirely: from then
 on the new machine is the designated one (§1, *One machine per clients
 root*), and the table at the top of §1 is changed to name it.
+
+### Package updates and the weekly audit
+
+The packages the app is built from are locked by version and by hash
+(decision 191); nobody installs anything else. Three things keep that
+current, all on GitHub, none on the office machine:
+
+- **One Dependabot pull request per ecosystem a week** (Python, the
+  Electron shell, the workflows' actions). A Python one fails its checks
+  until someone moves the same pin in the matching `.lock` file, runs
+  `python tools/lockfiles.py hash` and the suite, and pushes: no hash
+  enters the repository unless a person fetched it.
+- **The weekly audit** (`audit.yml`, early each week) asks OSV about every
+  locked package. A red run names each advisory, package and version: read
+  it, bump the pin, rebuild.
+- **The two native engines** - `pillow` (images) and `pypdfium2` (PDFs) -
+  parse every client file in compiled code, so they have a stated cadence:
+  bumped within 7 days of an advisory, and at least every 90 days when a
+  newer release exists. The audit fails when either has a newer release
+  older than 90 days.
 
 ## 7. What to expect in season one
 
