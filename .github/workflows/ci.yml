@@ -3,23 +3,29 @@
 # The map check is here because docs/repo-map.md is what agents read instead of
 # re-scanning the repo (see CLAUDE.md). Its freshness is guarded by a test, but
 # a guard nothing runs is a convention rather than a rule — this is what makes
-# it enforced on every push and pull request.
+# it enforced before anything reaches main.
 #
-# What runs where, and why. A minute on a Windows runner is billed at twice a
-# minute on Linux, and the two Windows rows were four fifths of the price of a
-# run. A pull request in this series is three to five pushes, and every one of
-# them re-ran Windows — while the gate that precedes every push already runs on
-# Windows, on the machine the work is done on. So the Windows jobs on a pull
-# request were repeating a check that had just been made. From here:
+# When it runs, and why (decision 207, revising 122). GitHub's minutes are
+# paid, and they went on three things that repeated a check already made:
+# every push to main ran the Windows pair at twice the Linux price; labelling
+# or updating a pull request started a second run beside the first, and two
+# runs started at once cancel each other and are billed anyway. Every session
+# now runs the whole suite before it pushes — a cloud session on its own
+# machine, the tracker lane on the office PC, which is Windows — so CI is one
+# final check before a merge:
 #
-#   * a pull request runs Linux only, on the floor interpreter and on the
-#     office's — the check the local gate does not make;
-#   * every push to main runs Windows as well, where it is the safety net
-#     nobody can skip and the last check before a tag freezes a package;
-#   * a pull request asks for Windows with the `windows` label, put on anything
-#     touching the held engagement lock, the atomic replace, path handling or a
-#     Windows-only test. `labeled` is one of the triggers below so that
-#     labelling an open pull request runs the job without needing a new push.
+#   * a pull request into main runs when it is opened ready, updated, or
+#     marked ready; a draft runs nothing, because both jobs require
+#     `draft == false` (a trigger filter cannot see it: `synchronize` fires on
+#     drafts too);
+#   * there is no run on a push to main: what merges was checked as the
+#     pull request it came from;
+#   * Linux runs the floor interpreter and the office's;
+#   * Windows runs only on a pull request labelled `windows` — anything
+#     touching the held engagement lock, the atomic replace, path handling or
+#     a Windows-only test. The label goes on while the pull request is still
+#     a draft, so the one run it gets when marked ready sees it; `labeled` is
+#     not a trigger, because it started a second, paid run.
 #
 # The steps themselves are not in this file. A job's own `if:` is evaluated
 # before a matrix is expanded and cannot see the `matrix` context, so this
@@ -30,16 +36,14 @@
 # as a check that passed. The timeout lives with the steps, in gate.yml.
 #
 # The trade-off taken: a Windows-only regression in an unlabelled pull request
-# reaches main and is found by main's run, and its fix is one more pull
-# request. Accepted because the Windows gate ran before the push, and because
-# the alternative was paying for the Windows pair on every push to repeat it.
+# is caught by the office PC's own run before the push, not by GitHub. The
+# tag build (build.yml) still builds and tests every release on GitHub.
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
-    types: [opened, synchronize, reopened, labeled]
+    branches: [main]
+    types: [opened, synchronize, ready_for_review]
 
 # A newer push makes an in-flight run irrelevant; don't pay for both.
 concurrency:
@@ -63,6 +67,7 @@ jobs:
   # floor is a language-version check, and Linux is where it is made.
   linux:
     name: Linux
+    if: github.event.pull_request.draft == false
     strategy:
       fail-fast: false
       matrix:
@@ -74,10 +79,10 @@ jobs:
       os: ubuntu-latest
       python-version: ${{ matrix.python-version }}
 
-  # Windows on main and on a pull request that asked.
+  # Windows on a ready pull request that asked, by its label.
   windows:
     name: Windows
-    if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'windows')
+    if: github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'windows')
     uses: ./.github/workflows/gate.yml
     with:
       os: windows-latest
