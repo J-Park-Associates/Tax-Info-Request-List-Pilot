@@ -26,8 +26,9 @@ Commands:
             inbox with the client - the firm's word, dated
   accept-folder-name  record that a paused household (or one return) is now
             called by its folder's name - a person's word, dated (decision 188)
-  scan      one pass over this return's household, exactly as the scheduled
-            run makes it (no draft)
+  run-now   start this return's household's pass - the scheduled runner, for
+            one household - and print its progress lines and its final
+            line (no draft; decision 203)
   reminder  the week's draft as the record and the file now stand, at any
             of the four stages, with the body Outlook wants (never sends)
   approve   make the text the panel showed this week's draft, and record it
@@ -52,7 +53,8 @@ Commands:
 
 Every reply carries ``warnings``; every error also carries ``failure``
 ({sentence, kind, seq, identifier}) beside ``error`` (decision 193).
-Sort & Scan prints progress lines before its reply (tracker.progress).
+Sort & Scan is ``run-now``: the scheduled runner itself (``tracker.runner.main``),
+which prints progress lines and ends with one final line (tracker.progress).
 """
 
 from __future__ import annotations
@@ -84,6 +86,7 @@ from tracker import (
     records,
     reminder,
     review,
+    runner,
     store,
 )
 from tracker.filer import (
@@ -155,7 +158,7 @@ from tracker.layout import (
 )
 from tracker.locking import (
     LOCK_FILENAME,
-    RUN_TIME_LIMIT_SECONDS,
+    LOCKED,
     STALE_LOCK_SECONDS,
     EngagementLockedError,
     clear_stale_lock,
@@ -269,24 +272,13 @@ from tracker.rollover import (
 )
 from tracker.runner import (
     DRAFT_WEEKDAY,
-    LOG_FILENAME,
-    LOG_NOT_WRITTEN,
     NOTHING_OUTSTANDING,
-    PAGE_NOT_WRITTEN,
-    REMINDERS_NEVER,
     STATUS_PAGE_FILENAME,
     WEEKDAY_NAMES,
-    EngagementRun,
-    RunReport,
-    append_log,
     created_on,
     last_draft_day,
     last_drafted,
     last_pass_line,
-    reader_start_warning,
-    run_household,
-    status_report,
-    write_status_page,
 )
 from tracker.scaffold import (
     PREPARED_DIR_NAME,
@@ -389,10 +381,6 @@ PRACTICE_NOT_WALKED = ("The clients folder could not be walked just now, so what
 REMINDER_UNREADABLE = "This return's reminder could not be read just now; the notice above says why."
 #: One return's reminder line on the household card that could not be read.
 REMINDER_LINE_UNREADABLE = "{label}: its reminder could not be read ({kind})"
-#: A pass that filed and then could not redraw the page (D5): the counts
-#: stay, and the app redraws from the record.
-STATE_NOT_REDRAWN = ("The pass finished and its counts stand, but the page could not be redrawn "
-                     "({kind}); it is drawn again from the record.")
 #: Stop asked of a pass this app is not running (ruling 7 and the lane's).
 NOTHING_TO_STOP = "There is no pass this app started running to stop; nothing was changed."
 #: How often the app asks whether a lock it shows has gone (ruling 10).
@@ -1161,6 +1149,9 @@ def _vocab() -> dict:
         "example_root": EXAMPLE_ROOT,
         "engagement_flag": ENGAGEMENT_FLAG,
         "commands": sorted(COMMANDS),
+        # Sort & Scan's command (decision 203): the shell watches it as a
+        # pass, and the renderer sends it; neither types it.
+        "pass_command": PASS_COMMAND,
         # What each path the API reports is (decision 188, E-14): the shell
         # opens one only while it is still that kind of thing and no link.
         "path_kinds": PATH_KINDS,
@@ -1708,30 +1699,6 @@ def _return_reminder(path: Path, today: dt.date, label: str = "") -> dict:
     }
 
 
-def _the_practice() -> Registry | None:
-    """One walk of the clients root, or ``None`` where it cannot be walked
-    (decision 129).
-
-    **The one walk a click makes, and only *Run now* makes it** (decision
-    192): :func:`_cmd_scan` walks once and hands this registry to the pass
-    and to the practice page it redraws. Showing a return walks nothing -
-    the card resolves its feeds over the households they name
-    (:func:`_feed_payload`). A root that is unset, gone or unreadable
-    answers with nothing rather than failing the pass - and one that could
-    not be walked says so (decision 193, :data:`PRACTICE_NOT_WALKED`).
-    """
-    root = _saved_root()
-    try:
-        return discover_engagements(root) if root and root.is_dir() else None
-    except EmptyRoot:
-        return None
-    except RegistryError as exc:
-        log.warning("The clients root could not be walked (%s)", content_check.said_as_class(exc),
-                    exc_info=True)
-        _warn(PRACTICE_NOT_WALKED)
-        return None
-
-
 def _feed_payload(household_dir: Path, years: list[int]) -> tuple[list[dict], list[dict]]:
     """What this drop folder also feeds, and whose drop folders feed it
     (decision 129).
@@ -2215,172 +2182,46 @@ def _cmd_state(argv: list[str]) -> dict:
     return _state(_engagement_dir(argv))
 
 
-def _record_pass(runs: list[EngagementRun] | EngagementRun,
-                 warnings: list[str] | None = None, *, registry: Registry | None) -> list[str]:
-    """Leave the record the scheduled run leaves: a line in the run log and
-    the practice's status page, both in the clients root.
-
-    The app's button makes the same pass as the job, so it must leave the
-    same trace - a pass with no record is a pass nobody can check
-    afterwards, and a page that is a night old is one nobody believes. The
-    page is redrawn from every engagement under the root, because it is
-    about the practice and not about the engagement that was just run -
-    drawn from the walk the pass made, ``registry``: one walk per *Run
-    now* (decision 192). With no walk (``None``: the root could not be
-    walked, and the pass was refused for it) the log line is still
-    written and the page is not, which the reply says.
-
-    Neither takes a lock or touches an engagement, and neither failing is
-    allowed to fail the pass: the files have already been moved and the
-    statuses recorded, so the person is told what happened either way -
-    **in the reply** (decision 189): the sentence for each that failed is
-    returned, because stderr is what the app discards when the reply
-    parses. ``warnings`` are the pass's own sentences, logged and put on
-    the page as the scheduled pass puts its own.
-    """
-    every = [runs] if isinstance(runs, EngagementRun) else list(runs)
-    said = list(warnings or [])
-    root = _saved_root()
-    if root is None or not root.is_dir():
-        return []
-    failed: list[str] = []
-    # Broadly, both of them: the pass has already moved the client's files
-    # and recorded what it found, so nothing about recording it afterwards
-    # may turn a finished pass into an error message in the app.
-    try:
-        append_log(root / LOG_FILENAME, RunReport(today=dt.date.today(), reminders=REMINDERS_NEVER,
-                                                  runs=every, warnings=said))
-    except Exception as exc:
-        log.warning("Could not write %s (%s)", LOG_FILENAME, exc)
-        failed.append(LOG_NOT_WRITTEN.format(kind=exc.__class__.__name__))
-    if registry is None:
-        log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, RegistryError.__name__)
-        failed.append(PAGE_NOT_WRITTEN.format(kind=RegistryError.__name__))
-        return failed
-    try:
-        write_status_page(root, status_report(registry, passed=every, warnings=said + failed))
-    except Exception as exc:
-        log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, exc)
-        failed.append(PAGE_NOT_WRITTEN.format(kind=exc.__class__.__name__))
-    return failed
+#: Sort & Scan's command (decision 203): the scheduled runner for this
+#: return's household, in the process the shell spawned. Learned by the
+#: shell (``vocab.pass_command``), which watches it as a pass: resolved at
+#: its ``started`` line, its later lines streamed, its final line sent when
+#: it ends.
+PASS_COMMAND = "run-now"
 
 
-def _cmd_scan(argv: list[str]) -> dict:
-    """One pass over this return's **household** - the same pass the
-    scheduled job makes.
+def _cmd_run_now(argv: list[str]) -> int:
+    """Start this return's household's pass - **the scheduled runner
+    itself** (decision 203), with the schedule's own arguments plus no
+    draft, the progress lines and the household
+    (``runner.run_now_arguments``) - and return its exit code.
 
-    Scaffold, sort the household's one inbox, scan, in that order, with
-    the same locks, the same error isolation and the same warnings; only
-    the weekly draft is left to the scheduled run (or `python -m
-    tracker.reminder`). There is one definition of a pass, in
-    tracker.runner, and this is it - including the record it leaves behind
-    (:func:`_record_pass`).
-
-    **The reply carries what the pass said** (decision 189): ``run`` is the
-    asked return, ``household`` is every other return of the household the
-    pass touched (its error, skip and warnings), and ``pass_warnings`` are
-    the pass's own - the reader's path, a reader that could not start, the
-    card, and a run log or page that could not be written. Nothing the
-    pass said is left on stderr alone.
-
-    **The whole inbox, always** (decision 125). One folder feeds every
-    return of the household, so Run now on one return sorts all of it;
-    sorting a share of a pile nobody sorted is not a thing the tracker can
-    honestly do. The reply is about the return that was asked for.
-
-    **And the whole feed list with it** (decision 129). The practice is
-    walked once and handed down, and the page is drawn from the same walk
-    (decision 192), so the returns this drop folder feeds in other
-    households are judged, locked and filed into here exactly as the
-    scheduled pass does it: without the walk the same trial balance would
-    file under the co-owned LLC on the schedule and park at home on Run
-    now, which is two definitions of a pass and one of them wrong. Since
-    decision 132 the pass cannot be called without the walk at all: a root
-    that cannot be walked is refused by the runner in one sentence
-    (``tracker.runner.NO_PRACTICE``), which is this reply's ``error``, and
-    nothing is sorted.
-
-    **Watched, and stoppable** (decision 193). Before its reply the pass
-    prints one progress line per household and per file or request
-    (:mod:`tracker.progress`), the first carrying the run limit the
-    shell's kill follows, and keeps the latest in its progress file beside
-    the tracker's database. ``pass`` is its id, which **Stop** names
-    (``cancel-pass``); a stopped household says so in ``run.cancelled``
-    and its warnings. A redraw that fails after the pass keeps the counts
-    (D5): ``state`` is null, and the warning says so.
-    """
-    engagement = _engagement_dir(argv)
-    household_dir = household_of(engagement)
-    watch = progress.Watch(store.store_path().parent, emit=_emit,
-                           limit_seconds=RUN_TIME_LIMIT_SECONDS)
-    outcome = "failed"
-    try:
-        watch.say("started", started=dt.datetime.now().isoformat(timespec="seconds"),
-                  households=1)
-        returns = mark_superseded([engagement_from(folder)
-                                   for folder in household_returns(household_dir)]) \
-            or [engagement_from(engagement)]
-        practice = _the_practice()
-        runs = run_household(household_dir, returns, reminders=REMINDERS_NEVER, registry=practice,
-                             watch=watch)
-        outcome = ("stopped" if any(one.cancelled for one in runs)
-                   else "out_of_time" if any(one.out_of_time for one in runs) else "finished")
-    finally:
-        watch.close(outcome)
-    run = next((one for one in runs if one.engagement.path == engagement),
-               EngagementRun(engagement=engagement_from(engagement)))
-    # Said once, as the pass's own (decisions 150, 169 and 189).
-    pass_warnings = [w for w in (ocr.reader_path_warning(), reader_start_warning()) if w]
-    if ocr_session := ocr.current_session():
-        pass_warnings.extend(ocr_session.warnings())
-    pass_warnings.extend(_record_pass(runs, pass_warnings, registry=practice))
-    payload = {
-        "run": {
-            "ok": run.ok,
-            "error": run.error,
-            "skipped": run.skipped,
-            "filed": run.filed,
-            "review": run.review,
-            "waiting": run.waiting,
-            "file_errors": run.file_errors,
-            "warnings": run.warnings,
-            "statuses": run.statuses,
-            "outstanding": run.outstanding,
-            "cancelled": run.cancelled,
-            "label": run.engagement.label,
-        },
-        "household": [
-            {"label": one.engagement.label, "ok": one.ok, "error": one.error,
-             "skipped": one.skipped, "warnings": one.warnings}
-            for one in runs if one is not run
-        ],
-        "pass_warnings": pass_warnings,
-        "pass": watch.pass_id,
-    }
-    held = next((one.locked_at for one in runs if one.locked_out and one.locked_at), None)
-    if held is not None:
-        payload["lock"] = _lock_payload(held)
-    try:
-        payload["state"] = _state(engagement)
-    except Exception as exc:
-        # Filed, then could not redraw (D5), whatever the redraw raised - a
-        # ManifestError included (the review's M2): the counts are the
-        # pass's and stand, ``run.error`` already says what the pass met,
-        # and the page is drawn again from the record by the app.
-        kind = content_check.said_as_class(exc)
-        log.warning("The page could not be redrawn after a pass (%s)", kind, exc_info=True)
-        payload["state"] = None
-        _warn(STATE_NOT_REDRAWN.format(kind=kind))
-    # The list from the pass's own walk, which adds none (decision 194, R7):
-    # how a folder made by hand reaches the app's picker. No walk, no list.
-    return _with_list(payload, practice) if practice is not None else payload
-
-
-def _emit(line: str) -> None:
-    """A progress line on stdout, flushed at once, so the shell hears it
-    while the pass runs rather than at its end."""
-    sys.stdout.write(line)
-    sys.stdout.flush()
+    Before it, and nothing else: the return through the one door, its
+    household from the layout, and whether a live pass holds any return of
+    that household. Held - by the schedule or another Run now - it is
+    193's lock notice and nothing starts; the race between this look and
+    the pass taking its locks costs nothing, because the second pass is
+    locked out, says so and moves nothing (the lock says who holds a
+    household, never the shell). The runner checks the household through
+    the door again, writes the ``pass started`` line, the run log and the
+    practice page exactly as the schedule does, and closes the store: this
+    command writes no log and no page of its own, and is dispatched by
+    :func:`main` before its reading session and its reply."""
+    with error_log("tracker"):
+        try:
+            household = household_of(_engagement_dir(argv))
+            for one in household_returns(household):
+                status = lock_status(one)
+                if status is not None and not status.stale:
+                    raise EngagementLockedError(
+                        LOCKED.format(seconds=int(status.age_seconds)), one / LOCK_FILENAME)
+        except Exception as exc:  # said as the one envelope, never a traceback
+            if _failure_of(exc)["kind"] == "failed":
+                log.error("%s failed", PASS_COMMAND, exc_info=True)
+            return _reply_failure(exc)
+        finally:
+            store.close()
+    return runner.main(runner.run_now_arguments(settings_dir(), household))
 
 
 def _cmd_watch(argv: list[str]) -> dict:
@@ -2783,12 +2624,14 @@ def _list_payload(root: Path, registry: Registry) -> dict:
 #: disagree with the walk that is the only discovery (decision 125). They
 #: are set-up acts, once per return per season, so the walk there costs no
 #: daily click. ``edit`` carries it only when it changed ``active``, the
-#: one field it saves that the list shows (R6); ``scan`` carries the list
-#: of the walk it already makes, and adds none (R7). ``set-root`` is not
-#: here: the app starts again after it, because the vocabulary depends on
-#: the settings it writes (R8).
+#: one field it saves that the list shows (R6). Sort & Scan is not here
+#: since decision 203: its pass is the runner's, which prints no list, and
+#: the app asks ``list`` once when the pass ends, then ``state`` (the lane's
+#: ruling on 194's Q5). ``set-root`` is not here either: the app starts
+#: again after it, because the vocabulary depends on the settings it
+#: writes (R8).
 LIST_CHANGING = ("create", "rollover", "roll-household", "edit-household",
-                 "accept-folder-name", "edit", "scan")
+                 "accept-folder-name", "edit")
 
 
 def _listing(registry: Registry | None = None) -> dict | None:
@@ -4276,9 +4119,13 @@ def _cmd_acknowledge_foreign(argv: list[str]) -> dict:
 #: E5): a checkpoint that belongs to another root is refused by name
 #: before anything is written.
 WRITING_COMMANDS = frozenset({
-    "rollover", "roll-household", "mark-shared", "scan", "approve", "create", "assign",
+    "rollover", "roll-household", "mark-shared", "approve", "create", "assign",
     "dismiss", "unfile", "restore", "edit", "edit-household", "unlearn", "rename",
     "mark-missing", "acknowledge-foreign",
+    # Sort & Scan (decision 203) is the runner's pass: :func:`main` hands it
+    # over before this list is asked, and ``runner.main`` proves the
+    # settings' root itself, as it does for the schedule.
+    PASS_COMMAND,
     # Decision 188's accept writes the household's and its returns' records
     # (the port review's M2): held to the checkpoint's root like every other.
     "accept-folder-name",
@@ -4308,7 +4155,7 @@ COMMANDS = {
     "roll-household": _cmd_roll_household,
     "mark-shared": _cmd_mark_shared,
     "accept-folder-name": _cmd_accept_folder_name,
-    "scan": _cmd_scan,
+    PASS_COMMAND: _cmd_run_now,
     "reminder": _cmd_reminder,
     "approve": _cmd_approve,
     "templates": _cmd_templates,
@@ -4341,6 +4188,11 @@ def main(argv: list[str]) -> int:
     _WARNINGS.clear()
     _ASKED.clear()
     _RUNNING["command"] = argv[0] if argv else ""
+    if argv and argv[0] == PASS_COMMAND:
+        # Sort & Scan is the runner's pass (decision 203): no reading
+        # session, envelope or reply of the API's own comes between the
+        # door and ``runner.main``, which attaches its own error log.
+        return _cmd_run_now(argv[1:])
     with error_log("tracker"):
         if not argv or argv[0] not in COMMANDS:
             return _reply_failure(ManifestError(USAGE.format(commands="|".join(COMMANDS))))

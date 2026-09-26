@@ -43,7 +43,10 @@ const SETTINGS_DIR = app.isPackaged ? path.dirname(process.execPath) : REPO_ROOT
 // disabled comes back. A pass says its own limit in its first progress line
 // (limit_seconds, tracker.locking.RUN_TIME_LIMIT_SECONDS - the schedule's),
 // and the kill follows that instead (decision 193): the shell types no
-// number of its own for a pass.
+// number of its own for a pass. Since decision 203 Sort & Scan is that
+// pass - the scheduled runner for one household - so it is never cut off
+// before the run limit; every other command keeps this cap (the lane's
+// ruling on 203's Q1).
 const TRACKER_TIMEOUT_MS = 30 * 60 * 1000;
 
 // Word for word tracker.progress.PROGRESS_KEY and
@@ -63,6 +66,12 @@ const STDERR_CAP = 64 * 1024;
 const BOOTSTRAP_COMMAND = "list";
 let allowedCommands = null;   // vocab.commands, once seen
 let engagementFlag = null;    // vocab.engagement_flag, once seen
+// Sort & Scan's command (decision 203), learned, never typed: a process
+// started with it is a pass - resolved at its first line, not its last.
+let passCommand = null;       // vocab.pass_command, once seen
+// Every pass this shell started and has not seen close, by process id:
+// what will-quit tells to stop.
+const passes = new Map();
 // Paths the API has reported (state.paths): the only ones the shell opens,
 // each with the kind the API said it is (vocab.path_kinds, decision 188).
 // The renderer never names a path of its own, so anything else is refused.
@@ -106,6 +115,7 @@ function learn(result) {
   const vocab = result && result.vocab;
   if (vocab && Array.isArray(vocab.commands)) allowedCommands = new Set(vocab.commands);
   if (vocab && typeof vocab.engagement_flag === "string") engagementFlag = vocab.engagement_flag;
+  if (vocab && typeof vocab.pass_command === "string") passCommand = vocab.pass_command;
   if (vocab && vocab.path_kinds && typeof vocab.path_kinds === "object") pathKinds = vocab.path_kinds;
   if (vocab && vocab.shell && typeof vocab.shell.not_opened === "string") notOpened = vocab.shell.not_opened;
   const said = vocab && vocab.shell;
@@ -138,7 +148,13 @@ function commandProblem(args) {
   return "Malformed command arguments.";
 }
 
-function runTracker(args, payload, onProgress) {
+// One command, one process. A pass (decision 203: the command named by
+// vocab.pass_command) resolves with its first "started" line and runs on:
+// its later lines go to onProgress, and when it closes onEnded gets its
+// final line (or the shell's own failure) and its exit code. A pass that
+// closes before it started - a refusal, the lock notice - resolves with
+// that reply, as any command does.
+function runTracker(args, payload, onProgress, onEnded) {
   const problem = commandProblem(args);
   if (problem) return Promise.resolve(shellFailure(problem, "refused"));
   // Serialised before anything starts (decision 176): a payload that will
@@ -163,6 +179,10 @@ function runTracker(args, payload, onProgress) {
           env,
         });
     const startedAt = Date.now();
+    const isPass = passCommand !== null && args[0] === passCommand;
+    if (isPass && proc.pid) passes.set(proc.pid, proc);
+    let running = false;      // a pass that said it started: the click has its answer
+    let killedReply = null;   // what a pass killed after it started ends with
     let limitMs = TRACKER_TIMEOUT_MS;
     let pending = "";         // stdout not yet ended by a newline
     let reply;                // the last line that was not a progress line
@@ -173,7 +193,7 @@ function runTracker(args, payload, onProgress) {
     const settle = (value) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      if (!running) clearTimeout(timer);
       if (value && !value.error) learn(value);
       resolve(value);
     };
@@ -181,7 +201,9 @@ function runTracker(args, payload, onProgress) {
       proc.kill();
       const minutes = Math.max(1, Math.round(limitMs / 60000));
       const where = last && last.name ? ` ${fill(killedAt, last)}` : "";
-      settle(shellFailure(fill(killed, { minutes }) + where, "failed", { progress: last, killed: true }));
+      const failure = shellFailure(fill(killed, { minutes }) + where, "failed", { progress: last, killed: true });
+      if (running) killedReply = failure;   // said when it closes, as its ending
+      else settle(failure);
     };
     const arm = (ms) => {
       clearTimeout(timer);
@@ -208,6 +230,12 @@ function runTracker(args, payload, onProgress) {
           limitMs = said.limit_seconds * 1000;
           arm(limitMs - (Date.now() - startedAt));
         }
+        // A pass has begun (decision 203): the click is answered now, and
+        // the pass runs on, watched, until it closes.
+        if (isPass && !settled && said.event === "started") {
+          running = true;
+          settle({ started: said, pass: said.pass, warnings: [] });
+        }
         return;
       }
       reply = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : undefined;
@@ -232,12 +260,15 @@ function runTracker(args, payload, onProgress) {
     proc.on("close", (code) => {
       take(pending);
       pending = "";
+      clearTimeout(timer);
+      passes.delete(proc.pid);
       // Nothing of stderr goes on screen: a failed command's goes to the
       // error log beside the tracker's database, for a developer at this
       // machine (decision 193, security principle 7).
       if (!reply || reply.error) keepInLog("shell stderr of a failed command", stderr);
-      if (reply) settle(reply);
-      else settle(shellFailure(fill(noReply, { code }), "failed", { progress: last }));
+      const ending = killedReply || reply || shellFailure(fill(noReply, { code }), "failed", { progress: last });
+      if (!running) settle(ending);
+      else if (onEnded) onEnded({ reply: ending, code });
     });
     if (body !== undefined) proc.stdin.write(body, "utf8");
     proc.stdin.end();
@@ -264,10 +295,15 @@ async function openPath(p) {
   return shell.openPath(p);
 }
 
-// A pass's progress lines go to the window that asked, on their own channel,
-// while the reply is still on its way (decision 193).
-ipcMain.handle("tracker-cmd", (event, args, payload) =>
-  runTracker(args, payload, (progress) => event.sender.send("tracker-progress", { args, progress })));
+// A pass's progress lines go to the window that asked, on their own channel
+// (decision 193), and so does its ending once the click has been answered
+// (decision 203): {args, reply, code}. A window gone by then hears nothing.
+ipcMain.handle("tracker-cmd", (event, args, payload) => {
+  const send = (message) => {
+    if (!event.sender.isDestroyed()) event.sender.send("tracker-progress", { args, ...message });
+  };
+  return runTracker(args, payload, (progress) => send({ progress }), (ended) => send(ended));
+});
 ipcMain.handle("open-path", (_event, p) => openPath(p));
 // An error of the page's own: its text goes to the error log, never on screen.
 ipcMain.handle("log-error", (_event, text) => keepInLog("renderer error", typeof text === "string" ? text : ""));
@@ -336,3 +372,11 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(createWindow);
 }
 app.on("window-all-closed", () => app.quit());
+// Closing the app stops its pass after the file it is on (decision 203,
+// R6): its progress pipe breaks, which the runner takes as Stop - what it
+// did is recorded, its locks are let go, and the next pass does the rest.
+// Not a kill, which would leave the lock for two hours and more, and not a
+// pass left running where no one can stop it.
+app.on("will-quit", () => {
+  for (const proc of passes.values()) proc.stdout.destroy();
+});
