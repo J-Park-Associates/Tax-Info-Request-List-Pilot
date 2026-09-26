@@ -206,3 +206,99 @@ def test_show_prints_a_catalog_and_names_an_unknown_one(capsys):
     assert vocab_report.main(["show", "1040"]) == 0
     assert "[A01]" in capsys.readouterr().out
     assert vocab_report.main(["show", "nope"]) == 1
+
+
+# ------------------------------------------------- a damaged document (208) ----
+
+GARBAGE = b"these bytes are no document at all \x00\x01\x02"
+HEADER = "file,catalog,year,expected\n"
+
+
+def fabricated_corpus(folder, files, lines):
+    """A corpus of fabricated bytes (never real data) and its expectations file."""
+    folder.mkdir()
+    for name, content in files.items():
+        (folder / name).write_bytes(content)
+    (folder / vocab_report.EXPECTATIONS_FILENAME).write_text(HEADER + "".join(lines), encoding="utf-8")
+    return folder
+
+
+def test_a_damaged_workbook_and_pdf_stop_the_build_by_their_entry_and_class(tmp_path, monkeypatch):
+    """The router parks a damaged file; the report cannot count it as saying
+    nothing, so it stops - once, naming every damaged document by its
+    expectations entry and its error's class. A blank spacer line is not an
+    entry, and the parser's own message never reaches the sentence."""
+    import pytest
+
+    folder = fabricated_corpus(
+        tmp_path / "Private Corpus Folder",
+        {"Client Secret W2.pdf": GARBAGE, "notes.csv": b"a,b\n1,2\n", "Client Secret K1.xlsx": GARBAGE},
+        ["notes.csv,1040,2025,\n", ",,,\n", "Client Secret K1.xlsx,1040,2025,\n", "Client Secret W2.pdf,1040,2025,A01\n"],
+    )
+    monkeypatch.setenv(vocab_report.ENV_REAL_CORPUS, str(folder))
+    with pytest.raises(vocab_report.ReportError) as raised:
+        vocab_report.real_documents()
+    said = str(raised.value)
+    assert "expectations entry 2 (BadZipFile)" in said
+    assert "expectations entry 3 (PdfminerException)" in said
+    assert "2 document(s)" in said
+    for leak in ("Client Secret", "Private Corpus Folder", "Root", ".pdf", ".xlsx"):
+        assert leak not in said
+
+
+def test_build_says_the_damaged_rows_in_one_sentence_and_exits_2(tmp_path, monkeypatch, capsys):
+    """No traceback: the CLI prints the sentence, writes no report, and exits 2."""
+    folder = fabricated_corpus(tmp_path / "corpus", {"Client Secret.pdf": GARBAGE},
+                               ["Client Secret.pdf,1040,2025,\n"])
+    monkeypatch.setenv(vocab_report.ENV_REAL_CORPUS, str(folder))
+    monkeypatch.setattr(vocab_report, "REPORT_PATH", tmp_path / "out" / "vocab-coverage.json")
+    monkeypatch.setattr(vocab_report, "MARKDOWN_PATH", tmp_path / "out" / "vocab-coverage.md")
+    assert vocab_report.main(["build"]) == 2
+    out, err = capsys.readouterr()
+    assert "expectations entry 1 (PdfminerException)" in err
+    assert "Client Secret" not in out + err
+    assert not (tmp_path / "out").exists()
+
+
+def test_a_missing_document_is_named_by_its_entry_not_its_name(tmp_path, monkeypatch):
+    import pytest
+
+    folder = fabricated_corpus(tmp_path / "corpus", {}, ["Client Secret.pdf,1040,2025,\n"])
+    monkeypatch.setenv(vocab_report.ENV_REAL_CORPUS, str(folder))
+    with pytest.raises(vocab_report.ReportError) as raised:
+        vocab_report.real_documents()
+    assert "entry 1 names a file that is not in the corpus folder" in str(raised.value)
+    assert "Client Secret" not in str(raised.value) and str(folder) not in str(raised.value)
+
+
+def test_a_contradicting_expectation_is_named_by_its_entry_not_its_name(tmp_path, monkeypatch):
+    import pytest
+
+    folder = fabricated_corpus(tmp_path / "corpus", {"Client Secret.csv": b"w-2\n"},
+                               ["Client Secret.csv,1040,2025,A01\n", "Client Secret.csv,1040,2025,A02\n"])
+    monkeypatch.setenv(vocab_report.ENV_REAL_CORPUS, str(folder))
+    with pytest.raises(vocab_report.ReportError) as raised:
+        vocab_report.real_documents()
+    assert str(raised.value).startswith("expectations entry 1 is expected at both A01 and A02")
+    assert "Client Secret" not in str(raised.value)
+
+
+def test_a_sound_corpus_still_reads_and_a_type_with_no_extractor_is_no_failure(tmp_path, monkeypatch):
+    """A garbage photo or docx never had words to the report; it still has none, and is not an error."""
+    folder = fabricated_corpus(
+        tmp_path / "corpus",
+        {"a.csv": b"Form W-2 Wage and Tax Statement 2025\n", "b.png": GARBAGE, "c.docx": GARBAGE},
+        ["a.csv,1040,2025,A01\n", "b.png,1040,2025,\n", "c.docx,1040,2025,\n"],
+    )
+    monkeypatch.setenv(vocab_report.ENV_REAL_CORPUS, str(folder))
+    documents = {doc.name: doc for doc in vocab_report.real_documents()}
+    assert set(documents) == {"a.csv", "b.png", "c.docx"}
+    assert "W-2" in documents["a.csv"].text
+    assert documents["b.png"].text == documents["c.docx"].text == ""
+
+
+def test_the_report_reads_documents_the_routers_way_only():
+    """One reading (decision 208): the bare extractor, which lets a parser's
+    traceback through, is not the report's to call."""
+    assert not hasattr(vocab_report, "extract_text")
+    assert vocab_report.extract.__module__ == "tracker.content_check"

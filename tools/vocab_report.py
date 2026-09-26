@@ -9,7 +9,7 @@ which are defended by nothing. A keyword no document in the suite says
 is one that can misfile tomorrow with no test to say so. This report is
 that whole, generated the way the suite routes: each catalog built
 through ``validated(template_items(...))``, each corpus form
-read by ``content_check.extract_text()``, each keyword tested with
+read by ``content_check.extract()``, each keyword tested with
 ``says()``, the reading the router and the scanner share.
 
 Four lists matter, per catalog:
@@ -44,6 +44,15 @@ redacted the names of, so it is a local reading and not the committed
 one: ``check`` refuses a committed report built with them, and the
 corpus itself is never in the repository to be hashed.
 
+A document is read the router's way, ``extract(path, ocr=False)``, never
+through the bare extractor (decision 208): a parser's failure comes back
+as its class, not as a traceback quoting the file. Where the router would
+park a damaged file for a person, ``build`` cannot - a broken document
+counted as saying nothing would under-report reach without a word - so it
+reads every document, then stops once, naming each damaged one by its
+expectations entry (its place among the rows that name a file) and its
+error class, never its name, its folder or the parser's message.
+
 A case's text is read as typed; the suite prints it to a PDF and reads
 it back, which preserves its lines, so the two readings agree on every
 keyword the report has been checked against. A workbook case is rendered
@@ -73,7 +82,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))   # run as a script: the package and the suite must import
 
 from tools.repo_map import git_text_auto_eol_lf  # noqa: E402
-from tracker.content_check import dominant_forms, extract_text, says  # noqa: E402
+from tracker.content_check import dominant_forms, extract, says  # noqa: E402
 from tracker.manifest import RequestItem, validated  # noqa: E402
 from tracker.settings import ENV_REAL_CORPUS, EXPECTATIONS_FILENAME, EXPECTED_SEP  # noqa: E402
 from tracker.templates import FORM_TEMPLATES, template_items  # noqa: E402
@@ -138,19 +147,22 @@ def shipped_catalogs() -> dict[str, list[RequestItem]]:
     return {form: validated(template_items(form)) for form in FORM_TEMPLATES}
 
 
-def _placements(rows: list[tuple[str, str, int, str | None]]) -> dict[str, dict[str, str | None]]:
+def _placements(rows: list[tuple[str, str, int, str | None]], *,
+                said=lambda name: name) -> dict[str, dict[str, str | None]]:
     """``(name, catalog, year, where)`` rows as document -> catalog -> placement.
 
     One document is routed against several catalogs and must be expected
     in the same place each time it is; a row that contradicts an earlier
     one is the expectation file disagreeing with itself, and is raised
-    rather than resolved.
+    rather than resolved. ``said`` is how the error names the document:
+    its file for a public corpus form, its expectations entry for one of
+    the firm's own (decision 208).
     """
     expected: dict[str, dict[str, str | None]] = {}
     for name, form, _year, where in rows:
         known = expected.setdefault(name, {})
         if form in known and known[form] != where:
-            raise ReportError(f"{name} is expected at both {known[form]} and {where} in the {form} catalog")
+            raise ReportError(f"{said(name)} is expected at both {known[form]} and {where} in the {form} catalog")
         known[form] = where
     return expected
 
@@ -164,15 +176,44 @@ def _expected_rows(hit: dict) -> tuple[str, ...]:
     return tuple(where.split(EXPECTED_SEP)) if where else ()
 
 
+def _read(path: Path) -> tuple[str, str]:
+    """``(text, error)``: what ``path`` says, read as the router reads it.
+
+    The text layer only (``ocr=False``): the report never ran the reader,
+    and CI, which builds the committed report, has none. A scan or a photo
+    gives its thin text layer or nothing, as the bare extractor did.
+    ``error`` is the parser's failure as its class (decision 189's
+    ``said_as_class``), ``""`` for a document that read - a type with no
+    extractor included, which reads as no words and is no failure.
+    """
+    reading = extract(path, ocr=False)
+    return reading.text or "", reading.error
+
+
+def _unreadable(failures: list[str]) -> ReportError:
+    """One error for every damaged document, so a person fixes them all at once (decision 208)."""
+    return ReportError(
+        f"the corpus holds {len(failures)} document(s) that could not be read: "
+        f"{', '.join(failures)}. Fix or remove them, then build again."
+    )
+
+
 def corpus_documents() -> list[Document]:
-    """The IRS forms, read as the router reads them, with the suite's placements."""
+    """The IRS forms, read as the router reads them, with the suite's placements.
+
+    A form is committed public data, so a damaged one is named by its file.
+    """
     from tests.test_irs_forms import EXPECT
 
     expected = _placements(EXPECT)
-    documents = []
+    documents, failures = [], []
     for path in sorted(IRS_DIR.glob("*.pdf")):
-        text = extract_text(path) or ""
+        text, error = _read(path)
+        if error:
+            failures.append(f"{path.name} ({error})")
         documents.append(Document(IRS, path.name, text, expected.get(path.name, {})))
+    if failures:
+        raise _unreadable(failures)
     return documents
 
 
@@ -183,18 +224,31 @@ def real_documents() -> list[Document]:
     disagree about what an expectation means. Nothing here is committed:
     with no corpus this is an empty list, which is what CI and the
     committed report are built from.
+
+    A document is said by its expectations entry, never its name, its
+    folder or a parser's message (decision 208, security principle 7):
+    the names are the firm's clients'.
     """
     from tests.test_real_corpus import real_corpus
 
     folder, rows = real_corpus()
     if folder is None:
         return []
-    documents = []
-    for name, expected in sorted(_placements(rows).items()):
+    entry: dict[str, int] = {}
+    for number, (name, *_rest) in enumerate(rows, start=1):
+        entry.setdefault(name, number)
+    documents, failures = [], []
+    placements = _placements(rows, said=lambda name: f"expectations entry {entry[name]}")
+    for name, expected in sorted(placements.items()):
         path = folder / name
         if not path.is_file():
-            raise ReportError(f"{EXPECTATIONS_FILENAME} names {name}, which is not in {folder}")
-        documents.append(Document(REAL, name, extract_text(path) or "", expected))
+            raise ReportError(f"{EXPECTATIONS_FILENAME} entry {entry[name]} names a file that is not in the corpus folder")
+        text, error = _read(path)
+        if error:
+            failures.append((entry[name], error))
+        documents.append(Document(REAL, name, text, expected))
+    if failures:
+        raise _unreadable([f"expectations entry {number} ({error})" for number, error in sorted(failures)])
     return documents
 
 
@@ -308,7 +362,8 @@ def report(catalogs: dict[str, list[RequestItem]], documents: list[Document]) ->
 
 def build() -> dict:
     """The report over the shipped catalogs, the corpus, the cases and any real documents."""
-    result = report(shipped_catalogs(), corpus_documents() + case_documents() + real_documents())
+    real = real_documents()   # first: a damaged corpus stops the build before the long reading
+    result = report(shipped_catalogs(), corpus_documents() + case_documents() + real)
     result["inputs"] = input_hashes()
     return result
 

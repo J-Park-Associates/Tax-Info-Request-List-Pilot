@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 158,
-    "edges": 972,
-    "reused": 115
+    "edges": 973,
+    "reused": 116
   },
   "node_types": [
     "artifact",
@@ -3361,8 +3361,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "aeb4f70acafdaf00",
-      "lines": 433,
+      "sha256": "487c6c362cdae123",
+      "lines": 434,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -3379,7 +3379,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "c4cdc6669f2467b7",
+      "sha256": "25ccaa7fe4ed18fd",
       "lines": 976,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -3406,14 +3406,14 @@
       "id": "docs/tools.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "d764a0decef20ba6",
-      "lines": 94
+      "sha256": "1e9365e6028b55c4",
+      "lines": 98
     },
     {
       "id": "docs/vocab-coverage.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "99c78318af673703",
+      "sha256": "2ceda93b654dcce7",
       "lines": 9415,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
@@ -6888,29 +6888,42 @@
       "id": "tests/test_vocab_report.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e3e83097f10279c4",
-      "lines": 208,
+      "sha256": "6f86485e96c1c62c",
+      "lines": 304,
       "exports": [
+        "GARBAGE",
+        "HEADER",
+        "fabricated_corpus",
         "one",
         "row",
         "test_a_changed_input_is_reported_by_name",
         "test_a_committed_report_naming_the_firms_own_documents_is_refused",
+        "test_a_contradicting_expectation_is_named_by_its_entry_not_its_name",
+        "test_a_damaged_workbook_and_pdf_stop_the_build_by_their_entry_and_class",
         "test_a_document_from_the_firms_own_corpus_is_reported_beside_the_forms_and_the_cases",
         "test_a_form_number_quoted_in_a_sentence_does_not_reach_its_keyword",
         "test_a_keyword_a_filing_document_says_is_reached_here_and_an_unsaid_one_is_unreached",
         "test_a_keyword_said_only_by_documents_that_park_or_file_elsewhere_is_named_apart",
         "test_a_keyword_said_only_by_documents_the_suite_never_routes_here_is_reached_without_expectation",
+        "test_a_missing_document_is_named_by_its_entry_not_its_name",
         "test_a_report_built_without_a_corpus_says_nothing_about_one",
+        "test_a_sound_corpus_still_reads_and_a_type_with_no_extractor_is_no_failure",
         "test_a_workbook_case_reads_the_same_to_the_report_as_to_the_suite",
+        "test_build_says_the_damaged_rows_in_one_sentence_and_exits_2",
         "test_hits_are_ordered_corpus_first_then_by_decision_and_name",
         "test_show_prints_a_catalog_and_names_an_unknown_one",
         "test_the_committed_report_is_current",
         "test_the_corpus_forms_are_inputs_too",
         "test_the_counts_add_up_across_catalogs",
         "test_the_markdown_leads_with_the_generated_note_and_names_every_list",
+        "test_the_report_reads_documents_the_routers_way_only",
         "test_the_vocab_report_hashes_what_git_commits",
         "test_the_workbook_cases_are_in_the_report_too"
       ],
+      "constants": {
+        "GARBAGE": "b'these bytes are no document at all \\x00\\x01\\x02'",
+        "HEADER": "'file,catalog,year,expected\\n'"
+      },
       "role": "Guards the coverage report: reach is says(), not a substring; the four headline lists are computed as claimed on small catalogs; the committed report matches its inputs by hash.",
       "notes": "test_the_committed_report_is_current fails the suite if a keyword, a case or the matcher changed without `python tools/vocab_report.py build`. Decision 73: a workbook case must read the same to the report as to the suite, so the rendering and a real round trip through openpyxl are asserted equal."
     },
@@ -7187,8 +7200,8 @@
       "id": "tools/vocab_report.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "a95778b12abfcd41",
-      "lines": 518,
+      "sha256": "473ba2463035d867",
+      "lines": 573,
       "cli": "python -m tools.vocab_report",
       "exports": [
         "Document",
@@ -7221,7 +7234,7 @@
         "INPUT_PATHS": "('tracker/templates.py', 'tracker/content_check.py', 'tracker/manifest.py', 'tests/test_catalog.py', 'tests/test_irs_forms.py', 'tests/test_real_corpus.py', 'tools/vocab_report.py')"
       },
       "role": "Generates the vocabulary coverage report: which keyword in each catalog is reached by which IRS form in tests/irs/ or case in tests/test_catalog.py, tested with content_check.says() the way the router reads, and which keywords nothing in the suite defends.",
-      "notes": "The map's counterpart for the routing rules (decision 70). `build` extracts the corpus and routes every keyword (about thirty seconds); `check` compares the SHA-256 of its inputs - the catalog, the matcher, the manifest's validation, the cases, the corpus, tests/test_real_corpus.py and this file - so it costs nothing and CI runs it. The committed report reads no client document: the corpus is the IRS's own blank forms and text the suite typed. Decision 71: when TRACKER_REAL_CORPUS names the firm's own redacted documents, `build` reads those too (kind `real`) and the counts name them; that report is a local reading, never the committed one, and `check` refuses a committed report that names them. Decision 73: the workbook cases are read too - as_a_sheet() renders a client spreadsheet's rows the way content_check._extract_xlsx does, so a keyword only a schedule reaches is not reported as unreached. Decision 104: shipped_catalogs() builds each catalog through manifest.validated() over template_items(), the same validation an engagement's create makes, with no temporary file and no store - which is why tracker/manifest.py is one of its inputs and the report was rebuilt with this decision at the same numbers."
+      "notes": "The map's counterpart for the routing rules (decision 70). `build` extracts the corpus and routes every keyword (about thirty seconds); `check` compares the SHA-256 of its inputs - the catalog, the matcher, the manifest's validation, the cases, the corpus, tests/test_real_corpus.py and this file - so it costs nothing and CI runs it. The committed report reads no client document: the corpus is the IRS's own blank forms and text the suite typed. Decision 71: when TRACKER_REAL_CORPUS names the firm's own redacted documents, `build` reads those too (kind `real`) and the counts name them; that report is a local reading, never the committed one, and `check` refuses a committed report that names them. Decision 73: the workbook cases are read too - as_a_sheet() renders a client spreadsheet's rows the way content_check._extract_xlsx does, so a keyword only a schedule reaches is not reported as unreached. Decision 104: shipped_catalogs() builds each catalog through manifest.validated() over template_items(), the same validation an engagement's create makes, with no temporary file and no store - which is why tracker/manifest.py is one of its inputs and the report was rebuilt with this decision at the same numbers. Decision 208: every document, the IRS forms and the firm's own, is read through content_check.extract(path, ocr=False), the router's text reading, never the bare extract_text(); a damaged firm document stops build once, with one ReportError naming each by its expectations entry and its error class - never its file name, the corpus folder or a parser's message (security principle 7) - and the missing-file and contradicting-expectation errors say the entry too. The report was rebuilt at the same numbers."
     }
   ],
   "edges": [
@@ -10871,6 +10884,12 @@
       "from": "tests/test_view.py",
       "to": "tracker/view.py",
       "type": "tests",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_vocab_report.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
       "source": "derived"
     },
     {

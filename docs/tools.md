@@ -37,7 +37,11 @@ same documents, when the variable is set; both skip when it is not, so a
 machine without a corpus (CI, a fresh clone) is green. They are never
 committed, redacted or not: client documents do not enter the repo, and a
 report built with them names files the firm's clients can be read out of,
-so `check` refuses one.
+so `check` refuses one. The report reads each document the router's way (decision 208), so a
+damaged one in that folder stops `build` with one sentence naming every
+damaged document by its expectations entry (its place among the rows that
+name a file) and its error class — never a file name, the folder or the
+parser's message. Fix or remove those files, then build again.
 
 The catalog is not the only vocabulary in the field. When a person files a
 parked document they may type a keyword, and it is recorded against that one
