@@ -21,9 +21,14 @@ and the suite must be green without it. With no folder, or a folder with
 no expectations file, the routing test skips and says which variable to
 set; nothing here fails because a machine has no corpus.
 
-A row naming a document that is not in the folder fails by name: an
+A row naming a document that is not in the folder fails, by its row: an
 expectation the harness silently dropped would be a document nobody is
 routing and everybody believes is covered.
+
+Rows are named by number - ``row-N``, counted from one as
+``tools/backtest.py`` counts them - because a test id is written to the
+console, to ``.pytest_cache`` and into every failure, and a client's file
+name must reach none of them (decision 185, F-5).
 """
 
 import csv
@@ -121,9 +126,6 @@ def catalog_rows(workspace: Path, form: str, year: int, built: dict) -> list[Req
 
 
 FOLDER, EXPECT = real_corpus()
-#: Nothing to route: one case that skips, so the suite says why rather than
-#: quietly collecting no tests at all.
-NOTHING: Expectation = ("", "", 0, None)
 
 
 @pytest.fixture(scope="module")
@@ -162,13 +164,20 @@ def ocr_engine_present() -> bool:
 ENGINE = ocr_engine_present()
 
 
-@pytest.mark.parametrize("name, form, year, expected", EXPECT or [NOTHING],
-                         ids=[f"{n}-{f}" for n, f, _, _ in EXPECT] or ["no-corpus"])
-def test_the_firms_own_documents_file_where_they_belong_or_park(catalogs, name, form, year, expected):
+# Nothing to route: row 0, one case that skips, so the suite says why rather
+# than quietly collecting no tests at all.
+@pytest.mark.parametrize("row", range(1, len(EXPECT) + 1) or [0],
+                         ids=[f"row-{n}" for n in range(1, len(EXPECT) + 1)] or ["no-corpus"])
+def test_the_firms_own_documents_file_where_they_belong_or_park(catalogs, row):
     if not EXPECT:
         pytest.skip(f"{ENV_REAL_CORPUS} names no folder holding {EXPECTATIONS_FILENAME}")
+    name, form, year, expected = EXPECT[row - 1]
     path = FOLDER / name
-    assert path.is_file(), f"{EXPECTATIONS_FILENAME} names {name}, which is not in {FOLDER}"
+    # Each claim is computed first and asserted bare: pytest explains a call
+    # inside an assert by its arguments, and the path is a client's.
+    present = path.is_file()
+    assert present, (f"row {row}: {EXPECTATIONS_FILENAME} names a document that is not in "
+                     f"the folder {ENV_REAL_CORPUS} names")
     # A row may name a photo as readily as a PDF (decision 127), and either
     # may be a document with no text layer. Without the engine there are no
     # words to route on, and a failure would say the routing was wrong when
@@ -176,7 +185,9 @@ def test_the_firms_own_documents_file_where_they_belong_or_park(catalogs, name, 
     if not ENGINE and extract(path, ocr=False).needs_ocr:
         pytest.skip(NO_ENGINE)
     routing = route_file(path, catalogs(form, year))
-    assert filed_to(routing) == expected, (name, form, routing.reason)
+    # No routing.reason: a reason can quote the file's name or its words.
+    filed = filed_to(routing)
+    assert filed == expected, f"row {row} ({form} {year}): expected {expected or 'parks'}, filed {filed or 'parked'}"
 
 
 # ------------------------------------------------- the harness itself ----
@@ -274,3 +285,33 @@ def test_no_corpus_is_no_failure_only_nothing_to_route(tmp_path, monkeypatch):
     assert real_corpus() == (None, [])
     monkeypatch.setenv(ENV_REAL_CORPUS, str(tmp_path))       # a folder, but no expectations file
     assert real_corpus() == (None, [])
+
+
+def test_corpus_rows_are_named_by_number_in_ids_messages_and_the_cache(office_shaped_copy, tmp_path):
+    """Decision 185, F-5: a test id reaches the console, ``.pytest_cache`` and
+    every failure, so a row is ``row-N`` there and its file's name is nowhere.
+    A fabricated document, expected where it cannot file, fails in a run of
+    its own and says only its row."""
+    from tests.conftest import run_in_copy
+
+    copy, _fabricated = office_shaped_copy
+    name = "Zephyrine Quillfeather W-2 2025.pdf"
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    text_pdf(corpus / name, "Form W-2 Wage and Tax Statement 2025")
+    (corpus / EXPECTATIONS_FILENAME).write_text(
+        "\n".join([",".join(EXPECTATIONS_COLUMNS), f"{name},1040,2025,A99", ""]), encoding="utf-8")
+    cache = tmp_path / "cache"
+
+    # The rows' own test by node id, not ``-k row``: this test's name holds
+    # "row" too, and would start itself again in the copy.
+    done = run_in_copy(copy, "tests/test_real_corpus.py::test_the_firms_own_documents_file_where_they_belong_or_park",
+                       "-o", f"cache_dir={cache}", **{ENV_REAL_CORPUS: str(corpus)})
+    output = done.stdout + done.stderr
+    assert done.returncode == 1, output[-4000:]
+    assert "row-1" in output
+    for said in (name, "Zephyrine", str(corpus)):
+        assert said not in output, said
+    for path in cache.rglob("*"):
+        if path.is_file():
+            assert "Zephyrine" not in path.read_text(encoding="utf-8", errors="replace"), path

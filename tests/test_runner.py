@@ -157,8 +157,11 @@ def drafted_events(engagement_dir):
 def test_the_runner_has_a_main_the_frozen_entry_can_call(tmp_path, samples, capsys):
     # api_entry.py runs the scheduled job through this function, so the
     # command line has to be one, not code under __main__.
-    build_engagement(tmp_path, samples)
-    assert main([str(tmp_path), "--dry-run", "--reminders", REMINDERS_NEVER]) == 0
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
+    build_engagement(root, samples)
+    assert main([str(root), "--dry-run", "--reminders", REMINDERS_NEVER]) == 0
     assert "Smith TY2025" in capsys.readouterr().out
 
 
@@ -170,10 +173,13 @@ def test_the_runners_console_guard_is_the_pages(tmp_path, samples, monkeypatch):
     import sys
 
     # An arrow and a check mark: no letter of a second alphabet (decision 188).
-    build_engagement(tmp_path, samples, name="Smith TY2025 \u2192 \u2713")
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
+    build_engagement(root, samples, name="Smith TY2025 \u2192 \u2713")
     console = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
     monkeypatch.setattr(sys, "stdout", console)
-    code = main([str(tmp_path), "--dry-run", "--reminders", REMINDERS_NEVER])
+    code = main([str(root), "--dry-run", "--reminders", REMINDERS_NEVER])
     console.flush()
     shown = console.buffer.getvalue().decode("cp1252")
     assert code == 0
@@ -917,13 +923,16 @@ def test_strays_in_prepared_reach_the_run_report(tmp_path, samples):
 def test_a_real_pass_writes_the_status_page_into_the_root_and_a_dry_run_does_not(tmp_path, samples, capsys):
     """The page is the pass's standing answer, so a pass that changed nothing
     on disk must not leave one - a dry run writes nothing, this included."""
-    build_engagement(tmp_path, samples)
-    page = tmp_path / STATUS_PAGE_FILENAME
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
+    build_engagement(root, samples)
+    page = root / STATUS_PAGE_FILENAME
 
-    assert main([str(tmp_path), "--date", FRIDAY.isoformat(), "--dry-run"]) == 0
+    assert main([str(root), "--date", FRIDAY.isoformat(), "--dry-run"]) == 0
     assert not page.exists()
 
-    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 0
+    assert main([str(root), "--date", FRIDAY.isoformat()]) == 0
     text = page.read_text(encoding="utf-8")
     assert product_name() in text
     assert STATUS_GENERATED.split("{")[0].strip() in text
@@ -1063,13 +1072,16 @@ def test_the_page_is_written_even_when_an_engagements_pass_failed(tmp_path, samp
     so the page it would have been written by is still written, with the error.
     A typo cannot reach the record (decision 104); what can is a journal
     line something else wrote badly."""
-    build_engagement(tmp_path, samples, name="Good TY2025")
-    broken = build_engagement(tmp_path, samples, name="Broken TY2025")
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
+    build_engagement(root, samples, name="Good TY2025")
+    broken = build_engagement(root, samples, name="Broken TY2025")
     with ledger.path_for(broken.path).open("ab") as handle:
         handle.write(b"{this line is not an event}\n")
 
-    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 1
-    text = (tmp_path / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
+    assert main([str(root), "--date", FRIDAY.isoformat()]) == 1
+    text = (root / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
 
     assert "Good TY2025" in text and text.count("Broken TY2025") >= 2
     assert "does not read as an event" in text

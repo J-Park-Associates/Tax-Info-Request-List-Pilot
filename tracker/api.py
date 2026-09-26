@@ -311,6 +311,7 @@ from tracker.settings import (
     EXAMPLE_ROOT,
     SET_ROOT_HINT,
     SettingsError,
+    app_dir,
     clients_root,
     error_log,
     error_log_path,
@@ -502,7 +503,7 @@ def _reply_failure(exc: BaseException) -> int:
 
 #: The folder the app runs from (the repository from source, beside the
 #: executable when frozen) - the same answer tracker.settings gives.
-REPO_ROOT = settings_dir()
+REPO_ROOT = app_dir()
 def _root() -> Path:
     """The clients root from the settings file - the one place it is kept -
     held to the settings' rule on every command that reads it (decision

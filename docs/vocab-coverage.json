@@ -9404,8 +9404,8 @@
   "tests/irs/nyit204ll.pdf": "2fa553d27d160150080a13d8de4e128b5c5c1c5149cb515811ac3b17a9664044",
   "tests/test_catalog.py": "fdd14139a87ad291781907e66f442d7000fc216dc140b44a7a43171357c90b0a",
   "tests/test_irs_forms.py": "2fe13a8d8708d8967ba2b232a24fd81ce0eb515e5527a248b451e5adecb7ae38",
-  "tests/test_real_corpus.py": "60f278b8c6e1792436b49163d9cfd8b25d3f5cc5d571878fc0ed7968717f9c96",
-  "tools/vocab_report.py": "6dbd4f0d5d1a286318853e360e04fdb4117af343fa2d442815296064967815aa",
+  "tests/test_real_corpus.py": "28d1fb3c4f85ed098c8dbdee1dafa73cbaa50a0b4f7defb9494409f9e1b72295",
+  "tools/vocab_report.py": "99e9e00fed7f5f1fd0755836c52ef24ecd57d0d996436d4acf4ead1370dffb8b",
   "tracker/content_check.py": "9f15b0ead29098da94cf6c6698471a5cf3e99c80440856473a7f63c18eeb1bee",
   "tracker/manifest.py": "53af4c0632b5ab3da6b5ab348a270a8d657a034d785e46a533bf8e85b665ef58",
   "tracker/templates.py": "adaecaabc76e6191d5750903ba4367e7a82a52f2cd2d82b63d860a21e8437535"

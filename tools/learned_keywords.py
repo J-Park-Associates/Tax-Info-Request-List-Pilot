@@ -44,10 +44,14 @@ this report exists to find.
 **The counts alone, by default.** An engagement folder name is a client's
 name, so the default output carries only how many engagements typed each
 keyword; ``--engagements`` names them, for the person deciding whether a
-keyword is one client's habit or the firm's. An engagement whose manifest
-cannot be read is named either way, with its problem: a report that quietly
-skipped it would say the firm has taught nothing where it may have taught
-most.
+keyword is one client's habit or the firm's. An engagement whose record
+cannot be read is counted by default and named, with its problem, only under
+``--engagements``: the folder is a client's name and the problem can quote
+the record (decision 185). A report that quietly skipped it would say the
+firm has taught nothing where it may have taught most. What remains in the
+default output: the keywords themselves are words a person typed, and one
+can be a client's employer or a lender's name. They are the report's
+purpose and stay.
 
 ``--lint`` runs each candidate over the blank forms in ``tests/irs/`` the
 way ``tools/vocab_report.py`` runs the catalog's own keywords - the same
@@ -91,7 +95,13 @@ from tracker.manifest import (  # noqa: E402
     load_manifest,
 )
 from tracker.registry import SKIP_ROLLED_FORWARD, RegistryError, discover_engagements  # noqa: E402
-from tracker.settings import NO_ROOT_HINT, SettingsError, clients_root, settings_path  # noqa: E402
+from tracker.settings import (  # noqa: E402
+    NO_ROOT_HINT,
+    SettingsError,
+    clients_root,
+    inside_the_app,
+    settings_path,
+)
 
 #: How an engagement the run would no longer chase is flagged where it is named.
 FLAG_INACTIVE = "inactive"
@@ -342,8 +352,7 @@ def render(report: Report, *, engagements: bool = False) -> str:
         "that no catalog row carrying the same identifier and document carries, grouped by request row. "
         "Nothing was written, moved or locked to make this: the manifests were only read.",
         "",
-        f"Clients root: {report.root}",
-        "",
+        *([f"Clients root: {report.root}", ""] if engagements else []),
         summary_line(report),
         "",
     ]
@@ -374,7 +383,15 @@ def render(report: Report, *, engagements: bool = False) -> str:
     lines += ["## Problems", "",
               "Engagements whose manifest could not be read. Whatever they have taught the router is "
               "not in the lists above.", ""]
-    lines += [f"- {folder} — {problem}" for folder, problem in report.problems] or [NONE]
+    if engagements:
+        lines += [f"- {folder} — {problem}" for folder, problem in report.problems] or [NONE]
+    elif report.problems:
+        # Counted, never named: the folder is a client's name and the
+        # problem can quote the record (decision 185).
+        lines.append(f"{len(report.problems)} engagement(s) could not be read; "
+                     "--engagements names them and says why.")
+    else:
+        lines.append(NONE)
     lines.append("")
     return "\n".join(lines)
 
@@ -390,7 +407,7 @@ def out_path(named: str) -> Path:
     """
     path = Path(named).expanduser()
     resolved = (Path.cwd() / path).resolve() if not path.is_absolute() else path.resolve()
-    if resolved == ROOT or resolved.is_relative_to(ROOT):
+    if inside_the_app(resolved):
         raise LearnedKeywordsError(f"refusing to write inside the repository: {resolved}")
     return resolved
 

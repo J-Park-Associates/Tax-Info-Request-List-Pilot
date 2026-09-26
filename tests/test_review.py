@@ -8,7 +8,6 @@ the engagement exactly as it was — no lock, no write, not one changed byte.
 
 import datetime as dt
 import hashlib
-import os
 import subprocess
 import sys
 from dataclasses import replace
@@ -16,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import make_engagement, seed_index, sort
+from tests.conftest import child_env, make_engagement, seed_index, sort
 from tests.test_scanner import text_pdf
 from tracker import reasons
 from tracker.content_check import (
@@ -381,7 +380,7 @@ def test_the_cli_prints_each_parked_file_and_its_shortlist(engagement):
     done = subprocess.run(
         [sys.executable, "-m", "tracker.review", str(engagement)],
         cwd=REPO, check=True, capture_output=True, text=True,
-        env={**os.environ, "PYTHONPATH": str(REPO), "PYTHONIOENCODING": "utf-8"},
+        env=child_env(PYTHONIOENCODING="utf-8"),
     )
 
     assert "statement.pdf" in done.stdout

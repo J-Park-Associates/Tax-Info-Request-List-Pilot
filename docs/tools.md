@@ -32,12 +32,15 @@ the folder holding them, with an expectations.csv beside them saying, per
 document, which catalog and engagement year it is routed against and the
 identifier it must file under — blank where it must park in
 `00 - Needs Review`. `tests/test_real_corpus.py` routes every row of that
-file the way the IRS forms are routed, and the coverage report reads the
-same documents, when the variable is set; both skip when it is not, so a
-machine without a corpus (CI, a fresh clone) is green. They are never
-committed, redacted or not: client documents do not enter the repo, and a
-report built with them names files the firm's clients can be read out of,
-so `check` refuses one. The report reads each document the router's way (decision 208), so a
+file the way the IRS forms are routed, and names each by its row in that
+file, never by its name, so no client's file name reaches a test id, the
+console or pytest's cache; it skips when the variable is not set, so a
+machine without a corpus (CI, a fresh clone) is green. The documents are
+never committed, redacted or not. The coverage report's `build` refuses to
+write the committed report while the variable names a corpus;
+`python tools/vocab_report.py build --out <folder>` writes that reading
+outside the repository, each real document named by its row, and `check`
+refuses a committed report built with them (decision 185). The report reads each document the router's way (decision 208), so a
 damaged one in that folder stops `build` with one sentence naming every
 damaged document by its expectations entry (its place among the rows that
 name a file) and its error class — never a file name, the folder or the
@@ -55,8 +58,9 @@ commit. `tools/learned_keywords.py` is the season's list of
 them: it walks every engagement under the clients root, compares each request
 row's keywords against the catalog rows carrying the same identifier and
 document, and groups what is left by row with the number of engagements that
-typed it. It only reads — no lock, no write-back — and it prints no client
-folder name unless it is asked for one, so a keyword several engagements had
+typed it. It only reads — no lock, no write-back — and by default it prints
+no client's name, no folder and no problem's text - `--engagements` names the
+engagements and why any could not be read, so a keyword several engagements had
 to be taught separately can be promoted into `tracker/templates.py`, where
 the suite defends it. It can run each candidate over the IRS forms in
 `tests/irs/` first, and marks the ones that would misfile a form the suite

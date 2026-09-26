@@ -6504,3 +6504,15 @@ def test_no_command_outside_the_list_changing_ones_carries_the_list():
             assert api._with_list({}) == {}, command
     finally:
         api._RUNNING["command"] = ""
+
+
+
+
+def test_the_scheduled_tasks_working_folder_is_the_apps_own_not_the_settings_folder(tmp_path, monkeypatch):
+    """Decision 185: ``REPO_ROOT`` is the app's own folder, whatever settings
+    folder was named when the module was imported."""
+    from tracker import settings
+
+    monkeypatch.setenv(settings.ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    assert api.REPO_ROOT == settings.app_dir()
+    assert api.REPO_ROOT != settings.settings_dir()

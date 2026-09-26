@@ -3,17 +3,19 @@
 The claim: given RUNNER_MODE_FLAG first it is the scheduled job and needs
 none of the environment the Electron shell gives the API (Task Scheduler
 passes nothing); without the flag it is the API, one JSON object out.
+The job is given its settings folder on its command line, as Task
+Scheduler gives it, and needs nothing else from the environment
+(decision 185).
 """
 
-import os
 import subprocess
 import sys
 import textwrap
 from pathlib import Path
 
-from tests.conftest import make_engagement
+from tests.conftest import child_env, make_engagement
 from tracker.manifest import RequestItem
-from tracker.runner import RUNNER_MODE_FLAG
+from tracker.runner import RUNNER_MODE_FLAG, SETTINGS_FLAG
 from tracker.settings import ENV_PRODUCT_NAME, ENV_SETTINGS_DIR
 
 REPO = Path(__file__).resolve().parent.parent
@@ -23,7 +25,7 @@ def run_entry(args: list[str]) -> tuple[int, bool, str, bool]:
     """Run api_entry.py in a fresh interpreter with the shell's variables
     stripped; report the exit code, whether tracker.api was imported, stdout,
     and whether a child process was started (decision 150's reading)."""
-    env = {k: v for k, v in os.environ.items() if k not in (ENV_PRODUCT_NAME, ENV_SETTINGS_DIR)}
+    env = child_env(drop=(ENV_PRODUCT_NAME,) + ((ENV_SETTINGS_DIR,) if args[:1] == [RUNNER_MODE_FLAG] else ()))
     probe = textwrap.dedent(f"""
         import runpy, sys
         sys.argv = ["api_entry.py"] + {args!r}
@@ -51,7 +53,8 @@ def test_runner_mode_runs_a_pass_without_importing_the_api_layer(tmp_path):
     make_engagement(root, [RequestItem(identifier="A01", document="W-2")],
                     household="Smith Family")
 
-    code, api_imported, out, _spawned = run_entry([RUNNER_MODE_FLAG, str(root), "--dry-run",
+    code, api_imported, out, _spawned = run_entry([RUNNER_MODE_FLAG, str(root),
+                                                   SETTINGS_FLAG, str(tmp_path / "app"), "--dry-run",
                                                    "--reminders", "never"])
 
     assert code == 0, out
@@ -93,7 +96,8 @@ def test_runner_mode_reads_a_drop_in_a_child_and_files_it(tmp_path):
         min_size_kb=0, required_keywords=("W-2",))], household="Smith Family")
     text_pdf(inbox_of(engagement) / "w2.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
 
-    code, _api_imported, out, spawned = run_entry([RUNNER_MODE_FLAG, str(root), "--dry-run",
+    code, _api_imported, out, spawned = run_entry([RUNNER_MODE_FLAG, str(root),
+                                                   SETTINGS_FLAG, str(tmp_path / "app"), "--dry-run",
                                                    "--reminders", "never"])
 
     assert code == 0, out

@@ -19,6 +19,10 @@ since decision 117, the firm's telephone number), read and written whole,
 atomic on write. What is here is what belongs to the firm rather than to
 an engagement; there is no second copy of any of it to drift.
 
+Its absence is learned by opening it, never by asking whether it exists
+(decision 185): ``exists()`` raises no audit event, so the suite's tripwire
+sees every attempt on the file, on a machine that has one and on one without.
+
 ``ENV_REAL_CORPUS`` sits here for the same reason the clients root does:
 it is the other folder outside the repository the code is told about - the
 firm's own redacted documents, which the harness and the coverage report
@@ -42,6 +46,11 @@ from tracker import layout
 from tracker.fsio import write_json_atomically
 
 SETTINGS_FILENAME = "settings.json"
+#: The folder decision 137 (L7) kept OCR's page images in, beside the app.
+#: Retired by decision 169 - the reader writes none - but an old checkout or
+#: install may still hold it with a client's page inside, so the ignore file
+#: and the suite's tripwire (decision 185) both name it, from here.
+OCR_SCRATCH_DIRNAME = "ocr-scratch"
 #: The keys inside it.
 KEY_CLIENTS_ROOT = "clients_root"
 KEY_FIRM = "firm"
@@ -198,11 +207,15 @@ def error_log(logger_name: str = "tracker") -> Iterator[Path]:
 
 def _read() -> dict:
     path = settings_path()
-    if not path.exists():
-        return {}
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        text = path.read_text(encoding="utf-8")
+    except (FileNotFoundError, NotADirectoryError):
+        return {}           # nothing written yet: the same answer exists() gave
+    except (OSError, UnicodeDecodeError) as exc:
+        raise SettingsError(f"{path} could not be read: {exc}") from None
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
         raise SettingsError(f"{path} could not be read: {exc}") from None
     if not isinstance(data, dict):
         raise SettingsError(f"{path} should hold one JSON object")
@@ -294,6 +307,18 @@ def app_dir() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent.parent
+
+
+def inside_the_app(path: Path | str) -> bool:
+    """Whether ``path`` is the app's own folder or lies inside it - the
+    repository, when run from source (decision 185).
+
+    The one answer the report tools ask before writing, because a file there
+    is one `git add -A` away from every clone; judged by the folder itself
+    as well as its spelling (:func:`_inside`). Decision 186 asks it too:
+    client data never lives in a code checkout.
+    """
+    return _inside(Path(path).expanduser().resolve(), app_dir())
 
 
 def system_drive_root() -> Path:

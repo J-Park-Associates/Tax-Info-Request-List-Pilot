@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import make_engagement
+from tests.conftest import checkout_snapshot, make_engagement, real_places
 from tracker import ledger
 from tracker.manifest import (
     EngagementInfo,
@@ -239,30 +239,36 @@ def test_an_engagement_whose_record_cannot_be_read_is_a_problem_line_not_a_silen
     assert report.engagements == 2 and report.read == 1
     (folder, problem), = report.problems
     assert folder == str(broken) and "does not read as an event" in problem
-    text = render(report)
+    text = render(report, engagements=True)
     assert "## Problems" in text and str(broken) in text and "1 problem(s)" in text
 
 
+def test_the_default_output_names_no_client_no_folder_and_no_problem_text(tmp_path):
+    """Decision 185: the default report carries no root, no folder and no
+    parser's words - the folder is a client's name and the problem can quote
+    the record. It counts what it could not read; ``--engagements`` names it."""
+    from tracker.households import create_household
+    from tracker.layout import private_household_dir, return_dir_for
+    from tracker.records import HouseholdInfo
+
+    root = tmp_path / "Clients"
+    fine = engagement(root, "Readable Household")
+    taught(fine, "A01", SAID_BY_NOTHING)
+    household = private_household_dir(root, "Unreadable Household")
+    household.mkdir(parents=True)
+    create_household(household, HouseholdInfo(name="Unreadable Household"))
+    broken = return_dir_for(root, "Unreadable Household", 2025, "1040 - Unreadable")
+    broken.mkdir(parents=True)
+    ledger.path_for(broken).write_text("{this line is not an event}\n", encoding="utf-8")
+
+    text = render(collect(root))
+    for said in ("Readable Household", "Unreadable Household", str(fine), str(broken), str(root),
+                 "does not read as an event"):
+        assert said not in text, said
+    assert "1 engagement(s) could not be read" in text
+
+
 # ------------------------------------------------------------- writing none ----
-
-
-def _tree() -> dict[str, tuple[int, int]]:
-    """Every file under the repository, by size and mtime, the caches excluded."""
-    skip = {".git", "node_modules", "__pycache__", ".claude", ".pytest_cache", ".ruff_cache"}
-    found = {}
-
-    def walk(folder: Path) -> None:
-        for child in folder.iterdir():
-            if child.name in skip:
-                continue
-            if child.is_dir():
-                walk(child)
-            else:
-                stat = child.stat()
-                found[str(child)] = (stat.st_size, stat.st_mtime_ns)
-
-    walk(REPO)
-    return found
 
 
 def test_the_report_writes_nothing_under_the_repository_and_refuses_an_out_path_inside_it(tmp_path, capsys):
@@ -270,21 +276,21 @@ def test_the_report_writes_nothing_under_the_repository_and_refuses_an_out_path_
     root = tmp_path / "Clients"
     taught(engagement(root, "Smith 2025"), "A01", SAID_BY_NOTHING)
 
-    before = _tree()
+    before = checkout_snapshot(REPO, real_places(REPO))
     assert main([str(root), "--engagements"]) == 0
     capsys.readouterr()
-    assert _tree() == before
+    assert checkout_snapshot(REPO, real_places(REPO)) == before
 
     inside = REPO / "docs" / "learned.md"
     assert main([str(root), "--out", str(inside)]) == 2
     assert "refusing to write inside the repository" in capsys.readouterr().err
     assert not inside.exists()
-    assert _tree() == before
+    assert checkout_snapshot(REPO, real_places(REPO)) == before
 
     outside = tmp_path / "learned.md"
     assert main([str(root), "--out", str(outside)]) == 0
     assert SAID_BY_NOTHING in outside.read_text(encoding="utf-8")
-    assert _tree() == before
+    assert checkout_snapshot(REPO, real_places(REPO)) == before
 
 
 # -------------------------------------------------------------------- lint ----

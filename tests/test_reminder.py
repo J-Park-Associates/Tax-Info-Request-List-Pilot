@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import child_env
 from tracker import ledger, reasons
 from tracker import reminder as reminder_module
 from tracker.layout import inbox_of
@@ -618,7 +619,7 @@ def test_the_manual_draft_refuses_past_the_gate_with_exit_two(tmp_path):
     scanner's own "not done, not an error" exit code and writes nothing."""
     folder = _held_engagement(tmp_path)
     repo = Path(__file__).resolve().parents[1]
-    env = {**os.environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"}
+    env = child_env(PYTHONIOENCODING="utf-8")
     shown = subprocess.run([sys.executable, "-m", "tracker.reminder", str(folder)],
                            cwd=repo, capture_output=True, text=True, env=env)
     assert shown.returncode == 0
@@ -854,7 +855,7 @@ def test_stage_three_regenerates_the_same_lines_at_stage_three(tmp_path):
         engagement=LABEL, n=2)
 
     repo = Path(__file__).resolve().parents[1]
-    env = {**os.environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"}
+    env = child_env(PYTHONIOENCODING="utf-8")
     shown = subprocess.run(
         [sys.executable, "-m", "tracker.reminder", str(folder),
          "--due", DUE.isoformat(), "--today", DUE.isoformat(), "--stage", "3"],
@@ -1457,7 +1458,7 @@ def test_the_command_lines_write_lands_beside_an_approved_draft_and_never_over_i
 
     store.close()          # the command line opens the same store for itself
     repo = Path(__file__).resolve().parents[1]
-    env = {**os.environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"}
+    env = child_env(PYTHONIOENCODING="utf-8")
     run = subprocess.run(
         [sys.executable, "-m", "tracker.reminder", str(folder), "--write",
          "--due", DUE.isoformat(), "--today", DUE.isoformat(), "--stage", "1"],
@@ -1693,7 +1694,7 @@ def test_a_held_draft_by_the_inbox_writes_nothing_and_says_why(tmp_path):
 
     store.close()
     repo = Path(__file__).resolve().parents[1]
-    env = {**os.environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"}
+    env = child_env(PYTHONIOENCODING="utf-8")
     written = subprocess.run([sys.executable, "-m", "tracker.reminder", str(folder), "--write"],
                              cwd=repo, capture_output=True, text=True, env=env)
     assert written.returncode == 2, written.stdout + written.stderr
