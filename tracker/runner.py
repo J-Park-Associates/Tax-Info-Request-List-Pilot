@@ -1916,10 +1916,10 @@ def main(argv: list[str] | None = None) -> int:
     elif ns.log:
         _refuse_an_old_jobs_root(root)
     # A saved root is held to the rule at the start of every pass (decision
-    # a root handed straight through would otherwise be walked in full. Both
-    # a root another program hands straight through is walked in full. Both
-    # through the one door (decision 188), which also refuses a root one
-    # level too deep, inside a tree of a real root.
+    # 137's review, F12), and a typed one to the same rule (decision 176): a
+    # root a person or another program hands straight through would otherwise
+    # be walked in full. Both through the one door (decision 188), which also
+    # refuses a root one level too deep, inside a tree of a real root.
     try:
         root = str(door.checked_root(root or None))
     except door.DoorError as exc:
