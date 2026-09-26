@@ -266,7 +266,13 @@ ENV_STORE = "TRACKER_STORE"
 #: so it is refused, deleted and rebuilt from the journals like every
 #: version before it - the field travels in the row events, and a row
 #: written before it existed reads as answering nothing.
-SCHEMA_VERSION = 16
+#: Version 17 (decision 204) added ``waits_for`` to ``documents``: what a
+#: row parked because it names another household's person waits for - the
+#: fed return line and what its list accepted. A version-16 file has no
+#: such column, so it is refused, deleted and rebuilt from the journals like
+#: every version before it - the field travels in the row events, and a row
+#: written before it existed reads as waiting for nothing.
+SCHEMA_VERSION = 17
 
 #: What a row of ``engagements`` holds the record of: one return, or one
 #: household (decision 125). Both are folders with a journal, keyed by

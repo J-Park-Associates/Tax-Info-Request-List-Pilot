@@ -318,6 +318,51 @@ def parse_answers(text: str) -> tuple[Answer, ...]:
     return tuple(found)
 
 
+#: How the Waits For cell (decision 204) sets its parts apart:
+#: ``<household> / <return name> / <id>[, <id>...][; also answers <cell>]``.
+#: It reads back unambiguously because the layout's one name rule refuses a
+#: ``/`` in a household or return name, and an identifier holds no ``;``.
+WAITS_FOR_SEP = " / "
+WAITS_FOR_ANSWERS = "; also answers "
+
+
+@dataclass(frozen=True, slots=True)
+class WaitsFor:
+    """What a parked row naming another household's person waits for
+    (decision 204): the fed return line, the requests of its list that
+    accepted the document - the request first, then decision 94's other
+    forms - and decision 146's Also Answers cell. Data, so the one click
+    carries out the verdict the pass reached without the page or the API
+    cutting a label out of a sentence."""
+
+    household: str
+    return_name: str
+    identifiers: tuple[str, ...]
+    answers: str = ""
+
+
+def format_waits_for(waits: WaitsFor) -> str:
+    """The Waits For cell, written from what the other household's list accepted."""
+    cell = WAITS_FOR_SEP.join((waits.household, waits.return_name,
+                               CANDIDATE_SEP.join(waits.identifiers)))
+    return cell + (WAITS_FOR_ANSWERS + waits.answers if waits.answers else "")
+
+
+def parse_waits_for(text: str) -> WaitsFor | None:
+    """The Waits For cell read back, exactly as :func:`format_waits_for`
+    wrote it, or ``None`` for an empty cell or one it cannot read - which
+    offers no click, never a guessed one."""
+    head, _, answers = (text or "").partition(WAITS_FOR_ANSWERS)
+    parts = head.split(WAITS_FOR_SEP)
+    if len(parts) != 3:
+        return None
+    household, return_name, ids = (part.strip() for part in parts)
+    identifiers = tuple(i.strip() for i in ids.split(CANDIDATE_SEP.strip()) if i.strip())
+    if not household or not return_name or not identifiers:
+        return None
+    return WaitsFor(household, return_name, identifiers, answers.strip())
+
+
 def answer_count(answer: Answer) -> int:
     """How many documents one answer counts toward its request: one per
     section that answered it, and one where a phrase did (decision 146,
@@ -386,6 +431,19 @@ class IndexEntry:
     #: missing again. Empty on every other row, which is every row written
     #: before decision 146.
     answers: str = ""
+    #: What a row parked because it names another household's person waits
+    #: for (decision 204): the fed return line and what its list accepted,
+    #: written by :func:`format_waits_for` and read through
+    #: :attr:`waiting_for`, so the one click carries out the pass's verdict
+    #: and decides nothing of its own. Only a ``NAMED_ACROSS_HOUSEHOLDS`` row
+    #: carries it; empty on every other row, which is every row written
+    #: before decision 204.
+    waits_for: str = ""
+
+    @property
+    def waiting_for(self) -> WaitsFor | None:
+        """The Waits For cell read back (:func:`parse_waits_for`)."""
+        return parse_waits_for(self.waits_for)
 
     @property
     def answered(self) -> tuple[Answer, ...]:
@@ -448,6 +506,7 @@ INDEX_LAYOUT: dict[str, tuple[str, int]] = {
     "also_filed": ("Also Filed", 40),
     "container": ("Came Inside", 30),
     "answers": ("Also Answers", 30),
+    "waits_for": ("Waits For", 40),
 }
 assert tuple(INDEX_LAYOUT) == tuple(f.name for f in fields(IndexEntry))
 INDEX_COLUMNS = tuple(header for header, _ in INDEX_LAYOUT.values())
@@ -1879,7 +1938,7 @@ def household_problem(household: dict) -> str:
 _ENTRY_TEXT = ("identifier", "decision", "candidates")
 #: A file's own name and the locations of real files (M5).
 _ENTRY_NAMES = ("original_name", "prepared_location", "pbc_location", "container")
-_ENTRY_LONG_TEXT = ("reason", "evidence", "also_filed", "answers")
+_ENTRY_LONG_TEXT = ("reason", "evidence", "also_filed", "answers", "waits_for")
 
 
 def entry_problem(row: dict) -> str:

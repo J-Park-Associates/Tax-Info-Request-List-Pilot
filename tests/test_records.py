@@ -491,3 +491,40 @@ def test_a_zero_width_assertion_counts_toward_the_width():
     assert records.date_pattern_problem(padded) == records.DATE_PATTERN_TOO_COSTLY
     for assertion in (r"\b", r"\B", "^", "$", r"\A", r"\Z"):
         assert records._width(records._re_parser.parse(assertion)) == 1, assertion
+
+
+def test_waits_for_round_trips_and_is_empty_on_every_other_row():
+    """Decision 204: the Waits For cell reads back exactly as it was written
+    - the return line, the requests in order, the Also Answers cell - and
+    its grammar is unambiguous because the layout's one name rule refuses
+    the separator in a household or return name. An empty or unreadable
+    cell is no claim at all, which offers no click rather than a guessed
+    one, and a row that says nothing of it waits for nothing."""
+    from tracker import layout
+    from tracker.records import (
+        WAITS_FOR_SEP,
+        IndexEntry,
+        WaitsFor,
+        entry_from_json,
+        format_answers,
+        format_waits_for,
+        parse_waits_for,
+    )
+
+    answers = format_answers([("A02", ("1099-int", "1099-div")), ("A04", ("1099-misc",))])
+    for claim in (WaitsFor("Park & Lee LLC", "1120S - Park & Lee LLC", ("B01",)),
+                  WaitsFor("Dana Reyes", "1040 - Dana Reyes", ("A01", "C01")),
+                  WaitsFor("Dana Reyes", "1040 - Dana Reyes", ("E01",), answers)):
+        assert parse_waits_for(format_waits_for(claim)) == claim
+    assert format_waits_for(WaitsFor("H", "R", ("E01",), answers)) == f"H / R / E01; also answers {answers}"
+    for unreadable in ("", "Park Family", "Park Family / 1040 - John Park", " /  / A01"):
+        assert parse_waits_for(unreadable) is None
+    # The separator's one character is refused in either name, by the rule
+    # every household and return is typed through.
+    assert layout.segment_problem(f"Park{WAITS_FOR_SEP.strip()}Lee") is not None
+    row = {"received": "2026-07-01", "original_name": "w2.pdf", "size_kb": 1.0, "digest": "ab" * 32,
+           "identifier": "", "prepared_location": "", "pbc_location": "x.pdf",
+           "decision": "Needs Review", "reason": ""}
+    entry = entry_from_json(row)
+    assert entry.waits_for == "" and entry.waiting_for is None
+    assert IndexEntry(**row).waits_for == ""

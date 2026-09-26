@@ -659,15 +659,6 @@ def created_on(engagement_dir: Path) -> dt.date | None:
 TWO_OPEN_YEARS = ("two years are open in this household ({years}); nothing is sorted from its "
                   "inbox until one is retired in the editor")
 
-#: What a household's pass says about a document it filed into a return it
-#: feeds (decision 129). The row belongs to the return that took it and the
-#: report of it belongs to that return's own pass, so without this sentence
-#: the household that sorted the drop said "filed 0" of a pass that filed
-#: something - true of its own returns and misleading about the pass. One
-#: sentence per fed return that received a filing, on the first of this
-#: household's own returns, in the warnings: the channel the unresolved
-#: feed already speaks through.
-FILED_INTO_FED = "{n} document(s) filed into {label} from this drop folder"
 #: What every one of a household's own returns is warned with when its
 #: own record - the one holding the feed list - is there and will not read
 #: (decision 132). The pass goes on with the household's own returns, and
@@ -952,14 +943,15 @@ def _sort_step(household: Path, sorting: list[EngagementRun], fed: list[Engageme
     One call, under the locks the caller holds, and one transaction per
     return inside it (decision 102, unchanged). Each of this household's
     own returns fills its own run; a fed return's report belongs to the
-    pass of the household it lives in, which records what it filed for it.
+    pass of the household it lives in.
 
-    What this pass filed into a fed return is still this pass's to say
-    (decision 129): the rows are the other return's, but the drop folder
-    was this household's, and a pass that reported "filed 0" of documents
-    it had just filed elsewhere was telling a person the wrong thing about
-    their own inbox. One sentence per fed return that received something,
-    on the first own return's run, in its warnings.
+    This pass files nothing into a fed return (decision 204, revising
+    129's second move and 132's pass filing): a document only a fed return
+    wants parks in this household's own queue and is counted there, as
+    under review, until a person hands it over. So there is nothing filed
+    elsewhere for this pass to say - the sentence that said it
+    (``FILED_INTO_FED``) went with the move - and "filed 0" is the truth
+    about this inbox.
 
     Returns how many files the sort took and how many the household's
     time did not reach (decision 189).
@@ -974,11 +966,6 @@ def _sort_step(household: Path, sorting: list[EngagementRun], fed: list[Engageme
         inbox_of(first), originals,
         own=[run.engagement.path for run in sorting], fed=[one.path for one in fed],
         today=today, dry_run=dry_run, deadline=deadline,
-    )
-    sorting[0].warnings.extend(
-        FILED_INTO_FED.format(n=len(reports[one.path].filed), label=one.label)
-        for one in fed
-        if one.path in reports and reports[one.path].filed
     )
     for run in sorting:
         filed = reports.get(run.engagement.path)

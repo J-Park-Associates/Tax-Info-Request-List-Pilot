@@ -176,7 +176,7 @@ def test_opening_a_file_that_is_not_there_creates_the_schema(tmp_path):
 
     conn = store.open(path)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 16
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 17
         tables = {row[0] for row in conn.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table'")}
         assert tables == {"engagements", "requests", "statuses", "learned_keywords",
@@ -2143,7 +2143,7 @@ def test_a_row_written_without_asked_reads_as_asked(conn, root, by_hand):
 
     build(conn, root, by_hand)
     build(store.connect(), root, by_hand)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 16
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 17
     assert all(row["asked"] is True for row in store.rules(conn, by_hand))
     assert all(item.asked for item in load_manifest(by_hand))
     assert store.check(conn, root, by_hand) == []
@@ -2172,7 +2172,7 @@ def test_a_row_written_without_a_short_title_reads_as_blank(conn, root, by_hand)
 
     build(conn, root, by_hand)
     build(store.connect(), root, by_hand)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 16
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 17
     assert all(item.short_title == "" for item in load_manifest(by_hand))
     assert all(item.short_name for item in load_manifest(by_hand))
     assert store.check(conn, root, by_hand) == []
@@ -2516,3 +2516,40 @@ def test_rebuild_lists_what_it_would_discard_and_needs_discard(conn, root, by_ha
     result = cli(path, "rebuild", root, "--engagement", by_hand, "--discard")
     assert result.returncode == 0, result.stdout + result.stderr
     assert f"built {by_hand.name}" in result.stdout
+
+
+# ------------------------------------------ decision 204: the Waits For cell ----
+
+
+def test_an_index_of_the_previous_version_reads_with_waits_for_empty(conn, root, by_hand, tmp_path):
+    """Decision 204 added ``waits_for`` to ``documents`` (version 17). A row
+    a journal holds from before it carries no such field and folds to
+    waiting for nothing; the store rebuilt from that journal agrees with
+    it; and a version-16 file is refused by name, deleted and rebuilt."""
+    from tracker.records import entry_from_json
+
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, ledger.new(ledger.PARKED, key=A_ROW_ORIGINAL, row=a_row()))
+    assert "waits_for" not in ledger.path_for(by_hand).read_text(encoding="utf-8")
+
+    build(conn, root, by_hand)
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 17
+    [row] = [entry_from_json(one) for one in store.documents(conn, by_hand)]
+    assert row.waits_for == "" and row.waiting_for is None
+    assert store.check(conn, root, by_hand) == []
+
+    old = tmp_path / "v16" / store.STORE_FILENAME
+    store.open(old).close()
+    before = sqlite3.connect(old)
+    before.execute("PRAGMA user_version = 16")
+    before.close()
+    with pytest.raises(store.StoreError, match="user_version 16"):
+        store.open(old)
+    old.unlink()
+    upgraded = store.open(old)
+    try:
+        store.rebuild_engagement(upgraded, root, by_hand)
+        [again] = [entry_from_json(one) for one in store.documents(upgraded, by_hand)]
+        assert again.waits_for == ""
+    finally:
+        upgraded.close()

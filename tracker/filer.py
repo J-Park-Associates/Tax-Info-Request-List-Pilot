@@ -222,6 +222,7 @@ from tracker.layout import (
     locate,
     location_of,
     lock_order_key,
+    name_key,
     opened_dir_of,
     originals_of,
     parts_below,
@@ -279,15 +280,18 @@ from tracker.records import (
     Received,
     ReceivedLine,
     UnderReview,
+    WaitsFor,
     as_pattern,
     entry_from_json,
     entry_to_json,
     format_answers,
     format_evidence,
+    format_waits_for,
     identifier_key,
     is_a_spelling,
     ledger_key,
     name_words,
+    parse_answers,
     parse_evidence,  # noqa: F401
     person_to_json,
 )
@@ -1009,8 +1013,8 @@ def _unique_path(
 ) -> Path:
     """A free path in ``folder`` for ``name``, never overwriting anything -
     **the one numbering function** (decision 147): an original out of the
-    inbox, its second move into another household (:func:`_rests_at`), a
-    person's hand-over, a review copy and what is taken out of an email or a
+    inbox, a person's hand-over into another household (the only move
+    across households since decision 204), a review copy and what is taken out of an email or a
     zip (:func:`_take_out`) are all named here.
 
     ``room`` is how many characters the file name may take (decision 131):
@@ -1127,8 +1131,9 @@ def _year_on_record(engagement_dir: Path, held: Mapping[Path, list[IndexEntry]])
     not hold, one left out of the pass as inactive or one in a household
     the caller is not sorting, still counts. For every name a row could
     hold: the inbox move and what is taken out of a zip
-    (:func:`_taken_in_the_year`), a filing's second move (decision 129) and
-    a person's hand-over (decision 132). Read only; no lock is taken, and a
+    (:func:`_taken_in_the_year`) and a person's hand-over (decision 132),
+    which since decision 204 is the only filing that moves an original
+    across households. Read only; no lock is taken, and a
     return whose record cannot be read names nothing.
     """
     engagement_dir = Path(engagement_dir)
@@ -1283,6 +1288,7 @@ def received_for(returns: Sequence) -> Received:
       the letter asks for that document again, and the README agrees.
 
     A document this household's inbox fed into another household's return
+    - by a person's hand-over, the only road across since decision 204 -
     is in that return's index and so on that household's list, never on
     this one (decision 132's F-4 ruling).
     """
@@ -3406,15 +3412,10 @@ class _ReturnRun:
     people: tuple[Person, ...] = ()
     #: Whether this return belongs to the household whose inbox is being
     #: sorted (decision 129). A document only ever **parks** in a home
-    #: return: the original rests under the household its return lives in,
-    #: so a drop nobody can place rests where it was dropped and waits for
-    #: a person there.
+    #: return, and since decision 204 the pass only ever **files** into
+    #: one: the original rests under the household it was dropped in, and
+    #: only a person's hand-over moves it into another.
     home: bool = True
-    #: What a filing into this return says about where the document was
-    #: dropped - empty for a home return, the dropping household's name for
-    #: one this drop folder feeds. It is also what says the original has a
-    #: second move to make, into this return's own household-year folder.
-    dropped_in: str = ""
     moved_keys: dict[str, str] = field(default_factory=dict)
     swept: dict[str, str] = field(default_factory=dict)
     #: What each opened email or zip held, by its row's key (decision
@@ -3483,12 +3484,18 @@ def file_household_drops(
     of what is fed. Nothing routes outside the two lists, and nothing is
     ever inferred into them. The returns are judged in the order they are
     handed in, own first: that is the order the bytes are asked of the
-    records in, because the record closest to the drop decides. A document filed to a fed return **moves a second time**, out
-    of this household's year folder into that return's, as the first step
-    of the filing: the original rests under the household its return lives
-    in, seen by exactly that folder's sharing. A document that parks parks
-    at home, because the dropping household is where it was dropped and
-    where a person can act on it.
+    records in, because the record closest to the drop decides. **The pass
+    never files across households** (decision 204, revising 132): a
+    document only a fed return is left with parks at home - for one click
+    where the page names that return's person
+    (``reasons.NAMED_ACROSS_HOUSEHOLDS``, its row's ``waits_for`` saying
+    what the other list accepted), for the picker where it names nobody.
+    The original rests under the household it was dropped in until a
+    person hands it over (:func:`hand_over`), because a folder another
+    household's people can open is reached on a person's say, never on a
+    printed name alone. A document that parks parks at home, because the
+    dropping household is where it was dropped and where a person can act
+    on it.
 
     **The caller holds the locks.** ``tracker.runner.run_household`` takes
     every return's lock - its own and every fed one - in the one global
@@ -3512,16 +3519,15 @@ def file_household_drops(
     runs = [_prepare_return(Path(folder), stamp, dry_run=dry_run) for folder in [*own, *fed]]
     if not runs:
         return {}
-    # Which of them are this household's own - the list each came from -
-    # and what a filing into one of the others says (decision 129). The
-    # household is the client folder's own name -
-    # ``<root>/<clients tree>/<household>/<year>`` - so the sentence names
-    # the folder the document was dropped in and nothing has to be carried
-    # down for it.
+    # Which of them are this household's own - the list each came from
+    # (decision 129). The pass files only into those (decision 204); a fed
+    # return's list is read so a document only it wants can wait at home
+    # for a person. The household is the client folder's own name -
+    # ``<root>/<clients tree>/<household>/<year>`` - so a sentence can name
+    # the folder the document was dropped in with nothing carried down.
     dropped_in = originals_dir.parent.name
     for position, run in enumerate(runs):
         run.home = position < len(own)
-        run.dropped_in = "" if run.home else DROPPED_ELSEWHERE.format(household=dropped_in)
     first = next((run for run in runs if run.home), runs[0])
 
     # 2. The originals folder is read once, against the union of every
@@ -3626,8 +3632,9 @@ def _spoken_for_by_an_open_intent(
     """Every file a move this pass could not finish still names, at either
     end (or only at the ``ends`` asked for), across all the returns it holds.
 
-    A cross-household filing moves the original a second time (decision
-    129), and between the two halves of that move the file is in the
+    A cross-household filing moves the original a second time - a
+    person's hand-over (decision 132), and the pass's own before decision
+    204 - and between the two halves of that move the file is in the
     dropping household's year folder while the row that names it belongs
     to the destination's record. Recovery runs first and nearly always
     closes it; a step waiting on the sync client does not close, and the
@@ -4629,13 +4636,16 @@ class _NameStage:
     evidence on it, by the return's identity, so a document that parks in
     the home return still keeps what the name said there; ``met`` is the
     reasons met, in the order they were met; ``confirmed`` is the note each
-    kept return's Reason gains when it files.
+    kept return's Reason gains when it files, and ``spelling`` the firm's
+    own spelling that confirmed it - what a row waiting for another
+    household quotes (decision 204), never a word of the page.
     """
 
     kept: list[tuple[_ReturnRun, object]] = field(default_factory=list)
     graded: dict[int, object] = field(default_factory=dict)
     met: list[tuple[object, str]] = field(default_factory=list)
     confirmed: dict[int, str] = field(default_factory=dict)
+    spelling: dict[int, str] = field(default_factory=dict)
 
     @property
     def reason(self) -> str:
@@ -4697,6 +4707,7 @@ def _by_the_name(
         stage.graded[id(run)] = routing
         if verdict.outcome == NAME_CONFIRMED:
             stage.confirmed[id(run)] = NAME_CONFIRMED_NOTE.format(spelling=verdict.matched)
+            stage.spelling[id(run)] = verdict.matched
             stage.kept.append((run, routing))
         elif verdict.outcome == NAME_VETOED:
             stage.met.append((reasons.NAMES_ANOTHER_RETURN, reasons.NAME_AND_RETURN.format(
@@ -4737,13 +4748,18 @@ def _decide_across(
       reading, against each accepting return's own people list
       (:func:`_by_the_name`): two 1040s share every row of their lists, so
       the keywords cannot say whose W-2 this is and the name can;
-    - **then exactly one.** Exactly one return left files it - moving the
-      original a second time where that return lives in another household
-      (decision 129); several park it naming them all; none parks it. A
-      park always lands in the dropping household's own home return
-      (:func:`_the_home`), with the name's reason where the name is what
-      emptied the list. That is the third standing rule - nothing is
-      guessed - read across the feed list instead of across one list.
+    - **then exactly one.** Exactly one return left files it where it is
+      one of the household's own; several park it naming them all; none
+      parks it. Where the one left lives in another household the pass
+      never files (decision 204, revising 132): it parks, and the reason
+      says why - out of an email or a zip (143), naming nobody (137 B2),
+      or naming that return's person, when the row keeps what that
+      return's list accepted (``waits_for``) so a person's one click can
+      hand it over. A park always lands in the dropping household's own
+      home return (:func:`_the_home`), with the name's reason where the
+      name is what emptied the list. That is the third standing rule -
+      nothing is guessed - read across the feed list instead of across
+      one list, with a person's say on top of it wherever it crosses.
     """
     if digest:
         holders = [run for run in runs if digest in run.known]
@@ -4794,7 +4810,7 @@ def _decide_across(
     kept = stage.kept
 
     no_room: NoRoom | None = None
-    unnamed_across = opened_across = False
+    unnamed_across = opened_across = named_across = False
     if len(kept) == 1:
         run, routing = kept[0]
         item = run.context.by_id.get(routing.identifier or "")
@@ -4811,6 +4827,15 @@ def _decide_across(
         # the strength of its keywords alone. It waits at home for a person.
         if item is not None and _across_households(run) and id(run) not in stage.confirmed:
             unnamed_across, item = True, None
+        # And with the name confirmed, it still waits (decision 204, the
+        # owner's lane-B ruling, revising 132): a printed name is the
+        # client's word, and a client's word alone never places a document
+        # in a folder another household's people can open. The confirmed
+        # name was the pass's last road across, so the pass now never files
+        # there at all; the row keeps what that return's list accepted, and
+        # a person's one click hands it over.
+        if item is not None and _across_households(run):
+            named_across, item = True, None
         if item is not None:
             try:
                 return run, _file_it(drop, original, digest, size_kb, stamp, run, routing, item,
@@ -4858,6 +4883,15 @@ def _decide_across(
             reason=reasons.UNNAMED_ACROSS_HOUSEHOLDS.format(),
             candidates=home_routing.candidates,
             evidence=_with_the_wanting_return(home_routing, run, routing),
+        )
+
+    if named_across:
+        return home, _park_it(
+            drop, original, digest, size_kb, stamp, home,
+            reason=_named_across(stage, run),
+            candidates=home_routing.candidates,
+            evidence=_with_the_wanting_return(home_routing, run, routing),
+            waits_for=_waits_for(run, routing),
         )
 
     if len(kept) > 1:
@@ -4941,6 +4975,28 @@ def _with_the_wanting_return(home_routing, run: _ReturnRun, routing) -> str:
               if identifier in routing.filed_to}
     return "; ".join(part for part in (format_evidence(home_routing.evidence_record),
                                        format_evidence(wanted)) if part)
+
+
+def _named_across(stage: _NameStage, run: _ReturnRun) -> str:
+    """The Reason of a document that names the person of a return in
+    another household (decision 204): the firm's own spelling that matched
+    and that return's label - both the firm's words, never the page's."""
+    return reasons.NAMED_ACROSS_HOUSEHOLDS.format(spelling=stage.spelling[id(run)], label=run.label)
+
+
+def _waits_for(run: _ReturnRun, routing) -> str:
+    """The Waits For cell of a document parked because it names another
+    household's person (decision 204): that return's line and what its
+    list accepted - the requests in the order the page names their forms
+    (decision 94) and the Also Answers a consolidated statement carries
+    (decision 146), each filtered to that list as :func:`_file_it` filters
+    them - so the one click files exactly what the pass would have."""
+    return format_waits_for(WaitsFor(
+        household=household_name_of(run.engagement_dir),
+        return_name=run.engagement_dir.name,
+        identifiers=tuple(i for i in routing.filed_to if i in run.context.by_id),
+        answers=format_answers([one for one in routing.answers if one[0] in run.context.by_id]),
+    ))
 
 
 def _the_home(accepting, routed, runs: list[_ReturnRun]) -> tuple[_ReturnRun, object]:
@@ -5089,29 +5145,6 @@ def _carry_out(entry: IndexEntry, ops: list[dict], then: str, run: _SortContext)
         _do_op(run.engagement_dir, op, cache=run.cache)
 
 
-def _rests_at(run: _ReturnRun, original: Path, digest: str) -> Path:
-    """Where this return's filing leaves the original.
-
-    Where it is, for the household's own returns: an original moves once,
-    out of the inbox into the year's folder the client can see, and never
-    again (decision 125). For a return this drop folder **feeds**, one
-    folder further (decision 129): the original must rest under the
-    household its return lives in, seen by exactly that folder's sharing,
-    so it moves a second time - and that move is the first step of the
-    filing, written down before it happens like every other. Its name
-    there is chosen as the inbox move's is: a name the disk holds, or a row
-    of that household-year still names, is taken (decision 147, ruling 9) -
-    whatever the bytes, since decision 157.
-    """
-    if not run.dropped_in:
-        return original
-    folder = originals_of(run.engagement_dir)
-    if run.context.dry_run:
-        return folder / original.name
-    return _unique_path(folder, original.name, digest=digest, recorded=_taken_names(
-        _year_on_record(run.engagement_dir, {run.engagement_dir: run.entries}), run.context.intended))
-
-
 def _file_into(
     target: Path,
     original: Path,
@@ -5177,11 +5210,10 @@ def _file_it(
     client's folder for the year, and the index keeps one row for it: the
     copies are this row's, not rows of their own.
 
-    **Where the return lives in another household** (decision 129) the
-    original moves a second time first, into that household's own folder
-    for the year, and the row's Reason says which folder the document was
-    dropped in (:data:`DROPPED_ELSEWHERE`) - so the destination's Status
-    Report says where it came from, without naming a person.
+    Only ever into one of the household's own returns (decision 204): a
+    return in another household is reached by a person's
+    :func:`hand_over`, which moves the original and says where it was
+    dropped (:data:`DROPPED_ELSEWHERE`); the pass never does either.
 
     ``confirmed`` is what the name on the page said (decision 128), added
     last to the Reason: the firm's own spelling that matched, so a person
@@ -5201,7 +5233,10 @@ def _file_it(
         context.reserved.clear()
         context.reserved.update(claimed)
         raise
-    resting = _rests_at(run, original, digest)
+    # The original rests where the inbox move left it: the pass files only
+    # into the household's own returns (decision 204), and an original
+    # moves once within a household (decision 125).
+    resting = original
     locations = [location for location, _copy in planned]
     entry = IndexEntry(
         received=stamp, original_name=drop.name, size_kb=size_kb,
@@ -5209,8 +5244,7 @@ def _file_it(
         prepared_location=locations[0],
         pbc_location=location_of(run.engagement_dir, resting), decision=FILED,
         reason="; ".join(part for part in
-                         (routing.reason, refiled, resent, confirmed, run.dropped_in,
-                          context.came_from) if part),
+                         (routing.reason, refiled, resent, confirmed, context.came_from) if part),
         candidates=_CANDIDATE_SEP.join(routing.candidates),
         evidence=format_evidence(routing.evidence_record),
         also_filed=_CANDIDATE_SEP.join(locations[1:]),
@@ -5262,9 +5296,12 @@ def _review_copy_path(review_dir: Path, name: str) -> tuple[Path, str]:
 def _park_it(
     drop: Path, original: Path, digest: str, size_kb: float, stamp: str,
     run: _ReturnRun, *, reason: str, candidates, evidence: str, resent: str = "",
+    waits_for: str = "",
 ) -> IndexEntry:
     """Park one preserved original in this return's Needs Review, with a
-    working copy a person can open and the sentence that says why."""
+    working copy a person can open and the sentence that says why - and,
+    for a document naming another household's person, what it waits for
+    (``waits_for``, decision 204)."""
     context = run.context
     review_name = drop.name
     parking: list[dict] = []
@@ -5299,6 +5336,7 @@ def _park_it(
         candidates=_CANDIDATE_SEP.join(candidates),
         evidence=evidence,
         container=context.container,
+        waits_for=waits_for,
     )
     _carry_out(entry, parking, ledger.PARKED, context)
     run.report.review.append(entry)
@@ -5428,17 +5466,22 @@ def _sort_one(
         # person vetoes it, and on a named request a page naming nobody
         # parks it.
         stage = _by_the_name(judgment, [(run, routing)], runs)
-        if stage.kept and _across_households(run) and id(run) not in stage.confirmed:
+        if stage.kept and _across_households(run):
             # A re-send whose bytes a return in another household already
             # holds is held to the same rule as a first arrival (decision
-            # 137's review, B #5, the owner's "never"): unnamed, it is not
-            # filed there, and parks in the drop's own household.
+            # 137's review, B #5, the owner's "never"; decision 204): it is
+            # not filed there, named or not, and parks in the drop's own
+            # household - naming nobody, for the picker; naming that
+            # return's person, for one click.
             home = next((one for one in runs if one.home), run)
+            named = id(run) in stage.confirmed
             return home, _park_it(drop, original, digest, size_kb, stamp, home,
-                                  reason=reasons.UNNAMED_ACROSS_HOUSEHOLDS.format(),
+                                  reason=(_named_across(stage, run) if named
+                                          else reasons.UNNAMED_ACROSS_HOUSEHOLDS.format()),
                                   candidates="",
                                   evidence=_with_the_wanting_return(_NO_ROUTING, run, routing),
-                                  resent=resent)
+                                  resent=resent,
+                                  waits_for=_waits_for(run, routing) if named else "")
         if stage.kept:
             _kept, routing = stage.kept[0]
             try:
@@ -5785,6 +5828,8 @@ def assign_review_file(
             decision=FILED,
             reason=f"{attributed}; was: {entry.reason}",
             candidates="",
+            # Filed here, it waits for nothing (decision 204).
+            waits_for="",
         )
         entries[position] = new_entry
         # The keyword travels with the filing, in the same call and so in
@@ -5876,6 +5921,9 @@ def hand_over(
     keyword: str = "",
     spelling: Spelling | None = None,
     shortlist: Sequence[str] | None = None,
+    also: Sequence[str] = (),
+    answers: str = "",
+    waiting: bool = False,
     today: dt.date | None = None,
     lock_held: bool = False,
 ) -> HandedOver:
@@ -5918,6 +5966,20 @@ def hand_over(
     the next document like it. ``seq`` is this row's version as the person
     saw it (decision 112) and ``shortlist`` what the evidence pointed at,
     both used exactly as :func:`assign_review_file` uses them.
+
+    **The one click** (decision 204). The pass never files across
+    households; a document naming the person of a return in another
+    household parks here with ``reasons.NAMED_ACROSS_HOUSEHOLDS`` and a
+    ``waits_for`` cell saying what that return's list accepted. ``waiting``
+    is a person agreeing to it: the caller passes what the cell says -
+    ``identifier`` and ``also``, decision 94's other forms, one copy each;
+    ``answers``, decision 146's Also Answers - and, under both locks, the
+    row is read again and the hand-over is refused unless it is still that
+    parked row, its cell still names this return and these requests, and
+    each is still on this return's list and not marked N/A. So the click
+    carries out the pass's verdict whole, and a click on a row that changed
+    since it was shown does nothing. ``also`` and ``answers`` are the
+    ordinary picker's too, which passes neither.
     """
     home_return, target_return = Path(home_return), Path(target_return)
     today = today or dt.date.today()
@@ -5933,16 +5995,16 @@ def hand_over(
         _refuse_if_a_move_is_open(target_return)
 
         items = {i.identifier: i for i in load_manifest(target_return)}
-        item = items.get(identifier)
-        if item is None:
-            raise FilingError(f"no request {identifier!r} in the request list")
-        if item.manual_override == Override.NOT_APPLICABLE:
-            raise FilingError(f"{identifier} is {override_label(item)}; clear the override first")
+        wanted = requests_taking(items, [identifier, *also])
+        item = wanted[0]
 
         entries = read_index(home_return)
         position = find_parked(entries, original)
         entry = entries[position]
         _refuse_if_stale(home_return, entry, seq)
+        if waiting:
+            _refuse_unless_it_waits_for(entry, target_return, [one.identifier for one in wanted],
+                                        answers)
         # Out of an email or a zip (decision 143): the file is the firm's
         # copy of a part of the client's file, and never moves into another
         # household's folder - the pass parks it at home in these words,
@@ -5979,16 +6041,26 @@ def hand_over(
                    if moving_it else source)
 
         # In the taking return's firm folder itself, named by the request
-        # (decision 168), and reusing only that request's own copy.
+        # (decision 168), and reusing only that request's own copy - one
+        # copy per request, as the pass makes them (decision 94).
         dest_folder = target_return / PREPARED_DIR_NAME
         taken = {p.name.lower() for p in dest_folder.iterdir()} if dest_folder.is_dir() else set()
-        existing = _existing_copy(dest_folder, source, digest,
-                                  among=copies_of(item, list(items.values()), dest_folder))
+        extension = extension_of(source)
         # Named to fit, before anything is made (decision 131): no room even
         # for the shortest name refuses with PATH_NO_ROOM, nothing moved.
-        extension = extension_of(source)
-        filed_as = existing.name if existing is not None else prepared_name_for(
-            item, extension, taken, room=limit_for(extension) - len(str(dest_folder)) - 1)
+        names: list[str] = []
+        to_make: list[Path] = []
+        for one in wanted:
+            existing = _existing_copy(dest_folder, source, digest,
+                                      among=copies_of(one, list(items.values()), dest_folder))
+            if existing is not None:
+                names.append(existing.name)
+                continue
+            name = prepared_name_for(one, extension, taken,
+                                     room=limit_for(extension) - len(str(dest_folder)) - 1)
+            names.append(name)
+            to_make.append(dest_folder / name)
+        filed_as = names[0]
         dest_folder.mkdir(parents=True, exist_ok=True)
 
         # The parked copy here goes: the document is the other return's
@@ -6026,7 +6098,13 @@ def hand_over(
             # The candidates and the evidence were this return's request
             # list judging the page; they name identifiers the taking
             # return does not have, so they do not travel with the row.
-            candidates="", evidence="", also_filed="", answers="",
+            # The other copies and the Also Answers are the taking list's
+            # own (decisions 94 and 146), filtered to it as the pass
+            # filters them; what the row waited for is done.
+            candidates="", evidence="",
+            also_filed=_CANDIDATE_SEP.join(prepared_location(dest_folder, name) for name in names[1:]),
+            answers=format_answers([one for one in parse_answers(answers) if one[0] in items]),
+            waits_for="",
         )
         released = RELEASED_TO.format(label=label, identifier=item.identifier)
         # The taking return's steps are held to its places before this
@@ -6035,7 +6113,7 @@ def hand_over(
         # every queue.
         for op in ([_op(target_return, ledger.OP_MOVE, source, resting, digest)]
                    if resting != source else []) + [
-                _op(target_return, ledger.OP_COPY, resting, dest_folder / filed_as, digest)]:
+                _op(target_return, ledger.OP_COPY, resting, copy, digest) for copy in to_make]:
             _refuse_a_step_outside(target_return, op)
 
         keyword = keyword.strip()
@@ -6055,7 +6133,7 @@ def hand_over(
         # 2. The taking return's half, in its own record, in the pass's
         # own shape - and its operations.
         _file_into(target_return, source, digest, resting=resting,
-                   copies=[] if existing is not None else [dest_folder / filed_as],
+                   copies=to_make,
                    row=target_entry, then=ledger.ASSIGNED_BY_PERSON, by=ledger.BY_PERSON,
                    also=taught)
         # 3. The taking return's row, which closes its intent.
@@ -6074,6 +6152,61 @@ def hand_over(
         spelling=said, spelling_note=spelling_note, left_in_review=left_in_review,
         overrode_shortlist=overrode,
     )
+
+
+def requests_taking(items: Mapping[str, RequestItem], identifiers: Sequence[str]) -> list[RequestItem]:
+    """The requests of the taking return's list a hand-over files under, in
+    the order given - or :class:`FilingError`, in the words a person reads,
+    for one that is not on the list or is marked N/A. One place, because
+    the card that offers the one click (decision 204) must refuse in the
+    same words the click itself would."""
+    wanted: list[RequestItem] = []
+    for one in dict.fromkeys(identifiers):
+        item = items.get(one)
+        if item is None:
+            raise FilingError(f"no request {one!r} in the request list")
+        if item.manual_override == Override.NOT_APPLICABLE:
+            raise FilingError(f"{one} is {override_label(item)}; clear the override first")
+        wanted.append(item)
+    return wanted
+
+
+def waiting_target(claim: WaitsFor, returns: Iterable[Path]) -> Path | None:
+    """The return of ``returns`` a Waits For claim names (decision 204), by
+    the layout's one comparison of household and return names (decision
+    188), or ``None`` where no return of them is it - the feed trimmed, the
+    fed year moved on."""
+    return next((path for path in returns
+                 if name_key(household_name_of(path)) == name_key(claim.household)
+                 and name_key(Path(path).name) == name_key(claim.return_name)), None)
+
+
+#: What the one click (decision 204) is refused with on a row that is not
+#: waiting for another household: the card offers it on no other row, so
+#: this is a row rewritten since the card was drawn.
+NOT_WAITING = "{name} is not waiting for a return in another household; file it with the picker"
+
+
+def _refuse_unless_it_waits_for(
+    entry: IndexEntry, target_return: Path, identifiers: Sequence[str], answers: str,
+) -> None:
+    """Refuse the one click (decision 204) unless ``entry`` is still a row
+    parked because it names another household's person, and its Waits For
+    cell names ``target_return`` - household and return, by the layout's
+    one comparison (``name_key``, decision 188) - and exactly these
+    requests and Also Answers. Read under both locks, after the row's
+    version was checked, so the click can only ever do what the card said
+    it would; anything else is a person's picker to decide."""
+    claim = entry.waiting_for
+    if (entry.decision != NEEDS_REVIEW or claim is None
+            or not reasons.NAMED_ACROSS_HOUSEHOLDS.matches(entry.reason)):
+        raise FilingError(NOT_WAITING.format(name=entry.original_name))
+    if (waiting_target(claim, [target_return]) is None
+            or tuple(claim.identifiers) != tuple(identifiers)
+            or claim.answers != answers):
+        raise FilingError(
+            f"{entry.original_name} waits for {claim.household} / {claim.return_name}, "
+            f"not what this click named; look at the row again")
 
 
 def find_parked(
@@ -6182,6 +6315,9 @@ def dismiss_review_file(
             entry,
             decision=NOT_REQUESTED,
             reason=f"{DISMISSED_BY_PERSON} on {today.isoformat()}{_said(note)}; was: {entry.reason}",
+            # Set aside, it waits for nothing (decision 204): the one click
+            # is offered only on the row the pass parked.
+            waits_for="",
         )
         entries[position] = new_entry
         # Nothing was moved, so there is nothing to put back: a record that

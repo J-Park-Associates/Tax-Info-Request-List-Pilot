@@ -1880,6 +1880,7 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
         "hand_over_return": api.HAND_OVER_RETURN_LABEL,
         "hand_over_request": api.HAND_OVER_REQUEST_LABEL,
         "handed_over": api.HANDED_OVER_LINE,
+        "file_where_it_waits": api.FILE_WHERE_IT_WAITS_LABEL,
     }
     assert vocab["default_extensions"] == ", ".join(DEFAULT_EXTENSIONS)
     assert "carried_sheet" not in vocab
@@ -3482,15 +3483,14 @@ def test_run_now_sorts_against_the_feed_list_like_the_scheduled_pass(capsys, dem
 
     The button walks the practice and hands it down exactly as the
     scheduled job does, so the same trial balance dropped in the father's
-    inbox files under the co-owned LLC either way. Without the walk the
-    feed list resolves to nothing and the document parks at home, which
-    would make the button and the schedule disagree about what the
-    household's inbox is for. The pass also says what it filed into a
-    return it feeds, on the return that was asked for.
+    inbox is judged against the co-owned LLC's list either way - and, since
+    decision 204, waits in the father's queue for one click either way,
+    rather than parking as a document nothing wants. Without the walk the
+    feed list resolves to nothing, which would make the button and the
+    schedule disagree about what the household's inbox is for.
     """
     from tests.samples import text_pdf
-    from tracker.filer import DROPPED_ELSEWHERE
-    from tracker.runner import FILED_INTO_FED
+    from tracker import reasons
 
     father, llc = two_households(capsys, demo_root)
     text_pdf(inbox_of(father) / "tb.pdf",
@@ -3499,13 +3499,79 @@ def test_run_now_sorts_against_the_feed_list_like_the_scheduled_pass(capsys, dem
     code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(father))
 
     assert code == 0, payload
-    assert read_index(father) == []                 # nothing parked at home
-    [row] = read_index(llc)
-    assert row.decision == FILED and row.identifier == "B01"
-    assert row.reason.endswith("; " + DROPPED_ELSEWHERE.format(household="Park Family"))
-    assert payload["run"]["filed"] == 0             # the row is the LLC's...
-    assert FILED_INTO_FED.format(n=1, label="Park & Lee LLC 2025 1120S - Park & Lee LLC") \
-        in payload["run"]["warnings"]               # ...and the pass says so
+    assert read_index(llc) == []                    # the pass files nothing across
+    [row] = read_index(father)
+    assert row.decision == NEEDS_REVIEW and reasons.NAMED_ACROSS_HOUSEHOLDS.matches(row.reason)
+    assert row.waiting_for.identifiers == ("B01",)
+    assert payload["run"]["filed"] == 0
+
+
+def waiting_document(capsys, father):
+    """A trial balance naming the LLC's person, dropped in the father's
+    inbox and parked by *Run now* for one click (decision 204): its triage
+    entry, as the card receives it."""
+    from tests.samples import text_pdf
+
+    text_pdf(inbox_of(father) / "tb.pdf", ["Trial balance as of December 31 2025", TEST_CLIENT])
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(father))
+    assert code == 0, payload
+    [waiting] = payload["state"]["review"]
+    return waiting
+
+
+def test_a_waiting_row_offers_one_click_and_assign_waiting_files_it_with_no_target_from_the_page(
+        capsys, demo_root):
+    """Decision 204's one click. The card carries what the click will do -
+    the return, its label and the requests it files under, as data - and
+    the page sends back only the row and its version: ``waiting``, no
+    target, no identifier. The API resolves the row's own claim through the
+    feed list and hands it over; a second click on the gone row is refused."""
+    father, llc = two_households(capsys, demo_root)
+    waiting = waiting_document(capsys, father)
+    offer = waiting["waits_for"]
+    assert offer == {"target": str(llc), "label": "Park & Lee LLC 2025 1120S - Park & Lee LLC",
+                     "requests": [{"identifier": "B01", "document": "Trial Balance"}], "answers": []}
+    assert waiting["waits_for_refused"] == ""
+
+    code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(father),
+                        stdin={"original": waiting["pbc_location"], "seq": waiting["seq"],
+                               "waiting": True})
+
+    assert code == 0, payload
+    done = payload["handed_over"]
+    assert done["identifier"] == "B01" and done["label"] == offer["label"]
+    assert done["moved_original"] is True
+    assert read_index(father) == [] and payload["state"]["review"] == []
+    [taken] = read_index(llc)
+    assert taken.decision == FILED and taken.identifier == "B01" and taken.waits_for == ""
+    code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(father),
+                        stdin={"original": waiting["pbc_location"], "seq": waiting["seq"],
+                               "waiting": True})
+    assert code == 1
+
+
+def test_a_waiting_row_whose_feed_was_trimmed_offers_no_click_and_says_not_fed(capsys, demo_root):
+    """R-8: a claim that no longer resolves offers nothing. The card says why
+    in the words a hand-over is refused with, the click sent anyway is
+    refused in them, and the row stays parked for the picker or for filing
+    here."""
+    father, llc = two_households(capsys, demo_root)
+    waiting = waiting_document(capsys, father)
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(father),
+                        stdin={"feeds": []})
+    assert code == 0, payload
+
+    _code, state = run(capsys, "state", api.ENGAGEMENT_FLAG, str(father))
+    [card] = state["review"]
+    said = api.NOT_FED.format(label="1120S - Park & Lee LLC")
+    assert card["waits_for"] is None and card["waits_for_refused"] == said
+
+    code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(father),
+                        stdin={"original": waiting["pbc_location"], "seq": card["seq"],
+                               "waiting": True})
+    assert code == 1 and payload["error"] == said
+    assert [row.decision for row in read_index(father)] == [NEEDS_REVIEW]
+    assert read_index(llc) == []
 
 
 def a_parked_document(capsys, engagement):
@@ -3532,7 +3598,8 @@ def test_the_renderer_types_none_of_the_feed_words(capsys, demo_root):
     for word in (api.FEEDS_LABEL, api.FEEDS_HELP, api.FEEDS_LINE, api.FED_BY_LINE,
                  api.ADD_FEED_LABEL, api.FEED_WARNING, api.RETURN_WARNING,
                  api.HAND_OVER_LABEL, api.HAND_OVER_RETURN_LABEL, api.HAND_OVER_REQUEST_LABEL,
-                 api.NOBODY_TYPED, api.NOT_FED, api.HANDED_OVER_LINE):
+                 api.NOBODY_TYPED, api.NOT_FED, api.HANDED_OVER_LINE,
+                 api.FILE_WHERE_IT_WAITS_LABEL):
         assert f'"{word}"' not in js and f"'{word}'" not in js, word
         assert word not in html, word
     words = api._vocab()
@@ -3552,6 +3619,10 @@ def test_the_renderer_types_none_of_the_feed_words(capsys, demo_root):
     # label and request.
     assert words["review_labels"]["handed_over"] == api.HANDED_OVER_LINE
     assert "vocab.review_labels.handed_over" in js
+    # And decision 204's one click, labelled by the API and filled by the
+    # page with the label the card carries.
+    assert words["review_labels"]["file_where_it_waits"] == api.FILE_WHERE_IT_WAITS_LABEL
+    assert "vocab.review_labels.file_where_it_waits" in js
 
 
 def test_a_pass_cannot_be_run_without_the_practice(capsys, demo_root, monkeypatch):

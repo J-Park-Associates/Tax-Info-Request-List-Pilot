@@ -17,7 +17,7 @@ def test_every_marker_is_part_of_its_own_sentence(reason: Reason):
     sample = reason.template.format(**{
         name: "x" for name in ("error", "extension", "allowed", "listed", "pattern")
     } | {"size_kb": 1.0, "minimum": 5, "size": "300 MB", "minutes": "10 minutes",
-         "kind": "an email"})
+         "kind": "an email", "spelling": "x", "label": "x"})
     assert reason.marker.lower() in sample.lower()
     assert reason.matches(sample)
 
@@ -31,7 +31,7 @@ def _sample(reason: Reason) -> str:
     return reason.template.format(**{
         name: "x" for name in ("error", "extension", "allowed", "listed", "pattern")
     } | {"size_kb": 1.0, "minimum": 5, "size": "300 MB", "minutes": "10 minutes",
-         "kind": "an email"})
+         "kind": "an email", "spelling": "x", "label": "x"})
 
 
 @pytest.mark.parametrize("reason", ALL, ids=lambda r: r.code)
@@ -78,3 +78,17 @@ def test_the_two_sweep_reasons_are_firm_side():
         assert reason.ask == "" and reason.firm_note
         assert reason.firm_side_note == reason.firm_note
         assert "client" in reason.firm_note        # never the client, said in the sentence
+
+
+def test_the_named_across_reason_is_firm_side_holds_nothing_and_its_marker_is_in_its_template():
+    """Decision 204: a document naming another household's person waits
+    for a person here, never the client, and holds no letter - the
+    client's file is good."""
+    reason = reasons.NAMED_ACROSS_HOUSEHOLDS
+    assert reason in ALL and reason in FIRM_SIDE
+    assert reason not in reasons.HOLDS and not reason.holds
+    assert reason.marker in reason.template
+    said = reason.format(spelling="Dana Reyes", label="Reyes 2025 1040 - Dana Reyes")
+    assert reason.matches(said) and find(said) is reason
+    assert not reasons.UNNAMED_ACROSS_HOUSEHOLDS.matches(said)
+    assert "never the client" in reason.firm_side_note
