@@ -10,6 +10,7 @@ the owner's rule and the whole of what a misfit is.
 """
 
 import datetime as dt
+import os
 
 import pytest
 
@@ -532,10 +533,21 @@ def test_a_household_or_return_folder_the_name_rule_refuses_is_a_misfit_with_the
     ledger.path_for(bad_return).write_text("", encoding="utf-8")
 
     found = discover_engagements(root)
-    said = {m.path: m.sentence for m in found.misfits}
+    said = {os.path.normcase(m.path): m.sentence for m in found.misfits}
 
-    for folder in (bad_household, bad_return):
-        assert said[folder] == MISFIT_BAD_NAME.format(reason=segment_problem(folder.name)), folder
+    # On Windows the file system itself refuses some of these names: it
+    # drops a trailing dot or space (``Jr.`` is made as ``Jr``), and will
+    # not make a device name at all. So the claim is made of each folder as
+    # it actually exists on the disk, named as the disk names it - every
+    # one of them, and each still refused by the rule for what it is.
+    on_disk = [one for folder in (bad_household, bad_return) for one in folder.parent.iterdir()
+               if os.path.normcase(one.name) in {os.path.normcase(folder.name),
+                                                 os.path.normcase(folder.name.rstrip(". "))}]
+    assert len(on_disk) == 2, on_disk
+    for folder in on_disk:
+        reason = segment_problem(folder.name)
+        assert reason is not None, folder
+        assert said[os.path.normcase(folder)] == MISFIT_BAD_NAME.format(reason=reason), folder
     assert [e.path.name for e in found.engagements] == ["1040 - Smith"]
     assert [h.path.name for h in found.households] == ["Smith Family"]
 

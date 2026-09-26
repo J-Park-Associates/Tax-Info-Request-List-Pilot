@@ -3648,6 +3648,16 @@ def test_unfiling_moves_it_back_to_under_review_at_once(capsys, demo_root, tmp_p
 LONG_ROW_OVER = 10
 
 
+#: How long :func:`_a_deeper_root` makes the clients root, in characters,
+#: whatever the machine's temporary folder spends of it: deep enough that a
+#: return of two names at the longest may pass Windows's limit, and shallow
+#: enough that a plain return keeps :data:`FITS_MARGIN` to spare.
+DEEPER_ROOT_LENGTH = 108
+#: What the plain return under that root keeps below the tightest limit
+#: that applies to its copies (Excel's, for a spreadsheet), at the least.
+FITS_MARGIN = 20
+
+
 def _a_deeper_root(demo_root):
     """A clients root one long folder below the suite's short one, recorded
     as the app records it. Since decision 188 a name is at most eighty
@@ -3656,7 +3666,13 @@ def _a_deeper_root(demo_root):
     the firm."""
     from tracker.settings import set_clients_root
 
-    deeper = demo_root / ("Clients root " + "d" * 80)
+    # The same length on every machine, from the real temporary folder: a
+    # Windows runner's is longer than Linux's, and a fixed pad left the
+    # "fits" return below one character short of Excel's 218 there.
+    pad = DEEPER_ROOT_LENGTH - len(str(demo_root / "Clients root "))
+    if pad < 1:
+        pytest.skip(f"{demo_root} is too long to make a root of {DEEPER_ROOT_LENGTH} characters")
+    deeper = demo_root / ("Clients root " + "d" * pad)
     deeper.mkdir()
     set_clients_root(deeper)
     return deeper
@@ -3753,9 +3769,18 @@ def test_state_carries_the_returns_room_as_information_and_warns_only_what_canno
     assert (ROOM_PARKS.format(count=room.parks) in state["warnings"]) == bool(room.parks)
     assert run(capsys, "list")[1]["vocab"]["room"]["short"] == ROOM_SHORT
 
-    # A return with room: no note at all.
+    # A return with room: no note at all. It keeps FITS_MARGIN to spare
+    # below the tightest limit its copies meet, measured, on any machine.
+    from tracker.filer import _extensions_of, prepared_name_for
+    from tracker.layout import PREPARED_DIR_NAME, limit_for
+
     fits = make_engagement(root, [RequestItem(identifier="A01", document="W-2")],
                            return_name="1040 - Fits")
+    [item] = load_manifest(fits)
+    spare = min(limit_for(ext) - len(str(fits / PREPARED_DIR_NAME / prepared_name_for(item, ext, set())))
+                for ext in _extensions_of(item))
+    assert spare >= FITS_MARGIN, spare
+    assert room_for(fits, load_manifest(fits)).short == 0
     assert payload_of_state(capsys, fits)["room_note"] == ""
 
 

@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 149,
     "edges": 923,
-    "reused": 117
+    "reused": 116
   },
   "node_types": [
     "artifact",
@@ -3407,10 +3407,12 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "5d2194a5280edc31",
-      "lines": 5256,
+      "sha256": "9b33abffaa6ac838",
+      "lines": 5281,
       "exports": [
         "COUNTS",
+        "DEEPER_ROOT_LENGTH",
+        "FITS_MARGIN",
         "HOUSEHOLD",
         "LONG_ROW_OVER",
         "PEOPLE",
@@ -3607,7 +3609,9 @@
       ],
       "constants": {
         "HOUSEHOLD": "'Test Household'",
-        "LONG_ROW_OVER": "10"
+        "LONG_ROW_OVER": "10",
+        "DEEPER_ROOT_LENGTH": "108",
+        "FITS_MARGIN": "20"
       }
     },
     {
@@ -4987,8 +4991,8 @@
       "id": "tests/test_registry.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "d3eb2c435d0ed573",
-      "lines": 607,
+      "sha256": "3b1ba68f02e216e1",
+      "lines": 619,
       "exports": [
         "ITEMS",
         "make",
