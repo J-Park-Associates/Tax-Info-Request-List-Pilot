@@ -3926,6 +3926,34 @@ def test_a_waiting_row_costs_the_state_one_household_payload(capsys, demo_root, 
     assert waiting["waits_for_refused"] == ""
 
 
+def test_a_household_row_the_store_cannot_read_costs_no_other_card_and_is_said(
+        capsys, demo_root, caplog):
+    """The review's S1: one household row the store cannot read - a
+    schema from another version, a hand-damaged store - used to fail
+    every return's card in the practice. Every other card is whole; *Fed
+    by* names the households it can read and says, by class alone, that
+    one could not be; the class is logged."""
+    import logging
+
+    _father, llc = two_households(capsys, demo_root)
+    kim = _a_third_household(capsys, demo_root)
+    family = llc.parent.parent.parent / "Park Family"
+    conn = store.connect()
+    with conn:
+        conn.execute(f"UPDATE engagements SET {store.HOUSEHOLD_PREFIX}feeds = ? WHERE path LIKE ?",
+                     ('{"x": 1}', f"%/{family.name}"))
+    said = api.FED_BY_UNREADABLE.format(kind="ValueError")
+
+    with caplog.at_level(logging.WARNING, logger="tracker.api"):
+        code, other = run(capsys, "state", api.ENGAGEMENT_FLAG, str(kim))
+    assert code == 0, other
+    assert other["household"]["fed_by"] == [{"name": said, "path": "", "members": []}]
+    assert "ValueError" in caplog.text and str(family) not in caplog.text
+    code, fed = run(capsys, "state", api.ENGAGEMENT_FLAG, str(llc))
+    assert code == 0, fed
+    assert [one["name"] for one in fed["household"]["fed_by"]] == [said]
+
+
 # ============== what we have received, at once (decision 130) =============
 #
 # A person's action in the app changes the index between passes, so the

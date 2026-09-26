@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 154,
     "edges": 952,
-    "reused": 104
+    "reused": 117
   },
   "node_types": [
     "artifact",
@@ -135,8 +135,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "d0e836a8923b1b04",
-      "lines": 3875,
+      "sha256": "9d971727cd42bc69",
+      "lines": 3914,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_FOLDER_NAME_HELP",
@@ -173,6 +173,7 @@
         "ENGAGEMENT_FLAG",
         "EXISTING_HOUSEHOLD_LABEL",
         "FED_BY_LINE",
+        "FED_BY_UNREADABLE",
         "FEEDS_HELP",
         "FEEDS_LABEL",
         "FEEDS_LINE",
@@ -384,6 +385,7 @@
         "NOT_A_SPEC": "'The app sent something that is not a JSON object; nothing was changed'",
         "ROOM_HEADING": "'Returns short of room under this root'",
         "SHELL_NOT_OPENED": "'That is no longer the folder or file the tracker reported; nothing was opened.'",
+        "FED_BY_UNREADABLE": "'a household whose record this computer could not read ({kind})'",
         "ACCEPT_FOLDER_NAME_LABEL": "\"Accept the folder's name\"",
         "ACCEPT_FOLDER_NAME_HELP": "\"records that this household (or this return) is now called by its folder's name; nothing is moved or renamed\"",
         "YEAR_NOT_ACCEPTED": "\"This return's folder sits under a year its record does not hold. Move it back under the year its record says. Nothing was changed.\"",
@@ -3212,7 +3214,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "1e9a376347fc8e90",
+      "sha256": "80709251b77bc0d2",
       "lines": 431,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -3665,8 +3667,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6ccc8216456462bd",
-      "lines": 5771,
+      "sha256": "89deeb8fd4b290f0",
+      "lines": 5799,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -3703,6 +3705,7 @@
         "test_a_held_reminder_shows_no_letter_and_offers_no_action",
         "test_a_household_folder_the_tracker_did_not_make_is_refused_and_left_whole",
         "test_a_household_path_must_be_a_household_of_the_private_tree",
+        "test_a_household_row_the_store_cannot_read_costs_no_other_card_and_is_said",
         "test_a_journal_planted_in_the_client_tree_is_never_a_prior",
         "test_a_name_outside_ascii_reaches_both_trees_as_it_was_typed",
         "test_a_name_the_walk_would_pass_over_is_never_created",

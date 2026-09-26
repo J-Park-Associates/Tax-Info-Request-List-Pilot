@@ -1542,6 +1542,13 @@ def _feed_payload(household_dir: Path, years: list[int]) -> tuple[list[dict], li
     return feeds, fed
 
 
+#: What *Fed by* says in place of a household whose stored record this
+#: computer could not read (decision 192): a name in the line's own list,
+#: so the card says it without a word of its own, and the class alone -
+#: an exception's text can name a client's folder (security principle 7).
+FED_BY_UNREADABLE = "a household whose record this computer could not read ({kind})"
+
+
 def _fed_by_payload(household_dir: Path) -> list[dict]:
     """The households whose drop folders feed a return of this one, from
     the store's household rows as they stand (decision 192).
@@ -1559,26 +1566,58 @@ def _fed_by_payload(household_dir: Path) -> list[dict]:
     the layout accepts, and a journal that is still there (one ``stat``,
     never a read) - so a folder renamed aside or a record removed is not
     named from a row the store still holds. With no saved root there is
-    nothing to place the rows under and the answer is nobody; a store
-    that cannot be read is logged by its class and answers nobody too,
-    because a card must not fail on its disclosure line.
+    nothing to place the rows under and the answer is nobody.
+
+    **One row the store cannot read costs its own household, never every
+    card** (decision 192, the review's S1). The rows are read in one
+    query; where that fails, each household under this private tree is
+    read from the store on its own, in its own guard, and a household that
+    still cannot be read is left out and said in its place
+    (:data:`FED_BY_UNREADABLE`, by class; the class is logged). A card
+    must not fail on its disclosure line, and a line that leaves a
+    household out in silence would tell nobody it did.
     """
     root = _saved_root()
     if root is None:
         return []
+    faults = (store.StoreError, ValueError, TypeError)
+    unreadable: list[str] = []
+    built: list[Household] = []
     try:
-        rows = store.households(store.connect())
-    except store.StoreError as exc:
-        log.warning("fed_by: the store's households could not be read (%s)", type(exc).__name__)
-        return []
-    built = [Household(path=root.joinpath(*key.split("/")), info=info) for key, info in rows]
+        conn = store.connect()
+        built = [Household(path=root.joinpath(*key.split("/")), info=info)
+                 for key, info in store.households(conn)]
+    except faults as exc:
+        log.warning("fed_by: the store's households could not be read at once (%s)",
+                    type(exc).__name__)
+        try:
+            conn = store.connect()
+            with os.scandir(household_dir.parent) as entries:
+                folders = sorted(Path(entry.path) for entry in entries if entry.is_dir())
+        except (*faults, OSError) as again:
+            log.warning("fed_by: nothing could be read one by one (%s)", type(again).__name__)
+            unreadable.append(type(again).__name__)
+            folders = []
+        for folder in folders:
+            try:
+                info = store.household_info(conn, folder)
+            except faults as one:
+                log.warning("fed_by: one household's stored record could not be read (%s)",
+                            type(one).__name__)
+                unreadable.append(type(one).__name__)
+                continue
+            if info is not None:
+                built.append(Household(path=folder, info=info))
     shown = [one for one in fed_by(SimpleNamespace(households=built), household_dir)
              if layout.place_of(root, one.path).kind == layout.HOUSEHOLD
              and one.path.parent == household_dir.parent
              and layout.segment_problem(one.path.name) is None
              and ledger.path_for(one.path).is_file()]
-    return [{"name": one.name, "path": str(one.path), "members": list(one.info.members)}
-            for one in sorted(shown, key=lambda one: one.path.name.lower())]
+    fed = [{"name": one.name, "path": str(one.path), "members": list(one.info.members)}
+           for one in sorted(shown, key=lambda one: one.path.name.lower())]
+    if unreadable:
+        fed.append({"name": FED_BY_UNREADABLE.format(kind=unreadable[0]), "path": "", "members": []})
+    return fed
 
 
 #: The app's action on a paused household (decision 188, R6) and its help.
