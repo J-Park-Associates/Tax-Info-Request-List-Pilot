@@ -308,10 +308,10 @@ def test_an_attachment_the_reader_could_not_start_on_waits_and_so_does_its_conta
     drop_bytes(engagement, "mail.eml", eml([("w2.pdf", pdf(W2)), ("1098.pdf", pdf(FORM_1098))]))
     real = filer.read_once
 
-    def cannot_start_on_the_1098(path):
+    def cannot_start_on_the_1098(path, questions):
         if path.name == "1098.pdf":
-            return content_check.could_not_start(0.0, "no more processes", path.name)
-        return real(path)
+            return content_check.unjudged(content_check.could_not_start(0.0, "no more processes", path.name))
+        return real(path, questions)
 
     monkeypatch.setattr(filer, "read_once", cannot_start_on_the_1098)
     content_check.readers_that_could_not_start()

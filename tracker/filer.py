@@ -193,7 +193,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from tracker import containers, ledger, ocr, reasons, store
-from tracker.content_check import RETIRED_CACHE_FILENAME, ContentCache
+from tracker.content_check import RETIRED_CACHE_FILENAME, ContentCache, Judgment, NameQuestion
 from tracker.fsio import (
     TEMP_SUFFIX,
     copy_atomically,
@@ -257,7 +257,6 @@ from tracker.names import (
     NAME_VETOED,
     ONE_WORD_SPELLING,
     NameVerdict,
-    check_name,
 )
 
 # The records themselves live in tracker/records.py (decision 100). The two
@@ -286,7 +285,7 @@ from tracker.records import (
     parse_evidence,  # noqa: F401
     person_to_json,
 )
-from tracker.router import read_once, route_file
+from tracker.router import questions_for, read_once, route_file
 from tracker.scaffold import (
     OTHER_DOCUMENT,
     PREPARED_DIR_NAME,
@@ -4501,15 +4500,34 @@ class _NameStage:
         return ""
 
 
+def _name_question(run: _ReturnRun, runs: list[_ReturnRun]) -> NameQuestion:
+    """Whose document this is, asked for ``run`` (decision 128): its own
+    spellings, and every other return the drop may feed with theirs."""
+    return NameQuestion(
+        own=run.spellings,
+        others=tuple((other.label, other.spellings) for other in runs if other is not run),
+    )
+
+
+def _judged(judged: Path, runs: list[_ReturnRun], items: list[RequestItem]) -> Judgment:
+    """The drop judged once, in the reader child, against ``items`` - every
+    row it may be routed on - and whose it is for every return in ``runs``
+    (decision 189): the rules and the name run under the document's stop,
+    and no word of it comes back."""
+    names = tuple(_name_question(run, runs) for run in runs)
+    return read_once(judged, questions_for(items, names=names))
+
+
 def _by_the_name(
-    text: str, accepting: list[tuple[_ReturnRun, object]], runs: list[_ReturnRun]
+    judgment: Judgment, accepting: list[tuple[_ReturnRun, object]], runs: list[_ReturnRun]
 ) -> _NameStage:
     """The name tier (decision 128), run over what the request lists accepted.
 
     For each accepting return, in order, the page is asked whether it names
     one of that return's people, somebody on another return the drop may
-    feed, or nobody (:func:`tracker.names.check_name`). Then the table the
-    owner settled:
+    feed, or nobody (:func:`tracker.names.check_name`, asked in the reader
+    child with the rules since decision 189 and read here off the
+    ``judgment``). Then the table the owner settled:
 
     ====================  =========  ======================  ===================
     the accepted item is  confirmed  absent                  another return's
@@ -4524,8 +4542,7 @@ def _by_the_name(
     """
     stage = _NameStage()
     for run, routing in accepting:
-        others = {other.label: other.spellings for other in runs if other is not run}
-        verdict = check_name(text, run.spellings, others)
+        verdict = judgment.name(_name_question(run, runs))
         routing = _with_the_name(routing, verdict)
         stage.graded[id(run)] = routing
         if verdict.outcome == NAME_CONFIRMED:
@@ -4604,7 +4621,8 @@ def _decide_across(
     # One reading, however many returns judge it (decision 128). A dry run
     # judges the drop where it lies, as it always has.
     judged = drop if runs[0].context.dry_run else original
-    reading = read_once(judged)
+    judgment = _judged(judged, runs, [item for run in runs for item in run.items])
+    reading = judgment.extraction
     if _not_read(reading):
         return None
     # What the reading cost, kept for the run's summary (decision 127). One
@@ -4614,16 +4632,15 @@ def _decide_across(
     # this household's inbox. It is recorded after the fact and changes
     # nothing: a slow document is read to the end, and then said.
     first.report.timed(drop.name, reading.seconds)
-    routed = [(run, route_file(judged, run.items, reading=reading,
+    routed = [(run, route_file(judged, run.items, judgment=judgment,
                                digest=digest, cache=run.cache, pdf_cache=run.context.pdf_cache))
               for run in runs]
     accepting = [(run, routing) for run, routing in routed if routing.routed]
 
-    # The name check runs on the same reading. With no words at all the
-    # router has already parked the document (UNREADABLE) and nothing
-    # accepted it, so the stage has nothing to judge.
-    text = "" if reading.needs_ocr else (reading.text or "")
-    stage = _by_the_name(text, accepting, runs)
+    # The name check was asked of the same reading, in the same judgment.
+    # With no words at all the router has already parked the document
+    # (UNREADABLE) and nothing accepted it, so the stage has nothing to judge.
+    stage = _by_the_name(judgment, accepting, runs)
     kept = stage.kept
 
     no_room: NoRoom | None = None
@@ -5240,13 +5257,17 @@ def _sort_one(
         return run, entry
 
     judged = drop if context.dry_run else original
-    reading = read_once(judged)
+    # Judged against this return's rows, and whose it is for this one
+    # return: the name tier below asks about no other (decision 189).
+    judgment = read_once(judged, questions_for(
+        context.items, names=(_name_question(run, runs),)))
+    reading = judgment.extraction
     if _not_read(reading):
         return None
     # What the reading cost, for the run's summary (decision 127).
     run.report.timed(drop.name, reading.seconds)
     routing = route_file(
-        judged, context.items, reading=reading,
+        judged, context.items, judgment=judgment,
         digest=digest, cache=context.cache, pdf_cache=context.pdf_cache,
     )
     item = context.by_id.get(routing.identifier or "")
@@ -5255,8 +5276,7 @@ def _sort_one(
         # this arrival belongs to: the page confirms it, another return's
         # person vetoes it, and on a named request a page naming nobody
         # parks it.
-        text = "" if reading.needs_ocr else (reading.text or "")
-        stage = _by_the_name(text, [(run, routing)], runs)
+        stage = _by_the_name(judgment, [(run, routing)], runs)
         if stage.kept and _across_households(run) and id(run) not in stage.confirmed:
             # A re-send whose bytes a return in another household already
             # holds is held to the same rule as a first arrival (decision

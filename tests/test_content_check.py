@@ -1516,9 +1516,9 @@ def test_a_cached_verdict_starts_no_child(tmp_path, in_a_child):
     started = []
     real = content_check._read_in_a_child
 
-    def counted(path, *, ocr):
+    def counted(path, questions):
         started.append(Path(path).name)
-        return real(path, ocr=ocr)
+        return real(path, questions)
 
     in_a_child.setattr(content_check, "_read_in_a_child", counted)
     w2 = RequestItem(identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),
@@ -2213,3 +2213,439 @@ def test_a_workbook_packed_with_bzip2_is_never_unpacked(tmp_path):
     reading = content_check.extract(packed, ocr=False)
     assert reading.text is None and not reading.extractable
     assert content_check.UNKNOWN_PACKING in reading.reason
+
+
+# ------------------------------------------ the judgment in the reader child ----
+#
+# Decision 189: the rules, the form scan and the name run in the reader child
+# with the reading (content_check.judge), and what comes back is a Judgment
+# that carries no word of the document. Every document here is made by the
+# test that reads it, and every name on it is made up.
+
+#: A word no rule, catalog or spelling holds: if it is anywhere in what
+#: crosses the pipe, the document's words crossed.
+MARKER = "Quendrilvax"
+
+
+def _questions_about(*items, names=()):
+    from tracker.content_check import Questions, row_question
+
+    return Questions(rows=tuple(row_question(one) for one in items), names=tuple(names))
+
+
+def test_no_document_word_crosses_the_pipe(tmp_path, in_a_child):
+    """The reader child hands the pass a Judgment, and the Judgment is the
+    firm's words only: the rows' keywords and reason sentences, form
+    numbers, the firm's spellings. A document holding a word nobody else
+    holds - on its title line, beside the name, on the dated line - is
+    judged against rows that match and rows that fail, and a name question
+    that confirms and one that does not; the word is nowhere in the answer
+    as it crossed, pickled."""
+    import pickle
+
+    import tracker.content_check as content_check
+    from tests.conftest import TEST_CLIENT
+    from tests.test_scanner import text_pdf as page_pdf
+    from tracker.content_check import NameQuestion
+
+    page = page_pdf(tmp_path / "w2.pdf", "\n".join([
+        f"Form W-2 Wage and Tax Statement 2025 {MARKER}",
+        f"Employee {TEST_CLIENT} {MARKER}",
+        f"Employer {MARKER} Widgets 2025-12-31",
+    ]))
+    rows = (item(required_keywords=("W-2",), date_pattern=r"2025"),
+            item(required_keywords=("1098",)),
+            item(any_keywords=("wage and tax statement", "interest income")))
+    names = (NameQuestion(own=(TEST_CLIENT,)), NameQuestion(own=("Pat Nobody",),
+                                                            others=(("the other return", (TEST_CLIENT,)),)))
+    questions = _questions_about(*rows, names=names)
+
+    judged = content_check.judge_bounded(page, questions)
+
+    assert isinstance(judged, content_check.Judgment)
+    assert judged.extraction.text == "" and judged.has_words
+    assert judged.row(rows[0]).verdict.ok and not judged.row(rows[1]).verdict.ok
+    assert judged.name(names[0]).matched == TEST_CLIENT
+    blob = pickle.dumps(judged)
+    for shape in (MARKER, MARKER.lower(), MARKER.upper()):
+        assert shape.encode("utf-8") not in blob
+    assert MARKER.lower() not in repr(judged).lower()
+
+
+def test_no_client_text_is_matched_in_the_pass_own_process(tmp_path, in_a_child):
+    """With the reader in its child, the pass's own process never matches a
+    word: every function that reads a document's words - the rules, the
+    form scan, the self-named forms, the 1099-B test, the judgment itself
+    and the name check - is made to fail in this process, and a pass over
+    a household still files the W-2 and the 1099-INT and scans both as
+    received."""
+    import tracker.content_check as content_check
+    import tracker.names as names_module
+    from tests.conftest import named_page
+    from tests.test_scanner import text_pdf as page_pdf
+    from tracker.layout import inbox_of
+    from tracker.manifest import Status, load_manifest
+    from tracker.registry import discover_engagements
+    from tracker.runner import REMINDERS_NEVER, run_registry
+
+    w2 = RequestItem(identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),
+                     min_size_kb=0, required_keywords=("W-2",))
+    interest = RequestItem(identifier="A02", document="1099-INT", period="TY2025",
+                           allowed_extensions=("pdf",), min_size_kb=0,
+                           any_keywords=("1099-INT", "interest income"))
+    engagement = make_engagement(tmp_path, [w2, interest])
+    page_pdf(inbox_of(engagement) / "w2.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
+    page_pdf(inbox_of(engagement) / "interest.pdf", named_page("Form 1099-INT Interest Income 2025"))
+
+    def matched_in_the_pass(*_args, **_kwargs):
+        raise AssertionError("a document's words were matched in the pass's own process")
+
+    for name in ("evaluate_rules", "says", "own_forms", "dominant_forms", "self_named_forms",
+                 "required_matched", "any_keyword_matched", "carries_a_1099b_section",
+                 "judgment_of"):
+        in_a_child.setattr(content_check, name, matched_in_the_pass)
+    in_a_child.setattr(names_module, "check_name", matched_in_the_pass)
+    in_a_child.setattr(names_module, "read_names", matched_in_the_pass)
+
+    report = run_registry(discover_engagements(tmp_path), today=dt.date(2026, 7, 1),
+                          reminders=REMINDERS_NEVER)
+
+    [run] = report.runs
+    assert run.filed == 2 and not run.error, run
+    status = {row.identifier: row.status for row in load_manifest(engagement)}
+    assert status == {"A01": Status.RECEIVED, "A02": Status.RECEIVED}
+    assert no_child_left()
+
+
+def test_a_catastrophic_date_pattern_costs_one_stop_and_the_next_pass_takes_the_kept_verdict(
+        tmp_path, a_short_stop):
+    """A typed Date Pattern that backtracks - ``(\\d+)+x`` over forty digits
+    runs about a day - used to run in the pass's own process, where nothing
+    could stop it. It runs in the child now, under the document's stop:
+    the first pass parks the file with the stop's sentence and keeps that
+    verdict against the file's bytes and the row's rules, and the next pass
+    starts no judgment for it at all."""
+    import time
+    from pathlib import Path
+
+    import tracker.content_check as content_check
+    from tests.conftest import named_page, sort
+    from tracker.filer import read_index
+    from tracker.layout import inbox_of
+
+    started = []
+    real = content_check._read_in_a_child
+
+    def counted(path, questions):
+        started.append(Path(path).name)
+        return real(path, questions)
+
+    a_short_stop.setattr(content_check, "_read_in_a_child", counted)
+    row = RequestItem(identifier="A01", document="W-2", period="TY2025", allowed_extensions=("txt",),
+                      min_size_kb=0, required_keywords=("W-2",), date_pattern=r"(\d+)+x")
+    engagement = make_engagement(tmp_path, [row])
+    body = named_page("Form W-2 Wage and Tax Statement 2025\n" + "1" * 40) + "\n"
+    (inbox_of(engagement) / "w2.txt").write_text(body, encoding="utf-8")
+
+    began = time.monotonic()
+    first = sort(engagement, today=dt.date(2026, 7, 1))
+    took = time.monotonic() - began
+
+    [parked] = first.review
+    assert parked.original_name == "w2.txt" and parked.reason == STOPPED
+    assert STOP_IN_TESTS <= took < STOP_IN_TESTS + 45
+    assert started == ["w2.txt"]
+    assert no_child_left()
+
+    second = sort(engagement, today=dt.date(2026, 7, 2))
+    assert started == ["w2.txt"]                        # the next pass judged nothing
+    assert second.review == [] and [e.reason for e in read_index(engagement)] == [STOPPED]
+
+    # The kept verdict is the file's, under the row's rules: the same bytes
+    # anywhere - a working copy a person makes of it - are not judged again.
+    loose = tmp_path / "copy of w2.txt"
+    loose.write_text(body, encoding="utf-8")
+    a_short_stop.setattr(content_check, "_read_in_a_child",
+                         lambda *a, **k: pytest.fail("a kept verdict was judged again"))
+    kept = check_content(loose, row, ContentCache(engagement))
+    assert kept == content_check.ContentResult(ok=False, reason=STOPPED, extractable=False)
+
+
+def test_a_one_line_workbook_parks_within_the_stop_and_never_stalls_the_pass(tmp_path, a_short_stop):
+    """The council's proof line. A workbook of one row - about twenty
+    million characters, each cell a form's own name, which the form scan
+    must weigh one by one - is judged in the child, and the stop ends it:
+    it parks on the stop's sentence, the W-2 dropped beside it is filed in
+    the same pass, and the pass takes the stop and not the scan's time."""
+    import time
+
+    from tests.conftest import named_page, sort
+    from tests.samples import sheet_xlsx
+    from tests.test_scanner import text_pdf as page_pdf
+    from tracker.content_check import READING_CHAR_BUDGET
+    from tracker.layout import inbox_of
+
+    w2 = RequestItem(identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),
+                     min_size_kb=0, required_keywords=("W-2",))
+    ledger = RequestItem(identifier="A02", document="Interest ledger", period="TY2025",
+                         allowed_extensions=("xlsx",), min_size_kb=0,
+                         required_keywords=("1099-INT",), any_keywords=("interest income",))
+    engagement = make_engagement(tmp_path, [w2, ledger])
+    cell = "Form 1099-INT 2025 " * 1500
+    cells = READING_CHAR_BUDGET // len(cell) - 1              # one row, just inside the budget
+    sheet_xlsx(inbox_of(engagement) / "a ledger.xlsx", [[cell] * cells])
+    page_pdf(inbox_of(engagement) / "w2.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
+
+    began = time.monotonic()
+    report = sort(engagement, today=dt.date(2026, 7, 1))
+    took = time.monotonic() - began
+
+    [parked] = report.review
+    assert parked.original_name == "a ledger.xlsx" and parked.reason == STOPPED
+    [filed] = report.filed
+    assert filed.original_name == "w2.pdf" and filed.identifier == "A01"
+    assert took < STOP_IN_TESTS + 45
+    assert no_child_left()
+
+
+def test_a_transient_judgment_is_neither_kept_nor_recorded(tmp_path, in_a_child):
+    """SPEC-156's seam: the one place a judgment says the machine decided
+    it is ``Judgment.extraction.transient``, set where the reading ran. A
+    judgment whose reader could not start carries it and no answers; the
+    pass records nothing for the drop and keeps no verdict for its bytes,
+    and the scanner keeps neither its open test nor its row verdict."""
+    import tracker.content_check as content_check
+    from tests.conftest import named_page, sort
+    from tests.test_scanner import text_pdf as page_pdf
+    from tracker.filer import read_index
+    from tracker.layout import inbox_of
+
+    in_a_child.setattr(content_check, "_CHILD_READER", _a_reader_only_the_pass_has(in_a_child))
+    row = RequestItem(identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),
+                      min_size_kb=0, required_keywords=("W-2",))
+    engagement = make_engagement(tmp_path, [row])
+    drop = page_pdf(inbox_of(engagement) / "w2.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
+    content = drop.read_bytes()
+
+    judged = content_check.judge_bounded(drop, _questions_about(row))
+    assert judged.extraction.transient and judged.extraction.text is None
+    assert judged.rows == {} and judged.names == {} and not judged.has_words
+
+    report = sort(engagement, today=dt.date(2026, 7, 1))
+    assert report.filed == [] and report.review == [] and read_index(engagement) == []
+    _memos, verdicts = cache_rows(engagement)
+    assert verdicts == {}
+
+    loose = tmp_path / "loose.pdf"
+    loose.write_bytes(content)
+    cache = ContentCache()
+    assert content_check.open_verdict(loose, cache, row) == judged.extraction.reason
+    assert check_content(loose, row, cache).transient
+    assert cache.get(loose, content_check.OPEN_TEST_FINGERPRINT) is None
+    assert cache.get(loose, rules_fingerprint(row)) is None
+    content_check.readers_that_could_not_start()
+
+
+def test_a_file_in_flight_when_the_child_is_retired_or_killed_is_read_again_next_pass_and_never_marked_read(
+        tmp_path, in_a_child):
+    """UX motion 3's claim, through the judgment. A child that dies before
+    "started" leaves the drop undecided and unrecorded, and the next pass
+    judges it and files it; one that dies after "started" parks the file
+    with its own sentence and never a verdict that says it was read; and a
+    child retired after every document is retired between files, so each
+    document is judged whole by one child and files."""
+    import tracker.content_check as content_check
+    from tests import child_readers
+    from tests.conftest import named_page, sort
+    from tests.test_scanner import text_pdf as page_pdf
+    from tracker import ocr
+    from tracker.filer import read_index
+    from tracker.layout import inbox_of
+
+    row = RequestItem(identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),
+                      min_size_kb=0, required_keywords=("W-2",))
+    engagement = make_engagement(tmp_path, [row])
+    inbox = inbox_of(engagement)
+
+    # Killed before "started": nothing is decided, and the next pass files it.
+    page_pdf(inbox / "first.pdf", named_page("Form W-2 Wage and Tax Statement 2025 first"))
+    with pytest.MonkeyPatch.context() as broken:
+        broken.setattr(content_check, "_CHILD_READER", _a_reader_only_the_pass_has(broken))
+        waiting = sort(engagement, today=dt.date(2026, 7, 1))
+    assert waiting.filed == [] and read_index(engagement) == []
+    content_check.readers_that_could_not_start()
+    again = sort(engagement, today=dt.date(2026, 7, 2))
+    assert [e.original_name for e in again.filed] == ["first.pdf"]
+
+    # Killed after "started": parked with its sentence, and no verdict says it was read.
+    in_a_child.setattr(content_check, "_CHILD_READER", child_readers.a_reader_that_dies_on_a_crash)
+    page_pdf(inbox / "a crash.pdf", named_page("Form W-2 Wage and Tax Statement 2025 crash"))
+    crashed = sort(engagement, today=dt.date(2026, 7, 3))
+    [parked] = crashed.review
+    assert parked.original_name == "a crash.pdf" and parked.reason == CRASHED
+    _memos, verdicts = cache_rows(engagement)
+    assert all(v.get("reason") == CRASHED or v.get("ok")
+               for by_rule in verdicts.values() for v in by_rule.values())
+    assert not any(v.get("ok") for by_rule in verdicts.values() for v in by_rule.values()
+                   if v.get("reason") == CRASHED)
+
+    # Retired after every document: between files, never in one.
+    in_a_child.setattr(content_check, "_CHILD_READER", content_check.open_and_read)
+    in_a_child.setattr(ocr, "DOCUMENTS_PER_CHILD", 1)
+    for n in range(3):
+        page_pdf(inbox / f"w2 {n}.pdf", named_page(f"Form W-2 Wage and Tax Statement 2025 copy {n}"))
+    with ocr.reading_session():
+        retired = sort(engagement, today=dt.date(2026, 7, 4))
+    assert sorted(e.original_name for e in retired.filed) == ["w2 0.pdf", "w2 1.pdf", "w2 2.pdf"]
+    assert no_child_left()
+
+
+def _the_pass_before_189(text: str, row: RequestItem):
+    """What the pass computed in its own process before decision 189, call
+    for call: the router's ordinary reading, its ``_required_matched`` and
+    ``any_keyword_matched`` - each reading the form scan for itself."""
+    from tracker.content_check import any_keyword_matched, own_forms, says
+
+    own = own_forms(text) if text else None
+    required = bool(row.required_keywords) and all(says(text, k) for k in row.required_keywords)
+    return evaluate_rules(text, row, own), required, any_keyword_matched(text, row)
+
+
+def test_every_verdict_is_the_same_judged_in_the_child_as_in_the_pass(tmp_path, in_a_child):
+    """The proof that CACHE_VERSION need not move. Every IRS form in the
+    suite's corpus and the suite's own sample pages, judged against every
+    row of every catalog: the judgment's answers - each row's verdict,
+    reason and evidence, both leads, the page's own forms, its self-named
+    forms, the 1099-B test and the name - are the answers the pass reached
+    in its own process before, value for value. And a judgment made in the
+    real child is the judgment made here.
+
+    The forms are read to their first two pages - a title, a foot and a
+    page of instructions each - so the claim costs the suite a minute and
+    not three; the judgment of a longer text is the same code."""
+    from pathlib import Path
+
+    import tracker.content_check as content_check
+    from tests import samples
+    from tracker.content_check import (
+        NameQuestion,
+        carries_a_1099b_section,
+        extract,
+        judgment_of,
+        own_forms,
+        row_question,
+        self_named_forms,
+    )
+    from tracker.manifest import validated
+    from tracker.names import check_name
+    from tracker.templates import FORM_TYPES, template_items
+
+    rows = list(dict.fromkeys(
+        one for form in FORM_TYPES for one in validated(template_items(form["id"], year=2025))
+        if has_content_rules(one)
+    ))
+    distinct = list(dict.fromkeys(row_question(one) for one in rows))
+    by_question = {row_question(one): one for one in rows}
+    names = (NameQuestion(own=("Test Client",), others=(("the other return", ("Pat Sample",)),)),
+             NameQuestion(own=("Pat Sample",), others=(("the first return", ("Test Client",)),)))
+    questions = content_check.Questions(rows=tuple(distinct), names=names)
+
+    irs = Path(__file__).parent / "irs"
+    with pytest.MonkeyPatch.context() as shorter:
+        shorter.setattr(content_check, "MAX_PAGES", 2)
+        readings = {pdf.name: extract(pdf, ocr=False) for pdf in sorted(irs.glob("*.pdf"))}
+    pages = {
+        "w2": samples.w2_lines("Test Client", "Sample Widgets LLC", 2025),
+        "1099-int": samples.lines_1099_int("Sample Bank", "Pat Sample", 2025),
+        "prior return": samples.prior_return_lines("Test Client", 2024),
+        "1098": samples.form_1098_lines("Sample Lending", "Test Client", 2025),
+        "two forms": samples.scanned_w2_lines(2025) + samples.scanned_1098_lines(2025),
+        "brokerage": samples.brokerage_cover_lines(2025),
+        "scanned 1099-int": samples.scanned_1099_int_lines(2025),
+    }
+    for name, lines in pages.items():
+        readings[name] = content_check.Extraction("\n".join(lines))
+    assert len(readings) > 100
+
+    for name, reading in readings.items():
+        judged = judgment_of(reading, questions)
+        words = "" if reading.needs_ocr else (reading.text or "")
+        if not words:
+            assert not judged.has_words, name
+            continue
+        own = own_forms(words)
+        assert judged.own == (frozenset(own) if own is not None else None), name
+        assert judged.self_named == self_named_forms(words), name
+        assert judged.carries_1099b == carries_a_1099b_section(words), name
+        for question in distinct:
+            before = _the_pass_before_189(words, by_question[question])
+            now = judged.rows[question]
+            assert (now.verdict, now.required_matched, now.any_matched) == before, (name, question)
+        for question in names:
+            assert judged.name(question) == check_name(words, question.own, dict(question.others)), name
+
+    # And across the pipe: the child's judgment is this process's.
+    for document in ("fw2.pdf", "f1099int.pdf", "f1098.pdf"):
+        in_the_child = content_check.judge_bounded(irs / document, questions)
+        here = judgment_of(content_check.open_and_read(irs / document), questions)
+        assert in_the_child == replace_seconds(here, in_the_child), document
+    assert no_child_left()
+
+
+def replace_seconds(judged, like):
+    """``judged`` with ``like``'s reading time, the one field two readings
+    of the same bytes never share."""
+    from dataclasses import replace
+
+    return replace(judged, extraction=replace(judged.extraction, seconds=like.extraction.seconds))
+
+
+def test_the_form_scan_runs_once_per_judgment(monkeypatch):
+    """The first of the two costs. The form scan (``dominant_forms``, a whole
+    walk of the text) ran once for every required keyword of every row the
+    router asked, and again for every row's any-keywords and the 1099-B
+    test: twenty rows at the reading budget was a quarter of an hour for
+    one file. It runs once a judgment now, and ``self_named_forms`` once,
+    however many rows are asked."""
+    import tracker.content_check as content_check
+    from tracker.content_check import Extraction, judgment_of
+
+    counts = {"dominant_forms": 0, "self_named_forms": 0}
+    for name in counts:
+        real = getattr(content_check, name)
+
+        def counted(text, _real=real, _name=name):
+            counts[_name] += 1
+            return _real(text)
+
+        monkeypatch.setattr(content_check, name, counted)
+
+    rows = [item(required_keywords=("W-2", f"box {n}"), any_keywords=("wages", "1099-B"),
+                 date_pattern=r"2025") for n in range(20)]
+    page = Extraction("Form W-2 Wage and Tax Statement 2025\nbox 1 wages\nbox 12 box 13 box 14\n")
+
+    judged = judgment_of(page, _questions_about(*rows))
+
+    assert counts == {"dominant_forms": 1, "self_named_forms": 1}
+    assert len(judged.rows) == 20 and judged.row(rows[1]).required_matched
+
+
+def test_an_ocr_reading_is_cut_to_the_budget_and_says_so(tmp_path, monkeypatch):
+    """Decision 178 cut every reading to the budget but OCR's, which was
+    handed back whole. OCR's words are cut there too now, and the reading
+    says it was cut, as a text layer's does; one inside the budget is
+    whole."""
+    import tracker.content_check as content_check
+
+    monkeypatch.setattr(content_check, "READING_CHAR_BUDGET", 60)
+    photo = tmp_path / "photo.jpg"
+    photo.write_bytes(b"not read: the reader is a stand-in")
+    said = {"text": "Form W-2 Wage and Tax Statement 2025\n" + "box 1 wages 1000.00\n" * 10}
+    monkeypatch.setattr(content_check, "_ocr_image", lambda _path: said["text"])
+
+    long = content_check.extract_by_ocr(photo)
+    assert long.from_ocr and long.cut and long.text == said["text"][:60]
+
+    said["text"] = "Form W-2 Wage and Tax Statement 2025"
+    short = content_check.extract_by_ocr(photo)
+    assert short.from_ocr and not short.cut and short.text == said["text"]

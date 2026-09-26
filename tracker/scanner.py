@@ -473,9 +473,11 @@ def _scan_item(
     interrupted = interrupted or {}
     # Tier 2's open test is never made in this process (decision 150): it
     # is the file's kept verdict, or made in a reading's child beside the
-    # reading the content check below will then use.
+    # reading the content check below will then use - and, since decision
+    # 189, beside the judgment of this row's rules, in the same job, so a
+    # working copy costs one trip to the child and no text comes back.
     def open_test(path: Path) -> str:
-        return open_verdict(path, cache)
+        return open_verdict(path, cache, item)
 
     results = check_files(files, item, pdf_cache=pdf_cache, open_test=open_test)
     # A working copy the record claims whose bytes are not its row's - the

@@ -134,6 +134,18 @@ What the router gained is the ``reading`` argument: the pass reads each
 document once and routes it against every return the drop may feed, so a
 two-return household costs one reading rather than two.
 
+**The router reads no word of a document** (decision 189). The pass's
+drop is judged once in the reader child against every row it may be
+routed on (:func:`read_once`, :func:`tracker.content_check.judge`), and
+:func:`_decide` reads the :class:`tracker.content_check.Judgment` that
+comes back - each row's verdict, whether its required keywords matched,
+which forms the page names as itself, whether it carries a 1099-B - where
+it once read the text. The decision is made here exactly as before; only
+the reading of the words moved, so a text that makes a rule crawl costs
+one stop in the child and parks its file instead of holding the pass. A
+caller outside the pass that hands in a reading of its own (the backtest)
+is judged in its own process, by the same function.
+
 The decision itself - :class:`tracker.records.Routing` - lives in
 :mod:`tracker.records` since decision 100: the decision is a record, and this
 module is the deciding. It is re-exported here for one release.
@@ -166,16 +178,14 @@ from tracker.content_check import (
     ContentCache,
     ContentResult,
     Extraction,
-    any_keyword_matched,
-    carries_a_1099b_section,
+    Judgment,
+    Questions,
     contains_keyword,
-    evaluate_rules,
-    extract_bounded,
     form_key,
-    own_forms,
+    judge_bounded,
+    judgment_of,
+    row_question,
     rules_fingerprint,
-    says,
-    self_named_forms,
 )
 from tracker.manifest import Override, RequestItem, asks_for_a_return, has_routing_rules, narrowing_rows
 
@@ -373,19 +383,6 @@ def _near_miss(
     )
 
 
-def _required_matched(text: str, item: RequestItem) -> bool:
-    """True if every one of ``item``'s required keywords appears in ``text``.
-
-    Required keywords are the accountant's strongest assertion about what a
-    document *is* ("a W-2 says W-2"), which is why they both outrank
-    ``any_keywords`` when choosing between requests and, when they match a
-    request whose other rules then fail, stop the file being filed elsewhere.
-    """
-    if not item.required_keywords:
-        return False
-    return all(says(text, k) for k in item.required_keywords)
-
-
 def _considers(item: RequestItem) -> bool:
     """Could this request accept any file at all?
 
@@ -485,7 +482,7 @@ def _filed_whole(
 
 
 def _multi_form(
-    path: Path, words: str, allowed: list[RequestItem], named: tuple[str, ...],
+    path: Path, judgment: Judgment, allowed: list[RequestItem], named: tuple[str, ...],
     keep: Callable[[RequestItem, ContentResult], None] | None = None,
 ) -> Routing | None:
     """Decision 94, the owner's: one page carrying several forms.
@@ -523,13 +520,18 @@ def _multi_form(
     its number at the head of a line with its year beside it, which a
     misread word does not manufacture, and on a bijection far stricter
     than the any-keyword tier ``OCR_ONLY`` exists to distrust.
+
+    The second reading is the judgment's row verdict (decision 189): a
+    page reaches here only when :func:`tracker.content_check.own_forms` is
+    the set of ``named``, and that set is the forms the row verdict was
+    read with, so the two readings have been one since decision 107.
     """
     named_set = set(named)
     record: dict[str, tuple[Evidence, ...]] = {}
     explained: dict[str, tuple[str, ...]] = {}
     verdicts: dict[str, tuple[RequestItem, ContentResult]] = {}
     for item in allowed:
-        verdict = evaluate_rules(words, item, named_set)
+        verdict = judgment.row(item).verdict
         if not verdict.ok:
             continue
         record[item.identifier] = verdict.evidence
@@ -569,8 +571,16 @@ def _multi_form(
     )
 
 
-def read_once(path: Path) -> Extraction:
-    """The document's words, the way the scanner will read them.
+def questions_for(items: list[RequestItem], *, names: tuple = ()) -> Questions:
+    """What a drop is asked when it is judged against ``items``: every row
+    the router considers (:func:`_considers`), once, and the name
+    questions a caller brings (:mod:`tracker.filer`'s, one per return)."""
+    rows = tuple(dict.fromkeys(row_question(item) for item in items if _considers(item)))
+    return Questions(rows=rows, names=tuple(names))
+
+
+def read_once(path: Path, questions: Questions) -> Judgment:
+    """The document judged, the way the scanner will read it.
 
     The text layer first; a scan with none is read by OCR, if OCR is
     installed. The file's own name used to excuse that reading - a scan
@@ -587,18 +597,23 @@ def read_once(path: Path) -> Extraction:
     does not OCR every photo twice. The reading is handed back into
     :func:`route_file` as ``reading``.
 
-    Read in a process the pass can stop (decision 150,
-    :func:`tracker.content_check.extract_bounded`): the safety stop bounds
-    the whole reading - text layer, render and OCR - and a reader that
-    crashes parks this file rather than ending the pass.
+    Read in a process the pass can stop (decision 150): the safety stop
+    bounds the whole reading - text layer, render and OCR - and a reader
+    that crashes parks this file rather than ending the pass. And judged
+    there (decision 189, :func:`tracker.content_check.judge_bounded`):
+    ``questions`` is every row of every return the drop is judged against
+    and each return's name question (:func:`questions_for`), asked once,
+    so the rules, the form scan and the name run under the same stop and
+    no word of the document comes back to the pass.
     """
-    return extract_bounded(path)
+    return judge_bounded(path, questions)
 
 
 def route_file(
     path: Path,
     items: list[RequestItem],
     *,
+    judgment: Judgment | None = None,
     reading: Extraction | None = None,
     digest: str | None = None,
     cache: ContentCache | None = None,
@@ -606,13 +621,17 @@ def route_file(
 ) -> Routing:
     """Decide which request ``path`` belongs to.
 
-    ``reading`` may be supplied by a caller that has already read the
-    document (:func:`read_once`); otherwise it is read here, once, and
-    reused across every request. It is the whole :class:`Extraction` and
-    not the text alone, because ``from_ocr`` is part of what the words are
-    worth: decision 50 reads OCR's words more strictly than a text layer's,
-    and a caller handing over a bare string would quietly promote an OCR
-    reading to a text layer's standing. With a ``cache`` (and the file's
+    ``judgment`` is the pass's: the drop judged once, in the reader child,
+    against every row of every return it may feed (:func:`read_once`,
+    decision 189). ``reading`` is a caller's outside the pass - the
+    backtest's, a test's - that has read the document itself: it is judged
+    here, in this process, against ``items`` (:func:`judgment_of`). With
+    neither, the file is read and judged here, once, in the child. A
+    reading is the whole :class:`Extraction` and not the text alone,
+    because ``from_ocr`` is part of what the words are worth: decision 50
+    reads OCR's words more strictly than a text layer's, and a caller
+    handing over a bare string would quietly promote an OCR reading to a
+    text layer's standing. With a ``cache`` (and the file's
     ``digest``, if the caller has it), the per-request verdicts are kept
     for the scan that follows. ``pdf_cache`` spares parsing the same PDF
     once per manifest row.
@@ -631,7 +650,10 @@ def route_file(
     if too_large := too_large_reason(path):
         return Routing(path=path, identifier=None, reason=too_large)
 
-    reading = read_once(path) if reading is None else reading
+    if judgment is None:
+        judgment = (read_once(path, questions_for(items)) if reading is None
+                    else judgment_of(reading, questions_for(items)))
+    reading = judgment.extraction
     # A picture too large even for Pillow to decode, a reading the safety
     # stop abandoned (decision 137, B1), a reading whose process ended
     # without an answer and one whose reader could not start at all
@@ -643,12 +665,13 @@ def route_file(
                                  or reasons.READING_STOPPED.matches(reading.reason)
                                  or reasons.READING_CRASHED.matches(reading.reason)
                                  or reasons.READER_UNAVAILABLE.matches(reading.reason)):
+        _keep_the_stop(path, items, reading, digest, cache)
         return Routing(path=path, identifier=None, reason=reading.reason, seconds=reading.seconds)
     # How long the reading took rides back with the decision (decision
     # 127), so the pass can name its slowest documents. It changes no
     # decision and cuts no reading short.
     routing = replace(
-        _decide(path, items, reading, digest=digest, cache=cache,
+        _decide(path, items, judgment, digest=digest, cache=cache,
                 pdf_cache=pdf_cache or PdfVerdictCache()),
         seconds=reading.seconds,
     )
@@ -660,10 +683,39 @@ def route_file(
     return routing
 
 
+def _keep_the_stop(
+    path: Path, items: list[RequestItem], reading: Extraction,
+    digest: str | None, cache: ContentCache | None,
+) -> None:
+    """Keep a stopped or crashed judgment as every asked row's verdict, and
+    the open test's (SPEC-189 ruling 3.4).
+
+    The stop is the file's verdict, as decision 150 made it: the scanner
+    keeps it when it meets it, and a working copy of these bytes must not
+    be judged again - for another stop - until the file or the row's rules
+    change. Only those two: a file too large is never read at all, and a
+    reader that could not start is the machine's (transient), which
+    nothing keeps.
+    """
+    if cache is None or reading.transient:
+        return
+    if not (reasons.READING_STOPPED.matches(reading.reason)
+            or reasons.READING_CRASHED.matches(reading.reason)):
+        return
+    digest = digest or cache.digest_of(path)
+    if not digest:
+        return
+    verdict = ContentResult(ok=False, reason=reading.reason, extractable=False)
+    cache.put_by_digest(digest, OPEN_TEST_FINGERPRINT, ContentResult(ok=False, reason=reading.reason))
+    for item in items:
+        if _considers(item):
+            cache.put_by_digest(digest, rules_fingerprint(item), verdict)
+
+
 def _decide(
     path: Path,
     items: list[RequestItem],
-    reading: Extraction,
+    judgment: Judgment,
     *,
     digest: str | None,
     cache: ContentCache | None,
@@ -679,7 +731,10 @@ def _decide(
     # "Page 1 of 2" stamp) is no reading at all, and neither is a scan OCR
     # could not rescue: with no words there is no candidate, and the file
     # parks for a person (UNREADABLE) rather than being filed on its name.
-    words = "" if reading.needs_ocr else (reading.text or "")
+    # The words themselves stayed in the reader child (decision 189): what
+    # is decided here is read off the judgment.
+    reading = judgment.extraction
+    words = judgment.has_words
     # The scanner's verdict is the verdict on the *whole* reading; a file
     # nothing could be read out of was never read, so nothing is remembered.
     remember = cache is not None and reading.text is not None and not reading.needs_ocr
@@ -711,10 +766,10 @@ def _decide(
     # two forms' own names is those two documents and never files on a third
     # form it merely mentions - decision 94's rule, by construction - and
     # every verdict kept here is one a rebuilt store reaches again.
-    own = own_forms(words) if words else None
+    own = judgment.own
 
     def verdict_for(item: RequestItem):
-        verdict = evaluate_rules(words, item, own)
+        verdict = judgment.row(item).verdict
         keep(item, verdict)
         return verdict
 
@@ -779,17 +834,17 @@ def _decide(
             verdict = verdict_for(item)
             record[item.identifier] = verdict.evidence
             if verdict.ok:
-                if _required_matched(words, item):
+                if judgment.row(item).required_matched:
                     strong.append(item.identifier)
                 elif reading.from_ocr:
                     ocr_only.append(item.identifier)
                 else:
                     medium.append(item.identifier)
-            elif _required_matched(words, item):
+            elif judgment.row(item).required_matched:
                 near.append((item.identifier, verdict.reason))
                 if asks_for_a_return(item) and reasons.WRONG_PERIOD.matches(verdict.reason):
                     signed.append((item.identifier, verdict.reason))
-            elif reasons.WRONG_PERIOD.matches(verdict.reason) and any_keyword_matched(words, item):
+            elif reasons.WRONG_PERIOD.matches(verdict.reason) and judgment.row(item).any_matched:
                 # Every keyword this row asks for matched and only its year
                 # did not. That is no filing decision - the year is a check,
                 # never evidence (decision 40) - but it is the lead a person
@@ -831,8 +886,8 @@ def _decide(
     if own is not None:
         # Its own name, not ``named``: that list is the rows a file's name
         # pointed at, and decision 140 reads it again at the last exit.
-        self_named = self_named_forms(words)
-        if split := _multi_form(path, words, allowed, self_named, keep):
+        self_named = judgment.self_named
+        if split := _multi_form(path, judgment, allowed, self_named, keep):
             return split
 
     # The list asks for this document one row per issuer (decision 93): the
@@ -873,7 +928,7 @@ def _decide(
     # (``medium`` is text-layer only; decision 50), never over a row
     # matched on its required keywords, and after the issuer rule, so a
     # page that rule parks stays parked.
-    if len(medium) > 1 and not strong and carries_a_1099b_section(words):
+    if len(medium) > 1 and not strong and judgment.carries_1099b:
         broker = [ident for ident in medium
                   if _explained_by(record.get(ident, ()), {BROKER_FORM})]
         if len(broker) == 1:

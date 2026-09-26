@@ -5053,9 +5053,9 @@ def test_the_pass_reads_a_document_once_for_every_return_it_feeds(two_1040s, mon
     readings: list[str] = []
     real = filer_module.read_once
 
-    def counted(path):
+    def counted(path, questions):
         readings.append(path.name)
-        return real(path)
+        return real(path, questions)
 
     monkeypatch.setattr(filer_module, "read_once", counted)
 
