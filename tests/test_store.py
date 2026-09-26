@@ -157,6 +157,11 @@ KEY = "J Park & Associates/Smith Family/2025/1040 - Test Client"
 #: household's folder for the year, which is across the two trees from the
 #: return - so the location begins with ``..`` (decision 125).
 A_ROW_ORIGINAL = "../../../../Clients/Smith Family/2025/w2.pdf"
+#: The latest earlier version a store is refused at, deleted and rebuilt
+#: from: the one before the first in-place step (decision 204 upgrades a
+#: version-16 file where it stands, so "the version before this one" is
+#: no longer a refused one).
+REFUSED_EARLIER = min(store._IN_PLACE) - 1
 
 
 def a_row(**fields) -> dict:
@@ -176,7 +181,7 @@ def test_opening_a_file_that_is_not_there_creates_the_schema(tmp_path):
 
     conn = store.open(path)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 16
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 17
         tables = {row[0] for row in conn.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table'")}
         assert tables == {"engagements", "requests", "statuses", "learned_keywords",
@@ -211,7 +216,7 @@ def test_a_version_nine_store_is_refused_and_rebuilt(tmp_path):
     releases they meant.
     """
     path = tmp_path / "app" / store.STORE_FILENAME
-    for version in (2, store.SCHEMA_VERSION - 1):
+    for version in (2, REFUSED_EARLIER):
         store.open(path).close()
         written_earlier = sqlite3.connect(path)
         written_earlier.execute(f"PRAGMA user_version = {version}")
@@ -1516,10 +1521,10 @@ def test_a_store_of_the_previous_version_is_refused_and_rebuilt(root, engagement
     path = tmp_path / "older" / store.STORE_FILENAME        # not this process's own store
     store.open(path).close()
     written_earlier = sqlite3.connect(path)
-    written_earlier.execute(f"PRAGMA user_version = {store.SCHEMA_VERSION - 1}")
+    written_earlier.execute(f"PRAGMA user_version = {REFUSED_EARLIER}")
     written_earlier.close()
 
-    with pytest.raises(store.StoreError, match=f"user_version {store.SCHEMA_VERSION - 1}") as raised:
+    with pytest.raises(store.StoreError, match=f"user_version {REFUSED_EARLIER}") as raised:
         store.open(path)
     assert "delete it and rebuild" in str(raised.value)
 
@@ -2111,9 +2116,9 @@ def test_a_rebuild_computes_the_applied_digest_and_an_old_store_upgrades(
     old = tmp_path / "old" / store.STORE_FILENAME
     store.open(old).close()
     before = sqlite3.connect(old)
-    before.execute(f"PRAGMA user_version = {store.SCHEMA_VERSION - 1}")
+    before.execute(f"PRAGMA user_version = {REFUSED_EARLIER}")
     before.close()
-    with pytest.raises(store.StoreError, match=f"user_version {store.SCHEMA_VERSION - 1}"):
+    with pytest.raises(store.StoreError, match=f"user_version {REFUSED_EARLIER}"):
         store.open(old)
     old.unlink()
     upgraded = store.open(old)
@@ -2143,7 +2148,7 @@ def test_a_row_written_without_asked_reads_as_asked(conn, root, by_hand):
 
     build(conn, root, by_hand)
     build(store.connect(), root, by_hand)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 16
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 17
     assert all(row["asked"] is True for row in store.rules(conn, by_hand))
     assert all(item.asked for item in load_manifest(by_hand))
     assert store.check(conn, root, by_hand) == []
@@ -2172,7 +2177,7 @@ def test_a_row_written_without_a_short_title_reads_as_blank(conn, root, by_hand)
 
     build(conn, root, by_hand)
     build(store.connect(), root, by_hand)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 16
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 17
     assert all(item.short_title == "" for item in load_manifest(by_hand))
     assert all(item.short_name for item in load_manifest(by_hand))
     assert store.check(conn, root, by_hand) == []
@@ -2516,3 +2521,111 @@ def test_rebuild_lists_what_it_would_discard_and_needs_discard(conn, root, by_ha
     result = cli(path, "rebuild", root, "--engagement", by_hand, "--discard")
     assert result.returncode == 0, result.stdout + result.stderr
     assert f"built {by_hand.name}" in result.stdout
+
+
+# ------------------------------------------ decision 204: the Waits For cell ----
+
+
+def test_an_index_of_the_previous_version_reads_with_waits_for_empty(conn, root, by_hand, tmp_path):
+    """Decision 204 added ``waits_for`` to ``documents`` (version 17). A row
+    a journal holds from before it carries no such field and folds to
+    waiting for nothing, and the store rebuilt from that journal agrees
+    with it."""
+    from tracker.records import entry_from_json
+
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, ledger.new(ledger.PARKED, key=A_ROW_ORIGINAL, row=a_row()))
+    assert "waits_for" not in ledger.path_for(by_hand).read_text(encoding="utf-8")
+
+    build(conn, root, by_hand)
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 17
+    [row] = [entry_from_json(one) for one in store.documents(conn, by_hand)]
+    assert row.waits_for == "" and row.waiting_for is None
+    assert store.check(conn, root, by_hand) == []
+
+
+
+def test_a_version_16_store_is_upgraded_in_place_and_keeps_its_cached_verdicts(tmp_path):
+    """Decision 204, the store's first in-place step (the module docstring's
+    rule): a version-16 file gains ``waits_for`` with an empty default and
+    becomes version 17 where it stands - its verdict cache kept, so the
+    first pass after the upgrade reads nothing again - and every row it
+    held reads as waiting for nothing, which is what the journal says. Any
+    other earlier version is still refused."""
+    from tests.conftest import sort
+    from tests.test_scanner import text_pdf
+    from tracker.layout import inbox_of
+    from tracker.records import entry_from_json
+
+    engagement = make_engagement(tmp_path / "root", [RequestItem(
+        identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),
+        min_size_kb=0, required_keywords=("W-2",))])
+    text_pdf(inbox_of(engagement) / "w2.pdf", "Form W-2 Wage and Tax Statement 2025 Test Client")
+    text_pdf(inbox_of(engagement) / "notice.pdf", "an agency notice nothing asks for")
+    sort(engagement)
+    live = store.connect()
+    cached = live.execute(f"SELECT COUNT(*) FROM {store.VERDICTS_TABLE}").fetchone()[0]
+    memos = live.execute(f"SELECT COUNT(*) FROM {store.FILE_MEMOS_TABLE}").fetchone()[0]
+    assert cached > 0
+
+    old = tmp_path / "v16" / store.STORE_FILENAME
+    old.parent.mkdir()
+    written = sqlite3.connect(old)
+    live.backup(written)
+    written.execute('ALTER TABLE documents DROP COLUMN "waits_for"')     # what version 16 was
+    written.execute("PRAGMA user_version = 16")
+    written.commit()
+    written.close()
+
+    conn = store.open(old)
+    try:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 17
+        assert conn.execute(f"SELECT COUNT(*) FROM {store.VERDICTS_TABLE}").fetchone()[0] == cached
+        assert conn.execute(f"SELECT COUNT(*) FROM {store.FILE_MEMOS_TABLE}").fetchone()[0] == memos
+        rows = [entry_from_json(one) for one in store.documents(conn, engagement)]
+        assert len(rows) == 2 and all(row.waits_for == "" for row in rows)
+        assert store.check(conn, tmp_path / "root", engagement) == []
+    finally:
+        conn.close()
+    reopened = store.open(old)                   # a second open finds nothing to do
+    reopened.close()
+
+    refused = tmp_path / "v15" / store.STORE_FILENAME
+    store.open(refused).close()
+    earlier = sqlite3.connect(refused)
+    earlier.execute(f"PRAGMA user_version = {REFUSED_EARLIER}")
+    earlier.close()
+    with pytest.raises(store.StoreError, match="delete it and rebuild"):
+        store.open(refused)
+
+
+def test_two_openers_of_one_version_16_store_both_succeed(tmp_path, monkeypatch):
+    """The in-place step re-reads the version under the write lock (the port
+    review's should-fix): an opener that read 16 before another opener
+    upgraded the file finds the step made and goes on, rather than failing
+    on the column the other added. Both end at version 17."""
+    path = tmp_path / "shared" / store.STORE_FILENAME
+    store.open(path).close()
+    written = sqlite3.connect(path)
+    written.execute('ALTER TABLE documents DROP COLUMN "waits_for"')
+    written.execute("PRAGMA user_version = 16")
+    written.commit()
+    written.close()
+    real_execute = store._Connection.execute
+    raced = {"done": False}
+
+    def the_other_opener_first(self, sql, *args):
+        if sql == "BEGIN IMMEDIATE" and not raced["done"]:
+            raced["done"] = True
+            store.open(path).close()         # it read 16 too, and upgraded first
+        return real_execute(self, sql, *args)
+
+    monkeypatch.setattr(store._Connection, "execute", the_other_opener_first)
+    conn = store.open(path)
+    try:
+        assert raced["done"]
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 17
+        columns = [row[1] for row in conn.execute("PRAGMA table_info(documents)")]
+        assert columns.count("waits_for") == 1
+    finally:
+        conn.close()

@@ -49,7 +49,6 @@ from tracker.reminder import (
 )
 from tracker.runner import (
     DRAFT_WEEKDAY,
-    FILED_INTO_FED,
     LOG_FILENAME,
     NOTHING_OUTSTANDING,
     RECORD_UNREADABLE,
@@ -1561,16 +1560,16 @@ def test_a_fed_household_with_two_open_years_leaves_that_feed_unresolved_and_the
     assert run.ok and run.filed == 1        # the rest of the pass proceeded
 
 
-def test_the_dropping_households_pass_says_what_it_filed_into_a_fed_return(tmp_path, samples):
-    """A filing into a fed return is the other return's row and the other
-    household's report - but it came out of *this* drop folder, and a pass
-    that said "filed 0" of a document it had just filed elsewhere told the
-    person watching the wrong thing about their own inbox. One sentence per
-    fed return that received something, on the first of this household's
-    own returns. The same sentence rides the app's *Run now* reply, which
-    ``tests/test_api.py`` pins from the other side."""
+def test_the_dropping_households_pass_files_nothing_into_a_fed_return_and_the_document_waits_in_its_queue(
+        tmp_path, samples):
+    """Decision 204, revising 129 and 132: a document only a fed return
+    wants, naming that return's person, is not filed there by the pass. It
+    waits in this household's own queue for one click, so this pass files
+    nothing and says nothing about filing elsewhere - "filed 0" is the
+    truth about this inbox, and the document is counted here, under review."""
     from tests.samples import SCRATCH_CLIENT, text_pdf
-    from tracker.filer import FILED
+    from tracker import reasons
+    from tracker.filer import NEEDS_REVIEW
 
     personal, [fed] = a_fed_household(tmp_path, samples)
     text_pdf(inbox_of(personal.path) / "trial balance.pdf",
@@ -1580,10 +1579,28 @@ def test_the_dropping_households_pass_says_what_it_filed_into_a_fed_return(tmp_p
     [run] = run_household(household, [personal], today=FRIDAY, reminders=REMINDERS_NEVER,
                           registry=discover_engagements(tmp_path))
 
-    assert run.ok and run.filed == 0 and read_index(personal.path) == []
-    assert FILED_INTO_FED.format(n=1, label=fed.label) in run.warnings
-    [row] = read_index(fed.path)
-    assert row.decision == FILED and row.identifier == "B01"
+    assert run.ok and run.filed == 0 and run.review == 1
+    assert read_index(fed.path) == []
+    [row] = read_index(personal.path)
+    assert row.decision == NEEDS_REVIEW and reasons.NAMED_ACROSS_HOUSEHOLDS.matches(row.reason)
+    assert row.waiting_for.identifiers == ("B01",)
+    assert not any(fed.label in warning for warning in run.warnings)
+
+
+def _click(personal, fed, today=FRIDAY):
+    """The one click (decision 204) as the app makes it: the waiting row
+    handed over, the taking return re-scanned and both READMEs rewritten."""
+    from tracker.filer import NEEDS_REVIEW, hand_over, refresh_household_readme
+    from tracker.scanner import scan_engagement
+
+    [row] = [one for one in read_index(personal.path)
+             if one.decision == NEEDS_REVIEW and one.waiting_for is not None]
+    claim = row.waiting_for
+    hand_over(personal.path, row.pbc_location, fed.path, claim.identifiers[0],
+              also=claim.identifiers[1:], answers=claim.answers, waiting=True, today=today)
+    scan_engagement(fed.path, today=today)
+    for one in (personal.path, fed.path):
+        refresh_household_readme(household_of(one))
 
 
 def test_a_pass_cannot_be_run_without_the_practice(tmp_path, samples):
@@ -1640,7 +1657,8 @@ def test_a_cross_fed_document_is_on_no_list_of_the_dropping_households_readme_an
     everyone shared on the dropping household, and a document filed into
     another household's return is seen only by that folder's sharing. So
     the dropping client's README carries neither the document's own name
-    nor the firm's name for it; the household that holds it lists it as its
+    nor the firm's name for it - before the one click (decision 204), while
+    it waits here, or after it; the household that holds it lists it as its
     own. A document parked at home is the dropping household's, in its own
     record, until a person decides. (Decision 130 extends this claim to the
     received list once there is one.)"""
@@ -1658,15 +1676,18 @@ def test_a_cross_fed_document_is_on_no_list_of_the_dropping_households_readme_an
     [run] = run_household(household, [personal], today=FRIDAY, reminders=REMINDERS_NEVER,
                           registry=discover_engagements(tmp_path))
 
-    assert run.ok
-    [filed] = read_index(fed.path)
-    assert filed.decision == FILED and filed.original_name == "trial balance.pdf"
-    [parked] = read_index(personal.path)
-    assert parked.decision == NEEDS_REVIEW and parked.original_name == "unnamed w2.pdf"
-    readme = (inbox_of(personal.path) / README_NAME).read_text(encoding="utf-8")
-    assert "trial balance.pdf" not in readme
-    assert "Trial Balance" not in readme
-    assert "Aaa Holdings" not in readme
+    assert run.ok and read_index(fed.path) == []
+    for clicked in (False, True):
+        if clicked:
+            _click(personal, fed)
+            [filed] = read_index(fed.path)
+            assert filed.decision == FILED and filed.original_name == "trial balance.pdf"
+            [parked] = read_index(personal.path)
+            assert parked.decision == NEEDS_REVIEW and parked.original_name == "unnamed w2.pdf"
+        readme = (inbox_of(personal.path) / README_NAME).read_text(encoding="utf-8")
+        assert "trial balance.pdf" not in readme
+        assert "Trial Balance" not in readme
+        assert "Aaa Holdings" not in readme
 
 
 def test_in_a_household_a_slow_reading_is_said_once_on_the_first_own_returns_line(
@@ -1751,12 +1772,13 @@ def test_a_document_sorted_this_pass_is_on_the_readme_when_the_pass_ends(tmp_pat
 
 def test_a_document_dropped_here_and_filed_into_another_households_return_is_on_neither_list_of_this_readme_and_on_that_households(
         tmp_path, samples):
-    """132's F-4 ruling, carried into the received list: the document is in
-    the other household's index, so it is on that household's list - at
-    once, by the pass that filed it - and on no list of the README in the
-    folder it was dropped in, which never names the other household or its
-    return. A document parked at home is this household's, counted under
-    review."""
+    """132's F-4 ruling, carried into the received list, with decision 204's
+    click: until a person clicks, the document waiting for the other
+    household is this household's, counted under review with the rest.
+    After the click it is in the other household's index, so it is on that
+    household's list - at once - and on no list of the README in the folder
+    it was dropped in, which never names the other household or its
+    return."""
     from tests.samples import SCRATCH_CLIENT, text_pdf
     from tracker.filer import FILED
     from tracker.manifest import load_manifest
@@ -1777,7 +1799,14 @@ def test_a_document_dropped_here_and_filed_into_another_households_return_is_on_
     [run] = run_household(household, [personal], today=FRIDAY, reminders=REMINDERS_NEVER,
                           registry=discover_engagements(tmp_path))
 
-    assert run.ok
+    assert run.ok and read_index(fed.path) == []
+    here = (inbox_of(personal.path) / README_NAME).read_text(encoding="utf-8")
+    received_here = here[here.index(RECEIVED_HEADING):]
+    assert received_here.splitlines()[2:4] == [UNDER_REVIEW_HEADING,
+                                               f"  2 documents received {day_text(FRIDAY)}"]
+    assert "Aaa Holdings" not in here and "trial balance.pdf" not in here
+
+    _click(personal, fed)
     [filed] = read_index(fed.path)
     assert filed.decision == FILED and filed.identifier == "B01"
     [b01] = [i for i in load_manifest(fed.path) if i.identifier == "B01"]

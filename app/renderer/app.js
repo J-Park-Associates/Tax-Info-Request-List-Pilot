@@ -690,7 +690,33 @@ function reviewRow(e, choices, ids, open, triage, people = []) {
     // drop folder feeds (decision 129), offered only where there is one.
     fedReturns().length
       && el("button", { className: "btn r-hand-over" }, vocab.review_labels.hand_over),
+    // And the one click (decision 204), on a row that names another
+    // household's person: what it will file, then the button.
+    waitsFor(triage, "r-where-it-waits"),
   );
+}
+
+// Decision 204's one click: a parked row that names the person of a return
+// in another household carries what that return's list accepted, resolved by
+// the API against the feed list. Everything the click does is on the screen -
+// the requests it files under, as the picker names them, and the Also
+// Answers - and the button sends nothing but the row and its version. Where
+// the claim no longer resolves, the API's own sentence stands in its place.
+function waitsFor(triage, className) {
+  if (!triage) return null;
+  if (triage.waits_for_refused) {
+    return el("span", { className: "r-why" }, triage.waits_for_refused);
+  }
+  const w = triage.waits_for;
+  if (!w) return null;
+  return el("div", { className: "where-it-waits" },
+    el("ul", { className: "r-reasons" },
+      w.requests.map((r) => el("li", {},
+        `${r.identifier}${vocab.triage.identifier_separator}${r.document}`)),
+      w.answers.length
+        ? el("li", {}, `${vocab.review_labels.also_answers} ${w.answers.join(", ")}`) : null),
+    el("button", { className: `btn btn-primary ${className}` },
+      fill(vocab.review_labels.file_where_it_waits, { label: w.label })));
 }
 
 // Every return this drop folder feeds, as the picker offers them: the
@@ -789,23 +815,41 @@ async function fileHandOver() {
   }
   btn.disabled = true;
   try {
-    const result = await call(withEng("assign"), {
+    await handOver({
       original: handingOver.original, identifier, target: $("ho-return").value,
       seq: handingOver.seq,
     });
     $("handover-modal").classList.add("hidden");
-    render(result.state);
-    const a = result.handed_over;
-    const notes = [`${a.original_name}: ${fill(vocab.review_labels.handed_over,
-      { label: a.label, identifier: a.identifier })}`];
-    if (a.left_in_review) notes.push(a.left_in_review);
-    if (a.scan_note) notes.push(a.scan_note);
-    banner(notes.join(". ") + ".", a.left_in_review || a.scan_note ? "warn" : "ok");
   } catch (err) {
     toast(err.message);
   } finally {
     btn.disabled = false;
     handingOver = null;
+  }
+}
+
+// The one place a document is handed over (decisions 132 and 204): the
+// picker's answer and the one click are one decision, so they are one call
+// and one set of sentences afterwards.
+async function handOver(spec) {
+  const result = await call(withEng("assign"), spec);
+  render(result.state);
+  const a = result.handed_over;
+  const notes = [`${a.original_name}: ${fill(vocab.review_labels.handed_over,
+    { label: a.label, identifier: a.identifier })}`];
+  if (a.left_in_review) notes.push(a.left_in_review);
+  if (a.scan_note) notes.push(a.scan_note);
+  banner(notes.join(". ") + ".", a.left_in_review || a.scan_note ? "warn" : "ok");
+}
+
+// The one click (decision 204): the row and its version, and nothing
+// picked here - the API reads what the row waits for and hands it over.
+async function fileWhereItWaits(original, seq, btn) {
+  btn.disabled = true;
+  try {
+    await handOver({ original, seq, waiting: true });
+  } catch (err) {
+    await refused(err, btn);
   }
 }
 
@@ -950,6 +994,7 @@ function deckCard(t, row, place, total, people = []) {
     // this drop folder feeds (decision 129).
     fedReturns().length
       && el("button", { className: "btn c-hand-over" }, vocab.review_labels.hand_over),
+    waitsFor(t, "c-where-it-waits"),
     el("button", { className: "btn c-skip" }, vocab.review_labels.skip),
   );
 }
@@ -2760,6 +2805,11 @@ $("review-list").addEventListener("click", (e) => {
     const li = over.closest("li");
     openHandOver(li.dataset.original, Number(li.dataset.seq));
   }
+  const waits = e.target.closest(".r-where-it-waits");
+  if (waits) {
+    const li = waits.closest("li[data-original]");
+    fileWhereItWaits(li.dataset.original, Number(li.dataset.seq), waits);
+  }
 });
 $("review-mode").addEventListener("click", (e) => {
   if (e.target.closest("#review-mode-cards")) setReviewMode(MODE_CARDS);
@@ -2776,6 +2826,11 @@ $("review-deck").addEventListener("click", (e) => {
   if (over) {
     const card = over.closest(".deck-card");
     openHandOver(card.dataset.original, Number(card.dataset.seq));
+  }
+  const waits = e.target.closest(".c-where-it-waits");
+  if (waits) {
+    const card = waits.closest(".deck-card");
+    fileWhereItWaits(card.dataset.original, Number(card.dataset.seq), waits);
   }
 });
 $("dismissed-list").addEventListener("click", (e) => {

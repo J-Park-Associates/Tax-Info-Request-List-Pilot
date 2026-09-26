@@ -53,17 +53,33 @@ import logging
 import os
 import shutil
 import sys
+from collections.abc import Callable
 from contextlib import ExitStack
 from dataclasses import asdict, replace
+from functools import cache
 from pathlib import Path
 
-from tracker import STANDING_RULES, content_check, door, layout, ledger, names, ocr, records, reminder, review, store
+from tracker import (
+    STANDING_RULES,
+    content_check,
+    door,
+    layout,
+    ledger,
+    names,
+    ocr,
+    reasons,
+    records,
+    reminder,
+    review,
+    store,
+)
 from tracker.filer import (
     DUPLICATE,
     FILE_MOVED,
     FILED,
     NEEDS_REVIEW,
     NOT_REQUESTED,
+    NOT_WAITING,
     ROOM_PARKS,
     ROOM_SHORT,
     FilingError,
@@ -75,6 +91,7 @@ from tracker.filer import (
     ensure,
     find_parked,
     hand_over,
+    hand_over_copies,
     mark_missing_again,
     marked_missing,
     moved_to,
@@ -82,9 +99,11 @@ from tracker.filer import (
     refresh_household_readme,
     refuse_a_path_past_the_limit,
     rename_request,
+    requests_taking,
     restore_working_copy,
     room_for,
     unfile_document,
+    waiting_target,
 )
 from tracker.fsio import make_new_folders, write_text_atomically
 from tracker.households import (
@@ -370,6 +389,11 @@ HAND_OVER_REQUEST_LABEL = "Under which request"
 #: nothing about it kept in this return. Filled by the page with the
 #: label and the request the reply carries.
 HANDED_OVER_LINE = "Filed under {label} ({identifier}); nothing about it stays here"
+#: The one click (decision 204): a document that names the person of a
+#: return in another household waits here, and this is the button that
+#: hands it over to that return - the requests its list accepted, shown
+#: under it, and nothing picked on the page. Filled with the return's label.
+FILE_WHERE_IT_WAITS_LABEL = "File it under {label}"
 #: What stands in for the members of a household nobody has typed any for.
 #: The warning must still say who will see the documents, and "nobody typed
 #: yet" is the honest answer - the tracker cannot see Drive's sharing.
@@ -832,7 +856,11 @@ def _vocab() -> dict:
                           "hand_over_request": HAND_OVER_REQUEST_LABEL,
                           # And what the page says once it is done
                           # (decision 132): the row here is released.
-                          "handed_over": HANDED_OVER_LINE},
+                          "handed_over": HANDED_OVER_LINE,
+                          # Decision 204's one click: a row that names
+                          # another household's person, filed where it
+                          # waits, with nothing picked on the page.
+                          "file_where_it_waits": FILE_WHERE_IT_WAITS_LABEL},
         # Every word tracker.review gives the card, from the module that
         # owns it: what is said when the evidence suggests nothing, the one
         # separator between an identifier and what follows it (the reason
@@ -1215,7 +1243,8 @@ def _evidence_payload(entry: IndexEntry) -> dict[str, list[dict]]:
             for identifier, found in entry.evidence_record.items()}
 
 
-def _triage_payload(triaged: review.Triage, seqs: dict[str, int]) -> dict:
+def _triage_payload(triaged: review.Triage, seqs: dict[str, int],
+                    waiting: tuple[dict | None, str] = (None, "")) -> dict:
     """One parked file's shortlist as JSON, in triage order.
 
     The row itself is already in ``state["index"]``; what travels here is
@@ -1236,7 +1265,14 @@ def _triage_payload(triaged: review.Triage, seqs: dict[str, int]) -> dict:
     document this is, as ``{"outcome", "spelling", "label"}`` or null
     (decision 128) - so the card can offer *Teach this spelling* where the
     page named nobody without deciding anything of its own.
+
+    ``waits_for`` is the one click (decision 204) for a row that names the
+    person of a return in another household, resolved by
+    :func:`_waiting_payload` - ``{target, label, requests, answers}``, or
+    null - and ``waits_for_refused`` the sentence that stands in for it
+    where the claim no longer resolves.
     """
+    offer, refused = waiting
     return {
         "original_name": triaged.entry.original_name,
         "pbc_location": triaged.entry.pbc_location,
@@ -1247,7 +1283,53 @@ def _triage_payload(triaged: review.Triage, seqs: dict[str, int]) -> dict:
         "set_aside": [asdict(one) for one in triaged.set_aside],
         "genre": triaged.genre,
         "group": triaged.group,
+        "waits_for": offer,
+        "waits_for_refused": refused,
     }
+
+
+def _waiting_payload(engagement: Path, entry: IndexEntry,
+                     fed: Callable[[], dict[Path, str]]) -> tuple[dict | None, str]:
+    """What one click on a parked row would do (decision 204), or why it
+    offers none.
+
+    Only a row whose Waits For cell holds a claim is asked. The claim is
+    resolved against the feed list (:func:`_fed_returns`, the one list a
+    hand-over may name) by the filer's own comparison, and each request it
+    names is held to the taking list by the filer's own check - so the
+    card is offered exactly where the click would go through, and refused
+    in the click's own words where it would not: :data:`NOT_FED` with the
+    claim's return name, the request's refusal, or the taking return's
+    want of room (:func:`tracker.filer.hand_over_copies`, the click's own
+    naming). ``fed`` is asked only when a row waits, so a queue with none
+    costs nothing.
+
+    Only a row the click would take is offered - still parked, with
+    ``NAMED_ACROSS_HOUSEHOLDS`` as its reason, the condition the filer's
+    refusal holds it to (the review's S-3) - so a claim on any other row
+    draws no button.
+    """
+    claim = entry.waiting_for
+    if (claim is None or entry.decision != NEEDS_REVIEW
+            or not reasons.NAMED_ACROSS_HOUSEHOLDS.matches(entry.reason)):
+        return None, ""
+    returns = fed()
+    target = waiting_target(claim, returns)
+    if target is None:
+        return None, NOT_FED.format(label=claim.return_name)
+    try:
+        items = {item.identifier: item for item in load_manifest(target)}
+        wanted = requests_taking(items, claim.identifiers)
+        hand_over_copies(target, wanted, items, locate(engagement, entry.pbc_location), entry.digest)
+    except (FilingError, ManifestError) as exc:
+        return None, str(exc)
+    return {
+        "target": str(target),
+        "label": returns[target],
+        "requests": [{"identifier": item.identifier, "document": item.document} for item in wanted],
+        "answers": [identifier for identifier, _ in records.parse_answers(claim.answers)
+                    if identifier in items],
+    }, ""
 
 
 def _moved_payload(engagement: Path, entries: list[IndexEntry], items,
@@ -1601,6 +1683,9 @@ def _state(engagement: Path) -> dict:
     # measured from the list already loaded - no second read - so a person
     # opening a return sees the number without waiting for a pass.
     room = room_for(engagement, items)
+    # The feed list, read once and only if a parked row waits for another
+    # household (decision 204).
+    fed_once = cache(lambda: _fed_returns(engagement))
     return {
         # The derived page, and whether it still describes this engagement.
         # Reading the stamp takes no lock and tolerates another program
@@ -1674,7 +1759,7 @@ def _state(engagement: Path) -> dict:
         # There is no `review` command - the card draws from the one state
         # the app already reads - and the manifest and the index are handed
         # to triage() so each is read once for the whole screen.
-        "review": [_triage_payload(t, seqs)
+        "review": [_triage_payload(t, seqs, _waiting_payload(engagement, t.entry, fed_once))
                    for t in review.triage(engagement, entries, items=items)],
         # The working copies that are not where the record put them
         # (decision 109 found them; decision 110 is what a person does
@@ -2954,7 +3039,8 @@ def _fed_returns(engagement: Path) -> dict[Path, str]:
 
 
 def _hand_over(engagement: Path, original: str, target: Path, identifier: str, *,
-               seq: int | None, keyword: str, spelling: Spelling | None) -> dict:
+               seq: int | None, keyword: str, spelling: Spelling | None,
+               also: tuple[str, ...] = (), answers: str = "", waiting: bool = False) -> dict:
     """Hand one parked document to a return this drop folder feeds.
 
     The target is checked against the feed list before a byte is read:
@@ -2970,7 +3056,8 @@ def _hand_over(engagement: Path, original: str, target: Path, identifier: str, *
     if label is None:
         raise ManifestError(NOT_FED.format(label=target.name))
     result = hand_over(engagement, original, target, identifier,
-                       seq=seq, keyword=keyword, spelling=spelling)
+                       seq=seq, keyword=keyword, spelling=spelling,
+                       also=also, answers=answers, waiting=waiting)
     scan_note = ""
     try:
         scan_engagement(target)
@@ -2997,6 +3084,32 @@ def _hand_over(engagement: Path, original: str, target: Path, identifier: str, *
     }
 
 
+def _hand_over_waiting(engagement: Path, original: str, seq: int | None) -> dict:
+    """The one click (decision 204): hand a parked row that names another
+    household's person to the return its Waits For cell names, under the
+    requests and with the Also Answers that cell recorded.
+
+    The page sends the row and its version and nothing else - no target,
+    no identifier - so it decides nothing. The claim is resolved here
+    against the feed list, exactly as the card's offer was
+    (:func:`_waiting_payload`), and :func:`tracker.filer.hand_over` reads
+    the row again under both locks and refuses unless it is still that
+    row, waiting for that return and those requests. Everything after is
+    a hand-over: the taking return re-scanned, both READMEs rewritten.
+    """
+    entries = read_index(engagement)
+    entry = entries[find_parked(entries, original)]
+    claim = entry.waiting_for
+    if claim is None:
+        raise FilingError(NOT_WAITING.format(name=entry.original_name))
+    offer, refused = _waiting_payload(engagement, entry, lambda: _fed_returns(engagement))
+    if offer is None:
+        raise ManifestError(refused)
+    return _hand_over(engagement, original, Path(offer["target"]), claim.identifiers[0],
+                      seq=seq, keyword="", spelling=None, also=claim.identifiers[1:],
+                      answers=claim.answers, waiting=True)
+
+
 def _cmd_assign(argv: list[str]) -> dict:
     """File one parked document under a request, by a person's decision.
 
@@ -3005,6 +3118,10 @@ def _cmd_assign(argv: list[str]) -> dict:
                          "spelling": {"person": "...", "spelling": "..."},
                          "target": "<a return this drop folder feeds, or absent>",
                          "seq": <the row's record version, as shown>}
+    or, for the one click (decision 204),
+             {"original": "...", "seq": <as shown>, "waiting": true}
+    with no identifier and no target: the row's own Waits For cell says
+    both (:func:`_hand_over_waiting`).
 
     With ``target`` the document is **handed over** (decision 129): the
     identifier names a request of that return, the original moves where it
@@ -3038,6 +3155,8 @@ def _cmd_assign(argv: list[str]) -> dict:
     spec = _read_spec()
     original = str(spec.get("original", "")).strip()
     identifier = str(spec.get("identifier", "")).strip()
+    if original and spec.get("waiting") is True:
+        return _hand_over_waiting(engagement, original, _seq_of(spec))
     if not original or not identifier:
         raise ManifestError("Pick the file and the request it belongs to")
     seq = _seq_of(spec)

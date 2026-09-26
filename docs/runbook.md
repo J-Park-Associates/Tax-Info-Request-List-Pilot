@@ -383,6 +383,10 @@ changes nothing:
   do it outside office hours, and if one return matters first, rebuild it
   alone ahead of the rest with `--engagement "<the return's folder>"`. It
   happens once; later passes read only what is new.
+- **Decision 204** (`user_version` 17) needs nothing: a version-16
+  `tracker.db` is upgraded where it stands the first time it is opened -
+  one new column, nothing deleted, the verdict cache kept - so the pass
+  after it reads nothing again. Only an older one is refused as above.
 - **Once, when decision 169 lands** (the new reader). The database's
   version does not change, so there is nothing to delete for it (set
   `tracker.db` aside only if another decision in the same install asks).
@@ -591,8 +595,8 @@ household's editor — *Also feeds*. Two shapes come up every season:
   balance into the folder they already use.
 - **An adult daughter's return the father relays.** Her return lives in her
   own household, shared to her and to nobody else. The father's drop folder
-  feeds it, so a W-2 he sends on her behalf files to her return — and the
-  document then rests under *her* folder, which he cannot see.
+  feeds it, so a W-2 he sends on her behalf can be filed to her return — and
+  the document then rests under *her* folder, which he cannot see.
 
 The sub-rule, in the owner's words: **a drop folder may feed a return whose
 folder the dropper cannot see. Dropping does not require seeing.** That is
@@ -609,6 +613,16 @@ What the tracker does and does not do:
   has come before, the records are asked for its bytes with the household's
   own returns first and the fed ones after: the record closest to the drop
   decides.
+- **The pass never files into another household** (decision 204). A
+  document only a fed return is left with parks here, in the household it
+  was dropped in, and its original stays in this household's year folder.
+  If the page names that return's person, it waits for **one click** —
+  *File it under <the return>* on its row or card, which shows the
+  requests it will be filed under. If it names nobody, it waits for the
+  picker (*File under another return*). The same holds for a document sent
+  again. The cost: a co-owner's document reaches the other household when
+  somebody here clicks, not on the next pass — until then that household's
+  status does not count it and its drafted letter may still ask for it.
 - A feed is a **return line**, not a return: the household and the return's
   name, the name it keeps every year. Roll Forward carries nothing about
   feeds, and a line the other household has retired is said on the card
@@ -628,7 +642,12 @@ Adding a return to a household is warned about too: everyone with access to
 the folder will see that return's documents.
 
 A parked document can be filed under a request of any return the drop folder
-feeds — *File under another return*, in the queue. The original moves where it
+feeds — *File under another return*, in the queue. A document that names a
+fed return's person has a shorter way: **File it under <the return>**, one
+click, which files it under the requests that return's list accepted (a
+consolidated statement with its Also Answers) and picks nothing on the page.
+If the feed was trimmed or a request removed since, the button is not
+offered and the row says why; use the picker, or file it here. The original moves where it
 must rest, the working copy is made in that return's `Prepared` folder, the copy
 waiting here goes, and the row here is released: nothing about it stays in
 this household; the journal says which return took it; if it went to the
@@ -901,6 +920,9 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    press the button beside that word: it is taken back for this engagement
    on the record, and the request is re-scanned there and then, which may
    put a copy that passed only on that word back into Failed Validation.
+   A co-owner's document that names a person on a return in another
+   household waits here too (decision 204): look at it and press **File
+   it under <the return>**.
 
    The card does not leave you to find the request yourself. Each parked
    file carries a shortlist: up to three requests, best first, at the head
@@ -1163,7 +1185,8 @@ to send. A parked document is opened as its working copy in
 | `reasons.READING_STOPPED` | The reader gave up on this file at the safety stop — a minute a page, ten minutes a file (decision 137). Something in it made reading far slower than any real document, or the machine was very busy at the time (time the machine spent asleep does not count, decision 189). Since decision 189 the stop bounds the rules as well as the reading: the file is judged against its requests in the same process it is read in, so a typed Date Pattern on a request that is slow to match can cause this for every file judged against that request, until the pattern is changed - several files parked with this sentence against one request point at that request's Date Pattern. The verdict is kept, and not tried again until the file or its request's rules change. The stop covers the whole reading and the judgment - the text layer, each page's drawing, the OCR and the rules - because they run in the reading's own process, which the pass ends at the stop (decision 150). An email or a zip is opened in that process too, under the stop for a file, and one stopped there parks whole with nothing taken out of it (decision 154). That process never outlives the pass: if the schedule's own time limit stops the pass, the reading stops with it. | Open its working copy as the paragraph above this table says, and file it. |
 | `reasons.READING_CRASHED` | The reader's own process ended on this file without an answer - the PDF or OCR library crashed, the email or zip opener crashed (decision 154), or the machine ran out of memory (decision 150). Only this file is affected: the pass went on to the next one, and this file will not be tried again until it changes. | Open its working copy as the paragraph above this table says — never on the designated machine — and file it. If many files say it at once, the machine itself needs a look. |
 | `reasons.READER_UNAVAILABLE` | The reader could not start on this machine at all, so the file was never opened (decision 150). The machine's problem, never the file's: nothing is kept about the file and nothing is recorded - no index row, no Needs Review row. The file waits (in the inbox, or in the year's folder with no row) and is read again on the next pass. The pass's own summary and the run log say it once. | Look at the machine (memory, disk, antivirus, a damaged install). Once it is fixed, the next pass reads and files the waiting files; there is nothing to file by hand. |
-| `reasons.UNNAMED_ACROSS_HOUSEHOLDS` | This household's drop folder feeds a return in another household, and that return would have taken this document on its keywords alone — but the page names nobody, so it was not moved into a folder other people can open. It waits here (decision 137). The Evidence names the return and the request that wanted it, as `<return> / <request>`. The same holds for a document sent again that the other household already has. | Open it. If it is that return's, file it there with **File it**; if it is this household's, file it here. |
+| `reasons.UNNAMED_ACROSS_HOUSEHOLDS` | This household's drop folder feeds a return in another household, and that return would have taken this document on its keywords alone — but the page names nobody, so it was not moved into a folder other people can open. It waits here (decision 137). The Evidence names the return and the request that wanted it, as `<return> / <request>`. The same holds for a document sent again that the other household already has. | Open it. If it is that return's, file it there with **File under another return**; if it is this household's, file it here. |
+| `reasons.NAMED_ACROSS_HOUSEHOLDS` | This household's drop folder feeds a return in another household, that return's list accepted this document, and the page names that return's person. The pass never files into another household (decision 204), so it waits here, its original in this household's year folder, and the row keeps what that return's list accepted. The same holds for a document sent again. Until somebody clicks, the other household's status does not count it. | Open it. If it is that return's, press **File it under <the return>** once — it files under the requests shown and nothing else. If the button is not offered (the row says the return is no longer fed, or a request is gone or N/A), use **File under another return**. If it is this household's, file it here. |
 | `router.NO_REQUEST_ACCEPTS` | No request on this manifest takes that file type at all. | Usually a stray file. Otherwise widen the request's allowed types. |
 | `reasons.CONTAINER_LOCKED` | An email or a zip arrived and one of the files inside is locked with a password (or packed in a way this machine cannot unpack), so nothing in it was opened. The container is kept like any original, with a review copy. | Ask the client for the documents themselves; the reminder does. Do not unlock it on the designated machine, even with the password: open it, if at all, as the paragraph above this table says, and put any document in as §1, *A document the tracker did not file*, says. |
 | `reasons.CONTAINER_DAMAGED` | An email or a zip arrived that does not read as one - a broken zip, an Outlook file whose structure is damaged, an email with no headers at all. Nothing in it was opened. | Ask the client to send the documents on their own; the reminder does. Do not try to open it on the designated machine. |
@@ -1232,7 +1255,7 @@ read yet.
 `reasons.NO_TEXT_AFTER_OCR`, `reasons.OCR_FAILED`,
 `reasons.HEIC_NOT_SUPPORTED`, `reasons.TOO_LARGE`, `reasons.READING_STOPPED`,
 `reasons.READING_CRASHED`, `reasons.READER_UNAVAILABLE`,
-`reasons.UNNAMED_ACROSS_HOUSEHOLDS`,
+`reasons.UNNAMED_ACROSS_HOUSEHOLDS`, `reasons.NAMED_ACROSS_HOUSEHOLDS`,
 `reasons.UNCHECKABLE_TYPE`,
 `reasons.FILE_MOVED`, `reasons.COPY_CHANGED`,
 `reasons.COPY_MISSING`, `reasons.COPY_AND_ORIGINAL_GONE`,

@@ -557,6 +557,23 @@ UNNAMED_ACROSS_HOUSEHOLDS = Reason(
     firm_note="no name on it, so it was not filed into another household's return; "
               "a person here decides",
 )
+#: A document the household's drop folder feeds to a return in **another**
+#: household, whose page names that return's person (decision 204,
+#: revising 132). The pass never files across households: the name is
+#: confirmed, so the only question left is whether a person here agrees,
+#: and the row carries what the other household's list accepted
+#: (``waits_for``) so that agreeing is one click. ``{spelling}`` is the
+#: firm's own spelling that matched, never a word of the page; ``{label}``
+#: is the return's label. Ours, and it holds nothing: the client's file is
+#: good.
+NAMED_ACROSS_HOUSEHOLDS = Reason(
+    "named-across",
+    "Names {spelling}, who is on {label}, a return in another household; "
+    "it waits here for a person to file it there.",
+    "a return in another household; it waits here for a person", firm_side=True,
+    firm_note="it names somebody on a return in another household; a person here files it "
+              "there - never the client",
+)
 
 # ---- an email or a zip (decision 143) ----------------------------------------
 
@@ -640,7 +657,7 @@ ALL: tuple[Reason, ...] = (
     UNCHECKABLE_TYPE, NO_TEXT_LAYER, NO_TEXT_AFTER_OCR, OCR_FAILED, NO_READABLE_TEXT,
     ISSUER_NOT_NAMED, SHOWS_ITS_FORM_NUMBER, NAME_POINTS_AT,
     NAME_NOT_ON_PAGE, NAMES_ANOTHER_RETURN, NO_PEOPLE_ON_FILE, UNNAMED_ACROSS_HOUSEHOLDS,
-    OPENED_NOT_ACROSS, FILE_MOVED, COPY_CHANGED, COPY_MISSING, COPY_AND_ORIGINAL_GONE,
+    NAMED_ACROSS_HOUSEHOLDS, OPENED_NOT_ACROSS, FILE_MOVED, COPY_CHANGED, COPY_MISSING, COPY_AND_ORIGINAL_GONE,
     ANSWER_NOT_COUNTED, INTERRUPTED_MOVE, INTERRUPTED_MOVE_LOST,
     READING_STOPPED, READING_CRASHED, READER_UNAVAILABLE, PENDING_SYNC, VANISHED,
 )

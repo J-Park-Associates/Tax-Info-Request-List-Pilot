@@ -5291,32 +5291,377 @@ def fed(tmp_path):
     return father, llc
 
 
-def test_a_drop_in_the_fathers_inbox_files_to_the_co_owned_llc_and_the_original_rests_under_the_llcs_folder(
+LLC_LABEL = "Park & Lee LLC 2025 1120S - Park & Lee LLC"
+
+
+def click(home, row, target, *, today=DAY2, seq=None):
+    """The one click (decision 204), as the API makes it: the row's own
+    Waits For claim handed to the return it names, nothing picked."""
+    from tracker.filer import hand_over
+
+    claim = row.waiting_for
+    return hand_over(home, row.pbc_location, target, claim.identifiers[0],
+                     also=claim.identifiers[1:], answers=claim.answers, waiting=True,
+                     seq=seq, today=today)
+
+
+def filed_across(father, llc, name, text, *, today=DAY1, clicked=DAY2):
+    """A document the father drops for the LLC: parked at home by the pass,
+    then handed over with the one click. The LLC's row."""
+    drop(father, name, text, who="Park & Lee LLC")
+    [waiting] = sort_all([father, llc], home=[father], today=today)[father].review
+    return click(father, waiting, llc, today=clicked).target_entry
+
+
+def test_a_drop_naming_a_fed_households_person_parks_at_home_for_one_click_and_nothing_moves_into_that_household(
         fed):
-    """The plan's headline case. One drop folder, two households: the trial
-    balance is judged against the LLC's request list as well as the
-    father's, files where exactly one accepts it, and its original moves a
-    second time - into the LLC's own folder for the year, which is the
-    folder its sharing covers. The destination's row says where it was
-    dropped, and names no person."""
-    from tracker.filer import DROPPED_ELSEWHERE
+    """Decision 204, revising 132. The trial balance only the LLC's list
+    wants, naming the LLC, is not filed there by the pass: it parks in the
+    father's own queue, its original stays in his year folder, and the row
+    keeps what the LLC's list accepted - so a person's one click can file
+    it. Nothing is written into the LLC's record or its folders."""
+    from tracker.records import WaitsFor
 
     father, llc = fed
     drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
 
     done = sort_all([father, llc], home=[father], today=DAY1)
 
-    assert done[father].handled == 0 and read_index(father) == []
-    [row] = read_index(llc)
-    assert row.decision == FILED and row.identifier == "B01"
-    assert row.pbc_location == original_at(llc, "tb.pdf")
-    assert row.reason.endswith("; " + DROPPED_ELSEWHERE.format(household="Park Family"))
-    # The original rests under the household the return lives in, and the
-    # folder it was dropped in keeps nothing of it.
+    assert done[llc].filed == [] and read_index(llc) == []
+    [row] = read_index(father)
+    assert row.decision == NEEDS_REVIEW and row.identifier == ""
+    assert reasons.NAMED_ACROSS_HOUSEHOLDS.matches(row.reason)
+    assert row.reason.startswith("Names Park & Lee LLC, who is on " + LLC_LABEL)
+    assert row.waiting_for == WaitsFor("Park & Lee LLC", "1120S - Park & Lee LLC", ("B01",), "")
+    assert f"{LLC_LABEL} / B01" in parse_evidence(row.evidence)
+    assert row.pbc_location == original_at(father, "tb.pdf")
+    assert [p.name for p in originals(father).iterdir()] == ["tb.pdf"]
+    assert not originals(llc).exists() or not any(originals(llc).iterdir())
+    assert (father / row.prepared_location).is_file()
+    assert [p.name for p in inbox_of(father).iterdir()] == [README_NAME]
+    rows_rest_at_home(father, llc)
+
+
+def test_the_one_click_files_the_waiting_document_where_it_waits_and_releases_the_row_here(fed):
+    """The click is decision 132's hand-over with nothing picked: the
+    original moves under the LLC's folder, the working copy is made there,
+    the parked copy here goes and the row here is released. The LLC's row
+    is the person's own filing, dated their day, and quotes the parked
+    sentence, so the confirmed spelling travels with it."""
+    from tracker.filer import ASSIGNED_BY_PERSON, DROPPED_ELSEWHERE, RELEASED_TO
+
+    father, llc = fed
+    drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
+    [waiting] = sort_all([father, llc], home=[father], today=DAY1)[father].review
+
+    done = click(father, waiting, llc, seq=seq_of(father, waiting))
+
+    assert done.moved_original is True and done.label == LLC_LABEL
+    assert read_index(father) == []
+    [taken] = read_index(llc)
+    assert taken == done.target_entry
+    assert taken.decision == FILED and taken.identifier == "B01" and taken.waits_for == ""
+    assert taken.pbc_location == original_at(llc, "tb.pdf")
+    assert taken.reason == (f"{ASSIGNED_BY_PERSON} on {DAY2.isoformat()}; "
+                            f"{DROPPED_ELSEWHERE.format(household='Park Family')}; was: {waiting.reason}")
     assert [p.name for p in originals(llc).iterdir()] == ["tb.pdf"]
     assert not any(originals(father).iterdir())
-    assert [p.name for p in inbox_of(father).iterdir()] == [README_NAME]
-    assert (llc / row.prepared_location).is_file()
+    assert (llc / taken.prepared_location).is_file()
+    assert not (father / waiting.prepared_location).exists()
+    last = ledger.read_events(father)[-1]
+    assert last[ledger.EVENT_KEY] == ledger.RELEASED
+    assert last[ledger.REASON_KEY] == RELEASED_TO.format(label=LLC_LABEL, identifier="B01")
+    rows_rest_at_home(father, llc)
+
+
+def test_the_one_click_is_refused_on_a_row_rewritten_since_it_was_shown(fed):
+    """UX 1: the click carries the row's version, and a row a person set
+    aside since the card was drawn is refused before a file is touched.
+    Without a version, a row that no longer waits refuses too."""
+    from tracker.filer import NOT_WAITING, StaleRowError, dismiss_review_file
+
+    father, llc = fed
+    drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
+    [waiting] = sort_all([father, llc], home=[father], today=DAY1)[father].review
+    shown = seq_of(father, waiting)
+    dismiss_review_file(father, waiting.pbc_location, "not theirs", today=DAY2)
+    files, lines = every_byte(father), len(ledger.read_events(father))
+
+    with pytest.raises(StaleRowError):
+        click(father, waiting, llc, seq=shown)
+    with pytest.raises(FilingError, match=NOT_WAITING.format(name="tb.pdf")):
+        click(father, waiting, llc)
+
+    assert every_byte(father) == files and len(ledger.read_events(father)) == lines
+    assert read_index(llc) == [] and not open_intents(llc)
+    [row] = read_index(father)
+    assert row.waits_for == ""                  # set aside, it waits for nothing
+
+
+def test_the_one_click_is_refused_when_its_return_is_no_longer_fed_or_its_request_is_gone(fed, tmp_path):
+    """R-8: the claim is resolved at the click, never trusted. A return the
+    feed list no longer names resolves to nothing; a request removed or
+    marked N/A since refuses in the hand-over's own words; a click naming
+    any other return than the claim's is refused. The row stays parked."""
+    from tracker.filer import waiting_target
+    from tracker.manifest import Override
+
+    father, llc = fed
+    drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
+    [waiting] = sort_all([father, llc], home=[father], today=DAY1)[father].review
+    assert waiting_target(waiting.waiting_for, [father, llc]) == llc
+    assert waiting_target(waiting.waiting_for, [father]) is None       # the feed trimmed
+
+    other = make_engagement(tmp_path, BUSINESS, household="Lee Family",
+                            return_name="1120S - Park & Lee LLC")
+    with pytest.raises(FilingError, match="waits for Park & Lee LLC / 1120S - Park & Lee LLC"):
+        click(father, waiting, other)
+
+    info = load_engagement_info(llc)
+    save_rules(llc, [replace(BUSINESS[0], manual_override=Override.NOT_APPLICABLE)], info)
+    with pytest.raises(FilingError, match="clear the override first"):
+        click(father, waiting, llc)
+    save_rules(llc, [replace(BUSINESS[0], identifier="B02")], info)
+    with pytest.raises(FilingError, match="no request 'B01'"):
+        click(father, waiting, llc)
+
+    assert read_index(father) == [waiting] and read_index(llc) == []
+    rows_rest_at_home(father, llc)
+
+
+DANA = (Person("taxpayer", "Dana Reyes", propose_spellings("Dana Reyes", "taxpayer")),)
+
+
+def daughter(tmp_path, items):
+    """The runbook's second shape: an adult daughter's return in her own
+    household, fed by her father's drop folder."""
+    from tracker.records import Feed
+
+    father = make_engagement(tmp_path, ITEMS, household="Park Family",
+                             return_name="1040 - John Park", people=FATHER)
+    dana = make_engagement(tmp_path, items, household="Dana Reyes",
+                           return_name="1040 - Dana Reyes", people=DANA)
+    feeding(tmp_path, [Feed("Dana Reyes", "1040 - Dana Reyes")])
+    return father, dana
+
+
+def test_a_consolidated_statement_waiting_for_another_household_files_whole_with_its_also_answers_on_the_click(
+        tmp_path):
+    """Decision 146 across the click: the claim records the Also Answers the
+    daughter's list gave the broker's statement, and the click files it
+    whole under her 1099-B row with that cell - so her 1099-INT/DIV row
+    counts it and her letter does not ask for what was sent."""
+    from tracker.manifest import validated
+    from tracker.scanner import scan_engagement
+    from tracker.templates import template_items
+
+    items = [replace(i, min_size_kb=0) for i in validated(template_items("1040", year=2025))]
+    father, dana = daughter(tmp_path, items)
+    drop(father, "Schwab 2025 1099.pdf", SCHWAB_146, who="Dana Reyes")
+    [waiting] = sort_all([father, dana], home=[father], today=DAY1)[father].review
+    claim = waiting.waiting_for
+    assert claim.identifiers == ("E01",) and claim.answers
+
+    click(father, waiting, dana)
+
+    [taken] = read_index(dana)
+    assert taken.identifier == "E01" and taken.also_filed == ""
+    assert taken.answers == claim.answers
+    assert {identifier for identifier, _ in taken.answered} >= {"A02"}
+    scan_engagement(dana, today=DAY2)
+    assert _status(dana, "A02").file_count >= 1
+    rows_rest_at_home(father, dana)
+
+
+def test_a_page_naming_two_forms_waiting_for_another_household_gets_a_copy_for_each_on_the_click(tmp_path):
+    """Decision 94 across the click: the claim lists both forms' requests,
+    and the click makes one working copy under each - as the pass would have
+    - on one row for the one original."""
+    from tests.samples import scanned_1098_lines, scanned_w2_lines
+
+    father, dana = daughter(tmp_path, ITEMS)
+    drop(father, "scan0003.pdf", "\n".join(scanned_w2_lines(2025) + scanned_1098_lines(2025)),
+         who="Dana Reyes")
+    [waiting] = sort_all([father, dana], home=[father], today=DAY1)[father].review
+    assert waiting.waiting_for.identifiers == ("A01", "C01")
+
+    click(father, waiting, dana)
+
+    [taken] = read_index(dana)
+    assert taken.identifier == "A01" and taken.also_filed
+    assert [name.split(" - ")[0] for name in taken.filed_names] == ["A01", "C01"]
+    assert all((dana / location).is_file() for location in taken.filed_locations)
+    rows_rest_at_home(father, dana)
+
+
+def test_a_set_aside_re_send_naming_a_fed_households_person_parks_too(fed):
+    """The _sort_one road (decision 137 B#5's reasoning, now for a named
+    page): the LLC set a notice aside, its list gained the row that takes
+    it, and the father sends the same bytes. Routed afresh against the
+    LLC's list and naming the LLC, it is not filed there: it parks at home
+    for one click, saying it was sent again."""
+    from tracker.filer import RESENT_AFTER_SET_ASIDE, dismiss_review_file
+
+    father, llc = fed
+    notice = "Agency notice of adjustment 2025"
+    drop(llc, "notice.pdf", notice, who="Park & Lee LLC")
+    [parked] = sort_all([llc], today=DAY1)[llc].review
+    dismiss_review_file(llc, parked.pbc_location, "nothing asks for it", today=DAY1)
+    notices = RequestItem(identifier="B02", document="Agency Notices", period="TY2025",
+                          allowed_extensions=("pdf",), min_size_kb=0,
+                          required_keywords=("agency notice",))
+    save_rules(llc, [*BUSINESS, notices], load_engagement_info(llc))
+    before = read_index(llc)
+
+    drop(father, "notice.pdf", notice, who="Park & Lee LLC")
+    done = sort_all([father, llc], home=[father], today=DAY2)
+
+    assert read_index(llc) == before and done[llc].filed == []
+    [row] = read_index(father)
+    assert row.decision == NEEDS_REVIEW
+    assert reasons.NAMED_ACROSS_HOUSEHOLDS.matches(row.reason)
+    assert row.reason.startswith(RESENT_AFTER_SET_ASIDE.split("{")[0])
+    assert row.waiting_for.identifiers == ("B02",)
+    assert row.pbc_location == original_at(father, "notice.pdf")
+    rows_rest_at_home(father, llc)
+
+
+def test_a_re_send_through_a_feed_of_a_document_the_other_household_lost_parks_and_the_click_counts_it_once(
+        fed, monkeypatch):
+    """The LLC's filed copy is gone and its original cannot be read to make
+    it again (still syncing). The father sends the same bytes: routed afresh
+    in the LLC's record, it parks at home for the click rather than filing
+    there, and after the click the LLC's request counts the document once."""
+    import tracker.filer as filer_module
+    from tracker.scanner import scan_engagement
+
+    father, llc = fed
+    first = filed_across(father, llc, "tb.pdf", "Trial balance as of December 31 2025")
+    (llc / first.prepared_location).unlink()
+    syncing = locate(llc, first.pbc_location)
+    real = filer_module.is_cloud_placeholder
+    monkeypatch.setattr(filer_module, "is_cloud_placeholder", lambda p: p == syncing or real(p))
+
+    drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
+    done = sort_all([father, llc], home=[father], today=DAY3)
+
+    assert done[llc].filed == [] and read_index(llc) == [first]
+    [waiting] = read_index(father)
+    assert reasons.NAMED_ACROSS_HOUSEHOLDS.matches(waiting.reason)
+    assert waiting.waiting_for.identifiers == ("B01",)
+
+    click(father, waiting, llc, today=DAY3)
+    monkeypatch.undo()
+
+    assert read_index(father) == []
+    scan_engagement(llc, today=DAY3)
+    assert _status(llc, "B01").file_count == 1
+    rows_rest_at_home(father, llc)
+
+
+def test_a_drop_parked_for_another_household_has_its_verdicts_kept_before_the_next_drop_is_read(
+        fed, monkeypatch):
+    """Decision 204 inside decision 189's sort: the park that waits for one
+    click is a verdict like any other, kept as it is reached - when the
+    next drop is read, the waiting page's verdicts are already in the
+    store, and a pass stopped there would not read it again."""
+    import tracker.content_check as content_check
+
+    father, llc = fed
+    drop(father, "a tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
+    drop(father, "b w2.pdf", "Form W-2 Wage and Tax Statement 2025", who="John Park")
+    real, seen = content_check.extract, []
+
+    def looking_at_the_store(path, **kwargs):
+        seen.append(len(cache_rows(father)[1]) + len(cache_rows(llc)[1]))
+        return real(path, **kwargs)
+
+    monkeypatch.setattr(content_check, "extract", looking_at_the_store)
+    done = sort_all([father, llc], home=[father], today=DAY1)
+
+    assert [row.original_name for row in done[father].review] == ["a tb.pdf"]
+    assert reasons.NAMED_ACROSS_HOUSEHOLDS.matches(done[father].review[0].reason)
+    assert seen[0] == 0 and seen[-1] >= 1
+
+
+def test_a_drop_in_the_other_households_own_inbox_still_files_on_the_pass(fed):
+    """R-9 (a): in the LLC's own inbox its return is its own, and the pass
+    files there as it always has."""
+    father, llc = fed
+    drop(llc, "tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
+
+    [row] = sort_all([llc], today=DAY1)[llc].filed
+
+    assert row.identifier == "B01" and row.waits_for == ""
+    assert row.pbc_location == original_at(llc, "tb.pdf")
+    assert read_index(father) == []
+
+
+def test_an_unnamed_drop_across_households_parks_as_before_and_carries_no_waits_for(tmp_path):
+    """R-5: a page naming nobody keeps decision 137 B2's park and the full
+    picker - a one-click offer on it would make the unsafe action easy."""
+    from tracker.records import Feed
+
+    father = make_engagement(tmp_path, ITEMS, household="Park Family",
+                             return_name="1040 - John Park", people=FATHER)
+    llc = make_engagement(tmp_path, [replace(BUSINESS[0], named=False)], household="Park & Lee LLC",
+                          return_name="1120S - Park & Lee LLC", people=LLC_PEOPLE)
+    feeding(tmp_path, [Feed("Park & Lee LLC", "1120S - Park & Lee LLC")])
+    drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="")
+
+    [row] = sort_all([father, llc], home=[father], today=DAY1)[father].review
+
+    assert reasons.UNNAMED_ACROSS_HOUSEHOLDS.matches(row.reason)
+    assert row.waits_for == "" and row.waiting_for is None
+    assert read_index(llc) == []
+
+
+def test_the_pass_never_moves_an_original_into_another_household(fed, tmp_path):
+    """The guard behind R-1: over every road the feed has - a named page, an
+    unnamed one, a vetoed W-2, a set-aside re-send - no move the pass decides
+    (``BY_PASS``) in either record lands under the LLC's household, and the
+    LLC's record and folders hold nothing the pass put there."""
+    from tracker.layout import client_household_dir, private_household_dir
+
+    father, llc = fed
+    drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
+    drop(father, "tb unnamed.pdf", "Trial balance as of December 31 2025 unnamed", who="")
+    drop(father, "w2.pdf", "Form W-2 Wage and Tax Statement 2025", who="Park & Lee LLC")
+    sort_all([father, llc], home=[father], today=DAY1)
+    drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
+    sort_all([father, llc], home=[father], today=DAY2)
+
+    theirs = (client_household_dir(tmp_path, "Park & Lee LLC"),
+              private_household_dir(tmp_path, "Park & Lee LLC"))
+    for record in (father, llc):
+        for event in ledger.read_events(record):
+            if event[ledger.EVENT_KEY] != ledger.MOVING:
+                continue
+            assert event[ledger.DECIDED_BY_KEY] == ledger.BY_PASS
+            for op in event[ledger.OPS_KEY]:
+                target = locate(record, op[ledger.TO_KEY])
+                assert not any(target.is_relative_to(folder) for folder in theirs), op
+    assert read_index(llc) == []
+    assert not originals(llc).exists() or not any(originals(llc).iterdir())
+    rows_rest_at_home(father, llc)
+
+
+def test_a_returning_original_still_goes_home_across_households(fed):
+    """R-9 (d): the put-back-home road is not a filing. The LLC's original of
+    a document handed over to it vanished, and the same bytes come back
+    through the father's drop folder: they go home to the LLC's row, as
+    decision 157 says, and no new row is written anywhere."""
+    father, llc = fed
+    first = filed_across(father, llc, "tb.pdf", "Trial balance as of December 31 2025")
+    locate(llc, first.pbc_location).unlink()
+
+    drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
+    sort_all([father, llc], home=[father], today=DAY3)
+
+    [row] = read_index(llc)
+    assert (row.pbc_location, row.digest) == (first.pbc_location, first.digest)
+    assert locate(llc, first.pbc_location).is_file()
+    assert read_index(father) == []
     rows_rest_at_home(father, llc)
 
 
@@ -5359,13 +5704,13 @@ def test_a_re_drop_of_a_document_filed_to_a_fed_return_is_that_returns_duplicate
     """The bytes say which record already holds the document, and that
     record decides - wherever it lives. A second copy of the LLC's trial
     balance is the LLC's duplicate row, not a second arrival for the
-    household that dropped it."""
+    household that dropped it. Since decision 204 the document reaches the
+    LLC by the one click, and the re-drop is the LLC's all the same."""
     father, llc = fed
-    drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
-    sort_all([father, llc], home=[father], today=DAY1)
+    filed_across(father, llc, "tb.pdf", "Trial balance as of December 31 2025")
 
     drop(father, "tb again.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
-    done = sort_all([father, llc], home=[father], today=DAY2)
+    done = sort_all([father, llc], home=[father], today=DAY3)
 
     assert done[father].handled == 0 and read_index(father) == []
     [duplicate] = done[llc].duplicates
@@ -5373,56 +5718,26 @@ def test_a_re_drop_of_a_document_filed_to_a_fed_return_is_that_returns_duplicate
     assert [r.decision for r in read_index(llc)] == [FILED, DUPLICATE]
 
 
-@pytest.mark.parametrize("passed_by", ("the dropping household", "the return's own household"))
-def test_a_cross_household_filing_killed_between_the_move_and_the_copy_is_finished_by_either_households_pass(
-        fed, monkeypatch, passed_by):
-    """The filing intent lives in the destination's record and both
-    households' passes hold that return's lock - the one it lives in
-    because it is its own, the one that dropped it because it feeds it - so
-    either of them finishes the half-made move from the record."""
-    from tracker.validators import sha256_of
-
-    father, llc = fed
-    drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
-    before_father, before_llc = digests_under(father), digests_under(llc)
-    document = sha256_of(inbox_of(father) / "tb.pdf")
-    moves = moves_made(monkeypatch)
-    killed_after_ops(monkeypatch, after=1)          # the move made, the copy not
-    with pytest.raises(KeyboardInterrupt):
-        sort_all([father, llc], home=[father], today=DAY1)
-    monkeypatch.undo()
-    assert open_intents(llc) and not open_intents(father)
-
-    if passed_by == "the dropping household":
-        sort_all([father, llc], home=[father], today=DAY2)
-    else:
-        sort_all([llc], today=DAY2)
-
-    [row] = read_index(llc)
-    assert row.decision == FILED and row.pbc_location == original_at(llc, "tb.pdf")
-    assert read_index(father) == []
-    conserved(father, before_father, moves, gone=[document])
-    conserved(llc, before_llc, moves, added=[document, document])
-    rows_rest_at_home(father, llc)
-
-
 def test_a_cross_household_original_mid_recovery_is_never_a_stray_of_the_dropping_household(
         fed, monkeypatch):
-    """Between the intent and the move, the original is in the folder it was
-    dropped in while the row that names it belongs to another household's
-    record. It is not a stray: it is spoken for, by a decision the record
-    already holds, and a pass that cannot finish the move leaves it alone
-    rather than sorting it a second time."""
+    """Between the intents and the move, the original is in the folder it was
+    dropped in while the LLC's open filing intent names it. It is not a
+    stray: it is spoken for, by a decision the records already hold, and a
+    pass that cannot finish the move leaves it alone rather than sorting it
+    a second time. Since decision 204 the only filing across households is
+    a person's hand-over - here the one click, killed with both intents
+    written; the kill matrix below walks every other point."""
     father, llc = fed
     drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
-    killed_at_the_intent(monkeypatch, ledger.OP_MOVE)
+    [waiting] = sort_all([father, llc], home=[father], today=DAY1)[father].review
+    killed_between_the_two_intents(monkeypatch)
     with pytest.raises(KeyboardInterrupt):
-        sort_all([father, llc], home=[father], today=DAY1)
+        click(father, waiting, llc)
     monkeypatch.undo()
-    assert open_intents(llc)
+    assert open_intents(llc) and open_intents(father)
     assert [p.name for p in originals(father).iterdir()] == ["tb.pdf"]
 
-    # A dry run finishes nothing, so the intent is still open and the file
+    # A dry run finishes nothing, so the intents are still open and the file
     # is still in the dropping household's folder: it must not be sorted.
     preview = sort_all([father, llc], home=[father], today=DAY2, dry_run=True)
     assert all(report.handled == 0 for report in preview.values())
@@ -5432,6 +5747,7 @@ def test_a_cross_household_original_mid_recovery_is_never_a_stray_of_the_droppin
     [row] = read_index(llc)
     assert row.decision == FILED and row.pbc_location == original_at(llc, "tb.pdf")
     assert read_index(father) == [] and not any(originals(father).iterdir())
+    rows_rest_at_home(father, llc)
 
 
 # ------------- File under another return (decisions 129 and 132) -----------
@@ -5605,7 +5921,7 @@ def test_a_re_drop_after_the_feed_is_trimmed_is_judged_as_the_households_own_doc
     rows_rest_at_home(father, llc)
 
 
-@pytest.mark.parametrize("by", ("the pass", "a hand-over"))
+@pytest.mark.parametrize("by", ("the one click", "a hand-over"))
 def test_a_filing_never_takes_a_name_a_vanished_original_left_behind(fed, by):
     """A key is a location, and a location came free again: an original
     filed into the LLC and then removed by hand leaves its row behind,
@@ -5614,23 +5930,24 @@ def test_a_filing_never_takes_a_name_a_vanished_original_left_behind(fed, by):
     row's next version and the old row vanished from every reader.
 
     Since decision 147 (ruling 9, audit F-1) a name a row still names is
-    taken. Whoever files it - the pass's second move (decision 129) or a
-    person's hand-over (decision 132) - the name is chosen by the one
+    taken. Whichever hand-over files it - the one click on a page naming
+    the LLC (decision 204) or the picker (decision 132) - the name is chosen by the one
     numbering function against the taking household-year's rows, so the
     new document rests beside the old name with a row of its own, and the
     old row goes on saying its original is missing."""
     from tracker.filer import ASSIGNED_BY_PERSON, hand_over
 
     father, llc = fed
-    drop(father, "notice.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
-    sort_all([father, llc], home=[father], today=DAY1)
-    [stale] = read_index(llc)
+    stale = filed_across(father, llc, "notice.pdf", "Trial balance as of December 31 2025",
+                         clicked=DAY1)
     (originals(llc) / "notice.pdf").unlink()    # the client removed it by hand
 
-    if by == "the pass":
+    if by == "the one click":
         drop(father, "notice.pdf", "Trial balance as of December 31 2025 restated",
              who="Park & Lee LLC")
-        sort_all([father, llc], home=[father], today=DAY2)
+        [waiting] = sort_all([father, llc], home=[father], today=DAY2)[father].review
+        done = click(father, waiting, llc)
+        assert done.moved_original is True
     else:
         parked = parked_notice(father)
         done = hand_over(father, parked.pbc_location, llc, "B01", today=DAY2)
@@ -5641,7 +5958,7 @@ def test_a_filing_never_takes_a_name_a_vanished_original_left_behind(fed, by):
     assert ledger_key(taken) != ledger_key(stale)       # a place, and a row, of its own
     assert taken.digest != stale.digest
     assert taken.decision == FILED and taken.identifier == "B01"
-    assert taken.reason.startswith(ASSIGNED_BY_PERSON) == (by == "a hand-over")
+    assert taken.reason.startswith(ASSIGNED_BY_PERSON)
     assert taken.pbc_location == original_at(llc, "notice (2).pdf")
     assert read_index(father) == []
     # One original under the household the taking return lives in, and one
@@ -5774,12 +6091,13 @@ def test_a_hand_over_killed_at_every_point_is_finished_from_the_record_as_the_pe
 def test_no_record_ever_holds_a_row_for_an_original_resting_under_another_household_once_no_intent_is_open(
         fed, monkeypatch, tmp_path):
     """The invariant behind the owner's sentence (decision 132), asked after
-    a season's worth of the feed's roads in one pair of households: a pass
-    files into the fed return, a W-2 naming the fed return parks at home, a
-    cross-household filing is killed between its move and its copy and
-    recovered, a parked document is handed over, and a re-send arrives
-    after the feed is trimmed. After each, every row of both records names
-    an original under its own household's folder for the year."""
+    a season's worth of the feed's roads in one pair of households: a page
+    naming the fed return parks at home and is clicked over (decision 204),
+    a W-2 naming the fed return parks at home, a click is killed between
+    its move and its copy and recovered, a parked document is handed over,
+    and a re-send arrives after the feed is trimmed. After each, every row
+    of both records names an original under its own household's folder for
+    the year."""
     from tracker.filer import hand_over
 
     father, llc = fed
@@ -5787,12 +6105,17 @@ def test_no_record_ever_holds_a_row_for_an_original_resting_under_another_househ
     drop(father, "w2.pdf", "Form W-2 Wage and Tax Statement 2025", who="Park & Lee LLC")
     sort_all([father, llc], home=[father], today=DAY1)
     rows_rest_at_home(father, llc)
+    [tb] = [row for row in read_index(father) if row.original_name == "tb.pdf"]
+    click(father, tb, llc, today=DAY1)
+    rows_rest_at_home(father, llc)
 
     drop(father, "tb2.pdf", "Trial balance as of December 31 2025 second copy",
          who="Park & Lee LLC")
+    sort_all([father, llc], home=[father], today=DAY2)
+    [tb2] = [row for row in read_index(father) if row.original_name == "tb2.pdf"]
     killed_after_ops(monkeypatch, after=1)
     with pytest.raises(KeyboardInterrupt):
-        sort_all([father, llc], home=[father], today=DAY2)
+        click(father, tb2, llc)
     monkeypatch.undo()
     sort_all([father, llc], home=[father], today=DAY2)
     rows_rest_at_home(father, llc)
@@ -6282,10 +6605,12 @@ def test_a_review_copy_is_named_to_fit_and_the_row_keeps_the_clients_name(short_
 def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_below_the_floor(tmp_path):
     """A person's filing and a hand-over name the working copy the way the
     pass does: cut to fit where the canonical name does not, and refused
-    with PATH_NO_ROOM - nothing moved - only where not even the shortest
-    name fits."""
+    - nothing moved - only where not even the shortest name fits: a
+    person's filing with PATH_NO_ROOM, a hand-over with PATH_NO_ROOM_IN
+    naming the taking return, since the person reads it on another
+    return's page (decision 204's review, S-1)."""
     from tests.conftest import root_for_a_return_of
-    from tracker.filer import PATH_NO_ROOM, assign_review_file, hand_over
+    from tracker.filer import PATH_NO_ROOM_IN, _details_of, _label_of, assign_review_file, hand_over
 
     # One household, three returns: home fits; ``cut`` leaves A01 ten short;
     # ``none`` leaves its Prepared 28 characters for a 29-character name.
@@ -6308,8 +6633,9 @@ def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_bel
     before = sorted(str(p) for p in root.rglob("*"))
     with pytest.raises(FilingError) as refused:
         hand_over(home, parked["note.pdf"].pbc_location, none, "A01", today=DAY2)
-    assert str(refused.value) == PATH_NO_ROOM.format(length=231 + 1 + len(f"A01 - {LONG_PERIOD}.pdf"),
-                                                     limit=260, ext=".pdf")
+    assert str(refused.value) == PATH_NO_ROOM_IN.format(
+        label=_label_of(none, _details_of(none)),
+        length=231 + 1 + len(f"A01 - {LONG_PERIOD}.pdf"), limit=260, ext=".pdf")
     assert sorted(str(p) for p in root.rglob("*")) == before
 
     # Handed to the return with room for a cut name: named to fit.
@@ -6568,13 +6894,13 @@ def test_a_workbook_review_copy_fitted_past_a_readers_limit_says_so(tmp_path):
 
 
 def test_a_fed_return_with_no_room_parks_at_home_naming_the_fed_return(tmp_path):
-    """Deviation 5: the fed return's request accepts the trial balance and
-    its folder has no room even for the shortest name. The document parks
-    where it was dropped, and the sentence names the fed return by its
-    label - "this request" would be a list the person reading the row in
-    the dropping household is not looking at."""
+    """Deviation 5, since decision 204: the fed return's request accepts the
+    trial balance and its folder has no room even for the shortest name.
+    The pass never files across households, so the document parks where it
+    was dropped for one click, the row naming the fed return by its label;
+    and the click itself refuses on the room, with nothing moved."""
     from tests.conftest import root_for_a_return_of
-    from tracker.filer import PATH_NO_ROOM_IN
+    from tracker.filer import PATH_NO_ROOM_IN, NoRoom
     from tracker.records import Feed
     from tracker.registry import discover_engagements
 
@@ -6596,9 +6922,46 @@ def test_a_fed_return_with_no_room_parks_at_home_naming_the_fed_return(tmp_path)
     assert read_index(llc) == [] and list(b01.iterdir()) == []
     [parked] = done[father].review
     label = next(one.label for one in discover_engagements(root).engagements if one.path == llc)
-    assert parked.reason == PATH_NO_ROOM_IN.format(label=label, length=261, limit=260, ext=".pdf")
+    assert reasons.NAMED_ACROSS_HOUSEHOLDS.matches(parked.reason) and label in parked.reason
     assert "this request" not in parked.reason
     assert parked.pbc_location == original_at(father, "tb.pdf")
+    with pytest.raises(NoRoom) as refused:
+        click(father, parked, llc)
+    # Said in the fed return's own words, on the father's page (the
+    # review's S-1): never "this request's Short name".
+    assert str(refused.value) == PATH_NO_ROOM_IN.format(label=label, length=261, limit=260, ext=".pdf")
+    assert read_index(father) == [parked] and read_index(llc) == []
+    assert [p.name for p in originals(father).iterdir()] == ["tb.pdf"]
+
+
+def test_a_sibling_return_with_no_room_parks_in_the_home_return_naming_it(tmp_path):
+    """Deviation 5 inside one household (the review of decision 204, S-2):
+    a W-2 naming Maria, whose return has no room even for the shortest
+    name, while John's list also accepts it. The name vetoes John's return,
+    Maria's has no room, and the row parks in John's - the home return -
+    naming Maria's return by its label, never "this request"."""
+    from tests.conftest import root_for_a_return_of
+    from tracker.filer import PATH_NO_ROOM_IN
+    from tracker.registry import discover_engagements
+
+    long_name = "1040 - Maria Park " + "m" * 24
+    root = root_for_a_return_of(tmp_path, NO_ROOM_RETURN, household="Park Family",
+                                return_name=long_name)
+    john = make_engagement(root, ITEMS, household="Park Family",
+                           return_name="1040 - John Park", people=FATHER)
+    maria = make_engagement(root, [with_the_long_period(ITEMS[0])], household="Park Family",
+                            return_name=long_name, people=(MARIA,))
+    drop(john, "w2.pdf", "Form W-2 Wage and Tax Statement 2025", who="Maria Park")
+
+    done = sort_all([john, maria], today=DAY1)
+
+    assert read_index(maria) == []
+    [parked] = done[john].review
+    label = next(one.label for one in discover_engagements(root).engagements if one.path == maria)
+    assert parked.reason.startswith(PATH_NO_ROOM_IN.format(
+        label=label, length=261, limit=260, ext=".pdf"))
+    assert "this request" not in parked.reason
+    assert parked.pbc_location == original_at(john, "w2.pdf")
 
 
 # ---------------------------------------------- decision 137: the security review ----
@@ -7240,7 +7603,8 @@ def test_an_attachment_is_not_written_under_a_name_a_row_still_names(tmp_path):
 
 def test_a_name_an_open_intent_will_write_to_is_not_given_to_a_new_drop(fed, monkeypatch):
     """Decision 147, the designer's ruling on deviation 3. A filing into the
-    LLC is interrupted before its move, and its source is still syncing,
+    LLC - since decision 204 the one click - is interrupted before its
+    move, and its source is still syncing,
     so the move stays open and will write the LLC's ``tb.pdf`` once the
     file is down. A different ``tb.pdf`` the LLC drops meanwhile must not
     take that name: its row would carry the waiting filing's key and close
@@ -7250,9 +7614,10 @@ def test_a_name_an_open_intent_will_write_to_is_not_given_to_a_new_drop(fed, mon
 
     father, llc = fed
     drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
+    [waiting] = sort_all([father, llc], home=[father], today=DAY1)[father].review
     killed_at_the_intent(monkeypatch, ledger.OP_MOVE)
     with pytest.raises(KeyboardInterrupt):
-        sort_all([father, llc], home=[father], today=DAY1)
+        click(father, waiting, llc, today=DAY1)
     monkeypatch.undo()
     [intent] = open_intents(llc)
     [move] = [op for op in intent[ledger.OPS_KEY] if op[ledger.OP_KEY] == ledger.OP_MOVE]
@@ -8119,7 +8484,7 @@ def test_a_store_rebuilt_from_the_journal_agrees_after_a_remake_and_a_return(eng
 
     assert len(events_named(engagement, ledger.COPY_REMADE)) == 1
     assert len(events_named(engagement, ledger.ORIGINAL_RETURNED)) == 1
-    assert store.SCHEMA_VERSION == 16
+    assert store.SCHEMA_VERSION == 17
     live = read_index(engagement)
     root = root_of(engagement)
     assert store.check(store.connect(), root, engagement) == []
@@ -8467,14 +8832,13 @@ def test_a_forged_step_is_carried_out_nowhere(engagement, tmp_path, which):
 def test_a_legitimate_filing_into_a_fed_return_still_completes(fed):
     """The ruling's third proof: the one step that legitimately reads
     another household's folder - a drop in the father's inbox filed into
-    the co-owned LLC's return (decision 129) - is admitted, carried out and
-    proved, and leaves no intent open and nothing for the check to name."""
+    the co-owned LLC's return, since decision 204 by the one click - is
+    admitted, carried out and proved, and leaves no intent open and nothing
+    for the check to name."""
     from tracker.validators import sha256_of
 
     father, llc = fed
-    drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
-
-    sort_all([father, llc], home=[father], today=DAY1)
+    filed_across(father, llc, "tb.pdf", "Trial balance as of December 31 2025")
 
     [row] = read_index(llc)
     assert row.decision == FILED

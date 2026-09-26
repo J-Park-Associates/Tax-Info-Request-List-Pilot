@@ -490,3 +490,22 @@ def _fingerprint(root: Path) -> dict:
         str(path.relative_to(root)): (path.stat().st_size, path.stat().st_mtime_ns)
         for path in sorted(root.rglob("*")) if path.is_file()
     }
+
+
+def test_a_named_across_row_is_never_offered_as_a_request_of_the_home_list(engagement):
+    """Decision 204: a row waiting for another household's return keeps what
+    that return's list said, keyed by its label, and what the click will do
+    in its own cell. The home list happens to have a B01 of its own; the
+    shortlist never offers it, because the evidence was never about it."""
+    label = "Park & Lee LLC 2025 1120S - Park & Lee LLC"
+    wanted = {f"{label} / B01": (Evidence("trial balance", RULE_REQUIRED, WHERE_TITLE),)}
+    row = replace(
+        parked_row("tb.pdf", wanted, reason=reasons.NAMED_ACROSS_HOUSEHOLDS.format(
+            spelling="Park & Lee LLC", label=label)),
+        waits_for="Park & Lee LLC / 1120S - Park & Lee LLC / B01")
+    park(engagement, row)
+
+    [triaged] = triage_of(engagement)
+
+    assert "B01" not in identifiers(triaged)
+    assert tuple(triaged.shortlist) == ()
