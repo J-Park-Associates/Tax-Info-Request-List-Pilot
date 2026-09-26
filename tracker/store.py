@@ -85,9 +85,12 @@ costs once per engagement per version, not every pass. A hold list beside
 the store was the rejected alternative: a second place that says a
 household waits is a second place to disagree with the first. **The rule
 for the future:** a change that makes the admission refuse something it
-used to admit raises :data:`ADMISSION_VERSION` by one in the same commit;
-``tests/test_store.py`` pins the rule's source to the version and fails,
-saying which to do, when one moves without the other.
+used to admit - or anything it calls: a ``records`` rule, a bound, a
+``layout`` place rule - raises :data:`ADMISSION_VERSION` by one in the same
+commit; ``tests/test_store.py`` pins the source of every function the
+admission reaches, and every constant they read, to the version and
+fails, naming what moved and saying which to do, when one moves without
+the other.
 
 **The check is the gate.** :func:`check` compares these tables with
 :func:`tracker.ledger.replay` over the journal and names every place they
@@ -343,12 +346,14 @@ _IN_PLACE: dict[int, tuple[str, ...]] = {
 #: :func:`_line_keys_problem`) a row's applied lines were judged by
 #: (decision 209, R3b). 1 is the rule as of decision 187, with decision
 #: 159's line keys. **Raise it by one, in the same commit, whenever the
-#: admission starts refusing something it used to admit**: every row
+#: admission - or anything it calls - starts refusing something it used
+#: to admit**: every row
 #: judged by an older one then has its applied lines judged again at its
 #: next sync, and a line the new rule refuses stops its household instead
 #: of standing because it was applied first. ``tests/test_store.py``
-#: (``test_admission_version_changes_with_the_admission``) pins the rule's
-#: source to this number.
+#: (``test_admission_version_changes_with_the_admission``) pins the source
+#: of every function the admission reaches, and every constant they read,
+#: to this number.
 ADMISSION_VERSION = 1
 
 #: What a row of ``engagements`` holds the record of: one return, or one

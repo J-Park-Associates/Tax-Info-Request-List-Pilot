@@ -1698,12 +1698,12 @@ def test_only_the_lock_asks_the_platform_for_this_computers_name():
     assert "platform.node" in this_host
 
 
-def test_no_module_compares_a_name_with_this_host_by_hand():
-    """Every comparison of a computer's name with this one is decision 159's
-    ``locking.is_this_host`` - the one comparison of a host, in any case and
-    spacing - never ``== this_host()`` or ``!= this_host()``. ``this_host()``
-    stays where this computer's name is *written* (the lock line, the
-    designation file, a sentence)."""
+def hand_comparisons(source: str) -> list[int]:
+    """The lines of ``source`` that compare a name with this computer's by
+    hand: ``==``, ``!=``, ``in`` or ``not in`` where one side is a
+    ``this_host()`` call, a name bound from one in the same function, or a
+    tuple, list or set holding either (the re-review's SF2: 5bb5d3c bound
+    ``here = this_host()`` and compared ``named == here``)."""
     import ast
 
     def calls_this_host(node):
@@ -1711,15 +1711,59 @@ def test_no_module_compares_a_name_with_this_host_by_hand():
             isinstance(node.func, ast.Name) and node.func.id == "this_host"
             or isinstance(node.func, ast.Attribute) and node.func.attr == "this_host")
 
-    found = []
-    for rel, tree in _package_trees():
-        for node in ast.walk(tree):
+    tree = ast.parse(source)
+    scopes = [tree, *(node for node in ast.walk(tree)
+                      if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)))]
+    found = set()
+    for scope in scopes:
+        bound = {target.id for node in ast.walk(scope)
+                 if isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr))
+                 and node.value is not None and calls_this_host(node.value)
+                 for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
+                 if isinstance(target, ast.Name)}
+
+        def is_this_host(node, bound=bound):
+            if calls_this_host(node) or isinstance(node, ast.Name) and node.id in bound:
+                return True
+            return isinstance(node, (ast.Tuple, ast.List, ast.Set)) and \
+                any(is_this_host(one, bound) for one in node.elts)
+
+        for node in ast.walk(scope):
             if isinstance(node, ast.Compare) and \
-                    any(isinstance(op, (ast.Eq, ast.NotEq)) for op in node.ops) and \
-                    any(calls_this_host(side) for side in (node.left, *node.comparators)):
-                if rel == "tracker/locking.py" and node.lineno in _is_this_host_lines():
-                    continue            # the one comparison itself
-                found.append(f"{rel}:{node.lineno}")
+                    any(isinstance(op, (ast.Eq, ast.NotEq, ast.In, ast.NotIn)) for op in node.ops) and \
+                    any(is_this_host(side) for side in (node.left, *node.comparators)):
+                found.add(node.lineno)
+    return sorted(found)
+
+
+@pytest.mark.parametrize(("source", "caught"), [
+    ("ok = named == this_host()", True),
+    ("ok = locking.this_host() != named", True),
+    # 5bb5d3c's schedule_decision: the name bound first, compared after.
+    ("def decide(named):\n    here = this_host()\n    return named == here", True),
+    ("ok = named in (this_host(),)", True),
+    ("here = this_host()\nok = named not in {here}", True),
+    ("line = this_host() + '\\n'", False),
+    ("ok = is_this_host(named)", False),
+])
+def test_the_hand_comparison_matcher_catches_and_spares(source, caught):
+    assert bool(hand_comparisons(source)) is caught, source
+
+
+def test_no_module_compares_a_name_with_this_host_by_hand():
+    """Every comparison of a computer's name with this one is decision 159's
+    ``locking.is_this_host`` - the one comparison of a host, in any case and
+    spacing - never ``== this_host()``, ``!= here`` after ``here =
+    this_host()``, or ``in (this_host(),)``. ``this_host()`` stays where
+    this computer's name is *written* (the lock line, the designation file,
+    a sentence)."""
+    found = []
+    for path in sorted((REPO / "tracker").rglob("*.py")):
+        rel = path.relative_to(REPO).as_posix()
+        for line in hand_comparisons(path.read_text(encoding="utf-8")):
+            if rel == "tracker/locking.py" and line in _is_this_host_lines():
+                continue            # the one comparison itself
+            found.append(f"{rel}:{line}")
     assert found == [], found
 
 

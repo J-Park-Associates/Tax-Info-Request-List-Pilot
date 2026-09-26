@@ -12,10 +12,8 @@ from __future__ import annotations
 import json
 import os
 import platform
-import runpy
 import sys
 import time
-import warnings
 
 import pytest
 
@@ -83,15 +81,12 @@ def creates(calls):
 
 
 def cli(monkeypatch, capsys, *argv) -> tuple[int, str]:
-    """``python -m tracker.after_install`` in this process, so the fakes hold."""
-    monkeypatch.setattr(sys, "argv", ["tracker.after_install", *argv])
-    with pytest.raises(SystemExit) as ended, warnings.catch_warnings():
-        # The module is already imported (the fakes are set on its imports);
-        # runpy says so, and running it again as __main__ is the point.
-        warnings.filterwarnings("ignore", message="'tracker.after_install' found in sys.modules",
-                                category=RuntimeWarning)
-        runpy.run_module("tracker.after_install", run_name="__main__", alter_sys=False)
-    return ended.value.code, capsys.readouterr().out
+    """``python -m tracker.after_install`` in this process: its ``main``,
+    in the imported module, so the fakes and the fabricated checkout hold.
+    Never ``runpy`` - a module run again as ``__main__`` has globals of its
+    own, and cleared the real checkout's test cache (the re-review's MF1)."""
+    code = after_install.main(list(argv))
+    return code, capsys.readouterr().out
 
 
 # ------------------------------------------------------------ the schedule ----
@@ -619,3 +614,76 @@ def test_a_test_cache_that_cannot_be_removed_is_a_failure(app, checkout, monkeyp
 
     assert done.failed == (after_install.CACHE_NOT_CLEARED,) and done.exit_code == 1
     assert done.program == "" and "in use" not in " ".join(done.lines)
+
+
+def test_no_test_reaches_the_real_checkouts_test_cache(app, tmp_path, monkeypatch, capsys):
+    """The re-review's MF1: the command line runs in the imported module, so
+    the suite's fabricated checkout holds for it too. A marker in a
+    fabricated stand-in is the only thing removed; the real checkout's
+    cache, whatever it holds, is left exactly as it was - nothing real is
+    made or deleted here."""
+    from pathlib import Path
+
+    real = Path(after_install.__file__).resolve().parent.parent
+    assert after_install.CHECKOUT != real            # the suite's own guard (tests/conftest.py)
+    real_cache = real / after_install.TEST_CACHE_DIRNAME
+    before = sorted(os.listdir(real_cache)) if real_cache.is_dir() else None
+
+    stand_in = tmp_path / "stand-in"
+    (stand_in / after_install.TEST_CACHE_DIRNAME / "marker").mkdir(parents=True)
+    monkeypatch.setattr(after_install, "CHECKOUT", stand_in)
+    code, out = cli(monkeypatch, capsys, "--reason", "setup")
+
+    assert code == 0, out
+    assert after_install.CACHE_CLEARED in out
+    assert not (stand_in / after_install.TEST_CACHE_DIRNAME).exists()
+    assert (sorted(os.listdir(real_cache)) if real_cache.is_dir() else None) == before
+
+
+def test_a_reparse_folder_that_is_no_link_is_walked_as_a_folder(app, checkout, monkeypatch):
+    """The re-review's SF3: only a symbolic link or a junction is a link. A
+    folder carrying some other reparse tag (a cloud placeholder) is cleared
+    as the folder it is, not refused as a link that will not unlink."""
+    import stat as _stat
+
+    cache = checkout / after_install.TEST_CACHE_DIRNAME
+    (cache / "v").mkdir(parents=True)
+    (cache / "v" / "nodeids").write_text("[]", encoding="utf-8")
+    real_lstat = os.lstat
+
+    class Placeholder:
+        """What lstat says of a cloud placeholder folder: a folder, with a
+        reparse tag that is not a link's."""
+
+        def __init__(self, status):
+            self.st_mode = status.st_mode
+            self.st_reparse_tag = 0x9000001A          # a cloud-files tag
+            self.st_file_attributes = getattr(_stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+
+    monkeypatch.setattr(os, "lstat", lambda path, *a, **k: Placeholder(real_lstat(path, *a, **k))
+                        if os.path.basename(path) == "v" else real_lstat(path, *a, **k))
+    done = after_install.run(reason=after_install.REASON_SETUP, checkout=checkout)
+
+    assert done.failed == () and not cache.exists()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="a junction is a Windows link; mklink /J exists only there")
+def test_a_junction_in_the_test_cache_is_removed_not_followed(app, checkout, tmp_path):
+    """The re-review's SF3, on a real junction (``mklink /J``): the junction
+    goes, and the folder it pointed at keeps every file."""
+    import subprocess
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("not the cache's", encoding="utf-8")
+    cache = checkout / after_install.TEST_CACHE_DIRNAME
+    cache.mkdir()
+    made = subprocess.run(["cmd", "/c", "mklink", "/J", str(cache / "joined"), str(outside)],
+                          capture_output=True, text=True)
+    if made.returncode != 0:
+        pytest.skip(f"this machine could not make a junction ({made.returncode})")
+
+    done = after_install.run(reason=after_install.REASON_SETUP, checkout=checkout)
+
+    assert done.failed == () and not cache.exists()
+    assert (outside / "keep.txt").read_text(encoding="utf-8") == "not the cache's"

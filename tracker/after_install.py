@@ -48,7 +48,9 @@ else - not a line in the runbook, not a button.
 
 **A finding names a household that waits** - for the kinds that do. A
 line an earlier version applied that today's admission refuses stops its
-household at the pass, the app's list and its page, because the store
+household - at the pass, in the app's walk of the clients folder and on
+the return's page, which refuses it with 187's sentence, while the notice
+at the top of the first screen names it - because the store
 judges every applied line again when its admission changes (decision 209,
 R3b, ``store.ADMISSION_VERSION``); a record changed behind the tracker's
 back is refused by the same sync. :data:`FINDINGS_WAIT` claims that for
@@ -376,16 +378,25 @@ def _check(root: Path | None) -> _Step:
     return _Step(CHECK_FOUND_KEY, CHECK_FOUND.format(n=len(findings)), findings=tuple(findings))
 
 
+#: The two reparse tags that are links (``stat`` names them on Windows):
+#: a symbolic link and a junction (a mount point). Spelled here too, so the
+#: rule reads the same off Windows, where ``lstat`` carries no tag.
+_LINK_TAGS = frozenset({getattr(stat, "IO_REPARSE_TAG_SYMLINK", 0xA000000C),
+                        getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003)})
+
+
 def _is_link(path: Path) -> bool:
-    """Whether ``path`` is a link of any kind - a symbolic link, or on
-    Windows a junction or any other reparse point - by ``lstat``, which
-    never follows it."""
+    """Whether ``path`` is a link - a symbolic link, or on Windows a
+    junction - by ``lstat``, which never follows it. **Only those two**
+    (the re-review's SF3): any other reparse point - a OneDrive Files
+    On-Demand placeholder folder, say - is an ordinary folder or file and
+    is walked as one; called a link, it could be neither unlinked nor
+    removed, and the job would fail at every start."""
     try:
         status = os.lstat(path)
     except FileNotFoundError:
         return False
-    reparse = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
-    return stat.S_ISLNK(status.st_mode) or bool(getattr(status, "st_file_attributes", 0) & reparse)
+    return stat.S_ISLNK(status.st_mode) or getattr(status, "st_reparse_tag", 0) in _LINK_TAGS
 
 
 def _unlink(path: Path) -> None:
@@ -593,7 +604,14 @@ def move_schedule_here() -> tuple[str, bool]:
     return scheduling.MOVED_FROM.format(host=moved.before, here=here), True
 
 
-if __name__ == "__main__":
+def main(argv: list[str]) -> int:
+    """``python -m tracker.after_install``: the step, and its exit code.
+
+    Here, in the imported module, not in the ``__main__`` block: a block
+    run by ``runpy`` is a second copy of the module with its own globals,
+    so a test that points :data:`CHECKOUT` at a fabricated folder never
+    reached it, and the suite cleared this checkout's real test cache (the
+    re-review's MF1). One module, one set of globals."""
     import argparse
 
     from tracker.page import tolerant_console
@@ -603,22 +621,29 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         prog="python -m tracker.after_install",
         description="Run every one-time step after installing or upgrading: register the "
-                    "schedule on the computer that runs it, and check the record.")
+                    "schedule on the computer that runs it, check the record, and clear the "
+                    "test cache earlier versions left.")
     parser.add_argument("--reason", choices=REASONS, default=REASON_SETUP,
                         help="which door ran it (default: setup)")
     parser.add_argument("--move-schedule-here", action="store_true",
                         help="make this computer the one that runs the schedule for the clients "
                              "folder, then register it here (a deliberate move, runbook section 6)")
-    ns = parser.parse_args()
+    ns = parser.parse_args(argv)
     try:
         if ns.move_schedule_here:
             said, moved = move_schedule_here()
             print(said)
             if not moved:
-                raise SystemExit(1)
+                return 1
         result = run(reason=REASON_REPAIR if ns.move_schedule_here else ns.reason)
     finally:
         store.close()
     for line in result.lines:
         print(line)
-    raise SystemExit(result.exit_code)
+    return result.exit_code
+
+
+if __name__ == "__main__":
+    from tracker.after_install import main as _main
+
+    raise SystemExit(_main(sys.argv[1:]))

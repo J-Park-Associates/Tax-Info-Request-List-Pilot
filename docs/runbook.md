@@ -414,10 +414,17 @@ changes nothing:
   after it reads nothing again. Only an older one is set aside and
   rebuilt by itself, as above (one policy for both decisions).
 - **Decision 209** (`user_version` 18) needs nothing either: a version-17
-  `tracker.db` gains one column where it stands, and the first pass after
-  it judges every line each return's record already holds by today's
-  rule, once - about two seconds for a hundred returns of two hundred
-  lines. A return whose old line the rule refuses stops, as above.
+  `tracker.db` gains one column where it stands, and the first time each
+  return's record is read after it - by the scheduled pass, or by the app
+  when it first lists the clients folder - every line the record already
+  holds is judged by today's rule, once per return. Measured on returns of
+  two hundred lines: about three seconds for a hundred returns when one
+  line in ten is a request-list edit (each carries the whole list), and
+  about twelve when every line is one; it is processor time, not reading
+  from Drive. So the first screen after this upgrade can take a few
+  seconds to list the clients, once. A return whose old line the rule
+  refuses stops, as above, and is judged again at every pass until it is
+  repaired.
 - **Once, when decision 169 lands** (the new reader). The database's
   version does not change, so there is nothing to delete for it (set
   `tracker.db` aside only if another decision in the same install asks).
