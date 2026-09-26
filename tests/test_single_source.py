@@ -967,7 +967,10 @@ def test_a_catalog_that_will_not_load_is_said_in_the_roll_fold_and_the_page_is_d
     refreshing = _js_function(js, "async function refresh(preferPath) {")
     guarded = refreshing.split("try {\n      await loadForms();\n    } catch (err) {", 1)
     assert len(guarded) == 2, refreshing
-    assert guarded[1].lstrip().startswith("formsUnloaded = err.message;"), guarded[1]
+    # Said in the words a notice would use: a page error by its class alone
+    # (principle 7), never its message.
+    assert guarded[1].lstrip().startswith("formsUnloaded = failureSentence(err);"), guarded[1]
+    assert "err.message" not in guarded[1].split("}", 1)[0], guarded[1]
     fold = _js_function(js, "function renderRollFold(hh) {")
     said = fold.index("fill(words.roll_forms_unloaded, { reason: formsUnloaded })")
     assert fold.index("formsUnloaded\n") < said < fold.index('className: "roll-form-pick"')
@@ -2407,9 +2410,11 @@ def test_an_error_of_the_page_or_the_shell_is_said_by_class_and_its_message_only
     import tracker.api as api
 
     js = read("app/renderer/app.js")
-    body = js.split("function failed(err, retry) {", 1)[1].split("\n}\n", 1)[0]
+    body = js.split("function failureSentence(err) {", 1)[1].split("\n}\n", 1)[0]
     assert "vocab.shell.page_error" in body and "window.tracker.logError(" in body
     assert "sentence: String(" not in body
+    failing = js.split("function failed(err, retry) {", 1)[1].split("\n}\n", 1)[0]
+    assert "const sentence = failureSentence(err);" in failing and "err.message" not in failing
     main_js = read("app/main.js")
     run = main_js[main_js.index("function runTracker"):]
     run = run[:run.index("\n}\n")]
@@ -2784,22 +2789,42 @@ process.stdout.write(JSON.stringify({ picked, typed: isDirty("modal") }));
 def test_a_refused_save_opens_every_fold_and_keeps_the_editor_open(tmp_path):
     """Decision 201, R5, run as written: a refusal names a row and a column,
     so ``saveEditor``'s refusal opens every fold, says the API's sentence
-    in the editor and does not close it."""
-    seen = _run_renderer(tmp_path, "save_refused", ("async function saveEditor() {",), """
+    in the editor and does not close it. Decision 193: the refusal arrives
+    as the tracker's envelope and is also a notice, in the same sentence;
+    an error of the page's own is said in both places by its class alone,
+    its message only logged (principle 7)."""
+    headers = ("async function saveEditor() {", "function failed(err, retry) {",
+               "function failureSentence(err) {")
+    harness = """
 const page = { "ed-save": { disabled: false } };
 const $ = (id) => page[id];
 const withEng = (command) => [command];
-const call = async () => { throw new Error("Row A01: a fabricated refusal"); };
+const call = async () => { throw THROWN; };
 const editorRows = [], editorState = { list_head: "h" };
 const engagementFromFields = () => ({});
-const done = { folds: 0, notes: [], closed: [] };
+const viewGeneration = 0;
+const vocab = { shell: { page_error: "Own error ({kind})." } };
+const fill = (text, values) => text.replace("{kind}", values.kind);
+const done = { folds: 0, notes: [], notices: [], logged: 0, closed: [] };
+const window = { tracker: { logError: () => { done.logged += 1; } } };
+const notice = (failure) => done.notices.push([failure.sentence, failure.kind]);
 const showEveryFold = () => { done.folds += 1; };
 const editorNote = (text, cls) => done.notes.push([text, cls]);
 const closeDialog = (id) => done.closed.push(id);
-const render = () => {}, banner = () => {};
+const renderFor = () => { throw new Error("a refused save draws nothing"); };
+const banner = () => {};
 saveEditor().then(() => process.stdout.write(JSON.stringify(done)));
-""")
-    assert seen == {"folds": 1, "notes": [["Row A01: a fabricated refusal", "err"]], "closed": []}
+"""
+    sentence = "Row A01: a fabricated refusal"
+    refusal = (f"Object.assign(new Error({json.dumps(sentence)}), {{ failure: "
+               f"{{ sentence: {json.dumps(sentence)}, kind: \"refused\", identifier: \"A01\" }} }})")
+    seen = _run_renderer(tmp_path, "save_refused", headers, harness.replace("THROWN", refusal))
+    assert seen == {"folds": 1, "notes": [[sentence, "err"]], "notices": [[sentence, "refused"]],
+                    "logged": 0, "closed": []}
+    own = _run_renderer(tmp_path, "save_own_error", headers,
+                        harness.replace("THROWN", 'new TypeError("x is undefined at C:/private")'))
+    assert own == {"folds": 1, "notes": [["Own error (TypeError).", "err"]],
+                   "notices": [["Own error (TypeError).", "failed"]], "logged": 1, "closed": []}
 
 
 def test_edit_request_list_says_so_when_the_state_is_still_another_returns(tmp_path):

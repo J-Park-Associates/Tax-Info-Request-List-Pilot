@@ -243,20 +243,28 @@ function warningNotices(list) {
   for (const sentence of list) notice({ sentence, kind: "warning" });
 }
 
-// A caught error, said as a notice: the tracker's envelope, or - for an
-// error of the page's own - its message as a failure.
-// An error of the page's own is said by its class alone, in the API's
-// sentence; its message goes to the error log through the shell, never on
-// screen (principle 7; the review's S5).
+// What a caught error is said as, wherever it is said: the tracker's own
+// sentence from its envelope, or - for an error of the page's own - its
+// class alone, in the API's sentence; that message goes to the error log
+// through the shell, never on screen (principle 7; the review's S5).
+function failureSentence(err) {
+  if (err && err.failure) return err.failure.sentence;
+  const kind = (err && err.name) || "Error";
+  window.tracker.logError(`${kind}: ${String((err && err.message) || err)}\n${(err && err.stack) || ""}`);
+  return vocab ? fill(vocab.shell.page_error, { kind }) : kind;
+}
+
+// A caught error, said as a notice: the tracker's envelope, or a failure
+// of the page's own in failureSentence's words. Returns the sentence, for
+// a caller that also says it where the person is reading (decision 201).
 function failed(err, retry) {
   if (err && err.failure) {
     notice(err.failure, { retry });
-    return;
+    return err.failure.sentence;
   }
-  const kind = (err && err.name) || "Error";
-  window.tracker.logError(`${kind}: ${String((err && err.message) || err)}\n${(err && err.stack) || ""}`);
-  const sentence = vocab ? fill(vocab.shell.page_error, { kind }) : kind;
+  const sentence = failureSentence(err);
   notice({ sentence, kind: "failed", seq: null, identifier: null }, { retry });
+  return sentence;
 }
 
 function dismissNotice(entry) {
@@ -2194,7 +2202,7 @@ async function bootstrap(preferPath) {
     try {
       await loadForms();
     } catch (err) {
-      formsUnloaded = err.message;
+      formsUnloaded = failureSentence(err);   // never a page error's own text (principle 7)
     }
     renderFor(view, await call(withEng("state")));
   } catch (err) {
@@ -3386,9 +3394,11 @@ async function saveEditor() {
     // A refusal names a row and a column, and the column it names must be
     // on screen: every fold opens (decision 201). The sentence is never
     // parsed; the rows stay as typed, and the dialog stays dirty.
+    // It is said in the editor, where the person is reading, and as a
+    // notice, with Look again when the list moved (the review's S3) - in
+    // one sentence, the tracker's own or failed's (decision 193).
     showEveryFold();
-    editorNote(err.message, "err");
-    failed(err);   // and a notice, with Look again when the list moved (the review's S3)
+    editorNote(failed(err), "err");
   } finally {
     btn.disabled = false;
   }
