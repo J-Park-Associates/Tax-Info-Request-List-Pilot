@@ -32,6 +32,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - view          : the page a person opens, regenerated from the record and the readers every pass
 - settings      : the settings file beside the app - the clients root and firm, written once
 - reasons       : every refusal said once: the note, the client's ask, whose problem it is
+- errors        : an error named by its class where a person sees it; its words kept apart
 - api           : the desktop app's command layer, one JSON command in, one JSON reply out
 
 The standing rules below are the ones every module upholds. They are read

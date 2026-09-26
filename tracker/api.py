@@ -66,6 +66,7 @@ from tracker import (
     checkpoint,
     content_check,
     door,
+    errors,
     layout,
     ledger,
     names,
@@ -142,7 +143,13 @@ from tracker.layout import (
     return_dir_for,
     year_of,
 )
-from tracker.locking import STALE_LOCK_SECONDS, clear_stale_lock, engagement_lock, lock_status
+from tracker.locking import (
+    STALE_LOCK_SECONDS,
+    EngagementLockedError,
+    clear_stale_lock,
+    engagement_lock,
+    lock_status,
+)
 from tracker.manifest import (
     ANY_EXTENSION,
     COLUMN_HELP,
@@ -3779,6 +3786,15 @@ COMMANDS = {
 }
 
 
+#: The tracker's own errors: sentences the firm wrote about the firm's own
+#: files, shown to the app whole (decision 190).
+KNOWN_ERRORS = (ManifestError, ScanLockedError, FilingError, door.DoorError, layout.LayoutError,
+                store.StoreError, ledger.LedgerError, reminder.ReminderError, SettingsError,
+                RegistryError, EngagementLockedError)
+#: What the app shows for any other error: its class, never its words.
+UNEXPECTED_ERROR = "something unexpected stopped this ({error})"
+
+
 def main(argv: list[str]) -> int:
     if not argv or argv[0] not in COMMANDS:
         print(json.dumps({"error": f"usage: tracker.api {'|'.join(COMMANDS)}"}))
@@ -3790,11 +3806,14 @@ def main(argv: list[str]) -> int:
         # read, and ended with it (decision 169, R-4).
         with ocr.reading_session(in_a_child=content_check.READ_IN_A_CHILD):
             payload = COMMANDS[argv[0]](argv[1:])
-    except (ManifestError, ScanLockedError, FilingError, door.DoorError, layout.LayoutError) as exc:
+    except KNOWN_ERRORS as exc:
         print(json.dumps({"error": str(exc)}))
         return 1
     except Exception as exc:  # surface anything else as JSON, not a traceback
-        print(json.dumps({"error": f"{exc.__class__.__name__}: {exc}"}))
+        # Its class and a fixed sentence, never its words: an error nobody
+        # foresaw may be a parser's, quoting a client's file (decision 190).
+        errors.keep("api: " + argv[0], exc)
+        print(json.dumps({"error": UNEXPECTED_ERROR.format(error=errors.error_class(exc))}))
         return 1
     finally:
         # The store is opened on first use by whatever command needed it;

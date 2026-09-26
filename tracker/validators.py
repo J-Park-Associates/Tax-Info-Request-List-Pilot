@@ -49,7 +49,7 @@ from pathlib import Path
 
 from pypdf import PdfReader
 
-from tracker import reasons
+from tracker import errors, reasons
 from tracker.fsio import TEMP_SUFFIX
 from tracker.manifest import RequestItem
 
@@ -308,7 +308,9 @@ def _pdf_error_uncached(path: Path) -> str:
         if len(reader.pages) == 0:
             return reasons.NO_PAGES.format()
     except Exception as exc:  # pypdf raises many types on corrupt input
-        return reasons.UNREADABLE_PDF.format(error=f"{exc.__class__.__name__}: {exc}")
+        # Its class, never its message: pypdf quotes the file (decision 190).
+        errors.keep("validators: pdf open test", exc, name=path.name)
+        return reasons.UNREADABLE_PDF.format(error=errors.error_class(exc))
     return ""
 
 
@@ -337,7 +339,8 @@ def _image_error(path: Path) -> str | None:
         # file, so it is ours to look at rather than the client's to resend.
         return picture_too_large_reason(exc)
     except Exception as exc:  # Pillow raises many types on a file that is not one
-        return reasons.UNREADABLE_IMAGE.format(error=f"{exc.__class__.__name__}: {exc}")
+        errors.keep("validators: image open test", exc, name=path.name)
+        return reasons.UNREADABLE_IMAGE.format(error=errors.error_class(exc))
     return None
 
 
@@ -421,7 +424,7 @@ def check_file(
             path=path,
             ok=False,
             pending_sync=True,
-            reason=reasons.VANISHED.format(error=exc.__class__.__name__),
+            reason=reasons.VANISHED.format(error=errors.error_class(exc)),
         )
     if size < item.min_size_kb * 1024:
         return FileResult(

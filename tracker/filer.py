@@ -190,7 +190,7 @@ from contextlib import ExitStack
 from dataclasses import dataclass, field, replace
 from pathlib import Path, PurePosixPath
 
-from tracker import containers, door, ledger, ocr, reasons, store
+from tracker import containers, door, errors, ledger, ocr, reasons, store
 from tracker.content_check import (
     RETIRED_CACHE_FILENAME,
     ContentCache,
@@ -690,6 +690,12 @@ def _kind_of(extension: str) -> str:
     """How a sentence names a kind of copy: ``.xlsx``, or ``working``."""
     extension = extension.lower().lstrip(".")
     return f".{extension}" if extension else "working"
+
+
+#: The tracker's own errors a filing meets: sentences the firm wrote about
+#: the firm's own files, said whole on a row as the app says them, where
+#: anything else is named by its class (decision 190, the review's S3).
+FIRM_WRITTEN = (FilingError, ManifestError, store.StoreError, ledger.LedgerError, EngagementLockedError)
 
 
 class NoRoom(FilingError):
@@ -3981,9 +3987,9 @@ def _sort_all(
                 drop.stat()          # still there, and readable: a file mid-write is left
             except OSError as exc:
                 first.report.errors.append(FileError(
-                    drop.name, f"could not read it ({exc}); left in place", True
+                    drop.name, f"could not read it ({errors.error_class(exc)}); left in place", True
                 ))
-                log.warning("Left %s in place: %s", drop.name, exc)
+                errors.keep("filer: left in place", exc, name=drop.name)
                 continue
 
             # A row's own original, back in the inbox (decision 157, ruling B7):
@@ -4033,10 +4039,10 @@ def _sort_all(
                 except (OSError, FilingError) as exc:
                     first.report.errors.append(FileError(
                         drop.name,
-                        f"could not move it into {originals_dir.name} ({exc}); left in place",
+                        f"could not move it into {originals_dir.name} ({errors.error_class(exc)}); left in place",
                         True,
                     ))
-                    log.warning("Left %s in place: %s", drop.name, exc)
+                    errors.keep("filer: left in place", exc, name=drop.name)
                     continue
             # The record is of the bytes that were preserved: hashed where they
             # now are, after the move, so a sync client landing a newer version
@@ -4049,12 +4055,12 @@ def _sort_all(
             except OSError as exc:
                 if already_filed or dry_run:
                     first.report.errors.append(FileError(
-                        drop.name, f"could not read it ({exc}); left in place", True
+                        drop.name, f"could not read it ({errors.error_class(exc)}); left in place", True
                     ))
-                    log.warning("Left %s in place: %s", drop.name, exc)
+                    errors.keep("filer: left in place", exc, name=drop.name)
                     continue
                 digest, size_kb = "", 0.0     # moved, unreadable now: recorded anyway
-                log.warning("Preserved %s but could not read it back: %s", drop.name, exc)
+                errors.keep("filer: preserved but could not read it back", exc, name=drop.name)
 
             # An email or a zip is opened, and each attachment decided as a
             # document of its own (decision 143) - after the move and the
@@ -4092,7 +4098,7 @@ def _sort_all(
                 _out_of_time(first, len(pending) - taken)
                 break
             except Exception as exc:  # the original is safe; say so and go on
-                log.exception("Could not file %s", drop.name)
+                errors.keep("filer: could not file", exc, name=drop.name)
                 run = first
                 entry = IndexEntry(
                     received=stamp, original_name=drop.name, size_kb=size_kb,
@@ -4100,7 +4106,7 @@ def _sort_all(
                     prepared_location="", pbc_location=location_of(run.engagement_dir, original),
                     decision=NEEDS_REVIEW,
                     reason="; ".join(part for part in (
-                        f"could not be filed ({exc.__class__.__name__}: {exc}); "
+                        f"could not be filed ({errors.said(exc, FIRM_WRITTEN)}); "
                         f"original preserved in {location_of(run.engagement_dir, original)} - "
                         f"file it by hand", came_from) if part),
                 )
@@ -4212,10 +4218,10 @@ def _put_back_home(
             _take_back(engagement_dir, done)
             _abandon(engagement_dir, key)
             first.report.errors.append(FileError(
-                drop.name, f"could not be moved back to {entry.pbc_location} ({exc}); left in place",
+                drop.name,
+                f"could not be moved back to {entry.pbc_location} ({errors.error_class(exc)}); left in place",
                 True))
-            log.warning("Left %s in place: moving it back to %s failed: %s",
-                        drop.name, entry.pbc_location, exc)
+            errors.keep("filer: moving it back failed", exc, name=drop.name)
             return True
         run.entries[position] = new
         run.swept[key] = ledger.ORIGINAL_RETURNED
@@ -4514,13 +4520,13 @@ def _decide_attachment(
     except OutOfTime:
         raise                         # a wait, not a failure: the container says it
     except Exception as exc:          # the file is safe where it was written; say so and go on
-        log.exception("Could not file %s", attachment.name)
+        errors.keep("filer: could not file an attachment", exc, name=attachment.name)
         run = first
         where = location_of(run.engagement_dir, path)
         entry = IndexEntry(
             received=stamp, original_name=attachment.name, size_kb=size_kb, digest=digest,
             identifier="", prepared_location="", pbc_location=where, decision=NEEDS_REVIEW,
-            reason=(f"could not be filed ({exc.__class__.__name__}: {exc}); "
+            reason=(f"could not be filed ({errors.said(exc, FIRM_WRITTEN)}); "
                     f"taken out to {where} - file it by hand"),
             container=at[id(run)],
         )

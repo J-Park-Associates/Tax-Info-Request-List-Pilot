@@ -936,7 +936,7 @@ def test_a_failure_after_the_move_is_recorded_and_the_rest_still_filed(engagemen
     rows = {e.original_name: e for e in read_index(engagement)}
     assert set(rows) == {"a-w2.pdf", "b-mortgage.pdf", "c-w2.pdf"}
     assert rows["b-mortgage.pdf"].decision == NEEDS_REVIEW
-    assert "No space left" in rows["b-mortgage.pdf"].reason
+    assert "(OSError (ENOSPC))" in rows["b-mortgage.pdf"].reason   # its class, never its words (decision 190)
     assert original_at(engagement, "b-mortgage.pdf") in rows["b-mortgage.pdf"].reason
 
 
@@ -1373,7 +1373,7 @@ def test_a_copy_that_fails_half_way_leaves_no_truncated_working_copy(engagement,
     monkeypatch.setattr(shutil, "copy2", half)
     report = sort(engagement, today=DAY1)
     monkeypatch.undo()
-    assert len(report.review) == 1 and "No space left" in report.review[0].reason
+    assert len(report.review) == 1 and "(OSError (ENOSPC))" in report.review[0].reason
     assert not any(prepared(engagement, "A01").iterdir())          # nothing half-written
     assert (originals(engagement) / "w2.pdf").exists()                    # the record is safe
 
@@ -3229,7 +3229,10 @@ def test_a_copy_whose_bytes_are_not_the_originals_is_unlinked_and_the_drop_is_co
 
     [row] = read_index(engagement)
     assert row.decision == NEEDS_REVIEW and report.filed == []
-    assert "could not be filed (CopyMismatchError:" in row.reason
+    # The firm's own sentence, whole: the filer's error is not a parser's
+    # words, so the row keeps what it says (decision 190, the review's S3).
+    assert "could not be filed (w2.pdf was copied to " in row.reason
+    assert "the copy does not hold the original's bytes" in row.reason
     assert original_at(engagement, "w2.pdf") in row.reason
     assert not any(prepared(engagement, "A01").iterdir())    # nothing of it was left behind
     assert not list(review_dir(engagement).iterdir())
@@ -7029,7 +7032,7 @@ def test_a_move_whose_source_is_now_behind_a_link_moves_nothing(engagement, tmp_
     monkeypatch.setattr(filer, "iter_drops", lambda folder, **_: [behind])
     report = sort(engagement, today=DAY1)
     assert [e.name for e in report.errors] == ["theirs.pdf"]
-    assert report.errors[0].left_in_place and "reached through a link" in report.errors[0].error
+    assert report.errors[0].left_in_place and "(MovedThroughALinkError" in report.errors[0].error
     assert (outside / "theirs.pdf").exists()
     assert report.filed == [] and report.review == []
 

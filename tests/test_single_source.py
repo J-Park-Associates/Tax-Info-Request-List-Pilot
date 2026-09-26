@@ -1167,6 +1167,7 @@ CONSOLE_EXEMPT = {
     "api": "stdout is the shell's JSON channel, written with ensure_ascii; nothing a console encodes",
     "settings": "prints the firm's own root and settings, never a client's name (decision 97's hold)",
     "scheduling": "prints the task's root and paths, never a client's name",
+    "errors": "prints an exception's class or a fixed sentence, never a client's name",
 }
 
 

@@ -151,13 +151,12 @@ import os
 import re
 import sys
 import time
-import traceback
 from collections.abc import Iterable
 from contextlib import ExitStack, nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tracker import checkpoint, content_check, door, ledger, ocr, store
+from tracker import checkpoint, content_check, door, errors, ledger, ocr, store
 from tracker.filer import (
     HOUSEHOLD_NO_ROOM,
     NEEDS_REVIEW,
@@ -943,12 +942,13 @@ def run_household(
         for run in working or [one for one in runs if not one.skipped and not one.error]:
             if not run.error:
                 # Its class and code, never its message (security principle
-                # 7; the review's S2): the message can name a client's
-                # folder, and this reaches the page and the run log. The
-                # whole trace is on stderr for a person.
-                run.error = content_check.said_as_class(exc)
-        log.error("A household stopped early (%s)", content_check.said_as_class(exc),
-                  exc_info=True)
+                # 7; the review's S2; decision 190): the message can name a
+                # client's folder or quote a client's file, and this reaches
+                # the page, the run log and the app. The words and the trace
+                # are kept on the debug log, and only there.
+                run.error = errors.error_class(exc)
+        errors.keep("runner: household pass", exc, name=household.name)
+        log.error("A household stopped early (%s)", errors.error_class(exc))
     if unreached or any(run.out_of_time for run in working):
         # The household's time ran out (decision 189): every working return
         # says so, whichever step it ran out in, and the rest waits.
@@ -1155,8 +1155,8 @@ def run_engagement(
     except (ManifestError, ReminderError) as exc:
         run.error = str(exc)
     except Exception as exc:  # one client's surprise must not stop the rest
-        run.error = f"{exc.__class__.__name__}: {exc}"
-        run.draft_note = traceback.format_exc(limit=3).strip().splitlines()[-1]
+        errors.keep("runner: engagement pass", exc, name=engagement.path.name)
+        run.error = errors.error_class(exc)   # the class only (decision 190)
     return run
 
 
@@ -2068,7 +2068,7 @@ def _engagement_status(engagement: Engagement) -> EngagementRun:
         # One bad record costs its own row, never the page (decision 189),
         # said by its class and code: the message can name the record's
         # path, a client's folder (security principle 7; the review's S2).
-        run.error = RECORD_UNREADABLE.format(problem=content_check.said_as_class(exc))
+        run.error = RECORD_UNREADABLE.format(problem=errors.error_class(exc))
         return run
     run.statuses = summary.counts
     run.outstanding = summary.outstanding

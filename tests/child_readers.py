@@ -107,6 +107,17 @@ def a_reader_that_dies_on_a_crash(path: Path, *, ocr: bool = True):
     return content_check.extract(path, ocr=ocr)
 
 
+#: What the stand-in below says as it fails (decision 190): the shape of
+#: a W-2's own words, and fabricated - nobody's number, nobody's name.
+QUOTED_BY_THE_PARSER = "bad object near 'SSN 123-45-6789 Jane Fabricated'"
+
+
+def a_reader_whose_error_quotes_the_document(path: Path, *, ocr: bool = True):
+    """A reader that fails the way pypdf does on a broken file: its message
+    quotes the document."""
+    raise ValueError(QUOTED_BY_THE_PARSER)
+
+
 def a_reader_that_starts_a_reader_of_its_own(path: Path, *, ocr: bool = True):
     """A reader that has started a process of its own and then never
     finishes. The helper's process id is left

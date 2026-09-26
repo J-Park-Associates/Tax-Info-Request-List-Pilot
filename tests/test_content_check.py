@@ -1309,8 +1309,9 @@ STOP_IN_TESTS = 5.0
 #: What a reading stopped at a stop under a minute says.
 STOPPED = "The reader stopped after 1 minute on this file. A person reads it."
 CRASHED = "The reader could not read this file (it stopped unexpectedly). A person reads it."
-#: What pypdf (decision 153, 6.19.0) says of 150's page-tree bomb, refusing it itself.
-BOMB_REFUSED = "Maximum page tree entry limit reached"
+#: What pypdf (decision 153, 6.19.0) raises on 150's page-tree bomb, refusing it itself:
+#: its class, which is all of it a reason says since decision 190.
+BOMB_REFUSED = "(LimitReachedError)"
 
 
 @pytest.fixture
@@ -2207,7 +2208,9 @@ def test_a_workbook_packed_with_bzip2_is_never_unpacked(tmp_path):
     """A workbook is a zip, and openpyxl unpacks whatever packing a part
     names: a 19 KB .xlsx whose sheet was bzip2 exhausted memory the way the
     zip did. Only stored and deflated parts are read; anything else fails
-    the reading with the sentence that says why, before a byte is unpacked."""
+    the reading with the sentence that says why, before a byte is unpacked
+    (``UnknownPacking``, whose message is the firm's own sentence and so is
+    said whole, decisions 189 and 190)."""
     import zipfile
 
     import tracker.content_check as content_check

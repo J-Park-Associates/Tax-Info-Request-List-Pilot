@@ -1368,6 +1368,18 @@ the drafted email uses it: a firm-side row is reported to us and never put
 to the client, so nobody asks a client to resend a file we simply have not
 read yet.
 
+**A note that says a file would not open ends with the error's class, in
+brackets, and nothing more** — `not a readable PDF (PdfReadError)`,
+`could not read it (FileNotFoundError (ENOENT))` (decision 190). The one
+exception is a workbook packed a way only a person's zip program opens: its
+note says so in the firm's own sentence. The class says what kind of
+failure it was; the reader's own message is never shown, because it can
+quote the document itself - a number, a name. The full message and its
+trace go only to the debug log, which has no place yet (decision 186 gives
+it one), so today they are not kept at all. The same holds for a row the
+filer could not file, for the run log's line and for the app: an error the
+tracker did not foresee is shown by its class alone.
+
 **Ours to deal with** (never in the client's email):
 `reasons.PENDING_SYNC`, `reasons.VANISHED`, `reasons.NO_TEXT_LAYER`,
 `reasons.NO_TEXT_AFTER_OCR`, `reasons.OCR_FAILED`,

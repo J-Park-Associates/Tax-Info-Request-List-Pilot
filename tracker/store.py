@@ -355,6 +355,10 @@ class StoreUnavailable(StoreError):
     a closed connection - has none and reads ``SQLITE_ERROR``.
     """
 
+    #: Said as ``<class> (<code>)`` by :func:`tracker.errors.error_class`
+    #: (the marker :data:`tracker.errors.SAYS_ITS_CODE`, decision 190).
+    says_its_code = True
+
     def __init__(self, code: str) -> None:
         super().__init__(STORE_UNAVAILABLE.format(code=code))
         self.code = code

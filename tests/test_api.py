@@ -4082,20 +4082,20 @@ def test_a_failed_create_removes_only_the_folders_it_made(capsys, demo_root, mon
 
     # A second return in a year the household did not have: the year goes too.
     code, payload = run(capsys, "create", stdin={**spec, "return_name": "Smith 2026", "year": 2026})
-    assert code == 1 and "the scaffold failed" in payload["error"]
+    assert code == 1 and payload["error"] == api.UNEXPECTED_ERROR.format(error="OSError")
     assert not new_year.exists()
     # A second return in the year it did have: the year stays.
     code, payload = run(capsys, "create", stdin={**spec, "return_name": "Smith Trust"})
-    assert code == 1 and "the scaffold failed" in payload["error"]
+    assert code == 1 and payload["error"] == api.UNEXPECTED_ERROR.format(error="OSError")
     assert prior.parent.is_dir() and not where(demo_root, "Smith Trust").exists()
     # A rollover into a new year: the same.
     code, payload = run(capsys, "rollover", stdin={"prior": str(prior), "year": 2026})
-    assert code == 1 and "the scaffold failed" in payload["error"]
+    assert code == 1 and payload["error"] == api.UNEXPECTED_ERROR.format(error="OSError")
     assert not new_year.exists()
     # A new household: it goes, and the private tree it sat in - which was
     # already there - stays.
     code, payload = run(capsys, "create", stdin={**spec, "household": "New Family"})
-    assert code == 1 and "the scaffold failed" in payload["error"]
+    assert code == 1 and payload["error"] == api.UNEXPECTED_ERROR.format(error="OSError")
     assert not private_household_dir(demo_root, "New Family").exists()
     assert (demo_root / PRIVATE_TREE).is_dir()
 
@@ -4224,7 +4224,7 @@ def test_a_failed_create_removes_a_year_folder_only_when_it_is_empty(capsys, dem
 
     monkeypatch.setattr(api, "scaffold_engagement", another_create_lands_then_the_scaffold_fails)
     code, payload = run(capsys, "create", stdin={**spec, "return_name": "Smith 2026", "year": 2026})
-    assert code == 1 and "the scaffold failed" in payload["error"]
+    assert code == 1 and payload["error"] == api.UNEXPECTED_ERROR.format(error="OSError")
     assert not where(demo_root, "Smith 2026", year=2026).exists()        # its own return: gone
     assert (theirs / "their file.txt").read_text(encoding="utf-8") == "theirs"   # theirs: kept
     assert new_year.is_dir()                                             # and the year with it

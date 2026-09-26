@@ -555,6 +555,10 @@ class RecordNotWritten(LedgerError):
     lock costs its household, never the practice pass - and ``code`` is
     the errno's name (``ENOSPC``, ``EACCES``), data rather than prose."""
 
+    #: Said as ``<class> (<code>)`` by :func:`tracker.errors.error_class`
+    #: (the marker :data:`tracker.errors.SAYS_ITS_CODE`, decision 190).
+    says_its_code = True
+
     def __init__(self, code: str) -> None:
         super().__init__(RECORD_NOT_WRITTEN.format(code=code))
         self.code = code

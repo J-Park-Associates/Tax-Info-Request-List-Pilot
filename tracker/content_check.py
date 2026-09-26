@@ -87,7 +87,6 @@ re-exported here for one release.
 
 from __future__ import annotations
 
-import errno
 import hashlib
 import json
 import logging
@@ -98,7 +97,7 @@ from collections import OrderedDict
 from dataclasses import MISSING, asdict, dataclass, field, fields, replace
 from pathlib import Path
 
-from tracker import ledger, ocr, reasons, store
+from tracker import errors, ocr, reasons, store
 from tracker.manifest import RequestItem, derived_date_pattern, has_routing_rules, keyword_alternatives
 
 # The Evidence record and the cell format it is written in live in
@@ -238,9 +237,12 @@ UNKNOWN_PACKING = "a part of it is packed in a way only a person's zip program o
 
 
 class UnknownPacking(ValueError):
-    """A workbook packed a way :data:`PACKINGS` does not hold. Its message
-    is the firm's own sentence (:data:`UNKNOWN_PACKING`), the one error a
-    reading says in words rather than by its class (:func:`said_as_class`)."""
+    """A workbook packed a way :data:`PACKINGS` does not hold (decision
+    178). Its message is the firm's own sentence (:data:`UNKNOWN_PACKING`),
+    the one error a reading says in words rather than by its class
+    (:func:`tracker.errors.said`, decisions 189 and 190)."""
+
+
 #: The clock the stop reads: the awake clock every part of a reading's
 #: stop reads (decision 189), so a machine that slept does not end a
 #: reading it never gave any time to. A name of its own so the suite can
@@ -309,7 +311,9 @@ class Extraction:
     needs_ocr: bool = False      # a scan; OCR was not attempted (ocr=False)
     reason: str = ""             # why there is no usable text, if there is none
     extractable: bool = True     # False: no extractor, no OCR, or extraction failed
-    error: str = ""              # the exception, when extraction raised
+    #: Why the reading failed: the exception's class (decision 190), never
+    #: its message, or the firm's own sentence for a child that ended.
+    error: str = ""
     transient: bool = False      # the machine's doing (no OCR, OCR failed), not the file's
     #: How long this reading took, in seconds (decision 127). Recorded on
     #: every reading, failed ones included, and never acted on: a slow
@@ -1827,10 +1831,12 @@ def _ocr_pdf(path: Path) -> str | None:
     except MemoryError:
         raise           # the child's memory limit: a crash, not a retry (SPEC-169 section 9)
     except Exception as exc:
-        # The class alone (decision 189, M1): a reader's message can quote
-        # the document or its path, and is neither logged nor carried.
-        log.warning("OCR failed on %s (%s)", path.name, said_as_class(exc))
-        raise OcrError(said_as_class(exc)) from exc
+        # The class alone (decisions 189 and 190): a reader's message can
+        # quote the document or its path. The run log names the class; the
+        # words stay on the debug log.
+        log.warning("OCR failed on %s (%s)", path.name, errors.error_class(exc))
+        errors.keep("content_check: OCR", exc, name=path.name)
+        raise OcrError(errors.error_class(exc)) from exc
 
 
 def _ocr_image(path: Path) -> str | None:
@@ -1876,32 +1882,24 @@ def _ocr_image(path: Path) -> str | None:
     except MemoryError:
         raise           # the child's memory limit: a crash, not a retry (SPEC-169 section 9)
     except Exception as exc:
-        # The class alone (decision 189, M1): a reader's message can quote
-        # the document or its path, and is neither logged nor carried.
-        log.warning("OCR failed on %s (%s)", path.name, said_as_class(exc))
-        raise OcrError(said_as_class(exc)) from exc
-
-
-def said_as_class(exc: BaseException) -> str:
-    """How an error is said wherever a person or a record reads it
-    (decision 189, security principle 7): its class, and the code it
-    carries - an errno's name, or the code of a store or record the disk
-    refused - and never its message.
-
-    A parser's message quotes what it choked on (openpyxl quotes a cell's
-    value), and the operating system's names the path, which is a client's
-    folder. The message stays on the exception for a person debugging; it
-    is never quoted into a reason, the record, a page or the run log."""
-    name = exc.__class__.__name__
-    if isinstance(exc, (store.StoreUnavailable, ledger.RecordNotWritten)):
-        return f"{name} ({exc.code})"
-    if isinstance(exc, OSError) and exc.errno in errno.errorcode:
-        return f"{name} ({errno.errorcode[exc.errno]})"
-    return name
+        # The class alone (decisions 189 and 190): a reader's message can
+        # quote the document or its path. The run log names the class; the
+        # words stay on the debug log.
+        log.warning("OCR failed on %s (%s)", path.name, errors.error_class(exc))
+        errors.keep("content_check: OCR", exc, name=path.name)
+        raise OcrError(errors.error_class(exc)) from exc
 
 
 class OcrError(RuntimeError):
-    """The reader ran but failed on this file this time; try again later."""
+    """The reader ran but failed on this file this time; try again later.
+
+    Its one argument is the failure's class (:func:`tracker.errors.error_class`),
+    never its message: that is what the reason shows (decision 190)."""
+
+    @property
+    def error(self) -> str:
+        """The class of the failure underneath, as the reason shows it."""
+        return str(self.args[0]) if self.args else type(self).__name__
 
 
 class TooLargeToRead(Exception):
@@ -1957,9 +1955,12 @@ def _extract(path: Path, *, ocr: bool) -> Extraction:
     except MemoryError:
         raise           # the child's memory limit: a crash, not a corrupt file (SPEC-169 section 9)
     except Exception as exc:  # a corrupt file is a reason, not a crash
-        # Its class, never its message (decision 189, M1): a parser quotes
-        # the cell or the line it choked on, which is the document's words.
-        error = str(exc) if isinstance(exc, UnknownPacking) else said_as_class(exc)
+        # Its class, never its message (decisions 189 and 190): a parser
+        # quotes the cell or the line it choked on, which is the document's
+        # words. UnknownPacking's message is the firm's own sentence, said
+        # whole. The words are kept apart, on the debug log.
+        errors.keep("content_check: extraction", exc, name=path.name)
+        error = errors.said(exc, (UnknownPacking,))
         return Extraction(
             None, reason=reasons.EXTRACTION_FAILED.format(error=error),
             extractable=False, error=error,
@@ -1998,8 +1999,8 @@ def extract_by_ocr(path: Path) -> Extraction:
     except OcrError as exc:
         # Ours to retry, not the client's to resend: the file may be fine.
         return Extraction(
-            None, reason=reasons.OCR_FAILED.format(error=str(exc)),
-            extractable=False, error=str(exc), transient=True,
+            None, reason=reasons.OCR_FAILED.format(error=exc.error),
+            extractable=False, error=exc.error, transient=True,
         )
     finally:
         _STOP = None
@@ -2276,18 +2277,24 @@ def in_a_child(path: Path, job, *, stop: float | None = None, **kwargs) -> tuple
     if outcome.kind == "read":
         return outcome.answer, None
     if outcome.kind == "not_started":
-        log.warning("The reader could not start for %s: %s", path.name, outcome.error)
+        errors.keep("content_check: the reader could not start", outcome.error, name=path.name)
         return None, could_not_start(outcome.seconds, outcome.error, path.name)
     if outcome.kind == "stopped":
         log.warning("Reading %s stopped at the safety stop (%.0f s)", path.name, stop)
         return None, abandoned(outcome.seconds)
-    # What crosses the pipe is the class and nothing after it (decision
-    # 189, M1): the child's "Class: message" can quote the document.
+    # What crosses the pipe is the class and nothing after it (decisions
+    # 189, M1, and 190): the child sends its class, message and trace apart,
+    # and the partition still cuts anything after a colon.
     error = outcome.error.partition(":")[0]
     if outcome.kind == "failed":
-        log.warning("The reader failed on %s: %s", path.name, outcome.trace)
+        # The class is the row's; the words and the trace are the debug
+        # log's (decision 190). The run log names the class only.
+        log.warning("The reader failed on %s (%s)", path.name, error)
+        errors.keep("content_check: the reader failed",
+                    f"{outcome.message}\n{outcome.trace}", name=path.name)
         return None, reading_failed(outcome.seconds, error)
     log.warning("The reader stopped unexpectedly on %s (%s)", path.name, error)
+    errors.keep("content_check: the reader stopped unexpectedly", outcome.error, name=path.name)
     return None, reading_failed(outcome.seconds, error)
 
 

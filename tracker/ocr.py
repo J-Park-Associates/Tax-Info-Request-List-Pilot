@@ -95,6 +95,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from tracker import errors
+
 log = logging.getLogger(__name__)
 
 # ----------------------------------------------------------------- devices ----
@@ -388,8 +390,10 @@ def read_page(image, *, name: str = "") -> str:
         # A fault on the card poisons the engine, not the page: every later
         # page in this process would fail the same way. Read this page
         # again on the processor, and stay there for the rest of the pass.
-        log.warning("The graphics card failed while reading %s (%s: %s); reading on the processor",
-                    name or "a page", exc.__class__.__name__, exc)
+        # Its class only: this runs in the reading child, on a client's page,
+        # and the child keeps no words of an error (decision 190).
+        log.warning("The graphics card failed while reading %s (%s); reading on the processor",
+                    name or "a page", errors.error_class(exc))
         _NOTES.append(("gpu-fault", name or "a page"))
         processor_only()
         del engine
@@ -515,13 +519,16 @@ class Outcome:
     """What became of one job sent to the child.
 
     ``kind`` is ``"read"`` (``answer`` is what the job returned),
-    ``"failed"`` (the job raised: ``error`` and ``trace``), ``"stopped"``
+    ``"failed"`` (the job raised: ``error`` is its class, ``message`` and
+    ``trace`` its words, which only the debug log may hold - decision 190), ``"stopped"``
     (ended at the stop), ``"died"`` (ended without an answer after it
     started) or ``"not_started"`` (never started the job: the machine's)."""
 
     kind: str
     answer: object = None
     error: str = ""
+    #: A failed job's own message: never shown, only kept (decision 190).
+    message: str = ""
     trace: str = ""
     seconds: float = 0.0
     #: What the reader said with its answer (:func:`take_notes`).
@@ -607,8 +614,8 @@ class ReadingChild:
         if kind == "read":
             return Outcome("read", answer=answer[0], notes=answer[1], seconds=seconds)
         if kind == "failed":
-            return Outcome("failed", error=answer[0], trace=answer[1], notes=answer[2],
-                           seconds=seconds)
+            return Outcome("failed", error=answer[0], message=answer[1], trace=answer[2],
+                           notes=answer[3], seconds=seconds)
         error = f"the reading's process ended with exit code {self._exit_code()}"
         if _job_memory(self._job_object)[1] >= self.memory_limit * 0.9:
             error += f"; it had reached its memory limit ({self.memory_limit / 1024**3:.0f} GB)"
@@ -680,7 +687,10 @@ def _the_child(jobs, sender, lifeline, processor_only_: bool) -> None:
             try:
                 answer = job(*args, **kwargs)
             except BaseException as exc:
-                _answer(sender, ("failed", f"{exc.__class__.__name__}: {exc}",
+                # The class, and apart from it the words and the trace: the
+                # pass shows the first and keeps the rest on its debug log.
+                # This process never opens a log of its own (decision 190).
+                _answer(sender, ("failed", errors.error_class(exc), _message_of(exc),
                                  traceback.format_exc(), take_notes()))
                 if isinstance(exc, MemoryError):
                     # Past its memory limit: said, and done - the pass
@@ -690,6 +700,15 @@ def _the_child(jobs, sender, lifeline, processor_only_: bool) -> None:
                 _answer(sender, ("read", answer, take_notes()))
     finally:
         sender.close()
+
+
+def _message_of(exc: BaseException) -> str:
+    """An exception's own words, for the pass's debug log; an exception
+    whose ``__str__`` itself fails is said by its class."""
+    try:
+        return str(exc)
+    except Exception:
+        return errors.error_class(exc)
 
 
 def _answer(sender, message) -> None:
@@ -902,9 +921,12 @@ class Session:
             if outcome.kind == "read":
                 self.device, why = outcome.answer
             else:
-                self.device, why = DEVICE_PROCESSOR, outcome.error or "the reader did not answer"
-                if outcome.error.startswith(ReaderUnavailable.__name__):
-                    cannot_run = outcome.error.partition(": ")[2] or outcome.error
+                # The warm-up reads the firm's own self-test, never a client's
+                # file, so its words are the machine's and are said in full.
+                said = ": ".join(part for part in (outcome.error, outcome.message) if part)
+                self.device, why = DEVICE_PROCESSOR, said or "the reader did not answer"
+                if outcome.error == ReaderUnavailable.__name__:
+                    cannot_run = outcome.message or outcome.error
         else:
             try:
                 self.device, why = warm_up()
@@ -959,7 +981,10 @@ class Session:
             try:
                 self.child = ReadingChild(processor_only=self._processor_only)
             except Exception as exc:
-                return Outcome("not_started", error=f"{exc.__class__.__name__}: {exc}",
+                # The class travels towards the row; the words are kept apart
+                # (decision 190).
+                errors.keep("ocr: the reading child could not be made", exc)
+                return Outcome("not_started", error=errors.error_class(exc),
                                seconds=awake_clock() - started), None
         child = self.child
         outcome = child.run(job, args, kwargs, stop, since=started if fresh else None)

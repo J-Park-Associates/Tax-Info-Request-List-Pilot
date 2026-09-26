@@ -997,6 +997,9 @@ def _decide(
             )
 
     if reading.error:
+        # ``reading.error`` is the failure's class or the firm's own
+        # sentence, never a parser's words (decision 190), so the row may
+        # carry it.
         return Routing(
             path=path,
             identifier=None,

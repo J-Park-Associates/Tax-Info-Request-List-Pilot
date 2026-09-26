@@ -645,7 +645,7 @@ def test_a_reader_that_cannot_run_is_not_blamed_on_the_card(monkeypatch, a_card)
 
     in_a_child = ocr.Session()
     monkeypatch.setattr(ocr.Session, "run", lambda *a, **k: ocr.Outcome(
-        "failed", error="ReaderUnavailable: the model PP-OCRv6_det_small.onnx is missing"))
+        "failed", error="ReaderUnavailable", message="the model PP-OCRv6_det_small.onnx is missing"))
     in_a_child.settle()
     assert in_a_child.note == session.note
 

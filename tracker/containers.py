@@ -86,6 +86,7 @@ from email.message import Message
 from pathlib import PurePath
 
 from tracker import content_check, reasons
+from tracker.errors import error_class
 from tracker.layout import WINDOWS_ILLEGAL_CHARS, is_invisible, is_reserved_name
 
 #: The extensions that make a drop a container, lower case, no dot. The
@@ -419,7 +420,7 @@ class _Walk:
         try:
             archive = zipfile.ZipFile(io.BytesIO(data))
         except (zipfile.BadZipFile, zipfile.LargeZipFile, ValueError, OSError, EOFError) as exc:
-            raise NotOpened(reasons.CONTAINER_DAMAGED.format(error=_said(exc))) from exc
+            raise NotOpened(reasons.CONTAINER_DAMAGED.format(error=error_class(exc))) from exc
         with archive:
             members = [info for info in archive.infolist() if not info.is_dir()]
             for info in archive.infolist():
@@ -459,14 +460,14 @@ class _Walk:
         except RuntimeError as exc:              # zipfile's "is encrypted, password required"
             raise NotOpened(reasons.CONTAINER_LOCKED.format()) from exc
         except (zipfile.BadZipFile, zlib.error, EOFError, ValueError, OSError) as exc:
-            raise NotOpened(reasons.CONTAINER_DAMAGED.format(error=_said(exc))) from exc
+            raise NotOpened(reasons.CONTAINER_DAMAGED.format(error=error_class(exc))) from exc
         return bytes(out)
 
     def _eml(self, data: bytes, depth: int) -> None:
         try:
             message = message_from_bytes(data, policy=policy.default)
         except Exception as exc:         # the parser records defects; anything raised is damage
-            raise NotOpened(reasons.CONTAINER_DAMAGED.format(error=_said(exc))) from exc
+            raise NotOpened(reasons.CONTAINER_DAMAGED.format(error=error_class(exc))) from exc
         if not list(message.keys()):
             raise NotOpened(reasons.CONTAINER_DAMAGED.format(error="no message headers"))
         try:
@@ -474,7 +475,7 @@ class _Walk:
         except NotOpened:
             raise
         except (LookupError, ValueError, TypeError, AttributeError, RecursionError) as exc:
-            raise NotOpened(reasons.CONTAINER_DAMAGED.format(error=_said(exc))) from exc
+            raise NotOpened(reasons.CONTAINER_DAMAGED.format(error=error_class(exc))) from exc
 
     def _eml_part(self, part: Message, depth: int) -> None:
         """One MIME part: a multipart is walked, an attached message is a
@@ -524,13 +525,13 @@ class _Walk:
         try:
             ole = olefile.OleFileIO(io.BytesIO(data), raise_defects=olefile.DEFECT_INCORRECT)
         except Exception as exc:         # olefile raises OSError and its own kinds for damage
-            raise NotOpened(reasons.CONTAINER_DAMAGED.format(error=_said(exc))) from exc
+            raise NotOpened(reasons.CONTAINER_DAMAGED.format(error=error_class(exc))) from exc
         try:
             self._msg_storage(ole, [], depth)
         except NotOpened:
             raise
         except Exception as exc:         # a malformed stream, a chain out of range, a loop
-            raise NotOpened(reasons.CONTAINER_DAMAGED.format(error=_said(exc))) from exc
+            raise NotOpened(reasons.CONTAINER_DAMAGED.format(error=error_class(exc))) from exc
         finally:
             ole.close()
 
@@ -641,12 +642,6 @@ _EXTENSION_FOR: dict[str, str] = {
 def _extension_for(content_type: str) -> str:
     """The extension a part with no name gets, from :data:`_EXTENSION_FOR`."""
     return _EXTENSION_FOR.get(content_type.lower(), "")
-
-
-def _said(exc: BaseException) -> str:
-    """An exception as a short clause: its kind, and its first line."""
-    text = str(exc).splitlines()[0][:120] if str(exc) else ""
-    return f"{exc.__class__.__name__}: {text}" if text else exc.__class__.__name__
 
 
 if __name__ == "__main__":

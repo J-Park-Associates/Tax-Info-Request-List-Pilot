@@ -3517,3 +3517,92 @@ def test_lines_from_other_machines_that_cannot_be_listed_are_said_where_they_wou
     page = html.unescape(write_status_page(clients, report).read_text(encoding="utf-8"))
     assert "Lines from other machines could not be listed this pass: record-heads.db" in page
     assert "SQLITE_IOERR_READ" in page
+
+
+# ------------------------------- errors are classes, end to end (decision 190) ----
+
+
+def test_no_byte_of_a_damaged_document_reaches_the_record_store_pages_or_run_log(
+        tmp_path, tmp_path_factory, monkeypatch, capsys):
+    """A broken PDF, a zip and an email, each of whose parser is made to
+    raise with words in a W-2's shape (fabricated: nobody's number, nobody's
+    name), and a PDF the filer itself fails on. After a real pass, the run
+    log, the practice page and the app, not a byte of those words is in any
+    file under the root - the record, the store, both pages, the log - nor
+    in what the app says. They reach the debug log, and only it."""
+    import io
+    import json
+    import logging
+    import zipfile
+
+    from tracker import api, containers, content_check, errors, filer, validators
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    number, name = "123-45-6789", "Jane Fabricated"
+    quoted = f"bad object near 'SSN {number} {name}'"
+
+    def quotes_the_document(*_args, **_kwargs):
+        raise ValueError(quoted)
+
+    real_zip = zipfile.ZipFile
+
+    def zip_that_quotes(file, *args, **kwargs):
+        if isinstance(file, io.BytesIO):            # the container's own opening, nothing else
+            raise zipfile.BadZipFile(quoted)
+        return real_zip(file, *args, **kwargs)
+
+    real_decide = filer._decide_across
+
+    def decide(drop, *args, **kwargs):
+        if drop.name == "boom.pdf":
+            raise ValueError(quoted)
+        return real_decide(drop, *args, **kwargs)
+
+    monkeypatch.setattr(validators, "PdfReader", quotes_the_document)
+    monkeypatch.setattr(content_check, "extract_text", quotes_the_document)
+    monkeypatch.setattr(containers.zipfile, "ZipFile", zip_that_quotes)
+    monkeypatch.setattr(containers, "message_from_bytes", quotes_the_document)
+    monkeypatch.setattr(filer, "_decide_across", decide)
+
+    kept: list[str] = []
+
+    class Keeper(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            kept.append(record.getMessage())
+
+    keeper = Keeper(level=logging.DEBUG)
+    logging.getLogger(errors.DEBUG_LOGGER).addHandler(keeper)
+    try:
+        w2 = RequestItem(identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),
+                         min_size_kb=0, required_keywords=("W-2",))
+        engagement = make_engagement(tmp_path, [w2])
+        inbox = inbox_of(engagement)
+        (inbox / "W2.pdf").write_bytes(b"%PDF-1.4\nbroken\n%%EOF\n")
+        (inbox / "boom.pdf").write_bytes(b"%PDF-1.4\nalso broken\n%%EOF\n")
+        (inbox / "docs.zip").write_bytes(b"PK\x03\x04 broken")
+        (inbox / "mail.eml").write_bytes(b"From: someone@example.invalid\n\nbody\n")
+
+        report = run_registry(discover_engagements(tmp_path), today=FRIDAY, reminders=REMINDERS_NEVER)
+        append_log(tmp_path / LOG_FILENAME, report)
+        write_status_page(tmp_path, report)
+        monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path_factory.mktemp("app")))
+        set_clients_root(tmp_path)
+        assert api.main(["state", api.ENGAGEMENT_FLAG, str(engagement)]) == 0
+        said_to_the_app = capsys.readouterr().out
+    finally:
+        logging.getLogger(errors.DEBUG_LOGGER).removeHandler(keeper)
+
+    rows = {row.original_name: row.reason for row in read_index(engagement)}
+    assert "(ValueError)" in rows["W2.pdf"]
+    assert "could not be filed (ValueError)" in rows["boom.pdf"]
+    assert "(BadZipFile)" in rows["docs.zip"]
+    assert "(ValueError)" in rows["mail.eml"]
+    written = [path for path in tmp_path.rglob("*") if path.is_file()]
+    assert any(path.name == STATUS_PAGE_FILENAME for path in written)
+    assert any(path.name == LOG_FILENAME for path in written)
+    for path in written:
+        data = path.read_bytes()
+        assert number.encode() not in data and name.encode() not in data, path
+    json.loads(said_to_the_app)
+    assert number not in said_to_the_app and name not in said_to_the_app
+    assert any(quoted in one for one in kept)

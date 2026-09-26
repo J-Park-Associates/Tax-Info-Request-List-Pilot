@@ -104,7 +104,7 @@ LAYERS: dict[int, frozenset[str]] = {
     # imports ``layout``, ``fsio`` and ``settings``, all L0, so L0 is the
     # lowest layer the table allows it - and every layer above may ask it.
     0: frozenset({"__init__", "reasons", "locking", "checkpoint", "page", "fsio", "settings",
-                  "layout", "door"}),
+                  "layout", "door", "errors"}),
     1: frozenset({"households", "ledger", "manifest", "records", "scaffold", "store",
                   "templates", "validators"}),
     2: frozenset({"containers", "content_check", "names", "ocr", "router"}),
