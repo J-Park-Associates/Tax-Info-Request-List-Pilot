@@ -8,6 +8,8 @@ read back. Nothing here opens a file, because nothing in the module does.
 import os
 from pathlib import Path
 
+import pytest
+
 from tracker.filer import prepared_name_for
 from tracker.layout import (
     CLIENTS_TREE,
@@ -17,6 +19,14 @@ from tracker.layout import (
     PREPARED_DIR_NAME,
     PRIVATE_TREE,
     RETURN_NAME_PATTERN,
+    STEP_ABOVE_ROOT,
+    STEP_ABSOLUTE,
+    STEP_BLANK,
+    STEP_NOT_A_PLACE,
+    STEP_NOT_A_RETURN,
+    STEP_OTHER_HOUSEHOLD,
+    STEP_OTHER_YEAR,
+    STEP_PROBLEMS,
     client_household_dir,
     deepest_path_length,
     household_name_of,
@@ -29,6 +39,7 @@ from tracker.layout import (
     location_of,
     originals_dir_for,
     originals_of,
+    place_problem,
     private_household_dir,
     return_dir_for,
     root_of,
@@ -218,3 +229,89 @@ def test_the_limit_for_an_extension_is_the_shortest_that_applies(monkeypatch):
     # Never above Windows's own, whatever a table says.
     monkeypatch.setattr(layout, "OPEN_LIMITS", {"pdf": 400})
     assert limit_for("pdf") == 260
+
+
+# Decision 187: where a step of a return may act is the layout's rule, worded once.
+
+PLACE_RETURN = return_dir_for(ROOT, HOUSEHOLD, 2025, RETURN)
+
+
+@pytest.mark.parametrize("location, writes, code", [
+    ("Prepared/A01 - W-2/x.pdf", True, None),                                    # the return itself
+    ("../_Opened/mail/x.pdf", True, None),                                       # its year's _Opened
+    ("../../2024/_Opened/mail/x.pdf", False, None),                              # another year's, to read
+    ("../../2024/_Opened/mail/x.pdf", True, STEP_OTHER_YEAR),                    # never to write
+    ("../../../Other Household/2025/_Opened/mail/x.pdf", False, STEP_NOT_A_PLACE),  # another household's
+    (f"../../../../{CLIENTS_TREE}/{HOUSEHOLD}/{INBOX_DIR_NAME}/x.pdf", False, None),  # its inbox
+    (f"../../../../{CLIENTS_TREE}/{HOUSEHOLD}/{INBOX_DIR_NAME}/sub/x.pdf", False, None),
+    (f"../../../../{CLIENTS_TREE}/{HOUSEHOLD}/2025/x.pdf", True, None),         # its year folder
+    (f"../../../../{CLIENTS_TREE}/Other Household/2025/x.pdf", False, None),    # a feed's original
+    (f"../../../../{CLIENTS_TREE}/Other Household/2025/x.pdf", True, STEP_OTHER_HOUSEHOLD),
+    (f"../../../../{CLIENTS_TREE}/{HOUSEHOLD}/x.pdf", False, STEP_NOT_A_PLACE),  # beside the inbox
+    ("../1040 - Someone Else/Prepared/x.pdf", False, STEP_NOT_A_PLACE),          # another return
+    ("../../_ledger.jsonl", True, STEP_NOT_A_PLACE),                             # the household's record
+    ("../../../../../outside/secret.pdf", False, STEP_ABOVE_ROOT),               # above the root
+    ("/etc/passwd", False, STEP_ABSOLUTE),
+    ("C:/Windows/win.ini", False, STEP_ABSOLUTE),
+    ("C:x.pdf", False, STEP_ABSOLUTE),
+    ("\\\\host\\share\\x.pdf", False, STEP_ABSOLUTE),
+    ("", False, STEP_BLANK),
+])
+def test_a_step_may_act_only_in_its_returns_places(location, writes, code):
+    assert place_problem(PLACE_RETURN, location, writes=writes) == code
+    assert code is None or code in STEP_PROBLEMS
+
+
+def test_a_return_named_relative_to_the_root_has_the_same_places_as_one_named_absolutely():
+    """The store keys a return by its path below the clients root; the filer
+    holds it absolute. One rule, one answer, whichever is asked."""
+    relative = Path(PRIVATE_TREE) / HOUSEHOLD / "2025" / RETURN
+    for location, writes in [
+        ("Prepared/x.pdf", True),
+        ("../../2024/_Opened/x.pdf", True),
+        (f"../../../../{CLIENTS_TREE}/Other Household/{INBOX_DIR_NAME}/x.pdf", False),
+        (f"../../../../{CLIENTS_TREE}/Other Household/{INBOX_DIR_NAME}/x.pdf", True),
+        ("../../../../../outside/x.pdf", False),
+        ("../../_ledger.jsonl", False),
+        ("/etc/passwd", False),
+    ]:
+        assert place_problem(relative, location, writes=writes) == \
+            place_problem(PLACE_RETURN, location, writes=writes)
+        assert place_problem(relative.as_posix(), location, writes=writes) == \
+            place_problem(PLACE_RETURN, location, writes=writes)
+
+
+def test_a_location_that_climbs_above_the_root_is_above_the_root_whatever_it_names_after():
+    """Out past the root and back down by the root's own name lands, as text,
+    in a place a step may act - and is still above the root."""
+    back_in = f"../../../../../{ROOT.name}/{CLIENTS_TREE}/{HOUSEHOLD}/{INBOX_DIR_NAME}/x.pdf"
+    assert place_problem(PLACE_RETURN, back_in, writes=False) == STEP_ABOVE_ROOT
+    assert place_problem(PLACE_RETURN, "Prepared/../../../../../../x.pdf", writes=False) == STEP_ABOVE_ROOT
+
+
+def test_a_record_not_at_a_returns_place_has_no_places():
+    """A path that is not ``root/PRIVATE_TREE/<household>/<year>/<return>``
+    is no return, and nothing is a place for its steps."""
+    for not_a_return in [
+        ROOT / CLIENTS_TREE / HOUSEHOLD / "2025" / RETURN,          # the client tree
+        ROOT / PRIVATE_TREE / HOUSEHOLD / "Prior" / RETURN,         # no year above it
+        Path(HOUSEHOLD) / "2025" / RETURN,                          # too short
+        private_household_dir(ROOT, HOUSEHOLD),
+    ]:
+        assert place_problem(not_a_return, "Prepared/x.pdf", writes=False) == STEP_NOT_A_RETURN
+
+
+def test_the_place_rule_touches_no_disk(monkeypatch):
+    """Arithmetic on the layout: the root need not exist, and a rule that
+    asked the disk anything would fail here."""
+    missing = return_dir_for(ROOT / "no such root", HOUSEHOLD, 2025, RETURN)
+
+    def refuse(*_args, **_kwargs):
+        raise AssertionError("the place rule asked the disk")
+
+    monkeypatch.setattr(os, "stat", refuse)
+    monkeypatch.setattr(os, "lstat", refuse)
+    assert place_problem(missing, "Prepared/x.pdf", writes=True) is None
+    assert place_problem(missing, "../../../../../x.pdf", writes=False) == STEP_ABOVE_ROOT
+    assert place_problem(missing, f"../../../../{CLIENTS_TREE}/Other/2025/x.pdf", writes=True) \
+        == STEP_OTHER_HOUSEHOLD

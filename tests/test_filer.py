@@ -8192,6 +8192,23 @@ def test_a_step_may_touch_only_its_returns_places(engagement, location, writes, 
     assert _may_touch(engagement, location, writes=writes) is allowed
 
 
+def test_the_filer_asks_the_layout_where_a_step_may_act(engagement, monkeypatch):
+    """Decision 187: the place rule has one wording, the layout's. The
+    filer holds none of its own - change the layout's answer and the
+    filer's changes with it."""
+    import tracker.filer as filer
+
+    asked = []
+
+    def answer(return_dir, location, *, writes):
+        asked.append((return_dir, location, writes))
+        return "not-a-place"
+
+    monkeypatch.setattr(filer, "place_problem", answer)
+    assert filer._may_touch(engagement, "Prepared/x.pdf", writes=True) is False
+    assert asked == [(engagement, "Prepared/x.pdf", True)]
+
+
 def test_a_step_outside_its_places_moves_copies_and_removes_nothing(engagement, tmp_path):
     """The integrity review's exp6: a ``moving`` line appended to a journal
     by hand, by another machine or from a restored copy made the next
@@ -8220,7 +8237,8 @@ def test_a_step_outside_its_places_moves_copies_and_removes_nothing(engagement, 
     for op in forged:
         with pytest.raises(FilingError) as refused:
             _do_op(engagement, op)
-        assert refused.value.args[0] == OP_OUTSIDE.format(name=engagement.name, location=escape)
+        assert refused.value.args[0] == OP_OUTSIDE.format(name=engagement.name, location=escape,
+                                                           reason="not-a-place")
         with pytest.raises(FilingError):
             _finish_the_ops(engagement, [op], None)
     assert sorted(p for p in tmp_path.rglob("*")) == before

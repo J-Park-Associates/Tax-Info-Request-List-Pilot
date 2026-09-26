@@ -35,15 +35,25 @@ relative form names no drive, so a journal line written on one machine
 reads on another, and ``locate`` normalises lexically and never resolves -
 a junction must stay a junction for the filer's link check.
 
+**Where a step of a return may act is worded here once**
+(:func:`place_problem`, decision 187). It is a question about the layout -
+which of these folders belong to this return - so the filer asks it before
+it carries a step out and the store asks it before it admits a record
+line, and neither holds a copy of the answer. It returns a code naming the
+class of problem, never the location, because the location is whatever a
+record line said.
+
 The engagement remains the software's word for one return in one year: the
 return folder *is* the engagement folder. "Household" is the new word.
 """
 
 from __future__ import annotations
 
+import ntpath
 import os
+import posixpath
 from collections.abc import Iterable
-from pathlib import Path
+from pathlib import Path, PurePath
 
 #: The only tree a client is ever shared. It holds the household's folder,
 #: its inbox and the year folders of originals - and no record, ever.
@@ -291,6 +301,84 @@ def locate(engagement_dir: Path | str, location: str) -> Path:
     ``..`` segments textually, which is what Windows does with them too.
     """
     return Path(os.path.normpath(os.path.join(str(engagement_dir), location)))
+
+
+# ------------------------------------- where a step of a return may act ----
+
+#: Why :func:`place_problem` refuses a location (decision 187). A code and
+#: never the location itself, so a caller may put it in a sentence a person
+#: reads without quoting whatever a record line said.
+STEP_BLANK = "blank"
+#: Absolute, a drive or a share.
+STEP_ABSOLUTE = "absolute"
+#: Climbs above the clients root, whatever it names after that.
+STEP_ABOVE_ROOT = "above-root"
+#: The return's own path is not ``.../PRIVATE_TREE/<household>/<year>/<return>``.
+STEP_NOT_A_RETURN = "not-a-return"
+#: Inside the root but in none of the places a step of this return goes.
+STEP_NOT_A_PLACE = "not-a-place"
+#: A write into another household's client folder.
+STEP_OTHER_HOUSEHOLD = "other-household"
+#: A write into another year's ``_Opened``.
+STEP_OTHER_YEAR = "other-year"
+#: Every code :func:`place_problem` returns.
+STEP_PROBLEMS = frozenset({STEP_BLANK, STEP_ABSOLUTE, STEP_ABOVE_ROOT, STEP_NOT_A_RETURN,
+                           STEP_NOT_A_PLACE, STEP_OTHER_HOUSEHOLD, STEP_OTHER_YEAR})
+
+
+def _normal_parts(path: str) -> tuple[str, ...]:
+    """A path's parts, normalised and compared as this system compares them."""
+    return PurePath(os.path.normcase(os.path.normpath(path))).parts
+
+
+def place_problem(return_dir: Path | str, location: str, *, writes: bool) -> str | None:
+    """Why a location a step of this return names is not where such a step
+    may act, as one of the ``STEP_`` codes - or ``None`` where it may
+    (decision 180; worded here once by decision 187).
+
+    Every step a decision writes is relative to the return whose record
+    holds it, and every one stays in these places, read off the layout:
+    under the return itself; under its household's ``_Opened`` of a year -
+    its own year's where the step writes, any year's where it reads,
+    because a person may hand an attachment parked in one open year to a
+    return of the next (decision 129); and in the client tree only under
+    some household's inbox or year folder - **this** return's household
+    where the step writes (a move's or a copy's destination), any
+    household where it reads, because a return a drop folder feeds takes
+    its original out of another household's inbox. Nothing else - not an
+    absolute path, a drive, a share, another return, the private tree's own
+    files or anything above the clients root - is a place a step goes, so a
+    line the record did not get from this code, however it got there,
+    moves nothing.
+
+    **Lexical and positional, and it touches no disk**, as :func:`locate`
+    is: the filer's link check guards what lies behind a junction, and this
+    guards what a line says. The location is walked from the return's own
+    four folders below the root, so ``return_dir`` may be absolute or
+    relative to the clients root (the store's key) and the answer is the
+    same; a ``..`` still leading after normalisation has climbed above the
+    root, and is :data:`STEP_ABOVE_ROOT` whatever it names after.
+    """
+    if not location:
+        return STEP_BLANK
+    if any(isabs(location) for isabs in (ntpath.isabs, posixpath.isabs)) or ntpath.splitdrive(location)[0]:
+        return STEP_ABSOLUTE
+    own = _normal_parts(str(return_dir))[-4:]
+    if (len(own) < 4 or own[0] != os.path.normcase(PRIVATE_TREE) or not is_year_folder(own[2])
+            or os.pardir in own or os.path.isabs(own[0])):
+        return STEP_NOT_A_RETURN
+    below = _normal_parts(os.path.join(*own, location))
+    if below[:1] == (os.pardir,):
+        return STEP_ABOVE_ROOT
+    if len(below) > len(own) and below[:len(own)] == own:
+        return None
+    if (len(below) > 4 and below[:2] == own[:2] and is_year_folder(below[2])
+            and below[3] == os.path.normcase(OPENED_DIR_NAME)):
+        return None if below[2] == own[2] or not writes else STEP_OTHER_YEAR
+    if (len(below) >= 4 and below[0] == os.path.normcase(CLIENTS_TREE)
+            and (is_year_folder(below[2]) or below[2] == os.path.normcase(INBOX_DIR_NAME))):
+        return None if not writes or below[1] == own[1] else STEP_OTHER_HOUSEHOLD
+    return STEP_NOT_A_PLACE
 
 
 def deepest_path_length(return_dir: Path | str, subpaths: Iterable[str]) -> int:

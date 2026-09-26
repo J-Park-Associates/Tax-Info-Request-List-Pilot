@@ -1566,11 +1566,17 @@ the same way.
   engagement's **Status Report.html**. Every move and every rename is in
   it, and it is drawn from the ledger, which is the record itself.
 
-- **A household the pass stopped with "names … for a step, which is outside
-  the places a step of this return may touch"** (`tracker.filer.OP_OUTSIDE`,
-  decision 180): the return's record holds a step the tracker did not write
-  - a copy of the record restored over a newer one, a line another machine
-  wrote, or a hand edit - pointing outside that return's own folders. The
+- **A household the pass stopped with "names … for a step (…), which is
+  outside the places a step of this return may touch"**
+  (`tracker.filer.OP_OUTSIDE`, decision 180): the return's record holds a
+  step the tracker did not write - a copy of the record restored over a
+  newer one, a line another machine wrote, or a hand edit - pointing
+  outside that return's own folders. The word in brackets says which way
+  it is outside (decision 187): `absolute` (a drive, a share or a full
+  path), `above-root`, `not-a-place` (inside the clients root but in none
+  of this return's folders), `other-household` or `other-year` (a write
+  into another household's client folder or another year's `_Opened`),
+  `blank`, or `not-a-return`. The
   pass moved, copied and removed nothing for it, and every other household
   was sorted as usual. Do not edit the record by hand: say which return and
   which path, and have the record checked

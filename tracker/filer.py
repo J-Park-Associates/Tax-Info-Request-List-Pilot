@@ -182,9 +182,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import logging
-import ntpath
 import os
-import posixpath
 import re
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -212,23 +210,20 @@ from tracker.fsio import (
 )
 from tracker.households import household_returns
 from tracker.layout import (
-    CLIENTS_TREE,
-    INBOX_DIR_NAME,
     MAX_PATH_LENGTH,
-    OPENED_DIR_NAME,
     PATH_TOO_LONG,
     PRIVATE_TREE,
     deepest_path_length,
     household_name_of,
     household_of,
     inbox_of,
-    is_year_folder,
     limit_for,
     locate,
     location_of,
     lock_order_key,
     opened_dir_of,
     originals_of,
+    place_problem,
     root_of,
     year_of,
 )
@@ -1677,52 +1672,16 @@ def _op(engagement_dir: Path, kind: str, source: Path,
 
 #: What an operation naming a place outside its return's own is refused
 #: with (decision 180).
-OP_OUTSIDE = ("the record of {name} names {location} for a step, which is outside the places "
+OP_OUTSIDE = ("the record of {name} names {location} for a step ({reason}), which is outside the places "
               "a step of this return may touch; nothing was moved, copied or removed. "
               "A person checks the record")
 
 
 def _may_touch(engagement_dir: Path, location: str, *, writes: bool) -> bool:
     """Whether a location an operation names lands where a step of this
-    return may act (decision 180).
-
-    Every step a decision writes is relative to the return whose record
-    holds it, and every one stays in these places, read off the layout:
-    under the return itself; under its household's ``_Opened`` of a year -
-    its own year's where the step writes, any year's where it reads,
-    because a person may hand an attachment parked in one open year to a
-    return of the next (decision 129); and in the client tree only under
-    some household's inbox or year folder - **this** return's household
-    where the step writes (a move's or a copy's destination), any
-    household where it reads, because a return a drop folder feeds takes
-    its original out of another household's inbox. Nothing else - not an absolute path, a drive, a share,
-    another return, the private tree's own files or anything above the
-    clients root - is a place a step goes, so a line the record did not get
-    from this code, however it got there, moves nothing. Lexical, as
-    :func:`tracker.layout.locate` is: the link check guards what lies
-    behind a junction, and this guards what a line says.
-    """
-    if not location or any(isabs(location) for isabs in (ntpath.isabs, posixpath.isabs)) \
-            or ntpath.splitdrive(location)[0]:
-        return False
-
-    def parts(path) -> tuple[str, ...]:
-        return Path(os.path.normcase(os.path.normpath(str(path)))).parts
-
-    root = parts(root_of(engagement_dir))
-    here = parts(locate(engagement_dir, location))
-    if here[:len(root)] != root:
-        return False
-    below = here[len(root):]
-    own = parts(engagement_dir)[len(root):]           # (private tree, household, year, return)
-    if len(below) > len(own) and below[:len(own)] == own:
-        return True
-    if (len(below) > 4 and below[:2] == own[:2] and is_year_folder(below[2])
-            and below[3] == os.path.normcase(OPENED_DIR_NAME) and (below[2] == own[2] or not writes)):
-        return True
-    return (len(below) >= 4 and below[0] == os.path.normcase(CLIENTS_TREE)
-            and (is_year_folder(below[2]) or below[2] == os.path.normcase(INBOX_DIR_NAME))
-            and (not writes or below[1] == own[1]))
+    return may act (decision 180): the layout's rule, worded once in
+    :func:`tracker.layout.place_problem` (decision 187)."""
+    return place_problem(engagement_dir, location, writes=writes) is None
 
 
 def _refuse_a_step_outside(engagement_dir: Path, op: dict) -> None:
@@ -1733,8 +1692,10 @@ def _refuse_a_step_outside(engagement_dir: Path, op: dict) -> None:
     if op[ledger.OP_KEY] == ledger.OP_REMOVE:
         reads, writes = [], reads
     for location, write in [*((one, False) for one in reads), *((one, True) for one in writes)]:
-        if not _may_touch(engagement_dir, str(location), writes=write):
-            raise FilingError(OP_OUTSIDE.format(name=Path(engagement_dir).name, location=location))
+        code = place_problem(engagement_dir, str(location), writes=write)
+        if code is not None:
+            raise FilingError(OP_OUTSIDE.format(name=Path(engagement_dir).name, location=location,
+                                                reason=code))
 
 
 def _do_op(engagement_dir: Path, op: dict, *, cache: ContentCache | None = None) -> None:
@@ -3125,8 +3086,10 @@ def _a_copy_to_act_on(
     # The original is read from where the row says only where a step of
     # this return may read (decision 180): a row another machine or a
     # restored copy wrote is held to the same places as its steps.
-    if not _may_touch(engagement_dir, entry.pbc_location, writes=False):
-        return "", OP_OUTSIDE.format(name=engagement_dir.name, location=entry.pbc_location)
+    code = place_problem(engagement_dir, entry.pbc_location, writes=False)
+    if code is not None:
+        return "", OP_OUTSIDE.format(name=engagement_dir.name, location=entry.pbc_location,
+                                     reason=code)
     source = locate(engagement_dir, entry.pbc_location)
     # The copy the interrupted step was about to carry out of review is
     # still there when the step never happened: it is these bytes and it
