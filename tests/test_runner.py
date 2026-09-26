@@ -2874,9 +2874,13 @@ def test_a_paused_household_makes_the_run_red(tmp_path, samples, capsys):
 
     engagement = build_engagement(tmp_path, samples)
     engagement.path.rename(engagement.path.parent / "1040 - Someone Else")
-    for _ in range(2):
+    # Red on every pass: 1 the first time, and from the second pass the
+    # not-served-twice code, which wins over 1 (decision 189).
+    from tracker.runner import NOT_SERVED_TWICE_EXIT_CODE
+
+    for expected in (1, NOT_SERVED_TWICE_EXIT_CODE):
         code, said = _whole_pass(tmp_path, capsys)
-        assert code == 1 and "ERROR   " in said and HOUSEHOLD_PAUSED in said
+        assert code == expected and "ERROR   " in said and HOUSEHOLD_PAUSED in said
 
 
 def test_every_write_into_the_client_tree_went_through_the_door(tmp_path, samples, monkeypatch):

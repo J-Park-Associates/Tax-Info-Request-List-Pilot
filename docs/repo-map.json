@@ -5465,8 +5465,8 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "1f560f4dd0715e46",
-      "lines": 3004,
+      "sha256": "ca6f5751485aacda",
+      "lines": 3008,
       "exports": [
         "DRAFT_DAY",
         "FRIDAY",
