@@ -87,7 +87,14 @@ from tracker.households import (
     open_years,
     return_name_taken,
 )
-from tracker.layout import household_of, name_key, normalised_name, return_dir_for, root_of
+from tracker.layout import (
+    LayoutError,
+    household_of,
+    name_key,
+    normalised_name,
+    return_dir_for,
+    root_of,
+)
 from tracker.manifest import (  # shift_years/detect_year re-exported: they live in manifest
     ManifestError,
     Override,
@@ -683,7 +690,9 @@ def roll_household(
             if name_key(roll.target.name) in targets:
                 raise ManifestError(
                     f"another ticked return is also rolled into '{roll.target.name}'")
-        except (ManifestError, OSError) as exc:
+        # A name the layout refuses (decision 188) is the plan's refusal too,
+        # in the same voice (the port review's note).
+        except (ManifestError, OSError, LayoutError) as exc:
             raise ManifestError(_nothing_rolled(one.path.name, exc)) from exc
         targets.add(name_key(roll.target.name))
         rolls.append(roll)

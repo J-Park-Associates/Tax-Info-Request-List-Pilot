@@ -2555,7 +2555,9 @@ def test_the_truncation_error_says_restore_first(conn, root, by_hand):
 def test_rebuild_lists_what_it_would_discard_and_needs_discard(conn, root, by_hand, tmp_path):
     """T11 (ruling 6): a rebuild never discards silently - it lists each line
     only the store holds, refuses, and changes nothing; the command line
-    does the same and exits 1, and only ``--discard`` rebuilds."""
+    does the same and exits 1. Since the port review's M1 (decision 159's
+    ruling), ``--discard`` rebuilds only with the return's name typed -
+    ``--accept-loss``, recover's own path - and alone it is refused."""
     applied = _two_lines_then_one(conn, root, by_hand)
     rel = store.engagement_path(root, by_hand)
     with pytest.raises(store.WouldDiscard) as refused:
@@ -2571,8 +2573,13 @@ def test_rebuild_lists_what_it_would_discard_and_needs_discard(conn, root, by_ha
     assert result.returncode == 1
     assert line in result.stdout and str(refused.value) in result.stdout, result.stdout
     result = cli(path, "rebuild", root, "--engagement", by_hand, "--discard")
+    assert result.returncode == 2 and "--accept-loss" in result.stderr
+    assert store._engagement_row(store.connect(path), by_hand, root)["applied_seq"] == applied
+    store.close()
+    result = cli(path, "rebuild", root, "--engagement", by_hand, "--discard",
+                 "--accept-loss", by_hand.name)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert f"built {by_hand.name}" in result.stdout
+    assert store.ACCEPTED.format(n=1) in result.stdout
 
 
 # ------------------------------------------ decision 204: the Waits For cell ----
@@ -3335,3 +3342,78 @@ def test_188s_accepted_word_and_204s_waiting_row_are_lines_like_any_other(conn, 
     assert said(conn, root, by_hand) == []
     assert store.catch_up(fresh, root, by_hand) == len(ledger.read_events(by_hand))
     assert [row["waits_for"] for row in store.documents(fresh, by_hand)] == [waiting]
+
+
+def _a_forged_this_host_rewrite(conn, by_hand):
+    """The port review's M1 probe: three lines recorded, the third replaced
+    by a linked line claiming this machine that it never wrote."""
+    from tracker.locking import this_host
+
+    three_lines(conn, by_hand)
+    path = ledger.path_for(by_hand)
+    path.write_bytes(b"".join(path.read_bytes().splitlines(keepends=True)[:2]))
+    written_elsewhere(by_hand, ledger.new(ledger.FILED, key=A_ROW_ORIGINAL,
+                                          row=a_row(decision="Filed", original_name="forged.pdf")),
+                      host=this_host())
+
+
+@pytest.mark.parametrize("extra", [
+    (), ("--accept-loss", "1040 - Test Client "), ("--accept-loss", "1040 - TEST CLIENT"), ("whole root",),
+], ids=["no-name", "a-trailing-space", "another-case", "the-whole-root"])
+def test_rebuild_discard_accepts_nothing_without_the_returns_name_typed(conn, root, by_hand, tmp_path,
+                                                                         extra):
+    """The port review's M1, ruled: decision 188's --discard passes nothing
+    on its own. A loss is accepted only for one return and only by its
+    folder's name typed exactly (the council's Solution 3) - so with no
+    name, a wrong name or no --engagement, a forged rewrite is refused,
+    nothing is applied, and the checkpoint is unchanged."""
+    _a_forged_this_host_rewrite(conn, by_hand)
+    before = rows(conn, "events")
+    heads = checkpoint.path_for(tmp_path / "app" / store.STORE_FILENAME)
+    with checkpoint.opened(heads) as held:
+        vouched = checkpoint.vouched(held, key_of(by_hand))
+    conn.close()
+    store.close()
+    target = [] if extra == ("whole root",) else ["--engagement", by_hand]
+    said = cli(tmp_path / "app" / store.STORE_FILENAME, "rebuild", root, *target, "--discard",
+               *(() if extra == ("whole root",) else extra))
+    assert said.returncode != 0, said.stdout
+    assert "built" not in said.stdout
+    again = store.connect(tmp_path / "app" / store.STORE_FILENAME)
+    assert rows(again, "events") == before
+    assert not any("forged.pdf" in str(row) for row in rows(again, "events"))
+    with checkpoint.opened(heads) as held:
+        assert checkpoint.vouched(held, key_of(by_hand)) == vouched
+    store.close()
+
+
+def test_rebuild_discard_with_the_name_typed_is_recovers_path(conn, root, by_hand, tmp_path):
+    """The one way a loss is accepted on the command line: one return, its
+    name typed exactly - recover's own path, its export and its difference
+    first."""
+    a_store_ahead_of_its_record(conn, by_hand)
+    conn.close()
+    store.close()
+    said = cli(tmp_path / "app" / store.STORE_FILENAME, "rebuild", root, "--engagement", by_hand,
+               "--discard", "--accept-loss", by_hand.name)
+    assert said.returncode == 0, said.stdout + said.stderr
+    assert "kept the store's lines in" in said.stdout and store.ON_STORE in said.stdout
+    assert store.ACCEPTED.format(n=1) in said.stdout
+
+
+def test_an_export_that_cannot_be_written_is_refused_by_name_and_discards_nothing(
+        conn, root, by_hand, monkeypatch):
+    """The port review's S2: a recover whose export cannot be written says
+    so - the class and the folder - and nothing is discarded; never a
+    traceback."""
+    a_store_ahead_of_its_record(conn, by_hand)
+    before = rows(conn, "events")
+
+    def refused(path, data):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(store, "_exclusively", refused)
+    with pytest.raises(store.StoreError, match=r"the export could not be written into .*"
+                                               r"\(PermissionError\); nothing was discarded"):
+        store.recover(conn, root, by_hand, accept_loss=by_hand.name)
+    assert rows(conn, "events") == before

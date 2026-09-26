@@ -3726,6 +3726,9 @@ WRITING_COMMANDS = frozenset({
     "rollover", "roll-household", "mark-shared", "scan", "approve", "create", "assign",
     "dismiss", "unfile", "restore", "edit", "edit-household", "unlearn", "rename",
     "mark-missing", "acknowledge-foreign",
+    # Decision 188's accept writes the household's and its returns' records
+    # (the port review's M2): held to the checkpoint's root like every other.
+    "accept-folder-name",
 })
 
 

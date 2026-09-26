@@ -1537,3 +1537,21 @@ def test_a_renamed_private_folder_pauses_roll_forward_and_the_old_client_folder_
                                 io.StringIO()) == 2
     assert HOUSEHOLD_PAUSED[:40] in console.getvalue()
     assert not (renamed / "2027").exists()
+
+
+def test_a_name_the_layout_refuses_rolls_nothing_in_the_plans_voice(park):
+    """The port review's note: a typed name decision 188's rule refuses is
+    the plan's refusal like any other - "Nothing was rolled." - before any
+    lock or write."""
+    from tracker.layout import return_dir_for
+    from tracker.rollover import NOTHING_ROLLED, ReturnPlan, roll_household
+
+    root, john, sofia, llc = park
+    household = _household(root)
+    before = _lines_of(john, sofia, llc, household)
+    with pytest.raises(ManifestError) as refused:
+        roll_household(household, target_year=2027,
+                       plans=[ReturnPlan(prior=john), ReturnPlan(prior=sofia, return_name="con")])
+    assert str(refused.value).endswith(NOTHING_ROLLED.format(prior="", why="").lstrip(": ."))
+    assert not return_dir_for(root, PARK, 2027, john.name).exists()
+    assert _lines_of(john, sofia, llc, household) == before

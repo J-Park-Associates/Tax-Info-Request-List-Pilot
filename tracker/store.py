@@ -2717,7 +2717,11 @@ JOURNAL_GONE = ("The store holds {n} line(s) for `{engagement}` and its record i
 #: What a rebuild that would discard lines only the store holds is told
 #: (SPEC-162 ruling 6): nothing is discarded silently.
 WOULD_DISCARD = ("`{engagement}`: the store holds {k} line(s) the journal does not; rebuild would "
-                 "discard them (listed above). Nothing was changed; add --discard to discard them.")
+                 "discard them (listed above). Nothing was changed. " + ledger.RUN_RECOVER)
+#: A recover whose export could not be written (the port review's S2): by
+#: the error's class and the export's folder, and nothing was discarded.
+EXPORT_NOT_WRITTEN = ("the export could not be written into {folder} ({kind}); nothing was "
+                      "discarded and nothing was changed")
 #: How each such line is listed before that sentence.
 DISCARDED_LINE = "  {kind}  {document}  {date}"
 
@@ -2808,9 +2812,8 @@ def rebuild_engagement(
     **Never discards silently** (SPEC-162 ruling 6, kept by decision 188).
     Where the store holds lines the journal does not - a journal truncated,
     replaced or gone - a rebuild would lose them, so it is refused with
-    :class:`WouldDiscard`, which lists them, unless ``discard`` says a
-    person has read the list; then it returns what it discarded. The answer
-    to a lost journal is Drive's trash or version history, never a rebuild.
+    :class:`WouldDiscard`, which lists them. The answer to a lost journal
+    is Drive's trash or version history, never a rebuild.
 
     **Compare, then replay** (decision 159, G-2). Before a row is deleted
     the record is held to this machine's checkpoint: a record shorter than
@@ -2818,13 +2821,18 @@ def rebuild_engagement(
     this machine and that this machine did not write is refused
     (:data:`REBUILD_WOULD_LOSE`), because the store about to be deleted may
     be the only other copy of what was lost. A record the reader refuses (a
-    broken link) raises the reader's own refusal. ``discard`` is the
-    one way past both refusals (decisions 188 and 159, one word for one
-    act): ``recover`` passes it after its export and its difference and a
-    person typing the return's name, and the command line's ``rebuild
-    --discard`` runs recover's first look - the export - before it, so no
-    line is dropped that nobody exported. The checkpoint is then seeded
-    again from the record as it is.
+    broken link) raises the reader's own refusal.
+
+    **A loss is accepted only by the return's name, typed** (the council's
+    Solution 3, approved by Jason; the port review's M1). ``discard`` is the
+    one way past both refusals, and only :func:`recover` passes it - after
+    its export and its difference, and only when the return folder's own
+    name was typed exactly; it then returns what it discarded, and the
+    checkpoint is seeded again from the record as it is. This narrows
+    decision 188's ``--discard``: on the command line it is
+    ``rebuild --engagement <return> --discard --accept-loss "<its name>"``,
+    which is recover's own path, and without ``--engagement`` or the name
+    it is refused. Nothing a person does not type discards a line.
     """
     engagement_dir = Path(engagement_dir)
     rel = engagement_path(key_root(engagement_dir, root), engagement_dir)
@@ -3396,11 +3404,18 @@ def recover(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | s
                                 (row["id"],))}
     stamp = (now or dt.datetime.now()).strftime("%Y-%m-%d-%H%M%S")
     base = _store_file(conn).parent / RECOVERED_DIR / f"{rel.replace('/', '__')}-{stamp}.jsonl"
-    export = (_exclusively(base, "".join(f"{held[seq]}\n" for seq in sorted(held)).encode("utf-8"))
-              if held else None)
     now_bytes = ledger._bytes_of(ledger.path_for(engagement_dir))
-    record_copy = (None if now_bytes is None else
-                   _exclusively((export or base).with_name(base.stem + ".record-now.jsonl"), now_bytes))
+    try:
+        export = (_exclusively(base, "".join(f"{held[seq]}\n" for seq in sorted(held)).encode("utf-8"))
+                  if held else None)
+        record_copy = (None if now_bytes is None else
+                       _exclusively((export or base).with_name(base.stem + ".record-now.jsonl"),
+                                    now_bytes))
+    except OSError as exc:
+        # Said by its class and the folder, never a traceback, and nothing
+        # was discarded: the replay comes only after the export (S2).
+        raise StoreError(EXPORT_NOT_WRITTEN.format(folder=base.parent,
+                                                   kind=exc.__class__.__name__)) from None
 
     problem, readable = "", 0
     try:
@@ -3602,7 +3617,8 @@ if __name__ == "__main__":
                                              "(recover: the return to recover)")
     parser.add_argument("--out", help="where export writes its files")
     parser.add_argument("--discard", action="store_true",
-                        help="rebuild: discard the lines only the store holds, once they are listed")
+                        help="rebuild one return (--engagement) from its record, discarding the lines "
+                             "only the store holds - only with --accept-loss and the return's name")
     parser.add_argument("--accept-loss", metavar="NAME",
                         help="recover: replay from the record, accepting the loss of the lines "
                              "only the store had; NAME is the return folder's name, typed exactly")
@@ -3629,6 +3645,16 @@ if __name__ == "__main__":
         parser.error(str(exc))
     if ns.command == "recover" and not ns.engagement:
         parser.error("recover needs --engagement <the return folder>")
+    # Decision 188's --discard, narrowed (the port review's M1): a loss is
+    # accepted only for one return, by its name typed - recover's own path,
+    # its export and its difference first. Anything less is refused here.
+    if ns.command == "rebuild" and ns.discard:
+        if not ns.engagement or not ns.accept_loss:
+            parser.error('rebuild --discard needs --engagement <the return folder> and '
+                         '--accept-loss "<its folder name, typed exactly>"; nothing was changed')
+        ns.command = "recover"
+    elif ns.accept_loss and ns.command != "recover":
+        parser.error("--accept-loss goes with recover, or with rebuild --discard")
 
     if ns.command == "verify":
         # Read-only (decision 159, G-10): both files opened so that nothing
@@ -3697,16 +3723,10 @@ if __name__ == "__main__":
                     # Never discards silently (SPEC-162 ruling 6, decision
                     # 159): what would go is listed, a record that does not
                     # extend what this machine saw is refused by name and the
-                    # rest are still built, and --discard is a person's word -
-                    # taken only after recover's first look has exported the
-                    # store's copy of the return.
+                    # rest are still built. --discard with the typed name is
+                    # recover's path, above.
                     try:
-                        if ns.discard:
-                            kept = recover(connection, clients_root, engagement)
-                            if kept.export is not None:
-                                print(f"  kept {kept.export}")
-                        lost = rebuild_engagement(connection, clients_root, engagement,
-                                                  discard=ns.discard)
+                        lost = rebuild_engagement(connection, clients_root, engagement)
                     except WouldDiscard as refused:
                         for line in refused.lines:
                             print(line)

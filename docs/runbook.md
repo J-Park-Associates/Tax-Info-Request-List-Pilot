@@ -365,8 +365,12 @@ changes nothing:
   record needs recovering*), which saves both copies and shows the
   difference first. `rebuild` refuses a return whose record is shorter or
   rewritten since this machine last saw it; for a shorter one it lists the
-  lines only the database holds (decision 188), and `rebuild --discard`
-  saves recover's export of them before it drops them. **An older database is set
+  lines only the database holds (decision 188). A loss is accepted only
+  for one return, by its folder's name typed exactly - `recover ...
+  --accept-loss "<name>"`, or the same as `rebuild --engagement "<the
+  return's folder>" --discard --accept-loss "<name>"` - after the export
+  and the difference; `--discard` alone, or for the whole root, is
+  refused. **An older database is set
   aside by itself** since decision 159: the tracker renames it
   `tracker.db.v<N>.old` and builds a new one from the ledgers (keep the old
   file until the first pass has finished), and a database from a *newer*
@@ -2033,13 +2037,20 @@ version holds fewer lines than the store applied, and the pass says so
 before it touches the return: *"The journal of `<engagement>` holds fewer
 lines than the store has applied (the journal <n>, the store <m>). First
 restore the journal from Drive's trash or version history. `rebuild` would
-discard the <k> line(s) only the store still holds."* A rebuild never
+discard the <k> line(s) only the store still holds. Run recover (runbook
+§6)."* A rebuild never
 discards those lines silently: `python -m tracker.store "<the app folder>"
 rebuild "<clients root>"` lists each one (its kind, its document, its date),
 says *"the store holds <k> line(s) the journal does not; rebuild would
-discard them (listed above). Nothing was changed; add --discard to discard
-them."* and exits 1. Only once the list has been read and the journal
-cannot be restored does `--discard` rebuild from the journal as it is.
+discard them (listed above). Nothing was changed. Run recover (runbook
+§6)."* and exits 1. Only once the list has been read and the journal
+cannot be restored is the loss accepted - for that one return, by its
+folder's name typed exactly, as §6's recover does it: `python -m
+tracker.store "<the app folder>" rebuild "<clients root>" --engagement
+"<the return's folder>" --discard --accept-loss "<its folder name>"`
+(decision 159 narrowing 188's `--discard`, which alone is refused). The
+export and the difference come first, always; if the export cannot be
+written, nothing is discarded.
 
 Nothing here sends an email, moves money, or tells a client anything. Every
 message a client gets was read and sent by a person at this firm.
