@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 141,
     "edges": 858,
-    "reused": 112
+    "reused": 111
   },
   "node_types": [
     "artifact",
@@ -1364,8 +1364,8 @@
       "id": "tracker/reasons.py",
       "type": "module",
       "layer": "core",
-      "sha256": "a9deaced4a9f9d72",
-      "lines": 656,
+      "sha256": "7d3a4e48c3a2d491",
+      "lines": 660,
       "exports": [
         "ALSO_ANSWERS",
         "ANSWER_NOT_COUNTED",
@@ -2299,8 +2299,8 @@
       "id": "tracker/store.py",
       "type": "module",
       "layer": "core",
-      "sha256": "2e045b2f34f37311",
-      "lines": 2502,
+      "sha256": "86f0e65f7b907d40",
+      "lines": 2503,
       "cli": "python -m tracker.store",
       "exports": [
         "ALSO_IN",
@@ -2371,7 +2371,7 @@
         "FORMULA_LEADS": "('=', '+', '-', '@', '\\t', '\\r')",
         "MALFORMED_LINE": "'{where}: line {seq} of the record is malformed ({event} {problem}); the journal is not applied past it'",
         "ALSO_IN": "'also_in'",
-        "REWRITTEN": "\"The record for {rel} was changed behind the tracker's back (line {line} onward no longer matches). Nothing was applied. Copy the store aside and keep any conflict copy of the record before you rebuild (the runbook, section 1).\"",
+        "REWRITTEN": "\"The record for {rel} was changed behind the tracker's back (line {line} onward no longer matches). Nothing was applied. Copy the store aside, into its own folder under a new name with today's date (never to the desktop, a USB drive, an email or a chat), and keep any conflict copy of the record before you rebuild (the runbook, section 1).\"",
         "DOCUMENTS_CSV": "'documents.csv'",
         "REQUESTS_CSV": "'requests.csv'",
         "ENGAGEMENTS_CSV": "'engagements.csv'"
@@ -2429,7 +2429,7 @@
       "id": "tracker/validators.py",
       "type": "module",
       "layer": "core",
-      "sha256": "ddf03484c7fd96b6",
+      "sha256": "abdfba2db34c2528",
       "lines": 542,
       "cli": "python -m tracker.validators",
       "exports": [
@@ -2566,7 +2566,7 @@
       "id": "app/renderer/app.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "fa26efa9db572d4c",
+      "sha256": "6ec467c92f09cfbe",
       "lines": 2756,
       "role": "The desktop UI: the form-type wizard, the request list and the scan results, and (decision 104) the request-list editor - the only place a rule is entered. Talks only to window.tracker from the preload bridge.",
       "notes": "Every node is built with el() and placed with replaceChildren; there is no innerHTML and no escaper, so a client's file name, a keyword somebody typed into the request list or a folder name is text whatever characters it carries (a guard checks the sinks are absent). Every word it shows or compares comes from the API's vocabulary (applyVocabulary); SCAN_LABEL is the one label it owns. Decision 76: the Needs Review card asks one question of a parked and a set-aside document alike - which request does this belong to - so reviewRow() builds both, and only an open question carries the note box and the button that sets one aside; what a person has set aside is folded under its own count, never removed from the page, because the list is the only way back. Decision 77: renderUnfileList() is the same list for what is already filed - folded away, there for the one row that is wrong - and the function cannot be called after the decision it shows, because the guard on the renderer's vocabulary forbids that word anywhere in the file. Decision 84: the Needs Review card shows the shortlist. renderReview() maps state.review by pbc_location and hands each parked row its triage; reviewRow() puts the shortlist at the head of the picker under the 'suggested' heading, every other request under 'other_requests', and lists the sentence behind each suggestion beneath the row - an <option> carries no second line, and the reason is what is read before anything is picked. The picker starts on the best suggestion, falling back to the router's own first candidate. A parked file the evidence says nothing about shows the vocabulary's nothing_suggested rather than a guess, and a set-aside row is not triaged at all, so it gets no shortlist. Every word of it - the two headings and the File it label as well - comes from vocab; the renderer still types none. Decision 89: a chip beside the engagement's name says whether its own page still describes it. The word and the label are the API's (vocab.view), the chip's class is derived from the word the same way a status chip's is, and the button opens state.paths.view through the same whitelisted opener the Open Status button uses. Decision 91: that button's label is the API's too - applyVocabulary() fills #view-label from vocab.view.open, exactly as it fills the scan button - so the page carries no word for it, and the path it opens is now an .html file the shell hands to the default browser. Decision 104: requestRows() is the one row component - a table of inputs built from vocab.columns (each column's key, header and help; the two numbers as number inputs whose minimum comes from vocab.editor.minimums, the override a pick of vocab.overrides), used by the wizard's custom-request section (three columns, identifiers assigned as rows are added) and by the editor (all ten). openEditor() opens on state.rules - the person's rows as stored, a derived date pattern shown blank, the file types shown as '*' when any - with the engagement's details laid out from vocab.editor.engagement_fields (a text box, a date or a yes/no box for the editable ones, plain text for the rest) and the keywords filings taught shown beside each row as taught (vocab.editor.learned_note), never as typed. pasteRows() appends rows pasted from a spreadsheet by position - tab-separated if any line holds a tab, otherwise CSV through a small RFC 4180 reader, a first line that repeats the headings skipped - and records nothing. saveEditor() is one edit call: a refusal is shown inside the editor with its row and column and the modal stays open; a save renders the state the API returns, closes, and says what changed or that nothing did, with the warnings under vocab.editor.warnings_heading. Every heading, label, hint and button of the editor is vocab.editor's or vocab.columns'; the Check Manifest button and the button that opened the workbook are gone with the workbook. Decision 112: both row builders put the row's sequence number on the <li> (dataset.seq, from state.index[].seq and state.review[].seq) and assignParked(), dismissParked() and unfileDocument() send it back as seq; assignParked's banner shows the API's overrode_shortlist sentence as a warn note beside left_in_review. A refusal goes through refused(): the API's sentence is toasted, the button re-enabled and refresh() re-reads the state, so the card shows the row as the record now holds it. The renderer types no sentence of its own here either. Decision 113: the learned cell is a list rather than a line - learnedCell() draws the API's learned_note and then one span.ed-learned-word per taught keyword, each with its own button.ed-unlearn carrying the identifier and the word - and a click calls the unlearn command, then re-draws only the learned column from the state that comes back (renderLearnedCells), because unlearning is its own event and lands at once while the rows may hold edits the person has not saved. The note area says the API's unlearned_note, and its scan_note under it when the re-scan could not run; the renderer types no word of it. Decision 110: renderMoved() draws #moved-card above the review card from state.moved - one row per moved working copy, its home and where its bytes are now, with restoreMoved (the restore command), keepMoved (assign, with the request the picker was left on and the keyword typed) and reviewMoved (unfile) behind the three buttons, delegated on #moved-list. The picker and the keyword box are shown only where the API said which request the copy's name belongs to (in_request, decision 168), and the picker starts on it; every word is vocab.review_labels', including the word for a copy that is nowhere. Decision 114: renderReview() draws the same queue twice - the list in #review-list and, in #review-deck, one card at a time. renderDeck() builds the deck from state.review in the API's order with the rows a person sent to the back after it (skipped, pbc_locations, dropped as soon as a row leaves the queue), shows the first card, and is called again from every render, so a row filed or set aside anywhere else simply leaves the deck and the total is always the queue's. The card shows the row's reason, the top suggestion's sentence under the list's own 'suggested' heading (or the vocabulary's nothing_suggested), the set-aside sentences, a keyword box and the position line; acceptCard() files to the suggestion the card carries, openCardInList() switches to the list and outlines the row, skipCard() reorders and sends nothing. fileRow() is the one place the assign call is made - assignParked(), acceptCard() and keepMoved() all reach it, and a guard in tests/test_single_source.py keeps it the only one, so Accept and File it cannot drift apart. reviewMode is the person's choice of rendering, read and written in localStorage under REVIEW_MODE_STORAGE_KEY inside try/catch (a blocked store leaves the app on the list); it is a key and not a word, and nothing about the deck is recorded (decision 83). Decision 118: renderReminder()/loadReminder()/drawReminder() are the Reminder card - the record's last word on the draft, the four stages as a toggle coloured from the API's palette, the letter drawn from its own shape with el() (never from the clipboard's markup, which would be an HTML string), Copy for Outlook putting text/html and text/plain on the clipboard with the same words, Approve sending back the fingerprint of the text on screen, and Open the draft file on the path state.paths names. The stage a person picked is the only thing the page holds of its own and is dropped when the engagement changes. It types no colour: every hex it draws with is looked up in vocab.reminder.palette by the key a stage carries, and a guard reads the file for one. Decision 129 added the household card's two feed lines, the editor's feed list with its picker and its warning, and File under another return on both renderings of the queue - every word of it from the API's vocabulary, as always. Decision 160: the editor sends state's list_head with every save, and a Rename fold (renameChoices(), renameRequest()) calls the rename command, renames the row in place, adopts the version the rename returns and keeps what the person typed and not saved. Decision 157: movedRow() draws a gone row (its copy and its original both gone) with the one answer left, Mark <identifier> missing (vocab.review_labels.mark_missing on the .r-withdraw button the filed list uses), and the moved list's click handler sends it to withdrawAnswer()."
@@ -2622,7 +2622,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "41bd16637a1a6d19",
+      "sha256": "14f46eea02711333",
       "lines": 421,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -2649,8 +2649,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "d6f0912a4aed6e26",
-      "lines": 1518,
+      "sha256": "25ef7eefd8b57549",
+      "lines": 1524,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -2658,8 +2658,8 @@
       "id": "docs/storage.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "7d6b11f8e853ab98",
-      "lines": 596,
+      "sha256": "7edfbbd4a3aa3e27",
+      "lines": 597,
       "role": "The storage plan in prose: the three words (the record, the ledger, the store) and what each means, why the journal syncs with the engagement folder and the database does not, the journal-then-apply order, the schema table, the edit as the event the rules travel in, rebuild as recovery, the check as the gate, what each of the four stages took away, and (decision 107) why the verdict cache is in the store and not in the record.",
       "notes": "Written with decision 101 and finished with 104. It is the page to read before touching storage. The migrations of decisions 102 and 103, which it described step by step, are gone from the tree and from this page; the History section says they existed and where their reading copy is."
     },
@@ -5204,8 +5204,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7ee84c2bb925b413",
-      "lines": 1408,
+      "sha256": "6022cb3d2666eda1",
+      "lines": 1412,
       "exports": [
         "CONSOLE_EXEMPT",
         "CONSOLE_GUARDED",
@@ -5298,8 +5298,8 @@
       "id": "tests/test_store.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "90091b66108ed8dd",
-      "lines": 2180,
+      "sha256": "10b8d8a757f10644",
+      "lines": 2181,
       "exports": [
         "A_ROW_ORIGINAL",
         "DAY1",

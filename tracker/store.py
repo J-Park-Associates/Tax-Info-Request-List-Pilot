@@ -188,10 +188,9 @@ ENV_STORE = "TRACKER_STORE"
 #: others - the reason itself travels in the ``rules_changed`` event.
 #: Version 5 (decision 117) added the Filing Deadline to the engagement's
 #: details, which is a column of ``engagements``: a version-4 file has no
-#: column for it, so it is refused, deleted and rebuilt from the journals
-#: like every version before it - the date itself travels in the
-#: ``rules_changed`` event, so nothing is lost and only the first pass is
-#: slower.
+#: column for it, so it is refused, moved aside and rebuilt from the
+#: journals like every version before it - the date itself travels in the
+#: ``rules_changed`` event, and only the first pass is slower.
 #: Version 6 (decision 119) added the ``intents`` table, the moves begun
 #: and not yet finished: ``CREATE TABLE IF NOT EXISTS`` on open would make
 #: the table and leave a version-5 file's earlier lines unfolded into it,
@@ -1792,8 +1791,10 @@ def _catch_up(conn: sqlite3.Connection, root: Path | str | None, engagement_dir:
 #: the digest it kept (decision 137, A3). The same shape as the refusal of a
 #: truncated journal: what happened, that nothing was applied, what to do.
 REWRITTEN = ("The record for {rel} was changed behind the tracker's back (line {line} onward "
-             "no longer matches). Nothing was applied. Copy the store aside and keep any "
-             "conflict copy of the record before you rebuild (the runbook, section 1).")
+             "no longer matches). Nothing was applied. Copy the store aside, into its own folder "
+             "under a new name with today's date (never to the desktop, a USB drive, an email or "
+             "a chat), and keep any conflict copy of the record before you rebuild (the runbook, "
+             "section 1).")
 
 
 def _rewritten_from(conn: sqlite3.Connection, engagement_id: int, events: list[dict],

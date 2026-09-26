@@ -1303,6 +1303,7 @@ def test_every_document_counts_the_request_lists_columns_as_the_api_does():
         r"person's\s+(\w+)\s+columns",
         r"the\s+(\w+)\s+columns\s+\(:data:`COLUMNS`\)",
         r"the\s+(\w+)\s+headers\s+of\s+the\s+request\s+list",
+        r"\bshows\s+(?://\s*)?\w+\s+of\s+the\s+(\w+)",
     )
     counted = 0
     for rel in sources:
@@ -1338,7 +1339,8 @@ def test_no_document_sends_a_person_to_open_a_refused_file_or_publish_a_stray():
     - the paragraph on opening a parked file, the section on a document the
     tracker did not file - is said once. It catches these sentences' known
     shapes coming back, not a new one worded differently."""
-    for rel in (*DOCUMENTS, "app/renderer/index.html", "Build App.bat"):
+    for rel in (*DOCUMENTS, "app/renderer/index.html", "app/renderer/app.js",
+                "tracker/reasons.py", "Build App.bat"):
         text = read_as_prose(rel).lower()
         for sentence in STRUCK:
             assert sentence not in text, (rel, sentence)
@@ -1359,7 +1361,9 @@ def test_the_one_machine_rule_is_stated_once_as_todays_rule():
     rule = runbook[runbook.index(marker):].split("\n\n", 1)[0]
     assert "today" in rule and "while the owner decides" in rule, rule
     for rel in (*DOCUMENTS, "Build App.bat"):
-        text = read_as_prose(rel)
+        # The one sanctioned "USB" is the place a copy of the store never
+        # goes (the review of decision 184, S1).
+        text = " ".join(read_as_prose(rel).split()).replace("a USB drive, an email or a chat", "")
         for sentence in ("in the app on another machine", "any Windows laptop", "USB",
                          "Two machines must never both run it"):
             assert sentence not in text, (rel, sentence)

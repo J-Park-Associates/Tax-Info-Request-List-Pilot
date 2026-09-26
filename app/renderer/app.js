@@ -2012,7 +2012,7 @@ function labelPeopleBlock(headId, helpId, addId) {
 
 // A column of the request list, as the API describes it: its key in the
 // record, its heading, and the sentence under the heading. The wizard shows
-// three of the eleven; the editor shows them all.
+// three of them; the editor shows them all.
 function columnsByKey(keys) {
   return keys.map((key) => vocab.columns.find((c) => c.key === key)).filter(Boolean);
 }

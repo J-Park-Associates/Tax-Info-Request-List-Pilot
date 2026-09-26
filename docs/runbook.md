@@ -21,7 +21,9 @@ which holds the request list too; the originals sit in the client's own
 folder for the year, one tree over. There is no portal and no second copy of any of
 it. There *is* one database — `tracker.db`, beside the app on the
 designated machine — but it is disposable: it is rebuilt from the ledgers
-in the folders, it is never synced and nobody opens it.
+in the folders (though, until a ledger can prove its own lines, it may hold
+the only other copy of one, so it is copied aside before any rebuild, as the
+store check below says), it is never synced and nobody opens it.
 
 **The app's folder is private to the firm.** `tracker.db` holds every
 client's index rows. (The reader writes nothing there or anywhere else
@@ -38,9 +40,10 @@ while keeping its length, the pass and the app refuse that return, apply
 nothing and say so. Run the store check (`python -m tracker.store "<the app folder>" check "<clients root>"`)
 to see it named. **A rebuild replays whatever the record now says.** So
 before rebuilding a refused return, copy the database file
-(`tracker.store.STORE_FILENAME`, beside the app) aside, and keep any
-conflict copy of the record — any other file beside the return's
-`_ledger.jsonl` whose name begins `_ledger`, which a sync client makes when
+(`tracker.store.STORE_FILENAME`, beside the app) aside, into the same
+folder as the store under a new name with today's date (never to the
+desktop, a USB drive, an email or a chat), and keep any conflict copy of
+the record — any other file beside the return's `_ledger.jsonl` whose name begins `_ledger`, which a sync client makes when
 two copies disagree. They hold the only other copy of the lines the record
 may have lost. If there is a conflict copy, stop and have the two compared
 before anything is rebuilt. Then rebuild **that return only**, with
@@ -282,7 +285,9 @@ changes nothing:
   folder, a file that is neither — is refused, so a typo can never create
   an empty database somewhere and check it against the ledgers. If it ever disagrees, `rebuild` in place of `check` builds
   the database again from the ledgers — it replays whatever they now say,
-  so copy the database aside first and keep any conflict copy of a record,
+  so copy the database aside first, into the same folder as the store
+  under a new name with today's date (never to the desktop, a USB drive,
+  an email or a chat), and keep any conflict copy of a record,
   exactly as for a refused return at the top of §1. A `tracker.db` from
   before decision 107 is refused by name; move it aside (rename it; do not
   delete it) and run `rebuild` — the first pass after it reads every
@@ -1027,9 +1032,9 @@ These appear as warnings on the run rather than as index rows:
 | `filer.REPLACED_IN_PBC` | An original we had already filed no longer holds the bytes we filed. A client cannot change one under the documented shares (§1, *Sharing a household with a client*), so somebody at the firm or the sync client did; the working copy was made from the earlier file. Said too for a file taken out of an email or a zip that was replaced under its own name in the hidden `_Opened` folder. | Look at both, re-file if the new one differs, and find out who at the firm changed it. |
 | `filer.README_UNREAD` | The README in a household's inbox could not be opened just now - most often because someone has it open, or antivirus is holding it (decision 179). It is neither sorted nor written over; it waits where it is, as a file held open does. | Nothing, unless it is said pass after pass: then close whatever has it open. The next pass looks again. |
 | `filer.UNTIED_IN_PBC` | A row was recorded without its bytes and its working copy no longer matches the original. | Look at it. Nothing is adopted automatically, by design. |
-| `filer.UNRECORDED_OPENED` / `filer.OPENED_CONTAINER_GONE` | A file sits in a hidden `_Opened` folder that no row names, or a container's folder there whose email or zip has no row any more (decision 143). A pass killed half way that the next pass did not finish can leave one; so can a file somebody put there by hand. It is never sorted from there and never deleted. | Open it in Protected View and confirm whose it is first. A document goes in as §1, *A document the tracker did not file*, says — never into a client's folder; then delete the stray by hand. If you cannot tell whose it is, leave it and ask. |
+| `filer.UNRECORDED_OPENED` / `filer.OPENED_CONTAINER_GONE` | A file sits in a hidden `_Opened` folder that no row names, or a container's folder there whose email or zip has no row any more (decision 143). A pass killed half way that the next pass did not finish can leave one; so can a file somebody put there by hand. It is never sorted from there and never deleted. | Confirm whose it is first, opening it only as §4's *Before you open anything a pass parked* says: as a copy, never the client's original, in Protected View, never on the designated machine; a name ending in a program, script or shortcut extension is opened nowhere — ask the client. A document goes in as §1, *A document the tracker did not file*, says — never into a client's folder; then delete the stray by hand. If you cannot tell whose it is, leave it and ask. |
 | `filer.REMAKE_FAILED` | A working copy that was gone could not be made again from the original this pass - a full disk, a path past the limit, or an original that changed while it was read (decision 157). Nothing half made is left, nothing is recorded, and the request is held for you (`reasons.COPY_MISSING`), never asked of the client. | Nothing, if the next pass makes it. If the line comes back every pass, look at what it names: free the disk, shorten the root, or look at the original. |
-| `filer.UNRECORDED_COPY` | A file is sitting in `Prepared` under a name that begins with a request's identifier (or in the review folder) that nothing on the record put there and no row's bytes account for. It **is** counted for that request — what a request has is what `Prepared` holds under its name — but nobody can say where it came from. It is never a copy the tracker left half made: since decision 155 a copy that fails or is killed part-way (antivirus holding it, a full disk, the power going out) leaves only a temporary file, which nothing counts and the next pass removes. | Open it in Protected View and confirm whose it is first. A document goes in through the app or a firm-side folder a person controls, never a client's folder: §1, *A document the tracker did not file*. If it is not a whole document — a partial or broken copy, say one an older version left — delete it by hand; never ask the client for it. Said every pass until you do. |
+| `filer.UNRECORDED_COPY` | A file is sitting in `Prepared` under a name that begins with a request's identifier (or in the review folder) that nothing on the record put there and no row's bytes account for. It **is** counted for that request — what a request has is what `Prepared` holds under its name — but nobody can say where it came from. It is never a copy the tracker left half made: since decision 155 a copy that fails or is killed part-way (antivirus holding it, a full disk, the power going out) leaves only a temporary file, which nothing counts and the next pass removes. | Confirm whose it is first, opening it only as §4's *Before you open anything a pass parked* says: as a copy, never the client's original, in Protected View, never on the designated machine; a name ending in a program, script or shortcut extension is opened nowhere — ask the client. A document goes in through the app or a firm-side folder a person controls, never a client's folder: §1, *A document the tracker did not file*. If it is not a whole document — a partial or broken copy, say one an older version left — delete it by hand; never ask the client for it. Said every pass until you do. |
 
 And since decision 143 the Decision column has a sixth value, for an email
 or a zip the pass opened:
@@ -1176,8 +1181,9 @@ machine signed into the same Drive account has all of it already.
 itself, and the graphics card pack if that machine had one (step 5). **The database
 is not carried over** — the new machine builds its own from the ledgers in
 the engagement folders on its first pass — **but if the old machine still
-starts, copy its database aside and keep it** until the new machine's first
-pass has run clean: until the record can prove its own lines, it is the
+starts, copy its database aside and keep it** - into the same folder as
+the store, under a new name with today's date, never to the desktop, a USB
+drive, an email or a chat - until the new machine's first pass has run clean: until the record can prove its own lines, it is the
 only other copy of them. The first
 pass there reads every document once - the verdicts the old machine had
 cached were in its database, not in the folders - and is slower for it,

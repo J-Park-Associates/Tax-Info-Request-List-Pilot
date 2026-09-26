@@ -583,8 +583,9 @@ counts with a different chain is a refusal, never "nothing to do"), in
 over that many lines of the journal as it is now must equal the one kept,
 or the engagement is refused: *"The record for <return> was changed behind
 the tracker's back (line N onward no longer matches). Nothing was applied.
-Copy the store aside and keep any conflict copy of the record before you
-rebuild (the runbook, section 1)."* `check()` names it too. It never
+Copy the store aside, into its own folder under a new name with today's
+date (never to the desktop, a USB drive, an email or a chat), and keep any
+conflict copy of the record before you rebuild (the runbook, section 1)."* `check()` names it too. It never
 repairs itself. The line named is the first whose event the store holds
 differently; a rewrite that changed only bytes (a key reordered) is named
 from line 1. **Not chosen:** a sequence number and previous-line hash
