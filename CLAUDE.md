@@ -220,8 +220,11 @@ standing rule"):**
 - **CI never fires per commit** (decision 211, revising 207). It runs on a
   push to `main` (Linux, the net under what merged) and once when a person
   marks a pull request ready (the run main's protection needs before a
-  merge). A push to a ready pull request runs nothing; to check it again,
-  set it back to draft and mark it ready. A **draft** pull request runs
+  merge). A push to a ready pull request runs nothing, and it **cannot
+  merge** until it is set back to draft and marked ready again, because the
+  required checks never saw the new head. Dependabot's pull requests open
+  ready and so get no run: whoever reviews one sets it to draft and marks it
+  ready. A **draft** pull request runs
   nothing, and no other branch ever runs. The tracker lane opens every pull
   request as a draft and marks it ready once, when the stack is final.
 - **Land in bulk.** One pull request may carry several reviewed decisions in
@@ -238,9 +241,14 @@ standing rule"):**
   2026-09-26). Only the lane whose turn it is lands, on the orchestrator's
   "YOUR TURN" message; until then a lane builds only on its own stack or
   waits, and never rebases onto `main` early. **GitHub does the rebase:** at
-  a lane's turn the orchestrator rebases its pull request onto `main` on
-  GitHub, then lands it by rebase merge. A lane rebases locally only when
-  GitHub reports a conflict it cannot apply.
+  a lane's turn the orchestrator opens its pull request as a **draft**,
+  rebases it onto `main` on GitHub (the pull request's "Update branch",
+  rebase option), **then**
+  marks it ready - its one run checks the rebased head - and lands it by
+  rebase merge. Any push to a ready pull request, GitHub's own rebase
+  included, gets no run, so it must go back to draft and be marked ready
+  again before it can merge. A lane rebases locally only when GitHub
+  reports a conflict it cannot apply.
 - **The `windows` label is the explicit ask for Windows,** and only for
   work touching the held engagement lock, the atomic replace, path handling,
   or a Windows-only test. Put on a draft, it rides the one run when the pull
@@ -266,7 +274,7 @@ it binds every session and every agent, not only work in this repo.
   test it."
 - **Do not push or merge on every commit.** Batch the work and land to `main`
   occasionally, in larger, less frequent merges. Every push to `main` and every
-  run on a pull request spends Actions minutes, and the quota is being hit.
+  push to an open PR spends Actions minutes, and the quota is being hit.
 - **CI must not fire per commit.** `ci.yml` triggers only where a person
   explicitly needs the safety net — a push to `main`, a pull request marked
   ready, and the `windows` label — and never on `pull_request: synchronize`,

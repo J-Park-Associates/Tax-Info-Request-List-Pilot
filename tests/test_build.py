@@ -212,14 +212,20 @@ def test_ci_never_fires_per_commit():
     assert "cancel-in-progress: true" in ci
     linux = re.search(r"^\s*if: (.+)$", ci.split("\n  linux:\n", 1)[1].split("\n  windows:\n", 1)[0], re.M).group(1)
     windows = re.search(r"^\s*if: (.+)$", ci.split("\n  windows:\n", 1)[1], re.M).group(1)
-    assert "github.event_name == 'push'" in linux                    # main keeps Linux
-    assert "github.event.action == 'ready_for_review'" in linux      # a ready pull request runs once
-    assert "labeled" not in linux                                    # a label never re-runs Linux
-    assert "github.event.pull_request.draft == false" in linux       # a draft runs nothing
-    assert "github.event_name == 'pull_request'" in windows          # Windows never on main
-    assert "github.event.pull_request.draft == false" in windows
-    assert "labels.*.name, 'windows'" in windows                     # Windows only when asked
-    assert "github.event.label.name == 'windows'" in windows         # and only the windows label
+    # The conditions are pinned whole, not by fragments: the same pieces in
+    # another order (`A || B && C`) would say something else.
+    assert linux == (                                                 # main, or a ready non-draft PR; never a label
+        "github.event_name == 'push' || "
+        "(github.event.action == 'ready_for_review' && github.event.pull_request.draft == false)")
+    assert windows == (                                               # a ready PR that asked; never main
+        "github.event_name == 'pull_request' && github.event.pull_request.draft == false"
+        " && contains(github.event.pull_request.labels.*.name, 'windows')"
+        " && (github.event.action == 'ready_for_review' || github.event.label.name == 'windows')")
+    # A label run is its own concurrency group: adding any label must never
+    # cancel the required Linux checks already running on the pull request.
+    group = re.search(r"^\s*group: (.+)$", ci.split("\nconcurrency:", 1)[1], re.M).group(1)
+    assert group == ("ci-${{ github.ref }}-${{ github.event.action == 'labeled'"
+                     " && format('label-{0}', github.event.label.name) || 'gate' }}")
     # The gate is written once and called twice: a job's own `if:` cannot see
     # the matrix, so Linux and Windows are two jobs, not two rows of one.
     assert not re.search(r"^\s*steps:", ci, re.M)

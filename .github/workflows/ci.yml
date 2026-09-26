@@ -38,7 +38,10 @@
 # a whole — never started, never billed, and reported as skipped rather than
 # as a check that passed - reported only as "Windows", never as the gate's
 # own name, so no Windows check may be made a required status check: it would
-# wait forever on every unlabelled pull request. The timeout lives with the
+# wait forever on every unlabelled pull request. The same holds for Linux: a
+# Linux job skipped (on a label event) reports only as "Linux", never as the
+# required "Linux (3.11) / ..." and "Linux (3.14) / ..." names, so a skipped
+# run can never stand in for a real Linux pass. The timeout lives with the
 # steps, in gate.yml.
 #
 # The trade-off taken: main's Windows run, the old safety net, is gone. A
@@ -57,9 +60,13 @@ on:
     branches: [main]
     types: [ready_for_review, labeled]
 
-# A newer push makes an in-flight run irrelevant; don't pay for both.
+# A newer run of the same kind makes an in-flight one irrelevant; don't pay
+# for both. A label run is its own group (decision 211's review): adding a
+# label - any label - to a pull request whose Linux checks are running must
+# never cancel them, or the required checks are left cancelled and the merge
+# is blocked (the same class of failure that stalled 159's pull request).
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref }}-${{ github.event.action == 'labeled' && format('label-{0}', github.event.label.name) || 'gate' }}
   cancel-in-progress: true
 
 permissions:
