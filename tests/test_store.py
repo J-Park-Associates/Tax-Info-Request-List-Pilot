@@ -2179,3 +2179,49 @@ def test_a_row_written_without_a_short_title_reads_as_blank(conn, root, by_hand)
     before = ledger.path_for(by_hand).read_bytes()
     assert save_rules(by_hand, load_manifest(by_hand), load_engagement_info(by_hand)).recorded is False
     assert ledger.path_for(by_hand).read_bytes() == before
+
+
+# -------------------------------------- the engine's refusal is a class (189) ----
+
+
+def test_a_locked_database_is_a_store_error_with_its_code(tmp_path, monkeypatch):
+    """A-9: another connection holds the write lock past the busy timeout.
+    The pass hears a StoreError it already catches, with SQLite's own name
+    for the error as its code, and a sentence that quotes no path."""
+    path = tmp_path / "app" / store.STORE_FILENAME
+    monkeypatch.setattr(store, "BUSY_TIMEOUT_MS", 50)
+    holder = store.open(path)
+    holder.execute("BEGIN IMMEDIATE")
+    waiter = store.open(path)
+    try:
+        with pytest.raises(store.StoreError) as refused:
+            with store._transaction(waiter):
+                pass
+    finally:
+        holder.execute("ROLLBACK")
+        holder.close()
+        waiter.close()
+    assert isinstance(refused.value, store.StoreUnavailable)
+    assert refused.value.code == "SQLITE_BUSY"
+    assert str(refused.value) == "the database could not be used (SQLITE_BUSY)"
+    assert str(tmp_path) not in str(refused.value)
+    assert isinstance(refused.value.__cause__, sqlite3.OperationalError)
+
+
+def test_a_file_that_is_not_a_database_is_a_store_error_not_a_raw_one(tmp_path):
+    path = tmp_path / "app" / store.STORE_FILENAME
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"this was never a database, " * 200)
+    with pytest.raises(store.StoreUnavailable) as refused:
+        store.open(path)
+    assert refused.value.code == "SQLITE_NOTADB"
+
+
+def test_a_row_read_that_fails_mid_query_is_a_store_error_too(tmp_path):
+    conn = store.open(tmp_path / "app" / store.STORE_FILENAME)
+    try:
+        rows = conn.execute("SELECT 1 UNION ALL SELECT abs(-9223372036854775808)")
+        with pytest.raises(store.StoreUnavailable):
+            list(rows)
+    finally:
+        conn.close()

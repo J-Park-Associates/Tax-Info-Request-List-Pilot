@@ -377,6 +377,49 @@ def test_the_scan_leaves_its_verdicts_in_the_store_and_prunes_what_is_gone(engag
     assert memo["digest"] not in verdicts
 
 
+def test_each_requests_readings_are_kept_before_the_next_request_is_read(tmp_path, monkeypatch):
+    """Saved per request (decision 189): a pass killed while the scan reads
+    a later request has already kept what the earlier ones read."""
+    import tracker.content_check as content_check
+
+    engagement = make_engagement(tmp_path, [
+        ITEMS[0], RequestItem(identifier="C01", document="Second Statement",
+                              allowed_extensions=("pdf",), min_size_kb=0,
+                              required_keywords=("Another",))])
+    text_pdf(folder(engagement, "A01") / "chase.pdf", "Chase Bank Statement Dec 2025")
+    text_pdf(folder(engagement, "C01") / "later.pdf", "Another statement Dec 2025")
+    real, seen = content_check.extract, []
+
+    def looking_at_the_store(path, **kwargs):
+        seen.append((path.name, len(cache_rows(engagement)[1])))
+        return real(path, **kwargs)
+
+    monkeypatch.setattr(content_check, "extract", looking_at_the_store)
+    scan_engagement(engagement, today=DAY1)
+    assert seen[0][1] == 0
+    assert seen[-1][0].endswith("later.pdf") and seen[-1][1] >= 1
+
+
+def test_a_scan_past_its_deadline_reads_nothing_more_and_records_only_what_it_scanned(engagement):
+    """Decision 189: the household's time is checked where a request would
+    need a new judgment. Past it, with nothing kept, no request is scanned;
+    each keeps the status the record holds, and the report says how many
+    were not reached."""
+    from tracker import ocr
+
+    text_pdf(folder(engagement, "A01") / "chase.pdf", "Chase Bank Statement Dec 2025")
+    before = {i: row.status for i, row in statuses(engagement).items()}
+
+    report = scan_engagement(engagement, today=DAY1, deadline=ocr.awake_clock() - 1)
+
+    assert report.updates == {} and report.unreached == len(ITEMS)
+    assert report.recorded == 0
+    assert {i: row.status for i, row in statuses(engagement).items()} == before
+
+    report = scan_engagement(engagement, today=DAY1, deadline=ocr.awake_clock() + 600)
+    assert report.unreached == 0 and set(report.updates) == {i.identifier for i in ITEMS}
+
+
 def test_a_second_scan_over_an_unchanged_tree_hashes_nothing(engagement, monkeypatch):
     """Step 0's number: the memo makes an unchanged tree cost stats, not reads."""
     import tracker.content_check as content_check_module

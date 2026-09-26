@@ -211,7 +211,9 @@ from tracker.rollover import (
 from tracker.runner import (
     DRAFT_WEEKDAY,
     LOG_FILENAME,
+    LOG_NOT_WRITTEN,
     NOTHING_OUTSTANDING,
+    PAGE_NOT_WRITTEN,
     REMINDERS_NEVER,
     STATUS_PAGE_FILENAME,
     WEEKDAY_NAMES,
@@ -1731,7 +1733,8 @@ def _cmd_state(argv: list[str]) -> dict:
     return _state(_engagement_dir(argv))
 
 
-def _record_pass(runs: list[EngagementRun] | EngagementRun) -> None:
+def _record_pass(runs: list[EngagementRun] | EngagementRun,
+                 warnings: list[str] | None = None) -> list[str]:
     """Leave the record the scheduled run leaves: a line in the run log and
     the practice's status page, both in the clients root.
 
@@ -1743,24 +1746,34 @@ def _record_pass(runs: list[EngagementRun] | EngagementRun) -> None:
 
     Neither takes a lock or touches an engagement, and neither failing is
     allowed to fail the pass: the files have already been moved and the
-    statuses recorded, so the person is told what happened either way.
+    statuses recorded, so the person is told what happened either way -
+    **in the reply** (decision 189): the sentence for each that failed is
+    returned, because stderr is what the app discards when the reply
+    parses. ``warnings`` are the pass's own sentences, logged and put on
+    the page as the scheduled pass puts its own.
     """
     every = [runs] if isinstance(runs, EngagementRun) else list(runs)
+    said = list(warnings or [])
     root = clients_root()
     if root is None or not root.is_dir():
-        return
+        return []
+    failed: list[str] = []
     # Broadly, both of them: the pass has already moved the client's files
     # and recorded what it found, so nothing about recording it afterwards
     # may turn a finished pass into an error message in the app.
     try:
-        append_log(root / LOG_FILENAME, RunReport(today=dt.date.today(),
-                                                  reminders=REMINDERS_NEVER, runs=every))
+        append_log(root / LOG_FILENAME, RunReport(today=dt.date.today(), reminders=REMINDERS_NEVER,
+                                                  runs=every, warnings=said))
     except Exception as exc:
         log.warning("Could not write %s (%s)", LOG_FILENAME, exc)
+        failed.append(LOG_NOT_WRITTEN.format(kind=exc.__class__.__name__))
     try:
-        write_status_page(root, status_report(discover_engagements(root), passed=every))
+        write_status_page(root, status_report(discover_engagements(root), passed=every,
+                                              warnings=said + failed))
     except Exception as exc:
         log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, exc)
+        failed.append(PAGE_NOT_WRITTEN.format(kind=exc.__class__.__name__))
+    return failed
 
 
 def _cmd_scan(argv: list[str]) -> dict:
@@ -1773,6 +1786,13 @@ def _cmd_scan(argv: list[str]) -> dict:
     tracker.reminder`). There is one definition of a pass, in
     tracker.runner, and this is it - including the record it leaves behind
     (:func:`_record_pass`).
+
+    **The reply carries what the pass said** (decision 189): ``run`` is the
+    asked return, ``household`` is every other return of the household the
+    pass touched (its error, skip and warnings), and ``pass_warnings`` are
+    the pass's own - the reader's path, a reader that could not start, the
+    card, and a run log or page that could not be written. Nothing the
+    pass said is left on stderr alone.
 
     **The whole inbox, always** (decision 125). One folder feeds every
     return of the household, so Run now on one return sorts all of it;
@@ -1799,12 +1819,11 @@ def _cmd_scan(argv: list[str]) -> dict:
                          registry=_the_practice())
     run = next((one for one in runs if one.engagement.path == engagement),
                EngagementRun(engagement=engagement_from(engagement)))
-    # Said once, on the reply's own warnings (decisions 150 and 169).
-    if warning := reader_start_warning():
-        run.warnings.append(warning)
+    # Said once, as the pass's own (decisions 150, 169 and 189).
+    pass_warnings = [w for w in (ocr.reader_path_warning(), reader_start_warning()) if w]
     if ocr_session := ocr.current_session():
-        run.warnings.extend(ocr_session.warnings())
-    _record_pass(runs)
+        pass_warnings.extend(ocr_session.warnings())
+    pass_warnings.extend(_record_pass(runs, pass_warnings))
     payload = {
         "run": {
             "ok": run.ok,
@@ -1818,6 +1837,12 @@ def _cmd_scan(argv: list[str]) -> dict:
             "statuses": run.statuses,
             "outstanding": run.outstanding,
         },
+        "household": [
+            {"label": one.engagement.label, "ok": one.ok, "error": one.error,
+             "skipped": one.skipped, "warnings": one.warnings}
+            for one in runs if one is not run
+        ],
+        "pass_warnings": pass_warnings,
     }
     try:
         payload["state"] = _state(engagement)

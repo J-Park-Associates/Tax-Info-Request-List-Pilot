@@ -367,7 +367,41 @@ the week.
 A pass still going at `tracker.locking.RUN_TIME_LIMIT_SECONDS` is stopped
 by Task Scheduler — the task carries that as
 `tracker.scheduling.EXECUTION_TIME_LIMIT` — and the next repeat carries on
-from where it got to.
+from where it got to. **A killed pass loses at most the reading it was
+in** (decision 189): every document's verdict is kept the moment the pass
+moves on to the next file, so the next pass reads again only what it was
+killed on. A file the killed pass had already moved into the client's
+folder for the year shows up on the next pass as a file with no row, and
+is filed again from its kept verdict — nothing to do.
+
+**No client holds up the others** (decision 189). Each household gets
+`tracker.runner.HOUSEHOLD_BUDGET_SECONDS` (fifteen minutes) of a pass,
+counted only while the machine is awake and checked between files, so one
+can run at most about 25 minutes. Only a file that still has to be read is
+stopped: a file sent again, or a request whose files were read on an
+earlier pass, is taken whatever the time. A household out of time stops taking
+files, records what it did, drafts nothing this pass and says on every
+return *this household's time for this pass ran out after N file(s); the
+rest wait for the next pass* — nothing to do; the next pass carries on,
+and drafts the week's letter if it is owed. **Run now** (Sort & Scan) has
+the same fifteen minutes, so it finishes inside the app's thirty-minute
+limit and says the same sentence rather than failing. Households are
+taken **least recently completed first**, not in folder order, so the
+one that ran out of time, or was stopped, does not go first and stop the
+same clients every pass: a household the last pass was stopped in goes
+last. The order is kept in `tracker.runner.PASS_ORDER_FILENAME`
+(`pass-order.json`) beside the database; it is a hint and safe to delete
+— the next pass goes in folder order and starts counting again. A
+household skipped because another run held its lock is tried once more
+at the end of the same pass.
+
+**Task Scheduler's Last Run Result.** `0x0` is a pass that served every
+household; `0x1` is a pass in which a return failed (the page's Problems
+list says which). **`0x3`** (`tracker.runner.NOT_SERVED_TWICE_EXIT_CODE`)
+means a household has not been served for two passes running or more —
+it ran out of time, a lock was held, there was no room, or it failed. Open
+the page: its Problems list names the household and why (*… has not been
+served for N passes running (held lock)*), and that is the thing to fix.
 
 ### If the clients root moves
 
@@ -542,8 +576,8 @@ formatting character when it is saved, including the zero-width joiners
 some Persian, Arabic and Indic names and emoji use; the record keeps the
 name exactly as the email gave it (decision 176).
 
-The opening runs where the pass can stop it (decision 154), in the same
-process of its own each document is read in (decision 150), under the stop
+The opening runs where the pass can stop it (decision 154), in the
+reading's own process (decision 150), under the stop
 for a file - ten minutes. A container whose opening does not finish by
 then parks with the stop's sentence (`reasons.READING_STOPPED`), and one
 whose opening crashes parks with `reasons.READING_CRASHED`; either way
@@ -725,6 +759,40 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    A scheduled run that ends red with *the scheduled job still names an
    old clients root* is the job installed before this version: open the
    app and press *Install Schedule* once.
+
+   **Every logged pass says it started** (decision 189): the run log has
+   a `[time] pass started` line before each pass's summary. When the next
+   pass finds a *started* line with no summary after it, it says *the
+   pass that started at … did not finish (it was stopped or the machine
+   went off); this pass picks up where it left off* in the log and on the
+   page. Usually nothing to do: the pass kept every reading it finished.
+   If it says so every morning, the machine is going to sleep or off
+   during the schedule — look at its power settings.
+
+   **The page is always this morning's** (decision 189). Whatever went
+   wrong in the pass, the page and the run log are each still written, and
+   the page's **Problems** list starts with what the pass itself could not
+   do: *the pass stopped early (…)* names the kind of fault and means the
+   households after it were not looked at this pass — the next pass looks
+   at them; tell whoever looks after the machine if it repeats. *the run
+   log could not be written (…)* means `runs.log` is held open or the
+   disk is full — close whatever has it open. A return whose line reads
+   *the record could not be read: the database could not be used
+   (SQLITE_BUSY)* — or another `SQLITE_` code — met the app's database
+   busy or unwell; the rest of the practice ran, and the next pass tries
+   again. *the record could not be written (ENOSPC)* is a full disk; other
+   codes are the disk refusing the write (`EACCES`: a sync client or
+   antivirus holding the file). A line the page read rather than ran, and
+   a household that stopped on something unexpected, name the same fault
+   by its kind and code alone - *StoreUnavailable (SQLITE_BUSY)*,
+   *RecordNotWritten (ENOSPC)*, *PermissionError (EACCES)* - never the
+   system's own words, which can name a client's folder. *the practice
+   page could not be written (…)* is said in `runs.log` instead, and the
+   Last Run Result is `0x1`: the page you are looking at is an old one. The run log gives each return's warnings
+   as a count, *(warnings: 3)*; the page and the app have the sentences.
+   **Run now** says the same: under the return's own result it lists the
+   household's other returns' problems and the pass's own (the reader,
+   the log, the page).
 2. **Clear the review folder.** Anything the rules could not be sure of is
    parked in the review folder (`tracker.scaffold.REVIEW_DIR_NAME`) with a
    reason. In the app, pick the engagement, pick the request the document
@@ -808,7 +876,13 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    met at that instant; press the button again a moment later. A run that
    says it was refused permission to create the lock is not waiting for
    another run: the account running it cannot write to that return's
-   folder, and that has to be fixed on the folder.
+   folder, and that has to be fixed on the folder. **After a power cut
+   or a restart** nothing waits (decision 189): a lock this machine wrote
+   before it last started is cleared by the next run, whatever process
+   number it names, and an empty lock file - the power went between the
+   lock being made and its line being written, which the run now forces
+   to disk at once - is cleared once it is a minute old. A lock written by
+   another machine still waits for the age rule.
 4. **Google Drive placeholders.** A file Drive has listed but not yet
    copied down is not the document; the row sits at
    `tracker.manifest.Status.PENDING_SYNC` and the pass leaves it alone
@@ -993,7 +1067,7 @@ to send. A parked document is opened as its working copy in
 | `reasons.NO_PEOPLE_ON_FILE` | This return lists nobody yet, so nothing can confirm a named request. | Open **Edit Request List** and add the return's people (§10). Everything parked for this reason files itself on the next pass. |
 | `reasons.SEVERAL_FORMS_UNSORTED` | One page prints two or more forms' own names (a stack scanned in one pass) and they will not sort one to a request: a form no row asks for, two rows wanting one form, or a row that accepted the page on a phrase rather than a form number. When they do sort, the page files a copy under each request and the row's Reason says so (`reasons.NAMES_SEVERAL_FORMS`). | Split the scan, or file the whole page to the one request that matters and note the rest. |
 | `reasons.TOO_LARGE` | The file is larger than the tracker will read (`validators.MAX_READ_MB`) — a video, a disk image, a whole mailbox, or a genuinely enormous scan. It was not opened: no text, no OCR. It is still counted and kept like any other original. | Ask the client what it was meant to be. If you must look, do it as the paragraph above this table says, then file it. |
-| `reasons.READING_STOPPED` | The reader gave up on this file at the safety stop — a minute a page, ten minutes a file (decision 137). Something in it made reading far slower than any real document, or the machine was very busy at the time; it will not be tried again until the file changes. The stop covers the whole reading - the text layer, each page's drawing and the OCR - because each document is opened and read in a process of its own that the pass ends at the stop (decision 150). An email or a zip is opened in that process too, under the stop for a file, and one stopped there parks whole with nothing taken out of it (decision 154). That process never outlives the pass: if the schedule's own time limit stops the pass, the reading stops with it. | Open its working copy as the paragraph above this table says, and file it. |
+| `reasons.READING_STOPPED` | The reader gave up on this file at the safety stop — a minute a page, ten minutes a file (decision 137). Something in it made reading far slower than any real document, or the machine was very busy at the time (time the machine spent asleep does not count, decision 189). Since decision 189 the stop bounds the rules as well as the reading: the file is judged against its requests in the same process it is read in, so a typed Date Pattern on a request that is slow to match can cause this for every file judged against that request, until the pattern is changed - several files parked with this sentence against one request point at that request's Date Pattern. The verdict is kept, and not tried again until the file or its request's rules change. The stop covers the whole reading and the judgment - the text layer, each page's drawing, the OCR and the rules - because they run in the reading's own process, which the pass ends at the stop (decision 150). An email or a zip is opened in that process too, under the stop for a file, and one stopped there parks whole with nothing taken out of it (decision 154). That process never outlives the pass: if the schedule's own time limit stops the pass, the reading stops with it. | Open its working copy as the paragraph above this table says, and file it. |
 | `reasons.READING_CRASHED` | The reader's own process ended on this file without an answer - the PDF or OCR library crashed, the email or zip opener crashed (decision 154), or the machine ran out of memory (decision 150). Only this file is affected: the pass went on to the next one, and this file will not be tried again until it changes. | Open its working copy as the paragraph above this table says — never on the designated machine — and file it. If many files say it at once, the machine itself needs a look. |
 | `reasons.READER_UNAVAILABLE` | The reader could not start on this machine at all, so the file was never opened (decision 150). The machine's problem, never the file's: nothing is kept about the file and nothing is recorded - no index row, no Needs Review row. The file waits (in the inbox, or in the year's folder with no row) and is read again on the next pass. The pass's own summary and the run log say it once. | Look at the machine (memory, disk, antivirus, a damaged install). Once it is fixed, the next pass reads and files the waiting files; there is nothing to file by hand. |
 | `reasons.UNNAMED_ACROSS_HOUSEHOLDS` | This household's drop folder feeds a return in another household, and that return would have taken this document on its keywords alone — but the page names nobody, so it was not moved into a folder other people can open. It waits here (decision 137). The Evidence names the return and the request that wanted it, as `<return> / <request>`. The same holds for a document sent again that the other household already has. | Open it. If it is that return's, file it there with **File it**; if it is this household's, file it here. |
@@ -1169,7 +1243,8 @@ machine signed into the same Drive account has all of it already.
 
 **What was only on that machine:** the settings file beside the app
 (`tracker.settings.SETTINGS_FILENAME`), the database beside it
-(`tracker.store.STORE_FILENAME`), the scheduled task, the app folder
+(`tracker.store.STORE_FILENAME`) and the pass-order hint beside it
+(`tracker.runner.PASS_ORDER_FILENAME`), the scheduled task, the app folder
 itself, and the graphics card pack if that machine had one (step 5). **The database
 is not carried over** — the new machine builds its own from the ledgers in
 the engagement folders on its first pass — **but if the old machine still

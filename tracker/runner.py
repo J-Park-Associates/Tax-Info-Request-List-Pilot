@@ -114,13 +114,41 @@ scan already running, a drop that would not sort — each is recorded against
 that engagement and the run moves on, because one client's problem must not
 be the reason nine other clients went unprocessed. The command exits non-zero
 if anything failed, so the scheduler shows a red run instead of a silent one.
+
+**And the pass cannot go quiet** (decision 189). Whatever stops it - a
+surprise in the runner's own code, a database the engine refuses, a run
+log that cannot be written - the run log and the practice page are each
+still attempted, in a guard of their own, and each says what the other
+could not do: :data:`PASS_STOPPED` names the class of what stopped the
+pass, :data:`LOG_NOT_WRITTEN` puts a log that failed on the page. The
+store's and the record's own errors are classes the pass catches
+(``store.StoreUnavailable``, ``ledger.RecordNotWritten``), so one bad
+database or a full disk costs the household it happened in. Every verdict
+is saved the moment the next file is taken, so a pass killed half way
+reads again only what it was killed on. The pass's own sentences name a
+class or a code, never an exception's text, which can carry a client's
+path.
+
+**And no household holds up the rest** (decision 189, the bounded
+household). Each household has :data:`HOUSEHOLD_BUDGET_SECONDS` of a
+pass, on the awake clock, checked between files; one out of time stops
+taking files, records what it did, drafts nothing and says so
+(:data:`OUT_OF_TIME`), and the rest wait for the next pass. Households
+run least recently completed first, from a hint beside the store
+(:data:`PASS_ORDER_FILENAME`, safe to delete); one skipped for a held
+lock is tried once more at the end of the pass; and one not served two
+passes running exits the pass with :data:`NOT_SERVED_TWICE_EXIT_CODE`
+and is named on the page. A logged pass says it started, and the next
+one says when a start never finished (:data:`PASS_DID_NOT_FINISH`).
 """
 
 from __future__ import annotations
 
 import datetime as dt
+import json
 import logging
 import os
+import re
 import time
 import traceback
 from collections.abc import Iterable
@@ -140,7 +168,7 @@ from tracker.filer import (
     room_for,
     sweep_stranded_temps,
 )
-from tracker.fsio import write_text_atomically
+from tracker.fsio import write_json_atomically, write_text_atomically
 from tracker.households import load_household_info, open_years, resolve_feeds
 from tracker.layout import household_of, inbox_of, lock_order_key, originals_dir_for, root_of
 from tracker.ledger import LedgerError
@@ -300,6 +328,66 @@ READER_COULD_NOT_START = ("the reader could not start on this machine for {n} fi
                           "pass - look at the machine")
 
 
+#: What a pass says when something in the runner's own code stopped it
+#: (decision 189): the class of what stopped it, never its text. Every
+#: household that finished is still reported, logged and drawn.
+PASS_STOPPED = ("the pass stopped early ({kind}); the households after it were not looked at "
+                "this pass")
+#: What the run log's failure says, on the page and in the console
+#: (decision 189): the log is how an unattended failure leaves a trace,
+#: so one that could not be written is itself a problem to see.
+LOG_NOT_WRITTEN = "the run log could not be written ({kind})"
+#: What the practice page's failure says where it can be said: the app's
+#: reply after Run now, and the console (decision 189).
+PAGE_NOT_WRITTEN = "the practice page could not be written ({kind})"
+
+#: Each household's share of a pass (decision 189), on ``ocr.awake_clock``
+#: from the household's start and checked **between files**: a household
+#: can run at most this plus one document's stop (600 s), 25 minutes -
+#: inside the app's 30-minute kill, so Run now keeps every verdict and
+#: records its rows - and four stalled households fit in the schedule's
+#: two hours while the order below serves the rest next pass. A threshold
+#: stated in advance (UX 9), not measured into place.
+HOUSEHOLD_BUDGET_SECONDS = 15 * 60
+#: What each working return of a household out of time says. ``n`` is the
+#: files its sort took this pass; nothing is drafted for it this pass.
+OUT_OF_TIME = ("this household's time for this pass ran out after {n} file(s); the rest wait "
+               "for the next pass")
+#: Its draft note: a letter built on an unfinished pass could chase what
+#: already arrived, and the next pass's draft rule catches the week up.
+OUT_OF_TIME_NO_DRAFT = "not drafted this pass: the household's time ran out"
+#: The hint of when each household last completed a pass (decision 189),
+#: beside the store, so it holds household names only where the store
+#: already does and moves with it. A hint, never a record: nothing but the
+#: order and the not-served count reads it, and deleting it resets both.
+PASS_ORDER_FILENAME = "pass-order.json"
+PASS_ORDER_VERSION = 1
+#: The largest hint read (the review's S1): a file past it is not parsed.
+#: A real hint is one short line per household, well under a kilobyte for
+#: a practice's worth; anything this large is not one.
+PASS_ORDER_MAX_BYTES = 64 * 1024
+ORDER_HINT_UNREADABLE = ("the pass order could not be read; households ran in folder order "
+                         "this pass")
+#: The exit code of a pass in which some household was not served for the
+#: second pass running (decision 189): Task Scheduler's Last Run Result
+#: reads 0x3. 1 is a return that failed; 2 is argparse's; 3 wins over 1.
+NOT_SERVED_TWICE_EXIT_CODE = 3
+NOT_SERVED_TWICE = "{household} has not been served for {n} passes running ({why})"
+#: Why a household was not served, as the sentence above says it.
+WHY_OUT_OF_TIME = "ran out of time"
+WHY_HELD_LOCK = "held lock"
+WHY_NO_ROOM = "no room"
+WHY_FAILED = "failed"
+#: The run log's line before a logged pass does anything, and what the
+#: next pass says when the last such line has no pass summary after it
+#: (decision 189, SPEC-161 ruling 3): killed, or the machine went off.
+PASS_STARTED_LINE = "[{stamp}] pass started"
+PASS_DID_NOT_FINISH = ("the pass that started at {stamp} did not finish (it was stopped or the "
+                       "machine went off); this pass picks up where it left off")
+#: How much of the run log's end is read for that question.
+LOG_TAIL_BYTES = 64 * 1024
+
+
 def reader_start_warning() -> str:
     """The pass's one warning about readers that could not start since it
     last asked (decision 150), or "" when every reader started."""
@@ -352,6 +440,12 @@ class EngagementRun:
     draft_note: str = ""      # why there is no draft, when there is a reason
     skipped: str = ""         # why the whole engagement was passed over
     error: str = ""           # what went wrong, if anything did
+    #: Skipped because another run held a lock this household needed
+    #: (decision 189): a typed flag, not the text of ``skipped``, so the
+    #: pass can try the household once more at its end.
+    locked_out: bool = False
+    #: The household's time for this pass ran out (decision 189).
+    out_of_time: bool = False
     #: When this engagement was passed over. None on a row the status page
     #: read rather than ran, so the page never dates a pass that never was.
     last_pass: dt.datetime | None = None
@@ -417,6 +511,9 @@ class RunReport:
     #: The one run-log line when the graphics card pack is there and could
     #: not be used (``ocr.PACK_UNUSABLE``), or "". Not a pass warning.
     reader_note: str = ""
+    #: The households not served for the second pass running or more
+    #: (decision 189): the pass exits :data:`NOT_SERVED_TWICE_EXIT_CODE`.
+    not_served_twice: list[str] = field(default_factory=list)
 
     @property
     def processed(self) -> list[EngagementRun]:
@@ -490,6 +587,7 @@ def should_draft(
     *,
     drafted: dt.date | None = None,
     held: bool = False,
+    created: dt.date | None = None,
 ) -> bool:
     """Whether the automated run drafts a reminder for this engagement today.
 
@@ -501,11 +599,14 @@ def should_draft(
     Weekly means once a week, not only on the day: a machine that was off
     on the draft day drafts on its next pass, when ``drafted`` (the day the
     last draft was written) is older than the draft day that went by. An
-    engagement never drafted waits for its first draft day, so a client set
-    up mid-week is not chased the same afternoon - unless the record says
-    its draft day came and the draft was ``held`` (decision 115): that
-    draft is owed, and the first pass after a person clears the question
-    writes it.
+    engagement never drafted is owed its first draft once a draft day has
+    come since it was ``created`` (the day of its first rules event,
+    :func:`created_on`), so a client set up mid-week is not chased the same
+    afternoon, and one whose first draft day the machine missed is drafted
+    on the next pass rather than a week late (decision 189, SPEC-161 A-F8).
+    The record saying its draft day came and the draft was ``held``
+    (decision 115) owes it too: the first pass after a person clears the
+    question writes it.
     """
     if not engagement.reminders or mode == REMINDERS_NEVER:
         return False
@@ -515,7 +616,24 @@ def should_draft(
         return True
     if held:
         return True
-    return drafted is not None and drafted < last_draft_day(today, weekday)
+    if drafted is None:
+        return created is not None and created <= last_draft_day(today, weekday)
+    return drafted < last_draft_day(today, weekday)
+
+
+def created_on(engagement_dir: Path) -> dt.date | None:
+    """The day this return was created: the day of the first rules event on
+    its record (``rules_changed``, or the retired ``rules_imported`` an
+    older journal opens with), or None when the record has none or cannot
+    be read - and then no first draft is owed by this rule."""
+    try:
+        events = ledger.read_events(engagement_dir)
+    except (LedgerError, OSError):
+        return None
+    for event in events:
+        if event.get(ledger.EVENT_KEY) in (ledger.RULES_CHANGED, ledger.RULES_IMPORTED):
+            return ledger.day_of(str(event.get(ledger.AT_KEY, "")))
+    return None
 
 
 # --------------------------------------------------------------- one pass ----
@@ -565,9 +683,21 @@ def run_household(
     reminders: str = REMINDERS_AUTO,
     weekday: int = DRAFT_WEEKDAY,
     registry: object,
+    budget: float | None = None,
 ) -> list[EngagementRun]:
     """One pass over a whole household: sort its one inbox across every
     return it feeds, then scan, draft and draw each of its own returns.
+
+    **Bounded** (decision 189). ``budget`` seconds - by default
+    :data:`HOUSEHOLD_BUDGET_SECONDS`, the scheduled pass and Run now alike
+    - on ``ocr.awake_clock`` from the household's start, checked by the
+    sort and the scan before each file that would need a new judgment (a
+    cache miss; ruling 2.2): a kept verdict is taken whatever the time.
+    Past it they read no more, what they did is recorded, every working return says
+    :data:`OUT_OF_TIME` and is not drafted, and the README is still
+    refreshed. And **every pre-check is inside the guard**: the record,
+    the room, the years, the lock order and the feed list failing cost
+    this household, never the practice pass.
 
     **The household is the unit of a pass** (decision 125). A household has
     one inbox, so the sort has to judge each drop against every open-year
@@ -602,14 +732,15 @@ def run_household(
     named to fit, and is not warned; a request that cannot receive is; a return with no room for even a review copy
     skips the whole household, as a held lock does.
 
-    Never raises for a return-level problem: anything that goes wrong is
-    recorded on that return's :class:`EngagementRun` so the caller can keep
-    going through the rest of the practice.
+    Never raises: anything that goes wrong is recorded on the returns'
+    runs so the caller can keep going through the
+    rest of the practice.
     """
     today = today or dt.date.today()
     # This pass's start, for the sweep (decision 155): a temp that came to
     # be after it is nothing a killed write left.
     started = time.time()
+    deadline = ocr.awake_clock() + (HOUSEHOLD_BUDGET_SECONDS if budget is None else budget)
     # Stamped before anything is touched, so a return that fails its
     # pre-checks still says when it was last looked at.
     runs = [EngagementRun(engagement=one, last_pass=dt.datetime.now()) for one in returns]
@@ -617,35 +748,39 @@ def run_household(
         for run in runs:
             run.error = NO_PRACTICE
         return runs
-    working = [run for run in runs if _worth_a_pass(run)]
-    if not working:
-        return runs
-    if _no_room(working):
-        return runs
-
-    years = open_years([run.engagement for run in working])
-    if len(years) > 1:
-        note = TWO_OPEN_YEARS.format(years=", ".join(str(year) for year in years))
-        for run in working:
-            run.warnings.append(note)
-    # The one global lock order: the household's folder name, then the
-    # return's, without case. Within one household that is the return
-    # folder's own order, which is what the sort calls "first by order"
-    # too, so the return a contested drop parks in is the return whose
-    # lock was taken first.
-    working.sort(key=lambda run: lock_order_key(run.engagement.path))
-    sorting = [run for run in working
-               if len(years) == 1 and run.engagement.tax_year == years[0]]
-    # The return lines in other households this drop folder also feeds
-    # (decision 129), resolved to this year's returns; a line that answers
-    # to nothing is said on every one of the household's own returns.
-    fed: list[Engagement] = []
-    if sorting:
-        fed, unresolved = _feeds_of(household, years[0], registry)
-        for run in working:
-            run.warnings.extend(unresolved)
-
+    working: list[EngagementRun] = []
+    sorting: list[EngagementRun] = []
+    taken = unreached = 0
     try:
+        working = [run for run in runs if _worth_a_pass(run)]
+        if not working:
+            return runs
+        if _no_room(working):
+            return runs
+
+        years = open_years([run.engagement for run in working])
+        if len(years) > 1:
+            note = TWO_OPEN_YEARS.format(years=", ".join(str(year) for year in years))
+            for run in working:
+                run.warnings.append(note)
+        # The one global lock order: the household's folder name, then the
+        # return's, without case. Within one household that is the return
+        # folder's own order, which is what the sort calls "first by order"
+        # too, so the return a contested drop parks in is the return whose
+        # lock was taken first.
+        working.sort(key=lambda run: lock_order_key(run.engagement.path))
+        sorting = [run for run in working
+                   if len(years) == 1 and run.engagement.tax_year == years[0]]
+        # The return lines in other households this drop folder also feeds
+        # (decision 129), resolved to this year's returns; a line that
+        # answers to nothing is said on every one of the household's own
+        # returns.
+        fed: list[Engagement] = []
+        if sorting:
+            fed, unresolved = _feeds_of(household, years[0], registry)
+            for run in working:
+                run.warnings.extend(unresolved)
+
         with ExitStack() as locks:
             # A dry run takes none: it writes nothing and must never block
             # a real run.
@@ -670,11 +805,12 @@ def run_household(
             if not dry_run:
                 scaffold_household(household, returns=[run.engagement.path for run in working])
             if sorting:
-                _sort_step(household, sorting, fed, today=today, dry_run=dry_run)
+                taken, unreached = _sort_step(household, sorting, fed, today=today,
+                                              dry_run=dry_run, deadline=deadline)
             for run in working:
                 run_engagement(run.engagement, root=root, today=today, dry_run=dry_run,
                                reminders=reminders, weekday=weekday, lock_held=not dry_run,
-                               run=run)
+                               run=run, deadline=deadline, unfinished=bool(unreached))
             # The README, once, after the sort and after every return's
             # scan and draft, still inside the locks (decision 130): what
             # the client reads is current as of this pass, never one pass
@@ -688,11 +824,25 @@ def run_household(
     except ScanLockedError as exc:
         for run in working:
             run.skipped = f"another run is still going ({exc})"
+            run.locked_out = True
     except Exception as exc:  # the household's surprise must not stop the practice
-        for run in working:
+        # Before ``working`` is known - a pre-check that raised - every
+        # return not already skipped or failed carries it.
+        for run in working or [one for one in runs if not one.skipped and not one.error]:
             if not run.error:
-                run.error = f"{exc.__class__.__name__}: {exc}"
-                run.draft_note = traceback.format_exc(limit=3).strip().splitlines()[-1]
+                # Its class and code, never its message (security principle
+                # 7; the review's S2): the message can name a client's
+                # folder, and this reaches the page and the run log. The
+                # whole trace is on stderr for a person.
+                run.error = content_check.said_as_class(exc)
+        log.error("A household stopped early (%s)", content_check.said_as_class(exc),
+                  exc_info=True)
+    if unreached or any(run.out_of_time for run in working):
+        # The household's time ran out (decision 189): every working return
+        # says so, whichever step it ran out in, and the rest waits.
+        for run in working:
+            run.out_of_time = True
+            run.warnings.append(OUT_OF_TIME.format(n=taken))
     for run in working:
         if run.file_errors and not run.error:
             # The rest of the pass went ahead, but a drop that could not be
@@ -763,7 +913,8 @@ def _feeds_of(household: Path, year: int, registry: object) -> tuple[list[Engage
 
 
 def _sort_step(household: Path, sorting: list[EngagementRun], fed: list[Engagement], *,
-               today: dt.date, dry_run: bool) -> None:
+               today: dt.date, dry_run: bool,
+               deadline: float | None = None) -> tuple[int, int]:
     """The household's one inbox, sorted across the returns of its open year
     and the returns it feeds.
 
@@ -778,6 +929,9 @@ def _sort_step(household: Path, sorting: list[EngagementRun], fed: list[Engageme
     it had just filed elsewhere was telling a person the wrong thing about
     their own inbox. One sentence per fed return that received something,
     on the first own return's run, in its warnings.
+
+    Returns how many files the sort took and how many the household's
+    time did not reach (decision 189).
     """
     first = sorting[0].engagement.path
     # The year the record says, not the year folder's name: a folder
@@ -788,7 +942,7 @@ def _sort_step(household: Path, sorting: list[EngagementRun], fed: list[Engageme
     reports = file_household_drops(
         inbox_of(first), originals,
         own=[run.engagement.path for run in sorting], fed=[one.path for one in fed],
-        today=today, dry_run=dry_run,
+        today=today, dry_run=dry_run, deadline=deadline,
     )
     sorting[0].warnings.extend(
         FILED_INTO_FED.format(n=len(reports[one.path].filed), label=one.label)
@@ -809,6 +963,9 @@ def _sort_step(household: Path, sorting: list[EngagementRun], fed: list[Engageme
         # is for a person to look at, every pass - but nothing was left
         # unsorted, so it rides the warnings rather than failing the run.
         run.warnings.extend(f"{e.name}: {e.error}" for e in filed.attention)
+    own = [reports[run.engagement.path] for run in sorting if run.engagement.path in reports]
+    return (sum(one.handled + len(one.errors) for one in own),
+            sum(one.unreached for one in own))
 
 
 def run_engagement(
@@ -821,8 +978,14 @@ def run_engagement(
     weekday: int = DRAFT_WEEKDAY,
     lock_held: bool = False,
     run: EngagementRun | None = None,
+    deadline: float | None = None,
+    unfinished: bool = False,
 ) -> EngagementRun:
     """Scaffold, scan and (on the draft day) draft and draw one return.
+
+    ``deadline`` is the household's (decision 189), handed to the scan;
+    ``unfinished`` says the household's sort ran out of time. Either way
+    short, the return is not drafted this pass (``out_of_time``).
 
     **The per-return half of a pass** since decision 125: the sort is the
     household's, because one inbox feeds every return of it, and
@@ -858,15 +1021,21 @@ def run_engagement(
             if not dry_run:
                 scaffold_engagement(engagement.path)   # contact from the household
             scanned = scan_engagement(engagement.path, root=root, today=today, dry_run=dry_run,
-                                      lock_held=not dry_run)
+                                      lock_held=not dry_run, deadline=deadline)
             summary = scanned.summary
             run.statuses = summary.counts
             run.outstanding = summary.outstanding
             run.warnings.extend(scanned.warnings)
+            run.out_of_time = unfinished or scanned.unreached > 0
 
-            if should_draft(engagement, today, reminders, weekday,
-                            drafted=last_drafted(engagement.path),
-                            held=draft_is_held(engagement.path)):
+            drafted = last_drafted(engagement.path)
+            if run.out_of_time:
+                # A letter built on an unfinished pass could chase what
+                # already arrived; the next pass's rule catches the week up.
+                run.draft_note = OUT_OF_TIME_NO_DRAFT
+            elif should_draft(engagement, today, reminders, weekday,
+                            drafted=drafted, held=draft_is_held(engagement.path),
+                            created=created_on(engagement.path) if drafted is None else None):
                 _draft_step(run, dry_run=dry_run, today=today, weekday=weekday)
             else:
                 run.draft_note = _why_no_draft(engagement, today, reminders, weekday)
@@ -1101,8 +1270,26 @@ def run_registry(
     reminders: str = REMINDERS_AUTO,
     weekday: int = DRAFT_WEEKDAY,
     only: str = "",
+    report: RunReport | None = None,
 ) -> RunReport:
-    """Run every household in the registry, in the order it lists them.
+    """Run every household in the registry, least recently completed first.
+
+    **The order** (decision 189, SPEC-161 ruling 2): by when each household
+    last completed a pass, oldest first, one never completed first, ties in
+    the walk's order - from :data:`PASS_ORDER_FILENAME` beside the store, a
+    hint: missing, unreadable or stale, the walk's order, and one warning
+    (:data:`ORDER_HINT_UNREADABLE`) when it is there and cannot be read.
+    A household whose every working return was skipped for a held lock is
+    run once more at the end, with a fresh budget, and its runs replace the
+    first attempt's. A household not served two passes running or more is
+    named (:data:`NOT_SERVED_TWICE`) and the pass exits
+    :data:`NOT_SERVED_TWICE_EXIT_CODE`. A dry run reads the hint for its
+    order and writes, counts and names nothing; an ``only`` run updates the households it served.
+
+    ``report`` is the caller's, filled as each household finishes
+    (decision 189): when something in this function's own code raises,
+    the caller still holds every run that finished, and logs and draws
+    them. ``run_household`` itself never raises.
 
     **A household at a time** (decision 125), because its returns share one
     inbox and the sort has to judge a drop against all of them at once.
@@ -1118,32 +1305,176 @@ def run_registry(
     today = today or dt.date.today()
     selected = {e.path for e in (registry.find(only) if only else registry.engagements)}
 
-    report = RunReport(today=today, dry_run=dry_run, reminders=reminders,
-                       misfits=list(registry.misfits))
+    if report is None:
+        report = RunReport(today=today, dry_run=dry_run, reminders=reminders)
+    report.misfits = list(registry.misfits)
     reader_start_warning()          # this pass's count starts here
     if warning := ocr.reader_path_warning():
         # The app sits too deep for its reader: said once, loudly, rather
         # than every scan waiting as "the reader could not run" (SPEC-169 section 9).
         report.warnings.append(warning)
+    # Least recently completed first (decision 189), ties in the walk's order.
+    hint_path, hint = _read_order_hint(report)
+    walk = [(household, returns) for household, returns in registry.by_household().items()
+            if any(one.path in selected for one in returns)]
+    order = sorted(range(len(walk)), key=lambda at: _completed_key(hint, walk[at][0], at))
+
+    def one_household(household: Path, returns: list[Engagement]) -> list[EngagementRun]:
+        return run_household(household, returns, root=registry.source, today=today,
+                             dry_run=dry_run, reminders=reminders, weekday=weekday,
+                             registry=registry)
+
     # One reading child for the whole pass (decision 169, R-4), ended with
     # it. With a graphics card pack it starts now and settles the device,
     # so the run log's first line says which reader read.
+    served: dict[Path, list[EngagementRun]] = {}
     with ocr.reading_session(settle=True, in_a_child=content_check.READ_IN_A_CHILD) as reader:
         report.reader, report.reader_note = reader.device, reader.note
-        for household, returns in registry.by_household().items():
-            if not any(one.path in selected for one in returns):
-                continue
-            report.runs.extend(
-                run for run in run_household(household, returns, root=registry.source,
-                                             today=today, dry_run=dry_run, reminders=reminders,
-                                             weekday=weekday, registry=registry)
-                if run.engagement.path in selected
-            )
+        for at in order:
+            household, returns = walk[at]
+            _mark_started(hint_path, hint, household, write=not dry_run)
+            served[household] = one_household(household, returns)
+            report.runs.extend(run for run in served[household]
+                               if run.engagement.path in selected)
+        # Held by a lock the first time: once more, at the end (Dana's
+        # amendment), and the second attempt is the one reported.
+        for household, returns in walk:
+            working = _working(served[household])
+            if working and all(run.locked_out for run in working):
+                first = [run for run in served[household] if run.engagement.path in selected]
+                served[household] = one_household(household, returns)
+                again = [run for run in served[household] if run.engagement.path in selected]
+                at = next(k for k, run in enumerate(report.runs) if run is first[0])
+                report.runs[at:at + len(first)] = again
         report.warnings.extend(reader.warnings())
         report.reader_note = report.reader_note or reader.note
     if warning := reader_start_warning():
         report.warnings.append(warning)
+    _keep_the_order(report, hint_path, hint, served, write=not dry_run)
     return report
+
+
+def _working(runs: list[EngagementRun]) -> list[EngagementRun]:
+    """A household's runs that were owed a pass: not rolled forward, not
+    inactive - those skips are not failures and serve nothing."""
+    return [run for run in runs if not skipped_because(run.engagement)]
+
+
+def _read_order_hint(report: RunReport) -> tuple[Path | None, dict]:
+    """Where the pass-order hint lives and what it says, by household
+    folder name. Missing is the walk's order in silence; there and
+    unreadable is the walk's order and :data:`ORDER_HINT_UNREADABLE`.
+
+    **Only ever a hint** (SPEC 2.3; the review's S1): a file past
+    :data:`PASS_ORDER_MAX_BYTES` is not parsed, and every error reading or
+    parsing it - a nested file's ``RecursionError`` and a ``MemoryError``
+    included - is the walk's order, said once. Nothing in it can stop a
+    pass before its first household."""
+    try:
+        path = store.store_path().parent / PASS_ORDER_FILENAME
+    except Exception as exc:
+        log.warning("Could not tell where the pass order lives (%s)", exc.__class__.__name__)
+        report.warnings.append(ORDER_HINT_UNREADABLE)
+        return None, {}
+    try:
+        with path.open("rb") as handle:
+            raw = handle.read(PASS_ORDER_MAX_BYTES + 1)
+        if len(raw) > PASS_ORDER_MAX_BYTES:
+            raise ValueError("past the hint's size")
+        payload = json.loads(raw.decode("utf-8"))
+    except FileNotFoundError:
+        return path, {}
+    except Exception as exc:
+        log.warning("Could not read %s (%s)", path.name, exc.__class__.__name__)
+        report.warnings.append(ORDER_HINT_UNREADABLE)
+        return path, {}
+    households = payload.get("households") if isinstance(payload, dict) else None
+    if not isinstance(households, dict) or payload.get("version") != PASS_ORDER_VERSION:
+        report.warnings.append(ORDER_HINT_UNREADABLE)
+        return path, {}
+    return path, {name: entry for name, entry in households.items() if isinstance(entry, dict)}
+
+
+def _completed_key(hint: dict, household: Path, at: int) -> tuple:
+    """Oldest completion first; never completed before any; ties in the
+    walk's order (``at``). An entry that does not read is never completed.
+
+    **A household a pass ended in goes last** (decision 189): its entry
+    says it was ``started`` and never ``ended`` - the pass was killed in
+    it, or the machine went off - so, for the order, it was served when it
+    started. Without this a household that stalls past Task Scheduler's
+    limit would be first, and killed, every pass, and every household
+    after it in the walk would starve.
+    """
+    entry = hint.get(household.name, {})
+    completed = entry.get("completed") if isinstance(entry.get("completed"), str) else ""
+    started, ended = entry.get("started"), entry.get("ended")
+    if isinstance(started, str) and not (isinstance(ended, str) and ended >= started):
+        return (True, max(completed, started), at)
+    return (bool(completed), completed, at)
+
+
+def _mark_started(path: Path | None, hint: dict, household: Path, *, write: bool) -> None:
+    """Say in the hint that this household's pass began, before it does
+    anything, so a pass killed in it leaves the mark :func:`_completed_key`
+    reads. Not on a dry run; a hint that cannot be written is a log line."""
+    if not write or path is None:
+        return
+    hint[household.name] = {**hint.get(household.name, {}),
+                            "started": dt.datetime.now().isoformat(timespec="seconds")}
+    _write_order_hint(path, hint)
+
+
+def _write_order_hint(path: Path, hint: dict) -> None:
+    try:
+        write_json_atomically(path, {"version": PASS_ORDER_VERSION, "households": hint})
+    except OSError as exc:
+        # A hint: a pass that cannot keep it runs in the walk's order next
+        # time, which is where every pass started before decision 189.
+        log.warning("Could not write %s (%s)", path.name, exc.__class__.__name__)
+
+
+def _why_not_served(runs: list[EngagementRun]) -> str:
+    """Why a household was not served this pass, or "" when it was: every
+    working return ended with no error, no skip and not out of time."""
+    working = _working(runs)
+    if any(run.out_of_time for run in working):
+        return WHY_OUT_OF_TIME
+    if any(run.locked_out for run in working):
+        return WHY_HELD_LOCK
+    if any(run.skipped for run in working):
+        return WHY_NO_ROOM
+    if any(run.error for run in working):
+        return WHY_FAILED
+    return ""
+
+
+def _keep_the_order(report: RunReport, path: Path | None, hint: dict,
+                    served: dict[Path, list[EngagementRun]], *, write: bool) -> None:
+    """Fold this pass into the hint, name every household not served two
+    passes running, and write the hint whole. A dry run does none of it
+    (the review's N4): it keeps nothing, so it counts nothing, names no
+    household and never exits :data:`NOT_SERVED_TWICE_EXIT_CODE`."""
+    if not write:
+        return
+    now = dt.datetime.now().isoformat(timespec="seconds")
+    for household, runs in served.items():
+        entry = dict(hint.get(household.name, {}))
+        entry["ended"] = now
+        why = _why_not_served(runs)
+        if why:
+            count = entry.get("not_served")
+            entry["not_served"] = (count if isinstance(count, int) and count >= 0 else 0) + 1
+            entry.setdefault("completed", None)
+            if entry["not_served"] >= 2:
+                report.not_served_twice.append(household.name)
+                report.warnings.append(NOT_SERVED_TWICE.format(
+                    household=household.name, n=entry["not_served"], why=why))
+        else:
+            entry.update(completed=now, not_served=0)
+        hint[household.name] = entry
+    if path is not None:
+        _write_order_hint(path, hint)
 
 
 # ------------------------------------------------------------------ output ----
@@ -1195,7 +1526,10 @@ def append_log(path: Path | str, report: RunReport) -> Path:
         # 169): the machine's to look at, said once, and not a warning.
         lines.append(f"    {report.reader_note}")
     for run in report.runs:
-        lines.append(f"    {run.summary()}")
+        # A count, never the sentences (decision 189): a warning can name a
+        # client's file, and the page carries the words.
+        lines.append(f"    {run.summary()}"
+                     + (f" (warnings: {len(run.warnings)})" if run.warnings else ""))
         if run.held and not run.error:
             # A hold is said with its rows (decision 115): the log is where
             # a person finds out which request wants their decision.
@@ -1368,7 +1702,11 @@ def write_status_page(root: Path | str, report: RunReport, *,
     root = Path(root)
     stamp = (now or dt.datetime.now()).isoformat(sep=" ", timespec="seconds")
     parked, problems = _parked_files(report)
-    problems = [f"{run.engagement.label}: {run.error}" for run in report.errors] + problems
+    # The pass's own sentences first (decision 189): a pass that stopped, a
+    # run log that could not be written - what a person must see before
+    # any one return's problem.
+    problems = [*report.warnings,
+                *(f"{run.engagement.label}: {run.error}" for run in report.errors), *problems]
 
     # Newest first, across the practice: what arrived last night is what
     # nobody has looked at. Reversed first, so that among files received on
@@ -1432,8 +1770,11 @@ def _engagement_status(engagement: Engagement) -> EngagementRun:
         return run
     try:
         summary = summarize(load_manifest(engagement.path))
-    except (ManifestError, OSError) as exc:
-        run.error = str(exc)
+    except (ManifestError, LedgerError, StoreError, OSError) as exc:
+        # One bad record costs its own row, never the page (decision 189),
+        # said by its class and code: the message can name the record's
+        # path, a client's folder (security principle 7; the review's S2).
+        run.error = RECORD_UNREADABLE.format(problem=content_check.said_as_class(exc))
         return run
     run.statuses = summary.counts
     run.outstanding = summary.outstanding
@@ -1452,14 +1793,15 @@ def _under(root: Path, path: Path) -> str:
 
 
 def status_report(registry: Registry, *, passed: Iterable[EngagementRun] = (),
-                  today: dt.date | None = None) -> RunReport:
+                  today: dt.date | None = None, warnings: Iterable[str] = ()) -> RunReport:
     """Every engagement in ``registry``, with the runs in ``passed`` folded in.
 
     The page is about the practice, not about whichever engagement was
     just run: a pass over one engagement (the app's button) or over a
     subset (``--only``) still draws every engagement the registry found.
     An engagement this pass did not touch is read, not run, so the page
-    can be regenerated as often as anyone likes.
+    can be regenerated as often as anyone likes. ``warnings`` are the
+    pass's own sentences, for the page's problems list (decision 189).
     """
     ran = {run.engagement.path: run for run in passed}
     return RunReport(
@@ -1467,6 +1809,7 @@ def status_report(registry: Registry, *, passed: Iterable[EngagementRun] = (),
         runs=[ran[engagement.path] if engagement.path in ran else _engagement_status(engagement)
               for engagement in registry.engagements],
         misfits=list(registry.misfits),
+        warnings=list(warnings),
     )
 
 
@@ -1476,7 +1819,14 @@ def main(argv: list[str] | None = None) -> int:
     """The command line, as a function: ``python -m tracker.runner`` and the
     packaged executable in runner mode (``api_entry.py``) both call this.
     Returns the exit code - non-zero if any engagement failed, so the
-    scheduler shows a red run."""
+    scheduler shows a red run, and :data:`NOT_SERVED_TWICE_EXIT_CODE` when
+    a household has not been served two passes running.
+
+    **Each ending in a guard of its own** (decision 189): the pass, the
+    console, the run log, the page and the store's close are each tried
+    whatever happened before them, so a pass that stopped still leaves its
+    log and its page, and a log that could not be written is said on the
+    page."""
     import argparse
 
     # The report names client files, and the scheduler's console is not
@@ -1558,38 +1908,118 @@ def main(argv: list[str] | None = None) -> int:
     if ns.only and not loaded.find(ns.only):
         raise SystemExit(f"Nothing in {loaded.source} matches {ns.only!r}")
 
-    # The reader writes no temporary file (decision 169), so there is no
-    # scratch folder to point it at any more (decision 137's L7 is retired).
-    result = run_registry(loaded, today=when, dry_run=ns.dry_run,
-                          reminders=ns.reminders, weekday=day, only=ns.only)
-    print(format_report(result))
-
+    log_path: Path | None = None
     if ns.log:
         log_path = Path(ns.log)
         if not log_path.is_absolute() and ns.log == LOG_FILENAME:
             log_path = loaded.source / LOG_FILENAME
-        append_log(log_path, result)
-        print(f"\n  Logged to {log_path}")
+
+    # The report is made here and filled by the pass as each household
+    # finishes (decision 189), so a pass stopped half way still hands the
+    # log and the page every household it finished.
+    result = RunReport(today=when, dry_run=ns.dry_run, reminders=ns.reminders)
+    failed = False
+    if log_path is not None:
+        # A pass says it started (decision 189, SPEC-161 ruling 3), after
+        # asking whether the last one that said so ever finished.
+        _say_the_pass_started(log_path, result)
+    # The reader writes no temporary file (decision 169), so there is no
+    # scratch folder to point it at any more (decision 137's L7 is retired).
+    try:
+        run_registry(loaded, today=when, dry_run=ns.dry_run, reminders=ns.reminders,
+                     weekday=day, only=ns.only, report=result)
+    except Exception as exc:
+        # The runner's own code, not a household's (each of those is
+        # caught where it happens): said by its class, the whole trace on
+        # stderr for a person, and every ending below still attempted.
+        log.error("The pass stopped early", exc_info=True)
+        result.warnings.append(PASS_STOPPED.format(kind=exc.__class__.__name__))
+        failed = True
+    print(format_report(result))
+
+    if log_path is not None:
+        try:
+            append_log(log_path, result)
+        except Exception as exc:
+            log.warning("Could not write %s (%s)", log_path.name, exc.__class__.__name__)
+            result.warnings.append(LOG_NOT_WRITTEN.format(kind=exc.__class__.__name__))
+            print(f"\n  ! {result.warnings[-1]}")
+            failed = True
+        else:
+            print(f"\n  Logged to {log_path}")
 
     if not ns.dry_run:
-        # Every real pass, whether or not it was asked to log, and whether
-        # or not an engagement failed: the page is how a person finds out
-        # that one did. A dry run writes nothing, this included.
+        # Every real pass, whether or not it was asked to log, whether or
+        # not an engagement failed, and whether or not the pass itself was
+        # stopped: the page is how a person finds out that one did. A dry
+        # run writes nothing, this included.
         try:
-            page = write_status_page(loaded.source, status_report(loaded, passed=result.runs))
+            page = write_status_page(loaded.source, status_report(
+                loaded, passed=result.runs, warnings=result.warnings))
         except Exception as exc:
-            # The page is a courtesy; the pass is the job. Every original has
-            # already been moved and every status written by the time we get
-            # here, so nothing about drawing a page may end this in a
-            # traceback - it is said in the log and the run stands.
-            log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, exc)
+            # Every original has already been moved and every status written
+            # by the time we get here, so nothing about drawing a page may
+            # end this in a traceback. But a page stuck on yesterday must not
+            # look green (security principle 6; the review's S3): it is said
+            # in the run log, by its class only, and the pass exits 1.
+            kind = exc.__class__.__name__
+            log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, kind)
+            print(f"\n  ! {PAGE_NOT_WRITTEN.format(kind=kind)}")
+            failed = True
+            if log_path is not None:
+                try:
+                    with log_path.open("a", encoding="utf-8") as handle:
+                        handle.write(f"    ! {PAGE_NOT_WRITTEN.format(kind=kind)}\n")
+                except Exception as late:
+                    log.warning("Could not write %s (%s)", log_path.name, late.__class__.__name__)
         else:
             print(f"\n  The practice: {page}")
 
     # Checkpoint the store's write-ahead log and take its two side files
     # with it: a scheduled pass leaves the app's folder as it found it.
-    store.close()
-    return 1 if result.errors else 0
+    try:
+        store.close()
+    except Exception as exc:
+        log.warning("Could not close the store (%s)", exc.__class__.__name__)
+    if result.not_served_twice:
+        return NOT_SERVED_TWICE_EXIT_CODE
+    return 1 if failed or result.errors else 0
+
+
+_STARTED = re.compile(r"^\[(?P<stamp>[^\]]+)\] pass started$")
+_SUMMARY_HEAD = re.compile(r"^\[[^\]]+\] \d{4}-\d{2}-\d{2} reminders=")
+
+
+def _say_the_pass_started(log_path: Path, report: RunReport) -> None:
+    """Read the run log's end: a ``pass started`` line with no pass summary
+    after it is a pass that never finished, said as
+    :data:`PASS_DID_NOT_FINISH`. Then append this pass's own line. Each
+    in its own guard: neither may stop the pass."""
+    try:
+        with log_path.open("rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            handle.seek(max(0, handle.tell() - LOG_TAIL_BYTES))
+            tail = handle.read().decode("utf-8", errors="replace").splitlines()
+    except FileNotFoundError:
+        tail = []
+    except OSError as exc:
+        log.warning("Could not read %s (%s)", log_path.name, exc.__class__.__name__)
+        tail = []
+    unfinished = ""
+    for line in tail:
+        if found := _STARTED.match(line):
+            unfinished = found.group("stamp")
+        elif _SUMMARY_HEAD.match(line):
+            unfinished = ""
+    if unfinished:
+        report.warnings.append(PASS_DID_NOT_FINISH.format(stamp=unfinished))
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8") as handle:
+            stamp = dt.datetime.now().isoformat(timespec="seconds")
+            handle.write(PASS_STARTED_LINE.format(stamp=stamp) + "\n")
+    except OSError as exc:
+        log.warning("Could not write %s (%s)", log_path.name, exc.__class__.__name__)
 
 
 if __name__ == "__main__":

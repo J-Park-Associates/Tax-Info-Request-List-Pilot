@@ -27,6 +27,16 @@ so the two can never disagree about what a file says. The router asks for
 the text layer first and OCR only when the file's name tells it nothing
 (:mod:`tracker.router` explains why); the scanner always finishes the job.
 
+**One place the words are judged** (decision 189). The pass never holds a
+document's words: :func:`judge` reads the file and asks it every rule, form
+scan and name the pass will want, in the pass's reader child and under the
+document's stop, and hands back a :class:`Judgment` that carries no word
+of the document. A text that makes a rule crawl - a typed Date Pattern
+that backtracks, a one-line workbook - costs one stop and parks its file;
+before, the rules ran in the pass's own process, where nothing could stop
+them. The verdicts are the ones the pass reached itself, answer for
+answer, which is why :data:`CACHE_VERSION` did not move.
+
 Keyword matching is case-insensitive. Date Pattern is applied to the raw
 text as-is, so authors control case sensitivity with inline flags (``(?i)``).
 
@@ -77,6 +87,7 @@ re-exported here for one release.
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import logging
@@ -84,10 +95,10 @@ import re
 import time
 import zipfile
 from collections import OrderedDict
-from dataclasses import MISSING, asdict, dataclass, fields, replace
+from dataclasses import MISSING, asdict, dataclass, field, fields, replace
 from pathlib import Path
 
-from tracker import ocr, reasons, store
+from tracker import ledger, ocr, reasons, store
 from tracker.manifest import RequestItem, has_routing_rules, keyword_alternatives
 
 # The Evidence record and the cell format it is written in live in
@@ -199,8 +210,8 @@ RENDER_SCALE = 2.0
 #: ended the whole pass and met the same file again next time. Since
 #: decision 150 the same two numbers bound the **whole** reading as well -
 #: text layer, render and OCR - because the pass reads in a child process
-#: it ends at the stop (:func:`extract_bounded`): ten minutes a file, one
-#: a photo.
+#: it ends at the stop (:func:`judge_bounded` since decision 189, which
+#: judges there too): ten minutes a file, one a photo.
 READING_STOP_PAGE_SECONDS = 60.0
 READING_STOP_DOCUMENT_SECONDS = 600.0
 #: The most text one reading hands back, in characters, whatever it read
@@ -224,9 +235,17 @@ READING_CHAR_BUDGET = TEXT_READ_CAP_MB * 1024 * 1024
 PACKINGS = (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)
 #: What a workbook packed any other way fails with.
 UNKNOWN_PACKING = "a part of it is packed in a way only a person's zip program opens"
-#: The clock the stop reads. A name of its own so the suite can move it
-#: rather than wait ten minutes.
-_clock = time.monotonic
+
+
+class UnknownPacking(ValueError):
+    """A workbook packed a way :data:`PACKINGS` does not hold. Its message
+    is the firm's own sentence (:data:`UNKNOWN_PACKING`), the one error a
+    reading says in words rather than by its class (:func:`said_as_class`)."""
+#: The clock the stop reads: the awake clock every part of a reading's
+#: stop reads (decision 189), so a machine that slept does not end a
+#: reading it never gave any time to. A name of its own so the suite can
+#: move it rather than wait ten minutes.
+_clock = ocr.awake_clock
 
 
 
@@ -902,7 +921,13 @@ def own_forms(text: str) -> set[str] | None:
     path (:func:`check_content`) both read through this, and the cache
     holds nothing a reader cannot recompute from the bytes.
     """
-    named = self_named_forms(text)
+    return _own_of(self_named_forms(text))
+
+
+def _own_of(named: tuple[str, ...]) -> set[str] | None:
+    """:func:`own_forms` from the page's self-named forms, already read
+    (:func:`self_named_forms`): a judgment reads them once and hands them
+    to both the ordinary reading and the router's split (decision 189)."""
     if len({form_family(key) for key in named}) >= MULTI_FORM_FAMILIES:
         return set(named)
     return None
@@ -913,7 +938,7 @@ def own_forms(text: str) -> set[str] | None:
 BROKER_FORM = "1099b"
 
 
-def carries_a_1099b_section(text: str) -> bool:
+def carries_a_1099b_section(text: str, dominant: set[str] | None = None) -> bool:
     """Whether ``text`` carries a 1099-B section - which is what makes a
     broker's consolidated 1099 a brokerage statement (decision 146).
 
@@ -937,9 +962,15 @@ def carries_a_1099b_section(text: str) -> bool:
     then files under is :mod:`tracker.router`'s: exactly one of the rows
     that accepted it must have been accepted because of the 1099-B, or it
     parks.
+
+    ``dominant`` is :func:`dominant_forms`'s answer when the caller already
+    has it - a judgment reads it once for every question (decision 189) -
+    and is read here when it does not.
     """
     low = text.lower()
-    return BROKER_FORM in _title_forms(low) or BROKER_FORM in dominant_forms(text)
+    if BROKER_FORM in _title_forms(low):
+        return True
+    return BROKER_FORM in (dominant_forms(text) if dominant is None else dominant)
 
 
 def self_named_forms(text: str) -> tuple[str, ...]:
@@ -1209,18 +1240,40 @@ def says(text: str, keyword: str, dominant: set[str] | None = None) -> bool:
     return _says_where(text, keyword, dominant) is not None
 
 
-def any_keyword_matched(text: str, item: RequestItem) -> bool:
+def any_keyword_matched(text: str, item: RequestItem, dominant: set[str] | None = None) -> bool:
     """Whether the row's any-keywords accept ``text``, apart from every other rule.
 
     The year a Period implies is a *check* on a document a keyword already
     matched, never evidence on its own (decision 40). When only that check
     fails, the row is still the lead a person needs, and this is how
     :mod:`tracker.router` asks for it without reading a verdict's sentence.
+    ``dominant`` as :func:`carries_a_1099b_section` takes it.
     """
     if not item.any_keywords:
         return False
-    dominant = dominant_forms(text)
+    if dominant is None:
+        dominant = dominant_forms(text)
     return any(says(text, k, dominant) for k in item.any_keywords)
+
+
+def required_matched(text: str, item: RequestItem, dominant: set[str] | None = None) -> bool:
+    """True if every one of ``item``'s required keywords is said in ``text``.
+
+    Required keywords are the accountant's strongest assertion about what a
+    document *is* ("a W-2 says W-2"), which is why they both outrank
+    ``any_keywords`` when :mod:`tracker.router` chooses between requests
+    and, when they match a request whose other rules then fail, stop the
+    file being filed elsewhere. Moved here from the router with decision
+    189, beside :func:`any_keyword_matched`, because it reads the
+    document's words and so runs in the judgment. ``dominant`` as
+    :func:`carries_a_1099b_section` takes it: it was once read afresh for
+    every keyword of every row, a whole scan of the text each time.
+    """
+    if not item.required_keywords:
+        return False
+    if dominant is None:
+        dominant = dominant_forms(text)
+    return all(says(text, k, dominant) for k in item.required_keywords)
 
 
 def _found(rule: str, text: str, keyword: str, dominant: set[str]) -> Evidence | None:
@@ -1324,6 +1377,223 @@ def evaluate_rules(text: str, item: RequestItem, dominant: set[str] | None = Non
     return ContentResult(ok=True, evidence=tuple(found))
 
 
+# ------------------------------------------------------------- judgment ----
+#
+# Decision 189. Everything that reads a client's words - the form scan, the
+# rules, the name - runs where the reading ran: in the pass's one reader
+# child, under the document's stop and the child's memory cap
+# (:func:`judge`). Until then the child handed the whole text back across
+# the pipe and the pass asked every rule of it in its own process, with no
+# stop: a typed Date Pattern that backtracks, or a one-line workbook the
+# form scan crawls through, could hold the pass for hours, and the scanner
+# held up to eight whole texts in memory. What crosses now is the answer
+# to the questions the pass asked (:class:`Judgment`), in the firm's own
+# words - a row's keyword, a reason sentence, a form number the catalog
+# knows, one of the firm's spellings - and never a word of the document.
+#
+# The rules did not change, and neither did a verdict: each question is
+# answered by the very function the pass called before, on the same text,
+# with the same arguments (``tests/test_content_check.py`` compares the two
+# on the suite's corpus). So :data:`CACHE_VERSION` did not move. Callers
+# outside the pass - the command lines, the backtest, the vocabulary
+# report - still read and judge in their own process
+# (:func:`judgment_of` on an :class:`Extraction`, or :func:`says` itself).
+
+
+@dataclass(frozen=True, slots=True)
+class RowQuestion:
+    """What a judgment is asked of one request row: exactly the parts of the
+    row :func:`evaluate_rules`, :func:`required_matched` and
+    :func:`any_keyword_matched` read, and nothing else of the row - no
+    identifier, no note, no status.
+
+    It is its own key in :attr:`Judgment.rows`. Finer than
+    :func:`rules_fingerprint`, which leaves out the Period and whether the
+    Date Pattern was derived from it: two rows alike in their rules but not
+    in those two would share a fingerprint and could be answered
+    differently (the Period is the evidence's term; a derived pattern runs
+    over the whole text, a typed one line by line). The verdict cache keeps
+    the fingerprint as its key, as before.
+    """
+
+    required_keywords: tuple[str, ...] = ()
+    any_keywords: tuple[str, ...] = ()
+    date_pattern: str = ""
+    date_pattern_derived: bool = False
+    period: str = ""
+
+    def as_item(self) -> RequestItem:
+        """The row, as the rules read it, with nothing of the row's own."""
+        return RequestItem(
+            identifier="", document="", period=self.period,
+            required_keywords=self.required_keywords, any_keywords=self.any_keywords,
+            date_pattern=self.date_pattern, date_pattern_derived=self.date_pattern_derived,
+        )
+
+
+def row_question(item: RequestItem) -> RowQuestion:
+    """The question a judgment is asked about ``item``, and the key its
+    answer is found under."""
+    return RowQuestion(
+        required_keywords=tuple(item.required_keywords), any_keywords=tuple(item.any_keywords),
+        date_pattern=item.date_pattern, date_pattern_derived=item.date_pattern_derived,
+        period=item.period,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class NameQuestion:
+    """Whose document is this, asked for one return (decision 128): that
+    return's spellings, and each other return the drop may feed as
+    ``(label, spellings)``, in order. Its own key in
+    :attr:`Judgment.names`; every string in it is the firm's."""
+
+    own: tuple[str, ...] = ()
+    others: tuple[tuple[str, tuple[str, ...]], ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class Questions:
+    """Everything the pass will ask of one document, asked once.
+
+    ``ocr`` is whether a scan is read by OCR (:func:`extract`'s own
+    switch); ``rows`` every row the caller may ask about - for the router,
+    every row of every return the drop may feed; for the scanner, the row
+    the working copy sits under; ``names`` one question per return the
+    drop may feed. A question not asked has no answer: the pass asks a new
+    judgment for it (the scanner) or fails loudly (the router).
+    """
+
+    ocr: bool = True
+    rows: tuple[RowQuestion, ...] = ()
+    names: tuple[NameQuestion, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class RowJudgment:
+    """One row's answers, each the value the pass once computed itself.
+
+    ``verdict`` is :func:`evaluate_rules` with the page's own forms
+    (:func:`own_forms`) - the ordinary reading, and also decision 94's
+    split: the split reads a two-family page with the forms it names as
+    itself counted as its own, and that set *is* :func:`own_forms`'s
+    answer, so the two readings are one (decision 107 made them so).
+    ``required_matched`` and ``any_matched`` are the router's two leads.
+    """
+
+    verdict: ContentResult
+    required_matched: bool = False
+    any_matched: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class Judgment:
+    """What one document said to the questions asked of it (decision 189).
+
+    ``extraction`` is the reading with its words taken out: ``text`` is
+    ``""`` where there were words and None where there were none, so every
+    test the pass made of ``text is None`` still means what it meant, and
+    everything else - the reason, ``transient``, ``needs_ocr``,
+    ``from_ocr``, the seconds, ``cut``, the open test's verdict - is as the
+    reader left it. ``transient`` there is the one place a judgment says
+    the machine, not the file, decided it (SPEC-156's seam).
+
+    ``has_words`` is whether there was anything to judge: a reading with
+    text, and not a scan waiting for OCR. ``own`` is :func:`own_forms`,
+    ``self_named`` :func:`self_named_forms` (first mention first) and
+    ``carries_1099b`` :func:`carries_a_1099b_section`, all of the words.
+    ``rows`` and ``names`` answer the questions, keyed by the question.
+    """
+
+    extraction: Extraction
+    has_words: bool = False
+    own: frozenset[str] | None = None
+    self_named: tuple[str, ...] = ()
+    carries_1099b: bool = False
+    rows: dict[RowQuestion, RowJudgment] = field(default_factory=dict)
+    names: dict[NameQuestion, object] = field(default_factory=dict)   # NameQuestion -> names.NameVerdict
+
+    def row(self, item: RequestItem) -> RowJudgment:
+        """The answers about ``item``; a row that was not asked is a fault
+        in the caller, said with the row, never a silent "no"."""
+        try:
+            return self.rows[row_question(item)]
+        except KeyError:
+            raise LookupError(
+                f"the judgment was not asked about row {item.identifier or '(unnamed)'}"
+            ) from None
+
+    def name(self, question: NameQuestion):
+        """The name check's verdict for ``question`` (a
+        :class:`tracker.names.NameVerdict`); one not asked is a fault."""
+        try:
+            return self.names[question]
+        except KeyError:
+            raise LookupError("the judgment was not asked whose document this is") from None
+
+
+def unjudged(reading: Extraction) -> Judgment:
+    """The judgment of a reading that has no words to judge - a reader that
+    could not start, a stop, a crash - as :func:`judgment_of` makes it:
+    the reading's standing, and no answers."""
+    return Judgment(extraction=replace(reading, text=None if reading.text is None else ""))
+
+
+def judgment_of(reading: Extraction, questions: Questions) -> Judgment:
+    """Judge ``reading`` against ``questions`` and let its words go.
+
+    Where the words are judged: :func:`judge` calls this in the reader
+    child, and a caller outside the pass that already holds a reading (the
+    backtest, :func:`tracker.router.route_file` handed one) calls it in its
+    own process. The questions are answered by the functions the pass
+    called before decision 189, with the arguments it gave them, so every
+    answer is the one the pass reached; what changed is the cost (the
+    SPEC's two costs): :func:`dominant_forms` - a whole scan of the text -
+    is read **once** and handed to every question that read it again for
+    itself, :func:`self_named_forms` once for both :func:`own_forms` and
+    the split, and the page's names are parsed once for every return
+    (:func:`tracker.names.read_names`).
+    """
+    # A scan with no text layer, read without OCR, is no reading at all
+    # (the router's words, decision 92): nothing of it is judged.
+    words = "" if reading.needs_ocr else (reading.text or "")
+    base = unjudged(reading)
+    if reading.text is None or reading.needs_ocr:
+        return base
+    dominant = dominant_forms(words)
+    self_named = self_named_forms(words) if words else ()
+    own = _own_of(self_named)
+    rows: dict[RowQuestion, RowJudgment] = {}
+    for question in questions.rows:
+        if question in rows:
+            continue
+        item = question.as_item()
+        rows[question] = RowJudgment(
+            verdict=evaluate_rules(words, item, own if own is not None else dominant),
+            required_matched=required_matched(words, item, dominant),
+            any_matched=any_keyword_matched(words, item, dominant),
+        )
+    names: dict[NameQuestion, object] = {}
+    if questions.names:
+        # names imports this module when it loads, so it is reached when
+        # called (the layer table's allowance for a call-time import).
+        from tracker.names import check_name, read_names
+
+        page = read_names(words)
+        for question in questions.names:
+            if question not in names:
+                names[question] = check_name(words, question.own, dict(question.others), page=page)
+    return replace(
+        base,
+        has_words=bool(words),
+        own=frozenset(own) if own is not None else None,
+        self_named=self_named,
+        carries_1099b=bool(words) and carries_a_1099b_section(words, dominant),
+        rows=rows,
+        names=names,
+    )
+
+
 # ------------------------------------------------------------- extraction ----
 
 
@@ -1361,7 +1631,7 @@ def _extract_xlsx(path: Path) -> str:
     # "Schedule") and never down its rows.
     with zipfile.ZipFile(path) as archive:
         if any(info.compress_type not in PACKINGS for info in archive.infolist()):
-            raise ValueError(UNKNOWN_PACKING)
+            raise UnknownPacking(UNKNOWN_PACKING)
     parts: list[str] = []
     said = 0
     wb = load_workbook(path, read_only=True, data_only=True)
@@ -1554,8 +1824,10 @@ def _ocr_pdf(path: Path) -> str | None:
     except MemoryError:
         raise           # the child's memory limit: a crash, not a retry (SPEC-169 section 9)
     except Exception as exc:
-        log.warning("OCR failed on %s: %s", path.name, exc)
-        raise OcrError(f"{exc.__class__.__name__}: {exc}") from exc
+        # The class alone (decision 189, M1): a reader's message can quote
+        # the document or its path, and is neither logged nor carried.
+        log.warning("OCR failed on %s (%s)", path.name, said_as_class(exc))
+        raise OcrError(said_as_class(exc)) from exc
 
 
 def _ocr_image(path: Path) -> str | None:
@@ -1601,8 +1873,28 @@ def _ocr_image(path: Path) -> str | None:
     except MemoryError:
         raise           # the child's memory limit: a crash, not a retry (SPEC-169 section 9)
     except Exception as exc:
-        log.warning("OCR failed on %s: %s", path.name, exc)
-        raise OcrError(f"{exc.__class__.__name__}: {exc}") from exc
+        # The class alone (decision 189, M1): a reader's message can quote
+        # the document or its path, and is neither logged nor carried.
+        log.warning("OCR failed on %s (%s)", path.name, said_as_class(exc))
+        raise OcrError(said_as_class(exc)) from exc
+
+
+def said_as_class(exc: BaseException) -> str:
+    """How an error is said wherever a person or a record reads it
+    (decision 189, security principle 7): its class, and the code it
+    carries - an errno's name, or the code of a store or record the disk
+    refused - and never its message.
+
+    A parser's message quotes what it choked on (openpyxl quotes a cell's
+    value), and the operating system's names the path, which is a client's
+    folder. The message stays on the exception for a person debugging; it
+    is never quoted into a reason, the record, a page or the run log."""
+    name = exc.__class__.__name__
+    if isinstance(exc, (store.StoreUnavailable, ledger.RecordNotWritten)):
+        return f"{name} ({exc.code})"
+    if isinstance(exc, OSError) and exc.errno in errno.errorcode:
+        return f"{name} ({errno.errorcode[exc.errno]})"
+    return name
 
 
 class OcrError(RuntimeError):
@@ -1636,8 +1928,8 @@ def extract(path: Path, *, ocr: bool = True) -> Extraction:
     text layer (pdfplumber), a workbook's reading, or a single page render,
     which run inside the reading's own process and can only be seen to
     have overrun once they return. The bound on the whole reading is the process
-    itself: the pass reads through :func:`extract_bounded`, which runs
-    this function in a child it ends at the stop (decision 150).
+    itself: the pass reads through :func:`judge_bounded`, which runs
+    this function in a child it ends at the stop (decisions 150 and 189).
     """
     started = time.perf_counter()
     # A file past the ceiling is never opened (decision 137, M5): the
@@ -1662,7 +1954,9 @@ def _extract(path: Path, *, ocr: bool) -> Extraction:
     except MemoryError:
         raise           # the child's memory limit: a crash, not a corrupt file (SPEC-169 section 9)
     except Exception as exc:  # a corrupt file is a reason, not a crash
-        error = f"{exc.__class__.__name__}: {exc}"
+        # Its class, never its message (decision 189, M1): a parser quotes
+        # the cell or the line it choked on, which is the document's words.
+        error = str(exc) if isinstance(exc, UnknownPacking) else said_as_class(exc)
         return Extraction(
             None, reason=reasons.EXTRACTION_FAILED.format(error=error),
             extractable=False, error=error,
@@ -1712,6 +2006,12 @@ def extract_by_ocr(path: Path) -> Extraction:
         return Extraction(None, reason=reasons.NO_TEXT_LAYER.format(), extractable=False, transient=True)
     if not ocr_text.strip():
         return Extraction(None, reason=reasons.NO_TEXT_AFTER_OCR.format(), extractable=False)
+    if len(ocr_text) > READING_CHAR_BUDGET:
+        # Cut like every other reading (decision 178's budget; decision 189
+        # closed the gap): OCR's words are held and judged like a text
+        # layer's, and a reading past the budget is marked cut, so a verdict
+        # reached on its first part says so.
+        return Extraction(ocr_text[:READING_CHAR_BUDGET], from_ocr=True, cut=True)
     return Extraction(ocr_text, from_ocr=True)
 
 
@@ -1775,13 +2075,14 @@ def abandoned(seconds: float) -> Extraction:
 # And the child never outlives its pass: a lifeline pipe and, on Windows, a
 # job object (tracker.ocr says how).
 
-#: Whether :func:`extract_bounded` reads in a child process (decision 150).
+#: Whether :func:`judge_bounded` and :func:`extract_bounded` read in a
+#: child process (decision 150).
 #: Always, in the tracker. The suite turns it off for every test but the
 #: ones about the child (``tests/conftest.py``): its stand-in readers are
 #: patched into the test's own process, which a child never shares.
 READ_IN_A_CHILD = True
-#: What the child runs: the open test and the one reading
-#: (:func:`open_and_read`). A name of its own, handed to the child by
+#: What reads in the child: the open test and the one reading
+#: (:func:`open_and_read`), which :func:`judge` then judges there. A name of its own, handed to the child by
 #: reference, so the suite can give the child a reader that never finishes
 #: or dies - a patch made in the pass's process is not in the child's,
 #: which imports this module afresh.
@@ -1806,9 +2107,9 @@ def reading_stop_seconds(path: Path) -> float:
 def extract_bounded(path: Path, *, ocr: bool = True) -> Extraction:
     """:func:`extract`, in a process the pass can stop (decision 150).
 
-    What the pass reads through - the router's one reading of a drop
-    (:func:`tracker.router.read_once`) and the scanner's reading on a
-    cache miss - so the safety stop bounds the whole reading, text layer
+    What the pass read through until decision 189 - the router's one
+    reading of a drop and the scanner's reading on a cache miss - so the
+    safety stop bounds the whole reading, text layer
     and render included, and a reader that crashes parks the file instead
     of ending the pass. A cached verdict never gets here, so it never
     starts a child. The child writes nothing anywhere: it hands back the
@@ -1816,10 +2117,16 @@ def extract_bounded(path: Path, *, ocr: bool = True) -> Extraction:
     temporary file either (SPEC-169 section 6), so the scratch folder
     decision 137 (L7) gave OCR is gone. The benchmark calls :func:`extract`
     itself: it measures the reader, not the stop.
+
+    **Not what the pass reads through since decision 189.** The pass asks
+    :func:`judge_bounded`, which judges in the same child and hands back no
+    text; this is the bounded reading for a caller that wants the words
+    themselves, and the claims about the child that are about the reading.
     """
     if not READ_IN_A_CHILD:
         return open_and_read(Path(path), ocr=ocr)
-    return _read_in_a_child(Path(path), ocr=ocr)
+    answer, failed = in_a_child(Path(path), _CHILD_READER, ocr=ocr)
+    return failed if failed is not None else answer
 
 
 def open_and_read(path: Path, *, ocr: bool = True) -> Extraction:
@@ -1831,6 +2138,55 @@ def open_and_read(path: Path, *, ocr: bool = True) -> Extraction:
 
 
 _CHILD_READER = open_and_read
+
+
+def judge(path: Path, questions: Questions, *, reader=None) -> Judgment:
+    """The reader child's one job for a document the pass decides
+    (decision 189): the open test and the reading (``reader``, by default
+    :func:`open_and_read`, exactly as decision 150 made them), then the
+    judgment of the words against ``questions`` (:func:`judgment_of`).
+    The words stay here; the :class:`Judgment` is all that crosses the
+    pipe. So the document's stop bounds the reading **and** every rule
+    asked of it, together: a Date Pattern that backtracks for a day, or a
+    form scan over a one-line workbook, costs one stop and parks the file
+    with the stop's kept verdict (:func:`abandoned`), never the pass."""
+    reading = (open_and_read if reader is None else reader)(Path(path), ocr=questions.ocr)
+    return judgment_of(reading, questions)
+
+
+def judge_bounded(path: Path, questions: Questions) -> Judgment:
+    """:func:`judge`, in the pass's reader child, waiting at most the
+    file's stop: what the pass reads and judges every document through
+    (decision 189) - the router's one judgment of a drop
+    (:func:`tracker.router.read_once`) and the scanner's on a cache miss
+    (:func:`open_verdict`, :func:`check_content`). A stop, a crash or a
+    child that never started is the unjudged reading that says so
+    (:func:`unjudged`), with 150's three outcomes unchanged. With the
+    suite's ``READ_IN_A_CHILD`` off it judges in this process, as the
+    reading did."""
+    if not READ_IN_A_CHILD:
+        return judge(Path(path), questions)
+    return _read_in_a_child(Path(path), questions)
+
+
+class OutOfTime(Exception):
+    """The household's time for this pass ran out before a new judgment
+    (decision 189, ruling 2.2).
+
+    Raised at the one point a judgment job would start - a cache miss -
+    and never at a hit: a verdict the cache holds costs no reading, so a
+    household past its deadline still takes every one of them, and stops
+    only where it would have to read. The sort and the scan catch it
+    between files, record what they did, and leave the rest for the next
+    pass."""
+
+
+def before_a_judgment(cache: ContentCache | None) -> None:
+    """Raise :class:`OutOfTime` if ``cache``'s household is past its
+    deadline (:attr:`ContentCache.deadline`, on ``ocr.awake_clock``):
+    called just before a judgment job would start, and nowhere else."""
+    if cache is not None and cache.deadline is not None and ocr.awake_clock() >= cache.deadline:
+        raise OutOfTime
 
 
 def could_not_start(seconds: float, error: str, name: str) -> Extraction:
@@ -1849,27 +2205,31 @@ def readers_that_could_not_start() -> list[str]:
     return names
 
 
-def open_verdict(path: Path, cache: ContentCache) -> str:
+def open_verdict(path: Path, cache: ContentCache, item: RequestItem | None = None) -> str:
     """Tier 2's open test of ``path`` for the scanner: ``""`` or the
     refusal, never made in this process (decision 150).
 
     Kept in ``cache`` by the file's content digest, like a reading's
-    verdicts: a hit starts no child. On a miss the file is read in a child
-    (:func:`extract_bounded`) - the open test with the reading - and the
-    reading is held in memory for the content check that follows, so the
-    file is read once. A stopped or crashed child is the verdict, kept; a
-    child that could not start, or a machine without the HEIC decoder, is
-    the machine's, said and not kept.
+    verdicts: a hit starts no child. On a miss the file is read and judged
+    in the child (:func:`judge_bounded`) - the open test, the reading and,
+    since decision 189, the rules of ``item``, the row the working copy
+    sits under, all in one job - and the judgment is held in memory for
+    the content check that follows, so the file is read once. A stopped or
+    crashed child is the verdict, kept; a child that could not start, or a
+    machine without the HEIC decoder, is the machine's, said and not kept.
     """
     digest = cache.digest_of(path)
     if digest:
         hit = cache.get_by_digest(digest, OPEN_TEST_FINGERPRINT)
         if hit is not None:
             return hit.reason
-    reading = extract_bounded(path)
+    rows = (row_question(item),) if item is not None and has_content_rules(item) else ()
+    before_a_judgment(cache)
+    judgment = judge_bounded(path, Questions(rows=rows))
+    reading = judgment.extraction
     verdict = reading.opened if reading.opened is not None else reading.reason
     if digest:
-        cache.hold_reading(digest, reading)
+        cache.hold_reading(digest, judgment)
         if not reading.transient and not reasons.HEIC_NOT_SUPPORTED.matches(verdict):
             cache.put_by_digest(digest, OPEN_TEST_FINGERPRINT,
                                 ContentResult(ok=not verdict, reason=verdict))
@@ -1883,10 +2243,12 @@ def reading_failed(seconds: float, error: str) -> Extraction:
                       error=error, seconds=seconds)
 
 
-def _read_in_a_child(path: Path, *, ocr: bool) -> Extraction:
-    """Read ``path`` in a child process, waiting at most its stop."""
-    answer, failed = in_a_child(path, _CHILD_READER, ocr=ocr)
-    return failed if failed is not None else answer
+def _read_in_a_child(path: Path, questions: Questions) -> Judgment:
+    """Read and judge ``path`` in the reader child, waiting at most its
+    stop: :func:`judge`, handed the reader by reference
+    (``_CHILD_READER``, which the suite swaps for a stand-in)."""
+    answer, failed = in_a_child(path, judge, questions=questions, reader=_CHILD_READER)
+    return unjudged(failed) if failed is not None else answer
 
 
 def in_a_child(path: Path, job, *, stop: float | None = None, **kwargs) -> tuple[object, Extraction | None]:
@@ -1916,11 +2278,14 @@ def in_a_child(path: Path, job, *, stop: float | None = None, **kwargs) -> tuple
     if outcome.kind == "stopped":
         log.warning("Reading %s stopped at the safety stop (%.0f s)", path.name, stop)
         return None, abandoned(outcome.seconds)
+    # What crosses the pipe is the class and nothing after it (decision
+    # 189, M1): the child's "Class: message" can quote the document.
+    error = outcome.error.partition(":")[0]
     if outcome.kind == "failed":
         log.warning("The reader failed on %s: %s", path.name, outcome.trace)
-        return None, reading_failed(outcome.seconds, outcome.error)
-    log.warning("The reader stopped unexpectedly on %s: %s", path.name, outcome.error)
-    return None, reading_failed(outcome.seconds, outcome.error)
+        return None, reading_failed(outcome.seconds, error)
+    log.warning("The reader stopped unexpectedly on %s (%s)", path.name, error)
+    return None, reading_failed(outcome.seconds, error)
 
 
 # ---------------------------------------------------------------- checking ----
@@ -1944,28 +2309,44 @@ def check_content(
         if hit is not None:
             return hit
 
-    result = _check_uncached(path, item, cache.held_reading(path) if cache is not None else None)
+    result = _check_uncached(path, item, cache.held_reading(path) if cache is not None else None,
+                             cache=cache)
 
     if cache is not None and not result.transient:
         cache.put(path, fingerprint, result)
     return result
 
 
-def _check_uncached(path: Path, item: RequestItem, reading: Extraction | None = None) -> ContentResult:
-    """The scan's reading on a cache miss: the reading the router made.
+def _check_uncached(
+    path: Path, item: RequestItem, held: Judgment | None = None,
+    cache: ContentCache | None = None,
+) -> ContentResult:
+    """The scan's verdict on a cache miss: the reading the router made.
 
     A page that names two forms as itself is read with both counted as its
     own (:func:`own_forms`), which is the verdict the router filed the
     second copy on; every other page reads exactly as it always did. So a
     verdict from an empty cache and a verdict the router kept are one
     verdict, and a rebuilt store cannot turn a filed copy into a failure.
+
+    Judged in the reader child (decision 189): ``held`` is the judgment
+    :func:`open_verdict` made of the same bytes a moment ago, used when it
+    answers this row - or when there were no words to judge, which is the
+    answer whatever the row. A row it was not asked is a new judgment, and
+    only a new judgment is stopped by the household's deadline (``cache``,
+    :func:`before_a_judgment`).
     """
-    reading = reading if reading is not None else extract_bounded(path)
+    question = row_question(item)
+    judgment = held
+    if judgment is None or (judgment.extraction.text is not None and question not in judgment.rows):
+        before_a_judgment(cache)
+        judgment = judge_bounded(path, Questions(rows=(question,)))
+    reading = judgment.extraction
     if reading.text is None:
         return ContentResult(
             ok=False, reason=reading.reason, extractable=False, transient=reading.transient,
         )
-    verdict = evaluate_rules(reading.text, item, own_forms(reading.text))
+    verdict = judgment.rows[question].verdict
     if reading.cut and not verdict.ok:
         # The rules were asked of the first part only, and a person reading
         # the reason must know that before believing "not found".
@@ -1977,8 +2358,9 @@ def _check_uncached(path: Path, item: RequestItem, reading: Extraction | None = 
 # ------------------------------------------------------------------- cache ----
 
 
-#: How many readings a :class:`ContentCache` holds in memory for the
-#: content check that follows an open test (decision 150).
+#: How many judgments a :class:`ContentCache` holds in memory for the
+#: content check that follows an open test (decision 150; a judgment, and
+#: no text, since decision 189).
 _HELD_READINGS = 8
 
 
@@ -2014,11 +2396,17 @@ class ContentCache:
         self._learned_verdicts: set[tuple[str, str]] = set()
         self._forgotten_files: set[str] = set()
         self._forgotten_digests: set[str] = set()
-        #: Readings :func:`open_verdict` made in a child and the content
+        #: Judgments :func:`open_verdict` made in the child and the content
         #: check will want next, by digest (decision 150): in memory, a
-        #: few at a time, for this pass only - never saved, like the
-        #: reading the router holds for the drop it routes.
-        self._readings: OrderedDict[str, Extraction] = OrderedDict()
+        #: few at a time, for this pass only - never saved. Since decision
+        #: 189 a judgment, which holds no word of the document: the
+        #: scanner held up to eight whole texts here before.
+        self._readings: OrderedDict[str, Judgment] = OrderedDict()
+        #: The household's deadline for this pass, on ``ocr.awake_clock``,
+        #: while the sort or the scan is taking files (decision 189): a
+        #: miss past it starts no judgment (:func:`before_a_judgment`);
+        #: a hit is answered whatever the time. None is no limit.
+        self.deadline: float | None = None
         if self._engagement is not None:
             self._files, self._verdicts = store.cached_verdicts(
                 store.connect(), self._engagement, version=CACHE_VERSION)
@@ -2081,15 +2469,15 @@ class ContentCache:
             values["evidence"] = _evidence_from_json(values["evidence"])
         return ContentResult(**values)
 
-    def hold_reading(self, digest: str, reading: Extraction) -> None:
-        """Keep a reading in memory for the content check about to ask
+    def hold_reading(self, digest: str, judgment: Judgment) -> None:
+        """Keep a judgment in memory for the content check about to ask
         (decision 150); never saved, and only the last few."""
-        self._readings[digest] = reading
+        self._readings[digest] = judgment
         while len(self._readings) > _HELD_READINGS:
             self._readings.popitem(last=False)
 
-    def held_reading(self, file: Path) -> Extraction | None:
-        """The reading :meth:`hold_reading` kept for ``file``'s bytes, if any."""
+    def held_reading(self, file: Path) -> Judgment | None:
+        """The judgment :meth:`hold_reading` kept for ``file``'s bytes, if any."""
         digest = self.digest_of(file)
         return self._readings.get(digest) if digest else None
 

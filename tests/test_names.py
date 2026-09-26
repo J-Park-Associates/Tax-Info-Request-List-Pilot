@@ -98,3 +98,41 @@ def test_where_a_name_was_said_is_the_page_it_was_printed_on():
     deep = "page one says nothing\fEmployee: John A. Park"
     said = check_name(deep, ("John A. Park",), {})
     assert said.where == WHERE_DEEP and said.page == 2
+
+
+def test_a_name_is_parsed_once_per_text(monkeypatch):
+    """The second of decision 189's two costs. The name check folded the
+    whole page again for every spelling of every return it asked about - on
+    a long reading, the whole of its cost. It folds a page once: one
+    question with five spellings on either side, and a judgment asking
+    three returns about one page, each read the page's words once, and
+    every verdict is the one the page always gave."""
+    import tracker.names as names
+    from tracker.content_check import Extraction, NameQuestion, Questions, judgment_of
+
+    folded = []
+    real = names.name_parts
+
+    def counted(text):
+        folded.append(len(text))
+        return real(text)
+
+    monkeypatch.setattr(names, "name_parts", counted)
+    page = "Recipient: Robin Q. Sample\nPayer: Sample Widgets LLC\n\fcopy B for Robin Q. Sample"
+    own = ("Avery Example", "Example Avery", "Sam Nobody", "Nobody Sam", "Robin Q. Sample")
+    others = {"another return": ("Casey Other", "Other Casey", "Dana Else", "Else Dana", "Sample Widgets LLC")}
+
+    verdict = check_name(page, own, others)
+    assert verdict.outcome == NAME_CONFIRMED and verdict.matched == "Robin Q. Sample"
+    assert verdict.where == WHERE_FIRST_PAGE and verdict.page == 1
+    assert len(folded) == 1
+
+    folded.clear()
+    questions = (NameQuestion(own=own, others=tuple(others.items())),
+                 NameQuestion(own=("Casey Other",), others=(("the first", own),)),
+                 NameQuestion(own=("Dana Else",), others=(("the first", ("Avery Example",)),
+                                                          ("the second", ("Sample Widgets LLC",)))))
+    judged = judgment_of(Extraction(page), Questions(names=questions))
+    assert len(folded) == 1
+    assert [judged.name(q).outcome for q in questions] == [NAME_CONFIRMED, NAME_VETOED, NAME_VETOED]
+    assert judged.name(questions[2]).other_label == "the second"

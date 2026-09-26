@@ -12,10 +12,12 @@ where the name on it confirms.
 :func:`normalise`, :func:`spelling_in`, :func:`propose_spellings` and
 :func:`check_name` are pure functions over text the caller already has.
 Nothing here reads a file, takes a lock, or knows what a return is. The
-check itself runs in the household pass
-(:func:`tracker.filer.file_household_drops`), after the request lists have
-accepted a document and before the exactly-one rule; the router is
-untouched, because the router judges a request list and knows no person.
+check is asked in the reader child, beside the rules (decision 189,
+:func:`tracker.content_check.judge`), and its verdict read in the
+household pass (:func:`tracker.filer.file_household_drops`), after the
+request lists have accepted a document and before the exactly-one rule;
+the router is untouched, because the router judges a request list and
+knows no person.
 
 **The rules it keeps.**
 
@@ -115,33 +117,55 @@ def spelling_in(text: str, spelling: str) -> bool:
     return _said_at(text, spelling) is not None
 
 
-def _said_at(text: str, spelling: str) -> int | None:
+@dataclass(frozen=True, slots=True)
+class NamesOnPage:
+    """A page's words folded once for the name check (:func:`read_names`):
+    the folded copy, and where each of its words begins in the page.
+
+    Decision 189: :func:`check_name` used to fold the whole page again for
+    every spelling of every return - on a long reading, the name check's
+    whole cost. Folded once, every spelling is one search. It lives only
+    where the page is judged (the reader child) and is never kept.
+    """
+
+    hay: str
+    #: Offset in ``hay`` of each word's first letter -> offset in the page.
+    starts: dict[int, int]
+
+
+def read_names(text: str) -> NamesOnPage:
+    """Fold ``text`` for the name check, once (:class:`NamesOnPage`)."""
+    parts = name_parts(text)
+    starts: dict[int, int] = {}
+    at = 1
+    for word, where in parts:
+        starts[at] = where
+        at += len(word) + 1
+    return NamesOnPage(" " + " ".join(word for word, _at in parts) + " ", starts)
+
+
+def _said_at(text: str, spelling: str, page: NamesOnPage | None = None) -> int | None:
     """Where in ``text`` a spelling's first word begins, or None.
 
     The search is over the folded copy (:func:`normalise`); the offset
     comes back in the *original* text, because the place a record names is
     a place on the page the reader produced - the folded copy has no page
-    breaks left in it.
+    breaks left in it. ``page`` is ``text`` already folded
+    (:func:`read_names`), when the caller asks of it more than once.
     """
-    parts = name_parts(text)
-    if not parts:
+    page = read_names(text) if page is None else page
+    if not page.starts:
         return None
     needle = normalise(spelling)
     if not needle.strip():
         return None
-    hay = " " + " ".join(word for word, _at in parts) + " "
-    at = hay.find(needle)
+    at = page.hay.find(needle)
     if at < 0:
         return None
     # Which word of the original begins at that position: the words are
     # laid out one space apart, so their starts are known without another
     # search.
-    start = 1
-    for word, where in parts:
-        if start == at + 1:
-            return where
-        start += len(word) + 1
-    return None
+    return page.starts.get(at + 1)
 
 
 def _place_of(text: str, at: int) -> tuple[str, int]:
@@ -244,7 +268,8 @@ class NameVerdict:
 
 
 def check_name(
-    text: str, own: tuple[str, ...], others: dict[str, tuple[str, ...]]
+    text: str, own: tuple[str, ...], others: dict[str, tuple[str, ...]],
+    *, page: NamesOnPage | None = None,
 ) -> NameVerdict:
     """Whether ``text`` names somebody on this return, somebody on another,
     or nobody at all.
@@ -259,19 +284,24 @@ def check_name(
     which is the joint 1040 whose spouse also has a business - both returns
     are confirmed and the exactly-one rule then decides. Only a page that
     names nobody here and somebody there is vetoed.
+
+    ``text`` is folded once for every spelling (decision 189), or not at
+    all when the caller hands it folded as ``page`` (:func:`read_names`) -
+    the judgment asks one page about every return the drop may feed.
     """
+    page = read_names(text) if page is None else page
     for spelling in own:
-        at = _said_at(text, spelling) if is_a_spelling(spelling) else None
+        at = _said_at(text, spelling, page) if is_a_spelling(spelling) else None
         if at is not None:
-            where, page = _place_of(text, at)
-            return NameVerdict(NAME_CONFIRMED, matched=spelling, where=where, page=page)
+            where, page_number = _place_of(text, at)
+            return NameVerdict(NAME_CONFIRMED, matched=spelling, where=where, page=page_number)
     for label, spellings in others.items():
         for spelling in spellings:
-            at = _said_at(text, spelling) if is_a_spelling(spelling) else None
+            at = _said_at(text, spelling, page) if is_a_spelling(spelling) else None
             if at is not None:
-                where, page = _place_of(text, at)
+                where, page_number = _place_of(text, at)
                 return NameVerdict(NAME_VETOED, other=spelling, other_label=label,
-                                   where=where, page=page)
+                                   where=where, page=page_number)
     return NameVerdict(NAME_ABSENT)
 
 

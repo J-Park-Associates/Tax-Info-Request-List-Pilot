@@ -1577,12 +1577,23 @@ async function runScan() {
     render(result.state);
     const run = result.run;
     const summary = result.state.summary ? result.state.summary.line : "";
+    // What the pass said beyond the asked return (decision 189): the
+    // pass's own warnings, and the household's other returns' problems,
+    // shown the way this return's warnings are - the API's words, each
+    // under the return's own label.
+    const also = [];
+    for (const w of result.pass_warnings || []) also.push(`• ${w}`);
+    for (const other of result.household || []) {
+      for (const said of [other.error, other.skipped, ...other.warnings]) {
+        if (said) also.push(`• ${other.label}: ${said}`);
+      }
+    }
     if (run.skipped) {
-      banner(`Nothing done: ${run.skipped}.`, "warn");
+      banner([`Nothing done: ${run.skipped}.`, ...also].join("\n"), "warn");
       return;
     }
     if (run.error) {
-      banner(`The pass reported a problem: ${run.error}`, "err");
+      banner([`The pass reported a problem: ${run.error}`, ...also].join("\n"), "err");
       return;
     }
     const did = [`filed ${run.filed}`];
@@ -1593,7 +1604,9 @@ async function runScan() {
     const lines = [`Pass complete — ${did.join(", ")}.   ${summary}`];
     if (problems.length) lines.push(`But ${problems.join("; ")}.`);
     for (const w of run.warnings) lines.push(`• ${w}`);
-    banner(lines.join("\n"), problems.length ? "warn" : run.warnings.length ? "warn" : "ok");
+    lines.push(...also);
+    banner(lines.join("\n"),
+           problems.length || run.warnings.length || also.length ? "warn" : "ok");
   } catch (err) {
     toast(err.message);
   } finally {

@@ -124,6 +124,23 @@ is a folder this account cannot write to, and the original
 ``PermissionError`` goes to the caller, which reports it as the run's
 error. Called "another run", it would be skipped quietly on every pass, for
 a run that does not exist.
+**A lock is on disk, and one older than the machine's last start is dead
+(decision 189, SPEC-161 A-F3).** The lock line is ``fsync``-ed as it is
+written: a power cut after the take must not leave an empty file that
+waits out two hours and five minutes. And a lock this machine wrote whose
+``started=`` is before this machine last started cannot belong to a
+running process, whatever its process id says now - Windows reuses ids,
+and a reused one looked alive to the dead-owner rule, so after a power
+cut the household waited out the age rule. :func:`boot_time` is now
+minus the time since boot (``GetTickCount64`` on Windows,
+``/proc/uptime`` elsewhere); where neither can be read there is no boot
+rule and the age rule decides, as before. A lock file with no line at
+all - empty, or holding no ``pid=`` - is a take the machine never
+finished writing, and is stale once its file is older than
+:data:`EMPTY_LOCK_SECONDS`; younger, it may be a take in the instant
+between the create and the write. Another host's lock keeps the age
+rule: its boot is not this machine's to know.
+
 Refused: a Windows named mutex or a byte-range lock instead of the file. It
 would not reach a second machine through Drive either, and the one-machine
 rule is where that is answered; F1 and F2 needed two local repairs, not a
@@ -173,6 +190,10 @@ RUN_TIME_LIMIT_SECONDS = 2 * 60 * 60
 #: handle before anyone calls its lock stale.
 STALE_LOCK_GRACE_SECONDS = 5 * 60
 STALE_LOCK_SECONDS = RUN_TIME_LIMIT_SECONDS + STALE_LOCK_GRACE_SECONDS
+#: How old an empty or line-less lock file must be before it is stale
+#: (decision 189): long enough for a take between its create and its
+#: write, far short of the two hours an unwritten lock used to wait.
+EMPTY_LOCK_SECONDS = 60
 
 
 class EngagementLockedError(RuntimeError):
@@ -231,20 +252,76 @@ def pid_alive(pid: str | int) -> bool | None:
     return True
 
 
-def _owner_gone(lock: Path) -> bool:
-    """True when the lock names a process that is no longer running."""
+def boot_time() -> float | None:
+    """When this machine last started, as a ``time.time()`` stamp, or None
+    when it cannot be read (then there is no boot rule; the age rule
+    decides). The suite replaces this function to state a boot."""
     try:
+        if os.name == "nt":
+            import ctypes
+
+            kernel32 = ctypes.WinDLL("kernel32")
+            kernel32.GetTickCount64.restype = ctypes.c_ulonglong
+            up = kernel32.GetTickCount64() / 1000.0
+        else:
+            with open("/proc/uptime", encoding="ascii") as handle:
+                up = float(handle.read().split()[0])
+    except (OSError, ValueError, IndexError, AttributeError):
+        return None
+    return time.time() - up
+
+
+#: How far before this machine's boot a lock's ``started=`` must be for
+#: the boot rule to judge it dead (the review's N2). ``started=`` is naive
+#: local time and the boot is ``time.time()`` less the uptime, so a clock
+#: corrected just after boot (w32time) or the fall-back hour of daylight
+#: saving can put a live lock of this machine a little before its boot. A
+#: lock a restart really left behind is hours older, so the margin costs
+#: nothing; within it, the age rule decides.
+BOOT_MARGIN_SECONDS = 120
+
+
+def _started_before_boot(started: str) -> bool:
+    """Whether a lock line's ``started=`` is before this machine last
+    started, by more than :data:`BOOT_MARGIN_SECONDS`. False when either
+    cannot be read: no rule is no guess."""
+    booted = boot_time()
+    if booted is None or not started:
+        return False
+    try:
+        when = dt.datetime.fromisoformat(started)
+    except ValueError:
+        return False
+    return when.timestamp() < booted - BOOT_MARGIN_SECONDS
+
+
+def _fields(text: str) -> dict[str, str]:
+    return dict(part.split("=", 1) for part in text.split() if "=" in part)
+
+
+def _status_of(lock: Path) -> LockStatus | None:
+    """What one lock file says, or None when there is none to read."""
+    try:
+        age = time.time() - lock.stat().st_mtime
         text = lock.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        return False
-    fields = dict(part.split("=", 1) for part in text.split() if "=" in part)
-    if text.strip() == RELEASED_LINE:
-        return True
-    if fields.get(_HOST_KEY, "") != _this_host():
-        # Another machine's process (a synced clients root): whether it is
-        # running cannot be known from here, so the age rule decides.
-        return False
-    return pid_alive(fields.get(_PID_KEY, "")) is False
+        return None
+    fields = _fields(text)
+    released = text.strip() == RELEASED_LINE
+    return LockStatus(
+        path=lock, age_seconds=max(age, 0.0),
+        started=fields.get(_STARTED_KEY, ""), pid=fields.get(_PID_KEY, ""),
+        host=fields.get(_HOST_KEY, ""), released=released,
+        unwritten=not released and _PID_KEY not in fields,
+    )
+
+
+def _owner_gone(lock: Path) -> bool:
+    """True when the lock's owner is judged gone - the one judgement
+    :attr:`LockStatus.owner_gone` makes, so a take and the app's page
+    never disagree about the same file."""
+    status = _status_of(lock)
+    return status is not None and status.owner_gone
 
 
 def acquire_lock(engagement_dir: Path, name: str = LOCK_FILENAME) -> EngagementLock:
@@ -285,6 +362,9 @@ def acquire_lock(engagement_dir: Path, name: str = LOCK_FILENAME) -> EngagementL
         try:
             with _held_guard:
                 os.write(fd, token.encode("utf-8"))
+                # On the disk before the take counts (decision 189): a
+                # power cut must not leave an empty file behind a run.
+                os.fsync(fd)
                 _held[token] += 1
         except OSError:
             os.close(fd)
@@ -346,7 +426,7 @@ def _a_leftover_of_this_process(lock: Path) -> bool:
         text = lock.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return False
-    fields = dict(part.split("=", 1) for part in text.split() if "=" in part)
+    fields = _fields(text)
     return (
         fields.get(_HOST_KEY, "") == _this_host()
         and fields.get(_PID_KEY, "") == str(os.getpid())
@@ -477,12 +557,24 @@ class LockStatus:
     pid: str            # process id, if the file said
     host: str = ""      # the machine that took it, if the file said
     released: bool = False   # its owner let go but could not delete it
+    unwritten: bool = False  # empty, or no pid= line: a take never finished
 
     @property
     def owner_gone(self) -> bool:
-        """The process the lock names is no longer running (False if unknowable,
-        including a process on another machine)."""
-        return self.released or (self.host == _this_host() and pid_alive(self.pid) is False)
+        """The lock's owner is judged gone (False if unknowable, including a
+        process on another machine): it let go; its line was never written
+        and the file is older than :data:`EMPTY_LOCK_SECONDS`; or it is this
+        machine's and it started before the machine last did, or its
+        process is no longer running (decision 189)."""
+        if self.released:
+            return True
+        if self.unwritten:
+            return self.age_seconds >= EMPTY_LOCK_SECONDS
+        if self.host != _this_host():
+            # Another machine's process (a synced clients root): whether it
+            # is running cannot be known from here, so the age rule decides.
+            return False
+        return _started_before_boot(self.started) or pid_alive(self.pid) is False
 
     @property
     def stale(self) -> bool:
@@ -491,18 +583,7 @@ class LockStatus:
 
 def lock_status(engagement_dir: Path | str) -> LockStatus | None:
     """The engagement's lock if one is present, else None. Never raises."""
-    lock = Path(engagement_dir) / LOCK_FILENAME
-    try:
-        age = time.time() - lock.stat().st_mtime
-        text = lock.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return None
-    fields = dict(part.split("=", 1) for part in text.split() if "=" in part)
-    return LockStatus(
-        path=lock, age_seconds=max(age, 0.0),
-        started=fields.get(_STARTED_KEY, ""), pid=fields.get(_PID_KEY, ""),
-        host=fields.get(_HOST_KEY, ""), released=text.strip() == RELEASED_LINE,
-    )
+    return _status_of(Path(engagement_dir) / LOCK_FILENAME)
 
 
 def lock_is_held(engagement_dir: Path | str) -> bool:

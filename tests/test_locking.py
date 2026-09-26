@@ -7,6 +7,7 @@ and only by the run that holds it.
 
 import datetime as dt
 import os
+import time
 
 import pytest
 
@@ -492,3 +493,115 @@ def test_two_processes_contending_for_one_lock_lose_no_line_and_leave_no_lock(tm
     lines = (tmp_path / "journal.txt").read_text(encoding="utf-8").splitlines()
     assert sorted(lines) == sorted(f"{name} {i}" for name in ("a", "b") for i in range(cycles))
     assert not (tmp_path / LOCK_FILENAME).exists()
+
+
+# ------------------------------------- on disk, and the boot rule (189) ----
+
+
+def test_a_lock_older_than_the_last_boot_is_stale(tmp_path, monkeypatch):
+    # A power cut, a restart: the process id the lock names may belong to
+    # somebody else now and look alive. The machine started after the lock
+    # did, so no process of this run can still hold it (SPEC-161 A-F3).
+    import tracker.locking as locking_module
+    from tracker.locking import lock_status
+
+    lock = tmp_path / LOCK_FILENAME
+    started = dt.datetime.now() - dt.timedelta(minutes=10)
+    lock.write_text(lock_line(os.getpid(), started), encoding="utf-8")   # a pid that looks alive
+    monkeypatch.setattr(locking_module, "boot_time", lambda: time.time() - 60)
+    assert lock_status(tmp_path).stale
+    with engagement_lock(tmp_path):
+        assert lock.read_text(encoding="utf-8") != lock_line(os.getpid(), started)
+
+
+def test_a_lock_started_within_the_margin_of_the_boot_is_left_to_the_age_rule(tmp_path, monkeypatch):
+    # A clock corrected just after boot, or the fall-back hour, can put a
+    # live lock of this machine a little before its boot (the review's N2):
+    # within the margin the boot rule does not judge it.
+    import tracker.locking as locking_module
+    from tracker.locking import BOOT_MARGIN_SECONDS, lock_status
+
+    booted = time.time() - 60
+    started = dt.datetime.fromtimestamp(booted - BOOT_MARGIN_SECONDS / 2)
+    (tmp_path / LOCK_FILENAME).write_text(lock_line(os.getpid(), started), encoding="utf-8")
+    monkeypatch.setattr(locking_module, "boot_time", lambda: booted)
+    assert not lock_status(tmp_path).stale
+
+
+def test_a_lock_without_a_readable_boot_falls_to_the_age_rule(tmp_path, monkeypatch):
+    import tracker.locking as locking_module
+    from tracker.locking import lock_status
+
+    lock = tmp_path / LOCK_FILENAME
+    lock.write_text(lock_line(os.getpid(), dt.datetime(2026, 3, 14, 7, 3)), encoding="utf-8")
+    monkeypatch.setattr(locking_module, "boot_time", lambda: None)
+    assert not lock_status(tmp_path).stale
+
+
+def test_another_machines_lock_keeps_the_age_rule_whatever_this_machines_boot(tmp_path, monkeypatch):
+    import tracker.locking as locking_module
+    from tracker.locking import lock_status
+
+    lock = tmp_path / LOCK_FILENAME
+    lock.write_text(f"pid=424242 started={dt.datetime(2026, 3, 14, 7, 3).isoformat()} "
+                    "host=another-machine", encoding="utf-8")
+    monkeypatch.setattr(locking_module, "boot_time", lambda: time.time() - 60)
+    assert not lock_status(tmp_path).stale
+
+
+def test_an_empty_lock_older_than_a_minute_is_stale(tmp_path):
+    from tracker.locking import EMPTY_LOCK_SECONDS, lock_status
+
+    lock = tmp_path / LOCK_FILENAME
+    lock.write_bytes(b"")
+    assert not lock_status(tmp_path).stale, "a take between its create and its write"
+    with pytest.raises(EngagementLockedError, match="another scan or sort"):
+        acquire_lock(tmp_path)
+    old = time.time() - EMPTY_LOCK_SECONDS - 1
+    os.utime(lock, (old, old))
+    assert lock_status(tmp_path).stale
+    with engagement_lock(tmp_path):
+        assert f"pid={os.getpid()}" in lock.read_text(encoding="utf-8")
+    assert not lock.exists()
+
+
+def test_a_fresh_lock_of_a_live_owner_still_holds(tmp_path, monkeypatch):
+    import subprocess
+    import sys
+
+    import tracker.locking as locking_module
+    from tracker.locking import lock_status
+
+    monkeypatch.setattr(locking_module, "boot_time", lambda: time.time() - 3600)
+    other = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    try:
+        (tmp_path / LOCK_FILENAME).write_text(lock_line(other.pid, dt.datetime.now()),
+                                              encoding="utf-8")
+        assert not lock_status(tmp_path).stale
+        with pytest.raises(EngagementLockedError, match="another scan or sort"):
+            acquire_lock(tmp_path)
+    finally:
+        other.kill()
+        other.wait()
+
+
+def test_the_lock_line_is_fsynced(tmp_path, monkeypatch):
+    import tracker.locking as locking_module
+
+    synced = []
+    real_fsync = locking_module.os.fsync
+
+    def fsync(fd):
+        synced.append((tmp_path / LOCK_FILENAME).read_bytes())    # what is on disk as it syncs
+        real_fsync(fd)
+
+    monkeypatch.setattr(locking_module.os, "fsync", fsync)
+    with engagement_lock(tmp_path) as lock:
+        assert synced == [lock.token.encode("utf-8")]
+
+
+def test_the_boot_time_is_in_the_past_or_unknown():
+    from tracker.locking import boot_time
+
+    booted = boot_time()
+    assert booted is None or booted < time.time()

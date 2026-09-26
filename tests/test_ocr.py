@@ -693,3 +693,56 @@ def test_a_short_junction_to_a_deep_folder_is_still_too_deep(tmp_path, monkeypat
         assert ocr.reader_path_warning(short) == ocr.READER_PATH_WARNING
     finally:
         subprocess.run(["cmd", "/c", "rmdir", str(short)], check=True, capture_output=True)
+
+
+# ------------------------------------------------ the awake clock (189) ----
+
+
+def test_time_asleep_does_not_count_toward_the_reading_stop(monkeypatch):
+    """SPEC-161 A-F9: the machine sleeps mid-reading. The biased clock (the
+    wall, and ``time.monotonic`` on Windows) jumps past the stop; the awake
+    clock moves one second. The reading is not ended, and its answer is
+    taken when the machine wakes."""
+    import time
+
+    awake = [1000.0]
+    biased = [5000.0]
+    monkeypatch.setattr(ocr, "awake_clock", lambda: awake[0])
+    monkeypatch.setattr(time, "monotonic", lambda: biased[0])
+    stop = 60.0
+
+    class Answers:
+        """The pipe: the first wait is slept through, then the child answers."""
+
+        def __init__(self):
+            self.said = [("started",), ("read", "the words", [])]
+            self.waits = 0
+
+        def poll(self, left):
+            self.waits += 1
+            if self.waits == 1:
+                biased[0] += stop * 100       # a night asleep
+                awake[0] += 1.0
+                return False
+            return True
+
+        def recv(self):
+            return self.said.pop(0)
+
+    ended = []
+    child = object.__new__(ocr.ReadingChild)
+    child._jobs = SimpleNamespace(send=lambda job: None)
+    child._answers = Answers()
+    child.served = 0
+    monkeypatch.setattr(child.__class__, "end", lambda self: ended.append(True))
+
+    outcome = child.run(len, ("x",), {}, stop)
+
+    assert not ended, "a stop the machine slept through must not end the reading"
+    assert outcome.kind == "read" and outcome.answer == "the words"
+    assert outcome.seconds == pytest.approx(1.0)
+
+
+def test_the_readings_own_stop_reads_the_awake_clock():
+    assert content_check._clock is ocr.awake_clock
+    assert ocr.awake_clock() <= ocr.awake_clock()

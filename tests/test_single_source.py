@@ -742,7 +742,7 @@ def test_documents_name_only_runtime_files_the_code_owns():
     from tracker.locking import LOCK_FILENAME
     from tracker.registry import LEGACY_MANIFEST_FILENAME
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
-    from tracker.runner import LOG_FILENAME, STATUS_PAGE_FILENAME
+    from tracker.runner import LOG_FILENAME, PASS_ORDER_FILENAME, STATUS_PAGE_FILENAME
     from tracker.scaffold import README_NAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
     from tracker.settings import SETTINGS_FILENAME
@@ -752,7 +752,8 @@ def test_documents_name_only_runtime_files_the_code_owns():
     assert LEGACY_MANIFEST_FILENAME in RETIRED_FILES
     owned = {LEDGER_FILENAME, LOCK_FILENAME, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
              LOG_FILENAME, STATUS_PAGE_FILENAME, README_NAME, README_LOCK_FILENAME,
-             SCHEDULE_XML_FILENAME, SETTINGS_FILENAME, STORE_FILENAME, VIEW_FILENAME}
+             SCHEDULE_XML_FILENAME, SETTINGS_FILENAME, STORE_FILENAME, VIEW_FILENAME,
+             PASS_ORDER_FILENAME}
     tracked = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True).stdout.split()
     repo_files = {Path(t).name for t in tracked} | {t for t in tracked}
     for rel in DOCUMENTS:

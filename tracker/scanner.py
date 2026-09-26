@@ -80,7 +80,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from tracker import ledger, reasons, store
-from tracker.content_check import ContentCache, check_content, open_verdict
+from tracker.content_check import ContentCache, OutOfTime, check_content, open_verdict
 from tracker.layout import locate
 from tracker.locking import EngagementLockedError, engagement_lock
 from tracker.manifest import (
@@ -171,6 +171,10 @@ class ScanReport:
     #: How many statuses this scan appended to the record. Zero on a pass
     #: that found the engagement exactly as it left it, and on a dry run.
     recorded: int = 0
+    #: How many requests the household's time for this pass did not reach
+    #: (decision 189). Not scanned and not recorded: each keeps the status
+    #: the record already holds until the next pass scans it.
+    unreached: int = 0
     dry_run: bool = False
 
     @property
@@ -469,9 +473,11 @@ def _scan_item(
     interrupted = interrupted or {}
     # Tier 2's open test is never made in this process (decision 150): it
     # is the file's kept verdict, or made in a reading's child beside the
-    # reading the content check below will then use.
+    # reading the content check below will then use - and, since decision
+    # 189, beside the judgment of this row's rules, in the same job, so a
+    # working copy costs one trip to the child and no text comes back.
     def open_test(path: Path) -> str:
-        return open_verdict(path, cache)
+        return open_verdict(path, cache, item)
 
     results = check_files(files, item, pdf_cache=pdf_cache, open_test=open_test)
     # A working copy the record claims whose bytes are not its row's - the
@@ -740,8 +746,20 @@ def scan_engagement(
     today: dt.date | None = None,
     dry_run: bool = False,
     lock_held: bool = False,
+    deadline: float | None = None,
 ) -> ScanReport:
     """Scan one engagement and (unless ``dry_run``) record what it found.
+
+    **Kept as it goes, and bounded** (decision 189). The verdicts are
+    saved after every request, so a pass killed mid-scan reads again only
+    what it was killed on (a save with nothing new is no transaction at
+    all). ``deadline`` is a moment on ``ocr.awake_clock``, checked where a
+    request would need a new judgment - a cache miss (ruling 2.2,
+    :func:`tracker.content_check.before_a_judgment`): a request whose
+    verdicts are all kept is scanned whatever the time, and past the
+    deadline the first request that would read stops the scan. What was
+    scanned is recorded, and the rest keep the status the record holds
+    until the next pass (``unreached``).
 
     Dry runs read everything but write nothing — no event, no cache save,
     no lock file — safe to run alongside a real scan.
@@ -799,15 +817,23 @@ def scan_engagement(
         excluded = _wandered(engagement_dir, rows)
         interrupted = _interrupted(engagement_dir, rows)
         answered = _answered(engagement_dir, rows, cache)
-        updates = {
-            item.identifier: _scan_item(
-                item, assigned[item.identifier], cache, today, pdf_cache, accepted=accepted,
-                claimed=claimed, excluded=excluded, interrupted=interrupted,
-                answered=answered.get(identifier_key(item.identifier), ()),
-                mine=belongs_to(item.identifier),
-            )
-            for item in items
-        }
+        updates: dict[str, StatusUpdate] = {}
+        unreached = 0
+        cache.deadline = deadline         # a miss past it starts no judgment
+        for item in items:
+            try:
+                updates[item.identifier] = _scan_item(
+                    item, assigned[item.identifier], cache, today, pdf_cache, accepted=accepted,
+                    claimed=claimed, excluded=excluded, interrupted=interrupted,
+                    answered=answered.get(identifier_key(item.identifier), ()),
+                    mine=belongs_to(item.identifier),
+                )
+            except OutOfTime:
+                unreached = len(items) - len(updates)
+                break
+            if not dry_run:
+                cache.save()      # this request's readings, kept the moment they are made
+        cache.deadline = None
 
         report = ScanReport(
             engagement_dir=engagement_dir,
@@ -815,6 +841,7 @@ def scan_engagement(
             updates=updates,
             warnings=_prepared_warnings(prepared_dir, identifiers)
                      + _changed_copy_warnings(claimed, prepared_dir, cache),
+            unreached=unreached,
             dry_run=dry_run,
         )
         if dry_run:

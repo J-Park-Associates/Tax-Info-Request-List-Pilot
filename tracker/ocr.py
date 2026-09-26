@@ -465,6 +465,51 @@ UNREADABLE_JOB_EXIT_CODE = 87
 OUT_OF_MEMORY_EXIT_CODE = 88
 
 
+def _awake_clock_source():
+    """The clock :func:`awake_clock` reads: on Windows
+    ``QueryUnbiasedInterruptTime`` (100 ns units), which stands still while
+    the machine sleeps; elsewhere ``time.monotonic``, which on Linux
+    already does. A Windows that will not answer the call falls back to
+    ``time.monotonic`` rather than to no stop at all."""
+    if os.name != "nt":
+        return time.monotonic
+    try:
+        import ctypes
+
+        query = ctypes.WinDLL("kernel32").QueryUnbiasedInterruptTime
+        query.argtypes = (ctypes.POINTER(ctypes.c_ulonglong),)
+        ticks = ctypes.c_ulonglong()
+        if not query(ctypes.byref(ticks)):
+            return time.monotonic
+    except (OSError, AttributeError):
+        return time.monotonic
+
+    def unbiased() -> float:
+        query(ctypes.byref(ticks))
+        return ticks.value / 10_000_000
+    return unbiased
+
+
+_AWAKE = _awake_clock_source()
+
+
+def awake_clock() -> float:
+    """Seconds on a clock that counts only time the machine is awake
+    (decision 189, SPEC-161 A-F9).
+
+    **Every stop that bounds a reading reads this**, and the household's
+    time budget with them: :meth:`ReadingChild.run` and
+    :meth:`Session._run_once` in the pass, the child's own safety stop
+    (``content_check._clock``), and ``runner.HOUSEHOLD_BUDGET_SECONDS``.
+    ``time.monotonic`` on Windows counts sleep, so a laptop that slept
+    through the night woke to every reading in flight judged past its stop
+    and parked as a file that stalled the reader - a verdict about the
+    machine's lid, kept as one about the client's file. Task Scheduler's
+    own limit stays wall-clock: that is its business.
+    """
+    return _AWAKE()
+
+
 @dataclass(slots=True)
 class Outcome:
     """What became of one job sent to the child.
@@ -522,19 +567,24 @@ class ReadingChild:
     def run(self, job, args: tuple, kwargs: dict, stop: float, *, since: float | None = None) -> Outcome:
         """Send ``job(*args, **kwargs)`` and wait for it at most ``stop``
         seconds from ``since`` (by default now). A stop ends the child."""
-        started = time.monotonic() if since is None else since
+        started = awake_clock() if since is None else since
         try:
             self._jobs.send((job, args, kwargs))
         except OSError as exc:
             return Outcome("not_started", error=f"the reading's process was gone ({exc})",
-                           seconds=time.monotonic() - started)
+                           seconds=awake_clock() - started)
         kind, answer, begun, over = "died", (), False, False
         while True:
-            left = started + stop - time.monotonic()
-            if left <= 0 or not self._answers.poll(left):
+            # Measured again after every message and every wake, on the
+            # awake clock (decision 189): a wait the machine slept through
+            # is not the file's time.
+            left = started + stop - awake_clock()
+            if left <= 0:
                 over = True
                 self.end()
                 break
+            if not self._answers.poll(left):
+                continue
             try:
                 kind, *answer = self._answers.recv()
             except (EOFError, OSError):
@@ -543,7 +593,7 @@ class ReadingChild:
             if kind != "started":
                 break
             begun = True            # from here on, what happens is the file's
-        seconds = time.monotonic() - started
+        seconds = awake_clock() - started
         if not begun:
             exit_code = None if over else self._exit_code()
             error = ("the reader did not start within the safety stop" if over else
@@ -903,14 +953,14 @@ class Session:
     def _run_once(self, job, args: tuple, kwargs: dict,
                   stop: float) -> tuple[Outcome, ReadingChild | None]:
         """:meth:`run`'s one try: the outcome, and the child that ran it."""
-        started = time.monotonic()
+        started = awake_clock()
         fresh = self.child is None
         if fresh:
             try:
                 self.child = ReadingChild(processor_only=self._processor_only)
             except Exception as exc:
                 return Outcome("not_started", error=f"{exc.__class__.__name__}: {exc}",
-                               seconds=time.monotonic() - started), None
+                               seconds=awake_clock() - started), None
         child = self.child
         outcome = child.run(job, args, kwargs, stop, since=started if fresh else None)
         self.hear(outcome.notes)

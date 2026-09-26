@@ -2047,3 +2047,702 @@ def test_an_option_after_the_end_of_options_is_a_root_and_writes_no_log(tmp_path
         main(["--dry-run", "--", f"--log={target}"])
     assert "Clients folder problem" in str(refused.value)
     assert not target.exists() and not target.parent.exists()
+
+
+# ------------------------------------------- the pass cannot go quiet (189) ----
+
+
+def _two_households(tmp_path, samples):
+    """Two households, each with a W-2 waiting in its inbox."""
+    first = build_engagement(tmp_path, samples, household="Alder Household", name="Alder TY2025")
+    second = build_engagement(tmp_path, samples, household="Birch Household", name="Birch TY2025")
+    return first, second
+
+
+def _page(root) -> str:
+    return html.unescape((root / STATUS_PAGE_FILENAME).read_text(encoding="utf-8"))
+
+
+def _the_scheduled_job(root, monkeypatch, *args) -> int:
+    """``main`` as the scheduled job calls it: the settings folder beside
+    ``root``, whose file names ``root`` as the clients root, and the flags."""
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    settings = root.parent / "settings"
+    settings.mkdir(exist_ok=True)
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    set_clients_root(root)
+    return main([SETTINGS_FLAG, str(settings), *args])
+
+
+def test_an_injected_database_error_in_one_household_leaves_the_others_processed_and_the_page_written(
+    tmp_path, samples, monkeypatch, capsys,
+):
+    """The security council's proof line (A-9, D-2): the database refuses
+    one household's pre-checks. That household carries the store's own
+    class and code; the other is sorted and scanned; the page is written."""
+    import tracker.runner as runner
+
+    first, second = _two_households(tmp_path, samples)
+    real = runner.load_manifest
+
+    def refused_for_the_first(folder, *args, **kwargs):
+        if folder == first.path:
+            store.connect().execute("SELECT * FROM a_table_the_store_never_had")
+        return real(folder, *args, **kwargs)
+
+    monkeypatch.setattr(runner, "load_manifest", refused_for_the_first)
+
+    assert main([str(tmp_path), "--reminders", REMINDERS_NEVER]) == 1
+    page = _page(tmp_path)
+    said = RECORD_UNREADABLE.format(problem=store.STORE_UNAVAILABLE.format(code="SQLITE_ERROR"))
+    assert f"{first.label}: {said}" in page
+    assert "a_table_the_store_never_had" not in page, "the engine's text is never quoted"
+    assert [row.decision for row in read_index(second.path)] == ["Filed"]
+    assert "Birch TY2025" in capsys.readouterr().out
+
+
+def test_a_run_log_that_cannot_be_written_still_leaves_the_page_and_says_so(
+    tmp_path, samples, monkeypatch, capsys,
+):
+    from tracker.runner import LOG_NOT_WRITTEN
+
+    root = tmp_path / "Clients"
+    build_engagement(root, samples)
+    a_folder_where_the_log_goes = tmp_path / "logs"
+    a_folder_where_the_log_goes.mkdir()
+
+    code = _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER,
+                              "--log", str(a_folder_where_the_log_goes))
+
+    assert code == 1, "a log that could not be written is a red run"
+    head = LOG_NOT_WRITTEN.split("(")[0]
+    assert head in _page(root)
+    assert head in capsys.readouterr().out
+
+
+def test_a_pass_whose_own_code_raises_still_writes_its_log_and_its_page(
+    tmp_path, samples, monkeypatch, capsys,
+):
+    """D-2: the runner's own code - not a household's - raises. What
+    finished is logged and drawn, the page names the stop by its class,
+    and the exit code is not 0."""
+    import tracker.runner as runner
+    from tracker.runner import PASS_STOPPED
+
+    root = tmp_path / "Clients"
+    build_engagement(root, samples)
+
+    asked = []
+
+    def fails_at_the_end_of_the_pass():
+        asked.append(True)
+        if len(asked) == 2:          # the first ask starts the count; the second ends the pass
+            raise KeyError("not a sentence anybody should read")
+        return ""
+
+    monkeypatch.setattr(runner, "reader_start_warning", fails_at_the_end_of_the_pass)
+
+    assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER, "--log") == 1
+    said = PASS_STOPPED.format(kind="KeyError")
+    assert said in _page(root)
+    assert said in (root / LOG_FILENAME).read_text(encoding="utf-8")
+    assert "not a sentence" not in _page(root)
+    assert "Smith TY2025: filed 1" in (root / LOG_FILENAME).read_text(encoding="utf-8"), (
+        "the household that finished is logged")
+    capsys.readouterr()
+
+
+def test_one_unreadable_record_costs_one_row_of_the_page(tmp_path, samples, monkeypatch):
+    import tracker.runner as runner
+    from tracker.ledger import RecordNotWritten
+    from tracker.runner import status_report
+
+    first, second = _two_households(tmp_path, samples)
+    real = runner.load_manifest
+
+    def unreadable_first(folder, *args, **kwargs):
+        if folder == first.path:
+            raise RecordNotWritten("EACCES")
+        return real(folder, *args, **kwargs)
+
+    monkeypatch.setattr(runner, "load_manifest", unreadable_first)
+    report = status_report(discover_engagements(tmp_path))
+    write_status_page(tmp_path, report)
+
+    by_label = {run.engagement.label: run for run in report.runs}
+    assert by_label[first.label].error == RECORD_UNREADABLE.format(
+        problem="RecordNotWritten (EACCES)")
+    assert by_label[second.label].ok and not by_label[second.label].error
+    assert second.label in _page(tmp_path)
+
+
+def test_a_record_the_disk_refuses_is_said_by_its_class_and_code_never_its_path(
+        tmp_path, samples, monkeypatch):
+    """The page's per-row error names the class and the errno's code, never
+    the operating system's message, which names the record's path - a
+    client's folder (security principle 7; the review's S2)."""
+    import errno
+
+    import tracker.runner as runner
+    from tracker.runner import status_report
+
+    engagement = build_engagement(tmp_path, samples)
+    where = str(engagement.path / "journal.jsonl")
+
+    def refused(folder, *args, **kwargs):
+        raise PermissionError(errno.EACCES, "Permission denied", where)
+
+    monkeypatch.setattr(runner, "load_manifest", refused)
+    report = status_report(discover_engagements(tmp_path))
+    write_status_page(tmp_path, report)
+
+    [row] = report.runs
+    assert row.error == RECORD_UNREADABLE.format(problem="PermissionError (EACCES)")
+    assert where not in _page(tmp_path) and engagement.path.name not in row.error
+
+
+def test_a_household_that_stops_is_said_by_its_class_never_its_message(
+        tmp_path, samples, monkeypatch, capsys):
+    """A household's surprise costs its returns, and each carries the class
+    and code alone: an OSError's text names a client's folder, and neither
+    the page nor the run log quotes it (security principle 7; the review's
+    S2)."""
+    import errno
+
+    import tracker.runner as runner
+
+    root = tmp_path / "Clients"
+    engagement = build_engagement(root, samples)
+    where = str(engagement.path / "a file the disk refused.pdf")
+
+    def refused(*args, **kwargs):
+        raise OSError(errno.EIO, "Input/output error", where)
+
+    monkeypatch.setattr(runner, "_sort_step", refused)
+
+    assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER, "--log") == 1
+    log_text = (root / LOG_FILENAME).read_text(encoding="utf-8")
+    assert "OSError (EIO)" in log_text and "OSError (EIO)" in _page(root)
+    for said in (log_text, _page(root)):
+        assert where not in said and "a file the disk refused" not in said
+    capsys.readouterr()
+
+
+def test_a_page_that_cannot_be_written_is_said_in_the_log_and_fails_the_run(
+        tmp_path, samples, monkeypatch, capsys):
+    """The page is how a person finds out; one stuck on yesterday must not
+    look green (security principle 6; the review's S3). A page that cannot
+    be written is said in the run log by its class alone, and the pass
+    exits 1."""
+    import tracker.runner as runner
+    from tracker.runner import PAGE_NOT_WRITTEN
+
+    root = tmp_path / "Clients"
+    build_engagement(root, samples)
+
+    def cannot_write(*args, **kwargs):
+        raise PermissionError(13, "Permission denied", str(root / "a client's folder"))
+
+    monkeypatch.setattr(runner, "write_status_page", cannot_write)
+
+    assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER, "--log") == 1
+    log_text = (root / LOG_FILENAME).read_text(encoding="utf-8")
+    assert PAGE_NOT_WRITTEN.format(kind="PermissionError") in log_text
+    assert "a client's folder" not in log_text
+    capsys.readouterr()
+
+
+def test_the_run_log_carries_a_count_of_warnings_never_their_words(tmp_path, samples):
+    engagement = build_engagement(tmp_path, samples)
+    run = EngagementRun(engagement=engagement, warnings=["a sentence naming W-2 Client.pdf"] * 3)
+    log_path = append_log(tmp_path / LOG_FILENAME, RunReport(today=SATURDAY, runs=[run]))
+    text = log_path.read_text(encoding="utf-8")
+    assert "(warnings: 3)" in text
+    assert "W-2 Client.pdf" not in text
+
+
+def test_a_first_draft_missed_on_its_day_is_drafted_on_the_next_run():
+    """SPEC-161 A-F8: a return set up before a draft day the machine was
+    off for is owed its first draft on the next run, not a week later; one
+    set up since the last draft day still waits for its first."""
+    engagement = Engagement(path=Path("/x"))
+    set_up_before = SATURDAY - dt.timedelta(days=3)
+    set_up_after = SATURDAY + dt.timedelta(days=1)
+    assert should_draft(engagement, SUNDAY, REMINDERS_AUTO, created=set_up_before) is True
+    assert should_draft(engagement, SUNDAY, REMINDERS_AUTO, created=SATURDAY) is True
+    assert should_draft(engagement, SUNDAY, REMINDERS_AUTO, created=set_up_after) is False
+    assert should_draft(engagement, FRIDAY, REMINDERS_AUTO, created=set_up_before) is False
+
+
+def test_a_first_draft_missed_on_its_day_is_drafted_by_the_next_pass(tmp_path, samples, stamped_on):
+    stamped_on(SATURDAY - dt.timedelta(days=3))          # the day the return was set up
+    engagement = build_engagement(tmp_path, samples)
+    run = pass_on(stamped_on, engagement, SUNDAY)          # the Saturday went by, machine off
+    assert run.drafted == engagement.path / DRAFT_FILENAME
+
+
+def test_reminders_no_still_wins_over_a_missed_first_draft():
+    quiet = Engagement(path=Path("/x"), info=EngagementInfo(reminders=False))
+    before = SATURDAY - dt.timedelta(days=3)
+    assert should_draft(quiet, SUNDAY, REMINDERS_AUTO, created=before) is False
+    assert should_draft(Engagement(path=Path("/x")), SUNDAY, REMINDERS_NEVER, created=before) is False
+
+
+_KILLED_ON_THE_THIRD_READING = """
+import os, sys
+from tracker import content_check
+from tracker.registry import discover_engagements
+from tracker.runner import run_registry
+
+content_check.READ_IN_A_CHILD = False
+real, readings = content_check.extract, []
+
+def extract(path, **kwargs):
+    readings.append(path)
+    if len(readings) == 3:
+        os._exit(9)            # a hard kill: no finally, no atexit
+    return real(path, **kwargs)
+
+content_check.extract = extract
+run_registry(discover_engagements(sys.argv[1]), reminders="never")
+"""
+
+
+def test_a_pass_killed_mid_sort_keeps_every_reading_it_finished(tmp_path, monkeypatch):
+    """SPEC-161 ruling 1 (E-4): a pass killed after the second of five
+    readings - Task Scheduler's limit, the app's kill - kept both, so the
+    next pass reads only the last three."""
+    import subprocess
+    import sys
+
+    from tests.samples import text_pdf
+    from tracker import content_check
+
+    folder = make_engagement(tmp_path, [RequestItem(identifier="A01", document="W-2")],
+                             household="Cedar Household", return_name="Cedar TY2025")
+    for n in range(1, 6):
+        text_pdf(inbox_of(folder) / f"statement {n}.pdf", [f"Brokerage letter number {n}"])
+    store.close()
+
+    repo = Path(__file__).resolve().parents[1]
+    killed = subprocess.run([sys.executable, "-c", _KILLED_ON_THE_THIRD_READING, str(tmp_path)],
+                            cwd=repo, capture_output=True, text=True, timeout=240)
+    assert killed.returncode == 9, killed.stderr
+
+    real, readings = content_check.extract, []
+
+    def counted(path, **kwargs):
+        readings.append(Path(path).name)
+        return real(path, **kwargs)
+
+    monkeypatch.setattr(content_check, "extract", counted)
+    run_registry(discover_engagements(tmp_path), reminders=REMINDERS_NEVER)
+    assert sorted(readings) == ["statement 3.pdf", "statement 4.pdf", "statement 5.pdf"]
+
+
+# ---------------------------------------------- the bounded household (189) ----
+
+
+def _three_households(tmp_path, samples):
+    return [build_engagement(tmp_path, samples, household=f"{name} Household", name=f"{name} TY2025")
+            for name in ("Alder", "Birch", "Cedar")]
+
+
+@pytest.fixture
+def a_clock(monkeypatch):
+    """The awake clock, held still unless a test moves it (decision 189)."""
+    from tracker import ocr
+
+    now = [1000.0]
+    monkeypatch.setattr(ocr, "awake_clock", lambda: now[0])
+    return now
+
+
+def slow_for(monkeypatch, clock, household: str, seconds: float) -> None:
+    """Every reading of a file under ``household`` takes ``seconds`` on the
+    awake clock: a hostile upload, without the wait."""
+    from tracker import content_check
+
+    real = content_check.extract
+
+    def reading(path, **kwargs):
+        if household in str(path):
+            clock[0] += seconds
+        return real(path, **kwargs)
+
+    monkeypatch.setattr(content_check, "extract", reading)
+
+
+def households_in_order(monkeypatch) -> list[str]:
+    """The households a pass takes, in the order it takes them."""
+    import tracker.runner as runner
+
+    taken, real = [], runner.run_household
+
+    def recorded(household, *args, **kwargs):
+        taken.append(household.name)
+        return real(household, *args, **kwargs)
+
+    monkeypatch.setattr(runner, "run_household", recorded)
+    return taken
+
+
+def by_label(report):
+    return {run.engagement.label: run for run in report.runs}
+
+
+def test_a_hostile_first_household_does_not_starve_the_second(tmp_path, samples, monkeypatch, a_clock):
+    """The council's proof line (G-11): the first household's readings take
+    past its budget. It stops between files and says so; the second is
+    sorted, scanned and drafted in the same pass."""
+    from tracker.runner import HOUSEHOLD_BUDGET_SECONDS, OUT_OF_TIME
+
+    first = build_engagement(tmp_path, samples, household="Alder Household", name="Alder TY2025",
+                             drops=(f"W-2 John Smith {YEAR}.pdf", "Form 1098 Mortgage Interest.pdf"))
+    second = build_engagement(tmp_path, samples, household="Birch Household", name="Birch TY2025")
+    slow_for(monkeypatch, a_clock, "Alder", HOUSEHOLD_BUDGET_SECONDS + 1)
+
+    report = run_registry(discover_engagements(tmp_path), today=SATURDAY)
+
+    stalled, served = by_label(report)[first.label], by_label(report)[second.label]
+    assert stalled.out_of_time and OUT_OF_TIME.format(n=1) in stalled.warnings
+    assert len(list(inbox_of(first.path).iterdir())) >= 1, "the rest waits in the inbox"
+    assert served.ok and served.filed == 1 and not served.out_of_time
+    assert served.drafted == second.path / DRAFT_FILENAME
+
+
+def test_a_household_out_of_time_drafts_nothing_and_says_so(tmp_path, samples, monkeypatch, a_clock):
+    from tracker.runner import HOUSEHOLD_BUDGET_SECONDS, OUT_OF_TIME, OUT_OF_TIME_NO_DRAFT
+
+    engagement = build_engagement(tmp_path, samples,
+                                  drops=(f"W-2 John Smith {YEAR}.pdf", "Form 1098 Mortgage Interest.pdf"))
+    slow_for(monkeypatch, a_clock, "Test Household", HOUSEHOLD_BUDGET_SECONDS + 1)
+
+    run = a_pass(engagement, today=SATURDAY)
+
+    assert run.out_of_time and run.drafted is None
+    assert run.draft_note == OUT_OF_TIME_NO_DRAFT
+    assert OUT_OF_TIME.format(n=1) in run.warnings
+    assert not (engagement.path / DRAFT_FILENAME).exists()
+    assert run.ok, "out of time is not a failure; it is said, and the rest waits"
+
+
+def test_an_attachment_that_waits_for_time_makes_its_return_out_of_time(
+        tmp_path, samples, monkeypatch, a_clock, caplog):
+    """A zip is the only drop, and its first attachment's reading takes past
+    the household's time (decision 189, ruling 2.2; the review's M2). The
+    attachment after it waits for the next pass exactly as an unreached drop
+    waits: the return is out of time, that is said, no draft is made, the
+    zip gets no row so the next pass opens it again, and the wait is not
+    called a reader that could not start."""
+    import zipfile
+
+    from tracker.filer import read_index
+    from tracker.runner import HOUSEHOLD_BUDGET_SECONDS, OUT_OF_TIME, OUT_OF_TIME_NO_DRAFT
+
+    engagement = build_engagement(tmp_path, samples, drops=())
+    with zipfile.ZipFile(inbox_of(engagement.path) / "papers.zip", "w") as packed:
+        for name in (f"W-2 John Smith {YEAR}.pdf", "Form 1098 Mortgage Interest.pdf"):
+            packed.writestr(name, (samples / name).read_bytes())
+    slow_for(monkeypatch, a_clock, "Test Household", HOUSEHOLD_BUDGET_SECONDS + 1)
+
+    with caplog.at_level("WARNING"):
+        run = a_pass(engagement, today=SATURDAY)
+
+    assert run.out_of_time and OUT_OF_TIME.format(n=1) in run.warnings
+    assert run.drafted is None and run.draft_note == OUT_OF_TIME_NO_DRAFT
+    assert not (engagement.path / DRAFT_FILENAME).exists()
+    assert "papers.zip" not in [row.original_name for row in read_index(engagement.path)]
+    assert "could not start" not in caplog.text
+
+
+def test_run_now_uses_the_same_budget(tmp_path, samples, monkeypatch, a_clock):
+    import tracker.runner as runner
+
+    engagement = build_engagement(tmp_path, samples,
+                                  drops=(f"W-2 John Smith {YEAR}.pdf", "Form 1098 Mortgage Interest.pdf"))
+    monkeypatch.setattr(runner, "HOUSEHOLD_BUDGET_SECONDS", 5)
+    slow_for(monkeypatch, a_clock, "Test Household", 6)
+    assert a_pass(engagement, today=FRIDAY).out_of_time
+
+
+def test_a_household_out_of_time_still_takes_every_cached_verdict(tmp_path, samples, monkeypatch, a_clock):
+    """Ruling 2.2: the deadline stops only a file that would need a new
+    judgment. A household already past its time from its first moment
+    still decides a re-sent drop from its record and scans every request
+    from its kept verdicts - and is not out of time, because nothing
+    waited."""
+    import tracker.runner as runner
+    from tracker import content_check
+    from tracker.manifest import load_manifest
+    from tracker.runner import OUT_OF_TIME_NO_DRAFT
+
+    w2 = f"W-2 John Smith {YEAR}.pdf"
+    engagement = build_engagement(tmp_path, samples, drops=(w2,))
+    assert a_pass(engagement, today=FRIDAY).filed == 1
+    (inbox_of(engagement.path) / w2).write_bytes((samples / w2).read_bytes())
+
+    def no_new_judgment(*args, **kwargs):
+        raise AssertionError("a new judgment was started")
+
+    monkeypatch.setattr(content_check, "judge", no_new_judgment)
+    monkeypatch.setattr(content_check, "_read_in_a_child", no_new_judgment)
+    monkeypatch.setattr(runner, "HOUSEHOLD_BUDGET_SECONDS", 0)
+
+    run = a_pass(engagement, today=SATURDAY)
+
+    assert run.ok and not run.out_of_time and run.draft_note != OUT_OF_TIME_NO_DRAFT
+    assert not (inbox_of(engagement.path) / w2).exists(), "the re-send was taken"
+    assert [row.decision for row in read_index(engagement.path)] == ["Filed", "Duplicate"]
+    assert sum(run.statuses.values()) == len(load_manifest(engagement.path))
+
+
+def test_pre_checks_that_raise_cost_only_their_household(tmp_path, samples, monkeypatch):
+    import tracker.runner as runner
+
+    first, second = _two_households(tmp_path, samples)
+    real = runner.open_years
+
+    def surprise(engagements):
+        if any(one.path == first.path for one in engagements):
+            raise RuntimeError("a pre-check nobody expected")
+        return real(engagements)
+
+    monkeypatch.setattr(runner, "open_years", surprise)
+    report = run_registry(discover_engagements(tmp_path), today=FRIDAY)
+
+    assert by_label(report)[first.label].error.startswith("RuntimeError")
+    assert by_label(report)[second.label].ok and by_label(report)[second.label].filed == 1
+
+
+def test_the_household_killed_every_pass_goes_last_and_the_others_are_served(
+    tmp_path, samples, monkeypatch,
+):
+    """SPEC-161 ruling 2: a pass killed in a household - past Task
+    Scheduler's limit, the machine going off - leaves it marked started and
+    never ended, and the next pass takes it last, so the households after
+    it in the walk are served."""
+    import tracker.runner as runner
+
+    alder, birch, cedar = _three_households(tmp_path, samples)
+    real = runner.run_household
+    taken = []
+
+    def killed_in_alder(household, *args, **kwargs):
+        taken.append(household.name)
+        if household.name == "Alder Household":
+            raise SystemExit("killed")            # nothing after this line of the pass runs
+        return real(household, *args, **kwargs)
+
+    monkeypatch.setattr(runner, "run_household", killed_in_alder)
+    for _ in range(2):
+        with pytest.raises(SystemExit):
+            run_registry(discover_engagements(tmp_path), today=FRIDAY)
+    assert taken == ["Alder Household", "Birch Household", "Cedar Household", "Alder Household"]
+    for served in (birch, cedar):
+        assert [row.decision for row in read_index(served.path)] == ["Filed"]
+
+
+def test_households_run_least_recently_completed_first(tmp_path, samples, monkeypatch):
+    from tracker.runner import PASS_ORDER_FILENAME
+
+    _three_households(tmp_path, samples)
+    hint = store.store_path().parent / PASS_ORDER_FILENAME
+    hint.parent.mkdir(parents=True, exist_ok=True)
+    hint.write_text(
+        '{"version": 1, "households": {'
+        '"Alder Household": {"completed": "2026-03-13T09:00:00", "not_served": 0},'
+        '"Birch Household": {"completed": "2026-03-12T09:00:00", "not_served": 0},'
+        '"A household long gone": {"completed": "2026-01-01T09:00:00", "not_served": 0}}}',
+        encoding="utf-8")
+    taken = households_in_order(monkeypatch)
+    run_registry(discover_engagements(tmp_path), today=FRIDAY)
+    assert taken == ["Cedar Household", "Birch Household", "Alder Household"]
+
+
+def test_a_missing_or_broken_pass_order_file_falls_back_to_folder_order(tmp_path, samples, monkeypatch):
+    from tracker.runner import ORDER_HINT_UNREADABLE, PASS_ORDER_FILENAME
+
+    _three_households(tmp_path, samples)
+    walk = ["Alder Household", "Birch Household", "Cedar Household"]
+    hint = store.store_path().parent / PASS_ORDER_FILENAME
+    hint.unlink(missing_ok=True)
+
+    taken = households_in_order(monkeypatch)
+    report = run_registry(discover_engagements(tmp_path), today=FRIDAY, dry_run=True)
+    assert taken == walk and ORDER_HINT_UNREADABLE not in report.warnings
+    assert not hint.exists(), "a dry run writes nothing, the hint included"
+
+    hint.parent.mkdir(parents=True, exist_ok=True)
+    hint.write_text("{ this is not the hint", encoding="utf-8")
+    taken.clear()
+    report = run_registry(discover_engagements(tmp_path), today=FRIDAY)
+    assert taken == walk
+    assert report.warnings.count(ORDER_HINT_UNREADABLE) == 1
+
+
+def _a_lock_held_by_another_run(engagement_dir):
+    """A live process that is not this one, named in the return's lock."""
+    import subprocess
+    import sys
+
+    from tracker.locking import LOCK_FILENAME, lock_line
+
+    other = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
+    (engagement_dir / LOCK_FILENAME).write_text(lock_line(other.pid, dt.datetime.now()),
+                                                encoding="utf-8")
+    return other
+
+
+def test_a_household_held_by_a_lock_is_retried_once_at_the_end_of_the_pass(
+    tmp_path, samples, monkeypatch,
+):
+    """Dana's amendment: the other run lets go while the pass works on the
+    next household; the held household is tried again at the end, and its
+    second attempt is the one reported."""
+    import tracker.runner as runner
+    from tracker.locking import LOCK_FILENAME
+
+    alder, birch = _two_households(tmp_path, samples)
+    other = _a_lock_held_by_another_run(alder.path)
+    real, taken = runner.run_household, []
+
+    def the_other_run_finishes_during_birch(household, *args, **kwargs):
+        taken.append(household.name)
+        runs = real(household, *args, **kwargs)
+        if household.name == "Birch Household":
+            (alder.path / LOCK_FILENAME).unlink()
+        return runs
+
+    monkeypatch.setattr(runner, "run_household", the_other_run_finishes_during_birch)
+    try:
+        report = run_registry(discover_engagements(tmp_path), today=FRIDAY)
+    finally:
+        other.kill()
+        other.wait()
+
+    assert taken == ["Alder Household", "Birch Household", "Alder Household"]
+    assert [run.engagement.label for run in report.runs] == [alder.label, birch.label]
+    retried = by_label(report)[alder.label]
+    assert retried.ok and not retried.skipped and retried.filed == 1
+
+
+def test_a_household_not_served_twice_running_exits_three_and_is_named_on_the_page(
+    tmp_path, samples, monkeypatch, capsys,
+):
+    from tracker.locking import LOCK_FILENAME
+    from tracker.runner import NOT_SERVED_TWICE, NOT_SERVED_TWICE_EXIT_CODE, WHY_HELD_LOCK
+
+    root = tmp_path / "Clients"
+    alder, _birch = _two_households(root, samples)
+    other = _a_lock_held_by_another_run(alder.path)
+    try:
+        assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER) == 0
+        assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER) \
+            == NOT_SERVED_TWICE_EXIT_CODE == 3
+    finally:
+        other.kill()
+        other.wait()
+    assert NOT_SERVED_TWICE.format(household="Alder Household", n=2, why=WHY_HELD_LOCK) \
+        in _page(root)
+
+    (alder.path / LOCK_FILENAME).unlink()
+    assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER) == 0
+    assert "has not been served" not in _page(root)
+    capsys.readouterr()
+
+
+def test_a_dry_run_never_names_a_household_not_served_nor_exits_three(
+        tmp_path, samples, monkeypatch, a_clock):
+    """A dry run keeps nothing, so it counts nothing (the review's N4): a
+    household already not served five passes running, out of time again in
+    a dry run, is not named, the pass is not an exit 3, and the hint is as
+    it was."""
+    import json
+
+    from tracker.runner import HOUSEHOLD_BUDGET_SECONDS, PASS_ORDER_FILENAME
+
+    build_engagement(tmp_path, samples, household="Alder Household",
+                     drops=(f"W-2 John Smith {YEAR}.pdf", "Form 1098 Mortgage Interest.pdf"))
+    hint = store.store_path().parent / PASS_ORDER_FILENAME
+    hint.parent.mkdir(parents=True, exist_ok=True)
+    before = json.dumps({"version": 1, "households": {
+        "Alder Household": {"completed": None, "not_served": 5}}})
+    hint.write_text(before, encoding="utf-8")
+    slow_for(monkeypatch, a_clock, "Alder", HOUSEHOLD_BUDGET_SECONDS + 1)
+
+    report = run_registry(discover_engagements(tmp_path), today=FRIDAY, dry_run=True)
+
+    assert any(run.out_of_time for run in report.runs)
+    assert report.not_served_twice == []
+    assert not any("has not been served" in warning for warning in report.warnings)
+    assert hint.read_text(encoding="utf-8") == before
+
+
+def test_a_nested_pass_order_file_is_only_a_hint(tmp_path, samples, monkeypatch):
+    """The hint is never a record (SPEC 2.3; the review's S1): a file nested
+    past the parser's depth, one past the hint's size and one whose parse
+    runs out of memory each give the walk's order and the one sentence -
+    none stops the pass before its first household."""
+    import tracker.runner as runner
+    from tracker.runner import ORDER_HINT_UNREADABLE, PASS_ORDER_FILENAME, PASS_ORDER_MAX_BYTES
+
+    _three_households(tmp_path, samples)
+    walk = ["Alder Household", "Birch Household", "Cedar Household"]
+    hint = store.store_path().parent / PASS_ORDER_FILENAME
+    hint.parent.mkdir(parents=True, exist_ok=True)
+    taken = households_in_order(monkeypatch)
+
+    def out_of_memory(*_args, **_kwargs):
+        raise MemoryError
+
+    for body, parse in (("[" * (PASS_ORDER_MAX_BYTES - 1), None),
+                        (" " * (PASS_ORDER_MAX_BYTES + 1), None),
+                        ('{"version": 1, "households": {}}', out_of_memory)):
+        hint.write_text(body, encoding="utf-8")
+        with monkeypatch.context() as patched:
+            if parse is not None:
+                patched.setattr(runner.json, "loads", parse)
+            taken.clear()
+            report = run_registry(discover_engagements(tmp_path), today=FRIDAY, dry_run=True)
+        assert taken == walk
+        assert report.warnings.count(ORDER_HINT_UNREADABLE) == 1
+
+
+def test_a_served_household_resets_its_count(tmp_path, samples):
+    import json
+
+    from tracker.runner import PASS_ORDER_FILENAME
+
+    engagement = build_engagement(tmp_path, samples, household="Alder Household")
+    hint = store.store_path().parent / PASS_ORDER_FILENAME
+    hint.parent.mkdir(parents=True, exist_ok=True)
+    hint.write_text(json.dumps({"version": 1, "households": {
+        "Alder Household": {"completed": None, "not_served": 5}}}), encoding="utf-8")
+
+    report = run_registry(discover_engagements(tmp_path), today=FRIDAY)
+
+    assert report.not_served_twice == [] and by_label(report)[engagement.label].ok
+    entry = json.loads(hint.read_text(encoding="utf-8"))["households"]["Alder Household"]
+    assert entry["not_served"] == 0 and entry["completed"]
+
+
+def test_a_pass_that_never_ended_is_said_by_the_next_one(tmp_path, samples, monkeypatch, capsys):
+    from tracker.runner import PASS_DID_NOT_FINISH
+
+    root = tmp_path / "Clients"
+    build_engagement(root, samples)
+    root_log = root / LOG_FILENAME
+    root_log.write_text("[2026-03-13T02:00:00] pass started\n", encoding="utf-8")   # then killed
+
+    assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER, "--log") == 0
+    said = PASS_DID_NOT_FINISH.format(stamp="2026-03-13T02:00:00")
+    assert said in _page(root)
+    text = root_log.read_text(encoding="utf-8")
+    assert said in text
+    assert text.count("pass started") == 2, "this pass said it started too"
+
+    assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER, "--log") == 0
+    assert "did not finish" not in _page(root), "a pass that finished is never said to have not"
+    capsys.readouterr()
