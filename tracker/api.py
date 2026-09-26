@@ -154,6 +154,7 @@ from tracker.layout import (
     year_of,
 )
 from tracker.locking import (
+    LOCK_FILENAME,
     RUN_TIME_LIMIT_SECONDS,
     STALE_LOCK_SECONDS,
     EngagementLockedError,
@@ -395,6 +396,9 @@ NOTHING_TO_STOP = "There is no pass this app started running to stop; nothing wa
 LOCK_WATCH_SECONDS = 5
 #: The lock notice's words (D4): nothing waits, and nothing needs clearing.
 LOCK_RUNNING = "A pass that started at {started} on {host} is holding this return."
+#: The same, about a lock that is not the shown return's - a sibling, a fed
+#: return or the household (the review's S1): named by its own label.
+LOCK_RUNNING_OTHER = "A pass that started at {started} on {host} is holding {label}."
 LOCK_ON = "It is on {household}: {name}."
 LOCK_GREYED = ("This return's buttons are greyed while it runs and come back by themselves the "
                "moment it lets go.")
@@ -416,6 +420,20 @@ SHELL_KILLED = ("The pass ran past its limit of {minutes} minutes and was stoppe
 SHELL_KILLED_AT = "It was on {household}: {name}."
 SHELL_NO_REPLY = "The tracker ended without a reply (exit code {code}); the details are in the error log."
 SHELL_COULD_NOT_START = "The tracker could not start ({code})."
+SHELL_COULD_NOT_SEND = "The app could not send that to the tracker ({kind}); nothing was changed."
+#: An error of the page's own, said by its class; its message goes to the
+#: error log through the shell (the review's S5).
+PAGE_ERROR = "The app met an error of its own ({kind}); the details are in the error log."
+#: What a Sort & Scan reply is said as (the review's S4, decision 42).
+SCAN_SCANNING = "Scanning\u2026"
+SCAN_NOTHING_DONE = "Nothing done: {why}."
+SCAN_PROBLEM = "The pass reported a problem: {error}"
+SCAN_COMPLETE = "Pass complete \u2014 {did}.   {summary}"
+SCAN_FILED = "filed {n}"
+SCAN_REVIEW = "{n} to review"
+SCAN_SYNCING = "{n} still syncing"
+SCAN_NOT_SORTED = "{n} file(s) could not be sorted"
+SCAN_BUT = "But {problems}."
 #: A notice said more than once is one notice with a count.
 NOTICE_REPEATED = "({n} times)"
 
@@ -451,7 +469,8 @@ def _failure_of(exc: BaseException) -> dict:
     elif isinstance(exc, EngagementLockedError):
         kind, sentence = "locked", str(exc)
         held = getattr(exc, "lock", None)
-        extra["lock"] = _lock_payload(Path(held).parent) if held else None
+        extra["lock"] = (_lock_payload(Path(held).parent)
+                         if held and Path(held).name == LOCK_FILENAME else None)
     elif isinstance(exc, (store.StoreUnavailable, ledger.RecordNotWritten, ledger.LedgerError)):
         kind, sentence = "failed", FAILED.format(kind=content_check.said_as_class(exc),
                                                  log=ERROR_LOG_FILENAME)
@@ -1145,12 +1164,18 @@ def _vocab() -> dict:
         "shell": {"not_opened": SHELL_NOT_OPENED, "killed": SHELL_KILLED,
                   "killed_at": SHELL_KILLED_AT, "no_reply": SHELL_NO_REPLY,
                   "could_not_start": SHELL_COULD_NOT_START,
+                  "could_not_send": SHELL_COULD_NOT_SEND, "page_error": PAGE_ERROR,
                   "error_log": str(error_log_path())},
         # The lock notice (decision 193, D4): when, where, and - on this
         # machine - which file; nothing waits and nothing needs clearing.
-        "lock": {"running": LOCK_RUNNING, "on": LOCK_ON, "greyed": LOCK_GREYED,
+        "lock": {"running": LOCK_RUNNING, "running_other": LOCK_RUNNING_OTHER, "on": LOCK_ON, "greyed": LOCK_GREYED,
                  "left_behind": LOCK_LEFT_BEHIND, "cleared": LOCK_CLEARED,
                  "buttons_back": LOCK_BUTTONS_BACK, "watch_seconds": LOCK_WATCH_SECONDS},
+        # What a Sort & Scan reply is said as (decision 193's review, S4).
+        "scan": {"scanning": SCAN_SCANNING, "nothing_done": SCAN_NOTHING_DONE,
+                 "problem": SCAN_PROBLEM, "complete": SCAN_COMPLETE, "filed": SCAN_FILED,
+                 "review": SCAN_REVIEW, "syncing": SCAN_SYNCING, "not_sorted": SCAN_NOT_SORTED,
+                 "but": SCAN_BUT},
         # Sort & Scan, watched, and its Stop (decision 193).
         "progress": {"household": PROGRESS_HOUSEHOLD, "sort": PROGRESS_SORT,
                      "scan": PROGRESS_SCAN, "stop": PROGRESS_STOP,
@@ -1291,7 +1316,20 @@ def _lock_payload(engagement: Path) -> dict | None:
         "this_machine": this_machine,
         "pass": running,
         "engagement": str(engagement),
+        # How a person reads the folder the lock is in (the review's S1): a
+        # return by its label, a household by its name - from the path, so
+        # no store is opened.
+        "label": _lock_label(engagement),
     }
+
+
+def _lock_label(folder: Path) -> str:
+    """A locked folder as a person reads it: the return's label, or the
+    household's folder name. From the layout's names alone."""
+    folder = Path(folder)
+    if layout.year_of(folder) is not None:
+        return layout.label_for(layout.household_name_of(folder), layout.year_of(folder), folder.name)
+    return folder.name
 
 
 def _info_payload(info: EngagementInfo) -> dict:
@@ -2311,13 +2349,11 @@ def _cmd_scan(argv: list[str]) -> dict:
         payload["lock"] = _lock_payload(held)
     try:
         payload["state"] = _state(engagement)
-    except ManifestError:
-        if run.error:
-            raise ManifestError(run.error) from None
-        raise
     except Exception as exc:
-        # Filed, then could not redraw (D5): the counts are the pass's and
-        # stand; the page is drawn again from the record by the app.
+        # Filed, then could not redraw (D5), whatever the redraw raised - a
+        # ManifestError included (the review's M2): the counts are the
+        # pass's and stand, ``run.error`` already says what the pass met,
+        # and the page is drawn again from the record by the app.
         kind = content_check.said_as_class(exc)
         log.warning("The page could not be redrawn after a pass (%s)", kind, exc_info=True)
         payload["state"] = None
@@ -2336,8 +2372,19 @@ def _cmd_watch(argv: list[str]) -> dict:
     """Whether a pass still holds this return, and where it is (decision
     193): the lock file and the pass's progress file, and nothing else - no
     store, no journal. The app asks it every ``LOCK_WATCH_SECONDS`` while a
-    live lock shows, and brings the buttons back on the first ``null``."""
-    return {"lock": _lock_payload(_engagement_dir(argv))}
+    live lock shows, and brings the buttons back on the first ``null``.
+
+    The folder is the one the lock was reported in - a return, or a
+    household folder under the root (the review's S1) - each checked by
+    the one door."""
+    try:
+        folder = _engagement_dir(argv)
+    except (ManifestError, door.DoorError, layout.LayoutError):
+        at = argv.index(ENGAGEMENT_FLAG) + 1 if ENGAGEMENT_FLAG in argv else len(argv)
+        if at >= len(argv) or not argv[at].strip():
+            raise
+        folder = _household_dir(argv[at].strip())
+    return {"lock": _lock_payload(folder)}
 
 
 def _cmd_cancel_pass(argv: list[str]) -> dict:

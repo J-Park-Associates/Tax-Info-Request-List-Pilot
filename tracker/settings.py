@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import json
 import logging
-import logging.handlers
 import os
 import sys
 from collections.abc import Iterator
@@ -132,26 +131,61 @@ def error_log_path() -> Path:
     return store.store_path().parent / ERROR_LOG_FILENAME
 
 
+class _ErrorLog(logging.Handler):
+    """The error log's own few lines of rotation (decision 193's review,
+    S2): not ``logging.handlers``, which loads ``socket`` at import, so
+    importing the tracker loads no network module. Before a record that
+    would take the file past :data:`ERROR_LOG_MAX_BYTES` the file becomes
+    ``.1``, ``.1`` becomes ``.2`` and so on to :data:`ERROR_LOG_BACKUPS`;
+    each record is appended whole in UTF-8 and never ``fsync``-ed. Both
+    numbers are read when a record is written."""
+
+    def __init__(self, path: Path) -> None:
+        super().__init__(logging.WARNING)
+        self.path = path
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            data = (self.format(record) + "\n").encode("utf-8")
+            try:
+                size = self.path.stat().st_size
+            except FileNotFoundError:
+                size = 0
+            if size and size + len(data) > ERROR_LOG_MAX_BYTES:
+                self._rotate()
+            with self.path.open("ab") as handle:
+                handle.write(data)
+        except Exception:
+            self.handleError(record)
+
+    def _rotate(self) -> None:
+        def kept(n: int) -> Path:
+            return self.path.with_name(f"{self.path.name}.{n}")
+
+        kept(ERROR_LOG_BACKUPS).unlink(missing_ok=True)
+        for n in range(ERROR_LOG_BACKUPS - 1, 0, -1):
+            if kept(n).exists():
+                os.replace(kept(n), kept(n + 1))
+        os.replace(self.path, kept(1))
+
+
 @contextmanager
 def error_log(logger_name: str = "tracker") -> Iterator[Path]:
     """Attach the rotating error log to ``logger_name`` for the block.
 
-    WARNING and above, UTF-8, opened only when something is written
-    (``delay``), flushed per record and never ``fsync``-ed: it is a debug
-    aid, and a sync per line would cost the pass that is failing. A folder
-    that cannot hold it costs the log, never the command.
+    WARNING and above, UTF-8, opened only when something is written, and
+    never ``fsync``-ed: it is a debug aid, and a sync per line would cost
+    the pass that is failing. A folder that cannot hold it costs the log,
+    never the command.
     """
     path = error_log_path()
     logger = logging.getLogger(logger_name)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        handler: logging.Handler | None = logging.handlers.RotatingFileHandler(
-            path, maxBytes=ERROR_LOG_MAX_BYTES, backupCount=ERROR_LOG_BACKUPS,
-            encoding="utf-8", delay=True)
+        handler: logging.Handler | None = _ErrorLog(path)
     except OSError:
         handler = None
     if handler is not None:
-        handler.setLevel(logging.WARNING)
         handler.setFormatter(logging.Formatter(ERROR_LOG_FORMAT))
         logger.addHandler(handler)
     try:

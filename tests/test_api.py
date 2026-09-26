@@ -1577,7 +1577,8 @@ def test_state_shows_the_lock_and_unlock_clears_only_a_stale_one(capsys, demo_ro
     assert payload["lock"] == {"started": started.isoformat(), "age_minutes": 0, "stale": False,
                                "stale_after_minutes": STALE_LOCK_SECONDS // 60,
                                "host": this_host(), "this_machine": True, "pass": None,
-                               "engagement": str(engagement)}
+                               "engagement": str(engagement),
+                               "label": api._lock_label(engagement)}
     code, payload = run(capsys, "unlock", api.ENGAGEMENT_FLAG, str(engagement))
     assert code == 1 and "may still be going" in payload["error"]
 
@@ -6018,19 +6019,22 @@ def test_run_now_prints_a_progress_line_per_household_and_file_before_its_one_re
     assert lines[-1]["pass"] == said[0]["pass"] and lines[-1]["run"]["cancelled"] is False
 
 
-def test_run_now_that_filed_keeps_its_counts_when_the_redraw_fails(capsys, demo_root, tmp_path,
-                                                                     monkeypatch):
+@pytest.mark.parametrize("raised", [RuntimeError, ManifestError])
+def test_run_now_that_filed_keeps_its_counts_whatever_the_redraw_raises(capsys, demo_root, tmp_path,
+                                                                         monkeypatch, raised):
+    """D5 whole (the review's M2): a ManifestError from the redraw - a list
+    that cannot be read just then - keeps the counts as any other does."""
     engagement = sample_engagement(capsys, demo_root, tmp_path, "Mortgage Notes.docx")
 
     def cannot_redraw(folder):
-        raise RuntimeError("a fabricated redraw failure")
+        raise raised("a fabricated redraw failure")
 
     monkeypatch.setattr(api, "_state", cannot_redraw)
     code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
     assert code == 0, payload
-    assert payload["state"] is None
+    assert payload["state"] is None and "error" not in payload
     assert payload["run"]["review"] == 1          # the pass's counts stand
-    assert api.STATE_NOT_REDRAWN.format(kind="RuntimeError") in payload["warnings"]
+    assert api.STATE_NOT_REDRAWN.format(kind=raised.__name__) in payload["warnings"]
 
 
 def test_cancel_pass_refuses_a_pass_that_is_not_running(capsys, demo_root):
@@ -6201,3 +6205,43 @@ def test_a_rolled_from_naming_nothing_is_a_warning(capsys, demo_root, monkeypatc
     monkeypatch.setattr(api, "engagement_from", rolled_from_nothing)
     payload = payload_of_state(capsys, engagement)
     assert payload["warnings"] == [ROLLED_FROM_UNMATCHED.format(rolled_from="1040 - Nobody Sample")]
+
+
+def test_a_lock_on_the_household_is_watched_there_and_named_by_its_own_label(capsys, demo_root):
+    """The review's S1: the lock that refuses a click may be the household's
+    or a sibling's; the notice names it by its label and ``watch`` asks
+    about that folder, a household folder included."""
+    from tracker.layout import private_household_dir
+    from tracker.locking import LOCK_FILENAME
+
+    spec = {"household": HOUSEHOLD, "return_name": "Smith",
+            "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = where(demo_root, "Smith")
+    household = private_household_dir(demo_root, HOUSEHOLD)
+    other = _live_child()
+    try:
+        (household / LOCK_FILENAME).write_text(lock_line(other.pid, dt.datetime.now()),
+                                               encoding="utf-8")
+        code, payload = run(capsys, "watch", api.ENGAGEMENT_FLAG, str(household))
+        assert code == 0, payload
+        assert payload["lock"]["engagement"] == str(household)
+        assert payload["lock"]["label"] == HOUSEHOLD
+        (engagement / LOCK_FILENAME).write_text(lock_line(other.pid, dt.datetime.now()),
+                                                encoding="utf-8")
+        code, payload = run(capsys, "watch", api.ENGAGEMENT_FLAG, str(engagement))
+        assert payload["lock"]["label"] == payload_of_label(capsys, engagement)
+        (household / LOCK_FILENAME).unlink()
+        code, payload = run(capsys, "watch", api.ENGAGEMENT_FLAG, str(household))
+        assert code == 0 and payload["lock"] is None
+    finally:
+        other.kill()
+        other.wait()
+    code, payload = run(capsys, "watch", api.ENGAGEMENT_FLAG, str(demo_root / "nowhere"))
+    assert code == 1 and payload["failure"]["kind"] == "refused"
+
+
+def payload_of_label(capsys, engagement) -> str:
+    """The label the app lists this return by."""
+    code, listed = run(capsys, "list")
+    return next(e["name"] for e in listed["engagements"] if e["path"] == str(engagement))

@@ -42,7 +42,6 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from xml.sax.saxutils import escape
 
 from tracker.fsio import write_text_atomically
 from tracker.locking import RUN_TIME_LIMIT_SECONDS
@@ -168,6 +167,10 @@ def refuse_shell_special(field: str, value: str | Path) -> None:
 
 
 def _xml_escape(value: str) -> str:
+    # At call time (decision 193's review, S2): ``xml.sax.saxutils`` imports
+    # ``urllib.request``, and importing the tracker loads no network module.
+    from xml.sax.saxutils import escape
+
     return escape(str(value))
 
 

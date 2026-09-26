@@ -1744,6 +1744,7 @@ def test_the_shells_default_words_are_the_apis_word_for_word():
     assert default("killedAt") == api.SHELL_KILLED_AT
     assert default("noReply") == api.SHELL_NO_REPLY
     assert default("couldNotStart") == api.SHELL_COULD_NOT_START
+    assert default("couldNotSend") == api.SHELL_COULD_NOT_SEND
     shell = api._vocab()["shell"]
     assert (shell["killed"], shell["killed_at"], shell["no_reply"], shell["could_not_start"]) == (
         api.SHELL_KILLED, api.SHELL_KILLED_AT, api.SHELL_NO_REPLY, api.SHELL_COULD_NOT_START)
@@ -1815,15 +1816,129 @@ def test_the_lock_notice_types_no_sentence_and_polls_only_while_a_lock_shows():
         literals = re.findall(r'"([^"]*)"|`([^`]*)`', body)
         assert not [lit for pair in literals for lit in pair if " " in lit.strip()], name
     assert "Sort & Scan will wait" not in js and "will wait for it" not in js
-    assert js.count('withEng("watch")') == 1
-    watch = js.split("function watchLock() {", 1)[1].split("\n}\n", 1)[0]
-    assert 'withEng("watch")' in watch and "vocab.lock.watch_seconds" in watch
-    assert "view !== viewGeneration" in watch
+    assert js.count('call(["watch"') == 1 and 'withEng("watch")' not in js
+    watch = js.split("function watchLock(lock) {", 1)[1].split("\n}\n", 1)[0]
+    assert 'call(["watch", vocab.engagement_flag, target])' in watch
+    assert "vocab.lock.watch_seconds" in watch and "view !== viewGeneration" in watch
+    # It watches the lock it was given (the review's S1), not the shown return.
+    assert "const target = lock.engagement || active;" in watch
     show = js.split("function showLock(lock) {", 1)[1].split("\n}\n", 1)[0]
-    assert "watchLock()" in show and "stopLockWatch()" in show
+    assert "watchLock(lock)" in show and "stopLockWatch()" in show
+    assert "words.running_other" in show
 
 
 def test_the_shell_sends_on_only_the_channels_the_preload_listens_to():
     sent = set(re.findall(r'event\.sender\.send\("([a-z-]+)"', read("app/main.js")))
     heard = set(re.findall(r'ipcRenderer\.on\("([a-z-]+)"', read("app/preload.js")))
     assert sent == heard == {"tracker-progress"}
+
+
+# ------------------------------------------ decision 193: the review's fixes ----
+
+#: The renderer's lock functions, lifted out of app.js as they are and driven
+#: with fake timers and a fake API (the review's M1 probe, kept as a claim).
+_LOCK_HARNESS = r"""
+const fs = require("fs");
+const src = fs.readFileSync(process.argv[2], "utf8");
+function grab(sig) { const i = src.indexOf(sig); const j = src.indexOf("\n}\n", i); return src.slice(i, j + 3); }
+const parts = ["function select(path) {", "function lockStarted(lock) {", "function showLock(lock) {",
+  "function applyLock() {", "function setLocked(on) {", "function stopLockWatch() {",
+  "function watchLock(lock) {"].map(grab);
+const intervals = []; const held = { A: true, B: true }; const asked = [];
+const node = () => ({ classList: { toggle() {}, add() {}, remove() {} }, textContent: "",
+                      querySelectorAll: () => [], dataset: {} });
+const nodes = {};
+const body = `
+let active = "A"; let viewGeneration = 0; let locked = false; let lockWatch = null; let lockWatched = null;
+const vocab = { engagement_flag: "--engagement",
+  lock: { running: "r", running_other: "o", on: "o", greyed: "g", left_behind: "l", watch_seconds: 5,
+          buttons_back: "back" } };
+const LOCKED_BUTTONS = []; const LOCKED_CARDS = [];
+const $ = (id) => (nodes[id] ||= node());
+const fill = (p) => p;
+async function call(args) { asked.push(args[2]); return { lock: held[args[2]] ? lockOf(args[2]) : null }; }
+const lockOf = (path) => ({ started: "", host: "h", stale: false, engagement: path, label: path });
+function notice() {}
+function refresh() {}
+function failed() {}
+const setInterval = (fn) => { intervals.push(fn); return intervals.length; };
+const clearInterval = (id) => { if (id) intervals[id - 1] = null; };
+${parts.join("\n")}
+return { select, showLock, lockOf, get locked() { return locked; }, get watching() { return lockWatched; } };`;
+const api = new Function("nodes", "node", "intervals", "held", "asked", body)(nodes, node, intervals, held, asked);
+(async () => {
+  const tick = async () => { for (const fn of intervals.slice()) if (fn) await fn(); };
+  api.showLock(api.lockOf("A"));
+  await tick();
+  api.select("B");
+  api.showLock(api.lockOf("B"));
+  await tick();
+  held.B = false;
+  await tick();
+  const afterB = { locked: api.locked, watching: api.watching };
+  api.showLock(api.lockOf("C"));     // a sibling's lock reported while B is shown
+  held.C = true;
+  await tick();
+  process.stdout.write(JSON.stringify({ asked, afterB, sibling: api.watching }));
+})();
+"""
+
+
+def test_a_switch_between_two_locked_returns_watches_the_second_and_gives_its_buttons_back(tmp_path):
+    """The review's M1: the watch of the return left behind used to keep the
+    second from starting its own, and then stopped itself - the second
+    return stayed greyed after its pass let go. And S1: the watch asks
+    about the folder the lock was reported in, not the shown return."""
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not on PATH (CI installs it)")
+    harness = tmp_path / "lock_harness.js"
+    harness.write_text(_LOCK_HARNESS, encoding="utf-8", newline="\n")
+    done = subprocess.run([node, str(harness), str(REPO / "app" / "renderer" / "app.js")],
+                          capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    ran = json.loads(done.stdout)
+    assert ran["asked"][:3] == ["A", "B", "B"], ran
+    assert ran["afterB"] == {"locked": False, "watching": None}, "B's buttons back, its watch done"
+    assert ran["sibling"] == "C" and ran["asked"][-1] == "C", "the lock it was given is watched"
+
+
+def test_the_editors_failures_are_notices_too():
+    js = read("app/renderer/app.js")
+    for name in ("async function saveEditor() {", "async function renameRequest() {"):
+        body = js.split(name, 1)[1].split("\n}\n", 1)[0]
+        assert "failed(err)" in body, name
+
+
+def test_every_word_a_scan_reply_is_said_in_is_the_apis():
+    import tracker.api as api
+
+    js = read("app/renderer/app.js")
+    body = js.split("function scanSummary(result) {", 1)[1].split("\n}\n", 1)[0]
+    words = api._vocab()["scan"]
+    for key, literal in words.items():
+        assert f"words.{key}" in body or f"vocab.scan.{key}" in js, key
+        stem = literal.split("{")[0].strip()
+        assert " " not in stem or stem not in js, literal
+    assert "Scanning" not in js and "Pass complete" not in js and "Nothing done" not in js
+
+
+def test_an_error_of_the_page_or_the_shell_is_said_by_class_and_its_message_only_logged():
+    import tracker.api as api
+
+    js = read("app/renderer/app.js")
+    body = js.split("function failed(err, retry) {", 1)[1].split("\n}\n", 1)[0]
+    assert "vocab.shell.page_error" in body and "window.tracker.logError(" in body
+    assert "sentence: String(" not in body
+    main_js = read("app/main.js")
+    run = main_js[main_js.index("function runTracker"):]
+    run = run[:run.index("\n}\n")]
+    assert "shellFailure(fill(couldNotSend" in run and "`The app could not send" not in run
+    assert "err.message" not in run.split("keepInLog(", 1)[0]
+    assert 'ipcMain.handle("log-error"' in main_js
+    assert api._vocab()["shell"]["page_error"] == api.PAGE_ERROR

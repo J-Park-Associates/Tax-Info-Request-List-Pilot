@@ -191,11 +191,18 @@ function warningNotices(list) {
 
 // A caught error, said as a notice: the tracker's envelope, or - for an
 // error of the page's own - its message as a failure.
+// An error of the page's own is said by its class alone, in the API's
+// sentence; its message goes to the error log through the shell, never on
+// screen (principle 7; the review's S5).
 function failed(err, retry) {
-  notice(err && err.failure
-    ? err.failure
-    : { sentence: String((err && err.message) || err), kind: "failed", seq: null, identifier: null },
-  { retry });
+  if (err && err.failure) {
+    notice(err.failure, { retry });
+    return;
+  }
+  const kind = (err && err.name) || "Error";
+  window.tracker.logError(`${kind}: ${String((err && err.message) || err)}\n${(err && err.stack) || ""}`);
+  const sentence = vocab ? fill(vocab.shell.page_error, { kind }) : kind;
+  notice({ sentence, kind: "failed", seq: null, identifier: null }, { retry });
 }
 
 function dismissNotice(entry) {
@@ -220,6 +227,7 @@ let viewGeneration = 0;
 // dropped when it arrives.
 function select(path) {
   active = path;
+  stopLockWatch();   // the lock shown next starts its own watch (the review's M1)
   return ++viewGeneration;
 }
 
@@ -1572,6 +1580,7 @@ function renderLock(state) {
 // lock left behind keeps Clear lock.
 let locked = false;
 let lockWatch = null;
+let lockWatched = null;   // the folder the running watch asks about
 
 function lockStarted(lock) {
   return (lock.started || "").replace("T", " ").slice(0, 16);
@@ -1595,12 +1604,16 @@ function showLock(lock) {
     setLocked(false);
     return;
   }
-  const said = [fill(words.running, { started, host: lock.host })];
+  // The lock it was given, named by the API's label; the sentence for the
+  // shown return only when it is the shown return (the review's S1).
+  const said = [lock.engagement && lock.engagement !== active
+    ? fill(words.running_other, { started, host: lock.host, label: lock.label })
+    : fill(words.running, { started, host: lock.host })];
   if (lock.pass && lock.pass.name) said.push(fill(words.on, lock.pass));
   said.push(words.greyed);
   $("lock-text").textContent = said.join(" ");
   setLocked(true);
-  watchLock();
+  watchLock(lock);
 }
 
 // The controls that send a write for the shown return: greyed while a live
@@ -1634,14 +1647,21 @@ function setLocked(on) {
 function stopLockWatch() {
   clearInterval(lockWatch);
   lockWatch = null;
+  lockWatched = null;
 }
 
 // Asks, every few seconds and only while a live lock shows, whether it has
 // gone (ruling 10): no timed wait, and nothing retried for the person. It
 // stops on a switch of return, and brings the buttons back the moment the
 // lock goes.
-function watchLock() {
-  if (lockWatch) return;
+// It watches the folder the lock is in - the one the API reported, a
+// return or a household - and a watch already running is kept only while it
+// is that folder's and this view's (the review's M1 and S1).
+function watchLock(lock) {
+  const target = lock.engagement || active;
+  if (lockWatch && lockWatched === target) return;
+  stopLockWatch();
+  lockWatched = target;
   const view = viewGeneration;
   let asking = false;
   lockWatch = setInterval(async () => {
@@ -1652,7 +1672,7 @@ function watchLock() {
     if (asking) return;
     asking = true;
     try {
-      const result = await call(withEng("watch"));
+      const result = await call(["watch", vocab.engagement_flag, target]);
       if (view !== viewGeneration) return;
       if (result.lock) {
         showLock(result.lock);
@@ -1890,15 +1910,17 @@ function scanSummary(result) {
       if (said) also.push(`• ${other.label}: ${said}`);
     }
   }
-  if (run.skipped) return { text: [`Nothing done: ${run.skipped}.`, ...also].join("\n"), cls: "warn" };
-  if (run.error) return { text: [`The pass reported a problem: ${run.error}`, ...also].join("\n"), cls: "err" };
-  const did = [`filed ${run.filed}`];
-  if (run.review) did.push(`${run.review} to review`);
-  if (run.waiting) did.push(`${run.waiting} still syncing`);
+  // Every word is the API's (vocab.scan, decision 42; the review's S4).
+  const words = vocab.scan;
+  if (run.skipped) return { text: [fill(words.nothing_done, { why: run.skipped }), ...also].join("\n"), cls: "warn" };
+  if (run.error) return { text: [fill(words.problem, { error: run.error }), ...also].join("\n"), cls: "err" };
+  const did = [fill(words.filed, { n: run.filed })];
+  if (run.review) did.push(fill(words.review, { n: run.review }));
+  if (run.waiting) did.push(fill(words.syncing, { n: run.waiting }));
   const problems = [];
-  if (run.file_errors.length) problems.push(`${run.file_errors.length} file(s) could not be sorted`);
-  const lines = [`Pass complete — ${did.join(", ")}.   ${summary}`];
-  if (problems.length) lines.push(`But ${problems.join("; ")}.`);
+  if (run.file_errors.length) problems.push(fill(words.not_sorted, { n: run.file_errors.length }));
+  const lines = [fill(words.complete, { did: did.join(", "), summary })];
+  if (problems.length) lines.push(fill(words.but, { problems: problems.join("; ") }));
   for (const w of run.warnings) lines.push(`• ${w}`);
   lines.push(...also);
   return { text: lines.join("\n"),
@@ -1949,7 +1971,7 @@ async function runScan() {
   scanning = { args, pass: null, stopping: false };
   btn.disabled = true;
   btn.classList.add("spinning");
-  $("scan-label").textContent = "Scanning…";
+  $("scan-label").textContent = vocab.scan.scanning;
   stop.textContent = vocab.progress.stop;
   stop.disabled = true;
   stop.classList.remove("hidden");
@@ -2763,6 +2785,7 @@ async function unlearnKeyword(identifier, keyword) {
     result = await call(withEng("unlearn"), { identifier, keyword });
   } catch (err) {
     editorNote(err.message, "err");
+    failed(err);   // and a notice, with Look again when the list moved (the review's S3)
     return;
   }
   editorState.learned = result.state.learned || {};
@@ -2882,6 +2905,7 @@ async function renameRequest() {
     editorNote(lines.join("\n"), renamed.left.length || renamed.scan_note ? "warn" : "ok");
   } catch (err) {
     editorNote(err.message, "err");
+    failed(err);   // and a notice, with Look again when the list moved (the review's S3)
   } finally {
     btn.disabled = false;
   }
@@ -2962,6 +2986,7 @@ async function saveEditor() {
     banner(lines.join("\n"), ruleWarnings.length ? "warn" : "ok");
   } catch (err) {
     editorNote(err.message, "err");
+    failed(err);   // and a notice, with Look again when the list moved (the review's S3)
   } finally {
     btn.disabled = false;
   }

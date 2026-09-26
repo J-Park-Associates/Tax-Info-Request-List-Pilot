@@ -668,3 +668,25 @@ def test_the_app_never_works_out_whether_a_path_lies_under_another():
         text = (REPO / rel).read_text(encoding="utf-8")
         assert "path.relative(" not in text, rel
         assert "startsWith(" not in text, rel
+
+
+def test_importing_the_api_loads_no_network_module():
+    """Decision 193's review (S2): importing the tracker - the API, which
+    imports every other module - loads no module that could open a
+    connection. The error log rotates by its own few lines rather than
+    ``logging.handlers`` (which loads ``socket``), and the two standard
+    library helpers that drag one in - the email parser and XML escaping -
+    are imported where they are used. Measured in a fresh interpreter."""
+    import json
+    import subprocess
+    import sys
+
+    program = (
+        "import json,sys\n"
+        "import tracker.api\n"
+        "print(json.dumps(sorted(m for m in ('socket', 'http', 'ssl', 'urllib.request') "
+        "if m in sys.modules)))\n"
+    )
+    done = subprocess.run([sys.executable, "-c", program], capture_output=True, text=True,
+                          check=True, cwd=REPO)
+    assert json.loads(done.stdout) == []

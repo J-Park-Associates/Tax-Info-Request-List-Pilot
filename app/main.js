@@ -76,6 +76,7 @@ let killed = "The pass ran past its limit of {minutes} minutes and was stopped. 
 let killedAt = "It was on {household}: {name}.";
 let noReply = "The tracker ended without a reply (exit code {code}); the details are in the error log.";
 let couldNotStart = "The tracker could not start ({code}).";
+let couldNotSend = "The app could not send that to the tracker ({kind}); nothing was changed.";
 // The error log beside the tracker's database, as the API reports it
 // (vocab.shell.error_log): the shell never builds that path. Before the API
 // has said (a failed first start), the settings folder it passes to Python.
@@ -91,11 +92,13 @@ function shellFailure(sentence, kind, extra = {}) {
   return { error: sentence, failure: { sentence, kind, seq: null, identifier: null }, warnings: [], ...extra };
 }
 
-function keepStderr(text) {
+// What only the error log may hold (decision 193, principle 7): a failed
+// command's stderr, and an error of the shell's or the page's own.
+function keepInLog(heading, text) {
   if (!text) return;
   const target = errorLog || path.join(SETTINGS_DIR, ERROR_LOG_FILENAME);
   const stamp = new Date().toISOString();
-  fs.promises.appendFile(target, `${stamp} shell stderr of a failed command\n${text.slice(0, STDERR_CAP)}\n`, "utf8")
+  fs.promises.appendFile(target, `${stamp} ${heading}\n${String(text).slice(0, STDERR_CAP)}\n`, "utf8")
     .catch(() => {});
 }
 
@@ -110,6 +113,7 @@ function learn(result) {
   if (said && typeof said.killed_at === "string") killedAt = said.killed_at;
   if (said && typeof said.no_reply === "string") noReply = said.no_reply;
   if (said && typeof said.could_not_start === "string") couldNotStart = said.could_not_start;
+  if (said && typeof said.could_not_send === "string") couldNotSend = said.could_not_send;
   if (said && typeof said.error_log === "string" && said.error_log) errorLog = said.error_log;
   const paths = (result && result.paths) || (result && result.state && result.state.paths);
   if (paths && typeof paths === "object") {
@@ -144,7 +148,9 @@ function runTracker(args, payload, onProgress) {
   try {
     body = payload === undefined ? undefined : JSON.stringify(payload);
   } catch (err) {
-    return Promise.resolve(shellFailure(`The app could not send that to the tracker: ${err.message}`, "refused"));
+    // Said by its class; its message goes to the error log only (the review's S5).
+    keepInLog("shell could not serialise a payload", `${err.name}: ${err.message}`);
+    return Promise.resolve(shellFailure(fill(couldNotSend, { kind: err.name || "Error" }), "refused"));
   }
   if (!FROZEN_API && !fs.existsSync(SOURCE_PYTHON)) return Promise.resolve(shellFailure(NOT_SET_UP, "refused"));
   return new Promise((resolve) => {
@@ -229,7 +235,7 @@ function runTracker(args, payload, onProgress) {
       // Nothing of stderr goes on screen: a failed command's goes to the
       // error log beside the tracker's database, for a developer at this
       // machine (decision 193, security principle 7).
-      if (!reply || reply.error) keepStderr(stderr);
+      if (!reply || reply.error) keepInLog("shell stderr of a failed command", stderr);
       if (reply) settle(reply);
       else settle(shellFailure(fill(noReply, { code }), "failed", { progress: last }));
     });
@@ -263,6 +269,8 @@ async function openPath(p) {
 ipcMain.handle("tracker-cmd", (event, args, payload) =>
   runTracker(args, payload, (progress) => event.sender.send("tracker-progress", { args, progress })));
 ipcMain.handle("open-path", (_event, p) => openPath(p));
+// An error of the page's own: its text goes to the error log, never on screen.
+ipcMain.handle("log-error", (_event, text) => keepInLog("renderer error", typeof text === "string" ? text : ""));
 ipcMain.handle("pick-folder", async (_event, title) => {
   const result = await dialog.showOpenDialog({
     title: typeof title === "string" ? title : undefined,

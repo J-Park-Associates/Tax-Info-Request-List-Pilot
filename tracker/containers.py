@@ -81,12 +81,14 @@ import zipfile
 import zlib
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from email import message_from_bytes, policy
-from email.message import Message
 from pathlib import PurePath
+from typing import TYPE_CHECKING
 
 from tracker import content_check, reasons
 from tracker.layout import WINDOWS_ILLEGAL_CHARS, is_invisible, is_reserved_name
+
+if TYPE_CHECKING:
+    from email.message import Message
 
 #: The extensions that make a drop a container, lower case, no dot. The
 #: extension and nothing else decides (the module docstring says why).
@@ -463,6 +465,11 @@ class _Walk:
         return bytes(out)
 
     def _eml(self, data: bytes, depth: int) -> None:
+        # The parser is imported when an email is opened, not when the
+        # tracker loads (decision 193's review, S2): ``email.utils`` pulls in
+        # ``socket``, and importing the tracker loads no network module.
+        from email import message_from_bytes, policy
+
         try:
             message = message_from_bytes(data, policy=policy.default)
         except Exception as exc:         # the parser records defects; anything raised is damage
@@ -480,6 +487,9 @@ class _Walk:
         """One MIME part: a multipart is walked, an attached message is a
         container of its own, and a leaf is a document, an inline image or
         the message's own text."""
+        from email import policy
+        from email.message import Message
+
         content_type = part.get_content_type()
         if content_type == "message/rfc822":
             inner = part.get_payload()
