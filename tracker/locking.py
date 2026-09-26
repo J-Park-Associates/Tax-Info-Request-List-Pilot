@@ -810,7 +810,7 @@ class LockStatus:
             return True
         if self.unwritten:
             return self.age_seconds >= EMPTY_LOCK_SECONDS
-        if self.host != this_host():
+        if not is_this_host(self.host):
             # Another machine's process (a synced clients root): whether it
             # is running cannot be known from here, so the age rule decides.
             return False
@@ -894,7 +894,16 @@ def this_host() -> str:
     """This machine's name, as the lock line carries it. From ``platform``,
     not ``socket``: the name is a local fact, and no module under the
     package imports a network module (decision 115's guard)."""
-    return platform.node().lower()
+    return platform.node().strip().casefold()
+
+
+def is_this_host(host: object) -> bool:
+    """Whether a name is this machine's, in any case (decision 159, the
+    review's S1): ``OFFICE-PC`` on the machine ``office-pc`` is this
+    machine, never "another machine", and so is ``"OFFICE-PC "`` (the final
+    review's SF3; the ledger refuses such a line when it reads it anyway).
+    The one comparison of a host, normalised as :func:`this_host` is."""
+    return isinstance(host, str) and host.strip().casefold() == this_host()
 
 
 def lock_line(pid: int, started: dt.datetime) -> str:

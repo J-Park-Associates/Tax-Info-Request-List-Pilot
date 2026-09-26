@@ -27,9 +27,9 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import make_engagement, named_page, seed_statuses, sort
+from tests.conftest import make_engagement, named_page, seed_statuses, sort, written_elsewhere
 from tests.test_scanner import text_pdf
-from tracker import ledger, store
+from tracker import checkpoint, ledger, store
 from tracker.filer import ensure, read_index
 from tracker.layout import inbox_of, location_of, originals_of
 from tracker.locking import engagement_lock
@@ -110,6 +110,30 @@ def build(conn, root, engagement):
     store.rebuild_engagement(conn, root, engagement)
 
 
+def key_of(folder):
+    """The key the store and the checkpoint name a folder by, with no root in hand."""
+    return store.engagement_path(store.key_root(folder), folder)
+
+
+def unapplied(conn, folder, *events):
+    """What ``record()`` leaves when a run dies between its appends and its
+    apply: this machine's word that it was about to write the lines
+    (decision 159's intent), and the lines in the journal but not the store.
+    The caller holds the engagement lock."""
+    lines, _head, chain = ledger.read_with_chain(folder)
+    store._prove_against_checkpoint(conn, key_of(folder), lines, chain)
+    store._intend(conn, key_of(folder), chain, len(lines),
+                  ledger.intended_heads(ledger.chain_at(chain, len(lines)), list(events)))
+    for event in events:
+        ledger.append(folder, event)
+
+
+def unlinked(events):
+    """``events`` as a journal from before decision 159 held them: without
+    the three keys every line now carries."""
+    return [{k: v for k, v in event.items() if k not in ledger.LINE_KEYS} for event in events]
+
+
 def edit_rules(engagement, **fields_by_identifier):
     """A person's edit of one or more rows, saved in the app as one event."""
     from dataclasses import replace
@@ -157,10 +181,10 @@ KEY = "J Park & Associates/Smith Family/2025/1040 - Test Client"
 #: household's folder for the year, which is across the two trees from the
 #: return - so the location begins with ``..`` (decision 125).
 A_ROW_ORIGINAL = "../../../../Clients/Smith Family/2025/w2.pdf"
-#: The latest earlier version a store is refused at, deleted and rebuilt
-#: from: the one before the first in-place step (decision 204 upgrades a
-#: version-16 file where it stands, so "the version before this one" is
-#: no longer a refused one).
+#: The latest earlier version a store is set aside at and rebuilt from
+#: (decision 159, E3; until 159 it was refused and deleted by hand): the one
+#: before the first in-place step (decision 204 upgrades a version-16 file
+#: where it stands, so "the version before this one" is not set aside).
 REFUSED_EARLIER = min(store._IN_PLACE) - 1
 
 
@@ -203,13 +227,15 @@ def test_a_store_at_a_version_this_code_does_not_know_is_refused_by_name(tmp_pat
     assert str(path) in str(raised.value) and str(store.SCHEMA_VERSION + 1) in str(raised.value)
 
 
-def test_a_version_nine_store_is_refused_and_rebuilt(tmp_path):
+def test_a_version_nine_store_is_set_aside_and_rebuilt(tmp_path):
     """Decision 107 added the verdict cache's two tables; a file from before
-    it has no ``verdicts`` table, and is refused by the same sentence a
-    version-1 file was - move it aside and rebuild.
+    it has no ``verdicts`` table. Since decision 159 (E3) it is not refused
+    until a person deletes it: it is set aside under its version's name,
+    never overwritten, and a fresh store is opened in its place.
 
-    And so is a file at the version before this one, whatever that is
-    today: decision 132 changed the fold rather than a column - a
+    And so is a file at the latest version no in-place step reaches
+    (``REFUSED_EARLIER``; decision 204 upgrades the one after it where it
+    stands): decision 132 changed the fold rather than a column - a
     ``released`` line takes a row out of the index - and a version-9 file
     folded by the old code may hold ``Handed Over`` rows this version never
     produces. Rebuilt from the journals, the retired lines fold as the
@@ -222,9 +248,12 @@ def test_a_version_nine_store_is_refused_and_rebuilt(tmp_path):
         written_earlier.execute(f"PRAGMA user_version = {version}")
         written_earlier.close()
 
-        with pytest.raises(store.StoreError, match=f"user_version {version}") as raised:
-            store.open(path)
-        assert str(path) in str(raised.value) and "delete it and rebuild" in str(raised.value)
+        store.open(path).close()
+        aside = path.with_name(f"{store.STORE_FILENAME}.v{version}.old")
+        assert aside.is_file()
+        assert sqlite3.connect(aside).execute("PRAGMA user_version").fetchone()[0] == version
+        assert sqlite3.connect(path).execute("PRAGMA user_version").fetchone()[0] \
+            == store.SCHEMA_VERSION
         path.unlink()
 
 
@@ -683,10 +712,12 @@ def test_last_event_returns_the_newest_of_that_name_or_none(conn, root, by_hand)
     with engagement_lock(by_hand):
         store.record(conn, by_hand, first, hold, taught)
 
-    assert store.last_event(conn, by_hand, ledger.DRAFTED) == hold
-    assert store.last_event(conn, by_hand, ledger.DRAFTED, carrying=ledger.FILE_KEY) == first
+    # As written: the event, and the three keys the record adds to every line.
+    assert unlinked([store.last_event(conn, by_hand, ledger.DRAFTED)]) == [hold]
+    assert unlinked([store.last_event(conn, by_hand, ledger.DRAFTED,
+                                      carrying=ledger.FILE_KEY)]) == [first]
     assert store.last_event(conn, by_hand, ledger.DRAFTED, carrying="nothing-carries-this") is None
-    assert store.last_event(conn, by_hand, ledger.KEYWORD_LEARNED) == taught
+    assert unlinked([store.last_event(conn, by_hand, ledger.KEYWORD_LEARNED)]) == [taught]
     assert store.last_event(conn, by_hand, ledger.SCANNED) is None
 
 
@@ -823,17 +854,18 @@ def test_the_command_line_takes_the_app_folder_the_settings_file_or_the_store_an
 
 
 def test_the_command_line_says_a_refused_store_in_one_sentence(root, tmp_path):
-    """A version this code does not know is refused by open() in a sentence;
+    """A version newer than this code is refused by open() in a sentence;
     the command line repeats it and exits 1 - never a traceback."""
     path = tmp_path / "app" / store.STORE_FILENAME
     store.open(path).close()
-    older = sqlite3.connect(path)
-    older.execute("PRAGMA user_version = 2")
-    older.close()
+    newer = sqlite3.connect(path)
+    newer.execute(f"PRAGMA user_version = {store.SCHEMA_VERSION + 1}")
+    newer.close()
 
     refused = cli(path, "check", root)
     assert refused.returncode == 1
-    assert "user_version 2" in refused.stderr and "delete it and rebuild" in refused.stderr
+    assert f"version {store.SCHEMA_VERSION + 1}" in refused.stderr
+    assert "install that version again" in refused.stderr
     assert "Traceback" not in refused.stderr and "Traceback" not in refused.stdout
 
 
@@ -870,9 +902,22 @@ def _database_files_under(folder: Path) -> list[str]:
 
 def test_the_store_names_no_reader_at_load_time():
     """The explicit form of the layers test's claim: nothing that walks
-    folders or moves files is reachable from importing this module."""
+    folders or moves files is reachable from importing this module.
+
+    Read from the text with the one function exempted that decision 159
+    added on purpose: ``verify``, the read-only firm-wide proof, reaches
+    the registry's walk and the filer's own proof of a row's bytes at call
+    time - reusing them rather than writing a second walk and a second
+    fingerprint - and only when a person runs it."""
+    import ast
+
     source = (Path(store.__file__)).read_text(encoding="utf-8")
     top, _, command_line = source.partition('if __name__ == "__main__":')
+    tree = ast.parse(top)
+    verify = next(node for node in tree.body
+                  if isinstance(node, ast.FunctionDef) and node.name == "verify")
+    lines = top.splitlines()
+    top = "\n".join(lines[:verify.lineno - 1] + lines[verify.end_lineno:])
     for module in ("filer", "manifest", "view", "validators", "registry", "scaffold"):
         assert f"tracker.{module}" not in top.replace(":mod:`tracker.", "")
         assert f"tracker import {module}" not in top
@@ -965,11 +1010,10 @@ def test_a_malformed_unlearn_line_is_refused_by_name(conn, root, by_hand):
     check would now report and nobody could act on.
     """
     build(conn, root, by_hand)
-    path = ledger.path_for(by_hand)
-    path.write_bytes(path.read_bytes() + json.dumps({
+    written_elsewhere(by_hand, {
         ledger.EVENT_KEY: ledger.KEYWORD_UNLEARNED, ledger.AT_KEY: ledger.stamp(),
         ledger.IDENTIFIER_KEY: "A01", ledger.KEYWORD_KEY: 7,
-    }).encode("utf-8") + b"\n")
+    })
 
     with pytest.raises(store.StoreError) as refused:
         store.sync(conn, root, by_hand)
@@ -1132,8 +1176,7 @@ def test_a_rebuild_keeps_the_last_scans_status_across_spellings(conn, root, by_h
     The table keys the row without case (``_write_status``), so the one
     row is ``a01``."""
     with engagement_lock(by_hand):
-        for line in three_scans():
-            ledger.append(by_hand, line)
+        unapplied(conn, by_hand, *three_scans())
     build(conn, root, by_hand)
 
     assert held_statuses(conn, by_hand) == [("a01", Status.PARTIAL)]
@@ -1146,8 +1189,7 @@ def test_catch_up_keeps_the_last_scans_status_across_spellings(conn, root, by_ha
     the top-up applies as one batch (decision 138)."""
     build(conn, root, by_hand)
     with engagement_lock(by_hand):
-        for line in three_scans():
-            ledger.append(by_hand, line)
+        unapplied(conn, by_hand, *three_scans())
     apply(conn, root, by_hand)
 
     assert held_statuses(conn, by_hand) == [("a01", Status.PARTIAL)]
@@ -1188,8 +1230,7 @@ def test_the_writer_and_the_check_use_one_rule(conn, root):
                     if chance.random() < 0.5:
                         store.record(conn, folder, *lines)
                     else:
-                        for line in lines:
-                            ledger.append(folder, line)
+                        unapplied(conn, folder, *lines)
                         store.sync(conn, root, folder)
                 assert said(conn, root, folder) == [], f"journal {number}"
             build(conn, root, folder)
@@ -1509,11 +1550,11 @@ def test_a_folder_outside_the_layout_still_keys_by_its_parent(root, tmp_path):
         assert store.key_root(folder) == folder.parent, folder
 
 
-def test_a_store_of_the_previous_version_is_refused_and_rebuilt(root, engagement, tmp_path):
+def test_a_store_of_the_previous_version_is_set_aside_and_rebuilt(root, engagement, tmp_path):
     """Decision 134 changed the key, not a column: a store of the version
     before it may hold two years of one return as one row, keyed by the
-    return's name alone. So it is refused by the sentence every older store
-    is, and the rebuild from the journals keys each return where it sits -
+    return's name alone. So it is set aside like every older store (decision
+    159, E3), and the rebuild from the journals keys each return where it sits -
     even with no root in hand, the way a reader meets a folder: the next
     year of the same return is a row of its own, not the same row twice."""
     next_year = make_engagement(root, _one_request(2026), household="Smith Family", year=2026,
@@ -1524,12 +1565,8 @@ def test_a_store_of_the_previous_version_is_refused_and_rebuilt(root, engagement
     written_earlier.execute(f"PRAGMA user_version = {REFUSED_EARLIER}")
     written_earlier.close()
 
-    with pytest.raises(store.StoreError, match=f"user_version {REFUSED_EARLIER}") as raised:
-        store.open(path)
-    assert "delete it and rebuild" in str(raised.value)
-
-    path.unlink()
-    conn = store.open(path)
+    conn = store.open(path)            # set aside (decision 159, E3), and a fresh one opened
+    assert path.with_name(f"{store.STORE_FILENAME}.v{REFUSED_EARLIER}.old").is_file()
     try:
         assert _two_years_rebuilt_without_a_root(conn, engagement, next_year) == [
             KEY, KEY.replace("/2025/", "/2026/"),
@@ -1625,7 +1662,7 @@ def test_the_two_retired_names_read_once_and_are_never_written(conn, root, by_ha
               ledger.ROW_KEY: a_row(decision="Handed Over", pbc_location=elsewhere)}
     with engagement_lock(by_hand):
         store.record(conn, by_hand, ledger.new(ledger.PARKED, key=A_ROW_ORIGINAL, row=a_row()))
-        ledger._write_line(ledger.path_for(by_hand), handed)       # as 129 wrote it
+        written_elsewhere(by_hand, handed)                           # as 129 wrote it
     store.sync(conn, root, by_hand)
 
     assert ledger.replay(ledger.read_events(by_hand)).rows == {}
@@ -1645,7 +1682,7 @@ def test_the_two_retired_names_read_once_and_are_never_written(conn, root, by_ha
         ledger.KEY_KEY: A_ROW_ORIGINAL, ledger.DECIDED_BY_KEY: ledger.BY_PERSON,
         ledger.OPS_KEY: [], ledger.ROW_KEY: a_row(), store.ALSO_IN: {"../x": []}})
     with engagement_lock(by_hand):
-        ledger._write_line(ledger.path_for(by_hand), moving)
+        written_elsewhere(by_hand, moving)
     with pytest.raises(store.StoreError, match=repr(store.ALSO_IN)):
         store.sync(conn, root, by_hand)
 
@@ -1665,7 +1702,7 @@ def test_a_released_line_takes_the_row_out_and_closes_its_intent_in_both_folds(
     with engagement_lock(by_hand):
         store.record(conn, by_hand, ledger.new(ledger.PARKED, key=A_ROW_ORIGINAL, row=a_row()))
         store.record(conn, by_hand, release)
-        assert store.open_intents(conn, by_hand) == [release]
+        assert unlinked(store.open_intents(conn, by_hand)) == [release]
         store.record(conn, by_hand, ledger.new(ledger.RELEASED, **{
             ledger.KEY_KEY: A_ROW_ORIGINAL, ledger.REASON_KEY: "released to X (B01) by a person"}))
 
@@ -1733,7 +1770,7 @@ def test_a_reader_that_syncs_while_a_writer_records_leaves_the_store_at_the_jour
     writer = store.open(tmp_path / "app" / store.STORE_FILENAME)
     try:
         with engagement_lock(by_hand):
-            ledger.append(by_hand, ledger.new(
+            unapplied(conn, by_hand, ledger.new(
                 ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(decision="Filed", identifier="A01")))
 
             def the_pass_finishes_and_parks_it():
@@ -1849,7 +1886,7 @@ def test_a_pass_heals_a_store_whose_head_names_a_line_it_never_applied(root, by_
     conn = store.connect()
     store.rebuild_engagement(conn, root, by_hand)
     with engagement_lock(by_hand):
-        ledger.append(by_hand, ledger.new(
+        unapplied(conn, by_hand, ledger.new(
             ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(decision="Filed", identifier="A01")))
     conn.execute("UPDATE engagements SET ledger_head = ? WHERE id = ?",
                  (ledger.head(by_hand), id_of(conn, by_hand)))
@@ -1888,8 +1925,9 @@ def test_a_reader_keeps_the_fast_path_and_parses_nothing_when_the_head_has_not_m
     assert parses == []
 
     with engagement_lock(by_hand):
-        ledger.append(by_hand, ledger.new(
+        unapplied(conn, by_hand, ledger.new(
             ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(decision="Filed", identifier="A01")))
+    parses.clear()                     # the append parses the record it links to (decision 159)
     assert store.follow_the_journal(conn, root, by_hand) == 2
     assert len(parses) == 1
 
@@ -1908,7 +1946,7 @@ def the_pass_appends_during_the_read(monkeypatch, conn, engagement, event):
         if conn.in_transaction and not fired:
             fired.append(True)
             with engagement_lock(engagement):
-                ledger.append(engagement, event)
+                unapplied(conn, engagement, event)
         return data
 
     monkeypatch.setattr(ledger, "_bytes_of", and_then_a_line)
@@ -1931,7 +1969,7 @@ def test_a_line_appended_between_a_readers_lines_and_its_head_is_left_for_the_ne
     head - the head would name the line nobody applied: the stuck return."""
     build(conn, root, by_hand)
     with engagement_lock(by_hand):
-        ledger.append(by_hand, ledger.new(
+        unapplied(conn, by_hand, ledger.new(
             ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(decision="Filed", identifier="A01")))
     parked = ledger.new(ledger.PARKED, key=A_ROW_ORIGINAL, row=a_row(decision="Needs Review"))
 
@@ -2010,7 +2048,8 @@ def test_a_malformed_row_or_rule_line_is_refused_as_line_n_of_the_record(conn, r
     first = path.read_bytes()
 
     def refused_at_line_2(event: dict) -> str:
-        path.write_bytes(first + json.dumps(event).encode("utf-8") + b"\n")
+        path.write_bytes(first)
+        written_elsewhere(by_hand, event)
         with pytest.raises(store.StoreError) as refused:
             store.sync(conn, root, by_hand)
         said_so = str(refused.value)
@@ -2063,15 +2102,24 @@ def test_a_journal_rewritten_to_the_same_length_is_refused_by_sync_and_by_record
     path = ledger.path_for(by_hand)
     lines = path.read_bytes().split(b"\n")
     first, filed, parked = lines[0], lines[1], lines[2]
+    events = unlinked(ledger.read_events(by_hand))
     path.write_bytes(b"\n".join([first, parked, filed]) + b"\n")     # reordered, same length
 
+    # The link in every line refuses a reorder first (decision 159).
+    for reading in (store.sync, store.catch_up, store.follow_the_journal):
+        with pytest.raises(ledger.LedgerError, match="line 2 does not follow the line before it"):
+            reading(conn, root, by_hand)
+
+    # A reorder whose links were made again to match - which nothing but a
+    # hand that knows the chain does - is refused by the store's own chain.
+    path.write_bytes(first + b"\n")
+    written_elsewhere(by_hand, events[2])
+    written_elsewhere(by_hand, events[1])
     sentence = "was changed behind the tracker's back (line 2 onward no longer matches)"
     for reading in (store.sync, store.catch_up, store.follow_the_journal):
         with pytest.raises(store.StoreError, match=re.escape(sentence)) as refused:
             reading(conn, root, by_hand)
-        assert ("Nothing was applied. Copy the store aside, into its own folder under a new name "
-                "with today's date (never to the desktop, a USB drive, an email or a chat), and keep "
-                "any conflict copy of the record before you rebuild") in str(refused.value)
+        assert str(refused.value).endswith("Nothing was applied. " + ledger.RUN_RECOVER)
     with engagement_lock(by_hand), pytest.raises(store.StoreError, match=re.escape(sentence)):
         store.record(conn, by_hand, ledger.new(
             ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(decision="Filed", identifier="A01")))
@@ -2079,8 +2127,11 @@ def test_a_journal_rewritten_to_the_same_length_is_refused_by_sync_and_by_record
     assert [row["decision"] for row in store.documents(conn, by_hand)] == ["Needs Review"]
     assert any(sentence in problem for problem in said(conn, root, by_hand))
 
-    # A rebuild, after the check, is the answer - and then all is well.
-    build(conn, root, by_hand)
+    # A rebuild would lose what this machine saw, so it is refused
+    # (decision 159); recover's accepted loss is the answer - and then all is well.
+    with pytest.raises(store.StoreError, match="rebuild would lose that"):
+        build(conn, root, by_hand)
+    store.rebuild_engagement(conn, root, by_hand, discard=True)
     assert said(conn, root, by_hand) == []
     assert store.sync(conn, root, by_hand) == 3
 
@@ -2090,8 +2141,8 @@ def test_a_rebuild_computes_the_applied_digest_and_an_old_store_upgrades(
     """Decision 137 (A3): the store keeps the running chain over the lines
     it has applied - ``d0 = ""``, ``dn = sha256(dn-1 || line n)`` over each
     line's own bytes - and a rebuild computes it as it replays. A store of
-    the version before has no column for it, so it is refused by name and
-    upgrades the way every older store has: delete it, rebuild."""
+    the version before has no column for it, so it is set aside and a fresh
+    one rebuilt (decision 159, E3)."""
     import hashlib
 
     def chain_of(folder, count):
@@ -2118,10 +2169,7 @@ def test_a_rebuild_computes_the_applied_digest_and_an_old_store_upgrades(
     before = sqlite3.connect(old)
     before.execute(f"PRAGMA user_version = {REFUSED_EARLIER}")
     before.close()
-    with pytest.raises(store.StoreError, match=f"user_version {REFUSED_EARLIER}"):
-        store.open(old)
-    old.unlink()
-    upgraded = store.open(old)
+    upgraded = store.open(old)              # set aside and opened fresh (decision 159, E3)
     try:
         store.rebuild_engagement(upgraded, root, by_hand)
         assert upgraded.execute("SELECT applied_digest FROM engagements").fetchone()[0] \
@@ -2138,10 +2186,11 @@ def test_a_row_written_without_asked_reads_as_asked(conn, root, by_hand):
     ticked, so a line without the mark folds to asked. The store is at the
     new version, rebuilt from that journal, and agrees with it; the list
     read back and saved unchanged records nothing."""
-    events = ledger.read_events(by_hand)
+    events = unlinked(ledger.read_events(by_hand))       # a journal from before 142 and 159
     for event in events:
         for row in event.get(ledger.RULES_KEY) or []:
             row.pop("asked", None)
+    store.forget(conn, by_hand)          # a store, and a checkpoint, that never met it
     ledger.path_for(by_hand).write_text(
         "".join(json.dumps(event, sort_keys=True) + "\n" for event in events), encoding="utf-8")
     assert "asked" not in ledger.path_for(by_hand).read_text(encoding="utf-8")
@@ -2167,10 +2216,11 @@ def test_a_row_written_without_a_short_title_reads_as_blank(conn, root, by_hand)
     name from the document title. The store is at the current version, rebuilt
     from that journal, and agrees with it; the list read back and saved
     unchanged records nothing."""
-    events = ledger.read_events(by_hand)
+    events = unlinked(ledger.read_events(by_hand))       # a journal from before 142 and 159
     for event in events:
         for row in event.get(ledger.RULES_KEY) or []:
             row.pop("short_title", None)
+    store.forget(conn, by_hand)          # a store, and a checkpoint, that never met it
     ledger.path_for(by_hand).write_text(
         "".join(json.dumps(event, sort_keys=True) + "\n" for event in events), encoding="utf-8")
     assert "short_title" not in ledger.path_for(by_hand).read_text(encoding="utf-8")
@@ -2237,10 +2287,12 @@ def test_a_row_read_that_fails_mid_query_is_a_store_error_too(tmp_path):
 
 
 def _forge(engagement, event: dict) -> None:
-    """Put one line in the journal the way a hand edit, another machine or a
-    restored copy would: past the store, without asking it."""
-    path = ledger.path_for(engagement)
-    path.write_bytes(path.read_bytes() + json.dumps(event).encode("utf-8") + b"\n")
+    """Put one line in the journal the way another machine would: past the
+    store, without asking it. Linked to the line before (decision 159), so
+    it is the store's admission that judges it and not the ledger's link -
+    a hand edit without the link is refused by the reader before a value is
+    looked at."""
+    written_elsewhere(engagement, event)
 
 
 def _tables(conn, engagement) -> list:
@@ -2551,7 +2603,7 @@ def test_a_version_16_store_is_upgraded_in_place_and_keeps_its_cached_verdicts(t
     becomes version 17 where it stands - its verdict cache kept, so the
     first pass after the upgrade reads nothing again - and every row it
     held reads as waiting for nothing, which is what the journal says. Any
-    other earlier version is still refused."""
+    other earlier version is set aside and rebuilt (decision 159, E3)."""
     from tests.conftest import sort
     from tests.test_scanner import text_pdf
     from tracker.layout import inbox_of
@@ -2590,13 +2642,15 @@ def test_a_version_16_store_is_upgraded_in_place_and_keeps_its_cached_verdicts(t
     reopened = store.open(old)                   # a second open finds nothing to do
     reopened.close()
 
+    # Any earlier version no in-place step reaches is set aside and opened
+    # fresh (decision 159, E3): one upgrade policy, not two.
     refused = tmp_path / "v15" / store.STORE_FILENAME
     store.open(refused).close()
     earlier = sqlite3.connect(refused)
     earlier.execute(f"PRAGMA user_version = {REFUSED_EARLIER}")
     earlier.close()
-    with pytest.raises(store.StoreError, match="delete it and rebuild"):
-        store.open(refused)
+    store.open(refused).close()
+    assert refused.with_name(f"{store.STORE_FILENAME}.v{REFUSED_EARLIER}.old").is_file()
 
 
 def test_two_openers_of_one_version_16_store_both_succeed(tmp_path, monkeypatch):
@@ -2629,3 +2683,651 @@ def test_two_openers_of_one_version_16_store_both_succeed(tmp_path, monkeypatch)
         assert columns.count("waits_for") == 1
     finally:
         conn.close()
+# ------------------------------- decision 159: the record can show it was not altered ----
+#
+# Each "refused by a fresh store" case builds a store from nothing beside the
+# existing checkpoint - which is what deleting ``tracker.db`` leaves, and the
+# case a store's own applied chain cannot answer: it has nothing to compare.
+
+
+def recorded(conn, folder, *events):
+    with engagement_lock(folder):
+        store.record(conn, folder, *events)
+
+
+def three_lines(conn, folder):
+    """The create's line, then two filings, all through the store."""
+    recorded(conn, folder, ledger.new(ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(decision="Filed")))
+    recorded(conn, folder, ledger.new(ledger.PARKED, key=A_ROW_ORIGINAL, row=a_row()))
+    assert len(ledger.read_events(folder)) == 3
+
+
+@pytest.fixture
+def fresh(tmp_path):
+    """A store built from nothing, beside the checkpoint the test's own store keeps."""
+    connection = store.open(tmp_path / "app" / "fresh.db")
+    yield connection
+    connection.close()
+
+
+def relinked(folder, lines: list[bytes]):
+    """Write ``lines`` as the record, each given the link it needs to read -
+    a rewrite by a hand that knows the chain (the only rewrite the link
+    alone cannot see)."""
+    import json as _json
+
+    ledger.path_for(folder).write_bytes(b"")
+    for raw in lines:
+        event = {k: v for k, v in _json.loads(raw).items() if k not in ledger.LINE_KEYS}
+        written_elsewhere(folder, event, host=_json.loads(raw)[ledger.HOST_KEY])
+
+
+def test_a_truncated_record_is_refused_by_a_fresh_store(conn, fresh, root, by_hand):
+    three_lines(conn, by_hand)
+    path = ledger.path_for(by_hand)
+    path.write_bytes(b"".join(path.read_bytes().splitlines(keepends=True)[:2]))
+    with pytest.raises(store.StoreError, match=r"shorter than this machine last saw it \(2 of 3"):
+        store.catch_up(fresh, root, by_hand)
+    assert store._engagement_row(fresh, by_hand) is None                # nothing was applied
+
+
+def test_a_reordered_record_is_refused_by_a_fresh_store(conn, fresh, root, by_hand):
+    three_lines(conn, by_hand)
+    path = ledger.path_for(by_hand)
+    first, filed, parked = path.read_bytes().splitlines()
+    path.write_bytes(b"\n".join([first, parked, filed]) + b"\n")
+    with pytest.raises(ledger.LedgerError, match="line 2 does not follow"):
+        store.catch_up(fresh, root, by_hand)
+    relinked(by_hand, [first, parked, filed])                             # and made to read again
+    with pytest.raises(store.StoreError, match="no longer matches what this machine last saw"):
+        store.catch_up(fresh, root, by_hand)
+    assert store._engagement_row(fresh, by_hand) is None
+
+
+def test_a_hand_appended_line_is_refused_by_a_fresh_store(conn, fresh, root, by_hand):
+    """Both shapes: a line without the link (the ledger refuses it) and a
+    line with the right link that says this machine wrote it (the
+    checkpoint refuses it - this machine did not)."""
+    import json as _json
+
+    from tracker.locking import this_host
+
+    three_lines(conn, by_hand)
+    path = ledger.path_for(by_hand)
+    kept = path.read_bytes()
+    line = ledger.new(ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(decision="Filed"))
+    path.write_bytes(kept + _json.dumps(line).encode() + b"\n")
+    with pytest.raises(ledger.LedgerError, match="line 4 was written without the record's link"):
+        store.catch_up(fresh, root, by_hand)
+    path.write_bytes(kept)
+    written_elsewhere(by_hand, line, host=this_host())
+    with pytest.raises(store.StoreError, match="Line 4 .* says it was written on this machine"):
+        store.catch_up(fresh, root, by_hand)
+    with pytest.raises(store.StoreError, match="says it was written on this machine"):
+        store.sync(conn, root, by_hand)                                   # and the store in use too
+    assert store._engagement_row(fresh, by_hand) is None
+
+
+def test_a_same_length_rewrite_is_refused_by_a_fresh_store(conn, fresh, root, by_hand):
+    import json as _json
+
+    three_lines(conn, by_hand)
+    lines = ledger.path_for(by_hand).read_bytes().splitlines()
+    edited = _json.loads(lines[1])
+    edited[ledger.ROW_KEY]["decision"] = "Needs Review"
+    relinked(by_hand, [lines[0], _json.dumps(edited).encode(), lines[2]])
+    with pytest.raises(store.StoreError, match="no longer matches what this machine last saw"):
+        store.catch_up(fresh, root, by_hand)
+    assert store._engagement_row(fresh, by_hand) is None
+
+
+def test_the_one_switch_refuses_a_line_from_another_machine(conn, root, by_hand, monkeypatch):
+    """``checkpoint.foreign_lines_refused`` is the one place the answer lives
+    (decision 159, §0): turned on, a line another machine wrote is refused
+    by name and nothing is applied."""
+    build(conn, root, by_hand)
+    written_elsewhere(by_hand, ledger.new(ledger.PARKED, key=A_ROW_ORIGINAL, row=a_row()),
+                      host="laptop-2")
+    monkeypatch.setattr(checkpoint, "foreign_lines_refused", lambda: True)
+    with pytest.raises(store.StoreError, match="was written on laptop-2; this machine is the one"):
+        store.sync(conn, root, by_hand)
+    monkeypatch.undo()
+    assert store.sync(conn, root, by_hand) == 2                          # (a): accepted, and named
+    assert [(one.seq, one.host) for one in store.foreign_lines()] == [(2, "laptop-2")]
+
+
+def test_an_append_interrupted_before_the_checkpoint_moved_is_this_machines_own(
+        conn, fresh, root, by_hand, monkeypatch):
+    """The intent (decision 159, §4.3): ``record()`` says how far it is
+    about to take the record before it appends, so a run killed between
+    its append and its apply leaves lines this machine accepts as its own
+    - a crash is not a forgery."""
+    build(conn, root, by_hand)
+
+    def killed(*_args, **_kwargs):
+        raise KeyboardInterrupt("the machine went down")
+
+    monkeypatch.setattr(store, "_catch_up", killed)
+    with pytest.raises(KeyboardInterrupt):
+        recorded(conn, by_hand, ledger.new(ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(decision="Filed")))
+    monkeypatch.undo()
+    assert len(ledger.read_events(by_hand)) == 2
+    assert store.catch_up(fresh, root, by_hand) == 2                     # a fresh store accepts it
+    assert store.sync(conn, root, by_hand) == 2                          # and so does the one in use
+    the_store_is_the_journal(conn, root, by_hand)
+
+
+def test_rebuild_refuses_a_record_that_does_not_extend_the_checkpoint(conn, root, by_hand, tmp_path):
+    three_lines(conn, by_hand)
+    path = ledger.path_for(by_hand)
+    path.write_bytes(b"".join(path.read_bytes().splitlines(keepends=True)[:2]))
+    before = rows(conn, "documents")
+    # A record shorter than the store: decision 188's refusal, which lists
+    # what would go (the checkpoint's own stands behind it).
+    with pytest.raises(store.WouldDiscard, match="rebuild would discard them"):
+        build(conn, root, by_hand)
+    assert rows(conn, "documents") == before                             # nothing was deleted
+
+    refused = cli(tmp_path / "app" / store.STORE_FILENAME, "rebuild", root, "--engagement", by_hand)
+    assert refused.returncode == 1 and "rebuild would discard them" in refused.stdout
+
+
+def test_rebuild_refuses_a_broken_chain(conn, root, by_hand):
+    three_lines(conn, by_hand)
+    path = ledger.path_for(by_hand)
+    first, filed, parked = path.read_bytes().splitlines()
+    path.write_bytes(b"\n".join([first, parked]) + b"\n")                # a line cut from the middle
+    before = rows(conn, "documents")
+    with pytest.raises(ledger.LedgerError, match="does not follow the line before it"):
+        build(conn, root, by_hand)
+    assert rows(conn, "documents") == before
+
+
+FABRICATED_NAME = "Confidential W-2 for Maria Fabricated.pdf"
+
+
+def a_store_ahead_of_its_record(conn, by_hand):
+    """Three lines through the store, the last naming a fabricated file; then
+    the record loses that line - the store holds one the record does not."""
+    recorded(conn, by_hand, ledger.new(ledger.FILED, key=A_ROW_ORIGINAL,
+                                       row=a_row(decision="Filed", original_name=FABRICATED_NAME)))
+    recorded(conn, by_hand, ledger.new(ledger.PARKED, key=A_ROW_ORIGINAL,
+                                       row=a_row(original_name=FABRICATED_NAME)))
+    path = ledger.path_for(by_hand)
+    path.write_bytes(b"".join(path.read_bytes().splitlines(keepends=True)[:2]))
+
+
+def test_recover_writes_the_export_and_the_difference_before_anything(conn, root, by_hand, tmp_path):
+    a_store_ahead_of_its_record(conn, by_hand)
+    record_now = ledger.path_for(by_hand).read_bytes()
+    before = (rows(conn, "events"), rows(conn, "documents"))
+
+    done = store.recover(conn, root, by_hand)
+    assert done.export.parent == tmp_path / "app" / store.RECOVERED_DIR
+    assert len(done.export.read_text(encoding="utf-8").splitlines()) == 3   # the store's lines
+    assert done.record_copy.read_bytes() == record_now
+    assert [(one.seq, one.side, one.event) for one in done.differences] == [
+        (3, store.ON_STORE, ledger.PARKED)]
+    assert not done.accepted and done.lost == 1
+    assert (rows(conn, "events"), rows(conn, "documents")) == before       # nothing changed
+    assert ledger.path_for(by_hand).read_bytes() == record_now
+    with pytest.raises(store.StoreError, match="holds fewer lines than the store has applied"):
+        store.sync(conn, root, by_hand)                                    # still refused
+
+    again = store.recover(conn, root, by_hand)                             # never over the first
+    assert again.export != done.export and done.export.is_file()
+
+
+def test_recover_replays_only_when_the_loss_is_accepted_by_the_returns_name(conn, root, by_hand):
+    a_store_ahead_of_its_record(conn, by_hand)
+    before = rows(conn, "events")
+    wrong = store.recover(conn, root, by_hand, accept_loss=by_hand.name.upper() + " ")
+    assert not wrong.accepted and "typed exactly" in wrong.refusal
+    assert rows(conn, "events") == before
+
+    done = store.recover(conn, root, by_hand, accept_loss=by_hand.name)
+    assert done.accepted and done.lost == 1
+    assert store.ACCEPTED.format(n=1).startswith("accepted: 1 line(s)")
+    _events, _head, chain = ledger.read_with_chain(by_hand)
+    with checkpoint.opened(checkpoint.path_for(conn.execute("PRAGMA database_list").fetchone()[2])) \
+            as held:
+        assert checkpoint.vouched(held, KEY) == (2, ledger.chain_at(chain, 2))   # seeded again
+    assert store.sync(conn, root, by_hand) == 2
+    assert said(conn, root, by_hand) == []
+
+
+def test_recover_refuses_to_replay_a_record_that_does_not_read(conn, root, by_hand):
+    three_lines(conn, by_hand)
+    path = ledger.path_for(by_hand)
+    first, filed, parked = path.read_bytes().splitlines()
+    path.write_bytes(b"\n".join([first, parked]) + b"\n")
+    done = store.recover(conn, root, by_hand, accept_loss=by_hand.name)
+    assert not done.accepted and "the record itself does not read" in done.refusal
+    assert str(done.export) in done.refusal
+    assert path.read_bytes() == b"\n".join([first, parked]) + b"\n"       # never rewritten
+
+
+def test_recover_prints_no_payload_value(conn, root, by_hand, tmp_path):
+    """Principle 7: the difference names seq, side, event, time and host -
+    never a file name, a reason or any other value a line carries."""
+    a_store_ahead_of_its_record(conn, by_hand)
+    conn.close()
+    store.close()
+    shown = cli(tmp_path / "app" / store.STORE_FILENAME, "recover", root, "--engagement", by_hand)
+    assert shown.returncode == 1, shown.stderr
+    assert "parked" in shown.stdout and "store" in shown.stdout and "--accept-loss" in shown.stdout
+    assert FABRICATED_NAME not in shown.stdout + shown.stderr
+    assert "Maria" not in shown.stdout + shown.stderr
+
+    accepted = cli(tmp_path / "app" / store.STORE_FILENAME, "recover", root, "--engagement", by_hand,
+                   "--accept-loss", by_hand.name)
+    assert accepted.returncode == 0, accepted.stdout + accepted.stderr
+    assert "accepted: 1 line(s)" in accepted.stdout
+    assert FABRICATED_NAME not in accepted.stdout + accepted.stderr
+
+
+def _tree(folder: Path) -> dict[str, tuple]:
+    """Every file and folder under ``folder``: bytes and modification time."""
+    return {str(path.relative_to(folder)): ((path.read_bytes(), path.stat().st_mtime_ns)
+                                            if path.is_file() else ("dir",))
+            for path in sorted(folder.rglob("*"))}
+
+
+def test_verify_changes_nothing_and_names_every_mismatch(root, engagement, tmp_path):
+    """G-10: a read-only verify, firm-wide. Nothing under the clients root
+    changes - not a byte, not a time - and neither the store nor the
+    checkpoint is written; every problem is named by class and path below
+    the root, and any problem exits 1."""
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    drop(engagement, "1098.pdf", "Form 1098 Mortgage Interest Statement 2025")
+    sort(engagement, today=DAY1)
+    store.close()
+    home = tmp_path / "app"
+    kept = {name: (home / name).read_bytes()
+            for name in (store.STORE_FILENAME, checkpoint.CHECKPOINT_FILENAME)}
+
+    tree = _tree(root)
+    clean = cli(home / store.STORE_FILENAME, "verify", root)
+    assert clean.returncode == 0, clean.stdout + clean.stderr
+    assert "nothing to report" in clean.stdout
+    assert _tree(root) == tree
+
+    entries = read_index(engagement)
+    store.close()
+    copy = next(entry for entry in entries if entry.prepared_location)
+    (engagement / copy.prepared_location).unlink()                          # a working copy gone
+    original = locate_original(engagement, entries[-1])
+    original.write_bytes(original.read_bytes() + b"changed")                # an original changed
+    household_record = ledger.path_for(engagement.parents[1])               # a record cut short
+    target = household_record if household_record.is_file() else ledger.path_for(engagement)
+    lines = target.read_bytes().splitlines(keepends=True)
+    target.write_bytes(b"".join(lines[:-1]))
+
+    tree = _tree(root)
+    found = cli(home / store.STORE_FILENAME, "verify", root)
+    assert found.returncode == 1
+    said_now = found.stdout
+    assert store.V_MISSING in said_now and store.V_CHANGED in said_now and store.V_SHORTER in said_now
+    assert Path(copy.prepared_location).name in said_now
+    assert _tree(root) == tree                                              # nothing moved, nothing made
+    assert {name: (home / name).read_bytes() for name in kept} == kept
+    assert not (home / store.RECOVERED_DIR).exists()
+
+
+def locate_original(engagement, entry):
+    from tracker.layout import locate
+
+    return locate(engagement, entry.pbc_location)
+
+
+def test_an_older_store_is_set_aside_and_rebuilt(conn, root, by_hand, tmp_path):
+    """E3: an older store is renamed out of the way, never deleted, and the
+    return is built again from its record - proved against the checkpoint,
+    which the set-aside did not touch."""
+    three_lines(conn, by_hand)
+    conn.close()
+    store.close()
+    path = tmp_path / "app" / store.STORE_FILENAME
+    older = sqlite3.connect(path)
+    older.execute(f"PRAGMA user_version = {REFUSED_EARLIER}")         # no in-place step reaches it
+    older.close()
+
+    reopened = store.connect()
+    assert path.with_name(f"{store.STORE_FILENAME}.v{REFUSED_EARLIER}.old").is_file()
+    assert store.catch_up(reopened, root, by_hand) == 3
+    assert said(reopened, root, by_hand) == []
+
+
+def test_a_newer_store_is_still_refused(tmp_path):
+    path = tmp_path / "app" / store.STORE_FILENAME
+    store.open(path).close()
+    newer = sqlite3.connect(path)
+    newer.execute(f"PRAGMA user_version = {store.SCHEMA_VERSION + 1}")
+    newer.close()
+    with pytest.raises(store.StoreError, match="newer version of the tracker's store; install"):
+        store.open(path)
+    assert not path.with_name(f"{store.STORE_FILENAME}.v{store.SCHEMA_VERSION + 1}.old").exists()
+
+
+def test_a_root_the_checkpoint_does_not_belong_to_is_refused(tmp_path):
+    """E5: the checkpoint belongs to the root it first served; the settings
+    naming another folder - a copy of the root, say - is refused by name,
+    and one spelling of the same folder is not another."""
+    first, copy = tmp_path / "Clients", tmp_path / "Clients copy"
+    first.mkdir()
+    copy.mkdir()
+    store.prove_the_root(first)
+    store.prove_the_root(tmp_path / "." / "Clients")
+    with pytest.raises(store.StoreError, match="belongs to .*Clients; this was asked to work in .*Clients copy"):
+        store.prove_the_root(copy)
+    with pytest.raises(store.StoreError, match="If the clients root really moved"):
+        store.prove_the_root(copy, claim=False)
+
+
+# ------------------------------------------ decision 159: the part-3 review's fixes ----
+
+
+def test_a_failed_append_leaves_no_intent_behind(conn, fresh, root, by_hand):
+    """M1 (probe P2): an append that fails - a refused line, a file another
+    program holds - leaves no intent that a line forged later into the same
+    place could pass under. Such a line is refused, by a fresh store too."""
+    from tracker.locking import this_host
+
+    three_lines(conn, by_hand)
+    refused = ledger.new(ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(decision="Filed"))
+    refused[ledger.HOST_KEY] = "x"                                       # the append refuses it
+    with pytest.raises(ledger.LedgerError):
+        recorded(conn, by_hand, refused)
+    with checkpoint.opened(store._checkpoint_file(conn)) as held:
+        assert checkpoint.intent(held, KEY) is None
+    store.catch_up(conn, root, by_hand)
+    written_elsewhere(by_hand, ledger.new(ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(decision="Filed")),
+                      host=this_host())
+    with pytest.raises(store.StoreError, match="Line 4 .* says it was written on this machine"):
+        store.catch_up(fresh, root, by_hand)
+
+
+def test_a_line_forged_into_an_interrupted_batch_is_refused_and_the_batch_is_its_own(
+        conn, fresh, root, by_hand, monkeypatch):
+    """M1 (probe P2b): a batch of three killed after its first line leaves
+    that line this machine's own, and a line forged into the second place
+    - the right link, this machine's name, not the bytes the batch said -
+    is refused. The intent is the chain the lines will have, not a count."""
+    from tracker.locking import this_host
+
+    three_lines(conn, by_hand)
+    real = ledger.append
+    calls = []
+
+    def dies_on_the_second(folder, event):
+        calls.append(event)
+        if len(calls) == 2:
+            raise KeyboardInterrupt("the machine went down")
+        return real(folder, event)
+
+    monkeypatch.setattr(ledger, "append", dies_on_the_second)
+    parked = ledger.new(ledger.PARKED, key=A_ROW_ORIGINAL, row=a_row())
+    with pytest.raises(KeyboardInterrupt):
+        recorded(conn, by_hand, parked, dict(parked), dict(parked))
+    monkeypatch.undo()
+    assert store.catch_up(fresh, root, by_hand) == 4                    # its own line, accepted
+    written_elsewhere(by_hand, ledger.new(ledger.PARKED, key=A_ROW_ORIGINAL,
+                                          row=a_row(reason="not the line the batch said")),
+                      host=this_host())
+    with pytest.raises(store.StoreError, match="Line 5 .* says it was written on this machine"):
+        store.catch_up(fresh, root, by_hand)
+
+
+def test_a_new_batch_keeps_an_earlier_batchs_unvouched_lines_its_own(conn, root, by_hand, monkeypatch):
+    """A later ``record()`` after a kill must not disown the killed batch's
+    line before any reader vouched for it."""
+    build(conn, root, by_hand)
+    monkeypatch.setattr(store, "_catch_up", lambda *a, **k: (_ for _ in ()).throw(KeyboardInterrupt()))
+    with pytest.raises(KeyboardInterrupt):
+        recorded(conn, by_hand, ledger.new(ledger.PARKED, key=A_ROW_ORIGINAL, row=a_row()))
+    monkeypatch.undo()
+    conn.execute("UPDATE engagements SET applied_seq = 2, applied_digest = ? WHERE path = ?",
+                 (ledger.read_with_chain(by_hand)[2][1], KEY))        # a reader applied the store only
+    recorded(conn, by_hand, ledger.new(ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(decision="Filed")))
+    assert len(ledger.read_events(by_hand)) == 3
+
+
+def test_a_return_created_again_after_its_store_row_is_gone_is_not_held_to_the_old_checkpoint(
+        root, tmp_path, monkeypatch):
+    """M2 (probe P3): a return removed while its store was set aside or
+    deleted is created again under the same name; ``forget`` clears the
+    checkpoint's row whether or not the store holds one."""
+    import shutil
+
+    folder = make_engagement(root, ITEMS, household="Smith Family", return_name="Again")
+    with engagement_lock(folder):
+        store.record(store.connect(), folder, ledger.new(ledger.PARKED, key=A_ROW_ORIGINAL, row=a_row()))
+    shutil.rmtree(folder)
+    store.close()
+    monkeypatch.setenv(store.ENV_STORE, str(tmp_path / "app" / "second.db"))   # the same checkpoint
+    again = make_engagement(root, ITEMS, household="Smith Family", return_name="Again")
+    assert len(ledger.read_events(again)) == 1
+
+
+def test_a_differently_cased_name_of_this_machine_is_this_machine(conn, fresh, root, by_hand):
+    """S1 (probe P1b): ``OFFICE-PC`` on the machine ``office-pc`` is not
+    "another machine" - a forged line in any case is refused, never named
+    for a person to acknowledge."""
+    from tracker.locking import is_this_host, this_host
+
+    assert is_this_host(this_host().upper()) and not is_this_host("another-machine")
+    three_lines(conn, by_hand)
+    written_elsewhere(by_hand, ledger.new(ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(decision="Filed")),
+                      host=this_host().swapcase() if this_host().swapcase() != this_host()
+                      else this_host().upper())
+    with pytest.raises(store.StoreError, match="says it was written on this machine"):
+        store.catch_up(fresh, root, by_hand)
+    assert store.foreign_lines() == []
+
+
+def test_a_rewrite_on_a_fresh_store_claims_no_line_number_it_does_not_know(conn, fresh, root, by_hand):
+    """N2: with no store copy to find it by, the refusal says "an earlier line"."""
+    import json as _json
+
+    three_lines(conn, by_hand)
+    lines = ledger.path_for(by_hand).read_bytes().splitlines()
+    edited = _json.loads(lines[2])
+    edited[ledger.ROW_KEY]["reason"] = "fabricated edit"
+    relinked(by_hand, [lines[0], lines[1], _json.dumps(edited).encode()])
+    with pytest.raises(store.StoreError, match="from an earlier line onward"):
+        store.catch_up(fresh, root, by_hand)
+    with pytest.raises(store.StoreError, match="from line 3 onward|line 3 onward"):
+        store.catch_up(conn, root, by_hand)
+
+
+def test_verify_names_a_line_with_no_writer_as_the_pass_refuses_it(conn, root, by_hand, tmp_path):
+    """S3 (probe Q5b): verify asks the pass's own judgment, so a line with no
+    link and no writer after a record from before 159 is named by both."""
+    import json as _json
+
+    events = unlinked(ledger.read_events(by_hand))
+    store.forget(conn, by_hand)          # a store, and a checkpoint, that never met it
+    ledger.path_for(by_hand).write_text(
+        "".join(_json.dumps(event, sort_keys=True) + "\n" for event in events), encoding="utf-8")
+    build(conn, root, by_hand)
+    with ledger.path_for(by_hand).open("a", encoding="utf-8") as handle:
+        handle.write(_json.dumps(ledger.new(ledger.PARKED, key=A_ROW_ORIGINAL, row=a_row())) + "\n")
+    with pytest.raises(store.StoreError, match="Line 2 .* carries no writer"):
+        store.sync(conn, root, by_hand)
+    conn.close()
+    store.close()
+    shown = cli(tmp_path / "app" / store.STORE_FILENAME, "verify", root)
+    assert shown.returncode == 1 and store.V_NO_WRITER in shown.stdout and "line 2" in shown.stdout
+
+
+def test_a_checkpoint_that_will_not_open_is_that_returns_problem_by_name(conn, root, by_hand, tmp_path):
+    """S4: a damaged checkpoint is refused naming the file and the runbook's
+    step - a StoreError, one return's problem - and is never set aside."""
+    where = checkpoint.path_for(tmp_path / "app" / store.STORE_FILENAME)
+    where.write_bytes(b"fabricated garbage, not a database" * 40)
+    with pytest.raises(store.StoreError, match="cannot read this machine's record checkpoint"):
+        build(conn, root, by_hand)
+    with pytest.raises(store.StoreError, match="runbook §6"):
+        store.prove_the_root(root)
+    assert where.read_bytes().startswith(b"fabricated garbage")
+    where.unlink()
+
+
+# --------------------------------------- decision 159: the final review's fixes ----
+
+
+def test_a_rewrite_the_checkpoint_never_saw_is_refused_by_rebuild_and_points_to_recover(
+        conn, root, by_hand, tmp_path):
+    """MF2: with no checkpoint row at all - the first pass after installing
+    159, a new machine, a damaged checkpoint set aside - a rebuild still
+    never drops lines it has not exported, and decision 137's own refusals
+    point to recover, not to rebuild."""
+    three_lines(conn, by_hand)
+    where = checkpoint.path_for(tmp_path / "app" / store.STORE_FILENAME)
+    where.rename(where.with_name(where.name + ".damaged"))                # no row for anything
+    path = ledger.path_for(by_hand)
+    path.write_bytes(b"".join(path.read_bytes().splitlines(keepends=True)[:2]))
+    with pytest.raises(store.StoreError) as truncated:
+        store.catch_up(conn, root, by_hand)
+    assert str(truncated.value).endswith(ledger.RUN_RECOVER)
+    before = rows(conn, "events")
+    with pytest.raises(store.WouldDiscard, match="rebuild would discard them"):
+        build(conn, root, by_hand)
+    assert rows(conn, "events") == before
+    done = store.recover(conn, root, by_hand)                              # recover exports first
+    assert len(done.export.read_text(encoding="utf-8").splitlines()) == 3
+    assert [(one.seq, one.side) for one in done.differences] == [(3, store.ON_STORE)]
+
+
+def test_recover_never_names_an_export_shorter_than_the_record_as_the_one_to_restore(
+        conn, fresh, root, by_hand):
+    """MF3: an unreadable record is said by the first look, with no replay
+    offered; the store's export is named as a copy to restore from only
+    when it holds every line the record still reads - and a store holding
+    nothing for the return writes no export at all."""
+    three_lines(conn, by_hand)
+    path = ledger.path_for(by_hand)
+    with path.open("ab") as handle:
+        handle.write(b'{"event": "scanned", "note": "Fabricated" "x"}\n')
+
+    covered = store.recover(conn, root, by_hand)                            # the store holds all 3
+    assert "the record itself does not read" in covered.refusal
+    assert "(it is not JSON)" in covered.refusal and ledger.RUN_RECOVER not in covered.refusal
+    assert str(covered.export) in covered.refusal and str(covered.record_copy) in covered.refusal
+
+    nothing = store.recover(fresh, root, by_hand)                           # a store that never met it
+    assert nothing.export is None and nothing.record_copy.is_file()
+    assert "holds no copy of this return" in nothing.refusal and "off-drive copy" in nothing.refusal
+    assert not any(p.stat().st_size == 0 for p in nothing.record_copy.parent.iterdir())
+
+    conn.execute("DELETE FROM events WHERE seq > 1")                       # a store behind the record
+    short = store.recover(conn, root, by_hand)
+    assert str(short.export) not in short.refusal and "holds no copy" in short.refusal
+    for done in (covered, nothing, short):
+        assert not done.accepted
+    path.write_bytes(b"".join(path.read_bytes().splitlines(keepends=True)[:3]))
+
+
+def test_recover_looking_at_an_unreadable_record_offers_no_replay(conn, root, by_hand, tmp_path):
+    three_lines(conn, by_hand)
+    with ledger.path_for(by_hand).open("ab") as handle:
+        handle.write(b'{"event": "scanned", "note": "Fabricated" "x"}\n')
+    conn.close()
+    store.close()
+    shown = cli(tmp_path / "app" / store.STORE_FILENAME, "recover", root, "--engagement", by_hand)
+    assert shown.returncode == 1
+    assert "the record itself does not read" in shown.stdout and "--accept-loss" not in shown.stdout
+    ledger.path_for(by_hand).write_bytes(
+        b"".join(ledger.path_for(by_hand).read_bytes().splitlines(keepends=True)[:3]))
+
+
+@pytest.mark.parametrize("pad", [" {}", "{} ", "{}\t"], ids=["leading", "trailing", "tab"])
+def test_a_spaced_name_of_this_machine_never_passes_for_another_machine(conn, fresh, root, by_hand, pad):
+    """SF3: ``"VM "`` on the machine ``vm`` is refused as a line whose
+    writer is in a shape the tracker never writes - by the store's one
+    admission, whose rule of a writer the checkpoint's judgment asks first
+    (decision 187) - and is never named for a person to acknowledge;
+    compared, it is this machine."""
+    from tracker.locking import is_this_host, this_host
+
+    assert is_this_host(pad.format(this_host().upper()))
+    three_lines(conn, by_hand)
+    written_elsewhere(by_hand, ledger.new(ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(decision="Filed")),
+                      host=pad.format(this_host().upper()))
+    with pytest.raises(store.StoreError, match="line 4 of the record is malformed .*carries 'host' "
+                                               "that must be a machine's name"):
+        store.catch_up(fresh, root, by_hand)
+    assert store.foreign_lines() == []
+    path = ledger.path_for(by_hand)
+    path.write_bytes(b"".join(path.read_bytes().splitlines(keepends=True)[:3]))
+
+
+def test_a_machine_whose_name_no_line_may_carry_writes_nothing(conn, root, by_hand, monkeypatch):
+    """Decision 159 carried onto 187: the line admitted at the door is the
+    line exactly as ``ledger.line_of`` will write it, writer included, so
+    this machine's own name is held to the one rule of a writer - and a
+    name it refuses writes nothing, to the record or the store."""
+    build(conn, root, by_hand)
+    before = ledger.path_for(by_hand).read_bytes()
+    monkeypatch.setattr(ledger, "this_host", lambda: "office pc")
+    with engagement_lock(by_hand), pytest.raises(store.StoreError) as refused:
+        store.record(conn, by_hand, learned("A01", "lender"))
+    assert "carries 'host' that must be a machine's name" in str(refused.value)
+    assert "nothing was written" in str(refused.value)
+    assert ledger.path_for(by_hand).read_bytes() == before
+
+
+
+def test_one_upgrade_policy_a_version_sixteen_store_is_upgraded_in_place_and_never_set_aside(tmp_path):
+    """Decisions 204 and 159: a version :data:`store._IN_PLACE` names gains
+    its column where it stands - never set aside, its verdict cache kept -
+    and only an older version is set aside and rebuilt. The record
+    checkpoint beside it is a file of its own with its own version, and no
+    step of the store's upgrade touches it."""
+    path = tmp_path / "app" / store.STORE_FILENAME
+    store.open(path).close()
+    heads = checkpoint.path_for(path)
+    checkpoint.open(heads).close()
+    before = heads.read_bytes()
+    written_at_sixteen = sqlite3.connect(path)
+    written_at_sixteen.execute("ALTER TABLE documents DROP COLUMN waits_for")
+    written_at_sixteen.execute("PRAGMA user_version = 16")
+    written_at_sixteen.close()
+
+    store.open(path).close()
+    assert sqlite3.connect(path).execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION
+    assert not list(path.parent.glob(f"{store.STORE_FILENAME}.v*.old*"))
+    assert sqlite3.connect(path).execute("SELECT count(*) FROM sqlite_master WHERE name = ?",
+                                         (store.VERDICTS_TABLE,)).fetchone()[0] == 1
+    assert heads.read_bytes() == before
+    assert sqlite3.connect(heads).execute("PRAGMA user_version").fetchone()[0] \
+        == checkpoint.CHECKPOINT_VERSION
+
+    older = sqlite3.connect(path)
+    older.execute(f"PRAGMA user_version = {REFUSED_EARLIER}")
+    older.close()
+    store.open(path).close()
+    assert path.with_name(f"{store.STORE_FILENAME}.v{REFUSED_EARLIER}.old").is_file()
+    assert heads.read_bytes() == before
+
+
+def test_188s_accepted_word_and_204s_waiting_row_are_lines_like_any_other(conn, root, by_hand, fresh):
+    """Decisions 188 and 204 carried under 159: a person's word that a
+    folder's name is accepted, and a row parked waiting for a click, are
+    written through ``store.record`` - so each carries the record's link, its
+    writer and its format, is admitted by the one gate, and is caught up by
+    a store built from nothing beside this machine's checkpoint."""
+    from tracker.records import WaitsFor, format_waits_for
+
+    waiting = format_waits_for(WaitsFor(household="Jones Family", return_name="1040 - Jones",
+                                        identifiers=("A01",)))
+    recorded(conn, by_hand,
+             ledger.new(ledger.RULES_CHANGED, info={"client": "Test Client"},
+                        **{ledger.ACCEPTED_KEY: ledger.FOLDER_NAME_ACCEPTED}),
+             ledger.new(ledger.PARKED, key=A_ROW_ORIGINAL,
+                        row=a_row(decision="Needs Review", waits_for=waiting)))
+    for line in ledger.read_events(by_hand)[-2:]:
+        assert ledger.LINE_KEYS <= set(line)
+    assert said(conn, root, by_hand) == []
+    assert store.catch_up(fresh, root, by_hand) == len(ledger.read_events(by_hand))
+    assert [row["waits_for"] for row in store.documents(fresh, by_hand)] == [waiting]

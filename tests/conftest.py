@@ -447,6 +447,18 @@ def seed_index(engagement_dir, entries):
     return entries
 
 
+def written_elsewhere(engagement_dir, event, host="another-machine"):
+    """Put one line in a record the way the tracker on another machine
+    writes it: linked to the line before, with that machine's host and the
+    record's format (decision 159). The one way a test puts a line in a
+    record that no writer on this machine would make - a line of the wrong
+    shape, a retired name - without it reading as a hand edit."""
+    _lines, _head, chain = ledger.read_with_chain(engagement_dir)
+    ledger._write_line(ledger.path_for(engagement_dir), {
+        **event, ledger.LINK_KEY: ledger.chain_at(chain, len(chain)), ledger.HOST_KEY: host,
+        ledger.FORMAT_KEY: ledger.RECORD_FORMAT})
+
+
 def seed_statuses(engagement_dir, updates):
     """Put ``updates`` in the engagement's record, the way a scan would.
 

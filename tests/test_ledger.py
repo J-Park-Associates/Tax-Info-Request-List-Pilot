@@ -23,7 +23,7 @@ import pytest
 
 from tests.conftest import make_engagement, named_page, sort
 from tests.test_scanner import text_pdf
-from tracker import ledger, store
+from tracker import ledger, records, store
 from tracker.filer import (
     ASSIGNED_BY_PERSON,
     FILED,
@@ -290,7 +290,7 @@ def test_a_line_nested_too_deep_in_the_middle_is_refused_by_name(bare):
         ledger.append(bare, a_keyword(1))
     path = ledger.path_for(bare)
     path.write_bytes(path.read_bytes() + b"[" * 200_000 + b"\n")
-    with pytest.raises(ledger.LedgerError, match="line 2 does not read as an event: it is nested too deeply"):
+    with pytest.raises(ledger.LedgerError, match="line 2 does not read as an event \\(it is nested too deeply\\)"):
         ledger.read_events(bare)
 
 
@@ -806,3 +806,207 @@ def test_a_stamp_windows_cannot_give_a_local_day_reads_as_long_ago(monkeypatch):
 
     monkeypatch.setattr(ledger, "dt", SimpleNamespace(datetime=Refused, date=real.date))
     assert ledger.day_of("1969-12-31T23:59:59Z") == real.date.min
+# ------------------------------------------ decision 159: the line in its place ----
+
+
+def _appended(folder, *events):
+    with engagement_lock(folder):
+        for event in events:
+            ledger.append(folder, event)
+
+
+def test_every_new_line_carries_its_link_its_host_and_its_format(bare):
+    """Decision 159 (C-12, E1): the first line links to nothing, every later
+    line to the chain through the lines before it - the very number the
+    store keeps as its applied digest - and each names this machine and the
+    record's format. The caller's event is not changed, and a caller may
+    not write the three keys itself."""
+    from tracker.locking import this_host
+
+    first = ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: {}})
+    second = ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: {}})
+    _appended(bare, first, second)
+    assert ledger.LINK_KEY not in first                  # the caller's dict is its own
+
+    events, _head, chain = ledger.read_with_chain(bare)
+    assert [event[ledger.LINK_KEY] for event in events] == ["", ledger.chain_at(chain, 1)]
+    assert {event[ledger.HOST_KEY] for event in events} == {this_host()}
+    assert {event[ledger.FORMAT_KEY] for event in events} == {ledger.RECORD_FORMAT}
+
+    with engagement_lock(bare), pytest.raises(ledger.LedgerError, match="written by the record itself"):
+        ledger.append(bare, {**ledger.new(ledger.SCANNED), ledger.HOST_KEY: "elsewhere"})
+    assert len(ledger.read_events(bare)) == 2
+    ledger.path_for(bare).unlink()
+
+
+def test_a_line_that_does_not_follow_the_line_before_is_refused_by_name(bare):
+    """A reorder, a line cut from the middle, an edit in place: the link of
+    the line after it no longer names the chain before it."""
+    _appended(bare, *(ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: {}}) for _ in range(3)))
+    path = ledger.path_for(bare)
+    first, second, third = path.read_bytes().splitlines()
+    for altered in ([first, third], [first, third, second],
+                    [first, second.replace(b'"scanned"', b'"scanned" '), third]):
+        path.write_bytes(b"\n".join(altered) + b"\n")
+        with pytest.raises(ledger.LedgerError, match="does not follow the line before it"):
+            ledger.read_events(bare)
+    path.unlink()
+
+
+def test_a_line_without_a_link_after_a_linked_line_is_refused_by_name(bare):
+    """E1: an older build - or a hand - writing into a record this version
+    linked. The lines before the first linked one are the record's history
+    from before 159 and read as they always did."""
+    import json
+
+    old = json.dumps(ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: {}})).encode()
+    ledger.path_for(bare).write_bytes(old + b"\n")
+    _appended(bare, ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: {}}))
+    assert len(ledger.read_events(bare)) == 2                     # the old prefix is read
+    with ledger.path_for(bare).open("ab") as handle:
+        handle.write(old + b"\n")
+    with pytest.raises(ledger.LedgerError, match="line 3 was written without the record's link"):
+        ledger.read_events(bare)
+    with engagement_lock(bare), pytest.raises(ledger.LedgerError, match="without the record's link"):
+        ledger.append(bare, ledger.new(ledger.SCANNED))            # and nothing goes after it
+    ledger.path_for(bare).unlink()
+
+
+def test_a_line_of_a_newer_format_is_refused_by_name(bare):
+    """E1: a line a newer version wrote is not read rather than misread, and
+    nothing is appended after it."""
+    _appended(bare, ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: {}}))
+    path = ledger.path_for(bare)
+    newer = path.read_bytes().replace(
+        f'"{ledger.FORMAT_KEY}": {ledger.RECORD_FORMAT}'.encode(),
+        f'"{ledger.FORMAT_KEY}": {ledger.RECORD_FORMAT + 1}'.encode())
+    path.write_bytes(newer)
+    with pytest.raises(ledger.LedgerError,
+                       match=f"newer version of the tracker \\(format {ledger.RECORD_FORMAT + 1}\\)"):
+        ledger.read_events(bare)
+    with engagement_lock(bare), pytest.raises(ledger.LedgerError, match="newer version"):
+        ledger.append(bare, ledger.new(ledger.SCANNED))
+    assert path.read_bytes() == newer
+    path.unlink()
+
+
+def test_a_kept_tail_must_carry_the_right_link(bare):
+    """A line that lost only its newline is kept (decision 159, A-4) - and
+    is held to the link like any line: a whole tail with the wrong link is
+    refused, never kept and never silently dropped."""
+    _appended(bare, *(ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: {}}) for _ in range(2)))
+    path = ledger.path_for(bare)
+    first, second = path.read_bytes().splitlines()
+    path.write_bytes(first + b"\n" + second)                      # the newline lost: kept
+    assert len(ledger.read_events(bare)) == 2
+    path.write_bytes(second + b"\n" + first)                      # a whole tail, out of place
+    with pytest.raises(ledger.LedgerError, match="line 1 does not follow"):
+        ledger.read_events(bare)
+    path.unlink()
+
+
+def test_siblings_names_conflict_copies_and_lock_copies_and_nothing_else(bare):
+    """Decision 159 (A-8, G-5): what a sync client leaves beside the record
+    and the lock, case-insensitively - not the record, the lock, the
+    breaker, or a breaker's marker the lock is still using."""
+    import os
+    import time
+
+    from tracker.locking import BREAKER_CLEARED_INFIX, BREAKER_STALE_SECONDS, BREAKER_SUFFIX, LOCK_FILENAME
+
+    names = {
+        ledger.LEDGER_FILENAME: False, LOCK_FILENAME: False,
+        LOCK_FILENAME + BREAKER_SUFFIX: False,
+        LOCK_FILENAME + BREAKER_SUFFIX + BREAKER_CLEARED_INFIX + "0123456789abcdef": False,
+        "_ledger (1).jsonl": True, "_LEDGER_conflict-20260926.jsonl": True,
+        "_scan (1).lock": True, "_scan.lock.bak": True, "Status Report.html": False,
+        "_readme.lock": False,
+    }
+    for name in names:
+        (bare / name).write_text("x", encoding="utf-8")
+    left = bare / (LOCK_FILENAME + BREAKER_SUFFIX + BREAKER_CLEARED_INFIX + "fedcba9876543210")
+    left.write_text("x", encoding="utf-8")
+    long_ago = time.time() - BREAKER_STALE_SECONDS - 5
+    os.utime(left, (long_ago, long_ago))
+
+    assert sorted(path.name for path in ledger.siblings(bare)) == sorted(
+        [name for name, named in names.items() if named] + [left.name])
+    for name in names:
+        (bare / name).unlink()
+    left.unlink()
+
+
+def test_the_chain_is_computed_in_one_place():
+    """Principle 2 (decision 159): the applied chain over a record's lines
+    is computed by ``ledger.chain_link`` and nowhere else in the package.
+    Two definitions of the link would be two answers to "is this line in
+    its place"."""
+    import ast
+
+    offenders = []
+    for path in sorted((REPO / "tracker").glob("*.py")):
+        source = path.read_text(encoding="utf-8")
+        lines = source.splitlines()
+        for node in ast.walk(ast.parse(source)):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            text = "\n".join(lines[node.lineno - 1:node.end_lineno])
+            if "sha256" in text and ("line" in node.name or "chain" in node.name or "prev" in text):
+                offenders.append(f"{path.name}:{node.name}")
+    assert offenders == ["ledger.py:chain_link"], offenders
+
+
+def _a_linked_line(bare, **changed):
+    """One line appended the right way, then its writer or time changed and
+    the link left right: what a hand that knows the chain could write."""
+    import json
+
+    _appended(bare, ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: {}}))
+    line = json.loads(ledger.path_for(bare).read_bytes())
+    line.update(changed)
+    ledger.path_for(bare).write_text(json.dumps(line) + "\n", encoding="utf-8")
+
+
+@pytest.mark.parametrize("changed, field", [
+    ({ledger.HOST_KEY: "PLANTED/Fabricated-Name.pdf"}, ledger.HOST_KEY),
+    ({ledger.HOST_KEY: "office\u202epc"}, ledger.HOST_KEY),
+    ({ledger.HOST_KEY: "x" * (records.HOST_MAX + 1)}, ledger.HOST_KEY),
+    ({ledger.HOST_KEY: ""}, ledger.HOST_KEY),
+    ({ledger.AT_KEY: "Fabricated Client, SSN 000-00-0000"}, ledger.AT_KEY),
+    ({ledger.FORMAT_KEY: "1"}, ledger.FORMAT_KEY),
+], ids=["a-path", "a-direction-mark", "too-long", "no-writer", "a-time-that-is-not-one",
+        "a-format-that-is-not-a-number"])
+def test_a_linked_lines_writer_and_time_are_held_to_the_gates_rule(bare, tmp_path, changed, field):
+    """The review's S5 and N4, carried onto decision 187: a writer and a
+    time are values, held to their one rule (``records.host_problem``,
+    ``records.stamp_problem``) at the store's one admission - by the field
+    and the class, never the value. The ledger's reader reads the line:
+    only its place in the chain is the reader's to judge."""
+    _a_linked_line(bare, **changed)
+    assert len(ledger.read_events(bare)) == 1
+    fresh = store.open(tmp_path / "fresh.db")
+    try:
+        with pytest.raises(store.StoreError, match=f"line 1 of the record is malformed .*carries "
+                                                   f"'{field}' that must be") as refused:
+            store.rebuild_engagement(fresh, tmp_path, bare)
+    finally:
+        fresh.close()
+    assert "PLANTED" not in str(refused.value) and "Fabricated" not in str(refused.value)
+    ledger.path_for(bare).unlink()
+
+
+@pytest.mark.parametrize("raw, why", [
+    (b'{"event": "scanned", "note": "Fabricated Name" "x"}', "it is not JSON"),
+    (b'{"event": "scanned", "note": "\xff\xfe"}', "it is not UTF-8"),
+], ids=["not-json", "not-utf8"])
+def test_a_line_that_does_not_read_is_said_by_its_class_and_points_at_recover(bare, raw, why):
+    """The review's S6: a record that does not read ends with the one
+    pointer every record refusal carries, and never quotes the parser's
+    text (principle 7)."""
+    ledger.path_for(bare).write_bytes(raw + b"\n")
+    with pytest.raises(ledger.LedgerError) as refused:
+        ledger.read_events(bare)
+    said = str(refused.value)
+    assert f"line 1 does not read as an event ({why})" in said and said.endswith(ledger.RUN_RECOVER)
+    assert "Fabricated" not in said and "column" not in said
+    ledger.path_for(bare).unlink()

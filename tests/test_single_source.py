@@ -738,9 +738,10 @@ def test_documents_name_only_runtime_files_the_code_owns():
     repo file, or one of the files the log retired (``RETIRED_FILES``)."""
     import subprocess
 
+    from tracker.checkpoint import CHECKPOINT_FILENAME
     from tracker.filer import README_LOCK_FILENAME
     from tracker.ledger import LEDGER_FILENAME
-    from tracker.locking import LOCK_FILENAME
+    from tracker.locking import LOCK_FILENAME, RACE_LOCK_FILENAME
     from tracker.registry import LEGACY_MANIFEST_FILENAME
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
     from tracker.runner import LOG_FILENAME, PASS_ORDER_FILENAME, STATUS_PAGE_FILENAME
@@ -754,7 +755,9 @@ def test_documents_name_only_runtime_files_the_code_owns():
     owned = {LEDGER_FILENAME, LOCK_FILENAME, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
              LOG_FILENAME, STATUS_PAGE_FILENAME, README_NAME, README_LOCK_FILENAME,
              SCHEDULE_XML_FILENAME, SETTINGS_FILENAME, STORE_FILENAME, VIEW_FILENAME,
-             PASS_ORDER_FILENAME}
+             PASS_ORDER_FILENAME,
+             # Decision 159: the checkpoint and the race's lock.
+             CHECKPOINT_FILENAME, RACE_LOCK_FILENAME}
     tracked = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True).stdout.split()
     repo_files = {Path(t).name for t in tracked} | {t for t in tracked}
     for rel in DOCUMENTS:
@@ -1133,7 +1136,7 @@ def test_tree_diagrams_name_only_runtime_files_the_code_owns():
 CONSOLE_GUARDED = ("rollover", "filer", "scanner", "registry", "review", "scaffold",
                    "store", "reminder", "runner", "router", "content_check",
                    "view", "ledger", "validators", "names", "containers", "ocr", "door",
-                   "locking")
+                   "checkpoint", "locking")
 #: The command lines that print no client's name, each with why it is not
 #: guarded - so a new command line has to be named in one list or the other.
 CONSOLE_EXEMPT = {

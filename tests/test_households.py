@@ -11,7 +11,7 @@ import datetime as dt
 
 import pytest
 
-from tests.conftest import make_engagement
+from tests.conftest import make_engagement, written_elsewhere
 from tracker import ledger, store
 from tracker.households import (
     create_household,
@@ -122,23 +122,19 @@ def test_a_members_list_written_by_hand_as_one_name_is_read_as_one_member(househ
 def test_a_household_line_of_the_wrong_shape_is_one_folders_problem(household, tmp_path):
     """A line that parses as JSON and carries the wrong shape is refused by
     name, before a value of it reaches a table."""
-    import json
-
     # A name written as one string is read as one member, so it is no
     # refusal at all: the journal is a synced file somebody may have
     # opened, and one hand-written line must not cost a household its
     # whole record.
-    with ledger.path_for(household).open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps({ledger.EVENT_KEY: ledger.HOUSEHOLD_CHANGED,
-                                 ledger.AT_KEY: "2026-01-01T00:00:00Z",
-                                 ledger.HOUSEHOLD_KEY: {"members": "John Smith"}}) + "\n")
+    written_elsewhere(household, {ledger.EVENT_KEY: ledger.HOUSEHOLD_CHANGED,
+                                   ledger.AT_KEY: "2026-01-01T00:00:00Z",
+                                   ledger.HOUSEHOLD_KEY: {"members": "John Smith"}})
     store.rebuild_engagement(store.connect(), tmp_path, household)
     assert load_household_info(household).members == ("John Smith",)
     # A list holding something that is not a name is refused by name.
-    with ledger.path_for(household).open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps({ledger.EVENT_KEY: ledger.HOUSEHOLD_CHANGED,
-                                 ledger.AT_KEY: "2026-01-01T00:00:00Z",
-                                 ledger.HOUSEHOLD_KEY: {"members": [17]}}) + "\n")
+    written_elsewhere(household, {ledger.EVENT_KEY: ledger.HOUSEHOLD_CHANGED,
+                                   ledger.AT_KEY: "2026-01-01T00:00:00Z",
+                                   ledger.HOUSEHOLD_KEY: {"members": [17]}})
     with pytest.raises(store.StoreError, match="names a member that is not text"):
         store.rebuild_engagement(store.connect(), tmp_path, household)
     ledger.path_for(household).unlink()          # the fixtures must not meet it
@@ -212,7 +208,7 @@ def test_sharing_confirmed_is_an_event_folded_by_nothing_and_read_back_by_day(ho
 
     events = ledger.read_events(household)
     assert events[-1][ledger.EVENT_KEY] == ledger.SHARING_CONFIRMED
-    assert set(events[-1]) == {ledger.EVENT_KEY, ledger.AT_KEY}
+    assert set(events[-1]) == {ledger.EVENT_KEY, ledger.AT_KEY} | ledger.LINE_KEYS
     # Folded by nothing: the household is exactly what it was.
     assert ledger.replay(events).household == before
     assert load_household_info(household) == SMITHS
@@ -222,12 +218,9 @@ def test_sharing_confirmed_is_an_event_folded_by_nothing_and_read_back_by_day(ho
 
     # A line carrying anything at all is not this version's, and is
     # refused by name rather than kept where a reader would trust it.
-    import json
-
-    with ledger.path_for(household).open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps({ledger.EVENT_KEY: ledger.SHARING_CONFIRMED,
-                                 ledger.AT_KEY: "2026-01-01T00:00:00Z",
-                                 "members": ["John Smith"]}) + "\n")
+    written_elsewhere(household, {ledger.EVENT_KEY: ledger.SHARING_CONFIRMED,
+                                  ledger.AT_KEY: "2026-01-01T00:00:00Z",
+                                  "members": ["John Smith"]})
     with pytest.raises(store.StoreError, match="it carries nothing"):
         store.rebuild_engagement(store.connect(), tmp_path, household)
     ledger.path_for(household).unlink()          # the fixtures must not meet it

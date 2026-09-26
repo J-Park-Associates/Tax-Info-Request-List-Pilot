@@ -3237,7 +3237,7 @@ def test_mark_shared_refuses_without_a_link_records_one_event_and_the_state_says
     events = ledger.read_events(household)
     assert len(events) == before + 1
     assert events[-1][ledger.EVENT_KEY] == ledger.SHARING_CONFIRMED
-    assert set(events[-1]) == {ledger.EVENT_KEY, ledger.AT_KEY}
+    assert set(events[-1]) == {ledger.EVENT_KEY, ledger.AT_KEY} | ledger.LINE_KEYS
     # Folded by nothing: the household reads back exactly as it did.
     assert ledger.replay(events).household == ledger.replay(events[:-1]).household
 
@@ -5432,3 +5432,43 @@ def test_a_returns_accept_writes_only_that_returns_line(capsys, demo_root):
     last = ledger.read_events(engagement)[-1]
     assert last[ledger.INFO_KEY] == {"household": "Park Household", "return_name": engagement.name}
     assert household_pause(household) == HOUSEHOLD_PAUSED
+# ------------------------------------------ decision 159: the record's checkpoint ----
+
+
+def test_a_person_acknowledges_a_line_another_machine_wrote(capsys, demo_root):
+    """C-1 (a): the line is accepted and named until a person says they have
+    looked; ``acknowledge-foreign`` is that, a writing command under the
+    return's lock."""
+    from tests.conftest import written_elsewhere
+
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = where(demo_root, "Smith")
+    written_elsewhere(engagement, ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: {}}),
+                      host="laptop-2")
+    assert run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))[0] == 0     # accepted
+    assert [(one.host) for one in store.foreign_lines()] == ["laptop-2"]
+
+    code, payload = run(capsys, "acknowledge-foreign", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0 and payload["acknowledged"] == 1
+    assert store.foreign_lines() == []
+    assert "acknowledge-foreign" in api.WRITING_COMMANDS
+
+
+def test_a_writing_command_refuses_a_root_the_checkpoint_does_not_belong_to(capsys, demo_root, tmp_path):
+    """E5: every writing command holds the settings' root to this machine's
+    checkpoint first; a copy of the root is refused by name before anything
+    is written."""
+    from tracker.settings import set_clients_root
+
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    copy = tmp_path / "Clients copy"
+    copy.mkdir()
+    set_clients_root(copy)
+    code, payload = run(capsys, "create", stdin={**spec, "return_name": "Jones"})
+    assert code == 1 and "record checkpoint belongs to" in payload["error"]
+    assert "If the clients root really moved" in payload["error"]
+    assert not where(copy, "Jones").exists()
+    assert run(capsys, "settings")[0] == 0                              # reading is not refused
+    set_clients_root(demo_root)

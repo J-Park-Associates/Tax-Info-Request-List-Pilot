@@ -38,23 +38,36 @@ event itself, which is the one thing that cannot be recovered. This is
 also why the store may run with ``synchronous`` at NORMAL: a write-ahead
 log the operating system has not flushed costs at most a replay.
 
-**Rebuild is recovery.** :func:`rebuild_engagement` deletes one
-engagement's rows and builds them again from seq 1 - the journal
-replayed, and nothing else. That single function is the answer to two
-questions: how a store deleted by accident comes back, and how a store
-somebody doubts is proved. It writes nothing to the journal.
+**Rebuild is recovery - compared first.** :func:`rebuild_engagement`
+deletes one engagement's rows and builds them again from seq 1 - the
+journal replayed, and nothing else. That single function is the answer to
+two questions: how a store deleted by accident comes back, and how a store
+somebody doubts is proved. It writes nothing to the journal. Since
+decision 159 it is held first to **this machine's checkpoint**
+(:mod:`tracker.checkpoint`, beside this file): a record shorter than what
+this machine saw, rewritten under it, or carrying a line that claims this
+machine and that this machine did not write, is refused - by every
+catch-up and by a rebuild alike - because a rebuilt store trusts whatever
+it is built from, and the store about to be deleted may be the only other
+copy of what was lost. :func:`recover` is the one way past: it exports
+the store's lines and the record as it is, prints the lines that differ
+(never a payload value), and replays only when a person types the
+return's name. :func:`verify` is the same proof firm-wide, read-only, with
+every recorded file held to its bytes.
 
-**A version it does not know is deleted and rebuilt - with one kind of
-exception** (decision 204). A store written at another ``user_version`` is
-refused by name, and the remedy is to delete it and rebuild from the
-journals, which also empties the verdict cache it keeps, so the next pass
-reads and OCRs every document again. A version is instead **upgraded in
+**An older version is set aside and rebuilt - with one kind of
+exception** (decisions 159 and 204; one policy). A store an earlier version
+wrote is renamed out of the way (``.v<N>.old``, never deleted) and a fresh
+one built from the journals, which also empties the verdict cache it
+keeps, so the next pass reads and OCRs every document again; a newer one
+is refused by name. A version is instead **upgraded in
 place** only where the change is one new column that is additive, has an
 empty default, and that no journal line written before the new version
 can carry - so every existing row's true value is that default, and
 :func:`check` holds the column to the journal from then on. Each such step
 is written out by name in :data:`_IN_PLACE` (from-version -> statements),
-never inferred; every other mismatch is refused as before.
+never inferred; every other older version is set aside, and a newer one
+refused.
 
 **The check is the gate.** :func:`check` compares these tables with
 :func:`tracker.ledger.replay` over the journal and names every place they
@@ -153,14 +166,16 @@ from __future__ import annotations
 import csv
 import datetime as dt
 import json
+import logging
 import os
 import sqlite3
-from contextlib import contextmanager
-from dataclasses import fields
+from contextlib import ExitStack, contextmanager
+from dataclasses import dataclass, fields
+from dataclasses import field as _default
 from pathlib import Path
 
-from tracker import ledger, records
-from tracker.locking import lock_is_held
+from tracker import checkpoint, ledger, records
+from tracker.locking import is_this_host, lock_is_held
 from tracker.records import (
     BEHIND,
     CURRENT,
@@ -178,6 +193,8 @@ from tracker.records import (
     info_from_json,
     status_from_json,
 )
+
+log = logging.getLogger("tracker.store")
 
 #: The database, on the designated machine's local disk beside the settings
 #: file. One per clients root; a person never opens it and never backs it up
@@ -284,8 +301,8 @@ ENV_STORE = "TRACKER_STORE"
 #: **in-place** step (the module docstring's rule, :data:`_IN_PLACE`): no
 #: journal line before 204 carries the field, so every version-16 row
 #: waits for nothing, and a version-16 file gains the column with an empty
-#: default and keeps its verdict cache. Every other version is still
-#: refused, deleted and rebuilt.
+#: default and keeps its verdict cache. Every other earlier version is set
+#: aside and rebuilt (decision 159, E3); a newer one refused.
 SCHEMA_VERSION = 17
 
 #: The explicit in-place upgrades (the module docstring's rule): the
@@ -639,10 +656,20 @@ def path_for(settings_path: Path | str) -> Path:
 def open(path: Path | str) -> sqlite3.Connection:  # noqa: A001 - the store is opened
     """Open the store at ``path``, creating the schema when it is not there.
 
-    Refuses, by name, a file whose ``user_version`` this code does not
-    know: a store written by a later version holds rows this one would
-    fold wrongly, and a silent open is how that becomes a wrong answer on
-    a client's file. The caller closes the connection.
+    Refuses, by name, a file a later version wrote: it holds rows this one
+    would fold wrongly, and a silent open is how that becomes a wrong
+    answer on a client's file. **A file an earlier version wrote is set
+    aside, not refused** (decision 159, E3): it is renamed to
+    its name with ``.v<N>.old`` after it - never overwritten, never deleted - and a
+    fresh store is opened, which every return's next catch-up builds from
+    its record, proved against this machine's checkpoint. Until 159 an
+    older store was refused until a person deleted it, and the sentence
+    that told them to also offered "or run that version". **Except a
+    version upgraded in place** (decision 204, :data:`_IN_PLACE`): version
+    16 gains its column where it stands and keeps its verdict cache; only
+    an older version no in-place step reaches is set aside. The record
+    checkpoint beside it is another file with its own version, and no step
+    here touches it. The caller closes the connection.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -650,17 +677,7 @@ def open(path: Path | str) -> sqlite3.Connection:  # noqa: A001 - the store is o
     # module says BEGIN IMMEDIATE itself, because the guarantee is the
     # whole batch or none of it and a driver-invented transaction boundary
     # is not a guarantee anybody wrote down.
-    # The factory is the one choke point (decision 189): every statement
-    # below and in every function of this module goes through it.
-    try:
-        conn = sqlite3.connect(path, isolation_level=None, factory=_Connection)
-    except sqlite3.Error as exc:
-        raise _unavailable(exc) from exc
-    conn.row_factory = sqlite3.Row
-    conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
-    conn.execute("PRAGMA journal_mode = WAL")
-    conn.execute("PRAGMA synchronous = NORMAL")
-    conn.execute("PRAGMA foreign_keys = ON")
+    conn = _connect(path)
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     while version in _IN_PLACE and version < SCHEMA_VERSION:
         # One transaction per step: the column and the version land
@@ -683,16 +700,61 @@ def open(path: Path | str) -> sqlite3.Connection:  # noqa: A001 - the store is o
             conn.close()
             raise
         version = now
+    # **One upgrade policy** (decisions 204 and 159): a version
+    # :data:`_IN_PLACE` names is upgraded where it stands, above; an older
+    # one it does not name is set aside and rebuilt; a newer one refused.
+    if 0 < version < SCHEMA_VERSION:
+        conn.close()
+        aside = checkpoint.set_aside(path, version)
+        log.warning("%s was written by an older version (user_version %d); it is set aside as %s "
+                    "and the store is rebuilt from the records", path, version, aside.name)
+        conn = _connect(path)
+        version = 0
     if version == 0:
         for statement in SCHEMA:
             conn.execute(statement)
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     elif version != SCHEMA_VERSION:
         conn.close()
-        raise StoreError(
-            f"{path} is a store at user_version {version}; this code knows {SCHEMA_VERSION}. "
-            f"It was written by another version - delete it and rebuild, or run that version."
-        )
+        raise StoreError(checkpoint.NEWER_FILE.format(path=path, version=version, known=SCHEMA_VERSION,
+                                                      what="store"))
+    return conn
+
+
+def _connect(path: Path) -> sqlite3.Connection:
+    # The factory is the one choke point (decision 189): every statement
+    # below and in every function of this module goes through it.
+    try:
+        conn = sqlite3.connect(path, isolation_level=None, factory=_Connection)
+    except sqlite3.Error as exc:
+        raise _unavailable(exc) from exc
+    conn.row_factory = sqlite3.Row
+    conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA synchronous = NORMAL")
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
+
+
+def open_read_only(path: Path | str) -> sqlite3.Connection:
+    """The store opened so that nothing can be written through it: what the
+    read-only verify uses (decision 159, G-10). Never creates a store; a
+    store of another version is refused by name."""
+    path = Path(path)
+    if not path.is_file():
+        raise StoreError(f"there is no store at {path}; nothing was created")
+    try:
+        conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True, isolation_level=None,
+                               factory=_Connection)
+    except sqlite3.Error as exc:
+        raise _unavailable(exc) from exc
+    conn.row_factory = sqlite3.Row
+    conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    if version != SCHEMA_VERSION:
+        conn.close()
+        raise StoreError(f"{path} is a store at user_version {version}; this version reads "
+                         f"{SCHEMA_VERSION}, and verify changes nothing")
     return conn
 
 
@@ -1285,11 +1347,18 @@ def forget(conn: sqlite3.Connection, engagement_dir: Path | str) -> bool:
     row was there to delete.
     """
     row = _engagement_row(conn, engagement_dir)
-    if row is None:
-        return False
-    with _transaction(conn):
-        conn.execute("DELETE FROM engagements WHERE id = ?", (row["id"],))
-    return True
+    if row is not None:
+        with _transaction(conn):
+            conn.execute("DELETE FROM engagements WHERE id = ?", (row["id"],))
+    # And what this machine vouched for about it (decision 159) - whether or
+    # not the store holds it (the review's M2): after a store was set aside
+    # or deleted, a return created again under a removed one's name must
+    # not be held to the removed one's record.
+    key = row["path"] if row is not None else engagement_path(key_root(engagement_dir), engagement_dir)
+    with _beside(conn) as held:
+        if held is not None:
+            checkpoint.forget(held, key)
+    return row is not None
 
 
 # -------------------------------------------------------------- writing ----
@@ -1459,6 +1528,29 @@ UNKNOWN_EVENT = "an event this version does not know"
 ALSO_IN = "also_in"
 
 
+def _line_keys_problem(event: dict) -> str:
+    """What is wrong with the three keys the record itself writes on every
+    line since decision 159 (``ledger.LINE_KEYS``), said as the gate says a
+    problem, or ``""``: a link that is not blank or a digest, a format that
+    is not one this version writes, and - on a line that carries a link or
+    a writer - a writer that is not a machine's name
+    (``records.host_problem``). Part of the one admission
+    (:func:`_refuse_a_malformed_line`), and asked by the checkpoint's
+    judgment of a line before it trusts its writer (:func:`_judge`), so no
+    line is judged this machine's or another's on a name the rule refuses.
+    The link's *place* in the chain is the ledger reader's, which alone
+    has the chain."""
+    if ledger.LINK_KEY in event and (problem := records.digest_problem(event[ledger.LINK_KEY])):
+        return f"carries {ledger.LINK_KEY!r} that {problem}"
+    if ledger.FORMAT_KEY in event and (
+            problem := records.count_problem(event[ledger.FORMAT_KEY], 1, ledger.RECORD_FORMAT)):
+        return f"carries {ledger.FORMAT_KEY!r} that {problem}"
+    if (ledger.LINK_KEY in event or ledger.HOST_KEY in event) and (
+            problem := records.host_problem(event.get(ledger.HOST_KEY))):
+        return f"carries {ledger.HOST_KEY!r} that {problem}"
+    return ""
+
+
 def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = KIND_RETURN) -> None:
     """A line that parses as JSON and names an event but carries the wrong
     shape, an impossible value or a place outside its return's is refused
@@ -1543,6 +1635,8 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
             name not in (ledger.RULES_CHANGED, ledger.HOUSEHOLD_CHANGED)
             or event[ledger.ACCEPTED_KEY] != ledger.FOLDER_NAME_ACCEPTED):
         refuse(f"carries {ledger.ACCEPTED_KEY!r} that is not a folder's name accepted")
+    if problem := _line_keys_problem(event):
+        refuse(problem)
     if name in (ledger.RULES_CHANGED, ledger.RULES_IMPORTED):
         rows = event.get(ledger.RULES_KEY)
         if rows is not None and not isinstance(rows, list):
@@ -1743,7 +1837,9 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
         # version would be storing something it cannot fold - so it is
         # refused by name here rather than silently kept in the events
         # table where a reader would later trust it.
-        if set(event) - {ledger.EVENT_KEY, ledger.AT_KEY}:
+        # The three keys the record itself writes on every line since
+        # decision 159 (``ledger.LINE_KEYS``) are the line's, not a payload.
+        if set(event) - {ledger.EVENT_KEY, ledger.AT_KEY} - ledger.LINE_KEYS:
             refuse("carries fields; it carries nothing")
 
 
@@ -1935,14 +2031,44 @@ def record(conn: sqlite3.Connection, engagement_dir: Path | str, *events: dict) 
     # The one door in (decision 187): every event is admitted by the rule
     # every line read back is held to, before the first is appended - a
     # line the store would refuse is never put into the journal, where it
-    # would sit ahead of the store and fail every later sync.
+    # would sit ahead of the store and fail every later sync. What is
+    # admitted is the line exactly as it will be written (decision 159,
+    # ``ledger.line_of``: the event with its link, this machine's name and
+    # the record's format), so the writer's name is held to the same rule
+    # as every other value, at the same door.
+    before = ledger.chain_at(chain, already)
     for number, event in enumerate(events, start=already + 1):
+        line = ledger.line_of(event, before)
         try:
-            _refuse_a_malformed_line(event, number, row["path"], kind=row["kind"])
+            _refuse_a_malformed_line(json.loads(line), number, row["path"], kind=row["kind"])
         except StoreError as exc:
             raise StoreError(f"{exc}; nothing was written") from None
-    for event in events:
-        ledger.append(engagement_dir, event)
+        before = ledger.chain_link(before, line)
+    # This machine vouches for the record as it is before a line is added
+    # to it, and says how far it is about to take it (decision 159, the
+    # intent): a run killed between these appends and the checkpoint's
+    # advance leaves lines of this host that are this machine's own.
+    #
+    # The intent is exact (the review's M1): the chain after each line this
+    # call will write, from the very bytes the append writes
+    # (``ledger.intended_heads``), so a line forged later into the same
+    # place is not mistaken for one of these. An append that fails - rather
+    # than a run that is killed - trims the intent to the lines that did
+    # reach the file.
+    heads = ledger.intended_heads(ledger.chain_at(chain, already), list(events))
+    with _beside(conn) as held:
+        _prove_against_checkpoint(conn, row["path"], lines, chain, row=row, held=held)
+        start, said = _intend(conn, row["path"], chain, already, heads, held=held)
+    try:
+        for event in events:
+            ledger.append(engagement_dir, event)
+    except Exception:
+        try:
+            written = max(0, len(ledger.read_events(engagement_dir)) - already)
+        except ledger.LedgerError:
+            written = 0
+        _expect(conn, row["path"], start, said[:already - start + written])
+        raise
     # What the journal holds past the store, not what this call was handed
     # (decision 135): the two are the same lines unless a reader caught up
     # some of them between the appends and this transaction, and a start
@@ -2025,6 +2151,15 @@ def _look_then_catch_up(conn: sqlite3.Connection, root: Path | str, engagement_d
 
 def _catch_up(conn: sqlite3.Connection, root: Path | str | None, engagement_dir: Path | str,
               *, build: bool, known: tuple[list[dict], str, list[str]] | None = None) -> int:
+    """:func:`_catching_up`, with this machine's checkpoint open once for
+    the proof before and the vouching after (decision 159)."""
+    with _beside(conn) as held:
+        return _catching_up(conn, root, engagement_dir, build=build, known=known, held=held)
+
+
+def _catching_up(conn: sqlite3.Connection, root: Path | str | None, engagement_dir: Path | str,
+                 *, build: bool, known: tuple[list[dict], str, list[str]] | None,
+                 held: sqlite3.Connection | None) -> int:
     """Apply what the journal holds past the store. The caller holds the transaction.
 
     **One read, inside the transaction** (decision 135). The row, the
@@ -2063,6 +2198,10 @@ def _catch_up(conn: sqlite3.Connection, root: Path | str | None, engagement_dir:
         rel = engagement_path(key_root(engagement_dir, root), engagement_dir)
         if not build:
             raise StoreError(f"{rel}: the store does not hold this engagement; rebuild it")
+        # A first build trusts nothing the store kept, because there is
+        # nothing: the record is held to this machine's checkpoint first
+        # (decision 159), which survives the store being deleted.
+        foreign = _prove_against_checkpoint(conn, rel, events, chain, held=held)
         defaults = _new_engagement_defaults()
         cursor = conn.execute(
             f"INSERT INTO engagements ({_NEW_ENGAGEMENT_COLUMNS}) "
@@ -2071,12 +2210,19 @@ def _catch_up(conn: sqlite3.Connection, root: Path | str | None, engagement_dir:
         )
         if events:
             _apply(conn, cursor.lastrowid, events, start=1)
+        _vouch_for(conn, rel, events, chain, foreign, held=held)
         return len(events)
+    # A journal shorter than the store applied is said first in decision
+    # 188's sentence, which says to restore it before anything else and
+    # how many lines a rebuild would lose; then the checkpoint's refusals
+    # (decision 159), which survive a rebuild of the store where the
+    # store's own below do not.
     applied = row["applied_seq"]
     if len(events) < applied:
         rel = engagement_path(key_root(engagement_dir, root), engagement_dir)
         raise StoreError(TRUNCATED.format(engagement=rel, n=len(events), m=applied,
                                           k=applied - len(events)))
+    foreign = _prove_against_checkpoint(conn, row["path"], events, chain, row=row, held=held)
     _refuse_a_rewrite(conn, row, events, chain,
                       engagement_path(key_root(engagement_dir, root), engagement_dir))
     if len(events) == applied:
@@ -2086,6 +2232,7 @@ def _catch_up(conn: sqlite3.Connection, root: Path | str | None, engagement_dir:
         "UPDATE engagements SET applied_seq = ?, ledger_head = ?, applied_digest = ? WHERE id = ?",
         (seq, head, ledger.chain_at(chain, seq), row["id"]),
     )
+    _vouch_for(conn, row["path"], events, chain, foreign, held=held)
     return seq
 
 
@@ -2093,10 +2240,19 @@ def _catch_up(conn: sqlite3.Connection, root: Path | str | None, engagement_dir:
 #: the digest it kept (decision 137, A3). The same shape as the refusal of a
 #: truncated journal: what happened, that nothing was applied, what to do.
 REWRITTEN = ("The record for {rel} was changed behind the tracker's back (line {line} onward "
-             "no longer matches). Nothing was applied. Copy the store aside, into its own folder "
-             "under a new name with today's date (never to the desktop, a USB drive, an email or "
-             "a chat), and keep any conflict copy of the record before you rebuild (the runbook, "
-             "section 1).")
+             "no longer matches). Nothing was applied. " + ledger.RUN_RECOVER)
+
+
+def _only_the_store_holds(conn: sqlite3.Connection, engagement_id: int, events: list[dict]) -> bool:
+    """Whether the store's own copy of the record's lines holds a line the
+    record now lacks, or holds one differently - what a rebuild would drop
+    without anybody having exported it."""
+    for one in conn.execute("SELECT seq, payload FROM events WHERE engagement_id = ?", (engagement_id,)):
+        seq = one["seq"]
+        if seq > len(events) or one["payload"] != json.dumps(events[seq - 1], ensure_ascii=False,
+                                                              sort_keys=True):
+            return True
+    return False
 
 
 def _rewritten_from(conn: sqlite3.Connection, engagement_id: int, events: list[dict],
@@ -2157,6 +2313,271 @@ def follow_the_journal(conn: sqlite3.Connection, root: Path | str, engagement_di
     if row is not None and row["ledger_head"] == ledger.head(engagement_dir):
         return row["applied_seq"]
     return catch_up(conn, root, engagement_dir)
+
+
+# ------------------------------------------------------- the checkpoint ----
+
+#: The checkpoint's refusals (decision 159, §4.3). Each says what happened,
+#: that nothing was applied, and what a person does - and each is a
+#: StoreError, so the pass names it as that return's problem and goes on.
+SHORTER = ("The record for {rel} is shorter than this machine last saw it ({n} of {count} lines). "
+           "Nothing was applied. " + ledger.RUN_RECOVER)
+REWRITTEN_SINCE = ("The record for {rel} no longer matches what this machine last saw from {line} "
+                   "onward. Nothing was applied. " + ledger.RUN_RECOVER)
+#: Where the rewrite starts when the store holds no copy to find it by.
+AN_EARLIER_LINE = "an earlier line"
+CLAIMS_THIS_MACHINE = ("Line {n} of the record for {rel} says it was written on this machine, and "
+                       "this machine did not write it. Nothing was applied. " + ledger.RUN_RECOVER)
+NO_WRITER = ("Line {n} of the record for {rel} carries no writer - written by an older version of "
+             "the tracker or by hand. Nothing was applied. " + ledger.RUN_RECOVER)
+FOREIGN = ("Line {n} of the record for {rel} was written on {host}; this machine is the one that "
+           "writes (decision 159). Nothing was applied. " + ledger.RUN_RECOVER)
+#: What a rebuild says instead of losing what the checkpoint vouches for.
+REBUILD_WOULD_LOSE = ("The record for {rel} does not match what this machine last saw; rebuild "
+                      "would lose that. " + ledger.RUN_RECOVER)
+#: The settings name a root this machine's checkpoint does not belong to
+#: (decision 159, E5).
+ROOT_NOT_CLAIMED = ("this machine's record checkpoint belongs to {claimed}; this was asked to work in "
+                    "{now}. "
+                    "If the clients root really moved, see runbook 'If the clients root moves'.")
+
+
+def _checkpoint_file(conn: sqlite3.Connection) -> Path | None:
+    """The checkpoint beside the store ``conn`` is open on, or None for a
+    store that is not a file."""
+    for row in conn.execute("PRAGMA database_list"):
+        if row[1] == "main":
+            return checkpoint.path_for(row[2]) if row[2] else None
+    return None
+
+
+@contextmanager
+def _beside(conn: sqlite3.Connection, held: sqlite3.Connection | None = None):
+    """The checkpoint beside ``conn``'s store, opened for one question and
+    closed after it - or ``held``, when the caller already has it open for
+    several (a catch-up proves, applies, then vouches: one open). None for
+    a store that is not a file."""
+    if held is not None:
+        yield held
+        return
+    where = _checkpoint_file(conn)
+    if where is None:
+        yield None
+        return
+    try:
+        opened = checkpoint.open(where)
+    except checkpoint.CheckpointError as exc:
+        # One return's problem, said by name (the review's S4).
+        raise StoreError(str(exc)) from None
+    try:
+        yield opened
+    finally:
+        opened.close()
+
+
+@dataclass
+class _Judgment:
+    """What the checkpoint makes of a record read now (decision 159): the
+    kind of refusal (empty for none), the line it is about, and the lines
+    another machine wrote that are accepted."""
+
+    kind: str = ""
+    seq: int = 0
+    host: str = ""
+    foreign: list[tuple[int, str, str]] = _default(default_factory=list)
+    problem: str = ""
+
+
+_SHORTER, _REWRITTEN, _CLAIMS, _NO_WRITER, _FOREIGN = "shorter", "rewritten", "claims", "no writer", "foreign"
+#: A line past the checkpoint whose writer or link the gate's rule refuses
+#: (decision 187): judged by nobody, refused as the gate refuses it.
+_MALFORMED = "malformed"
+
+
+def _judge(vouched: tuple[int, str], intent: checkpoint.Intent | None, events: list[dict],
+           chain: list[str]) -> _Judgment:
+    """The one judgment of a record against this machine's checkpoint -
+    the pass's and :func:`verify`'s alike (the review's S3), so neither has
+    a copy of the rule.
+
+    - **Shorter** than the lines vouched for; **rewritten**: the chain
+      through them is not the one kept.
+    - **Longer:** a line naming this machine (``locking.is_this_host``,
+      any case - the review's S1) is its own only when it is exactly one of
+      the lines the intent said it would write (:meth:`Intent.owns`);
+      otherwise it **claims** this machine. A line naming no host has **no
+      writer**. A line naming another host is accepted and named unless
+      :func:`tracker.checkpoint.foreign_lines_refused` says otherwise.
+    """
+    count, head = vouched
+    if len(events) < count:
+        return _Judgment(_SHORTER, count)
+    if ledger.chain_at(chain, count) != head:
+        return _Judgment(_REWRITTEN, count)
+    foreign = []
+    for seq in range(count + 1, len(events) + 1):
+        # The gate's rule of a writer first (decisions 159 and 187): a
+        # name it refuses - ``"VM "`` on the machine ``vm`` - is neither
+        # this machine's nor another's, and is never named for a person.
+        if problem := _line_keys_problem(events[seq - 1]):
+            return _Judgment(_MALFORMED, seq, problem=problem)
+        host = events[seq - 1].get(ledger.HOST_KEY)
+        if is_this_host(host):
+            if intent is None or not intent.owns(seq, ledger.chain_at(chain, seq)):
+                return _Judgment(_CLAIMS, seq)
+        elif not isinstance(host, str) or not host:
+            return _Judgment(_NO_WRITER, seq)
+        elif checkpoint.foreign_lines_refused():
+            return _Judgment(_FOREIGN, seq, host)
+        else:
+            foreign.append((seq, host, str(events[seq - 1].get(ledger.AT_KEY, ""))))
+    return _Judgment(foreign=foreign)
+
+
+def _prove_against_checkpoint(conn: sqlite3.Connection, key: str, events: list[dict],
+                              chain: list[str], *, row: sqlite3.Row | None = None,
+                              held: sqlite3.Connection | None = None,
+                              ) -> list[tuple[int, str, str]]:
+    """Hold the record to what this machine last saw of it (decision 159).
+
+    Called before any line is applied - by every catch-up, a first build,
+    :func:`record` before it appends, and :func:`rebuild_engagement` - with
+    the lines and their chain from the one read the caller made. A record
+    never seen seeds the checkpoint as it is - the moment of trust, logged.
+    Otherwise :func:`_judge` decides, and a refusal is raised by its
+    sentence. Returns the lines past the checkpoint that another machine
+    wrote, for :func:`_vouch_for` to record once they are applied.
+    """
+    with _beside(conn, held) as held:
+        if held is None:
+            return []
+        vouched = checkpoint.vouched(held, key)
+        if vouched is None:
+            checkpoint.advance(held, key, len(events), ledger.chain_at(chain, len(events)), seeded=True)
+            log.warning("checkpoint seeded for %s at %d line(s)", key, len(events))
+            return []
+        judged = _judge(vouched, checkpoint.intent(held, key), events, chain)
+    if judged.kind == _SHORTER:
+        raise StoreError(SHORTER.format(rel=key, n=len(events), count=judged.seq))
+    if judged.kind == _REWRITTEN:
+        # N2: the first line the store's own copy holds differently, when it
+        # holds one; else no line number is claimed that is not known.
+        line = (f"line {_rewritten_from(conn, row['id'], events, judged.seq)}" if row is not None
+                else AN_EARLIER_LINE)
+        raise StoreError(REWRITTEN_SINCE.format(rel=key, line=line))
+    if judged.kind == _CLAIMS:
+        raise StoreError(CLAIMS_THIS_MACHINE.format(n=judged.seq, rel=key))
+    if judged.kind == _MALFORMED:
+        name = events[judged.seq - 1].get(ledger.EVENT_KEY)
+        known = name if name in ledger.EVENTS | ledger.RETIRED_EVENTS else UNKNOWN_EVENT
+        raise StoreError(MALFORMED_LINE.format(where=key, seq=judged.seq, event=known,
+                                               problem=judged.problem))
+    if judged.kind == _NO_WRITER:
+        raise StoreError(NO_WRITER.format(n=judged.seq, rel=key))
+    if judged.kind == _FOREIGN:
+        raise StoreError(FOREIGN.format(n=judged.seq, rel=key, host=judged.host))
+    return judged.foreign
+
+
+def _vouch_for(conn: sqlite3.Connection, key: str, events: list[dict], chain: list[str],
+               foreign: list[tuple[int, str, str]], *,
+               held: sqlite3.Connection | None = None) -> None:
+    """After the lines are applied: record the lines another machine wrote,
+    and vouch for the whole record - as written here when this machine
+    wrote its last line, as taken on trust otherwise."""
+    with _beside(conn, held) as held:
+        if held is None:
+            return
+        if foreign:
+            checkpoint.note_foreign(held, key, foreign)
+        last_host = events[-1].get(ledger.HOST_KEY) if events else None
+        checkpoint.advance(held, key, len(events), ledger.chain_at(chain, len(events)),
+                           seeded=not is_this_host(last_host))
+
+
+def _intend(conn: sqlite3.Connection, key: str, chain: list[str], already: int, heads: list[str], *,
+            held: sqlite3.Connection | None = None) -> tuple[int, list[str]]:
+    """Say what :func:`record` is about to write: from the count this
+    machine vouches for, the chain after each line already proved its own
+    but not yet vouched for (an earlier batch a killed run left), then
+    ``heads``. A new intent never disowns lines an earlier one owned.
+    Returns the start and the heads said."""
+    with _beside(conn, held) as held:
+        if held is None:
+            return already, heads
+        vouched = checkpoint.vouched(held, key)
+        start = min(vouched[0], already) if vouched is not None else already
+        said = [ledger.chain_at(chain, seq) for seq in range(start + 1, already + 1)] + list(heads)
+        checkpoint.expect(held, key, start, said)
+        return start, said
+
+
+def _expect(conn: sqlite3.Connection, key: str, start: int, heads: list[str], *,
+            held: sqlite3.Connection | None = None) -> None:
+    """:func:`tracker.checkpoint.expect`, beside this store."""
+    with _beside(conn, held) as held:
+        if held is not None:
+            checkpoint.expect(held, key, start, heads)
+
+
+def prove_the_root(root: Path | str, *, claim: bool = True) -> None:
+    """Refuse a clients root this machine's checkpoint does not belong to
+    (decision 159, E5); claim it on first use when ``claim``.
+
+    **The one proof of a root** (the review's S2): the pass asks it of the
+    root it is about to walk, whether the settings named it or a person
+    typed it, and every writing command of the app of the settings' root.
+    **Only the settings' root claims** (the final review's SF1): the pass
+    proves a typed root with ``claim=False``, so a first pass typed on one
+    client's folder claims nothing and cannot lock out the scheduled one.
+    Keys are relative to the root, so a copy of the root elsewhere would
+    otherwise read as the same records and advance the same rows; the
+    refusal names both folders and the runbook's move procedure
+    (``python -m tracker.checkpoint <store> move-root <new root>``). The
+    claimed root itself, or a folder inside it (one client's folder run by
+    hand), is not a copy - asked of the layout (decision 188), which alone
+    says whether one folder lies under another.
+    A checkpoint that will not open is refused by name (the review's S4).
+    """
+    from tracker import layout
+
+    now = Path(root).resolve()
+    where = checkpoint.path_for(store_path())
+    if not claim and not where.is_file():
+        return
+    try:
+        with checkpoint.opened(where) as held:
+            claimed = checkpoint.claim_root(held, str(now)) if claim else checkpoint.root_of(held)
+    except checkpoint.CheckpointError as exc:
+        raise StoreError(str(exc)) from None
+    # Whether the root is the claimed one or inside it is decision 188's
+    # one question of a path under another (``layout.parts_below``); only
+    # whether this machine's checkpoint belongs to it is this function's.
+    if claimed is not None and layout.parts_below(Path(claimed), now) is None:
+        raise StoreError(ROOT_NOT_CLAIMED.format(claimed=claimed, now=now))
+
+
+def foreign_lines() -> list[checkpoint.Foreign]:
+    """Every line written on another machine that this machine accepted and
+    no person has acknowledged yet (decision 159, C-1 (a)) - what the
+    practice page names every pass. Creates nothing where there is no
+    checkpoint yet."""
+    where = checkpoint.path_for(store_path())
+    if not where.is_file():
+        return []
+    with checkpoint.opened(where) as held:
+        return checkpoint.unacknowledged(held)
+
+
+def acknowledge_foreign(engagement_dir: Path | str) -> int:
+    """A person has looked at the lines another machine wrote in one
+    record: they stop being named. Returns how many. The caller holds the
+    return's lock (the API's writing command does)."""
+    conn = connect()
+    row = _engagement_row(conn, engagement_dir)
+    key = row["path"] if row is not None else engagement_path(key_root(engagement_dir), engagement_dir)
+    with checkpoint.opened(checkpoint.path_for(store_path())) as held:
+        return checkpoint.acknowledge(held, key)
 
 
 # --------------------------------------------------------- the verdict cache ----
@@ -2278,7 +2699,8 @@ def _write_verdict(conn: sqlite3.Connection, engagement_id: int, digest: str, fi
 #: would lose. It replaces "rebuild the engagement", which discarded them.
 TRUNCATED = ("The journal of `{engagement}` holds fewer lines than the store has applied "
              "(the journal {n}, the store {m}). First restore the journal from Drive's trash or "
-             "version history. `rebuild` would discard the {k} line(s) only the store still holds.")
+             "version history. `rebuild` would discard the {k} line(s) only the store still holds. "
+             + ledger.RUN_RECOVER)
 #: What the check says of a stored engagement whose journal is gone.
 JOURNAL_GONE = ("The store holds {n} line(s) for `{engagement}` and its record is not there. "
                 f"Restore `{ledger.LEDGER_FILENAME}` from Drive's trash or version history.")
@@ -2379,6 +2801,20 @@ def rebuild_engagement(
     :class:`WouldDiscard`, which lists them, unless ``discard`` says a
     person has read the list; then it returns what it discarded. The answer
     to a lost journal is Drive's trash or version history, never a rebuild.
+
+    **Compare, then replay** (decision 159, G-2). Before a row is deleted
+    the record is held to this machine's checkpoint: a record shorter than
+    what it vouches for, rewritten under it, or carrying a line that claims
+    this machine and that this machine did not write is refused
+    (:data:`REBUILD_WOULD_LOSE`), because the store about to be deleted may
+    be the only other copy of what was lost. A record the reader refuses (a
+    broken link) raises the reader's own refusal. ``discard`` is the
+    one way past both refusals (decisions 188 and 159, one word for one
+    act): ``recover`` passes it after its export and its difference and a
+    person typing the return's name, and the command line's ``rebuild
+    --discard`` runs recover's first look - the export - before it, so no
+    line is dropped that nobody exported. The checkpoint is then seeded
+    again from the record as it is.
     """
     engagement_dir = Path(engagement_dir)
     rel = engagement_path(key_root(engagement_dir, root), engagement_dir)
@@ -2386,11 +2822,30 @@ def rebuild_engagement(
     if lost and not discard:
         raise WouldDiscard(WOULD_DISCARD.format(engagement=rel, k=len(lost)), lost)
     built_at = ledger.stamp()
-    with _transaction(conn):
+    with _transaction(conn), ExitStack() as stack:
         # The lines and their head from one read, inside the transaction
         # (decision 135): a line a writer records while this waits for the
         # lock is in the rows, not only in the head.
         events, head, chain = ledger.read_with_chain(engagement_dir)
+        known = _engagement_row(conn, engagement_dir, root)
+        # Asked of this record's own row: a row a wider root's tail-match
+        # found under another key is another record's lines.
+        if (not discard and known is not None and known["path"] == rel
+                and _only_the_store_holds(conn, known["id"], events)):
+            # Never delete rows that have not been exported (the final
+            # review's MF2): whatever the checkpoint says - no row at all
+            # included - a store holding a line the record lacks or holds
+            # differently is recover's to export first.
+            raise StoreError(REBUILD_WOULD_LOSE.format(rel=rel)
+                             + " (the store holds lines the record does not)")
+        held = stack.enter_context(_beside(conn))
+        if discard and held is not None:
+            checkpoint.forget(held, rel)
+        try:
+            foreign = _prove_against_checkpoint(conn, rel, events, chain, held=held,
+                                                row=_engagement_row(conn, engagement_dir, root))
+        except StoreError as exc:
+            raise StoreError(REBUILD_WOULD_LOSE.format(rel=rel) + f" ({exc})") from exc
         # The children go with it: every table references the engagement
         # with ON DELETE CASCADE and foreign keys are on, so one delete is
         # the whole of "forget what you knew about this folder".
@@ -2407,6 +2862,7 @@ def rebuild_engagement(
         )
         if events:
             _apply(conn, cursor.lastrowid, events, start=1)
+        _vouch_for(conn, rel, events, chain, foreign, held=held)
     return lost
 
 
@@ -2801,6 +3257,289 @@ def _write_csv(path: Path, header: list[str], rows) -> None:
             os.fsync(handle.fileno())
 
 
+# ------------------------------------------------------------ recover ----
+
+#: Where ``recover`` writes what it keeps, beside the store (decision 159):
+#: the data home, never the client tree.
+RECOVERED_DIR = "recovered"
+#: The sides of a difference, as ``recover`` prints them.
+ON_STORE, ON_RECORD, BOTH_DIFFERENT = "store", "record", "both-different"
+#: What ``recover`` says when the record itself does not read. The program
+#: never rewrites a record; restoring one is a person's act.
+RECORD_DOES_NOT_READ = ("the record itself does not read ({problem}); nothing can be replayed "
+                        "from it and nothing was changed. {restore} (runbook §6).")
+#: Where to restore an unreadable record from - named only when it is a copy
+#: worth restoring (the final review's MF3): the store's export holds every
+#: line the record still reads, and more.
+RESTORE_FROM_EXPORT = ("Compare it with {record_now} first; the store's export {export} holds every "
+                       "line the record still reads, and may be copied over it")
+#: Otherwise no file the tracker wrote is one to restore from.
+NO_USABLE_COPY = ("This machine's store holds no copy of this return that covers what the record "
+                  "still reads; restore from a conflict copy or the firm's off-drive copy, and ask "
+                  "Jason")
+ACCEPTED = "accepted: {n} line(s) the store had that the record does not"
+WRONG_NAME = ("the loss is accepted only by the return's own folder name, typed exactly "
+              "({given!r} is not it); nothing was changed")
+
+
+@dataclass
+class Difference:
+    """One line the store and the record do not agree on - by its number,
+    which side has it, and what kind of line it is. Never a payload value
+    (principle 7): a forged line's text is exactly what must not be echoed."""
+
+    seq: int
+    side: str
+    event: str
+    at: str
+    host: str
+
+
+@dataclass
+class Recovery:
+    """What ``recover`` did, for the command line to say."""
+
+    export: Path | None
+    record_copy: Path | None
+    differences: list[Difference]
+    lost: int
+    accepted: bool = False
+    refusal: str = ""
+
+
+def _store_file(conn: sqlite3.Connection) -> Path:
+    for row in conn.execute("PRAGMA database_list"):
+        if row[1] == "main" and row[2]:
+            return Path(row[2])
+    raise StoreError("this store is not a file; there is nowhere beside it to recover into")
+
+
+def _exclusively(path: Path, data: bytes) -> Path:
+    """Write ``data`` to a new file, never over one: the next free
+    ``-1``, ``-2`` name when the second is taken."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    candidate, n = path, 0
+    while True:
+        try:
+            with candidate.open("xb") as handle:
+                handle.write(data)
+                handle.flush()
+                os.fsync(handle.fileno())
+            return candidate
+        except FileExistsError:
+            n += 1
+            candidate = path.with_name(f"{path.stem}-{n}{path.suffix}")
+
+
+def _described(payload: str | None) -> tuple[str, str, str]:
+    """A line's event name, time and host, each shown only when it has the
+    shape one of them has - so nothing a line carries is echoed as it is."""
+    try:
+        event = json.loads(payload) if payload is not None else None
+    except (ValueError, RecursionError):
+        event = None
+    if not isinstance(event, dict):
+        return "(does not read)", "", ""
+    name = event.get(ledger.EVENT_KEY)
+    at, host = event.get(ledger.AT_KEY), event.get(ledger.HOST_KEY)
+    # The gate's own rules of a writer and a time (the review's S5; one
+    # rule each, in ``records``, since decision 187). A line whose writer or
+    # time fails its rule shows neither: the two are judged together.
+    if host is None:
+        return (name if name in ledger.EVENTS else "(unknown event)",
+                at if not records.stamp_problem(at) else "?", "")
+    written = not records.stamp_problem(at) and not records.host_problem(host)
+    return (name if name in ledger.EVENTS else "(unknown event)",
+            at if written else "?", host if written else "?")
+
+
+def recover(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str, *,
+            accept_loss: str | None = None, now: dt.datetime | None = None) -> Recovery:
+    """Compare, export, and replay only when the loss is accepted by name
+    (decision 159, G-2). The runbook's recovery; what ``rebuild`` refuses
+    to do silently.
+
+    1. **Export first, always**: the store's copy of the return's lines -
+       each payload is the writer's own line - and the record file as it
+       is now, both into :data:`RECOVERED_DIR` beside the store, never
+       over an existing file. A store holding nothing for the return
+       writes no export - an empty file is never offered as a copy.
+    2. **The difference**: each line the two do not agree on, by seq, side,
+       event, time and host (:class:`Difference`) - no payload value.
+    3. Only when ``accept_loss`` is the return folder's own name, typed
+       exactly, and the record reads: the return's rows are rebuilt from
+       the record and the checkpoint is seeded again from it (the moment of
+       trust), its lines from other machines cleared.
+
+    A record that does not read is said so by the first look already, and
+    never offered a replay (:data:`RECORD_DOES_NOT_READ`): nothing here
+    rewrites a record, and the export is named as the copy to restore from
+    only when it holds every line the record still reads
+    (:data:`RESTORE_FROM_EXPORT`, else :data:`NO_USABLE_COPY`).
+    """
+    engagement_dir = Path(engagement_dir)
+    rel = engagement_path(key_root(engagement_dir, root), engagement_dir)
+    row = _engagement_row(conn, engagement_dir, root)
+    held = {} if row is None else {
+        one["seq"]: one["payload"]
+        for one in conn.execute("SELECT seq, payload FROM events WHERE engagement_id = ? ORDER BY seq",
+                                (row["id"],))}
+    stamp = (now or dt.datetime.now()).strftime("%Y-%m-%d-%H%M%S")
+    base = _store_file(conn).parent / RECOVERED_DIR / f"{rel.replace('/', '__')}-{stamp}.jsonl"
+    export = (_exclusively(base, "".join(f"{held[seq]}\n" for seq in sorted(held)).encode("utf-8"))
+              if held else None)
+    now_bytes = ledger._bytes_of(ledger.path_for(engagement_dir))
+    record_copy = (None if now_bytes is None else
+                   _exclusively((export or base).with_name(base.stem + ".record-now.jsonl"), now_bytes))
+
+    problem, readable = "", 0
+    try:
+        events = ledger.read_events(engagement_dir)
+        on_record = [json.dumps(event, ensure_ascii=False, sort_keys=True) for event in events]
+    except ledger.LedgerError as exc:
+        # The reader's own sentence, without its pointer back to recover.
+        problem = str(exc).removesuffix(" " + ledger.RUN_RECOVER).rstrip(".")
+        readable = max(0, (exc.line or 1) - 1)
+        on_record = [line.decode("utf-8", "replace") for line in (now_bytes or b"").split(b"\n")
+                     if line.strip()]
+    differences: list[Difference] = []
+    lost = 0
+    for seq in range(1, max(len(held), len(on_record)) + 1):
+        mine = held.get(seq)
+        theirs = on_record[seq - 1] if seq <= len(on_record) else None
+        if mine == theirs:
+            continue
+        if mine is not None:
+            lost += 1
+        side = ON_STORE if theirs is None else ON_RECORD if mine is None else BOTH_DIFFERENT
+        for payload in (mine, theirs):
+            if payload is not None:
+                differences.append(Difference(seq, side, *_described(payload)))
+    result = Recovery(export=export, record_copy=record_copy, differences=differences, lost=lost)
+    if problem:
+        # Said by the first look, and no replay offered (MF3).
+        restore = (RESTORE_FROM_EXPORT.format(record_now=record_copy, export=export)
+                   if export is not None and len(held) >= readable
+                   and all(held.get(seq) == on_record[seq - 1] for seq in range(1, readable + 1))
+                   else NO_USABLE_COPY)
+        result.refusal = RECORD_DOES_NOT_READ.format(problem=problem, restore=restore)
+        return result
+    if accept_loss is None:
+        return result
+    if accept_loss != engagement_dir.name:
+        result.refusal = WRONG_NAME.format(given=accept_loss)
+        return result
+    rebuild_engagement(conn, root, engagement_dir, discard=True)
+    log.warning("%s: recovered by a person's acceptance; %d line(s) the store had are not in the "
+                "record, kept in %s", rel, lost, export)
+    result.accepted = True
+    return result
+
+
+# ------------------------------------------------------------- verify ----
+
+#: The classes of problem ``verify`` names, one per line with a path below
+#: the root and never a word of a document.
+V_RECORD = "the record does not read"
+V_SHORTER = "the record is shorter than this machine last saw"
+V_REWRITTEN = "the record no longer matches what this machine last saw"
+V_CLAIMS = "a line says it was written on this machine and was not"
+V_NO_WRITER = "a line past what this machine saw carries no writer"
+V_FOREIGN = "a line was written on another machine, which is refused"
+#: A line the store's admission refuses (decision 187), named by the gate's
+#: own sentence - which names the field and the class, never the value.
+V_MALFORMED = "a line is outside the record's rule"
+V_STORE = "the store has applied lines the record does not hold"
+V_MISSING = "a recorded file is missing"
+V_CHANGED = "a recorded file holds other bytes"
+V_BY_KIND = {_CLAIMS: V_CLAIMS, _NO_WRITER: V_NO_WRITER, _FOREIGN: V_FOREIGN, _MALFORMED: V_MALFORMED}
+
+
+def verify(conn: sqlite3.Connection, held: sqlite3.Connection | None, root: Path | str) -> list[str]:
+    """Every problem, firm-wide, as ``class: path below the root``
+    (decision 159, G-10). Read-only: ``conn`` and ``held`` are opened
+    read-only by the caller, no lock is taken, nothing is seeded, copied,
+    moved or created, and a cloud placeholder is never read (reading one
+    downloads it).
+
+    For every folder with a record: the record reads (links, format);
+    every line is inside the store's admission (decision 187); it extends
+    what the checkpoint vouches for; the store has applied a prefix of it. For every row: its original and each working copy it claims are
+    there and hold the row's bytes - proved by the filer's own proof of a
+    row's bytes (``filer.holds_the_row``, decision 109's reading), not a
+    second one.
+    """
+    from tracker import layout, registry
+    from tracker.filer import FILE_MOVED, holds_the_row
+    from tracker.layout import locate
+    from tracker.validators import is_cloud_placeholder
+
+    root = Path(root)
+
+    def below(path: Path) -> str:
+        # The layout's one question of a path under another (decision 188).
+        parts = layout.parts_below(root, path)
+        return str(path) if parts is None else "/".join(parts) or "."
+
+    problems: list[str] = []
+    for folder in registry.record_dirs(root):
+        try:
+            events, _head, chain = ledger.read_with_chain(folder)
+        except ledger.LedgerError as exc:
+            problems.append(f"{V_RECORD}: {below(folder)} ({exc})")
+            continue
+        row = _engagement_row(conn, folder, root)
+        key = row["path"] if row is not None else engagement_path(key_root(folder, root), folder)
+        # Every line held to the one admission first (decision 187), as
+        # ``check`` holds it: no place a line names is looked at, and no
+        # writer judged, before the line's values are inside the rule.
+        refused = ""
+        for seq, event in enumerate(events, start=1):
+            try:
+                _refuse_a_malformed_line(event, seq, key,
+                                         kind=row["kind"] if row is not None else KIND_RETURN)
+            except StoreError as exc:
+                refused = str(exc)
+                break
+        if refused:
+            problems.append(f"{V_MALFORMED}: {below(folder)} ({refused})")
+            continue
+        vouched = checkpoint.vouched(held, key) if held is not None else None
+        if vouched is not None:
+            # The pass's own judgment, not a copy of it (the review's S3).
+            judged = _judge(vouched, checkpoint.intent(held, key), events, chain)
+            if judged.kind == _SHORTER:
+                problems.append(f"{V_SHORTER}: {below(folder)} ({len(events)} of {judged.seq})")
+            elif judged.kind == _REWRITTEN:
+                problems.append(f"{V_REWRITTEN}: {below(folder)}")
+            elif judged.kind:
+                problems.append(f"{V_BY_KIND[judged.kind]}: {below(folder)} line {judged.seq}")
+        if row is not None and (row["applied_seq"] > len(events) or
+                                ledger.chain_at(chain, row["applied_seq"]) != row["applied_digest"]):
+            problems.append(f"{V_STORE}: {below(folder)}")
+        entries = [records.entry_from_json(one) for one in ledger.replay(events).rows.values()]
+        claims: dict[str, int] = {}
+        for position, entry in enumerate(entries):
+            if entry.digest and entry.decision != FILE_MOVED:
+                for location in entry.filed_locations:
+                    claims[location] = position
+        for position, entry in enumerate(entries):
+            if not entry.digest:
+                continue
+            places = [location for location in entry.filed_locations if claims.get(location) == position]
+            if entry.pbc_location:
+                places.insert(0, entry.pbc_location)
+            for location in places:
+                path = locate(folder, location)
+                if not path.is_file():
+                    problems.append(f"{V_MISSING}: {below(path)}")
+                elif is_cloud_placeholder(path):
+                    continue
+                elif not holds_the_row(path, entry.digest):
+                    problems.append(f"{V_CHANGED}: {below(path)}")
+    return problems
+
+
 # -------------------------------------------------------------------- CLI ----
 
 
@@ -2843,16 +3582,20 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
         prog="python -m tracker.store",
-        description="Build, check and export the store: one database on this machine, "
-                    "rebuilt from each engagement's own record.",
+        description="Build, check, verify, recover and export the store: one database on this "
+                    "machine, rebuilt from each engagement's own record.",
     )
     parser.add_argument("store", help="the app folder, the settings file in it, or the store file itself")
-    parser.add_argument("command", choices=("rebuild", "check", "export", "state"))
+    parser.add_argument("command", choices=("rebuild", "check", "export", "state", "verify", "recover"))
     parser.add_argument("root", help="the clients root")
-    parser.add_argument("--engagement", help="one engagement folder instead of every one")
+    parser.add_argument("--engagement", help="one engagement folder instead of every one "
+                                             "(recover: the return to recover)")
     parser.add_argument("--out", help="where export writes its files")
     parser.add_argument("--discard", action="store_true",
                         help="rebuild: discard the lines only the store holds, once they are listed")
+    parser.add_argument("--accept-loss", metavar="NAME",
+                        help="recover: replay from the record, accepting the loss of the lines "
+                             "only the store had; NAME is the return folder's name, typed exactly")
     ns = parser.parse_args()
 
     given = Path(ns.store)
@@ -2874,6 +3617,29 @@ if __name__ == "__main__":
                 one = door.household_dir(Path(ns.engagement).absolute(), root=clients_root)
     except ValueError as exc:
         parser.error(str(exc))
+    if ns.command == "recover" and not ns.engagement:
+        parser.error("recover needs --engagement <the return folder>")
+
+    if ns.command == "verify":
+        # Read-only (decision 159, G-10): both files opened so that nothing
+        # can be written through them, no lock, nothing created.
+        try:
+            reading = open_read_only(chosen)
+            heads = checkpoint.open_read_only(checkpoint.path_for(chosen))
+        except (StoreError, checkpoint.CheckpointError) as exc:
+            parser.exit(1, f"{exc}\n")
+        try:
+            found = verify(reading, heads, clients_root)
+        finally:
+            reading.close()
+            if heads is not None:
+                heads.close()
+        print(f"\n{chosen}")
+        for line in found:
+            print(f"  {line}")
+        print(f"\n  {len(found)} problem(s)\n" if found else "\n  nothing to report\n")
+        raise SystemExit(1 if found else 0)
+
     # Every folder with a record, households included (decision 125): a
     # household's row is held in this same table and folded by the same
     # machinery, so a check that walked only the returns would leave each
@@ -2892,12 +3658,43 @@ if __name__ == "__main__":
                 parser.error("export needs --out")
             for written in export(connection, Path(ns.out)):
                 print(f"  wrote {written}")
+        elif ns.command == "recover":
+            done = recover(connection, clients_root, folders[0], accept_loss=ns.accept_loss)
+            if done.export is not None:
+                print(f"  kept the store's lines in {done.export}")
+            else:
+                print("  the store holds no line of this return; no export was written")
+            if done.record_copy is not None:
+                print(f"  kept the record as it is now in {done.record_copy}")
+            if done.differences:
+                print(f"  {'seq':>6}  {'side':<15} {'event':<28} {'at':<22} host")
+                for one in done.differences:
+                    print(f"  {one.seq:>6}  {one.side:<15} {one.event:<28} {one.at:<22} {one.host}")
+            else:
+                print("  the store and the record hold the same lines")
+            if done.accepted:
+                print(f"  {ACCEPTED.format(n=done.lost)}")
+            elif done.refusal:
+                print(f"  {done.refusal}")
+                failures = 1
+            else:
+                print(f"  nothing was changed; to replay from the record and accept the loss, "
+                      f"run again with --accept-loss \"{folders[0].name}\"")
+                failures = 1
         else:
             for engagement in folders:
                 if ns.command == "rebuild":
-                    # Never discards silently (SPEC-162 ruling 6): what would
-                    # go is listed, and --discard is a person's word.
+                    # Never discards silently (SPEC-162 ruling 6, decision
+                    # 159): what would go is listed, a record that does not
+                    # extend what this machine saw is refused by name and the
+                    # rest are still built, and --discard is a person's word -
+                    # taken only after recover's first look has exported the
+                    # store's copy of the return.
                     try:
+                        if ns.discard:
+                            kept = recover(connection, clients_root, engagement)
+                            if kept.export is not None:
+                                print(f"  kept {kept.export}")
                         lost = rebuild_engagement(connection, clients_root, engagement,
                                                   discard=ns.discard)
                     except WouldDiscard as refused:
@@ -2905,6 +3702,10 @@ if __name__ == "__main__":
                             print(line)
                         print(f"  {refused}")
                         failures += 1
+                        continue
+                    except (StoreError, ledger.LedgerError) as exc:
+                        failures += 1
+                        print(f"  refused {engagement.name}: {exc}")
                         continue
                     for line in lost:
                         print(f"  discarded{line}")
@@ -2930,8 +3731,10 @@ if __name__ == "__main__":
         parser.exit(1, f"{exc}\n")
     finally:
         close()
-    if failures:
+    if failures and ns.command == "check":
         print(f"\n  the store and the record do not agree ({failures})\n")
+    elif failures and ns.command == "rebuild":
+        print(f"\n  {failures} record(s) refused; nothing of theirs was rebuilt\n")
     else:
         print()
     raise SystemExit(1 if failures else 0)

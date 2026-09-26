@@ -156,7 +156,7 @@ from contextlib import ExitStack, nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tracker import content_check, door, ledger, ocr, store
+from tracker import checkpoint, content_check, door, ledger, ocr, store
 from tracker.filer import (
     HOUSEHOLD_NO_ROOM,
     NEEDS_REVIEW,
@@ -280,7 +280,9 @@ def _refuse_an_old_jobs_root(root: str) -> None:
     from the settings file's, or that has no settings root to agree with.
 
     A person running one folder by hand leaves ``--log`` off and is never
-    refused: a root on the command line still wins for them.
+    refused here - though since decision 159 (E5) a folder outside the
+    root this machine's record checkpoint belongs to is refused by
+    :func:`tracker.store.prove_the_root`.
     """
     try:
         configured = clients_root()
@@ -526,6 +528,18 @@ class RunReport:
     #: The households not served for the second pass running or more
     #: (decision 189): the pass exits :data:`NOT_SERVED_TWICE_EXIT_CODE`.
     not_served_twice: list[str] = field(default_factory=list)
+    #: Records that need a person (decision 159, A-8 / G-5): every copy a
+    #: sync client left beside a record or its lock (``ledger.siblings``),
+    #: never deleted by anything, and every line written on another machine
+    #: that no person has acknowledged. Named every pass until a person acts.
+    siblings: list[Path] = field(default_factory=list)
+    foreign: list[checkpoint.Foreign] = field(default_factory=list)
+
+    @property
+    def refused(self) -> list[EngagementRun]:
+        """The returns whose record was refused as altered or out of place
+        (decision 159): each such sentence ends with ``ledger.RUN_RECOVER``."""
+        return [r for r in self.runs if r.error and ledger.RUN_RECOVER in r.error]
 
     @property
     def processed(self) -> list[EngagementRun]:
@@ -1326,6 +1340,7 @@ def run_registry(
     if report is None:
         report = RunReport(today=today, dry_run=dry_run, reminders=reminders)
     report.misfits = list(registry.misfits)
+    report.siblings, report.foreign = records_needing_a_person(registry)
     reader_start_warning()          # this pass's count starts here
     if warning := ocr.reader_path_warning():
         # The app sits too deep for its reader: said once, loudly, rather
@@ -1495,6 +1510,25 @@ def _keep_the_order(report: RunReport, path: Path | None, hint: dict,
         _write_order_hint(path, hint)
 
 
+def records_needing_a_person(registry: Registry) -> tuple[list[Path], list[checkpoint.Foreign]]:
+    """The copies beside every household's and every return's record and
+    lock, and the lines from another machine not yet acknowledged
+    (decision 159, §4.4). Reads only: a copy is never deleted, moved or
+    renamed, because the tracker cannot know which one is right."""
+    folders = [household.path for household in registry.households]
+    folders += [engagement.path for engagement in registry.engagements]
+    siblings = [copy for folder in folders for copy in ledger.siblings(folder)]
+    try:
+        foreign = store.foreign_lines()
+    except Exception as exc:
+        # Nothing may stop a pass before its first household (decision
+        # 189): the checkpoint that will not open is said by its class -
+        # its message can name a folder - and the pass goes on.
+        log.warning("Could not read the record checkpoint (%s)", content_check.said_as_class(exc))
+        foreign = []
+    return siblings, foreign
+
+
 # ------------------------------------------------------------------ output ----
 
 
@@ -1562,6 +1596,11 @@ def append_log(path: Path | str, report: RunReport) -> Path:
             lines.append(f"            {run.draft_note}")
     for warning in report.warnings:
         lines.append(f"    ! {warning}")
+    if report.siblings or report.foreign or report.refused:
+        # The counts; the practice page names each (decision 159).
+        counts = STATUS_RECORDS_COUNTS.format(copies=len(report.siblings), foreign=len(report.foreign),
+                                              refused=len(report.refused))
+        lines.append(f"    ! {counts}")
     # A summary names client files, and a name NTFS holds is not always
     # one UTF-8 can (a lone surrogate); the log takes what it can write
     # rather than lose every engagement's line to one name.
@@ -1592,6 +1631,18 @@ STATUS_NOT_PASSED = "not this pass"
 #: What the Drafted cell says for an engagement whose reminder is held (decision 115).
 STATUS_HELD = "held ({n})"
 STATUS_INDEX_UNREADABLE = "{label}: the index could not be read ({error})"
+#: Records that need a person (decision 159, §4.4): drawn first, before the
+#: counts, and only when there is one - on a good day there is nothing.
+STATUS_RECORDS_HEADING = "Records that need a person"
+RECORD_SIBLING = ("{path}: a copy beside a record or its lock, left by a sync client or a second "
+                  "machine. The tracker never deletes one; a person decides which copy is right.")
+RECORD_FOREIGN = ("{key}: line {seq} was written on {host} ({at}). Once a person has looked, "
+                  "acknowledge it: {command}")
+#: The command that acknowledges, with this machine's own store in it - no
+#: placeholder a person would have to fill in (the review's N7).
+ACKNOWLEDGE_COMMAND = 'python -m tracker.checkpoint "{store}" acknowledge "{key}"'
+STATUS_RECORDS_COUNTS = ("records that need a person: {copies} copy(ies) beside a record, {foreign} "
+                         "line(s) from another machine, {refused} record(s) refused")
 
 #: The two tables, column by column, in the order they are drawn. There is
 #: no "Deferred writes" column any more: nothing a pass decides waits for
@@ -1753,6 +1804,7 @@ def write_status_page(root: Path | str, report: RunReport, *,
         "<body>",
         f"<h1>{esc(title)}</h1>",
         f'<p class="stamp">{esc(STATUS_GENERATED.format(stamp=stamp))}</p>',
+        *_records_needing_a_person(root, report),
         f"<h2>{esc(STATUS_ENGAGEMENTS_HEADING)} ({len(report.runs)})</h2>",
         *table(STATUS_COLUMNS,
                (_engagement_cells(run, parked.get(run.engagement.path, []))
@@ -1778,6 +1830,22 @@ def write_status_page(root: Path | str, report: RunReport, *,
     path = root / STATUS_PAGE_FILENAME
     write_text_atomically(path, page_text(lines))
     return path
+
+
+def _records_needing_a_person(root: Path, report: RunReport) -> list[str]:
+    """The page's first section (decision 159), one sentence per thing a
+    person must look at: a copy beside a record or a lock, a record refused
+    as altered, a line from another machine. Nothing when there is none."""
+    said = [RECORD_SIBLING.format(path=_under(root, copy)) for copy in report.siblings]
+    said += [f"{run.engagement.label}: {run.error}" for run in report.refused]
+    said += [RECORD_FOREIGN.format(key=line.key, seq=line.seq, host=line.host, at=line.at,
+                                   command=ACKNOWLEDGE_COMMAND.format(store=store.store_path(),
+                                                                      key=line.key))
+             for line in report.foreign]
+    if not said:
+        return []
+    return [f"<h2>{esc(STATUS_RECORDS_HEADING)} ({len(said)})</h2>",
+            "<ul>", *(f"<li>{esc(one)}</li>" for one in said), "</ul>"]
 
 
 def _engagement_status(engagement: Engagement) -> EngagementRun:
@@ -1828,12 +1896,15 @@ def status_report(registry: Registry, *, passed: Iterable[EngagementRun] = (),
     pass's own sentences, for the page's problems list (decision 189).
     """
     ran = {run.engagement.path: run for run in passed}
+    siblings, foreign = records_needing_a_person(registry)
     return RunReport(
         today=today or dt.date.today(),
         runs=[ran[engagement.path] if engagement.path in ran else _engagement_status(engagement)
               for engagement in registry.engagements],
         misfits=list(registry.misfits),
         warnings=list(warnings),
+        siblings=siblings,
+        foreign=foreign,
     )
 
 
@@ -1888,10 +1959,12 @@ def main(argv: list[str] | None = None) -> int:
     # The clients root has one home (decision 131): the scheduled job names
     # the app's settings folder, and this process reads everything the app
     # reads from there - the root and the store beside it - before anything
-    # reads settings at all. A root on the command line still wins: a
-    # person running one folder by hand.
+    # reads settings at all. A root on the command line is walked instead -
+    # a person running one folder by hand - as long as it is the root this
+    # machine's record checkpoint belongs to, or inside it (decision 159).
     if ns.settings:
         os.environ[ENV_SETTINGS_DIR] = ns.settings
+
     root = ns.root
     if not root:
         try:
@@ -1911,6 +1984,24 @@ def main(argv: list[str] | None = None) -> int:
         root = str(door.checked_root(root or None))
     except door.DoorError as exc:
         raise SystemExit(str(exc)) from None
+
+    # This machine's record checkpoint belongs to one clients root (decision
+    # 159, E5). Only the settings' root claims it, on the first real pass
+    # (the final review's SF1); the root this pass walks - the settings' or
+    # one typed by hand (the review's S2) - is held to that claim before
+    # anything is walked and never claims. A checkpoint that will not open
+    # is refused here by name (S4). The saved root is the one the door
+    # checks (decision 188): a saved root the door refuses claims nothing.
+    try:
+        saved = door.checked_root(None) if clients_root() is not None else None
+    except (SettingsError, door.DoorError):
+        saved = None
+    try:
+        if saved is not None:
+            store.prove_the_root(saved, claim=not ns.dry_run)
+        store.prove_the_root(root, claim=False)
+    except (StoreError, checkpoint.CheckpointError) as exc:
+        raise SystemExit(f"Clients folder problem: {exc}") from None
 
     try:
         loaded = discover_engagements(root)

@@ -9,7 +9,7 @@ import datetime as dt
 
 import pytest
 
-from tests.conftest import ensure, make_engagement, seed_statuses
+from tests.conftest import ensure, make_engagement, seed_statuses, written_elsewhere
 from tracker import ledger
 from tracker.layout import inbox_of, root_of
 from tracker.manifest import (
@@ -1483,7 +1483,6 @@ def test_the_client_tree_is_byte_identical_after_a_roll_forward_whose_record_nam
     Forward writes nothing, the client tree is byte for byte what it was,
     and the private tree gains nothing. (SPEC-188's T4 expects the pause
     for the path-shaped label too; the gate refuses that line first.)"""
-    import json
 
     from tracker.households import HOUSEHOLD_PAUSED
     from tracker.layout import CLIENTS_TREE, PRIVATE_TREE, private_household_dir
@@ -1496,8 +1495,10 @@ def test_the_client_tree_is_byte_identical_after_a_roll_forward_whose_record_nam
     original = journal.read_bytes()
     for forged, refused in [(f"../../{CLIENTS_TREE}/{PARK}/Drop files here", "not one folder name"),
                             ("Somebody Else", HOUSEHOLD_PAUSED[:40])]:
-        journal.write_bytes(original + (json.dumps(ledger.new(
-            ledger.RULES_CHANGED, info={"household": forged})) + "\n").encode("utf-8"))
+        # Forged as another machine's line, linked (decision 159): an
+        # unlinked one is refused by the reader before the gate is reached.
+        journal.write_bytes(original)
+        written_elsewhere(john, ledger.new(ledger.RULES_CHANGED, info={"household": forged}))
         with pytest.raises(Exception) as said:
             roll_household(household, target_year=2027, plans=[ReturnPlan(prior=john)])
         assert refused in str(said.value), said.value

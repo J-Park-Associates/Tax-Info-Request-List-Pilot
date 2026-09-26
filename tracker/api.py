@@ -43,6 +43,8 @@ Commands:
   settings / set-root      where the clients live (the settings file beside the app)
   install-schedule         register the daily job for that same folder
   unlock    clear a stale engagement lock (a fresh one is refused)
+  acknowledge-foreign  a person has looked at the lines another machine wrote
+            in one return's record; they stop being named (decision 159)
 """
 
 from __future__ import annotations
@@ -3699,6 +3701,41 @@ def _cmd_install_schedule(argv: list[str]) -> dict:
     }
 
 
+def _cmd_acknowledge_foreign(argv: list[str]) -> dict:
+    """A person has looked at the lines another machine wrote in one
+    return's record (decision 159, C-1 (a)): they stop being named on the
+    practice page. Taken under the return's lock, like every write."""
+    engagement = _engagement_dir(argv)
+    with engagement_lock(engagement):
+        acknowledged = store.acknowledge_foreign(engagement)
+    return {"acknowledged": acknowledged, "state": _state(engagement)}
+
+
+#: The commands that write a record, a file or the store. Each holds the
+#: settings' root to this machine's record checkpoint first (decision 159,
+#: E5): a checkpoint that belongs to another root is refused by name
+#: before anything is written.
+WRITING_COMMANDS = frozenset({
+    "rollover", "roll-household", "mark-shared", "scan", "approve", "create", "assign",
+    "dismiss", "unfile", "restore", "edit", "edit-household", "unlearn", "rename",
+    "mark-missing", "acknowledge-foreign",
+})
+
+
+def _prove_the_root() -> None:
+    """:func:`tracker.store.prove_the_root` for the root the settings name,
+    said as the API says every refusal. The root is the door's first
+    (decision 188, :func:`_saved_root`): a root its rule refuses is said in
+    its sentence and never asked of the checkpoint."""
+    root = _saved_root()
+    if root is None:
+        return
+    try:
+        store.prove_the_root(root)
+    except store.StoreError as exc:
+        raise ManifestError(str(exc)) from None
+
+
 COMMANDS = {
     "state": _cmd_state,
     "priors": _cmd_priors,
@@ -3726,6 +3763,7 @@ COMMANDS = {
     "settings": _cmd_settings,
     "set-root": _cmd_set_root,
     "install-schedule": _cmd_install_schedule,
+    "acknowledge-foreign": _cmd_acknowledge_foreign,
 }
 
 
@@ -3734,6 +3772,8 @@ def main(argv: list[str]) -> int:
         print(json.dumps({"error": f"usage: tracker.api {'|'.join(COMMANDS)}"}))
         return 1
     try:
+        if argv[0] in WRITING_COMMANDS:
+            _prove_the_root()
         # One reading child for the command, started only if something is
         # read, and ended with it (decision 169, R-4).
         with ocr.reading_session(in_a_child=content_check.READ_IN_A_CHILD):
