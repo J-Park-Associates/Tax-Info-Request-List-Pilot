@@ -362,6 +362,10 @@ OUT_OF_TIME_NO_DRAFT = "not drafted this pass: the household's time ran out"
 #: order and the not-served count reads it, and deleting it resets both.
 PASS_ORDER_FILENAME = "pass-order.json"
 PASS_ORDER_VERSION = 1
+#: The largest hint read (the review's S1): a file past it is not parsed.
+#: A real hint is one short line per household, well under a kilobyte for
+#: a practice's worth; anything this large is not one.
+PASS_ORDER_MAX_BYTES = 64 * 1024
 ORDER_HINT_UNREADABLE = ("the pass order could not be read; households ran in folder order "
                          "this pass")
 #: The exit code of a pass in which some household was not served for the
@@ -826,8 +830,13 @@ def run_household(
         # return not already skipped or failed carries it.
         for run in working or [one for one in runs if not one.skipped and not one.error]:
             if not run.error:
-                run.error = f"{exc.__class__.__name__}: {exc}"
-                run.draft_note = traceback.format_exc(limit=3).strip().splitlines()[-1]
+                # Its class and code, never its message (security principle
+                # 7; the review's S2): the message can name a client's
+                # folder, and this reaches the page and the run log. The
+                # whole trace is on stderr for a person.
+                run.error = content_check.said_as_class(exc)
+        log.error("A household stopped early (%s)", content_check.said_as_class(exc),
+                  exc_info=True)
     if unreached or any(run.out_of_time for run in working):
         # The household's time ran out (decision 189): every working return
         # says so, whichever step it ran out in, and the rest waits.
@@ -1274,8 +1283,8 @@ def run_registry(
     run once more at the end, with a fresh budget, and its runs replace the
     first attempt's. A household not served two passes running or more is
     named (:data:`NOT_SERVED_TWICE`) and the pass exits
-    :data:`NOT_SERVED_TWICE_EXIT_CODE`. A dry run reads the hint and writes
-    nothing; an ``only`` run updates the households it served.
+    :data:`NOT_SERVED_TWICE_EXIT_CODE`. A dry run reads the hint for its
+    order and writes, counts and names nothing; an ``only`` run updates the households it served.
 
     ``report`` is the caller's, filled as each household finishes
     (decision 189): when something in this function's own code raises,
@@ -1354,7 +1363,13 @@ def _working(runs: list[EngagementRun]) -> list[EngagementRun]:
 def _read_order_hint(report: RunReport) -> tuple[Path | None, dict]:
     """Where the pass-order hint lives and what it says, by household
     folder name. Missing is the walk's order in silence; there and
-    unreadable is the walk's order and :data:`ORDER_HINT_UNREADABLE`."""
+    unreadable is the walk's order and :data:`ORDER_HINT_UNREADABLE`.
+
+    **Only ever a hint** (SPEC 2.3; the review's S1): a file past
+    :data:`PASS_ORDER_MAX_BYTES` is not parsed, and every error reading or
+    parsing it - a nested file's ``RecursionError`` and a ``MemoryError``
+    included - is the walk's order, said once. Nothing in it can stop a
+    pass before its first household."""
     try:
         path = store.store_path().parent / PASS_ORDER_FILENAME
     except Exception as exc:
@@ -1362,10 +1377,14 @@ def _read_order_hint(report: RunReport) -> tuple[Path | None, dict]:
         report.warnings.append(ORDER_HINT_UNREADABLE)
         return None, {}
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        with path.open("rb") as handle:
+            raw = handle.read(PASS_ORDER_MAX_BYTES + 1)
+        if len(raw) > PASS_ORDER_MAX_BYTES:
+            raise ValueError("past the hint's size")
+        payload = json.loads(raw.decode("utf-8"))
     except FileNotFoundError:
         return path, {}
-    except (OSError, ValueError) as exc:
+    except Exception as exc:
         log.warning("Could not read %s (%s)", path.name, exc.__class__.__name__)
         report.warnings.append(ORDER_HINT_UNREADABLE)
         return path, {}
@@ -1433,7 +1452,11 @@ def _why_not_served(runs: list[EngagementRun]) -> str:
 def _keep_the_order(report: RunReport, path: Path | None, hint: dict,
                     served: dict[Path, list[EngagementRun]], *, write: bool) -> None:
     """Fold this pass into the hint, name every household not served two
-    passes running, and write the hint whole (not on a dry run)."""
+    passes running, and write the hint whole. A dry run does none of it
+    (the review's N4): it keeps nothing, so it counts nothing, names no
+    household and never exits :data:`NOT_SERVED_TWICE_EXIT_CODE`."""
+    if not write:
+        return
     now = dt.datetime.now().isoformat(timespec="seconds")
     for household, runs in served.items():
         entry = dict(hint.get(household.name, {}))
@@ -1450,7 +1473,7 @@ def _keep_the_order(report: RunReport, path: Path | None, hint: dict,
         else:
             entry.update(completed=now, not_served=0)
         hint[household.name] = entry
-    if write and path is not None:
+    if path is not None:
         _write_order_hint(path, hint)
 
 
@@ -1748,8 +1771,10 @@ def _engagement_status(engagement: Engagement) -> EngagementRun:
     try:
         summary = summarize(load_manifest(engagement.path))
     except (ManifestError, LedgerError, StoreError, OSError) as exc:
-        # One bad record costs its own row, never the page (decision 189).
-        run.error = RECORD_UNREADABLE.format(problem=exc)
+        # One bad record costs its own row, never the page (decision 189),
+        # said by its class and code: the message can name the record's
+        # path, a client's folder (security principle 7; the review's S2).
+        run.error = RECORD_UNREADABLE.format(problem=content_check.said_as_class(exc))
         return run
     run.statuses = summary.counts
     run.outstanding = summary.outstanding
@@ -1932,12 +1957,21 @@ def main(argv: list[str] | None = None) -> int:
             page = write_status_page(loaded.source, status_report(
                 loaded, passed=result.runs, warnings=result.warnings))
         except Exception as exc:
-            # The page is a courtesy; the pass is the job. Every original has
-            # already been moved and every status written by the time we get
-            # here, so nothing about drawing a page may end this in a
-            # traceback - it is said in the log and the run stands.
-            log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, exc)
-            print(f"\n  ! {PAGE_NOT_WRITTEN.format(kind=exc.__class__.__name__)}")
+            # Every original has already been moved and every status written
+            # by the time we get here, so nothing about drawing a page may
+            # end this in a traceback. But a page stuck on yesterday must not
+            # look green (security principle 6; the review's S3): it is said
+            # in the run log, by its class only, and the pass exits 1.
+            kind = exc.__class__.__name__
+            log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, kind)
+            print(f"\n  ! {PAGE_NOT_WRITTEN.format(kind=kind)}")
+            failed = True
+            if log_path is not None:
+                try:
+                    with log_path.open("a", encoding="utf-8") as handle:
+                        handle.write(f"    ! {PAGE_NOT_WRITTEN.format(kind=kind)}\n")
+                except Exception as late:
+                    log.warning("Could not write %s (%s)", log_path.name, late.__class__.__name__)
         else:
             print(f"\n  The practice: {page}")
 

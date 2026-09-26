@@ -576,8 +576,8 @@ formatting character when it is saved, including the zero-width joiners
 some Persian, Arabic and Indic names and emoji use; the record keeps the
 name exactly as the email gave it (decision 176).
 
-The opening runs where the pass can stop it (decision 154), in the same
-process of its own each document is read in (decision 150), under the stop
+The opening runs where the pass can stop it (decision 154), in the
+reading's own process (decision 150), under the stop
 for a file - ten minutes. A container whose opening does not finish by
 then parks with the stop's sentence (`reasons.READING_STOPPED`), and one
 whose opening crashes parks with `reasons.READING_CRASHED`; either way
@@ -782,7 +782,13 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    busy or unwell; the rest of the practice ran, and the next pass tries
    again. *the record could not be written (ENOSPC)* is a full disk; other
    codes are the disk refusing the write (`EACCES`: a sync client or
-   antivirus holding the file). The run log gives each return's warnings
+   antivirus holding the file). A line the page read rather than ran, and
+   a household that stopped on something unexpected, name the same fault
+   by its kind and code alone - *StoreUnavailable (SQLITE_BUSY)*,
+   *RecordNotWritten (ENOSPC)*, *PermissionError (EACCES)* - never the
+   system's own words, which can name a client's folder. *the practice
+   page could not be written (…)* is said in `runs.log` instead, and the
+   Last Run Result is `0x1`: the page you are looking at is an old one. The run log gives each return's warnings
    as a count, *(warnings: 3)*; the page and the app have the sentences.
    **Run now** says the same: under the return's own result it lists the
    household's other returns' problems and the pass's own (the reader,
@@ -1061,7 +1067,7 @@ to send. A parked document is opened as its working copy in
 | `reasons.NO_PEOPLE_ON_FILE` | This return lists nobody yet, so nothing can confirm a named request. | Open **Edit Request List** and add the return's people (§10). Everything parked for this reason files itself on the next pass. |
 | `reasons.SEVERAL_FORMS_UNSORTED` | One page prints two or more forms' own names (a stack scanned in one pass) and they will not sort one to a request: a form no row asks for, two rows wanting one form, or a row that accepted the page on a phrase rather than a form number. When they do sort, the page files a copy under each request and the row's Reason says so (`reasons.NAMES_SEVERAL_FORMS`). | Split the scan, or file the whole page to the one request that matters and note the rest. |
 | `reasons.TOO_LARGE` | The file is larger than the tracker will read (`validators.MAX_READ_MB`) — a video, a disk image, a whole mailbox, or a genuinely enormous scan. It was not opened: no text, no OCR. It is still counted and kept like any other original. | Ask the client what it was meant to be. If you must look, do it as the paragraph above this table says, then file it. |
-| `reasons.READING_STOPPED` | The reader gave up on this file at the safety stop — a minute a page, ten minutes a file (decision 137). Something in it made reading far slower than any real document, or the machine was very busy at the time (time the machine spent asleep does not count, decision 189); it will not be tried again until the file changes. The stop covers the whole reading - the text layer, each page's drawing and the OCR - because each document is opened and read in a process of its own that the pass ends at the stop (decision 150). An email or a zip is opened in that process too, under the stop for a file, and one stopped there parks whole with nothing taken out of it (decision 154). That process never outlives the pass: if the schedule's own time limit stops the pass, the reading stops with it. | Open its working copy as the paragraph above this table says, and file it. |
+| `reasons.READING_STOPPED` | The reader gave up on this file at the safety stop — a minute a page, ten minutes a file (decision 137). Something in it made reading far slower than any real document, or the machine was very busy at the time (time the machine spent asleep does not count, decision 189). Since decision 189 the stop bounds the rules as well as the reading: the file is judged against its requests in the same process it is read in, so a typed Date Pattern on a request that is slow to match can cause this for every file judged against that request, until the pattern is changed - several files parked with this sentence against one request point at that request's Date Pattern. The verdict is kept, and not tried again until the file or its request's rules change. The stop covers the whole reading and the judgment - the text layer, each page's drawing, the OCR and the rules - because they run in the reading's own process, which the pass ends at the stop (decision 150). An email or a zip is opened in that process too, under the stop for a file, and one stopped there parks whole with nothing taken out of it (decision 154). That process never outlives the pass: if the schedule's own time limit stops the pass, the reading stops with it. | Open its working copy as the paragraph above this table says, and file it. |
 | `reasons.READING_CRASHED` | The reader's own process ended on this file without an answer - the PDF or OCR library crashed, the email or zip opener crashed (decision 154), or the machine ran out of memory (decision 150). Only this file is affected: the pass went on to the next one, and this file will not be tried again until it changes. | Open its working copy as the paragraph above this table says — never on the designated machine — and file it. If many files say it at once, the machine itself needs a look. |
 | `reasons.READER_UNAVAILABLE` | The reader could not start on this machine at all, so the file was never opened (decision 150). The machine's problem, never the file's: nothing is kept about the file and nothing is recorded - no index row, no Needs Review row. The file waits (in the inbox, or in the year's folder with no row) and is read again on the next pass. The pass's own summary and the run log say it once. | Look at the machine (memory, disk, antivirus, a damaged install). Once it is fixed, the next pass reads and files the waiting files; there is nothing to file by hand. |
 | `reasons.UNNAMED_ACROSS_HOUSEHOLDS` | This household's drop folder feeds a return in another household, and that return would have taken this document on its keywords alone — but the page names nobody, so it was not moved into a folder other people can open. It waits here (decision 137). The Evidence names the return and the request that wanted it, as `<return> / <request>`. The same holds for a document sent again that the other household already has. | Open it. If it is that return's, file it there with **File it**; if it is this household's, file it here. |

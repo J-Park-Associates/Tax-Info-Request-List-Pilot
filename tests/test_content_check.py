@@ -2272,6 +2272,45 @@ def test_no_document_word_crosses_the_pipe(tmp_path, in_a_child):
     assert MARKER.lower() not in repr(judged).lower()
 
 
+def test_a_parser_error_crosses_the_pipe_as_its_class_only(tmp_path, in_a_child):
+    """A reader that raises quotes what it choked on: openpyxl names the
+    cell's value, the operating system names the path. Neither crosses the
+    pipe (decision 189, M1): a workbook whose number cell holds a word
+    nobody else holds, in a folder named with it, is judged in the real
+    child, and the word and the path are in no pickled Judgment and in no
+    reason the router parks the file with - the class alone is said."""
+    import pickle
+    import re
+    import zipfile
+
+    import tracker.content_check as content_check
+    from tests.samples import sheet_xlsx
+    from tracker.router import route_file
+
+    folder = tmp_path / f"{MARKER} household"
+    folder.mkdir()
+    book = sheet_xlsx(folder / "statement.xlsx", [[1]])
+    with zipfile.ZipFile(book) as source:
+        parts = {name: source.read(name) for name in source.namelist()}
+    sheet = parts["xl/worksheets/sheet1.xml"].decode()
+    parts["xl/worksheets/sheet1.xml"] = re.sub(
+        r'<c r="A1"[^>]*>.*?</c>', f'<c r="A1" t="n"><v>{MARKER}</v></c>', sheet).encode()
+    with zipfile.ZipFile(book, "w", zipfile.ZIP_DEFLATED) as target:
+        for name, data in parts.items():
+            target.writestr(name, data)
+    row = item(any_keywords=("W-2",), allowed_extensions=("xlsx",), min_size_kb=0)
+
+    judged = content_check.judge_bounded(book, _questions_about(row))
+
+    assert judged.extraction.error == "ValueError"
+    blob = pickle.dumps(judged)
+    for word in (MARKER, str(folder)):
+        assert word.encode("utf-8") not in blob
+    routing = route_file(book, [row], judgment=judged)
+    assert "ValueError" in routing.reason
+    assert MARKER not in routing.reason and str(folder) not in routing.reason
+
+
 def test_no_client_text_is_matched_in_the_pass_own_process(tmp_path, in_a_child):
     """With the reader in its child, the pass's own process never matches a
     word: every function that reads a document's words - the rules, the

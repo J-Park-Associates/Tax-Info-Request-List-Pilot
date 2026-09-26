@@ -293,15 +293,15 @@ def check_name(
     for spelling in own:
         at = _said_at(text, spelling, page) if is_a_spelling(spelling) else None
         if at is not None:
-            where, page = _place_of(text, at)
-            return NameVerdict(NAME_CONFIRMED, matched=spelling, where=where, page=page)
+            where, page_number = _place_of(text, at)
+            return NameVerdict(NAME_CONFIRMED, matched=spelling, where=where, page=page_number)
     for label, spellings in others.items():
         for spelling in spellings:
             at = _said_at(text, spelling, page) if is_a_spelling(spelling) else None
             if at is not None:
-                where, page = _place_of(text, at)
+                where, page_number = _place_of(text, at)
                 return NameVerdict(NAME_VETOED, other=spelling, other_label=label,
-                                   where=where, page=page)
+                                   where=where, page=page_number)
     return NameVerdict(NAME_ABSENT)
 
 

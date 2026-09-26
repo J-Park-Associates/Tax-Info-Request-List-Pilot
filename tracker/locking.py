@@ -271,9 +271,20 @@ def boot_time() -> float | None:
     return time.time() - up
 
 
+#: How far before this machine's boot a lock's ``started=`` must be for
+#: the boot rule to judge it dead (the review's N2). ``started=`` is naive
+#: local time and the boot is ``time.time()`` less the uptime, so a clock
+#: corrected just after boot (w32time) or the fall-back hour of daylight
+#: saving can put a live lock of this machine a little before its boot. A
+#: lock a restart really left behind is hours older, so the margin costs
+#: nothing; within it, the age rule decides.
+BOOT_MARGIN_SECONDS = 120
+
+
 def _started_before_boot(started: str) -> bool:
     """Whether a lock line's ``started=`` is before this machine last
-    started. False when either cannot be read: no rule is no guess."""
+    started, by more than :data:`BOOT_MARGIN_SECONDS`. False when either
+    cannot be read: no rule is no guess."""
     booted = boot_time()
     if booted is None or not started:
         return False
@@ -281,7 +292,7 @@ def _started_before_boot(started: str) -> bool:
         when = dt.datetime.fromisoformat(started)
     except ValueError:
         return False
-    return when.timestamp() < booted
+    return when.timestamp() < booted - BOOT_MARGIN_SECONDS
 
 
 def _fields(text: str) -> dict[str, str]:

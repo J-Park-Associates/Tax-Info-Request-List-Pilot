@@ -514,6 +514,20 @@ def test_a_lock_older_than_the_last_boot_is_stale(tmp_path, monkeypatch):
         assert lock.read_text(encoding="utf-8") != lock_line(os.getpid(), started)
 
 
+def test_a_lock_started_within_the_margin_of_the_boot_is_left_to_the_age_rule(tmp_path, monkeypatch):
+    # A clock corrected just after boot, or the fall-back hour, can put a
+    # live lock of this machine a little before its boot (the review's N2):
+    # within the margin the boot rule does not judge it.
+    import tracker.locking as locking_module
+    from tracker.locking import BOOT_MARGIN_SECONDS, lock_status
+
+    booted = time.time() - 60
+    started = dt.datetime.fromtimestamp(booted - BOOT_MARGIN_SECONDS / 2)
+    (tmp_path / LOCK_FILENAME).write_text(lock_line(os.getpid(), started), encoding="utf-8")
+    monkeypatch.setattr(locking_module, "boot_time", lambda: booted)
+    assert not lock_status(tmp_path).stale
+
+
 def test_a_lock_without_a_readable_boot_falls_to_the_age_rule(tmp_path, monkeypatch):
     import tracker.locking as locking_module
     from tracker.locking import lock_status

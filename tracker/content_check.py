@@ -87,6 +87,7 @@ re-exported here for one release.
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import logging
@@ -97,7 +98,7 @@ from collections import OrderedDict
 from dataclasses import MISSING, asdict, dataclass, field, fields, replace
 from pathlib import Path
 
-from tracker import ocr, reasons, store
+from tracker import ledger, ocr, reasons, store
 from tracker.manifest import RequestItem, has_routing_rules, keyword_alternatives
 
 # The Evidence record and the cell format it is written in live in
@@ -234,6 +235,12 @@ READING_CHAR_BUDGET = TEXT_READ_CAP_MB * 1024 * 1024
 PACKINGS = (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)
 #: What a workbook packed any other way fails with.
 UNKNOWN_PACKING = "a part of it is packed in a way only a person's zip program opens"
+
+
+class UnknownPacking(ValueError):
+    """A workbook packed a way :data:`PACKINGS` does not hold. Its message
+    is the firm's own sentence (:data:`UNKNOWN_PACKING`), the one error a
+    reading says in words rather than by its class (:func:`said_as_class`)."""
 #: The clock the stop reads: the awake clock every part of a reading's
 #: stop reads (decision 189), so a machine that slept does not end a
 #: reading it never gave any time to. A name of its own so the suite can
@@ -1624,7 +1631,7 @@ def _extract_xlsx(path: Path) -> str:
     # "Schedule") and never down its rows.
     with zipfile.ZipFile(path) as archive:
         if any(info.compress_type not in PACKINGS for info in archive.infolist()):
-            raise ValueError(UNKNOWN_PACKING)
+            raise UnknownPacking(UNKNOWN_PACKING)
     parts: list[str] = []
     said = 0
     wb = load_workbook(path, read_only=True, data_only=True)
@@ -1817,8 +1824,10 @@ def _ocr_pdf(path: Path) -> str | None:
     except MemoryError:
         raise           # the child's memory limit: a crash, not a retry (SPEC-169 section 9)
     except Exception as exc:
-        log.warning("OCR failed on %s: %s", path.name, exc)
-        raise OcrError(f"{exc.__class__.__name__}: {exc}") from exc
+        # The class alone (decision 189, M1): a reader's message can quote
+        # the document or its path, and is neither logged nor carried.
+        log.warning("OCR failed on %s (%s)", path.name, said_as_class(exc))
+        raise OcrError(said_as_class(exc)) from exc
 
 
 def _ocr_image(path: Path) -> str | None:
@@ -1864,8 +1873,28 @@ def _ocr_image(path: Path) -> str | None:
     except MemoryError:
         raise           # the child's memory limit: a crash, not a retry (SPEC-169 section 9)
     except Exception as exc:
-        log.warning("OCR failed on %s: %s", path.name, exc)
-        raise OcrError(f"{exc.__class__.__name__}: {exc}") from exc
+        # The class alone (decision 189, M1): a reader's message can quote
+        # the document or its path, and is neither logged nor carried.
+        log.warning("OCR failed on %s (%s)", path.name, said_as_class(exc))
+        raise OcrError(said_as_class(exc)) from exc
+
+
+def said_as_class(exc: BaseException) -> str:
+    """How an error is said wherever a person or a record reads it
+    (decision 189, security principle 7): its class, and the code it
+    carries - an errno's name, or the code of a store or record the disk
+    refused - and never its message.
+
+    A parser's message quotes what it choked on (openpyxl quotes a cell's
+    value), and the operating system's names the path, which is a client's
+    folder. The message stays on the exception for a person debugging; it
+    is never quoted into a reason, the record, a page or the run log."""
+    name = exc.__class__.__name__
+    if isinstance(exc, (store.StoreUnavailable, ledger.RecordNotWritten)):
+        return f"{name} ({exc.code})"
+    if isinstance(exc, OSError) and exc.errno in errno.errorcode:
+        return f"{name} ({errno.errorcode[exc.errno]})"
+    return name
 
 
 class OcrError(RuntimeError):
@@ -1925,7 +1954,9 @@ def _extract(path: Path, *, ocr: bool) -> Extraction:
     except MemoryError:
         raise           # the child's memory limit: a crash, not a corrupt file (SPEC-169 section 9)
     except Exception as exc:  # a corrupt file is a reason, not a crash
-        error = f"{exc.__class__.__name__}: {exc}"
+        # Its class, never its message (decision 189, M1): a parser quotes
+        # the cell or the line it choked on, which is the document's words.
+        error = str(exc) if isinstance(exc, UnknownPacking) else said_as_class(exc)
         return Extraction(
             None, reason=reasons.EXTRACTION_FAILED.format(error=error),
             extractable=False, error=error,
@@ -2247,11 +2278,14 @@ def in_a_child(path: Path, job, *, stop: float | None = None, **kwargs) -> tuple
     if outcome.kind == "stopped":
         log.warning("Reading %s stopped at the safety stop (%.0f s)", path.name, stop)
         return None, abandoned(outcome.seconds)
+    # What crosses the pipe is the class and nothing after it (decision
+    # 189, M1): the child's "Class: message" can quote the document.
+    error = outcome.error.partition(":")[0]
     if outcome.kind == "failed":
         log.warning("The reader failed on %s: %s", path.name, outcome.trace)
-        return None, reading_failed(outcome.seconds, outcome.error)
-    log.warning("The reader stopped unexpectedly on %s: %s", path.name, outcome.error)
-    return None, reading_failed(outcome.seconds, outcome.error)
+        return None, reading_failed(outcome.seconds, error)
+    log.warning("The reader stopped unexpectedly on %s (%s)", path.name, error)
+    return None, reading_failed(outcome.seconds, error)
 
 
 # ---------------------------------------------------------------- checking ----

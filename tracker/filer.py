@@ -3874,146 +3874,152 @@ def _sort_all(
     pending = [(d, False) for d in drops] + [(p, True) for p in strays]
     for run in runs:
         run.cache.deadline = deadline      # a judgment past it is not started
-    for taken, (drop, already_filed) in enumerate(pending):
-        if not dry_run:
-            for run in runs:
-                run.cache.save()          # the file before this one's verdicts
-        # A file the sync client has not downloaded is not a document yet.
-        if is_cloud_placeholder(drop):
-            first.report.waiting.append(drop)
-            continue
-
-        try:
-            drop.stat()          # still there, and readable: a file mid-write is left
-        except OSError as exc:
-            first.report.errors.append(FileError(
-                drop.name, f"could not read it ({exc}); left in place", True
-            ))
-            log.warning("Left %s in place: %s", drop.name, exc)
-            continue
-
-        # A row's own original, back in the inbox (decision 157, ruling B7):
-        # its bytes are the one row's whose recorded original is gone. Asked
-        # only while some row's original is gone, so an ordinary pass hashes
-        # no drop twice. Two rows answering is a guess, and takes the
-        # ordinary road below.
-        if not already_filed and away:
-            coming_back = _digest_or_none(drop)
-            if coming_back and len(away.get(coming_back, ())) == 1:
-                [(home_run, position)] = away.pop(coming_back)
-                if _put_back_home(drop, coming_back, home_run, position, stamp, inbox, first):
-                    continue
-
-        # Past the household's time (decision 189, ruling 2.2), a file is
-        # taken only when its bytes are on some return's record, so the
-        # record decides it and nothing is read. Anything else would need a
-        # new judgment: it and the rest wait where they are.
-        if deadline is not None and ocr.awake_clock() >= deadline:
-            held = _digest_or_none(drop)
-            if not held or not any(held in run.known for run in runs):
-                _out_of_time(first, len(pending) - taken)
-                break
-
-        # The original moves once, out of the inbox into the folder the
-        # client can see for the year, and never again (decision 125): its
-        # resting place is the record's identity for the document. The move
-        # is a rename and decision 23 finishes it whichever side of a kill
-        # it falls on - an original in that folder with no row is sorted
-        # where it lies - so no intent is written for it.
-        #
-        # It keeps its own name unless another file has it - on the disk, or
-        # on a row of any of the household's returns (decision 147): a name
-        # a deleted original left is still that row's, whatever the bytes
-        # (decision 157) - the row's own coming back went home above.
-        if already_filed or dry_run:
-            original = drop if already_filed else originals_dir / drop.name
-        else:
-            try:
-                original = _unique_path(
-                    originals_dir, drop.name,
-                    recorded=_taken_in_the_year(first, runs))
-                _move_whole(drop, original, within=inbox)
-            except OSError as exc:
-                first.report.errors.append(FileError(
-                    drop.name,
-                    f"could not move it into {originals_dir.name} ({exc}); left in place",
-                    True,
-                ))
-                log.warning("Left %s in place: %s", drop.name, exc)
+    try:
+        for taken, (drop, already_filed) in enumerate(pending):
+            if not dry_run:
+                for run in runs:
+                    run.cache.save()          # the file before this one's verdicts
+            # A file the sync client has not downloaded is not a document yet.
+            if is_cloud_placeholder(drop):
+                first.report.waiting.append(drop)
                 continue
-        # The record is of the bytes that were preserved: hashed where they
-        # now are, after the move, so a sync client landing a newer version
-        # in between can never leave the index describing one file and the
-        # folder holding another.
-        recorded_at = drop if dry_run and not already_filed else original
-        try:
-            digest = sha256_of(recorded_at)
-            size_kb = round(recorded_at.stat().st_size / 1024, 1)
-        except OSError as exc:
-            if already_filed or dry_run:
+
+            try:
+                drop.stat()          # still there, and readable: a file mid-write is left
+            except OSError as exc:
                 first.report.errors.append(FileError(
                     drop.name, f"could not read it ({exc}); left in place", True
                 ))
                 log.warning("Left %s in place: %s", drop.name, exc)
                 continue
-            digest, size_kb = "", 0.0     # moved, unreadable now: recorded anyway
-            log.warning("Preserved %s but could not read it back: %s", drop.name, exc)
 
-        # An email or a zip is opened, and each attachment decided as a
-        # document of its own (decision 143) - after the move and the
-        # fingerprint, so the container is first an ordinary original with
-        # a row of its own, and a re-send of the same bytes is a plain
-        # duplicate that is never opened again. The extension alone says
-        # what is a container; one past the size ceiling is never read and
-        # parks unread like any drop.
-        opening = (containers.is_container(drop.name) and bool(digest)
-                   and not any(digest in run.known for run in runs)
-                   and not too_large_reason(recorded_at))
-        subfolder = "" if already_filed else _subfolder_of(drop, inbox)
-        came_from = CAME_FROM_SUBFOLDER.format(folder=subfolder) if subfolder else ""
+            # A row's own original, back in the inbox (decision 157, ruling B7):
+            # its bytes are the one row's whose recorded original is gone. Asked
+            # only while some row's original is gone, so an ordinary pass hashes
+            # no drop twice. Two rows answering is a guess, and takes the
+            # ordinary road below.
+            if not already_filed and away:
+                coming_back = _digest_or_none(drop)
+                if coming_back and len(away.get(coming_back, ())) == 1:
+                    [(home_run, position)] = away.pop(coming_back)
+                    if _put_back_home(drop, coming_back, home_run, position, stamp, inbox, first):
+                        continue
+
+            # Past the household's time (decision 189, ruling 2.2), a file is
+            # taken only when its bytes are on some return's record, so the
+            # record decides it and nothing is read. Anything else would need a
+            # new judgment: it and the rest wait where they are.
+            if deadline is not None and ocr.awake_clock() >= deadline:
+                held = _digest_or_none(drop)
+                if not held or not any(held in run.known for run in runs):
+                    _out_of_time(first, len(pending) - taken)
+                    break
+
+            # The original moves once, out of the inbox into the folder the
+            # client can see for the year, and never again (decision 125): its
+            # resting place is the record's identity for the document. The move
+            # is a rename and decision 23 finishes it whichever side of a kill
+            # it falls on - an original in that folder with no row is sorted
+            # where it lies - so no intent is written for it.
+            #
+            # It keeps its own name unless another file has it - on the disk, or
+            # on a row of any of the household's returns (decision 147): a name
+            # a deleted original left is still that row's, whatever the bytes
+            # (decision 157) - the row's own coming back went home above.
+            if already_filed or dry_run:
+                original = drop if already_filed else originals_dir / drop.name
+            else:
+                try:
+                    original = _unique_path(
+                        originals_dir, drop.name,
+                        recorded=_taken_in_the_year(first, runs))
+                    _move_whole(drop, original, within=inbox)
+                except OSError as exc:
+                    first.report.errors.append(FileError(
+                        drop.name,
+                        f"could not move it into {originals_dir.name} ({exc}); left in place",
+                        True,
+                    ))
+                    log.warning("Left %s in place: %s", drop.name, exc)
+                    continue
+            # The record is of the bytes that were preserved: hashed where they
+            # now are, after the move, so a sync client landing a newer version
+            # in between can never leave the index describing one file and the
+            # folder holding another.
+            recorded_at = drop if dry_run and not already_filed else original
+            try:
+                digest = sha256_of(recorded_at)
+                size_kb = round(recorded_at.stat().st_size / 1024, 1)
+            except OSError as exc:
+                if already_filed or dry_run:
+                    first.report.errors.append(FileError(
+                        drop.name, f"could not read it ({exc}); left in place", True
+                    ))
+                    log.warning("Left %s in place: %s", drop.name, exc)
+                    continue
+                digest, size_kb = "", 0.0     # moved, unreadable now: recorded anyway
+                log.warning("Preserved %s but could not read it back: %s", drop.name, exc)
+
+            # An email or a zip is opened, and each attachment decided as a
+            # document of its own (decision 143) - after the move and the
+            # fingerprint, so the container is first an ordinary original with
+            # a row of its own, and a re-send of the same bytes is a plain
+            # duplicate that is never opened again. The extension alone says
+            # what is a container; one past the size ceiling is never read and
+            # parks unread like any drop.
+            opening = (containers.is_container(drop.name) and bool(digest)
+                       and not any(digest in run.known for run in runs)
+                       and not too_large_reason(recorded_at))
+            subfolder = "" if already_filed else _subfolder_of(drop, inbox)
+            came_from = CAME_FROM_SUBFOLDER.format(folder=subfolder) if subfolder else ""
+            for run in runs:
+                run.context.came_from = came_from
+            try:
+                if opening:
+                    _open_container(drop, original, recorded_at, digest, size_kb, stamp, runs, first)
+                    continue
+                decided = _decide_across(drop, original, digest, size_kb, stamp, runs, first)
+                if decided is None:
+                    # The reader could not start (decision 150): the machine's
+                    # fault, not the file's, so nothing is decided and nothing
+                    # recorded. A drop already moved rests in the year's folder
+                    # with no row - a stray - and the next pass routes it where
+                    # it lies; the pass's one warning says how many wait.
+                    log.warning("Left %s for the next pass: the reader could not start", drop.name)
+                    continue
+                run, entry = decided
+            except OutOfTime:
+                # A drop on record that must be routed afresh, or an email or a
+                # zip an attachment of which would need a judgment, past the
+                # time: moved, unrecorded, a stray for the next pass (decision
+                # 23), and the household is out of time.
+                _out_of_time(first, len(pending) - taken)
+                break
+            except Exception as exc:  # the original is safe; say so and go on
+                log.exception("Could not file %s", drop.name)
+                run = first
+                entry = IndexEntry(
+                    received=stamp, original_name=drop.name, size_kb=size_kb,
+                    digest=digest, identifier="",
+                    prepared_location="", pbc_location=location_of(run.engagement_dir, original),
+                    decision=NEEDS_REVIEW,
+                    reason="; ".join(part for part in (
+                        f"could not be filed ({exc.__class__.__name__}: {exc}); "
+                        f"original preserved in {location_of(run.engagement_dir, original)} - "
+                        f"file it by hand", came_from) if part),
+                )
+                run.report.errors.append(FileError(drop.name, entry.reason, False))
+                run.report.review.append(entry)
+            finally:
+                for one in runs:
+                    one.context.came_from = ""
+
+            run.entries.append(entry)
+            if entry.decision != DUPLICATE and digest:
+                run.known[digest] = entry
+    finally:
         for run in runs:
-            run.context.came_from = came_from
-        try:
-            if opening:
-                _open_container(drop, original, recorded_at, digest, size_kb, stamp, runs, first)
-                continue
-            decided = _decide_across(drop, original, digest, size_kb, stamp, runs, first)
-            if decided is None:
-                # The reader could not start (decision 150): the machine's
-                # fault, not the file's, so nothing is decided and nothing
-                # recorded. A drop already moved rests in the year's folder
-                # with no row - a stray - and the next pass routes it where
-                # it lies; the pass's one warning says how many wait.
-                log.warning("Left %s for the next pass: the reader could not start", drop.name)
-                continue
-            run, entry = decided
-        except OutOfTime:
-            # A drop on record that must be routed afresh, past the time:
-            # moved, unrecorded, a stray for the next pass (decision 23).
-            _out_of_time(first, len(pending) - taken)
-            break
-        except Exception as exc:  # the original is safe; say so and go on
-            log.exception("Could not file %s", drop.name)
-            run = first
-            entry = IndexEntry(
-                received=stamp, original_name=drop.name, size_kb=size_kb,
-                digest=digest, identifier="",
-                prepared_location="", pbc_location=location_of(run.engagement_dir, original),
-                decision=NEEDS_REVIEW,
-                reason="; ".join(part for part in (
-                    f"could not be filed ({exc.__class__.__name__}: {exc}); "
-                    f"original preserved in {location_of(run.engagement_dir, original)} - "
-                    f"file it by hand", came_from) if part),
-            )
-            run.report.errors.append(FileError(drop.name, entry.reason, False))
-            run.report.review.append(entry)
-        finally:
-            for one in runs:
-                one.context.came_from = ""
-
-        run.entries.append(entry)
-        if entry.decision != DUPLICATE and digest:
-            run.known[digest] = entry
+            run.cache.deadline = None      # the sort's own, never a later caller's (the review's N8)
 
 
 def _out_of_time(first: _ReturnRun, left: int) -> None:
@@ -4329,21 +4335,36 @@ def _open_container(
         _keep(home, entry, digest)
         return
     named = _on_record((run.engagement_dir, run.entries) for run in runs)
-    waiting = [one.name for one, path, sha in taken
-               if path not in named
-               and not _decide_attachment(one, path, sha, stamp, runs, first, at)]
-    if waiting:
-        # The reader could not start on an attachment (decision 150): the
-        # machine's fault, not the file's, so that attachment gets no row -
-        # and neither does the container, or the next pass would know its
-        # bytes and never open it again. It rests in the year's folder as
-        # a stray; the next pass reopens it, reuses each file it finds by
-        # its bytes, skips each attachment a row already names, and reads
-        # the one that waited. The pass's one warning says how many wait.
+    waiting: list[str] = []
+    out_of_time = False
+    for one, path, sha in taken:
+        if path in named:
+            continue
+        try:
+            if not _decide_attachment(one, path, sha, stamp, runs, first, at):
+                waiting.append(one.name)
+        except OutOfTime:
+            # The household's time ran out before this attachment's
+            # judgment (decision 189, ruling 2.2; the review's M2): it and
+            # the rest wait, and the household is out of time exactly as
+            # when a drop is left unreached - said, and no draft is made.
+            out_of_time = True
+            break
+    if waiting or out_of_time:
+        # An attachment that waits - its reader could not start (decision
+        # 150), or the time ran out before it - gets no row, and neither
+        # does the container, or the next pass would know its bytes and
+        # never open it again. It rests in the year's folder as a stray;
+        # the next pass reopens it, reuses each file it finds by its bytes,
+        # skips each attachment a row already names, and reads the ones
+        # that waited. The pass's one warning says how many wait.
         home.opened.pop(ledger_key(entry), None)
         home.reopen.add(folder)
-        log.warning("Left %s for the next pass: the reader could not start on %s",
-                    drop.name, ", ".join(waiting))
+        if waiting:
+            log.warning("Left %s for the next pass: the reader could not start on %s",
+                        drop.name, ", ".join(waiting))
+        if out_of_time:
+            raise OutOfTime   # the sort says it and stops (_sort_all)
         return
     home.report.opened.append(entry)
     _keep(home, entry, digest)
@@ -4356,7 +4377,10 @@ def _decide_attachment(
     """Decide one attachment, already written at ``path``, as a drop is
     decided, with every row it writes naming its container - False, with
     nothing recorded, where the reader could not start on it (decision
-    150's :func:`_not_read`), True otherwise.
+    150's :func:`_not_read`), True otherwise. Past the household's time it
+    raises :class:`OutOfTime` with nothing recorded (decision 189, ruling
+    2.2): a wait for time is not a reader that could not start, and
+    :func:`_open_container` says the difference.
 
     It is read exactly as a drop is, through :func:`_decide_across` and so
     through :func:`tracker.router.read_once`: the open test and the whole
@@ -4388,10 +4412,7 @@ def _decide_attachment(
                 return False
             run, entry = decided
     except OutOfTime:
-        # The household's time ran out before this attachment's judgment
-        # (decision 189, ruling 2.2): it waits, as one whose reader could
-        # not start waits, and the container is opened again next pass.
-        return False
+        raise                         # a wait, not a failure: the container says it
     except Exception as exc:          # the file is safe where it was written; say so and go on
         log.exception("Could not file %s", attachment.name)
         run = first
