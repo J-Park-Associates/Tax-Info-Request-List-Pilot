@@ -838,23 +838,42 @@ def test_the_command_lines_check_exits_one_and_names_what_disagrees(root, engage
     assert "index row" in disagreed.stdout
 
 
-def test_the_command_line_takes_the_app_folder_the_settings_file_or_the_store_and_refuses_a_typo(
-        root, engagement, tmp_path):
+@pytest.fixture
+def this_account(tmp_path, monkeypatch):
+    """The app's settings folder and this account's data home, as a machine
+    with no ``TRACKER_STORE`` has them (decision 186): the store is the data
+    home's, and the settings folder holds only the pointer."""
+    from tracker.settings import ENV_DATA_HOME, ENV_SETTINGS_DIR, SETTINGS_FILENAME
+
+    app, home = tmp_path / "app", tmp_path / "account-data"
+    app.mkdir(exist_ok=True)
+    (app / SETTINGS_FILENAME).write_text("{}", encoding="utf-8")
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(app))
+    monkeypatch.setenv(ENV_DATA_HOME, str(home))
+    monkeypatch.delenv(store.ENV_STORE)
+    store.close()
+    yield app, home
+    store.close()
+
+
+def test_the_command_line_takes_the_app_folder_to_mean_the_data_homes_store(this_account, root, engagement,
+                                                                            tmp_path):
     """The runbook says "the app folder"; the integration run of decision 107
-    typed it and got an empty store beside the folder, because the argument
-    was resolved with ``with_name``. Three spellings mean one file, and a
-    typo means no file at all."""
+    typed it and got an empty store beside the folder. Since decision 186
+    the app folder and its settings file both mean this account's store, in
+    the data home; a store file named elsewhere is that copy, and a typo
+    means no file at all."""
     from tracker.settings import SETTINGS_FILENAME
 
-    app = tmp_path / "app"                                          # where the suite's store already is
-    app.mkdir(exist_ok=True)
+    app, home = this_account
     settings = app / SETTINGS_FILENAME
-    settings.write_text("{}", encoding="utf-8")
-    the_store = app / store.STORE_FILENAME
+    the_store = home / store.STORE_FILENAME
+    assert store.store_path() == the_store
 
     assert store.store_named(app) == the_store
     assert store.store_named(settings) == the_store
-    assert store.store_named(the_store) == the_store                # exists or not: rebuild creates it
+    a_copy = tmp_path / "copy" / store.STORE_FILENAME
+    assert store.store_named(a_copy) == a_copy                      # exists or not: rebuild creates it
     assert store.store_named(tmp_path / "apps") is None            # a typo of a folder
     assert store.store_named(app / f"{store.STORE_FILENAME}x") is None   # a typo of the file
 
@@ -865,7 +884,20 @@ def test_the_command_line_takes_the_app_folder_the_settings_file_or_the_store_an
 
     refused = cli(tmp_path / "apps", "check", root)
     assert refused.returncode == 2 and "nothing was opened" in refused.stderr
-    assert set(tmp_path.rglob(store.STORE_FILENAME)) == {the_store}  # and no store beside the typo
+    assert not list(app.rglob(store.STORE_FILENAME))                # nothing beside the program
+
+
+def test_the_command_line_refuses_the_old_store_beside_the_program_and_creates_nothing(
+        this_account, root, engagement):
+    app, home = this_account
+    old = app / store.STORE_FILENAME
+    assert store.store_named(old) == store.OLD_STORE_NAMED.format(path=old, store=home / store.STORE_FILENAME)
+
+    refused = cli(old, "rebuild", root)
+    assert refused.returncode == 1
+    assert store.OLD_STORE_NAMED.format(path=old, store=home / store.STORE_FILENAME) in refused.stderr
+    assert "Traceback" not in refused.stderr and "Traceback" not in refused.stdout
+    assert not old.exists()                                         # never opened, so never made
 
 
 def test_the_command_line_says_a_refused_store_in_one_sentence(root, tmp_path):
@@ -887,13 +919,17 @@ def test_the_command_line_says_a_refused_store_in_one_sentence(root, tmp_path):
 # -------------------------------------------------------------- the placement ----
 
 
-def test_the_store_is_placed_beside_the_settings_file_and_never_in_the_synced_folder(
-        root, by_hand, tmp_path):
-    settings = tmp_path / "app" / "settings.json"
-    assert store.path_for(settings) == settings.with_name(store.STORE_FILENAME)
-    assert root not in store.path_for(settings).parents
+def test_the_store_is_placed_in_the_data_home_and_never_beside_the_settings_file(
+        this_account, root, by_hand):
+    from tracker.settings import data_home, settings_path
 
-    conn = store.open(store.path_for(settings))
+    app, home = this_account
+    placed = store.store_path()
+    assert placed == data_home() / store.STORE_FILENAME == home / store.STORE_FILENAME
+    assert root not in placed.parents
+    assert placed.parent != settings_path().parent
+
+    conn = store.open(placed)
     try:
         build(conn, root, by_hand)
         with engagement_lock(by_hand):
@@ -901,9 +937,39 @@ def test_the_store_is_placed_beside_the_settings_file_and_never_in_the_synced_fo
                 ledger.FILED, key="p/one", row=a_row(pbc_location="p/one")))
         # While it is open, which is when the write-ahead log exists.
         assert _database_files_under(root) == []
+        assert _database_files_under(app) == []
     finally:
         conn.close()
     assert _database_files_under(root) == []
+    assert _database_files_under(app) == []
+
+
+def test_a_store_left_behind_is_rebuilt_from_the_record_in_its_new_home(root, engagement, tmp_path,
+                                                                         monkeypatch):
+    """Nothing is carried over (decision 186): the store an earlier version
+    kept beside the settings file is never read, and the empty one in the
+    data home is built from the engagement's own record on first use."""
+    from tracker.settings import ENV_DATA_HOME, ENV_SETTINGS_DIR
+
+    app = tmp_path / "app"
+    old = app / store.STORE_FILENAME                                # the fixture's store: the old place
+    conn = store.connect()
+    assert Path(store.store_path()) == old
+    build(conn, root, engagement)
+    store.close()
+    before = old.read_bytes()
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(app))
+    monkeypatch.setenv(ENV_DATA_HOME, str(tmp_path / "account-data"))
+    monkeypatch.delenv(store.ENV_STORE)
+    fresh = store.connect()
+    try:
+        assert store.store_path() == tmp_path / "account-data" / store.STORE_FILENAME
+        assert store.catch_up(fresh, root, engagement) >= 1
+        assert store.check(fresh, root, engagement) == []
+    finally:
+        store.close()
+    assert old.read_bytes() == before
 
 
 def _database_files_under(folder: Path) -> list[str]:

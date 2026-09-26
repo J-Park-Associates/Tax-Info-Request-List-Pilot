@@ -80,7 +80,7 @@ def test_the_tripwire_guards_every_place_a_real_settings_file_store_or_scratch_r
     monkeypatch.delenv(settings.ENV_SETTINGS_DIR)
     beside = settings.settings_path()
     guarded = {path for _label, path in real_places(REPO)}
-    for place in (beside, store.path_for(beside), beside.with_name(store.STORE_WAL_FILENAME),
+    for place in (beside, beside.with_name(store.STORE_FILENAME), beside.with_name(store.STORE_WAL_FILENAME),
                   beside.with_name(store.STORE_SHM_FILENAME), beside.with_name(SCHEDULE_XML_FILENAME),
                   settings.app_dir() / settings.OCR_SCRATCH_DIRNAME,
                   REPO / CLIENTS_TREE, REPO / PRIVATE_TREE,
@@ -95,7 +95,7 @@ def test_the_tripwire_guards_every_place_a_real_settings_file_store_or_scratch_r
     monkeypatch.setenv(settings.ENV_SETTINGS_DIR, str(named))
     guarded = {path for _label, path in real_places(REPO)}
     assert named / settings.SETTINGS_FILENAME in guarded
-    assert store.path_for(named / settings.SETTINGS_FILENAME) in guarded
+    assert named / store.STORE_FILENAME in guarded
     assert beside in guarded                      # the checkout's own stays guarded
 
 

@@ -19,8 +19,9 @@ synced return folder carries everything about that return: the
 working copies, the drafts and the return's own ledger,
 which holds the request list too; the originals sit in the client's own
 folder for the year, one tree over. There is no portal and no second copy of any of
-it. There *is* one database — `tracker.db`, beside the app on the
-designated machine — built from the ledgers in the folders, never synced
+it. There *is* one database — `tracker.db`, in the tracker's data folder on
+the designated machine (`%LOCALAPPDATA%\tax-document-tracker`, decision 186) —
+built from the ledgers in the folders, never synced
 and never opened by a person. Beside it sits a second, small file,
 `record-heads.db` (decision 159): this machine's note of how far every
 return's record went when it last wrote or read it. It is what lets the
@@ -29,13 +30,18 @@ a sync client restoring an older copy, a careless hand edit - instead of
 quietly rebuilding from it. It is never synced either, and it survives
 deleting `tracker.db`.
 
-**The app's folder is private to the firm.** `tracker.db` holds every
-client's index rows. (The reader writes nothing there or anywhere else
-while it reads, since decision 169, so there is no longer a folder of
-pages being read beside it.) The folder inherits its permissions from
-wherever the app was unpacked: put the app in a folder only the firm's
-accounts on that machine can read, not in a shared or public one. This is
-a machine-setup step; the tracker does not change permissions.
+**The tracker's data folder is private to one Windows account.** `tracker.db`
+holds every client's index rows, and it lives in
+`%LOCALAPPDATA%\tax-document-tracker` (decision 186): the account's own local
+application-data folder, which Windows lets only that account, the machine's
+administrators and the system read, and which is never synced and never
+roams. The scheduled task's file (`tax-tracker.xml`) sits there too. The
+app's own folder holds the program and `settings.json` — the clients folder,
+the firm's name and its telephone number, nothing about a client. Run the
+app and the schedule as the same Windows account: another account on the
+same machine keeps a database of its own, built from the ledgers on its
+first pass (slow once, never wrong). Nobody opens, copies or backs up the
+data folder; the ledgers are the backup.
 
 **A return the store refuses as "changed behind the tracker's back".** The
 store keeps a fingerprint of every line of a return's record it has read
@@ -361,9 +367,11 @@ changes nothing:
 
 - `python -m tracker.store "<the app folder>" check "<clients root>"` — the
   database against the ledgers, document by document, status by status and
-  rule by rule. The first argument is the folder the app runs from, where
-  the settings file and the database sit; the settings file's own path, or
-  the database file's, is taken the same way. Anything else — a mistyped
+  rule by rule. The first argument is the folder the app runs from, or its
+  settings file: either means this Windows account's database, in the
+  tracker's data folder (decision 186). A path to a `tracker.db` is taken as
+  that file — a copy you want to ask about — except the old one beside the
+  app, which is refused. Anything else — a mistyped
   folder, a file that is neither — is refused, so a typo can never create
   an empty database somewhere and check it against the ledgers. If it ever disagrees, do not
   reach for `rebuild`: run `recover` for the return it names (§6, *When a
@@ -408,6 +416,14 @@ changes nothing:
   beside the app once (§6, step 5). And delete the folder `ocr-scratch`
   beside the app if it is there: the old reader kept the page it was reading
   in it, the new one writes nothing, and nothing empties that folder any more.
+- **Once, when decision 186 lands** (the data folder). The database moves to
+  `%LOCALAPPDATA%\tax-document-tracker` and nothing is carried over: the
+  first pass builds it again from the ledgers and reads every document once
+  to refill the verdict cache — slow once, as above, so let it run outside
+  office hours. Its version does not change. Until you delete them, the
+  app's first screen names what the old version left beside the app —
+  `tracker.db`, `tracker.db-wal`, `tracker.db-shm`, `pass-order.json`, an
+  `ocr-scratch` folder. Nothing deletes them for you: delete them.
 
 There used to be a second one, a comparison flag on the ledger's own
 statuses against the request list's. There is nothing left for it to
@@ -1505,16 +1521,18 @@ which syncs. Any machine signed into the same Drive account has all of it
 already.
 
 **What was only on that machine:** the settings file beside the app
-(`tracker.settings.SETTINGS_FILENAME`), the database beside it
-(`tracker.store.STORE_FILENAME`), the record checkpoint beside that
+(`tracker.settings.SETTINGS_FILENAME`), the tracker's data folder
+(`%LOCALAPPDATA%\tax-document-tracker`, decision 186: the database
+`tracker.store.STORE_FILENAME`, the record checkpoint beside it
 (`record-heads.db`, `tracker.checkpoint.CHECKPOINT_FILENAME`), the folder
 `recovered` beside them if a recovery was ever run, the last-pass file
 (`last-pass.json`), the pass-order hint (`tracker.runner.PASS_ORDER_FILENAME`),
 the error log (`tracker.settings.ERROR_LOG_FILENAME`) and the `passes`
-folder (`tracker.progress.PASSES_DIRNAME`) beside it, the scheduled task,
-the app folder itself, and the graphics card pack if that machine had one
-(step 5). The last-pass file, the pass-order hint, the error log and the
-`passes` folder are not carried over: the new machine starts them afresh.
+folder (`tracker.progress.PASSES_DIRNAME`) beside it, and the task's file),
+the scheduled task, the app folder itself, and the graphics card pack if
+that machine had one (step 5). The last-pass file, the pass-order hint, the
+error log and the `passes` folder are not carried over: the new machine
+starts them afresh.
 
 **Carry `tracker.db` and `record-heads.db` over** (decision 159). The
 database can be built again from the ledgers, but the checkpoint cannot:
@@ -1522,12 +1540,15 @@ it is this machine's own note of how far every record went, and it is the
 only thing that can tell a record that a sync client quietly put back to
 an older copy from one that is simply as it was. **Both files are client
 data.** Copy them **over the office network**, straight from the old
-machine's app folder into the new machine's app folder, with the app
+machine's data folder into the new machine's data folder (the same
+`%LOCALAPPDATA%\tax-document-tracker`, under the Windows account that runs
+the app and the schedule there), with the app
 closed and the old machine's schedule off. **Never** by any other road:
 not the desktop, a USB drive, an email or a chat, the program's own folder
 in the repository or the Shared Drive. Then delete any copy left anywhere
 else. Copy `recovered` the same way if
-it is there. The first pass on the new machine still reads every
+it is there. Leave the rest of the old data folder, and delete it when the
+old machine is retired. The first pass on the new machine still reads every
 document once - the verdicts the old machine had cached are rebuilt, not
 trusted across machines - and is slower for it, never wrong.
 

@@ -227,11 +227,15 @@ from tracker.scanner import ScanLockedError, scan_engagement
 from tracker.settings import (
     ENV_SETTINGS_DIR,
     NO_ROOT_HINT,
+    OCR_SCRATCH_DIRNAME,
     SettingsError,
+    app_dir,
     clients_root,
+    data_home,
     error_log,
     firm,
     product_name,
+    settings_dir,
     settings_path,
 )
 from tracker.store import StoreError
@@ -260,6 +264,45 @@ LOG_FILENAME = "runs.log"
 #: end of every real pass. The log is the trace of one run; this is the
 #: standing answer to what the practice owes and what needs a person.
 STATUS_PAGE_FILENAME = "status.html"
+#: What an earlier version left and nothing uses (decision 186). Said on the
+#: app's first screen until it is gone; nothing is deleted for the person.
+LEFT_BEHIND = ("Left over from an earlier version and no longer used: {paths}. They hold client "
+               "names, and nothing deletes them for you - delete them. The tracker keeps its "
+               "database and its run log in {home} now.")
+
+
+def _spelled(path: Path) -> str:
+    return os.path.normcase(os.path.abspath(str(path)))
+
+
+def left_behind(root: Path | None) -> list[Path]:
+    """What an earlier version left where client data no longer lives: the store
+    and its two SQLite side files, the pass-order hint and the old OCR scratch
+    folder beside the settings file (and beside the frozen executable, where a
+    package without the shell kept them). Only what exists; nothing is opened,
+    moved or deleted. The store in use, its two side files and the hint beside
+    it are never named (``TRACKER_STORE`` may point beside the settings file:
+    the suite's own fixture does). In a source checkout only the settings
+    folder is looked at. ``root`` is the clients root, whose old
+    :data:`LOG_FILENAME` is named once the pass stops writing it there
+    (decision 186's 186d)."""
+    folders = [settings_dir().resolve()]
+    if getattr(sys, "frozen", False) and _spelled(app_dir()) != _spelled(folders[0]):
+        folders.append(app_dir())
+    in_use = store.store_path()
+    kept = {_spelled(in_use), _spelled(in_use.with_name(store.STORE_WAL_FILENAME)),
+            _spelled(in_use.with_name(store.STORE_SHM_FILENAME)),
+            _spelled(in_use.with_name(PASS_ORDER_FILENAME))}
+    names = (store.STORE_FILENAME, store.STORE_WAL_FILENAME, store.STORE_SHM_FILENAME,
+             PASS_ORDER_FILENAME, OCR_SCRATCH_DIRNAME)
+    return [folder / name for folder in folders for name in names
+            if os.path.lexists(folder / name) and _spelled(folder / name) not in kept]
+
+
+def left_behind_warning(root: Path | None) -> str:
+    """:data:`LEFT_BEHIND` naming what :func:`left_behind` found, or ``""``."""
+    found = left_behind(root)
+    return LEFT_BEHIND.format(paths="; ".join(map(str, found)), home=data_home()) if found else ""
 #: The runner's own flags, named once so the scheduler builds a command
 #: line the parser below still accepts.
 LOG_FLAG = "--log"
@@ -1468,6 +1511,12 @@ def run_registry(
     report.misfits = list(registry.misfits)
     report.siblings, report.foreign, report.unread = records_needing_a_person(registry)
     reader_start_warning()          # this pass's count starts here
+    try:
+        # What an earlier version left beside the app (decision 186): named, never deleted.
+        if warning := left_behind_warning(registry.source):
+            report.warnings.append(warning)
+    except SettingsError as exc:    # no data home: the store says so too, and this pass says it once
+        report.warnings.append(str(exc))
     if warning := ocr.reader_path_warning():
         # The app sits too deep for its reader: said once, loudly, rather
         # than every scan waiting as "the reader could not run" (SPEC-169 section 9).
@@ -2239,11 +2288,12 @@ def main(argv: list[str] | None = None) -> int:
     ns = parser.parse_args(argv)
 
     # The clients root has one home (decision 131): the scheduled job names
-    # the app's settings folder, and this process reads everything the app
-    # reads from there - the root and the store beside it - before anything
-    # reads settings at all. A root on the command line is walked instead -
-    # a person running one folder by hand - as long as it is the root this
-    # machine's record checkpoint belongs to, or inside it (decision 159).
+    # the app's settings folder, and this process reads the clients root the
+    # app reads from there - the store is the data home's (decision 186) -
+    # before anything reads settings at all. A root on the command line is
+    # walked instead - a person running one folder by hand - as long as it is
+    # the root this machine's record checkpoint belongs to, or inside it
+    # (decision 159).
     if ns.settings:
         os.environ[ENV_SETTINGS_DIR] = ns.settings
     # The local error log beside the tracker's database, for the pass's

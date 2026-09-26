@@ -1868,6 +1868,63 @@ def test_install_schedule_writes_the_job_from_the_apps_own_settings_folder(
     assert str(demo_root) not in xml
 
 
+def test_install_schedule_writes_the_task_file_into_the_data_home(capsys, demo_root, monkeypatch):
+    """Decision 186: the task's file names the program and the settings
+    folder, and is written into the tracker's data home - never beside the
+    program in the settings folder."""
+    import tracker.api as api_module
+    from tracker.scheduling import SCHEDULE_XML_FILENAME, schedule_xml_path
+    from tracker.settings import settings_dir
+
+    monkeypatch.setattr(api_module, "install_task", lambda xml, name=TASK_NAME: ["schtasks"])
+    code, payload = run(capsys, "install-schedule", stdin={})
+    assert code == 0, payload
+    assert payload["xml"] == str(schedule_xml_path())
+    assert Path(payload["xml"]).is_file()
+    assert not (settings_dir() / SCHEDULE_XML_FILENAME).exists()
+
+
+def test_the_app_names_what_an_earlier_version_left_on_its_first_screen(capsys, tmp_path, monkeypatch):
+    """Decision 186: ``list``, with a root or without one, carries what an
+    earlier version left beside the app in ``machine_warnings`` - a banner
+    that stays until the files are gone - and nothing when nothing is there."""
+    from tracker import store
+    from tracker.runner import LEFT_BEHIND, left_behind_warning
+    from tracker.settings import ENV_SETTINGS_DIR, data_home
+
+    app = tmp_path / "app"
+    app.mkdir()
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(app))
+    monkeypatch.setenv(store.ENV_STORE, str(data_home() / store.STORE_FILENAME))
+    store.close()
+    assert run(capsys, "list")[1]["machine_warnings"] == []
+
+    (app / store.STORE_FILENAME).write_bytes(b"an old store")
+    expected = LEFT_BEHIND.format(paths=str(app.resolve() / store.STORE_FILENAME), home=data_home())
+    assert left_behind_warning(None) == expected
+    code, payload = run(capsys, "list")
+    assert code == 0 and payload["needs_root"] is True
+    assert payload["machine_warnings"] == [expected]
+    clients = tmp_path / "Clients"
+    clients.mkdir()
+    assert run(capsys, "set-root", stdin={"root": str(clients)})[0] == 0
+    code, payload = run(capsys, "list")
+    assert code == 0 and payload["needs_root"] is False
+    assert payload["machine_warnings"] == [expected]
+    assert (app / store.STORE_FILENAME).read_bytes() == b"an old store"     # named, never deleted
+
+
+def test_the_first_screen_says_every_machine_warning_in_a_banner_of_its_own():
+    """The app adds no word of its own: each sentence is the API's, drawn as
+    text into a banner that stays (decision 186)."""
+    renderer = Path(__file__).resolve().parent.parent / "app" / "renderer"
+    js = (renderer / "app.js").read_text(encoding="utf-8")
+    html_text = (renderer / "index.html").read_text(encoding="utf-8")
+    assert '<div id="machine-warnings" class="banner err hidden" role="alert"></div>' in html_text
+    assert "listed.machine_warnings || []" in js
+    assert 'machine.map((sentence) => el("p", {}, sentence))' in js
+
+
 def test_the_packaged_app_installs_a_schedule_against_its_own_executable(capsys, demo_root, monkeypatch, tmp_path):
     import sys
 

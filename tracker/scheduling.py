@@ -50,7 +50,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from tracker.fsio import write_text_atomically
 from tracker.locking import RUN_TIME_LIMIT_SECONDS
 from tracker.runner import DRAFT_DAY_NAME, LOG_FLAG, RUNNER_MODE_FLAG, SETTINGS_FLAG
-from tracker.settings import SETTINGS_FILENAME, product_name
+from tracker.settings import SETTINGS_FILENAME, data_home, product_name
 
 #: The scheduled task is named after the product, wherever that is set.
 TASK_NAME = product_name()
@@ -58,10 +58,16 @@ DEFAULT_START = "07:00"
 #: Filing and scanning repeat through the day this often (minutes); the
 #: reminder still drafts only on the drafting day. 0 = once a day.
 DEFAULT_REPEAT_MINUTES = 120
-#: The generated Task Scheduler definition, beside the app's settings.
+#: The generated Task Scheduler definition, in the tracker's data home (decision 186).
 SCHEDULE_XML_FILENAME = "tax-tracker.xml"
 #: Any date in the past will do for a daily trigger; it is when the series began.
 _START_BOUNDARY_DATE = "2026-01-01"
+
+
+def schedule_xml_path() -> Path:
+    """Where Install Schedule writes the task's file: the data home (decision
+    186), never beside the program. Only a path; the installer makes the folder."""
+    return data_home() / SCHEDULE_XML_FILENAME
 
 
 def iso_duration(seconds: int) -> str:
@@ -404,10 +410,18 @@ if __name__ == "__main__":
     parser.add_argument(OUT_FLAG, default="",
                         help="write to this file instead of standard output")
     parser.add_argument(INSTALL_FLAG, action="store_true",
-                        help=f"also register the task with Task Scheduler (Windows; needs {OUT_FLAG})")
+                        help="also register the task with Task Scheduler (Windows); the task's file "
+                             f"goes into the tracker's data folder unless {OUT_FLAG} names another")
     ns = parser.parse_args()
-    if ns.install and (ns.format != FORMAT_XML or not ns.out):
-        parser.error(f"{INSTALL_FLAG} needs {FORMAT_FLAG} xml and {OUT_FLAG}")
+    if ns.install and ns.format != FORMAT_XML:
+        parser.error(f"{INSTALL_FLAG} needs {FORMAT_FLAG} xml")
+    if ns.install and not ns.out:
+        from tracker.settings import SettingsError
+
+        try:
+            ns.out = str(schedule_xml_path())
+        except SettingsError as exc:
+            parser.error(str(exc))
 
     if not ns.settings:
         # None given: this checkout's own settings folder, which must already
@@ -453,6 +467,7 @@ if __name__ == "__main__":
 
     if ns.out:
         # Task Scheduler wants SCHEDULE_XML_ENCODING for an XML it will import.
+        Path(ns.out).parent.mkdir(parents=True, exist_ok=True)
         write_text_atomically(Path(ns.out), payload, encoding=encoding)
         print(f"Wrote {ns.out}")
         if ns.install:

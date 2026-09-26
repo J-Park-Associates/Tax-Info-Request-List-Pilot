@@ -328,3 +328,31 @@ def test_the_task_xml_is_escaped_exactly_as_before():
                  "&amp; already escaped &lt;", "", "plain"):
         assert scheduling._xml_escape(text) == escape(text)
     assert scheduling._xml_escape(2026) == escape("2026")
+def test_install_without_out_writes_the_task_file_into_the_data_home(monkeypatch, tmp_path, capsys):
+    """Decision 186: ``--install`` alone writes the task's file into the
+    tracker's data home, making the folder as it writes, and registers that
+    file - never one beside the program or in the working folder."""
+    import platform
+    import runpy
+    import sys
+
+    from tracker.runner import SETTINGS_FLAG
+    from tracker.scheduling import INSTALL_FLAG, SCHEDULE_XML_FILENAME, schedule_xml_path
+    from tracker.settings import ENV_DATA_HOME
+
+    home = tmp_path / "account-data"
+    monkeypatch.setenv(ENV_DATA_HOME, str(home))
+    monkeypatch.setattr(platform, "system", lambda: "Linux")    # install_task only shows its command
+    monkeypatch.chdir(tmp_path)
+    settings = tmp_path / "app"
+    settings.mkdir()
+    monkeypatch.setattr(sys, "argv", ["tracker.scheduling", SETTINGS_FLAG, str(settings), INSTALL_FLAG])
+
+    runpy.run_module("tracker.scheduling", run_name="__main__")
+
+    written = schedule_xml_path()
+    assert written == home / SCHEDULE_XML_FILENAME and written.is_file()
+    out = capsys.readouterr().out
+    assert f"Wrote {written}" in out and f"/xml {written}" in out
+    assert not (settings / SCHEDULE_XML_FILENAME).exists()
+    assert not (tmp_path / SCHEDULE_XML_FILENAME).exists()

@@ -3852,3 +3852,48 @@ def test_a_rolled_from_naming_nothing_is_on_the_page(tmp_path, samples):
     assert said in run.warnings
     # The page counts it with the run's warnings; the run log says it.
     assert said in format_report(RunReport(today=FRIDAY, runs=runs))
+# ------------------------------------ what an earlier version left (decision 186) ----
+
+
+def test_what_an_earlier_version_left_is_named_for_deletion_and_never_deleted(tmp_path, monkeypatch):
+    from tracker.settings import ENV_SETTINGS_DIR, OCR_SCRATCH_DIRNAME, data_home
+
+    settings = tmp_path / "settings"
+    (settings / OCR_SCRATCH_DIRNAME).mkdir(parents=True)
+    (settings / OCR_SCRATCH_DIRNAME / "page-1.png").write_bytes(b"a client's page")
+    left = {name: settings / name for name in (store.STORE_FILENAME, store.STORE_WAL_FILENAME,
+                                                runner_module.PASS_ORDER_FILENAME)}
+    for name, path in left.items():
+        path.write_bytes(name.encode())
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    monkeypatch.setenv(store.ENV_STORE, str(data_home() / store.STORE_FILENAME))
+    store.close()
+
+    report = run_registry(Registry(source=tmp_path / "Clients", engagements=[]), today=SATURDAY,
+                          dry_run=True)
+
+    named = [warning for warning in report.warnings if warning.startswith(runner_module.LEFT_BEHIND[:20])]
+    assert named == [runner_module.LEFT_BEHIND.format(
+        paths="; ".join(str(settings.resolve() / name) for name in (
+            store.STORE_FILENAME, store.STORE_WAL_FILENAME, runner_module.PASS_ORDER_FILENAME,
+            OCR_SCRATCH_DIRNAME)),
+        home=data_home())]
+    for name, path in left.items():
+        assert path.read_bytes() == name.encode()                 # named, never touched
+    assert (settings / OCR_SCRATCH_DIRNAME / "page-1.png").read_bytes() == b"a client's page"
+
+
+def test_the_store_in_use_is_never_named_as_left_behind(tmp_path, monkeypatch):
+    """The suite's own default puts the store beside a settings folder; the
+    store a pass is using, its side files and the hint beside it are never
+    "left over"."""
+    from tracker.settings import ENV_SETTINGS_DIR
+
+    app = tmp_path / "app"
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(app))
+    store.connect()                                              # the fixture's store, in use
+    for name in (store.STORE_WAL_FILENAME, runner_module.PASS_ORDER_FILENAME):
+        (app / name).write_bytes(b"")
+    assert Path(store.store_path()).parent == app
+    assert runner_module.left_behind(tmp_path) == []
+    assert runner_module.left_behind_warning(tmp_path) == ""

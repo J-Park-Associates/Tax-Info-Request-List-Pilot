@@ -81,7 +81,7 @@ engagement folder.
 fourteen columns an accountant edits, and the client, link, due date, the
 people the return is for and the rest, are edited in the app's **Edit Request List** editor and nowhere
 else; every save is journalled as one event and folded into one database
-on the machine that runs the schedule ([docs/storage.md](docs/storage.md)),
+in the tracker's data folder on the machine that runs the schedule ([docs/storage.md](docs/storage.md)),
 beside each request's Status, Received Date, File Count and Validation
 Notes and every original's index row. Nothing in the folder is a
 spreadsheet, and the machine reads and writes no workbook.

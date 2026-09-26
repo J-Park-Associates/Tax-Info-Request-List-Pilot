@@ -132,9 +132,21 @@ TRIPWIRE_DIR = Path(__file__).resolve().parent / "tripwire"
 def own_folders(patch: pytest.MonkeyPatch, folder: Path) -> None:
     """Point this process, and every child it starts, at ``folder`` for the
     settings file and the store (decision 185): the one place the suite says
-    where "beside the app" is. Decision 186 adds its data home here."""
+    where "beside the app" is - and at :func:`data_home_for` ``folder`` for
+    the data home (decision 186), never the account's own."""
     patch.setenv(settings.ENV_SETTINGS_DIR, str(folder))
     patch.setenv(store.ENV_STORE, str(folder / store.STORE_FILENAME))
+    patch.setenv(settings.ENV_DATA_HOME, str(data_home_for(folder)))
+
+
+def data_home_for(folder: Path) -> Path:
+    """The suite's data home for the app folder ``folder``: a sibling of the
+    folder that holds it (``<tmp_path>-data`` for a test's
+    ``<tmp_path>/app``), never inside it - many tests make ``tmp_path``
+    itself the clients root, and a root may not hold the data home
+    (``settings.ROOT_HOLDS_DATA``, decision 186)."""
+    holder = Path(folder).parent
+    return holder.with_name(holder.name + "-data")
 
 
 @pytest.fixture(autouse=True)
@@ -543,7 +555,7 @@ def real_places(repo: Path) -> tuple[tuple[str, Path], ...]:
     places = []
     for where in dict.fromkeys((beside, named)):          # one entry when they agree
         places += [("settings file", where),
-                   ("store", store.path_for(where)),
+                   ("store", where.with_name(store.STORE_FILENAME)),
                    ("store's write-ahead log", where.with_name(store.STORE_WAL_FILENAME)),
                    ("store's shared memory", where.with_name(store.STORE_SHM_FILENAME)),
                    ("scheduled task file", where.with_name(SCHEDULE_XML_FILENAME)),
@@ -723,6 +735,7 @@ def pytest_unconfigure(config):
     store.close()
     state["patch"].undo()
     shutil.rmtree(state["session"], ignore_errors=True)
+    shutil.rmtree(data_home_for(state["session"] / APP_FOLDER), ignore_errors=True)
 
 
 # ---------------------------------------------------- the office-shaped copy ----

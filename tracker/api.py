@@ -283,6 +283,7 @@ from tracker.runner import (
     last_draft_day,
     last_drafted,
     last_pass_line,
+    left_behind_warning,
     reader_start_warning,
     run_household,
     status_report,
@@ -300,10 +301,10 @@ from tracker.scheduling import (
     DEFAULT_REPEAT_MINUTES,
     DEFAULT_START,
     SCHEDULE_XML_ENCODING,
-    SCHEDULE_XML_FILENAME,
     TASK_NAME,
     install_task,
     is_scheduling_host,
+    schedule_xml_path,
     task_scheduler_xml,
 )
 from tracker.settings import (
@@ -2675,6 +2676,17 @@ def _cmd_unlock(argv: list[str]) -> dict:
             "state": _state(engagement)}
 
 
+def _machine_warnings(root: Path | None) -> list[str]:
+    """This machine's own problems, each a sentence the app's first screen
+    keeps showing until it is fixed (decision 186): what an earlier version
+    left beside the app, or a data home that cannot be had at all."""
+    try:
+        left = left_behind_warning(root)
+    except SettingsError as exc:
+        return [str(exc)]
+    return [left] if left else []
+
+
 def _cmd_list(argv: list[str]) -> dict:
     """Every household, return and left-alone folder under the root - the
     same discovery the scheduled run uses.
@@ -2691,7 +2703,8 @@ def _cmd_list(argv: list[str]) -> dict:
              # When the scheduled pass last ran and how it ended (decision
              # 159, E4): one line on the main screen, in the runner's words,
              # with or without a root - a missing root is one way it stops.
-             "last_pass": last_pass_line()}
+             "last_pass": last_pass_line(),
+             "machine_warnings": _machine_warnings(None)}
     # A saved root the rule refuses (decision 188, E-13) is never walked:
     # the app asks for the folder again and says why, and the rest of the
     # app - its vocabulary, its commands - still arrives with this reply.
@@ -2706,7 +2719,8 @@ def _cmd_list(argv: list[str]) -> dict:
         registry = discover_engagements(root)
     except EmptyRoot:
         # An empty root is a practice nobody has set up yet, not a failure.
-        return {**empty, "needs_root": False, "root": str(root), "vocab": _vocab()}
+        return {**empty, "needs_root": False, "root": str(root), "vocab": _vocab(),
+                "machine_warnings": _machine_warnings(root)}
     except RegistryError as exc:
         # One that could not be walked is said, never answered as empty
         # (decision 193): the class to the log, the sentence to the page.
@@ -2714,9 +2728,11 @@ def _cmd_list(argv: list[str]) -> dict:
                     exc_info=True)
         _warn(PRACTICE_NOT_WALKED)
         return {**empty, "needs_root": False, "root": str(root),
-                "root_problem": PRACTICE_NOT_WALKED, "vocab": _vocab()}
+                "root_problem": PRACTICE_NOT_WALKED, "vocab": _vocab(),
+                "machine_warnings": _machine_warnings(root)}
     return {**_list_payload(root, registry), "needs_root": False, "vocab": _vocab(),
-            "reader_warning": empty["reader_warning"], "last_pass": empty["last_pass"]}
+            "reader_warning": empty["reader_warning"], "last_pass": empty["last_pass"],
+            "machine_warnings": _machine_warnings(root)}
 
 
 def _list_payload(root: Path, registry: Registry) -> dict:
@@ -4229,7 +4245,9 @@ def _cmd_install_schedule(argv: list[str]) -> dict:
     every = int(spec["every"]) if spec.get("every") not in (None, "") else DEFAULT_REPEAT_MINUTES
     frozen = bool(getattr(sys, "frozen", False))
     working_dir = Path(sys.executable).resolve().parent if frozen else REPO_ROOT
-    xml_path = settings_path().with_name(SCHEDULE_XML_FILENAME)
+    # The task's file goes into the data home (decision 186), never beside the program.
+    xml_path = schedule_xml_path()
+    xml_path.parent.mkdir(parents=True, exist_ok=True)
     write_text_atomically(
         xml_path,
         task_scheduler_xml(python=sys.executable, settings=folder, working_dir=working_dir,
