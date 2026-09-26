@@ -1011,13 +1011,14 @@ function issuerBox(triage) {
 // filing's is, and the card is drawn again from the record.
 async function addIssuerAndFile(node, btn) {
   const box = btn.closest(".r-issuer");
+  const view = viewGeneration;   // drawn only if this return is still the one shown (D6)
   btn.disabled = true;
   try {
     const result = await call(withEng("add-issuer-and-file"), {
       original: node.dataset.original, seq: Number(node.dataset.seq),
       head: box.dataset.head, issuer: typed(box, ".r-issuer-name"),
     });
-    render(result.state);
+    renderFor(view, result.state);
     const done = result.added_and_filed;
     const notes = [done.said];
     if (done.assigned.scan_note) notes.push(done.assigned.scan_note);

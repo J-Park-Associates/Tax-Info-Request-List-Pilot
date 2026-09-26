@@ -2612,8 +2612,14 @@ def test_the_editor_set_aside_fold_draws_each_group_as_elements(tmp_path):
         "function renderEditorRows() {", "function setAsideHeading(group) {",
         "function fill(pattern, values) {"), """
 const NOT_ASKED_GROUP = "not asked";
-const vocab = { columns: [], set_aside: { heading: "Set aside ({n})", group: "{label} ({n})" } };
+const vocab = { columns: [], set_aside: { heading: "Set aside ({n})", group: "{label} ({n})" },
+                editor: { plain_columns: [], routing_columns: [] } };
 const editorState = { learned: {} };
+const editorFolds = new Map();
+const editorRowIsCustom = () => false;
+const editorRowFoldOpen = () => false;
+const showEveryFold = () => {};
+Element.prototype.addEventListener = () => {};
 const editorRows = [
   { identifier: "A01", group: "" },
   { identifier: "B01", group: NOT_ASKED_GROUP },
@@ -2631,7 +2637,8 @@ const $ = (id) => page[id];
 renderEditorRows();
 process.stdout.write(JSON.stringify(tree(page["ed-rows"])));
 """)
-    active, fold = drawn["children"]
+    above, active, fold = drawn["children"]
+    assert above["className"] == "editor-actions"   # the routing toggle (decision 201)
     assert fold["tag"] == "details" and fold["className"] == "ed-set-aside"
     assert [child["tag"] if isinstance(child, dict) else child for child in fold["children"]] == [
         "summary", "div", "div", "div", "div"]
