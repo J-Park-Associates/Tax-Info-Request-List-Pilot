@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "generated": "2026-09-26",
+  "generated": "2026-09-27",
   "generator": "tools/repo_map.py",
   "generator_sha256": "78ed6f39661035ec",
   "module_table_sha256": "6836f205bde04389",
@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 158,
     "edges": 994,
-    "reused": 121
+    "reused": 120
   },
   "node_types": [
     "artifact",
@@ -227,8 +227,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "a6c2e8a57eac5cd5",
-      "lines": 3887,
+      "sha256": "00ee6139b4cdcffb",
+      "lines": 3878,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_FOLDER_NAME_HELP",
@@ -362,7 +362,6 @@
         "WRITING_COMMANDS",
         "YEAR_NOT_ACCEPTED",
         "default_return_name",
-        "form_label",
         "main",
         "standing_rules"
       ],
@@ -2793,8 +2792,8 @@
       "id": "tracker/scheduling.py",
       "type": "module",
       "layer": "core",
-      "sha256": "45f8458a25e1559b",
-      "lines": 758,
+      "sha256": "0779de5db01bb7c0",
+      "lines": 757,
       "cli": "python -m tracker.scheduling",
       "exports": [
         "CLAIMED",
@@ -2812,7 +2811,6 @@
         "HOST_NAME",
         "HOST_UNNAMED",
         "INSTALL_FLAG",
-        "INSTALL_HINT",
         "MAX_DESIGNATION_BYTES",
         "MODULE_INVOCATION",
         "MOVED_FROM",

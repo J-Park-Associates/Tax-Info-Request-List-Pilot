@@ -133,7 +133,6 @@ START_FLAG = "--start"
 FORMAT_XML = "xml"
 FORMAT_N8N = "n8n"
 FORMATS = (FORMAT_XML, FORMAT_N8N)
-INSTALL_HINT = f"{MODULE_INVOCATION} {INSTALL_FLAG}"
 
 def task_scheduler_here() -> bool:
     """Whether this computer has Task Scheduler at all - that is, whether it

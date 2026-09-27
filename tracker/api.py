@@ -297,7 +297,6 @@ from tracker.settings import (
 )
 from tracker.templates import (  # the catalog; re-exported for the wizard
     EXTENSION_DEFAULT_NOTE,
-    FORM_LABEL_PATTERN,
     FORM_TEMPLATES,
     FORM_TYPES,
     KEYWORD_DEFAULT_NOTE,
@@ -706,14 +705,6 @@ def _read_spec() -> dict:
     if not isinstance(spec, dict):
         raise ManifestError(NOT_A_SPEC)
     return spec
-
-
-def form_label(form: str) -> str:
-    """``Form 1120-S`` for ``1120S``: the one id -> label map is FORM_TYPES."""
-    for entry in FORM_TYPES:
-        if entry["id"] == form:
-            return entry["label"]
-    return FORM_LABEL_PATTERN.format(form=form) if form else "Engagement"
 
 
 def default_return_name(form: str, client: str) -> str:
