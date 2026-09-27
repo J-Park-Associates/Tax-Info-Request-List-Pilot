@@ -440,6 +440,10 @@ SHELL_NO_LOG = ("There is no error log to hold the details - the tracker has no 
 #: An error of the page's own, said by its class; its message goes to the
 #: error log through the shell (the review's S5).
 PAGE_ERROR = "The app met an error of its own ({kind}); the details are in the error log."
+#: The same, when no data home can be had and so there is no error log to
+#: point at (decision 186): never a sentence naming a file that is not there.
+PAGE_ERROR_NO_LOG = ("The app met an error of its own ({kind}); there is no error log to hold "
+                     "the details, because the tracker has no data folder - the first screen says why.")
 #: What a Sort & Scan reply is said as (the review's S4, decision 42).
 SCAN_SCANNING = "Scanning\u2026"
 SCAN_NOTHING_DONE = "Nothing done: {why}."
@@ -979,6 +983,7 @@ def _vocab() -> dict:
     value and its label from the row's year, the parked list from the
     decision value, the picker from candidates).
     """
+    error_log = _error_log_said()
     return {
         "product": product_name(),
         "firm": firm(),
@@ -1189,8 +1194,8 @@ def _vocab() -> dict:
                   "killed_at": SHELL_KILLED_AT, "no_reply": SHELL_NO_REPLY,
                   "could_not_start": SHELL_COULD_NOT_START,
                   "could_not_send": SHELL_COULD_NOT_SEND, "no_log": SHELL_NO_LOG,
-                  "page_error": PAGE_ERROR,
-                  "error_log": _error_log_said()},
+                  "page_error": PAGE_ERROR if error_log else PAGE_ERROR_NO_LOG,
+                  "error_log": error_log},
         # The lock notice (decision 193, D4): when, where, and - on this
         # machine - which file; nothing waits and nothing needs clearing.
         "lock": {"running": LOCK_RUNNING, "running_other": LOCK_RUNNING_OTHER, "on": LOCK_ON, "greyed": LOCK_GREYED,

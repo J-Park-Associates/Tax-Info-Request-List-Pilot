@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 163,
     "edges": 1020,
-    "reused": 122
+    "reused": 121
   },
   "node_types": [
     "artifact",
@@ -135,8 +135,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "85e12855b32f9f78",
-      "lines": 4449,
+      "sha256": "39f41768e42f4fbf",
+      "lines": 4454,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_FOLDER_NAME_HELP",
@@ -241,6 +241,7 @@
         "OTHER_REQUESTS_HEADING",
         "OWN_SPELLING_HINT",
         "PAGE_ERROR",
+        "PAGE_ERROR_NO_LOG",
         "PEOPLE_ROLLED_NOTE",
         "PERSON_KIND_LABEL",
         "PERSON_NAME_LABEL",
@@ -337,6 +338,7 @@
         "SHELL_COULD_NOT_SEND": "'The app could not send that to the tracker ({kind}); nothing was changed.'",
         "SHELL_NO_LOG": "'There is no error log to hold the details - the tracker has no data folder yet - so they are here instead: {stderr}'",
         "PAGE_ERROR": "'The app met an error of its own ({kind}); the details are in the error log.'",
+        "PAGE_ERROR_NO_LOG": "'The app met an error of its own ({kind}); there is no error log to hold the details, because the tracker has no data folder - the first screen says why.'",
         "SCAN_SCANNING": "'Scanning\u2026'",
         "SCAN_NOTHING_DONE": "'Nothing done: {why}.'",
         "SCAN_PROBLEM": "'The pass reported a problem: {error}'",
@@ -3493,7 +3495,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "bb1cf2886a9b03e2",
+      "sha256": "d92527ba77e252ac",
       "lines": 436,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -4007,8 +4009,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "74494fbf2ff8f6ce",
-      "lines": 6716,
+      "sha256": "b63e0871bf6d2cfd",
+      "lines": 6734,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -4260,6 +4262,7 @@
         "test_unlearn_records_one_event_re_scans_and_the_state_no_longer_lists_the_keyword",
         "test_unlearn_refuses_a_blank_or_unknown_pair_by_name",
         "test_watch_reports_the_lock_and_then_none_once_it_is_let_go",
+        "test_without_a_data_home_the_pages_error_never_points_at_an_error_log_that_is_not_there",
         "test_without_a_root_the_app_is_told_to_set_one",
         "triage_engagement",
         "two_households",

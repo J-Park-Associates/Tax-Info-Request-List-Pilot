@@ -2001,6 +2001,24 @@ def test_a_data_home_that_cannot_be_had_is_a_banner_on_the_first_screen_never_an
     assert payload["machine_warnings"] == [DATA_HOME_NOT_ABSOLUTE.format(value="relative-data")]
 
 
+def test_without_a_data_home_the_pages_error_never_points_at_an_error_log_that_is_not_there(monkeypatch):
+    """Decision 186: with no data home there is no error log, so the page's
+    own-error sentence says so rather than sending a person to a file that
+    does not exist; with one, it names the log as before."""
+    from tracker import store
+    from tracker.api import PAGE_ERROR, PAGE_ERROR_NO_LOG, _vocab
+    from tracker.settings import ENV_DATA_HOME
+
+    shell = _vocab()["shell"]
+    assert shell["error_log"] and shell["page_error"] == PAGE_ERROR
+    store.close()
+    monkeypatch.delenv(store.ENV_STORE, raising=False)
+    monkeypatch.setenv(ENV_DATA_HOME, "relative-data")
+    shell = _vocab()["shell"]
+    assert shell["error_log"] == ""
+    assert shell["page_error"] == PAGE_ERROR_NO_LOG
+    assert "error log" in PAGE_ERROR_NO_LOG and "no error log" in PAGE_ERROR_NO_LOG
+
 def test_the_first_screen_says_every_machine_warning_in_a_banner_of_its_own():
     """The app adds no word of its own: each sentence is the API's, drawn as
     text into a banner that stays (decision 186)."""
