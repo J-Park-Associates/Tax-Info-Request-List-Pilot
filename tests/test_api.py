@@ -507,7 +507,10 @@ def test_the_apps_pass_appends_the_line_the_scheduled_run_appends(capsys, demo_r
     second = log_path().read_text(encoding="utf-8")
     assert second.startswith(first)
     assert engagement.name not in second
-    assert len([line for line in second.splitlines() if line.startswith("[")]) == 2
+    # Each pass is the runner's (decision 203): its ``pass started`` line,
+    # then its summary line.
+    stamped = [line for line in second.splitlines() if line.startswith("[")]
+    assert len(stamped) == 4 and sum(line.endswith("] pass started") for line in stamped) == 2
 
 
 def test_the_apps_pass_regenerates_the_practices_status_page(capsys, demo_root, tmp_path):

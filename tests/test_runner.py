@@ -2366,7 +2366,7 @@ def test_run_now_leaves_the_schedules_log_line_and_page(tmp_path, tmp_path_facto
     both - and so do the practice pages' rows."""
     import re
 
-    from tracker.runner import LOG_FLAG
+    from tracker.runner import LOG_FLAG, log_path
 
     # The second tree outside ``tmp_path``: the same household by name is a
     # second practice, with a store of its own, which the checks made after
@@ -2377,18 +2377,22 @@ def test_run_now_leaves_the_schedules_log_line_and_page(tmp_path, tmp_path_facto
     settings = _settings_for(scheduled_root, monkeypatch)
     assert main([SETTINGS_FLAG, str(settings), LOG_FLAG, "--reminders", REMINDERS_NEVER]) == 0
     store.close()
+    # The run log is the data home's (decision 186), so each pass's is read
+    # as it ends, and the first set aside before the second is written.
+    scheduled_log = log_path().read_text(encoding="utf-8")
+    log_path().unlink()
     monkeypatch.setenv(store.ENV_STORE, str(run_now_root.parent / store.STORE_FILENAME))
     run_now_return = build_engagement(run_now_root, samples)
     code, lines = _run_now(run_now_root, household_of(run_now_return.path), monkeypatch, capsys)
-    trees = [(scheduled_root, None), (run_now_root, run_now_return)]
     assert code == 0 and lines[-1]["exit"] == 0, lines[-1]
+    run_now_log = log_path().read_text(encoding="utf-8")
 
     def plain(text: str, root: Path) -> list[str]:
         text = text.replace(str(root), "<root>")
         text = re.sub(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?", "<when>", text)
         return text.splitlines()
 
-    logs = [plain((root / LOG_FILENAME).read_text(encoding="utf-8"), root) for root, _ in trees]
+    logs = [plain(scheduled_log, scheduled_root), plain(run_now_log, run_now_root)]
     assert logs[0] == logs[1]
     assert logs[0][0] == "[<when>] pass started"
 
@@ -2441,7 +2445,7 @@ def test_a_pass_whose_watcher_is_gone_stops_at_the_next_file(tmp_path, samples, 
 
     import tracker.runner as runner
     from tracker.locking import lock_status
-    from tracker.runner import PASS_APP_CLOSED, run_now_arguments
+    from tracker.runner import PASS_APP_CLOSED, log_path, run_now_arguments
 
     root = tmp_path / "root"
     engagement = build_engagement(root, samples, drops=(f"W-2 John Smith {YEAR}.pdf",
@@ -2472,7 +2476,7 @@ def test_a_pass_whose_watcher_is_gone_stops_at_the_next_file(tmp_path, samples, 
     left = drops & {p.name for p in inbox_of(engagement.path).iterdir()}
     assert len(left) == 2, "the first file was taken, the rest wait"
     assert (root / STATUS_PAGE_FILENAME).is_file()
-    log_text = (root / LOG_FILENAME).read_text(encoding="utf-8")
+    log_text = log_path().read_text(encoding="utf-8")
     assert "pass started" in log_text and "reminders=never" in log_text
     assert lock_status(run.path) is None, "its lock was let go"
     assert code in (0, 1)
