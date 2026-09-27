@@ -327,9 +327,8 @@ def test_gitignore_knows_every_runtime_file_python_writes_outside_the_repo():
 
 def test_the_projects_agent_settings_can_be_committed_and_nothing_else_under_claude():
     """Decision 186: ``.claude/settings.json`` can be tracked, so the
-    project's agent settings can carry a deny list one day (a guard rail,
-    not a wall); a person's own settings and Claude Code's worktrees stay
-    ignored."""
+    project's agent settings carry a deny list (a guard rail, not a wall);
+    a person's own settings and Claude Code's worktrees stay ignored."""
     import subprocess
 
     def ignored(rel: str) -> int:
@@ -338,6 +337,140 @@ def test_the_projects_agent_settings_can_be_committed_and_nothing_else_under_cla
     assert ignored(".claude/settings.json") == 1
     assert ignored(".claude/settings.local.json") == 0
     assert ignored(".claude/worktrees/x/y") == 0
+
+
+def _deny_list_from_the_constants() -> list[str]:
+    """The agent deny list, spelled from the constants that own each name
+    (decision 186). A folder is never denied by its bare name alone: a
+    person's own folders share names like the firm's or ``Clients`` (the
+    office's Claude workspace sits in a folder named like the firm's tree,
+    and a bare rule for it refused every session its own files - the undoing
+    of #133 by #134). So a client folder is named by the tree's shape under
+    the clients root - a household, then a year, then a return or the
+    inbox - and only a name no person's folder carries (``ocr-scratch``)
+    stands alone."""
+    from tracker.checkpoint import CHECKPOINT_FILENAME, SET_ASIDE_SUFFIX
+    from tracker.content_check import RETIRED_CACHE_FILENAME
+    from tracker.layout import CLIENTS_TREE, INBOX_DIR_NAME, OPENED_DIR_NAME, PRIVATE_TREE, RETURN_NAME_PATTERN
+    from tracker.ledger import LEDGER_FILENAME
+    from tracker.registry import LEGACY_MANIFEST_FILENAME
+    from tracker.reminder import DRAFT_FILENAME
+    from tracker.runner import LAST_PASS_FILENAME, LOG_FILENAME, PASS_ORDER_FILENAME, STATUS_PAGE_FILENAME
+    from tracker.settings import DATA_HOME_NAME, ERROR_LOG_FILENAME, EXPECTATIONS_FILENAME, OCR_SCRATCH_DIRNAME
+    from tracker.store import RECOVERED_DIR, STORE_FILENAME, STORE_SHM_FILENAME, STORE_WAL_FILENAME
+    from tracker.view import VIEW_FILENAME
+
+    aside = SET_ASIDE_SUFFIX.split("{", 1)[0] + "*"
+    stem, ext = DRAFT_FILENAME.rsplit(".", 1)
+    year = "[12][0-9][0-9][0-9]"
+    a_return = RETURN_NAME_PATTERN.format(form="[0-9]*", client="*")    # every form id begins with a digit
+    places = [f"//c/Users/*/AppData/Local/{DATA_HOME_NAME}/**", f"~/.local/state/{DATA_HOME_NAME}/**",
+              "//g/Shared drives/**",
+              f"//**/{CLIENTS_TREE}/*/{INBOX_DIR_NAME}/**", f"//**/{CLIENTS_TREE}/*/{year}/**",
+              f"//**/{PRIVATE_TREE}/*/{year}/{a_return}/**", f"//**/{PRIVATE_TREE}/*/{year}/{OPENED_DIR_NAME}/**",
+              f"//**/{OCR_SCRATCH_DIRNAME}/**",
+              f"//**/{RECOVERED_DIR}/*__*.jsonl"]    # recover's exports, named by the return's path
+    files = [STORE_FILENAME, STORE_WAL_FILENAME, STORE_SHM_FILENAME, STORE_FILENAME + aside,
+             CHECKPOINT_FILENAME, CHECKPOINT_FILENAME + "-*", CHECKPOINT_FILENAME + ".*",
+             LEDGER_FILENAME, LOG_FILENAME, LOG_FILENAME + ".*", ERROR_LOG_FILENAME, ERROR_LOG_FILENAME + ".*",
+             LAST_PASS_FILENAME, LAST_PASS_FILENAME + ".*", PASS_ORDER_FILENAME, f"{stem}*.{ext}",
+             STATUS_PAGE_FILENAME, VIEW_FILENAME, EXPECTATIONS_FILENAME, RETIRED_CACHE_FILENAME,
+             LEGACY_MANIFEST_FILENAME]
+    paths = places + [f"//**/{name}" for name in files]
+    return [f"{tool}({path})" for path in paths for tool in ("Read", "Edit")]
+
+
+def _denied(deny: list[str], path: str) -> bool:
+    """Whether a Read rule of ``deny`` matches the absolute ``path`` (``/c/...``),
+    read the way the rules are written - gitignore's: ``**/`` any folders,
+    ``*`` within one name, ``[...]`` one character of a set - and without
+    regard to case, as Windows reads a path, so the test errs toward
+    "refused" when it asks that a person's own folder stays readable."""
+    for rule in deny:
+        if not rule.startswith("Read(//"):
+            continue
+        pattern, out, i = rule[len("Read(/"):-1], "", 0
+        while i < len(pattern):
+            if pattern.startswith("**/", i):
+                out, i = out + "(?:[^/]*/)*", i + 3
+            elif pattern.startswith("/**", i) and i + 3 == len(pattern):
+                out, i = out + "/.*", i + 3
+            elif pattern[i] == "*":
+                out, i = out + "[^/]*", i + 1
+            elif pattern[i] == "[":
+                end = pattern.index("]", i)
+                out, i = out + pattern[i:end + 1], end + 1
+            else:
+                out, i = out + re.escape(pattern[i]), i + 1
+        if re.fullmatch(out, path, flags=re.IGNORECASE):
+            return True
+    return False
+
+
+def test_the_agent_deny_list_names_the_data_home_and_every_file_that_names_a_client():
+    """Decision 186 (Jason's answer A to its Q1): the project's agent
+    settings deny Claude's own file tools, reading and editing alike, the
+    data home, the client Shared Drive, a client tree by its shape under the
+    clients root, and every file the tracker writes that names a client,
+    wherever on the machine it sits - the list equal, rule for rule, to one
+    spelled from the constants, so a rule dropped, widened, narrowed or
+    respelled fails here; and ``.github/CODEOWNERS`` routes ``/.claude/`` to
+    the owner. A guard rail, not a wall (security principle 8): a deny rule
+    stops the agent's file tools on the spellings it lists, a shell command
+    can still read the file, and the wall is the separate Windows account
+    the office's AI tooling runs under."""
+    deny = json.loads(read(".claude/settings.json"))["permissions"]["deny"]
+    assert deny == _deny_list_from_the_constants()
+    owners = [line.split()[0] for line in read(".github/CODEOWNERS").splitlines()
+              if line.strip() and not line.startswith("#")]
+    assert "/.claude/" in owners, owners      # the list is the owner's to review
+
+
+def test_the_deny_list_never_refuses_a_persons_own_folder_that_shares_a_client_folders_name():
+    """#133 landed a rule for the firm's tree by its bare name, and the
+    office's Claude workspace sits in a folder of that same name: every
+    session was refused its own START HERE, the Patches folder and the
+    checkout, and #134 undid it. So no folder is denied by its name alone:
+    a person's folders named like the firm's tree, ``Clients``, the inbox or
+    the review folder - with no household, year and return beneath them -
+    stay readable, while the same trees in the clients root's shape, on any
+    drive, are refused."""
+    from tracker.layout import (
+        CLIENTS_TREE,
+        INBOX_DIR_NAME,
+        OPENED_DIR_NAME,
+        PREPARED_DIR_NAME,
+        PRIVATE_TREE,
+        RETURN_NAME_PATTERN,
+        REVIEW_DIR_NAME,
+    )
+    from tracker.store import RECOVERED_DIR
+
+    deny = json.loads(read(".claude/settings.json"))["permissions"]["deny"]
+    workspace = f"/c/Users/staff/{PRIVATE_TREE}"
+    own = [f"{workspace}/START HERE.md", f"{workspace}/Patches/0001-fix.patch",
+           f"{workspace}/Claude/notes/2026/plan.md",
+           f"{workspace}/Handoffs/2026/CODE UPDATE - 09-27/notes.md",
+           f"{workspace}/Tax-Info-Request-List/tracker/runner.py",
+           f"{workspace}/Tax-Info-Request-List/docs/runbook.md",
+           f"/c/Users/staff/Documents/{CLIENTS_TREE}/list.txt",
+           f"/c/Users/staff/{INBOX_DIR_NAME}/scan.pdf",
+           f"/c/Users/staff/Desktop/{REVIEW_DIR_NAME}/todo.txt",
+           "/c/Users/staff/Documents/recovered/photo.jpg", "/c/Users/staff/Documents/passes/ticket.pdf"]
+    for path in own:
+        assert not _denied(deny, path), path
+    root = "/e/Firm"
+    a_return = RETURN_NAME_PATTERN.format(form="1040", client="Sample Client")
+    client = [f"{root}/{CLIENTS_TREE}/Sample Household/{INBOX_DIR_NAME}/W-2.pdf",
+              f"{root}/{CLIENTS_TREE}/Sample Household/2025/W-2.pdf",
+              f"{root}/{PRIVATE_TREE}/Sample Household/2025/{a_return}/{PREPARED_DIR_NAME}/W-2.pdf",
+              f"{root}/{PRIVATE_TREE}/Sample Household/2025/{a_return}/{REVIEW_DIR_NAME}/scan.pdf",
+              f"{root}/{PRIVATE_TREE}/Sample Household/2025/{OPENED_DIR_NAME}/letter.pdf",
+              f"/c/Tools/tracker/{RECOVERED_DIR}/{PRIVATE_TREE}__Sample Household__2025__"
+              f"{a_return}-2026-09-26-120000.jsonl",
+              "/g/Shared drives/Any Drive/anything.pdf"]
+    for path in client:
+        assert _denied(deny, path), path
 
 
 def test_every_file_beside_the_store_is_ignored_by_git():
