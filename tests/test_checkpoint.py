@@ -91,6 +91,25 @@ def test_a_checkpoint_that_will_not_open_is_refused_by_name_and_never_set_aside(
     assert sorted(p.name for p in tmp_path.iterdir()) == [checkpoint.CHECKPOINT_FILENAME]
 
 
+
+def test_a_refused_checkpoint_can_be_set_aside_while_its_error_is_still_held(tmp_path):
+    """Decision 159, Python 3.11 on Windows: the refusal says "set it aside",
+    and the person does, while the refusal is still held - by a log record,
+    a report of the pass, or here the test. On 3.11 the failed cursor, kept
+    alive by the error's traceback, kept its statement and SQLite kept the
+    file open after the connection closed: the rename was refused
+    (WinError 32). The failed cursor is now closed before the error leaves."""
+    import os
+
+    for opening in (checkpoint.open, checkpoint.open_read_only):
+        path = tmp_path / checkpoint.CHECKPOINT_FILENAME
+        path.write_bytes(b"this is not a database, fabricated" * 40)
+        with pytest.raises(checkpoint.CheckpointError) as refused:
+            opening(path)
+        os.replace(path, tmp_path / f"{opening.__name__}.set-aside")     # the error still held
+        assert refused.value is not None and not path.exists()
+
+
 def test_a_line_from_another_machine_is_named_until_it_is_acknowledged(held):
     assert checkpoint.note_foreign(held, KEY, [(4, "laptop-2", "2026-09-26T10:00:00Z")]) == 1
     assert checkpoint.note_foreign(held, KEY, [(4, "laptop-2", "2026-09-26T10:00:00Z")]) == 0
