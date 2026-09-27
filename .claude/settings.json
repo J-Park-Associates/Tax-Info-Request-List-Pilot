@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(//c/Users/*/AppData/Local/tax-document-tracker/**)",
+      "Edit(//c/Users/*/AppData/Local/tax-document-tracker/**)",
+      "Read(~/.local/state/tax-document-tracker/**)",
+      "Edit(~/.local/state/tax-document-tracker/**)",
+      "Read(//g/Shared drives/**)",
+      "Edit(//g/Shared drives/**)",
+      "Read(**/tracker.db)",
+      "Read(**/tracker.db-wal)",
+      "Read(**/tracker.db-shm)",
+      "Read(**/tracker.db.v*)",
+      "Read(**/record-heads.db)",
+      "Read(**/record-heads.db-*)",
+      "Read(**/record-heads.db.*)",
+      "Read(**/recovered/**)",
+      "Read(**/_ledger.jsonl)",
+      "Read(**/runs.log)",
+      "Read(**/runs.log.*)",
+      "Read(**/tracker-errors.log)",
+      "Read(**/tracker-errors.log.*)",
+      "Read(**/last-pass.json)",
+      "Read(**/pass-order.json)",
+      "Read(**/passes/**)",
+      "Read(**/reminder-draft*.txt)",
+      "Read(**/status.html)",
+      "Read(**/Status Report.html)"
+    ]
+  }
+}

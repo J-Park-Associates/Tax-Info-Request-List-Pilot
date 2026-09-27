@@ -108,9 +108,10 @@ ocr-scratch/
 
 # Tools' own working folders (decision 137): Claude Code's worktrees and
 # personal settings, and the knowledge-graph tool's output, which quotes the
-# tree. The project's own agent settings are tracked (decision 186) so they
-# can carry a deny list - a guard rail, not a wall: the wall is the separate
-# Windows account the office's AI tooling runs under.
+# tree. The project's own agent settings are tracked (decision 186) and carry
+# a deny list of the data home, the client Shared Drive and every file that
+# names a client - a guard rail, not a wall: the wall is the separate Windows
+# account the office's AI tooling runs under.
 .claude/*
 !.claude/settings.json
 graphify-out/
