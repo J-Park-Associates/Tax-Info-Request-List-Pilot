@@ -7295,7 +7295,8 @@ def test_the_scheduled_tasks_working_folder_is_the_apps_own_not_the_settings_fol
     monkeypatch.setattr(scheduling, "install_task", lambda xml, name=TASK_NAME: ["schtasks"])
     scheduling.register_here(settings.settings_dir())
     written = scheduling.schedule_xml_path().read_text(encoding=scheduling.SCHEDULE_XML_ENCODING)
-    assert f"<WorkingDirectory>{settings.app_dir()}</WorkingDirectory>" in written
+    # The folder is written XML-escaped: an "&" in the office PC's path is "&amp;".
+    assert f"<WorkingDirectory>{scheduling._xml_escape(settings.app_dir())}</WorkingDirectory>" in written
     assert settings.app_dir() != settings.settings_dir()
 
 

@@ -3025,7 +3025,6 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.settings.ENV_SETTINGS_DIR": "b654987367e5160b",
     "tracker.settings.KEY_CLIENTS_ROOT": "3b8f548e07b39dbf",
     "tracker.settings.SETTINGS_FILENAME": "ddf9dfc4d857c464",
-    "tracker.settings.__file__": "1091d1825feadb20",
     "tracker.settings._read": "87ec97cc779bf82a",
     "tracker.settings.clients_root": "8fbaef8c43dcb573",
     "tracker.settings.settings_dir": "0468e63b780056c5",
@@ -3087,12 +3086,14 @@ def admission_closure() -> dict[str, str]:
                         or importlib.import_module(f"{node.module}.{alias.name}")
         for node in ast.walk(tree):
             found = None
-            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id in names:
+            # A dunder (``__file__``, ``__name__``) is where the code sits, not a rule,
+            # and ``__file__`` differs on every machine.
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id in names                     and not node.id.startswith("__"):
                 found = (f"{function.__module__}.{node.id}", names[node.id])
             elif isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and \
                     isinstance(names.get(node.value.id), types.ModuleType):
                 module = names[node.value.id]
-                if module.__name__.startswith("tracker") and hasattr(module, node.attr):
+                if module.__name__.startswith("tracker") and hasattr(module, node.attr)                         and not node.attr.startswith("__"):
                     found = (f"{module.__name__}.{node.attr}", getattr(module, node.attr))
             if found is None:
                 continue
