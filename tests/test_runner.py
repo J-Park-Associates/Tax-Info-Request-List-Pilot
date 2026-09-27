@@ -3129,43 +3129,49 @@ def test_a_line_written_on_another_machine_is_named_until_acknowledged(tmp_path,
     """Decision 159, C-1 (a): a line another machine wrote is accepted - the
     pass files on - and named on the practice page every pass until a
     person acknowledges it; then it is not."""
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
     from tests.conftest import written_elsewhere
     from tracker import checkpoint
     from tracker.runner import STATUS_RECORDS_HEADING
 
-    engagement = build_engagement(tmp_path, samples)
-    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 0
+    engagement = build_engagement(root, samples)
+    assert main([str(root), "--date", FRIDAY.isoformat()]) == 0
     written_elsewhere(engagement.path, ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: {}}),
                       host="laptop-2")
     seq = len(ledger.read_events(engagement.path))
 
     for _pass in range(2):
-        assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 0
-        text = (tmp_path / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
+        assert main([str(root), "--date", FRIDAY.isoformat()]) == 0
+        text = (root / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
         assert STATUS_RECORDS_HEADING in text
         assert f"line {seq} was written on laptop-2" in text
 
     with checkpoint.opened(checkpoint.path_for(store.store_path())) as held:
         (line,) = checkpoint.unacknowledged(held)
         assert checkpoint.acknowledge(held, line.key) == 1
-    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 0
-    text = (tmp_path / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
+    assert main([str(root), "--date", FRIDAY.isoformat()]) == 0
+    text = (root / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
     assert STATUS_RECORDS_HEADING not in text and "laptop-2" not in text
 
 
 def test_a_refused_record_is_named_among_the_records_that_need_a_person(tmp_path, samples):
     """A record cut short behind the pass's back is that return's problem -
     the pass goes on - and it is listed first, with what to do."""
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
     from tracker.runner import STATUS_RECORDS_HEADING
 
-    engagement = build_engagement(tmp_path, samples)
-    other = build_engagement(tmp_path, samples, name="Other TY2025")
-    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 0
+    engagement = build_engagement(root, samples)
+    other = build_engagement(root, samples, name="Other TY2025")
+    assert main([str(root), "--date", FRIDAY.isoformat()]) == 0
     path = ledger.path_for(engagement.path)
     path.write_bytes(b"".join(path.read_bytes().splitlines(keepends=True)[:-1]))
 
-    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 1
-    text = (tmp_path / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
+    assert main([str(root), "--date", FRIDAY.isoformat()]) == 1
+    text = (root / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
     first, _rest = text.split(f"<h2>{STATUS_RECORDS_HEADING}", 1)[1].split("</ul>", 1)
     # Decision 188's sentence for a journal shorter than the store, with the
     # recover pointer every refused record ends with.
@@ -3298,14 +3304,17 @@ def test_a_checkpoint_that_will_not_open_stops_the_pass_by_name(tmp_path, sample
     the file is left where it is for a person. Since the rebase review's
     MF1 the pass does not stop at the proof: it serves no household, exits
     1, and says it first on the practice page it still writes."""
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
     from tracker import checkpoint
 
-    build_engagement(tmp_path, samples)
+    build_engagement(root, samples)
     where = checkpoint.path_for(store.store_path())
     where.parent.mkdir(parents=True, exist_ok=True)
     where.write_bytes(b"fabricated garbage, not a database" * 40)
-    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 1
-    page = html.unescape((tmp_path / STATUS_PAGE_FILENAME).read_text(encoding="utf-8"))
+    assert main([str(root), "--date", FRIDAY.isoformat()]) == 1
+    page = html.unescape((root / STATUS_PAGE_FILENAME).read_text(encoding="utf-8"))
     assert re.search("No household was served this pass: .*cannot read this machine's record "
                      "checkpoint.*runbook §6", page)
     assert where.read_bytes().startswith(b"fabricated garbage")
@@ -3315,13 +3324,16 @@ def test_a_checkpoint_that_will_not_open_stops_the_pass_by_name(tmp_path, sample
 def test_a_record_that_does_not_read_is_among_the_records_that_need_a_person(tmp_path, samples):
     """The review's S6: a careless hand edit that leaves a line unreadable is
     listed first with what to do, and the page never quotes the parser."""
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
     from tracker.runner import STATUS_RECORDS_HEADING
 
-    engagement = build_engagement(tmp_path, samples)
+    engagement = build_engagement(root, samples)
     with ledger.path_for(engagement.path).open("ab") as handle:
         handle.write(b'{"event": "scanned", "note": "Fabricated" "x"}\n')
-    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 1
-    text = (tmp_path / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
+    assert main([str(root), "--date", FRIDAY.isoformat()]) == 1
+    text = (root / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
     first = text.split(f"<h2>{STATUS_RECORDS_HEADING}", 1)[1].split("</ul>", 1)[0]
     assert "does not read as an event (it is not JSON)" in first and ledger.RUN_RECOVER in first
     assert "Fabricated" not in text and "column" not in first
@@ -3330,14 +3342,17 @@ def test_a_record_that_does_not_read_is_among_the_records_that_need_a_person(tmp
 
 def test_the_page_names_the_acknowledge_command_with_this_machines_store(tmp_path, samples):
     """The review's N7: no placeholder a person has to fill in."""
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
     from tests.conftest import written_elsewhere
 
-    engagement = build_engagement(tmp_path, samples)
-    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 0
+    engagement = build_engagement(root, samples)
+    assert main([str(root), "--date", FRIDAY.isoformat()]) == 0
     written_elsewhere(engagement.path, ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: {}}),
                       host="laptop-2")
-    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 0
-    text = (tmp_path / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
+    assert main([str(root), "--date", FRIDAY.isoformat()]) == 0
+    text = (root / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
     assert "&lt;store&gt;" not in text and "<store>" not in text
     assert f"python -m tracker.checkpoint &quot;{store.store_path()}&quot; acknowledge" in text
 
@@ -3751,9 +3766,12 @@ def test_a_stopped_household_says_so_and_is_not_drafted(tmp_path, samples):
 
 def test_the_scheduled_pass_fills_the_progress_file_and_prints_no_progress_line(
         tmp_path, samples, capsys, monkeypatch):
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
     from tracker.progress import PROGRESS_KEY, Watch
 
-    build_engagement(tmp_path, samples)
+    build_engagement(root, samples)
     made: list[Watch] = []
     kept: list[dict] = []
 
@@ -3767,7 +3785,7 @@ def test_the_scheduled_pass_fills_the_progress_file_and_prints_no_progress_line(
             kept.append(said)
 
     monkeypatch.setattr(runner_module, "Watch", Spied)
-    assert main([str(tmp_path), "--date", FRIDAY.isoformat(), "--reminders", "never"]) == 0
+    assert main([str(root), "--date", FRIDAY.isoformat(), "--reminders", "never"]) == 0
     [watch] = made
     assert watch.emit is None and not watch.stoppable
     assert watch.folder == store.store_path().parent

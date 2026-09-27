@@ -168,13 +168,11 @@ def _placements(rows: list[tuple[str, str, int, str | None]], *,
     the firm's own (decision 208).
     """
     expected: dict[str, dict[str, str | None]] = {}
-    first: dict[tuple[str, str], int] = {}
-    for n, (name, form, _year, where) in enumerate(rows, start=1):
+    for name, form, _year, where in rows:
         known = expected.setdefault(name, {})
         if form in known and known[form] != where:
             raise ReportError(f"{said(name)} is expected at both {known[form]} and {where} in the {form} catalog")
         known[form] = where
-        first.setdefault((name, form), n)
     return expected
 
 
@@ -250,7 +248,7 @@ def real_documents() -> list[Document]:
     try:
         folder, rows = real_corpus()
     except ValueError as exc:
-        # read_expectations names the file and the row's document; say the class only.
+        # The reader's own message names a row and a column; say the class only (decision 208).
         raise ReportError(f"{EXPECTATIONS_FILENAME} could not be read ({said_as_class(exc)}): "
                           "check its columns and that every row has a year") from None
     if folder is None:

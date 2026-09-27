@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 160,
     "edges": 998,
-    "reused": 124
+    "reused": 121
   },
   "node_types": [
     "artifact",
@@ -3414,7 +3414,7 @@
       "id": "docs/vocab-coverage.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "7cbfc7ddd31a1cef",
+      "sha256": "5484143a88cc865d",
       "lines": 9415,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
@@ -6092,8 +6092,8 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "78729042b5b9a61e",
-      "lines": 3836,
+      "sha256": "706d18ab651969ec",
+      "lines": 3854,
       "exports": [
         "DRAFT_DAY",
         "FRIDAY",
@@ -7312,8 +7312,8 @@
       "id": "tools/vocab_report.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "99e9e00fed7f5f1f",
-      "lines": 621,
+      "sha256": "7dafcefc12c90426",
+      "lines": 619,
       "cli": "python -m tools.vocab_report",
       "exports": [
         "Document",
