@@ -9117,10 +9117,13 @@ def test_an_unproved_copy_says_its_names_as_the_record_keeps_them(engagement):
     """COPY_UNPROVED names the files the way COPY_MISMATCH two lines below
     it does, through layout.recorded_name: a bidi override or a control
     character in a client's file name never reaches the sentence (decision
-    190, the review's N2). Fabricated name."""
+    190, the review's N2). Fabricated name. Windows refuses a control
+    character in a file name, so there the name carries only the bidi
+    override (which Windows accepts); elsewhere it carries both."""
     from tracker.filer import COPY_UNPROVED, _copy_whole
 
-    original = originals(engagement) / "w2\u202efdp\x07.pdf"
+    control = "" if sys.platform == "win32" else "\x07"
+    original = originals(engagement) / f"w2\u202efdp{control}.pdf"
     original.parent.mkdir(parents=True, exist_ok=True)
     original.write_bytes(b"%PDF-1.4 a fabricated W-2")
     target = engagement / PREPARED_DIR_NAME / "new" / "w2.pdf"
