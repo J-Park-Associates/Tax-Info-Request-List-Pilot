@@ -3495,7 +3495,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "4819b30230a18fda",
+      "sha256": "b385af60fb3183e8",
       "lines": 436,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -3686,8 +3686,8 @@
       "id": ".claude/settings.json",
       "type": "file",
       "layer": "root",
-      "sha256": "52d29535525ffab6",
-      "lines": 70
+      "sha256": "85d1a8d9b0e32632",
+      "lines": 64
     },
     {
       "id": "Build App.bat",
@@ -6695,8 +6695,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "00e19ddb16f182f8",
-      "lines": 2151,
+      "sha256": "d3ec60e7afe4b5f7",
+      "lines": 2234,
       "exports": [
         "CONSOLE_EXEMPT",
         "CONSOLE_GUARDED",
@@ -6755,6 +6755,7 @@
         "test_the_build_is_made_from_what_is_committed",
         "test_the_build_output_folder_is_the_one_gitignore_knows",
         "test_the_command_center_is_gone_from_everything_but_the_decision_log",
+        "test_the_deny_list_never_refuses_a_persons_own_folder_that_shares_a_client_folders_name",
         "test_the_documents_list_the_forms_the_catalog_has",
         "test_the_editor_opens_on_the_state_on_screen",
         "test_the_editors_failures_are_notices_too",
