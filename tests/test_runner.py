@@ -157,8 +157,11 @@ def drafted_events(engagement_dir):
 def test_the_runner_has_a_main_the_frozen_entry_can_call(tmp_path, samples, capsys):
     # api_entry.py runs the scheduled job through this function, so the
     # command line has to be one, not code under __main__.
-    build_engagement(tmp_path, samples)
-    assert main([str(tmp_path), "--dry-run", "--reminders", REMINDERS_NEVER]) == 0
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
+    build_engagement(root, samples)
+    assert main([str(root), "--dry-run", "--reminders", REMINDERS_NEVER]) == 0
     assert "Smith TY2025" in capsys.readouterr().out
 
 
@@ -170,10 +173,13 @@ def test_the_runners_console_guard_is_the_pages(tmp_path, samples, monkeypatch):
     import sys
 
     # An arrow and a check mark: no letter of a second alphabet (decision 188).
-    build_engagement(tmp_path, samples, name="Smith TY2025 \u2192 \u2713")
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
+    build_engagement(root, samples, name="Smith TY2025 \u2192 \u2713")
     console = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
     monkeypatch.setattr(sys, "stdout", console)
-    code = main([str(tmp_path), "--dry-run", "--reminders", REMINDERS_NEVER])
+    code = main([str(root), "--dry-run", "--reminders", REMINDERS_NEVER])
     console.flush()
     shown = console.buffer.getvalue().decode("cp1252")
     assert code == 0
@@ -917,13 +923,16 @@ def test_strays_in_prepared_reach_the_run_report(tmp_path, samples):
 def test_a_real_pass_writes_the_status_page_into_the_root_and_a_dry_run_does_not(tmp_path, samples, capsys):
     """The page is the pass's standing answer, so a pass that changed nothing
     on disk must not leave one - a dry run writes nothing, this included."""
-    build_engagement(tmp_path, samples)
-    page = tmp_path / STATUS_PAGE_FILENAME
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
+    build_engagement(root, samples)
+    page = root / STATUS_PAGE_FILENAME
 
-    assert main([str(tmp_path), "--date", FRIDAY.isoformat(), "--dry-run"]) == 0
+    assert main([str(root), "--date", FRIDAY.isoformat(), "--dry-run"]) == 0
     assert not page.exists()
 
-    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 0
+    assert main([str(root), "--date", FRIDAY.isoformat()]) == 0
     text = page.read_text(encoding="utf-8")
     assert product_name() in text
     assert STATUS_GENERATED.split("{")[0].strip() in text
@@ -1063,13 +1072,16 @@ def test_the_page_is_written_even_when_an_engagements_pass_failed(tmp_path, samp
     so the page it would have been written by is still written, with the error.
     A typo cannot reach the record (decision 104); what can is a journal
     line something else wrote badly."""
-    build_engagement(tmp_path, samples, name="Good TY2025")
-    broken = build_engagement(tmp_path, samples, name="Broken TY2025")
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
+    build_engagement(root, samples, name="Good TY2025")
+    broken = build_engagement(root, samples, name="Broken TY2025")
     with ledger.path_for(broken.path).open("ab") as handle:
         handle.write(b"{this line is not an event}\n")
 
-    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 1
-    text = (tmp_path / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
+    assert main([str(root), "--date", FRIDAY.isoformat()]) == 1
+    text = (root / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
 
     assert "Good TY2025" in text and text.count("Broken TY2025") >= 2
     assert "does not read as an event" in text
@@ -2118,7 +2130,10 @@ def test_an_injected_database_error_in_one_household_leaves_the_others_processed
     class and code; the other is sorted and scanned; the page is written."""
     import tracker.runner as runner
 
-    first, second = _two_households(tmp_path, samples)
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
+    first, second = _two_households(root, samples)
     real = runner.load_manifest
 
     def refused_for_the_first(folder, *args, **kwargs):
@@ -2128,8 +2143,8 @@ def test_an_injected_database_error_in_one_household_leaves_the_others_processed
 
     monkeypatch.setattr(runner, "load_manifest", refused_for_the_first)
 
-    assert main([str(tmp_path), "--reminders", REMINDERS_NEVER]) == 1
-    page = _page(tmp_path)
+    assert main([str(root), "--reminders", REMINDERS_NEVER]) == 1
+    page = _page(root)
     said = RECORD_UNREADABLE.format(problem=store.STORE_UNAVAILABLE.format(code="SQLITE_ERROR"))
     assert f"{first.label}: {said}" in page
     assert "a_table_the_store_never_had" not in page, "the engine's text is never quoted"
@@ -2812,15 +2827,18 @@ def test_a_household_renamed_in_the_firm_tree_pauses_and_makes_no_client_folder(
     from tracker.layout import CLIENTS_TREE, PRIVATE_TREE
     from tracker.registry import MISFIT_CLIENT_NO_RECORD
 
-    engagement = build_engagement(tmp_path, samples)
-    (tmp_path / PRIVATE_TREE / "Test Household").rename(tmp_path / PRIVATE_TREE / "Test Home")
-    inbox = tmp_path / CLIENTS_TREE / "Test Household" / "Drop files here"
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
+    engagement = build_engagement(root, samples)
+    (root / PRIVATE_TREE / "Test Household").rename(root / PRIVATE_TREE / "Test Home")
+    inbox = root / CLIENTS_TREE / "Test Household" / "Drop files here"
     waiting = sorted(p.name for p in inbox.iterdir())
 
-    code, said = _whole_pass(tmp_path, capsys)
+    code, said = _whole_pass(root, capsys)
 
     assert code == 1 and HOUSEHOLD_PAUSED in said
-    assert not (tmp_path / CLIENTS_TREE / "Test Home").exists()
+    assert not (root / CLIENTS_TREE / "Test Home").exists()
     assert sorted(p.name for p in inbox.iterdir()) == waiting
     assert MISFIT_CLIENT_NO_RECORD in said and engagement
 
@@ -2833,14 +2851,17 @@ def test_a_household_renamed_in_the_client_tree_stops_with_one_sentence(tmp_path
     from tracker.households import CLIENT_FOLDER_MISSING
     from tracker.layout import CLIENTS_TREE
 
-    engagement = build_engagement(tmp_path, samples)
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
+    engagement = build_engagement(root, samples)
     _fabricated_filed_original(engagement.path, "Test Household")
-    (tmp_path / CLIENTS_TREE / "Test Household").rename(tmp_path / CLIENTS_TREE / "Test Hh")
+    (root / CLIENTS_TREE / "Test Household").rename(root / CLIENTS_TREE / "Test Hh")
 
-    code, said = _whole_pass(tmp_path, capsys)
+    code, said = _whole_pass(root, capsys)
 
     assert code == 1 and CLIENT_FOLDER_MISSING.format(name="Test Household") in said
-    assert not (tmp_path / CLIENTS_TREE / "Test Household").exists()
+    assert not (root / CLIENTS_TREE / "Test Household").exists()
 
 
 def test_a_new_household_is_still_scaffolded(tmp_path, capsys):
@@ -2848,11 +2869,14 @@ def test_a_new_household_is_still_scaffolded(tmp_path, capsys):
     nothing shared, nothing received - is laid out as it always was."""
     from tracker.layout import inbox_dir_for
 
-    make_engagement(tmp_path, DEMO_ITEMS, household="New Household", people=SCRATCH_PEOPLE,
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
+    make_engagement(root, DEMO_ITEMS, household="New Household", people=SCRATCH_PEOPLE,
                     scaffold=False)
-    code, said = _whole_pass(tmp_path, capsys)
+    code, said = _whole_pass(root, capsys)
     assert code == 0, said
-    assert inbox_dir_for(tmp_path, "New Household").is_dir()
+    assert inbox_dir_for(root, "New Household").is_dir()
 
 
 def test_two_folders_claiming_one_household_stop_both(tmp_path, samples, capsys):
@@ -2864,13 +2888,16 @@ def test_two_folders_claiming_one_household_stop_both(tmp_path, samples, capsys)
     from tracker.layout import CLIENTS_TREE, PRIVATE_TREE
     from tracker.registry import TWO_CLAIM
 
-    build_engagement(tmp_path, samples)
-    private = tmp_path / PRIVATE_TREE
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
+    build_engagement(root, samples)
+    private = root / PRIVATE_TREE
     shutil.copytree(private / "Test Household", private / "Test Household - Copy")
-    inbox = tmp_path / CLIENTS_TREE / "Test Household" / "Drop files here"
+    inbox = root / CLIENTS_TREE / "Test Household" / "Drop files here"
     waiting = sorted(p.name for p in inbox.iterdir())
 
-    code, said = _whole_pass(tmp_path, capsys)
+    code, said = _whole_pass(root, capsys)
 
     sentence = TWO_CLAIM.format(name="Test Household", a="Test Household",
                                 b="Test Household - Copy")
@@ -2887,11 +2914,14 @@ def test_a_household_without_its_record_fails_the_pass_and_says_restore(tmp_path
     from tracker.registry import HOUSEHOLD_RECORD_MISSING
     from tracker.runner import STATUS_MISFITS_HEADING
 
-    build_engagement(tmp_path, samples)
-    ledger.path_for(tmp_path / PRIVATE_TREE / "Test Household").unlink()
-    (tmp_path / CLIENTS_TREE / "Nobody Family").mkdir()
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
+    build_engagement(root, samples)
+    ledger.path_for(root / PRIVATE_TREE / "Test Household").unlink()
+    (root / CLIENTS_TREE / "Nobody Family").mkdir()
 
-    code, said = _whole_pass(tmp_path, capsys)
+    code, said = _whole_pass(root, capsys)
 
     assert code == 1
     assert HOUSEHOLD_RECORD_MISSING.format(folder="Test Household") in said
@@ -2906,14 +2936,17 @@ def test_a_paused_household_makes_the_run_red(tmp_path, samples, capsys):
     hides."""
     from tracker.households import HOUSEHOLD_PAUSED
 
-    engagement = build_engagement(tmp_path, samples)
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
+    engagement = build_engagement(root, samples)
     engagement.path.rename(engagement.path.parent / "1040 - Someone Else")
     # Red on every pass: 1 the first time, and from the second pass the
     # not-served-twice code, which wins over 1 (decision 189).
     from tracker.runner import NOT_SERVED_TWICE_EXIT_CODE
 
     for expected in (1, NOT_SERVED_TWICE_EXIT_CODE):
-        code, said = _whole_pass(tmp_path, capsys)
+        code, said = _whole_pass(root, capsys)
         assert code == expected and "ERROR   " in said and HOUSEHOLD_PAUSED in said
 
 
@@ -3096,43 +3129,49 @@ def test_a_line_written_on_another_machine_is_named_until_acknowledged(tmp_path,
     """Decision 159, C-1 (a): a line another machine wrote is accepted - the
     pass files on - and named on the practice page every pass until a
     person acknowledges it; then it is not."""
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
     from tests.conftest import written_elsewhere
     from tracker import checkpoint
     from tracker.runner import STATUS_RECORDS_HEADING
 
-    engagement = build_engagement(tmp_path, samples)
-    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 0
+    engagement = build_engagement(root, samples)
+    assert main([str(root), "--date", FRIDAY.isoformat()]) == 0
     written_elsewhere(engagement.path, ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: {}}),
                       host="laptop-2")
     seq = len(ledger.read_events(engagement.path))
 
     for _pass in range(2):
-        assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 0
-        text = (tmp_path / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
+        assert main([str(root), "--date", FRIDAY.isoformat()]) == 0
+        text = (root / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
         assert STATUS_RECORDS_HEADING in text
         assert f"line {seq} was written on laptop-2" in text
 
     with checkpoint.opened(checkpoint.path_for(store.store_path())) as held:
         (line,) = checkpoint.unacknowledged(held)
         assert checkpoint.acknowledge(held, line.key) == 1
-    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 0
-    text = (tmp_path / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
+    assert main([str(root), "--date", FRIDAY.isoformat()]) == 0
+    text = (root / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
     assert STATUS_RECORDS_HEADING not in text and "laptop-2" not in text
 
 
 def test_a_refused_record_is_named_among_the_records_that_need_a_person(tmp_path, samples):
     """A record cut short behind the pass's back is that return's problem -
     the pass goes on - and it is listed first, with what to do."""
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
     from tracker.runner import STATUS_RECORDS_HEADING
 
-    engagement = build_engagement(tmp_path, samples)
-    other = build_engagement(tmp_path, samples, name="Other TY2025")
-    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 0
+    engagement = build_engagement(root, samples)
+    other = build_engagement(root, samples, name="Other TY2025")
+    assert main([str(root), "--date", FRIDAY.isoformat()]) == 0
     path = ledger.path_for(engagement.path)
     path.write_bytes(b"".join(path.read_bytes().splitlines(keepends=True)[:-1]))
 
-    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 1
-    text = (tmp_path / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
+    assert main([str(root), "--date", FRIDAY.isoformat()]) == 1
+    text = (root / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
     first, _rest = text.split(f"<h2>{STATUS_RECORDS_HEADING}", 1)[1].split("</ul>", 1)
     # Decision 188's sentence for a journal shorter than the store, with the
     # recover pointer every refused record ends with.
@@ -3265,14 +3304,17 @@ def test_a_checkpoint_that_will_not_open_stops_the_pass_by_name(tmp_path, sample
     the file is left where it is for a person. Since the rebase review's
     MF1 the pass does not stop at the proof: it serves no household, exits
     1, and says it first on the practice page it still writes."""
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
     from tracker import checkpoint
 
-    build_engagement(tmp_path, samples)
+    build_engagement(root, samples)
     where = checkpoint.path_for(store.store_path())
     where.parent.mkdir(parents=True, exist_ok=True)
     where.write_bytes(b"fabricated garbage, not a database" * 40)
-    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 1
-    page = html.unescape((tmp_path / STATUS_PAGE_FILENAME).read_text(encoding="utf-8"))
+    assert main([str(root), "--date", FRIDAY.isoformat()]) == 1
+    page = html.unescape((root / STATUS_PAGE_FILENAME).read_text(encoding="utf-8"))
     assert re.search("No household was served this pass: .*cannot read this machine's record "
                      "checkpoint.*runbook §6", page)
     assert where.read_bytes().startswith(b"fabricated garbage")
@@ -3282,13 +3324,16 @@ def test_a_checkpoint_that_will_not_open_stops_the_pass_by_name(tmp_path, sample
 def test_a_record_that_does_not_read_is_among_the_records_that_need_a_person(tmp_path, samples):
     """The review's S6: a careless hand edit that leaves a line unreadable is
     listed first with what to do, and the page never quotes the parser."""
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
     from tracker.runner import STATUS_RECORDS_HEADING
 
-    engagement = build_engagement(tmp_path, samples)
+    engagement = build_engagement(root, samples)
     with ledger.path_for(engagement.path).open("ab") as handle:
         handle.write(b'{"event": "scanned", "note": "Fabricated" "x"}\n')
-    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 1
-    text = (tmp_path / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
+    assert main([str(root), "--date", FRIDAY.isoformat()]) == 1
+    text = (root / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
     first = text.split(f"<h2>{STATUS_RECORDS_HEADING}", 1)[1].split("</ul>", 1)[0]
     assert "does not read as an event (it is not JSON)" in first and ledger.RUN_RECOVER in first
     assert "Fabricated" not in text and "column" not in first
@@ -3297,14 +3342,17 @@ def test_a_record_that_does_not_read_is_among_the_records_that_need_a_person(tmp
 
 def test_the_page_names_the_acknowledge_command_with_this_machines_store(tmp_path, samples):
     """The review's N7: no placeholder a person has to fill in."""
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
     from tests.conftest import written_elsewhere
 
-    engagement = build_engagement(tmp_path, samples)
-    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 0
+    engagement = build_engagement(root, samples)
+    assert main([str(root), "--date", FRIDAY.isoformat()]) == 0
     written_elsewhere(engagement.path, ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: {}}),
                       host="laptop-2")
-    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 0
-    text = (tmp_path / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
+    assert main([str(root), "--date", FRIDAY.isoformat()]) == 0
+    text = (root / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
     assert "&lt;store&gt;" not in text and "<store>" not in text
     assert f"python -m tracker.checkpoint &quot;{store.store_path()}&quot; acknowledge" in text
 
@@ -3718,9 +3766,12 @@ def test_a_stopped_household_says_so_and_is_not_drafted(tmp_path, samples):
 
 def test_the_scheduled_pass_fills_the_progress_file_and_prints_no_progress_line(
         tmp_path, samples, capsys, monkeypatch):
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    root = tmp_path / "root"
     from tracker.progress import PROGRESS_KEY, Watch
 
-    build_engagement(tmp_path, samples)
+    build_engagement(root, samples)
     made: list[Watch] = []
     kept: list[dict] = []
 
@@ -3734,7 +3785,7 @@ def test_the_scheduled_pass_fills_the_progress_file_and_prints_no_progress_line(
             kept.append(said)
 
     monkeypatch.setattr(runner_module, "Watch", Spied)
-    assert main([str(tmp_path), "--date", FRIDAY.isoformat(), "--reminders", "never"]) == 0
+    assert main([str(root), "--date", FRIDAY.isoformat(), "--reminders", "never"]) == 0
     [watch] = made
     assert watch.emit is None and not watch.stoppable
     assert watch.folder == store.store_path().parent

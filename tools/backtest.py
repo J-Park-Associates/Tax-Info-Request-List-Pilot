@@ -96,7 +96,12 @@ if str(ROOT) not in sys.path:
 from tracker.content_check import extract  # noqa: E402
 from tracker.manifest import RequestItem  # noqa: E402
 from tracker.router import route_file  # noqa: E402
-from tracker.settings import COLUMN_EXPECTED, EXPECTATIONS_COLUMNS, EXPECTATIONS_FILENAME  # noqa: E402
+from tracker.settings import (  # noqa: E402
+    COLUMN_EXPECTED,
+    EXPECTATIONS_COLUMNS,
+    EXPECTATIONS_FILENAME,
+    inside_the_app,
+)
 from tracker.templates import FORM_TYPES, template_items  # noqa: E402
 from tracker.validators import IMAGE_EXTENSIONS, extension_allowed, extension_of, is_ignored  # noqa: E402
 
@@ -568,7 +573,7 @@ def _outside_the_repository(path: Path) -> Path:
     into the tree is a file somebody commits.
     """
     resolved = path.expanduser().resolve()
-    if resolved == ROOT or ROOT in resolved.parents:
+    if inside_the_app(resolved):
         raise BacktestError(f"{OUT_FLAG} must name a path outside the repository: {resolved}")
     return resolved
 

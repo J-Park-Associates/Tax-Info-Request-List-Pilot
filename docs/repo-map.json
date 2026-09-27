@@ -3,7 +3,7 @@
   "generated": "2026-09-26",
   "generator": "tools/repo_map.py",
   "generator_sha256": "54d924057e3b3de9",
-  "module_table_sha256": "dbc657550cbf8e38",
+  "module_table_sha256": "e409415748bf5a6e",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,8 +15,8 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 158,
-    "edges": 973,
+    "nodes": 160,
+    "edges": 998,
     "reused": 121
   },
   "node_types": [
@@ -135,8 +135,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "b9e02cbab22bf218",
-      "lines": 4360,
+      "sha256": "fe6da6cc36ae4440",
+      "lines": 4361,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_FOLDER_NAME_HELP",
@@ -2091,8 +2091,8 @@
       "id": "tracker/registry.py",
       "type": "module",
       "layer": "core",
-      "sha256": "b5601f70ab30516b",
-      "lines": 893,
+      "sha256": "c48be33ee1840281",
+      "lines": 895,
       "cli": "python -m tracker.registry",
       "exports": [
         "EmptyRoot",
@@ -2885,8 +2885,8 @@
       "id": "tracker/settings.py",
       "type": "module",
       "layer": "core",
-      "sha256": "5d94a703cda4cef7",
-      "lines": 459,
+      "sha256": "4089ed5f75fae1aa",
+      "lines": 484,
       "cli": "python -m tracker.settings",
       "exports": [
         "COLUMN_CATALOG",
@@ -2908,6 +2908,7 @@
         "KEY_FIRM",
         "KEY_FIRM_PHONE",
         "NO_ROOT_HINT",
+        "OCR_SCRATCH_DIRNAME",
         "PACKAGE_JSON",
         "ROOT_HOLDS_APP",
         "ROOT_HOLDS_SETTINGS",
@@ -2924,6 +2925,7 @@
         "error_log_path",
         "firm",
         "firm_phone",
+        "inside_the_app",
         "product_name",
         "real_corpus_dir",
         "root_refusal",
@@ -2936,6 +2938,7 @@
       ],
       "constants": {
         "SETTINGS_FILENAME": "'settings.json'",
+        "OCR_SCRATCH_DIRNAME": "'ocr-scratch'",
         "KEY_CLIENTS_ROOT": "'clients_root'",
         "KEY_FIRM": "'firm'",
         "KEY_FIRM_PHONE": "'firm_phone'",
@@ -2961,7 +2964,7 @@
         "ROOT_INSIDE_A_TREE": "'{root} is inside the {tree} folder of the clients root {real}; choose {real}'"
       },
       "role": "The settings file beside the app (SETTINGS_FILENAME): the one place the clients root, the firm and the firm's telephone number are kept. clients_root()/set_clients_root(), firm()/set_firm(), firm_phone()/set_firm_phone(); product_name() reads app/package.json productName (or ENV_PRODUCT_NAME from the shell). ENV_SETTINGS_DIR from the Electron shell says where beside-the-app is. ENV_REAL_CORPUS and real_corpus_dir() name the other folder outside the repository: the firm's own redacted documents, with the expectations file's name and columns beside them.",
-      "notes": "Replaced two roots (an env var for the app defaulting to a demo folder, a command-line path for the job) that nothing tied together. set_clients_root() refuses a folder that does not exist, so a typo cannot become an empty root the run walks for ever. The file is written through fsio.write_json_atomically() (decision 120; it was the manifest's until then, and that one import was the whole of this module's dependence on layer 1): the app and the scheduling CLI can both save it, and neither may swap the other's half-written temp into place. Decision 68: an empty root is refused - Path(\"\") is the working folder. Decision 69: the working folder under any spelling is refused as a root. Decision 71: real_corpus_dir() answers None when the variable is unset and when what it names is not a folder, because raising would fail the suite on every machine that has no corpus, CI included; it is an environment variable rather than a setting because it belongs to a machine, never to an engagement. Decision 117: the firm's phone is a setting for the mirror image of that reason - it belongs to the firm and not to any one engagement, so it sits beside the firm's name rather than in every client's details, and it is taken as typed because a firm writes its number its own way. Only the reminder's final notice says it, and a blank one drops that sentence. Decision 131: the scheduled job names this file's folder (runner --settings) rather than the root, and reads the root from here at every run - one home for the clients root. Decision 137 (M3) replaced decision 69's working-folder check, which meant nothing in the packaged build: root_refusal() (pure, so every rule is testable on any OS) refuses the system drive's root (system_drive_root()), the settings folder, any folder holding it and any folder inside it, and the app's own folder (app_dir(): the frozen executable's, or the repository from source) and any folder holding it, each with its own sentence. Another drive's root is allowed - a letter mapped to the clients share is a real root - and \"D:\" is still recorded as \"D:\\\\\". Review fixes (decision 137): _inside() compares the folders themselves (os.path.samefile up the parent chain) as well as their spellings, so long-path (\\\\?\\) and C$ admin-share forms are refused like plain names; clients_root_refusal() is what set_clients_root and the runner's start both ask. Decision 188: ROOT_INSIDE_A_TREE - the nearest folder above the root that holds both trees (layout.clients_tree_of and private_tree_of are folders) with the root inside one of them (layout.tree_of) is refused naming the root to choose; a lone folder named Clients is not (the runbook's example root). settings imports layout at load (same layer, reads no file). _within and _inside keep their own under-a-folder spelling for the machine's own folders, allowed by name in the layer test. Decision 193: ERROR_LOG_FILENAME and error_log(), the rotating local error log attached by api.main and runner.main for their lifetime, rotated by _ErrorLog's own few lines (not logging.handlers, which loads socket - the review's S2); error_log_path() is beside the tracker's database (store.store_path()'s folder, asked at call time), so it moves with the store."
+      "notes": "Replaced two roots (an env var for the app defaulting to a demo folder, a command-line path for the job) that nothing tied together. set_clients_root() refuses a folder that does not exist, so a typo cannot become an empty root the run walks for ever. The file is written through fsio.write_json_atomically() (decision 120; it was the manifest's until then, and that one import was the whole of this module's dependence on layer 1): the app and the scheduling CLI can both save it, and neither may swap the other's half-written temp into place. Decision 68: an empty root is refused - Path(\"\") is the working folder. Decision 69: the working folder under any spelling is refused as a root. Decision 71: real_corpus_dir() answers None when the variable is unset and when what it names is not a folder, because raising would fail the suite on every machine that has no corpus, CI included; it is an environment variable rather than a setting because it belongs to a machine, never to an engagement. Decision 117: the firm's phone is a setting for the mirror image of that reason - it belongs to the firm and not to any one engagement, so it sits beside the firm's name rather than in every client's details, and it is taken as typed because a firm writes its number its own way. Only the reminder's final notice says it, and a blank one drops that sentence. Decision 131: the scheduled job names this file's folder (runner --settings) rather than the root, and reads the root from here at every run - one home for the clients root. Decision 137 (M3) replaced decision 69's working-folder check, which meant nothing in the packaged build: root_refusal() (pure, so every rule is testable on any OS) refuses the system drive's root (system_drive_root()), the settings folder, any folder holding it and any folder inside it, and the app's own folder (app_dir(): the frozen executable's, or the repository from source) and any folder holding it, each with its own sentence. Another drive's root is allowed - a letter mapped to the clients share is a real root - and \"D:\" is still recorded as \"D:\\\\\". Review fixes (decision 137): _inside() compares the folders themselves (os.path.samefile up the parent chain) as well as their spellings, so long-path (\\\\?\\) and C$ admin-share forms are refused like plain names; clients_root_refusal() is what set_clients_root and the runner's start both ask. Decision 188: ROOT_INSIDE_A_TREE - the nearest folder above the root that holds both trees (layout.clients_tree_of and private_tree_of are folders) with the root inside one of them (layout.tree_of) is refused naming the root to choose; a lone folder named Clients is not (the runbook's example root). settings imports layout at load (same layer, reads no file). _within and _inside keep their own under-a-folder spelling for the machine's own folders, allowed by name in the layer test. Decision 193: ERROR_LOG_FILENAME and error_log(), the rotating local error log attached by api.main and runner.main for their lifetime, rotated by _ErrorLog's own few lines (not logging.handlers, which loads socket - the review's S2); error_log_path() is beside the tracker's database (store.store_path()'s folder, asked at call time), so it moves with the store. Decision 185: _read() learns the file is absent by opening it, so the suite's tripwire sees every attempt; OCR_SCRATCH_DIRNAME names the retired scratch folder once; inside_the_app() is the one answer to whether a path lies in the app's folder (the checkout from source), asked by the report tools before writing and by decision 186."
     },
     {
       "id": "tracker/store.py",
@@ -3351,16 +3354,16 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "6dbe35f685b01353",
-      "lines": 553,
+      "sha256": "76f6cb8f4006ee3a",
+      "lines": 558,
       "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
     },
     {
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "3f107f8fc6d9467c",
-      "lines": 434,
+      "sha256": "9c5418356fa0bfb8",
+      "lines": 435,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -3377,8 +3380,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "932864ac88cfc225",
-      "lines": 976,
+      "sha256": "235ed84d53da8d6e",
+      "lines": 984,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -3404,14 +3407,14 @@
       "id": "docs/tools.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "1e9365e6028b55c4",
-      "lines": 98
+      "sha256": "5e3c3391d449852c",
+      "lines": 107
     },
     {
       "id": "docs/vocab-coverage.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "588bf4248fc19b08",
+      "sha256": "5484143a88cc865d",
       "lines": 9415,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
@@ -3742,21 +3745,40 @@
       "id": "tests/conftest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6027da92a877bf5d",
-      "lines": 479,
+      "sha256": "36f5abf942ee28c0",
+      "lines": 790,
       "exports": [
+        "APP_FOLDER",
+        "ENV_OFFICE_SHAPED_FULL",
+        "REPO",
         "TEST_CLIENT",
         "TEST_HOUSEHOLD",
         "TEST_PEOPLE",
         "TEST_RETURN",
         "TEST_YEAR",
+        "TRIPWIRE_DIR",
+        "TRIPWIRE_HEADING",
+        "UNREADABLE_LOG",
+        "UNREADABLE_LOG_LINE",
         "WINDOWS_PIPE_ENCODING",
-        "a_store_of_its_own",
+        "an_app_folder_of_its_own",
         "app_stdin",
+        "checkout_folders",
+        "checkout_snapshot",
+        "child_env",
         "make_engagement",
         "named_page",
+        "office_shaped_copy",
+        "own_folders",
+        "pytest_configure",
+        "pytest_sessionfinish",
+        "pytest_terminal_summary",
+        "pytest_unconfigure",
+        "read_tripwire_log",
         "reading_in_this_process",
+        "real_places",
         "root_for_a_return_of",
+        "run_in_copy",
         "seed_index",
         "seed_statuses",
         "short_root",
@@ -3764,15 +3786,23 @@
         "sort_all",
         "the_store_agrees_with_the_record",
         "the_view_agrees_with_the_readers",
+        "tripwire_log_said",
         "written_elsewhere"
       ],
       "constants": {
+        "APP_FOLDER": "'app'",
         "TEST_HOUSEHOLD": "'Test Household'",
         "TEST_RETURN": "'1040 - Test Client'",
         "TEST_YEAR": "2025",
         "TEST_CLIENT": "'Test Client'",
-        "WINDOWS_PIPE_ENCODING": "'cp1252'"
-      }
+        "WINDOWS_PIPE_ENCODING": "'cp1252'",
+        "TRIPWIRE_HEADING": "'decision 185: the suite reached a real place'",
+        "UNREADABLE_LOG_LINE": "\"the tripwire's log has a line it cannot read\"",
+        "UNREADABLE_LOG": "\"the tripwire's log could not be read\"",
+        "ENV_OFFICE_SHAPED_FULL": "'TRACKER_OFFICE_SHAPED_FULL'"
+      },
+      "role": "What every test pays for once: an app folder of its own (settings and store, via own_folders()), the tripwire's arming and its session verdict (decision 185), the store and view agreement checks, and the one way to make an engagement, sort an inbox and start a Python child (child_env()).",
+      "notes": "Decision 185: own_folders() is the one place a process is told where beside-the-app is - the session calls it in pytest_configure before collection, every test through an_app_folder_of_its_own (its own MonkeyPatch, so a test's undo cannot take it); real_places() is the one list of places a real settings file, store, scratch or client tree resolves to, from the constants that name them, and 186 adds the data home to both. pytest_configure installs the hook with the session's TRACKER_TEST_TRIPWIRE value and the session log, so this process also judges the Python children it starts by the routes the tripwire's docstring lists (and what escapes is listed there too); a process it forks writes its records to the log. pytest_sessionfinish fails the session on any tripwire record, the pytest process's or a child's (the session log, read_tripwire_log(): a line it cannot read, or a log it cannot read at all (any OSError), is itself said as a violation, never an internal error), and on any folder the session left in the checkout (checkout_folders(), which never lists a guarded place). office_shaped_copy is the checkout copied with fabricated real-looking files beside it, for the nested proofs."
     },
     {
       "id": "tests/samples.py",
@@ -3825,8 +3855,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "422fcd2741414df7",
-      "lines": 6506,
+      "sha256": "ae3b8d8c31ada1bb",
+      "lines": 6518,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -4044,6 +4074,7 @@
         "test_the_returning_client_page_picks_the_returns_recorded_form_by_default",
         "test_the_returns_details_carry_household_year_and_return_name_and_the_editor_cannot_change_them",
         "test_the_scan_command_runs_the_household_pass_and_answers_for_the_return_it_was_asked_about",
+        "test_the_scheduled_tasks_working_folder_is_the_apps_own_not_the_settings_folder",
         "test_the_settings_carry_the_firm_phone_and_the_vocabulary_names_its_box",
         "test_the_sharing_words_are_the_apis_and_the_renderer_types_none",
         "test_the_short_path_warning_comes_with_the_returns_too",
@@ -4085,8 +4116,8 @@
       "id": "tests/test_api_entry.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "1c6d93c66b296f7a",
-      "lines": 101,
+      "sha256": "19557487aa731d0a",
+      "lines": 105,
       "exports": [
         "REPO",
         "run_entry",
@@ -4100,8 +4131,8 @@
       "id": "tests/test_backtest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "5a3d7a278b167b5c",
-      "lines": 362,
+      "sha256": "c082e1b84afe2626",
+      "lines": 348,
       "exports": [
         "CLIENT_FOLDER",
         "EMPLOYEE",
@@ -4113,7 +4144,6 @@
         "YEAR",
         "a_report",
         "expectations_for",
-        "repository_snapshot",
         "run",
         "test_a_disagreement_is_reported_as_the_pair_it_is",
         "test_a_document_is_routed_by_its_text_and_never_by_its_own_name",
@@ -4999,8 +5029,8 @@
       "id": "tests/test_layers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9663d02f9d8457e5",
-      "lines": 699,
+      "sha256": "c252209c5a579b00",
+      "lines": 698,
       "exports": [
         "PACKAGE",
         "REPO",
@@ -5077,8 +5107,8 @@
       "id": "tests/test_learned_keywords.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e8d731253aa2959d",
-      "lines": 337,
+      "sha256": "ff6e116a1cc1aff9",
+      "lines": 382,
       "exports": [
         "CARRIED",
         "REPO",
@@ -5088,6 +5118,7 @@
         "line_for",
         "recorded_root",
         "taught",
+        "test_a_custom_row_is_printed_by_number_and_counts_and_its_document_only_on_request",
         "test_a_keyword_on_a_row_no_catalog_knows_is_a_custom_row",
         "test_a_keyword_the_catalog_already_carries_on_that_row_is_not_learned",
         "test_a_report_that_was_not_linted_says_so",
@@ -5098,6 +5129,8 @@
         "test_an_engagement_whose_record_cannot_be_read_is_a_problem_line_not_a_silence",
         "test_lint_marks_a_keyword_that_would_misfile_a_corpus_form_and_leaves_the_rest_alone",
         "test_the_default_output_counts_engagements_and_the_flag_names_them",
+        "test_the_default_output_names_no_client_no_folder_and_no_problem_text",
+        "test_the_engagements_are_named_only_into_a_file_never_onto_the_screen",
         "test_the_out_path_is_resolved_against_the_working_folder",
         "test_the_report_drops_a_keyword_that_was_unlearned",
         "test_the_report_writes_nothing_under_the_repository_and_refuses_an_out_path_inside_it",
@@ -5115,8 +5148,8 @@
       "id": "tests/test_ledger.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "44b78f16699b3af0",
-      "lines": 1017,
+      "sha256": "7428dcc9e95cfdbf",
+      "lines": 1020,
       "exports": [
         "A_ROW_ORIGINAL",
         "DAY1",
@@ -5478,8 +5511,8 @@
       "id": "tests/test_real_corpus.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "60f278b8c6e17924",
-      "lines": 276,
+      "sha256": "0c9fafee2ee5caf0",
+      "lines": 391,
       "exports": [
         "ENGINE",
         "NO_ENGINE",
@@ -5494,6 +5527,7 @@
         "test_a_corpus_is_read_and_routed_the_way_the_shipped_catalogs_route",
         "test_an_expectations_file_missing_a_column_is_named_not_guessed",
         "test_an_image_row_in_the_expectations_is_routed_or_skipped_by_name_without_the_engine",
+        "test_corpus_rows_are_named_by_number_in_ids_messages_and_the_cache",
         "test_no_corpus_is_no_failure_only_nothing_to_route",
         "test_the_firms_own_documents_file_where_they_belong_or_park"
       ],
@@ -5501,7 +5535,7 @@
         "NO_ENGINE": "'OCR engine not on this machine'"
       },
       "role": "The harness for the firm's own redacted documents: every row of the expectations file beside them routed against a shipped catalog the way tests/test_irs_forms.py routes the IRS's forms, and asserted to file where the firm says or to park.",
-      "notes": "Decision 71. The corpus is outside the repository, in the folder TRACKER_REAL_CORPUS names, and is never committed; with no corpus the routing case skips by name and the harness's own tests - the reading, the routing and the skip - still run on a scratch folder, so the file is exercised on every machine. It owns read_expectations() and real_corpus(), which tools/vocab_report.py imports, so the report and the test cannot disagree about what an expectation means. Decision 74: read_expectations() takes the file's path rather than its folder, because tools/backtest.py scores an expectations file a person keeps wherever they keep it and the contract has to have one reader."
+      "notes": "Decision 71. The corpus is outside the repository, in the folder TRACKER_REAL_CORPUS names, and is never committed; with no corpus the routing case skips by name and the harness's own tests - the reading, the routing and the skip - still run on a scratch folder, so the file is exercised on every machine. It owns read_expectations() and real_corpus(), which tools/vocab_report.py imports, so the report and the test cannot disagree about what an expectation means. Decision 74: read_expectations() takes the file's path rather than its folder, because tools/backtest.py scores an expectations file a person keeps wherever they keep it and the contract has to have one reader. Decision 185: rows are test ids and messages by number (row-N, counted from one as tools/backtest.py counts), never by file name or folder; no other test sees the corpus, because the conftest hides the variable from every test after collection."
     },
     {
       "id": "tests/test_reasons.py",
@@ -5567,8 +5601,8 @@
       "id": "tests/test_registry.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c8814ed38b1706ca",
-      "lines": 735,
+      "sha256": "f0fb3c105e8c38cd",
+      "lines": 752,
       "exports": [
         "ITEMS",
         "make",
@@ -5586,6 +5620,7 @@
         "test_a_rolled_forward_prior_stays_retired_when_the_clients_root_moves",
         "test_a_rolled_from_that_matches_nothing_is_a_warning_not_a_silence",
         "test_a_root_that_is_not_a_folder_is_an_error",
+        "test_a_root_whose_only_household_lost_its_record_says_restore_never_nothing_found",
         "test_a_root_with_nothing_under_it_is_an_error_not_a_quiet_no_op",
         "test_an_engagement_built_without_its_household_reads_it_off_its_own_path",
         "test_an_engagement_is_its_details",
@@ -5608,8 +5643,8 @@
       "id": "tests/test_reminder.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "8e4b31255b440746",
-      "lines": 1869,
+      "sha256": "3e80302af97cf362",
+      "lines": 1878,
       "exports": [
         "A_WRITE_KILLED_HALF_WAY",
         "DEADLINE",
@@ -5814,8 +5849,8 @@
       "id": "tests/test_review.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "5718b28fbb03efd1",
-      "lines": 511,
+      "sha256": "7c9e7e0d5066cb0f",
+      "lines": 513,
       "exports": [
         "DAY1",
         "ITEMS",
@@ -5853,8 +5888,8 @@
       "id": "tests/test_rollover.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "10ba7db17525533d",
-      "lines": 1557,
+      "sha256": "3f5b7f8f8533e003",
+      "lines": 1552,
       "exports": [
         "PARK",
         "PRIOR",
@@ -6057,8 +6092,8 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "f6db08754f908abb",
-      "lines": 3803,
+      "sha256": "706d18ab651969ec",
+      "lines": 3854,
       "exports": [
         "DRAFT_DAY",
         "FRIDAY",
@@ -6419,15 +6454,17 @@
       "id": "tests/test_settings.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "0fda9cb052dbf7b3",
-      "lines": 291,
+      "sha256": "9f0be91e2e29c9f3",
+      "lines": 319,
       "exports": [
         "beside_the_app",
         "test_a_cleared_folder_box_is_refused_not_recorded_as_the_working_folder",
         "test_a_folder_that_does_not_exist_is_refused",
         "test_a_root_one_level_too_deep_is_refused_and_the_example_root_is_not",
+        "test_an_absent_settings_file_is_found_absent_by_opening_it",
         "test_an_unreadable_settings_file_is_an_error_not_a_default",
         "test_nothing_set_means_none_not_a_guess",
+        "test_one_rule_says_what_lies_inside_the_app_folder",
         "test_the_clients_root_cannot_be_the_settings_folder_the_app_folder_or_their_ancestors",
         "test_the_clients_root_is_judged_by_the_folder_itself_not_its_spelling",
         "test_the_error_log_lives_beside_the_tracker_database",
@@ -6443,8 +6480,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7f5d75913e90f67c",
-      "lines": 2044,
+      "sha256": "4084a06576582f9b",
+      "lines": 2057,
       "exports": [
         "CONSOLE_EXEMPT",
         "CONSOLE_GUARDED",
@@ -6553,6 +6590,7 @@
         "test_the_stylesheet_carries_no_stage_colour",
         "test_the_stylesheet_has_a_chip_for_every_status_and_nothing_else",
         "test_the_stylesheet_has_a_class_for_every_view_state",
+        "test_the_tools_ask_one_rule_whether_a_path_is_inside_the_repository",
         "test_the_version_and_package_name_have_one_home",
         "test_the_window_colour_is_read_from_the_stylesheet",
         "test_the_words_for_the_engagements_page_are_pythons_alone",
@@ -6794,11 +6832,43 @@
       ]
     },
     {
+      "id": "tests/test_tripwire.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "0e8d8b3d04992953",
+      "lines": 500,
+      "exports": [
+        "ALL_PASS",
+        "CANARIES",
+        "CANARY",
+        "FOLDER_LABELS",
+        "fabricated_places",
+        "test_a_line_of_the_tripwires_log_it_cannot_read_is_said_as_a_violation",
+        "test_a_link_to_or_from_a_guarded_place_is_judged",
+        "test_a_place_is_judged_by_the_folder_itself_not_its_spelling",
+        "test_a_python_child_is_judged_by_its_environment_its_path_and_its_flags",
+        "test_a_session_where_every_test_passes_still_fails_for_a_reach",
+        "test_a_test_that_undoes_its_monkeypatch_keeps_its_own_folders",
+        "test_a_tripwire_log_that_cannot_be_read_is_said_as_a_violation",
+        "test_a_verbatim_windows_spelling_is_the_same_place",
+        "test_every_python_child_starts_with_the_tripwire_armed",
+        "test_every_test_has_a_settings_folder_and_a_store_of_its_own",
+        "test_no_test_sees_the_real_corpus_unless_it_names_one",
+        "test_no_test_starts_a_python_child_around_the_tripwire",
+        "test_the_atomic_writes_temporary_beside_a_guarded_file_is_guarded_too",
+        "test_the_ignore_file_knows_every_place_the_tripwire_guards",
+        "test_the_rest_of_the_checkout_is_not_guarded",
+        "test_the_suite_in_an_office_shaped_copy_creates_no_folder_in_the_checkout",
+        "test_the_suite_in_an_office_shaped_copy_stops_every_way_to_a_real_place",
+        "test_the_tripwire_guards_every_place_a_real_settings_file_store_or_scratch_resolves_to"
+      ]
+    },
+    {
       "id": "tests/test_validators.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ccec9006821df693",
-      "lines": 339,
+      "sha256": "4c93f8bf710f9947",
+      "lines": 341,
       "exports": [
         "ANY_ITEM",
         "PDF_ITEM",
@@ -6832,8 +6902,8 @@
       "id": "tests/test_view.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "b91392bfd212862a",
-      "lines": 825,
+      "sha256": "c150cb805058f848",
+      "lines": 828,
       "exports": [
         "DAY1",
         "ITEMS",
@@ -6886,14 +6956,17 @@
       "id": "tests/test_vocab_report.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a5b957211d45b73a",
-      "lines": 337,
+      "sha256": "b1e12fe7ad4e4ecb",
+      "lines": 411,
       "exports": [
+        "FABRICATED_NAME",
         "GARBAGE",
         "HEADER",
         "fabricated_corpus",
         "one",
+        "one_pdf_corpus",
         "row",
+        "test_a_build_with_a_real_corpus_present_refuses_to_write_the_committed_report",
         "test_a_changed_input_is_reported_by_name",
         "test_a_committed_report_naming_the_firms_own_documents_is_refused",
         "test_a_contradicting_expectation_is_named_by_its_entry_not_its_name",
@@ -6904,8 +6977,10 @@
         "test_a_keyword_a_filing_document_says_is_reached_here_and_an_unsaid_one_is_unreached",
         "test_a_keyword_said_only_by_documents_that_park_or_file_elsewhere_is_named_apart",
         "test_a_keyword_said_only_by_documents_the_suite_never_routes_here_is_reached_without_expectation",
+        "test_a_local_reading_is_written_only_outside_the_repository",
         "test_a_malformed_expectations_file_is_said_by_its_class_not_its_text",
         "test_a_missing_document_is_named_by_its_entry_not_its_name",
+        "test_a_real_document_is_named_by_its_row_never_its_file",
         "test_a_report_built_without_a_corpus_says_nothing_about_one",
         "test_a_sound_corpus_still_reads_and_a_type_with_no_extractor_is_no_failure",
         "test_a_workbook_case_reads_the_same_to_the_report_as_to_the_suite",
@@ -6921,6 +6996,7 @@
         "test_the_workbook_cases_are_in_the_report_too"
       ],
       "constants": {
+        "FABRICATED_NAME": "'Zephyrine Quillfeather W-2 2025.pdf'",
         "GARBAGE": "b'these bytes are no document at all \\x00\\x01\\x02'",
         "HEADER": "'file,catalog,year,expected\\n'"
       },
@@ -6928,11 +7004,41 @@
       "notes": "test_the_committed_report_is_current fails the suite if a keyword, a case or the matcher changed without `python tools/vocab_report.py build`. Decision 73: a workbook case must read the same to the report as to the suite, so the rendering and a real round trip through openpyxl are asserted equal."
     },
     {
+      "id": "tests/tripwire/sitecustomize.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "bf7073a77691dae8",
+      "lines": 410,
+      "cli": "python -m tests.tripwire.sitecustomize",
+      "exports": [
+        "DIR_FDS",
+        "ENV_TRIPWIRE",
+        "HERE",
+        "SPAWNV_PASSFDS",
+        "STARTS",
+        "TripwireError",
+        "UNARMED",
+        "UNARMING_FLAGS",
+        "WATCHED",
+        "install",
+        "judge",
+        "judge_child",
+        "prepare"
+      ],
+      "constants": {
+        "ENV_TRIPWIRE": "'TRACKER_TEST_TRIPWIRE'",
+        "SPAWNV_PASSFDS": "'multiprocessing.util.spawnv_passfds'",
+        "UNARMED": "'unarmed Python child'"
+      },
+      "role": "The suite's tripwire (decision 185): an audit hook that stops and records any open, listing, folder creation, move, removal, copy, link or SQLite connection at a guarded place, and in the pytest process records a Python child started around it through a watched route; imported by conftest in the pytest process and found as sitecustomize on PYTHONPATH by every Python child that inherits the suite's environment.",
+      "notes": "In the pytest process (install(children=..., log=...)) it watches subprocess.Popen, os.posix_spawn, os.spawn, os.exec (also from a process it forked - fork then exec, POSIX os.spawn* - which writes the session log since its SEEN dies with it), _winapi.CreateProcess (multiprocessing on Windows) and, wrapped because it raises no audit event, multiprocessing.util.spawnv_passfds (multiprocessing on POSIX, the reading child): a Python child (this interpreter after realpath, or a program named python*) whose environment lacks the session's TRACKER_TEST_TRIPWIRE, whose PYTHONPATH does not begin with this session's tripwire folder, or whose flags carry -I, -E or -S is recorded as an unarmed Python child and fails the session - recorded, never raised. A nested session in the office-shaped copy is its own session and judges its children against the copy's folder. A verbatim Windows prefix (\\\\?\\, \\\\?\\UNC\\) is stripped before comparing. It does not see non-Python children, a Python child started by a Python child, a Python child started through a non-Python launcher (a shell, env, the py launcher, a bare PATH name not starting with python), a direct _posixsubprocess.fork_exec outside multiprocessing.util, a native library's own opens, os.stat/exists, an alias that does not carry the place's name (an 8.3 short name, \\\\localhost\\C$\\... or \\\\.\\C:\\...), the clients root a real settings file names (guarded only because that file cannot be read), or deliberate evasion (ctypes): a guard rail in the suite, not a wall. And a relative name given to os.open (how shutil.rmtree walks with dir_fd) is not judged, since the event does not carry the descriptor. Standard library only, imports nothing of the package, so a child is armed before its first import."
+    },
+    {
       "id": "tools/backtest.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "13db840489f608b1",
-      "lines": 647,
+      "sha256": "7734d2717a9bebf8",
+      "lines": 652,
       "cli": "python -m tools.backtest",
       "exports": [
         "AT_BASELINE",
@@ -7003,7 +7109,7 @@
         "RECORDED": "'Recorded {agreement} over {documents} document(s) in {path}.'"
       },
       "role": "Routes the firm's own already-sorted documents at the office and scores the router against them: the agreement with where a person filed each one, the confusion pairs, the per-row table, the parked and no-text shares, and the time a real pass takes.",
-      "notes": "Decision 74. The measure the fifty blank IRS forms and the typed cases cannot be - decision 70's report leaves most keywords and most rows defended by nothing - and the only corpus made of documents a client actually sent. Each document is routed through a hard link (a copy where the file system refuses one) under one neutral name, so the router's by-name fallback can never read the client's name off the file and the score is the routing rules' rather than the firm's naming discipline; the link is the same bytes, so every tier-2 check still sees the real document. A document with no text layer is its own category, because the only evidence left for it would be the name being hidden - unless OCR is allowed, when nothing is handed over and the router does its own reading under its own stricter rule for OCR words. Catalogs are built the way tests/test_irs_forms.py builds them, with the size floor and the year check lifted. Nothing identifying comes back: counts, catalog identifiers and a row's number in the expectations file, never a file name, a folder name below the corpus root or a word of a document; the corpus, its expectations file and the report stay outside the repository and the tool refuses to write into the tree. Decision 127: route_one() also says which of READING_KINDS each document got - text, ocr or image - and the report's timing carries readings_by_kind, so the reader benchmark can say what a photo costs without a folder of text-layer PDFs flattening the number. The rule is unchanged: an image needs OCR_FLAG, exactly as a scan does. Decision 147: collect lists a document wherever the pass would take it - accepted() asks validators.extension_allowed() row by row (a row with no whitelist takes anything), so a photo is on the skeleton wherever a row takes a PDF and a .bmp still is not; no copy of the extension list is kept here."
+      "notes": "Decision 74. The measure the fifty blank IRS forms and the typed cases cannot be - decision 70's report leaves most keywords and most rows defended by nothing - and the only corpus made of documents a client actually sent. Each document is routed through a hard link (a copy where the file system refuses one) under one neutral name, so the router's by-name fallback can never read the client's name off the file and the score is the routing rules' rather than the firm's naming discipline; the link is the same bytes, so every tier-2 check still sees the real document. A document with no text layer is its own category, because the only evidence left for it would be the name being hidden - unless OCR is allowed, when nothing is handed over and the router does its own reading under its own stricter rule for OCR words. Catalogs are built the way tests/test_irs_forms.py builds them, with the size floor and the year check lifted. Nothing identifying comes back: counts, catalog identifiers and a row's number in the expectations file, never a file name, a folder name below the corpus root or a word of a document; the corpus, its expectations file and the report stay outside the repository and the tool refuses to write into the tree. Decision 127: route_one() also says which of READING_KINDS each document got - text, ocr or image - and the report's timing carries readings_by_kind, so the reader benchmark can say what a photo costs without a folder of text-layer PDFs flattening the number. The rule is unchanged: an image needs OCR_FLAG, exactly as a scan does. Decision 147: collect lists a document wherever the pass would take it - accepted() asks validators.extension_allowed() row by row (a row with no whitelist takes anything), so a photo is on the skeleton wherever a row takes a PDF and a .bmp still is not; no copy of the extension list is kept here. Decision 185: the out-path refusal asks settings.inside_the_app(). F-7 (a copy in the machine's temp folder when a hard link fails) is decision 186's placement."
     },
     {
       "id": "tools/gpu_pack.py",
@@ -7032,12 +7138,15 @@
       "id": "tools/learned_keywords.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "32e96ea073c445ff",
-      "lines": 453,
+      "sha256": "0d7b02052f0e1d6e",
+      "lines": 501,
       "cli": "python -m tools.learned_keywords",
       "exports": [
         "CARRIED_BY",
+        "CUSTOM_COUNTS",
         "CUSTOM_ROW",
+        "CUSTOM_ROW_NUMBERED",
+        "ENGAGEMENTS_NEED_A_FILE",
         "FILES_AS",
         "FLAG_INACTIVE",
         "IN_CATALOGS",
@@ -7063,16 +7172,19 @@
       "constants": {
         "FLAG_INACTIVE": "'inactive'",
         "CARRIED_BY": "'{n} engagement(s)'",
+        "ENGAGEMENTS_NEED_A_FILE": "'--engagements names clients, so it writes only into a file: add --out <file> outside the repository'",
         "MISFILE": "'would misfile: {form} {placement}'",
         "FILES_AS": "'files as {identifier} in the {catalog} catalog'",
         "PARKS": "'parks in the {catalog} catalog'",
         "SAID_BY": "'said by: {forms}'",
         "CUSTOM_ROW": "'no catalog holds this row'",
+        "CUSTOM_ROW_NUMBERED": "'Custom row {n}'",
+        "CUSTOM_COUNTS": "'- {keywords} keyword(s), carried by {pairs} engagement-keyword pair(s)'",
         "IN_CATALOGS": "'in the {catalogs} catalog(s)'",
         "NONE": "'- none'"
       },
       "role": "Lists what the staff taught the router: every keyword a person taught one engagement's request that no catalog row with the same identifier and document carries, across every engagement under the clients root, grouped by request row with the number of engagements that typed it.",
-      "notes": "Decision 79. A keyword a filing teaches lives in that one engagement's record, so fifty engagements hold fifty private vocabularies and the catalog is the only one tests/test_catalog.py and tests/test_irs_forms.py defend; this is the season's list of candidates to promote. Read-only in the strong sense: no lock is taken, nothing in an engagement folder is written or moved, and a report path inside the repository is refused - an engagement folder name is a client's name and the report names them on request. The engagement's details have recorded the catalog form since decision 86, but this tool does not read it: a row is compared against every catalog holding it and the report says which matched; a row no catalog holds is a custom request, listed apart with all its keywords. An engagement whose record could not be read is a problem line, never a silent skip. It borrows shipped_catalogs() and corpus_documents() from tools/vocab_report.py, so the catalogs it compares against - built through manifest.validated() over template_items() since decision 104 - and the corpus a candidate can be run over are the coverage report's. manifest_rows() reads through manifest.load_manifest(), which is what puts a taught keyword in front of any reader at all."
+      "notes": "Decision 79. A keyword a filing teaches lives in that one engagement's record, so fifty engagements hold fifty private vocabularies and the catalog is the only one tests/test_catalog.py and tests/test_irs_forms.py defend; this is the season's list of candidates to promote. Read-only in the strong sense: no lock is taken, nothing in an engagement folder is written or moved, and a report path inside the repository is refused - an engagement folder name is a client's name and the report names them on request. The engagement's details have recorded the catalog form since decision 86, but this tool does not read it: a row is compared against every catalog holding it and the report says which matched; a row no catalog holds is a custom request, listed apart with all its keywords. An engagement whose record could not be read is a problem line, never a silent skip. It borrows shipped_catalogs() and corpus_documents() from tools/vocab_report.py, so the catalogs it compares against - built through manifest.validated() over template_items() since decision 104 - and the corpus a candidate can be run over are the coverage report's. manifest_rows() reads through manifest.load_manifest(), which is what puts a taught keyword in front of any reader at all. Decision 185: the default output carries no root, folder or problem text; --engagements names them, and only into a file --out names outside the repository, never onto a console (Jason's J1 (b))."
     },
     {
       "id": "tools/lockfiles.py",
@@ -7200,8 +7312,8 @@
       "id": "tools/vocab_report.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "6dbd4f0d5d1a2863",
-      "lines": 589,
+      "sha256": "7dafcefc12c90426",
+      "lines": 619,
       "cli": "python -m tools.vocab_report",
       "exports": [
         "Document",
@@ -7209,6 +7321,7 @@
         "INPUT_PATHS",
         "IRS_DIR",
         "MARKDOWN_PATH",
+        "OUT_FLAG",
         "REPORT_PATH",
         "ROOT",
         "ReportError",
@@ -7230,11 +7343,12 @@
       ],
       "constants": {
         "SCHEMA_VERSION": "1",
+        "OUT_FLAG": "'--out'",
         "GENERATED_NOTE": "'GENERATED by tools/vocab_report.py \u2014 do not edit by hand.'",
         "INPUT_PATHS": "('tracker/templates.py', 'tracker/content_check.py', 'tracker/manifest.py', 'tests/test_catalog.py', 'tests/test_irs_forms.py', 'tests/test_real_corpus.py', 'tools/vocab_report.py')"
       },
       "role": "Generates the vocabulary coverage report: which keyword in each catalog is reached by which IRS form in tests/irs/ or case in tests/test_catalog.py, tested with content_check.says() the way the router reads, and which keywords nothing in the suite defends.",
-      "notes": "The map's counterpart for the routing rules (decision 70). `build` extracts the corpus and routes every keyword (about thirty seconds); `check` compares the SHA-256 of its inputs - the catalog, the matcher, the manifest's validation, the cases, the corpus, tests/test_real_corpus.py and this file - so it costs nothing and CI runs it. The committed report reads no client document: the corpus is the IRS's own blank forms and text the suite typed. Decision 71: when TRACKER_REAL_CORPUS names the firm's own redacted documents, `build` reads those too (kind `real`) and the counts name them; that report is a local reading, never the committed one, and `check` refuses a committed report that names them. Decision 73: the workbook cases are read too - as_a_sheet() renders a client spreadsheet's rows the way content_check._extract_xlsx does, so a keyword only a schedule reaches is not reported as unreached. Decision 104: shipped_catalogs() builds each catalog through manifest.validated() over template_items(), the same validation an engagement's create makes, with no temporary file and no store - which is why tracker/manifest.py is one of its inputs and the report was rebuilt with this decision at the same numbers. Decision 208: every document, the IRS forms and the firm's own, is read through content_check.extract(path, ocr=False), the router's text reading, never the bare extract_text(); a damaged firm document stops build once, with one ReportError naming each by its expectations entry and its error class - never its file name, the corpus folder or a parser's message (security principle 7) - and the missing-file and contradicting-expectation errors say the entry too; a malformed expectations file and a file the system refuses are said as their class. The report was rebuilt at the same numbers."
+      "notes": "The map's counterpart for the routing rules (decision 70). `build` extracts the corpus and routes every keyword (about thirty seconds); `check` compares the SHA-256 of its inputs - the catalog, the matcher, the manifest's validation, the cases, the corpus, tests/test_real_corpus.py and this file - so it costs nothing and CI runs it. The committed report reads no client document: the corpus is the IRS's own blank forms and text the suite typed. Decision 71: when TRACKER_REAL_CORPUS names the firm's own redacted documents, `build` reads those too (kind `real`) and the counts name them; that report is a local reading, never the committed one, and `check` refuses a committed report that names them. Decision 73: the workbook cases are read too - as_a_sheet() renders a client spreadsheet's rows the way content_check._extract_xlsx does, so a keyword only a schedule reaches is not reported as unreached. Decision 104: shipped_catalogs() builds each catalog through manifest.validated() over template_items(), the same validation an engagement's create makes, with no temporary file and no store - which is why tracker/manifest.py is one of its inputs and the report was rebuilt with this decision at the same numbers. Decision 208: every document, the IRS forms and the firm's own, is read through content_check.extract(path, ocr=False), the router's text reading, never the bare extract_text(); a damaged firm document stops build once, with one ReportError naming each by its expectations entry and its error class - never its file name, the corpus folder or a parser's message (security principle 7) - and the missing-file and contradicting-expectation errors say the entry too; a malformed expectations file and a file the system refuses are said as their class. The report was rebuilt at the same numbers. Decision 185: build refuses while TRACKER_REAL_CORPUS names a corpus, and writes that reading only into an --out folder outside the repository; a real document is labelled by its row."
     }
   ],
   "edges": [
@@ -7480,7 +7594,19 @@
     },
     {
       "from": "tests/conftest.py",
+      "to": "pkg:tests",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/conftest.py",
       "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/conftest.py",
+      "to": "tracker/checkpoint.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -7534,13 +7660,43 @@
     },
     {
       "from": "tests/conftest.py",
+      "to": "tracker/progress.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/conftest.py",
       "to": "tracker/records.py",
       "type": "exercises",
       "source": "derived"
     },
     {
       "from": "tests/conftest.py",
+      "to": "tracker/reminder.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/conftest.py",
+      "to": "tracker/runner.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/conftest.py",
       "to": "tracker/scaffold.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/conftest.py",
+      "to": "tracker/scheduling.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/conftest.py",
+      "to": "tracker/settings.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -7554,6 +7710,12 @@
       "from": "tests/conftest.py",
       "to": "tracker/view.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/conftest.py",
+      "to": "tests/tripwire/sitecustomize.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -7908,6 +8070,12 @@
       "from": "tests/test_backtest.py",
       "to": "tracker/validators.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_backtest.py",
+      "to": "tests/conftest.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -9268,6 +9436,12 @@
     },
     {
       "from": "tests/test_real_corpus.py",
+      "to": "tests/conftest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_real_corpus.py",
       "to": "tests/test_scanner.py",
       "type": "imports",
       "source": "derived"
@@ -10564,6 +10738,12 @@
     },
     {
       "from": "tests/test_single_source.py",
+      "to": "tests/conftest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_single_source.py",
       "to": "tests/test_layers.py",
       "type": "imports",
       "source": "derived"
@@ -10722,6 +10902,78 @@
       "from": "tests/test_templates.py",
       "to": "tracker/templates.py",
       "type": "tests",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_tripwire.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_tripwire.py",
+      "to": "pkg:tests",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_tripwire.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_tripwire.py",
+      "to": "tracker/checkpoint.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_tripwire.py",
+      "to": "tracker/layout.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_tripwire.py",
+      "to": "tracker/progress.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_tripwire.py",
+      "to": "tracker/runner.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_tripwire.py",
+      "to": "tracker/scheduling.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_tripwire.py",
+      "to": "tracker/settings.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_tripwire.py",
+      "to": "tracker/store.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_tripwire.py",
+      "to": "tests/conftest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_tripwire.py",
+      "to": "tests/tripwire/sitecustomize.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -10906,6 +11158,12 @@
     },
     {
       "from": "tests/test_vocab_report.py",
+      "to": "tracker/settings.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_vocab_report.py",
       "to": "tests/samples.py",
       "type": "imports",
       "source": "derived"
@@ -10913,6 +11171,12 @@
     {
       "from": "tests/test_vocab_report.py",
       "to": "tests/test_catalog.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_vocab_report.py",
+      "to": "tests/test_scanner.py",
       "type": "imports",
       "source": "derived"
     },

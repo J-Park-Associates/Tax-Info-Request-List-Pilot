@@ -14,12 +14,12 @@ client document is in the repository, and none ever will be.
 """
 
 import json
-import os
 import sys
 from pathlib import Path
 
 import pytest
 
+from tests.conftest import checkout_snapshot, real_places
 from tests.samples import lines_1099_int, text_pdf, w2_lines
 from tracker.settings import COLUMN_EXPECTED, EXPECTATIONS_COLUMNS, EXPECTATIONS_FILENAME
 
@@ -320,20 +320,6 @@ def test_the_committed_baseline_records_no_agreement_until_the_office_run():
 
 # ------------------------------------------------ nothing reaches the tree ----
 
-#: Folders whose contents change for reasons that are nobody's doing.
-_UNWATCHED = {".git", ".claude", "__pycache__", ".pytest_cache", ".ruff_cache",
-              "node_modules", "build-portable", "dist", "build"}
-
-
-def repository_snapshot() -> dict[str, int]:
-    found = {}
-    for dirpath, dirnames, filenames in os.walk(REPO):
-        dirnames[:] = [d for d in dirnames if d not in _UNWATCHED]
-        for name in filenames:
-            path = Path(dirpath) / name
-            found[str(path.relative_to(REPO))] = path.stat().st_mtime_ns
-    return found
-
 
 def test_the_tool_writes_nothing_under_the_repository_root(tmp_path, capsys, monkeypatch):
     """Everything a pass makes - the catalogs it builds, the links it
@@ -341,15 +327,15 @@ def test_the_tool_writes_nothing_under_the_repository_root(tmp_path, capsys, mon
     made from client documents."""
     folder = two_documents(tmp_path)
     monkeypatch.chdir(tmp_path)
-    before = repository_snapshot()
+    before = checkout_snapshot(REPO, real_places(REPO))
     assert main(["run", str(folder), OUT_FLAG, str(tmp_path / "report.json"), OCR_FLAG]) == 0
     assert main(["collect", str(folder), "--catalog", "1040", "--year", str(YEAR),
                  OUT_FLAG, str(tmp_path / "skeleton.csv")]) == 0
-    assert repository_snapshot() == before
+    assert checkout_snapshot(REPO, real_places(REPO)) == before
     # And it refuses to be pointed at the tree in the first place.
     assert main(["run", str(folder), OUT_FLAG, str(REPO / "report.json")]) == 2
     assert "outside the repository" in capsys.readouterr().err
-    assert repository_snapshot() == before
+    assert checkout_snapshot(REPO, real_places(REPO)) == before
 
 
 def test_a_row_naming_a_document_that_is_not_there_is_reported_by_its_number(tmp_path):

@@ -9,7 +9,7 @@ import datetime as dt
 
 import pytest
 
-from tests.conftest import ensure, make_engagement, seed_statuses, written_elsewhere
+from tests.conftest import child_env, ensure, make_engagement, seed_statuses, written_elsewhere
 from tracker import ledger
 from tracker.layout import inbox_of, root_of
 from tracker.manifest import (
@@ -437,11 +437,10 @@ def test_the_rollover_command_line_records_where_the_prior_year_really_is(prior)
 
     from tracker.manifest import load_engagement_info
 
-    repo = Path(__file__).resolve().parent.parent
     subprocess.run(
         [sys.executable, "-m", "tracker.rollover", prior.name, "--year", "2026"],
         cwd=prior.parent, check=True, capture_output=True,
-        env={**__import__("os").environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"},
+        env=child_env(PYTHONIOENCODING="utf-8"),
     )
     info = load_engagement_info(rolled_into(prior, 2026))
     assert Path(info.rolled_from).is_absolute() and Path(info.rolled_from) == prior.resolve()
@@ -483,21 +482,20 @@ def test_the_carry_clears_both_of_last_years_dates(tmp_path):
 def test_the_rollover_command_line_writes_the_carried_form_into_next_year(tmp_path):
     """End to end: the prior's details say which catalog, and so do next
     year's - the details the app shows."""
-    import os
     import subprocess
     import sys
-    from pathlib import Path
 
     from tracker.manifest import load_engagement_info
 
-    prior = make_engagement(tmp_path, PRIOR,
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    prior = make_engagement(tmp_path / "root", PRIOR,
                             EngagementInfo(client="John Smith", form="1040"),
                             household="Smith Family", scaffold=False)
-    repo = Path(__file__).resolve().parent.parent
     subprocess.run(
         [sys.executable, "-m", "tracker.rollover", prior.name, "--year", "2026"],
         cwd=prior.parent, check=True, capture_output=True,
-        env={**os.environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"},
+        env=child_env(PYTHONIOENCODING="utf-8"),
     )
     rolled = rolled_into(prior, 2026)
     info = load_engagement_info(rolled)
@@ -514,18 +512,17 @@ def test_the_rollover_command_line_fills_the_new_years_dates_from_the_form(tmp_p
     was stage 1, months after the tax year. A prior with no form and no
     ``--form`` still fills nothing: the no-guess rule is unchanged.
     """
-    import os
     import subprocess
     import sys
-    from pathlib import Path
 
     from tracker.manifest import load_engagement_info
     from tracker.templates import ask_by_for, filing_deadline_for
 
-    repo = Path(__file__).resolve().parent.parent
-    env = {**os.environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"}
+    env = child_env(PYTHONIOENCODING="utf-8")
 
-    prior = make_engagement(tmp_path, PRIOR,
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    prior = make_engagement(tmp_path / "root", PRIOR,
                             EngagementInfo(client="John Smith", form="1040"),
                             household="Smith Family", scaffold=False)
     subprocess.run(
@@ -537,7 +534,7 @@ def test_the_rollover_command_line_fills_the_new_years_dates_from_the_form(tmp_p
     assert info.due == ask_by_for(info.filing_deadline)
 
     # No form recorded and none asked for: a statutory date is never guessed.
-    unknown = make_engagement(tmp_path, PRIOR, EngagementInfo(client="Jane Jones"),
+    unknown = make_engagement(tmp_path / "root", PRIOR, EngagementInfo(client="Jane Jones"),
                               household="Jones Family", return_name="1040 - Jones",
                               scaffold=False)
     subprocess.run(
@@ -755,7 +752,6 @@ def test_rollover_rolls_a_return_into_the_next_years_folder_of_the_same_househol
     the API nor the command line takes a target folder: they are given the
     prior and the year, and the layout says where it goes.
     """
-    import os
     import subprocess
     import sys
     from pathlib import Path
@@ -791,8 +787,7 @@ def test_rollover_rolls_a_return_into_the_next_years_folder_of_the_same_househol
 
     # The command line takes no target either: the prior and the year.
     repo = Path(__file__).resolve().parent.parent
-    env = {**os.environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8",
-           ENV_SETTINGS_DIR: str(tmp_path / "app")}
+    env = child_env(PYTHONIOENCODING="utf-8", **{ENV_SETTINGS_DIR: str(tmp_path / "app")})
     done = subprocess.run(
         [sys.executable, "-m", "tracker.rollover", str(target), "--year", "2027"],
         cwd=repo, capture_output=True, text=True, encoding="utf-8", env=env,

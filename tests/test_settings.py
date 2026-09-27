@@ -289,3 +289,31 @@ def test_the_error_log_lives_beside_the_tracker_database(beside_the_app, monkeyp
     assert path == elsewhere.parent / ERROR_LOG_FILENAME
     assert "a fabricated warning" in path.read_text(encoding="utf-8")
     assert not (settings_dir() / ERROR_LOG_FILENAME).exists()
+
+
+# ------------------------------------------ decision 185: the suite's own folder ----
+
+
+def test_one_rule_says_what_lies_inside_the_app_folder(tmp_path, monkeypatch):
+    """The report tools ask this before writing: a file in the checkout is one
+    `git add -A` from every clone."""
+    from tracker.settings import app_dir, inside_the_app
+
+    app = app_dir()
+    assert inside_the_app(app)
+    assert inside_the_app(app / "docs" / "learned.md")
+    monkeypatch.chdir(app / "docs")
+    assert inside_the_app("learned.md") and inside_the_app("../x")
+    assert not inside_the_app(tmp_path)
+
+
+def test_an_absent_settings_file_is_found_absent_by_opening_it(beside_the_app, monkeypatch):
+    """``exists()`` raises no audit event, so the suite's tripwire would not
+    see a test reach the checkout's settings on a machine without one."""
+    from pathlib import Path
+
+    def never(self, *args, **kwargs):
+        raise AssertionError(f"exists() asked of {self}")
+
+    monkeypatch.setattr(Path, "exists", never)
+    assert clients_root() is None

@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import child_env
 from tracker import ledger, reasons
 from tracker import reminder as reminder_module
 from tracker.layout import inbox_of
@@ -616,9 +617,11 @@ def test_the_manual_draft_refuses_past_the_gate_with_exit_two(tmp_path):
     """Decision 13, amended: always available, never past the gate. The
     command line prints the held rows and, asked to write, refuses with the
     scanner's own "not done, not an error" exit code and writes nothing."""
-    folder = _held_engagement(tmp_path)
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    folder = _held_engagement(tmp_path / "root")
     repo = Path(__file__).resolve().parents[1]
-    env = {**os.environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"}
+    env = child_env(PYTHONIOENCODING="utf-8")
     shown = subprocess.run([sys.executable, "-m", "tracker.reminder", str(folder)],
                            cwd=repo, capture_output=True, text=True, env=env)
     assert shown.returncode == 0
@@ -848,13 +851,15 @@ def test_the_drafted_event_carries_the_stage_and_a_crossed_threshold_is_a_change
 
 
 def test_stage_three_regenerates_the_same_lines_at_stage_three(tmp_path):
-    folder = engagement(tmp_path, SENDABLE)
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    folder = engagement(tmp_path / "root", SENDABLE)
     asked = draft_reminder(folder, due_date=DUE, today=DUE, stage=3)
     assert asked.stage == 3 and asked.subject == stage_named(3).subject.format(
         engagement=LABEL, n=2)
 
     repo = Path(__file__).resolve().parents[1]
-    env = {**os.environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"}
+    env = child_env(PYTHONIOENCODING="utf-8")
     shown = subprocess.run(
         [sys.executable, "-m", "tracker.reminder", str(folder),
          "--due", DUE.isoformat(), "--today", DUE.isoformat(), "--stage", "3"],
@@ -1449,7 +1454,9 @@ def test_the_command_lines_write_lands_beside_an_approved_draft_and_never_over_i
     """
     from tracker import store
 
-    folder = engagement(tmp_path, SENDABLE, name="CLI Approved TY2025")
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    folder = engagement(tmp_path / "root", SENDABLE, name="CLI Approved TY2025")
     draft = draft_reminder(folder, due_date=DUE, today=DUE)
     written = write_draft(draft, engagement_dir=folder)
     approve(folder, draft, written)
@@ -1457,7 +1464,7 @@ def test_the_command_lines_write_lands_beside_an_approved_draft_and_never_over_i
 
     store.close()          # the command line opens the same store for itself
     repo = Path(__file__).resolve().parents[1]
-    env = {**os.environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"}
+    env = child_env(PYTHONIOENCODING="utf-8")
     run = subprocess.run(
         [sys.executable, "-m", "tracker.reminder", str(folder), "--write",
          "--due", DUE.isoformat(), "--today", DUE.isoformat(), "--stage", "1"],
@@ -1676,7 +1683,9 @@ def test_a_folder_the_pass_cannot_list_holds_the_reminder(tmp_path, monkeypatch)
 def test_a_held_draft_by_the_inbox_writes_nothing_and_says_why(tmp_path):
     from tracker.reminder import INBOX_HOLD
 
-    folder = engagement(tmp_path, SENDABLE, name="Waiting TY2025")
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    folder = engagement(tmp_path / "root", SENDABLE, name="Waiting TY2025")
     waiting_in(folder, "W-2 from the client.pdf")
     draft = draft_reminder(folder)
 
@@ -1693,7 +1702,7 @@ def test_a_held_draft_by_the_inbox_writes_nothing_and_says_why(tmp_path):
 
     store.close()
     repo = Path(__file__).resolve().parents[1]
-    env = {**os.environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"}
+    env = child_env(PYTHONIOENCODING="utf-8")
     written = subprocess.run([sys.executable, "-m", "tracker.reminder", str(folder), "--write"],
                              cwd=repo, capture_output=True, text=True, env=env)
     assert written.returncode == 2, written.stdout + written.stderr

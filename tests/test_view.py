@@ -677,7 +677,10 @@ def test_the_registry_never_mistakes_the_view_for_an_engagement(tmp_path, engage
 # -------------------------------------------------------------------- CLI ----
 
 
-def test_the_cli_writes_the_view_and_prints_its_state_and_path(engagement):
+def test_the_cli_writes_the_view_and_prints_its_state_and_path(tmp_path):
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    engagement = make_engagement(tmp_path / "root", ITEMS, household="Smith Family")
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     a_pass(engagement)
 

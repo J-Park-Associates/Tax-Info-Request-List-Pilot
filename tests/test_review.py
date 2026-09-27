@@ -8,7 +8,6 @@ the engagement exactly as it was — no lock, no write, not one changed byte.
 
 import datetime as dt
 import hashlib
-import os
 import subprocess
 import sys
 from dataclasses import replace
@@ -16,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import make_engagement, seed_index, sort
+from tests.conftest import child_env, make_engagement, seed_index, sort
 from tests.test_scanner import text_pdf
 from tracker import reasons
 from tracker.content_check import (
@@ -371,7 +370,10 @@ def test_triage_takes_no_lock_and_writes_nothing(engagement):
     assert not list(engagement.rglob(LOCK_FILENAME)), "triage took the engagement lock"
 
 
-def test_the_cli_prints_each_parked_file_and_its_shortlist(engagement):
+def test_the_cli_prints_each_parked_file_and_its_shortlist(tmp_path):
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    engagement = make_engagement(tmp_path / "root", ITEMS, household="Smith Family")
     park(
         engagement,
         parked_row("statement.pdf", {"C01": (Evidence(RULE_REQUIRED, "1098", WHERE_TITLE, 1),)}),
@@ -381,7 +383,7 @@ def test_the_cli_prints_each_parked_file_and_its_shortlist(engagement):
     done = subprocess.run(
         [sys.executable, "-m", "tracker.review", str(engagement)],
         cwd=REPO, check=True, capture_output=True, text=True,
-        env={**os.environ, "PYTHONPATH": str(REPO), "PYTHONIOENCODING": "utf-8"},
+        env=child_env(PYTHONIOENCODING="utf-8"),
     )
 
     assert "statement.pdf" in done.stdout

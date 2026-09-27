@@ -525,6 +525,11 @@ while it reads. On Windows it reads on the processor, or on an NVIDIA card
 with the graphics card pack beside the packaged app (`Build GPU Pack.bat`;
 [docs/runbook.md](docs/runbook.md) §6, step 5).
 
+The suite never reads this checkout's settings file, store, scratch folder or a
+client tree copied into it: every test gets a settings folder and a store of its
+own, and a tripwire fails the whole run if any test, or any Python process a
+test starts, reaches one of them (decision 185).
+
 ## Running the app
 
 `Start App.bat` runs the desktop app from source (Python (the floor is `requires-python` in `pyproject.toml`) and Node

@@ -12,6 +12,7 @@ import json
 import re
 from pathlib import Path
 
+from tests.conftest import child_env
 from tracker.content_check import RETIRED_CACHE_FILENAME
 
 REPO = Path(__file__).resolve().parent.parent
@@ -293,7 +294,7 @@ def test_gitignore_knows_every_runtime_file_python_writes_outside_the_repo():
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
     from tracker.runner import LOG_FILENAME, STATUS_PAGE_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
-    from tracker.settings import ERROR_LOG_FILENAME, SETTINGS_FILENAME
+    from tracker.settings import ERROR_LOG_FILENAME, OCR_SCRATCH_DIRNAME, SETTINGS_FILENAME
     from tracker.store import STORE_FILENAME, STORE_SHM_FILENAME, STORE_WAL_FILENAME
 
     ignored = [line.strip() for line in read(".gitignore").splitlines()
@@ -303,7 +304,8 @@ def test_gitignore_knows_every_runtime_file_python_writes_outside_the_repo():
                  STORE_FILENAME, STORE_WAL_FILENAME, STORE_SHM_FILENAME,
                  # Decision 193: the error log, its rotated copies and the
                  # passes folder, beside the store.
-                 ERROR_LOG_FILENAME, f"{ERROR_LOG_FILENAME}.*", PASSES_DIRNAME + "/"):
+                 ERROR_LOG_FILENAME, f"{ERROR_LOG_FILENAME}.*", PASSES_DIRNAME + "/",
+                 f"{OCR_SCRATCH_DIRNAME}/"):
         assert ignored.count(name) == 1, name
 
 
@@ -348,6 +350,18 @@ def test_gitignore_knows_both_client_trees_and_every_file_written_inside_them():
     for name in (f"{CLIENTS_TREE}/", f"{PRIVATE_TREE}/", f"{OPENED_DIR_NAME}/", LEDGER_FILENAME,
                  LOCK_FILENAME, README_LOCK_FILENAME, README_NAME, VIEW_FILENAME):
         assert ignored.count(name) == 1, name
+
+
+def test_the_tools_ask_one_rule_whether_a_path_is_inside_the_repository():
+    """Decision 185: ``settings.inside_the_app()`` is the one answer to
+    "inside the repository", judged by the folder itself as well as its
+    spelling; no tool spells the rule a second time."""
+    spelled = re.compile(r"is_relative_to\(ROOT\)|ROOT in .*\.parents|== ROOT\b")
+    for path in sorted((REPO / "tools").glob("*.py")):
+        text = path.read_text(encoding="utf-8")
+        assert not spelled.search(text), path.name
+    for name in ("backtest.py", "learned_keywords.py"):
+        assert "inside_the_app(" in read(f"tools/{name}"), name
 
 
 def test_openpyxl_is_imported_only_to_read_a_clients_spreadsheet():
@@ -1655,7 +1669,6 @@ if (command === "list") {
 
 
 def _run_the_shell(tmp_path, calls, **env):
-    import os
     import shutil
     import subprocess
 
@@ -1671,7 +1684,7 @@ def _run_the_shell(tmp_path, calls, **env):
     done = subprocess.run([node, str(harness), str(REPO / "app" / "main.js"), str(fake),
                            json.dumps(calls)],
                           capture_output=True, text=True, encoding="utf-8", timeout=120, check=False,
-                          env={**os.environ, "FAKE_LOG": str(tmp_path / "tracker-errors.log"), **env})
+                          env=child_env(FAKE_LOG=str(tmp_path / "tracker-errors.log"), **env))
     assert done.returncode == 0, done.stderr
     return json.loads(done.stdout)
 
