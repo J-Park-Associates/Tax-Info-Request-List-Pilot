@@ -352,6 +352,7 @@ def test_the_agent_deny_list_names_the_data_home_and_every_file_that_names_a_cli
     separate Windows account the office's AI tooling runs under."""
     from tracker.checkpoint import CHECKPOINT_FILENAME, SET_ASIDE_SUFFIX
     from tracker.content_check import RETIRED_CACHE_FILENAME
+    from tracker.layout import CLIENTS_TREE, INBOX_DIR_NAME, OPENED_DIR_NAME, PRIVATE_TREE, REVIEW_DIR_NAME
     from tracker.ledger import LEDGER_FILENAME
     from tracker.progress import PASSES_DIRNAME
     from tracker.registry import LEGACY_MANIFEST_FILENAME
@@ -371,10 +372,14 @@ def test_the_agent_deny_list_names_the_data_home_and_every_file_that_names_a_cli
              LAST_PASS_FILENAME, LAST_PASS_FILENAME + ".*", PASS_ORDER_FILENAME, f"{stem}*.{ext}",
              STATUS_PAGE_FILENAME, VIEW_FILENAME, EXPECTATIONS_FILENAME, RETIRED_CACHE_FILENAME,
              LEGACY_MANIFEST_FILENAME]
-    folders = [RECOVERED_DIR, PASSES_DIRNAME, OCR_SCRATCH_DIRNAME]
+    folders = [CLIENTS_TREE, PRIVATE_TREE, INBOX_DIR_NAME, REVIEW_DIR_NAME, OPENED_DIR_NAME,
+               RECOVERED_DIR, PASSES_DIRNAME, OCR_SCRATCH_DIRNAME]
     paths = places + [f"//**/{name}" for name in files] + [f"//**/{name}/**" for name in folders]
     expected = [f"{tool}({path})" for path in paths for tool in ("Read", "Edit")]
     assert json.loads(read(".claude/settings.json"))["permissions"]["deny"] == expected
+    owners = [line.split()[0] for line in read(".github/CODEOWNERS").splitlines()
+              if line.strip() and not line.startswith("#")]
+    assert "/.claude/" in owners, owners      # the list is the owner's to review
 
 
 
