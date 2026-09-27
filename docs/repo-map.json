@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 170,
     "edges": 1126,
-    "reused": 125
+    "reused": 127
   },
   "node_types": [
     "artifact",
@@ -4546,8 +4546,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ad6ee77b68762e9b",
-      "lines": 7863,
+      "sha256": "9b8bbc83780b5009",
+      "lines": 7864,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -7653,8 +7653,8 @@
       "id": "tests/test_store.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "784396881b26673d",
-      "lines": 4374,
+      "sha256": "ee4b5a64c4fcaca8",
+      "lines": 4375,
       "exports": [
         "AS_AT_16",
         "AS_AT_17",
