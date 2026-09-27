@@ -169,7 +169,7 @@ Handoffs), and each work session ends with a CODE UPDATE there.
 ```
 pip install --require-hashes -r requirements.lock                     # hash-checked (decision 191)
 pip install --require-hashes --no-deps -r requirements-nodeps.lock    # the reader (decision 169)
-python -m pytest -q                 # the whole suite, all green
+python -m pytest -q                 # the whole suite (for a person; agents run the affected tests, below)
 python tools/repo_map.py check      # map matches the tree
 python -m ruff check .              # no dead code, no unused imports (CI runs this too)
 ```
@@ -211,12 +211,21 @@ jobs alone accounting for more than 65% of that despite already being gated.
 be done on the github budget. test here and merge in bulk. make this the
 standing rule"):**
 
-- **Every session runs the whole suite before it pushes** (a tracker-lane
-  restack runs the narrower set below). Run
-  `python -m pytest -q`, `python -m ruff check .`, and both `check`s. A
-  cloud session runs them on its own machine, which costs no GitHub minutes.
-  The tracker lane runs them on the office PC: the owning tests of every
-  file a restack touched, plus ruff and both checks.
+- **Every session runs the gate before it pushes: dead code first, then the
+  affected tests only, never the whole suite** (Jason, 2026-09-26: "only run
+  tests on affected files in both python versions. the full suite seems
+  unnecessary. any components that seem hazy or gray areas of code should
+  be tested, but we need to reduce testing time drastically and push a
+  working app towards production. add a step to delete dead code before
+  these tests"). Dead code in the changed files - unused imports and
+  locals, commented-out code, a module-level name nothing uses - is deleted
+  before the tests run. The affected tests are the changed test files, each
+  changed module's own test file, the own test file of every module that
+  imports a changed one (the grey areas), and `test_layers`,
+  `test_single_source` and `test_repo_map`; they run under the floor
+  interpreter and the office's. Then `python -m ruff check .` and both
+  `check`s. After review fixes, only the tests the fix touches run again.
+  The tracker lane runs the same gate on the office PC before every merge.
 - **CI never fires per commit** (decision 211, revising 207). It runs on a
   push to `main` (Linux, the net under what merged) and once when a person
   marks a pull request ready (the run main's protection needs before a

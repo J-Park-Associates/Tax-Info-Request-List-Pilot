@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 158,
     "edges": 973,
-    "reused": 117
+    "reused": 118
   },
   "node_types": [
     "artifact",
@@ -135,8 +135,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "85eed360ab69dd7f",
-      "lines": 4369,
+      "sha256": "b9e02cbab22bf218",
+      "lines": 4360,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_FOLDER_NAME_HELP",
@@ -306,7 +306,6 @@
         "WRITING_COMMANDS",
         "YEAR_NOT_ACCEPTED",
         "default_return_name",
-        "form_label",
         "main",
         "standing_rules"
       ],
@@ -718,8 +717,8 @@
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "274f1bd96b65bc68",
-      "lines": 7551,
+      "sha256": "32c59454a9016143",
+      "lines": 7547,
       "cli": "python -m tracker.filer",
       "exports": [
         "ALREADY_SPELLED",
@@ -2829,8 +2828,8 @@
       "id": "tracker/scheduling.py",
       "type": "module",
       "layer": "core",
-      "sha256": "0b8da1d3916fa53c",
-      "lines": 472,
+      "sha256": "b44018ff74bc647d",
+      "lines": 471,
       "cli": "python -m tracker.scheduling",
       "exports": [
         "DEFAULT_REPEAT_MINUTES",
@@ -2841,7 +2840,6 @@
         "FORMAT_N8N",
         "FORMAT_XML",
         "INSTALL_FLAG",
-        "INSTALL_HINT",
         "MODULE_INVOCATION",
         "N8N_RUN_NODE",
         "N8N_TRIGGER_NODE",
@@ -3344,8 +3342,8 @@
       "id": "CLAUDE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "7aa34fc216f769bd",
-      "lines": 284,
+      "sha256": "dd1289dce6310b10",
+      "lines": 293,
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
     },
