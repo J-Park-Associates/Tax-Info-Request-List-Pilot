@@ -105,13 +105,12 @@ def test_a_code_an_error_did_not_mark_as_said_is_never_said():
 # ----------------------------------------------------------------- the keep ----
 
 
-def test_keep_reaches_no_console_and_no_other_logger_before_the_debug_log_has_a_place():
+def _kept_in_a_process_of_its_own(setup: str) -> subprocess.CompletedProcess:
     """In a process of its own, because the suite's log capture attaches to
-    every logger: the root logger given a console, as a hand-run CLI gives
-    it (``basicConfig``), still hears nothing, and nor does stderr."""
+    every logger: ``setup``, then two keeps of a client's words."""
     probe = (
         "import logging, sys\n"
-        "logging.basicConfig(level=logging.DEBUG, stream=sys.stderr)\n"
+        f"{setup}\n"
         "from tracker import errors\n"
         "try:\n"
         f"    raise ValueError({QUOTED!r})\n"
@@ -120,10 +119,162 @@ def test_keep_reaches_no_console_and_no_other_logger_before_the_debug_log_has_a_
         f"errors.keep('test', {QUOTED!r})\n"
         "print('done')\n"
     )
-    ran = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True,
-                         cwd=TRACKER.parent, check=True)
+    return subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True,
+                          cwd=TRACKER.parent, check=True)
+
+
+def test_outside_the_error_log_a_kept_message_reaches_no_stderr():
+    """Decision 190, Part 4: with no log attached - the scheduled job's
+    shape before ``error_log`` and after it - the debug logger's
+    ``NullHandler`` keeps Python's last-resort handler from printing a
+    kept message, though the logger now propagates."""
+    ran = _kept_in_a_process_of_its_own("")
     assert ran.stdout.strip() == "done"
     assert not carries_client_words(ran.stdout + ran.stderr), ran.stderr
+
+
+def test_a_hand_run_console_never_prints_a_kept_message():
+    """The one console the package gives the root logger (a hand-run scan)
+    is made by ``errors.console``, which keeps the debug logger's records
+    off it: it hears the tracker's other lines, never a kept one."""
+    ran = _kept_in_a_process_of_its_own(
+        "from tracker import errors as _e\n"
+        "_e.console(level=logging.DEBUG, stream=sys.stderr)\n"
+        "logging.getLogger('tracker.scanner').warning('a line of the firm\\'s own')")
+    assert ran.stdout.strip() == "done" and "a line of the firm's own" in ran.stderr
+    assert not carries_client_words(ran.stdout + ran.stderr), ran.stderr
+
+
+@pytest.fixture
+def data_home(tmp_path, monkeypatch):
+    """The data home pointed at a folder of this test's own (decision 186),
+    with no store override, so the error log sits where a firm's would."""
+    from tracker import store
+    from tracker.settings import ENV_DATA_HOME
+
+    home = tmp_path / "data home"
+    monkeypatch.delenv(store.ENV_STORE, raising=False)
+    monkeypatch.setenv(ENV_DATA_HOME, str(home))
+    return home
+
+
+def test_inside_the_error_log_a_kept_message_lands_in_tracker_errors_log_in_the_data_home(data_home):
+    """Decision 190, Part 4: ``errors.keep`` reaches decision 193's one local
+    debug log - ``tracker-errors.log`` beside the store, under 186's data
+    home - while ``settings.error_log`` holds it, and after the block it
+    stops: a later keep is not written."""
+    from tracker.settings import ERROR_LOG_FILENAME, error_log
+
+    with error_log("tracker") as path:
+        try:
+            quotes_the_document()
+        except ValueError as exc:
+            errors.keep("validators: pdf open test", exc, name="W2.pdf")
+    assert path is not None and path.name == ERROR_LOG_FILENAME
+    assert path.resolve().is_relative_to(data_home.resolve()), path
+    written = path.read_text(encoding="utf-8")
+    assert "tracker.debug WARNING validators: pdf open test (W2.pdf): Traceback" in written
+    assert QUOTED in written and "quotes_the_document" in written
+    errors.keep("after the block", "a later keep")
+    assert "a later keep" not in path.read_text(encoding="utf-8")
+
+
+def test_a_reading_childs_kept_message_reaches_the_parents_log(tmp_path, monkeypatch, data_home):
+    """Decision 190, Part 4 (review S4): a keep inside the reading child
+    travels back in its Outcome, and the pass keeps it on its own log; the
+    child opens no log, so nothing is written but through the parent."""
+    from tests import child_readers
+    from tracker import content_check
+    from tracker.settings import error_log
+
+    monkeypatch.setattr(content_check, "READ_IN_A_CHILD", True)
+    page = tmp_path / "W2.pdf"
+    page.write_bytes(b"%PDF-1.4\nnot really\n")
+    with error_log("tracker") as path:
+        answer, failed = content_check.in_a_child(page, child_readers.a_reader_that_keeps_what_it_met)
+    assert failed is None and answer.text == "the words that did read"
+    written = path.read_text(encoding="utf-8")
+    assert "ocr: the reading child: child_readers: a page (W2.pdf): Traceback" in written
+    assert child_readers.QUOTED_BY_THE_PARSER in written
+    assert written.count(child_readers.QUOTED_BY_THE_PARSER) == 1, "kept once, by the parent"
+
+
+def test_a_child_keeps_a_short_list_and_says_how_many_it_dropped(monkeypatch):
+    """What crosses with one answer is bounded (``KEPT_PER_ANSWER``): a
+    job that keeps without end cannot fill the pipe."""
+    monkeypatch.setattr(errors, "_for_the_parent", None)
+    errors.keep_for_the_parent()
+    try:
+        for n in range(errors.KEPT_PER_ANSWER + 3):
+            errors.keep("test", f"entry {n}")
+        taken = errors.take_kept()
+        assert len(taken) == errors.KEPT_PER_ANSWER + 1
+        assert taken[-1] == f"errors: 3 more kept entries were dropped past {errors.KEPT_PER_ANSWER}"
+        assert errors.take_kept() == []
+    finally:
+        monkeypatch.setattr(errors, "_for_the_parent", None)
+
+
+#: The one module that may attach a log file to a logger or name one:
+#: decision 193's error log, where every kept word lands.
+THE_ONE_LOG = "settings.py"
+#: Files a module names that are not a logger's file, each with why.
+NOT_A_LOGGERS_FILE = {
+    ("runner.py", "runs.log"): "the run log: counts and codes appended by fsio, never a logger's (186)",
+}
+_FILE_HANDLERS = {"FileHandler", "RotatingFileHandler", "TimedRotatingFileHandler",
+                  "WatchedFileHandler"}
+
+
+def _a_second_log(source: str, file: str) -> list[str]:
+    """A file handler attached, ``logging.handlers`` imported, a handler of
+    the module's own, ``basicConfig(filename=...)`` or a ``*.log`` name."""
+    found = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            names = [node.module or ""] if isinstance(node, ast.ImportFrom) else [a.name for a in node.names]
+            if any(name.startswith("logging.handlers") for name in names):
+                found.append(f"{file}:{node.lineno}: imports logging.handlers")
+        if isinstance(node, ast.Attribute) and node.attr in _FILE_HANDLERS:
+            found.append(f"{file}:{node.lineno}: {node.attr}")
+        if isinstance(node, ast.Name) and node.id in _FILE_HANDLERS:
+            found.append(f"{file}:{node.lineno}: {node.id}")
+        if isinstance(node, ast.ClassDef) and any(
+                (isinstance(b, ast.Attribute) and b.attr == "Handler") or
+                (isinstance(b, ast.Name) and b.id == "Handler") for b in node.bases):
+            found.append(f"{file}:{node.lineno}: a logging handler of its own ({node.name})")
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "basicConfig"
+                and any(kw.arg in {"filename", "handlers"} for kw in node.keywords)):
+            found.append(f"{file}:{node.lineno}: basicConfig with a file")
+        if (isinstance(node, ast.Constant) and isinstance(node.value, str)
+                and node.value.lower().endswith(".log")
+                and (file, node.value) not in NOT_A_LOGGERS_FILE):
+            found.append(f"{file}:{node.lineno}: names a log file ({node.value})")
+    return found
+
+
+def test_no_module_but_settings_attaches_a_log_file_or_names_one():
+    """One log, one authority (decision 190, Part 4; security principle 2):
+    decision 193's ``tracker-errors.log``, attached by ``settings``, is the
+    only place a logger writes to a file. A second one - a module's own
+    handler, a ``logging.handlers`` import (which also loads ``socket``) or
+    a file named for it - fails here."""
+    found = [finding for path in sorted(TRACKER.glob("*.py")) if path.name != THE_ONE_LOG
+             for finding in _a_second_log(path.read_text(encoding="utf-8"), path.name)]
+    assert found == [], "\n".join(found)
+
+
+@pytest.mark.parametrize("shape", [
+    "import logging.handlers\n",
+    "from logging.handlers import RotatingFileHandler\n",
+    "import logging\nlogging.getLogger('tracker').addHandler(logging.FileHandler(p))\n",
+    "import logging\nclass Mine(logging.Handler):\n    pass\n",
+    "import logging\nlogging.basicConfig(filename=p)\n",
+    "NAME = 'debug.log'\n",
+])
+def test_the_one_log_guard_finds_a_second_log(shape):
+    assert _a_second_log(shape, "module.py"), shape
 
 
 def test_keep_hands_the_whole_message_and_its_trace_to_the_debug_logger(kept):

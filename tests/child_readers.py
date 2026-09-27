@@ -157,6 +157,19 @@ def a_reader_that_tells_the_pass(path: Path, *, ocr: bool = True):
     return _who_read()
 
 
+def a_reader_that_keeps_what_it_met(path: Path, *, ocr: bool = True):
+    """A parser that fails on a page, keeps the failure's words and reads
+    on - the way the filer's and the readers' own catch-alls keep - so a
+    test can see a child's keeps reach the pass's log (decision 190, Part 4)."""
+    from tracker import errors
+
+    try:
+        raise ValueError(QUOTED_BY_THE_PARSER)
+    except ValueError as exc:
+        errors.keep("child_readers: a page", exc, name=path.name)
+    return content_check.Extraction("the words that did read")
+
+
 def a_card_that_dies(path: Path, *, ocr: bool = True):
     """A native crash on the card - an access violation, not an exception:
     a child that may use the card ends on the spot; one kept on the

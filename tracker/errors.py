@@ -40,14 +40,26 @@ without its errno, so one failure would read two ways on one page.
 
 **The words are not thrown away: they are kept, apart** (:func:`keep`). A
 programmer mending a parser needs the message and the trace, so they go to
-the debug logger :data:`DEBUG_LOGGER` and nowhere else. Until that log has
-a place of its own - decision 186 gives it one, outside every client and
-firm folder - the logger has a ``NullHandler`` and does not propagate, so
-nothing reaches a console, stderr or the run log in the meantime (Python's
-last-resort handler writes to stderr only for a logger with no handler at
-all). Keeping to a sink that drops everything is deliberate: the call sites
-are right today, and the day the log has a home they write to it without
-being touched.
+the debug logger :data:`DEBUG_LOGGER`, at WARNING, and from it to the one
+local debug log the tracker has: decision 193's ``tracker-errors.log``,
+beside the store in decision 186's data home, which
+:func:`tracker.settings.error_log` attaches to the ``tracker`` logger for
+the length of a pass or an app command (decision 190, Part 4). The logger
+propagates to ``tracker`` so that log catches it; it keeps a
+``NullHandler`` so that outside that block - no log attached, a CLI run by
+hand - Python's last-resort handler never prints a kept message on stderr
+(it writes only for a record that meets no handler at all). This module
+builds no log of its own and names no file: one log, one authority
+(security principle 2), and ``tests/test_errors.py`` fails the suite if any
+module but ``settings`` attaches a file handler or names a log file. The
+one console the package gives the root logger - a hand-run scan's -
+is made by :func:`console`, which keeps kept words off it.
+
+**A reading child keeps nothing itself.** It runs in a process of its own
+(decision 169) that never opens a log: :func:`keep_for_the_parent` makes
+its keeps collect instead, :func:`take_kept` hands them over with each
+answer, and the pass keeps each one on its own debug log
+(``ocr.Session``), so a child's words land where a pass's do.
 
 **The record's own errors keep their text.** A ``ManifestError`` or a
 ``StoreError`` is a sentence the firm wrote about the firm's own files; it
@@ -67,18 +79,28 @@ import sys
 import traceback
 
 #: The logger the full message and trace are kept on. Nothing else in the
-#: tracker logs to it, and until decision 186 gives it a file it drops
-#: everything (see the module docstring).
+#: tracker logs to it; it propagates to ``tracker``, where decision 193's
+#: error log is attached (see the module docstring).
 DEBUG_LOGGER = "tracker.debug"
 
-#: Where the debug log goes today, as the CLI says it.
-WHERE_KEPT = ("nowhere yet: the debug log has no place until decision 186 gives it one, "
-              "so the full message is dropped and only the class is shown")
+#: Where the debug log goes, as the CLI says it.
+WHERE_KEPT = ("tracker-errors.log beside the tracker's database, in the data home (decisions 186 "
+              "and 193), while a pass or an app command runs; kept nowhere otherwise")
+
+#: At most this many kept entries travel back with one answer from a
+#: reading child (:func:`take_kept`); past it, one line says how many more
+#: were dropped. A short list: one job's failures, not a log.
+KEPT_PER_ANSWER = 20
 
 _debug = logging.getLogger(DEBUG_LOGGER)
 _debug.addHandler(logging.NullHandler())
-_debug.propagate = False
-_debug.setLevel(logging.DEBUG)
+_debug.propagate = True
+_debug.setLevel(logging.WARNING)
+
+#: A reading child's keeps, collected for the parent (:func:`keep_for_the_parent`);
+#: ``None`` in every other process, which keeps on its own logger.
+_for_the_parent: list[str] | None = None
+_dropped = 0
 
 
 #: The class attribute an exception sets, true, when the code it carries
@@ -127,14 +149,65 @@ def keep(where: str, exc_or_text: BaseException | str, *, name: str = "") -> Non
     ``where`` is the firm's word for the place it happened (``"filer"``),
     ``name`` the file's, and ``exc_or_text`` the exception itself or, from
     the reading child, the text it sent back. Nothing here reaches a
-    reason, a record, a page or the run log."""
+    reason, a record, a page or the run log: it goes to
+    :data:`DEBUG_LOGGER` at WARNING, which reaches the local debug log when
+    one is attached, or - in a reading child - to the list its parent
+    takes (:func:`take_kept`)."""
+    global _dropped
     said = f"{where} ({name})" if name else where
     if isinstance(exc_or_text, BaseException):
         detail = "".join(traceback.format_exception(
             type(exc_or_text), exc_or_text, exc_or_text.__traceback__))
     else:
         detail = str(exc_or_text)
-    _debug.debug("%s: %s", said, detail.rstrip())
+    if _for_the_parent is not None:
+        if len(_for_the_parent) < KEPT_PER_ANSWER:
+            _for_the_parent.append(f"{said}: {detail.rstrip()}")
+        else:
+            _dropped += 1
+        return
+    _debug.warning("%s: %s", said, detail.rstrip())
+
+
+def keep_for_the_parent() -> None:
+    """In a reading child: collect every :func:`keep` for the pass, and log
+    nothing here - the child never opens a log (decision 190, Part 4)."""
+    global _for_the_parent, _dropped
+    _for_the_parent, _dropped = [], 0
+
+
+def take_kept() -> list[str]:
+    """What this child kept since the last answer, emptied as it is taken:
+    at most :data:`KEPT_PER_ANSWER` entries, and a last line counting any
+    dropped past them. Empty in a process that keeps on its own logger."""
+    global _dropped
+    if _for_the_parent is None:
+        return []
+    taken = list(_for_the_parent)
+    if _dropped:
+        taken.append(f"errors: {_dropped} more kept entries were dropped past {KEPT_PER_ANSWER}")
+    _for_the_parent.clear()
+    _dropped = 0
+    return taken
+
+
+class _NotKept(logging.Filter):
+    """Drops the debug logger's records from a console's handler."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return not record.name.startswith(DEBUG_LOGGER)
+
+
+def console(**config) -> None:
+    """``logging.basicConfig(**config)`` for a CLI a person runs by hand,
+    with every root handler kept free of :data:`DEBUG_LOGGER`: the words
+    :func:`keep` holds propagate for the error log's sake, and a console
+    must never print them (decision 190, D-6). The one way the package
+    gives the root logger a console."""
+    logging.basicConfig(**config)
+    for handler in logging.getLogger().handlers:
+        if not any(isinstance(one, _NotKept) for one in handler.filters):
+            handler.addFilter(_NotKept())
 
 
 def _main(argv: list[str]) -> int:

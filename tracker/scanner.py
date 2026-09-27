@@ -942,8 +942,9 @@ if __name__ == "__main__":
         parser.error(str(exc))
 
     engagement = Path(ns.engagement_dir)
-    # One log for the system - the runner's LOG_FILENAME. A hand-run scan just talks.
-    logging.basicConfig(
+    # One log for the system - the runner's LOG_FILENAME. A hand-run scan just
+    # talks, and never says a kept error's words (errors.console, decision 190).
+    errors.console(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )

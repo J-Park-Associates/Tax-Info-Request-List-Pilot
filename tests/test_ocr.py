@@ -717,7 +717,7 @@ def test_time_asleep_does_not_count_toward_the_reading_stop(monkeypatch):
         """The pipe: the first wait is slept through, then the child answers."""
 
         def __init__(self):
-            self.said = [("started",), ("read", "the words", [])]
+            self.said = [("started",), ("read", "the words", [], [])]
             self.waits = 0
 
         def poll(self, left):

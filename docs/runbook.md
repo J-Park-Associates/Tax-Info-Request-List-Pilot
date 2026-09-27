@@ -1616,8 +1616,10 @@ exception is a workbook packed a way only a person's zip program opens: its
 note says so in the firm's own sentence. The class says what kind of
 failure it was; the reader's own message is never shown, because it can
 quote the document itself - a number, a name. The full message and its
-trace go only to the debug log, which has no place yet (decision 186 gives
-it one), so today they are not kept at all. The same holds for a row the
+trace go only to the debug log, `tracker-errors.log` in the data folder
+beside the tracker's database (decisions 186 and 193): a person mending the
+tracker reads it there, and it can name a client, so it is deleted with the
+rest of that folder's client data. The same holds for a row the
 filer could not file, for the run log's line and for the app: an error the
 tracker did not foresee is shown by its class alone. So too for the
 warnings a pass prints in the scheduled job's console window (a README or

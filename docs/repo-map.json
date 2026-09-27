@@ -16,7 +16,7 @@
   ],
   "counts": {
     "nodes": 166,
-    "edges": 1078,
+    "edges": 1080,
     "reused": 126
   },
   "node_types": [
@@ -821,24 +821,29 @@
       "id": "tracker/errors.py",
       "type": "module",
       "layer": "core",
-      "sha256": "f299152924a62b8e",
-      "lines": 159,
+      "sha256": "3d5d7d6760d181c1",
+      "lines": 232,
       "cli": "python -m tracker.errors",
       "exports": [
         "DEBUG_LOGGER",
+        "KEPT_PER_ANSWER",
         "SAYS_ITS_CODE",
         "WHERE_KEPT",
+        "console",
         "error_class",
         "keep",
-        "said"
+        "keep_for_the_parent",
+        "said",
+        "take_kept"
       ],
       "constants": {
         "DEBUG_LOGGER": "'tracker.debug'",
-        "WHERE_KEPT": "'nowhere yet: the debug log has no place until decision 186 gives it one, so the full message is dropped and only the class is shown'",
+        "WHERE_KEPT": "\"tracker-errors.log beside the tracker's database, in the data home (decisions 186 and 193), while a pass or an app command runs; kept nowhere otherwise\"",
+        "KEPT_PER_ANSWER": "20",
         "SAYS_ITS_CODE": "'says_its_code'"
       },
-      "role": "What an error is called where a person can see it (decision 190): error_class(exc) is the class, and for an OSError its errno's symbolic name (FileNotFoundError (ENOENT)), or for a class that sets SAYS_ITS_CODE (decision 189's StoreUnavailable, RecordNotWritten) its code, never the message and never a path - the one definition of how an error is said, which decision 189 first wrote as content_check.said_as_class; said(exc, firm_written) keeps the tracker's own sentences whole; keep(where, exc_or_text, name=) writes the whole message and trace to the debug logger DEBUG_LOGGER ('tracker.debug'). A small CLI names a built-in exception's class or says where the words go (WHERE_KEPT).",
-      "notes": "Layer 0, standard library only, nothing of the package. A class name and not a shortened message because 120 characters is an SSN: no length is short enough to be safe, and a class name is written by a programmer. Every reason's {error}, the router's 'could not read it', the filer's and runner's catch-alls and the app's unexpected error name the class; the record's own errors (ManifestError, StoreError and the others) keep their text. Until decision 186 gives the debug log a place, the logger has a NullHandler and propagate=False, so nothing reaches a console, stderr or runs.log. tests/test_errors.py guards that no module under tracker/ puts a caught exception's words beside its class or into a reason's {error}, with the record-side exceptions named once. said(exc, firm_written) is the one rule for a row or a page that may name either kind: the caller's own errors (the filer's FIRM_WRITTEN, the runner's and rollover's ManifestError) whole, anything else by its class (the review's M1 and S3). It also fails on a class spelled inline - x.__class__.__name__, type(x).__name__ or x.__name__ of an exception an except bound - anywhere under tracker/ but errors.py, so an OSError is never said twice, once without its errno (the rebase review's M1). And it fails any log line under tracker/ that carries a caught exception's words, a traceback, exc_info or log.exception: under the scheduled job no handler is configured and Python's last-resort handler prints every warning to the console window (D-6), so a log line says errors.error_class() and the firm's own words, and the words (and a client's file name) go to keep(); content_check's two ReaderUnavailable lines, the machine's words, are the named exceptions. Landed on 159: the checkpoint's CheckpointUnavailable sets says_its_code, so error_class says it with its engine code; locking, ledger and store import errors at call time only (their layer rules), and test_errors.FIRM_WRITTEN names CheckpointError, CheckpointUnavailable and RolledNotAllRetired as the firm's own sentences."
+      "role": "What an error is called where a person can see it (decision 190): error_class(exc) is the class, and for an OSError its errno's symbolic name (FileNotFoundError (ENOENT)), or for a class that sets SAYS_ITS_CODE (decision 189's StoreUnavailable, RecordNotWritten) its code, never the message and never a path - the one definition of how an error is said, which decision 189 first wrote as content_check.said_as_class; said(exc, firm_written) keeps the tracker's own sentences whole; keep(where, exc_or_text, name=) writes the whole message and trace to the debug logger DEBUG_LOGGER ('tracker.debug') at WARNING, which propagates to 'tracker', so the words land in decision 193's one local debug log while settings.error_log holds it; in a reading child keep_for_the_parent() collects instead and take_kept() hands them to the pass; console() is the one root console, with the debug logger filtered off it. A small CLI names a built-in exception's class or says where the words go (WHERE_KEPT).",
+      "notes": "Layer 0, standard library only, nothing of the package. A class name and not a shortened message because 120 characters is an SSN: no length is short enough to be safe, and a class name is written by a programmer. Every reason's {error}, the router's 'could not read it', the filer's and runner's catch-alls and the app's unexpected error name the class; the record's own errors (ManifestError, StoreError and the others) keep their text. Part 4 (decision 190): the logger propagates to 'tracker', so inside settings.error_log('tracker') a kept message lands in tracker-errors.log beside the store in the data home, and keeps a NullHandler, so with no log attached Python's last-resort handler prints nothing; a hand-run scan's console comes from errors.console(), which filters it off, and nothing ever reaches runs.log. A reading child keeps nothing itself: its keeps travel back in ocr.Outcome.kept (at most KEPT_PER_ANSWER, then a count) and ocr.Session keeps each. tests/test_errors.py fails if any module but settings attaches a file handler, imports logging.handlers or names a log file (runner's runs.log named with its reason). tests/test_errors.py guards that no module under tracker/ puts a caught exception's words beside its class or into a reason's {error}, with the record-side exceptions named once. said(exc, firm_written) is the one rule for a row or a page that may name either kind: the caller's own errors (the filer's FIRM_WRITTEN, the runner's and rollover's ManifestError) whole, anything else by its class (the review's M1 and S3). It also fails on a class spelled inline - x.__class__.__name__, type(x).__name__ or x.__name__ of an exception an except bound - anywhere under tracker/ but errors.py, so an OSError is never said twice, once without its errno (the rebase review's M1). And it fails any log line under tracker/ that carries a caught exception's words, a traceback, exc_info or log.exception: under the scheduled job no handler is configured and Python's last-resort handler prints every warning to the console window (D-6), so a log line says errors.error_class() and the firm's own words, and the words (and a client's file name) go to keep(); content_check's two ReaderUnavailable lines, the machine's words, are the named exceptions. Landed on 159: the checkpoint's CheckpointUnavailable sets says_its_code, so error_class says it with its engine code; locking, ledger and store import errors at call time only (their layer rules), and test_errors.FIRM_WRITTEN names CheckpointError, CheckpointUnavailable and RolledNotAllRetired as the firm's own sentences."
     },
     {
       "id": "tracker/filer.py",
@@ -1792,8 +1797,8 @@
       "id": "tracker/ocr.py",
       "type": "module",
       "layer": "core",
-      "sha256": "f7f5f46522eea890",
-      "lines": 1226,
+      "sha256": "e497af91f6977e03",
+      "lines": 1237,
       "cli": "python -m tracker.ocr",
       "exports": [
         "CHILD_EXIT_SECONDS",
@@ -3082,8 +3087,8 @@
       "id": "tracker/scanner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "f49fee4d804d17b4",
-      "lines": 961,
+      "sha256": "f75d206b0c70137d",
+      "lines": 962,
       "cli": "python -m tracker.scanner",
       "exports": [
         "ACCEPTED_NOTE",
@@ -3305,7 +3310,7 @@
         "ROOT_INSIDE_A_TREE": "'{root} is inside the {tree} folder of the clients root {real}; choose {real}'"
       },
       "role": "The settings file beside the app (SETTINGS_FILENAME): the one place the clients root, the firm and the firm's telephone number are kept. clients_root()/set_clients_root(), firm()/set_firm(), firm_phone()/set_firm_phone(); product_name() reads app/package.json productName (or ENV_PRODUCT_NAME from the shell). ENV_SETTINGS_DIR from the Electron shell says where beside-the-app is. ENV_REAL_CORPUS and real_corpus_dir() name the other folder outside the repository: the firm's own redacted documents, with the expectations file's name and columns beside them.",
-      "notes": "Replaced two roots (an env var for the app defaulting to a demo folder, a command-line path for the job) that nothing tied together. set_clients_root() refuses a folder that does not exist, so a typo cannot become an empty root the run walks for ever. The file is written through fsio.write_json_atomically() (decision 120; it was the manifest's until then, and that one import was the whole of this module's dependence on layer 1): the app and the scheduling CLI can both save it, and neither may swap the other's half-written temp into place. Decision 68: an empty root is refused - Path(\"\") is the working folder. Decision 69: the working folder under any spelling is refused as a root. Decision 71: real_corpus_dir() answers None when the variable is unset and when what it names is not a folder, because raising would fail the suite on every machine that has no corpus, CI included; it is an environment variable rather than a setting because it belongs to a machine, never to an engagement. Decision 117: the firm's phone is a setting for the mirror image of that reason - it belongs to the firm and not to any one engagement, so it sits beside the firm's name rather than in every client's details, and it is taken as typed because a firm writes its number its own way. Only the reminder's final notice says it, and a blank one drops that sentence. Decision 131: the scheduled job names this file's folder (runner --settings) rather than the root, and reads the root from here at every run - one home for the clients root. Decision 137 (M3) replaced decision 69's working-folder check, which meant nothing in the packaged build: root_refusal() (pure, so every rule is testable on any OS) refuses the system drive's root (system_drive_root()), the settings folder, any folder holding it and any folder inside it, and the app's own folder (app_dir(): the frozen executable's, or the repository from source) and any folder holding it, each with its own sentence. Another drive's root is allowed - a letter mapped to the clients share is a real root - and \"D:\" is still recorded as \"D:\\\\\". Review fixes (decision 137): _inside() compares the folders themselves (os.path.samefile up the parent chain) as well as their spellings, so long-path (\\\\?\\) and C$ admin-share forms are refused like plain names; clients_root_refusal() is what set_clients_root and the runner's start both ask. Decision 188: ROOT_INSIDE_A_TREE - the nearest folder above the root that holds both trees (layout.clients_tree_of and private_tree_of are folders) with the root inside one of them (layout.tree_of) is refused naming the root to choose; a lone folder named Clients is not (the runbook's example root). settings imports layout at load (same layer, reads no file). _within and _inside keep their own under-a-folder spelling for the machine's own folders, allowed by name in the layer test. Decision 193: ERROR_LOG_FILENAME and error_log(), the rotating local error log attached by api.main and runner.main for their lifetime, rotated by _ErrorLog's own few lines (not logging.handlers, which loads socket - the review's S2); error_log_path() is beside the tracker's database (store.store_path()'s folder, asked at call time), so it moves with the store. Decision 185: _read() learns the file is absent by opening it, so the suite's tripwire sees every attempt; OCR_SCRATCH_DIRNAME names the retired scratch folder once; inside_the_app() is the one answer to whether a path lies in the app's folder (the checkout from source), asked by the report tools before writing and by decision 186. Decision 186: data_home() is the one per-user local folder where client-derived data lives (ENV_DATA_HOME, else %LOCALAPPDATA%\\tax-document-tracker on Windows with no fallback, else $XDG_STATE_HOME or ~/.local/state); resolve_data_home() is its pure core, testable on any OS; it refuses a folder inside or around program_folders() or not on a fixed disk (drive_type(), GetDriveTypeW through ctypes), and creates nothing - scratch_root(), process_scratch() and logs_dir() are path answers only. root_refusal() gains data= (ROOT_HOLDS_DATA, ROOT_INSIDE_DATA). OCR_SCRATCH_DIRNAME and inside_the_app() are decision 185's names, landed with 185; 186 uses them. The settings file stays beside the app as a pointer holding nothing about a client. 186c: program_drive_refusal() asks drive_type() of the program's folder and its settings folder, looked up at call time so a test's patch reaches it; only DRIVE_FIXED passes (PROGRAM_ON_REMOVABLE, PROGRAM_ON_NETWORK, PROGRAM_DRIVE_UNKNOWN). Install Schedule (api, scheduling CLI) refuses on it and the app's first screen says it; the scheduled pass never asks, since a pass that refuses goes quiet."
+      "notes": "Replaced two roots (an env var for the app defaulting to a demo folder, a command-line path for the job) that nothing tied together. set_clients_root() refuses a folder that does not exist, so a typo cannot become an empty root the run walks for ever. The file is written through fsio.write_json_atomically() (decision 120; it was the manifest's until then, and that one import was the whole of this module's dependence on layer 1): the app and the scheduling CLI can both save it, and neither may swap the other's half-written temp into place. Decision 68: an empty root is refused - Path(\"\") is the working folder. Decision 69: the working folder under any spelling is refused as a root. Decision 71: real_corpus_dir() answers None when the variable is unset and when what it names is not a folder, because raising would fail the suite on every machine that has no corpus, CI included; it is an environment variable rather than a setting because it belongs to a machine, never to an engagement. Decision 117: the firm's phone is a setting for the mirror image of that reason - it belongs to the firm and not to any one engagement, so it sits beside the firm's name rather than in every client's details, and it is taken as typed because a firm writes its number its own way. Only the reminder's final notice says it, and a blank one drops that sentence. Decision 131: the scheduled job names this file's folder (runner --settings) rather than the root, and reads the root from here at every run - one home for the clients root. Decision 137 (M3) replaced decision 69's working-folder check, which meant nothing in the packaged build: root_refusal() (pure, so every rule is testable on any OS) refuses the system drive's root (system_drive_root()), the settings folder, any folder holding it and any folder inside it, and the app's own folder (app_dir(): the frozen executable's, or the repository from source) and any folder holding it, each with its own sentence. Another drive's root is allowed - a letter mapped to the clients share is a real root - and \"D:\" is still recorded as \"D:\\\\\". Review fixes (decision 137): _inside() compares the folders themselves (os.path.samefile up the parent chain) as well as their spellings, so long-path (\\\\?\\) and C$ admin-share forms are refused like plain names; clients_root_refusal() is what set_clients_root and the runner's start both ask. Decision 188: ROOT_INSIDE_A_TREE - the nearest folder above the root that holds both trees (layout.clients_tree_of and private_tree_of are folders) with the root inside one of them (layout.tree_of) is refused naming the root to choose; a lone folder named Clients is not (the runbook's example root). settings imports layout at load (same layer, reads no file). _within and _inside keep their own under-a-folder spelling for the machine's own folders, allowed by name in the layer test. Decision 193: ERROR_LOG_FILENAME and error_log(), the rotating local error log attached by api.main and runner.main for their lifetime - the one log file any logger writes (decision 190, Part 4: errors.keep's words land here through 'tracker.debug', and tests/test_errors.py fails a second one), rotated by _ErrorLog's own few lines (not logging.handlers, which loads socket - the review's S2); error_log_path() is beside the tracker's database (store.store_path()'s folder, asked at call time), so it moves with the store. Decision 185: _read() learns the file is absent by opening it, so the suite's tripwire sees every attempt; OCR_SCRATCH_DIRNAME names the retired scratch folder once; inside_the_app() is the one answer to whether a path lies in the app's folder (the checkout from source), asked by the report tools before writing and by decision 186. Decision 186: data_home() is the one per-user local folder where client-derived data lives (ENV_DATA_HOME, else %LOCALAPPDATA%\\tax-document-tracker on Windows with no fallback, else $XDG_STATE_HOME or ~/.local/state); resolve_data_home() is its pure core, testable on any OS; it refuses a folder inside or around program_folders() or not on a fixed disk (drive_type(), GetDriveTypeW through ctypes), and creates nothing - scratch_root(), process_scratch() and logs_dir() are path answers only. root_refusal() gains data= (ROOT_HOLDS_DATA, ROOT_INSIDE_DATA). OCR_SCRATCH_DIRNAME and inside_the_app() are decision 185's names, landed with 185; 186 uses them. The settings file stays beside the app as a pointer holding nothing about a client. 186c: program_drive_refusal() asks drive_type() of the program's folder and its settings folder, looked up at call time so a test's patch reaches it; only DRIVE_FIXED passes (PROGRAM_ON_REMOVABLE, PROGRAM_ON_NETWORK, PROGRAM_DRIVE_UNKNOWN). Install Schedule (api, scheduling CLI) refuses on it and the app's first screen says it; the scheduled pass never asks, since a pass that refuses goes quiet."
     },
     {
       "id": "tracker/store.py",
@@ -3718,7 +3723,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "187033d8845e5a89",
+      "sha256": "03b3be1fbfa2c630",
       "lines": 440,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -3736,7 +3741,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "96d7d331858c4b39",
+      "sha256": "5bf7bfbb678a027d",
       "lines": 1054,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -3745,8 +3750,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "3370d6c9e1d4c0be",
-      "lines": 2463,
+      "sha256": "9325152b67044348",
+      "lines": 2465,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -4098,8 +4103,8 @@
       "id": "tests/child_readers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9414a48a320097b7",
-      "lines": 246,
+      "sha256": "c65ed6a7196c2226",
+      "lines": 259,
       "exports": [
         "MARKS_VARIABLE",
         "QUOTED_BY_THE_PARSER",
@@ -4111,6 +4116,7 @@
         "a_photo_open_that_never_finishes",
         "a_reader_that_dies_on_a_crash",
         "a_reader_that_dies_once_used",
+        "a_reader_that_keeps_what_it_met",
         "a_reader_that_needs_too_much_memory",
         "a_reader_that_starts_a_reader_of_its_own",
         "a_reader_that_tells_the_pass",
@@ -4982,24 +4988,30 @@
       "id": "tests/test_errors.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ea862ed483603c54",
-      "lines": 788,
+      "sha256": "cf70f425dc505cc8",
+      "lines": 939,
       "exports": [
         "DROPPED",
         "ERRNO_NAMED_ON_PURPOSE",
         "FIRM_WRITTEN",
         "LOGGED_WHOLE_ON_PURPOSE",
         "NAME",
+        "NOT_A_LOGGERS_FILE",
         "NUMBER",
         "QUOTED",
         "SAID_WHOLE_ON_PURPOSE",
         "THE_ONE_DEFINITION",
+        "THE_ONE_LOG",
         "TRACKER",
         "carries_client_words",
+        "data_home",
         "kept",
         "quotes_the_document",
         "test_a_caught_errors_words_reach_no_console_during_a_pass",
+        "test_a_child_keeps_a_short_list_and_says_how_many_it_dropped",
         "test_a_code_an_error_did_not_mark_as_said_is_never_said",
+        "test_a_hand_run_console_never_prints_a_kept_message",
+        "test_a_reading_childs_kept_message_reaches_the_parents_log",
         "test_a_review_copy_that_cannot_be_made_names_the_os_error_not_its_path",
         "test_a_store_or_record_the_disk_refused_is_said_with_its_code",
         "test_a_workbook_packed_an_unknown_way_is_said_in_the_firms_own_sentence",
@@ -5007,8 +5019,8 @@
         "test_an_error_is_named_by_its_class_and_never_by_its_words",
         "test_an_os_error_is_named_with_its_errno_and_never_its_path",
         "test_an_os_error_without_an_errno_is_its_class_alone",
+        "test_inside_the_error_log_a_kept_message_lands_in_tracker_errors_log_in_the_data_home",
         "test_keep_hands_the_whole_message_and_its_trace_to_the_debug_logger",
-        "test_keep_reaches_no_console_and_no_other_logger_before_the_debug_log_has_a_place",
         "test_keep_takes_the_words_a_reading_child_sent_back",
         "test_no_byte_of_a_damaged_container_reaches_its_reason",
         "test_no_byte_of_a_damaged_pdf_reaches_its_reason",
@@ -5017,6 +5029,8 @@
         "test_no_byte_of_a_failed_ocr_reaches_the_reading",
         "test_no_byte_of_what_a_reading_child_raised_crosses_into_the_reading",
         "test_no_log_line_under_tracker_carries_a_caught_exceptions_words",
+        "test_no_module_but_settings_attaches_a_log_file_or_names_one",
+        "test_outside_the_error_log_a_kept_message_reaches_no_stderr",
         "test_the_app_names_an_unexpected_error_by_its_class_and_keeps_a_firm_errors_words",
         "test_the_class_an_error_is_said_as_is_defined_once",
         "test_the_cli_names_a_built_in_errors_class_and_says_where_its_words_go",
@@ -5027,11 +5041,13 @@
         "test_the_guard_passes_a_class_of_what_no_except_caught",
         "test_the_guard_sees_every_shape_of_an_exceptions_words",
         "test_the_log_guard_passes_the_class_and_the_debug_sink",
-        "test_the_log_guard_sees_every_shape_of_an_exceptions_words"
+        "test_the_log_guard_sees_every_shape_of_an_exceptions_words",
+        "test_the_one_log_guard_finds_a_second_log"
       ],
       "constants": {
         "NUMBER": "'123-45-6789'",
         "NAME": "'Jane Fabricated'",
+        "THE_ONE_LOG": "'settings.py'",
         "THE_ONE_DEFINITION": "('errors.py', 'error_class')",
         "DROPPED": "'/Clients/Test Household/Drop files here/W2.pdf'"
       }
@@ -5976,7 +5992,7 @@
       "id": "tests/test_ocr.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7cfd8ceee445a989",
+      "sha256": "2a82499bdf99418a",
       "lines": 847,
       "exports": [
         "A_PASS_BETWEEN_DOCUMENTS",
@@ -6902,8 +6918,8 @@
       "id": "tests/test_scaffold.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7d8d8688137190ca",
-      "lines": 1145,
+      "sha256": "876a35afaf9bb10d",
+      "lines": 1147,
       "exports": [
         "A01_LABEL",
         "ACTIVE_IDS",
@@ -8292,6 +8308,12 @@
     },
     {
       "from": "tests/child_readers.py",
+      "to": "tracker/errors.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/child_readers.py",
       "to": "tracker/ocr.py",
       "type": "exercises",
       "source": "derived"
@@ -9373,6 +9395,12 @@
     {
       "from": "tests/test_errors.py",
       "to": "tracker/scaffold.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_errors.py",
+      "to": "tracker/settings.py",
       "type": "exercises",
       "source": "derived"
     },

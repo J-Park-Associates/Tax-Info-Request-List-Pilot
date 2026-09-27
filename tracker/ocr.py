@@ -556,6 +556,9 @@ class Outcome:
     seconds: float = 0.0
     #: What the reader said with its answer (:func:`take_notes`).
     notes: list = field(default_factory=list)
+    #: What the child kept while it served this job (:func:`tracker.errors.take_kept`):
+    #: words for the pass's debug log, which the pass keeps (decision 190, Part 4).
+    kept: list = field(default_factory=list)
 
 
 #: Every way a library finds the temp folder, pointed by a reading child at
@@ -702,10 +705,11 @@ class ReadingChild:
             return Outcome("stopped", seconds=seconds)
         self.served += 1
         if kind == "read":
-            return Outcome("read", answer=answer[0], notes=answer[1], seconds=seconds)
+            return Outcome("read", answer=answer[0], notes=answer[1], kept=answer[2],
+                           seconds=seconds)
         if kind == "failed":
             return Outcome("failed", error=answer[0], message=answer[1], trace=answer[2],
-                           notes=answer[3], seconds=seconds)
+                           notes=answer[3], kept=answer[4], seconds=seconds)
         error = f"the reading's process ended with exit code {self._exit_code()}"
         if _job_memory(self._job_object)[1] >= self.memory_limit * 0.9:
             error += f"; it had reached its memory limit ({self.memory_limit / 1024**3:.0f} GB)"
@@ -758,6 +762,9 @@ def _the_child(jobs, sender, lifeline, processor_only_: bool, scratch: str) -> N
     the file's - and hands back the answer, or what the job raised as
     words, never left to end the process in silence. Every answer carries
     what the reader has to tell the pass (:func:`take_notes`)."""
+    # Every keep in this process travels back with an answer, and none is
+    # logged here: the child never opens a log (decision 190, Part 4).
+    errors.keep_for_the_parent()
     try:
         _take_scratch(Path(scratch))
     except OSError:
@@ -789,13 +796,13 @@ def _the_child(jobs, sender, lifeline, processor_only_: bool, scratch: str) -> N
                 # pass shows the first and keeps the rest on its debug log.
                 # This process never opens a log of its own (decision 190).
                 _answer(sender, ("failed", errors.error_class(exc), _message_of(exc),
-                                 traceback.format_exc(), take_notes()))
+                                 traceback.format_exc(), take_notes(), errors.take_kept()))
                 if isinstance(exc, MemoryError):
                     # Past its memory limit: said, and done - the pass
                     # replaces it (SPEC-169 section 9).
                     os._exit(OUT_OF_MEMORY_EXIT_CODE)
             else:
-                _answer(sender, ("read", answer, take_notes()))
+                _answer(sender, ("read", answer, take_notes(), errors.take_kept()))
     finally:
         sender.close()
 
@@ -1089,6 +1096,10 @@ class Session:
         child = self.child
         outcome = child.run(job, args, kwargs, stop, since=started if fresh else None)
         self.hear(outcome.notes)
+        # The child keeps nothing itself: what it kept crossed with its
+        # answer, and lands on this process's debug log (decision 190, Part 4).
+        for entry in outcome.kept:
+            errors.keep("ocr: the reading child", entry)
         # Replaced after a stop, a crash, running out of memory or a child
         # that never started, a fault on the card, and every
         # DOCUMENTS_PER_CHILD documents (R-4).
