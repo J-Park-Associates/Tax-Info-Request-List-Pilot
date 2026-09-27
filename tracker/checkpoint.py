@@ -74,6 +74,16 @@ from pathlib import Path
 #: The file, beside the store in the data home.
 CHECKPOINT_FILENAME = "record-heads.db"
 
+#: The engine's rollback journal beside it (the checkpoint keeps SQLite's
+#: default journal mode): a crash can leave one holding the last write, so
+#: it moves with the file and is never deleted apart from it (the rebase
+#: review's N1).
+CHECKPOINT_JOURNAL_FILENAME = CHECKPOINT_FILENAME + "-journal"
+
+#: What the runbook asks a person to rename a checkpoint that will not open
+#: to (runbook §6): kept as evidence, never deleted.
+CHECKPOINT_DAMAGED_FILENAME = CHECKPOINT_FILENAME + ".damaged"
+
 #: This file's own layout version, written as ``user_version``.
 CHECKPOINT_VERSION = 1
 
@@ -115,6 +125,32 @@ SCHEMA: tuple[str, ...] = (
 
 class CheckpointError(RuntimeError):
     """The checkpoint could not be opened, or refused what it was asked."""
+
+
+#: A fresh checkpoint refused while an earlier version's still sits beside
+#: the program (the rebase review of decision 186, MF1).
+LEFT_BEHIND = ("No record checkpoint was made: the one an earlier version kept is still at {old}. "
+               "Move it into {home} (the runbook's decision-186 upgrade step); until then nothing "
+               "is written.")
+
+
+class CheckpointLeftBehind(CheckpointError):
+    """A checkpoint would be made where none is while an earlier version's
+    still sits beside the program (the rebase review of decision 186, MF1).
+
+    Making one would seed every record "as it is" and throw away what the
+    old one vouched for - its heads, its intents, its claimed root and the
+    lines from other machines nobody has acknowledged - so a rewrite made
+    before it was moved would be trusted from then on. Refused, never
+    worked around: nothing is opened, moved or deleted, and moving the old
+    file (or renaming it) lifts the refusal. The store raises it, because
+    only the store knows where the program is; ``old`` is that file and
+    ``home`` the folder it belongs in."""
+
+    def __init__(self, old: Path | str, home: Path | str) -> None:
+        super().__init__(LEFT_BEHIND.format(old=old, home=home))
+        self.old = Path(old)
+        self.home = Path(home)
 
 
 #: A checkpoint file that will not open as one (the review's S4). Refused by
@@ -160,10 +196,25 @@ def _unavailable(exc: sqlite3.Error, path: Path | str) -> CheckpointUnavailable:
     return CheckpointUnavailable(path, getattr(exc, "sqlite_errorname", None) or "SQLITE_ERROR")
 
 
+def _let_go_of(cursor: sqlite3.Cursor) -> None:
+    """Close a failed cursor, so it holds no statement (see ``_Cursor._say``)."""
+    try:
+        cursor.close()
+    except sqlite3.Error:
+        pass
+
+
 class _Cursor(sqlite3.Cursor):
     """A cursor whose statements and rows fail as :class:`CheckpointUnavailable`."""
 
     def _say(self, exc: sqlite3.Error) -> CheckpointUnavailable:
+        # Closed before the error leaves: on Python 3.11 a failed cursor
+        # kept by the error's traceback holds its statement, and SQLite
+        # keeps the file open for it after the connection is closed - a
+        # damaged checkpoint stayed locked (WinError 32) for as long as
+        # anything kept the error. See store._let_go_of (decision 159,
+        # Python 3.11 on Windows).
+        _let_go_of(self)
         return _unavailable(exc, getattr(self.connection, "where", "record checkpoint"))
 
     def execute(self, sql, parameters=(), /):
@@ -211,6 +262,7 @@ class _Connection(sqlite3.Connection):
         try:
             return cursor.executemany(sql, parameters)
         except sqlite3.Error as exc:
+            _let_go_of(cursor)
             raise _unavailable(exc, self.where) from exc
 
     def close(self):

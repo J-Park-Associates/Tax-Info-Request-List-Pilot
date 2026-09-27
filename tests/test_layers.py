@@ -122,8 +122,11 @@ LAYERS: dict[int, frozenset[str]] = {
     # ``door`` joins L0 with decision 188: the disk half of the layout. It
     # imports ``layout``, ``fsio`` and ``settings``, all L0, so L0 is the
     # lowest layer the table allows it - and every layer above may ask it.
+    # ``progress`` joins L0 with decision 193: the one progress-line format
+    # and the cancel marker, stdlib only, so the filer, the scanner and the
+    # runner can take a Watch without reaching up to ``api``.
     0: frozenset({"__init__", "reasons", "locking", "checkpoint", "page", "fsio", "settings",
-                  "layout", "door", "errors"}),
+                  "layout", "door", "errors", "progress"}),
     1: frozenset({"households", "ledger", "manifest", "records", "scaffold", "store",
                   "templates", "validators"}),
     2: frozenset({"containers", "content_check", "names", "ocr", "router"}),
@@ -188,13 +191,19 @@ READER_IMPORTS_ALLOWED: frozenset[str] = frozenset(
 #: ``math`` is decision 187's value rule in ``records`` (a number the record
 #: holds must be finite). ``functools`` is decision 204's ``cache`` in
 #: ``api``: the feed list read once for a state, and only if a row waits.
+#: Named when 190 landed on main 63aef39: ``types`` is decision 192's
+#: ``SimpleNamespace`` in ``api`` (a registry of the stored households),
+#: ``typing`` the ``TYPE_CHECKING`` guard in ``containers``, ``tempfile`` decision 186's
+#: reading child pointing its temp folder at its own scratch in ``ocr``,
+#: and ``fnmatch`` the checkpoint set-asides ``runner`` finds left behind
+#: beside the program (decision 186).
 ALLOWED_STDLIB: frozenset[str] = frozenset({
     "__future__", "argparse", "base64", "builtins", "collections", "contextlib", "csv", "ctypes",
-    "dataclasses", "datetime", "email", "errno", "functools", "hashlib", "html", "io", "json",
-    "logging", "math",
+    "dataclasses", "datetime", "email", "errno", "fnmatch", "functools", "hashlib", "html", "io",
+    "json", "logging", "math",
     "multiprocessing", "ntpath", "os", "pathlib", "platform", "posixpath", "re", "secrets",
-    "shutil", "signal", "sqlite3", "stat", "subprocess", "sys", "threading", "time",
-    "traceback", "unicodedata", "xml", "zipfile", "zlib",
+    "shutil", "signal", "sqlite3", "stat", "subprocess", "sys", "tempfile", "threading", "time",
+    "traceback", "types", "typing", "unicodedata", "xml", "zipfile", "zlib",
 })
 
 #: Every third-party module the package may import, by what it is for.
@@ -737,7 +746,6 @@ ALLOWED_SPELLINGS: dict[tuple[str, str], str] = {
     ("tools/repo_map.py", "*"): "the repository's paths, never a client's",
     ("tools/vocab_report.py", "*"): "the repository's paths, never a client's",
     ("tools/backtest.py", "*"): "the repository's paths, never a client's",
-    ("tools/learned_keywords.py", "out_path"): "the repository's paths, never a client's",
 }
 #: The owners: the only modules that may spell a rule about the trees.
 SPELLING_OWNERS = ("tracker/layout.py", "tracker/door.py")
@@ -928,3 +936,32 @@ def test_the_app_never_works_out_whether_a_path_lies_under_another():
         text = (REPO / rel).read_text(encoding="utf-8")
         assert "path.relative(" not in text, rel
         assert "startsWith(" not in text, rel
+
+
+def test_importing_the_api_loads_no_network_module():
+    """Decision 193's review (S2): importing the tracker - the API, which
+    imports every other module - loads no module that could open a
+    connection. The error log rotates by its own few lines rather than
+    ``logging.handlers`` (which loads ``socket``), and the two standard
+    library helpers that drag one in - the email parser and XML escaping -
+    are imported where they are used. Measured in a fresh interpreter.
+
+    Decision 194 (D8) closes the escape for good: ``tracker.scheduling``
+    escapes the task file with ``html.escape(quote=False)``, byte for byte
+    what ``xml.sax.saxutils`` gave, so ``xml.sax`` - which loads
+    ``urllib.request``, ``http.client`` and ``ssl`` - is not in the process
+    at all, and the scheduling module is held to it on its own too."""
+    import json
+    import subprocess
+    import sys
+
+    for module in ("tracker.api", "tracker.scheduling"):
+        program = (
+            "import json,sys\n"
+            f"import {module}\n"
+            "print(json.dumps(sorted(m for m in ('socket', 'http', 'ssl', 'urllib.request', "
+            "'xml.sax') if m in sys.modules)))\n"
+        )
+        done = subprocess.run([sys.executable, "-c", program], capture_output=True, text=True,
+                              check=True, cwd=REPO)
+        assert json.loads(done.stdout) == [], module

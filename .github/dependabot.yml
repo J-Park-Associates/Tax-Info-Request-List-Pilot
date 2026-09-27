@@ -1,7 +1,9 @@
 # Dependency updates (decision 191): one grouped pull request per ecosystem,
-# so the CI bill is one Linux run each (Dependabot never adds the `windows`
-# label - CLAUDE.md's cost rule). pip stays weekly, because the audit (191)
-# has the engines that parse client files reviewed each week; the Electron
+# so the CI bill is one Linux run each, started when the person reviewing it
+# sets it to draft and marks it ready (decision 211: CI never fires on
+# `opened`; Dependabot never adds the `windows` label - CLAUDE.md's cost
+# rule). pip stays weekly, because the audit (191) has the engines that
+# parse client files reviewed each week; the Electron
 # shell and the Actions pins are monthly (decision 207), since their
 # security fixes arrive through Dependabot's security updates, which run
 # as advisories appear and ignore this schedule.

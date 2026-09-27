@@ -115,6 +115,67 @@ def test_the_package_is_published_with_its_sha256_after_the_smoke_checks():
     assert step.index(f"Unzip `{artifact}.zip`") < step.index("certutil -hashfile") < step.index("summary page")
 
 
+def test_every_run_of_the_tracker_in_the_build_has_a_data_home_of_its_own():
+    """Decision 186: the job sets the tracker's data folder under the
+    runner's temp before any step runs the tracker, so no store, log or
+    scratch of a smoke check lands in the runner account's own folder."""
+    from tracker.settings import ENV_DATA_HOME
+
+    run = commands()
+    lines = run.splitlines()
+    [home] = [n for n, line in enumerate(lines)
+              if f"{ENV_DATA_HOME}=" in line and "RUNNER_TEMP" in line and "GITHUB_ENV" in line]
+    tracker_runs = [n for n, line in enumerate(lines)
+                    if "API_EXE" in line and "&" in line or "python -m tracker" in line
+                    or "Build App.bat" in line]
+    assert tracker_runs and home < min(tracker_runs)
+
+
+def test_the_package_is_proved_to_hold_no_store_log_task_file_or_settings():
+    """The proof (decision 186): a step before the package is zipped and
+    uploaded fails the build when anything in it bears a name the data
+    home or the settings folder holds - each spelled by its constant,
+    decision 159's three files and decision 193's error log, its rotated
+    copies and its ``passes`` folder beside the store among them."""
+    from tracker.checkpoint import (
+        CHECKPOINT_DAMAGED_FILENAME,
+        CHECKPOINT_FILENAME,
+        CHECKPOINT_JOURNAL_FILENAME,
+        SET_ASIDE_SUFFIX,
+    )
+    from tracker.progress import PASSES_DIRNAME
+    from tracker.runner import LAST_PASS_FILENAME, LOG_FILENAME, PASS_ORDER_FILENAME
+    from tracker.scheduling import SCHEDULE_XML_FILENAME
+    from tracker.settings import (
+        DATA_HOME_NAME,
+        ERROR_LOG_BACKUPS,
+        ERROR_LOG_FILENAME,
+        OCR_SCRATCH_DIRNAME,
+        SETTINGS_FILENAME,
+    )
+    from tracker.store import RECOVERED_DIR, STORE_FILENAME, STORE_SHM_FILENAME, STORE_WAL_FILENAME
+
+    run = commands()
+    step = run.index("- name: The package holds no store, run log, task file or settings")
+    assert step < run.index("- name: Zip the package and publish its SHA-256") < run.index(
+        "- name: Upload the package")
+    body = run[step:run.index("- name: Zip the package and publish its SHA-256")]
+    listed = re.search(r"\$names = @\(([^)]*)\)", body).group(1)
+    assert set(re.findall(r"'([^']+)'", listed)) == {
+        STORE_FILENAME, STORE_WAL_FILENAME, STORE_SHM_FILENAME, LOG_FILENAME, PASS_ORDER_FILENAME,
+        CHECKPOINT_FILENAME, CHECKPOINT_JOURNAL_FILENAME, CHECKPOINT_DAMAGED_FILENAME,
+        RECOVERED_DIR, LAST_PASS_FILENAME,
+        ERROR_LOG_FILENAME, *(f"{ERROR_LOG_FILENAME}.{n}" for n in range(1, ERROR_LOG_BACKUPS + 1)),
+        PASSES_DIRNAME,
+        SCHEDULE_XML_FILENAME, OCR_SCRATCH_DIRNAME, DATA_HOME_NAME, SETTINGS_FILENAME}
+    # 159's set-asides by the pattern set_aside() gives them (186's rebase review, SF3).
+    patterns = re.search(r"\$patterns = @\(([^)]*)\)", body).group(1)
+    assert set(re.findall(r"'([^']+)'", patterns)) == {
+        name + SET_ASIDE_SUFFIX.format(version="*") + "*" for name in (STORE_FILENAME, CHECKPOINT_FILENAME)}
+    assert "$names -contains $name" in body and "$name -like $_" in body
+    assert "$env:PACKAGE_DIR -Recurse -Force" in body and "throw" in body
+
+
 def test_the_workflow_skips_the_prompts_through_the_switch_the_script_reads():
     """One switch, read in one place, and every wait behind it."""
     script = read(BUILD_SCRIPT)
@@ -185,34 +246,47 @@ def test_both_workflows_name_the_one_interpreter_the_office_runs():
     assert f'python-version: "{floor}"' in ci                 # and the floor is still run
 
 
-def test_ci_runs_once_per_ready_pull_request_and_windows_only_by_label():
-    """Decision 207 (revising 122): CI is one final check before a merge.
+def test_ci_never_fires_per_commit():
+    """Decision 211 (revising 207 and 122): CI runs only where a person asks.
 
-    Every session runs the whole suite before it pushes, so GitHub's paid
-    minutes go only on a ready pull request into main. There is no run on a
-    push to main, whose content was checked as the pull request it came from;
-    a draft runs nothing, and the job condition is what says so, because
-    `synchronize` fires on drafts too. `labeled` is not a trigger: it started
-    a second run beside the first, and two runs started at once cancel each
-    other and are billed anyway. So the `windows` label goes on while the pull
-    request is a draft, and the one run it gets when marked ready sees it.
-    Windows is its own job, because a job's own `if:` is evaluated before a
-    matrix is expanded and cannot see it - so the steps live once, in
-    gate.yml, which both jobs call.
+    Every session runs the whole local gate before it pushes, so GitHub's paid
+    minutes go only on a push to main (Linux, the net under what merged) and
+    on a pull request marked ready (the one run main's branch protection needs
+    before a merge). A push to a pull request runs nothing: there is no
+    `synchronize` and no `opened`. Windows runs only when a ready pull request
+    carries the `windows` label - marked ready with it, or given it - and
+    never on main, because the office PC, which is Windows, ran the gate
+    before the push. A draft runs nothing. Windows is its own job, because a
+    job's own `if:` is evaluated before a matrix is expanded and cannot see it
+    - so the steps live once, in gate.yml, which both jobs call.
     """
     ci = read(".github/workflows/ci.yml")
     gate = read(f".github/workflows/{GATE_WORKFLOW}")
     triggers = ci.split("\non:", 1)[1].split("\nconcurrency:", 1)[0]
-    assert "push:" not in triggers                                   # main is not re-run
-    assert re.search(r"^\s*branches: \[main\]$", triggers, re.M)      # only pull requests into main
-    types = {t.strip() for t in re.search(r"^\s*types: \[([^\]]+)\]$", triggers, re.M).group(1).split(",")}
-    assert types == {"opened", "synchronize", "ready_for_review"}    # no `labeled`, no second run
+    push = triggers.split("pull_request:", 1)[0]
+    assert re.search(r"^\s*push:\s*$", push, re.M)                   # a push to main runs
+    assert re.search(r"^\s*branches: \[main\]$", push, re.M)
+    pull = triggers.split("pull_request:", 1)[1]
+    assert re.search(r"^\s*branches: \[main\]$", pull, re.M)       # only pull requests into main
+    types = {t.strip() for t in re.search(r"^\s*types: \[([^\]]+)\]$", pull, re.M).group(1).split(",")}
+    assert types == {"ready_for_review", "labeled"}                  # never per commit
     assert "cancel-in-progress: true" in ci
     linux = re.search(r"^\s*if: (.+)$", ci.split("\n  linux:\n", 1)[1].split("\n  windows:\n", 1)[0], re.M).group(1)
     windows = re.search(r"^\s*if: (.+)$", ci.split("\n  windows:\n", 1)[1], re.M).group(1)
-    assert "github.event.pull_request.draft == false" in linux       # a draft runs nothing
-    assert "github.event.pull_request.draft == false" in windows
-    assert "labels.*.name, 'windows'" in windows                     # Windows only when asked
+    # The conditions are pinned whole, not by fragments: the same pieces in
+    # another order (`A || B && C`) would say something else.
+    assert linux == (                                                 # main, or a ready non-draft PR; never a label
+        "github.event_name == 'push' || "
+        "(github.event.action == 'ready_for_review' && github.event.pull_request.draft == false)")
+    assert windows == (                                               # a ready PR that asked; never main
+        "github.event_name == 'pull_request' && github.event.pull_request.draft == false"
+        " && contains(github.event.pull_request.labels.*.name, 'windows')"
+        " && (github.event.action == 'ready_for_review' || github.event.label.name == 'windows')")
+    # A label run is its own concurrency group: adding any label must never
+    # cancel the required Linux checks already running on the pull request.
+    group = re.search(r"^\s*group: (.+)$", ci.split("\nconcurrency:", 1)[1], re.M).group(1)
+    assert group == ("ci-${{ github.ref }}-${{ github.event.action == 'labeled'"
+                     " && format('label-{0}', github.event.label.name) || 'gate' }}")
     # The gate is written once and called twice: a job's own `if:` cannot see
     # the matrix, so Linux and Windows are two jobs, not two rows of one.
     assert not re.search(r"^\s*steps:", ci, re.M)

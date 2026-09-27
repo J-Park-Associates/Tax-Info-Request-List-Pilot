@@ -617,3 +617,136 @@ def test_a_client_folder_that_only_looks_like_a_households_is_still_listed(root)
     if os.name == "nt":
         (clients / "Park").rename(clients / "PARK")
         assert "PARK" not in {m.path.name for m in discover_engagements(root).misfits}
+
+
+# ------------------------------------ the households a feed names (192) ----
+
+
+def test_households_named_finds_a_feed_exactly_as_the_walk_does(root):
+    """Decision 192 (R9): the card resolves a feed over the households the
+    feed list names, and over those it must resolve exactly as the pass
+    does over the whole practice - a prior rolled forward, two open years,
+    a spelling of the name that is not the folder's, two folders claiming
+    one household, a folder the name rule refuses, a record in the old
+    layout and a household that is not there at all."""
+    import shutil
+
+    from tracker.households import resolve_feeds
+    from tracker.records import Feed
+    from tracker.registry import households_named
+
+    asker = make(root, household="Asker Family", name="1040 - Asker").parent.parent
+    prior = make(root, household="Park & Lee LLC", year=2024, name="1120S - Park & Lee LLC")
+    make(root, household="Park & Lee LLC", year=2025, name="1120S - Park & Lee LLC",
+         info=EngagementInfo(rolled_from=str(prior.resolve())))
+    make(root, household="Two Years", year=2024, name="1040 - Two")
+    make(root, household="Two Years", year=2025, name="1040 - Two")
+    make(root, household="Lee Family", name="1040 - Sam Lee")
+    private = root / PRIVATE_TREE
+    # A copy of a household under a name its key cannot tell apart.
+    shutil.copytree(private / "Lee Family", private / "Lee Fami1y")
+    make(root, household="Smith Family", name="1040 - Smith")
+    bad = private / "Smith​ Family"
+    (bad / "2025" / "1040 - Smith").mkdir(parents=True)
+    ledger.path_for(bad).write_text("", encoding="utf-8")
+    misplaced = private / "Old Client 2024"
+    misplaced.mkdir()
+    ledger.path_for(misplaced).write_text("", encoding="utf-8")
+    make(root, household="Unasked Family", name="1040 - Unasked")
+
+    feeds = [Feed("Park & Lee LLC", "1120S - Park & Lee LLC"),
+             Feed("PARK & LEE LLC", "1120S - Park & Lee LLC"),
+             Feed("Two Years", "1040 - Two"),
+             Feed("Lee Family", "1040 - Sam Lee"),
+             Feed("Smith Family", "1040 - Smith"),
+             Feed("Old Client 2024", "1040 - Old"),
+             Feed("Nobody Family", "1040 - Nobody")]
+    practice = discover_engagements(root)
+
+    def said(registry, feed):
+        found, sentences = resolve_feeds(asker, [feed], 2025, registry)
+        return [one.path for one in found], sentences
+
+    resolved = 0
+    for feed in feeds:
+        named = households_named(private, [feed.household])
+        assert said(named, feed) == said(practice, feed), feed
+        resolved += bool(said(named, feed)[0])
+    # The LLC by either spelling, Smith Family past its refused look-alike,
+    # and Lee Family, whose copy the pass stops but the resolver does not see.
+    assert resolved == 4
+    both = households_named(private, ["Lee Family"])
+    assert sorted(one.name for one in both.households) == ["Lee Fami1y", "Lee Family"]
+
+
+def test_households_named_reads_no_household_it_was_not_asked_for(root, monkeypatch):
+    """Decision 192: the card's feed costs the households it names and no
+    other - no walk of the practice and no journal read outside them."""
+    from pathlib import Path
+
+    from tracker import registry
+    from tracker.registry import households_named
+
+    llc = make(root, household="Park & Lee LLC", name="1120S - Park & Lee LLC")
+    make(root, household="Kim Household", name="1040 - Dana Kim")
+    make(root, household="Smith Family", name="1040 - Smith")
+    walked: list[Path] = []
+    real_walk = registry._walk_root
+    monkeypatch.setattr(registry, "_walk_root", lambda one: walked.append(one) or real_walk(one))
+    read: list[Path] = []
+    real_read = Path.read_bytes
+
+    def counting(self):
+        if self.name == ledger.LEDGER_FILENAME:
+            read.append(Path(self))
+        return real_read(self)
+
+    monkeypatch.setattr(Path, "read_bytes", counting)
+
+    found = households_named(root / PRIVATE_TREE, ["Park & Lee LLC"])
+
+    assert [one.path for one in found.engagements] == [llc]
+    assert walked == []
+    household = llc.parent.parent
+    assert read and ledger.path_for(household) in read
+    assert all(household in one.parents or one.parent == household for one in read), read
+
+
+def test_a_folder_that_cannot_be_listed_is_said_by_class_never_by_its_text(root, monkeypatch):
+    # Decision 193 (security principle 7): the operating system's text
+    # names the folder, and the misfit's sentence reaches the app, the page
+    # and the run log - so it carries the class and the code only.
+    import errno
+    from pathlib import Path
+
+    make(root, household="Smith Family")
+    denied = private_household_dir(root, "Smith Family")
+    real = Path.iterdir
+
+    def refuse(self):
+        if self == denied:
+            raise PermissionError(errno.EACCES, "Permission denied", str(self))
+        return real(self)
+
+    monkeypatch.setattr(Path, "iterdir", refuse)
+    registry = discover_engagements(root)
+    said = next(m.sentence for m in registry.misfits if m.path == denied)
+    assert said == UNLISTED.format(error="PermissionError (EACCES)")
+    assert "Permission denied" not in said and str(denied) not in said
+
+
+def test_a_root_whose_only_household_lost_its_record_says_restore_never_nothing_found(tmp_path):
+    """Decision 185's port: a household whose record is gone is something
+    found. A root holding only it is discovered, the household stopped with
+    the sentence that says restore it - never "is this the right folder?"."""
+    from tracker.registry import HOUSEHOLD_RECORD_MISSING
+
+    root = tmp_path / "root"
+    folder = make_engagement(root, [RequestItem(identifier="A01", document="W-2")], scaffold=False)
+    household = private_household_dir(root, TEST_HOUSEHOLD)
+    ledger.path_for(household).unlink()
+
+    registry = discover_engagements(root)
+    said = HOUSEHOLD_RECORD_MISSING.format(folder=TEST_HOUSEHOLD)
+    assert registry.stopped == {household: said}
+    assert [(one.path, one.problem) for one in registry.engagements] == [(folder, said)]

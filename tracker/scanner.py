@@ -73,6 +73,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import math
 import re
 from collections.abc import Callable
 from contextlib import nullcontext
@@ -92,6 +93,7 @@ from tracker.manifest import (
     summarize,
     with_statuses,
 )
+from tracker.progress import Watch
 from tracker.records import (
     CANDIDATE_SEP,
     IndexEntry,
@@ -774,6 +776,7 @@ def scan_engagement(
     dry_run: bool = False,
     lock_held: bool = False,
     deadline: float | None = None,
+    watch: Watch | None = None,
 ) -> ScanReport:
     """Scan one engagement and (unless ``dry_run``) record what it found.
 
@@ -848,6 +851,14 @@ def scan_engagement(
         unreached = 0
         cache.deadline = deadline         # a miss past it starts no judgment
         for item in items:
+            if watch is not None:
+                # Watched, and stopped between requests (decision 193): a
+                # person's stop is the deadline, now; a request whose
+                # verdicts are all kept is still scanned, and the first that
+                # would read stops the scan (``unreached``).
+                watch.say("file", step="scan", name=item.identifier)
+                if watch.stop_asked():
+                    cache.deadline = -math.inf
             try:
                 updates[item.identifier] = _scan_item(
                     item, assigned[item.identifier], cache, today, pdf_cache, accepted=accepted,

@@ -165,6 +165,7 @@ from tracker.manifest import (
     Status,
     load_engagement_info,
     load_manifest,
+    status_label,
     summarize,
 )
 from tracker.reasons import GENERIC_ASK  # re-exported; the one generic sentence
@@ -193,6 +194,34 @@ STAGE_FLAG = "--stage"
 
 #: Where a fresh draft goes when the standing one has been edited by hand.
 NEW_DRAFT_FILENAME = Path(DRAFT_FILENAME).stem + ".NEW" + Path(DRAFT_FILENAME).suffix
+#: What the pass's note and the app both say while that fresh draft sits
+#: beside an edited one (decision 193): one sentence, from here.
+DRAFT_WRITTEN_BESIDE = (f"{DRAFT_FILENAME} has been edited, so this week's draft was "
+                        f"written to {NEW_DRAFT_FILENAME} instead")
+#: A hold older than this many days is said (decision 193; the number is
+#: Jason's to change): held now, and the last draft that wrote a letter -
+#: else the return's creation - more than this long ago. Display only: it
+#: changes no hold and no letter.
+HELD_WARN_DAYS = 7
+HELD_TOO_LONG = ("this return's reminder has been held for {days} days with no letter drafted; "
+                 "the requests holding it are waiting for a person")
+#: What the Reminder card says for a return with no scan yet - a line,
+#: not an error (decision 193, D7).
+REMINDER_NOT_YET = "No reminder yet: this return has not been scanned."
+
+
+def held_too_long(engagement_dir: Path | str, today: dt.date, *,
+                  created: dt.date | None) -> str:
+    """:data:`HELD_TOO_LONG` filled, when a reminder that is held now has
+    had no letter for more than :data:`HELD_WARN_DAYS` days - counted from
+    the last draft that wrote a file, else from ``created`` - or "". The
+    caller says it is held; this is the one place the rule is."""
+    last = last_draft_event(engagement_dir, carrying=ledger.FILE_KEY)
+    since = ledger.day_of(str(last.get(ledger.AT_KEY, ""))) if last else created
+    if since is None:
+        return ""
+    days = (today - since).days
+    return HELD_TOO_LONG.format(days=days) if days > HELD_WARN_DAYS else ""
 
 _FINGERPRINT_PREFIX = "Fingerprint: "
 _RULE_WIDTH = 60
@@ -243,11 +272,29 @@ PROGRESS_ALSO = "We have also received {k} other {documents} from you."
 #: what came first, then say what is still needed.
 PROGRESS_NONE_ASKED = ("We have received {k} {documents} from you, thank you. "
                        "The {m} {items} we asked for {verb} still needed.")
-#: The footer headings for what the draft deliberately did not ask for.
-HELD_BACK_HEADING = "NOT ASKED FOR"
-HELD_BACK_LINE = "NOT ASKED"
-#: What the CLI prefixes a row that holds the whole draft with.
-HELD_LINE = "HELD"
+
+
+@dataclass(frozen=True, slots=True)
+class Side:
+    """Whose move an outstanding request is (decision 200): one of
+    :func:`triage`'s three lists, named for a preparer. The app shows it
+    beside the row, the staff footer heads the firm's rows with it and the
+    CLI prefixes each row with it - one word for one list everywhere, where
+    the footer once said "NOT ASKED" for the firm's work, the opposite of
+    decision 142's "Not asked"."""
+
+    key: str
+    label: str
+    sentence: str
+
+
+SIDE_CLIENT = Side("client", "Client", "The letter asks the client for it.")
+SIDE_US = Side("us", "Us", "Waiting on us, not the client; the letter does not ask for it.")
+SIDE_DECIDE = Side("decide", "Decide",
+                   "A person decides whether the client resends it or we fix it here; "
+                   "the letter is held until then.")
+#: The three sides, in triage's order: asked, the firm's, held.
+SIDES = (SIDE_CLIENT, SIDE_US, SIDE_DECIDE)
 #: Why an ambiguous row is held (decision 115): a person decides which
 #: side it is on; the draft does not. A row's own reason sentence follows
 #: in brackets when the note carried one, so the person sees what the scan
@@ -1064,6 +1111,25 @@ def triage(items: Sequence[RequestItem], parked: Sequence = ()) -> tuple[
     lines.sort(key=lambda line: (order[line.section], line.item.identifier))
     held.sort(key=lambda flag: flag.item.identifier)
     return lines, attention, held
+
+
+def sides(lines: Sequence[ReminderLine], attention: Sequence[FirmSideFlag],
+          held: Sequence[FirmSideFlag]) -> dict[str, tuple[Side, str]]:
+    """Each row :func:`triage` placed, by identifier, with its side and the
+    row's own sentence (decision 200): a Client row's ask (or the side's
+    sentence when it has none), an Us or Decide row's reason. The row's
+    sentence, not the side's, because it is the one a preparer acts on -
+    one generic sentence on forty rows is a tooltip moved into the page.
+    A row triage did not place - not asked, overridden, already in, not
+    yet scanned - has no side and is not here."""
+    placed: dict[str, tuple[Side, str]] = {}
+    for line in lines:
+        placed[line.item.identifier] = (SIDE_CLIENT, line.ask or SIDE_CLIENT.sentence)
+    for flag in attention:
+        placed[flag.item.identifier] = (SIDE_US, flag.reason)
+    for flag in held:
+        placed[flag.item.identifier] = (SIDE_DECIDE, flag.reason)
+    return placed
 
 
 def count_needs_review(engagement_dir: Path) -> int:
@@ -2007,8 +2073,8 @@ def write_draft(draft: ReminderDraft, path: Path | str | None = None,
         footer += ["", FOOTER_RULE, draft.link_dropped]
     if draft.needs_attention:
         footer += ["", FOOTER_RULE,
-                   f"{HELD_BACK_HEADING} - waiting on us, not the client:"]
-        footer += [f"  {flag.item.label}: {flag.reason}"
+                   f"{SIDE_US.label.upper()} - {SIDE_US.sentence}"]
+        footer += [f"  {flag.item.label} ({status_label(flag.item)}): {flag.reason}"
                    for flag in draft.needs_attention]
     if draft.needs_review_files:
         footer += ["", FOOTER_RULE,
@@ -2180,9 +2246,9 @@ if __name__ == "__main__":
         print(result.text)
 
     for flag in result.needs_attention:
-        print(f"{HELD_BACK_LINE}: {flag.item.label}: {flag.reason}")
+        print(f"{SIDE_US.label}: {flag.item.label} ({status_label(flag.item)}): {flag.reason}")
     for flag in result.held:
-        print(f"{HELD_LINE}: {flag.item.label}: {flag.reason}")
+        print(f"{SIDE_DECIDE.label}: {flag.item.label} ({status_label(flag.item)}): {flag.reason}")
     if result.link_dropped:
         print(f"\n{result.link_dropped}")
     if result.needs_review_files:

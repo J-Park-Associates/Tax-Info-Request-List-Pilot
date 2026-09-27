@@ -417,3 +417,36 @@ def test_a_hand_added_k1_row_derives_its_short_name_from_the_issuer():
     # Not the pattern: the first twenty characters, as any title.
     assert derived_short_title("Schedule K-1s Received") == "Schedule K-1s"
     assert derived_short_title(templates.ISSUER_DOCUMENT.format(entity="")) == "Schedule K-1"
+
+
+def test_the_next_issuer_identifier_is_the_first_free_one_in_the_k1_block():
+    """Decision 201: F's block after the catalog's own K-1 row, in its
+    letter and width, skipping an identifier taken in any case - a
+    hand-typed ``f02`` holds F02 as surely as ``F02`` does."""
+    from tracker.manifest import RequestItem
+    from tracker.templates import K1_IDENTIFIER, next_issuer_identifier
+
+    def rows(*identifiers):
+        return [RequestItem(identifier=one, document="x") for one in identifiers]
+
+    assert K1_IDENTIFIER == "F01"
+    assert next_issuer_identifier(rows("A01", "F01")) == "F02"
+    assert next_issuer_identifier(rows("F01", "f02")) == "F03"
+    assert next_issuer_identifier(rows("F01", "F02", "F04")) == "F03"
+    assert next_issuer_identifier(rows()) == "F02"
+
+
+def test_an_issuer_item_is_shifted_to_the_returns_year():
+    """Decision 201: the row a card adds asks for the return's year, as
+    every catalog row a return is made from does - and is otherwise the
+    row ``issuer_row`` builds."""
+    from tracker.templates import BASE_YEAR, issuer_item, shift_item
+
+    cut = item_from_spec(issuer_row("F03", "Dunmore Capital"))
+    later = issuer_item("F03", "Dunmore Capital", BASE_YEAR + 1)
+    assert later == shift_item(cut, 1)
+    assert later.period == f"TY{BASE_YEAR + 1}" and cut.period == f"TY{BASE_YEAR}"
+    assert issuer_item("F03", "Dunmore Capital", BASE_YEAR) == cut
+    assert issuer_item("F03", "Dunmore Capital", None) == cut
+    with pytest.raises(ManifestError):
+        issuer_item("F03", " , . ", BASE_YEAR)

@@ -35,9 +35,11 @@
              and the label are the API's; the class is derived from the
              word, so the page names no state of its own. -->
         <span id="view-state" class="eng-form hidden"></span>
-        <button id="btn-new" class="btn">
+        <!-- A household the tracker has no record of, made with its first
+             return (decision 196). The label is the API's. -->
+        <button id="btn-new-household" class="btn">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
-          New Engagement
+          <span id="new-household-label"></span>
         </button>
         <span class="toolbar-spacer"></span>
         <!-- The household's one inbox, and the household's folder in the
@@ -80,14 +82,28 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.22-8.56"/><path d="M22 4 12 14l-3-3"/></svg>
           <span id="scan-label"></span>
         </button>
+        <!-- Stop, offered only while this app's own pass runs (decision 193). -->
+        <button id="btn-stop-pass" class="btn hidden"></button>
       </div>
+      <!-- Where the running pass is: the household, and the file under it. -->
+      <div id="pass-progress" class="pass-progress hidden" role="status" aria-live="polite"></div>
 
+      <!-- Failures and warnings stay until a person dismisses them (decision 193). -->
+      <div id="notices" role="alert" aria-live="polite"></div>
+      <!-- The notices' buttons: static, because a notice must work before any
+           vocabulary has arrived. Word for word tracker.api.NOTICE_LABELS. -->
+      <template id="notice-buttons">
+        <button class="btn btn-small notice-act" data-act="retry">Retry</button>
+        <button class="btn btn-small notice-act" data-act="look">Look again</button>
+        <button class="btn btn-small notice-act" data-act="dismiss">Dismiss</button>
+      </template>
       <div id="banner" class="banner hidden" role="status"></div>
       <!-- The app sits too deep for its reader (decision 169): stays until it is moved. -->
       <div id="reader-warning" class="banner err hidden" role="alert"></div>
       <!-- When the scheduled pass last ran and how it ended (decision 159):
            the words and the colour are the API's. -->
       <div id="last-pass" class="banner hidden" role="status"></div>
+      <div id="machine-warnings" class="banner err hidden" role="alert"></div>
 
       <!-- Every folder under the clients root that does not fit the layout,
            each with the one sentence saying why it is left alone (decision
@@ -106,15 +122,34 @@
           <h3 id="setup-title">Where do you keep your clients?</h3>
           <span class="summary">one folder; every household, and every return in it, is found under it</span>
         </div>
+        <!-- Every box here is named by a label that stays while a person
+             types (decision 201, D11), each label and the sentence under it
+             the API's (vocab.settings). A placeholder that is an example
+             stays, but never as the box's only name. -->
         <div class="setup-row">
-          <input id="root-input" type="text" aria-label="Clients folder" />
+          <label class="field">
+            <span id="root-label"></span>
+            <input id="root-input" type="text" />
+          </label>
           <button id="btn-browse" class="btn">Browse…</button>
         </div>
         <div class="setup-row">
-          <input id="firm-input" type="text" placeholder="Your firm's name, as it should sign the reminders" aria-label="Firm name" />
+          <div class="setup-field">
+            <label class="field">
+              <span id="firm-label"></span>
+              <input id="firm-input" type="text" aria-describedby="firm-help" />
+            </label>
+            <p id="firm-help" class="wiz-note"></p>
+          </div>
         </div>
         <div class="setup-row">
-          <input id="phone-input" type="text" />
+          <div class="setup-field">
+            <label class="field">
+              <span id="phone-label"></span>
+              <input id="phone-input" type="text" aria-describedby="phone-help" />
+            </label>
+            <p id="phone-help" class="wiz-note"></p>
+          </div>
           <button id="btn-save-root" class="btn btn-primary">Use this folder</button>
         </div>
         <p id="setup-note" class="wiz-note"></p>
@@ -162,6 +197,10 @@
           </div>
           <div id="household-returns-head" class="tmpl-head"></div>
           <div id="household-returns" class="household-returns"></div>
+          <!-- The household rolls as a household, from its own card
+               (decisions 126 and 196): a folded tick list, drawn only when
+               the API names the year it rolls to. Every word is the API's. -->
+          <details id="household-roll" class="household-roll ed-paste hidden"></details>
           <!-- What this drop folder also feeds, and whose drop folders
                feed a return here (decision 129). Both lines are the
                API's, filled with labels and household names - never with
@@ -172,6 +211,7 @@
           <p id="household-queue" class="wiz-note"></p>
           <div class="editor-actions">
             <button type="button" id="btn-edit-household" class="btn btn-small"></button>
+            <button type="button" id="btn-add-return" class="btn btn-small"></button>
             <button type="button" id="btn-mark-shared" class="btn btn-small"></button>
           </div>
         </div>
@@ -196,13 +236,12 @@
           </thead>
           <tbody id="rows"></tbody>
         </table>
-        <!-- Decision 142: the rows nobody asked for with no document at all,
-             folded closed under the table; the heading is the API's. -->
-        <details id="rows-not-asked-group" class="rows-not-asked hidden">
-          <summary id="rows-not-asked-summary"></summary>
-          <table class="requests" id="rows-not-asked-table">
-            <tbody id="rows-not-asked"></tbody>
-          </table>
+        <!-- Decision 200: every row nobody waits on (not asked with nothing
+             in, decision 142; not applicable, decision 116), folded closed
+             under the table in one group per label; every word is the API's. -->
+        <details id="rows-set-aside-group" class="rows-set-aside hidden">
+          <summary id="rows-set-aside-summary"></summary>
+          <div id="rows-set-aside"></div>
         </details>
       </section>
 
@@ -340,6 +379,14 @@
         <span class="toolbar-spacer"></span>
         <button id="hh-edit-save" class="btn btn-primary">Save</button>
       </div>
+      <!-- Closing with changes not saved asks first (decision 201): the
+           API's sentence and its two answers, the first focused. -->
+      <div class="dlg-unsaved banner warn hidden" role="alert">
+        <span class="dlg-unsaved-text"></span>
+        <span class="toolbar-spacer"></span>
+        <button type="button" class="btn btn-small dlg-keep"></button>
+        <button type="button" class="btn btn-small dlg-discard"></button>
+      </div>
     </div>
   </div>
 
@@ -367,23 +414,19 @@
     </div>
   </div>
 
-  <!-- ═══════════════ New Engagement wizard ═══════════════ -->
+  <!-- ═══════════════ Add a return / New household (decision 196) ═══════════════ -->
   <div id="modal" class="modal-overlay hidden">
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <!-- Named by the heading of the step on screen (showStep, decision 201). -->
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="household-title">
 
-      <!-- Step 0 (new): whose household this return belongs to. A client
-           folder is a household since decision 125, so a return is made
-           inside one - an existing one, or one this call makes. Every word
-           is the API's (vocab.household). -->
+      <!-- New household: the four fields of a household the tracker has
+           no record of, made with its first return (decisions 125 and
+           196). A name that reads as one already in the list is refused by
+           the API, pointing at it there (decision 188). Every word is the
+           API's (vocab.household). -->
       <div id="wiz-household" class="hidden">
         <h3 id="household-title"></h3>
-        <p class="wiz-sub">A client folder is a household: one folder per tax year inside it, one folder per return inside that, and one inbox the client drops everything into.</p>
-
-        <div class="tmpl-head" id="hh-existing-head"></div>
-        <label class="field">
-          <span id="hh-existing-label"></span>
-          <select id="hh-existing"></select>
-        </label>
+        <p id="household-new-intro" class="wiz-sub"></p>
 
         <div class="tmpl-head" id="hh-new-head"></div>
         <div class="roll-grid">
@@ -416,46 +459,13 @@
         </div>
       </div>
 
-      <!-- Step 1 (default): returning client — roll the household's year
-           forward (decision 126). A household is what a client sees, so
-           Roll Forward rolls every ticked return of its open year at once
-           and retires the ones left unticked; the sentence saying so is
-           the API's. -->
-      <div id="wiz-prior">
-        <h3 id="modal-title">New Engagement — returning client</h3>
-        <p class="wiz-sub">Last year's list is the starting point. Everything the client actually sent, set aside or under-delivered carries forward - what was set aside as not applicable under its own heading, for a fresh decision; the form template only fills blanks.</p>
-
-        <div class="roll-grid">
-          <label class="field" id="ro-household-field">
-            <span id="ro-household-label"></span>
-            <select id="ro-household"></select>
-          </label>
-          <label class="field">
-            <span>Tax year</span>
-            <input id="ro-year" type="number" />
-          </label>
-        </div>
-
-        <div class="tmpl-head">Roll forward from</div>
-        <div id="prior-list" class="tmpl-list" aria-label="Returns to roll forward"></div>
-        <p id="prior-empty" class="wiz-note hidden">No prior engagement on file yet — start this client from a form template below.</p>
-        <p id="ro-unticked-note" class="wiz-note"></p>
-
-        <div class="modal-actions">
-          <button id="wp-new-client" class="btn">New client — start from a form template</button>
-          <span class="toolbar-spacer"></span>
-          <button id="wp-cancel" class="btn">Cancel</button>
-          <button id="ro-create" class="btn btn-primary">Roll Forward</button>
-        </div>
-      </div>
-
-      <!-- Step 1: choose the tax form type (new client) -->
+      <!-- The form type: where Add a return opens, and New household's
+           second step. The title names the household a return is added to. -->
       <div id="wiz-form" class="hidden">
-        <h3 id="form-title">New Engagement — what type of return?</h3>
-        <p class="wiz-sub">The request list is tailored to the form you pick.</p>
+        <h3 id="form-title"></h3>
+        <p id="form-note" class="wiz-sub"></p>
         <div id="form-grid" class="form-grid"></div>
         <div class="modal-actions">
-          <button id="wf-back" class="btn">&#8592; Returning client</button>
           <span class="toolbar-spacer"></span>
           <button id="wf-cancel" class="btn">Cancel</button>
         </div>
@@ -463,10 +473,11 @@
 
       <!-- Step 2: tailored request list for the chosen form -->
       <div id="wiz-items" class="hidden">
-        <h3 id="items-title">New Engagement</h3>
+        <h3 id="items-title"></h3>
         <div class="form-chosen">
           <span id="chosen-form" class="chosen-badge"></span>
-          <button id="wi-back" class="wiz-back">&#8592; Change form type</button>
+          <button id="wi-back" class="wiz-back"></button>
+          <button id="wi-household" class="wiz-back hidden"></button>
         </div>
 
         <label class="field">
@@ -519,12 +530,23 @@
           <button id="cu-add" class="btn btn-small"></button>
         </div>
 
+        <!-- A refused create stays here, in the API's words, until a field
+             is edited or the dialog is closed (decision 196). -->
+        <p id="ne-note" class="rem-hold hidden" role="alert"></p>
         <div class="modal-actions">
           <button id="ne-cancel" class="btn">Cancel</button>
-          <button id="ne-create" class="btn btn-primary">Create Engagement</button>
+          <button id="ne-create" class="btn btn-primary"></button>
         </div>
       </div>
 
+      <!-- Closing with changes not saved asks first (decision 201): the
+           API's sentence and its two answers, the first focused. -->
+      <div class="dlg-unsaved banner warn hidden" role="alert">
+        <span class="dlg-unsaved-text"></span>
+        <span class="toolbar-spacer"></span>
+        <button type="button" class="btn btn-small dlg-keep"></button>
+        <button type="button" class="btn btn-small dlg-discard"></button>
+      </div>
     </div>
   </div>
 
@@ -538,8 +560,9 @@
       <fieldset id="ed-engagement" class="ed-engagement">
         <legend id="ed-engagement-title"></legend>
         <div id="ed-fields" class="ed-fields"></div>
-        <!-- The same People block the wizard shows (decision 128): the
-             return's own list, edited here and nowhere else. -->
+        <!-- The same People block Add a return / New household shows
+             (decision 128): the return's own list, edited here and
+             nowhere else. -->
         <div class="tmpl-head" id="ep-head"></div>
         <p id="ep-help" class="wiz-note"></p>
         <div id="ep-people" class="people-block"></div>
@@ -575,6 +598,14 @@
       <div class="modal-actions">
         <button id="ed-cancel" class="btn"></button>
         <button id="ed-save" class="btn btn-primary"></button>
+      </div>
+      <!-- Closing with changes not saved asks first (decision 201): the
+           API's sentence and its two answers, the first focused. -->
+      <div class="dlg-unsaved banner warn hidden" role="alert">
+        <span class="dlg-unsaved-text"></span>
+        <span class="toolbar-spacer"></span>
+        <button type="button" class="btn btn-small dlg-keep"></button>
+        <button type="button" class="btn btn-small dlg-discard"></button>
       </div>
     </div>
   </div>

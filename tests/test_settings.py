@@ -9,6 +9,7 @@ import json
 
 import pytest
 
+from tracker import settings as data_rules
 from tracker.settings import (
     ENV_REAL_CORPUS,
     ENV_SETTINGS_DIR,
@@ -270,3 +271,289 @@ def test_a_root_one_level_too_deep_is_refused_and_the_example_root_is_not(beside
     lone = beside_the_app / "Elsewhere" / CLIENTS_TREE
     lone.mkdir(parents=True)
     assert set_clients_root(lone) == lone.resolve()
+
+
+def test_the_error_log_lives_beside_the_tracker_database(beside_the_app, monkeypatch):
+    # Decision 193, the lane's ruling: beside the store, the folder 189's
+    # pass-order.json uses, so it moves wherever the store moves - and
+    # never in either client tree.
+    import logging
+
+    from tracker import store
+    from tracker.settings import ERROR_LOG_FILENAME, error_log, error_log_path
+
+    elsewhere = beside_the_app / "data" / store.STORE_FILENAME
+    monkeypatch.setenv(store.ENV_STORE, str(elsewhere))
+    assert error_log_path() == elsewhere.parent / ERROR_LOG_FILENAME
+    with error_log() as path:
+        logging.getLogger("tracker.test").warning("a fabricated warning")
+    assert path == elsewhere.parent / ERROR_LOG_FILENAME
+    assert "a fabricated warning" in path.read_text(encoding="utf-8")
+    assert not (settings_dir() / ERROR_LOG_FILENAME).exists()
+
+
+def test_the_error_log_is_none_when_the_data_home_cannot_be_had(monkeypatch):
+    """Decision 186 on 193: the error log sits beside the store, in the
+    data home; with no data home there is no log, and the block still runs
+    rather than raising before the command can say why."""
+    import logging
+
+    from tracker import store
+    from tracker.settings import ENV_DATA_HOME, error_log
+
+    monkeypatch.delenv(store.ENV_STORE, raising=False)
+    monkeypatch.setenv(ENV_DATA_HOME, "relative-data")
+    with error_log() as path:
+        logging.getLogger("tracker.test").warning("a fabricated warning")
+    assert path is None
+
+
+# ------------------------------------------ decision 185: the suite's own folder ----
+
+
+def test_one_rule_says_what_lies_inside_the_app_folder(tmp_path, monkeypatch):
+    """The report tools ask this before writing: a file in the checkout is one
+    `git add -A` from every clone."""
+    from tracker.settings import app_dir, inside_the_app
+
+    app = app_dir()
+    assert inside_the_app(app)
+    assert inside_the_app(app / "docs" / "learned.md")
+    monkeypatch.chdir(app / "docs")
+    assert inside_the_app("learned.md") and inside_the_app("../x")
+    assert not inside_the_app(tmp_path)
+
+
+def test_an_absent_settings_file_is_found_absent_by_opening_it(beside_the_app, monkeypatch):
+    """``exists()`` raises no audit event, so the suite's tripwire would not
+    see a test reach the checkout's settings on a machine without one."""
+    from pathlib import Path
+
+    def never(self, *args, **kwargs):
+        raise AssertionError(f"exists() asked of {self}")
+
+    monkeypatch.setattr(Path, "exists", never)
+    assert clients_root() is None
+# ------------------------------------------------ the data home (decision 186) ----
+
+
+def _fixed(_path):
+    return data_rules.DRIVE_FIXED
+
+
+def _resolve(environ, *, windows=False, home=None, program=(), drive_type=_fixed):
+    return data_rules.resolve_data_home(environ, windows=windows, home=home, program=program,
+                                        drive_type=drive_type)
+
+
+def _refused(sentence, **kwargs):
+    with pytest.raises(SettingsError) as caught:
+        _resolve(**kwargs)
+    assert str(caught.value) == sentence
+    return caught.value
+
+
+def test_the_data_home_is_the_accounts_own_local_application_data_folder(tmp_path):
+    local = tmp_path / "Local"
+    local.mkdir()
+    assert _resolve({"LOCALAPPDATA": str(local)}, windows=True) == local / data_rules.DATA_HOME_NAME
+
+
+def test_a_missing_local_application_data_is_refused_and_nothing_falls_back_to_the_program_or_temp(
+        tmp_path):
+    a_file = tmp_path / "not-a-folder"
+    a_file.write_text("", encoding="utf-8")
+    _refused(data_rules.NO_LOCAL_APPDATA, environ={}, windows=True)
+    _refused(data_rules.NO_LOCAL_APPDATA, environ={"LOCALAPPDATA": "  "}, windows=True)
+    for named in ("AppData/Local", str(a_file), str(tmp_path / "gone")):
+        _refused(data_rules.LOCAL_APPDATA_NOT_A_FOLDER.format(folder=named),
+                 environ={"LOCALAPPDATA": named}, windows=True)
+    # Even with a home folder and a state folder to hand, Windows never
+    # borrows them: the answer is LOCALAPPDATA's or nothing.
+    _refused(data_rules.NO_LOCAL_APPDATA, environ={"XDG_STATE_HOME": str(tmp_path)}, windows=True,
+             home=tmp_path)
+
+
+def test_a_data_home_override_must_be_a_whole_path(tmp_path):
+    _refused(data_rules.DATA_HOME_NOT_ABSOLUTE.format(value="data"),
+             environ={data_rules.ENV_DATA_HOME: "data"})
+    mine = tmp_path / "somewhere" / "of-its-own"
+    assert _resolve({data_rules.ENV_DATA_HOME: str(mine)}) == mine
+    assert _resolve({data_rules.ENV_DATA_HOME: str(mine), "LOCALAPPDATA": str(tmp_path)},
+                    windows=True) == mine                      # the override wins on Windows too
+    assert _resolve({data_rules.ENV_DATA_HOME: "  "}, home=tmp_path) == (
+        tmp_path / ".local" / "state" / data_rules.DATA_HOME_NAME)   # blank is unset
+
+
+def test_beside_the_program_is_the_settings_folder_and_a_frozen_executables_own(tmp_path, monkeypatch):
+    """The one answer to "beside the program" (the rebase review of 186,
+    MF1): where what an earlier version left is looked for, and a fresh
+    checkpoint refused - the settings folder, and, frozen, the executable's
+    folder when it is another one."""
+    import sys
+
+    settings = tmp_path / "settings"
+    settings.mkdir()
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    assert data_rules.beside_the_program() == [settings.resolve()]
+    executable = tmp_path / "package" / "tracker-api.exe"
+    executable.parent.mkdir()
+    executable.write_bytes(b"")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(executable))
+    assert data_rules.beside_the_program() == [settings.resolve(), executable.parent.resolve()]
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(executable.parent))
+    assert data_rules.beside_the_program() == [executable.parent.resolve()]
+
+
+def test_the_data_home_is_never_inside_the_program_nor_holds_it(tmp_path, monkeypatch):
+    app = data_rules.app_dir()                                 # the checkout, from source
+    for inside_or_around in (app / "data", app, app.parent):
+        _refused(data_rules.DATA_HOME_BESIDE_PROGRAM.format(home=inside_or_around, program=app),
+                 environ={data_rules.ENV_DATA_HOME: str(inside_or_around)}, program=[app])
+
+    # The unzipped package: the settings folder holds the executable's folder,
+    # so it is the program too, and the data home may not sit in it.
+    package = tmp_path / "package"
+    executable = package / "resources" / "api"
+    executable.mkdir(parents=True)
+    _refused(data_rules.DATA_HOME_BESIDE_PROGRAM.format(home=package / "data", program=package),
+             environ={data_rules.ENV_DATA_HOME: str(package / "data")}, program=[executable, package])
+
+    # Asked of this process: a settings folder holding the checkout is the
+    # program; the suite's own settings folder, which does not, is not.
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(app.parent))
+    assert data_rules.program_folders() == [app, app.parent.resolve()]
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    assert data_rules.program_folders() == [app]
+    monkeypatch.setenv(data_rules.ENV_DATA_HOME, str(tmp_path / "app" / "data"))
+    assert data_rules.data_home() == tmp_path / "app" / "data"
+
+
+def test_the_data_home_off_windows_is_the_users_own_state_folder(tmp_path):
+    state = tmp_path / "state"
+    assert _resolve({"XDG_STATE_HOME": str(state)}, home=tmp_path / "home") == (
+        state / data_rules.DATA_HOME_NAME)
+    for ignored in ({"XDG_STATE_HOME": "relative/state"}, {"XDG_STATE_HOME": ""}, {}):
+        assert _resolve(ignored, home=tmp_path / "home") == (
+            tmp_path / "home" / ".local" / "state" / data_rules.DATA_HOME_NAME)
+    _refused(data_rules.NO_HOME, environ={}, home=None)
+
+
+def test_the_data_home_must_be_on_this_computers_own_disk(tmp_path):
+    mine = tmp_path / "data"
+    for kind in range(7):
+        environ = {data_rules.ENV_DATA_HOME: str(mine)}
+        if kind == data_rules.DRIVE_FIXED:
+            assert _resolve(environ, drive_type=lambda _path, kind=kind: kind) == mine
+        else:
+            _refused(data_rules.DATA_HOME_NOT_LOCAL.format(home=mine), environ=environ,
+                     drive_type=lambda _path, kind=kind: kind)
+
+
+def test_asking_where_the_data_home_is_creates_nothing(tmp_path, monkeypatch):
+    from tracker import scheduling, store
+
+    mine = tmp_path / "data-home"
+    monkeypatch.setenv(data_rules.ENV_DATA_HOME, str(mine))
+    monkeypatch.delenv(store.ENV_STORE, raising=False)
+    assert data_rules.data_home() == mine
+    assert data_rules.default_data_home() != mine               # the real place, the override set aside
+    assert data_rules.scratch_root() == mine / data_rules.SCRATCH_DIR_NAME
+    assert data_rules.process_scratch().parent == mine / data_rules.SCRATCH_DIR_NAME
+    assert data_rules.logs_dir() == mine / data_rules.LOGS_DIR_NAME
+    assert store.store_path() == mine / store.STORE_FILENAME
+    assert scheduling.schedule_xml_path() == mine / scheduling.SCHEDULE_XML_FILENAME
+    assert not mine.exists()
+
+
+def test_the_data_home_is_named_by_the_apps_package_name():
+    from tracker.settings import PACKAGE_JSON
+
+    assert data_rules.DATA_HOME_NAME == json.loads(PACKAGE_JSON.read_text(encoding="utf-8"))["name"]
+
+
+def test_a_clients_root_that_holds_or_sits_inside_the_data_home_is_refused(beside_the_app, monkeypatch):
+    from pathlib import Path
+
+    rules = dict(settings=beside_the_app / "app", app=beside_the_app / "program",
+                 system=Path(beside_the_app.anchor))
+    data = beside_the_app / "shared" / "data"
+    around, inside = beside_the_app / "shared", data / "logs"
+    assert data_rules.root_refusal(around, data=data, **rules) == data_rules.ROOT_HOLDS_DATA.format(
+        root=around, data=data)
+    assert data_rules.root_refusal(inside, data=data, **rules) == data_rules.ROOT_INSIDE_DATA.format(
+        root=inside, data=data)
+    assert data_rules.root_refusal(beside_the_app / "clients", data=data, **rules) == ""
+
+    # And on this machine: the rule set_clients_root asks.
+    data.mkdir(parents=True)
+    monkeypatch.setenv(data_rules.ENV_DATA_HOME, str(data))
+    with pytest.raises(SettingsError) as caught:
+        set_clients_root(around)
+    assert str(caught.value) == data_rules.ROOT_HOLDS_DATA.format(root=around.resolve(), data=data)
+    assert clients_root() is None                               # nothing recorded
+
+
+def test_the_store_the_scratch_and_the_task_file_never_resolve_under_the_program_the_checkout_or_the_clients_root(
+        tmp_path, monkeypatch):
+    """The proof (decision 186): with every override gone, what the tracker
+    derives from clients resolves into this account's own folder, and never
+    under the program, the repository or the clients root."""
+    import os
+    from pathlib import Path
+
+    from tracker import runner, scheduling, store
+
+    repository = Path(__file__).resolve().parent.parent
+    account = tmp_path / "account"
+    account.mkdir()
+    clients = tmp_path / "clients"
+    clients.mkdir()
+    monkeypatch.delenv(data_rules.ENV_DATA_HOME, raising=False)
+    monkeypatch.delenv(store.ENV_STORE, raising=False)
+    monkeypatch.setenv("LOCALAPPDATA" if os.name == "nt" else "XDG_STATE_HOME", str(account))
+    places = [store.store_path(), data_rules.scratch_root(), data_rules.process_scratch(),
+              scheduling.schedule_xml_path(), data_rules.logs_dir(), runner.log_path()]
+    for place in places:
+        assert data_rules._inside(place, account / data_rules.DATA_HOME_NAME), place
+        for never in (data_rules.app_dir(), repository, clients):
+            assert not data_rules._inside(place, never), (place, never)
+    assert not (account / data_rules.DATA_HOME_NAME).exists()
+
+
+def test_a_corpus_inside_the_app_is_refused_by_name(tmp_path, monkeypatch):
+    """Decision 186: no corpus is nothing to route (None); a corpus inside
+    the checkout is a mistake, said by name."""
+    inside = data_rules.app_dir() / "tests"                     # a folder the checkout already has
+    monkeypatch.setenv(ENV_REAL_CORPUS, str(inside))
+    with pytest.raises(SettingsError) as caught:
+        real_corpus_dir()
+    assert str(caught.value) == data_rules.CORPUS_INSIDE_APP.format(folder=inside)
+    outside = tmp_path / "corpus"
+    outside.mkdir()
+    monkeypatch.setenv(ENV_REAL_CORPUS, str(outside))
+    assert real_corpus_dir() == outside
+
+
+def test_only_a_fixed_disk_may_hold_the_program_the_schedule_runs(tmp_path):
+    """Decision 186: Install Schedule asks where the program and its settings
+    folder are; every answer Windows can give but a fixed disk is refused by
+    its own sentence, and nothing is guessed."""
+    app, settings = tmp_path / "app", tmp_path / "settings"
+    sentence = {
+        data_rules.DRIVE_UNKNOWN: data_rules.PROGRAM_DRIVE_UNKNOWN,
+        data_rules.DRIVE_NO_ROOT_DIR: data_rules.PROGRAM_DRIVE_UNKNOWN,
+        data_rules.DRIVE_REMOVABLE: data_rules.PROGRAM_ON_REMOVABLE,
+        data_rules.DRIVE_FIXED: "",
+        data_rules.DRIVE_REMOTE: data_rules.PROGRAM_ON_NETWORK,
+        data_rules.DRIVE_CDROM: data_rules.PROGRAM_ON_REMOVABLE,
+        data_rules.DRIVE_RAMDISK: data_rules.PROGRAM_DRIVE_UNKNOWN,
+    }
+    assert sorted(sentence) == list(range(7))
+    for kind, said in sentence.items():
+        for odd in (app, settings):
+            def answer(path, kind=kind, odd=odd):
+                return kind if path == odd else data_rules.DRIVE_FIXED
+            refusal = data_rules.program_drive_refusal(app=app, settings=settings, drive_type=answer)
+            assert refusal == (said.format(folder=odd) if said else "")

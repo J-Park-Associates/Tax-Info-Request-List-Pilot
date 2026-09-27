@@ -161,7 +161,7 @@ SAID_WHOLE_ON_PURPOSE = {
     ("ocr.py", "_build_engine"): "an import failing on this machine: the machine's words",
     ("ocr.py", "_engine"): "the graphics card's engine failing to build: the machine's words",
     ("registry.py", "_children"): "listing a folder of the clients root: the OS's words, never a document's",
-    ("api.py", "main"): "KNOWN_ERRORS: the tracker's own errors, said whole (R2)",
+    ("api.py", "_failure_of"): "decision 193's refused kind: the tracker's own errors, said whole (R2)",
     ("api.py", "_cmd_install_schedule"): "Task Scheduler refusing a task: the machine's words",
     ("ledger.py", "_bytes_of"): "the return's own event log could not be read (SPEC-190 R2: stays)",
     ("ledger.py", "_parse_lines"): "a line of the firm's own event log that does not parse (R2: stays)",
@@ -657,7 +657,11 @@ def test_no_byte_of_a_damaged_container_reaches_its_reason(monkeypatch):
         return real(file, *args, **kwargs)
 
     monkeypatch.setattr(containers.zipfile, "ZipFile", zip_that_quotes)
-    monkeypatch.setattr(containers, "message_from_bytes", quotes_the_document)
+    # Imported at call time since decision 193's review (S2), so patched where
+    # the opener reads it from.
+    import email
+
+    monkeypatch.setattr(email, "message_from_bytes", quotes_the_document)
     for extension, error in (("zip", "BadZipFile"), ("eml", "ValueError")):
         with pytest.raises(containers.NotOpened) as refused:
             containers.open_container(b"PK\x03\x04 not really", extension)
@@ -685,7 +689,7 @@ def test_the_app_names_an_unexpected_error_by_its_class_and_keeps_a_firm_errors_
     monkeypatch.setitem(api.COMMANDS, "state", quotes_the_document)
     assert api.main(["state"]) == 1
     said = json.loads(capsys.readouterr().out)["error"]
-    assert said == api.UNEXPECTED_ERROR.format(error="ValueError")
+    assert said == api.FAILED.format(kind="ValueError", log=api.ERROR_LOG_FILENAME)
     assert any(QUOTED in one for one in kept)
 
     def the_firm_says(*_args):

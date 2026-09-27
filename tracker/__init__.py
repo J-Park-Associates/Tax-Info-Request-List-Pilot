@@ -24,6 +24,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - scheduling    : generate the Task Scheduler / n8n job
 - templates     : the per-form request catalog, the one place the checklists live
 - locking       : the one lock per engagement that sort and scan both hold
+- progress      : how a running pass is watched and asked to stop - the one progress line, its file beside the database, and the cancel marker
 - ledger        : the engagement's own append-only record of what was decided, written beside the client's files under that lock
 - checkpoint    : what this machine last saw of each record, beside the store; a record shorter, rewritten or claiming this machine is refused
 - store         : the database on this machine, rebuilt from the record; one file per clients root, and the index is read from it

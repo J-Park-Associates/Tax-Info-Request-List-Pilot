@@ -56,12 +56,14 @@ So the split is:
   the engagement's own history, the request list a person edits included,
   travelling with the engagement. Copy the folder to another machine and its
   whole history goes with it.
-- **On one machine, local, never synced:** `tracker.db`, one file per clients
-  root, beside the settings file — which is beside the app, on the machine
-  that runs the schedule. `store.path_for()` is the whole of that rule, and
+- **On one machine, local, never synced:** `tracker.db`, one file in the
+  tracker's data folder on the machine that runs the schedule
+  (`settings.data_home()`: `%LOCALAPPDATA%\tax-document-tracker`, decision
+  186), never beside the app or in a checkout, every row keyed by its
+  clients root. `store.store_path()` is the whole of that rule, and
   the suite walks a clients root after a build to prove nothing of the
   database landed under it. One machine per clients root was already the law
-  (the engagement lock needs it), so one store per clients root takes nothing
+  (the engagement lock needs it), so one store on that machine takes nothing
   away.
 
 The store is disposable. Delete it and every fact the journals still hold is

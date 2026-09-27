@@ -19,8 +19,9 @@ synced return folder carries everything about that return: the
 working copies, the drafts and the return's own ledger,
 which holds the request list too; the originals sit in the client's own
 folder for the year, one tree over. There is no portal and no second copy of any of
-it. There *is* one database — `tracker.db`, beside the app on the
-designated machine — built from the ledgers in the folders, never synced
+it. There *is* one database — `tracker.db`, in the tracker's data folder on
+the designated machine (`%LOCALAPPDATA%\tax-document-tracker`, decision 186) —
+built from the ledgers in the folders, never synced
 and never opened by a person. Beside it sits a second, small file,
 `record-heads.db` (decision 159): this machine's note of how far every
 return's record went when it last wrote or read it. It is what lets the
@@ -29,13 +30,51 @@ a sync client restoring an older copy, a careless hand edit - instead of
 quietly rebuilding from it. It is never synced either, and it survives
 deleting `tracker.db`.
 
-**The app's folder is private to the firm.** `tracker.db` holds every
-client's index rows. (The reader writes nothing there or anywhere else
-while it reads, since decision 169, so there is no longer a folder of
-pages being read beside it.) The folder inherits its permissions from
-wherever the app was unpacked: put the app in a folder only the firm's
-accounts on that machine can read, not in a shared or public one. This is
-a machine-setup step; the tracker does not change permissions.
+**The tracker's data folder is private to one Windows account.** `tracker.db`
+holds every client's index rows, and it lives in
+`%LOCALAPPDATA%\tax-document-tracker` (decision 186): the account's own local
+application-data folder, which Windows lets only that account, the machine's
+administrators and the system read, and which is never synced and never
+roams. The scheduled task's file (`tax-tracker.xml`) sits there too. The
+app's own folder holds the program and `settings.json` — the clients folder,
+the firm's name and its telephone number, nothing about a client. Run the
+app and the schedule as the same Windows account: another account on the
+same machine keeps a database of its own, built from the ledgers on its
+first pass (slow once, never wrong). Nobody opens, copies or backs up the
+data folder; the ledgers are the backup. A reading's temporary files, if a library ever
+writes one, go to a folder of that reading's own in the data folder
+(`scratch`), removed when the reading ends — never the machine's temp folder.
+
+**What the data folder does not cover** (decision 186, SPEC-186 §10). It
+moves client data off the program's folder, the checkout, removable media
+and the temp folder; it is not a lock. It is not encrypted, and anything
+running as the schedule's Windows account can read it — which is why the AI
+tooling runs under another account. Install Schedule refuses a program on
+what Windows *reports* as removable, network or unknown: an external hard disk,
+a `subst` letter and a mounted VHD all report a fixed disk and pass, and a
+job installed from a stick before 186 keeps running from it until Install
+Schedule is pressed from the copy on the disk (the app's first screen says
+so every time it opens from the stick). A data folder set with
+`TRACKER_DATA_HOME` is trusted to be where it says, within the two checks,
+and one junctioned elsewhere is judged by the drive its own spelling names.
+A reading's `scratch` folder catches what a library writes *through the
+temp folder*; a library that writes to a path of its own choosing is not
+caught. A killed reading's folder lives until the next reading starts, and
+one whose process number Windows reused lives until that process ends.
+`TRACKER_STORE`, which points the tracker at another database, is held to
+the same checks — a whole path, not inside the program, on a fixed disk —
+and the store check refuses a copy inside the app's own folder. A `--log`
+file and the scheduler's `--out` file are a person's explicit choice and go
+where they are named: name a place in the data folder.
+
+**If the data folder cannot be had** (`LOCALAPPDATA` unset or not a folder,
+a bad `TRACKER_DATA_HOME`, a data folder not on a fixed disk), a pass files
+nothing — the database and the run log both live there. It is not silent:
+it writes the status page in the clients root, if the root can take one,
+with the one problem "Data folder problem: …", and ends with a non-zero
+Last Run Result; the app's first screen says why in its red banner. The page lists no return that morning, because each return's line
+is read from the database. The residual risk: a clients root the pass
+cannot reach at the same time leaves only Task Scheduler's Last Run Result.
 
 **A return the store refuses as "changed behind the tracker's back".** The
 store keeps a fingerprint of every line of a return's record it has read
@@ -186,7 +225,12 @@ not accept for a household or a return — is
 **listed with one sentence saying why, and left alone**. Nothing is renamed,
 nothing is moved, nothing is deleted. The list is at the bottom of the status
 page, in the app under the engagement picker, and at the end of every command
-line pass, under **Folders the tracker leaves alone**. Of the client tree
+line pass, under **Folders the tracker leaves alone**. The app's picker and
+this list are as the app last walked the root: when it started, at its last
+**Sort & Scan**, or when it last created, rolled forward or retired a
+return, accepted a folder's name, changed a household, or had its clients
+folder set. So a folder made by hand shows there after
+the next **Sort & Scan**, or when the app is started again. Of the client tree
 only the first level is looked at, by name: nothing inside a client folder
 no household owns is read. A household's client folder is the one named
 exactly as the household, case aside; a folder that only *looks* like it -
@@ -218,8 +262,9 @@ and every one of its returns shows red on every pass with this sentence
 until somebody acts - *"Paused: this folder's name and its record's name
 disagree. Nothing is sorted, laid out or drafted for the household until a
 person opens it in the app and accepts the folder's name, or gives the
-folder back the name its record holds."* Roll Forward and a new return into
-it are refused with the same sentence.
+folder back the name its record holds."* **Roll forward** and **Add a return**
+are not offered on its card, and the app and the command line refuse both
+with the same sentence.
 
 - **When the move was meant** - a return dragged into a household of its
   own when a family separates - open the household in the app and press
@@ -238,7 +283,7 @@ it are refused with the same sentence.
   fails with *"`Clients\<name>` is missing. Was the household renamed or
   moved? Give its client folder back the name `<name>`."* and nothing is
   made again under the old name - not by the pass, not by a new return
-  into the household, and not by Roll Forward, which all refuse with that
+  into the household, and not by **Roll forward**, which all refuse with that
   sentence.
 - **Never copy a household folder.** Two folders that claim one household -
   a copy, or two names that read as one - stop both: *"Two folders claim
@@ -260,7 +305,11 @@ open:**
 The request list is edited in the app — **Edit Request List** — and nowhere
 else. The fourteen columns you edit there (`tracker.manifest.HEADERS`) are Identifier, Document, Period,
 Expected Count, Allowed Extensions, Min Size KB, Required Keywords, Any
-Keywords, Date Pattern, Manual Override, Override Reason, Named, Asked and Short name; **each request's status,
+Keywords, Date Pattern, Manual Override, Override Reason, Named, Asked and Short name. Each row shows the
+columns a preparer changes, and the routing columns (Identifier, Period, Allowed Extensions, Min
+Size KB, Required Keywords, Any Keywords, Date Pattern, Named, and a catalog row's Document) sit in
+its **Routing rules** fold — hidden, never dropped: a save carries every column. Closing the
+editor with changes not saved asks first. **Each request's status,
 Received Date, File Count and Validation Notes are on the Status Report**,
 not in the editor. The engagement's details — client, share link, due
 date, sender, firm, reminders, active — and the **people** the return is
@@ -324,8 +373,9 @@ editor beside it.
 **A folder from before September 2026** may still hold a `_manifest.xlsx`.
 The tracker no longer reads it: it is one of the folders left alone, listed
 with its own sentence rather than treated as an engagement, and the return is
-set up again in the app (New Engagement, then type or paste the rows). The
-workbook may be deleted once that is done.
+set up again in the app (**Add a return** on the household's card, or **New
+household** on the toolbar for a household the tracker has no record of; then
+type or paste the rows). The workbook may be deleted once that is done.
 
 The status report is one web page with everything about that engagement on
 it: a **Summary**, a **Requests** section (the list with each row's status
@@ -346,6 +396,39 @@ is none yet, or it cannot be read). The app's **Open Status Report** button
 opens it, and `python -m tracker.view "<engagement folder>"` redraws it and
 prints the state. The request list is edited in the app, not on the page.
 
+### What the record says, and what the app shows
+
+The record, the run log and `python -m tracker.scanner` keep the scanner's
+own words for a request; this runbook uses them too. The app, the Status
+Report and the staff lines under a draft show a preparer's word for each,
+from one table in the tracker (`tracker.manifest.STATUS_LABELS`).
+
+| The record says | The app shows |
+|---|---|
+| **Missing** | Outstanding - Asked for; nothing usable has arrived yet. |
+| **Partial** | Partly in - Some of the expected files are in; the rest are still to come. |
+| **Failed Validation** | Could not use - Something arrived that the rules could not use. |
+| **Pending Sync** | Syncing - It is in; the cloud is still copying it down. |
+| **Received** | Received - In, and every check passed or a person accepted it. |
+| **Requested** | Not yet checked - Asked for; no pass has looked at it yet. |
+| **Not asked** | Not asked - On the list, not requested; filed if it arrives. |
+| **Accepted** | Accepted - A person accepted it with a reason; the rules stop here. |
+| **Not Applicable** | Not Applicable in TY<year> - Does not apply this year; not counted, not chased. |
+
+Beside every request that is still outstanding the app says whose move it
+is, with the one sentence behind it, from one table in the tracker
+(`tracker.reminder.SIDES`):
+
+| Whose move | The sentence beside it |
+|---|---|
+| **Client** | The letter asks the client for it. |
+| **Us** | Waiting on us, not the client; the letter does not ask for it. |
+| **Decide** | A person decides whether the client resends it or we fix it here; the letter is held until then. |
+
+Requests nobody is waiting on - not asked, or not
+applicable this year - are folded under **Set aside** below the table, each
+under its own sub-heading.
+
 `_ledger.jsonl` is that ledger: a line the tool appends every time it
 decides something about a document, records a status, or saves a change you
 made to the request list, kept in the engagement's folder so what the
@@ -360,9 +443,11 @@ changes nothing:
 
 - `python -m tracker.store "<the app folder>" check "<clients root>"` — the
   database against the ledgers, document by document, status by status and
-  rule by rule. The first argument is the folder the app runs from, where
-  the settings file and the database sit; the settings file's own path, or
-  the database file's, is taken the same way. Anything else — a mistyped
+  rule by rule. The first argument is the folder the app runs from, or its
+  settings file: either means this Windows account's database, in the
+  tracker's data folder (decision 186). A path to a `tracker.db` is taken as
+  that file — a copy you want to ask about — except the old one beside the
+  app, which is refused. Anything else — a mistyped
   folder, a file that is neither — is refused, so a typo can never create
   an empty database somewhere and check it against the ledgers. If it ever disagrees, do not
   reach for `rebuild`: run `recover` for the return it names (§6, *When a
@@ -407,6 +492,43 @@ changes nothing:
   beside the app once (§6, step 5). And delete the folder `ocr-scratch`
   beside the app if it is there: the old reader kept the page it was reading
   in it, the new one writes nothing, and nothing empties that folder any more.
+- **Once, when decision 186 lands** (the data folder). The database moves to
+  `%LOCALAPPDATA%\tax-document-tracker` and nothing is carried over: the
+  first pass builds it again from the ledgers and reads every document once
+  to refill the verdict cache — slow once, as above, so let it run outside
+  office hours. Its version does not change. Until you delete them, the
+  app's first screen names what the old version left beside the app, in
+  two sentences. **To move, never to delete:** the record checkpoint
+  `record-heads.db` with its `record-heads.db-journal` if there is one, a
+  copy of it renamed `record-heads.db.damaged` or set aside as
+  `record-heads.db.v1.old`, and a `recovered` folder (decision 159) - the
+  checkpoint cannot be made again, a journal can hold its last write, and
+  the old copies and the records in `recovered` are evidence. **Move them
+  before the new version runs at all**: turn the schedule off, keep the app
+  closed, install the new version, move `record-heads.db` (and any
+  `record-heads.db-journal` with it, together), the other copies and
+  `recovered` from beside the app into `%LOCALAPPDATA%\tax-document-tracker`,
+  and only then open the app or let the schedule run. Until
+  `record-heads.db` is moved the tracker makes no new checkpoint - one
+  would trust every record as it is that day (*the moment of trust*, §6) -
+  so nothing is written: the pass serves no household, writes its page
+  and its log and says *No record checkpoint was made* (reason
+  `checkpoint-left-behind` in the last-pass line), and the app refuses to
+  open a return or run a button that writes, saying what to move and
+  where. Moving the file ends that. If the data folder already holds a
+  new checkpoint anyway (made before this refusal existed, by the first
+  pass or by the app opening any return), do not copy the old file over
+  the new one: move the old one
+  into the data folder under a new name with today's date, keep it, and
+  treat that day as the moment of trust (§6). **To delete:** `tracker.db`,
+  `tracker.db-wal`, `tracker.db-shm`, a `tracker.db.v<N>.old` (and its
+  `-wal`, `-shm` and `.1` copies) a version change set aside, `pass-order.json`, `last-pass.json`,
+  the error log `tracker-errors.log` and its copies `tracker-errors.log.1`
+  to `.3`, a `passes` folder (decision 193), an `ocr-scratch` folder, and
+  the old `runs.log` in the clients folder, which names clients. Nothing
+  deletes them for you: delete them. The app never writes an error log
+  beside itself: with no data folder, what a failed command said is shown
+  in its message instead.
 
 There used to be a second one, a comparison flag on the ledger's own
 statuses against the request list's. There is nothing left for it to
@@ -419,7 +541,7 @@ command read that one value afterwards. From a terminal the same thing is
 `python -m tracker.settings <folder>`.
 
 **One machine per clients root — today's rule.** The schedule,
-**Sort & Scan**, filing, every save in the app and **Roll Forward** happen
+**Sort & Scan**, filing, every save in the app and **Roll forward** happen
 on the designated machine (the table at the top of §1) and nowhere else. The only
 thing that stops a scheduled pass and a click in the app from moving the
 same client's files at once is a lock file
@@ -442,7 +564,11 @@ reads the root from `settings.json` there at every run (decision 131). So
 changing the root in the app is all it takes for the schedule to follow.
 A job installed by a version before decision 131 carries the root it was
 installed with: **press Install Schedule once after upgrading**, and never
-again for a move.
+again for a move. It refuses, with a sentence saying why, when the app is on
+a removable drive, a network drive or one Windows cannot name (decision 186):
+the schedule runs whatever program sits there on every pass, so it must be
+on this computer's own disk. The app's first screen says the same for as
+long as it runs from such a drive.
 
 **It only runs while someone is logged on.** The task is registered to run
 as the logged-on person, not as a background service, so the designated
@@ -478,8 +604,11 @@ files, records what it did, drafts nothing this pass and says on every
 return *this household's time for this pass ran out after N file(s); the
 rest wait for the next pass* — nothing to do; the next pass carries on,
 and drafts the week's letter if it is owed. **Run now** (Sort & Scan) has
-the same fifteen minutes, so it finishes inside the app's thirty-minute
-limit and says the same sentence rather than failing. Households are
+the same fifteen minutes and says the same sentence. While it runs the
+app shows each household and the file it is on; **Stop** ends it at the
+next file — what it did is recorded and the rest waits for the next
+pass — and the app lets it run as long as the schedule's own limit,
+`tracker.locking.RUN_TIME_LIMIT_SECONDS`. Households are
 taken **least recently completed first**, not in folder order, so the
 one that ran out of time, or was stopped, does not go first and stop the
 same clients every pass: a household the last pass was stopped in goes
@@ -516,10 +645,11 @@ answer is two steps, on the designated machine:
    folder by hand - and every button that writes refuse with *this
    machine's record checkpoint belongs to <old folder>; this would work in
    <new folder>*. (One client's folder inside the root is not refused.) Once you are sure the root really moved (and this is not
-   a second copy of the tree), run, with the app's folder and the new root:
+   a second copy of the tree), run, with the tracker's data folder (where
+   `record-heads.db` sits since decision 186) and the new root:
 
    ```
-   python -m tracker.checkpoint "<the app folder>" move-root "<the new clients root>"
+   python -m tracker.checkpoint "%LOCALAPPDATA%\tax-document-tracker" move-root "<the new clients root>"
    ```
 
    Nothing else changes: the checkpoint, like the record, names every
@@ -544,7 +674,7 @@ pass it. Since decision 144 a request's working copies are named by the
 request's **short name**, twenty characters at most, where the full title
 used to appear twice - so the firm's own root,
 `G:\Shared drives\Income Tax Clients` (35 characters), refuses none of the
-39 returns of the owner's intake test with the wizard's default rows asked
+39 returns of the owner's intake test with the request list's default rows asked
 (9 were refused with the full titles) and none with every row asked (34
 were); the deepest working copy there was 209 and 210 characters. Since
 decision 168 there is no folder per request either: a copy sits in
@@ -600,7 +730,7 @@ to a program, so the tracker cannot see a share and does not pretend to.
 Nothing about filing, scanning or drafting waits on it.
 
 Nothing is ever re-shared. A new year is a new folder under the same
-household, view-only through the same grant; Roll Forward changes no
+household, view-only through the same grant; **Roll forward** changes no
 permission. A household's members list in the app is what the firm typed, not
 what Drive says: keep the two the same by hand.
 
@@ -654,9 +784,15 @@ What the tracker does and does not do:
   somebody here clicks, not on the next pass — until then that household's
   status does not count it and its drafted letter may still ask for it.
 - A feed is a **return line**, not a return: the household and the return's
-  name, the name it keeps every year. Roll Forward carries nothing about
+  name, the name it keeps every year. **Roll forward** carries nothing about
   feeds, and a line the other household has retired is said on the card
   rather than quietly feeding nothing.
+- The card's *Also fed by* line is drawn from what this computer last
+  read of every household: when the app last listed the clients, or a
+  Sort & Scan or a pass ran here. A feed a person added on another
+  computer is named here after the next of those. The feeds a card
+  lists as its own, and every click that files through a feed, read
+  the other household's record at that moment.
 - Nothing is ever inferred. The tracker never looks at two households and
   suggests that one feeds the other, any more than it decides who belongs
   in a household. Both are a person's assembly.
@@ -845,10 +981,17 @@ puts them back.
 
 ### Rolling a household into the next year
 
-Roll Forward in the app takes the **household**, not one return: it shows the
-open year's returns with every one ticked, and rolls each ticked return into
-the next year — its list carried from last year, its greeting and its inbox
-link refilled from the household, its own folder made under the new year.
+Rolling forward is done from the **household's card**, not from one return,
+and only once the year it rolls to has ended: the card then carries a folded
+line - from January 2028, say, **Roll forward to 2027**. Open it and it
+shows the open year's returns,
+every one ticked, each with the people it carries and the form template it
+will be filled from, and the sentence saying what unticking does. The button
+names the year. It rolls each ticked return into that year - its list
+carried from last year, its greeting and its inbox link refilled from the
+household, its own folder made under the new year - and it can only roll the
+household whose card you are looking at. A household that is paused, or has
+two open years, shows no Roll forward line until that is dealt with.
 
 A return left unticked is **retired for that year**: set inactive, and no
 longer chased. That is deliberate — it is how the household ends up with
@@ -879,13 +1022,13 @@ Roll Forward refuses.
 household separates, the way to move one return into a household of its own
 is still to drag its folder there in Explorer. Its record goes on naming the
 old household, so the household it now sits in is **paused** (decision 188):
-Roll Forward refuses it, with the pause sentence, before anything is
+Roll forward refuses it, with the pause sentence, before anything is
 written. Open it in the app and press **Accept the folder's name**; then Roll
-Forward puts next year's return in the household it now sits in, under its
+forward puts next year's return in the household it now sits in, under its
 own folder name, and next year's record names that household, so the old
 household's client never sees its requests or its documents.
 
-Roll Forward also refuses, before anything is written and with the pass's
+Roll forward also refuses, before anything is written and with the pass's
 own sentence, a household that is **stopped** - its `_ledger.jsonl` gone, or
 two folders claiming it - and one whose client folder is gone when it had
 one (decision 188).
@@ -904,11 +1047,19 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
 1. **Read what the last pass did.** The status page every pass writes into
    the clients root (`tracker.runner.STATUS_PAGE_FILENAME`) is the one-screen
    version — which engagements ran, which need a person, which failed, and
-   every parked file across the practice, newest first; the app's
+   every parked file across the practice, newest first. A return the pass
+   did not run is shown as its record stood when the pass began. The app's
    **Open Status** button opens it. The run log
-   (`tracker.runner.LOG_FILENAME`), in the clients root beside the
-   engagement folders, has the same, pass by pass, including passes made from
-   the app's button. Each pass's first line ends with which device read its
+   (`tracker.runner.LOG_FILENAME`), in the tracker's data folder on the
+   machine that runs the schedule (`%LOCALAPPDATA%\tax-document-tracker\logs`,
+   decision 186), says of every pass — the app's button's included — when it
+   ran and how many returns it filed, parked, failed, skipped or held, with a
+   short code for each kind of trouble. It names no client and no file, and
+   carries no text taken from a client's document: for which client, read
+   the status page. The one exception is the reader's note, when the graphics
+   card pack could not be used: it is the machine's own error, word for
+   word, and may name a folder on this machine. It keeps about a megabyte, in four
+   files. Each pass's first line ends with which device read its
    scans and photos: `reader=processor` or `reader=graphics card` (§6,
    step 5). For one client, **open the Status Report** in that
    engagement's folder — the pass you just read about regenerated it, so it
@@ -951,8 +1102,8 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    a `[time] pass started` line before each pass's summary. When the next
    pass finds a *started* line with no summary after it, it says *the
    pass that started at … did not finish (it was stopped or the machine
-   went off); this pass picks up where it left off* in the log and on the
-   page. Usually nothing to do: the pass kept every reading it finished.
+   went off); this pass picks up where it left off* on the page, and the
+   log counts it (`pass-did-not-finish`). Usually nothing to do: the pass kept every reading it finished.
    If it says so every morning, the machine is going to sleep or off
    during the schedule — look at its power settings.
 
@@ -974,9 +1125,11 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    by its kind and code alone - *StoreUnavailable (SQLITE_BUSY)*,
    *RecordNotWritten (ENOSPC)*, *PermissionError (EACCES)* - never the
    system's own words, which can name a client's folder. *the practice
-   page could not be written (…)* is said in `runs.log` instead, and the
-   Last Run Result is `0x1`: the page you are looking at is an old one. The run log gives each return's warnings
-   as a count, *(warnings: 3)*; the page and the app have the sentences.
+   page could not be written (…)* is said in `runs.log` instead (as the code
+   `page-not-written`), and the
+   Last Run Result is `0x1`: the page you are looking at is an old one. The run log gives the pass's warnings
+   as a count, `warnings=3`, and each failure, skip and pass warning as a
+   code; the page and the app have the sentences.
    **Run now** says the same: under the return's own result it lists the
    household's other returns' problems and the pass's own (the reader,
    the log, the page).
@@ -1046,7 +1199,7 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
      decided on 2026-09-26 that such a line is named here every pass, and
      filing goes on, until a person has looked. Check with whoever uses
      that computer that the change was theirs, then run the command the
-     page prints, `python -m tracker.checkpoint "<the app folder>"
+     page prints, `python -m tracker.checkpoint "<the tracker's data folder>"
      acknowledge "<the return>"`, and it stops being named.
    - **a refused record**, a sentence ending *Run recover (runbook §6).*:
      the pass left that return alone because its record came back
@@ -1056,6 +1209,15 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
      a line from a newer version. Nothing was
      applied. Follow §6, *When a record needs
      recovering*, for that return, today.
+
+   **When the app says something went wrong.** A notice stays until it is
+   dismissed. *Look again* means the record changed under you: the row is
+   outlined, and looking again shows what it holds now. *Retry* re-runs
+   the same step. A greyed return is a pass in progress. Every unexpected
+   error's detail is in the error log (`tracker.settings.ERROR_LOG_FILENAME`)
+   beside the tracker's database, rotated at 1 MB, three kept. It can hold
+   client names: it stays on this machine, and a developer reads it at
+   this machine.
 2. **Clear the review folder.** Anything the rules could not be sure of is
    parked in the review folder (`tracker.scaffold.REVIEW_DIR_NAME`) with a
    reason. In the app, pick the engagement, pick the request the document
@@ -1125,9 +1287,11 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    157, §1 *A working copy went missing*). One whose original is gone too
    is, with one answer, **Mark … missing**, which puts the document back on
    the client's letter.
-4. **A locked engagement.** The app shows a notice when a run holds one. If
-   it says a run is still going, leave it — **Sort & Scan** waits for it.
-   If it says a run left its lock behind, a **Clear lock** button appears;
+4. **A locked engagement.** The app shows a notice when a pass holds one:
+   when it started, on which machine and — when it runs on this machine —
+   the household and the file it is on. This return's buttons are greyed
+   while it runs and come back by themselves the moment the pass lets go;
+   nothing waits, and nothing needs clearing. If it says a run left its lock behind, a **Clear lock** button appears;
    it only appears once the lock is older than
    `tracker.locking.STALE_LOCK_SECONDS`, which is past the point Task
    Scheduler must already have killed the run that made it, so clearing it
@@ -1197,7 +1361,9 @@ file is still left alone, and you approve it again. **Open the
 draft file** is still there for anyone who would rather work in Notepad,
 and an edited file is shown as it stands with a note saying so — the card
 shows the letter alone, so the staff-side lines under the dashed rule at
-the foot of the file are never on the clipboard.
+the foot of the file are never on the clipboard. Those lines are headed **US** - the
+requests waiting on us, not the client - each with the word the app shows
+for its status.
 
 Open the draft, read it, edit it, paste it into Outlook and send it. Nothing in the
 tool sends anything, ever — the card has no send button, and there is no
@@ -1230,7 +1396,7 @@ the firm's ask-by target. The **Filing Deadline** is the statutory date the
 return has to be filed by: a new engagement gets it from its form (weekends
 shifted forward the way the IRS shifts them) and the Due Date five days
 before that, and a holiday is yours to correct. A year rolled forward gets
-both the same way, whether it was rolled with **Roll Forward** in the app
+both the same way, whether it was rolled with **Roll forward** in the app
 or with `python -m tracker.rollover` on the command line: the new year's
 Due Date and Filing Deadline come from the form's table, and you clear or
 change them in the editor like any other detail. Leave the Filing Deadline
@@ -1257,8 +1423,9 @@ dragged into the folder by hand, or a copy replaced — and whether the client
 resends or we fix it here is your call, not the tool's. One such request
 holds that client's whole reminder: no draft is written, the run's own
 unedited draft from an earlier week is removed (one you edited is left
-exactly as it is), and the hold is said in `runs.log`, in the Drafted column
-of the practice page and in the app, with the requests named. Clear the
+exactly as it is), and the hold is said in the Drafted column of the
+practice page and in the app, with the requests named, and counted in
+`runs.log`. Clear the
 question — unfile the copy, fix the rule, or set the row's override — and
 the next pass writes the whole reminder, correct, once. The manual draft
 (`python -m tracker.reminder <engagement_dir> --write`) and `--reminders
@@ -1286,12 +1453,11 @@ the machine cannot handle, and a file can land after the sort. While the
 household's own inbox holds any such file, every return of that household is
 held the same whole way, because the letter cannot know which request the
 file answers. The practice page's Drafted column says `held (N)`, `runs.log`
-says *"held - N file(s) the client sent are still waiting in Drop files here
-and have not been sorted yet"*, and the app's card says **"Reminder held: N
+counts it (`held=`), and the app's card says **"Reminder held: N
 file(s) still waiting to be sorted"**. On a Saturday that means: press **Sort &
 Scan** — Run now — (or wait for the next pass — the schedule runs every two hours, and the
 pass that sorts the inbox drafts the reminder that same day), or deal with the
-file the run log names — retire a year in the editor, rename a name the
+file still waiting in the household's `Drop files here` — retire a year in the editor, rename a name the
 machine cannot handle, or remove a transfer that never finished. A file that
 can never be sorted keeps the letter held, and says so every pass, until you
 deal with it: that is on purpose, because the alternative is a letter asking
@@ -1364,7 +1530,7 @@ card suggests, asked in the generic sentence, until you decide it.
 | `reasons.NO_READABLE_TEXT` | Nothing in the file could be read at all — a scan or a photo the reader could not run on, an image-only PDF, an empty sheet. Nothing was matched against anything, so this is not "matched no request". | It has no **Open** (the tracker read nothing in it). Ask the client to send it again, or open it, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184), and file it by hand. If many files say it at once, the reader itself is damaged: re-install the app (§6, step 5). The shortlist shows what its **file name** suggests; the document decides. |
 | `reasons.UNREADABLE_IMAGE` | A photo arrived that would not open — a half-finished upload, most often. | Ask the client for it again; the reminder does. |
 | `reasons.HEIC_NOT_SUPPORTED` | An iPhone photo arrived and this machine's HEIC reader is missing. Ours, never the client's: they sent an ordinary photo. | Run `Setup.bat` again (it installs `pillow-heif` from the locks); for the packaged app, rebuild it. Until then it has no **Open**, because the tracker never read it: open it, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184), and file it by hand. |
-| `reasons.ISSUER_NOT_NAMED` | The request list asks for this document one row per issuer (§8) and this one names none of them — a K-1 from a partnership nobody listed. | File it to the right row, or add a row for that issuer (§8) and it files itself next pass. |
+| `reasons.ISSUER_NOT_NAMED` | The request list asks for this document one row per issuer (§8) and this one names none of them — a K-1 from a partnership nobody listed. | Type the issuer's name on the card and press **Add the issuer and file it** (§8), or file it to the right row. |
 | `reasons.NAME_NOT_ON_PAGE` | A request that asks for a **named** document accepted it, and the page names nobody on this return's people list (§10). | Open the page with **Open** on its card. If it does name them in a spelling the list has not got, file it and **teach the spelling** on the same card; if it is somebody else's, file it by hand on the return it belongs to. |
 | `reasons.NAMES_ANOTHER_RETURN` | The page names somebody who is on another return of this household, and nobody on this one. The sentence says who, and which return. | Switch to that return and file it there. Nothing was moved. |
 | `reasons.NO_PEOPLE_ON_FILE` | This return lists nobody yet, so nothing can confirm a named request. | Open **Edit Request List** and add the return's people (§10). Everything parked for this reason files itself on the next pass. |
@@ -1373,7 +1539,7 @@ card suggests, asked in the generic sentence, until you decide it.
 | `reasons.TOO_LARGE` | The file is larger than the tracker will read (`validators.MAX_READ_MB`) — a video, a disk image, a whole mailbox, or a genuinely enormous scan. It was not opened: no text, no OCR. It is still counted and kept like any other original. | It has no **Open**. Ask the client what it was meant to be, or open it, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184), and file it by hand. |
 | `reasons.READING_STOPPED` | The reader gave up on this file at the safety stop — a minute a page, ten minutes a file (decision 137). Something in it made reading far slower than any real document, or the machine was very busy at the time; it will not be tried again until the file changes. The stop covers the whole reading - the text layer, each page's drawing and the OCR - because each document is opened and read in a process of its own that the pass ends at the stop (decision 150). An email or a zip is opened in that process too, under the stop for a file, and one stopped there parks whole with nothing taken out of it (decision 154). That process never outlives the pass: if the schedule's own time limit stops the pass, the reading stops with it. | It has no **Open**. Ask the client to send it again, or open it, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184), and file it by hand. |
 | `reasons.READING_CRASHED` | The reader's own process ended on this file without an answer - the PDF or OCR library crashed, the email or zip opener crashed (decision 154), or the machine ran out of memory (decision 150). Only this file is affected: the pass went on to the next one, and this file will not be tried again until it changes. | It has no **Open**. Ask the client to send it again, or open it, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184), and file it by hand. If many files say it at once, the machine itself needs a look. |
-| `reasons.READER_UNAVAILABLE` | The reader could not start on this machine at all, so the file was never opened (decision 150). The machine's problem, never the file's: nothing is kept about the file and nothing is recorded - no index row, no Needs Review row. The file waits (in the inbox, or in the year's folder with no row) and is read again on the next pass. The pass's own summary and the run log say it once. | Look at the machine (memory, disk, antivirus, a damaged install). Once it is fixed, the next pass reads and files the waiting files; there is nothing to file by hand. |
+| `reasons.READER_UNAVAILABLE` | The reader could not start on this machine at all, so the file was never opened (decision 150). The machine's problem, never the file's: nothing is kept about the file and nothing is recorded - no index row, no Needs Review row. The file waits (in the inbox, or in the year's folder with no row) and is read again on the next pass. The pass's own summary says it once, and the run log counts it (`reader-could-not-start`). | Look at the machine (memory, disk, antivirus, a damaged install). Once it is fixed, the next pass reads and files the waiting files; there is nothing to file by hand. |
 | `reasons.UNNAMED_ACROSS_HOUSEHOLDS` | This household's drop folder feeds a return in another household, and that return would have taken this document on its keywords alone — but the page names nobody, so it was not moved into a folder other people can open. It waits here (decision 137). The Evidence names the return and the request that wanted it, as `<return> / <request>`. The same holds for a document sent again that the other household already has. | Open it with **Open** on its card. If it is that return's, file it there with **File under another return**; if it is this household's, file it here. |
 | `reasons.NAMED_ACROSS_HOUSEHOLDS` | This household's drop folder feeds a return in another household, that return's list accepted this document, and the page names that return's person. The pass never files into another household (decision 204), so it waits here, its original in this household's year folder, and the row keeps what that return's list accepted. The same holds for a document sent again. Until somebody clicks, the other household's status does not count it. | Open it with **Open** on its card. If it is that return's, press **File it under <the return>** once — it files under the requests shown and nothing else. If the button is not offered (the row says the return is no longer fed, or a request is gone or N/A), use **File under another return**. If it is this household's, file it here. |
 | `router.NO_REQUEST_ACCEPTS` | No request on this manifest takes that file type at all. | Usually a stray file. Otherwise widen the request's allowed types. It has no **Open**: the tracker never read the file (decision 190). |
@@ -1573,14 +1739,18 @@ which syncs. Any machine signed into the same Drive account has all of it
 already.
 
 **What was only on that machine:** the settings file beside the app
-(`tracker.settings.SETTINGS_FILENAME`), the database beside it
-(`tracker.store.STORE_FILENAME`), the record checkpoint beside that
+(`tracker.settings.SETTINGS_FILENAME`), the tracker's data folder
+(`%LOCALAPPDATA%\tax-document-tracker`, decision 186: the database
+`tracker.store.STORE_FILENAME`, the record checkpoint beside it
 (`record-heads.db`, `tracker.checkpoint.CHECKPOINT_FILENAME`), the folder
 `recovered` beside them if a recovery was ever run, the last-pass file
 (`last-pass.json`), the pass-order hint (`tracker.runner.PASS_ORDER_FILENAME`),
+the error log (`tracker.settings.ERROR_LOG_FILENAME`) and the `passes`
+folder (`tracker.progress.PASSES_DIRNAME`) beside it, and the task's file),
 the scheduled task, the app folder itself, and the graphics card pack if
-that machine had one (step 5). The last-pass file and the pass-order hint
-are not carried over: the new machine starts both afresh.
+that machine had one (step 5). The last-pass file, the pass-order hint, the
+error log and the `passes` folder are not carried over: the new machine
+starts them afresh.
 
 **Carry `tracker.db` and `record-heads.db` over** (decision 159). The
 database can be built again from the ledgers, but the checkpoint cannot:
@@ -1588,12 +1758,15 @@ it is this machine's own note of how far every record went, and it is the
 only thing that can tell a record that a sync client quietly put back to
 an older copy from one that is simply as it was. **Both files are client
 data.** Copy them **over the office network**, straight from the old
-machine's app folder into the new machine's app folder, with the app
+machine's data folder into the new machine's data folder (the same
+`%LOCALAPPDATA%\tax-document-tracker`, under the Windows account that runs
+the app and the schedule there), with the app
 closed and the old machine's schedule off. **Never** by any other road:
 not the desktop, a USB drive, an email or a chat, the program's own folder
 in the repository or the Shared Drive. Then delete any copy left anywhere
 else. Copy `recovered` the same way if
-it is there. The first pass on the new machine still reads every
+it is there. Leave the rest of the old data folder, and delete it when the
+old machine is retired. The first pass on the new machine still reads every
 document once - the verdicts the old machine had cached are rebuilt, not
 trusted across machines - and is slower for it, never wrong.
 
@@ -1699,7 +1872,8 @@ exactly as it came.
    number beside it. This is the one place the root is set;
    if the new machine mounts it at a longer path, the reply lists every
    return that leaves short of room (§1, *If the clients root moves*).
-4. Press **Install Schedule** - once. Since decision 131 the job names the
+4. Press **Install Schedule** - once, from the app's copy on this
+   computer's own disk (it refuses from a stick or a network drive). Since decision 131 the job names the
    app's settings folder and reads the clients root from it at every run,
    so a later change of root is made in the app alone.
 5. **Reading needs nothing installed** (decision 169). The reader -
@@ -1875,8 +2049,8 @@ the same judgment the pass makes - a line outside the record's rule, said
 as the pass says a malformed line (below, section 9: a writer that is not
 a machine's name among them), the database holding lines the record
 does not, a recorded file missing or holding other bytes) and exits non-zero if there
-is any. It writes nothing anywhere. `python -m tracker.checkpoint "<the app
-folder>" state` shows the root the checkpoint belongs to and what it
+is any. It writes nothing anywhere. `python -m tracker.checkpoint "<the tracker's
+data folder>" state` shows the root the checkpoint belongs to and what it
 vouches for.
 
 **What this protects, said plainly.** The link in every line detects
@@ -1970,7 +2144,8 @@ partnership checklists too; a register of what was bought and sold, which
 never says depreciation, still belongs to the fixed-asset row beside it.
 
 And the rows the owner added after the first run on the firm's own mail
-(decision 141), every one of them unticked in the wizard. Since decision
+(decision 141), every one of them unticked in the request list of **Add a
+return**. Since decision
 142 every catalog row is on every return and the tick is **Ask the
 client**: an unticked row is never listed as needed and never chased, but a
 document that arrives for it files there instead of parking. So a 1040 now
@@ -2017,9 +2192,17 @@ nobody can work from, so the rule (the owner's, 2026-09-18) is **one row
 per issuing entity**. The catalog cannot do this for you: which entities a
 client is in is a fact about that client.
 
-**Adding one.** In the app, **Edit Request List**, then **Add a request**,
-and fill the same five cells as `F01` with these differences; then
-**Save**.
+**Adding one.** When a K-1 arrives from an entity no row names, it parks in `00 - Needs Review`
+and its card carries one box: type the issuer's name as the K-1 prints it and press **Add the
+issuer and file it**. The app adds the next free row in F's block - `Schedule K-1 - ` and the
+name, the entity in Required Keywords, everything else copied from `F01`, for this return's
+year - and files the document under it, in one step; the banner names both. It is refused,
+with nothing added and nothing filed, if the card is out of date, if the list changed since
+the card was drawn, or if the name is inside - or the same as - another issuer row's name.
+
+To add a row **before** a K-1 arrives, or on a return whose K-1 row is not the catalog's
+`F01`, use **Edit Request List**, **Add a request**, and fill the cells below; then **Save**.
+The routing cells are in each row's **Routing rules** fold.
 
 | Column | What to put |
 |---|---|
@@ -2041,9 +2224,19 @@ requirements and the row stops matching. Type the distinctive words and
 leave the legal suffix off: `Ashford Holdings`, not `Ashford Holdings,
 L.P.`. The suffix is the part whose punctuation differs between your
 typing and the form's printing, and the match is on whole words. Two
-issuer rows must not have one name inside the other — `Ashford` and
-`Ashford Holdings` would both claim the same K-1 — and the save is
+issuer rows must not have one name inside the other, or the same name
+twice — `Ashford` and `Ashford Holdings`, or two rows both `Ashford
+Holdings`, would all claim the same K-1 — and the save or the card is
 refused, by name, if they do.
+
+A list that **already** holds two rows of one name — written before
+this check, or rolled forward from such a year — is not locked: a save
+of anything else goes through, the roll forward carries the pair as it
+was, and the banner warns *"Rows F02 and F03 both narrow F01 with the
+same name, …: every document naming it would park."* It means every K-1
+from that issuer will sit in Needs Review until one of the two rows is
+gone. Remove one of them, or give it the other entity's name if it was
+really a different issuer, and save; the warning stops.
 
 **What then happens.**
 
@@ -2055,7 +2248,8 @@ refused, by name, if they do.
   Share of Income" and `F01` asks for that too.
 - A K-1 from an entity **no row names** parks in `00 - Needs Review`,
   and the reason names the issuer rows you do have. File it in the app,
-  or add the row for that issuer and the next pass files it. It is not
+  or type the issuer's name on its card and add the row and file it in
+  one step. It is not
   put on `F01`, and it is not guessed onto whichever issuer row has not
   had a K-1 yet.
 - `F01` stays. A client with one K-1 and no issuer rows files on it as
@@ -2072,7 +2266,9 @@ the same way.
 - **Why something odd is the way it is**: the decision log in
   [ROADMAP.md](ROADMAP.md). The odd choice is usually load-bearing.
 - **What every pass did**, engagement by engagement, with the failures:
-  `tracker.runner.LOG_FILENAME` in the clients root.
+  the practice page (`tracker.runner.STATUS_PAGE_FILENAME`) in the clients
+  root; the run log (`tracker.runner.LOG_FILENAME`), in the tracker's data
+  folder on the machine that runs the schedule, counts them by code.
 - **What happened to one document**: the Index section of that
   engagement's **Status Report.html**. Every move and every rename is in
   it, and it is drawn from the ledger, which is the record itself.
@@ -2173,8 +2369,8 @@ owner, decedent, trust or estate, fiduciary), *their name* as you would
 write it, and *the spellings a document might print it in*. The app
 proposes the obvious spellings — `John A. Park`, `John Park`, `Park, John
 A.`, `Park, John` — and **you tick the ones you want**; you can add any the
-app did not think of, one per line. The wizard asks for the first person
-when the return is made, and a return with nobody on it is refused. There
+app did not think of, one per line. **Add a return** and **New household**
+ask for the first person when the return is made, and a return with nobody on it is refused. There
 is nothing to tick for a person who writes the family name first: because
 punctuation is ignored, `Park, John A.` already matches a page that prints
 `PARK JOHN A`.
@@ -2224,7 +2420,8 @@ cannot confirm until you give it.
 
 A household's name and a return's name are folder names: every path under
 them carries them, in both trees, on every machine the Shared Drive syncs
-to. So one rule says what a name may be, and the wizard, a new return, a
+to. So one rule says what a name may be, and **New household**, **Add a
+return**, a
 rolled return's new name and a feed all hold you to it with the same
 sentence — `'<what you typed>' is not a household name: <why>` (decision 188).
 A name is refused when it:
@@ -2255,8 +2452,11 @@ apostrophes all fold away, and so do `1`, `i` and `|` against `l`, `0`
 against `o`, and `rn` against `m`. So `Kim` and `Klm` are one name. That
 errs on the side of asking: a second household whose name reads as the
 first is refused, and you add a first name or a middle initial — and then,
-if the two names still match, the city — to tell them apart. Never add a
-tax identification number or any part of one to a name.
+if the two names still match, the city — to tell them apart. The refusal
+is shown on the request list and stays there with everything you typed;
+**Change household details** on that list takes you back to the name, and
+**Continue** brings you back to the list as you left it. Never add a tax
+identification number or any part of one to a name.
 
 A folder already on disk whose name breaks the rule is listed under
 *Folders the tracker leaves alone* with the reason, and nothing in it is

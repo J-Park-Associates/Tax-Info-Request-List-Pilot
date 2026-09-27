@@ -21,12 +21,18 @@ and the suite must be green without it. With no folder, or a folder with
 no expectations file, the routing test skips and says which variable to
 set; nothing here fails because a machine has no corpus.
 
-A row naming a document that is not in the folder fails by name: an
+A row naming a document that is not in the folder fails, by its row: an
 expectation the harness silently dropped would be a document nobody is
 routing and everybody believes is covered.
+
+Rows are named by number - ``row-N``, counted from one as
+``tools/backtest.py`` counts them - because a test id is written to the
+console, to ``.pytest_cache`` and into every failure, and a client's file
+name must reach none of them (decision 185, F-5).
 """
 
 import csv
+import logging
 from dataclasses import replace
 from pathlib import Path
 
@@ -76,21 +82,28 @@ def read_expectations(path: Path) -> list[Expectation]:
     expectations file a person keeps wherever they keep it, and the
     contract - the columns, the blank that means "parks", the year that
     must be there - has to have exactly one reader.
+
+    Its errors name the row by number, counted from one as the rows' ids
+    count them, and the column that is wrong - never a document's name nor
+    the file's path, which are a client's and would reach the console of
+    every caller (decision 185).
     """
     with path.open(encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
         missing = [c for c in EXPECTATIONS_COLUMNS if c not in (reader.fieldnames or ())]
         if missing:
-            raise ValueError(f"{path} is missing the column(s): {', '.join(missing)}")
+            raise ValueError(f"{EXPECTATIONS_FILENAME} is missing the column(s): {', '.join(missing)}")
         rows = []
         for line in reader:
             name = (line[COLUMN_FILE] or "").strip()
             if not name:
                 continue                       # a blank line, or a spacer between engagements
+            number = len(rows) + 1             # the row's id: row-N
             where = (line[COLUMN_EXPECTED] or "").strip()
             year = (line[COLUMN_YEAR] or "").strip()
             if not year.isdigit():
-                raise ValueError(f"{path}: {name} has no engagement year")
+                raise ValueError(f"{EXPECTATIONS_FILENAME} row {number}: no engagement year "
+                                 f"in the column {COLUMN_YEAR}")
             rows.append((name, (line[COLUMN_CATALOG] or "").strip(), int(year), where or None))
     return rows
 
@@ -120,10 +133,20 @@ def catalog_rows(workspace: Path, form: str, year: int, built: dict) -> list[Req
     return built[(form, year)]
 
 
-FOLDER, EXPECT = real_corpus()
-#: Nothing to route: one case that skips, so the suite says why rather than
-#: quietly collecting no tests at all.
-NOTHING: Expectation = ("", "", 0, None)
+def _collected() -> tuple[Path | None, list[Expectation], str]:
+    """The corpus as collection sees it, and the reader's refusal as its
+    sentence alone. An expectations file the reader refuses would otherwise
+    stop collection with a traceback, and under ``pytest -l`` that prints
+    the reader's locals - the rows, a document's name, the file's path.
+    Kept as text, the exception and its frames are gone before any report."""
+    try:
+        folder, rows = real_corpus()
+    except ValueError as exc:
+        return None, [], str(exc)
+    return folder, rows, ""
+
+
+FOLDER, EXPECT, UNREADABLE = _collected()
 
 
 @pytest.fixture(scope="module")
@@ -162,21 +185,54 @@ def ocr_engine_present() -> bool:
 ENGINE = ocr_engine_present()
 
 
-@pytest.mark.parametrize("name, form, year, expected", EXPECT or [NOTHING],
-                         ids=[f"{n}-{f}" for n, f, _, _ in EXPECT] or ["no-corpus"])
-def test_the_firms_own_documents_file_where_they_belong_or_park(catalogs, name, form, year, expected):
-    if not EXPECT:
-        pytest.skip(f"{ENV_REAL_CORPUS} names no folder holding {EXPECTATIONS_FILENAME}")
+def _routed(row: int, catalogs) -> tuple[bool, bool, str | None]:
+    """Row ``row`` read and routed: whether its document is in the folder,
+    whether it has no words to route on without the engine, and where it
+    filed. The document's name, its path and its routing - whose reason can
+    quote the name or the words - live only in this frame, and nothing is
+    asserted here, so a failing row's frame (even under ``pytest -l``, which
+    prints the locals) holds none of them."""
+    name, form, year, _expected = EXPECT[row - 1]
     path = FOLDER / name
-    assert path.is_file(), f"{EXPECTATIONS_FILENAME} names {name}, which is not in {FOLDER}"
+    if not path.is_file():
+        return False, False, None
     # A row may name a photo as readily as a PDF (decision 127), and either
     # may be a document with no text layer. Without the engine there are no
     # words to route on, and a failure would say the routing was wrong when
     # nothing was routed at all.
-    if not ENGINE and extract(path, ocr=False).needs_ocr:
+    # The tracker's log records name the file they read, and pytest prints
+    # them under "Captured log call" when a row fails: none is made while a
+    # real document is read. ``logging.disable`` stops a record before any
+    # handler - pytest's capture among them - can see it, whatever logger
+    # it was bound for.
+    logging.disable(logging.CRITICAL)
+    try:
+        if not ENGINE and extract(path, ocr=False).needs_ocr:
+            return True, True, None
+        return True, False, filed_to(route_file(path, catalogs(form, year)))
+    finally:
+        logging.disable(logging.NOTSET)
+
+
+# Nothing to route: row 0, one case that skips, so the suite says why rather
+# than quietly collecting no tests at all.
+@pytest.mark.parametrize("row", range(1, len(EXPECT) + 1) or [0],
+                         ids=([f"row-{n}" for n in range(1, len(EXPECT) + 1)]
+                              or ["unreadable-expectations" if UNREADABLE else "no-corpus"]))
+def test_the_firms_own_documents_file_where_they_belong_or_park(catalogs, row):
+    if UNREADABLE:
+        pytest.fail(UNREADABLE, pytrace=False)
+    if not EXPECT:
+        pytest.skip(f"{ENV_REAL_CORPUS} names no folder holding {EXPECTATIONS_FILENAME}")
+    form, year, expected = EXPECT[row - 1][1:]     # never the name: pytest -l prints locals
+    # Each claim is computed first and asserted bare: pytest explains a call
+    # inside an assert by its arguments, and the path is a client's.
+    present, no_words, filed = _routed(row, catalogs)
+    assert present, (f"row {row}: {EXPECTATIONS_FILENAME} names a document that is not in "
+                     f"the folder {ENV_REAL_CORPUS} names")
+    if no_words:
         pytest.skip(NO_ENGINE)
-    routing = route_file(path, catalogs(form, year))
-    assert filed_to(routing) == expected, (name, form, routing.reason)
+    assert filed == expected, f"row {row} ({form} {year}): expected {expected or 'parks'}, filed {filed or 'parked'}"
 
 
 # ------------------------------------------------- the harness itself ----
@@ -274,3 +330,62 @@ def test_no_corpus_is_no_failure_only_nothing_to_route(tmp_path, monkeypatch):
     assert real_corpus() == (None, [])
     monkeypatch.setenv(ENV_REAL_CORPUS, str(tmp_path))       # a folder, but no expectations file
     assert real_corpus() == (None, [])
+
+
+def _never_named(output: str, cache: Path, *names: str) -> None:
+    """None of ``names`` is in a nested run's output or anywhere in its cache."""
+    for said in names:
+        assert said not in output, said
+    for path in cache.rglob("*"):
+        if path.is_file():
+            text = path.read_text(encoding="utf-8", errors="replace")
+            for said in names:
+                assert said not in text, (path, said)
+
+
+def test_corpus_rows_are_named_by_number_in_ids_messages_and_the_cache(office_shaped_copy, tmp_path):
+    """Decision 185, F-5: a test id reaches the console, ``.pytest_cache`` and
+    every failure, so a row is ``row-N`` there and its file's name is nowhere.
+    A fabricated document, expected where it cannot file, fails in a run of
+    its own and says only its row; so does a picture nothing can read, whose
+    reading logs (the log is off while a row is read); and an expectations
+    file with a row missing its year fails the run by that row's number and
+    column, never by the document's name or the corpus's path."""
+    import os
+
+    from tests.conftest import run_in_copy
+
+    copy, _fabricated = office_shaped_copy
+    name = "Zephyrine Quillfeather W-2 2025.pdf"
+    picture = "Zephyrine Quillfeather 1098 photo.png"
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    text_pdf(corpus / name, "Form W-2 Wage and Tax Statement 2025")
+    (corpus / picture).write_bytes(os.urandom(4096))          # no picture at all
+    (corpus / EXPECTATIONS_FILENAME).write_text(
+        "\n".join([",".join(EXPECTATIONS_COLUMNS), f"{name},1040,2025,A99",
+                   f"{picture},1040,2025,A99", ""]), encoding="utf-8")
+    cache = tmp_path / "cache"
+
+    # The rows' own test by node id, not ``-k row``: this test's name holds
+    # "row" too, and would start itself again in the copy.
+    # ``-l`` prints each failing frame's locals: none may hold a name.
+    rows_test = "tests/test_real_corpus.py::test_the_firms_own_documents_file_where_they_belong_or_park"
+    done = run_in_copy(copy, rows_test, "-l", "-o", f"cache_dir={cache}", **{ENV_REAL_CORPUS: str(corpus)})
+    output = done.stdout + done.stderr
+    assert done.returncode == 1, output[-4000:]
+    assert "row-1" in output and "row-2" in output
+    _never_named(output, cache, name, picture, "Zephyrine", "Quillfeather", str(corpus))
+
+    # A row with no year: the run fails by the row's number, the reader's frames never shown.
+    yearless = tmp_path / "yearless"
+    yearless.mkdir()
+    (yearless / EXPECTATIONS_FILENAME).write_text(
+        "\n".join([",".join(EXPECTATIONS_COLUMNS), f"{name},1040,2025,A01",
+                   f"{picture},1040,,A01", ""]), encoding="utf-8")
+    cache = tmp_path / "cache-yearless"
+    done = run_in_copy(copy, rows_test, "-l", "-o", f"cache_dir={cache}", **{ENV_REAL_CORPUS: str(yearless)})
+    output = done.stdout + done.stderr
+    assert done.returncode != 0, output[-4000:]
+    assert f"{EXPECTATIONS_FILENAME} row 2: no engagement year" in output, output[-4000:]
+    _never_named(output, cache, name, picture, "Zephyrine", "Quillfeather", str(yearless))

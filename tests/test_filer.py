@@ -22,9 +22,9 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import TEST_CLIENT, make_engagement, named_page, sort, sort_all
+from tests.conftest import TEST_CLIENT, TEST_YEAR, make_engagement, named_page, sort, sort_all
 from tests.test_scanner import text_pdf
-from tracker import ledger, reasons, store
+from tracker import checkpoint, ledger, reasons, store
 from tracker.filer import (
     DUPLICATE,
     FILED,
@@ -6386,6 +6386,11 @@ def test_a_rebuilt_store_still_lets_the_taking_returns_recovery_finish_the_filin
     monkeypatch.undo()
     store.close()
     monkeypatch.setenv(store.ENV_STORE, str(tmp_path / "app2" / store.STORE_FILENAME))
+    # A new machine has no checkpoint: the old one is kept under another
+    # name, as one left beside the program refuses a fresh one (186's
+    # rebase review, MF1).
+    old = tmp_path / "app" / checkpoint.CHECKPOINT_FILENAME
+    old.rename(old.with_name(old.name + ".other-machine"))
 
     sort_all([llc], today=DAY3)
     [taken] = read_index(llc)
@@ -9705,3 +9710,196 @@ def test_a_refused_mark_on_an_interrupted_step_is_said_once_and_the_pass_goes_on
     assert locate(engagement, row.prepared_location).read_bytes() == b"PK a workbook with macros"
     again = sort(engagement, today=DAY3)
     assert again.errors == [] and again.attention == []
+
+
+def test_an_index_read_without_following_is_the_store_as_it_stands(tmp_path):
+    """Decision 192: the practice page reads each return's index as the
+    walk left the store, without reading its journal again. A line behind
+    the store is not seen that way and is seen by every other reader; a
+    return the store does not hold is followed either way."""
+    from tests.conftest import seed_index, written_elsewhere
+    from tracker.records import IndexEntry, entry_to_json, ledger_key
+
+    engagement = make_engagement(tmp_path / "Clients", ITEMS, scaffold=False)
+
+    def parked(name):
+        return IndexEntry(received="2026-02-02", original_name=name, size_kb=5.0, digest="ef" * 32,
+                          identifier="", prepared_location="", pbc_location=name,
+                          decision=NEEDS_REVIEW, reason="no request matched")
+
+    seed_index(engagement, [parked("first.pdf")])
+    behind = parked("second.pdf")
+    # A line behind the store is one another machine wrote: every line this
+    # machine writes goes through the store (decision 159's checkpoint).
+    written_elsewhere(engagement, ledger.new(ledger.IMPORTED, **{
+        ledger.KEY_KEY: ledger_key(behind), ledger.ROW_KEY: entry_to_json(behind)}))
+
+    assert [one.original_name for one in read_index(engagement, follow=False)] == ["first.pdf"]
+    assert [one.original_name for one in read_index(engagement)] == ["first.pdf", "second.pdf"]
+
+    assert store.forget(store.connect(), engagement)
+    assert [one.original_name for one in read_index(engagement, follow=False)] == [
+        "first.pdf", "second.pdf"]
+
+
+# ------------------------------- said, never silent (decision 193) ----
+
+
+def test_a_readme_that_cannot_be_rewritten_is_said_by_class(engagement, monkeypatch, caplog):
+    import errno
+
+    import tracker.filer as filer_module
+    from tracker.filer import README_NOT_REWRITTEN, refresh_household_readme
+
+    def denied(*args, **kwargs):
+        raise PermissionError(errno.EACCES, "a fabricated denial", str(engagement))
+
+    monkeypatch.setattr(filer_module, "write_readme", denied)
+    said: list[str] = []
+    assert refresh_household_readme(household_of(engagement), said=said) is None
+    assert said == [README_NOT_REWRITTEN.format(kind="PermissionError (EACCES)")]
+    assert "fabricated denial" in caplog.text            # the whole of it, in the log only
+    assert refresh_household_readme(household_of(engagement)) is None   # no list: a log line
+
+
+def test_a_temp_that_cannot_be_swept_is_counted_not_named(engagement, monkeypatch):
+    import os
+    import time
+    from pathlib import Path
+
+    import tracker.filer as filer_module
+    from tracker.filer import TEMPS_NOT_SWEPT, sweep_stranded_temps
+
+    stuck = engagement / f"view.html.{os.getpid()}.1a2b3c4d.tmp"
+    stuck.write_bytes(b"half")
+    real = Path.unlink
+
+    def refused(self, *args, **kwargs):
+        if self == stuck:
+            raise PermissionError(13, "a fabricated denial", str(self))
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", refused)
+    monkeypatch.setattr(filer_module, "make_writable", lambda path: None)
+    said: list[str] = []
+    assert sweep_stranded_temps(household_of(engagement), [engagement],
+                                started=time.time() + 1, said=said) == []
+    assert said == [TEMPS_NOT_SWEPT.format(n=1)]
+    assert stuck.name not in said[0] and "fabricated" not in said[0]
+
+
+# ------------------------------- decision 201: an unnamed issuer's card ----
+
+
+def _issuer_list(tmp_path):
+    """A return whose list asks for K-1s one row per issuer: the catalog's
+    K-1 row and one issuer row, both as the catalog builds them, taking a
+    test page of any size."""
+    from tracker.templates import issuer_row, item_from_spec, k1_row
+
+    rows = [item_from_spec(k1_row()), item_from_spec(issuer_row("F02", "Ashford Holdings"))]
+    return make_engagement(tmp_path, [replace(row, min_size_kb=0) for row in rows])
+
+
+def _an_unnamed_issuers_k1(engagement):
+    """A K-1 from an issuer the list does not name, parked for a person."""
+    drop(engagement, "k-1 dunmore.pdf",
+         f"Schedule K-1 {TEST_YEAR} (Form 1065) Partner's Share of Income, Deductions, Credits "
+         "Part I Information About the Partnership Dunmore Capital Group")
+    parked = sort(engagement, today=DAY1).review[0]
+    assert parked.code == reasons.ISSUER_NOT_NAMED.code
+    return parked
+
+
+def test_a_killed_filing_that_adds_its_row_is_finished_forward_with_the_row(tmp_path, monkeypatch):
+    """The issuer row rides the filing's intent (decision 201): a machine
+    that dies with the copy moved and nothing recorded is finished by the
+    next pass as the person's filing, the row's event and the new row's
+    ``rules_changed`` in the one record call, so the list gains the row
+    exactly when the filing lands."""
+    from tracker.filer import ASSIGNED_BY_PERSON, assign_review_file
+    from tracker.manifest import list_head
+    from tracker.templates import issuer_item
+
+    engagement = _issuer_list(tmp_path)
+    parked = _an_unnamed_issuers_k1(engagement)
+    row = issuer_item("F03", "Dunmore Capital", TEST_YEAR)
+    before = digests_under(engagement)
+    moves = moves_made(monkeypatch)
+    killed_after_ops(monkeypatch, after=1)
+
+    with pytest.raises(KeyboardInterrupt):
+        assign_review_file(engagement, parked.pbc_location, "F03", today=DAY2,
+                           adding=row, head=list_head(engagement))
+
+    [intent] = open_intents(engagement)
+    assert "F03" not in {i.identifier for i in load_manifest(engagement)}      # nothing recorded yet
+    calls = counted_records(monkeypatch)
+
+    sort(engagement, today=DAY3)
+
+    [filed] = read_index(engagement)
+    assert filed.decision == FILED and filed.identifier == "F03"
+    assert filed.reason.startswith(f"{ASSIGNED_BY_PERSON} on {DAY2.isoformat()}")
+    assert calls[0] == (ledger.ASSIGNED_BY_PERSON, ledger.RULES_CHANGED)
+    added = {i.identifier: i for i in load_manifest(engagement)}["F03"]
+    assert added.required_keywords == ("Dunmore Capital",)
+    conserved(engagement, before, moves)
+
+
+def test_a_refused_issuer_filing_leaves_the_list_the_index_and_the_folders_as_they_were(
+        tmp_path, monkeypatch):
+    """Every refusal of the issuer path comes before a byte is read or
+    written (decision 201): the list, the index and every file are exactly
+    as they were, whichever check refuses."""
+    from tracker.filer import (
+        ISSUER_DOES_NOT_NARROW,
+        ISSUER_LIST_MOVED,
+        NOT_AN_ISSUER_CARD,
+        FilingError,
+        assign_review_file,
+    )
+    from tracker.manifest import ISSUER_NAMED_TWICE, ManifestError, list_head
+    from tracker.records import entry_to_json
+    from tracker.templates import issuer_item
+
+    engagement = _issuer_list(tmp_path)
+    parked = _an_unnamed_issuers_k1(engagement)
+    drop(engagement, "notice.pdf", "an agency notice nothing asks for")
+    notice = next(e for e in sort(engagement, today=DAY1).review if e.original_name == "notice.pdf")
+    seqs = store.document_seqs(store.connect(), engagement)
+    head = list_head(engagement)
+    rules = [records_rule(i) for i in load_manifest(engagement)]
+    index = [entry_to_json(e) for e in read_index(engagement)]
+    files = digests_under(engagement)
+
+    def refused(match, original, row, **given):
+        with pytest.raises((FilingError, ManifestError), match=match):
+            assign_review_file(engagement, original, row.identifier, today=DAY2, adding=row,
+                               **{"head": head, "seq": seqs[ledger_key(parked)], **given})
+        assert [records_rule(i) for i in load_manifest(engagement)] == rules
+        assert [entry_to_json(e) for e in read_index(engagement)] == index
+        assert digests_under(engagement) == files
+
+    dunmore = issuer_item("F03", "Dunmore Capital", TEST_YEAR)
+    refused(re_escape(ISSUER_LIST_MOVED), parked.pbc_location, dunmore, head="0" * 64)
+    refused("is not as you saw it", parked.pbc_location, dunmore, seq=seqs[ledger_key(parked)] + 1)
+    refused(re_escape(NOT_AN_ISSUER_CARD.format(name="notice.pdf")), notice.pbc_location, dunmore,
+            seq=seqs[ledger_key(notice)])
+    refused("is inside", parked.pbc_location, issuer_item("F03", "Ashford", TEST_YEAR))
+    refused(re_escape(ISSUER_NAMED_TWICE.split("{name}")[1]), parked.pbc_location,
+            issuer_item("F03", "Ashford Holdings", TEST_YEAR))
+    stray = replace(dunmore, any_keywords=("an unrelated phrase",))
+    refused(re_escape(ISSUER_DOES_NOT_NARROW.split("{listed}")[1]), parked.pbc_location, stray)
+
+
+def records_rule(item):
+    from tracker.records import rule_to_json
+
+    return rule_to_json(item)
+
+
+def re_escape(text):
+    import re
+
+    return re.escape(text)

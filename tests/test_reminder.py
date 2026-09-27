@@ -17,15 +17,18 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import child_env
 from tracker import ledger, reasons
 from tracker import reminder as reminder_module
 from tracker.layout import inbox_of
 from tracker.manifest import (
     EXPECTED_PATTERN,
+    NOT_ASKED_LABEL,
     Override,
     RequestItem,
     Status,
     StatusUpdate,
+    status_label,
 )
 from tracker.reminder import (
     AMBIGUOUS_HOLD,
@@ -40,8 +43,6 @@ from tracker.reminder import (
     DRAFT_FILENAME,
     EXTENSION_ASK,
     GENERIC_ASK,
-    HELD_BACK_HEADING,
-    HELD_LINE,
     HELD_REFUSAL,
     HOLD_COLOUR,
     LETTER_INK,
@@ -54,6 +55,9 @@ from tracker.reminder import (
     SECTION_ORDER,
     SECTION_PARTIAL,
     SET_ASIDE_DRAFT_PATTERN,
+    SIDE_CLIENT,
+    SIDE_DECIDE,
+    SIDE_US,
     STAGE_COLOURS,
     STAGE_EMPHASIS,
     STAGE_KEY,
@@ -75,9 +79,11 @@ from tracker.reminder import (
     is_approved_this_week,
     is_protected,
     is_unedited,
+    pasted_text,
     recorded_fingerprint,
     render_html,
     set_aside_other_draft,
+    sides,
     stage_colour,
     stage_for,
     stage_named,
@@ -157,6 +163,10 @@ def the_firm_has_no_phone_unless_a_test_says_so(monkeypatch):
 #: How the letter names the return: the household, the year and the return,
 #: as everything that names one says it since decision 125.
 LABEL = "Test Household 2025 Smith TY2025"
+
+#: The staff footer's heading over the firm's own rows (decision 200): the
+#: Us side, said in capitals with its sentence.
+US_HEADING = f"{SIDE_US.label.upper()} - {SIDE_US.sentence}"
 
 
 def engagement(tmp_path, items=SCANNED, name="Smith TY2025"):
@@ -441,7 +451,7 @@ def test_written_draft_appends_firm_side_notes_below_the_email(tmp_path):
     text = write_draft(draft_reminder(folder), engagement_dir=folder).read_text(
         encoding="utf-8"
     )
-    email, _, firm_side = text.partition(HELD_BACK_HEADING)
+    email, _, firm_side = text.partition(US_HEADING)
     assert "B01" not in email and "B02" not in email
     assert "B01" in firm_side and "B02" in firm_side
     assert REVIEW_DIR_NAME in firm_side
@@ -566,7 +576,7 @@ def test_a_failed_row_with_a_firm_side_reason_does_not_hold(tmp_path):
     assert not draft.is_held and draft.held == []
     assert [flag.item.identifier for flag in draft.needs_attention] == ["B01"]
     text = write_draft(draft, engagement_dir=folder).read_text(encoding="utf-8")
-    email, _, footer = text.partition(HELD_BACK_HEADING)
+    email, _, footer = text.partition(US_HEADING)
     assert "A01" in email and "B01" not in email and "B01" in footer
 
 
@@ -633,13 +643,15 @@ def test_the_manual_draft_refuses_past_the_gate_with_exit_two(tmp_path):
     """Decision 13, amended: always available, never past the gate. The
     command line prints the held rows and, asked to write, refuses with the
     scanner's own "not done, not an error" exit code and writes nothing."""
-    folder = _held_engagement(tmp_path)
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    folder = _held_engagement(tmp_path / "root")
     repo = Path(__file__).resolve().parents[1]
-    env = {**os.environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"}
+    env = child_env(PYTHONIOENCODING="utf-8")
     shown = subprocess.run([sys.executable, "-m", "tracker.reminder", str(folder)],
                            cwd=repo, capture_output=True, text=True, env=env)
     assert shown.returncode == 0
-    assert f"{HELD_LINE}: " in shown.stdout and "C01" in shown.stdout
+    assert f"{SIDE_DECIDE.label}: " in shown.stdout and "C01" in shown.stdout
     # And no email: the composed text would ask for the clean rows alone,
     # which is the partial reminder the hold exists to prevent.
     assert SUBJECT_NEEDED.split("}")[-1] not in shown.stdout       # "... still needed"
@@ -740,7 +752,7 @@ def test_a_missing_row_with_a_file_moved_note_is_the_firms_and_the_draft_never_a
 
     folder = engagement(tmp_path, SENDABLE + [moved])
     text = write_draft(draft_reminder(folder), engagement_dir=folder).read_text(encoding="utf-8")
-    waiting = text.split(f"{HELD_BACK_HEADING} - waiting on us, not the client:")[1]
+    waiting = text.split(US_HEADING)[1]
     assert moved.label in waiting                  # named where a person will act on it
     assert text.count(moved.label) == 1            # and nowhere the client would read
 # ------------------------------------------------- the four stages (d117) ----
@@ -907,13 +919,15 @@ def test_the_drafted_event_carries_the_stage_and_a_crossed_threshold_is_a_change
 
 
 def test_stage_three_regenerates_the_same_lines_at_stage_three(tmp_path):
-    folder = engagement(tmp_path, SENDABLE)
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    folder = engagement(tmp_path / "root", SENDABLE)
     asked = draft_reminder(folder, due_date=DUE, today=DUE, stage=3)
     assert asked.stage == 3 and asked.subject == stage_named(3).subject.format(
         engagement=LABEL, n=2)
 
     repo = Path(__file__).resolve().parents[1]
-    env = {**os.environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"}
+    env = child_env(PYTHONIOENCODING="utf-8")
     shown = subprocess.run(
         [sys.executable, "-m", "tracker.reminder", str(folder),
          "--due", DUE.isoformat(), "--today", DUE.isoformat(), "--stage", "3"],
@@ -1591,7 +1605,9 @@ def test_the_command_lines_write_lands_beside_an_approved_draft_and_never_over_i
     """
     from tracker import store
 
-    folder = engagement(tmp_path, SENDABLE, name="CLI Approved TY2025")
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    folder = engagement(tmp_path / "root", SENDABLE, name="CLI Approved TY2025")
     draft = draft_reminder(folder, due_date=DUE, today=DUE)
     written = write_draft(draft, engagement_dir=folder)
     approve(folder, draft, written)
@@ -1599,7 +1615,7 @@ def test_the_command_lines_write_lands_beside_an_approved_draft_and_never_over_i
 
     store.close()          # the command line opens the same store for itself
     repo = Path(__file__).resolve().parents[1]
-    env = {**os.environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"}
+    env = child_env(PYTHONIOENCODING="utf-8")
     run = subprocess.run(
         [sys.executable, "-m", "tracker.reminder", str(folder), "--write",
          "--due", DUE.isoformat(), "--today", DUE.isoformat(), "--stage", "1"],
@@ -1818,7 +1834,9 @@ def test_a_folder_the_pass_cannot_list_holds_the_reminder(tmp_path, monkeypatch)
 def test_a_held_draft_by_the_inbox_writes_nothing_and_says_why(tmp_path):
     from tracker.reminder import INBOX_HOLD
 
-    folder = engagement(tmp_path, SENDABLE, name="Waiting TY2025")
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    folder = engagement(tmp_path / "root", SENDABLE, name="Waiting TY2025")
     waiting_in(folder, "W-2 from the client.pdf")
     draft = draft_reminder(folder)
 
@@ -1835,7 +1853,7 @@ def test_a_held_draft_by_the_inbox_writes_nothing_and_says_why(tmp_path):
 
     store.close()
     repo = Path(__file__).resolve().parents[1]
-    env = {**os.environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"}
+    env = child_env(PYTHONIOENCODING="utf-8")
     written = subprocess.run([sys.executable, "-m", "tracker.reminder", str(folder), "--write"],
                              cwd=repo, capture_output=True, text=True, env=env)
     assert written.returncode == 2, written.stdout + written.stderr
@@ -2252,3 +2270,184 @@ def test_a_program_alone_is_asked_about_but_never_climbs_the_ladder(tmp_path):
         assert "Of the 1 item we asked for, 1 is in." in draft.body
     # A forced stage is a request's: with none on the letter, it forces nothing.
     assert draft_reminder(folder, due_date=DUE, today=day(20), stage=4).stage == 0
+
+
+def test_a_hold_is_said_only_past_a_week_counted_from_the_last_letter_else_the_creation(
+        tmp_path, monkeypatch):
+    # Decision 193: the one rule, named once - held now (the caller's
+    # word), and no letter for more than HELD_WARN_DAYS days.
+    import datetime as dt
+
+    from tracker import ledger, reminder
+    from tracker.reminder import HELD_TOO_LONG, HELD_WARN_DAYS, held_too_long
+
+    today = dt.date(2026, 3, 14)
+    monkeypatch.setattr(reminder, "last_draft_event", lambda path, carrying=None: None)
+    week = today - dt.timedelta(days=HELD_WARN_DAYS)
+    assert held_too_long(tmp_path, today, created=week) == ""
+    assert held_too_long(tmp_path, today, created=week - dt.timedelta(days=1)) == \
+        HELD_TOO_LONG.format(days=HELD_WARN_DAYS + 1)
+    assert held_too_long(tmp_path, today, created=None) == ""
+
+    letter = {ledger.AT_KEY: f"{(today - dt.timedelta(days=2)).isoformat()}T09:00:00"}
+    monkeypatch.setattr(reminder, "last_draft_event", lambda path, carrying=None: letter)
+    assert held_too_long(tmp_path, today, created=today - dt.timedelta(days=90)) == "", \
+        "the last letter, not the creation, when there is one"
+
+
+# ------------------------------------- whose move a row is (decision 200) ----
+# The reminder's triage already sorts every outstanding row three ways; the
+# sides name those three lists for a preparer, and the footer and the CLI
+# say them where they once said "NOT ASKED" and "HELD".
+
+
+#: A Failed row the client could resend (Decide), a Missing row with a
+#: firm-side note (Us), a Missing row a parked locked file points at
+#: (Decide, by the parked hold), a Partial row with no reason (Client),
+#: and rows no side takes: in, set aside, accepted, not asked, unscanned.
+SIDED = [
+    item("A01", "W-2 Wage Statements", Status.MISSING, period="TY2025",
+         required_keywords=("W-2",), min_size_kb=0),
+    item("A02", "Bank Statements", Status.PARTIAL, period="TY2025", expected_count=3,
+         file_count=2),
+    item("B01", "Payroll Reports", Status.MISSING, period="TY2025",
+         validation_notes=reasons.FILE_MOVED.format(
+             listed="Prepared/B01 - Payroll - TY2025.pdf -> nowhere under Prepared")),
+    item("C01", "Form 1098 Mortgage Interest Statement", Status.FAILED,
+         validation_notes="1099.pdf: " + reasons.WRONG_DOCUMENT.format(listed="'1098'")),
+    item("D01", "Mortgage Interest Statement", Status.RECEIVED, file_count=1),
+    item("D02", "Charitable Donations", Status.MISSING, manual_override=Override.NOT_APPLICABLE),
+    item("D03", "Brokerage Statements", Status.FAILED, manual_override=Override.ACCEPTED,
+         override_reason="Client confirmed this is the final version"),
+    item("D04", "Tuition Statement", Status.MISSING, asked=False),
+    item("D05", "Property Tax Bill", ""),
+]
+
+
+def _parked_w2():
+    """A locked file in review whose shortlist names A01: the parked hold."""
+    from tests.test_review import parked_row
+    from tracker.records import RULE_REQUIRED, WHERE_TITLE, Evidence
+
+    return parked_row("scan.pdf", {"A01": (Evidence(RULE_REQUIRED, "W-2", WHERE_TITLE, 1),)},
+                      reason="scan.pdf: " + reasons.PASSWORD_PROTECTED.format(),
+                      code=reasons.PASSWORD_PROTECTED.code)
+
+
+def test_every_outstanding_asked_row_has_exactly_one_side():
+    lines, attention, held = triage(SIDED, [_parked_w2()])
+    placed = sides(lines, attention, held)
+    outstanding = {i.identifier for i in SIDED
+                   if i.asked and not i.manual_override and i.status in Status.OUTSTANDING}
+    assert set(placed) == outstanding
+    listed = ([line.item.identifier for line in lines] + [f.item.identifier for f in attention]
+              + [f.item.identifier for f in held])
+    assert sorted(listed) == sorted(outstanding)          # each once, none twice
+
+
+def test_a_held_row_is_decide_and_a_firm_side_row_is_us_and_an_asked_row_is_client():
+    placed = sides(*triage(SIDED, [_parked_w2()]))
+    assert {identifier: side for identifier, (side, _) in placed.items()} == {
+        "A01": SIDE_DECIDE, "A02": SIDE_CLIENT, "B01": SIDE_US, "C01": SIDE_DECIDE}
+    assert placed["A01"][1] == PARKED_HOLD.format(ask=reasons.PASSWORD_PROTECTED.client_ask)
+
+
+def test_each_side_carries_the_rows_own_sentence():
+    lines, attention, held = triage(SIDED, [_parked_w2()])
+    placed = sides(lines, attention, held)
+    for flag in attention:
+        assert placed[flag.item.identifier] == (SIDE_US, flag.reason) and flag.reason
+    for flag in held:
+        assert placed[flag.item.identifier] == (SIDE_DECIDE, flag.reason) and flag.reason
+    for line in lines:
+        assert placed[line.item.identifier] == (SIDE_CLIENT, line.ask or SIDE_CLIENT.sentence)
+    # A Missing row asked with no detail says the side's own sentence.
+    plain = item("E01", "Form 1099-INT", Status.MISSING)
+    [asked], _, _ = triage([plain])
+    assert asked.ask == "" and sides([asked], [], [])["E01"] == (SIDE_CLIENT, SIDE_CLIENT.sentence)
+
+
+def _us_engagement(tmp_path):
+    return engagement(tmp_path, SENDABLE + [
+        item("B01", "Receipts", Status.FAILED,
+             validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format(),
+             note_codes=reasons.NO_TEXT_LAYER.code)])
+
+
+def test_the_staff_footer_names_the_us_side_and_each_rows_label(tmp_path):
+    folder = _us_engagement(tmp_path)
+    draft = draft_reminder(folder)
+    text = write_draft(draft, engagement_dir=folder).read_text(encoding="utf-8")
+    email, _, footer = text.partition(US_HEADING)
+    assert footer and "B01" not in email
+    [flag] = draft.needs_attention
+    assert f"  {flag.item.label} ({status_label(flag.item)}): {flag.reason}" in footer
+    assert status_label(flag.item) == "Could not use" != flag.item.status
+
+
+#: The letter a fabricated draft pastes, as written at d900768 before any
+#: label existed (decision 200): the labels touch the staff lines only.
+LETTER_AT_D900768 = (
+    'Subject: Sample 2025: 2 document(s) still needed\n'
+    '\n'
+    'Hi Pat Sample,\n'
+    '\n'
+    'Of the 6 items we asked for, 2 are in.\n'
+    '\n'
+    "Checking in on your return. We're still missing a few items for Sample 2025 and wanted to make sure they didn't slip through the cracks:\n"
+    '\n'
+    'NOT YET RECEIVED\n'
+    '  - A01 - W-2 Wage Statements (TY2025) - 2 files expected\n'
+    '\n'
+    'STARTED, BUT NOT COMPLETE\n'
+    '  - A02 - Bank Statements (TY2025) - 2 of 3 received, 1 still to come\n'
+    '\n'
+    'Everything goes in the same place - just drop it into the shared\n'
+    'folder. One folder, no sorting and no naming needed; we do that:\n'
+    '  https://example.invalid/share\n'
+    '\n'
+    "As a reminder, our firm asks to have everything in hand ahead of the filing deadline, which gives us time to prepare and file your return properly. For you that means we'd need these by March 15, 2026.\n"
+    '\n'
+    "Let us know if you have any questions or if anything's already on its way.\n"
+    '\n'
+    'Thank you,\n'
+    'A. Preparer\n'
+    'Sample Firm\n'
+)
+
+
+def test_the_letter_body_is_unchanged_by_the_labels(tmp_path):
+    folder = _us_engagement(tmp_path)
+    draft = draft_reminder(folder, today=dt.date(2026, 3, 1), due_date=dt.date(2026, 3, 15),
+                           filing_deadline=dt.date(2026, 4, 15), client_name="Pat Sample",
+                           engagement_name="Sample 2025", sender="A. Preparer",
+                           firm="Sample Firm", share_link="https://example.invalid/share")
+    assert pasted_text(write_draft(draft, engagement_dir=folder)) == LETTER_AT_D900768
+
+
+def test_nothing_in_the_footer_or_the_cli_says_not_asked_for_the_firms_work(tmp_path):
+    folder = engagement(tmp_path, [
+        item("A01", "W-2 Wage Statements", Status.MISSING, expected_count=2),
+        item("B01", "Receipts", Status.FAILED,
+             validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format(),
+             note_codes=reasons.NO_TEXT_LAYER.code),
+    ])
+    text = write_draft(draft_reminder(folder), engagement_dir=folder).read_text(encoding="utf-8")
+    footer = text.partition(US_HEADING)[2]
+    assert footer and NOT_ASKED_LABEL.lower() not in footer.lower()
+
+    held = _held_engagement(tmp_path / "held", [
+        item("A01", "W-2 Wage Statements", Status.MISSING, expected_count=2),
+        item("B01", "Receipts", Status.FAILED,
+             validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format(),
+             note_codes=reasons.NO_TEXT_LAYER.code),
+        item("C01", "Form 1098 Mortgage Interest Statement", Status.FAILED,
+             validation_notes="1099.pdf: " + reasons.WRONG_DOCUMENT.format(listed="'1098'"),
+             note_codes=reasons.WRONG_DOCUMENT.code),
+    ])
+    repo = Path(__file__).resolve().parents[1]
+    env = child_env(PYTHONIOENCODING="utf-8")   # armed by the tripwire (decision 185)
+    shown = subprocess.run([sys.executable, "-m", "tracker.reminder", str(held)],
+                           cwd=repo, capture_output=True, text=True, env=env).stdout
+    assert f"{SIDE_US.label}: " in shown and f"{SIDE_DECIDE.label}: " in shown
+    assert NOT_ASKED_LABEL.lower() not in shown.lower()

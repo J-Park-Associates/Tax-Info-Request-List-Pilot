@@ -39,10 +39,24 @@ const NOT_SET_UP =
   "Run Setup.bat once (it needs the internet), then start the app again.";
 const SETTINGS_DIR = app.isPackaged ? path.dirname(process.execPath) : REPO_ROOT;
 
-// A pass over one engagement can OCR every PDF in it; the scheduled task is
-// allowed two hours. A command that outlives this is killed and reported,
-// so the button it disabled comes back.
+// A command that outlives this is killed and reported, so the button it
+// disabled comes back. A pass says its own limit in its first progress line
+// (limit_seconds, tracker.locking.RUN_TIME_LIMIT_SECONDS - the schedule's),
+// and the kill follows that instead (decision 193): the shell types no
+// number of its own for a pass.
 const TRACKER_TIMEOUT_MS = 30 * 60 * 1000;
+
+// Word for word tracker.progress.PROGRESS_KEY (tests/test_single_source.py).
+// A stdout line under the key is a progress line; the one without it,
+// last, is the reply.
+const PROGRESS_KEY = "progress";
+// At most this much of a failed child's stderr is kept, in the error log -
+// never on screen while there is one (decision 193, security principle 7).
+const STDERR_CAP = 64 * 1024;
+// With no error log (no data folder yet: decision 186's rebase review, MF2)
+// a failed command's stderr goes into its own reply instead, and at most
+// this much of its end, where the error is.
+const STDERR_ON_SCREEN_CAP = 4 * 1024;
 
 // The command the renderer runs first, and the only one allowed before the
 // API has said which commands exist: its reply carries vocab.commands (the
@@ -57,6 +71,53 @@ let engagementFlag = null;    // vocab.engagement_flag, once seen
 const openable = new Map();
 let pathKinds = {};           // vocab.path_kinds, once seen
 let notOpened = "That is no longer the folder or file the tracker reported; nothing was opened.";
+// The shell's own sentences (decision 193): learned from vocab.shell, with
+// these defaults - word for word tracker.api's SHELL_* - for a first start.
+let killed = "The pass ran past its limit of {minutes} minutes and was stopped. What it finished " +
+  "is on the record, and the next pass does the rest.";
+let killedAt = "It was on {household}: {name}.";
+let noReply = "The tracker ended without a reply (exit code {code}); the details are in the error log.";
+let couldNotStart = "The tracker could not start ({code}).";
+let couldNotSend = "The app could not send that to the tracker ({kind}); nothing was changed.";
+let noLog = "There is no error log to hold the details - the tracker has no data folder yet - so " +
+  "they are here instead: {stderr}";
+// The error log beside the tracker's database, as the API reports it
+// (vocab.shell.error_log): the shell never builds that path, and never
+// writes a log beside the program or in the settings folder (decision
+// 186's rebase review, MF2). Until the API has named one - a failed first
+// start, or no data folder - there is none: a failed command's stderr is
+// said in its own reply, and anything else is not kept.
+let errorLog = null;
+
+function fill(pattern, values) {
+  return pattern.replace(/\{(\w+)\}/g, (_, key) => values[key] ?? "");
+}
+
+// The one envelope the shell answers with (decision 193), the API's shape:
+// the sentence as error, and again in failure with its kind.
+function shellFailure(sentence, kind, extra = {}) {
+  return { error: sentence, failure: { sentence, kind, seq: null, identifier: null }, warnings: [], ...extra };
+}
+
+// What only the error log may hold (decision 193, principle 7): a failed
+// command's stderr, and an error of the shell's or the page's own.
+// Whether there is a log to keep it in: false when the API has named none.
+function keepInLog(heading, text) {
+  if (!errorLog) return false;
+  if (!text) return true;
+  const stamp = new Date().toISOString();
+  fs.promises.appendFile(errorLog, `${stamp} ${heading}\n${String(text).slice(0, STDERR_CAP)}\n`, "utf8")
+    .catch(() => {});
+  return true;
+}
+
+// A failed reply with the stderr there was no log for (MF2): the only
+// place left to say it is the reply itself.
+function withStderr(reply, stderr) {
+  const said = fill(noLog, { stderr: String(stderr).slice(-STDERR_ON_SCREEN_CAP) });
+  const sentence = `${reply.error}\n\n${said}`;
+  return { ...reply, error: sentence, failure: { ...(reply.failure || {}), sentence } };
+}
 
 function learn(result) {
   const vocab = result && result.vocab;
@@ -64,6 +125,14 @@ function learn(result) {
   if (vocab && typeof vocab.engagement_flag === "string") engagementFlag = vocab.engagement_flag;
   if (vocab && vocab.path_kinds && typeof vocab.path_kinds === "object") pathKinds = vocab.path_kinds;
   if (vocab && vocab.shell && typeof vocab.shell.not_opened === "string") notOpened = vocab.shell.not_opened;
+  const said = vocab && vocab.shell;
+  if (said && typeof said.killed === "string") killed = said.killed;
+  if (said && typeof said.killed_at === "string") killedAt = said.killed_at;
+  if (said && typeof said.no_reply === "string") noReply = said.no_reply;
+  if (said && typeof said.could_not_start === "string") couldNotStart = said.could_not_start;
+  if (said && typeof said.could_not_send === "string") couldNotSend = said.could_not_send;
+  if (said && typeof said.no_log === "string") noLog = said.no_log;
+  if (said && typeof said.error_log === "string" && said.error_log) errorLog = said.error_log;
   const paths = (result && result.paths) || (result && result.state && result.state.paths);
   if (paths && typeof paths === "object") {
     for (const [key, value] of Object.entries(paths)) {
@@ -87,9 +156,9 @@ function commandProblem(args) {
   return "Malformed command arguments.";
 }
 
-function runTracker(args, payload) {
+function runTracker(args, payload, onProgress) {
   const problem = commandProblem(args);
-  if (problem) return Promise.resolve({ error: problem });
+  if (problem) return Promise.resolve(shellFailure(problem, "refused"));
   // Serialised before anything starts (decision 176): a payload that will
   // not serialise used to throw once the tracker was already running and
   // waiting on stdin, which it then did until the timeout below.
@@ -97,9 +166,11 @@ function runTracker(args, payload) {
   try {
     body = payload === undefined ? undefined : JSON.stringify(payload);
   } catch (err) {
-    return Promise.resolve({ error: `The app could not send that to the tracker: ${err.message}` });
+    // Said by its class; its message goes to the error log only (the review's S5).
+    keepInLog("shell could not serialise a payload", `${err.name}: ${err.message}`);
+    return Promise.resolve(shellFailure(fill(couldNotSend, { kind: err.name || "Error" }), "refused"));
   }
-  if (!FROZEN_API && !fs.existsSync(SOURCE_PYTHON)) return Promise.resolve({ error: NOT_SET_UP });
+  if (!FROZEN_API && !fs.existsSync(SOURCE_PYTHON)) return Promise.resolve(shellFailure(NOT_SET_UP, "refused"));
   return new Promise((resolve) => {
     const env = { ...process.env, TRACKER_SETTINGS_DIR: SETTINGS_DIR, TRACKER_PRODUCT_NAME: PRODUCT_NAME };
     const proc = FROZEN_API
@@ -109,9 +180,14 @@ function runTracker(args, payload) {
           windowsHide: true,
           env,
         });
-    let stdout = "";
+    const startedAt = Date.now();
+    let limitMs = TRACKER_TIMEOUT_MS;
+    let pending = "";         // stdout not yet ended by a newline
+    let reply;                // the last line that was not a progress line
+    let last = null;          // the last progress line's fields
     let stderr = "";
     let settled = false;
+    let timer = null;
     const settle = (value) => {
       if (settled) return;
       settled = true;
@@ -119,24 +195,71 @@ function runTracker(args, payload) {
       if (value && !value.error) learn(value);
       resolve(value);
     };
-    const timer = setTimeout(() => {
+    const kill = () => {
       proc.kill();
-      settle({ error: `The tracker took longer than ${TRACKER_TIMEOUT_MS / 60000} minutes and was stopped.` });
-    }, TRACKER_TIMEOUT_MS);
-    proc.stdout.on("data", (d) => (stdout += d));
-    proc.stderr.on("data", (d) => (stderr += d));
+      const minutes = Math.max(1, Math.round(limitMs / 60000));
+      const where = last && last.name ? ` ${fill(killedAt, last)}` : "";
+      settle(shellFailure(fill(killed, { minutes }) + where, "failed", { progress: last, killed: true }));
+    };
+    const arm = (ms) => {
+      clearTimeout(timer);
+      timer = setTimeout(kill, Math.max(0, ms));
+    };
+    arm(TRACKER_TIMEOUT_MS);
+    // One line at a time: a progress line is passed on (and its limit, when
+    // it says one, re-arms the kill from the spawn); any other line is the
+    // reply candidate, and the last one wins (decision 193).
+    const take = (line) => {
+      if (!line.trim()) return;
+      let parsed;
+      try {
+        parsed = JSON.parse(line);
+      } catch {
+        reply = undefined;
+        return;
+      }
+      const said = parsed && typeof parsed === "object" ? parsed[PROGRESS_KEY] : null;
+      if (said && typeof said === "object") {
+        last = said;
+        if (onProgress) onProgress(said);
+        if (Number.isFinite(said.limit_seconds) && said.limit_seconds > 0) {
+          limitMs = said.limit_seconds * 1000;
+          arm(limitMs - (Date.now() - startedAt));
+        }
+        return;
+      }
+      reply = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : undefined;
+    };
+    proc.stdout.setEncoding("utf8");
+    proc.stdout.on("data", (d) => {
+      pending += d;
+      let at;
+      while ((at = pending.indexOf("\n")) >= 0) {
+        take(pending.slice(0, at));
+        pending = pending.slice(at + 1);
+      }
+    });
+    proc.stderr.on("data", (d) => {
+      if (stderr.length < STDERR_CAP) stderr += d;
+    });
     proc.stdin.on("error", () => {});   // a process that died before reading stdin is reported by "close"
+    // Said by its code, never its message, which names the executable's path.
     proc.on("error", (err) =>
-      settle({ error: `Could not start the tracker: ${err.message}` })
+      settle(shellFailure(fill(couldNotStart, { code: (err && err.code) || "?" }), "failed"))
     );
     proc.on("close", (code) => {
-      try {
-        settle(JSON.parse(stdout));
-      } catch {
-        settle({
-          error: `Unexpected tracker output (exit code ${code}).\n${(stderr || stdout).slice(0, 400)}`,
-        });
-      }
+      take(pending);
+      pending = "";
+      // Nothing of stderr goes on screen while there is an error log: a
+      // failed command's goes to the log beside the tracker's database, for
+      // a developer at this machine (decision 193, security principle 7).
+      // With none - no data folder yet - it is said in the reply, never
+      // written beside the program (decision 186's rebase review, MF2).
+      const out = reply || shellFailure(fill(noReply, { code }), "failed", { progress: last });
+      const failed = !reply || reply.error;
+      if (failed && !keepInLog("shell stderr of a failed command", stderr) && stderr) {
+        settle(withStderr(out, stderr));
+      } else settle(out);
     });
     if (body !== undefined) proc.stdin.write(body, "utf8");
     proc.stdin.end();
@@ -163,8 +286,15 @@ async function openPath(p) {
   return shell.openPath(p);
 }
 
-ipcMain.handle("tracker-cmd", (_event, args, payload) => runTracker(args, payload));
+// A pass's progress lines go to the window that asked, on their own channel,
+// while the reply is still on its way (decision 193).
+ipcMain.handle("tracker-cmd", (event, args, payload) =>
+  runTracker(args, payload, (progress) => event.sender.send("tracker-progress", { args, progress })));
 ipcMain.handle("open-path", (_event, p) => openPath(p));
+// An error of the page's own: its text goes to the error log, never on screen.
+ipcMain.handle("log-error", (_event, text) => {
+  keepInLog("renderer error", typeof text === "string" ? text : "");
+});
 ipcMain.handle("pick-folder", async (_event, title) => {
   const result = await dialog.showOpenDialog({
     title: typeof title === "string" ? title : undefined,

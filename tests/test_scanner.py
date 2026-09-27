@@ -326,7 +326,7 @@ def test_dry_run_writes_nothing(engagement):
 
 def test_fresh_lock_blocks_scan(engagement):
     (engagement / LOCK_FILENAME).write_text(f"pid={os.getpid()}", encoding="utf-8")
-    with pytest.raises(ScanLockedError, match="another scan"):
+    with pytest.raises(ScanLockedError, match="another pass holds"):
         scan_engagement(engagement, today=DAY1)
 
 

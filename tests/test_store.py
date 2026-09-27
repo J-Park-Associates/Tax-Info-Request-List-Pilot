@@ -892,23 +892,42 @@ def test_the_command_lines_check_exits_one_and_names_what_disagrees(root, engage
     assert "index row" in disagreed.stdout
 
 
-def test_the_command_line_takes_the_app_folder_the_settings_file_or_the_store_and_refuses_a_typo(
-        root, engagement, tmp_path):
+@pytest.fixture
+def this_account(tmp_path, monkeypatch):
+    """The app's settings folder and this account's data home, as a machine
+    with no ``TRACKER_STORE`` has them (decision 186): the store is the data
+    home's, and the settings folder holds only the pointer."""
+    from tracker.settings import ENV_DATA_HOME, ENV_SETTINGS_DIR, SETTINGS_FILENAME
+
+    app, home = tmp_path / "app", tmp_path / "account-data"
+    app.mkdir(exist_ok=True)
+    (app / SETTINGS_FILENAME).write_text("{}", encoding="utf-8")
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(app))
+    monkeypatch.setenv(ENV_DATA_HOME, str(home))
+    monkeypatch.delenv(store.ENV_STORE)
+    store.close()
+    yield app, home
+    store.close()
+
+
+def test_the_command_line_takes_the_app_folder_to_mean_the_data_homes_store(this_account, root, engagement,
+                                                                            tmp_path):
     """The runbook says "the app folder"; the integration run of decision 107
-    typed it and got an empty store beside the folder, because the argument
-    was resolved with ``with_name``. Three spellings mean one file, and a
-    typo means no file at all."""
+    typed it and got an empty store beside the folder. Since decision 186
+    the app folder and its settings file both mean this account's store, in
+    the data home; a store file named elsewhere is that copy, and a typo
+    means no file at all."""
     from tracker.settings import SETTINGS_FILENAME
 
-    app = tmp_path / "app"                                          # where the suite's store already is
-    app.mkdir(exist_ok=True)
+    app, home = this_account
     settings = app / SETTINGS_FILENAME
-    settings.write_text("{}", encoding="utf-8")
-    the_store = app / store.STORE_FILENAME
+    the_store = home / store.STORE_FILENAME
+    assert store.store_path() == the_store
 
     assert store.store_named(app) == the_store
     assert store.store_named(settings) == the_store
-    assert store.store_named(the_store) == the_store                # exists or not: rebuild creates it
+    a_copy = tmp_path / "copy" / store.STORE_FILENAME
+    assert store.store_named(a_copy) == a_copy                      # exists or not: rebuild creates it
     assert store.store_named(tmp_path / "apps") is None            # a typo of a folder
     assert store.store_named(app / f"{store.STORE_FILENAME}x") is None   # a typo of the file
 
@@ -919,7 +938,72 @@ def test_the_command_line_takes_the_app_folder_the_settings_file_or_the_store_an
 
     refused = cli(tmp_path / "apps", "check", root)
     assert refused.returncode == 2 and "nothing was opened" in refused.stderr
-    assert set(tmp_path.rglob(store.STORE_FILENAME)) == {the_store}  # and no store beside the typo
+    assert not list(app.rglob(store.STORE_FILENAME))                # nothing beside the program
+
+
+def test_the_command_line_refuses_the_old_store_beside_the_program_and_creates_nothing(
+        this_account, root, engagement):
+    app, home = this_account
+    old = app / store.STORE_FILENAME
+    assert store.store_named(old) == store.OLD_STORE_NAMED.format(path=old, store=home / store.STORE_FILENAME)
+
+    refused = cli(old, "rebuild", root)
+    assert refused.returncode == 1
+    assert store.OLD_STORE_NAMED.format(path=old, store=home / store.STORE_FILENAME) in refused.stderr
+    assert "Traceback" not in refused.stderr and "Traceback" not in refused.stdout
+    assert not old.exists()                                         # never opened, so never made
+
+
+def test_the_command_line_refuses_a_copy_inside_the_apps_own_folder_and_creates_nothing(
+        this_account, root, engagement):
+    """Decision 186's review, N4: a folder or a store file inside the app's
+    own folder - on a source install, the checkout - is refused in a
+    sentence, so a ``rebuild`` never creates client data there."""
+    from tracker.settings import app_dir
+
+    inside = app_dir() / "docs"
+    copy = inside / store.STORE_FILENAME
+    said = store.COPY_INSIDE_APP.format(path=copy, app=app_dir())
+    assert store.store_named(inside) == said
+    assert store.store_named(copy) == said
+
+    refused = cli(inside, "rebuild", root)
+    assert refused.returncode == 1
+    assert said in refused.stderr
+    assert "Traceback" not in refused.stderr and "Traceback" not in refused.stdout
+    assert not copy.exists()
+
+
+def test_a_store_the_environment_names_is_held_to_the_data_homes_two_checks(tmp_path, monkeypatch):
+    """Decision 186's review, N4: ``TRACKER_STORE`` is a second answer to
+    "where is the store", so it is held to the data home's checks - a whole
+    path, not inside the program, on a fixed disk - and refused, as the data
+    home is, with a SettingsError that says why."""
+    from tracker import settings
+
+    store.close()
+    allowed = tmp_path / "elsewhere" / store.STORE_FILENAME
+    monkeypatch.setenv(store.ENV_STORE, str(allowed))
+    assert store.store_path() == allowed
+
+    monkeypatch.setenv(store.ENV_STORE, "relative/tracker.db")
+    with pytest.raises(settings.SettingsError) as refused:
+        store.store_path()
+    assert str(refused.value) == store.STORE_OVERRIDE_NOT_ABSOLUTE.format(value="relative/tracker.db")
+
+    in_the_program = settings.app_dir() / store.STORE_FILENAME
+    monkeypatch.setenv(store.ENV_STORE, str(in_the_program))
+    with pytest.raises(settings.SettingsError) as refused:
+        store.store_path()
+    assert str(refused.value) == store.STORE_OVERRIDE_IN_PROGRAM.format(path=in_the_program,
+                                                                       program=settings.app_dir())
+
+    monkeypatch.setenv(store.ENV_STORE, str(allowed))
+    monkeypatch.setattr(settings, "drive_type", lambda path: settings.DRIVE_REMOVABLE)
+    with pytest.raises(settings.SettingsError) as refused:
+        store.store_path()
+    assert str(refused.value) == store.STORE_OVERRIDE_NOT_LOCAL.format(path=allowed)
+    assert not allowed.exists() and not in_the_program.exists()
 
 
 def test_the_command_line_says_a_refused_store_in_one_sentence(root, tmp_path):
@@ -941,13 +1025,17 @@ def test_the_command_line_says_a_refused_store_in_one_sentence(root, tmp_path):
 # -------------------------------------------------------------- the placement ----
 
 
-def test_the_store_is_placed_beside_the_settings_file_and_never_in_the_synced_folder(
-        root, by_hand, tmp_path):
-    settings = tmp_path / "app" / "settings.json"
-    assert store.path_for(settings) == settings.with_name(store.STORE_FILENAME)
-    assert root not in store.path_for(settings).parents
+def test_the_store_is_placed_in_the_data_home_and_never_beside_the_settings_file(
+        this_account, root, by_hand):
+    from tracker.settings import data_home, settings_path
 
-    conn = store.open(store.path_for(settings))
+    app, home = this_account
+    placed = store.store_path()
+    assert placed == data_home() / store.STORE_FILENAME == home / store.STORE_FILENAME
+    assert root not in placed.parents
+    assert placed.parent != settings_path().parent
+
+    conn = store.open(placed)
     try:
         build(conn, root, by_hand)
         with engagement_lock(by_hand):
@@ -955,9 +1043,43 @@ def test_the_store_is_placed_beside_the_settings_file_and_never_in_the_synced_fo
                 ledger.FILED, key="p/one", row=a_row(pbc_location="p/one")))
         # While it is open, which is when the write-ahead log exists.
         assert _database_files_under(root) == []
+        assert _database_files_under(app) == []
     finally:
         conn.close()
     assert _database_files_under(root) == []
+    assert _database_files_under(app) == []
+
+
+def test_a_store_left_behind_is_rebuilt_from_the_record_in_its_new_home(root, engagement, tmp_path,
+                                                                         monkeypatch):
+    """Nothing is carried over (decision 186): the store an earlier version
+    kept beside the settings file is never read, and the empty one in the
+    data home is built from the engagement's own record on first use."""
+    from tracker.settings import ENV_DATA_HOME, ENV_SETTINGS_DIR
+
+    app = tmp_path / "app"
+    old = app / store.STORE_FILENAME                                # the fixture's store: the old place
+    conn = store.connect()
+    assert Path(store.store_path()) == old
+    build(conn, root, engagement)
+    store.close()
+    before = old.read_bytes()
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(app))
+    monkeypatch.setenv(ENV_DATA_HOME, str(tmp_path / "account-data"))
+    monkeypatch.delenv(store.ENV_STORE)
+    # The checkpoint is moved, as the runbook's upgrade step says: one left
+    # beside the program refuses a fresh one (186's rebase review, MF1).
+    (tmp_path / "account-data").mkdir()
+    os.replace(app / checkpoint.CHECKPOINT_FILENAME, tmp_path / "account-data" / checkpoint.CHECKPOINT_FILENAME)
+    fresh = store.connect()
+    try:
+        assert store.store_path() == tmp_path / "account-data" / store.STORE_FILENAME
+        assert store.catch_up(fresh, root, engagement) >= 1
+        assert store.check(fresh, root, engagement) == []
+    finally:
+        store.close()
+    assert old.read_bytes() == before
 
 
 def _database_files_under(folder: Path) -> list[str]:
@@ -3660,3 +3782,125 @@ def test_an_export_that_cannot_be_written_is_refused_by_name_and_discards_nothin
                                                r"\(PermissionError \(EACCES\)\); nothing was discarded"):
         store.recover(conn, root, by_hand, accept_loss=by_hand.name)
     assert rows(conn, "events") == before
+
+
+def test_households_are_every_stored_household_row_read_as_it_stands(root, monkeypatch):
+    """Decision 192: the card's *Fed by* asks every household who feeds it,
+    and may not walk the practice or read every journal to learn it. The
+    store answers with its household rows - never a return's - exactly as
+    they stand, even with a line behind them it has not applied."""
+    from dataclasses import replace
+
+    from tests.conftest import written_elsewhere
+    from tracker.households import load_household_info, save_household
+    from tracker.layout import private_household_dir
+    from tracker.records import Feed
+
+    make_engagement(root, ITEMS, household="Park Family")
+    make_engagement(root, ITEMS, household="Park & Lee LLC")
+    family = private_household_dir(root, "Park Family")
+    feed = Feed("Park & Lee LLC", "1120S - Park & Lee LLC")
+    save_household(family, replace(load_household_info(family), feeds=(feed,)))
+    # A line behind the store is one another machine wrote: every line this
+    # machine writes goes through the store (decision 159's checkpoint).
+    written_elsewhere(family, ledger.new(ledger.HOUSEHOLD_CHANGED, **{
+        ledger.HOUSEHOLD_KEY: {"feeds": []}}))
+    read: list[Path] = []
+    real = Path.read_bytes
+
+    def counting(self):
+        if self.name == ledger.LEDGER_FILENAME:
+            read.append(Path(self))
+        return real(self)
+
+    monkeypatch.setattr(Path, "read_bytes", counting)
+
+    rows = dict(store.households(store.connect()))
+
+    assert sorted(key.rsplit("/", 1)[-1] for key in rows) == ["Park & Lee LLC", "Park Family"]
+    by_name = {key.rsplit("/", 1)[-1]: info for key, info in rows.items()}
+    assert by_name["Park Family"].feeds == (feed,)       # the store's, not the line behind it
+    assert by_name["Park & Lee LLC"].feeds == ()
+    assert read == []
+    # The recorder sees a journal read when one is made, and the line
+    # behind the store is there to be read.
+    assert load_household_info(family).feeds == ()
+    assert ledger.path_for(family) in read
+
+
+# ------------------- decision 186's rebase review: the checkpoint left beside the program ----
+
+
+def _upgraded_before_the_move(monkeypatch) -> tuple[Path, Path]:
+    """A machine that ran 159 before 186, upgraded before its checkpoint was
+    moved: the store and checkpoint the fixture made beside the settings
+    file (159's layout), and the store now asked of the data home, where no
+    checkpoint is yet. Returns the old checkpoint and where the new one
+    would be."""
+    from tracker import settings
+
+    old = settings.settings_dir() / checkpoint.CHECKPOINT_FILENAME
+    assert old.is_file()
+    store.close()
+    monkeypatch.setenv(store.ENV_STORE, str(settings.data_home() / store.STORE_FILENAME))
+    return old, checkpoint.path_for(store.store_path())
+
+
+def test_no_fresh_checkpoint_is_made_while_the_old_one_sits_beside_the_program(root, engagement,
+                                                                                monkeypatch):
+    """MF1: a fresh checkpoint would seed every record "as it is" and drop
+    what the old one vouched for. Every open that could make one refuses -
+    the root's proof, claiming or not, and a person's acknowledgement -
+    naming the old file and the folder it belongs in; nothing is made and
+    the old file is not touched."""
+    old, new = _upgraded_before_the_move(monkeypatch)
+    before = old.read_bytes()
+    said = checkpoint.LEFT_BEHIND.format(old=old.resolve(), home=new.parent)
+    for attempt in (lambda: store.prove_the_root(root), lambda: store.prove_the_root(root, claim=False),
+                    lambda: store.acknowledge_foreign(engagement)):
+        with pytest.raises(checkpoint.CheckpointLeftBehind) as refused:
+            attempt()
+        assert str(refused.value) == said
+    assert not new.exists() and old.read_bytes() == before
+
+
+def test_a_catch_up_says_the_checkpoint_left_behind_as_that_returns_problem(root, engagement, monkeypatch):
+    """MF1: the catch-up every reader runs first (a read-only view of one
+    return included) makes no checkpoint either; it says so as a
+    :class:`store.StoreError`, so every caller that names one return's
+    problem names this, and carries the two folders for the app."""
+    old, new = _upgraded_before_the_move(monkeypatch)
+    with pytest.raises(store.CheckpointNotMade) as refused:
+        ensure(engagement)
+    assert isinstance(refused.value, store.StoreError)
+    assert (refused.value.old, refused.value.home) == (old.resolve(), new.parent)
+    assert not new.exists()
+
+
+def test_moving_or_renaming_the_old_checkpoint_lifts_the_refusal(root, engagement, monkeypatch):
+    """MF1's escape: the runbook's move - or keeping it under a dated name -
+    is all it takes; moved into the data home, it is the checkpoint, with
+    the root it claimed."""
+    old, new = _upgraded_before_the_move(monkeypatch)
+    kept = old.with_name(old.name + ".2026-09-27")
+    old.rename(kept)
+    store.prove_the_root(root, claim=False)                  # nothing to refuse, nothing made
+    assert not new.exists()
+    kept.rename(old)
+    new.parent.mkdir(parents=True, exist_ok=True)
+    os.replace(old, new)
+    store.prove_the_root(root)
+    with checkpoint.opened(new) as held:
+        assert checkpoint.root_of(held) == str(root.resolve())
+    ensure(engagement)
+
+
+def test_the_store_beside_the_settings_file_is_never_refused_its_checkpoint(root, engagement):
+    """The suite's own shape (``TRACKER_STORE`` beside the settings file):
+    the old place and the new are the same file, so a checkpoint missing
+    there is simply made."""
+    where = checkpoint.path_for(store.store_path())
+    store.close()
+    where.unlink()
+    store.prove_the_root(root)
+    assert where.is_file()

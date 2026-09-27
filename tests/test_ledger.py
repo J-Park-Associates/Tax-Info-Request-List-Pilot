@@ -638,7 +638,10 @@ def test_the_command_line_no_longer_offers_a_comparison_with_a_workbook(engageme
     assert "unrecognized arguments: --compare" in refused.stderr
 
 
-def test_the_cli_prints_what_the_folder_holds(engagement):
+def test_the_cli_prints_what_the_folder_holds(tmp_path):
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    engagement = make_engagement(tmp_path / "root", ITEMS, household="Smith Family")
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     sort(engagement, today=DAY1)
 

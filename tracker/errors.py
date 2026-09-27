@@ -89,14 +89,20 @@ _debug.setLevel(logging.DEBUG)
 SAYS_ITS_CODE = "says_its_code"
 
 
-def error_class(exc: BaseException) -> str:
+def error_class(exc: BaseException, *, with_code: bool = True) -> str:
     """How an error is said wherever a person or a record reads it
     (decisions 189 and 190, security principle 7): its class, and the code
     it carries - an errno's name (``PermissionError (EACCES)``), or the
     code of a store or record the disk refused (``RecordNotWritten
     (ENOSPC)``) - and never its message. See the module docstring for why
-    not even part of it."""
+    not even part of it.
+
+    ``with_code=False`` is the class alone, one token, for the run log's
+    codes (decision 186's ``crashed:<class>``), which a later reader counts
+    by class: the same rule, spelled here rather than a second time inline."""
     name = type(exc).__name__
+    if not with_code:
+        return name
     if getattr(type(exc), SAYS_ITS_CODE, False):
         return f"{name} ({exc.code})"
     if isinstance(exc, OSError) and exc.errno in _errno.errorcode:
