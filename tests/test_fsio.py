@@ -2,6 +2,8 @@
 at all: the temp name beside the target, and the swap over it."""
 
 import ast
+import os
+import time
 from pathlib import Path
 
 import pytest
@@ -140,3 +142,124 @@ def test_a_temp_beside_a_target_near_the_limit_fits_under_it_and_keeps_its_shape
     assert TEMP_NAME.fullmatch(temp.name) and temp_owner(temp.name) is not None
     short = tmp_path / "settings.json"
     assert temp_path_for(short, limit=limit).name.startswith("settings.json.")   # not cut: it fits
+
+
+def test_a_rotating_append_keeps_the_newest_entries_in_at_most_keep_and_one_files(tmp_path):
+    """Decision 186: the run log never grows for ever. An append that would
+    take it past the size turns it over first - the file to ``.1``, ``.1``
+    to ``.2``, the oldest dropped - and every entry lands whole."""
+    from tracker.fsio import append_rotating
+
+    log = tmp_path / "runs.log"
+    entries = [f"entry {n:02d}\n" for n in range(20)]              # 9 bytes each
+    for entry in entries:
+        assert append_rotating(log, entry, max_bytes=30, keep=2) == log
+    files = sorted(tmp_path.iterdir())
+    assert [one.name for one in files] == ["runs.log", "runs.log.1", "runs.log.2"]
+    assert all(one.stat().st_size <= 30 for one in files)
+    kept = "".join((tmp_path / name).read_text(encoding="utf-8")
+                   for name in ("runs.log.2", "runs.log.1", "runs.log"))
+    assert kept == "".join(entries[-len(kept) // 9:])                # the newest, in order
+    assert kept.endswith(entries[-1]) and len(kept) // 9 > 2 * 3     # the older files are full
+
+
+def test_a_rotation_another_process_blocks_still_appends_the_entry(tmp_path, monkeypatch, caplog):
+    """A rename the other writer blocks (Windows: the file is open) is
+    skipped with a warning and tried again next time; the entry is never
+    lost."""
+    import tracker.fsio as fsio_module
+
+    log = tmp_path / "runs.log"
+    log.write_text("x" * 40, encoding="utf-8")
+
+    def blocked(source, target):
+        raise PermissionError(13, "The process cannot access the file")
+
+    monkeypatch.setattr(fsio_module.os, "replace", blocked)
+    with caplog.at_level("WARNING", logger="tracker.fsio"):
+        fsio_module.append_rotating(log, "the entry\n", max_bytes=30, keep=3)
+    assert log.read_text(encoding="utf-8") == "x" * 40 + "the entry\n"
+    assert [one.name for one in tmp_path.iterdir()] == ["runs.log"]
+    assert "Could not rotate" in caplog.text
+
+    monkeypatch.undo()
+    fsio_module.append_rotating(log, "the next\n", max_bytes=30, keep=3)
+    assert log.read_text(encoding="utf-8") == "the next\n"
+    assert (tmp_path / "runs.log.1").read_text(encoding="utf-8") == "x" * 40 + "the entry\n"
+
+
+def test_two_writers_rotating_at_once_lose_neither_an_entry_nor_the_older_entries(tmp_path, monkeypatch):
+    """Decision 186's review, S3: the scheduled pass and the app's pass both
+    cross the size at once. The second finds the first's rotation lock held,
+    appends and leaves the turning-over to it; nothing is renamed from a
+    stale view, so the older file is shifted once, never overwritten."""
+    import tracker.fsio as fsio_module
+
+    log = tmp_path / "runs.log"
+    log.write_text("x" * 100, encoding="utf-8")
+    (tmp_path / "runs.log.1").write_text("older\n", encoding="utf-8")
+    real_replace = os.replace
+    the_other_writer = []
+
+    def meanwhile(source, target):
+        if not the_other_writer:        # the other writer, while this one is rotating
+            the_other_writer.append(True)
+            fsio_module.append_rotating(log, "A-entry\n", max_bytes=50, keep=3)
+        return real_replace(source, target)
+
+    monkeypatch.setattr(fsio_module.os, "replace", meanwhile)
+    fsio_module.append_rotating(log, "B-entry\n", max_bytes=50, keep=3)
+    monkeypatch.undo()
+
+    everything = "".join((tmp_path / name).read_text(encoding="utf-8")
+                         for name in ("runs.log.2", "runs.log.1", "runs.log"))
+    assert everything == "older\n" + "x" * 100 + "A-entry\n" + "B-entry\n"
+    assert (tmp_path / "runs.log.2").read_text(encoding="utf-8") == "older\n"
+    assert not (tmp_path / ("runs.log" + fsio_module.ROTATION_LOCK_SUFFIX)).exists()
+
+
+def test_a_rotation_whose_file_another_writer_already_moved_still_appends_the_entry(tmp_path, monkeypatch,
+                                                                                    caplog):
+    """A rotation that fails at any step - here the log was moved away
+    under it (FileNotFoundError) - is abandoned and the entry still lands."""
+    import tracker.fsio as fsio_module
+
+    log = tmp_path / "runs.log"
+    log.write_text("x" * 100, encoding="utf-8")
+    real_replace = os.replace
+
+    def moved_first(source, target):
+        if Path(source) == log and log.exists():
+            real_replace(log, tmp_path / "moved.log")
+        return real_replace(source, target)
+
+    monkeypatch.setattr(fsio_module.os, "replace", moved_first)
+    with caplog.at_level("WARNING", logger="tracker.fsio"):
+        fsio_module.append_rotating(log, "the entry\n", max_bytes=50, keep=3)
+    assert log.read_text(encoding="utf-8") == "the entry\n"
+    assert (tmp_path / "moved.log").read_text(encoding="utf-8") == "x" * 100
+    assert "Could not rotate" in caplog.text
+    assert not (tmp_path / ("runs.log" + fsio_module.ROTATION_LOCK_SUFFIX)).exists()
+
+
+def test_a_rotation_lock_a_killed_writer_left_is_removed_and_the_next_append_rotates(tmp_path):
+    """A lock nobody holds any more must not stop the log turning over for
+    ever: a fresh one is left alone (its holder is rotating), a stale one is
+    removed, and every entry is appended either way."""
+    import tracker.fsio as fsio_module
+
+    log = tmp_path / "runs.log"
+    log.write_text("x" * 100, encoding="utf-8")
+    lock = tmp_path / ("runs.log" + fsio_module.ROTATION_LOCK_SUFFIX)
+    lock.write_bytes(b"")
+
+    fsio_module.append_rotating(log, "one\n", max_bytes=50, keep=3)
+    assert lock.exists() and not (tmp_path / "runs.log.1").exists()
+
+    old = time.time() - fsio_module.ROTATION_LOCK_STALE_SECONDS - 5
+    os.utime(lock, (old, old))
+    fsio_module.append_rotating(log, "two\n", max_bytes=50, keep=3)
+    assert not lock.exists()
+    fsio_module.append_rotating(log, "three\n", max_bytes=50, keep=3)
+    assert (tmp_path / "runs.log.1").read_text(encoding="utf-8") == "x" * 100 + "one\ntwo\n"
+    assert log.read_text(encoding="utf-8") == "three\n"

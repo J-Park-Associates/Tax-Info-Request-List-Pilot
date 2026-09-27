@@ -221,3 +221,15 @@ def a_container_parser_that_crashes(path: Path):
 
     containers._Walk.open = crashes
     return containers.open_file(path)
+
+
+def where_temporary_files_go() -> tuple[str, ...]:
+    """Every way a library finds the temp folder, as the child sees it, and
+    a file actually made there - for the claim that a reading child keeps
+    its temporary files in its own folder (decision 186)."""
+    import tempfile
+
+    handle, made = tempfile.mkstemp(prefix="reading-")
+    os.close(handle)
+    return (tempfile.gettempdir(), os.environ["TMP"], os.environ["TEMP"], os.environ["TMPDIR"], made,
+            str(os.getpid()))

@@ -452,17 +452,22 @@ def test_create_then_scan_plays_a_whole_engagement_end_to_end(capsys, demo_root,
 def test_the_apps_pass_appends_the_line_the_scheduled_run_appends(capsys, demo_root, tmp_path):
     """A pass made from the app used to leave no trace at all: the log is the
     command line's, and the button makes the same pass, so it writes the same
-    line - appended, never replacing what earlier passes wrote."""
+    line - appended, never replacing what earlier passes wrote. Since
+    decision 186 it is the data home's run log, and it names no client."""
+    from tracker.runner import log_path
+
     engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.bmp")
 
     assert run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))[0] == 0
-    first = (demo_root / LOG_FILENAME).read_text(encoding="utf-8")
-    assert engagement.name in first
+    first = log_path().read_text(encoding="utf-8")
+    assert engagement.name not in first and "    counts returns=" in first
+    assert not (demo_root / LOG_FILENAME).exists()
 
     assert run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))[0] == 0
-    second = (demo_root / LOG_FILENAME).read_text(encoding="utf-8")
+    second = log_path().read_text(encoding="utf-8")
     assert second.startswith(first)
-    assert second.count(engagement.name) == 2
+    assert engagement.name not in second
+    assert len([line for line in second.splitlines() if line.startswith("[")]) == 2
 
 
 def test_the_apps_pass_regenerates_the_practices_status_page(capsys, demo_root, tmp_path):
@@ -1866,6 +1871,163 @@ def test_install_schedule_writes_the_job_from_the_apps_own_settings_folder(
     xml = Path(payload["xml"]).read_text(encoding=SCHEDULE_XML_ENCODING)
     assert f"{SETTINGS_FLAG} {quote_argument(settings_dir())}" in xml
     assert str(demo_root) not in xml
+
+
+def test_install_schedule_writes_the_task_file_into_the_data_home(capsys, demo_root, monkeypatch):
+    """Decision 186: the task's file names the program and the settings
+    folder, and is written into the tracker's data home - never beside the
+    program in the settings folder."""
+    import tracker.api as api_module
+    from tracker.scheduling import SCHEDULE_XML_FILENAME, schedule_xml_path
+    from tracker.settings import settings_dir
+
+    monkeypatch.setattr(api_module, "install_task", lambda xml, name=TASK_NAME: ["schtasks"])
+    code, payload = run(capsys, "install-schedule", stdin={})
+    assert code == 0, payload
+    assert payload["xml"] == str(schedule_xml_path())
+    assert Path(payload["xml"]).is_file()
+    assert not (settings_dir() / SCHEDULE_XML_FILENAME).exists()
+
+
+def test_the_app_names_what_an_earlier_version_left_on_its_first_screen(capsys, tmp_path, monkeypatch):
+    """Decision 186: ``list``, with a root or without one, carries what an
+    earlier version left beside the app in ``machine_warnings`` - a banner
+    that stays until the files are gone - and nothing when nothing is there."""
+    from tracker import store
+    from tracker.runner import CODE_LEFT_BEHIND, LEFT_BEHIND, left_behind_warnings
+    from tracker.settings import ENV_SETTINGS_DIR, data_home
+
+    app = tmp_path / "app"
+    app.mkdir()
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(app))
+    monkeypatch.setenv(store.ENV_STORE, str(data_home() / store.STORE_FILENAME))
+    store.close()
+    assert run(capsys, "list")[1]["machine_warnings"] == []
+
+    (app / store.STORE_FILENAME).write_bytes(b"an old store")
+    expected = LEFT_BEHIND.format(paths=str(app.resolve() / store.STORE_FILENAME), home=data_home())
+    assert left_behind_warnings(None) == [(CODE_LEFT_BEHIND, expected)]
+    code, payload = run(capsys, "list")
+    assert code == 0 and payload["needs_root"] is True
+    assert payload["machine_warnings"] == [expected]
+    clients = tmp_path / "Clients"
+    clients.mkdir()
+    assert run(capsys, "set-root", stdin={"root": str(clients)})[0] == 0
+    code, payload = run(capsys, "list")
+    assert code == 0 and payload["needs_root"] is False
+    assert payload["machine_warnings"] == [expected]
+    assert (app / store.STORE_FILENAME).read_bytes() == b"an old store"     # named, never deleted
+
+
+def test_the_first_screen_says_to_move_the_checkpoint_left_behind_never_to_delete_it(
+        capsys, tmp_path, monkeypatch):
+    """Decision 186 on 159: an old record checkpoint beside the app is its
+    own banner, the move sentence, and never in the sentence that says
+    delete."""
+    from tracker import checkpoint, store
+    from tracker.runner import LEFT_BEHIND, LEFT_BEHIND_TO_MOVE
+    from tracker.settings import ENV_SETTINGS_DIR, data_home
+
+    app = tmp_path / "app"
+    app.mkdir()
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(app))
+    monkeypatch.setenv(store.ENV_STORE, str(data_home() / store.STORE_FILENAME))
+    store.close()
+    (app / checkpoint.CHECKPOINT_FILENAME).write_bytes(b"an old checkpoint")
+    code, payload = run(capsys, "list")
+    assert code == 0
+    assert payload["machine_warnings"] == [LEFT_BEHIND_TO_MOVE.format(
+        paths=str(app.resolve() / checkpoint.CHECKPOINT_FILENAME), home=data_home())]
+    assert "- delete them." not in payload["machine_warnings"][0] and "- delete them." in LEFT_BEHIND
+    assert (app / checkpoint.CHECKPOINT_FILENAME).read_bytes() == b"an old checkpoint"
+
+
+def test_opening_a_return_never_makes_a_fresh_checkpoint_while_the_old_one_sits_beside_the_program(
+        capsys, demo_root, monkeypatch):
+    """The rebase review of 186 (MF1): opening one return is a read, yet its
+    catch-up would make a fresh checkpoint in the data home and trust every
+    record "as it is". It makes none: the view and a writing command are
+    each refused in the first screen's own sentence - what to move, and
+    where - and the old file is not touched."""
+    from tracker import checkpoint
+    from tracker.runner import LEFT_BEHIND_TO_MOVE
+    from tracker.settings import data_home, settings_dir
+
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = where(demo_root, "Smith")
+    old = settings_dir() / checkpoint.CHECKPOINT_FILENAME    # the fixture's: 159's layout
+    before = old.read_bytes()
+    store.close()
+    monkeypatch.setenv(store.ENV_STORE, str(data_home() / store.STORE_FILENAME))
+    new = checkpoint.path_for(store.store_path())
+    said = LEFT_BEHIND_TO_MOVE.format(paths=old.resolve(), home=new.parent)
+
+    for argv in (("state", api.ENGAGEMENT_FLAG, str(engagement)),
+                 ("acknowledge-foreign", api.ENGAGEMENT_FLAG, str(engagement))):
+        code, payload = run(capsys, *argv)
+        assert code == 1 and payload["failure"]["kind"] == "refused", argv
+        assert payload["error"] == said, argv
+    assert not new.exists() and old.read_bytes() == before
+
+
+def test_a_data_home_that_cannot_be_had_is_a_banner_on_the_first_screen_never_an_error(
+        capsys, tmp_path, monkeypatch):
+    """Decision 186's review, M1: with a clients root saved, a data home that
+    cannot be had would stop the root's own check - so ``list`` still
+    answers, with its vocabulary, keeps the saved root rather than asking for
+    it again, walks nothing, and says the data home's sentence in
+    ``machine_warnings`` - the API's own words, with no class name in front."""
+    from tracker import store
+    from tracker.settings import DATA_HOME_NOT_ABSOLUTE, ENV_DATA_HOME, ENV_SETTINGS_DIR
+
+    app = tmp_path / "app"
+    app.mkdir()
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(app))
+    clients = tmp_path / "Clients"
+    clients.mkdir()
+    assert run(capsys, "set-root", stdin={"root": str(clients)})[0] == 0
+    store.close()
+    monkeypatch.delenv(store.ENV_STORE, raising=False)
+    monkeypatch.setenv(ENV_DATA_HOME, "relative-data")
+
+    code, payload = run(capsys, "list")
+    assert code == 0, payload
+    assert "error" not in payload
+    assert payload["needs_root"] is False
+    assert payload["root"] == str(clients.resolve())
+    assert payload["vocab"]
+    assert payload["engagements"] == [] and payload["households"] == []
+    assert payload["machine_warnings"] == [DATA_HOME_NOT_ABSOLUTE.format(value="relative-data")]
+
+
+def test_without_a_data_home_the_pages_error_never_points_at_an_error_log_that_is_not_there(monkeypatch):
+    """Decision 186: with no data home there is no error log, so the page's
+    own-error sentence says so rather than sending a person to a file that
+    does not exist; with one, it names the log as before."""
+    from tracker import store
+    from tracker.api import PAGE_ERROR, PAGE_ERROR_NO_LOG, _vocab
+    from tracker.settings import ENV_DATA_HOME
+
+    shell = _vocab()["shell"]
+    assert shell["error_log"] and shell["page_error"] == PAGE_ERROR
+    store.close()
+    monkeypatch.delenv(store.ENV_STORE, raising=False)
+    monkeypatch.setenv(ENV_DATA_HOME, "relative-data")
+    shell = _vocab()["shell"]
+    assert shell["error_log"] == ""
+    assert shell["page_error"] == PAGE_ERROR_NO_LOG
+    assert "error log" in PAGE_ERROR_NO_LOG and "no error log" in PAGE_ERROR_NO_LOG
+
+def test_the_first_screen_says_every_machine_warning_in_a_banner_of_its_own():
+    """The app adds no word of its own: each sentence is the API's, drawn as
+    text into a banner that stays (decision 186)."""
+    renderer = Path(__file__).resolve().parent.parent / "app" / "renderer"
+    js = (renderer / "app.js").read_text(encoding="utf-8")
+    html_text = (renderer / "index.html").read_text(encoding="utf-8")
+    assert '<div id="machine-warnings" class="banner err hidden" role="alert"></div>' in html_text
+    assert "listed.machine_warnings || []" in js
+    assert 'machine.map((sentence) => el("p", {}, sentence))' in js
 
 
 def test_the_packaged_app_installs_a_schedule_against_its_own_executable(capsys, demo_root, monkeypatch, tmp_path):
@@ -6516,3 +6678,57 @@ def test_the_scheduled_tasks_working_folder_is_the_apps_own_not_the_settings_fol
     monkeypatch.setenv(settings.ENV_SETTINGS_DIR, str(tmp_path / "app"))
     assert api.REPO_ROOT == settings.app_dir()
     assert api.REPO_ROOT != settings.settings_dir()
+
+
+def _program_on(monkeypatch, kind):
+    """Windows answers ``kind`` for the drive the program and its settings
+    folder are on; the data home stays on the fixed disk, which it must."""
+    from tracker import settings as settings_module
+
+    program = {settings_module.app_dir(), settings_module.settings_dir().resolve()}
+    monkeypatch.setattr(settings_module, "drive_type",
+                        lambda path: kind if Path(path) in program else settings_module.DRIVE_FIXED)
+
+
+def test_install_schedule_refuses_when_the_program_is_on_a_removable_drive(capsys, demo_root, monkeypatch):
+    """Decision 186: the schedule runs whatever program sits where the app
+    is, so Install Schedule refuses a stick - in the API's own sentence,
+    before any file is written and before the task is registered."""
+    import tracker.api as api_module
+    from tracker import settings as settings_module
+    from tracker.scheduling import schedule_xml_path
+
+    calls = []
+    monkeypatch.setattr(api_module, "install_task", lambda xml, name=TASK_NAME: calls.append(xml) or ["schtasks"])
+    _program_on(monkeypatch, settings_module.DRIVE_REMOVABLE)
+    code, payload = run(capsys, "install-schedule", stdin={})
+    assert code != 0
+    assert payload["error"] == settings_module.PROGRAM_ON_REMOVABLE.format(folder=settings_module.app_dir())
+    assert calls == []
+    assert not schedule_xml_path().exists()
+
+
+def test_install_schedule_refuses_a_network_drive_and_one_windows_cannot_name(capsys, demo_root, monkeypatch):
+    import tracker.api as api_module
+    from tracker import settings as settings_module
+
+    monkeypatch.setattr(api_module, "install_task", lambda xml, name=TASK_NAME: ["schtasks"])
+    for kind, said in ((settings_module.DRIVE_REMOTE, settings_module.PROGRAM_ON_NETWORK),
+                       (settings_module.DRIVE_UNKNOWN, settings_module.PROGRAM_DRIVE_UNKNOWN)):
+        _program_on(monkeypatch, kind)
+        code, payload = run(capsys, "install-schedule", stdin={})
+        assert code != 0
+        assert payload["error"] == said.format(folder=settings_module.app_dir())
+
+
+def test_the_first_screen_says_when_the_app_runs_from_a_removable_drive(capsys, demo_root, monkeypatch):
+    """Decision 186: the scheduled pass never refuses (it would go quiet),
+    so the app's first screen says it every time it opens from a stick."""
+    from tracker import settings as settings_module
+
+    assert run(capsys, "list")[1]["machine_warnings"] == []
+    _program_on(monkeypatch, settings_module.DRIVE_REMOVABLE)
+    code, payload = run(capsys, "list")
+    assert code == 0
+    assert payload["machine_warnings"] == [
+        settings_module.PROGRAM_ON_REMOVABLE.format(folder=settings_module.app_dir())]

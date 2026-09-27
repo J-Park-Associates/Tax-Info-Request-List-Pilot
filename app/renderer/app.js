@@ -1834,6 +1834,10 @@ async function loadEngagements(preferPath, asked) {
   const lastPass = listed.last_pass;
   $("last-pass").textContent = lastPass ? lastPass.text : "";
   $("last-pass").className = lastPass ? `banner ${lastPass.level}` : "banner hidden";
+  // Sticky, like the reader's: the machine's own problems, each said until it is fixed (decision 186).
+  const machine = listed.machine_warnings || [];
+  $("machine-warnings").replaceChildren(...machine.map((sentence) => el("p", {}, sentence)));
+  $("machine-warnings").classList.toggle("hidden", machine.length === 0);
   $("setup-card").classList.toggle("hidden", !listed.needs_root);
   if (listed.needs_root) {
     $("root-input").value = clientsRoot;

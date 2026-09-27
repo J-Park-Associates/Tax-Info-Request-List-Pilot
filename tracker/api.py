@@ -268,7 +268,11 @@ from tracker.rollover import (
     with_default_dates,
 )
 from tracker.runner import (
+    CODE_GRAPHICS_CARD_FAULT,
+    CODE_READER_COULD_NOT_START,
+    CODE_READER_PATH_WARNING,
     DRAFT_WEEKDAY,
+    LEFT_BEHIND_TO_MOVE,
     LOG_FILENAME,
     LOG_NOT_WRITTEN,
     NOTHING_OUTSTANDING,
@@ -283,6 +287,8 @@ from tracker.runner import (
     last_draft_day,
     last_drafted,
     last_pass_line,
+    left_behind_warnings,
+    log_path,
     reader_start_warning,
     run_household,
     status_report,
@@ -300,10 +306,10 @@ from tracker.scheduling import (
     DEFAULT_REPEAT_MINUTES,
     DEFAULT_START,
     SCHEDULE_XML_ENCODING,
-    SCHEDULE_XML_FILENAME,
     TASK_NAME,
     install_task,
     is_scheduling_host,
+    schedule_xml_path,
     task_scheduler_xml,
 )
 from tracker.settings import (
@@ -313,11 +319,13 @@ from tracker.settings import (
     SettingsError,
     app_dir,
     clients_root,
+    data_home,
     error_log,
     error_log_path,
     firm,
     firm_phone,
     product_name,
+    program_drive_refusal,
     set_clients_root,
     set_firm,
     set_firm_phone,
@@ -424,9 +432,18 @@ SHELL_KILLED_AT = "It was on {household}: {name}."
 SHELL_NO_REPLY = "The tracker ended without a reply (exit code {code}); the details are in the error log."
 SHELL_COULD_NOT_START = "The tracker could not start ({code})."
 SHELL_COULD_NOT_SEND = "The app could not send that to the tracker ({kind}); nothing was changed."
+#: With no error log (no data folder yet), a failed command's stderr is said
+#: in its own reply instead - the shell never writes a log beside the
+#: program (decision 186's rebase review, MF2).
+SHELL_NO_LOG = ("There is no error log to hold the details - the tracker has no data folder yet - so "
+                "they are here instead: {stderr}")
 #: An error of the page's own, said by its class; its message goes to the
 #: error log through the shell (the review's S5).
 PAGE_ERROR = "The app met an error of its own ({kind}); the details are in the error log."
+#: The same, when no data home can be had and so there is no error log to
+#: point at (decision 186): never a sentence naming a file that is not there.
+PAGE_ERROR_NO_LOG = ("The app met an error of its own ({kind}); there is no error log to hold "
+                     "the details, because the tracker has no data folder - the first screen says why.")
 #: What a Sort & Scan reply is said as (the review's S4, decision 42).
 SCAN_SCANNING = "Scanning\u2026"
 SCAN_NOTHING_DONE = "Nothing done: {why}."
@@ -478,6 +495,11 @@ def _failure_of(exc: BaseException) -> dict:
         held = getattr(exc, "lock", None)
         extra["lock"] = (_lock_payload(Path(held).parent)
                          if held and Path(held).name == LOCK_FILENAME else None)
+    elif isinstance(exc, (store.CheckpointNotMade, checkpoint.CheckpointLeftBehind)):
+        # A read that would have made a fresh checkpoint while the old one
+        # sits beside the program (the rebase review of 186, MF1): said as
+        # the first screen says it - what to move and where - not as an error.
+        kind, sentence = "refused", _left_behind_to_move(exc)
     elif isinstance(exc, (store.StoreUnavailable, ledger.RecordNotWritten, ledger.LedgerError)):
         kind, sentence = "failed", FAILED.format(kind=content_check.said_as_class(exc),
                                                  log=ERROR_LOG_FILENAME)
@@ -490,6 +512,13 @@ def _failure_of(exc: BaseException) -> dict:
                                                  log=ERROR_LOG_FILENAME)
     reply = progress.failure_reply(sentence, kind, seq=seq, identifier=identifier, **extra)
     return reply["failure"]
+
+
+def _left_behind_to_move(exc: store.CheckpointNotMade | checkpoint.CheckpointLeftBehind) -> str:
+    """The first screen's :data:`LEFT_BEHIND_TO_MOVE` for the one checkpoint
+    that stopped a command (the rebase review of 186, MF1): the app says
+    this state in one sentence wherever it meets it."""
+    return LEFT_BEHIND_TO_MOVE.format(paths=exc.old, home=exc.home)
 
 
 def _reply_failure(exc: BaseException) -> int:
@@ -954,6 +983,7 @@ def _vocab() -> dict:
     value and its label from the row's year, the parked list from the
     decision value, the picker from candidates).
     """
+    error_log = _error_log_said()
     return {
         "product": product_name(),
         "firm": firm(),
@@ -1163,8 +1193,9 @@ def _vocab() -> dict:
         "shell": {"not_opened": SHELL_NOT_OPENED, "killed": SHELL_KILLED,
                   "killed_at": SHELL_KILLED_AT, "no_reply": SHELL_NO_REPLY,
                   "could_not_start": SHELL_COULD_NOT_START,
-                  "could_not_send": SHELL_COULD_NOT_SEND, "page_error": PAGE_ERROR,
-                  "error_log": str(error_log_path())},
+                  "could_not_send": SHELL_COULD_NOT_SEND, "no_log": SHELL_NO_LOG,
+                  "page_error": PAGE_ERROR if error_log else PAGE_ERROR_NO_LOG,
+                  "error_log": error_log},
         # The lock notice (decision 193, D4): when, where, and - on this
         # machine - which file; nothing waits and nothing needs clearing.
         "lock": {"running": LOCK_RUNNING, "running_other": LOCK_RUNNING_OTHER, "on": LOCK_ON, "greyed": LOCK_GREYED,
@@ -2203,14 +2234,28 @@ def _refresh_readmes(*engagements: Path) -> None:
         refresh_household_readme(household_dir, said=_WARNINGS)
 
 
+def _error_log_said() -> str:
+    """The error log's path for the shell, or ``""`` when no data home can
+    be had (decision 186): the log sits beside the store, in the data home,
+    and ``list`` must still answer so the first screen can say why. The
+    shell keeps no path it is given empty, and then writes no log at all:
+    a failed command's stderr is said in its reply (:data:`SHELL_NO_LOG`)."""
+    try:
+        return str(error_log_path())
+    except SettingsError:
+        return ""
+
+
 def _cmd_state(argv: list[str]) -> dict:
     return _state(_engagement_dir(argv))
 
 
 def _record_pass(runs: list[EngagementRun] | EngagementRun,
-                 warnings: list[str] | None = None, *, registry: Registry | None) -> list[str]:
-    """Leave the record the scheduled run leaves: a line in the run log and
-    the practice's status page, both in the clients root.
+                 warnings: list[tuple[str, str]] | None = None, *,
+                 registry: Registry | None) -> list[str]:
+    """Leave the record the scheduled run leaves: an entry in the run log,
+    in the data home (decision 186), and the practice's status page, in
+    the clients root.
 
     The app's button makes the same pass as the job, so it must leave the
     same trace - a pass with no record is a pass nobody can check
@@ -2227,24 +2272,27 @@ def _record_pass(runs: list[EngagementRun] | EngagementRun,
     statuses recorded, so the person is told what happened either way -
     **in the reply** (decision 189): the sentence for each that failed is
     returned, because stderr is what the app discards when the reply
-    parses. ``warnings`` are the pass's own sentences, logged and put on
-    the page as the scheduled pass puts its own.
+    parses. ``warnings`` are the pass's own, each (code, sentence): the
+    code is logged and the sentence put on the page, as the scheduled pass
+    does with its own. The log is written whether or not a root is set;
+    the page needs one.
     """
     every = [runs] if isinstance(runs, EngagementRun) else list(runs)
-    said = list(warnings or [])
-    root = _saved_root()
-    if root is None or not root.is_dir():
-        return []
+    said = [sentence for _code, sentence in warnings or []]
+    codes = [code for code, _sentence in warnings or []]
     failed: list[str] = []
     # Broadly, both of them: the pass has already moved the client's files
     # and recorded what it found, so nothing about recording it afterwards
     # may turn a finished pass into an error message in the app.
     try:
-        append_log(root / LOG_FILENAME, RunReport(today=dt.date.today(), reminders=REMINDERS_NEVER,
-                                                  runs=every, warnings=said))
+        append_log(log_path(), RunReport(today=dt.date.today(), reminders=REMINDERS_NEVER,
+                                         runs=every, warnings=said, warning_codes=codes))
     except Exception as exc:
-        log.warning("Could not write %s (%s)", LOG_FILENAME, exc)
+        log.warning("Could not write %s (%s)", LOG_FILENAME, exc.__class__.__name__)
         failed.append(LOG_NOT_WRITTEN.format(kind=exc.__class__.__name__))
+    root = _saved_root()
+    if root is None or not root.is_dir():
+        return failed
     if registry is None:
         log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, RegistryError.__name__)
         failed.append(PAGE_NOT_WRITTEN.format(kind=RegistryError.__name__))
@@ -2322,10 +2370,13 @@ def _cmd_scan(argv: list[str]) -> dict:
     run = next((one for one in runs if one.engagement.path == engagement),
                EngagementRun(engagement=engagement_from(engagement)))
     # Said once, as the pass's own (decisions 150, 169 and 189).
-    pass_warnings = [w for w in (ocr.reader_path_warning(), reader_start_warning()) if w]
+    said = [(code, sentence) for code, sentence in (
+        (CODE_READER_PATH_WARNING, ocr.reader_path_warning()),
+        (CODE_READER_COULD_NOT_START, reader_start_warning())) if sentence]
     if ocr_session := ocr.current_session():
-        pass_warnings.extend(ocr_session.warnings())
-    pass_warnings.extend(_record_pass(runs, pass_warnings, registry=practice))
+        said.extend((CODE_GRAPHICS_CARD_FAULT, sentence) for sentence in ocr_session.warnings())
+    pass_warnings = [sentence for _code, sentence in said]
+    pass_warnings.extend(_record_pass(runs, said, registry=practice))
     payload = {
         "run": {
             "ok": run.ok,
@@ -2675,6 +2726,27 @@ def _cmd_unlock(argv: list[str]) -> dict:
             "state": _state(engagement)}
 
 
+def _machine_warnings(root: Path | None) -> list[str]:
+    """This machine's own problems, each a sentence the app's first screen
+    keeps showing until it is fixed (decision 186): what an earlier version
+    left beside the app, or a data home that cannot be had at all, and an app
+    running from a drive Install Schedule refuses (removable, network, or one
+    Windows cannot name) - said every time the app opens from there."""
+    warnings = []
+    try:
+        # Asked first and on its own (decision 186's review, M1): what was
+        # left behind asks the data home only when it finds something, and
+        # not at all under ``TRACKER_STORE``, so it cannot be the one to say
+        # the data home is missing.
+        data_home()
+        warnings += [sentence for _code, sentence in left_behind_warnings(root)]
+    except SettingsError as exc:
+        warnings.append(str(exc))
+    if refusal := program_drive_refusal():
+        warnings.append(refusal)
+    return warnings
+
+
 def _cmd_list(argv: list[str]) -> dict:
     """Every household, return and left-alone folder under the root - the
     same discovery the scheduled run uses.
@@ -2691,7 +2763,8 @@ def _cmd_list(argv: list[str]) -> dict:
              # When the scheduled pass last ran and how it ended (decision
              # 159, E4): one line on the main screen, in the runner's words,
              # with or without a root - a missing root is one way it stops.
-             "last_pass": last_pass_line()}
+             "last_pass": last_pass_line(),
+             "machine_warnings": _machine_warnings(None)}
     # A saved root the rule refuses (decision 188, E-13) is never walked:
     # the app asks for the folder again and says why, and the rest of the
     # app - its vocabulary, its commands - still arrives with this reply.
@@ -2700,13 +2773,22 @@ def _cmd_list(argv: list[str]) -> dict:
     except door.DoorError as exc:
         return {**empty, "needs_root": True, "root": str(clients_root() or ""),
                 "root_problem": str(exc), "vocab": _vocab()}
+    except SettingsError:
+        # A data home that cannot be had (decision 186's review, M1): the root
+        # cannot be held to its rule without it, so it is not walked - but the
+        # first screen still arrives, and its banner (``machine_warnings``,
+        # built above with no root) already carries the sentence. The root
+        # is kept, not asked for again: it is the machine that needs fixing.
+        return {**empty, "needs_root": False, "root": str(clients_root() or ""),
+                "vocab": _vocab()}
     if root is None or not root.is_dir():
         return {**empty, "needs_root": True, "root": str(root or ""), "vocab": _vocab()}
     try:
         registry = discover_engagements(root)
     except EmptyRoot:
         # An empty root is a practice nobody has set up yet, not a failure.
-        return {**empty, "needs_root": False, "root": str(root), "vocab": _vocab()}
+        return {**empty, "needs_root": False, "root": str(root), "vocab": _vocab(),
+                "machine_warnings": _machine_warnings(root)}
     except RegistryError as exc:
         # One that could not be walked is said, never answered as empty
         # (decision 193): the class to the log, the sentence to the page.
@@ -2714,9 +2796,11 @@ def _cmd_list(argv: list[str]) -> dict:
                     exc_info=True)
         _warn(PRACTICE_NOT_WALKED)
         return {**empty, "needs_root": False, "root": str(root),
-                "root_problem": PRACTICE_NOT_WALKED, "vocab": _vocab()}
+                "root_problem": PRACTICE_NOT_WALKED, "vocab": _vocab(),
+                "machine_warnings": _machine_warnings(root)}
     return {**_list_payload(root, registry), "needs_root": False, "vocab": _vocab(),
-            "reader_warning": empty["reader_warning"], "last_pass": empty["last_pass"]}
+            "reader_warning": empty["reader_warning"], "last_pass": empty["last_pass"],
+            "machine_warnings": _machine_warnings(root)}
 
 
 def _list_payload(root: Path, registry: Registry) -> dict:
@@ -4220,6 +4304,11 @@ def _cmd_install_schedule(argv: list[str]) -> dict:
     none of the environment the shell gives the API.
     """
     spec = _read_spec()
+    # The schedule runs whatever program sits where the app is, every pass:
+    # never from a removable or network drive (decision 186). Asked before
+    # the root is read and before any file is written.
+    if refusal := program_drive_refusal():
+        raise ManifestError(refusal)
     root = _root()
     # The job names this app's settings folder, never the root (decision
     # 131): it reads the root from the settings file at every run, so a
@@ -4229,7 +4318,9 @@ def _cmd_install_schedule(argv: list[str]) -> dict:
     every = int(spec["every"]) if spec.get("every") not in (None, "") else DEFAULT_REPEAT_MINUTES
     frozen = bool(getattr(sys, "frozen", False))
     working_dir = Path(sys.executable).resolve().parent if frozen else REPO_ROOT
-    xml_path = settings_path().with_name(SCHEDULE_XML_FILENAME)
+    # The task's file goes into the data home (decision 186), never beside the program.
+    xml_path = schedule_xml_path()
+    xml_path.parent.mkdir(parents=True, exist_ok=True)
     write_text_atomically(
         xml_path,
         task_scheduler_xml(python=sys.executable, settings=folder, working_dir=working_dir,
@@ -4287,6 +4378,8 @@ def _prove_the_root() -> None:
         return
     try:
         store.prove_the_root(root)
+    except checkpoint.CheckpointLeftBehind as exc:
+        raise ManifestError(_left_behind_to_move(exc)) from None
     except (store.StoreError, checkpoint.CheckpointError) as exc:
         # Not this machine's root, or its checkpoint busy or unreadable -
         # each in its own sentence (the rebase review's SF1).

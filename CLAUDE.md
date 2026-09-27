@@ -196,8 +196,10 @@ Conventions worth matching:
   the package's `__init__` imports nothing. An import inside a function or a `__main__`
   block is a call-time import and may point anywhere.
 
-Client data never enters the repo: `runs.log` and the
-drafts are gitignored because they carry real client names and share links.
+Client data never enters the repo: the drafts and the status pages are
+gitignored because they carry real client names and share links, and the
+store, the run log and a reading's temporary files live in the tracker's data
+folder, never in a checkout (decision 186).
 
 ## Standing rule: GitHub Actions cost discipline
 

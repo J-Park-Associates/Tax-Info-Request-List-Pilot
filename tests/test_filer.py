@@ -24,7 +24,7 @@ import pytest
 
 from tests.conftest import TEST_CLIENT, make_engagement, named_page, sort, sort_all
 from tests.test_scanner import text_pdf
-from tracker import ledger, reasons, store
+from tracker import checkpoint, ledger, reasons, store
 from tracker.filer import (
     DUPLICATE,
     FILED,
@@ -6242,6 +6242,11 @@ def test_a_rebuilt_store_still_lets_the_taking_returns_recovery_finish_the_filin
     monkeypatch.undo()
     store.close()
     monkeypatch.setenv(store.ENV_STORE, str(tmp_path / "app2" / store.STORE_FILENAME))
+    # A new machine has no checkpoint: the old one is kept under another
+    # name, as one left beside the program refuses a fresh one (186's
+    # rebase review, MF1).
+    old = tmp_path / "app" / checkpoint.CHECKPOINT_FILENAME
+    old.rename(old.with_name(old.name + ".other-machine"))
 
     sort_all([llc], today=DAY3)
     [taken] = read_index(llc)

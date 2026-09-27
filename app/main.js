@@ -46,15 +46,17 @@ const SETTINGS_DIR = app.isPackaged ? path.dirname(process.execPath) : REPO_ROOT
 // number of its own for a pass.
 const TRACKER_TIMEOUT_MS = 30 * 60 * 1000;
 
-// Word for word tracker.progress.PROGRESS_KEY and
-// tracker.settings.ERROR_LOG_FILENAME (tests/test_single_source.py). A
-// stdout line under the key is a progress line; the one without it, last,
-// is the reply.
+// Word for word tracker.progress.PROGRESS_KEY (tests/test_single_source.py).
+// A stdout line under the key is a progress line; the one without it,
+// last, is the reply.
 const PROGRESS_KEY = "progress";
-const ERROR_LOG_FILENAME = "tracker-errors.log";
-// At most this much of a failed child's stderr is kept, and only in the
-// error log - never on screen (decision 193, security principle 7).
+// At most this much of a failed child's stderr is kept, in the error log -
+// never on screen while there is one (decision 193, security principle 7).
 const STDERR_CAP = 64 * 1024;
+// With no error log (no data folder yet: decision 186's rebase review, MF2)
+// a failed command's stderr goes into its own reply instead, and at most
+// this much of its end, where the error is.
+const STDERR_ON_SCREEN_CAP = 4 * 1024;
 
 // The command the renderer runs first, and the only one allowed before the
 // API has said which commands exist: its reply carries vocab.commands (the
@@ -77,9 +79,14 @@ let killedAt = "It was on {household}: {name}.";
 let noReply = "The tracker ended without a reply (exit code {code}); the details are in the error log.";
 let couldNotStart = "The tracker could not start ({code}).";
 let couldNotSend = "The app could not send that to the tracker ({kind}); nothing was changed.";
+let noLog = "There is no error log to hold the details - the tracker has no data folder yet - so " +
+  "they are here instead: {stderr}";
 // The error log beside the tracker's database, as the API reports it
-// (vocab.shell.error_log): the shell never builds that path. Before the API
-// has said (a failed first start), the settings folder it passes to Python.
+// (vocab.shell.error_log): the shell never builds that path, and never
+// writes a log beside the program or in the settings folder (decision
+// 186's rebase review, MF2). Until the API has named one - a failed first
+// start, or no data folder - there is none: a failed command's stderr is
+// said in its own reply, and anything else is not kept.
 let errorLog = null;
 
 function fill(pattern, values) {
@@ -94,12 +101,22 @@ function shellFailure(sentence, kind, extra = {}) {
 
 // What only the error log may hold (decision 193, principle 7): a failed
 // command's stderr, and an error of the shell's or the page's own.
+// Whether there is a log to keep it in: false when the API has named none.
 function keepInLog(heading, text) {
-  if (!text) return;
-  const target = errorLog || path.join(SETTINGS_DIR, ERROR_LOG_FILENAME);
+  if (!errorLog) return false;
+  if (!text) return true;
   const stamp = new Date().toISOString();
-  fs.promises.appendFile(target, `${stamp} ${heading}\n${String(text).slice(0, STDERR_CAP)}\n`, "utf8")
+  fs.promises.appendFile(errorLog, `${stamp} ${heading}\n${String(text).slice(0, STDERR_CAP)}\n`, "utf8")
     .catch(() => {});
+  return true;
+}
+
+// A failed reply with the stderr there was no log for (MF2): the only
+// place left to say it is the reply itself.
+function withStderr(reply, stderr) {
+  const said = fill(noLog, { stderr: String(stderr).slice(-STDERR_ON_SCREEN_CAP) });
+  const sentence = `${reply.error}\n\n${said}`;
+  return { ...reply, error: sentence, failure: { ...(reply.failure || {}), sentence } };
 }
 
 function learn(result) {
@@ -114,6 +131,7 @@ function learn(result) {
   if (said && typeof said.no_reply === "string") noReply = said.no_reply;
   if (said && typeof said.could_not_start === "string") couldNotStart = said.could_not_start;
   if (said && typeof said.could_not_send === "string") couldNotSend = said.could_not_send;
+  if (said && typeof said.no_log === "string") noLog = said.no_log;
   if (said && typeof said.error_log === "string" && said.error_log) errorLog = said.error_log;
   const paths = (result && result.paths) || (result && result.state && result.state.paths);
   if (paths && typeof paths === "object") {
@@ -232,12 +250,16 @@ function runTracker(args, payload, onProgress) {
     proc.on("close", (code) => {
       take(pending);
       pending = "";
-      // Nothing of stderr goes on screen: a failed command's goes to the
-      // error log beside the tracker's database, for a developer at this
-      // machine (decision 193, security principle 7).
-      if (!reply || reply.error) keepInLog("shell stderr of a failed command", stderr);
-      if (reply) settle(reply);
-      else settle(shellFailure(fill(noReply, { code }), "failed", { progress: last }));
+      // Nothing of stderr goes on screen while there is an error log: a
+      // failed command's goes to the log beside the tracker's database, for
+      // a developer at this machine (decision 193, security principle 7).
+      // With none - no data folder yet - it is said in the reply, never
+      // written beside the program (decision 186's rebase review, MF2).
+      const out = reply || shellFailure(fill(noReply, { code }), "failed", { progress: last });
+      const failed = !reply || reply.error;
+      if (failed && !keepInLog("shell stderr of a failed command", stderr) && stderr) {
+        settle(withStderr(out, stderr));
+      } else settle(out);
     });
     if (body !== undefined) proc.stdin.write(body, "utf8");
     proc.stdin.end();
@@ -270,7 +292,9 @@ ipcMain.handle("tracker-cmd", (event, args, payload) =>
   runTracker(args, payload, (progress) => event.sender.send("tracker-progress", { args, progress })));
 ipcMain.handle("open-path", (_event, p) => openPath(p));
 // An error of the page's own: its text goes to the error log, never on screen.
-ipcMain.handle("log-error", (_event, text) => keepInLog("renderer error", typeof text === "string" ? text : ""));
+ipcMain.handle("log-error", (_event, text) => {
+  keepInLog("renderer error", typeof text === "string" ? text : "");
+});
 ipcMain.handle("pick-folder", async (_event, title) => {
   const result = await dialog.showOpenDialog({
     title: typeof title === "string" ? title : undefined,

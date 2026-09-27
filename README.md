@@ -81,7 +81,7 @@ engagement folder.
 fourteen columns an accountant edits, and the client, link, due date, the
 people the return is for and the rest, are edited in the app's **Edit Request List** editor and nowhere
 else; every save is journalled as one event and folded into one database
-on the machine that runs the schedule ([docs/storage.md](docs/storage.md)),
+in the tracker's data folder on the machine that runs the schedule ([docs/storage.md](docs/storage.md)),
 beside each request's Status, Received Date, File Count and Validation
 Notes and every original's index row. Nothing in the folder is a
 spreadsheet, and the machine reads and writes no workbook.
@@ -199,8 +199,8 @@ the router filed cannot fail its own rules, so that row is a rule edited
 after filing, a copy dragged in by hand or a copy replaced — the firm's
 doing, or the client's, and not the draft's to guess. Nothing is written for
 that client until somebody decides; the run's own earlier draft is removed,
-an edited one is left, and the run log, the practice page and the app name
-the rows. The manual draft is held by the same question. So does a file the
+an edited one is left, and the practice page and the app name the rows; the
+run log counts the hold. The manual draft is held by the same question. So does a file the
 client sent that the rules could not use at all — a locked PDF, an empty
 upload, a file type nothing accepts — when what it looks like is a request
 still outstanding (decision 117): the drop parks for a person and never
@@ -270,6 +270,12 @@ it in the app is all a move takes:
 python -m tracker.runner --settings "C:\Tools\tax-tracker" --log     # what the scheduled job runs
 ```
 
+`--log` alone appends the pass's counts and codes — never a client's name — to `runs.log` in the
+tracker's data folder, rotated at 256 KB with three older files kept; `--log <file>` names
+another, by its whole path - a person's explicit choice, written where it is named, so name a
+place in the data folder. A pass that cannot have its data folder files nothing, writes the
+status page with that one problem, and exits non-zero.
+
 A root on the command line together with `--log` is the shape of the job
 installed before decision 131, and it is refused - red, naming *Install
 Schedule* - unless that root is the settings file's own, so an old job
@@ -291,7 +297,7 @@ button opens that same page, and the app's own pass rewrites it too.
 Generate the job itself with:
 
 ```
-.venv\Scripts\python.exe -m tracker.scheduling --working-dir "C:\Tools\tax-tracker" --out tax-tracker.xml --install
+.venv\Scripts\python.exe -m tracker.scheduling --working-dir "C:\Tools\tax-tracker" --install
 ```
 
 Run it with the app's private Python, the one `Setup.bat` made (decision
@@ -299,7 +305,9 @@ Run it with the app's private Python, the one `Setup.bat` made (decision
 own Python holds none of the locked packages. `--settings` defaults to this checkout's own folder, whose `settings.json`
 must already name a clients root; the job carries no root of its own.
 `--install` registers the task as it writes the XML, and running the same
-line again changes the schedule. The app's **Install Schedule** button does exactly this for the
+line again changes the schedule. It writes the task's file into the tracker's data folder unless
+`--out` names another (a person's explicit choice, written where it is named), and refuses when the program is on a removable or network drive (decision
+186). The app's **Install Schedule** button does exactly this for the
 folder it is showing - from source with the Python it runs under, and in
 the packaged app with its own executable, which runs the job when given
 `--run` first (there is no Python on that machine). A job registered by a

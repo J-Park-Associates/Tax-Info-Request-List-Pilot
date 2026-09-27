@@ -286,15 +286,26 @@ def test_ci_tests_the_python_floor_pyproject_declares():
 def test_gitignore_knows_every_runtime_file_python_writes_outside_the_repo():
     """The store counts, and so do the two files SQLite keeps beside it.
 
-    It lives beside the settings file, which in a source checkout is the
-    repository root: a developer who runs the app, or a subprocess test
-    that does not name a store of its own, writes one into the tree.
+    Since decision 186 it lives in the tracker's data folder, never in a
+    checkout - but a checkout from before it may still hold one, and so
+    may the run log. A temp the tracker writes beside a target
+    (``fsio.TEMP_SUFFIX``) and the real corpus's expectations file, which
+    names the firm's own documents, are ignored too, and none is tracked.
     """
+    import fnmatch
+    import subprocess
+
+    from tracker.fsio import TEMP_SUFFIX
     from tracker.progress import PASSES_DIRNAME
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
     from tracker.runner import LOG_FILENAME, STATUS_PAGE_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
-    from tracker.settings import ERROR_LOG_FILENAME, OCR_SCRATCH_DIRNAME, SETTINGS_FILENAME
+    from tracker.settings import (
+        ERROR_LOG_FILENAME,
+        EXPECTATIONS_FILENAME,
+        OCR_SCRATCH_DIRNAME,
+        SETTINGS_FILENAME,
+    )
     from tracker.store import STORE_FILENAME, STORE_SHM_FILENAME, STORE_WAL_FILENAME
 
     ignored = [line.strip() for line in read(".gitignore").splitlines()
@@ -305,8 +316,28 @@ def test_gitignore_knows_every_runtime_file_python_writes_outside_the_repo():
                  # Decision 193: the error log, its rotated copies and the
                  # passes folder, beside the store.
                  ERROR_LOG_FILENAME, f"{ERROR_LOG_FILENAME}.*", PASSES_DIRNAME + "/",
-                 f"{OCR_SCRATCH_DIRNAME}/"):
+                 f"{OCR_SCRATCH_DIRNAME}/", f"*{TEMP_SUFFIX}", EXPECTATIONS_FILENAME):
         assert ignored.count(name) == 1, name
+    tracked = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True,
+                             check=True).stdout.splitlines()
+    assert [rel for rel in tracked
+            if fnmatch.fnmatch(Path(rel).name, f"*{TEMP_SUFFIX}")
+            or Path(rel).name == EXPECTATIONS_FILENAME] == []
+
+
+def test_the_projects_agent_settings_can_be_committed_and_nothing_else_under_claude():
+    """Decision 186: ``.claude/settings.json`` can be tracked, so the
+    project's agent settings can carry a deny list one day (a guard rail,
+    not a wall); a person's own settings and Claude Code's worktrees stay
+    ignored."""
+    import subprocess
+
+    def ignored(rel: str) -> int:
+        return subprocess.run(["git", "check-ignore", "-q", "--no-index", rel], cwd=REPO).returncode
+
+    assert ignored(".claude/settings.json") == 1
+    assert ignored(".claude/settings.local.json") == 0
+    assert ignored(".claude/worktrees/x/y") == 0
 
 
 def test_every_file_beside_the_store_is_ignored_by_git():
@@ -1684,7 +1715,7 @@ def _run_the_shell(tmp_path, calls, **env):
     done = subprocess.run([node, str(harness), str(REPO / "app" / "main.js"), str(fake),
                            json.dumps(calls)],
                           capture_output=True, text=True, encoding="utf-8", timeout=120, check=False,
-                          env=child_env(FAKE_LOG=str(tmp_path / "tracker-errors.log"), **env))
+                          env=child_env(**{"FAKE_LOG": str(tmp_path / "tracker-errors.log"), **env}))
     assert done.returncode == 0, done.stderr
     return json.loads(done.stdout)
 
@@ -1723,6 +1754,24 @@ def test_the_shell_never_puts_stderr_on_screen_and_appends_it_to_the_error_log(t
     assert "a fabricated message naming Sample Client's folder" in logged
 
 
+def test_with_no_error_log_the_shell_says_stderr_in_the_reply_and_writes_no_file(tmp_path):
+    """The rebase review of 186 (MF2): with no data home the API names no
+    error log, and the shell never builds one beside the program or in the
+    settings folder - a failed command's stderr is said in its own reply,
+    and no file is written anywhere."""
+    import tracker.api as api
+    from tracker.settings import ERROR_LOG_FILENAME
+
+    ran = _run_the_shell(tmp_path, [["list"], ["templates"]], FAKE_LOG="")
+    reply = ran["out"][1]["reply"]
+    stderr = "Traceback: a fabricated message naming Sample Client's folder\n"
+    sentence = api.SHELL_NO_REPLY.format(code=1) + "\n\n" + api.SHELL_NO_LOG.format(stderr=stderr)
+    assert reply["error"] == sentence and reply["failure"]["sentence"] == sentence
+    assert reply["failure"]["kind"] == "failed"
+    assert not (REPO / ERROR_LOG_FILENAME).exists()
+    assert not list(tmp_path.rglob(ERROR_LOG_FILENAME))
+
+
 def test_a_failed_spawn_is_said_by_its_code(tmp_path):
     import tracker.api as api
 
@@ -1732,15 +1781,16 @@ def test_a_failed_spawn_is_said_by_its_code(tmp_path):
     assert "/no/such" not in reply["error"] and reply["failure"]["kind"] == "failed"
 
 
-def test_the_progress_key_and_the_error_log_name_are_typed_once_per_language():
+def test_the_progress_key_is_typed_once_per_language_and_the_error_log_only_by_the_api():
     from tracker.progress import PROGRESS_KEY
     from tracker.settings import ERROR_LOG_FILENAME
 
     main_js = read("app/main.js")
     assert f'const PROGRESS_KEY = "{PROGRESS_KEY}";' in main_js
-    assert f'const ERROR_LOG_FILENAME = "{ERROR_LOG_FILENAME}";' in main_js
-    assert main_js.count(f'"{ERROR_LOG_FILENAME}"') == 1 and main_js.count(f'"{PROGRESS_KEY}"') == 1
-    # The log's path is the API's; the shell builds it only before it has heard.
+    assert main_js.count(f'"{PROGRESS_KEY}"') == 1
+    # The log's path is the API's, and the shell never builds one of its own
+    # (the rebase review of 186, MF2): its name is not in the shell at all.
+    assert ERROR_LOG_FILENAME not in main_js
     assert "vocab.shell" in main_js and "said.error_log" in main_js
 
 
@@ -1758,6 +1808,7 @@ def test_the_shells_default_words_are_the_apis_word_for_word():
     assert default("noReply") == api.SHELL_NO_REPLY
     assert default("couldNotStart") == api.SHELL_COULD_NOT_START
     assert default("couldNotSend") == api.SHELL_COULD_NOT_SEND
+    assert default("noLog") == api.SHELL_NO_LOG
     shell = api._vocab()["shell"]
     assert (shell["killed"], shell["killed_at"], shell["no_reply"], shell["could_not_start"]) == (
         api.SHELL_KILLED, api.SHELL_KILLED_AT, api.SHELL_NO_REPLY, api.SHELL_COULD_NOT_START)

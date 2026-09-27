@@ -1865,8 +1865,8 @@ def test_a_reader_that_cannot_start_keeps_no_verdict(tmp_path, in_a_child):
     [warning] = report.warnings
     assert "could not start on this machine for 2 file(s)" in warning
     assert format_report(report).count(warning) == 1
-    log = append_log(tmp_path / "runs.log", report)
-    assert log.read_text(encoding="utf-8").count(warning) == 1
+    log = append_log(tmp_path / "runs.log", report).read_text(encoding="utf-8")
+    assert warning not in log and "reader-could-not-start=1" in log     # a code (decision 186)
     _memos, verdicts = store.cached_verdicts(store.connect(), engagement, version=CACHE_VERSION)
     for original in originals_of(engagement).iterdir():
         assert sha256_of(original) not in verdicts, original.name      # nothing kept
