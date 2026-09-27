@@ -4671,6 +4671,9 @@ WRITING_COMMANDS = frozenset({
     # Decision 188's accept writes the household's and its returns' records
     # (the port review's M2): held to the checkpoint's root like every other.
     "accept-folder-name",
+    # Decision 201's one-click issuer: it learns the keyword and files the
+    # document, so it is held to the checkpoint's root like every writer.
+    "add-issuer-and-file",
 })
 
 

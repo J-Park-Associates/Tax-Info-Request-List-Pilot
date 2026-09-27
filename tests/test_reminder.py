@@ -2033,7 +2033,7 @@ def test_nothing_in_the_footer_or_the_cli_says_not_asked_for_the_firms_work(tmp_
              validation_notes="1099.pdf: " + reasons.WRONG_DOCUMENT.format(listed="'1098'")),
     ])
     repo = Path(__file__).resolve().parents[1]
-    env = {**os.environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"}
+    env = child_env(PYTHONIOENCODING="utf-8")   # armed by the tripwire (decision 185)
     shown = subprocess.run([sys.executable, "-m", "tracker.reminder", str(held)],
                            cwd=repo, capture_output=True, text=True, env=env).stdout
     assert f"{SIDE_US.label}: " in shown and f"{SIDE_DECIDE.label}: " in shown

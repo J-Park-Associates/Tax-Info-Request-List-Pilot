@@ -1017,9 +1017,11 @@ def test_a_catalog_that_will_not_load_is_said_in_the_roll_fold_and_the_page_is_d
     same. No pick is drawn then, so the roll keeps each return's recorded
     form instead of sending "no template" for every one."""
     js = read("app/renderer/app.js")
-    refreshing = _js_function(js, "async function refresh(preferPath) {")
-    guarded = refreshing.split("try {\n      await loadForms();\n    } catch (err) {", 1)
-    assert len(guarded) == 2, refreshing
+    # Start-up loads the catalog once (decision 194: a switch reads the
+    # state alone, so the catalog is not read again on every click).
+    starting = _js_function(js, "async function bootstrap(preferPath) {")
+    guarded = starting.split("try {\n      await loadForms();\n    } catch (err) {", 1)
+    assert len(guarded) == 2, starting
     # Said in the words a notice would use: a page error by its class alone
     # (principle 7), never its message.
     assert guarded[1].lstrip().startswith("formsUnloaded = failureSentence(err);"), guarded[1]
@@ -2513,7 +2515,7 @@ def test_switching_returns_is_one_state_call():
     assert show.count("call(") == 1 and 'call(["state", ' in show
     for head in ('$("household-returns").addEventListener("click", (e) => {',
                  '$("eng-select").addEventListener("change", (e) => {',
-                 '$("prior-list").addEventListener("click", async (e) => {'):
+                 '$("household-roll").addEventListener("click", async (e) => {'):
         handler = _handler(js, head)
         assert "showReturn(" in handler, head
         for other in ("refresh(", "bootstrap(", "loadReminder(", "call("):
@@ -2946,22 +2948,27 @@ saveEditor().then(() => process.stdout.write(JSON.stringify(done)));
 
 
 def test_edit_request_list_says_so_when_the_state_is_still_another_returns(tmp_path):
-    """The review's S4: when the state on screen is still another return's
-    after reading it again, Edit Request List puts the API's sentence in
-    the banner and opens nothing - never a button that does nothing."""
+    """The review's S4, on decision 194's model: when the state read for
+    the editor is still another return's - a switch landed while it was
+    read - Edit Request List puts the API's sentence in the banner and
+    opens nothing - never a button that does nothing."""
     from tracker import api
 
     seen = _run_renderer(tmp_path, "open_editor", ("async function openEditor() {",), f"""
 const vocab = {{ editor: {{ not_this_return: {json.dumps(api.EDITOR_NOT_THIS_RETURN)} }} }};
 const active = "/root/J Park & Associates/Lee/2026/1040 - Pat Lee";
-let lastState = {{ paths: {{ engagement: "/root/J Park & Associates/Lee/2026/1120S - Lee LLC" }} }};
-const done = {{ refreshed: 0, banners: [], opened: [] }};
-const refresh = async () => {{ done.refreshed += 1; }};
+const other = {{ paths: {{ engagement: "/root/J Park & Associates/Lee/2026/1120S - Lee LLC" }} }};
+let lastState = other, editorState = null;
+const done = {{ called: [], banners: [], opened: [], failed: 0 }};
+const withEng = (command) => [command, "--engagement", active];
+const call = async (args) => {{ done.called.push(args[0]); return other; }};
+const failed = () => {{ done.failed += 1; }};
 const banner = (text, cls) => done.banners.push([text, cls]);
 const openDialog = (id) => done.opened.push(id);
 openEditor().then(() => process.stdout.write(JSON.stringify(done)));
 """)
-    assert seen == {"refreshed": 1, "banners": [[api.EDITOR_NOT_THIS_RETURN, "err"]], "opened": []}
+    assert seen == {"called": ["state"], "banners": [[api.EDITOR_NOT_THIS_RETURN, "err"]],
+                    "opened": [], "failed": 0}
 
 
 def _side_lines(tmp_path, labels: dict, items: list[dict]) -> list:
@@ -3138,15 +3145,17 @@ def test_escape_never_discards_unsaved_work():
     assert "for (const row of dialogSnapshot.editor.rows)" in _js_function(js, "async function renameRequest() {")
 
 
-def test_the_editor_opens_on_the_state_on_screen_and_spawns_none():
-    """D13: the editor opens on ``lastState`` - the reply the page is
-    showing - and starts no process, except to read the return a switch
-    has not landed on yet; the save is still judged by ``list_head``."""
+def test_the_editor_opens_on_the_state_on_screen_with_every_fold_closed():
+    """D13 on decision 194's model: the editor opens on ``lastState`` - the
+    reply the page is showing - and reads ``state`` only for a return a
+    switch has not landed on yet, one call; each open starts with every
+    fold closed, and the save is still judged by ``list_head``."""
     js = read("app/renderer/app.js")
     body = _js_function(js, "async function openEditor() {")
-    assert 'withEng("state")' not in body and "call(" not in body
-    assert "editorState = lastState;" in body
-    assert "if (!ours()) await refresh(active);" in body
+    assert body.count("call(") == 1 and 'call(withEng("state"))' in body
+    assert "? { ...lastState }" in body and body.index("lastState") < body.index("call(")
+    assert "refresh(" not in body
+    assert body.index("editorFolds.clear();") < body.index("renderEditorRows();")
     assert "head: editorState.list_head" in _js_function(js, "async function saveEditor() {")
 
 

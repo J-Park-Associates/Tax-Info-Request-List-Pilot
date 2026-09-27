@@ -1126,10 +1126,10 @@ def test_household_roll_forward_rolls_all_or_none(park, monkeypatch):
 
     real_create = rollover.create_engagement
 
-    def the_third_fails(folder, items, info):
+    def the_third_fails(folder, items, info, **kwargs):
         if folder == targets[2]:
             raise OSError("the disk filled while the third return was made")
-        return real_create(folder, items, info)
+        return real_create(folder, items, info, **kwargs)
 
     monkeypatch.setattr(rollover, "create_engagement", the_third_fails)
     with pytest.raises(ManifestError, match="the disk filled") as failed:

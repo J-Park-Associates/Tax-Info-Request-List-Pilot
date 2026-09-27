@@ -719,7 +719,10 @@ def roll_household(
         try:
             # The up-front refusal only: what is saved is read again under
             # the lock (step 4), so an edit made meanwhile is never undone.
-            validated(_rows_as_stored(one.path))
+            # Judged as held (decision 201): a same-name pair the list
+            # already holds is the retirement's to carry, not to refuse.
+            stored = _rows_as_stored(one.path)
+            validated(stored, recorded=stored)
         except (ManifestError, OSError) as exc:
             raise ManifestError(_nothing_rolled(one.path.name, exc)) from exc
         retiring.append(one.path)
@@ -853,7 +856,10 @@ def _plan_one(prior: Path, prior_info: EngagementInfo, plan: ReturnPlan,
         raise ManifestError(
             f"A return named '{taken}' already exists for {household} {target_year}")
     refuse_a_path_past_the_limit(target, report.items)
-    validated(report.items)
+    # Last year's rows carried as they were - a same-name issuer pair the
+    # list already held among them - are judged as create_engagement will
+    # judge them (decision 201), so the plan refuses nothing the make keeps.
+    validated(report.items, recorded=report.from_last_year or None)
 
     carried = carry_engagement_info(prior_info, rolled_from=str(prior), tax_year=target_year)
     # The inbox is the household's and does not change from one year to
