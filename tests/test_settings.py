@@ -292,6 +292,32 @@ def test_the_error_log_lives_beside_the_tracker_database(beside_the_app, monkeyp
     assert not (settings_dir() / ERROR_LOG_FILENAME).exists()
 
 
+def test_an_error_log_that_cannot_be_written_never_spills_kept_words_to_stderr(
+        beside_the_app, monkeypatch, capfd):
+    """Decision 190's landing review, SF1: with the log unwritable, logging's
+    own handleError would print the record's arguments - the kept error's
+    whole words - to stderr. The handler says one fixed line instead."""
+    import logging
+
+    from tracker import errors, store
+    from tracker.layout import CLIENTS_TREE
+    from tracker.settings import ERROR_LOG_FILENAME, ERROR_LOG_NOT_WRITTEN, error_log
+
+    quoted = f"/{CLIENTS_TREE}/Sample Household/Drop files here/W2.pdf"
+    elsewhere = beside_the_app / "data" / store.STORE_FILENAME
+    monkeypatch.setenv(store.ENV_STORE, str(elsewhere))
+    (elsewhere.parent / ERROR_LOG_FILENAME).mkdir(parents=True)     # a folder: never writable as a file
+    monkeypatch.setattr(logging, "raiseExceptions", True)
+    capfd.readouterr()
+    with error_log("tracker") as path:
+        errors.keep("probe", ValueError(quoted), name="W2.pdf")
+    err = capfd.readouterr().err
+    assert quoted not in err and "W2.pdf" not in err, err
+    said = err.strip().splitlines()
+    head, tail = ERROR_LOG_NOT_WRITTEN.format(name=path.name, kind="\0").split("\0")
+    assert len(said) == 1 and said[0].startswith(head) and said[0].endswith(tail), err
+
+
 def test_the_error_log_is_none_when_the_data_home_cannot_be_had(monkeypatch):
     """Decision 186 on 193: the error log sits beside the store, in the
     data home; with no data home there is no log, and the block still runs

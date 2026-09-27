@@ -179,6 +179,10 @@ ERROR_LOG_FILENAME = "tracker-errors.log"
 ERROR_LOG_MAX_BYTES = 1_000_000
 ERROR_LOG_BACKUPS = 3
 ERROR_LOG_FORMAT = "%(asctime)s pid=%(process)d %(name)s %(levelname)s %(message)s"
+#: The one line said on stderr when the error log cannot take a record
+#: (decision 190's landing review, SF1): the failure's class and code,
+#: never the record - whose words go to the log "and nowhere else".
+ERROR_LOG_NOT_WRITTEN = "{name} could not be written ({kind}); what it would have held is not said here."
 
 
 def error_log_path() -> Path:
@@ -198,7 +202,12 @@ class _ErrorLog(logging.Handler):
     would take the file past :data:`ERROR_LOG_MAX_BYTES` the file becomes
     ``.1``, ``.1`` becomes ``.2`` and so on to :data:`ERROR_LOG_BACKUPS`;
     each record is appended whole in UTF-8 and never ``fsync``-ed. Both
-    numbers are read when a record is written."""
+    numbers are read when a record is written.
+
+    A record it cannot write is said by :meth:`handleError` as one fixed
+    line, never through ``logging``'s own, which prints the record's
+    message and arguments - a kept error's whole words - to stderr
+    (decision 190's landing review, SF1)."""
 
     def __init__(self, path: Path) -> None:
         super().__init__(logging.WARNING)
@@ -217,6 +226,18 @@ class _ErrorLog(logging.Handler):
                 handle.write(data)
         except Exception:
             self.handleError(record)
+
+    def handleError(self, record: logging.LogRecord) -> None:
+        # At call time, as store is in error_log_path(): this module's
+        # load-time imports stay layout and fsio.
+        from tracker import errors
+
+        if logging.raiseExceptions and sys.stderr is not None:
+            try:
+                sys.stderr.write(ERROR_LOG_NOT_WRITTEN.format(
+                    name=self.path.name, kind=errors.error_class(sys.exc_info()[1])) + "\n")
+            except OSError:
+                pass    # no stderr to say it on either: as logging's own handleError does
 
     def _rotate(self) -> None:
         def kept(n: int) -> Path:

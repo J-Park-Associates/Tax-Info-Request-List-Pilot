@@ -6496,6 +6496,36 @@ def test_an_unexpected_error_is_said_by_class_on_screen_and_in_full_only_in_the_
     assert "Traceback" in logged and "templates failed" in logged
 
 
+def test_a_broken_journal_is_said_in_the_firms_sentence_with_its_line_and_run_recover(
+        capsys, demo_root, monkeypatch, tmp_path):
+    """Decision 190's landing review, MF1: the app says a LedgerError as the
+    status page and the run report do - whole, with its line and the one
+    instruction that fixes it - while a disk's or a store's failure stays
+    by its class and code."""
+    return_dir = tmp_path / "1040 - Sample Household"
+    return_dir.mkdir()
+    ledger.path_for(return_dir).write_bytes(b"this line is not an event\n{}\n")
+
+    def reads_the_broken_journal(argv):
+        ledger.read_events(return_dir)
+
+    monkeypatch.setitem(api.COMMANDS, "templates", reads_the_broken_journal)
+    code, payload = run(capsys, "templates")
+    sentence = ledger.NOT_AN_EVENT.format(name=ledger.path_for(return_dir).name, line=1,
+                                          why="it is not JSON")
+    assert code == 1 and payload["error"] == sentence, payload
+    assert payload["failure"]["kind"] == "refused" and ledger.RUN_RECOVER in payload["error"]
+
+    for raised, kind in ((ledger.RecordNotWritten("ENOSPC"), "RecordNotWritten (ENOSPC)"),
+                         (store.StoreUnavailable("SQLITE_BUSY"), "StoreUnavailable (SQLITE_BUSY)")):
+        def fails(argv, raised=raised):
+            raise raised
+
+        monkeypatch.setitem(api.COMMANDS, "templates", fails)
+        code, payload = run(capsys, "templates")
+        assert code == 1 and said_by_class(payload, kind), payload
+
+
 def test_the_error_log_rotates_and_never_syncs_to_disk(capsys, demo_root, monkeypatch):
     from tracker import settings
     from tracker.settings import error_log_path

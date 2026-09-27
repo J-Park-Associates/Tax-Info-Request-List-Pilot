@@ -226,10 +226,52 @@ _FILE_HANDLERS = {"FileHandler", "RotatingFileHandler", "TimedRotatingFileHandle
                   "WatchedFileHandler"}
 
 
+#: The one function that may give the root logger a console: it keeps
+#: every root handler free of the kept words (decision 190, D-6).
+THE_ONE_CONSOLE = ("errors.py", "console")
+
+
+def _root_logger(node: ast.AST) -> bool:
+    """``getLogger()``, ``getLogger("")``, ``getLogger(None)`` or ``logging.root``."""
+    if isinstance(node, ast.Attribute) and node.attr == "root":
+        return True
+    if not isinstance(node, ast.Call):
+        return False
+    called = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
+    return called == "getLogger" and not node.keywords and (
+        not node.args or (isinstance(node.args[0], ast.Constant) and node.args[0].value in ("", None)))
+
+
+def _a_second_console(source: str, file: str) -> list[str]:
+    """A console the kept words could reach (decision 190's landing review,
+    SF2): any ``basicConfig``, any ``StreamHandler``, or a handler added to
+    the root logger - outside :data:`THE_ONE_CONSOLE`, which filters them."""
+    tree = ast.parse(source)
+    allowed: set[int] = set()
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.FunctionDef) and (file, node.name) == THE_ONE_CONSOLE):
+            allowed.update(range(node.lineno, node.end_lineno + 1))
+    found = []
+    for node in ast.walk(tree):
+        if getattr(node, "lineno", None) in allowed:
+            continue
+        if isinstance(node, ast.Attribute) and node.attr in {"basicConfig", "StreamHandler"}:
+            found.append(f"{file}:{node.lineno}: {node.attr}")
+        if isinstance(node, ast.Name) and node.id in {"basicConfig", "StreamHandler"}:
+            found.append(f"{file}:{node.lineno}: {node.id}")
+        if isinstance(node, ast.alias) and node.name in {"basicConfig", "StreamHandler"}:
+            found.append(f"{file}:{node.lineno}: imports {node.name}")
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "addHandler" and _root_logger(node.func.value)):
+            found.append(f"{file}:{node.lineno}: a handler on the root logger")
+    return found
+
+
 def _a_second_log(source: str, file: str) -> list[str]:
     """A file handler attached, ``logging.handlers`` imported, a handler of
-    the module's own, ``basicConfig(filename=...)`` or a ``*.log`` name."""
-    found = []
+    the module's own, ``basicConfig(filename=...)`` or a ``*.log`` name -
+    and any console but :data:`THE_ONE_CONSOLE` (:func:`_a_second_console`)."""
+    found = _a_second_console(source, file)
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             names = [node.module or ""] if isinstance(node, ast.ImportFrom) else [a.name for a in node.names]
@@ -260,8 +302,9 @@ def test_no_module_but_settings_attaches_a_log_file_or_names_one():
     only place a logger writes to a file. A second one - a module's own
     handler, a ``logging.handlers`` import (which also loads ``socket``) or
     a file named for it - fails here."""
-    found = [finding for path in sorted(TRACKER.glob("*.py")) if path.name != THE_ONE_LOG
-             for finding in _a_second_log(path.read_text(encoding="utf-8"), path.name)]
+    found = [finding for path in sorted(TRACKER.glob("*.py"))
+             for finding in (_a_second_log if path.name != THE_ONE_LOG else _a_second_console)(
+                 path.read_text(encoding="utf-8"), path.name)]
     assert found == [], "\n".join(found)
 
 
@@ -272,9 +315,28 @@ def test_no_module_but_settings_attaches_a_log_file_or_names_one():
     "import logging\nclass Mine(logging.Handler):\n    pass\n",
     "import logging\nlogging.basicConfig(filename=p)\n",
     "NAME = 'debug.log'\n",
+    # ... and a console the kept words could reach (the landing review, SF2).
+    "import logging\nlogging.basicConfig()\n",
+    "import logging\nlogging.basicConfig(level=logging.INFO)\n",
+    "from logging import basicConfig\nbasicConfig()\n",
+    "import logging\nlogging.getLogger('tracker').addHandler(logging.StreamHandler())\n",
+    "import logging\nlogging.getLogger().addHandler(handler)\n",
+    "import logging\nlogging.getLogger('').addHandler(handler)\n",
+    "import logging\nlogging.root.addHandler(handler)\n",
+    "def console():\n    import logging\n    logging.basicConfig()\n",
 ])
 def test_the_one_log_guard_finds_a_second_log(shape):
     assert _a_second_log(shape, "module.py"), shape
+
+
+def test_the_one_console_is_errors_console_and_only_it():
+    """``errors.console`` may call ``basicConfig`` - it filters every root
+    handler it makes - and the same call in any other function of
+    ``errors.py``, or a function of that name elsewhere, is found."""
+    one = "import logging\ndef console(**config):\n    logging.basicConfig(**config)\n"
+    assert _a_second_console(one, "errors.py") == []
+    assert _a_second_console(one, "scanner.py")
+    assert _a_second_console(one.replace("def console", "def other"), "errors.py")
 
 
 def test_keep_hands_the_whole_message_and_its_trace_to_the_debug_logger(kept):

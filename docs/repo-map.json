@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 166,
-    "edges": 1080,
-    "reused": 126
+    "edges": 1082,
+    "reused": 120
   },
   "node_types": [
     "artifact",
@@ -135,8 +135,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "68320c6f10972a19",
-      "lines": 4974,
+      "sha256": "7a5ba2e11675b1ad",
+      "lines": 4978,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_FOLDER_NAME_HELP",
@@ -843,7 +843,7 @@
         "SAYS_ITS_CODE": "'says_its_code'"
       },
       "role": "What an error is called where a person can see it (decision 190): error_class(exc) is the class, and for an OSError its errno's symbolic name (FileNotFoundError (ENOENT)), or for a class that sets SAYS_ITS_CODE (decision 189's StoreUnavailable, RecordNotWritten) its code, never the message and never a path - the one definition of how an error is said, which decision 189 first wrote as content_check.said_as_class; said(exc, firm_written) keeps the tracker's own sentences whole; keep(where, exc_or_text, name=) writes the whole message and trace to the debug logger DEBUG_LOGGER ('tracker.debug') at WARNING, which propagates to 'tracker', so the words land in decision 193's one local debug log while settings.error_log holds it; in a reading child keep_for_the_parent() collects instead and take_kept() hands them to the pass; console() is the one root console, with the debug logger filtered off it. A small CLI names a built-in exception's class or says where the words go (WHERE_KEPT).",
-      "notes": "Layer 0, standard library only, nothing of the package. A class name and not a shortened message because 120 characters is an SSN: no length is short enough to be safe, and a class name is written by a programmer. Every reason's {error}, the router's 'could not read it', the filer's and runner's catch-alls and the app's unexpected error name the class; the record's own errors (ManifestError, StoreError and the others) keep their text. Part 4 (decision 190): the logger propagates to 'tracker', so inside settings.error_log('tracker') a kept message lands in tracker-errors.log beside the store in the data home, and keeps a NullHandler, so with no log attached Python's last-resort handler prints nothing; a hand-run scan's console comes from errors.console(), which filters it off, and nothing ever reaches runs.log. A reading child keeps nothing itself: its keeps travel back in ocr.Outcome.kept (at most KEPT_PER_ANSWER, then a count) and ocr.Session keeps each. tests/test_errors.py fails if any module but settings attaches a file handler, imports logging.handlers or names a log file (runner's runs.log named with its reason). tests/test_errors.py guards that no module under tracker/ puts a caught exception's words beside its class or into a reason's {error}, with the record-side exceptions named once. said(exc, firm_written) is the one rule for a row or a page that may name either kind: the caller's own errors (the filer's FIRM_WRITTEN, the runner's and rollover's ManifestError) whole, anything else by its class (the review's M1 and S3). It also fails on a class spelled inline - x.__class__.__name__, type(x).__name__ or x.__name__ of an exception an except bound - anywhere under tracker/ but errors.py, so an OSError is never said twice, once without its errno (the rebase review's M1). And it fails any log line under tracker/ that carries a caught exception's words, a traceback, exc_info or log.exception: under the scheduled job no handler is configured and Python's last-resort handler prints every warning to the console window (D-6), so a log line says errors.error_class() and the firm's own words, and the words (and a client's file name) go to keep(); content_check's two ReaderUnavailable lines, the machine's words, are the named exceptions. Landed on 159: the checkpoint's CheckpointUnavailable sets says_its_code, so error_class says it with its engine code; locking, ledger and store import errors at call time only (their layer rules), and test_errors.FIRM_WRITTEN names CheckpointError, CheckpointUnavailable and RolledNotAllRetired as the firm's own sentences."
+      "notes": "Layer 0, standard library only, nothing of the package. A class name and not a shortened message because 120 characters is an SSN: no length is short enough to be safe, and a class name is written by a programmer. Every reason's {error}, the router's 'could not read it', the filer's and runner's catch-alls and the app's unexpected error name the class; the record's own errors (ManifestError, StoreError and the others) keep their text. Part 4 (decision 190): the logger propagates to 'tracker', so inside settings.error_log('tracker') a kept message lands in tracker-errors.log beside the store in the data home, and keeps a NullHandler, so with no log attached Python's last-resort handler prints nothing; a hand-run scan's console comes from errors.console(), which filters it off, and nothing ever reaches runs.log. A reading child keeps nothing itself: its keeps travel back in ocr.Outcome.kept (at most KEPT_PER_ANSWER, then a count) and ocr.Session keeps each. tests/test_errors.py fails if any module but settings attaches a file handler, imports logging.handlers or names a log file (runner's runs.log named with its reason), and if any basicConfig, any StreamHandler or a handler on the root logger appears under tracker/ outside errors.console() (the landing review's SF2). tests/test_errors.py guards that no module under tracker/ puts a caught exception's words beside its class or into a reason's {error}, with the record-side exceptions named once. said(exc, firm_written) is the one rule for a row or a page that may name either kind: the caller's own errors (the filer's FIRM_WRITTEN, the runner's and rollover's ManifestError) whole, anything else by its class (the review's M1 and S3). It also fails on a class spelled inline - x.__class__.__name__, type(x).__name__ or x.__name__ of an exception an except bound - anywhere under tracker/ but errors.py, so an OSError is never said twice, once without its errno (the rebase review's M1). And it fails any log line under tracker/ that carries a caught exception's words, a traceback, exc_info or log.exception: under the scheduled job no handler is configured and Python's last-resort handler prints every warning to the console window (D-6), so a log line says errors.error_class() and the firm's own words, and the words (and a client's file name) go to keep(); content_check's two ReaderUnavailable lines, the machine's words, are the named exceptions. Landed on 159: the checkpoint's CheckpointUnavailable sets says_its_code, so error_class says it with its engine code; locking, ledger and store import errors at call time only (their layer rules), and test_errors.FIRM_WRITTEN names CheckpointError, CheckpointUnavailable and RolledNotAllRetired as the firm's own sentences."
     },
     {
       "id": "tracker/filer.py",
@@ -3192,8 +3192,8 @@
       "id": "tracker/settings.py",
       "type": "module",
       "layer": "core",
-      "sha256": "fd6d8d595c3f9776",
-      "lines": 743,
+      "sha256": "22fa59dedc591959",
+      "lines": 764,
       "cli": "python -m tracker.settings",
       "exports": [
         "COLUMN_CATALOG",
@@ -3213,6 +3213,7 @@
         "ERROR_LOG_FILENAME",
         "ERROR_LOG_FORMAT",
         "ERROR_LOG_MAX_BYTES",
+        "ERROR_LOG_NOT_WRITTEN",
         "EXAMPLE_ROOT",
         "EXPECTATIONS_COLUMNS",
         "EXPECTATIONS_FILENAME",
@@ -3301,6 +3302,7 @@
         "ERROR_LOG_MAX_BYTES": "1000000",
         "ERROR_LOG_BACKUPS": "3",
         "ERROR_LOG_FORMAT": "'%(asctime)s pid=%(process)d %(name)s %(levelname)s %(message)s'",
+        "ERROR_LOG_NOT_WRITTEN": "'{name} could not be written ({kind}); what it would have held is not said here.'",
         "ROOT_IS_SYSTEM_DRIVE": "'{root} is the whole system drive; the tracker would walk all of it. Choose the folder the firm keeps its clients in'",
         "ROOT_HOLDS_SETTINGS": "\"{root} holds the app's own settings ({settings}); choose the folder the firm keeps its clients in\"",
         "ROOT_INSIDE_SETTINGS": "\"{root} is inside the app's settings folder ({settings}); choose the folder the firm keeps its clients in\"",
@@ -3723,7 +3725,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "03b3be1fbfa2c630",
+      "sha256": "dfbf18f988a61a85",
       "lines": 440,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -3741,7 +3743,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "5bf7bfbb678a027d",
+      "sha256": "9adaec14d30d2e31",
       "lines": 1054,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -4248,8 +4250,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6f75c0c03ce0bc09",
-      "lines": 7599,
+      "sha256": "65a86cbf63c45ee0",
+      "lines": 7629,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -4276,6 +4278,7 @@
         "teach",
         "test_a_bad_due_date_is_a_sentence",
         "test_a_blank_issuer_name_is_refused_before_anything_is_read",
+        "test_a_broken_journal_is_said_in_the_firms_sentence_with_its_line_and_run_recover",
         "test_a_card_no_longer_waiting_for_an_issuer_is_refused",
         "test_a_card_parked_for_an_unnamed_issuer_offers_the_next_free_issuer_row",
         "test_a_card_parked_for_any_other_reason_offers_no_issuer_box",
@@ -4988,8 +4991,8 @@
       "id": "tests/test_errors.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "cf70f425dc505cc8",
-      "lines": 939,
+      "sha256": "d9d89cae4e4c8d5e",
+      "lines": 1001,
       "exports": [
         "DROPPED",
         "ERRNO_NAMED_ON_PURPOSE",
@@ -5000,6 +5003,7 @@
         "NUMBER",
         "QUOTED",
         "SAID_WHOLE_ON_PURPOSE",
+        "THE_ONE_CONSOLE",
         "THE_ONE_DEFINITION",
         "THE_ONE_LOG",
         "TRACKER",
@@ -5042,12 +5046,14 @@
         "test_the_guard_sees_every_shape_of_an_exceptions_words",
         "test_the_log_guard_passes_the_class_and_the_debug_sink",
         "test_the_log_guard_sees_every_shape_of_an_exceptions_words",
+        "test_the_one_console_is_errors_console_and_only_it",
         "test_the_one_log_guard_finds_a_second_log"
       ],
       "constants": {
         "NUMBER": "'123-45-6789'",
         "NAME": "'Jane Fabricated'",
         "THE_ONE_LOG": "'settings.py'",
+        "THE_ONE_CONSOLE": "('errors.py', 'console')",
         "THE_ONE_DEFINITION": "('errors.py', 'error_class')",
         "DROPPED": "'/Clients/Test Household/Drop files here/W2.pdf'"
       }
@@ -7097,8 +7103,8 @@
       "id": "tests/test_settings.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "bc56d764622b88df",
-      "lines": 559,
+      "sha256": "6c7bddc811ab05a1",
+      "lines": 585,
       "exports": [
         "beside_the_app",
         "test_a_cleared_folder_box_is_refused_not_recorded_as_the_working_folder",
@@ -7109,6 +7115,7 @@
         "test_a_missing_local_application_data_is_refused_and_nothing_falls_back_to_the_program_or_temp",
         "test_a_root_one_level_too_deep_is_refused_and_the_example_root_is_not",
         "test_an_absent_settings_file_is_found_absent_by_opening_it",
+        "test_an_error_log_that_cannot_be_written_never_spills_kept_words_to_stderr",
         "test_an_unreadable_settings_file_is_an_error_not_a_default",
         "test_asking_where_the_data_home_is_creates_nothing",
         "test_beside_the_program_is_the_settings_folder_and_a_frozen_executables_own",
@@ -11524,6 +11531,12 @@
     },
     {
       "from": "tests/test_settings.py",
+      "to": "tracker/errors.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_settings.py",
       "to": "tracker/fsio.py",
       "type": "exercises",
       "source": "derived"
@@ -14250,6 +14263,12 @@
       "from": "tracker/settings.py",
       "to": "tracker/layout.py",
       "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/settings.py",
+      "to": "tracker/errors.py",
+      "type": "imports_at_call",
       "source": "derived"
     },
     {

@@ -487,10 +487,14 @@ def _warn(sentence: str) -> None:
 def _failure_of(exc: BaseException) -> dict:
     """The one rule for how an error is said (decision 193, ruling 3):
     ``{"sentence", "kind", "seq", "identifier"}``, plus ``lock`` when
-    another pass holds the return. In this order: stale, locked, the
-    record's and the store's own failures by class (their text can quote
-    a journal line), the tracker's worded refusals, and anything else by
-    class."""
+    another pass holds the return. In this order: stale, locked, a
+    checkpoint left behind, the disk's and the store's failures by class
+    and code (:class:`~tracker.ledger.RecordNotWritten`,
+    :class:`~tracker.store.StoreUnavailable`), the tracker's worded
+    refusals - a broken journal's :class:`~tracker.ledger.LedgerError`
+    among them, said whole with its line and "Run recover" as the status
+    page and the run report say it (decision 190's landing review, MF1:
+    one rule for one question) - and anything else by class."""
     seq = getattr(exc, "seq", None)
     identifier = getattr(exc, "identifier", None)
     if seq is None:
@@ -510,12 +514,12 @@ def _failure_of(exc: BaseException) -> dict:
         # sits beside the program (the rebase review of 186, MF1): said as
         # the first screen says it - what to move and where - not as an error.
         kind, sentence = "refused", _left_behind_to_move(exc)
-    elif isinstance(exc, (store.StoreUnavailable, ledger.RecordNotWritten, ledger.LedgerError)):
+    elif isinstance(exc, (store.StoreUnavailable, ledger.RecordNotWritten)):
         kind, sentence = "failed", FAILED.format(kind=errors.error_class(exc),
                                                  log=ERROR_LOG_FILENAME)
     elif isinstance(exc, (ManifestError, FilingError, door.DoorError, layout.LayoutError,
                           SettingsError, reminder.ReminderError, RegistryError,
-                          store.StoreError)):
+                          store.StoreError, ledger.LedgerError)):
         kind, sentence = "refused", str(exc)
     else:
         kind, sentence = "failed", FAILED.format(kind=errors.error_class(exc),
