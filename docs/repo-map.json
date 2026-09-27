@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 158,
     "edges": 973,
-    "reused": 118
+    "reused": 121
   },
   "node_types": [
     "artifact",
@@ -3342,8 +3342,8 @@
       "id": "CLAUDE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "dd1289dce6310b10",
-      "lines": 293,
+      "sha256": "49739d2a201aa2b5",
+      "lines": 292,
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
     },

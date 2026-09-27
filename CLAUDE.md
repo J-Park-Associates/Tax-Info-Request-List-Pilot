@@ -241,11 +241,10 @@ standing rule"):**
   draft until it is retargeted onto `main`, then is marked ready: a pull
   request based on another branch runs nothing, and retargeting starts no
   run.
-- **Rebase merging is the default when several agents work on the same
-  head** (Jason, 2026-09-26): parallel lanes branched from one `main` tip land
-  by GitHub's rebase merge, so history stays one line and the next lane
-  rebases onto a straight tip. A single chain from one agent may still merge
-  with a merge commit. Never squash, and never force-push `main`.
+- **Every landing is a merge commit** (Jason, 2026-09-26, reversing the
+  rebase-merge default of earlier that day): it records the landing as its
+  own step, and the Decision History job reads the PR number from it. Never
+  a rebase merge, never a squash, never a force-push to `main`.
 - **Lanes land one at a time, in a queue: the default workflow** (Jason,
   2026-09-26). Only the lane whose turn it is lands, on the orchestrator's
   "YOUR TURN" message; until then a lane builds only on its own stack or
@@ -253,8 +252,8 @@ standing rule"):**
   a lane's turn the orchestrator opens its pull request as a **draft**,
   rebases it onto `main` on GitHub (the pull request's "Update branch",
   rebase option), **then**
-  marks it ready - its one run checks the rebased head - and lands it by
-  rebase merge. Any push to a ready pull request, GitHub's own rebase
+  marks it ready - its one run checks the rebased head - and lands it with
+  a merge commit. Any push to a ready pull request, GitHub's own rebase
   included, gets no run, so it must go back to draft and be marked ready
   again before it can merge. A lane rebases locally only when GitHub
   reports a conflict it cannot apply.
