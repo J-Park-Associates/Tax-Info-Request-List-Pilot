@@ -177,6 +177,7 @@ from tracker.households import (
     resolve_feeds,
 )
 from tracker.layout import (
+    LayoutError,
     client_household_dir,
     household_of,
     inbox_of,
@@ -195,7 +196,7 @@ from tracker.manifest import (
     summarize,
 )
 from tracker.page import esc, page_text, policy, table, tolerant_console
-from tracker.progress import PASSES_DIRNAME, Watch
+from tracker.progress import APP_CLOSED, PASSES_DIRNAME, Watch, failure_reply
 from tracker.records import ENGAGEMENT_LABELS, NO, YES
 from tracker.registry import (
     SKIP_ROLLED_FORWARD,
@@ -397,6 +398,23 @@ DATE_FLAG = "--date"
 #: and the job reads it at every run - so changing it in the app is enough,
 #: and no re-install is remembered or forgotten.
 SETTINGS_FLAG = "--settings"
+#: The app's Run now (decision 203): this same pass for one household,
+#: named by its folder in the firm's tree and checked through the one door
+#: (``door.household_dir``) as any path from outside is. Always written
+#: ``--household=<folder>``, one argument, so a folder whose name begins
+#: with ``-`` is a value and never a flag.
+HOUSEHOLD_FLAG = "--household"
+#: Run now's other addition: the pass prints decision 193's progress lines
+#: on stdout, the shell's way of watching it, and ends with one final JSON
+#: line - every return of the household, the pass's warnings and the exit
+#: code - in place of the console report. Its refusals are the one failure
+#: envelope (``tracker.progress.failure_reply``).
+PROGRESS_LINES_FLAG = "--progress-lines"
+#: A household the walk did not find under the root: said, never guessed.
+NOT_THAT_HOUSEHOLD = "{name} is not a household the walk found in {root}"
+#: A household flag with nothing after it: refused, never read as the whole
+#: practice (decision 203's review, S1).
+NO_HOUSEHOLD_NAMED = f"{HOUSEHOLD_FLAG} names no household; Run now runs one, named by its folder"
 #: What the scheduled job installed before decision 131 is told. That job
 #: named a clients root on its command line with ``--log``; after the root
 #: moves in the app it would go on sorting the old tree silently, so a run
@@ -510,6 +528,19 @@ def _one_folder(path: Path) -> str:
 #: scheduled job rather than the API: this flag first, then the runner's own
 #: arguments. tracker.scheduling builds the packaged command line from it.
 RUNNER_MODE_FLAG = "--run"
+
+
+def run_now_arguments(settings_dir: Path | str, household: Path | str) -> list[str]:
+    """The runner's command line for the app's Run now (decision 203).
+
+    The first three are the scheduled job's own, in its order
+    (``tracker.scheduling.runner_arguments``, decision 131): the settings
+    folder the clients root is read from, and the run log. The rest are
+    what Run now adds - no draft (as Run now never drafted), the progress
+    lines the shell watches, and the one household, as one argument.
+    """
+    return [SETTINGS_FLAG, str(settings_dir), LOG_FLAG, "--reminders", REMINDERS_NEVER,
+            PROGRESS_LINES_FLAG, f"{HOUSEHOLD_FLAG}={household}"]
 #: What the run says about an engagement it drafted nothing for.
 NOTHING_OUTSTANDING = "nothing outstanding; no reminder needed"
 #: Which rung of the reminder a draft was written at (decision 117), said
@@ -579,8 +610,8 @@ DATA_FOLDER_PROBLEM = "Data folder problem: {problem}"
 #: Each household's share of a pass (decision 189), on ``ocr.awake_clock``
 #: from the household's start and checked **between files**: a household
 #: can run at most this plus one document's stop (600 s), 25 minutes -
-#: inside the app's 30-minute kill, so Run now keeps every verdict and
-#: records its rows - and four stalled households fit in the schedule's
+#: and Run now is this same pass for one household (decision 203), so it
+#: has the same share - and four stalled households fit in the schedule's
 #: two hours while the order below serves the rest next pass. A threshold
 #: stated in advance (UX 9), not measured into place.
 HOUSEHOLD_BUDGET_SECONDS = 15 * 60
@@ -595,6 +626,11 @@ OUT_OF_TIME_NO_DRAFT = "not drafted this pass: the household's time ran out"
 #: to now, so it is said as :data:`OUT_OF_TIME` is, with who stopped it.
 PASS_CANCELLED = "stopped by a person after {n} file(s); the rest wait for the next pass"
 CANCELLED_NO_DRAFT = "not drafted this pass: a person stopped it"
+#: A pass whose app closed (decision 203): the progress pipe broke, which
+#: is a stop like a person's, at the next file, counted the same way.
+PASS_APP_CLOSED = ("stopped when the app that started it closed, after {n} file(s); the rest wait "
+                   "for the next pass")
+APP_CLOSED_NO_DRAFT = "not drafted this pass: the app that started it closed"
 #: The hint of when each household last completed a pass (decision 189),
 #: beside the store, so it holds household names only where the store
 #: already does and moves with it. A hint, never a record: nothing but the
@@ -657,6 +693,7 @@ CODE_READER_COULD_NOT_START = "reader-could-not-start"
 CODE_ORDER_HINT_UNREADABLE = "order-hint-unreadable"
 CODE_NOT_SERVED_TWICE = "not-served-twice"
 CODE_PASS_STOPPED = "pass-stopped"
+CODE_PASS_APP_CLOSED = "pass-app-closed"
 CODE_PASS_DID_NOT_FINISH = "pass-did-not-finish"
 CODE_LOG_NOT_WRITTEN = "log-not-written"
 CODE_PAGE_NOT_WRITTEN = "page-not-written"
@@ -1192,6 +1229,7 @@ def run_household(
         errors.keep("runner: household pass", exc, name=household.name)
         log.error("A household stopped early (%s)", errors.error_class(exc))
     stopped = watch is not None and watch.stop_asked()
+    closed = stopped and watch.why_stopped == APP_CLOSED
     if unreached or any(run.out_of_time for run in working):
         # The household's time ran out (decision 189), or a person stopped
         # it (decision 193, the same deadline brought to now): every working
@@ -1200,9 +1238,9 @@ def run_household(
             if stopped:
                 run.cancelled = True
                 run.out_of_time = False
-                run.warnings.append(PASS_CANCELLED.format(n=taken))
+                run.warnings.append((PASS_APP_CLOSED if closed else PASS_CANCELLED).format(n=taken))
                 if run.draft_note == OUT_OF_TIME_NO_DRAFT:
-                    run.draft_note = CANCELLED_NO_DRAFT
+                    run.draft_note = APP_CLOSED_NO_DRAFT if closed else CANCELLED_NO_DRAFT
             else:
                 run.out_of_time = True
                 run.warnings.append(OUT_OF_TIME.format(n=taken))
@@ -1666,8 +1704,14 @@ def run_registry(
     only: str = "",
     report: RunReport | None = None,
     watch: Watch | None = None,
+    household: Path | None = None,
 ) -> RunReport:
     """Run every household in the registry, least recently completed first.
+
+    ``household`` (decision 203) is the app's Run now: that household's
+    returns are the ones selected and it is the only one walked. Its order
+    mark, the end-of-pass lock retry and the order hint run unchanged, as
+    for an ``only`` run.
 
     ``watch`` (decision 193) is told each household and, through it, each
     file; a stop seen through it ends the loop after the household it
@@ -1702,7 +1746,11 @@ def run_registry(
             f"reminders must be one of {', '.join(REMINDER_MODES)}, got {reminders!r}"
         )
     today = today or dt.date.today()
-    selected = {e.path for e in (registry.find(only) if only else registry.engagements)}
+    if household is not None:
+        chosen = registry.by_household().get(household, [])
+    else:
+        chosen = registry.find(only) if only else registry.engagements
+    selected = {e.path for e in chosen}
 
     if report is None:
         report = RunReport(today=today, dry_run=dry_run, reminders=reminders)
@@ -2514,25 +2562,10 @@ def status_report(registry: Registry, *, passed: Iterable[EngagementRun] = (),
 
 # --------------------------------------------------------------------- CLI ----
 
-def main(argv: list[str] | None = None) -> int:
-    """The command line, as a function: ``python -m tracker.runner`` and the
-    packaged executable in runner mode (``api_entry.py``) both call this.
-    Returns the exit code - non-zero if any engagement failed, so the
-    scheduler shows a red run, and :data:`NOT_SERVED_TWICE_EXIT_CODE` when
-    a household has not been served two passes running.
-
-    **Each ending in a guard of its own** (decision 189): the pass, the
-    console, the run log, the page and the store's close are each tried
-    whatever happened before them, so a pass that stopped still leaves its
-    log and its page, and a log that could not be written is said on the
-    page."""
+def _parser():
+    """The runner's command line, built apart from :func:`main` so a test
+    can read what a line means without running it (decision 203)."""
     import argparse
-
-    # The report names client files, and the scheduler's console is not
-    # UTF-8: a name it cannot encode must not turn a finished run into a
-    # traceback after every original has been moved (the tenth reading).
-    # The guard is the page's (decision 108): one home, every command line.
-    tolerant_console()
 
     parser = argparse.ArgumentParser(
         prog="python -m tracker.runner",
@@ -2545,8 +2578,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(SETTINGS_FLAG, default="", metavar="FOLDER",
                         help="the app's settings folder, whose settings file names the clients root "
                              "(what the scheduled job passes)")
-    parser.add_argument("--only", default="",
-                        help="just the engagements matching this text")
+    which = parser.add_mutually_exclusive_group()
+    which.add_argument("--only", default="",
+                       help="just the engagements matching this text")
+    which.add_argument(HOUSEHOLD_FLAG, default=None, metavar="FOLDER",
+                       help="just this household, by its folder in the firm's tree (the app's "
+                            "Run now)")
     parser.add_argument("--dry-run", action="store_true",
                         help="decide everything, write and move nothing")
     parser.add_argument("--reminders", choices=REMINDER_MODES, default=REMINDERS_AUTO,
@@ -2559,6 +2596,35 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(LOG_FLAG, nargs="?", const=LOG_FILENAME, default="",
                         help=f"append the pass's counts and codes to a log (default: "
                              f"{LOG_FILENAME} in the tracker's data folder)")
+    parser.add_argument(PROGRESS_LINES_FLAG, action="store_true",
+                        help="print the pass's progress lines and end with one final JSON line "
+                             "(what the app's Run now reads)")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    """The command line, as a function: ``python -m tracker.runner`` and the
+    packaged executable in runner mode (``api_entry.py``) both call this.
+    Returns the exit code - non-zero if any engagement failed, so the
+    scheduler shows a red run, and :data:`NOT_SERVED_TWICE_EXIT_CODE` when
+    a household has not been served two passes running.
+
+    **Each ending in a guard of its own** (decision 189): the pass, the
+    console, the run log, the page and the store's close are each tried
+    whatever happened before them, so a pass that stopped still leaves its
+    log and its page, and a log that could not be written is said on the
+    page.
+
+    **Run now is this pass** (decision 203): with :data:`PROGRESS_LINES_FLAG`
+    it prints its progress lines and one final line instead of the console
+    report, and a refusal on the way in is the one failure envelope."""
+    # The report names client files, and the scheduler's console is not
+    # UTF-8: a name it cannot encode must not turn a finished run into a
+    # traceback after every original has been moved (the tenth reading).
+    # The guard is the page's (decision 108): one home, every command line.
+    tolerant_console()
+
+    parser = _parser()
     ns = parser.parse_args(argv)
 
     # The clients root has one home (decision 131): the scheduled job names
@@ -2574,14 +2640,16 @@ def main(argv: list[str] | None = None) -> int:
     # lifetime (decision 193): every warning the package logs, and a
     # traceback in full, go there and never to the page or the run log.
     with error_log("tracker"):
-        # The scheduled job's shape - the settings folder, no root, not a dry
-        # run - says when it started and how it ended (decision 159, E4). The
+        # The scheduled job's shape - the settings folder, no root, no
+        # household (Run now names one, decision 203), not a dry run - says
+        # when it started and how it ended (decision 159, E4). The
         # file is written first, so a pass that dies anywhere after this line
         # leaves "not finished" or "failed" behind, never an old "succeeded".
         # A data home that cannot be had has nowhere to keep the file (decision
         # 186): the pass itself says why, below.
         try:
-            last = last_pass_path() if ns.settings and not ns.root and not ns.dry_run else None
+            last = (last_pass_path() if ns.settings and not ns.root and ns.household is None
+                    and not ns.dry_run else None)
         except SettingsError:
             last = None
         started = dt.datetime.now()
@@ -2603,6 +2671,11 @@ def main(argv: list[str] | None = None) -> int:
                 except SettingsError:
                     failed_log = None           # no data home, so no run log to write
                 _log_a_failed_pass(failed_log, reason, errors.error_class(exc))
+            if ns.progress_lines and isinstance(exc, SystemExit) and isinstance(exc.code, str):
+                # A refusal before the pass began (decision 203): said as the
+                # one failure envelope the shell reads, and nothing was touched.
+                _print_line(json.dumps(failure_reply(exc.code, "refused"), ensure_ascii=True))
+                return 1
             raise
         if last is not None:
             reason = (PASS_NOT_SERVED if code == NOT_SERVED_TWICE_EXIT_CODE
@@ -2610,6 +2683,57 @@ def main(argv: list[str] | None = None) -> int:
             _say_last_pass(last, started=started, ended=dt.datetime.now(), root=reached["root"],
                            result=PASS_FAILED if code else PASS_SUCCEEDED, reason_code=reason)
         return code
+
+def _emit_line(text: str) -> None:
+    """A progress line on stdout, flushed at once, so the shell hears it
+    while the pass runs. A pipe whose reader has gone raises, which the
+    watch takes as the app closing (decision 203); stdout is then pointed
+    at nothing, so the interpreter's own last flush has nowhere to fail."""
+    try:
+        sys.stdout.write(text)
+        sys.stdout.flush()
+    except OSError:
+        try:
+            sys.stdout = open(os.devnull, "w", encoding="utf-8")
+        except OSError:
+            pass
+        raise
+
+
+def _print_line(text: str) -> None:
+    """The final line or the refusal, guarded as a progress line is: a
+    reader that has gone costs the line, never the pass's ending."""
+    try:
+        _emit_line(text + "\n")
+    except (OSError, ValueError) as exc:
+        log.debug("Could not print the final line (%s)", errors.error_class(exc))
+
+
+def _final_line(report: RunReport, code: int, pass_id: int | None = None) -> str:
+    """The pass's last line for the app (decision 203): no ``progress``
+    key, so the shell reads it as the reply - every return the pass ran,
+    the pass's own warnings and its exit code. The sentences are the
+    runner's, the same the run log and the page carry."""
+    runs = [{
+        "label": run.engagement.label,
+        "path": str(run.engagement.path),
+        "ok": run.ok,
+        "error": run.error,
+        "skipped": run.skipped,
+        "filed": run.filed,
+        "review": run.review,
+        "waiting": run.waiting,
+        "file_errors": list(run.file_errors),
+        "warnings": list(run.warnings),
+        "statuses": dict(run.statuses),
+        "outstanding": run.outstanding,
+        "cancelled": run.cancelled,
+        "locked_out": run.locked_out,
+        "locked_at": str(run.locked_at) if run.locked_at else None,
+    } for run in report.runs]
+    return json.dumps({"pass": int(pass_id if pass_id is not None else os.getpid()), "exit": code,
+                       "runs": runs, "pass_warnings": list(report.warnings), "warnings": []},
+                      ensure_ascii=True)
 
 
 def _say_last_pass(path: Path, **said) -> None:
@@ -2698,6 +2822,21 @@ def _pass(ns, parser, reached: dict) -> int:
         loaded = discover_engagements(root)
     except RegistryError as exc:
         raise PassFailed(PASS_ROOT_UNREADABLE, f"Clients folder problem: {exc}") from None
+    # Run now's household (decision 203): named, never guessed, and held
+    # to the door again here, since this is a command line of its own.
+    household: Path | None = None
+    if ns.household is not None:
+        if not ns.household.strip():
+            raise SystemExit(NO_HOUSEHOLD_NAMED)
+        try:
+            household = door.household_dir(ns.household, root=root)
+        except (door.DoorError, LayoutError) as exc:
+            raise SystemExit(str(exc)) from None
+        why = loaded.stopped.get(household) or loaded.paused.get(household)
+        if why:
+            raise SystemExit(why)
+        if household not in loaded.by_household():
+            raise SystemExit(NOT_THAT_HOUSEHOLD.format(name=household.name, root=loaded.source))
 
     when = dt.date.today()
     if ns.date:
@@ -2727,10 +2866,13 @@ def _pass(ns, parser, reached: dict) -> int:
     # (decision 186).
     # Watched from outside (decision 193): the progress file beside the
     # tracker's database names the household and the file, for the app's
-    # lock notice; nothing is printed, and nothing here can be stopped from
-    # the app. A dry run keeps no file.
+    # lock notice. The scheduled pass prints nothing and nothing can stop
+    # it from the app; Run now prints its lines (decision 203), may be
+    # stopped, and stops at its next file when the app that started it
+    # closes. A dry run keeps no file.
+    lines = ns.progress_lines
     watch = Watch(None if ns.dry_run else store.store_path().parent,
-                  limit_seconds=RUN_TIME_LIMIT_SECONDS)
+                  emit=_emit_line if lines else None, limit_seconds=RUN_TIME_LIMIT_SECONDS)
     outcome = "failed"
     unread: list[str] = []
     try:
@@ -2741,10 +2883,13 @@ def _pass(ns, parser, reached: dict) -> int:
             failed = True
         else:
             watch.say("started", started=dt.datetime.now().isoformat(timespec="seconds"),
-                      households=len(loaded.by_household()))
+                      households=1 if household is not None else len(loaded.by_household()))
             run_registry(loaded, today=when, dry_run=ns.dry_run, reminders=ns.reminders,
-                         weekday=day, only=ns.only, report=result, watch=watch)
-            outcome = "out_of_time" if any(run.out_of_time for run in result.runs) else "finished"
+                         weekday=day, only=ns.only, report=result, watch=watch,
+                         household=household)
+            outcome = ("stopped" if any(run.cancelled for run in result.runs)
+                       else "out_of_time" if any(run.out_of_time for run in result.runs)
+                       else "finished")
     except Exception as exc:
         # The runner's own code, not a household's (each of those is
         # caught where it happens): said by its class, and every ending
@@ -2757,7 +2902,20 @@ def _pass(ns, parser, reached: dict) -> int:
         failed = True
     finally:
         watch.close(outcome)
-    print(format_report(result))
+    if watch.why_stopped == APP_CLOSED:
+        # Said as the pass's own (decision 203's review, M1): the run log
+        # gives a return's warnings as a count and the page as a number,
+        # and the app that would have shown the sentence is gone - so it
+        # goes where 189's pass warnings go, before either is written: its
+        # code into the run log (decision 186) and its sentence onto the page.
+        closed = [said for run in result.runs for said in run.warnings
+                  if said.startswith(PASS_APP_CLOSED.split("{", 1)[0])]
+        for said in dict.fromkeys(closed or [PASS_APP_CLOSED.format(n=0)]):
+            _warn(result, CODE_PASS_APP_CLOSED, said)
+    # With progress lines the console is the shell's pipe (decision 203):
+    # what is said below goes in the final line instead.
+    say = (lambda text: None) if lines else print
+    say(format_report(result))
 
     if log_file is not None:
         try:
@@ -2765,10 +2923,10 @@ def _pass(ns, parser, reached: dict) -> int:
         except Exception as exc:
             log.warning("Could not write %s (%s)", log_file.name, errors.error_class(exc))
             _warn(result, CODE_LOG_NOT_WRITTEN, LOG_NOT_WRITTEN.format(kind=errors.error_class(exc)))
-            print(f"\n  ! {result.warnings[-1]}")
+            say(f"\n  ! {result.warnings[-1]}")
             failed = True
         else:
-            print(f"\n  Logged to {log_file}")
+            say(f"\n  Logged to {log_file}")
 
     if not ns.dry_run:
         # Every real pass, whether or not it was asked to log, whether or
@@ -2786,7 +2944,9 @@ def _pass(ns, parser, reached: dict) -> int:
             # in the run log, by its class only, and the pass exits 1.
             kind = errors.error_class(exc)
             log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, kind)
-            print(f"\n  ! {PAGE_NOT_WRITTEN.format(kind=kind)}")
+            say(f"\n  ! {PAGE_NOT_WRITTEN.format(kind=kind)}")
+            if lines:
+                _warn(result, CODE_PAGE_NOT_WRITTEN, PAGE_NOT_WRITTEN.format(kind=kind))
             failed = True
             if log_file is not None:
                 try:
@@ -2795,7 +2955,7 @@ def _pass(ns, parser, reached: dict) -> int:
                 except Exception as late:
                     log.warning("Could not write %s (%s)", log_file.name, errors.error_class(late))
         else:
-            print(f"\n  The practice: {page}")
+            say(f"\n  The practice: {page}")
 
     # Checkpoint the store's write-ahead log and take its two side files
     # with it: a scheduled pass leaves the app's folder as it found it.
@@ -2804,8 +2964,14 @@ def _pass(ns, parser, reached: dict) -> int:
     except Exception as exc:
         log.warning("Could not close the store (%s)", errors.error_class(exc))
     if result.not_served_twice:
-        return NOT_SERVED_TWICE_EXIT_CODE
-    return 1 if failed or result.errors else 0
+        code = NOT_SERVED_TWICE_EXIT_CODE
+    else:
+        code = 1 if failed or result.errors else 0
+    if lines:
+        # After the log, the page and the store's close (decision 203): the
+        # app redraws from a record that is already whole.
+        _print_line(_final_line(result, code, watch.pass_id))
+    return code
 
 
 def _say_no_data_home_on_the_page(given: str, sentence: str) -> Path | None:

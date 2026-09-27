@@ -2233,7 +2233,8 @@ async function loadEngagements(preferPath, asked) {
 // The list half of a `list` reply, without the vocabulary (decision 194):
 // start-up's, or the one a write that changes the list carries (`create`,
 // `rollover`, `roll-household`, `edit-household`, `accept-folder-name`,
-// `edit` when it changed `active`, and `scan` from its one walk). Showing
+// `edit` when it changed `active`), or the `list` asked once when a Sort &
+// Scan pass ends (decision 203). Showing
 // a return never reads the list again: the picker is as the app last
 // walked the root, which is display (UX 1); every write is still judged
 // under the lock.
@@ -2340,16 +2341,16 @@ async function installSchedule() {
   }
 }
 
-// What a Sort & Scan reply says, as the banner's lines and its colour.
-function scanSummary(result) {
-  const run = result.run;
-  const summary = result.state && result.state.summary ? result.state.summary.line : "";
+// What a Sort & Scan pass said, as the banner's lines and its colour: the
+// asked return's run from the pass's final line, the household's other
+// returns, and the summary line of the state drawn after it.
+function scanSummary(run, others, summary) {
   // What the pass said beyond the asked return (decision 189): the
   // household's other returns' problems, shown the way this return's
   // warnings are - the API's words, each under the return's own label.
   // The pass's own warnings are notices (decision 193), which stay.
   const also = [];
-  for (const other of result.household || []) {
+  for (const other of others) {
     for (const said of [other.error, other.skipped, ...other.warnings]) {
       if (said) also.push(`• ${other.label}: ${said}`);
     }
@@ -2371,14 +2372,27 @@ function scanSummary(result) {
            cls: problems.length || run.warnings.length || also.length || run.cancelled ? "warn" : "ok" };
 }
 
-// The one Sort & Scan in flight from this window: its command line, and the
-// pass id its first progress line gave (what Stop names).
+// The one Sort & Scan running from this window (decision 203): its command
+// line, the pass id its first progress line gave (what Stop names), and
+// the return it was asked for. The pass runs on in its own process after
+// the click is answered; the shell sends its lines and then its ending on
+// the progress channel.
 let scanning = null;
 
-// Where the pass is (decision 193): the household, and the file or request
-// under it, in the API's words. Only the in-flight Sort & Scan's lines.
-function drawProgress(m) {
+// Everything the shell says about the running pass: a progress line, or -
+// once, when its process closes - its ending. Only the running pass's.
+function onPassMessage(m) {
   if (!scanning || JSON.stringify(m.args) !== JSON.stringify(scanning.args)) return;
+  if (m.reply !== undefined) {
+    passEnded(m);
+    return;
+  }
+  drawProgress(m);
+}
+
+// Where the pass is (decision 193): the household, and the file or request
+// under it, in the API's words.
+function drawProgress(m) {
   const said = m.progress || {};
   if (said.pass) scanning.pass = said.pass;
   if (scanning.pass && !scanning.stopping) $("btn-stop-pass").disabled = false;
@@ -2393,7 +2407,7 @@ function drawProgress(m) {
 }
 
 // Stop: only this app's own pass, at its next file (decision 193). What was
-// done is recorded and the rest waits; the reply says so when it comes.
+// done is recorded and the rest waits; the pass's ending says so.
 async function stopPass() {
   if (!scanning || !scanning.pass || scanning.stopping) return;
   const btn = $("btn-stop-pass");
@@ -2407,12 +2421,31 @@ async function stopPass() {
   }
 }
 
+// The button back as Sort & Scan, and the pass's panel gone.
+// The button comes back through applyLock (decision 203's review, M2): a
+// lock the shown return met during the pass greys it with the lock's own
+// mark, which the lock going gives back - never an unmarked disable.
+function scanDone() {
+  scanning = null;
+  const btn = $("btn-scan");
+  btn.disabled = false;
+  applyLock();
+  btn.classList.remove("spinning");
+  $("scan-label").textContent = SCAN_LABEL;
+  $("btn-stop-pass").classList.add("hidden");
+  $("pass-progress").classList.add("hidden");
+}
+
+// Sort & Scan starts the scheduled runner for this return's household and
+// is answered as soon as the pass has begun (decision 203). Every other
+// return and every read keep working while it runs; the household's own
+// returns show the lock the pass holds, as any lock shows (decision 193).
 async function runScan() {
   const btn = $("btn-scan");
   const stop = $("btn-stop-pass");
-  const view = viewGeneration;
-  const args = withEng("scan");
-  scanning = { args, pass: null, stopping: false };
+  const args = withEng(vocab.pass_command);
+  const mine = { args, pass: null, stopping: false, asked: active };
+  scanning = mine;
   btn.disabled = true;
   btn.classList.add("spinning");
   $("scan-label").textContent = vocab.scan.scanning;
@@ -2420,38 +2453,62 @@ async function runScan() {
   stop.disabled = true;
   stop.classList.remove("hidden");
   try {
-    const result = await call(args);
-    // The pass's own warnings (decision 189) stay, as notices (decision 193).
-    warningNotices(result.pass_warnings || []);
-    // The list from the pass's one walk (decision 194): how a folder made
-    // by hand reaches the picker without a click walking the root.
-    if (result.list) adoptList(result.list);
-    const said = scanSummary(result);
-    if (view !== viewGeneration) {
-      // The return it scanned is no longer shown (D6): its summary is a
-      // notice under its own label, so nothing vanishes, and the return
-      // shown is drawn from the record.
-      notice({ sentence: `${result.run.label}: ${said.text}`, kind: "warning" });
-      await showReturn(active);
-      return;
-    }
-    if (result.state) renderFor(view, result.state);
-    else await showReturn(active);     // filed, then could not redraw (D5): the record redraws it
-    if (result.lock) showLock(result.lock);
-    banner(said.text, said.cls);
+    const started = await call(args);
+    if (scanning !== mine) return;   // it has already ended, and said so
+    mine.pass = started.pass;
+    if (started.started) drawProgress({ progress: started.started });
   } catch (err) {
+    // It never started: refused, or a pass already holds the household
+    // (the lock notice, and its watch), or the tracker could not start.
+    if (scanning === mine) scanDone();
     failed(err, runScan);
-    // A pass stopped at the limit says where it was; the page is what the
-    // record holds, so it is drawn again from it.
-    if (err.result && err.result.killed && view === viewGeneration) await showReturn(active);
-  } finally {
-    scanning = null;
-    btn.disabled = locked;
-    btn.classList.remove("spinning");
-    $("scan-label").textContent = SCAN_LABEL;
-    stop.classList.add("hidden");
-    $("pass-progress").classList.add("hidden");
   }
+}
+
+// The pass has ended (decision 203): its final line, or the shell's own
+// failure when it gave none or was killed. The counts come from the final
+// line, and then the page is redrawn from the record - the list once, then
+// the shown return's state (the lane's ruling on 194's Q5) - behind the
+// view generation, so a return chosen since is the one drawn.
+async function passEnded({ reply }) {
+  const asked = scanning.asked;
+  scanDone();
+  const ended = reply || {};
+  if (ended.error) {
+    notice(ended.failure || { sentence: ended.error, kind: "failed" }, { retry: runScan });
+  } else {
+    warningNotices(ended.pass_warnings || []);
+  }
+  const runs = Array.isArray(ended.runs) ? ended.runs : [];
+  const run = runs.find((one) => one.path === asked);
+  const view = viewGeneration;
+  let state = null;
+  try {
+    // The list is the practice's, not the view's: kept whichever return
+    // is shown by now (the review's note).
+    adoptList(await call(["list"]));
+    if (view === viewGeneration) {
+      state = await call(withEng("state"));
+      if (!renderFor(view, state)) state = null;
+    }
+  } catch (err) {
+    if (view === viewGeneration) failed(err, () => showReturn(active));
+  }
+  if (!run) {
+    // Its counts are never guessed from another return's (the review's S2).
+    if (!ended.error) notice({ sentence: vocab.scan.not_in_pass, kind: "warning" });
+    return;
+  }
+  const shown = asked === active && view === viewGeneration;
+  const said = scanSummary(run, runs.filter((one) => one !== run),
+                           shown && state && state.summary ? state.summary.line : "");
+  if (!shown) {
+    // The return it scanned is not the one shown (193 §8): its summary is
+    // a notice under its own label, so nothing vanishes.
+    notice({ sentence: `${run.label}: ${said.text}`, kind: "warning" });
+    return;
+  }
+  banner(said.text, said.cls);
 }
 
 // ── Add a return / New household (decision 196) ─────────────────────────
@@ -3724,7 +3781,7 @@ $("btn-browse").addEventListener("click", async () => {
 });
 $("btn-unlock").addEventListener("click", clearLock);
 $("btn-stop-pass").addEventListener("click", stopPass);
-window.tracker.onProgress(drawProgress);
+window.tracker.onProgress(onPassMessage);
 $("notices").addEventListener("click", (e) => {
   const button = e.target.closest("button[data-act]");
   if (!button) return;

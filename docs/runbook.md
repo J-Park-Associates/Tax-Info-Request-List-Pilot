@@ -603,12 +603,18 @@ earlier pass, is taken whatever the time. A household out of time stops taking
 files, records what it did, drafts nothing this pass and says on every
 return *this household's time for this pass ran out after N file(s); the
 rest wait for the next pass* — nothing to do; the next pass carries on,
-and drafts the week's letter if it is owed. **Run now** (Sort & Scan) has
-the same fifteen minutes and says the same sentence. While it runs the
-app shows each household and the file it is on; **Stop** ends it at the
-next file — what it did is recorded and the rest waits for the next
-pass — and the app lets it run as long as the schedule's own limit,
-`tracker.locking.RUN_TIME_LIMIT_SECONDS`. Households are
+and drafts the week's letter if it is owed. **Run now** (Sort & Scan) is
+the scheduled pass, started by the app for one household (decision 203):
+the same runner, the same fifteen minutes and the same sentence when they
+run out, and it leaves the same line in the run log and redraws the same
+page. The app does not wait for it. The button becomes **Stop**, the
+household and the file it is on show beneath it, every other return keeps
+working, and the return redraws when the pass ends. Nothing cuts it off
+before the run limit (`tracker.locking.RUN_TIME_LIMIT_SECONDS`, two hours).
+**Stop** ends it at the next file — what it did is recorded and the rest
+waits for the next pass — and closing the app does the same: its lock is
+let go, and the next pass carries on. If a pass already holds the
+household, the app says so and starts nothing. Households are
 taken **least recently completed first**, not in folder order, so the
 one that ran out of time, or was stopped, does not go first and stop the
 same clients every pass: a household the last pass was stopped in goes
@@ -1129,7 +1135,10 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    `page-not-written`), and the
    Last Run Result is `0x1`: the page you are looking at is an old one. The run log gives the pass's warnings
    as a count, `warnings=3`, and each failure, skip and pass warning as a
-   code; the page and the app have the sentences.
+   code; the page and the app have the sentences. A pass the app started
+   that stopped because the app closed says so as a pass warning: the code
+   `pass-app-closed` in the run log, and on the page *stopped when the app
+   that started it closed, after N file(s)* (decision 203).
    **Run now** says the same: under the return's own result it lists the
    household's other returns' problems and the pass's own (the reader,
    the log, the page).

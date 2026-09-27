@@ -2267,6 +2267,258 @@ def _the_scheduled_job(root, monkeypatch, *args) -> int:
     return main([SETTINGS_FLAG, str(settings), *args])
 
 
+# --------------------------------------------------- Run now (decision 203) ----
+
+
+def _settings_for(root, monkeypatch) -> Path:
+    """The settings folder beside ``root``, whose file names it, as the
+    app's and the job's own; the store sits beside it."""
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    settings = root.parent / "settings"
+    settings.mkdir(exist_ok=True)
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    set_clients_root(root)
+    return settings
+
+
+def _lines(out: str) -> list[dict]:
+    import json
+
+    return [json.loads(line) for line in out.strip().splitlines()]
+
+
+def _run_now(root, household, monkeypatch, capsys) -> tuple[int, list[dict]]:
+    """``main`` as the app's Run now calls it (``run_now_arguments``): its
+    exit code and every stdout line, progress lines then the final one."""
+    from tracker.runner import run_now_arguments
+
+    settings = _settings_for(root, monkeypatch)
+    capsys.readouterr()
+    code = main(run_now_arguments(settings, household))
+    return code, _lines(capsys.readouterr().out)
+
+
+def test_the_household_flag_passes_through_the_door(tmp_path, samples, monkeypatch, capsys):
+    """Decision 203, R2: the household is named, never guessed, and the
+    runner checks it through the door as any path from outside. A return's
+    folder, the client tree's household folder, a path outside the root, a
+    ``..`` climb, a stopped household and a value that looks like a flag
+    are each refused in one envelope: nothing leaves any inbox and no
+    ``pass started`` line is written."""
+    from tracker.layout import client_household_dir
+    from tracker.progress import PROGRESS_KEY
+    from tracker.runner import HOUSEHOLD_FLAG, LOG_FLAG, PROGRESS_LINES_FLAG
+
+    root = tmp_path / "root"
+    first = build_engagement(root, samples, household="Alder Household", name="Alder TY2025")
+    build_engagement(root, samples, household="Birch Household", name="Birch TY2025")
+    settings = _settings_for(root, monkeypatch)
+    household = household_of(first.path)
+    # Birch's record is taken away: a household the walk stops (SPEC-162).
+    birch = household.parent / "Birch Household"
+    ledger.path_for(birch).unlink()
+    waiting = {one: sorted(p.name for p in inbox_of(one).iterdir())
+               for one in (first.path, birch / str(YEAR) / "Birch TY2025")}
+
+    for value in (first.path, client_household_dir(root, "Alder Household"), tmp_path / "elsewhere",
+                  household / ".." / "Birch Household" / ".." / ".." / "..", birch, "--dry-run", ""):
+        capsys.readouterr()
+        code = main([SETTINGS_FLAG, str(settings), LOG_FLAG, "--reminders", REMINDERS_NEVER,
+                     PROGRESS_LINES_FLAG, f"{HOUSEHOLD_FLAG}={value}"])
+        [said] = _lines(capsys.readouterr().out)
+        assert code == 1, value
+        assert PROGRESS_KEY not in said and said["failure"]["kind"] == "refused", value
+        assert said["error"] == said["failure"]["sentence"] and said["error"], value
+    for folder, names in waiting.items():
+        assert sorted(p.name for p in inbox_of(folder).iterdir()) == names
+    assert not (root / LOG_FILENAME).exists(), "no pass started"
+    capsys.readouterr()
+    main([SETTINGS_FLAG, str(settings), LOG_FLAG, PROGRESS_LINES_FLAG, f"{HOUSEHOLD_FLAG}="])
+    from tracker.runner import NO_HOUSEHOLD_NAMED
+    assert _lines(capsys.readouterr().out)[-1]["error"] == NO_HOUSEHOLD_NAMED, "empty is never the practice"
+
+
+def test_run_now_arguments_are_the_schedules_plus_three(tmp_path):
+    """Decision 203, R1 and R8: Run now's command line is the scheduled
+    job's, in its order, plus no draft, the progress lines and the one
+    household - read by the same parser to the same pass otherwise."""
+    from tracker.runner import LOG_FLAG, _parser, run_now_arguments
+    from tracker.scheduling import quote_argument, runner_arguments
+
+    settings = tmp_path / "settings folder"
+    household = tmp_path / "-Odd Household"
+    scheduled = [SETTINGS_FLAG, str(settings), LOG_FLAG]
+    run_now = run_now_arguments(settings, household)
+    assert run_now[:3] == scheduled
+    assert runner_arguments(settings).endswith(f"{SETTINGS_FLAG} {quote_argument(str(settings))} {LOG_FLAG}")
+    one, other = vars(_parser().parse_args(scheduled)), vars(_parser().parse_args(run_now))
+    assert {key for key in one if one[key] != other[key]} == {"household", "reminders", "progress_lines"}
+    assert other["household"] == str(household), "a folder beginning with - is a value"
+    assert other["reminders"] == REMINDERS_NEVER and other["progress_lines"] is True
+
+
+def test_run_now_leaves_the_schedules_log_line_and_page(tmp_path, tmp_path_factory, samples, monkeypatch,
+                                                       capsys):
+    """Decision 203, F-M-3: two identical trees, one sorted by the scheduled
+    job's command line and one by Run now's. With the stamps and the pass
+    id taken out, the run logs match line for line - ``pass started`` in
+    both - and so do the practice pages' rows."""
+    import re
+
+    from tracker.runner import LOG_FLAG, log_path
+
+    # The second tree outside ``tmp_path``: the same household by name is a
+    # second practice, with a store of its own, which the checks made after
+    # every test (conftest) do not hold to the first's.
+    scheduled_root = tmp_path / "scheduled" / "root"
+    run_now_root = tmp_path_factory.mktemp("run-now") / "root"
+    build_engagement(scheduled_root, samples)
+    settings = _settings_for(scheduled_root, monkeypatch)
+    assert main([SETTINGS_FLAG, str(settings), LOG_FLAG, "--reminders", REMINDERS_NEVER]) == 0
+    store.close()
+    # The run log is the data home's (decision 186), so each pass's is read
+    # as it ends, and the first set aside before the second is written.
+    scheduled_log = log_path().read_text(encoding="utf-8")
+    log_path().unlink()
+    monkeypatch.setenv(store.ENV_STORE, str(run_now_root.parent / store.STORE_FILENAME))
+    run_now_return = build_engagement(run_now_root, samples)
+    code, lines = _run_now(run_now_root, household_of(run_now_return.path), monkeypatch, capsys)
+    assert code == 0 and lines[-1]["exit"] == 0, lines[-1]
+    run_now_log = log_path().read_text(encoding="utf-8")
+
+    def plain(text: str, root: Path) -> list[str]:
+        text = text.replace(str(root), "<root>")
+        text = re.sub(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?", "<when>", text)
+        return text.splitlines()
+
+    logs = [plain(scheduled_log, scheduled_root), plain(run_now_log, run_now_root)]
+    assert logs[0] == logs[1]
+    assert logs[0][0] == "[<when>] pass started"
+
+    def rows(root: Path) -> list[str]:
+        page = (root / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
+        return plain("\n".join(re.findall(r"<tr>.*?</tr>", page, flags=re.S)), root)
+
+    assert rows(scheduled_root) and rows(scheduled_root) == rows(run_now_root)
+
+
+def test_progress_lines_end_with_one_final_line_after_the_page(tmp_path, samples, monkeypatch, capsys):
+    """Decision 203, R5: Run now's stdout is 193's protocol - progress
+    lines, then one final line without ``progress``, carrying the exit code,
+    every return of the household and the pass's warnings. A page that
+    could not be written is one of them, and the pass is red."""
+    import tracker.runner as runner
+    from tracker.progress import PROGRESS_KEY
+    from tracker.runner import PAGE_NOT_WRITTEN
+
+    root = tmp_path / "root"
+    engagement = build_engagement(root, samples)
+    code, lines = _run_now(root, household_of(engagement.path), monkeypatch, capsys)
+    assert code == 0
+    assert all(PROGRESS_KEY in line for line in lines[:-1]) and PROGRESS_KEY not in lines[-1]
+    said = [line[PROGRESS_KEY] for line in lines[:-1]]
+    assert said[0]["event"] == "started" and said[0]["households"] == 1
+    assert said[-1]["event"] == "ended" and said[-1]["outcome"] == "finished"
+    final = lines[-1]
+    assert final["exit"] == 0 and final["pass"] == said[0]["pass"] and final["warnings"] == []
+    [ran] = final["runs"]
+    assert ran["label"] == engagement.label and ran["path"] == str(engagement.path)
+    assert ran["filed"] >= 1 and ran["ok"] and ran["cancelled"] is False
+
+    def refused(*args, **kwargs):
+        raise PermissionError("a sync client holds it")
+
+    monkeypatch.setattr(runner, "write_status_page", refused)
+    code, lines = _run_now(root, household_of(engagement.path), monkeypatch, capsys)
+    assert code == 1 and lines[-1]["exit"] == 1
+    assert PAGE_NOT_WRITTEN.format(kind="PermissionError") in lines[-1]["pass_warnings"]
+
+
+def test_a_pass_whose_watcher_is_gone_stops_at_the_next_file(tmp_path, samples, monkeypatch, capsys):
+    """Decision 203, R6: the app that started the pass closed, and its pipe
+    broke on the second file. The pass stops there, as a person's Stop
+    would: the first file is recorded, the rest wait in the inbox, the
+    return says :data:`PASS_APP_CLOSED`, its lock is let go, and the run log
+    and the page are written."""
+    import json
+
+    import tracker.runner as runner
+    from tracker.locking import lock_status
+    from tracker.runner import PASS_APP_CLOSED, log_path, run_now_arguments
+
+    root = tmp_path / "root"
+    engagement = build_engagement(root, samples, drops=(f"W-2 John Smith {YEAR}.pdf",
+                                                        "1099-INT First National.pdf",
+                                                        "Form 1098 Mortgage Interest.pdf"))
+    drops = {f"W-2 John Smith {YEAR}.pdf", "1099-INT First National.pdf",
+             "Form 1098 Mortgage Interest.pdf"}
+    files: list[str] = []
+
+    printed: list[str] = []
+
+    def emit(text: str) -> None:
+        printed.append(text)
+        if '"event": "file"' in text and '"step": "sort"' in text:
+            files.append(text)
+            if len(files) >= 2:
+                raise BrokenPipeError(32, "Broken pipe")
+
+    monkeypatch.setattr(runner, "_emit_line", emit)
+    settings = _settings_for(root, monkeypatch)
+    code = main(run_now_arguments(settings, household_of(engagement.path)))
+    capsys.readouterr()
+    assert len(files) == 2, "no progress line is printed once the pipe broke"
+    [ran] = json.loads(printed[-1])["runs"]
+    assert ran["cancelled"] is True and PASS_APP_CLOSED.format(n=1) in ran["warnings"]
+    assert printed[-2] is files[-1], "after the break, only the final line is tried"
+    run = engagement_from(engagement.path)
+    left = drops & {p.name for p in inbox_of(engagement.path).iterdir()}
+    assert len(left) == 2, "the first file was taken, the rest wait"
+    assert (root / STATUS_PAGE_FILENAME).is_file()
+    log_text = log_path().read_text(encoding="utf-8")
+    assert "pass started" in log_text and "reminders=never" in log_text
+    assert lock_status(run.path) is None, "its lock was let go"
+    assert code in (0, 1)
+
+
+def test_a_pass_whose_app_closed_says_so_in_the_run_log_and_on_the_page_and_leaves_the_rest_for_the_next_pass(
+        tmp_path, samples, monkeypatch, capsys):
+    """Decision 203's review, M1: the app that would have shown the sentence
+    is gone, and a return's warnings are only a count in the log and a
+    number on the page - so the pass says it as its own: its code in the run
+    log, which names no client (decision 186), and its sentence on the
+    page. The next pass files what waited."""
+    import tracker.runner as runner
+    from tracker.runner import CODE_PASS_APP_CLOSED, PASS_APP_CLOSED, log_path, run_now_arguments
+
+    root = tmp_path / "root"
+    drops = (f"W-2 John Smith {YEAR}.pdf", "1099-INT First National.pdf", "Form 1098 Mortgage Interest.pdf")
+    engagement = build_engagement(root, samples, drops=drops)
+    sorted_ = []
+
+    def emit(text: str) -> None:
+        if '"event": "file"' in text and '"step": "sort"' in text:
+            sorted_.append(text)
+            if len(sorted_) >= 2:
+                raise BrokenPipeError(32, "Broken pipe")
+
+    monkeypatch.setattr(runner, "_emit_line", emit)
+    settings = _settings_for(root, monkeypatch)
+    main(run_now_arguments(settings, household_of(engagement.path)))
+    said = PASS_APP_CLOSED.format(n=1)
+    logged = log_path().read_text(encoding="utf-8")
+    assert f"{CODE_PASS_APP_CLOSED}=1" in logged and said not in logged
+    assert said in _page(root)
+    assert set(drops) & {p.name for p in inbox_of(engagement.path).iterdir()}, "the rest waited"
+
+    monkeypatch.undo()
+    _settings_for(root, monkeypatch)
+    main([SETTINGS_FLAG, str(settings), "--reminders", REMINDERS_NEVER])
+    capsys.readouterr()
+    assert not set(drops) & {p.name for p in inbox_of(engagement.path).iterdir()}, "the next pass took them"
+
+
 def test_an_injected_database_error_in_one_household_leaves_the_others_processed_and_the_page_written(
     tmp_path, samples, monkeypatch, capsys,
 ):

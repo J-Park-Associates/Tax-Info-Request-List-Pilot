@@ -1707,10 +1707,12 @@ def test_every_command_line_that_prints_a_clients_name_takes_the_tolerant_consol
     for module in CONSOLE_GUARDED:
         source = _command_line_source(module)
         guarded_at = source.find("tolerant_console()")
-        parses_at = source.find("argparse.ArgumentParser(")
+        # The parser built in place, or by the runner's ``_parser()`` (decision 203).
+        found = [at for at in (source.find("argparse.ArgumentParser("), source.find("= _parser()"))
+                 if at != -1]
         assert guarded_at != -1, module
-        assert parses_at != -1, module
-        assert guarded_at < parses_at, module
+        assert found, module
+        assert guarded_at < min(found), module
 
 
 def test_every_command_line_is_either_guarded_or_exempt_by_name():
@@ -2239,8 +2241,10 @@ const realFs = require("fs");
 const [mainJs, fake, calls] = process.argv.slice(2);
 let handler = null;
 const sent = [];
+const appHandlers = {};
 const electron = {
-  app: { isPackaged: false, requestSingleInstanceLock: () => true, quit() {}, on() {},
+  app: { isPackaged: false, requestSingleInstanceLock: () => true, quit() {},
+         on(name, fn) { appHandlers[name] = fn; },
          whenReady: () => new Promise(() => {}) },
   BrowserWindow: class {}, Menu: { setApplicationMenu() {} },
   ipcMain: { handle(name, fn) { if (name === "tracker-cmd") handler = fn; } },
@@ -2258,20 +2262,26 @@ Module._load = function (request, ...rest) {
   return load.call(this, request, ...rest);
 };
 require(mainJs);
-const event = { sender: { send: (channel, message) => sent.push({ channel, message }) } };
+const began0 = Date.now();
+const event = { sender: { isDestroyed: () => false,
+                          send: (channel, message) => sent.push({ channel, message, ms: Date.now() - began0 }) } };
 (async () => {
   const out = [];
   for (const args of JSON.parse(calls)) {
     const began = Date.now();
     const reply = await handler(event, args, undefined);
-    out.push({ args, reply, ms: Date.now() - began });
+    out.push({ args, reply, ms: Date.now() - began, at: Date.now() - began0 });
   }
-  // The shell appends a failed child's stderr without waiting on it; give
-  // that write its moment before the harness ends.
+  // The app closing (decision 203): what the shell does on will-quit.
+  if (process.env.HARNESS_QUIT && appHandlers["will-quit"]) appHandlers["will-quit"]();
+  // The shell appends a failed child's stderr without waiting on it, and a
+  // pass ends after its click was answered; give both their moment before
+  // the harness ends.
   setTimeout(() => {
-    process.stdout.write(JSON.stringify({ out, sent }));
+    const pipeBroke = realFs.existsSync(`${process.env.FAKE_LOG}.pipe-broke`);
+    process.stdout.write(JSON.stringify({ out, sent, pipeBroke }));
     process.exit(0);
-  }, 500);
+  }, Number(process.env.HARNESS_WAIT || 500));
 })();
 """
 
@@ -2279,17 +2289,39 @@ const event = { sender: { send: (channel, message) => sent.push({ channel, messa
 _FAKE_TRACKER = r"""
 const given = process.argv.slice(2);
 const command = given[given.indexOf("tracker.api") + 1];
+const folder = given[given.indexOf("tracker.api") + 3];
 const say = (o) => process.stdout.write(JSON.stringify(o) + "\n");
 const line = (fields) => say({ progress: { v: 1, pass: 4242, at: "2026-01-02T03:04:05", ...fields } });
 if (command === "list") {
-  say({ vocab: { commands: ["list", "scan", "state", "templates", "priors"],
-                 engagement_flag: "--engagement",
+  say({ vocab: { commands: ["list", "run-now", "scan", "state", "templates", "priors"],
+                 engagement_flag: "--engagement", pass_command: "run-now",
                  shell: { error_log: process.env.FAKE_LOG } } });
-} else if (command === "scan") {
+} else if (command === "run-now" && folder === "/sample/return") {
+  // A pass (decision 203): it begins, runs on, and ends with its final line.
   line({ event: "started", limit_seconds: 7200, households: 1 });
   line({ event: "household", household: "Sample Household", n: 1, of: 1 });
+  setTimeout(() => {
+    line({ event: "file", step: "sort", name: "W-2 Sample.pdf", household: "Sample Household" });
+    say({ pass: 4242, exit: 0, runs: [{ label: "Sample", filed: 1 }], pass_warnings: [], warnings: [] });
+  }, 1500);
+} else if (command === "run-now" && folder === "/sample/slow") {
+  // A pass that outlives the limit its own first line states.
+  line({ event: "started", limit_seconds: 1, households: 1 });
   line({ event: "file", step: "sort", name: "W-2 Sample.pdf", household: "Sample Household" });
-  say({ run: { filed: 1 }, warnings: [] });
+  setTimeout(() => {}, 60000);
+} else if (command === "run-now" && folder === "/sample/stays") {
+  // A pass still running when the app closes: it stops when its pipe breaks.
+  line({ event: "started", limit_seconds: 7200, households: 1 });
+  process.stdout.on("error", () => {
+    require("fs").writeFileSync(process.env.FAKE_LOG + ".pipe-broke", "");
+    process.exit(0);
+  });
+  setInterval(() => line({ event: "file", step: "sort", name: "W-2 Sample.pdf" }), 100);
+} else if (command === "run-now") {
+  // Refused before it began: one reply, as any command's.
+  say({ error: "refused", failure: { sentence: "refused", kind: "refused", seq: null, identifier: null },
+        warnings: [] });
+  process.exit(1);
 } else if (command === "state") {
   line({ event: "started", limit_seconds: 1, households: 1 });
   line({ event: "household", household: "Sample Household", n: 1, of: 1 });
@@ -2323,13 +2355,137 @@ def _run_the_shell(tmp_path, calls, **env):
     return json.loads(done.stdout)
 
 
-def test_the_shell_passes_progress_lines_on_and_keeps_the_last_line_as_the_reply(tmp_path):
-    ran = _run_the_shell(tmp_path, [["list"], ["scan", "--engagement", "/sample/return"]])
-    scan = ran["out"][1]
-    assert scan["reply"] == {"run": {"filed": 1}, "warnings": []}
-    progress = [m["message"] for m in ran["sent"] if m["channel"] == "tracker-progress"]
-    assert [m["progress"]["event"] for m in progress] == ["started", "household", "file"]
-    assert all(m["args"] == ["scan", "--engagement", "/sample/return"] for m in progress)
+def test_the_app_returns_before_the_pass_ends(tmp_path):
+    """Decision 203: the command the API names as its pass (learned, never
+    typed) is answered at its ``started`` line while the process runs on;
+    its later lines, then its final line and exit code, reach the window
+    on the progress channel. A pass refused before it began answers as any
+    command does."""
+    args = ["run-now", "--engagement", "/sample/return"]
+    ran = _run_the_shell(tmp_path, [["list"], args, ["run-now", "--engagement", "/sample/nowhere"]],
+                         HARNESS_WAIT="3000")
+    started = ran["out"][1]
+    assert started["reply"]["pass"] == 4242 and started["reply"]["started"]["event"] == "started"
+    assert started["ms"] < 1500, "answered while the pass still runs"
+    assert ran["out"][2]["reply"]["failure"]["kind"] == "refused"
+    said = [m for m in ran["sent"] if m["channel"] == "tracker-progress"]
+    assert all(m["message"]["args"] == args for m in said)
+    events = [m["message"]["progress"]["event"] for m in said if "progress" in m["message"]]
+    assert events == ["started", "household", "file"]
+    [ended] = [m for m in said if "reply" in m["message"]]
+    assert ended is said[-1] and ended["ms"] > started["at"]
+    assert ended["message"]["code"] == 0
+    assert ended["message"]["reply"] == {"pass": 4242, "exit": 0, "runs": [{"label": "Sample", "filed": 1}],
+                                         "pass_warnings": [], "warnings": []}
+
+
+def test_run_now_is_cut_off_only_at_the_run_limit_its_own_first_line_states():
+    """Decision 203 and the lane's ruling on its Q1: the thirty-minute cap
+    stays for every plain command, and Sort & Scan - the runner's pass - is
+    killed only at the limit its ``started`` line states, which is
+    ``locking.RUN_TIME_LIMIT_SECONDS``: the number the stale-lock rule and
+    the schedule are built on, and no second constant in the shell. The
+    shell learns which command is the pass; it never types it."""
+    import tracker.api as api
+    from tracker.locking import RUN_TIME_LIMIT_SECONDS
+
+    main_js = read("app/main.js")
+    assert str(RUN_TIME_LIMIT_SECONDS) not in main_js and "2 * 60 * 60" not in main_js
+    assert "said.limit_seconds * 1000" in main_js
+    assert "vocab.pass_command" in main_js and f'"{api.PASS_COMMAND}"' not in main_js
+    assert api._vocab()["pass_command"] == api.PASS_COMMAND
+    runner = read("tracker/runner.py")
+    main = runner[runner.index("def _pass(ns, parser, reached: dict)"):]
+    assert "limit_seconds=RUN_TIME_LIMIT_SECONDS)" in main[:main.index('watch.say("started"')]
+    assert f'"{api.PASS_COMMAND}"' not in read("app/renderer/app.js")
+    assert "withEng(vocab.pass_command)" in read("app/renderer/app.js")
+
+
+def test_the_runbooks_189_sentence_is_rewritten():
+    """Decision 203: the runbook said Run now worked inside the app's short
+    kill; it is the scheduled pass now, said once. Its own test rather than
+    ``STRUCK``, which scans the decision log, whose rows quote the old
+    sentence as history."""
+    runbook = read("docs/runbook.md")
+    for text in (runbook, read("README.md")):
+        assert "inside the app's thirty-minute limit" not in text
+        assert "thirty-minute" not in text
+    assert runbook.count("**Run now** (Sort & Scan) is\nthe scheduled pass") == 1
+
+
+#: The renderer's lock and pass-ending functions, lifted from app.js and run
+#: by node (the review of decision 203, M2): the shown return met the pass's
+#: own lock during the pass, the pass ended, then the lock went.
+_BUTTON_PROBE = r"""
+const fs = require("fs");
+const src = fs.readFileSync(process.argv[2], "utf8");
+function grab(sig) { const i = src.indexOf(sig); const j = src.indexOf("\n}\n", i); return src.slice(i, j + 3); }
+const buttons = src.slice(src.indexOf("const LOCKED_BUTTONS"), src.indexOf("function applyLock"));
+const parts = [buttons, grab("function applyLock() {"), grab("function setLocked(on) {"), grab("function scanDone() {")];
+const nodes = {};
+const node = (id) => ({ id, classList: { add() {}, remove() {} }, textContent: "", disabled: false, dataset: {},
+                        querySelectorAll: () => [] });
+const ctx = `let locked = false; let scanning = {}; const SCAN_LABEL = "Sort & Scan";
+const $ = (id) => (nodes[id] ||= node(id));
+${parts.join("\n")}
+return { setLocked, scanDone };`;
+const r = new Function("nodes", "node", ctx)(nodes, node);
+const btn = () => (nodes["btn-scan"] ||= node("btn-scan"));
+btn().disabled = true;     // runScan
+r.setLocked(true);         // a state during the pass shows its lock
+r.scanDone();              // the pass ends while the lock notice shows
+const whileLocked = btn().disabled;
+r.setLocked(false);        // the redraw's state: the lock has gone
+process.stdout.write(JSON.stringify({ whileLocked, after: btn().disabled }));
+"""
+
+
+def test_the_end_of_a_pass_gives_sort_and_scan_back_through_the_locks_mark(tmp_path):
+    """Decision 203's review, M2: the button comes back through applyLock's
+    mark, so the lock going gives it back - never an unmarked disable that
+    nothing ever lifts."""
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not on PATH (CI installs it)")
+    probe = tmp_path / "button_probe.js"
+    probe.write_text(_BUTTON_PROBE, encoding="utf-8", newline="\n")
+    done = subprocess.run([node, str(probe), str(REPO / "app" / "renderer" / "app.js")], capture_output=True,
+                          text=True, encoding="utf-8", timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    assert json.loads(done.stdout) == {"whileLocked": True, "after": False}
+    ended = _body(read("app/renderer/app.js"), "function scanDone() {")
+    assert "btn.disabled = locked" not in ended and "applyLock();" in ended
+
+
+def test_a_pass_killed_at_its_own_limit_ends_with_the_killed_sentence(tmp_path):
+    import tracker.api as api
+
+    ran = _run_the_shell(tmp_path, [["list"], ["run-now", "--engagement", "/sample/slow"]],
+                         HARNESS_WAIT="3000")
+    assert ran["out"][1]["reply"]["pass"] == 4242
+    [ended] = [m["message"] for m in ran["sent"] if "reply" in m["message"]]
+    assert ended["reply"]["killed"] is True
+    assert ended["reply"]["error"] == (api.SHELL_KILLED.format(minutes=1) + " "
+                                       + api.SHELL_KILLED_AT.format(household="Sample Household",
+                                                                    name="W-2 Sample.pdf"))
+
+
+def test_closing_the_app_breaks_its_passes_pipe_rather_than_killing_it(tmp_path):
+    """Decision 203, R6: on will-quit the shell destroys each running pass's
+    stdout; the pass sees its pipe break (the runner's Stop) and ends of its
+    own accord."""
+    calls = [["list"], ["run-now", "--engagement", "/sample/stays"]]
+    assert _run_the_shell(tmp_path, calls, HARNESS_QUIT="1", HARNESS_WAIT="2000")["pipeBroke"]
+    (tmp_path / "tracker-errors.log.pipe-broke").unlink()
+    left_open = tmp_path / "left open"
+    left_open.mkdir()
+    assert not _run_the_shell(left_open, calls, HARNESS_WAIT="1000")["pipeBroke"], \
+        "without will-quit the pipe stays open"
 
 
 def test_the_shells_kill_follows_the_limit_the_pass_reported_and_says_where_it_was(tmp_path):
@@ -2468,7 +2624,7 @@ def test_every_reply_warning_becomes_a_notice():
     body = js.split("async function call(args, payload, { ofAnother = false } = {}) {", 1)[1].split("\n}\n", 1)[0]
     assert "result.warnings" in body and "warningNotices(" in body
     assert "throw new TrackerError(" in body
-    assert "warningNotices(result.pass_warnings" in js
+    assert "warningNotices(ended.pass_warnings" in js     # a pass's own, from its final line (203)
 
 
 def test_a_failed_first_list_is_a_notice_with_retry_needing_no_vocabulary():
@@ -2608,7 +2764,7 @@ def test_every_word_a_scan_reply_is_said_in_is_the_apis():
     import tracker.api as api
 
     js = read("app/renderer/app.js")
-    body = js.split("function scanSummary(result) {", 1)[1].split("\n}\n", 1)[0]
+    body = js.split("function scanSummary(run, others, summary) {", 1)[1].split("\n}\n", 1)[0]
     words = api._vocab()["scan"]
     for key, literal in words.items():
         assert f"words.{key}" in body or f"vocab.scan.{key}" in js, key
@@ -2650,7 +2806,8 @@ def test_switching_returns_is_one_state_call():
     """A switch is one process: ``showReturn`` asks ``state`` and nothing
     else, the three places a person switches and a refusal all go through
     it, and the list is read once, at start-up (and again only after the
-    clients folder is set, R8)."""
+    clients folder is set, R8) - and once when a Sort & Scan pass ends,
+    before its one ``state`` (decision 203, the lane's ruling on 194's Q5)."""
     js = read("app/renderer/app.js")
     show = _body(js, "async function showReturn(path) {")
     assert show.count("call(") == 1 and 'call(["state", ' in show
@@ -2666,8 +2823,10 @@ def test_switching_returns_is_one_state_call():
     refused = _body(js, "async function refused(err, btn) {")
     assert "showReturn(active)" in refused and "bootstrap(" not in refused
     assert "refresh(" not in js
-    assert js.count('call(["list"])') == 1
+    assert js.count('call(["list"])') == 2
     assert 'call(["list"])' in _body(js, "async function loadEngagements(preferPath, asked) {")
+    ended = _body(js, "async function passEnded({ reply }) {")
+    assert ended.index('call(["list"])') < ended.index('call(withEng("state"))')
     calls = [m.start() for m in re.finditer(r"(?<![\w.])bootstrap\(", js)]
     assert len(calls) == 4        # its definition, its own Retry, saveRoot and start-up
     assert "await bootstrap();" in _body(js, "async function saveRoot() {")

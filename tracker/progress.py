@@ -11,7 +11,7 @@ carriers, so nothing has a second copy of the shape to drift:
 * a **progress file** - the latest line, rewritten whole - kept under
   :data:`PASSES_DIRNAME` beside the tracker's database, for any other
   process: the app's lock notice reads it to name the file a pass on this
-  machine is on, and decision 203's detached pass reuses it. It is a
+  machine is on, and decision 203's Run now reuses it. It is a
   hint: written without a sync to disk, and a write that fails is
   skipped (the next line catches it up).
 
@@ -55,6 +55,10 @@ FORMAT_VERSION = 1
 EVENTS = ("started", "household", "file", "stopping", "ended")
 #: How a pass ended, on its ``ended`` line.
 OUTCOMES = ("finished", "stopped", "out_of_time", "failed")
+#: Why a pass stopped before its end (decision 203): the app that started
+#: it closed (its progress pipe broke), or a person asked (a marker).
+APP_CLOSED = "app_closed"
+ASKED = "asked"
 #: The folder the progress files and the cancel markers live in, beside
 #: the tracker's database - never in either client tree.
 PASSES_DIRNAME = "passes"
@@ -81,7 +85,7 @@ def failure_reply(sentence: str, kind: str, *, seq: int | None = None,
     ``failure`` carries it again with its kind and the row it was about,
     and ``warnings`` is always a list. Built here, once, so ``error`` and
     ``failure.sentence`` can never disagree, and so a pass that is not the
-    API (decision 203's detached runner) says a failure the same way.
+    API (decision 203's Run now, the runner) says a failure the same way.
     ``extra`` joins ``failure`` (the lock a ``locked`` failure met)."""
     if kind not in FAILURE_KINDS:
         raise ValueError(f"not a failure kind: {kind!r}")
@@ -190,6 +194,9 @@ class Watch:
         #: be stopped from outside.
         self.stoppable = emit is not None
         self._stop_seen = False
+        #: The shell stopped listening (decision 203): the app that started
+        #: this pass closed, or crashed, and its pipe broke. Sticky.
+        self._gone = False
         self._where: dict = {}
         if self.folder is not None:
             self._sweep()
@@ -257,9 +264,21 @@ class Watch:
         if self.emit is not None:
             try:
                 self.emit(json.dumps({PROGRESS_KEY: said}, ensure_ascii=True) + "\n")
-            except (OSError, ValueError) as exc:
-                # Nobody is listening any more; the pass goes on and its
-                # reply, not a progress line, is what the record keeps.
+            except OSError as exc:
+                # Nobody is listening any more (decision 203): the app that
+                # started this pass closed, and its pipe broke - EPIPE here,
+                # EINVAL on Windows, both OSError. That is a stop, the same
+                # as a person's, at the next file: what was done is
+                # recorded, the locks are let go and the rest waits (119).
+                # Not a kill, which would leave the lock for 2 h 05 m, and
+                # not a pass left running where no one can stop it.
+                from tracker import errors  # at call time, as above
+
+                log.debug("Could not print a progress line (%s)", errors.error_class(exc))
+                self.emit = None
+                self._gone = True
+            except ValueError as exc:
+                # A closed stream in this process, not a reader gone.
                 from tracker import errors  # at call time, as above
 
                 log.debug("Could not print a progress line (%s)", errors.error_class(exc))
@@ -268,8 +287,9 @@ class Watch:
     def stop_asked(self) -> bool:
         """Whether a person asked this pass to stop: one look for its
         cancel marker, and once seen it stays seen. Always False for a
-        pass that may not be stopped from here."""
-        if self._stop_seen:
+        pass that may not be stopped from here. True, and staying so, once
+        the shell that was listening has gone (decision 203)."""
+        if self._stop_seen or self._gone:
             return True
         if not self.stoppable or self.folder is None:
             return False
@@ -281,6 +301,15 @@ class Watch:
             self._stop_seen = True
             self.say("stopping")
         return seen
+
+    @property
+    def why_stopped(self) -> str:
+        """Why this pass is stopping: :data:`APP_CLOSED` when the shell
+        stopped listening, :data:`ASKED` when a person asked, "" when
+        nothing has stopped it. The runner says each in its own words."""
+        if self._gone:
+            return APP_CLOSED
+        return ASKED if self._stop_seen else ""
 
     def close(self, outcome: str) -> None:
         """Say the pass ended and how, then take its files away."""

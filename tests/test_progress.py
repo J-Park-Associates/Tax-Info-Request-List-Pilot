@@ -94,6 +94,36 @@ def test_a_stop_is_seen_at_the_next_check_and_stays_seen(tmp_path):
     watch.close("stopped")
 
 
+def test_a_broken_emit_is_a_stop_that_sticks(tmp_path):
+    """Decision 203, R6: the app that started a pass closed, and its pipe
+    broke. The pass stops at its next check, as if a person had asked, and
+    says why; nothing more is printed, the progress file is still kept."""
+    printed: list[str] = []
+
+    def emit(text: str) -> None:
+        if len(printed) >= 2:
+            raise BrokenPipeError(32, "Broken pipe")
+        printed.append(text)
+
+    watch = Watch(tmp_path, emit=emit, limit_seconds=60)
+    watch.say("started")
+    watch.say("household", household="Sample Household", n=1, of=1)
+    assert not watch.stop_asked() and watch.why_stopped == ""
+    watch.say("file", step="sort", name="W-2.pdf")          # the pipe breaks here
+    assert watch.stop_asked() and watch.why_stopped == progress.APP_CLOSED
+    assert watch.stop_asked(), "a reader gone does not come back"
+    watch.say("file", step="sort", name="1099.pdf")
+    assert len(printed) == 2, "nothing is printed to a pipe that broke"
+    assert read_latest(tmp_path, watch.pass_id)["name"] == "1099.pdf"
+    watch.close("stopped")
+
+    asked = Watch(tmp_path / "again", emit=[].append, limit_seconds=60)
+    asked.say("started")
+    assert ask_to_stop(tmp_path / "again", asked.pass_id) and asked.stop_asked()
+    assert asked.why_stopped == progress.ASKED
+    asked.close("stopped")
+
+
 def test_only_a_pass_the_app_started_can_be_asked_to_stop(tmp_path):
     scheduled = Watch(tmp_path, limit_seconds=60, pass_id=os.getpid())
     scheduled.say("started")

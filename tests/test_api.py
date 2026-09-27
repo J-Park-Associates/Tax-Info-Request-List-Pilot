@@ -166,6 +166,43 @@ def one_reply(out: str) -> dict:
     return lines[-1]
 
 
+def scan(capsys, engagement) -> tuple[int, dict]:
+    """Sort & Scan the way the app runs it since decision 203: ``run-now``,
+    which hands this return's household to the runner's own pass in this
+    process, then - when the pass ends - one ``list`` and one ``state``, as
+    the renderer redraws (the lane's ruling on 194's Q5).
+
+    Answers with the pass's exit code and the reply the claims below read:
+    ``run`` is the asked return's entry in the final line, ``household``
+    the household's other returns, ``pass_warnings`` and ``pass`` the final
+    line's own, ``lock`` the lock a locked-out return met, and ``state``,
+    ``list`` and ``warnings`` the redraw's. A refusal is its envelope."""
+    code = api.main([api.PASS_COMMAND, api.ENGAGEMENT_FLAG, str(engagement)])
+    final = one_reply(capsys.readouterr().out)
+    if "error" in final:
+        return code, final
+    # Matched as the renderer matches (decision 203's review, S2): the
+    # path's own spelling, the one the API gives the app, so a mismatch
+    # fails here rather than hiding the counts on screen.
+    asked = str(api._return_dir(engagement))
+    [run] = [one for one in final["runs"] if one["path"] == asked]
+    held = next((one["locked_at"] for one in final["runs"] if one["locked_at"]), None)
+    assert api.main(["list"]) == 0
+    listed = one_reply(capsys.readouterr().out)
+    state_code = api.main(["state", api.ENGAGEMENT_FLAG, str(engagement)])
+    state = one_reply(capsys.readouterr().out)
+    return code, {
+        "run": run,
+        "household": [one for one in final["runs"] if one is not run],
+        "pass_warnings": final["pass_warnings"],
+        "pass": final["pass"],
+        "lock": api._lock_payload(Path(held)) if held else None,
+        "state": state if state_code == 0 else None,
+        "list": {key: listed[key] for key in ("engagements", "households", "misfits", "root")},
+        "warnings": state.get("warnings", []),
+    }
+
+
 # ------------------------------------------------------------- the contract ----
 
 
@@ -432,7 +469,7 @@ def test_create_then_scan_plays_a_whole_engagement_end_to_end(capsys, demo_root,
     # The client drags every sample into the one folder.
     engagement = sample_engagement(capsys, demo_root, tmp_path)
 
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     run_result = payload["run"]
     assert run_result["ok"] and not run_result["skipped"]
@@ -461,16 +498,19 @@ def test_the_apps_pass_appends_the_line_the_scheduled_run_appends(capsys, demo_r
 
     engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.bmp")
 
-    assert run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))[0] == 0
+    assert scan(capsys, engagement)[0] == 0
     first = log_path().read_text(encoding="utf-8")
     assert engagement.name not in first and "    counts returns=" in first
     assert not (demo_root / LOG_FILENAME).exists()
 
-    assert run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))[0] == 0
+    assert scan(capsys, engagement)[0] == 0
     second = log_path().read_text(encoding="utf-8")
     assert second.startswith(first)
     assert engagement.name not in second
-    assert len([line for line in second.splitlines() if line.startswith("[")]) == 2
+    # Each pass is the runner's (decision 203): its ``pass started`` line,
+    # then its summary line.
+    stamped = [line for line in second.splitlines() if line.startswith("[")]
+    assert len(stamped) == 4 and sum(line.endswith("] pass started") for line in stamped) == 2
 
 
 def test_the_apps_pass_regenerates_the_practices_status_page(capsys, demo_root, tmp_path):
@@ -482,7 +522,7 @@ def test_the_apps_pass_regenerates_the_practices_status_page(capsys, demo_root, 
                                         "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]})[0] == 0
     assert not page.exists()
 
-    assert run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))[0] == 0
+    assert scan(capsys, engagement)[0] == 0
 
     text = page.read_text(encoding="utf-8")
     assert engagement.name in text and "Jones Family 2025" in text
@@ -586,7 +626,7 @@ def test_state_shows_the_status_the_record_holds(capsys, demo_root):
 def test_assign_files_a_parked_document_and_rescans(capsys, demo_root, tmp_path):
     engagement = sample_engagement(capsys, demo_root, tmp_path,
                                    "Mortgage Notes.docx", "Form 1098 Mortgage Interest.pdf")
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0
     parked = [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
     assert [e["original_name"] for e in parked] == ["Mortgage Notes.docx"]
@@ -741,7 +781,7 @@ def test_dismiss_records_that_nothing_asks_for_a_parked_document(capsys, demo_ro
     from tracker.filer import DISMISSED_BY_PERSON, NOT_REQUESTED
 
     engagement = sample_engagement(capsys, demo_root, tmp_path, "Mortgage Notes.docx")
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     [parked] = [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
 
@@ -766,7 +806,7 @@ def test_unfile_sends_a_filed_document_back_for_review_and_the_status_with_it(ca
     from tracker.filer import UNFILED_BY_PERSON
 
     engagement = sample_engagement(capsys, demo_root, tmp_path, "Form 1098 Mortgage Interest.pdf")
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     [filed] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
     request = next(i for i in payload["state"]["items"] if i["identifier"] == filed["identifier"])
@@ -798,7 +838,7 @@ def test_mark_missing_takes_one_request_off_a_consolidated_statement(capsys, dem
     from tests.test_filer import _consolidated_return
 
     engagement = _consolidated_return(demo_root)
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     [filed] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
     assert filed["identifier"] == "E01" and filed["answered"] == ["A02", "A04"]
@@ -880,7 +920,7 @@ def test_the_state_triages_each_parked_file_best_first_with_the_reason_behind_ea
     from tracker.review import IDENTITY_UNKNOWN
 
     engagement = triage_engagement(capsys, demo_root)
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     state = payload["state"]
 
@@ -909,7 +949,7 @@ def test_a_parked_file_the_evidence_says_nothing_about_is_offered_nothing(
     # was the file here until decision 127 made a photo a document; the
     # claim is about a file type nobody takes, and this is one.
     engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.bmp")
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
 
     [triaged] = payload["state"]["review"]
@@ -931,7 +971,7 @@ def test_the_review_card_has_three_buckets_and_opens_only_a_documents_copy(capsy
         f"Line {n:03d} of a fabricated letter that answers no request on the list" for n in range(400)))
     (inbox_of(engagement) / "W-2 2025.pdf.exe").write_bytes(b"MZ")
     (inbox_of(engagement) / "scans.zip").write_bytes(b"PK\x03\x04 not really a zip")
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     state = payload["state"]
 
@@ -1032,7 +1072,7 @@ def test_every_parked_row_ships_a_unique_handle_and_a_program_from_a_zip_is_answ
         archive.writestr("payroll.exe", b"MZ")
     (inbox_of(engagement) / "docs.zip").write_bytes(packed.getvalue())
     (inbox_of(engagement) / "Pay.scr\ufeff").write_bytes(b"MZ another program")
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     state = payload["state"]
 
@@ -1057,7 +1097,7 @@ def test_dismissing_a_file_takes_it_out_of_the_review_queue(capsys, demo_root, t
     from tracker.filer import NOT_REQUESTED
 
     engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.bmp")
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     [parked] = payload["state"]["index"]
     assert [t["pbc_location"] for t in payload["state"]["review"]] == [parked["pbc_location"]]
 
@@ -1084,7 +1124,7 @@ def test_a_resend_after_a_dismissal_is_triaged_and_its_row_carries_the_set_aside
     from tracker.filer import NOT_REQUESTED, RESENT_AFTER_SET_ASIDE
 
     engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.bmp")
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     [parked] = payload["state"]["index"]
     # The row's own sequence number, read back out of the state the card was
@@ -1100,7 +1140,7 @@ def test_a_resend_after_a_dismissal_is_triaged_and_its_row_carries_the_set_aside
     # The client sends the same photo again.
     original = engagement / set_aside["pbc_location"]
     (inbox_of(engagement) / original.name).write_bytes(original.read_bytes())
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
 
     rows = payload["state"]["index"]
@@ -1121,7 +1161,7 @@ def test_a_resend_after_a_dismissal_is_triaged_and_its_row_carries_the_set_aside
 
 def test_assigning_a_shortlisted_request_files_it_and_the_queue_drops_it(capsys, demo_root):
     engagement = triage_engagement(capsys, demo_root)
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     [triaged] = payload["state"]["review"]
     best = triaged["shortlist"][0]["identifier"]
 
@@ -1604,7 +1644,7 @@ def test_a_name_whose_folder_was_deleted_by_hand_can_be_created_again(capsys, de
 
     spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [{"identifier": "A01", "document": "W-2", "required_keywords": "W-2"}]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    assert run(capsys, "scan", api.ENGAGEMENT_FLAG, str(where(demo_root, "Smith")))[0] == 0
+    assert scan(capsys, where(demo_root, "Smith"))[0] == 0
     shutil.rmtree(where(demo_root, "Smith"))
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 0, payload
@@ -1665,7 +1705,7 @@ def test_the_editor_shows_the_persons_rows_and_never_a_taught_keyword_as_a_typed
     assert run(capsys, "create", stdin=spec)[0] == 0
     engagement = where(demo_root, "Smith")
     text_pdf(inbox_of(engagement) / "scan0012.pdf", "nothing the rules recognise")
-    assert run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))[0] == 0
+    assert scan(capsys, engagement)[0] == 0
     [parked] = api._state(engagement)["index"]
     code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(engagement),
                         stdin={"original": "scan0012.pdf", "identifier": "A01",
@@ -1806,12 +1846,13 @@ def test_run_now_reply_carries_the_households_other_returns_and_the_pass_warning
     def refused(*args, **kwargs):
         raise PermissionError("a sync client holds it")
 
-    monkeypatch.setattr(api, "append_log", refused)
-    monkeypatch.setattr(api, "write_status_page", refused)
+    # The runner's own log and page since decision 203: Run now is its pass.
+    monkeypatch.setattr(runner, "append_log", refused)
+    monkeypatch.setattr(runner, "write_status_page", refused)
 
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(asked))
+    code, payload = scan(capsys, asked)
 
-    assert code == 0, payload
+    assert code == 1, payload          # a log or page not written is a red pass, as scheduled
     assert said_of_the_other not in payload["run"]["warnings"]
     [theirs] = payload["household"]
     assert theirs["label"] == engagement_from(other).label
@@ -1837,28 +1878,13 @@ def test_the_apps_pass_is_the_runners_pass(capsys, demo_root):
         "engagement": {},
     })
     assert code == 0, payload
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     assert [p.name for p in (engagement / PREPARED_DIR_NAME).iterdir()] == [REVIEW_DIR_NAME]
     assert payload["run"]["warnings"] == []
 
-    # A lock held by another run is reported as skipped, not as an error.
-    # Another run is another process: a lock naming this one, which it does
-    # not hold, is its own leftover and is replaced (decision 171).
-    import subprocess
-    import sys
-
-    from tracker.locking import LOCK_FILENAME
-    other = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
-    try:
-        (engagement / LOCK_FILENAME).write_text(lock_line(other.pid, dt.datetime.now()),
-                                                encoding="utf-8")
-        code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
-    finally:
-        other.kill()
-        other.wait()
-    assert code == 0 and payload["run"]["skipped"].startswith("another run")
-    (engagement / LOCK_FILENAME).unlink()
+    # A lock held by another run: test_run_now_on_a_locked_household_starts_nothing
+    # (decision 203 - Run now asks the lock before it starts).
 
     # A refused edit records nothing, and the pass runs on the last saved
     # list: a typo cannot reach the record (decision 104).
@@ -1868,10 +1894,74 @@ def test_the_apps_pass_is_the_runners_pass(capsys, demo_root):
         "items": [{**rows[0], "date_pattern": "(unclosed"}, *rows[1:]], "engagement": {},
     })
     assert code == 1 and payload["error"].startswith(f"Row 1: {COL_DATE_PATTERN}")
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0
     assert payload["run"]["ok"] is True
     assert [i["identifier"] for i in payload["state"]["items"]] == before
+
+
+def test_run_now_hands_the_door_checked_household_to_the_runner_and_nothing_else(
+        capsys, demo_root, monkeypatch):
+    """Decision 203, R1 and R2: ``run-now`` checks the return through the
+    door, finds its household by the layout, and hands the runner the
+    schedule's arguments plus Run now's three - and nothing of its own. A
+    path outside the root is refused before the runner is reached."""
+    import tracker.runner as runner
+    from tracker.layout import household_of
+    from tracker.settings import settings_dir
+
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = where(demo_root, "Smith")
+    handed: list[list[str]] = []
+    monkeypatch.setattr(runner, "main", lambda argv: handed.append(list(argv)) or 0)
+
+    assert api.main([api.PASS_COMMAND, api.ENGAGEMENT_FLAG, str(engagement)]) == 0
+    assert handed == [runner.run_now_arguments(settings_dir(), household_of(engagement))]
+    assert capsys.readouterr().out == "", "the API prints nothing of its own before the pass"
+
+    outside = demo_root.parent / "elsewhere" / HOUSEHOLD / "2025" / "1040 - Smith"
+    code, out = _raw(capsys, api.PASS_COMMAND, api.ENGAGEMENT_FLAG, str(outside))
+    reply = one_reply(out)
+    assert code == 1 and reply["failure"]["kind"] == "refused"
+    assert len(handed) == 1, "a refused return never reaches the runner"
+
+
+def test_run_now_on_a_locked_household_starts_nothing(capsys, demo_root, tmp_path):
+    """Decision 203, R3: a live lock on any return of the household - the
+    schedule's, or another Run now's - is 193's lock notice, and no pass
+    starts: no line in the run log, and the inbox as it was."""
+    import subprocess
+    import sys
+
+    from tracker.locking import LOCK_FILENAME
+
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "Mortgage Notes.docx")
+    waiting = sorted(p.name for p in inbox_of(engagement).iterdir())
+    log_before = (demo_root / LOG_FILENAME).read_bytes() if (demo_root / LOG_FILENAME).exists() else b""
+    other = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    try:
+        (engagement / LOCK_FILENAME).write_text(lock_line(other.pid, dt.datetime.now()), encoding="utf-8")
+        code, payload = scan(capsys, engagement)
+    finally:
+        other.kill()
+        other.wait()
+    assert code == 1, payload
+    assert payload["failure"]["kind"] == "locked"
+    assert payload["failure"]["lock"]["engagement"] == str(engagement)
+    assert payload["failure"]["lock"]["stale"] is False
+    assert sorted(p.name for p in inbox_of(engagement).iterdir()) == waiting
+    after = (demo_root / LOG_FILENAME).read_bytes() if (demo_root / LOG_FILENAME).exists() else b""
+    assert after == log_before, "no pass started, so the run log has no new line"
+    (engagement / LOCK_FILENAME).unlink()
+
+
+def test_scan_is_no_longer_a_command():
+    """Decision 203, R7: an allowlisted command the app no longer sends is
+    a door left open and a second definition of Run now."""
+    assert "scan" not in api.COMMANDS
+    assert api.PASS_COMMAND in api.COMMANDS
+    assert api._vocab()["pass_command"] == api.PASS_COMMAND
 
 
 def payload_of_state(capsys, engagement):
@@ -2381,7 +2471,7 @@ def test_the_reminder_payload_holds_on_a_parked_client_side_file(capsys, demo_ro
     # be read, so no request accepts it and A01 stays Missing.
     write_pdf(inbox_of(folder) / f"W-2 Jane Smith {PRIOR_YEAR + 1}.pdf",
               pages=60, password="secret123")     # over the row's size floor
-    assert run(capsys, "scan", api.ENGAGEMENT_FLAG, str(folder))[0] == 0
+    assert scan(capsys, folder)[0] == 0
 
     code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(folder))
     assert code == 0, payload
@@ -2448,7 +2538,7 @@ def test_the_new_client_name_rule_lives_in_python_and_uses_the_form_label(capsys
 
 def test_priors_carry_next_year_and_the_index_carries_candidates(capsys, demo_root, tmp_path):
     engagement = sample_engagement(capsys, demo_root, tmp_path, f"W-2 Jane Smith {PRIOR_YEAR} - old.pdf")
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     [parked] = [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
     assert parked["candidates"] == ["A01"]
     assert parked["filed_as"] == f"W-2 Jane Smith {PRIOR_YEAR} - old.pdf"
@@ -2461,7 +2551,7 @@ def test_the_state_carries_each_rows_evidence_as_data_not_as_a_string(capsys, de
     from tracker.content_check import EVIDENCE_PLACES, EVIDENCE_RULES, RULE_REQUIRED, WHERE_TITLE
 
     engagement = sample_engagement(capsys, demo_root, tmp_path, f"W-2 Jane Smith {PRIOR_YEAR} - old.pdf")
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     [parked] = [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
     # Parsed by the tracker, never split by the renderer: a record keyed by
@@ -2498,7 +2588,7 @@ def test_the_state_ships_each_rows_seq_on_the_index_and_on_the_review_list(
     own bookkeeping - the journal line that last wrote that row."""
     engagement = sample_engagement(capsys, demo_root, tmp_path,
                                    "Mortgage Notes.docx", "Form 1098 Mortgage Interest.pdf")
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     state = payload["state"]
 
@@ -2521,7 +2611,7 @@ def test_a_review_command_with_no_seq_is_refused_and_a_stale_one_names_the_newer
     from tracker.filer import NOT_REQUESTED, STALE_ROW
 
     engagement = sample_engagement(capsys, demo_root, tmp_path, "Mortgage Notes.docx")
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     [parked] = [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
 
@@ -2556,7 +2646,7 @@ def test_assign_records_the_override_against_the_shortlist_the_api_computed(caps
         {"identifier": "A03", "document": "Prior Year Return", "period": "TY2025",
          "required_keywords": "prior year return", "min_size_kb": 0, "date_pattern": "*"},
     ])
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     [triaged] = payload["state"]["review"]
     suggested = [s["identifier"] for s in triaged["shortlist"]]
@@ -2591,7 +2681,7 @@ def test_the_state_carries_a_file_moved_row_in_the_index_and_in_no_list(capsys, 
     from tracker.filer import FILE_MOVED
 
     engagement = sample_engagement(capsys, demo_root, tmp_path, "Form 1098 Mortgage Interest.pdf")
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     [filed] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
     home = engagement / filed["prepared_location"]
@@ -2599,7 +2689,7 @@ def test_the_state_carries_a_file_moved_row_in_the_index_and_in_no_list(capsys, 
     review_dir.mkdir(parents=True, exist_ok=True)
     home.rename(review_dir / home.name)                 # dragged by hand
 
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     state = payload["state"]
     [moved] = [e for e in state["index"] if e["decision"] == FILE_MOVED]
@@ -2625,7 +2715,7 @@ def a_moved_row(capsys, demo_root, tmp_path, drag_to):
     in ``moved``.
     """
     engagement = sample_engagement(capsys, demo_root, tmp_path, "Form 1098 Mortgage Interest.pdf")
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     [filed] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
     home = engagement / filed["prepared_location"]
@@ -2633,7 +2723,7 @@ def a_moved_row(capsys, demo_root, tmp_path, drag_to):
     target.parent.mkdir(parents=True, exist_ok=True)
     home.rename(target)
 
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     return engagement, filed, target, payload["state"]
 
@@ -2795,13 +2885,13 @@ def test_the_moved_card_offers_mark_missing_on_a_row_whose_copy_and_original_are
     from tracker.reminder import draft_reminder
 
     engagement = sample_engagement(capsys, demo_root, tmp_path, "Form 1098 Mortgage Interest.pdf")
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     [filed] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
     (engagement / filed["prepared_location"]).unlink()
     locate(engagement, filed["pbc_location"]).unlink()
 
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     [moved] = payload["state"]["moved"]
     assert moved["gone"] is True and moved["now"] is None
@@ -3416,7 +3506,7 @@ def test_state_carries_the_household_its_open_years_its_returns_and_the_queue_co
     build_samples(samples)
     for name in ("vacation photo.bmp", "Mortgage Notes.docx"):
         (inbox_of(personal) / name).write_bytes((samples / name).read_bytes())
-    assert run(capsys, "scan", api.ENGAGEMENT_FLAG, str(business))[0] == 0
+    assert scan(capsys, business)[0] == 0
 
     state = api._state(personal)
     household = state["household"]
@@ -3471,7 +3561,7 @@ def test_the_scan_command_runs_the_household_pass_and_answers_for_the_return_it_
     (inbox_of(personal) / name).write_bytes((samples / name).read_bytes())
     text_pdf(inbox_of(personal) / "tb.pdf", f"Trial balance as of December 31 {BASE_YEAR}")
 
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(business))
+    code, payload = scan(capsys, business)
     assert code == 0, payload
 
     # The reply is the business return's, and the whole inbox was sorted.
@@ -3808,7 +3898,7 @@ def test_teaching_a_spelling_from_a_filing_rides_the_filings_transaction_and_a_o
 
     engagement = sample_engagement(capsys, demo_root, tmp_path,
                                    f"W-2 Jane Smith {PRIOR_YEAR} - old.pdf")
-    assert run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))[0] == 0
+    assert scan(capsys, engagement)[0] == 0
     state = api._state(engagement)
     [parked] = [e for e in state["index"] if e["decision"] == NEEDS_REVIEW]
     spec = {"original": parked["pbc_location"], "identifier": "A01", "seq": parked["seq"]}
@@ -4072,7 +4162,7 @@ def test_run_now_sorts_against_the_feed_list_like_the_scheduled_pass(capsys, dem
     text_pdf(inbox_of(father) / "tb.pdf",
              ["Trial balance as of December 31 2025", TEST_CLIENT])
 
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(father))
+    code, payload = scan(capsys, father)
 
     assert code == 0, payload
     assert read_index(llc) == []                    # the pass files nothing across
@@ -4089,7 +4179,7 @@ def waiting_document(capsys, father):
     from tests.samples import text_pdf
 
     text_pdf(inbox_of(father) / "tb.pdf", ["Trial balance as of December 31 2025", TEST_CLIENT])
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(father))
+    code, payload = scan(capsys, father)
     assert code == 0, payload
     [waiting] = payload["state"]["review"]
     return waiting
@@ -4229,7 +4319,7 @@ def a_parked_document(capsys, engagement):
     from tests.samples import text_pdf
 
     text_pdf(inbox_of(engagement) / "notice.pdf", ["an agency notice nothing asks for"])
-    _code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    _code, payload = scan(capsys, engagement)
     [row] = [e for e in payload["state"]["index"]
              if e["decision"] == NEEDS_REVIEW]
     return row["pbc_location"], row["seq"]
@@ -4274,14 +4364,14 @@ def test_the_renderer_types_none_of_the_feed_words(capsys, demo_root):
 
 
 def test_a_pass_cannot_be_run_without_the_practice(capsys, demo_root, monkeypatch):
-    """*Run now* on a root that cannot be walked is refused in the runner's
-    one sentence, which is the run's ``error`` in the reply - and nothing
-    is sorted (decision 132). Before, the pass fed nothing in silence and
-    the button and the schedule could disagree about what the inbox was
-    for."""
+    """*Run now* on a root that cannot be walked is refused - nothing is
+    sorted (decision 132). Since decision 203 it is the runner's own
+    refusal, before its ``pass started`` line, said as the one failure
+    envelope: the button and the schedule refuse the same root the same
+    way."""
+    import tracker.runner as runner
     from tests.samples import text_pdf
     from tracker.registry import RegistryError
-    from tracker.runner import NO_PRACTICE
 
     father, _llc = two_households(capsys, demo_root)
     text_pdf(inbox_of(father) / "tb.pdf", ["Trial balance as of December 31 2025", TEST_CLIENT])
@@ -4289,18 +4379,15 @@ def test_a_pass_cannot_be_run_without_the_practice(capsys, demo_root, monkeypatc
     def unwalkable(root):
         raise RegistryError(f"{root} cannot be walked")
 
-    monkeypatch.setattr(api, "discover_engagements", unwalkable)
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(father))
+    monkeypatch.setattr(runner, "discover_engagements", unwalkable)
+    code, payload = scan(capsys, father)
 
-    assert code == 0, payload
-    assert payload["run"]["error"] == NO_PRACTICE
-    assert payload["run"]["filed"] == 0
+    assert code == 1, payload
+    assert payload["error"].startswith("Clients folder problem: ")
+    assert payload["failure"]["kind"] == "refused"
     assert (inbox_of(father) / "tb.pdf").is_file()      # nothing was sorted
     assert read_index(father) == []
-    # With no walk there is no page to draw, and the reply still says so
-    # (decision 192, R4): the pass's one walk is the page's only source.
-    from tracker.runner import PAGE_NOT_WRITTEN
-    assert PAGE_NOT_WRITTEN.format(kind="RegistryError") in payload["pass_warnings"]
+    assert not (demo_root / LOG_FILENAME).exists(), "no pass started, so no line says one did"
 
 
 # ============= a click walks nothing (decision 192) =========================
@@ -4390,7 +4477,8 @@ def test_a_return_that_feeds_another_household_reads_only_that_households_record
 def test_run_now_walks_the_practice_once(capsys, demo_root, monkeypatch):
     """F-M-3: *Run now* walked three or four times - the pass, the page,
     the state and a waiting row. One walk now serves the pass and the
-    page, and the state walks nothing."""
+    page, and the state walks nothing; the app's redraw after the pass
+    asks ``list`` once (decision 203, the lane's ruling on 194's Q5)."""
     from tests.samples import text_pdf
 
     father, llc = two_households(capsys, demo_root)
@@ -4398,10 +4486,10 @@ def test_run_now_walks_the_practice_once(capsys, demo_root, monkeypatch):
     text_pdf(inbox_of(father) / "tb.pdf", ["Trial balance as of December 31 2025", TEST_CLIENT])
     walked = _count_walks(monkeypatch)
 
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(father))
+    code, payload = scan(capsys, father)
 
     assert code == 0, payload
-    assert walked == [demo_root]
+    assert walked == [demo_root, demo_root], "the pass's one walk, then the redraw's list"
     assert payload["state"]["household"]["returns"]
     assert not any("RegistryError" in one for one in payload["pass_warnings"])
     page = (demo_root / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
@@ -4511,7 +4599,7 @@ def test_filing_a_parked_card_moves_it_from_under_review_to_received_at_once(
     from tracker.scaffold import RECEIVED_HEADING, UNDER_REVIEW_HEADING
 
     engagement = sample_engagement(capsys, demo_root, tmp_path, "Mortgage Notes.docx")
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     [parked] = [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
     before = client_readme(engagement)
@@ -4536,7 +4624,7 @@ def test_unfiling_moves_it_back_to_under_review_at_once(capsys, demo_root, tmp_p
     from tracker.scaffold import UNDER_REVIEW_HEADING
 
     engagement = sample_engagement(capsys, demo_root, tmp_path, "Form 1098 Mortgage Interest.pdf")
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     [filed] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
     label = next(item.label for item in load_manifest(engagement)
@@ -5409,7 +5497,7 @@ def test_a_save_from_a_stale_list_is_refused(capsys, demo_root):
     # before it saves after it.
     opened = payload_of_state(capsys, engagement)
     journal = ledger.head(engagement)
-    assert run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))[0] == 0
+    assert scan(capsys, engagement)[0] == 0
     assert ledger.head(engagement) != journal
     assert payload_of_state(capsys, engagement)["list_head"] == opened["list_head"]
     edited = _rows_of(opened)
@@ -5427,7 +5515,7 @@ def _filed_documents(capsys, demo_root, tmp_path):
 
     engagement = sample_engagement(capsys, demo_root, tmp_path, f"W-2 John Smith {YEAR}.pdf",
                                    f"W-2 Jane Smith {YEAR}.pdf", "Form 1098 Mortgage Interest.pdf")
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     filed = [e for e in payload["state"]["index"] if e["decision"] == FILED]
     assert sorted(e["identifier"] for e in filed) == ["A01", "A01", "C01"], filed
@@ -5550,7 +5638,7 @@ def test_a_rename_carries_duplicates_and_parked_candidates_that_name_it(
     engagement = sample_engagement(capsys, demo_root, tmp_path, f"W-2 John Smith {YEAR}.pdf",
                                    f"W-2 John Smith {YEAR} - Copy.pdf",
                                    f"W-2 Jane Smith {PRIOR_YEAR} - old.pdf")
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
 
     def rows(state):
@@ -5583,7 +5671,7 @@ def test_a_rename_carries_duplicates_and_parked_candidates_that_name_it(
     open_keys = {intent[ledger.KEY_KEY] for intent in store.open_intents(store.connect(), engagement)}
     assert {duplicate["pbc_location"], parked["pbc_location"]} <= open_keys
     monkeypatch.setattr(filer, "_do_op", real)
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     assert not store.open_intents(store.connect(), engagement)
     follows(payload["state"], "A1")
@@ -5628,7 +5716,7 @@ def test_an_interrupted_rename_is_finished_by_the_next_pass(capsys, demo_root, t
     assert len([child for child in prepared.iterdir() if child.name.startswith("A1 - ")]) == 1
 
     monkeypatch.setattr(filer, "_do_op", real)
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     assert not store.open_intents(store.connect(), engagement)
     assert not [child for child in prepared.iterdir() if child.name.startswith("A01")]
@@ -5665,7 +5753,7 @@ def test_a_rename_carries_what_a_consolidated_statement_answers(capsys, demo_roo
     from tracker.reminder import draft_reminder
 
     engagement = _consolidated_return(demo_root)
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     [filed] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
     assert filed["identifier"] == "E01" and filed["answered"] == ["A02", "A04"]
@@ -5714,7 +5802,7 @@ def test_a_rename_carries_what_a_consolidated_statement_answers(capsys, demo_roo
     open_keys = {intent[ledger.KEY_KEY] for intent in store.open_intents(store.connect(), engagement)}
     assert filed["pbc_location"] in open_keys
     monkeypatch.setattr(filer, "_record", real)
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     assert not store.open_intents(store.connect(), engagement)
     carried(payload["state"], "A02K")
@@ -5750,7 +5838,7 @@ def test_a_request_answered_only_by_a_statement_cannot_be_deleted_by_a_save(caps
     from tests.test_filer import _consolidated_return
 
     engagement = _consolidated_return(demo_root)
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     state = payload["state"]
     [filed] = [e for e in state["index"] if e["decision"] == FILED]
@@ -5785,7 +5873,7 @@ def test_a_filing_racing_a_save_is_seen_under_the_lock(capsys, demo_root, tmp_pa
     from tracker.locking import lock_is_held
 
     engagement = sample_engagement(capsys, demo_root, tmp_path, f"W-2 John Smith {YEAR}.pdf")
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     state = payload["state"]
     assert not [e for e in state["index"] if e["identifier"] == "C01"]
@@ -6393,7 +6481,7 @@ def test_a_stale_click_is_kind_stale_and_names_the_row_and_the_records_seq_now(
     from tracker.filer import NOT_REQUESTED
 
     engagement = sample_engagement(capsys, demo_root, tmp_path, "Mortgage Notes.docx")
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     [parked] = [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
     code, after = run(capsys, "dismiss", api.ENGAGEMENT_FLAG, str(engagement),
@@ -6552,7 +6640,7 @@ def test_run_now_prints_a_progress_line_per_household_and_file_before_its_one_re
     from tracker.progress import PROGRESS_KEY
 
     engagement = sample_engagement(capsys, demo_root, tmp_path, "Mortgage Notes.docx")
-    code, out = _raw(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, out = _raw(capsys, api.PASS_COMMAND, api.ENGAGEMENT_FLAG, str(engagement))
     lines = [json.loads(line) for line in out.strip().splitlines()]
     assert code == 0
     assert all(PROGRESS_KEY in line for line in lines[:-1]) and PROGRESS_KEY not in lines[-1]
@@ -6564,25 +6652,28 @@ def test_run_now_prints_a_progress_line_per_household_and_file_before_its_one_re
     assert "Mortgage Notes.docx" in {one["name"] for one in files if one["step"] == "sort"}
     assert all(one["household"] == said[1]["household"] for one in files)
     assert said[-1]["event"] == "ended" and said[-1]["outcome"] == "finished"
-    assert lines[-1]["pass"] == said[0]["pass"] and lines[-1]["run"]["cancelled"] is False
+    assert lines[-1]["pass"] == said[0]["pass"] and lines[-1]["exit"] == 0
+    assert [one["cancelled"] for one in lines[-1]["runs"]] == [False]
 
 
 @pytest.mark.parametrize("raised", [RuntimeError, ManifestError])
 def test_run_now_that_filed_keeps_its_counts_whatever_the_redraw_raises(capsys, demo_root, tmp_path,
                                                                          monkeypatch, raised):
     """D5 whole (the review's M2): a ManifestError from the redraw - a list
-    that cannot be read just then - keeps the counts as any other does."""
+    that cannot be read just then - keeps the counts as any other does.
+    Since decision 203 the counts are the pass's final line, printed before
+    any redraw, and the redraw is the app's own ``state``, whose failure is
+    its own notice."""
     engagement = sample_engagement(capsys, demo_root, tmp_path, "Mortgage Notes.docx")
 
     def cannot_redraw(folder):
         raise raised("a fabricated redraw failure")
 
     monkeypatch.setattr(api, "_state", cannot_redraw)
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     assert payload["state"] is None and "error" not in payload
     assert payload["run"]["review"] == 1          # the pass's counts stand
-    assert api.STATE_NOT_REDRAWN.format(kind=raised.__name__) in payload["warnings"]
 
 
 def test_cancel_pass_refuses_a_pass_that_is_not_running(capsys, demo_root):
@@ -6838,7 +6929,7 @@ def test_a_write_that_returns_state_carries_the_reminder_card_too(capsys, demo_r
     the card is the record's after it (decision 194)."""
     engagement = sample_engagement(capsys, demo_root, tmp_path,
                                    "Mortgage Notes.docx", "Form 1098 Mortgage Interest.pdf")
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     [parked] = [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
     [filed] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
@@ -6893,11 +6984,13 @@ def _the_list_now(capsys) -> dict:
 
 def test_the_writes_that_change_the_list_carry_it_without_the_vocabulary(capsys, demo_root):
     """Decision 194, R5-R7: a new return, a new year (one return or the
-    household's), a household's details, an accepted name, a return made
-    inactive and Sort & Scan each change what the picker shows, so each
-    reply carries the whole list from one walk - the list ``list`` gives,
-    and no vocabulary, which only ``list`` ships. Every command
-    :data:`api.LIST_CHANGING` names is walked here (the review's S3)."""
+    household's), a household's details, an accepted name and a return made
+    inactive each change what the picker shows, so each reply carries the
+    whole list from one walk - the list ``list`` gives, and no vocabulary,
+    which only ``list`` ships. Every command :data:`api.LIST_CHANGING`
+    names is walked here (the review's S3). Sort & Scan is not among them
+    since decision 203: ``run-now`` is the runner's pass and carries no
+    list; the app asks ``list`` once when it ends (the ruling on 194's Q5)."""
     carried = set()
 
     def carries(command, payload):
@@ -6950,9 +7043,7 @@ def test_the_writes_that_change_the_list_carry_it_without_the_vocabulary(capsys,
     carries("accept-folder-name", payload)
     assert "Park Household" in [h["name"] for h in payload["list"]["households"]]
 
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(prior))
-    assert code == 0, payload
-    carries("scan", payload)
+    assert "scan" not in api.COMMANDS and api.PASS_COMMAND not in api.LIST_CHANGING
     assert carried == set(api.LIST_CHANGING)
 
 
@@ -6966,7 +7057,7 @@ def test_the_writes_that_cannot_change_the_list_do_not_walk(capsys, demo_root, t
 
     engagement = sample_engagement(capsys, demo_root, tmp_path,
                                    "Mortgage Notes.docx", "Form 1098 Mortgage Interest.pdf")
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     [parked] = [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
     [filed] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
@@ -6975,11 +7066,11 @@ def test_the_writes_that_cannot_change_the_list_do_not_walk(capsys, demo_root, t
     target = engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME / home.name
     target.parent.mkdir(parents=True, exist_ok=True)
     home.rename(target)
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     [moved] = payload["state"]["moved"]
     statement = _consolidated_return(demo_root)
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(statement))
+    code, payload = scan(capsys, statement)
     assert code == 0, payload
     [answered] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
     assert run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(engagement),
@@ -7020,16 +7111,19 @@ def test_the_writes_that_cannot_change_the_list_do_not_walk(capsys, demo_root, t
     assert walked == []
 
 
-def test_sort_and_scan_carries_the_list_from_its_one_walk(capsys, demo_root, monkeypatch):
-    """Decision 194, R7: Sort & Scan already walks the root once for the
-    pass (decision 192); its reply carries the list from that walk and adds
-    none - which is how a folder made by hand reaches the picker."""
+def test_sort_and_scan_ends_with_one_list_then_one_state(capsys, demo_root, monkeypatch):
+    """Decision 203 (the lane's ruling on 194's Q5): the pass is the
+    runner's, which walks the root once and prints no list; when it ends
+    the app asks ``list`` once, then ``state`` - which is how a folder made
+    by hand reaches the picker. Neither the pass's final line nor the state
+    walks again."""
     engagement = chased_engagement(capsys, demo_root, name="Scanned")
     walked = _count_walks(monkeypatch)
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
-    assert walked == [demo_root]
-    assert payload["list"] == _the_list_now(capsys) and "vocab" not in payload["list"]
+    assert walked == [demo_root, demo_root], "the pass's walk, then the redraw's one list"
+    assert payload["list"] == _the_list_now(capsys)
+    assert api.PASS_COMMAND not in api.LIST_CHANGING
 
 
 def test_no_command_outside_the_list_changing_ones_carries_the_list():
@@ -7250,7 +7344,7 @@ def _issuer_return(capsys, demo_root, *, year=BASE_YEAR, items=None, name="Issue
         f"Schedule K-1 {year} (Form 1065) Partner's Share of Income, Deductions, Credits, etc.",
         "k-1 statement", "Part I Information About the Partnership", "Dunmore Capital Group",
         "Part II Information About the Partner", TEST_CLIENT])
-    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    code, payload = scan(capsys, engagement)
     assert code == 0, payload
     [row] = [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
     return engagement, row
@@ -7297,7 +7391,7 @@ def test_a_card_parked_for_any_other_reason_offers_no_issuer_box(capsys, demo_ro
     engagement, _ = _issuer_return(capsys, demo_root)
 
     text_pdf(inbox_of(engagement) / "notice.pdf", ["an agency notice nothing asks for"])
-    run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    scan(capsys, engagement)
     cards = {card["original_name"]: card for card in api._state(engagement)["review"]}
     assert cards["notice.pdf"]["issuer"] is None
     assert cards["k-1 dunmore.pdf"]["issuer"] == {"identifier": "F03"}
@@ -7423,7 +7517,7 @@ def test_a_card_no_longer_waiting_for_an_issuer_is_refused(capsys, demo_root):
 
     engagement, _ = _issuer_return(capsys, demo_root)
     text_pdf(inbox_of(engagement) / "notice.pdf", ["an agency notice nothing asks for"])
-    run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    scan(capsys, engagement)
     [notice] = [e for e in api._state(engagement)["index"] if e["original_name"] == "notice.pdf"]
     before = _as_it_stands(engagement)
     code, payload = _add_issuer(capsys, engagement, notice)
