@@ -682,6 +682,91 @@ def test_the_rollover_carries_a_row_per_issuer(tmp_path):
     assert [i.identifier for i in load_manifest(written)] == ["F01", "F02", "F03"]
 
 
+@pytest.fixture
+def pair_prior(tmp_path, monkeypatch):
+    """Last year's return whose list already holds two issuer rows of one
+    name, F02 and F03, as a list recorded before decision 201 could."""
+    from dataclasses import replace
+
+    from tracker import store
+    from tracker.locking import engagement_lock
+    from tracker.records import rule_to_json
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+    from tracker.templates import issuer_row, item_from_spec, template_items
+
+    settings = tmp_path.parent / f"{tmp_path.name}-app"
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    settings.mkdir(exist_ok=True)
+    set_clients_root(tmp_path)
+    k1 = next(i for i in template_items("1040", year=2025) if i.identifier == "F01")
+    eng = make_engagement(tmp_path, [k1, item_from_spec(issuer_row("F02", "Ashford Holdings LP"))],
+                          household="Lee Family", scaffold=False)
+    twin = replace(load_manifest(eng)[1], identifier="F03", row=3)
+    with engagement_lock(eng):
+        store.record(store.connect(), eng, ledger.new(ledger.RULES_CHANGED, **{
+            ledger.RULES_KEY: [rule_to_json(twin)], ledger.REMOVED_KEY: [], ledger.INFO_KEY: {},
+        }))
+    return eng
+
+
+PAIR_SAID = {"inner": "F02", "outer": "F03", "broad": "F01", "name": "Ashford Holdings LP"}
+
+
+def test_a_household_roll_carries_a_same_name_pair_last_year_held_and_says_so(pair_prior):
+    """Decision 201, the review's S1: two issuer rows of one name that last
+    year's list already held do not make the list unrollable. The pair is
+    carried as it was, and the roll's report carries the sentence rather
+    than leaving it to the first later save."""
+    from tracker.layout import private_household_dir
+    from tracker.manifest import ISSUER_NAMED_TWICE
+    from tracker.rollover import ReturnPlan, roll_household
+
+    done = roll_household(private_household_dir(root_of(pair_prior), "Lee Family"),
+                          target_year=2026, plans=[ReturnPlan(prior=pair_prior)])
+    assert done.skipped == []
+    [(_, created, report)] = done.rolled
+    assert report.warnings == [ISSUER_NAMED_TWICE.format(**PAIR_SAID)]
+    carried = {i.identifier: i.required_keywords for i in load_manifest(created)}
+    assert carried["F02"] == carried["F03"] == ("Ashford Holdings LP",)
+
+
+def test_a_household_roll_retires_an_unticked_return_whose_list_holds_a_same_name_pair(
+    pair_prior,
+):
+    """Decision 201, the rebase review's S1: the plan judges an unticked
+    return's stored rows as held, so a same-name pair its list already
+    holds is retired with it, never a refusal of the whole roll."""
+    from dataclasses import replace
+
+    from tracker.layout import private_household_dir
+    from tracker.manifest import load_engagement_info
+    from tracker.rollover import ReturnPlan, roll_household
+
+    w2 = [replace(W2[0], period="TY2025")]
+    other = make_engagement(root_of(pair_prior), w2, household="Lee Family",
+                            return_name="1040 - Mina Lee", scaffold=False)
+    done = roll_household(private_household_dir(root_of(pair_prior), "Lee Family"),
+                          target_year=2026, plans=[ReturnPlan(prior=other)])
+    assert done.retired == [pair_prior]
+    assert load_engagement_info(pair_prior).active is False
+
+
+def test_the_rollover_command_line_carries_a_same_name_pair_and_prints_the_warning(
+    pair_prior, monkeypatch,
+):
+    import io
+
+    from tracker.manifest import ISSUER_NAMED_TWICE
+
+    console = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+    code = run_the_command_line(monkeypatch, [str(pair_prior), "--year", "2026"], console)
+    console.flush()
+    shown = console.buffer.getvalue().decode("utf-8")
+    assert code == 0, shown
+    assert f"WARNING: {ISSUER_NAMED_TWICE.format(**PAIR_SAID)}" in shown
+    assert {"F02", "F03"} <= {i.identifier for i in load_manifest(rolled_into(pair_prior, 2026))}
+
+
 # ------------------------------------------------ through the app (d104) ----
 
 
@@ -1062,10 +1147,10 @@ def test_household_roll_forward_rolls_all_or_none(park, monkeypatch):
 
     real_create = rollover.create_engagement
 
-    def the_third_fails(folder, items, info):
+    def the_third_fails(folder, items, info, **kwargs):
         if folder == targets[2]:
             raise OSError("the disk filled while the third return was made")
-        return real_create(folder, items, info)
+        return real_create(folder, items, info, **kwargs)
 
     monkeypatch.setattr(rollover, "create_engagement", the_third_fails)
     with pytest.raises(ManifestError, match="the disk filled") as failed:

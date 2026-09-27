@@ -337,6 +337,43 @@ OVERRIDE_REASON_OTHER = "Other"
 NOT_APPLICABLE_LABEL = "Not Applicable in TY{year}"
 
 
+@dataclass(frozen=True, slots=True)
+class StatusLabel:
+    """What a preparer reads for one word the record keeps for a row."""
+
+    label: str      # what a preparer reads
+    sentence: str   # one sentence: what it means and what happens next
+
+
+#: What each word the record keeps for a row is shown as (decision 200).
+#: Keyed by the record's own word; the record never stores a label. The
+#: record, the run log and the scanner's command line keep the scanner's
+#: words - the journal stays greppable in the words the runbook explains -
+#: and the app, the Status Report and the staff lines under a draft show
+#: these. One table, so a status is never named two ways in two places.
+#: Its order is the runbook's table's order. Not Applicable's label is the
+#: year pattern itself (:data:`NOT_APPLICABLE_LABEL`, decision 116).
+STATUS_LABELS: dict[str, StatusLabel] = {
+    Status.MISSING: StatusLabel(
+        "Outstanding", "Asked for; nothing usable has arrived yet."),
+    Status.PARTIAL: StatusLabel(
+        "Partly in", "Some of the expected files are in; the rest are still to come."),
+    Status.FAILED: StatusLabel(
+        "Could not use", "Something arrived that the rules could not use."),
+    Status.PENDING_SYNC: StatusLabel(
+        "Syncing", "It is in; the cloud is still copying it down."),
+    Status.RECEIVED: StatusLabel(
+        "Received", "In, and every check passed or a person accepted it."),
+    UNSCANNED_LABEL: StatusLabel(
+        "Not yet checked", "Asked for; no pass has looked at it yet."),
+    NOT_ASKED_LABEL: StatusLabel(
+        "Not asked", "On the list, not requested; filed if it arrives."),
+    Override.ACCEPTED: StatusLabel(
+        "Accepted", "A person accepted it with a reason; the rules stop here."),
+    Override.NOT_APPLICABLE: StatusLabel(
+        NOT_APPLICABLE_LABEL, "Does not apply this year; not counted, not chased."),
+}
+
 
 class ManifestError(Exception):
     """A request list could not be read, parsed, or validated."""
@@ -769,8 +806,19 @@ def _name_tokens(item: RequestItem) -> frozenset[str]:
     return frozenset(t for t in re.split(r"[^a-z0-9]+", joined) if t)
 
 
-def check_narrowing_names(items: Iterable[RequestItem]) -> None:
-    """Refuse a list where one issuer row's name is inside another's.
+#: Two issuer rows narrowing one row under one name (decision 201): every
+#: document naming it matches both, so every one of them parks - the
+#: nested-name harm of decision 93 at its limit, and "inside" would be the
+#: wrong word for it. A refusal when a write adds the row or names it so,
+#: and the same sentence as a warning on a list that already held it.
+ISSUER_NAMED_TWICE = ("Rows {inner} and {outer} both narrow {broad} with the same name, {name}: "
+                      "every document naming it would park. Remove one, or file on the row already there.")
+
+
+def check_narrowing_names(
+    items: Iterable[RequestItem], *, recorded: Iterable[RequestItem] | None = None
+) -> list[str]:
+    """Refuse a list where one issuer row's name is inside another's, or the same.
 
     "Ashford" and "Ashford Holdings" both accept the Ashford Holdings
     K-1, so every one of them would be contested and park - one row
@@ -779,8 +827,21 @@ def check_narrowing_names(items: Iterable[RequestItem]) -> None:
     the list is validated. Names are compared as whole tokens, normalised
     (:func:`entity_keyword`), and only between rows narrowing the *same*
     broad row: two unrelated requests are allowed to share a word.
+
+    Two rows with **the same** name are that harm at its limit (decision
+    201, :data:`ISSUER_NAMED_TWICE`). They are refused when the write adds
+    either row or gives it that name. ``recorded`` is the list as the
+    record holds it: a pair already on it under that same name, which this
+    write does not touch, is not refused but returned - the sentence, as a
+    warning for the reply - so nobody is locked out of a list's unrelated
+    edits by two rows they did not touch (the orchestrator's ruling on
+    R7). ``None`` is a write with nothing recorded to compare with, where
+    every such pair is refused.
     """
     by_identifier = {i.identifier: i for i in items}
+    held = None if recorded is None else {
+        identifier_key(i.identifier): _name_tokens(i) for i in recorded}
+    warnings: list[str] = []
     for broad, narrow_identifiers in narrowing_rows(by_identifier.values()).items():
         named = [(i, _name_tokens(by_identifier[i])) for i in narrow_identifiers]
         for inner, inner_words in named:
@@ -793,6 +854,20 @@ def check_narrowing_names(items: Iterable[RequestItem]) -> None:
                         "both rows, so every one of them would park. Rename one so "
                         "that neither name is part of the other."
                     )
+        for at, (inner, inner_words) in enumerate(named):
+            for outer, outer_words in named[at + 1:]:
+                if not inner_words or inner_words != outer_words:
+                    continue
+                said = ISSUER_NAMED_TWICE.format(
+                    inner=inner, outer=outer, broad=broad,
+                    name=", ".join(by_identifier[inner].required_keywords))
+                untouched = held is not None and all(
+                    held.get(identifier_key(one)) == words
+                    for one, words in ((inner, inner_words), (outer, outer_words)))
+                if not untouched:
+                    raise ManifestError(said)
+                warnings.append(said)
+    return warnings
 
 
 
@@ -1034,7 +1109,9 @@ def rule_as_read(row: Mapping[str, object]) -> dict:
     return rule_to_json(item_from_record(row))
 
 
-def validated(items: Iterable[RequestItem]) -> list[RequestItem]:
+def validated(
+    items: Iterable[RequestItem], *, recorded: Iterable[RequestItem] | None = None
+) -> list[RequestItem]:
     """The list-level checks the sheet's loader made, on records.
 
     Every path that stores rules or routes against a catalog goes through
@@ -1049,8 +1126,10 @@ def validated(items: Iterable[RequestItem]) -> list[RequestItem]:
     and its reason read against it (:func:`_override_reason`: required
     with ``Override.ACCEPTED``, never the word :data:`OVERRIDE_REASON_OTHER`,
     none without an override); and last, no two issuer rows whose names
-    nest (:func:`check_narrowing_names`). Returns new items with ``row``
-    set to 1..n - the position is part of the rule (decision 104).
+    nest or are the same (:func:`check_narrowing_names`, which ``recorded``
+    - the list as the record holds it - lets keep a same-name pair this
+    write does not touch). Returns new items with ``row`` set to 1..n -
+    the position is part of the rule (decision 104).
 
     A row that comes in with a derived pattern already set (one a reader
     gave back) is treated as blank and derived again: a derived check was
@@ -1112,7 +1191,7 @@ def validated(items: Iterable[RequestItem]) -> list[RequestItem]:
         out.append(checked)
     # Two issuer rows whose names nest make each other useless and say
     # nothing about it; the one moment a person can be told is now.
-    check_narrowing_names(out)
+    check_narrowing_names(out, recorded=recorded)
     return out
 
 
@@ -1251,6 +1330,9 @@ class RulesSaved:
     removed: tuple[str, ...]
     info_fields: tuple[str, ...]
     recorded: bool
+    #: What the list already held that a person should know about and this
+    #: save did not touch: two issuer rows of one name (decision 201).
+    warnings: tuple[str, ...] = ()
 
 
 def create_engagement(
@@ -1259,7 +1341,8 @@ def create_engagement(
     info: EngagementInfo | None = None,
     *,
     form: str = "",
-) -> None:
+    carried: Iterable[RequestItem] = (),
+) -> tuple[str, ...]:
     """Write an engagement's first request list and details into its record.
 
     The folder must exist and hold no journal: a live engagement carries a
@@ -1275,6 +1358,14 @@ def create_engagement(
     details. A keyword rather than a field of the rows because it is one
     fact about the engagement, not a property of any request. Optional,
     and a blank never clears a form ``info`` already carries.
+
+    ``carried`` is the rows of ``items`` that were on last year's list, as
+    the rollover carried them forward, names untouched: two issuer rows of
+    one name among them are carried as they were rather than refusing the
+    roll, and the pair's sentence (:data:`ISSUER_NAMED_TWICE`) is returned
+    so the roll's reply says it (decision 201, the review's S1). A row the
+    roll adds from the catalog is not in ``carried`` and gets the ordinary
+    check. Empty - every create that is not a roll - refuses every pair.
     """
     from tracker import ledger, store
     from tracker.locking import engagement_lock
@@ -1284,7 +1375,10 @@ def create_engagement(
         raise ManifestError(f"{folder} is not a folder; make it before creating the engagement")
     if ledger.path_for(folder).exists():
         raise ManifestError(f"Refusing to overwrite an engagement that already has a record: {folder}")
-    rows = [rule_to_json(item) for item in validated(items)]
+    recorded = list(carried) or None
+    checked = validated(items, recorded=recorded)
+    warnings = tuple(check_narrowing_names(checked, recorded=recorded))
+    rows = [rule_to_json(item) for item in checked]
     info = info or EngagementInfo()
     # A reminder's link is a web address or nothing (decision 137, L5).
     if problem := link_problem(info.link):
@@ -1303,6 +1397,7 @@ def create_engagement(
             ledger.REMOVED_KEY: [],
             ledger.INFO_KEY: info_to_json(info),
         }))
+    return warnings
 
 
 def save_rules(
@@ -1354,7 +1449,13 @@ def save_rules(
     from tracker.locking import engagement_lock
 
     folder = Path(engagement_dir)
-    rows = [rule_to_json(item) for item in validated(items)]
+    # Two issuer rows of one name are refused only where this save adds or
+    # names one of them (decision 201): judged first against the list as
+    # read now, and again under the lock against the list the write is a
+    # difference from, which is where the warning for an untouched pair
+    # comes from.
+    checked = validated(items, recorded=_recorded_items(folder))
+    rows = [rule_to_json(item) for item in checked]
     now = info_to_json(info)
     with nullcontext() if lock_held else engagement_lock(folder):
         conn = _the_record(folder)
@@ -1363,6 +1464,8 @@ def save_rules(
         if check is not None:
             check()
         held = store.rules(conn, folder) or []
+        warnings = tuple(check_narrowing_names(
+            checked, recorded=[item_from_record(row) for row in held]))
         first = not store.has_rules_event(conn, folder)
         # Diffed by the identifier's exact spelling, because that is how
         # the fold and the store key a rule. A respelling by case is a
@@ -1384,7 +1487,7 @@ def save_rules(
             before = info_to_json(store.engagement_info(conn, folder) or EngagementInfo())
             moved = {name: value for name, value in now.items() if before.get(name) != value}
         if not (changed or removed or moved):
-            return RulesSaved(changed=(), removed=(), info_fields=(), recorded=False)
+            return RulesSaved(changed=(), removed=(), info_fields=(), recorded=False, warnings=warnings)
         # A reminder's link is a web address or nothing (decision 137, L5),
         # refused when a save changes it. A link recorded before this
         # decision does not block every later save of the list - the letter
@@ -1402,6 +1505,7 @@ def save_rules(
         removed=tuple(removed),
         info_fields=tuple(moved),
         recorded=True,
+        warnings=warnings,
     )
 
 
@@ -1452,6 +1556,17 @@ def refuse_a_stale_list(conn, engagement_dir: Path | str, head: object) -> None:
         raise ListMoved(LIST_MOVED)
 
 
+def _recorded_items(folder: Path) -> list[RequestItem] | None:
+    """The list as the record holds it, as requests, or ``None`` for a
+    folder with no record yet - what :func:`save_rules` judges a same-name
+    issuer pair against before it takes the lock (decision 201)."""
+    from tracker import ledger
+
+    if not ledger.path_for(folder).exists():
+        return None
+    return [item_from_record(row) for row in recorded_rules(folder)]
+
+
 def recorded_rules(engagement_dir: Path | str) -> list[dict]:
     """The person's rules as the record holds them, each read as every
     reader reads it (:func:`rule_as_read`) and without the keywords a
@@ -1487,7 +1602,10 @@ def renamed_rules(engagement_dir: Path | str, old: str, new: str) -> list[dict]:
     if position is None:
         raise ManifestError(RENAME_NOT_ON_THE_LIST.format(old=old))
     items[position] = replace(items[position], identifier=new)
-    renamed = rule_to_json(validated(items)[position])
+    # A rename changes an identifier and never a name, so a same-name
+    # issuer pair already on the list is not the rename's to refuse
+    # (decision 201): the list is its own record here.
+    renamed = rule_to_json(validated(items, recorded=items)[position])
     events = [ledger.new(ledger.RULES_CHANGED, **{
         ledger.RULES_KEY: [renamed], ledger.REMOVED_KEY: [old], ledger.INFO_KEY: {},
     })]
@@ -1631,7 +1749,7 @@ class Summary:
     #: counted apart, so "N of M are in" is a figure about what was asked.
     also_received: int = 0
     #: Rows nobody asked for with no document at all: on nobody's list,
-    #: and the N of every "Not asked (N)" fold.
+    #: and the N of every "Not asked (N)" group in the set-aside fold.
     not_asked: int = 0
 
     @property
@@ -1639,13 +1757,31 @@ class Summary:
         """``Received: 3 · Missing: 2 · Not Applicable: 1`` - the same
         everywhere. The count is said with the bare value, not the year's
         label: a list may hold rows of more than one year."""
-        parts = [f"{status}: {n}" for status, n in sorted(self.counts.items())]
+        return self._said(lambda word: word)
+
+    @property
+    def shown_line(self) -> str:
+        """:attr:`line` in a preparer's words (decision 200): the same
+        parts in the same order, each said with :data:`STATUS_LABELS`'
+        label. What the app shows; ``line`` keeps the record's words for
+        the run log and the scanner's command line. Not Applicable is said
+        with the bare value, as ``line`` says it: a list may hold rows of
+        more than one year."""
+        return self._said(lambda word: STATUS_LABELS[word].label)
+
+    def _said(self, say) -> str:
+        """The one builder of the summary line, so :attr:`line` and
+        :attr:`shown_line` are one count in two renderings by construction:
+        the same parts in the same order, each status word said through
+        ``say``. A part added here is added to both. Also received and Not
+        Applicable are said as they are in both."""
+        parts = [f"{say(status)}: {n}" for status, n in sorted(self.counts.items())]
         if self.unscanned:
-            parts.append(f"{UNSCANNED_LABEL}: {self.unscanned}")
+            parts.append(f"{say(UNSCANNED_LABEL)}: {self.unscanned}")
         if self.also_received:
             parts.append(f"{ALSO_RECEIVED_LABEL}: {self.also_received}")
         if self.not_asked:
-            parts.append(f"{NOT_ASKED_LABEL}: {self.not_asked}")
+            parts.append(f"{say(NOT_ASKED_LABEL)}: {self.not_asked}")
         if self.not_applicable:
             parts.append(f"{Override.NOT_APPLICABLE}: {self.not_applicable}")
         return SUMMARY_SEPARATOR.join(parts) or SUMMARY_EMPTY
@@ -1671,8 +1807,9 @@ def has_a_document(item: RequestItem) -> bool:
 
 def is_idle_unasked(item: RequestItem) -> bool:
     """A row nobody asked for, not Not Applicable, with no document at all:
-    on neither of the client's lists, folded away under "Not asked (N)" in
-    the Status Report, the app's request table and its editor, and called
+    on neither of the client's lists, folded away in a "Not asked (N)"
+    group under "Set aside (N)" (decision 200) in the Status Report, the
+    app's request table and its editor, and called
     :data:`NOT_ASKED_LABEL` (decision 142). A document of any status -
     even one the rules refused - brings the row back into the active
     table, because it is work for the preparer."""
@@ -1680,16 +1817,25 @@ def is_idle_unasked(item: RequestItem) -> bool:
             and not has_a_document(item))
 
 
-def status_label(item: RequestItem) -> str:
-    """The word a person sees for a row's status: the status itself;
+def status_key(item: RequestItem) -> str:
+    """The record's word for a row's status, the key of
+    :data:`STATUS_LABELS` (decision 200): the effective status itself;
     :data:`UNSCANNED_LABEL` for an asked row with none yet; and
     :data:`NOT_ASKED_LABEL` for a row nobody asked for while nothing is in
     its folder (blank or Missing) - a document there shows its real
-    status, as on any row."""
+    status, as on any row. An Accepted row is Received, as every count
+    reads it; its override is shown beside it."""
     if (not item.asked and item.status in ("", Status.MISSING)
             and item.manual_override != Override.ACCEPTED):
         return NOT_ASKED_LABEL
     return effective_status(item) or UNSCANNED_LABEL
+
+
+def status_label(item: RequestItem) -> str:
+    """The word a preparer sees for a row's status (decision 200): the
+    label :data:`STATUS_LABELS` gives :func:`status_key`. One function per
+    question - which word the record says, and what a person reads."""
+    return STATUS_LABELS[status_key(item)].label
 
 
 def summarize(items: Iterable[RequestItem]) -> Summary:

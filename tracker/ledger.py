@@ -374,8 +374,11 @@ KEYWORD_UNLEARNED = "keyword_unlearned"
 #: removed identifiers (``REMOVED_KEY``), the Engagement fields that moved
 #: (``INFO_KEY``). The first one - the create - carries the whole list and
 #: every field, every one after it only what moved, so the fold of them
-#: all is the list. Written by ``tracker.manifest.create_engagement`` and
-#: ``save_rules`` and by nothing else.
+#: all is the list. Written by ``tracker.manifest.create_engagement``,
+#: ``save_rules`` and the rename (``renamed_rules``, decision 160), by a
+#: filing that teaches a spelling (decision 128) or adds its issuer row
+#: (decision 201) in ``tracker.filer.assign_review_file``, and by the API's
+#: *Accept the folder's name* (decision 188) - and by nothing else.
 RULES_CHANGED = "rules_changed"
 #: The household's own details were recorded or edited (decision 125): its
 #: name, the members a person typed as who the folder is meant to be

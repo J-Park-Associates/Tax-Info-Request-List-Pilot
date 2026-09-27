@@ -185,7 +185,7 @@ def client_folder_missing(root: Path | str, household: str, *, had_one: bool) ->
     kept by decision 188; the review's M3).
 
     **Decided here once**, and asked by the pass, by a new return into an
-    existing household and by every form of Roll Forward, before anything
+    existing household and by every form of Roll forward, before anything
     is written: a client folder made again under the old name would be an
     empty, unshared inbox the pass reads green while the client's real
     folder - renamed or moved - sits among the misfits. The record's half

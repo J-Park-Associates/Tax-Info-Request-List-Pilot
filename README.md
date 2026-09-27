@@ -112,13 +112,15 @@ parks for a person with the reason, and a document that came inside one is
 never filed into another household's return. The client README's list of
 what has arrived shows each attachment that filed, under its request.
 
-1. Roll a returning client's list forward from last year (the default), or
-   pick the tax form type for a new client — the catalog lives in
-   `tracker/templates.py` and nowhere else. A new household's name is
-   unique across both trees by how it reads, not how it is spelled: the
-   wizard refuses a name that reads as a household already in the list and
-   points at it there - add a first name or a middle initial, then the
-   city, to tell two households apart (decision 188)
+1. Roll a household's returns forward from last year on its card (**Roll
+   forward to `<year>`**, offered once that year has ended), or add a return
+   to it with **Add a return** - pick the tax form type, then the request
+   list; the catalog lives in `tracker/templates.py` and nowhere else. A
+   household the tracker has no record of is made with **New household**
+   on the toolbar. Its name is unique across both trees by how it reads,
+   not how it is spelled: a name that reads as a household already in the
+   list is refused and pointed at it there - add a first name or a middle
+   initial, then the city, to tell two households apart (decision 188)
 2. List the engagement's document requests (and validation rules) in the
    app's request-list editor
 3. `python -m tracker.scaffold <return_dir>` — builds the household's
@@ -153,7 +155,10 @@ A `Manual Override` column (the values in `Override.ALL`) lets accountant
 judgment beat the rules: `Accepted` counts the row as Received and carries
 an `Override Reason` (picked from a list, or typed), `Not Applicable` takes
 the request out of every count for the year, shown as "Not Applicable in
-TY<year>" and kept in a folded section of the Status Report.
+TY<year>" and kept under **Set aside** on the Status Report, in the app
+and in the editor. The record keeps the scanner's own words for a status;
+the app shows a preparer's word for each ([docs/runbook.md](docs/runbook.md),
+*What the record says, and what the app shows*).
 
 ### Chasing what's still outstanding
 
@@ -224,8 +229,8 @@ warning people learn to send past.
 
 There is nothing to register. Point the scheduled job at the folder you keep
 your clients in; every folder under it holding `_ledger.jsonl` is an
-engagement, and the engagement's details (written by the wizard when you
-create or roll forward an engagement, edited in the app) say who the client
+engagement, and the engagement's details (written when you add, roll forward
+or make a household's return, edited in the app) say who the client
 is, the share link, the two dates, whether they are chased by email and
 whether the engagement is still active:
 
@@ -462,7 +467,7 @@ land together. What did need a rule is the K-1 whose issuer nobody listed:
 with issuer rows present it parks (`tracker.reasons.ISSUER_NOT_NAMED`) with
 those rows named, rather than joining everybody else's on the generic row or
 being guessed onto whichever row is left over. `docs/runbook.md` §8 is how a
-person adds one.
+person adds one: from the parked K-1's card in one step, or in the editor.
 
 When a person files something out of `00 - Needs Review` they can type a
 keyword, and it is recorded against that one engagement's request and
@@ -492,11 +497,11 @@ office.
 ## Form-type templates
 
 For a returning client the request list is last year's, rolled forward
-(the desktop wizard's first page, or `python -m tracker.rollover`). For a
+(**Roll forward** on the household's card, or `python -m tracker.rollover`). For a
 new client you choose the return type (1040, 1120, 1120-S, 1065, 1041, 990)
 and every form carries its own checklist in `tracker/templates.py`,
 the only place it lives. Every row of it goes on the return (decision 142);
-the wizard's tick is **Ask the client**: a ticked row is asked for and
+the request list's tick is **Ask the client**: a ticked row is asked for and
 chased, an unticked one is never asked for but files a document that
 arrives for it. Add custom rows (always asked) as needed. It is cut for the
 tax year the calendar says, and the manifest it creates is the readable

@@ -258,8 +258,9 @@ and every one of its returns shows red on every pass with this sentence
 until somebody acts - *"Paused: this folder's name and its record's name
 disagree. Nothing is sorted, laid out or drafted for the household until a
 person opens it in the app and accepts the folder's name, or gives the
-folder back the name its record holds."* Roll Forward and a new return into
-it are refused with the same sentence.
+folder back the name its record holds."* **Roll forward** and **Add a return**
+are not offered on its card, and the app and the command line refuse both
+with the same sentence.
 
 - **When the move was meant** - a return dragged into a household of its
   own when a family separates - open the household in the app and press
@@ -278,7 +279,7 @@ it are refused with the same sentence.
   fails with *"`Clients\<name>` is missing. Was the household renamed or
   moved? Give its client folder back the name `<name>`."* and nothing is
   made again under the old name - not by the pass, not by a new return
-  into the household, and not by Roll Forward, which all refuse with that
+  into the household, and not by **Roll forward**, which all refuse with that
   sentence.
 - **Never copy a household folder.** Two folders that claim one household -
   a copy, or two names that read as one - stop both: *"Two folders claim
@@ -300,7 +301,11 @@ open:**
 The request list is edited in the app — **Edit Request List** — and nowhere
 else. The fourteen columns you edit there (`tracker.manifest.HEADERS`) are Identifier, Document, Period,
 Expected Count, Allowed Extensions, Min Size KB, Required Keywords, Any
-Keywords, Date Pattern, Manual Override, Override Reason, Named, Asked and Short name; **each request's status,
+Keywords, Date Pattern, Manual Override, Override Reason, Named, Asked and Short name. Each row shows the
+columns a preparer changes, and the routing columns (Identifier, Period, Allowed Extensions, Min
+Size KB, Required Keywords, Any Keywords, Date Pattern, Named, and a catalog row's Document) sit in
+its **Routing rules** fold — hidden, never dropped: a save carries every column. Closing the
+editor with changes not saved asks first. **Each request's status,
 Received Date, File Count and Validation Notes are on the Status Report**,
 not in the editor. The engagement's details — client, share link, due
 date, sender, firm, reminders, active — and the **people** the return is
@@ -364,8 +369,9 @@ editor beside it.
 **A folder from before September 2026** may still hold a `_manifest.xlsx`.
 The tracker no longer reads it: it is one of the folders left alone, listed
 with its own sentence rather than treated as an engagement, and the return is
-set up again in the app (New Engagement, then type or paste the rows). The
-workbook may be deleted once that is done.
+set up again in the app (**Add a return** on the household's card, or **New
+household** on the toolbar for a household the tracker has no record of; then
+type or paste the rows). The workbook may be deleted once that is done.
 
 The status report is one web page with everything about that engagement on
 it: a **Summary**, a **Requests** section (the list with each row's status
@@ -385,6 +391,39 @@ or the tool has decided something, since it was drawn) or *unknown* (there
 is none yet, or it cannot be read). The app's **Open Status Report** button
 opens it, and `python -m tracker.view "<engagement folder>"` redraws it and
 prints the state. The request list is edited in the app, not on the page.
+
+### What the record says, and what the app shows
+
+The record, the run log and `python -m tracker.scanner` keep the scanner's
+own words for a request; this runbook uses them too. The app, the Status
+Report and the staff lines under a draft show a preparer's word for each,
+from one table in the tracker (`tracker.manifest.STATUS_LABELS`).
+
+| The record says | The app shows |
+|---|---|
+| **Missing** | Outstanding - Asked for; nothing usable has arrived yet. |
+| **Partial** | Partly in - Some of the expected files are in; the rest are still to come. |
+| **Failed Validation** | Could not use - Something arrived that the rules could not use. |
+| **Pending Sync** | Syncing - It is in; the cloud is still copying it down. |
+| **Received** | Received - In, and every check passed or a person accepted it. |
+| **Requested** | Not yet checked - Asked for; no pass has looked at it yet. |
+| **Not asked** | Not asked - On the list, not requested; filed if it arrives. |
+| **Accepted** | Accepted - A person accepted it with a reason; the rules stop here. |
+| **Not Applicable** | Not Applicable in TY<year> - Does not apply this year; not counted, not chased. |
+
+Beside every request that is still outstanding the app says whose move it
+is, with the one sentence behind it, from one table in the tracker
+(`tracker.reminder.SIDES`):
+
+| Whose move | The sentence beside it |
+|---|---|
+| **Client** | The letter asks the client for it. |
+| **Us** | Waiting on us, not the client; the letter does not ask for it. |
+| **Decide** | A person decides whether the client resends it or we fix it here; the letter is held until then. |
+
+Requests nobody is waiting on - not asked, or not
+applicable this year - are folded under **Set aside** below the table, each
+under its own sub-heading.
 
 `_ledger.jsonl` is that ledger: a line the tool appends every time it
 decides something about a document, records a status, or saves a change you
@@ -498,7 +537,7 @@ command read that one value afterwards. From a terminal the same thing is
 `python -m tracker.settings <folder>`.
 
 **One machine per clients root — today's rule.** The schedule,
-**Sort & Scan**, filing, every save in the app and **Roll Forward** happen
+**Sort & Scan**, filing, every save in the app and **Roll forward** happen
 on the designated machine (the table at the top of §1) and nowhere else. The only
 thing that stops a scheduled pass and a click in the app from moving the
 same client's files at once is a lock file
@@ -631,7 +670,7 @@ pass it. Since decision 144 a request's working copies are named by the
 request's **short name**, twenty characters at most, where the full title
 used to appear twice - so the firm's own root,
 `G:\Shared drives\Income Tax Clients` (35 characters), refuses none of the
-39 returns of the owner's intake test with the wizard's default rows asked
+39 returns of the owner's intake test with the request list's default rows asked
 (9 were refused with the full titles) and none with every row asked (34
 were); the deepest working copy there was 209 and 210 characters. Since
 decision 168 there is no folder per request either: a copy sits in
@@ -687,7 +726,7 @@ to a program, so the tracker cannot see a share and does not pretend to.
 Nothing about filing, scanning or drafting waits on it.
 
 Nothing is ever re-shared. A new year is a new folder under the same
-household, view-only through the same grant; Roll Forward changes no
+household, view-only through the same grant; **Roll forward** changes no
 permission. A household's members list in the app is what the firm typed, not
 what Drive says: keep the two the same by hand.
 
@@ -741,7 +780,7 @@ What the tracker does and does not do:
   somebody here clicks, not on the next pass — until then that household's
   status does not count it and its drafted letter may still ask for it.
 - A feed is a **return line**, not a return: the household and the return's
-  name, the name it keeps every year. Roll Forward carries nothing about
+  name, the name it keeps every year. **Roll forward** carries nothing about
   feeds, and a line the other household has retired is said on the card
   rather than quietly feeding nothing.
 - The card's *Also fed by* line is drawn from what this computer last
@@ -919,10 +958,17 @@ puts them back.
 
 ### Rolling a household into the next year
 
-Roll Forward in the app takes the **household**, not one return: it shows the
-open year's returns with every one ticked, and rolls each ticked return into
-the next year — its list carried from last year, its greeting and its inbox
-link refilled from the household, its own folder made under the new year.
+Rolling forward is done from the **household's card**, not from one return,
+and only once the year it rolls to has ended: the card then carries a folded
+line - from January 2028, say, **Roll forward to 2027**. Open it and it
+shows the open year's returns,
+every one ticked, each with the people it carries and the form template it
+will be filled from, and the sentence saying what unticking does. The button
+names the year. It rolls each ticked return into that year - its list
+carried from last year, its greeting and its inbox link refilled from the
+household, its own folder made under the new year - and it can only roll the
+household whose card you are looking at. A household that is paused, or has
+two open years, shows no Roll forward line until that is dealt with.
 
 A return left unticked is **retired for that year**: set inactive, and no
 longer chased. That is deliberate — it is how the household ends up with
@@ -953,13 +999,13 @@ Roll Forward refuses.
 household separates, the way to move one return into a household of its own
 is still to drag its folder there in Explorer. Its record goes on naming the
 old household, so the household it now sits in is **paused** (decision 188):
-Roll Forward refuses it, with the pause sentence, before anything is
+Roll forward refuses it, with the pause sentence, before anything is
 written. Open it in the app and press **Accept the folder's name**; then Roll
-Forward puts next year's return in the household it now sits in, under its
+forward puts next year's return in the household it now sits in, under its
 own folder name, and next year's record names that household, so the old
 household's client never sees its requests or its documents.
 
-Roll Forward also refuses, before anything is written and with the pass's
+Roll forward also refuses, before anything is written and with the pass's
 own sentence, a household that is **stopped** - its `_ledger.jsonl` gone, or
 two folders claiming it - and one whose client folder is gone when it had
 one (decision 188).
@@ -1275,7 +1321,9 @@ hand. Next week's pass writes next week's draft as before. **Open the
 draft file** is still there for anyone who would rather work in Notepad,
 and an edited file is shown as it stands with a note saying so — the card
 shows the letter alone, so the staff-side lines under the dashed rule at
-the foot of the file are never on the clipboard.
+the foot of the file are never on the clipboard. Those lines are headed **US** - the
+requests waiting on us, not the client - each with the word the app shows
+for its status.
 
 Open it, read it, edit it, paste it into Outlook and send it. Nothing in the
 tool sends anything, ever — the card has no send button, and there is no
@@ -1308,7 +1356,7 @@ the firm's ask-by target. The **Filing Deadline** is the statutory date the
 return has to be filed by: a new engagement gets it from its form (weekends
 shifted forward the way the IRS shifts them) and the Due Date five days
 before that, and a holiday is yours to correct. A year rolled forward gets
-both the same way, whether it was rolled with **Roll Forward** in the app
+both the same way, whether it was rolled with **Roll forward** in the app
 or with `python -m tracker.rollover` on the command line: the new year's
 Due Date and Filing Deadline come from the form's table, and you clear or
 change them in the editor like any other detail. Leave the Filing Deadline
@@ -1412,7 +1460,7 @@ to send. A parked document is opened as its working copy in
 | `reasons.NO_READABLE_TEXT` | Nothing in the file could be read at all — a scan or a photo the reader could not run on, an image-only PDF, an empty sheet. Nothing was matched against anything, so this is not "matched no request". | Open it and file it. If many files say it at once, the reader itself is damaged: re-install the app (§6, step 5). The shortlist shows what its **file name** suggests; the document decides. |
 | `reasons.UNREADABLE_IMAGE` | A photo arrived that would not open — a half-finished upload, most often. | Ask the client for it again; the reminder does. |
 | `reasons.HEIC_NOT_SUPPORTED` | An iPhone photo arrived and this machine's HEIC reader is missing. Ours, never the client's: they sent an ordinary photo. | Run `Setup.bat` again (it installs `pillow-heif` from the locks); for the packaged app, rebuild it. Until then, open the photo and file it by hand. |
-| `reasons.ISSUER_NOT_NAMED` | The request list asks for this document one row per issuer (§8) and this one names none of them — a K-1 from a partnership nobody listed. | File it to the right row, or add a row for that issuer (§8) and it files itself next pass. |
+| `reasons.ISSUER_NOT_NAMED` | The request list asks for this document one row per issuer (§8) and this one names none of them — a K-1 from a partnership nobody listed. | Type the issuer's name on the card and press **Add the issuer and file it** (§8), or file it to the right row. |
 | `reasons.NAME_NOT_ON_PAGE` | A request that asks for a **named** document accepted it, and the page names nobody on this return's people list (§10). | Open the page. If it does name them in a spelling the list has not got, file it and **teach the spelling** on the same card; if it is somebody else's, file it by hand on the return it belongs to. |
 | `reasons.NAMES_ANOTHER_RETURN` | The page names somebody who is on another return of this household, and nobody on this one. The sentence says who, and which return. | Switch to that return and file it there. Nothing was moved. |
 | `reasons.NO_PEOPLE_ON_FILE` | This return lists nobody yet, so nothing can confirm a named request. | Open **Edit Request List** and add the return's people (§10). Everything parked for this reason files itself on the next pass. |
@@ -1995,7 +2043,8 @@ partnership checklists too; a register of what was bought and sold, which
 never says depreciation, still belongs to the fixed-asset row beside it.
 
 And the rows the owner added after the first run on the firm's own mail
-(decision 141), every one of them unticked in the wizard. Since decision
+(decision 141), every one of them unticked in the request list of **Add a
+return**. Since decision
 142 every catalog row is on every return and the tick is **Ask the
 client**: an unticked row is never listed as needed and never chased, but a
 document that arrives for it files there instead of parking. So a 1040 now
@@ -2042,9 +2091,17 @@ nobody can work from, so the rule (the owner's, 2026-09-18) is **one row
 per issuing entity**. The catalog cannot do this for you: which entities a
 client is in is a fact about that client.
 
-**Adding one.** In the app, **Edit Request List**, then **Add a request**,
-and fill the same five cells as `F01` with these differences; then
-**Save**.
+**Adding one.** When a K-1 arrives from an entity no row names, it parks in `00 - Needs Review`
+and its card carries one box: type the issuer's name as the K-1 prints it and press **Add the
+issuer and file it**. The app adds the next free row in F's block - `Schedule K-1 - ` and the
+name, the entity in Required Keywords, everything else copied from `F01`, for this return's
+year - and files the document under it, in one step; the banner names both. It is refused,
+with nothing added and nothing filed, if the card is out of date, if the list changed since
+the card was drawn, or if the name is inside - or the same as - another issuer row's name.
+
+To add a row **before** a K-1 arrives, or on a return whose K-1 row is not the catalog's
+`F01`, use **Edit Request List**, **Add a request**, and fill the cells below; then **Save**.
+The routing cells are in each row's **Routing rules** fold.
 
 | Column | What to put |
 |---|---|
@@ -2066,9 +2123,19 @@ requirements and the row stops matching. Type the distinctive words and
 leave the legal suffix off: `Ashford Holdings`, not `Ashford Holdings,
 L.P.`. The suffix is the part whose punctuation differs between your
 typing and the form's printing, and the match is on whole words. Two
-issuer rows must not have one name inside the other — `Ashford` and
-`Ashford Holdings` would both claim the same K-1 — and the save is
+issuer rows must not have one name inside the other, or the same name
+twice — `Ashford` and `Ashford Holdings`, or two rows both `Ashford
+Holdings`, would all claim the same K-1 — and the save or the card is
 refused, by name, if they do.
+
+A list that **already** holds two rows of one name — written before
+this check, or rolled forward from such a year — is not locked: a save
+of anything else goes through, the roll forward carries the pair as it
+was, and the banner warns *"Rows F02 and F03 both narrow F01 with the
+same name, …: every document naming it would park."* It means every K-1
+from that issuer will sit in Needs Review until one of the two rows is
+gone. Remove one of them, or give it the other entity's name if it was
+really a different issuer, and save; the warning stops.
 
 **What then happens.**
 
@@ -2080,7 +2147,8 @@ refused, by name, if they do.
   Share of Income" and `F01` asks for that too.
 - A K-1 from an entity **no row names** parks in `00 - Needs Review`,
   and the reason names the issuer rows you do have. File it in the app,
-  or add the row for that issuer and the next pass files it. It is not
+  or type the issuer's name on its card and add the row and file it in
+  one step. It is not
   put on `F01`, and it is not guessed onto whichever issuer row has not
   had a K-1 yet.
 - `F01` stays. A client with one K-1 and no issuer rows files on it as
@@ -2200,8 +2268,8 @@ owner, decedent, trust or estate, fiduciary), *their name* as you would
 write it, and *the spellings a document might print it in*. The app
 proposes the obvious spellings — `John A. Park`, `John Park`, `Park, John
 A.`, `Park, John` — and **you tick the ones you want**; you can add any the
-app did not think of, one per line. The wizard asks for the first person
-when the return is made, and a return with nobody on it is refused. There
+app did not think of, one per line. **Add a return** and **New household**
+ask for the first person when the return is made, and a return with nobody on it is refused. There
 is nothing to tick for a person who writes the family name first: because
 punctuation is ignored, `Park, John A.` already matches a page that prints
 `PARK JOHN A`.
@@ -2251,7 +2319,8 @@ cannot confirm until you give it.
 
 A household's name and a return's name are folder names: every path under
 them carries them, in both trees, on every machine the Shared Drive syncs
-to. So one rule says what a name may be, and the wizard, a new return, a
+to. So one rule says what a name may be, and **New household**, **Add a
+return**, a
 rolled return's new name and a feed all hold you to it with the same
 sentence — `'<what you typed>' is not a household name: <why>` (decision 188).
 A name is refused when it:
@@ -2282,8 +2351,11 @@ apostrophes all fold away, and so do `1`, `i` and `|` against `l`, `0`
 against `o`, and `rn` against `m`. So `Kim` and `Klm` are one name. That
 errs on the side of asking: a second household whose name reads as the
 first is refused, and you add a first name or a middle initial — and then,
-if the two names still match, the city — to tell them apart. Never add a
-tax identification number or any part of one to a name.
+if the two names still match, the city — to tell them apart. The refusal
+is shown on the request list and stays there with everything you typed;
+**Change household details** on that list takes you back to the name, and
+**Continue** brings you back to the list as you left it. Never add a tax
+identification number or any part of one to a name.
 
 A folder already on disk whose name breaks the rule is listed under
 *Folders the tracker leaves alone* with the reason, and nothing in it is

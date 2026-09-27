@@ -415,7 +415,7 @@ body {
   border: 0;
 }
 
-/* ── New Engagement wizard ───────────────────────────────────────────── */
+/* ── Add a return / New household dialog ─────────────────────────────── */
 
 .modal-overlay {
   position: fixed;
@@ -488,7 +488,7 @@ body {
 .tmpl-doc { font-weight: 600; }
 .tmpl-rules { display: block; font-weight: 400; font-size: 12px; color: var(--subtle); }
 
-/* ── The request-list editor, and the wizard's custom rows (one component) ── */
+/* ── The request-list editor, and the dialog's custom rows (one component) ── */
 
 .modal-wide { width: 1180px; }
 
@@ -540,11 +540,13 @@ body {
 .ed-set-aside { margin-top: 8px; }
 .ed-set-aside > summary { cursor: pointer; font-size: 12.5px; color: var(--subtle); }
 .ed-set-aside .editor-table td { color: var(--subtle); }
-.ed-unasked { margin-top: 8px; }
-.rows-not-asked { margin-top: 8px; }
-.rows-not-asked > summary { cursor: pointer; font-size: 12.5px; color: var(--subtle); }
+.rows-set-aside { margin-top: 8px; }
+.rows-set-aside > summary { cursor: pointer; font-size: 12.5px; color: var(--subtle); }
 .requests tr.not-asked .req-doc { font-style: italic; }
-.ed-unasked > summary { cursor: pointer; font-size: 12.5px; color: var(--subtle); }
+/* Whose move a row is, and a Set aside group's heading (decision 200):
+   a bold word and its sentence as text, wrapped - never cut to an ellipsis. */
+.side { font-weight: 700; }
+.req-side { font-size: 12px; color: var(--subtle); white-space: normal; }
 .req-reason { font-size: 12px; color: var(--subtle); margin-top: 2px; max-width: 220px;
               overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .r-set-aside { color: var(--subtle); }
@@ -599,7 +601,7 @@ body {
   margin-top: 18px;
 }
 
-/* Wizard page 1 — tax form type picker */
+/* The dialog's form step — tax form type picker */
 
 .wiz-sub { font-size: 13px; color: var(--subtle); margin: -8px 0 14px; }
 
@@ -635,7 +637,7 @@ body {
 .form-who { font-size: 13px; font-weight: 600; color: var(--muted); }
 .form-blurb { font-size: 12px; color: var(--subtle); }
 
-/* Wizard page 2 — chosen-form header */
+/* The dialog's request list — chosen-form header */
 
 .form-chosen {
   display: flex;
@@ -696,7 +698,7 @@ body {
   * { animation: none !important; transition: none !important; }
 }
 
-/* Wizard page 0 — returning client */
+/* The roll fold's returns (the household card) */
 
 .wiz-note { font-size: 13px; color: var(--subtle); margin: 8px 0 0; }
 
@@ -789,8 +791,20 @@ body {
 .review .r-reasons li { padding: 1px 0 1px 14px; text-indent: -14px; }
 .review .r-reasons .r-nothing { font-style: italic; }
 .review select { grid-area: select; max-width: 300px; }
-.review .r-keyword { grid-area: keyword; width: 190px; }
-.review .r-note { grid-area: note; width: 190px; }
+/* Each box sits in its own label (decision 201, D11), so the label takes
+   the box's place in the grid and the box keeps its width. */
+.review .r-keyword-box { grid-area: keyword; margin: 0; }
+.review .r-note-box { grid-area: note; margin: 0; }
+.review .r-keyword-box span, .review .r-note-box span,
+.r-spelling-box span, .deck-card .r-keyword-box span { margin-bottom: 2px; }
+.review .r-keyword { width: 190px; }
+.review .r-note { width: 190px; }
+.r-spelling-box { margin: 0; }
+/* The issuer's one box and one button on a card parked for an unnamed
+   issuer (decision 201): the whole width of the row, under its reasons. */
+.r-issuer { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.r-issuer .field { margin: 0; }
+.r-issuer .wiz-note { flex-basis: 100%; margin: 0; }
 .review .r-file { grid-area: file; }
 .review .r-unfile { grid-area: file; }
 .review .r-dismiss { grid-area: dismiss; }
@@ -849,8 +863,9 @@ body {
 }
 .deck-card .r-reasons li { padding: 1px 0 1px 14px; text-indent: -14px; }
 .deck-card .r-reasons .r-nothing { font-style: italic; }
-.deck-card .r-keyword {
-  grid-area: keyword;
+.deck-card .r-keyword-box { grid-area: keyword; margin: 0; }
+.deck-card .r-keyword,
+.deck-card .r-issuer input {
   width: 240px;
   font: inherit;
   font-size: 13px;
@@ -860,7 +875,8 @@ body {
   background: #fbfcfe;
   color: var(--text);
 }
-.deck-card .r-keyword:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.deck-card .r-keyword:focus-visible,
+.deck-card .r-issuer input:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 .deck-position { grid-area: position; color: var(--subtle); font-size: 12.5px; }
 .deck-card .c-accept { grid-area: accept; }
 .deck-card .c-open { grid-area: open; }
@@ -890,7 +906,10 @@ body {
 
 /* ── First-launch setup ──────────────────────────────────────────────── */
 
-.setup-row { display: flex; gap: 8px; padding: 0 18px 10px; }
+.setup-row { display: flex; align-items: flex-end; gap: 8px; padding: 0 18px 10px; }
+.setup-row > .field, .setup-field { flex: 1; }
+.setup-row .field { margin-bottom: 0; }
+.setup-field .wiz-note { margin-top: 4px; }
 .setup-row input {
   flex: 1;
   font: inherit;
@@ -962,3 +981,9 @@ body {
 #misfits-card { margin: 0 0 14px; }
 #misfits-card #misfits-note { padding: 0; }
 #misfits-list .r-name { color: var(--subtle); overflow-wrap: anywhere; }
+
+/* ── Changes not saved (decision 201) ────────────────────────────────── */
+/* One bar per dialog, in the banner's warn colours: the dialog stays
+   open until Keep editing or Discard my changes is pressed. */
+.dlg-unsaved { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.dlg-unsaved.hidden { display: none; }

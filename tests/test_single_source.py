@@ -12,6 +12,8 @@ import json
 import re
 from pathlib import Path
 
+import pytest
+
 from tests.conftest import child_env
 from tracker.content_check import RETIRED_CACHE_FILENAME
 
@@ -645,9 +647,9 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
                     UNSCANNED_LABEL, *[h for h in HEADERS if " " in h]):
         assert literal not in html, literal
     assert 'min="' not in html and 'max="' not in html
-    # Every word the household's card, the wizard's household step and the
+    # Every word the household's card, the dialog's household step and the
     # misfit list show is the API's too, and so are the two trees and the
-    # two patterns the wizard's previews fill (decision 125).
+    # two patterns the dialog's previews fill (decision 125).
     import tracker.api as api_module
 
     words = api_module._vocab()
@@ -657,7 +659,7 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
         assert f'"{literal}"' not in js and f"'{literal}'" not in js, literal
         assert f">{literal}<" not in html, literal
     # Decision 142 (its review, R1): every word it adds is the API's - the
-    # status of a row nobody asked for, the count beside it, the wizard's
+    # status of a row nobody asked for, the count beside it, the dialog's
     # heading and note, the folded table's name and heading, the rollover's
     # label and line, the one refusal, the column's help and the rollover's
     # notes. None is typed in the renderer or the page, quoted or not.
@@ -670,14 +672,14 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
              api_module.NEW_NOT_ASKED_CARRIED.split("{n}")[1].split(" - ")[0].strip(),
              rollover.NEW_NOT_ASKED_NOTE, rollover.NOT_ASKED_NOTE,
              rollover.NOW_ASKED_NOTE.split("{")[0].strip(), '"' + _slug(NOT_ASKED_LABEL) + '"',
-             api_module.NOT_ASKED_SECTION.split("{")[0].strip() + " (")
+             api_module.SET_ASIDE_SECTION.split("{")[0].strip())
     for literal in added:
         assert literal and literal not in js and literal not in html, literal
     for key in ("not_asked_label", "not_asked_key", "ask_the_client", "ask_the_client_note",
                 "not_asked_table_label", "roll_template_label", "nothing_asked",
                 "new_not_asked_carried", "origin_new"):
         assert f"vocab.{key}" in js, key
-    assert "vocab.editor.not_asked_heading" in js and "vocab.editor.yes_no_fields" in js
+    assert "vocab.set_aside.heading" in js and "vocab.editor.yes_no_fields" in js
     # Decision 131: the room's heading and its two sentences are the API's.
     # The renderer fills neither pattern: the set-root reply carries each
     # return's sentences already filled.
@@ -689,18 +691,345 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
 
 
 def test_the_renderers_one_list_writer_flattens_what_it_is_handed():
-    """Half the callers build a list as "one fixed node, then a mapped
+    """Half the callers once built a list as "one fixed node, then a mapped
     array", and ``replaceChildren`` turns an array it is handed into the
     text ``[object HTMLOptionElement],...`` instead of its elements - so
-    the wizard's list of existing households and the rollover's list of
-    form templates each came out holding one option and a line of noise.
-    One flatten in the writer, not a rule every call site has to remember.
+    the old list of existing households and the rollover's list of form
+    templates each came out holding one option and a line of noise. One
+    flatten in the writer, not a rule every call site has to remember; it
+    stays for any caller that builds a list that way.
     """
     js = read("app/renderer/app.js")
     body = js.split("function show(id, nodes) {", 1)[1].split("}", 1)[0]
     assert "nodes.flat(" in body, body
-    # And the pattern the flatten exists for is still written this way.
-    assert re.search(r'show\("hh-existing", \[\s*\n.*\n\s*households\.map\(', js)
+
+
+# ------------------ decision 196: Roll forward and Add a return ----
+
+
+def _js_function(js: str, header: str) -> str:
+    """One function of ``app.js`` exactly as it is spelled, braces matched."""
+    start = js.index(header)
+    depth = 0
+    for at in range(js.index("{", start + len(header) - 1), len(js)):
+        depth += {"{": 1, "}": -1}.get(js[at], 0)
+        if depth == 0:
+            return js[start:at + 1]
+    raise AssertionError(f"{header} in app.js has no closing brace")
+
+
+def test_the_renderer_keeps_no_hidden_household_choice():
+    """D1 was a household picked on one page into a variable the roll page
+    never read. The wizard is gone whole, and with it every place a
+    household could be chosen except the card being looked at: the one
+    household a new return is added to by path is set from that card, and
+    only there."""
+    js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
+    for name in ("chosenHousehold", "rollFor", "rollHousehold", "priorsOfHousehold",
+                 "openWizard"):
+        assert not re.search(rf"\b{name}\b", js), name
+    assert 'call(["priors"]' not in js
+    for ident in ("hh-existing", "ro-household", "ro-year", "wiz-prior", "wp-new-client",
+                  "wf-back", 'btn-new"'):
+        assert ident not in js and ident not in html, ident
+    assigned = re.findall(r"\baddingTo = ([^;]+);", js)
+    assert len(assigned) == 4, assigned          # the declaration, and the three below
+    opening = _js_function(js, "async function openAddReturn(hh) {")
+    fresh = _js_function(js, "async function openNewHousehold() {")
+    closing = _js_function(js, "function closeNewReturn() {")
+    assert re.findall(r"\baddingTo = ([^;]+);", opening) == ["hh.path"]
+    assert re.findall(r"\baddingTo = ([^;]+);", fresh) == ["null"]
+    assert re.findall(r"\baddingTo = ([^;]+);", closing) == ["null"]
+    assert "let addingTo = null;" in js
+
+
+def _a_household(name: str, year: int) -> dict:
+    """A fabricated household payload as ``state.household`` carries it:
+    two returns of the open year, one already rolled on, one retired."""
+    home = f"/fabricated/{name}"
+    def one(label, **more):
+        return {"label": f"{name} {year} {label}", "path": f"{home}/{year}/{label}", "year": year,
+                "active": True, "superseded_by": None, "rollable": True, "form": "1040",
+                "people": [f"{label} person"], **more}
+    return {"name": name, "path": home, "open_years": [year], "roll_year": year + 1,
+            "returns": [one("1040 - One"), one("1120S - Two", form="1120S"),
+                        one("1040 - Rolled", superseded_by="later", rollable=False),
+                        one("1040 - Retired", active=False, rollable=False)]}
+
+
+def test_roll_forward_rolls_the_household_on_screen_and_names_no_other(tmp_path):
+    """The roll call is one pure function of the household on screen: run
+    as written, with another household's choices left over, it names only
+    the household it was handed - its open-year return, its ticked returns,
+    the year the card named - and nothing when no roll is offered."""
+    import shutil
+    import subprocess
+
+    import tracker.api as api_module
+
+    js = read("app/renderer/app.js")
+    body = _js_function(js, "function rollHouseholdCall(hh, choice) {")
+    # The static half, which always runs: the one roll call is built here,
+    # and this function reads nothing but what it is handed.
+    assert js.count('"roll-household"') == 1 and '"roll-household"' in body
+    for name in ("households", "active", "lastState", "document", "$("):
+        assert not re.search(rf"(?<![\w.]){re.escape(name)}", body), name
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not on PATH (CI installs it); the roll call's source is still held by name")
+    here, there = _a_household("Alpha Household", 2026), _a_household("Beta Household", 2026)
+    a_ticked, a_unticked = here["returns"][0]["path"], here["returns"][1]["path"]
+    b_first = there["returns"][0]["path"]
+    script = tmp_path / "roll_call.js"
+    script.write_text(
+        "const input = JSON.parse(require('fs').readFileSync(0, 'utf8'));\n"
+        "const vocab = { engagement_flag: input.flag };\n"
+        f"{body}\n"
+        "const choice = (c) => c && { household: c.household, unticked: new Set(c.unticked),\n"
+        "                              forms: new Map(c.forms) };\n"
+        "process.stdout.write(JSON.stringify(input.cases.map(\n"
+        "  ([hh, c]) => rollHouseholdCall(hh, choice(c)))));\n",
+        encoding="utf-8", newline="\n")
+    leftover = {"household": there["path"], "unticked": [a_ticked], "forms": [[b_first, "1065"]]}
+    own = {"household": here["path"], "unticked": [a_unticked], "forms": [[a_ticked, "1040"]]}
+    cases = [[here, leftover], [here, own], [{**here, "roll_year": None}, own]]
+    done = subprocess.run([node, str(script)], capture_output=True, text=True, encoding="utf-8",
+                          input=json.dumps({"flag": api_module.ENGAGEMENT_FLAG, "cases": cases}),
+                          timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    with_leftover, with_own, offered_none = json.loads(done.stdout)
+
+    open_year = [r["path"] for r in here["returns"] if r["rollable"]]
+    for argv, spec in (with_leftover, with_own):
+        assert argv[:2] == ["roll-household", api_module.ENGAGEMENT_FLAG]
+        assert argv[2] in open_year
+        assert spec["year"] == here["roll_year"]
+        assert all(one["prior"] in open_year for one in spec["returns"])
+        assert "Beta" not in json.dumps([argv, spec])
+    # Beta's leftover untick and pick are nobody's here: every open-year
+    # return is ticked, each with its own recorded form.
+    assert with_leftover[1]["returns"] == [{"prior": a_ticked, "form": "1040"},
+                                           {"prior": a_unticked, "form": "1120S"}]
+    # Alpha's own untick leaves that return out, to be retired by the API.
+    assert with_own[1]["returns"] == [{"prior": a_ticked, "form": "1040"}]
+    assert offered_none is None
+
+
+def test_the_card_hands_the_roll_call_the_household_it_shows_and_no_other(tmp_path):
+    """D1 at the caller: the card's roll button builds its call from the
+    household on screen, and from nothing else in reach. Run as written,
+    with another household first in the list the page holds, it hands
+    ``rollHouseholdCall`` the household on screen - and nothing at all
+    when no household is on screen."""
+    import shutil
+    import subprocess
+
+    js = read("app/renderer/app.js")
+    body = _js_function(js, "async function rollFromCard() {")
+    # The static half: one call site, in this function, fed from the state
+    # the card was drawn from, and no list of households or returns read.
+    calls = [m.start() for m in re.finditer(r"(?<!function )\brollHouseholdCall\(", js)]
+    assert len(calls) == 1 and "rollHouseholdCall(" in body, calls
+    assert "const hh = lastState && lastState.household;" in body
+    for name in ("households", "engagements"):
+        assert not re.search(rf"\b{name}\b", body), name
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not on PATH (CI installs it); the caller's source is still held by name")
+    here, there = _a_household("Alpha Household", 2026), _a_household("Beta Household", 2026)
+    script = tmp_path / "roll_caller.js"
+    script.write_text(
+        "const input = JSON.parse(require('fs').readFileSync(0, 'utf8'));\n"
+        "const vocab = { household: {} };\n"
+        "const handed = [];\n"
+        "let lastState = null;\n"
+        "const households = input.households;\n"
+        "const engagements = input.households.map((hh) => ({ path: hh.returns[0].path }));\n"
+        "function gatherRollChoice(hh) { return { household: hh.path, unticked: new Set(),\n"
+        "                                         forms: new Map() }; }\n"
+        "function rollHouseholdCall(hh, choice) {\n"
+        "  handed.push([hh.path, choice.household]); return null; }\n"
+        f"{body}\n"
+        "(async () => {\n"
+        "  for (const shown of input.shown) { lastState = { household: shown }; await rollFromCard(); }\n"
+        "  process.stdout.write(JSON.stringify(handed));\n"
+        "})();\n",
+        encoding="utf-8", newline="\n")
+    done = subprocess.run([node, str(script)], capture_output=True, text=True, encoding="utf-8",
+                          input=json.dumps({"households": [there, here],
+                                            "shown": [here, None, there]}),
+                          timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    assert json.loads(done.stdout) == [[here["path"], here["path"]],
+                                       [there["path"], there["path"]]]
+
+
+def test_the_roll_fold_says_what_unticking_does_and_a_paused_card_offers_neither_entry():
+    """The retire-on-untick sentence (decision 126) is drawn inside the
+    fold, beside the ticks and before the button, naming the year; the
+    fold is hidden whenever the API offers no roll (a paused household
+    among them), and Add a return is hidden while the household is paused
+    (decision 188), because then the pause is the work."""
+    js = read("app/renderer/app.js")
+    fold = _js_function(js, "function renderRollFold(hh) {")
+    assert 'fold.classList.toggle("hidden", !hh.roll_year);' in fold
+    note = fold.index('fill(words.rollover_unticked, { year })')
+    assert fold.index('className: "roll-tick"') < note < fold.index('id: "btn-roll"')
+    card = _js_function(js, "function renderHousehold(state) {")
+    assert "renderRollFold(hh);" in card
+    assert '$("btn-add-return").classList.toggle("hidden", Boolean(pause.sentence));' in card
+    assert "const pause = hh.pause || {};" in card
+
+
+#: The words decision 196 adds under ``vocab.household``.
+ROLL_AND_ADD_KEYS = ("roll_forward_to", "roll_ticked", "roll_intro", "roll_no_template",
+                     "roll_done", "roll_carried", "roll_unfiled", "roll_retired_line",
+                     "roll_forms_unloaded", "add_return", "add_return_title", "new_intro",
+                     "form_step_title", "form_step_note", "change_form", "change_household",
+                     "items_title", "create_return", "return_created", "empty_root")
+
+
+def test_every_word_of_roll_forward_add_a_return_and_new_household_is_the_apis():
+    """Every visible word of the roll fold, Add a return and New household
+    comes from the API's vocabulary: each is read by its key, none is typed
+    in the renderer or the page, and the wizard's own typed words are gone
+    from the app and from the docs that walked a person through it."""
+    import tracker.api as api_module
+
+    js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
+    words = api_module._vocab()["household"]
+    assert "existing" not in words
+    for key in ROLL_AND_ADD_KEYS:
+        assert isinstance(words[key], str) and words[key], key
+        assert f"vocab.household.{key}" in js or f"words.{key}" in js, key
+        literal = words[key]
+        stem = literal.split("{")[0].strip()
+        if stem:
+            for quoted in (f'"{stem}', f"'{stem}", f"`{stem}", f">{stem}"):
+                assert quoted not in js and quoted not in html, (key, quoted)
+        else:
+            # A text that opens on a placeholder is typed, when it is, after
+            # a `${...}` inside a template string: its words after the first
+            # placeholder are looked for bare.
+            bare = literal.split("}")[1].split("{")[0].strip()
+            assert bare not in js and bare not in html, (key, bare)
+    for typed in ("New Engagement", "Create Engagement", "Roll Forward<", "returning client",
+                  "No engagements under",
+                  "No template — carry", "return(s) rolled into", "request(s) carried",
+                  "file(s) sent last year were never filed"):
+        assert typed not in js and typed not in html, typed
+    for doc in ("docs/runbook.md", "README.md", "docs/workflow.md"):
+        assert "New Engagement" not in read(doc), doc
+
+
+def test_a_refused_create_stays_in_the_dialog():
+    """A refused create - 188's duplicate household name among them - is
+    shown in the dialog's own note, where it stays until a field is edited
+    or the dialog closed, so nothing typed is lost; a toast would vanish."""
+    js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
+    body = _js_function(js, "async function createEngagement() {")
+    caught = body.split("} catch (err) {", 1)[1].split("} finally {", 1)[0]
+    # A1's split (decision 196, the restack review's S2): a refusal stays in
+    # the dialog, in failureSentence's words; anything else is a notice.
+    refusal, other = caught.split("} else {", 1)
+    assert 'if (err.failure && err.failure.kind === "refused") {' in refusal, caught
+    assert '$("ne-note").textContent = failureSentence(err);' in refusal, caught
+    assert other.strip().startswith("failed(err);"), caught
+    assert "err.message" not in caught and "toast(" not in caught, caught
+    assert '<p id="ne-note" class="rem-hold hidden" role="alert"></p>' in html
+
+
+def test_a_refused_create_is_said_in_the_dialog_and_a_locked_one_is_a_notice(tmp_path):
+    """A1's split, run as written (decision 196, the restack review's S2):
+    ``createEngagement``'s refusal lands in the dialog's note in the API's
+    sentence and raises no notice; a locked create lands in the notices
+    area and leaves the note alone; an error of the page's own is said by
+    its class there, never its text."""
+    harness = """
+const classes = () => { const on = new Set(["hidden"]);
+  return { remove: (c) => on.delete(c), contains: (c) => on.has(c) }; };
+const page = { "tmpl-list": { querySelectorAll: () => [] }, "ne-create": { disabled: false },
+               "ne-note": { textContent: "", classList: classes() } };
+const $ = (id) => page[id] || { value: "" };
+const templates = [];
+const customItems = [{ identifier: "X01", document: "Letter from the county" }];
+const wizardPeople = [];
+const selectedForm = "1040";
+const householdSpec = () => ({});
+const personSpec = (p) => p;
+const call = async () => { throw THROWN; };
+const toast = (text) => { throw new Error(`toasted: ${text}`); };
+const vocab = { nothing_asked: "", shell: { page_error: "Own error ({kind})." } };
+const fill = (text, values) => text.replace("{kind}", values.kind);
+const done = { notices: [], logged: 0 };
+const window = { tracker: { logError: () => { done.logged += 1; } } };
+const notice = (failure) => done.notices.push([failure.sentence, failure.kind]);
+createEngagement().then(() => process.stdout.write(JSON.stringify({
+  ...done, note: page["ne-note"].textContent, shown: !page["ne-note"].classList.contains("hidden"),
+  enabled: !page["ne-create"].disabled })));
+"""
+    headers = ("async function createEngagement() {", "function failed(err, retry) {",
+               "function failureSentence(err) {")
+
+    def thrown(sentence: str, kind: str) -> str:
+        return (f"Object.assign(new Error({json.dumps(sentence)}), {{ failure: "
+                f"{{ sentence: {json.dumps(sentence)}, kind: {json.dumps(kind)}, identifier: null }} }})")
+
+    refused = "A household of that name is already on the list (fabricated)."
+    seen = _run_renderer(tmp_path, "create_refused", headers, harness.replace("THROWN", thrown(refused, "refused")))
+    assert seen == {"notices": [], "logged": 0, "note": refused, "shown": True, "enabled": True}
+    locked = "Another pass holds this household (fabricated)."
+    seen = _run_renderer(tmp_path, "create_locked", headers, harness.replace("THROWN", thrown(locked, "locked")))
+    assert seen == {"notices": [[locked, "locked"]], "logged": 0, "note": "", "shown": False, "enabled": True}
+    seen = _run_renderer(tmp_path, "create_own", headers,
+                         harness.replace("THROWN", 'new TypeError("x is undefined at C:/private")'))
+    assert seen == {"notices": [["Own error (TypeError).", "failed"]], "logged": 1, "note": "",
+                    "shown": False, "enabled": True}
+
+
+def test_new_households_refusal_leads_back_to_the_name_field_with_everything_typed_kept():
+    """188's duplicate-name refusal is read on the request list, and its
+    advice is to change the household's name. New household's request list
+    carries the way back to the name field, and Continue returns to the list
+    as it was left: neither clears a field, the form, the ticks or the
+    people. Add a return has no household step, so it has no such button."""
+    js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
+    assert '<button id="wi-household" class="wiz-back hidden"></button>' in html
+    assert "vocab.household.change_household" in js
+    chosen = _js_function(js, "function chooseForm(formId) {")
+    assert '$("wi-household").classList.toggle("hidden", Boolean(addingTo));' in chosen
+    back = js.split('$("wi-household").addEventListener("click", () => {', 1)[1].split("});", 1)[0]
+    assert 'showStep("household");' in back and '$("hh-name").focus();' in back, back
+    assert "renderHouseholdStep" not in back and "chooseForm" not in back, back
+    assert ('$("wh-next").addEventListener("click", () => showStep(selectedForm ? "items" : "form"));'
+            in js)
+
+
+def test_a_catalog_that_will_not_load_is_said_in_the_roll_fold_and_the_page_is_drawn():
+    """The roll fold's form pick needs the catalog; a ``templates`` call that
+    fails is said there, in the API's words, and the card is drawn all the
+    same. No pick is drawn then, so the roll keeps each return's recorded
+    form instead of sending "no template" for every one."""
+    js = read("app/renderer/app.js")
+    # Start-up loads the catalog once (decision 194: a switch reads the
+    # state alone, so the catalog is not read again on every click).
+    starting = _js_function(js, "async function bootstrap(preferPath) {")
+    guarded = starting.split("try {\n      await loadForms();\n    } catch (err) {", 1)
+    assert len(guarded) == 2, starting
+    # Said in the words a notice would use: a page error by its class alone
+    # (principle 7), never its message.
+    assert guarded[1].lstrip().startswith("formsUnloaded = failureSentence(err);"), guarded[1]
+    assert "err.message" not in guarded[1].split("}", 1)[0], guarded[1]
+    fold = _js_function(js, "function renderRollFold(hh) {")
+    said = fold.index("fill(words.roll_forms_unloaded, { reason: formsUnloaded })")
+    assert fold.index("formsUnloaded\n") < said < fold.index('className: "roll-form-pick"')
+    assert 'formsUnloaded = "";' in _js_function(js, "async function loadForms() {")
 
 
 def test_the_renderer_names_no_catalog_of_its_own():
@@ -2113,10 +2442,25 @@ def test_a_switch_between_two_locked_returns_watches_the_second_and_gives_its_bu
 
 
 def test_the_editors_failures_are_notices_too():
+    """Every editor catch says one sentence, in the editor and as a notice:
+    ``failed``'s, never an error's own text (principle 7; the restack
+    review's M1)."""
     js = read("app/renderer/app.js")
-    for name in ("async function saveEditor() {", "async function renameRequest() {"):
+    for name in ("async function saveEditor() {", "async function renameRequest() {",
+                 "async function unlearnKeyword(identifier, keyword) {"):
         body = js.split(name, 1)[1].split("\n}\n", 1)[0]
-        assert "failed(err)" in body, name
+        assert 'editorNote(failed(err), "err");' in body, name
+        assert "err.message" not in body, name
+
+
+def test_an_errors_own_message_is_read_only_where_failureSentence_logs_it():
+    """UX principle 7, by shape: the one place app.js reads a caught error's
+    message is ``failureSentence``, which sends it to the error log."""
+    js = read("app/renderer/app.js")
+    inside = _js_function(js, "function failureSentence(err) {")
+    outside = js.replace(inside, "")
+    assert inside.count(".message") == 1 and "window.tracker.logError(" in inside
+    assert re.search(r"\.message\b", outside) is None
 
 
 def test_every_word_a_scan_reply_is_said_in_is_the_apis():
@@ -2136,9 +2480,11 @@ def test_an_error_of_the_page_or_the_shell_is_said_by_class_and_its_message_only
     import tracker.api as api
 
     js = read("app/renderer/app.js")
-    body = js.split("function failed(err, retry) {", 1)[1].split("\n}\n", 1)[0]
+    body = js.split("function failureSentence(err) {", 1)[1].split("\n}\n", 1)[0]
     assert "vocab.shell.page_error" in body and "window.tracker.logError(" in body
     assert "sentence: String(" not in body
+    failing = js.split("function failed(err, retry) {", 1)[1].split("\n}\n", 1)[0]
+    assert "const sentence = failureSentence(err);" in failing and "err.message" not in failing
     main_js = read("app/main.js")
     run = main_js[main_js.index("function runTracker"):]
     run = run[:run.index("\n}\n")]
@@ -2169,8 +2515,10 @@ def test_switching_returns_is_one_state_call():
     assert show.count("call(") == 1 and 'call(["state", ' in show
     for head in ('$("household-returns").addEventListener("click", (e) => {',
                  '$("eng-select").addEventListener("change", (e) => {',
-                 '$("prior-list").addEventListener("click", async (e) => {'):
+                 '$("household-roll").addEventListener("click", async (e) => {'):
         handler = _handler(js, head)
+        if "reviewPeople(" in handler:       # the roll fold's people button (S4)
+            handler += _body(js, "async function reviewPeople(path) {")
         assert "showReturn(" in handler, head
         for other in ("refresh(", "bootstrap(", "loadReminder(", "call("):
             assert other not in handler, (head, other)
@@ -2239,3 +2587,698 @@ def test_a_warning_about_another_return_is_said_under_its_label():
     assert js.count("ofAnother: true") == 1
     assert api._vocab()["notices"]["about"] == api.NOTICE_ABOUT
     assert set(re.findall(r"{(\w+)}", api.NOTICE_ABOUT)) == {"label", "sentence"}
+
+
+# ------------------------------- statuses in a preparer's words (d200) ----
+
+
+def _typed(word: str, text: str) -> bool:
+    """Is ``word`` written into ``text`` as a word of its own - quoted, or
+    as an element's whole text - rather than said in a comment's prose?"""
+    return any(form in text for form in (f'"{word}"', f"'{word}'", f"`{word}`", f">{word}<"))
+
+
+def test_the_renderer_types_no_status_label():
+    """Decision 200: every label and sentence the app shows for a row's
+    status, every side and the Set aside headings reach the page through
+    the API's vocabulary, and the renderer and the page type none."""
+    from tracker import reminder, view
+    from tracker.manifest import STATUS_LABELS
+
+    js = read("app/renderer/app.js")
+    # A column heading is not a status: the Received column holds a date.
+    html = re.sub(r"<th[^>]*>[^<]*</th>", "", read("app/renderer/index.html"))
+    for text in (js, html):
+        for shown in STATUS_LABELS.values():
+            assert not _typed(shown.label, text), shown.label
+            assert shown.sentence not in text, shown.sentence
+        for side in reminder.SIDES:
+            assert not _typed(side.label, text), side.label
+            assert side.sentence not in text, side.sentence
+        assert view.SET_ASIDE_SECTION.split("{")[0].strip() not in text
+        assert view.SET_ASIDE_GROUP not in text
+    assert "vocab.labels" in js and "vocab.reminder.sides" in js
+    assert "vocab.set_aside.heading" in js and "vocab.set_aside.group" in js
+
+
+def test_the_renderer_types_no_override_word():
+    """The row's override is its label on the side line (decision 200), not
+    a typed "override:" after the Period. A key such as ``manual_override:``
+    is the record's field name, not a word shown."""
+    assert re.search(r"(?<!\w)override:", read("app/renderer/app.js"), re.IGNORECASE) is None
+
+
+# A document just large enough for app.js's own el(): elements keep their
+# children in order, and a child that is not an element becomes text, as a
+# browser's append() makes it. Each drawn tree comes back as JSON.
+_DOM_SHIM = """
+class Node {}
+class Text extends Node { constructor(data) { super(); this.data = data; } }
+class Element extends Node {
+  constructor(tag) { super(); this.tag = tag; this.className = ""; this.dataset = {};
+                     this.attributes = {}; this.childNodes = []; }
+  setAttribute(key, value) { this.attributes[key] = String(value); }
+  append(...nodes) { for (const n of nodes) this.childNodes.push(n instanceof Node ? n : new Text(String(n))); }
+  replaceChildren(...nodes) { this.childNodes = []; this.append(...nodes); }
+  addEventListener() {}
+}
+const document = { createElement: (tag) => new Element(tag), activeElement: null };
+const tree = (n) => n instanceof Text ? n.data
+  : { tag: n.tag, className: n.className, attributes: n.attributes, children: n.childNodes.map(tree) };
+"""
+
+
+def _run_renderer(tmp_path, name: str, headers: tuple[str, ...], script: str):
+    """Run ``script`` under node with app.js's own ``el()`` (and its
+    attribute list) and the named
+    functions exactly as written, against :data:`_DOM_SHIM`; what the
+    script writes to stdout comes back parsed. Skipped where node is not
+    on PATH (CI installs it)."""
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not on PATH (CI installs it)")
+    js = read("app/renderer/app.js")
+    start = js.index("const EL_ATTRIBUTES = new Set([")
+    allowed = js[start:js.index("]);", start) + 3]
+    bodies = "\n".join([allowed] + [_js_function(js, header) for header in (
+        "function el(tag, attrs = {}, ...children) {", *headers)])
+    path = tmp_path / f"{name}.js"
+    path.write_text(f"{_DOM_SHIM}\n{bodies}\n{script}\n", encoding="utf-8", newline="\n")
+    done = subprocess.run([node, str(path)], capture_output=True, text=True, encoding="utf-8",
+                          timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+def _texts(node) -> list[str]:
+    """Every text in a drawn tree, in order."""
+    if isinstance(node, str):
+        return [node]
+    return [text for child in node["children"] for text in _texts(child)]
+
+
+def test_the_editor_set_aside_fold_draws_each_group_as_elements(tmp_path):
+    """The editor's Set aside fold, drawn by ``renderEditorRows`` as
+    written through the real ``el()``, holds each group's heading and its
+    rows' box as elements - never the text "[object ...]" that an array of
+    [heading, box] pairs handed to ``el()`` unflattened becomes, which left
+    every set-aside row out of the editor."""
+    drawn = _run_renderer(tmp_path, "editor_fold", (
+        "function renderEditorRows() {", "function setAsideHeading(group) {",
+        "function fill(pattern, values) {"), """
+const NOT_ASKED_GROUP = "not asked";
+const vocab = { columns: [], set_aside: { heading: "Set aside ({n})", group: "{label} ({n})" },
+                editor: { plain_columns: [], routing_columns: [], routing_all: "", routing_help: "" } };
+const editorState = { learned: {} };
+const editorFolds = new Map();
+const editorRowIsCustom = () => false;
+const editorRowFoldOpen = () => false;
+const showEveryFold = () => {};
+const editorRows = [
+  { identifier: "A01", group: "" },
+  { identifier: "B01", group: NOT_ASKED_GROUP },
+  { identifier: "C01", group: "Not Applicable in TY2025" },
+];
+const editorGroupKey = (row) => row.group;
+const editorRowYear = () => 2025;
+const unlearnKeyword = () => {};
+function requestRows(box, rows) { for (const row of rows) box.append(el("div", { className: "row" }, row.identifier)); }
+function setAsideGroups(rows) {
+  return rows.map((row) => ({ label: row.group, sentence: "A fabricated sentence.", rows: [row] }));
+}
+const page = { "ed-rows": document.createElement("div") };
+const $ = (id) => page[id];
+renderEditorRows();
+process.stdout.write(JSON.stringify(tree(page["ed-rows"])));
+""")
+    above, active, fold = drawn["children"]
+    assert above["className"] == "editor-actions"   # the routing toggle (decision 201)
+    assert fold["tag"] == "details" and fold["className"] == "ed-set-aside"
+    assert [child["tag"] if isinstance(child, dict) else child for child in fold["children"]] == [
+        "summary", "div", "div", "div", "div"]
+    assert not any("[object" in text for text in _texts(drawn))
+    assert [box["children"][0]["children"] for box in fold["children"][2::2]] == [["B01"], ["C01"]]
+    assert _texts(active) == ["A01"]
+
+
+def _class_names(node) -> list[str]:
+    """Every ``className`` in a drawn tree, in order."""
+    if isinstance(node, str):
+        return []
+    return [node["className"]] + [name for child in node["children"] for name in _class_names(child)]
+
+
+def test_the_plain_view_draws_one_box_per_column_and_a_custom_rows_document_in_the_plain_part(
+        tmp_path):
+    """Decision 201: ``requestRows`` with the fold, run as written, draws
+    one box for every column of every row across the plain part and the
+    fold - none twice, none lost - and a custom row's Document with the
+    plain boxes, because nothing else names it; a catalog row's Document
+    is in the fold."""
+    drawn = _run_renderer(tmp_path, "plain_view", (
+        "function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack, "
+        "learned = {}, keyed = true, fold = null }) {",), """
+const vocab = { editor: { routing: "Routing", routing_help: "How it is recognised.", remove_row: "Remove" },
+                triage: { identifier_separator: " - " } };
+const keys = ["identifier", "document", "required_keywords", "expected_count", "asked"];
+const columns = keys.map((key) => ({ key, label: key, help: "" }));
+const drawnBoxes = [];
+function cellInput(row, column) {
+  drawnBoxes.push([row.identifier, column.key]);
+  return el("span", { className: `cell-${column.key}` });
+}
+const rows = [{ identifier: "A01", document: "W-2", custom: false },
+              { identifier: "X01", document: "Letter from the county", custom: true }];
+const box = document.createElement("div");
+requestRows(box, rows, { columns, onChange: () => {}, onRemove: () => {}, keyed: false, fold: {
+  plain: ["expected_count", "asked"], routing: ["identifier", "document", "required_keywords"],
+  custom: (row) => row.custom, isOpen: () => false, setOpen: () => {} } });
+process.stdout.write(JSON.stringify({ boxes: drawnBoxes, tree: tree(box) }));
+""")
+    keys = ["identifier", "document", "required_keywords", "expected_count", "asked"]
+    assert sorted(map(tuple, drawn["boxes"])) == sorted((row, key) for row in ("A01", "X01") for key in keys)
+    [table] = drawn["tree"]["children"]
+    catalog_plain, catalog_fold, custom_plain, custom_fold = table["children"][1]["children"]
+    cells = {name: [c[len("cell-"):] for c in _class_names(part) if c.startswith("cell-")]
+             for name, part in (("catalog_plain", catalog_plain), ("catalog_fold", catalog_fold),
+                                ("custom_plain", custom_plain), ("custom_fold", custom_fold))}
+    assert cells == {"catalog_plain": ["expected_count", "asked"],
+                     "catalog_fold": ["identifier", "document", "required_keywords"],
+                     "custom_plain": ["document", "expected_count", "asked"],
+                     "custom_fold": ["identifier", "required_keywords"]}
+
+
+def test_a_notice_for_a_numeric_identifier_outlines_that_request_and_no_editor_row(tmp_path):
+    """Since decision 193 ``data-row`` is the row a notice names, so
+    ``requestRows`` keeps each row's index in ``data-index`` instead: a
+    notice for request "2", run through ``outlineRefused`` as written,
+    outlines the request table's row "2" and never the editor's or the
+    wizard's third row (the restack review's S1)."""
+    js = read("app/renderer/app.js")
+    drawing = _js_function(js, "function requestRows(container, rows, { columns, onChange, onRemove, "
+                               "onTakeBack, learned = {}, keyed = true, fold = null }) {")
+    assert "row:" not in drawing and "dataset.row" not in drawing
+    seen = _run_renderer(tmp_path, "outline_numeric", (
+        "function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack, "
+        "learned = {}, keyed = true, fold = null }) {", "function outlineRefused() {"), """
+Object.defineProperty(Element.prototype, "classList", { get() {
+  const node = this;
+  return { toggle(name, on) {
+    const names = new Set(node.className.split(" ").filter(Boolean));
+    if (on) names.add(name); else names.delete(name);
+    node.className = [...names].join(" ");
+  } };
+} });
+const vocab = { editor: { routing: "Routing", routing_help: "", remove_row: "Remove" },
+                triage: { identifier_separator: " - " } };
+const columns = ["identifier", "document", "expected_count"].map((key) => ({ key, label: key, help: "" }));
+const cellInput = () => el("span", {});
+const columnsByKey = (keys) => columns.filter((c) => keys.includes(c.key));
+const rows = [{ identifier: "A01", document: "W-2" }, { identifier: "B01", document: "1099-INT" },
+              { identifier: "C01", document: "1098" }];
+const table = el("tr", { dataset: { row: "2" } });
+const editor = document.createElement("div");
+requestRows(editor, rows, { columns, onChange: () => {}, onRemove: () => {}, fold: {
+  plain: ["expected_count"], routing: ["identifier", "document"], custom: () => false,
+  isOpen: () => false, setOpen: () => {} } });
+const wizard = document.createElement("div");
+requestRows(wizard, rows, { columns, onChange: () => {}, onRemove: () => {}, keyed: false });
+const all = [];
+const walk = (n) => { if (n instanceof Element) { all.push(n); n.childNodes.forEach(walk); } };
+[table, editor, wizard].forEach(walk);
+document.querySelectorAll = (selector) => all.filter((n) => selector === "[data-row]" && "row" in n.dataset);
+const notices = [{ identifier: "2" }];
+outlineRefused();
+const outlined = (root) => { const found = []; const look = (n) => { if (n instanceof Element) {
+  if (n.className.split(" ").includes("refused")) found.push(n.dataset.index ?? n.dataset.row);
+  n.childNodes.forEach(look); } }; look(root); return found; };
+process.stdout.write(JSON.stringify({ table: outlined(table), editor: outlined(editor),
+                                      wizard: outlined(wizard),
+                                      indexed: all.filter((n) => n.tag === "tr" && "index" in n.dataset).length }));
+""")
+    assert seen == {"table": ["2"], "editor": [], "wizard": [], "indexed": 9}
+
+
+# The dialogs' guard as written: the registry, the snapshot, the dirty test
+# and requestClose, against a page of plain stand-ins.
+_DIALOG_GUARD = ("const DIALOGS = {", "function snapshotOf(id) {", "function isDirty(id) {",
+                 "function rebaseline(id, keys) {", "function unsavedBar(id) {",
+                 "function requestClose(id) {")
+_DIALOG_PAGE = """
+const vocab = { dialogs: { unsaved: "Unsaved.", keep_editing: "Keep", discard: "Discard" } };
+const classes = (...names) => { const on = new Set(names);
+  return { contains: (c) => on.has(c), add: (c) => on.add(c), remove: (c) => on.delete(c),
+           toggle: (c, force) => { if (force ?? !on.has(c)) on.add(c); else on.delete(c); } }; };
+const bar = { classList: classes("hidden"), parts: {},
+              querySelector(sel) { return this.parts[sel] ||= { textContent: "", focus() {} }; } };
+const page = new Map();
+const $ = (id) => {
+  if (!page.has(id)) page.set(id, { value: "", textContent: "", classList: classes(), focus() {},
+                                    querySelector: () => bar, querySelectorAll: () => [] });
+  return page.get(id);
+};
+const dialogSnapshot = {};
+const dialogKept = {};
+const closed = [];
+const closeDialog = (id) => closed.push(id);
+const keepEditing = () => {};
+let editorRows = [];
+let details = {};
+const engagementFromFields = () => details;
+let editorFeeds = [];
+let handingOver = null;
+const closeNewReturn = () => {};
+"""
+
+
+def _dialog_guard(tmp_path, name: str, headers: tuple[str, ...], script: str):
+    return _run_renderer(tmp_path, name, (*_DIALOG_GUARD, *headers), _DIALOG_PAGE + script)
+
+
+def test_closing_the_editor_closes_it_clean_and_raises_the_bar_on_a_changed_row_or_detail(tmp_path):
+    """F-T-7, run as written: ``requestClose`` on an editor nothing moved in
+    closes it; one whose rows moved, or whose details alone moved, shows
+    the unsaved bar and stays open."""
+    seen = _dialog_guard(tmp_path, "dialog_close", (), """
+const wizardModel = () => null;
+const outcome = () => ({ closed: closed.splice(0), bar: !bar.classList.contains("hidden") });
+const results = {};
+editorRows = [{ identifier: "A01", document: "W-2" }]; details = { client: "Pat" };
+dialogSnapshot.editor = snapshotOf("editor");
+requestClose("editor"); results.clean = outcome();
+editorRows[0].document = "W-2s"; requestClose("editor"); results.row = outcome();
+bar.classList.add("hidden"); editorRows[0].document = "W-2"; details.client = "Pat Lee";
+requestClose("editor"); results.detail = outcome();
+process.stdout.write(JSON.stringify(results));
+""")
+    assert seen["clean"] == {"closed": ["editor"], "bar": False}
+    assert seen["row"] == {"closed": [], "bar": True}
+    assert seen["detail"] == {"closed": [], "bar": True}
+
+
+def test_picking_a_form_is_not_unsaved_work_but_typing_after_it_is(tmp_path):
+    """Decision 201: picking a form fills its defaults in, which is not the
+    person's typing - ``chooseForm`` as written leaves New household clean;
+    a box typed in afterwards makes it dirty."""
+    seen = _dialog_guard(tmp_path, "choose_form", (
+        "function chooseForm(formId) {", "function wizardModel() {", "function fill(pattern, values) {"), """
+Object.assign(vocab, { household: { items_title: "{form} requests" }, ask_the_client: "Ask",
+                       ask_the_client_note: "Note" });
+const forms = [{ id: "1040", label: "1040", who: "Individuals" }];
+const templatesByForm = { "1040": [{ identifier: "A01" }] };
+let selectedForm = null, templates = [], customItems = [], nameIsAuto = false, wizardPeople = [];
+const defaultYear = 2026, addingTo = null;
+let ticks = [];
+$("tmpl-list").querySelectorAll = () => ticks;
+const householdContact = () => "Pat Lee";
+const syncNameDefault = () => { $("ne-name").value = "1040 - Pat Lee"; };
+const blankPerson = () => ({ kind: "taxpayer", name: "", own: false, proposed: [] });
+const labelPeopleBlock = () => {}, renderPeople = () => {}, refreshProposals = () => {};
+const renderTemplateList = () => { ticks = [{ checked: true }]; };
+const renderCustomRows = () => {}, showStep = () => {};
+dialogSnapshot.modal = snapshotOf("modal");
+chooseForm("1040");
+const picked = isDirty("modal");
+$("ne-due").value = "2027-04-15";
+process.stdout.write(JSON.stringify({ picked, typed: isDirty("modal") }));
+""")
+    assert seen == {"picked": False, "typed": True}
+
+
+def test_a_refused_save_opens_every_fold_and_keeps_the_editor_open(tmp_path):
+    """Decision 201, R5, run as written: a refusal names a row and a column,
+    so ``saveEditor``'s refusal opens every fold, says the API's sentence
+    in the editor and does not close it. Decision 193: the refusal arrives
+    as the tracker's envelope and is also a notice, in the same sentence;
+    an error of the page's own is said in both places by its class alone,
+    its message only logged (principle 7)."""
+    headers = ("async function saveEditor() {", "function failed(err, retry) {",
+               "function failureSentence(err) {")
+    harness = """
+const page = { "ed-save": { disabled: false } };
+const $ = (id) => page[id];
+const withEng = (command) => [command];
+const call = async () => { throw THROWN; };
+const editorRows = [], editorState = { list_head: "h" };
+const engagementFromFields = () => ({});
+const viewGeneration = 0;
+const vocab = { shell: { page_error: "Own error ({kind})." } };
+const fill = (text, values) => text.replace("{kind}", values.kind);
+const done = { folds: 0, notes: [], notices: [], logged: 0, closed: [] };
+const window = { tracker: { logError: () => { done.logged += 1; } } };
+const notice = (failure) => done.notices.push([failure.sentence, failure.kind]);
+const showEveryFold = () => { done.folds += 1; };
+const editorNote = (text, cls) => done.notes.push([text, cls]);
+const closeDialog = (id) => done.closed.push(id);
+const renderFor = () => { throw new Error("a refused save draws nothing"); };
+const banner = () => {};
+saveEditor().then(() => process.stdout.write(JSON.stringify(done)));
+"""
+    sentence = "Row A01: a fabricated refusal"
+    refusal = (f"Object.assign(new Error({json.dumps(sentence)}), {{ failure: "
+               f"{{ sentence: {json.dumps(sentence)}, kind: \"refused\", identifier: \"A01\" }} }})")
+    seen = _run_renderer(tmp_path, "save_refused", headers, harness.replace("THROWN", refusal))
+    assert seen == {"folds": 1, "notes": [[sentence, "err"]], "notices": [[sentence, "refused"]],
+                    "logged": 0, "closed": []}
+    own = _run_renderer(tmp_path, "save_own_error", headers,
+                        harness.replace("THROWN", 'new TypeError("x is undefined at C:/private")'))
+    assert own == {"folds": 1, "notes": [["Own error (TypeError).", "err"]],
+                   "notices": [["Own error (TypeError).", "failed"]], "logged": 1, "closed": []}
+
+
+def test_edit_request_list_says_so_when_the_state_is_still_another_returns(tmp_path):
+    """The review's S4, on decision 194's model: when the state read for
+    the editor is still another return's - a switch landed while it was
+    read - Edit Request List puts the API's sentence in the banner and
+    opens nothing - never a button that does nothing."""
+    from tracker import api
+
+    seen = _run_renderer(tmp_path, "open_editor", ("async function openEditor() {",), f"""
+const vocab = {{ editor: {{ not_this_return: {json.dumps(api.EDITOR_NOT_THIS_RETURN)} }} }};
+const active = "/root/J Park & Associates/Lee/2026/1040 - Pat Lee";
+const other = {{ paths: {{ engagement: "/root/J Park & Associates/Lee/2026/1120S - Lee LLC" }} }};
+let lastState = other, editorState = null;
+const done = {{ called: [], banners: [], opened: [], failed: 0 }};
+const withEng = (command) => [command, "--engagement", active];
+const call = async (args) => {{ done.called.push(args[0]); return other; }};
+const failed = () => {{ done.failed += 1; }};
+const banner = (text, cls) => done.banners.push([text, cls]);
+const openDialog = (id) => done.opened.push(id);
+openEditor().then(() => process.stdout.write(JSON.stringify(done)));
+""")
+    assert seen == {"called": ["state"], "banners": [[api.EDITOR_NOT_THIS_RETURN, "err"]],
+                    "opened": [], "failed": 0}
+
+
+#: The roll fold's people button, run as written: the real ``showReturn``,
+#: ``select`` and ``renderFor`` with the call, the draw and the editor faked.
+_PEOPLE_HEADERS = ("function select(path) {", "function renderFor(view, state) {",
+                   "async function showReturn(path) {", "async function reviewPeople(path) {")
+_PEOPLE_HARNESS = """
+const vocab = { engagement_flag: "--engagement" };
+const clicked = "/root/J Park & Associates/Lee/2026/1040 - Pat Lee";
+const other = "/root/J Park & Associates/Lee/2026/1120S - Lee LLC";
+let active = other, viewGeneration = 0;
+const done = { called: 0, failed: 0, opened: [] };
+const stopLockWatch = () => {}, renderEngagements = () => {}, render = () => {};
+const applyLock = () => {}, outlineRefused = () => {};
+const failed = () => { done.failed += 1; };
+const openEditor = () => { done.opened.push(active); };
+const call = async (args) => { done.called += 1; READ };
+reviewPeople(clicked).then(() => process.stdout.write(JSON.stringify(done)));
+"""
+
+
+def test_the_roll_folds_people_button_opens_the_editor_only_on_the_read_it_asked_for(tmp_path):
+    """The rebase review's S4, decision 194 and 193's late-reply rule: the
+    people button is one ``state`` call and the editor on it. A failed read
+    is one notice and no second call; a switch during the read opens no
+    editor, never another return's."""
+    def run(name, read):
+        return _run_renderer(tmp_path, name, _PEOPLE_HEADERS,
+                             _PEOPLE_HARNESS.replace("READ", read))
+
+    drawn = "return { paths: { engagement: args[2] } };"
+    assert run("people_ok", drawn) == {"called": 1, "failed": 0, "opened": [
+        "/root/J Park & Associates/Lee/2026/1040 - Pat Lee"]}
+    assert run("people_failed", 'throw new Error("a fabricated failure");') == {
+        "called": 1, "failed": 1, "opened": []}
+    assert run("people_switched", f"select(other); {drawn}") == {
+        "called": 1, "failed": 0, "opened": []}
+
+
+def test_the_roll_banner_says_a_failed_retirement_and_turns_warn(tmp_path):
+    """The rebase review's S5, decision 159: when every ticked return
+    rolled and a retirement then failed, the API's own sentence is a line
+    of the card's roll banner and the banner is a warning, not a success."""
+    from tracker import api
+    from tracker.rollover import ROLLOVER_NOT_RETIRED
+
+    warning = ROLLOVER_NOT_RETIRED.format(year=2027, rolled="1040 - Pat Lee",
+                                          retired="none", left="1120S - Lee LLC",
+                                          why="a fabricated failure")
+    words = api._vocab()
+    seen = _run_renderer(tmp_path, "roll_banner", (
+        "function fill(pattern, values) {", "async function rollFromCard() {"), f"""
+const vocab = {json.dumps({key: words[key] for key in (
+    "household", "people", "origin_not_applicable", "origin_new",
+    "not_applicable_carried", "new_not_asked_carried")})};
+const state = {{ paths: {{ engagement: "/root/J Park & Associates/Lee/2027/1040 - Pat Lee" }} }};
+let lastState = {{ household: {{ path: "/root/J Park & Associates/Lee" }} }}, rollChoice = null;
+const done = {{ banners: [], failed: 0 }};
+const button = {{ disabled: false, open: true }};
+const $ = () => button;
+const gatherRollChoice = () => ({{}});
+const rollHouseholdCall = () => [["roll-household"], {{}}];
+const call = async () => ({{ target_year: 2027, state, rolled: [{{ label: "1040 - Pat Lee",
+  carried: [], unfiled_last_year: [], warnings: [] }}], retired: [], skipped: [],
+  warning: {json.dumps(warning)} }});
+const adoptList = () => {{}}, renderFor = () => {{}}, renderEngagements = () => {{}};
+const select = () => 1;
+const failed = () => {{ done.failed += 1; }};
+const banner = (text, cls) => done.banners.push([text, cls]);
+rollFromCard().then(() => process.stdout.write(JSON.stringify(done)));
+""")
+    assert seen["failed"] == 0
+    [(text, cls)] = seen["banners"]
+    assert warning in text.split("\n") and cls == "warn"
+
+
+def _side_lines(tmp_path, labels: dict, items: list[dict]) -> list:
+    """``sideLine`` as written, for each of ``items``, with the tracker's
+    own sides and the label table given."""
+    from tracker import reminder
+
+    sides = [{"key": side.key, "label": side.label} for side in reminder.SIDES]
+    return _run_renderer(tmp_path, "side_line", (
+        "function sideLine(item) {", "function isSetAside(override) {"), f"""
+const vocab = {{ labels: {json.dumps(labels)}, reminder: {{ sides: {json.dumps(sides)} }},
+                overrides: {{ not_applicable: "Not Applicable" }} }};
+const items = {json.dumps(items)};
+process.stdout.write(JSON.stringify(items.map((item) => {{ const line = sideLine(item); return line && tree(line); }})));
+""")
+
+
+def _titles(node) -> list[str]:
+    """Every ``title`` - a tooltip - in a drawn tree."""
+    if isinstance(node, str):
+        return []
+    own = [node["attributes"]["title"]] if "title" in node["attributes"] else []
+    return own + [title for child in node["children"] for title in _titles(child)]
+
+
+def test_the_side_sentence_is_text_beside_the_chip_and_never_a_tooltip(tmp_path):
+    """Decision 200: whose move a row is, in bold, and the row's own
+    sentence as a text child of the same line - on the page for a person
+    to read, never moved into a ``title`` to hover for."""
+    from tracker import reminder
+
+    items = [{"identifier": side.key, "side": side.key, "manual_override": "",
+              "side_sentence": f"{side.sentence} (fabricated row)"} for side in reminder.SIDES]
+    lines = _side_lines(tmp_path, {}, items)
+    for side, item, line in zip(reminder.SIDES, items, lines, strict=True):
+        assert line["className"] == "req-side"
+        bold, gap, sentence = line["children"]
+        assert bold == {"tag": "span", "className": "side", "attributes": {}, "children": [side.label]}
+        assert (gap, sentence) == (" ", item["side_sentence"])
+        assert _titles(line) == []
+
+
+def test_an_accepted_rows_side_word_is_the_label_tables_not_the_records(tmp_path):
+    """An Accepted row has no side; its line says the label table's word
+    for the override and that label's sentence. Relabelled in the table,
+    the line follows the table, not the word the record keeps."""
+    labels = {"Accepted": {"key": "Accepted", "label": "Signed off (fabricated)",
+                           "sentence": "A fabricated sentence for the accepted row."}}
+    [line] = _side_lines(tmp_path, labels, [{"identifier": "A01", "side": None, "side_sentence": "",
+                                             "manual_override": "Accepted"}])
+    bold, gap, sentence = line["children"]
+    assert bold["children"] == ["Signed off (fabricated)"]
+    assert (gap, sentence) == (" ", "A fabricated sentence for the accepted row.")
+    assert "Accepted" not in _texts(line)
+
+
+def test_the_runbook_status_table_is_the_label_table():
+    """The runbook's two columns - what the record says, what the app shows
+    - are the tracker's one table, row for row, in its order. Not
+    Applicable's label is said with <year>, as the README spells it. The
+    sides table beneath it is ``reminder.SIDES``, word and sentence, in
+    triage's order, so neither can drift from what the app shows."""
+    from tracker import reminder
+    from tracker.manifest import STATUS_LABELS
+
+    runbook = read("docs/runbook.md")
+    section = runbook.split("### What the record says, and what the app shows", 1)[1]
+    lines = section.split("| The record says | The app shows |\n|---|---|\n", 1)[1].splitlines()
+    rows = lines[:next(i for i, line in enumerate(lines) if not line.startswith("|"))]
+    assert rows == [f"| **{word}** | {shown.label.replace('{year}', '<year>')} - {shown.sentence} |"
+                    for word, shown in STATUS_LABELS.items()]
+    assert "TY<year>" in read("README.md")
+    lines = section.split("| Whose move | The sentence beside it |\n|---|---|\n", 1)[1].splitlines()
+    sides = lines[:next(i for i, line in enumerate(lines) if not line.startswith("|"))]
+    assert sides == [f"| **{side.label}** | {side.sentence} |" for side in reminder.SIDES]
+
+
+# ------------------ decision 201: the editor opens on what a preparer touches ----
+
+
+_DIALOG_IDS = re.compile(r'<div id="([a-z-]+)" class="modal-overlay')
+
+
+def _registry(js: str) -> set[str]:
+    """The ids the one dialog registry names, at its top level."""
+    block = js.split("const DIALOGS = {", 1)[1].split("\n};\n", 1)[0]
+    return set(re.findall(r'^  "?([a-z-]+)"?: \{', block, flags=re.MULTILINE))
+
+
+def test_every_dialog_is_in_the_one_registry_and_closes_through_one_guard():
+    """D10: every ``.modal-overlay`` in the page is in ``DIALOGS``, and no
+    code but ``closeDialog`` hides one - and none but ``openDialog`` shows
+    one - so no dialog can close its own way again."""
+    js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
+    ids = set(_DIALOG_IDS.findall(html))
+    assert ids == {"editor", "household-modal", "handover-modal", "modal"}
+    assert _registry(js) == ids
+    for ident in ids:
+        assert f'$("{ident}").classList.add("hidden")' not in js, ident
+        assert f'$("{ident}").classList.remove("hidden")' not in js, ident
+        assert f'$("{ident}").classList.toggle("hidden"' not in js, ident
+    closing = _js_function(js, "function closeDialog(id) {")
+    opening = _js_function(js, "function openDialog(id, first) {")
+    assert '$(id).classList.add("hidden");' in closing
+    assert 'overlay.classList.remove("hidden");' in opening
+    rest = js.replace(closing, "").replace(opening, "")
+    assert '$(id).classList.add("hidden")' not in rest and "overlay.classList" not in rest
+
+
+def test_escape_and_an_overlay_click_reach_every_dialog_the_same_way():
+    """One keydown handler on the document sends Escape to ``requestClose``
+    for the topmost dialog; a click on any dialog's dim is the same call;
+    and every Cancel button makes it too."""
+    js = read("app/renderer/app.js")
+    assert js.count('document.addEventListener("keydown"') == 1
+    handler = js.split('document.addEventListener("keydown", (e) => {', 1)[1].split("\n});", 1)[0]
+    assert 'e.key === "Escape"' in handler and "requestClose(id);" in handler
+    assert "trapTab(e, id);" in handler
+    assert js.count('"Escape"') == 1
+    overlay = js.split("for (const id of Object.keys(DIALOGS)) {", 1)[1].split("\n}\n", 1)[0]
+    assert "if (e.target === $(id)) requestClose(id);" in overlay
+    assert not re.search(r"e\.target === \$\(\"[a-z-]+\"\)", js)
+    for button, dialog in (("hh-edit-cancel", "household-modal"), ("ho-cancel", "handover-modal"),
+                           ("ed-cancel", "editor"), ("wh-cancel", "modal"), ("wf-cancel", "modal"),
+                           ("ne-cancel", "modal")):
+        assert f'$("{button}").addEventListener("click", () => requestClose("{dialog}"));' in js, button
+
+
+def test_every_dialog_opens_with_focus_inside_and_gives_it_back():
+    """``openDialog`` remembers what had focus and puts it on a control
+    inside; Tab is kept inside while it is open; ``closeDialog`` gives it
+    back. Every opener goes through it."""
+    js = read("app/renderer/app.js")
+    opening = _js_function(js, "function openDialog(id, first) {")
+    assert "dialogOpener[id] = document.activeElement;" in opening
+    assert "target.focus();" in opening and "DIALOGS[id].first()" in opening
+    closing = _js_function(js, "function closeDialog(id) {")
+    assert "const back = dialogOpener[id];" in closing and "back.focus();" in closing
+    for opener, ident in (("async function openEditor() {", "editor"),
+                          ("function openHouseholdEditor() {", "household-modal"),
+                          ("async function openHandOver(original, seq) {", "handover-modal"),
+                          ("async function openAddReturn(hh) {", "modal"),
+                          ("async function openNewHousehold() {", "modal")):
+        assert f'openDialog("{ident}")' in _js_function(js, opener), opener
+    registry = js.split("const DIALOGS = {", 1)[1].split("\n};\n", 1)[0]
+    assert registry.count("first: () =>") == 4
+    trap = _js_function(js, "function trapTab(e, id) {")
+    assert "e.preventDefault();" in trap and "first.focus();" in trap and "last.focus();" in trap
+
+
+def test_escape_never_discards_unsaved_work():
+    """F-T-7: while the unsaved bar is showing, every way of asking to close
+    means Keep editing; a dialog with changes raises the bar and does not
+    close; and the bar's discard button is the only way from it to
+    ``closeDialog``."""
+    js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
+    asking = _js_function(js, "function requestClose(id) {")
+    showing, rest = asking.split("keepEditing(id);", 1)
+    assert 'bar && !bar.classList.contains("hidden")' in showing and "closeDialog" not in showing
+    clean, dirty = rest.split("if (!isDirty(id)) {", 1)[1].split("}", 1)
+    assert "closeDialog(id);" in clean
+    assert "closeDialog" not in dirty and 'bar.querySelector(".dlg-keep").focus();' in dirty
+    assert "closeDialog" not in _js_function(js, "function keepEditing(id) {")
+    assert js.count('.dlg-discard")') == 2          # its words, and its one listener
+    assert 'bar.querySelector(".dlg-discard").addEventListener("click", () => closeDialog(id));' in js
+    assert 'bar.querySelector(".dlg-keep").addEventListener("click", () => keepEditing(id));' in js
+    # Every dialog a person types in carries the bar; the hand-over is two
+    # picks and never dirty.
+    assert html.count('class="dlg-unsaved banner warn hidden" role="alert"') == 3
+    assert "model: null," in js.split("const DIALOGS = {", 1)[1].split('"handover-modal": {', 1)[1]
+    # Acts recorded at once move the snapshot: the rename renames it.
+    assert "for (const row of dialogSnapshot.editor.rows)" in _js_function(js, "async function renameRequest() {")
+
+
+def test_the_editor_opens_on_the_state_on_screen_with_every_fold_closed():
+    """D13 on decision 194's model: the editor opens on ``lastState`` - the
+    reply the page is showing - and reads ``state`` only for a return a
+    switch has not landed on yet, one call; each open starts with every
+    fold closed, and the save is still judged by ``list_head``."""
+    js = read("app/renderer/app.js")
+    body = _js_function(js, "async function openEditor() {")
+    assert body.count("call(") == 1 and 'call(withEng("state"))' in body
+    assert "? { ...lastState }" in body and body.index("lastState") < body.index("call(")
+    assert "refresh(" not in body
+    assert body.index("editorFolds.clear();") < body.index("renderEditorRows();")
+    assert "head: editorState.list_head" in _js_function(js, "async function saveEditor() {")
+
+
+def test_no_text_box_is_named_only_by_its_placeholder():
+    """D11: a placeholder is gone the moment somebody types. The renderer
+    types no placeholder of its own; the keyword, spelling and note boxes
+    are each built inside a visible label, by one builder each; and the
+    setup card's three boxes sit inside labels in the page."""
+    js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
+    assert 'placeholder: "' not in js
+    assert "keyword to learn" not in js.lower() and "Keyword to add to the request" not in js
+    for cls, builder in (("r-keyword", "function keywordBox() {"),
+                         ("r-note", "function noteBox(words) {"),
+                         ("r-spelling", "function teachSpelling(triage, people) {")):
+        assert js.count(f'className: "{cls}"') == 1, cls
+        body = _js_function(js, builder)
+        label = body.split('el("label", { className: "field', 1)[1]
+        assert f'className: "{cls}"' in label, cls
+    assert len(re.findall(r"\bkeywordBox\(\)", js)) == 4        # the builder and its three places
+    for ident in ("phone-input", "firm-input", "root-input"):
+        assert re.search(rf'<label class="field">\s*<span id="[a-z]+-label"></span>\s*<input id="{ident}"', html), ident
+        tag = re.search(rf'<input id="{ident}"[^>]*>', html).group(0)
+        assert "placeholder=" not in tag and "aria-label=" not in tag, tag
+
+
+def test_the_issuer_action_has_one_call_site():
+    """Decision 201: the list's row and the deck's card add the issuer
+    through one function, as filing has one (decision 114) - the page
+    sends the row, its version, the list's version and the name, and no
+    identifier or row of its own."""
+    js = read("app/renderer/app.js")
+    assert js.count('withEng("add-issuer-and-file")') == 1
+    assert len(re.findall(r"\baddIssuerAndFile\(", js)) == 3     # the definition and its two callers
+    sent = re.search(r'call\(withEng\("add-issuer-and-file"\), \{(.*?)\}\)', js, re.S).group(1)
+    assert set(re.findall(r"(\w+):", sent)) == {"original", "seq", "head", "issuer"}
+
+
+def test_each_step_of_the_new_return_dialog_names_the_dialog_by_its_own_heading():
+    """196's review N5, carried into decision 201: New household opens on
+    its household step, where the form step's heading is hidden, so the
+    dialog is named by the heading of whichever step it shows."""
+    js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
+    assert ('const STEP_HEADINGS = { household: "household-title", form: "form-title", '
+            'items: "items-title" };') in js
+    step = _js_function(js, "function showStep(step) {")
+    assert "setAttribute(\"aria-labelledby\", STEP_HEADINGS[step])" in step
+    for heading in ("household-title", "form-title", "items-title"):
+        assert f'<h3 id="{heading}"></h3>' in html, heading

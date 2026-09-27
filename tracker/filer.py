@@ -257,9 +257,11 @@ from tracker.manifest import (
     list_head,
     load_engagement_info,
     load_manifest,
+    narrowing_rows,
     override_label,
     refuse_a_stale_list,
     renamed_rules,
+    validated,
 )
 from tracker.names import (
     NAME_CONFIRMED,
@@ -297,6 +299,7 @@ from tracker.records import (
     parse_answers,
     parse_evidence,  # noqa: F401
     person_to_json,
+    rule_to_json,
 )
 from tracker.router import questions_for, read_once, route_file
 from tracker.scaffold import (
@@ -5673,6 +5676,45 @@ def _taught_spelling(
     })], spelling, ""
 
 
+def _issuer_to_add(
+    engagement_dir: Path, original: str, identifier: str, items: dict[str, RequestItem], *,
+    adding: RequestItem, head: str | None, seq: int | None,
+) -> tuple[dict[str, RequestItem], list[dict]]:
+    """The list with a card's issuer row in it, and the ``rules_changed``
+    event that adds it - or the refusal, before any file is read (decision
+    201). Called under the engagement lock :func:`assign_review_file` holds.
+
+    In the order the ruling gives: the list's version, the row's own, the
+    card's reason now, the editor's own ``validated()`` on the list with
+    the row last, and whether the row narrows a row the card's candidates
+    name. A refusal names what moved and says nothing was added or filed.
+    """
+    if not isinstance(head, str) or head.strip() != list_head(engagement_dir):
+        raise FilingError(ISSUER_LIST_MOVED)
+    entries = read_index(engagement_dir)
+    entry = entries[find_parked(entries, original, accepting=(FILE_MOVED,))]
+    _refuse_if_stale(engagement_dir, entry, seq)
+    if entry.decision != NEEDS_REVIEW or not reasons.ISSUER_NOT_NAMED.matches(entry.reason):
+        raise FilingError(NOT_AN_ISSUER_CARD.format(name=entry.original_name))
+    if adding.identifier != identifier:
+        raise FilingError(f"the row to add is {adding.identifier}, not {identifier}")
+    listed = list(items.values())
+    # The editor's own rules, the ones a save runs, with the list as it
+    # stands as the record: a same-name pair already on it is not this
+    # card's to refuse, and the new row's own name is.
+    checked = validated([*listed, adding], recorded=listed)
+    row = checked[-1]
+    narrowed = narrowing_rows(checked)
+    candidates = entry.candidate_list
+    if not any(row.identifier in narrowed.get(broad, ()) for broad in candidates):
+        raise FilingError(ISSUER_DOES_NOT_NARROW.format(
+            identifier=row.identifier, listed=", ".join(candidates) or "-"))
+    event = ledger.new(ledger.RULES_CHANGED, **{
+        ledger.RULES_KEY: [rule_to_json(row)], ledger.REMOVED_KEY: [], ledger.INFO_KEY: {},
+    })
+    return {i.identifier: i for i in checked}, [event]
+
+
 def assign_review_file(
     engagement_dir: Path | str,
     original: str,
@@ -5683,6 +5725,8 @@ def assign_review_file(
     today: dt.date | None = None,
     seq: int | None = None,
     shortlist: Sequence[str] | None = None,
+    adding: RequestItem | None = None,
+    head: str | None = None,
 ) -> AssignResult:
     """File a parked document under a request, the way the filer would have.
 
@@ -5729,6 +5773,22 @@ def assign_review_file(
     the caller that says what was overruled. A caller with no view - a
     script, a test - passes neither and is checked against nothing.
 
+    ``adding`` is an issuer row to add to the list and file under, for a
+    card parked because the K-1 names none of the list's issuers (decision
+    201): the API builds it (``templates.issuer_item``) and ``identifier``
+    is its identifier. Under the same lock, before a byte is read, it is
+    refused unless ``head`` is the list's version now
+    (:data:`ISSUER_LIST_MOVED`; ``manifest.list_head`` stays the one
+    authority), the row is the one the person saw (``seq``), it is still
+    parked for an unnamed issuer (:data:`NOT_AN_ISSUER_CARD`), the list
+    with it passes the editor's own ``validated()`` - nested or repeated
+    issuer names among them - and it narrows a row this card's candidates
+    name (:data:`ISSUER_DOES_NOT_NARROW`). The row goes in as a
+    ``rules_changed`` event in ``taught``, so it rides the intent and the
+    one ``store.record()`` call after the row's own event, exactly as a
+    spelling does (decision 128): the list gains the row only if the
+    filing lands.
+
     The rules the filer lives by still hold: nothing is guessed (the person
     chose), the engagement lock is held, and the row, the move and the
     keyword are recorded in one transaction.
@@ -5743,6 +5803,10 @@ def assign_review_file(
         ensure(engagement_dir)
         _refuse_if_a_move_is_open(engagement_dir)
         items = {i.identifier: i for i in load_manifest(engagement_dir)}
+        grown = []
+        if adding is not None:
+            items, grown = _issuer_to_add(engagement_dir, original, identifier, items,
+                                          adding=adding, head=head, seq=seq)
         item = items.get(identifier)
         if item is None:
             raise FilingError(f"no request {identifier!r} in the request list")
@@ -5919,9 +5983,11 @@ def assign_review_file(
         note = ""
         if keyword and keyword.lower() in {k.lower() for k in item.any_keywords}:
             note = f"{identifier} already had the keyword {keyword!r}"
-        taught = [] if note or not keyword else [ledger.new(ledger.KEYWORD_LEARNED, **{
+        # An issuer row added with the filing (decision 201) goes first, so
+        # the record reads the row before anything taught to it.
+        taught = [*grown, *([] if note or not keyword else [ledger.new(ledger.KEYWORD_LEARNED, **{
             ledger.IDENTIFIER_KEY: item.identifier, ledger.KEYWORD_KEY: keyword,
-        })]
+        })])]
         # A spelling taught here rides the same transaction, for the same
         # reason the keyword does: a filing that teaches is one decision,
         # and half of it would be a return that never learned the name.
@@ -6823,6 +6889,17 @@ PUT_BACK_REFUSED = ("put back refused on {date}: {home} holds a different file, 
 #: several requests: which of its copies the person means is not the
 #: machine's to guess, and put-it-back answers for every one of them.
 SEVERAL_COPIES_REFUSAL = "{name} has copies under several requests; put it back, then unfile it"
+#: What adding a card's issuer row and filing under it refuses (decision
+#: 201): a list changed since the card was drawn, a row no longer waiting
+#: for an issuer, and a row that would not be read as an issuer row of the
+#: row that accepted the K-1 - a return whose K-1 row is not the catalog's,
+#: whose issuer rows a person copies in the editor. Each says that nothing
+#: was added and nothing was filed.
+ISSUER_LIST_MOVED = ("the request list changed since this card was drawn; no row was added and "
+                     "nothing was filed - look at the card again")
+NOT_AN_ISSUER_CARD = "{name} is no longer waiting for an issuer row; no row was added and nothing was filed"
+ISSUER_DOES_NOT_NARROW = ("{identifier} would not be read as an issuer row of {listed} on this list, so no "
+                          "row was added and nothing was filed; add it in Edit Request List")
 
 
 @dataclass(frozen=True, slots=True)

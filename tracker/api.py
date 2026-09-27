@@ -9,7 +9,7 @@ Commands:
             root, plus the vocabulary the app shows
   templates the form catalog and the calendar's default tax year
   create    a new return, and its household where it is a new one, from
-            the wizard's spec (JSON on stdin)
+            the new-return dialog's spec (JSON on stdin)
   edit      save the request list and the engagement's details from the
             app's editor (JSON on stdin), as one recorded event
   edit-household  save the household's members, contact and inbox link
@@ -32,6 +32,8 @@ Commands:
             of the four stages, with the body Outlook wants (never sends)
   approve   make the text the panel showed this week's draft, and record it
   assign    file one Needs Review document under a request (a person's call)
+  add-issuer-and-file  add the issuer row a parked K-1's card offers and file
+            the document under it, in one step (a person's call, decision 201)
   dismiss   record that no request asks for one Needs Review document
   unfile    send one filed document back to Needs Review (a person's call)
   mark-missing  take one request off what a consolidated statement answers,
@@ -175,10 +177,10 @@ from tracker.manifest import (
     MIN_SIZE_KB_FLOOR,
     NO_DATE_CHECK,
     NO_LIST_HEAD,
-    NOT_APPLICABLE_LABEL,
     NOT_ASKED_LABEL,
     OVERRIDE_REASON_OTHER,
     OVERRIDE_REASONS,
+    STATUS_LABELS,
     UNSCANNED_LABEL,
     YEAR_MAX,
     YEAR_MIN,
@@ -199,7 +201,7 @@ from tracker.manifest import (
     recorded_rules,
     rule_as_read,
     save_rules,
-    status_label,
+    status_key,
     summarize,
     unlearn_keyword,
 )
@@ -332,23 +334,27 @@ from tracker.settings import (
     settings_dir,
     settings_path,
 )
-from tracker.templates import (  # the catalog; re-exported for the wizard
+from tracker.templates import (  # the catalog; re-exported for the dialog
     EXTENSION_DEFAULT_NOTE,
     FORM_TEMPLATES,
     FORM_TYPES,
+    K1_IDENTIFIER,
     KEYWORD_DEFAULT_NOTE,
     PERIOD_PATTERN,
     YEAR_NOTE,
     base_year,
     default_tax_year,
+    issuer_item,
+    issuer_row,
     item_from_spec,
+    next_issuer_identifier,
     require_form,
     shift_item,
     template_items,
 )
 from tracker.view import (
-    NOT_APPLICABLE_SECTION,
-    NOT_ASKED_SECTION,
+    SET_ASIDE_GROUP,
+    SET_ASIDE_SECTION,
     VIEW_FILENAME,
     VIEW_LABEL,
     VIEW_OPEN_LABEL,
@@ -549,7 +555,7 @@ def _root() -> Path:
 def _saved_root() -> Path | None:
     """The saved clients root held to the rule, as :func:`_root` holds it,
     or ``None`` where none is saved - for the commands that answer without
-    one (the list before a root is chosen, the wizard's priors)."""
+    one (the list before a root is chosen, the command line's priors)."""
     return None if clients_root() is None else door.checked_root()
 
 # ----------------------------------------------------------------- commands ----
@@ -557,7 +563,7 @@ def _saved_root() -> Path | None:
 
 #: The one flag the app passes: which engagement a command is about.
 ENGAGEMENT_FLAG = "--engagement"
-#: Every word the household's card, the wizard's household step and the
+#: Every word the household's card, the New household step and the
 #: misfit list show (decision 125). The renderer types none of it: it
 #: reads these from the vocabulary, as it reads every other word Python
 #: owns.
@@ -574,7 +580,37 @@ OPEN_CLIENT_FOLDER_LABEL = "Open Client Folder"
 OPEN_INBOX_LABEL = "Open Inbox"
 EDIT_HOUSEHOLD_LABEL = "Edit household"
 NEW_HOUSEHOLD_LABEL = "New household"
-EXISTING_HOUSEHOLD_LABEL = "Add a return to an existing household"
+#: Decision 196: the household's card carries the two ways a return is made
+#: for a household the tracker knows - Roll forward to the next year, and Add
+#: a return - and the toolbar's New household makes one it does not. There is
+#: no wizard and no household picked on one page for another to act on; every
+#: word of the three is here, and the page types none of them.
+ROLL_FORWARD_TO = "Roll forward to {year}"
+ROLL_TICKED_LABEL = "Roll the ticked returns forward to {year}"
+ROLL_INTRO = ("Last year's list is the starting point. Everything the client actually sent, set "
+              "aside or under-delivered carries forward - what was set aside as not applicable "
+              "under its own heading, for a fresh decision; the form template only fills blanks.")
+ROLL_NO_TEMPLATE = "No template — carry last year's list as it is"
+ROLL_DONE_LINE = "{rolled} return(s) rolled into {year}; {retired} retired"
+ROLL_CARRIED = "{n} request(s) carried"
+ROLL_UNFILED = "{n} file(s) sent last year were never filed"
+ROLL_RETIRED_LINE = "{label}: retired."
+ROLL_FORMS_UNLOADED = ("The return types could not be loaded, so each return keeps the form it "
+                       "recorded: {reason}")
+ADD_RETURN_LABEL = "Add a return"
+ADD_RETURN_TITLE = "Add a return to {household}"
+NEW_HOUSEHOLD_INTRO = ("A client folder is a household: one folder per tax year inside it, one "
+                       "folder per return inside that, and one inbox the client drops everything "
+                       "into.")
+FORM_STEP_TITLE = "What type of return?"
+FORM_STEP_NOTE = "The request list is tailored to the form you pick."
+CHANGE_FORM_LABEL = "Change form type"
+CHANGE_HOUSEHOLD_LABEL = "Change household details"
+EMPTY_ROOT_LINE = "No households under {root} yet — click {new} to create the first."
+ITEMS_TITLE = "New {form} return"
+CREATE_RETURN_LABEL = "Create return"
+RETURN_CREATED_LINE = ('Return "{label}" created with {n} request(s) asked for, client README '
+                       "generated. Open the Client Folder to show it.")
 HOUSEHOLD_RETURNS_HEADING = "Returns this year"
 HOUSEHOLD_QUEUE_LINE = "{n} document(s) waiting for a person across this household"
 #: The feed list (decision 129): what a drop folder feeds beyond its own
@@ -643,7 +679,7 @@ SHARING_NOTE = ("The tracker cannot see Drive's sharing. The two grants are the 
 #: Why *Mark as shared* refuses: the inbox's link is the one part of the
 #: three the tracker can see was done, so it is the one part it insists on.
 SHARE_LINK_FIRST = "paste the inbox's link into the household first"
-#: What the returning-client page says under its checklist of returns, so
+#: What the roll fold on the household's card says beside its ticks, so
 #: nobody unticks a return expecting it to sit still (decision 126).
 ROLLOVER_UNTICKED_NOTE = ("A return left unticked is retired for {year}: it is set inactive and "
                           "stops being chased. Tick it later and roll it on its own if that changes.")
@@ -759,19 +795,19 @@ RENAME_TO_LABEL = "New identifier"
 RENAME_LABEL = "Rename"
 RENAMED_NOTE = "{old} renamed {new}; {moved} working copy(ies) moved with it and the request was re-scanned"
 RENAME_LEFT_NOTE = "left in the old folder because no row names them: {left}"
-#: What the returning-client page says of last year's set-aside rows, in
+#: What the roll's banner says of last year's set-aside rows, in
 #: one line beside the carried counts.
 NOT_APPLICABLE_CARRIED = "{n} request(s) not applicable last year - review them in the editor"
 #: And of the catalog rows the client never had, added as not asked
 #: (decision 142, rewording decision 9: they used to be offered, not added).
 NEW_NOT_ASKED_CARRIED = ("{n} catalog row(s) this client never had added as not asked - "
                          "a document for one files there; set Asked in the editor to ask for it")
-#: The wizard's heading over the catalog's checkboxes, and the sentence
+#: The request list's heading over the catalog's checkboxes, and the sentence
 #: under it (decision 142): a tick is a request the client is asked for
 #: and reminded of; every row is on the return either way.
 ASK_THE_CLIENT = "Ask the client"
 #: The name the app's folded table of not-asked rows is read out by, and
-#: the returning-client page's label over the template pick (decision 142).
+#: the roll fold's label over the template pick (decision 142).
 NOT_ASKED_TABLE_LABEL = "Requests not asked for"
 ROLL_TEMPLATE_LABEL = "Form template (fills blanks, adds the rows this client never had as not asked)"
 ASK_THE_CLIENT_NOTE = ("Every row is on the return. A ticked row is asked for and reminded; "
@@ -782,9 +818,62 @@ ASK_THE_CLIENT_NOTE = ("Every row is on the return. A ticked row is asked for an
 #: engagement's, and only the final-notice reminder ever says it.
 FIRM_PHONE_LABEL = "Firm phone"
 FIRM_PHONE_HELP = "named in the final-notice reminder; blank drops that sentence"
+#: And the setup card's other two boxes, each named by a label that stays
+#: while a person types (decision 201, D11): a placeholder is gone the
+#: moment somebody types, so no box is named by one alone.
+FIRM_NAME_LABEL = "Firm name"
+FIRM_NAME_HELP = "as it should sign the reminders"
+CLIENTS_FOLDER_LABEL = "Clients folder"
+
+# ---- the dialogs and the editor's plain view (decision 201) -----------------
+#: What every dialog says when it is asked to close with changes not saved,
+#: and its two answers: Keep editing, focused, and the only way out.
+UNSAVED_CHANGES = "You have changes here that are not saved."
+KEEP_EDITING = "Keep editing"
+DISCARD_CHANGES = "Discard my changes"
+#: The editor's plain view (M13): the boxes a preparer changes, shown on
+#: every row, and the routing columns folded per row - a custom row's
+#: Document is drawn with the plain boxes, because nothing else names it.
+#: Together they are exactly the request list's columns, asserted below.
+PLAIN_COLUMNS = ("expected_count", "asked", "manual_override", "override_reason", "short_title")
+ROUTING_COLUMNS = ("identifier", "document", "period", "allowed_extensions", "min_size_kb",
+                   "required_keywords", "any_keywords", "date_pattern", "named")
+assert (sorted((*PLAIN_COLUMNS, *ROUTING_COLUMNS)) == sorted(field for _, field in COLUMNS)
+        and not set(PLAIN_COLUMNS) & set(ROUTING_COLUMNS)), \
+    "the plain view and the routing fold must share the request list's columns between them"
+ROUTING_LABEL = "Routing rules"
+ROUTING_ALL_LABEL = "Show every row's routing rules"
+ROUTING_HELP = ("How the tracker recognises this document when it arrives. A save checks these "
+                "the same way whether the fold is open or not.")
+#: Edit Request List pressed while the state on screen is still another
+#: return's, after reading it again (decision 201, the review's S4): said
+#: in the banner rather than a button that does nothing.
+EDITOR_NOT_THIS_RETURN = ("The request list could not be opened: what is on screen is still another "
+                          "return's. Pick the return again, then open its request list.")
+#: The keyword box on a parked or moved document's card (decision 201,
+#: D11): its label, and what the word does, as its title.
+KEYWORD_LABEL = "Keyword to learn (optional)"
+KEYWORD_HELP = ("A word this document contains that others like it will too. Taught to the "
+                "request so the next one files itself; the editor shows it beside the row.")
+#: The card of a K-1 parked for an unnamed issuer (decision 201): its one
+#: box, what it will add - the next free row, named before anything is
+#: pressed - and its one button; and what the banner says once it is done.
+ISSUER_LABEL = "Issuer's name, as the K-1 prints it"
+ISSUER_HELP = ("Adds {identifier}, a K-1 row for this issuer, to the request list and files this "
+               "document under it. Type the distinctive words and leave off the suffix (L.P., LLC).")
+ISSUER_ADD_LABEL = "Add the issuer and file it"
+ISSUER_ADDED_AND_FILED = "{identifier} - {document} added to the request list, and {name} filed under it."
+#: The issuer added and filed, but the re-scan after it met the engagement
+#: lock: said by the error's class, never its text (principle 7; the
+#: restack review's N2). The next pass puts the row's status right.
+ISSUER_NOT_RESCANNED = "not re-scanned ({kind}); the next pass re-scans it"
+#: A card's issuer that is not a piece of text - only a hand-written
+#: stdin can send one - refused rather than turned into a name (the
+#: review's N4, as ``_seq_of`` refuses a missing version).
+ISSUER_NOT_TEXT = "the issuer's name must be typed as text, as the K-1 prints it"
 
 # ---- the people block (decision 128) ----------------------------------------
-#: Every word the wizard's and the editor's People block shows. The record
+#: Every word the new-return dialog's and the editor's People block shows. The record
 #: owns the heading and what the list is for (``records.PEOPLE_LABEL`` and
 #: ``PEOPLE_HELP``) and :mod:`tracker.names` owns the two refusals; these
 #: are the block's own controls, and the page types none of them.
@@ -818,7 +907,7 @@ def _folder_name(value: object, what: str) -> str:
     A household and a return are each **one** folder name: the layout puts
     them where they go (decision 125), and the layout's one name rule
     (decision 188, ``layout.checked_name``) says what one may be - the
-    same sentence wherever a name is typed: the wizard, a new return, a
+    same sentence wherever a name is typed: the dialog, a new return, a
     rolled return's new name, a feed.
     """
     try:
@@ -832,7 +921,7 @@ def _new_return_dir(root: Path, household: str, year: int, return_name: str,
     """Where a new return goes: ``<root>/<private tree>/<household>/<year>/<return>``.
 
     Refused when the household or the return is not a single folder name,
-    when the year is outside the bounds the wizard shows, when a return of
+    when the year is outside the bounds the dialog shows, when a return of
     that name already exists for that household and year, and when the
     deepest working copy the list implies would pass what Windows will
     open (§3.9.1 of decision 125): a folder made today that cannot hold a
@@ -988,30 +1077,40 @@ def _vocab() -> dict:
         "product": product_name(),
         "firm": firm(),
         "statuses": [{"value": status, "key": _slug(status)} for status in Status.ALL],
+        # What each word the record keeps for a row is shown as (decision
+        # 200): keyed by the record's word, with the chip class that word
+        # is drawn with, the preparer's label and its one sentence. Not
+        # Applicable's label is the year pattern, filled per row from the
+        # row's ``year`` - the one exposure of that constant.
+        "labels": {word: {"key": _slug(word), "label": shown.label, "sentence": shown.sentence}
+                   for word, shown in STATUS_LABELS.items()},
+        # The one fold under the request table, the Status Report's and
+        # the editor's, of every row nobody waits on, and each group's
+        # heading inside it (decision 200).
+        "set_aside": {"heading": SET_ASIDE_SECTION, "group": SET_ASIDE_GROUP},
         "unscanned_label": UNSCANNED_LABEL,
         "unscanned_key": _slug(UNSCANNED_LABEL),
         # What a row nobody asked for is called while nothing has arrived
         # for it (decision 142), and the chip class it is drawn with.
         "not_asked_label": NOT_ASKED_LABEL,
         "not_asked_key": _slug(NOT_ASKED_LABEL),
-        # The wizard's heading over the catalog's ticks, and its sentence.
+        # The dialog's heading over the catalog's ticks, and its sentence.
         "ask_the_client": ASK_THE_CLIENT,
         "ask_the_client_note": ASK_THE_CLIENT_NOTE,
         "not_asked_table_label": NOT_ASKED_TABLE_LABEL,
         # The one refusal of a list nobody is asked for (R6), which the
-        # wizard also says before it calls.
+        # dialog also says before it calls.
         "nothing_asked": NOTHING_ASKED,
         "roll_template_label": ROLL_TEMPLATE_LABEL,
         "overrides": {"accepted": Override.ACCEPTED, "not_applicable": Override.NOT_APPLICABLE},
-        # How a set-aside row is named to a person: the value with the
-        # row's year, which travels per item as ``year`` in the state so
-        # the renderer computes nothing from the Period's text. The
-        # reasons a person may give for Accepted, and the word that opens
-        # the box for their own words - which is never itself stored.
-        "not_applicable_label": NOT_APPLICABLE_LABEL,
+        # The reasons a person may give for Accepted, and the word that
+        # opens the box for their own words - which is never itself stored.
+        # A set-aside row's name is ``labels``' Not Applicable pattern with
+        # the row's year, which travels per item as ``year`` in the state
+        # so the renderer computes nothing from the Period's text.
         "override_reasons": list(OVERRIDE_REASONS),
         "override_reason_other": OVERRIDE_REASON_OTHER,
-        # The one line the returning-client page adds for last year's
+        # The one line the roll's banner adds for last year's
         # set-aside rows, and the origin value it groups them on.
         "origin_not_applicable": ORIGIN_NOT_APPLICABLE,
         "not_applicable_carried": NOT_APPLICABLE_CARRIED,
@@ -1069,7 +1168,17 @@ def _vocab() -> dict:
                           # Decision 204's one click: a row that names
                           # another household's person, filed where it
                           # waits, with nothing picked on the page.
-                          "file_where_it_waits": FILE_WHERE_IT_WAITS_LABEL},
+                          "file_where_it_waits": FILE_WHERE_IT_WAITS_LABEL,
+                          # Decision 201: the keyword box's label and title,
+                          # and the unnamed issuer's box, sentence and button.
+                          "keyword": KEYWORD_LABEL, "keyword_help": KEYWORD_HELP,
+                          "issuer_label": ISSUER_LABEL, "issuer_help": ISSUER_HELP,
+                          "issuer_add": ISSUER_ADD_LABEL,
+                          "issuer_not_rescanned": ISSUER_NOT_RESCANNED},
+        # What every dialog says when closed with changes not saved, and
+        # its two answers (decision 201).
+        "dialogs": {"unsaved": UNSAVED_CHANGES, "keep_editing": KEEP_EDITING,
+                    "discard": DISCARD_CHANGES},
         # Every word tracker.review gives the card, from the module that
         # owns it: what is said when the evidence suggests nothing, the one
         # separator between an identifier and what follows it (the reason
@@ -1119,7 +1228,7 @@ def _vocab() -> dict:
         "extension_default_note": EXTENSION_DEFAULT_NOTE,
         # The shape of the clients root, from the module that owns it
         # (decision 125): the two trees, the one inbox, and the two
-        # patterns the wizard's previews fill.
+        # patterns the dialog's previews fill.
         "layout": {
             "clients_tree": CLIENTS_TREE,
             "private_tree": PRIVATE_TREE,
@@ -1127,8 +1236,9 @@ def _vocab() -> dict:
             "return_name_pattern": RETURN_NAME_PATTERN,
             "engagement_label_pattern": ENGAGEMENT_LABEL_PATTERN,
         },
-        # Every word the household's card, the wizard's household step and
-        # the misfit list show. The page types none of them.
+        # Every word the household's card, its roll fold, the Add a return
+        # and New household dialog and the misfit list show. The page types
+        # none of them.
         "household": {
             "heading": HOUSEHOLD_HEADING,
             "name_label": HOUSEHOLD_NAME_LABEL,
@@ -1144,7 +1254,19 @@ def _vocab() -> dict:
             "open_inbox": OPEN_INBOX_LABEL,
             "edit": EDIT_HOUSEHOLD_LABEL,
             "new": NEW_HOUSEHOLD_LABEL,
-            "existing": EXISTING_HOUSEHOLD_LABEL,
+            # Add a return and New household (decision 196): the dialog goes
+            # form, then request list, and says whose return it makes.
+            "add_return": ADD_RETURN_LABEL,
+            "add_return_title": ADD_RETURN_TITLE,
+            "new_intro": NEW_HOUSEHOLD_INTRO,
+            "form_step_title": FORM_STEP_TITLE,
+            "form_step_note": FORM_STEP_NOTE,
+            "change_form": CHANGE_FORM_LABEL,
+            "change_household": CHANGE_HOUSEHOLD_LABEL,
+            "empty_root": EMPTY_ROOT_LINE,
+            "items_title": ITEMS_TITLE,
+            "create_return": CREATE_RETURN_LABEL,
+            "return_created": RETURN_CREATED_LINE,
             "returns_heading": HOUSEHOLD_RETURNS_HEADING,
             "queue_line": HOUSEHOLD_QUEUE_LINE,
             "misfits_heading": MISFITS_HEADING,
@@ -1159,9 +1281,19 @@ def _vocab() -> dict:
             "mark_shared": MARK_SHARED_LABEL,
             "shared_on_line": SHARED_ON_LINE,
             "not_yet_shared_line": NOT_YET_SHARED_LINE,
-            # And the one line the returning-client page needs of its own:
-            # what unticking a return does to it.
+            # The roll fold's words (decision 196): the line that names the
+            # year, what rolling carries, what unticking a return does to it,
+            # the button, and the banner a roll leaves.
             "rollover_unticked": ROLLOVER_UNTICKED_NOTE,
+            "roll_forward_to": ROLL_FORWARD_TO,
+            "roll_ticked": ROLL_TICKED_LABEL,
+            "roll_intro": ROLL_INTRO,
+            "roll_no_template": ROLL_NO_TEMPLATE,
+            "roll_done": ROLL_DONE_LINE,
+            "roll_carried": ROLL_CARRIED,
+            "roll_unfiled": ROLL_UNFILED,
+            "roll_retired_line": ROLL_RETIRED_LINE,
+            "roll_forms_unloaded": ROLL_FORMS_UNLOADED,
             # The feed list (decision 129): what this drop folder also
             # feeds, who feeds it, the word that adds one, and the two
             # warnings a person reads before extending either. The page
@@ -1259,13 +1391,20 @@ def _vocab() -> dict:
             "palette": dict(PALETTE),
             "hold_colour": reminder.HOLD_COLOUR,
             "letter_ink": dict(reminder.LETTER_INK),
+            # Whose move each outstanding row is (decision 200): the
+            # reminder's own three lists, named for a preparer.
+            "sides": [{"key": side.key, "label": side.label, "sentence": side.sentence}
+                      for side in reminder.SIDES],
         },
         # The settings page's own box for the firm's telephone number
         # (decision 117): its label, the sentence under it, and the number
         # as recorded - so a person who re-points the app at their clients
         # folder does not save a blank over a number they typed once.
         "settings": {"phone_label": FIRM_PHONE_LABEL, "phone_help": FIRM_PHONE_HELP,
-                     "phone": firm_phone()},
+                     "phone": firm_phone(),
+                     # The setup card's other two labels (decision 201).
+                     "firm_label": FIRM_NAME_LABEL, "firm_help": FIRM_NAME_HELP,
+                     "root_label": CLIENTS_FOLDER_LABEL},
         # The page a pass regenerates, the three words that say whether the
         # one on disk still describes the engagement, and what the button
         # that opens it says. The app compares nothing itself and types
@@ -1311,17 +1450,15 @@ def _vocab() -> dict:
             # so the page never offers a number the store's gate refuses.
             "maximums": {"expected_count": records.MAX_EXPECTED_COUNT,
                          "min_size_kb": records.MAX_SIZE_KB},
-            # The folded group the editor keeps the set-aside rows in,
-            # headed as the Status Report heads its own (decision 116).
-            "set_aside_heading": NOT_APPLICABLE_SECTION,
-            # The folded group of rows nobody asked for (decision 142),
-            # headed as the Status Report heads its own, and the columns
-            # that are a yes/no pick rather than a box - so the editor
-            # sends each back as the record holds it.
-            "not_asked_heading": NOT_ASKED_SECTION,
-            # The app's request table folds the same rows the same way,
-            # closed, under the same heading.
+            # The columns that are a yes/no pick rather than a box - so the
+            # editor sends each back as the record holds it. The editor's
+            # set-aside rows fold under ``set_aside`` (decision 200).
             "yes_no_fields": [key for _, key in COLUMNS if key in RULE_FLAG_FIELDS],
+            # The plain view (decision 201): which columns every row shows
+            # and which fold under its Routing rules, and the fold's words.
+            "plain_columns": list(PLAIN_COLUMNS), "routing_columns": list(ROUTING_COLUMNS),
+            "routing": ROUTING_LABEL, "routing_all": ROUTING_ALL_LABEL, "routing_help": ROUTING_HELP,
+            "not_this_return": EDITOR_NOT_THIS_RETURN,
         },
     }
 
@@ -1383,13 +1520,13 @@ def _info_payload(info: EngagementInfo) -> dict:
 
 def _info_from_spec(spec: dict, *, carry: EngagementInfo | None = None,
                     blank_clears: bool = False) -> EngagementInfo:
-    """The engagement's details: what the wizard or the editor sent, over
+    """The engagement's details: what the dialog or the editor sent, over
     what is carried (last year's details on a rollover, the details as
     recorded on an edit), over the firm default.
 
     ``blank_clears`` is the editor's rule: a key present with a blank
     value clears the recorded value, and a key absent keeps it - a person
-    who empties the Link box means the link to go. The wizard and the
+    who empties the Link box means the link to go. The dialog and the
     rollover keep their fallback: a blank there is nothing typed, and the
     carried or default value stands.
 
@@ -1439,7 +1576,7 @@ def _info_from_spec(spec: dict, *, carry: EngagementInfo | None = None,
 
 
 def _people_from_spec(sent: object) -> tuple[Person, ...]:
-    """The return's people as the wizard and the editor's block send them:
+    """The return's people as the dialog and the editor's block send them:
     a list of ``{kind, name, spellings}`` (decision 128).
 
     Every refusal is by name and in the words their one owner gives them:
@@ -1486,7 +1623,7 @@ def _placed(info: EngagementInfo, household: str, year: int, return_name: str) -
 
 def _tax_year(given, default: int | None = None) -> int | None:
     """The tax year a spec asks for: a whole number within the bounds the
-    wizard shows (``YEAR_MIN``..``YEAR_MAX``), or ``default`` when none
+    dialog shows (``YEAR_MIN``..``YEAR_MAX``), or ``default`` when none
     was given. The renderer's number box only suggests the bounds."""
     if given in (None, ""):
         return default
@@ -1508,8 +1645,25 @@ def _evidence_payload(entry: IndexEntry) -> dict[str, list[dict]]:
             for identifier, found in entry.evidence_record.items()}
 
 
+def _catalog_keys(form: str) -> frozenset[str]:
+    """The identifiers the catalog of ``form`` has, compared the way the
+    list compares them; none for a return with no catalog form recorded,
+    whose every row is then its own (decision 201)."""
+    return frozenset(identifier_key(str(spec["identifier"])) for spec in FORM_TEMPLATES.get(form or "", ()))
+
+
+def _next_issuer(items: list) -> str | None:
+    """The identifier a card's issuer box would add, or ``None`` when F's
+    block is full - the editor is then the place to add a row."""
+    try:
+        return next_issuer_identifier(items)
+    except ManifestError:
+        return None
+
+
 def _triage_payload(triaged: review.Triage, seqs: dict[str, int],
-                    waiting: tuple[dict | None, str] = (None, "")) -> dict:
+                    waiting: tuple[dict | None, str] = (None, ""),
+                    next_issuer: str | None = None) -> dict:
     """One parked file's shortlist as JSON, in triage order.
 
     The row itself is already in ``state["index"]``; what travels here is
@@ -1536,8 +1690,17 @@ def _triage_payload(triaged: review.Triage, seqs: dict[str, int],
     :func:`_waiting_payload` - ``{target, label, requests, answers}``, or
     null - and ``waits_for_refused`` the sentence that stands in for it
     where the claim no longer resolves.
+
+    ``issuer`` is the one box a card parked for an unnamed issuer offers
+    (decision 201): ``{"identifier"}``, the row ``add-issuer-and-file``
+    would add - ``next_issuer``, worked out once for the whole screen by
+    :func:`tracker.templates.next_issuer_identifier` - so the card names it
+    before anything is pressed; null on every other card.
     """
     offer, refused = waiting
+    entry = triaged.entry
+    unnamed = (next_issuer is not None and entry.decision == NEEDS_REVIEW
+               and reasons.ISSUER_NOT_NAMED.matches(entry.reason))
     return {
         "original_name": triaged.entry.original_name,
         "pbc_location": triaged.entry.pbc_location,
@@ -1550,6 +1713,7 @@ def _triage_payload(triaged: review.Triage, seqs: dict[str, int],
         "group": triaged.group,
         "waits_for": offer,
         "waits_for_refused": refused,
+        "issuer": {"identifier": next_issuer} if unnamed else None,
     }
 
 
@@ -1952,6 +2116,19 @@ def _household_payload(engagement: Path) -> dict:
     side. There is still **one letter per return** and the Reminder card
     is still the surface a person approves from: this is a line, never a
     send, and never a bundle.
+
+    And whether a roll is offered (decision 196): ``roll_year`` is the
+    next year only when the household has one open year, is not paused,
+    and that next year has ended - never mid-season, when a roll would
+    retire the returns being prepared. One open year already means a
+    return to roll: ``open_years`` counts only active returns, and a
+    return rolled on is retired. The rule is the API's, beside the pause
+    and the two-years note, and the page never computes it; the command's
+    own refusals stay the backstop. Each return says whether that roll
+    carries it (``rollable``), so the page filters nothing a second time;
+    and each carries its form and its people's names, read from the
+    records already loaded here, so the card's roll fold needs no walk of
+    the practice (``priors`` walks it, and stays for the command line).
     """
     today = dt.date.today()
     household_dir = household_of(engagement)
@@ -1979,6 +2156,18 @@ def _household_payload(engagement: Path) -> dict:
     )
     feeds, fed = _feed_payload(household_dir, years)
     pause = _pause_payload(household_dir, info, returns)
+    roll_year = None
+    if (len(years) == 1 and not pause["sentence"]
+            and next_tax_year(years[0]) <= default_tax_year(today)):
+        roll_year = next_tax_year(years[0])
+    # The returns that roll carries: the open year's, active, not rolled on.
+    # One open year implies at least one; were a hand-edited record to say
+    # otherwise, an empty roll is not offered.
+    rollable = set() if roll_year is None else {
+        one.path for one in returns
+        if one.active and not one.superseded_by and one.tax_year in years}
+    if not rollable:
+        roll_year = None
     return {
         # Why the pass touches nothing of this household, and what a person
         # may accept (decision 188): the card draws the sentence and the
@@ -1992,11 +2181,17 @@ def _household_payload(engagement: Path) -> dict:
         "feeds": feeds,
         "fed_by": fed,
         "open_years": years,
+        # The year the card's roll fold names, or None when no roll is
+        # offered (decision 196).
+        "roll_year": roll_year,
         "returns": [
             {"label": one.label, "path": str(one.path),
              "year": one.tax_year if one.tax_year is not None else year_of(one.path),
              "return_name": one.info.return_name or one.path.name,
              "active": one.active, "superseded_by": one.superseded_by,
+             "rollable": one.path in rollable,
+             "form": one.info.form,
+             "people": [person.name for person in one.info.people],
              "reminder": (_return_reminder(one.path, today, one.label)
                           if one.active and one.tax_year in years else None)}
             for one in returns
@@ -2044,6 +2239,11 @@ def _state(engagement: Path) -> dict:
     info = load_engagement_info(engagement)
     summary = summarize(items)
     entries = read_index(engagement)
+    # The reminder's triage, run once for the whole screen (decision 200):
+    # the card's held rows and every row's side come from the same three
+    # lists, so the chips and the card cannot disagree.
+    triaged = reminder.triage(items, entries)
+    placed = reminder.sides(*triaged)
     conn = store.connect()
     rules = store.rules(conn, engagement) or []
     taught = store.learned_keywords(conn, engagement)      # keyed without case, as the store keys it
@@ -2061,6 +2261,8 @@ def _state(engagement: Path) -> dict:
     # The feed list, read once and only if a parked row waits for another
     # household (decision 204).
     fed_once = cache(lambda: _fed_returns(engagement, household))
+    catalog = _catalog_keys(info.form)
+    next_issuer = _next_issuer(items)
     return {
         # The derived page, and whether it still describes this engagement.
         # Reading the stamp takes no lock and tolerates another program
@@ -2069,18 +2271,23 @@ def _state(engagement: Path) -> dict:
         "engagement": _info_payload(info),
         "lock": _lock_payload(engagement),
         "summary": {
-            "line": summary.line, "counts": summary.counts, "total": summary.total,
+            "line": summary.shown_line, "counts": summary.counts, "total": summary.total,
             "received": summary.received, "outstanding": summary.outstanding,
             "not_applicable": summary.not_applicable, "unscanned": summary.unscanned,
             "also_received": summary.also_received, "not_asked": summary.not_asked,
         },
         # Each row with the year its own Period gives, so the renderer
         # labels a set-aside row without reading the Period's text, and
-        # the word its status is shown as - "Not asked" for a row nobody
-        # asked for with nothing in (decision 142) - so it types none.
+        # the record's word for its status (decision 200), the key the
+        # renderer shows through ``vocab.labels`` - "Not asked" for a row
+        # nobody asked for with nothing in (decision 142) - so it types
+        # none. An outstanding row carries whose move
+        # it is and the row's own sentence; any other row has no side.
         "items": [
             asdict(i) | {"received_date": i.received_date.isoformat() if i.received_date else None,
-                         "year": i.year, "status_label": status_label(i),
+                         "year": i.year, "status_key": status_key(i),
+                         "side": placed[i.identifier][0].key if i.identifier in placed else None,
+                         "side_sentence": placed[i.identifier][1] if i.identifier in placed else "",
                          # Decision 142, the designer's ruling on the build:
                          # a row nobody asked for folds away in the request
                          # table only while no document at all is in it; the
@@ -2089,7 +2296,11 @@ def _state(engagement: Path) -> dict:
                          # The short name the row's copies go by
                          # (decision 144): its own, or the one its document
                          # derives - the editor's placeholder for a blank.
-                         "short_name": i.short_name}
+                         "short_name": i.short_name,
+                         # Whether a catalog row of the return's form has
+                         # this identifier (decision 201): a custom row's
+                         # Document is drawn in the editor's plain view.
+                         "catalog_row": identifier_key(i.identifier) in catalog}
             for i in items
         ],
         # The person's rows as stored - read the way every reader reads
@@ -2134,7 +2345,10 @@ def _state(engagement: Path) -> dict:
         # There is no `review` command - the card draws from the one state
         # the app already reads - and the manifest and the index are handed
         # to triage() so each is read once for the whole screen.
-        "review": [_triage_payload(t, seqs, _waiting_payload(engagement, t.entry, fed_once))
+        # A card parked for an unnamed issuer names the row it would add
+        # (decision 201): the next free one in F's block, worked out once.
+        "review": [_triage_payload(t, seqs, _waiting_payload(engagement, t.entry, fed_once),
+                                   next_issuer=next_issuer)
                    for t in review.triage(engagement, entries, items=items)],
         # The working copies that are not where the record put them
         # (decision 109 found them; decision 110 is what a person does
@@ -2145,7 +2359,7 @@ def _state(engagement: Path) -> dict:
         # draft is written - and the day of the last draft. Sorted by the
         # reminder's own triage over the rows already loaded; nothing here
         # reads a draft file, and nothing here drafts (decision 12).
-        "reminder": _reminder_payload(engagement, items, entries),
+        "reminder": _reminder_payload(engagement, triaged),
         # The Reminder card itself, at the record's stage (decision 194):
         # exactly what the ``reminder`` command answers, so a switch or a
         # write is one reply and the card cannot disagree with the table.
@@ -2193,15 +2407,16 @@ def _room_sentences(room) -> list[str]:
     return said + ([ROOM_PARKS.format(count=room.parks)] if room.parks else [])
 
 
-def _reminder_payload(engagement: Path, items, entries) -> dict:
+def _reminder_payload(engagement: Path, triaged) -> dict:
     """What holds this engagement's reminder, and when it was last drafted.
 
-    The index rows go in because a parked file the client could fix holds
-    the request it points at (decision 117), and the card must show the
-    same hold the draft day will: the rows are the ones ``state`` has
-    already read, so nothing is read twice to answer this.
+    ``triaged`` is the reminder's own triage of the rows and the index
+    ``state`` has already read - the index because a parked file the
+    client could fix holds the request it points at (decision 117) - so
+    the card shows the same hold the draft day will, and the same hold
+    the rows' sides say (decision 200): one triage for the whole screen.
     """
-    _, _, held = reminder.triage(items, entries)
+    _, _, held = triaged
     drafted = last_drafted(engagement)
     return {
         "held": _held_rows(held),
@@ -2470,10 +2685,10 @@ def _cmd_propose_spellings(argv: list[str]) -> dict:
     -> ``{"spellings": [...]}``. A **read**:
     no folder is touched, no lock taken and nothing recorded, because a
     proposal is not a decision - what a return matches on is what somebody
-    ticked and the wizard or the editor then saves with the rest of the
+    ticked and the dialog or the editor then saves with the rest of the
     details (decision 128).
 
-    The twenty-third command, and the only one the wizard calls while
+    The twenty-third command, and the only one the dialog calls while
     somebody is still typing.
     """
     spec = _read_spec()
@@ -2550,6 +2765,11 @@ def _cmd_edit(argv: list[str]) -> dict:
                        check=lambda: _refuse_taking_away_documents(engagement, recorded, items))
     _refresh_readmes(engagement)
     state = _state(engagement)
+    # What the list already held and this save did not touch - two issuer
+    # rows of one name (decision 201) - is the envelope's to say: a notice
+    # that stays until dismissed (decision 193).
+    for sentence in saved.warnings:
+        _warn(sentence)
     reply = {
         "saved": {"changed": list(saved.changed), "removed": list(saved.removed),
                   "engagement": list(saved.info_fields), "recorded": saved.recorded},
@@ -2566,7 +2786,7 @@ def _cmd_edit(argv: list[str]) -> dict:
 #: The keys a row the editor sends may carry (decision 160): the columns of
 #: ``records.RULE_FIELDS`` - the two the person never types included,
 #: because ``state`` hands them out and a caller sends the rows back - and
-#: ``extensions``, the name the wizard has always sent the file types by.
+#: ``extensions``, the name the dialog has always sent the file types by.
 _ROW_KEYS = frozenset(RULE_FIELDS) | {"extensions"}
 
 
@@ -2902,7 +3122,7 @@ def _with_list(reply: dict, registry: Registry | None = None) -> dict:
     return reply
 
 
-#: What the wizard is told when a household name typed again is, by the
+#: What New household is told when a household name typed again is, by the
 #: layout's key, a household already in the list (decision 188, R7; the
 #: tie-breaker is Jason's ruling of 2026-09-26: a first name or a middle
 #: initial, then the city - never an identifier).
@@ -2965,6 +3185,8 @@ def _cmd_create(argv: list[str]) -> dict:
     over by every return added to it. The same holds for a household named
     by ``household``, where the record already knows one of that name.
     Otherwise a new household is made first, and the return after it.
+    The app sends ``household_path`` from Add a return on the household's
+    card and the four fields from New household (decision 196).
 
     The year defaults to the most recently ended year; catalog rows are
     shifted to it. The return's greeting and link default to the
@@ -2996,7 +3218,7 @@ def _cmd_create(argv: list[str]) -> dict:
         _refuse_a_taken_household_name(root, household)
         household_dir = private_household_dir(root, household)
     # A household the record already knows is that household, whether the
-    # wizard named it by its folder or a person typed its name again: its
+    # dialog named it by its folder or a person typed its name again: its
     # own details stand, and ``edit-household`` is where they change.
     existing = ledger.path_for(household_dir).is_file()
     made_household: Path | None = None
@@ -3017,12 +3239,12 @@ def _cmd_create(argv: list[str]) -> dict:
             link=" ".join(str(spec.get("link", "") or "").split()),
         )
 
-    # Decision 142: the wizard sends every catalog row, each with its tick
+    # Decision 142: the dialog sends every catalog row, each with its tick
     # as ``asked``, and the custom rows (always asked). A list nobody is
     # asked for is still refused - it would chase nothing.
     items = [item_from_spec(s) for s in spec.get("items", [])]
     _refuse_a_list_nobody_is_asked_for(items)
-    # The wizard sends catalog rows as written (the base year); shift them
+    # The dialog sends catalog rows as written (the base year); shift them
     # to the return's year so TY2025 does not get asked for in 2027.
     base = base_year(form) if form else None
     if base:
@@ -3031,7 +3253,7 @@ def _cmd_create(argv: list[str]) -> dict:
     return_name = str(spec.get("return_name", "") or "").strip() or default_return_name(form, client)
     engagement = _new_return_dir(root, household, year, return_name, items)
 
-    # The wizard's dates, or the form's own (decision 117) - a new return
+    # The dialog's dates, or the form's own (decision 117) - a new return
     # is on the reminder's ladder from its first draft. Its greeting and
     # its link come from the household where the spec is silent.
     # A household link recorded before decision 137's rule that is not a web
@@ -3066,7 +3288,7 @@ def _cmd_create(argv: list[str]) -> dict:
             create_household(household_dir, household_info)
             made_household = household_dir
         made += make_new_folders(engagement)
-        # The catalog the wizard chose is recorded in the details: a
+        # The catalog the dialog chose is recorded in the details: a
         # return that cannot say which checklist it came from cannot be
         # checked against it later. The list is validated whole before a
         # line is written, so a bad row leaves nothing behind.
@@ -3230,7 +3452,7 @@ def _cmd_edit_household(argv: list[str]) -> dict:
 def _cmd_priors(argv: list[str]) -> dict:
     """Engagements already on disk that a new year could be rolled from.
 
-    The same discovery the scheduled run uses, so what the wizard offers
+    The same discovery the scheduled run uses, so what the command line offers
     and what the job walks are one list; superseded_by comes from it too.
     """
     root = _saved_root()
@@ -3256,13 +3478,13 @@ def _cmd_priors(argv: list[str]) -> dict:
             "household": str(engagement.household_path),
             "household_name": engagement.info.household or engagement.household_path.name,
             "return_name": engagement.info.return_name or engagement.path.name,
-            # The catalog the return was cut from, which the returning-client
-            # page picks by default so the rows it never had arrive as not
+            # The catalog the return was cut from, which the card's roll
+            # fold picks by default so the rows it never had arrive as not
             # asked without anybody choosing (decision 142's review, R2).
             "form": engagement.info.form,
             "client": engagement.client,
-            # Who the return is for (decision 128): the returning-client
-            # page lists them under each ticked return, because the roll
+            # Who the return is for (decision 128): the card's roll fold
+            # lists them under each ticked return, because the roll
             # carries the list unchanged and it is worth one look.
             "people": [person_to_json(one) for one in engagement.info.people],
             "rolled_from": engagement.rolled_from,
@@ -3325,7 +3547,7 @@ def _cmd_rollover(argv: list[str]) -> dict:
                                  report.items)
 
     # Last year's details, carried by the one rule (tracker.rollover); the
-    # wizard's fields go over it. Rolled From is what retires the prior.
+    # plan's fields go over it. Rolled From is what retires the prior.
     carried = carry_engagement_info(prior_info, rolled_from=str(prior),
                                     tax_year=report.target_year)
     # The household's own contact and inbox link refill what the carry
@@ -3352,7 +3574,8 @@ def _cmd_rollover(argv: list[str]) -> dict:
         # call's own mkdir made is undone (decision 137), and the year only
         # when it is empty.
         made += make_new_folders(engagement)
-        create_engagement(engagement, report.items, info)
+        report.warnings = list(create_engagement(engagement, report.items, info,
+                                                 carried=report.from_last_year))
         scaffold_engagement(engagement)
     except Exception:
         _undo_made(made, {engagement})
@@ -3377,7 +3600,8 @@ def _carried_payload(report, prior: Path) -> dict:
     origin, its note and whether it is asked, last year's unfiled files, and
     - since decision 177 - the prior's own warning, which decision 188
     leaves empty for a disagreement: a household whose folders and record
-    disagree is paused and never rolls."""
+    disagree is paused and never rolls - and, since decision 201, the
+    sentence for each same-name issuer pair carried as it was."""
     return {
         "warning": engagement_from(prior).warning,
         "carried": [
@@ -3388,6 +3612,9 @@ def _carried_payload(report, prior: Path) -> dict:
         "unfiled_last_year": report.unfiled_last_year,
         # Decision 137 (L5): the prior's link, when it was left behind.
         "link_dropped": report.link_dropped,
+        # Decision 201: a same-name issuer pair last year's list held,
+        # carried as it was - said here, not first on some later save.
+        "warnings": list(report.warnings),
     }
 
 
@@ -3414,7 +3641,10 @@ def _cmd_roll_household(argv: list[str]) -> dict:
     left open and ``warning`` is the rollover's own sentence
     (``RolledNotAllRetired``), which the app shows as its banner.
 
-    The year defaults to the one after the household's open year. Nothing
+    The app calls it from the household's card (decision 196), with the
+    household on screen and the year the card named; the command line keeps
+    ``year`` for the rare case. The year defaults to the one after the
+    household's open year. Nothing
     under the client tree is touched but the new year's folder, and no
     permission is changed: the inbox was shared once, and a new year is a
     new folder under the same grant.
@@ -3808,6 +4038,82 @@ def _cmd_assign(argv: list[str]) -> dict:
             "spelling": result.spelling,
             "spelling_note": result.spelling_note,
             "scan_note": scan_note,
+        },
+        "state": _state(engagement),
+    }
+
+
+def _cmd_add_issuer_and_file(argv: list[str]) -> dict:
+    """Add the issuer row a parked K-1's card offers, and file the K-1 under it.
+
+    JSON spec on stdin: {"original": "<PBC location or original name>",
+                         "seq": <the row's record version, as shown>,
+                         "head": <state's list_head the card was drawn from>,
+                         "issuer": "<the name as the K-1 prints it>"}
+
+    Decision 201 (F-D-7). A K-1 that names none of the list's issuers parks
+    (``reasons.ISSUER_NOT_NAMED``), and the row it needs is the one
+    :func:`tracker.templates.issuer_row` already builds; the six cells a
+    person copied by hand become one box on the card. **The app sends no
+    identifier and no row**: the identifier is the next free one in F's
+    block (:func:`tracker.templates.next_issuer_identifier`), the row is
+    ``issuer_row`` shifted to the return's year
+    (:func:`tracker.templates.issuer_item`), and a name that normalises to
+    nothing is refused here, before anything else is read.
+
+    Everything after is one filing (:func:`tracker.filer.assign_review_file`
+    with ``adding`` and ``head``): under the one engagement lock the list's
+    version, the row's, the card's reason, the editor's own ``validated()``
+    and the row's narrowing are judged before a byte is read, and the row's
+    ``assigned_by_person`` and a ``rules_changed`` carrying the new row are
+    two events in one ``store.record()`` call - the list gains the row only
+    if the filing lands. Then, as ``assign`` does, a re-scan and the
+    READMEs; the reply names the row added and the document filed.
+    """
+    engagement = _engagement_dir(argv)
+    spec = _read_spec()
+    original = str(spec.get("original", "")).strip()
+    if not original:
+        raise ManifestError("Pick the file whose issuer this is")
+    seq = _seq_of(spec)
+    head = spec.get("head")
+    if not isinstance(head, str) or not head.strip():
+        raise ManifestError(NO_LIST_HEAD)
+    issuer = spec.get("issuer", "") or ""
+    if not isinstance(issuer, str):
+        raise ManifestError(ISSUER_NOT_TEXT)
+    # A name that normalises to nothing is refused in issuer_row's own
+    # sentence, before the list or the index is read.
+    issuer_row(K1_IDENTIFIER, issuer)
+    info = load_engagement_info(engagement)
+    items = load_manifest(engagement)
+    identifier = next_issuer_identifier(items)
+    row = issuer_item(identifier, issuer, info.tax_year)
+    result = assign_review_file(
+        engagement, original, identifier, seq=seq, shortlist=_shortlist_now(engagement, original),
+        adding=row, head=head,
+    )
+    scan_note = ""
+    try:
+        scan_engagement(engagement)
+    except ScanLockedError as exc:
+        scan_note = ISSUER_NOT_RESCANNED.format(kind=type(exc).__name__)
+    _refresh_readmes(engagement)
+    return {
+        "added_and_filed": {
+            "added": {"identifier": row.identifier, "document": row.document},
+            "assigned": {
+                "original_name": result.entry.original_name,
+                "identifier": result.entry.identifier,
+                "filed_as": result.entry.filed_as,
+                "prepared_location": result.entry.prepared_location,
+                "moved_review_copy": result.moved_review_copy,
+                "left_in_review": result.left_in_review,
+                "overrode_shortlist": result.overrode_shortlist,
+                "scan_note": scan_note,
+            },
+            "said": ISSUER_ADDED_AND_FILED.format(identifier=row.identifier, document=row.document,
+                                                  name=result.entry.original_name),
         },
         "state": _state(engagement),
     }
@@ -4365,6 +4671,9 @@ WRITING_COMMANDS = frozenset({
     # Decision 188's accept writes the household's and its returns' records
     # (the port review's M2): held to the checkpoint's root like every other.
     "accept-folder-name",
+    # Decision 201's one-click issuer: it learns the keyword and files the
+    # document, so it is held to the checkpoint's root like every writer.
+    "add-issuer-and-file",
 })
 
 
@@ -4400,6 +4709,7 @@ COMMANDS = {
     "list": _cmd_list,
     "create": _cmd_create,
     "assign": _cmd_assign,
+    "add-issuer-and-file": _cmd_add_issuer_and_file,
     "dismiss": _cmd_dismiss,
     "unfile": _cmd_unfile,
     "restore": _cmd_restore,

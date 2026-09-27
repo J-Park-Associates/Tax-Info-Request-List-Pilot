@@ -887,13 +887,13 @@ class EngagementInfo:
 #: What the return's own name is called and what it is for. Named here
 #: because the details' table below carries it, and read back out of here
 #: by the API's vocabulary, so the label a person reads in the editor and
-#: the one the wizard's box carries are one string.
+#: the one the new-return dialog's box carries are one string.
 RETURN_NAME_LABEL = "Return"
 RETURN_NAME_HELP = "the return's folder name, form first; the same name every year"
 
 #: What the return's people list is called and what it is for (decision
 #: 128). One home for both, read back by the editor's block and the
-#: wizard's, so the words a person sees are the record's.
+#: dialog's, so the words a person sees are the record's.
 PEOPLE_LABEL = "People"
 PEOPLE_HELP = ("who this return is for, with the spellings documents use; a named request "
                "files only where one of these is on the page")
@@ -1130,8 +1130,6 @@ HOUSEHOLD_FIELDS = (
     ("Inbox Link", "link"),
     ("Also feeds", "feeds"),
 )
-#: field name -> the label, for messages that name a field.
-HOUSEHOLD_LABELS = {field_name: label for label, field_name in HOUSEHOLD_FIELDS}
 #: The fields a person may change once the household exists. The name is
 #: not among them: the folder is the name, exactly as a return's is.
 #: ``feeds`` is (decision 129) and is edited through its own list rather

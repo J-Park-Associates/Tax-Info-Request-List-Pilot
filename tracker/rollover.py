@@ -53,7 +53,7 @@ workbook. Neither exists now.)
 Nothing here writes to the prior year's engagement — it is read-only history.
 
 **A household rolls as a household** (decision 126). A client sees one
-folder and one inbox, so Roll Forward takes the household's open year and
+folder and one inbox, so Roll forward takes the household's open year and
 rolls every ticked return into the next one by the rule above, and
 retires every return left unticked with a single details edit
 (``active: no``) — so the household has exactly one open year again when
@@ -197,10 +197,22 @@ class RolloverReport:
     #: :data:`LINK_NOT_CARRIED` when the prior's link was left behind
     #: because it is not a web address (decision 137, L5), else ``""``.
     link_dropped: str = ""
+    #: What creating the new year said of the rows carried (decision 201):
+    #: a same-name issuer pair last year's list already held, carried as it
+    #: was, in :data:`tracker.manifest.ISSUER_NAMED_TWICE`'s words.
+    warnings: list[str] = field(default_factory=list)
 
     @property
     def items(self) -> list[RequestItem]:
         return [r.item for r in self.rolled]
+
+    @property
+    def from_last_year(self) -> list[RequestItem]:
+        """Every row that was on last year's list - active or set aside -
+        and not a row this roll added from the catalog (decision 201): the
+        rows whose names nobody touched, which ``create_engagement`` carries
+        as they were."""
+        return [r.item for r in self.rolled if r.origin != ORIGIN_NEW]
 
     @property
     def carried(self) -> list[RolledItem]:
@@ -291,7 +303,7 @@ def carry_engagement_info(
     household, which is what lets one return line be followed and named.
     So do the **people** (decision 128): the same person files the same
     return next year and their documents print their name the same way, so
-    the list carries unchanged and the returning-client page asks for one
+    the list carries unchanged and the card's roll fold asks for one
     look at it - nothing blocks on that look, because strict parking is
     the safety net if nobody gives it.
     The share link, the due date and the filing
@@ -439,7 +451,7 @@ def roll_forward(
     """
     prior_dir = Path(prior_engagement_dir)
     # A year is bounded wherever it is typed (decision 68 bounded the
-    # wizard's box; the flag on this command line was the other door).
+    # app's year box; the flag on this command line was the other door).
     # Unbounded, --year 20265 shifts every Period and every document name
     # by eighteen thousand years, writes the folders under those names and
     # retires the live engagement behind them.
@@ -586,7 +598,7 @@ def roll_household(
 
     **The household is what a person rolls**, because the household is what
     the client sees: one inbox, one folder, and however many returns the
-    firm keeps under it. Roll Forward takes the open year's active returns,
+    firm keeps under it. Roll forward takes the open year's active returns,
     rolls each ticked one into ``target_year`` exactly as the per-return
     rollover does - the same carry rule, the same defaults - and sets every
     unticked one ``active: no`` with one details edit. So the household has
@@ -707,7 +719,10 @@ def roll_household(
         try:
             # The up-front refusal only: what is saved is read again under
             # the lock (step 4), so an edit made meanwhile is never undone.
-            validated(_rows_as_stored(one.path))
+            # Judged as held (decision 201): a same-name pair the list
+            # already holds is the retirement's to carry, not to refuse.
+            stored = _rows_as_stored(one.path)
+            validated(stored, recorded=stored)
         except (ManifestError, OSError) as exc:
             raise ManifestError(_nothing_rolled(one.path.name, exc)) from exc
         retiring.append(one.path)
@@ -841,7 +856,10 @@ def _plan_one(prior: Path, prior_info: EngagementInfo, plan: ReturnPlan,
         raise ManifestError(
             f"A return named '{taken}' already exists for {household} {target_year}")
     refuse_a_path_past_the_limit(target, report.items)
-    validated(report.items)
+    # Last year's rows carried as they were - a same-name issuer pair the
+    # list already held among them - are judged as create_engagement will
+    # judge them (decision 201), so the plan refuses nothing the make keeps.
+    validated(report.items, recorded=report.from_last_year or None)
 
     carried = carry_engagement_info(prior_info, rolled_from=str(prior), tax_year=target_year)
     # The inbox is the household's and does not change from one year to
@@ -867,7 +885,8 @@ def _make_one(roll: _PlannedRoll) -> list[Path]:
     # call's own mkdir made is removed again (decision 137).
     made = make_new_folders(roll.target)
     try:
-        create_engagement(roll.target, roll.report.items, roll.info)
+        roll.report.warnings = list(create_engagement(roll.target, roll.report.items, roll.info,
+                                                      carried=roll.report.from_last_year))
         scaffold_engagement(roll.target)
     except Exception:
         _unmake(roll.target, made)
@@ -1074,8 +1093,10 @@ if __name__ == "__main__":
     # command line defaults them exactly as the app's rollover does, so an
     # engagement is on the reminder's ladder however it was made
     # (decision 123).
-    create_engagement(target, result.items,
-                      with_default_dates(carried, carried.form or ns.form, result.target_year))
+    result.warnings = list(create_engagement(
+        target, result.items,
+        with_default_dates(carried, carried.form or ns.form, result.target_year),
+        carried=result.from_last_year))
 
     # All of the work before any of the report: the folders are made now,
     # so nothing about printing can leave a folder with a record and no
@@ -1094,6 +1115,8 @@ if __name__ == "__main__":
     print(f"Rolled {result.prior_dir.name} forward ({span})\n")
     if warning := engagement_from(prior_dir).warning:
         print(f"  WARNING: {warning}\n")      # decision 177: it rolled where it sits
+    for warning in result.warnings:           # decision 201: a same-name pair carried
+        print(f"  WARNING: {warning}\n")
     for rolled in result.carried:
         print(f"  CARRIED {rolled.item.label}")
         print(f"          {rolled.note}")

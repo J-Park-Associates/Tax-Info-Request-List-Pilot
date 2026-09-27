@@ -41,6 +41,7 @@ from tracker.records import (
     MAX_SIZE_KB,
     MIN_EXPECTED_COUNT,
 )
+from tracker.rollover import next_tax_year
 from tracker.runner import DRAFT_WEEKDAY, LOG_FILENAME, STATUS_PAGE_FILENAME, WEEKDAY_NAMES
 from tracker.scaffold import PREPARED_DIR_NAME, REVIEW_DIR_NAME
 from tracker.scheduling import SCHEDULE_XML_ENCODING, TASK_NAME
@@ -1056,7 +1057,8 @@ def test_the_editor_saves_a_reason_and_the_vocabulary_carries_the_list_and_the_l
     vocab = run(capsys, "list")[1]["vocab"]
     assert vocab["override_reasons"] == list(OVERRIDE_REASONS)
     assert vocab["override_reason_other"] == OVERRIDE_REASON_OTHER
-    assert vocab["not_applicable_label"] == NOT_APPLICABLE_LABEL
+    assert vocab["labels"][Override.NOT_APPLICABLE]["label"] == NOT_APPLICABLE_LABEL
+    assert "not_applicable_label" not in vocab
     assert vocab["triage"]["set_aside_note"] == SET_ASIDE_NOTE
     assert vocab["origin_not_applicable"] == ORIGIN_NOT_APPLICABLE
     assert vocab["not_applicable_carried"] == api.NOT_APPLICABLE_CARRIED
@@ -1066,7 +1068,7 @@ def test_the_editor_saves_a_reason_and_the_vocabulary_carries_the_list_and_the_l
         encoding="utf-8"
     )
     for word in (*OVERRIDE_REASONS, OVERRIDE_REASON_OTHER, *Override.ALL, NOT_APPLICABLE_LABEL,
-                 SET_ASIDE_NOTE, api.NOT_APPLICABLE_CARRIED, view.NOT_APPLICABLE_SECTION):
+                 SET_ASIDE_NOTE, api.NOT_APPLICABLE_CARRIED, view.SET_ASIDE_SECTION, view.SET_ASIDE_GROUP):
         assert f'"{word}"' not in renderer and f"'{word}'" not in renderer, word
     for word in (*Override.ALL, OVERRIDE_REASON_OTHER, "Not Applicable in"):
         assert word not in renderer, word
@@ -1084,14 +1086,15 @@ def test_the_editor_saves_a_reason_and_the_vocabulary_carries_the_list_and_the_l
     assert vocab["nothing_asked"] == api.NOTHING_ASKED
     assert vocab["origin_new"] == ORIGIN_NEW
     assert vocab["new_not_asked_carried"] == api.NEW_NOT_ASKED_CARRIED
-    assert vocab["editor"]["not_asked_heading"] == view.NOT_ASKED_SECTION
+    assert vocab["set_aside"] == {"heading": view.SET_ASIDE_SECTION, "group": view.SET_ASIDE_GROUP}
+    assert "not_asked_heading" not in vocab["editor"]
     assert vocab["editor"]["yes_no_fields"] == ["named", "asked"]
     html = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "index.html").read_text(
         encoding="utf-8")
     for word in (NOT_ASKED_LABEL, api.ASK_THE_CLIENT, api.ASK_THE_CLIENT_NOTE,
                  api.NOT_ASKED_TABLE_LABEL, api.ROLL_TEMPLATE_LABEL, api.NOTHING_ASKED,
                  api.NEW_NOT_ASKED_CARRIED.split("{n}")[1].split(" - ")[0].strip(),
-                 view.NOT_ASKED_SECTION.split("{")[0].strip() + " ("):
+                 view.SET_ASIDE_SECTION.split("{")[0].strip()):
         assert word not in renderer and word not in html, word
 
     spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [
@@ -2093,6 +2096,9 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
         "hand_over_request": api.HAND_OVER_REQUEST_LABEL,
         "handed_over": api.HANDED_OVER_LINE,
         "file_where_it_waits": api.FILE_WHERE_IT_WAITS_LABEL,
+        "keyword": api.KEYWORD_LABEL, "keyword_help": api.KEYWORD_HELP,
+        "issuer_label": api.ISSUER_LABEL, "issuer_help": api.ISSUER_HELP,
+        "issuer_add": api.ISSUER_ADD_LABEL, "issuer_not_rescanned": api.ISSUER_NOT_RESCANNED,
     }
     assert vocab["default_extensions"] == ", ".join(DEFAULT_EXTENSIONS)
     assert "carried_sheet" not in vocab
@@ -2118,7 +2124,7 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
     # boxes stop where the store's gate would refuse.
     assert editor["maximums"] == {"expected_count": MAX_EXPECTED_COUNT, "min_size_kb": MAX_SIZE_KB}
     assert editor["any_extension"] == "*" and editor["no_date_check"] == "*"
-    assert editor["set_aside_heading"] == view.NOT_APPLICABLE_SECTION
+    assert "set_aside_heading" not in editor
     assert vocab["unscanned_key"] == api._slug(vocab["unscanned_label"])
     assert vocab["commands"] == sorted(api.COMMANDS)
     assert [r["headline"] for r in vocab["rules"]] == [h for h, _ in STANDING_RULES]
@@ -2128,7 +2134,9 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
     # The settings page's phone box: its label, its sentence and the
     # number as recorded (decision 117).
     assert vocab["settings"] == {"phone_label": api.FIRM_PHONE_LABEL,
-                                 "phone_help": api.FIRM_PHONE_HELP, "phone": ""}
+                                 "phone_help": api.FIRM_PHONE_HELP, "phone": "",
+                                 "firm_label": api.FIRM_NAME_LABEL, "firm_help": api.FIRM_NAME_HELP,
+                                 "root_label": api.CLIENTS_FOLDER_LABEL}
     # And every word and colour the Reminder card shows (decision 118).
     _the_reminder_card_words_are_all_pythons(vocab["reminder"])
 
@@ -2171,6 +2179,8 @@ def _the_reminder_card_words_are_all_pythons(words):
         "palette": dict(PALETTE),
         "hold_colour": reminder.HOLD_COLOUR,
         "letter_ink": dict(reminder.LETTER_INK),
+        "sides": [{"key": side.key, "label": side.label, "sentence": side.sentence}
+                  for side in reminder.SIDES],
     }
     # Nothing the card shows is typed in the renderer, and no colour of any
     # kind reaches it: every hex it draws with is looked up in this palette.
@@ -2937,10 +2947,12 @@ def test_an_edited_drafts_footer_is_neither_shown_nor_copied(capsys, demo_root):
     from tracker.reminder import (
         DRAFT_FILENAME,
         FOOTER_RULE,
-        HELD_BACK_HEADING,
         REVIEW_ADVICE,
         REVIEW_WARNING,
+        SIDE_US,
     )
+
+    us_heading = f"{SIDE_US.label.upper()} - {SIDE_US.sentence}"
 
     folder = chased_engagement(capsys, demo_root, name="Footer")
     # B01 is ours to fix, not the client's to resend, so the draft reports
@@ -2961,7 +2973,7 @@ def test_an_edited_drafts_footer_is_neither_shown_nor_copied(capsys, demo_root):
     # The warning opens with its count, so the sentence after it is what a
     # test may look for without retyping a word of it.
     warning = REVIEW_WARNING.split("}", 1)[1]
-    assert HELD_BACK_HEADING in on_disk and warning in on_disk
+    assert us_heading in on_disk and warning in on_disk
 
     # A person adds a line to the letter, which is above the footer's rule.
     edited = on_disk.replace(f"\n{FOOTER_RULE}",
@@ -2973,7 +2985,7 @@ def test_an_edited_drafts_footer_is_neither_shown_nor_copied(capsys, demo_root):
     assert after["file"]["edited"] is True
     assert "PS: ask about the rental." in after["text"]
     assert "PS: ask about the rental." in after["html"]
-    for firm_side in (HELD_BACK_HEADING, warning, REVIEW_ADVICE, FOOTER_RULE):
+    for firm_side in (us_heading, warning, REVIEW_ADVICE, FOOTER_RULE):
         assert firm_side not in after["text"], firm_side
         assert firm_side not in after["html"], firm_side
     assert written.read_bytes() == kept, "reading the card never touches the file"
@@ -3231,6 +3243,12 @@ def test_state_carries_the_household_its_open_years_its_returns_and_the_queue_co
     assert household["members"] == ["John Park"] and household["contact"] == "John"
     assert household["open_years"] == [default_tax_year()]
     assert [r["path"] for r in household["returns"]] == [str(personal), str(business)]
+    # Each return's form and its people's names, for the card's roll fold
+    # (decision 196); and no roll is offered while the open year is the
+    # one being prepared.
+    assert [r["form"] for r in household["returns"]] == ["1040", ""]
+    assert [r["people"] for r in household["returns"]] == [[TEST_CLIENT], [TEST_CLIENT]]
+    assert household["roll_year"] is None
     assert household["queue"] == sum(
         1 for one in (personal, business)
         for row in read_index(one) if row.decision == NEEDS_REVIEW)
@@ -3385,6 +3403,121 @@ def test_roll_household_after_a_failed_retirement_says_what_was_rolled_and_left_
     assert "Not retired: 1120S - Park Landscaping LLC (the disk filled)" in payload["warning"]
     assert load_engagement_info(llc).active is True
     assert payload["state"]["paths"]["engagement"] == payload["rolled"][0]["created"]
+
+
+# ------------------ decision 196: the roll is the household on screen ----
+
+
+def _calendar_a_year_on(monkeypatch):
+    """The calendar a year later: the year every return here was made for
+    has ended, and so has the one it would roll to."""
+    later = default_tax_year() + 1
+    monkeypatch.setattr(api, "default_tax_year", lambda today=None: later)
+
+
+def test_the_household_card_names_the_year_it_rolls_to_and_each_returns_form_and_people(
+        capsys, demo_root, monkeypatch):
+    """Once the year a roll opens has ended, the card's state names it -
+    the next year after the household's one open year - and every return
+    carries the form and the people's names the roll fold shows, read from
+    the records the card is already drawn from."""
+    john, sofia, llc = a_park_household(capsys, demo_root)
+    _calendar_a_year_on(monkeypatch)
+    household = api._state(john)["household"]
+    assert household["open_years"] == [default_tax_year()]
+    assert household["roll_year"] == next_tax_year(default_tax_year())
+    assert [r["path"] for r in household["returns"]] == [str(john), str(sofia), str(llc)]
+    # None of the three was made with a form, and the card says so rather
+    # than guessing one; every one of them is carried by the roll.
+    assert [one["form"] for one in household["returns"]] == ["", "", ""]
+    for one in household["returns"]:
+        assert one["people"] == [TEST_CLIENT] and one["rollable"] is True, one
+
+
+def test_each_return_says_whether_the_offered_roll_carries_it(capsys, demo_root, monkeypatch):
+    """Which returns a roll carries is the API's word, per return, so the
+    page filters nothing a second time: a return rolled on and a return
+    retired are never carried, the open year's are, and while no roll is
+    offered no return is."""
+    john, sofia, llc = a_park_household(capsys, demo_root)
+    year = next_tax_year(default_tax_year())
+    code, payload = run(capsys, "roll-household", api.ENGAGEMENT_FLAG, str(john), stdin={
+        "year": year, "returns": [{"prior": str(john)}]})
+    assert code == 0, payload
+    rolled = Path(payload["rolled"][0]["created"])
+    # Mid-season for the year just rolled into: nothing is carried.
+    _calendar_a_year_on(monkeypatch)
+    household = api._state(rolled)["household"]
+    assert household["roll_year"] is None
+    assert not any(one["rollable"] for one in household["returns"])
+    # Once that year has ended, the new return alone is carried: John's
+    # prior was rolled on, Sofia's and the LLC's were retired.
+    monkeypatch.setattr(api, "default_tax_year", lambda today=None: year + 1)
+    household = api._state(rolled)["household"]
+    assert household["roll_year"] == next_tax_year(year)
+    assert {one["path"]: one["rollable"] for one in household["returns"]} == {
+        str(john): False, str(sofia): False, str(llc): False, str(rolled): True}
+
+
+def test_no_roll_is_offered_mid_season_on_a_paused_household_or_with_two_open_years(
+        capsys, demo_root, monkeypatch):
+    """The API says when a roll is offered, and never while the year being
+    prepared is still the open one, while the household is paused (decision
+    188), or while two years are open - each of which the command refuses
+    or would retire the returns being worked on."""
+    from tracker.layout import private_household_dir
+
+    # Mid-season: the open year is the calendar's default, whose next year
+    # has not ended.
+    items = [{"identifier": "A01", "document": "W-2"}]
+    assert run(capsys, "create", stdin={"household": "Lee Family", "return_name": "1040 - Ann Lee",
+                                        "items": items})[0] == 0
+    ann = where(demo_root, "1040 - Ann Lee", household="Lee Family")
+    assert api._state(ann)["household"]["roll_year"] is None
+
+    # Two open years: a return for the year before sits beside it.
+    assert run(capsys, "create", stdin={
+        "household_path": str(private_household_dir(demo_root, "Lee Family")),
+        "return_name": "1040 - Ben Lee", "year": default_tax_year() - 1, "items": items})[0] == 0
+    with monkeypatch.context() as later:
+        _calendar_a_year_on(later)
+        household = api._state(ann)["household"]
+        assert len(household["open_years"]) == 2 and household["roll_year"] is None
+
+    # Paused: the folder renamed under its record (the 188 fixture), with
+    # the calendar where a roll would otherwise be offered.
+    renamed = _a_renamed_household(capsys, demo_root)
+    _calendar_a_year_on(monkeypatch)
+    household = api._state(renamed)["household"]
+    assert household["pause"]["sentence"] and household["roll_year"] is None
+
+
+def test_rolling_one_households_return_never_touches_another_household(capsys, demo_root):
+    """D1 held at the API end: rolling a return of one household rolls that
+    household, and another household's private and client trees - every
+    name and every byte, its journal with them - are as they were."""
+    from tracker.layout import CLIENTS_TREE, private_household_dir
+
+    john, sofia, llc = a_park_household(capsys, demo_root)
+    assert run(capsys, "create", stdin={
+        "household": "Lee Family", "return_name": "1040 - Ann Lee",
+        "items": [{"identifier": "A01", "document": "W-2"}]})[0] == 0
+    lee_private = private_household_dir(demo_root, "Lee Family")
+    lee_client = demo_root / CLIENTS_TREE / "Lee Family"
+
+    def snapshot():
+        return {str(path.relative_to(demo_root)): path.read_bytes() if path.is_file() else None
+                for tree in (lee_private, lee_client) for path in sorted(tree.rglob("*"))}
+
+    before, journal = snapshot(), ledger.read_events(lee_private)
+    year = default_tax_year() + 1
+    code, payload = run(capsys, "roll-household", api.ENGAGEMENT_FLAG, str(john), stdin={
+        "year": year, "returns": [{"prior": str(john)}, {"prior": str(sofia)}, {"prior": str(llc)}]})
+    assert code == 0, payload
+    assert sorted(one["prior"] for one in payload["rolled"]) == [
+        "1040 - John Park", "1040 - Sofia Park", "1120S - Park Landscaping LLC"]
+    assert snapshot() == before
+    assert ledger.read_events(lee_private) == journal
 
 
 def test_creating_a_households_first_return_hands_back_the_sharing_checklist_and_a_later_return_does_not(
@@ -4828,11 +4961,12 @@ def test_the_apps_request_table_folds_not_asked_rows_with_no_document_into_a_clo
     here = Path(__file__).resolve().parent.parent / "app" / "renderer"
     js = (here / "app.js").read_text(encoding="utf-8")
     html = (here / "index.html").read_text(encoding="utf-8")
-    assert 'show("rows", state.items.filter((item) => !item.not_asked_idle).map(requestTableRow));' in js
-    assert 'show("rows-not-asked", idle.map(requestTableRow));' in js
-    assert "fill(vocab.editor.not_asked_heading, { n: idle.length })" in js
+    assert "const setAside = (item) => item.not_asked_idle || isSetAside(item.manual_override);" in js
+    assert 'show("rows", state.items.filter((item) => !setAside(item)).map(requestTableRow));' in js
+    assert "setAsideGroups(folded, (item) => item.not_asked_idle, (item) => item.year)" in js
+    assert "fill(vocab.set_aside.heading, { n: folded.length })" in js
     assert "known && known.has_document" in js
-    group = html[html.index('<details id="rows-not-asked-group"'):]
+    group = html[html.index('<details id="rows-set-aside-group"'):]
     group = group[:group.index(">") + 1]
     assert " open" not in group                                  # closed until a person opens it
 
@@ -4865,16 +4999,21 @@ def test_the_returning_client_page_picks_the_returns_recorded_form_by_default(ca
     """Decision 142's review, R2: each prior carries the catalog it was cut
     from, and the page's template pick defaults to it, so the catalog rows
     the return never had arrive as not asked without anybody choosing; a
-    return that recorded no form defaults to no template."""
+    return that recorded no form defaults to no template. Since decision
+    196 the pick is the roll fold's on the household's card, and the form
+    comes from the card's own state; ``priors`` still carries it for the
+    command line."""
     spec = {"household": HOUSEHOLD, "return_name": "Recorded", "form": "1040",
             "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
     assert run(capsys, "create", stdin=spec)[0] == 0
     [prior] = run(capsys, "priors")[1]["priors"]
     assert prior["form"] == "1040"
+    engagement = where(demo_root, "Recorded")
+    assert [r["form"] for r in api._state(engagement)["household"]["returns"]] == ["1040"]
 
     js = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(encoding="utf-8")
-    assert "selected: f.id === p.form" in js
-    assert "selected: !forms.some((f) => f.id === p.form)" in js
+    assert ": r.form;" in js and "const known = forms.some((f) => f.id === picked);" in js
+    assert "selected: f.id === picked" in js and "selected: !known" in js
 
 
 # ------------------------------------------------ decision 144: short names ----
@@ -6732,3 +6871,510 @@ def test_the_first_screen_says_when_the_app_runs_from_a_removable_drive(capsys, 
     assert code == 0
     assert payload["machine_warnings"] == [
         settings_module.PROGRAM_ON_REMOVABLE.format(folder=settings_module.app_dir())]
+
+
+# ------------------------------- statuses in a preparer's words (d200) ----
+
+
+def test_the_vocabulary_carries_the_one_label_table(capsys, demo_root):
+    from tracker.manifest import STATUS_LABELS
+
+    vocab = run(capsys, "list")[1]["vocab"]
+    assert vocab["labels"] == {word: {"key": api._slug(word), "label": shown.label,
+                                      "sentence": shown.sentence}
+                               for word, shown in STATUS_LABELS.items()}
+    assert vocab["statuses"] == [{"value": status, "key": api._slug(status)} for status in Status.ALL]
+
+
+def test_the_vocabulary_carries_the_three_sides(capsys, demo_root):
+    from tracker import reminder
+
+    vocab = run(capsys, "list")[1]["vocab"]
+    assert vocab["reminder"]["sides"] == [
+        {"key": "client", "label": "Client", "sentence": reminder.SIDE_CLIENT.sentence},
+        {"key": "us", "label": "Us", "sentence": reminder.SIDE_US.sentence},
+        {"key": "decide", "label": "Decide", "sentence": reminder.SIDE_DECIDE.sentence},
+    ]
+
+
+def _sided_engagement(capsys, demo_root):
+    """A return with a Client row, an Us row, a Decide row and rows with no
+    side: one in, one set aside, one nobody asked for."""
+    from tests.conftest import seed_statuses
+    from tracker import reasons
+    from tracker.manifest import Override, StatusUpdate
+
+    spec = {"household": HOUSEHOLD, "return_name": "Sided", "items": [
+        {"identifier": "A01", "document": "W-2 Wage Statements"},
+        {"identifier": "B01", "document": "Receipts"},
+        {"identifier": "C01", "document": "Form 1098 Mortgage Interest Statement"},
+        {"identifier": "D01", "document": "Bank Statements"},
+        {"identifier": "D02", "document": "Charitable Donations",
+         "manual_override": Override.NOT_APPLICABLE, "period": "TY2025"},
+        {"identifier": "D03", "document": "Tuition Statement", "asked": "no"},
+    ]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    folder = where(demo_root, "Sided")
+    seed_statuses(folder, {
+        "A01": StatusUpdate(status=Status.MISSING),
+        "B01": StatusUpdate(status=Status.FAILED, file_count=1,
+                            validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format()),
+        "C01": StatusUpdate(status=Status.FAILED, file_count=1,
+                            validation_notes="1099.pdf: " + reasons.WRONG_DOCUMENT.format(listed="'1098'")),
+        "D01": StatusUpdate(status=Status.RECEIVED, file_count=1),
+    })
+    return folder
+
+
+def test_every_outstanding_row_in_the_state_carries_its_side_and_sentence(capsys, demo_root):
+    from tracker import reminder
+    from tracker.filer import read_index
+    from tracker.manifest import load_manifest
+
+    folder = _sided_engagement(capsys, demo_root)
+    items = {one["identifier"]: one for one in payload_of_state(capsys, folder)["items"]}
+    placed = reminder.sides(*reminder.triage(load_manifest(folder), read_index(folder)))
+    assert set(placed) == {"A01", "B01", "C01"}
+    for identifier, one in items.items():
+        side, sentence = placed.get(identifier, (None, ""))
+        assert one["side"] == (side.key if side else None), identifier
+        assert one["side_sentence"] == sentence, identifier
+    assert {i: items[i]["side"] for i in ("A01", "B01", "C01")} == {
+        "A01": "client", "B01": "us", "C01": "decide"}
+    assert items["B01"]["status_key"] == Status.FAILED
+    # The key is all the renderer reads; its label comes from vocab.labels.
+    assert all("status_label" not in one for one in items.values())
+
+
+def test_the_state_builder_triages_once(capsys, demo_root, monkeypatch):
+    """The reminder card's held rows and every row's side come from one
+    triage of the return's rows. The household card triages each return
+    for its own panel (decision 125) and is not this return's state, so
+    the calls are counted by who made them."""
+    import inspect
+
+    from tracker import reminder
+
+    folder = _sided_engagement(capsys, demo_root)
+    callers = []
+    real = reminder.triage
+
+    def counted(*args, **kwargs):
+        callers.append(inspect.stack()[1].function)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(reminder, "triage", counted)
+    state = payload_of_state(capsys, folder)
+    assert callers.count("_state") == 1 and "_reminder_payload" not in callers
+    assert [row["identifier"] for row in state["reminder"]["held"]] == ["C01"]
+
+
+def test_the_words_188_and_204_added_are_still_in_the_vocabulary(capsys, demo_root):
+    vocab = run(capsys, "list")[1]["vocab"]
+    assert vocab["review_labels"]["file_where_it_waits"] == api.FILE_WHERE_IT_WAITS_LABEL
+    assert vocab["review_labels"]["handed_over"] == api.HANDED_OVER_LINE
+    assert vocab["household"]["accept_folder_name"] == api.ACCEPT_FOLDER_NAME_LABEL
+    assert vocab["household"]["accept_folder_name_help"] == api.ACCEPT_FOLDER_NAME_HELP
+    father, _ = two_households(capsys, demo_root)
+    assert "waits_for" in waiting_document(capsys, father)
+
+
+# ------------------------------- decision 201: an unnamed issuer's card ----
+
+
+def _issuer_return(capsys, demo_root, *, year=BASE_YEAR, items=None, name="Issuer Return"):
+    """A 1040 whose list asks for K-1s one row per issuer - the catalog's K-1
+    row and one issuer row, as the catalog builds them, for ``year`` - and a
+    K-1 from an issuer it does not name, parked for a person by a pass.
+    Returns the return and the parked row as the state shows it."""
+    from tests.samples import text_pdf
+    from tracker import templates
+
+    # Written for the catalog's year: the create shifts them to the return's.
+    rows = items or [templates.k1_row(), templates.issuer_row("F02", "Ashford Holdings")]
+    spec = {"household": HOUSEHOLD, "return_name": name, "form": "1040", "year": year,
+            "items": rows}
+    code, payload = run(capsys, "create", stdin=spec)
+    assert code == 0, payload
+    engagement = where(demo_root, name, year)
+    text_pdf(inbox_of(engagement) / "k-1 dunmore.pdf", [
+        f"Schedule K-1 {year} (Form 1065) Partner's Share of Income, Deductions, Credits, etc.",
+        "k-1 statement", "Part I Information About the Partnership", "Dunmore Capital Group",
+        "Part II Information About the Partner", TEST_CLIENT])
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    [row] = [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
+    return engagement, row
+
+
+def _add_issuer(capsys, engagement, row, issuer="Dunmore Capital", **given):
+    """The card's one button, as the app presses it: the row, its version,
+    the list's version the card was drawn from and the typed name."""
+    from tracker.manifest import list_head
+
+    spec = {"original": row["pbc_location"], "seq": row["seq"], "head": list_head(engagement),
+            "issuer": issuer, **given}
+    return run(capsys, "add-issuer-and-file", api.ENGAGEMENT_FLAG, str(engagement), stdin=spec)
+
+
+def _nothing_moved(engagement, before):
+    """The list, the index and the journal exactly as ``before`` held them."""
+    from tracker.manifest import recorded_rules
+
+    assert recorded_rules(engagement) == before["rules"]
+    assert read_index(engagement) == before["index"]
+    assert len(ledger.read_events(engagement)) == before["events"]
+
+
+def _as_it_stands(engagement):
+    from tracker.manifest import recorded_rules
+
+    return {"rules": recorded_rules(engagement), "index": read_index(engagement),
+            "events": len(ledger.read_events(engagement))}
+
+
+def test_a_card_parked_for_an_unnamed_issuer_offers_the_next_free_issuer_row(capsys, demo_root):
+    from tracker import reasons
+
+    engagement, row = _issuer_return(capsys, demo_root)
+    assert reasons.ISSUER_NOT_NAMED.matches(row["reason"])
+    [card] = api._state(engagement)["review"]
+    assert card["issuer"] == {"identifier": "F03"}
+
+
+def test_a_card_parked_for_any_other_reason_offers_no_issuer_box(capsys, demo_root):
+    from tests.samples import text_pdf
+
+    engagement, _ = _issuer_return(capsys, demo_root)
+
+    text_pdf(inbox_of(engagement) / "notice.pdf", ["an agency notice nothing asks for"])
+    run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    cards = {card["original_name"]: card for card in api._state(engagement)["review"]}
+    assert cards["notice.pdf"]["issuer"] is None
+    assert cards["k-1 dunmore.pdf"]["issuer"] == {"identifier": "F03"}
+
+
+def test_the_state_marks_which_rows_came_from_the_catalog(capsys, demo_root):
+    """A custom row is one no catalog row of the return's form has
+    (decision 201): the editor draws its Document with the plain boxes."""
+    engagement, _ = _issuer_return(capsys, demo_root)
+    marked = {item["identifier"]: item["catalog_row"] for item in api._state(engagement)["items"]}
+    assert marked == {"F01": True, "F02": False}
+    assert all("catalog_row" not in rule for rule in api._state(engagement)["rules"])
+
+
+def test_adding_the_issuer_and_filing_is_one_command_writing_two_events_in_one_transaction(
+        capsys, demo_root, monkeypatch):
+    engagement, row = _issuer_return(capsys, demo_root)
+    count = len(ledger.read_events(engagement))
+    calls = []
+    real = store.record
+
+    def counting(conn, folder, *events):
+        calls.append(tuple(e[ledger.EVENT_KEY] for e in events))
+        return real(conn, folder, *events)
+
+    monkeypatch.setattr(store, "record", counting)
+    code, payload = _add_issuer(capsys, engagement, row)
+    assert code == 0, payload
+    assert calls[:2] == [(ledger.MOVING,), (ledger.ASSIGNED_BY_PERSON, ledger.RULES_CHANGED)]
+    written = [e[ledger.EVENT_KEY] for e in ledger.read_events(engagement)[count:count + 3]]
+    assert written == [ledger.MOVING, ledger.ASSIGNED_BY_PERSON, ledger.RULES_CHANGED]
+    monkeypatch.undo()
+    # The store's rules and index agree with the journal, rebuilt from it.
+    from tracker.manifest import recorded_rules
+
+    rules, index = recorded_rules(engagement), read_index(engagement)
+    store.rebuild_engagement(store.connect(), demo_root, engagement)
+    assert recorded_rules(engagement) == rules and read_index(engagement) == index
+    [filed] = [e for e in index if e.original_name == "k-1 dunmore.pdf"]
+    assert filed.decision == FILED and filed.identifier == "F03"
+
+
+def test_a_locked_rescan_after_adding_the_issuer_is_said_by_its_class_never_its_text(
+        capsys, demo_root, monkeypatch):
+    """The restack review's N2: when the re-scan after the filing meets the
+    lock, the reply says so in the vocabulary's sentence, by the error's
+    class alone - never the exception's own text (principle 7)."""
+    engagement, row = _issuer_return(capsys, demo_root)
+
+    def locked(folder):
+        raise api.ScanLockedError("held at C:/private/fabricated by host-x")
+
+    monkeypatch.setattr(api, "scan_engagement", locked)
+    code, payload = _add_issuer(capsys, engagement, row)
+    assert code == 0, payload
+    note = payload["added_and_filed"]["assigned"]["scan_note"]
+    assert note == api.ISSUER_NOT_RESCANNED.format(kind="EngagementLockedError")
+    assert "private" not in note
+    assert api._vocab()["review_labels"]["issuer_not_rescanned"] == api.ISSUER_NOT_RESCANNED
+
+
+def test_the_reply_names_the_row_added_and_the_document_filed(capsys, demo_root):
+    engagement, row = _issuer_return(capsys, demo_root)
+    code, payload = _add_issuer(capsys, engagement, row, issuer="Dunmore Capital, L.P.")
+    assert code == 0, payload
+    done = payload["added_and_filed"]
+    assert done["added"] == {"identifier": "F03", "document": "Schedule K-1 - Dunmore Capital LP"}
+    assert done["assigned"]["identifier"] == "F03" and done["assigned"]["original_name"] == "k-1 dunmore.pdf"
+    assert done["said"] == api.ISSUER_ADDED_AND_FILED.format(
+        identifier="F03", document="Schedule K-1 - Dunmore Capital LP", name="k-1 dunmore.pdf")
+    assert "F03" in {rule["identifier"] for rule in payload["state"]["rules"]}
+
+
+def test_the_new_issuer_row_asks_for_the_returns_year_not_the_catalogs(capsys, demo_root):
+    later = BASE_YEAR + 1
+    engagement, row = _issuer_return(capsys, demo_root, year=later)
+    code, payload = _add_issuer(capsys, engagement, row)
+    assert code == 0, payload
+    [added] = [rule for rule in payload["state"]["rules"] if rule["identifier"] == "F03"]
+    assert added["period"] == f"TY{later}"
+
+
+def test_the_added_row_reads_back_in_the_editor_as_issuer_row_builds_it(capsys, demo_root):
+    from tracker.records import rule_to_json
+    from tracker.templates import issuer_item
+
+    engagement, row = _issuer_return(capsys, demo_root)
+    code, payload = _add_issuer(capsys, engagement, row)
+    assert code == 0, payload
+    rules = payload["state"]["rules"]
+    [added] = [rule for rule in rules if rule["identifier"] == "F03"]
+    built = rule_to_json(issuer_item("F03", "Dunmore Capital", BASE_YEAR))
+    for column in ("document", "period", "required_keywords", "any_keywords", "named",
+                   "short_title", "expected_count"):
+        assert added[column] == built[column], column
+    code, saved = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                      stdin={"items": rules, "engagement": {}})
+    assert code == 0, saved
+    assert saved["saved"]["recorded"] is False
+
+
+def test_a_stale_card_adds_no_row_and_files_nothing(capsys, demo_root):
+    engagement, row = _issuer_return(capsys, demo_root)
+    before = _as_it_stands(engagement)
+    code, payload = _add_issuer(capsys, engagement, row, seq=row["seq"] + 1)
+    assert code == 1 and "is not as you saw it" in payload["error"]
+    _nothing_moved(engagement, before)
+
+
+def test_a_list_changed_since_the_card_was_drawn_adds_no_row_and_files_nothing(capsys, demo_root):
+    from tracker.filer import ISSUER_LIST_MOVED
+
+    engagement, row = _issuer_return(capsys, demo_root)
+    before = _as_it_stands(engagement)
+    code, payload = _add_issuer(capsys, engagement, row, head="0" * 64)
+    assert code == 1 and payload["error"] == ISSUER_LIST_MOVED
+    _nothing_moved(engagement, before)
+
+
+def test_a_card_no_longer_waiting_for_an_issuer_is_refused(capsys, demo_root):
+    from tests.samples import text_pdf
+    from tracker.filer import NOT_AN_ISSUER_CARD
+
+    engagement, _ = _issuer_return(capsys, demo_root)
+    text_pdf(inbox_of(engagement) / "notice.pdf", ["an agency notice nothing asks for"])
+    run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    [notice] = [e for e in api._state(engagement)["index"] if e["original_name"] == "notice.pdf"]
+    before = _as_it_stands(engagement)
+    code, payload = _add_issuer(capsys, engagement, notice)
+    assert code == 1 and payload["error"] == NOT_AN_ISSUER_CARD.format(name="notice.pdf")
+    _nothing_moved(engagement, before)
+
+
+def test_an_issuer_name_inside_another_is_refused_and_nothing_is_filed(capsys, demo_root):
+    engagement, row = _issuer_return(capsys, demo_root)
+    before = _as_it_stands(engagement)
+    code, payload = _add_issuer(capsys, engagement, row, issuer="Ashford")
+    assert code == 1 and "Rows F03 and F02 both narrow F01, and F03's name is inside F02's" in payload["error"]
+    _nothing_moved(engagement, before)
+
+
+def test_an_issuer_name_already_listed_is_refused_and_nothing_is_filed(capsys, demo_root):
+    from tracker.manifest import ISSUER_NAMED_TWICE
+
+    engagement, row = _issuer_return(capsys, demo_root)
+    before = _as_it_stands(engagement)
+    code, payload = _add_issuer(capsys, engagement, row, issuer="Ashford Holdings")
+    assert code == 1
+    assert payload["error"] == ISSUER_NAMED_TWICE.format(inner="F02", outer="F03", broad="F01",
+                                                         name="Ashford Holdings")
+    _nothing_moved(engagement, before)
+
+
+def test_a_blank_issuer_name_is_refused_before_anything_is_read(capsys, demo_root, monkeypatch):
+    engagement, row = _issuer_return(capsys, demo_root)
+    before = _as_it_stands(engagement)
+
+    def unread(*_args, **_kwargs):
+        raise AssertionError("read before the name was checked")
+
+    for name in ("load_engagement_info", "load_manifest", "read_index", "assign_review_file"):
+        monkeypatch.setattr(api, name, unread)
+    code, payload = _add_issuer(capsys, engagement, row, issuer=" , . ")
+    assert code == 1 and payload["error"] == "an issuer row needs the name of the entity that issued the K-1"
+    monkeypatch.undo()
+    _nothing_moved(engagement, before)
+
+
+def test_an_issuer_that_is_not_text_is_refused_rather_than_made_a_name(capsys, demo_root):
+    engagement, row = _issuer_return(capsys, demo_root)
+    before = _as_it_stands(engagement)
+    for sent in (["Dunmore Capital"], {"name": "Dunmore Capital"}, 7):
+        code, payload = _add_issuer(capsys, engagement, row, issuer=sent)
+        assert code == 1 and payload["error"] == api.ISSUER_NOT_TEXT, sent
+    _nothing_moved(engagement, before)
+
+
+def test_an_issuer_row_that_would_not_narrow_this_returns_k1_row_is_refused(capsys, demo_root):
+    """A return whose K-1 row is its own - no Any Keyword in common with the
+    catalog's - has issuer rows copied from that row, in the editor: the
+    catalog's issuer row would not be read as one of them."""
+    from tracker.filer import ISSUER_DOES_NOT_NARROW
+
+    own = [{"identifier": "F01", "document": "K-1 statements", "period": f"TY{BASE_YEAR}",
+            "extensions": "pdf", "any_keywords": "k-1 statement"},
+           {"identifier": "F02", "document": "K-1 statement - Ashford", "period": f"TY{BASE_YEAR}",
+            "extensions": "pdf", "required_keywords": "Ashford Holdings", "any_keywords": "k-1 statement"}]
+    engagement, row = _issuer_return(capsys, demo_root, items=own)
+    before = _as_it_stands(engagement)
+    code, payload = _add_issuer(capsys, engagement, row)
+    assert code == 1
+    assert payload["error"] == ISSUER_DOES_NOT_NARROW.format(identifier="F03", listed="F01, F02")
+    _nothing_moved(engagement, before)
+
+
+def test_an_editor_opened_before_the_issuer_was_added_is_refused_on_save(capsys, demo_root):
+    from tracker.manifest import LIST_MOVED
+
+    engagement, row = _issuer_return(capsys, demo_root)
+    opened = api._state(engagement)
+    code, payload = _add_issuer(capsys, engagement, row)
+    assert code == 0, payload
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": opened["rules"], "engagement": {}, "head": opened["list_head"]})
+    assert code == 1 and payload["error"] == LIST_MOVED
+    assert "F03" in {rule["identifier"] for rule in api._state(engagement)["rules"]}
+
+
+def _hold_a_twin(engagement):
+    """F03, a second issuer row named Ashford Holdings beside F02, recorded
+    as a list written before decision 201 could hold it."""
+    from dataclasses import replace
+
+    from tracker.locking import engagement_lock
+    from tracker.manifest import validated
+    from tracker.records import rule_to_json
+    from tracker.templates import issuer_row, item_from_spec
+
+    [twin] = validated([item_from_spec(issuer_row("F03", "Ashford Holdings"))])
+    with engagement_lock(engagement):
+        store.record(store.connect(), engagement, ledger.new(ledger.RULES_CHANGED, **{
+            ledger.RULES_KEY: [rule_to_json(replace(twin, row=3))], ledger.REMOVED_KEY: [],
+            ledger.INFO_KEY: {},
+        }))
+
+
+TWIN_SAID = {"inner": "F02", "outer": "F03", "broad": "F01", "name": "Ashford Holdings"}
+
+
+def test_a_list_already_holding_one_issuer_name_twice_still_renames(capsys, demo_root):
+    """Decision 201, the review's S1: a rename changes an identifier and
+    never a name, so a same-name pair already on the list is not the
+    rename's to refuse."""
+    from tracker.manifest import list_head
+
+    engagement, _ = _issuer_return(capsys, demo_root)
+    _hold_a_twin(engagement)
+    code, payload = run(capsys, "rename", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"from": "F03", "to": "F09", "head": list_head(engagement)})
+    assert code == 0, payload
+    assert [rule["identifier"] for rule in payload["state"]["rules"]] == ["F01", "F02", "F09"]
+
+
+def test_the_issuer_card_files_a_new_issuer_on_a_list_already_holding_one_name_twice(
+        capsys, demo_root):
+    """Decision 201, the review's S1: the card checks the list with the list
+    as the record holds it, so a pair already on it does not refuse a
+    different issuer's row."""
+    engagement, row = _issuer_return(capsys, demo_root)
+    _hold_a_twin(engagement)
+    code, payload = _add_issuer(capsys, engagement, row)
+    assert code == 0, payload
+    assert payload["added_and_filed"]["added"]["identifier"] == "F04"
+
+
+def test_a_roll_of_a_list_already_holding_one_issuer_name_twice_carries_it_and_says_so(
+        capsys, demo_root):
+    """Decision 201, the review's S1: the pair rolls as it was, and the
+    roll's reply carries the sentence - not left to the first later save."""
+    from tracker.manifest import ISSUER_NAMED_TWICE
+
+    engagement, _ = _issuer_return(capsys, demo_root)
+    _hold_a_twin(engagement)
+    code, payload = run(capsys, "rollover", stdin={"prior": str(engagement), "year": BASE_YEAR + 1})
+    assert code == 0, payload
+    assert payload["rollover"]["warnings"] == [ISSUER_NAMED_TWICE.format(**TWIN_SAID)]
+    assert {"F02", "F03"} <= {rule["identifier"] for rule in payload["state"]["rules"]}
+
+
+def test_an_edit_of_a_list_already_holding_one_issuer_name_twice_saves_and_warns(capsys, demo_root):
+    """The orchestrator's ruling on R7 (decision 201): two issuer rows of
+    one name already on the list do not lock a save of anything else, and
+    the reply names both rows; a save naming a third row the same is
+    refused."""
+    from tracker.manifest import ISSUER_NAMED_TWICE, list_head
+
+    engagement, _ = _issuer_return(capsys, demo_root)
+    _hold_a_twin(engagement)
+    rules = api._state(engagement)["rules"]
+    rules[0] = {**rules[0], "expected_count": 2}
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": rules, "engagement": {}})
+    assert code == 0, payload
+    assert payload["saved"]["changed"] == ["F01"]
+    assert payload["warnings"][0] == ISSUER_NAMED_TWICE.format(**TWIN_SAID)
+    third = {**rules[1], "identifier": "F04"}
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": [*rules, third], "engagement": {}, "head": list_head(engagement)})
+    assert code == 1 and "and F04 both narrow F01 with the same name" in payload["error"]
+
+
+def test_the_vocabulary_carries_every_word_201_shows():
+    words = api._vocab()
+    assert words["dialogs"] == {"unsaved": "You have changes here that are not saved.",
+                                "keep_editing": "Keep editing", "discard": "Discard my changes"}
+    editor = words["editor"]
+    assert editor["plain_columns"] == ["expected_count", "asked", "manual_override", "override_reason",
+                                       "short_title"]
+    assert editor["routing_columns"] == ["identifier", "document", "period", "allowed_extensions",
+                                         "min_size_kb", "required_keywords", "any_keywords",
+                                         "date_pattern", "named"]
+    assert editor["routing"] == "Routing rules"
+    assert editor["not_this_return"] == api.EDITOR_NOT_THIS_RETURN
+    assert editor["routing_all"] == "Show every row's routing rules"
+    assert editor["routing_help"] == ("How the tracker recognises this document when it arrives. A save "
+                                      "checks these the same way whether the fold is open or not.")
+    labels = words["review_labels"]
+    assert labels["keyword"] == "Keyword to learn (optional)"
+    assert labels["keyword_help"] == ("A word this document contains that others like it will too. "
+                                      "Taught to the request so the next one files itself; the editor "
+                                      "shows it beside the row.")
+    assert labels["issuer_label"] == "Issuer's name, as the K-1 prints it"
+    assert labels["issuer_help"] == ("Adds {identifier}, a K-1 row for this issuer, to the request list "
+                                     "and files this document under it. Type the distinctive words and "
+                                     "leave off the suffix (L.P., LLC).")
+    assert labels["issuer_add"] == "Add the issuer and file it"
+    settings = words["settings"]
+    assert (settings["firm_label"], settings["firm_help"], settings["root_label"]) == (
+        "Firm name", "as it should sign the reminders", "Clients folder")
+    assert "add-issuer-and-file" in words["commands"]
+    # None of them is typed in the renderer.
+    here = Path(__file__).resolve().parents[1]
+    js = (here / "app" / "renderer" / "app.js").read_text(encoding="utf-8")
+    html = (here / "app" / "renderer" / "index.html").read_text(encoding="utf-8")
+    for word in (*words["dialogs"].values(), editor["routing"], editor["routing_all"], labels["keyword"],
+                 labels["issuer_label"], labels["issuer_add"], settings["firm_label"],
+                 settings["firm_help"]):
+        assert word not in js and word not in html, word
+    assert settings["root_label"] not in html

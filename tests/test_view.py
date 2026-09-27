@@ -262,8 +262,10 @@ def test_not_applicable_rows_sit_in_a_collapsed_section_per_year_and_the_active_
     [folded] = not_applicable_tables(engagement)
     assert [row[0] for row in folded[1:]] == ["E01"]
     assert "Not Applicable in TY2025" in folded[1]
-    heading = view.NOT_APPLICABLE_SECTION.format(label="Not Applicable in TY2025", n=1)
+    heading = view.SET_ASIDE_SECTION.format(n=1)
     assert f"<details><summary>{html.escape(heading)}</summary>" in page
+    group = view.SET_ASIDE_GROUP.format(label="Not Applicable in TY2025", n=1)
+    assert f"<h3>{html.escape(group)}</h3>" in page
     assert page.count(f'<tr class="{view.NOT_APPLICABLE_CLASS}">') == 1
     assert f"{view.BADGE_CLASS}-{slug(Override.NOT_APPLICABLE)}" in page
     assert "<h2>Requests (2)</h2>" in page
@@ -276,9 +278,10 @@ def test_not_applicable_rows_sit_in_a_collapsed_section_per_year_and_the_active_
     view.write_view(engagement)
     page = page_of(engagement)
     blocks = re.findall(r"<details><summary>(.*?)</summary>", page)
-    assert blocks == [
-        view.NOT_APPLICABLE_SECTION.format(label="Not Applicable in TY2024", n=1),
-        view.NOT_APPLICABLE_SECTION.format(label="Not Applicable in TY2025", n=1),
+    assert blocks == [view.SET_ASIDE_SECTION.format(n=2)]
+    assert re.findall(r"<h3>(.*?)</h3>", page) == [
+        view.SET_ASIDE_GROUP.format(label="Not Applicable in TY2024", n=1),
+        view.SET_ASIDE_GROUP.format(label="Not Applicable in TY2025", n=1),
     ]
 
     # With none set aside, no block at all.
@@ -720,7 +723,10 @@ def test_not_asked_rows_fold_away_until_a_document_arrives_and_then_sit_in_the_t
 
     assert [row[0] for row in requests_table(engagement)[1:]] == ["A01"]
     blocks = re.findall(r"<details><summary>(.*?)</summary>", page)
-    assert blocks[0] == view.NOT_ASKED_SECTION.format(n=2)
+    # One fold: the two rows nobody asked for, then ITEMS' set-aside row.
+    assert blocks == [view.SET_ASIDE_SECTION.format(n=3)]
+    assert re.findall(r"<h3>(.*?)</h3>", page)[0] == view.SET_ASIDE_GROUP.format(
+        label=NOT_ASKED_LABEL, n=2)
     folded = not_applicable_tables(engagement)[0]
     by_id = {row[0]: dict(zip(view.REQUEST_COLUMNS, row, strict=True)) for row in folded[1:]}
     assert set(by_id) == {"C01", "G01"}
@@ -736,7 +742,7 @@ def test_not_asked_rows_fold_away_until_a_document_arrives_and_then_sit_in_the_t
     assert set(active) == {"A01", "C01"}
     assert active["C01"][COL_STATUS] == Status.RECEIVED and active["C01"][COL_ASKED] == "no"
     assert page.count(f'<tr class="{view.NOT_ASKED_CLASS}">') == 2        # C01 in the table, G01 folded
-    assert re.findall(r"<details><summary>(.*?)</summary>", page)[0] == view.NOT_ASKED_SECTION.format(n=1)
+    assert re.findall(r"<details><summary>(.*?)</summary>", page) == [view.SET_ASIDE_SECTION.format(n=2)]
     assert "<h2>Requests (2)</h2>" in page
 
 
@@ -747,7 +753,7 @@ def test_a_not_asked_row_with_any_document_sits_in_the_active_table_and_only_one
     with its real status; only a row with no document at all folds, and
     only those are counted in the fold's N and ``Summary.not_asked``."""
     from tests.conftest import seed_statuses
-    from tracker.manifest import StatusUpdate, is_idle_unasked, summarize
+    from tracker.manifest import STATUS_LABELS, StatusUpdate, is_idle_unasked, summarize
 
     def unasked(identifier):
         return RequestItem(identifier=identifier, document=f"Document {identifier}", period="TY2025",
@@ -771,10 +777,11 @@ def test_a_not_asked_row_with_any_document_sits_in_the_active_table_and_only_one
               for row in requests_table(engagement)[1:]}
     assert list(active) == ["A01", "B01", "B02", "B03", "B04"]
     assert [active[i][COL_STATUS] for i in ("B01", "B02", "B03", "B04")] == [
-        Status.RECEIVED, Status.PARTIAL, Status.FAILED, Status.PENDING_SYNC]
+        STATUS_LABELS[word].label
+        for word in (Status.RECEIVED, Status.PARTIAL, Status.FAILED, Status.PENDING_SYNC)]
     [folded] = not_applicable_tables(engagement)
     assert [row[0] for row in folded[1:]] == ["B05", "B06"]
-    assert re.findall(r"<details><summary>(.*?)</summary>", page) == [view.NOT_ASKED_SECTION.format(n=2)]
+    assert re.findall(r"<details><summary>(.*?)</summary>", page) == [view.SET_ASIDE_SECTION.format(n=2)]
 
     items = load_manifest(engagement)
     assert [i.identifier for i in items if is_idle_unasked(i)] == ["B05", "B06"]
@@ -826,3 +833,48 @@ def test_the_summary_names_a_writer_only_inside_the_gates_rule(host, at):
 
     said = last_written({ledger.EVENT_KEY: ledger.FILED, ledger.HOST_KEY: host, ledger.AT_KEY: at})
     assert said == LAST_WRITTEN_UNKNOWN and "Fabricated" not in said
+
+
+# ------------------------------- statuses in a preparer's words (d200) ----
+
+
+def test_a_badge_shows_the_label_and_is_classed_by_the_record_word():
+    """The page says a preparer's word; its colour stays keyed by the
+    record's word, so no colour moves with a label."""
+    from tracker.manifest import STATUS_LABELS
+
+    row = view._request_cells(RequestItem(identifier="A01", document="W-2", period="TY2025",
+                                          status=Status.MISSING))
+    [cell] = [value for header, value in zip(view.REQUEST_COLUMNS, row.values, strict=True)
+              if header == COL_STATUS]
+    assert cell.value == STATUS_LABELS[Status.MISSING].label == "Outstanding"
+    assert cell.class_name == "badge badge-missing"
+
+
+def test_the_status_report_has_one_set_aside_fold_with_a_group_per_sub_label():
+    """Decision 200: every row nobody waits on is under one Set aside fold,
+    one group per label - Not asked first, then each year oldest first -
+    each group followed by its label's sentence."""
+    from tracker.manifest import NOT_ASKED_LABEL, STATUS_LABELS
+
+    rows = [
+        RequestItem(identifier="A01", document="W-2", period="TY2025"),
+        RequestItem(identifier="B01", document="1099-C", period="TY2025", asked=False),
+        RequestItem(identifier="C01", document="1095-A", period="TY2025",
+                    manual_override=Override.NOT_APPLICABLE),
+        RequestItem(identifier="C02", document="1098-T", period="TY2024",
+                    manual_override=Override.NOT_APPLICABLE),
+    ]
+    drawn = "\n".join(view._set_aside_block(rows))
+    assert re.findall(r"<details><summary>(.*?)</summary>", drawn) == [view.SET_ASIDE_SECTION.format(n=3)]
+    groups = [
+        (view.SET_ASIDE_GROUP.format(label=NOT_ASKED_LABEL, n=1), STATUS_LABELS[NOT_ASKED_LABEL].sentence),
+        (view.SET_ASIDE_GROUP.format(label="Not Applicable in TY2024", n=1),
+         STATUS_LABELS[Override.NOT_APPLICABLE].sentence),
+        (view.SET_ASIDE_GROUP.format(label="Not Applicable in TY2025", n=1),
+         STATUS_LABELS[Override.NOT_APPLICABLE].sentence),
+    ]
+    assert re.findall(r'<h3>(.*?)</h3>\n<p class="stamp">(.*?)</p>', drawn) == [
+        (html.escape(heading), html.escape(sentence)) for heading, sentence in groups]
+    assert "A01" not in drawn
+    assert view._set_aside_block(rows[:1]) == []
