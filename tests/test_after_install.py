@@ -804,7 +804,7 @@ def test_a_failed_copy_keeps_the_source_and_cleans_the_destination(tmp_path, mon
     real_match = after_install._copies_match
     # The folder's copy comes out wrong; the two files before it copied cleanly.
     monkeypatch.setattr(after_install, "_copies_match",
-                        lambda source, copy: source.name != "recovered" and real_match(source, copy))
+                        lambda source, copy: not source.name.startswith("recovered") and real_match(source, copy))
     done = after_install.move_left_behind(items, home)
     assert done == after_install.MoveOutcome(
         sentence=after_install.LEFT_BEHIND_MOVE_FAILED.format(home=home), failed=True)
@@ -813,3 +813,124 @@ def test_a_failed_copy_keeps_the_source_and_cleans_the_destination(tmp_path, mon
     assert items[1].read_bytes() == b"journal"
     assert (items[2] / "Household A" / "record.json").read_text(encoding="utf-8") == '{"fabricated": 1}'
     assert os.listdir(home) == []
+    assert sorted(os.listdir(items[0].parent)) == [CHECKPOINT, JOURNAL, "recovered"]
+
+
+def test_a_file_whose_source_cannot_be_removed_leaves_no_copy_behind(tmp_path, monkeypatch):
+    """Review MF1 (probe P3): the journal's copy is verified but its source
+    is locked. The copy goes, the source stays whole, the checkpoint moved
+    before it comes back, and the next run simply moves everything."""
+    items = left_behind(tmp_path / "program")
+    home = tmp_path / "data home"
+    monkeypatch.setattr(after_install, "_same_volume", lambda source, folder: False)
+    real_unlink = after_install._unlink
+
+    def locked(path):
+        if path == items[1]:
+            raise PermissionError(13, "locked")
+        real_unlink(path)
+
+    monkeypatch.setattr(after_install, "_unlink", locked)
+    done = after_install.move_left_behind(items, home)
+    assert done == after_install.MoveOutcome(
+        sentence=after_install.LEFT_BEHIND_MOVE_FAILED.format(home=home), failed=True)
+    assert items[0].read_bytes() == b"checkpoint\x00heads" and items[1].read_bytes() == b"journal"
+    assert os.listdir(home) == []
+    monkeypatch.setattr(after_install, "_unlink", real_unlink)
+    assert after_install.move_left_behind(items, home).moved == tuple(items)
+    assert (home / JOURNAL).read_bytes() == b"journal"
+
+
+def test_a_copy_never_removes_a_destination_it_did_not_make(tmp_path, monkeypatch):
+    """Review MF2 (probe P7): a destination that appeared after the first
+    check - a folder or a file - is refused and left exactly as it was."""
+    monkeypatch.setattr(after_install, "_same_volume", lambda source, folder: False)
+    (tmp_path / "src" / "a").mkdir(parents=True)
+    (tmp_path / "src.txt").write_text("ours", encoding="utf-8")
+    there = tmp_path / "dst"
+    (there / "src").mkdir(parents=True)
+    (there / "src" / "theirs").write_text("keep", encoding="utf-8")
+    (there / "src.txt").write_text("theirs", encoding="utf-8")
+    for name in ("src", "src.txt"):
+        with pytest.raises(OSError):
+            after_install._move_one(tmp_path / name, there / name)
+    assert (there / "src" / "theirs").read_text(encoding="utf-8") == "keep"
+    assert (there / "src.txt").read_text(encoding="utf-8") == "theirs"
+    assert (tmp_path / "src" / "a").is_dir() and (tmp_path / "src.txt").read_text(encoding="utf-8") == "ours"
+    assert sorted(os.listdir(tmp_path)) == ["dst", "src", "src.txt"]
+
+
+def test_nothing_is_ever_overwritten_forward_or_back(tmp_path, monkeypatch):
+    """Review SF2 (probe P6): on one volume, an old pass writes a new
+    checkpoint beside the program while the journal's move fails. The move
+    back finds the name taken and leaves the moved checkpoint whole in the
+    data home; the new one is untouched. A rename onto a taken name is
+    refused."""
+    items = left_behind(tmp_path / "program")
+    home = tmp_path / "data home"
+    real_rename = after_install._rename
+
+    def racing(source, destination):
+        if source == items[1]:
+            items[0].write_bytes(b"new from an old pass")
+            raise PermissionError(13, "locked")
+        real_rename(source, destination)
+
+    monkeypatch.setattr(after_install, "_rename", racing)
+    done = after_install.move_left_behind(items, home)
+    assert done.failed and done.moved == ()
+    assert items[0].read_bytes() == b"new from an old pass"
+    assert (home / CHECKPOINT).read_bytes() == b"checkpoint\x00heads"
+    assert items[1].read_bytes() == b"journal"
+    monkeypatch.setattr(after_install, "_rename", real_rename)
+    with pytest.raises(OSError):
+        after_install._rename(items[1], home / CHECKPOINT)
+    assert items[1].read_bytes() == b"journal"
+    assert (home / CHECKPOINT).read_bytes() == b"checkpoint\x00heads"
+
+
+def test_a_folder_partly_removed_after_its_copy_is_said_so(tmp_path, monkeypatch):
+    """Review SF1 (probe P4): the folder is renamed aside before it is
+    copied, so when removing the old copy fails part way, the name 186
+    lists is gone, the data home holds the whole verified copy, and the
+    sentence names the leftover."""
+    beside = tmp_path / "program"
+    items = left_behind(beside)
+    (beside / "recovered" / "Household A" / "second.json").write_text("{}", encoding="utf-8")
+    home = tmp_path / "data home"
+    monkeypatch.setattr(after_install, "_same_volume", lambda source, folder: False)
+    real_unlink = after_install._unlink
+    removed = []
+
+    def partly(path):
+        if ".moving-" in str(path) and path.suffix == ".json":
+            removed.append(path)
+            if len(removed) == 2:
+                raise PermissionError(13, "locked")
+        real_unlink(path)
+
+    monkeypatch.setattr(after_install, "_unlink", partly)
+    done = after_install.move_left_behind(items, home)
+    aside = f"recovered.moving-{os.getpid()}"
+    assert done == after_install.MoveOutcome(
+        moved=tuple(items), failed=True,
+        sentence=after_install.LEFT_BEHIND_PARTLY_REMOVED.format(home=home, name="recovered", aside=aside))
+    assert sorted(os.listdir(home / "recovered" / "Household A")) == ["record.json", "second.json"]
+    assert sorted(os.listdir(beside)) == [aside]
+    monkeypatch.setattr(after_install, "_unlink", real_unlink)
+    assert after_install.move_left_behind(items, home) == after_install.MoveOutcome()
+
+
+def test_two_left_behind_items_of_one_name_move_nothing(tmp_path):
+    """Review SF3 (probe P8): the second would land on the first."""
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    (tmp_path / "a" / "x").write_text("A", encoding="utf-8")
+    (tmp_path / "b" / "x").write_text("B", encoding="utf-8")
+    home = tmp_path / "data home"
+    done = after_install.move_left_behind([tmp_path / "a" / "x", tmp_path / "b" / "x"], home)
+    assert done == after_install.MoveOutcome(
+        sentence=after_install.LEFT_BEHIND_MOVE_FAILED.format(home=home), failed=True)
+    assert (tmp_path / "a" / "x").read_text(encoding="utf-8") == "A"
+    assert (tmp_path / "b" / "x").read_text(encoding="utf-8") == "B"
+    assert not home.exists()

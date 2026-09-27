@@ -53,10 +53,12 @@ from beside the program into the data home, becomes
 its own, and never touches 186's delete group (deleting what holds client
 names stays a person's call). It checks every destination and refuses any
 link before moving anything, because a checkpoint split from its journal
-is worse than one not moved; it moves by ``os.replace`` on one volume and
-otherwise copies, compares size and SHA-256, and only then removes the
-source - a rename that silently became a copy and delete is where a file
-is lost. It is wired first into :func:`run` when 186 lands.
+is worse than one not moved. It never overwrites anything - no
+``os.replace``: a rename that refuses an existing name on one volume, and
+otherwise a copy into a name it creates, compared by size and SHA-256
+before the source is removed; a failure leaves the source whole beside the
+program and removes only what the mover itself created (the R9 review).
+It is wired first into :func:`run` when 186 lands.
 
 **A finding names a household that waits** - for the kinds that do. A
 line an earlier version applied that today's admission refuses stops its
@@ -102,6 +104,7 @@ nothing lower does (layer 4, ``tests/test_layers.py``).
 from __future__ import annotations
 
 import datetime as dt
+import errno
 import hashlib
 import json
 import os
@@ -196,9 +199,11 @@ LEFT_BEHIND_DESTINATION_TAKEN = ("{name} is already in {home}, so the files an e
                                  "keep one (runbook, decision 186).")
 LEFT_BEHIND_IS_LINK = ("{name}, left beside the program by an earlier version, is a link, so nothing was "
                        "moved into {home}; a person must move what it points at (runbook, decision 186).")
-LEFT_BEHIND_MOVE_FAILED = ("The files an earlier version left beside the program could not be moved into "
-                           "{home}; nothing was deleted that was not copied whole first, and a person "
-                           "must finish the move (runbook, decision 186).")
+LEFT_BEHIND_MOVE_FAILED = ("The files an earlier version left beside the program could not all be moved "
+                           "into {home}; a person must compare the program's folder with {home} and finish "
+                           "the move (runbook, decision 186).")
+LEFT_BEHIND_PARTLY_REMOVED = ("{home} now holds the whole copy of {name}; part of the old copy is still "
+                              "beside the program as {aside} and can be deleted.")
 #: What Setup prints when the step exits 1 (``Setup.bat`` echoes the same words).
 SETUP_RETRY = "The after-install step could not finish (above). Start the app: it tries again at launch."
 
@@ -486,7 +491,7 @@ class MoveOutcome:
 
 def _same_volume(source: Path, home: Path) -> bool:
     """Whether ``source`` (never followed) and the existing folder ``home``
-    are on one volume, so :func:`os.replace` moves without copying."""
+    are on one volume, so a rename moves without copying."""
     return os.lstat(source).st_dev == os.stat(home).st_dev
 
 
@@ -519,7 +524,8 @@ def _copies_match(source: Path, copy: Path) -> bool:
 
 def _discard(path: Path) -> None:
     """Remove ``path`` - an entry, or a real folder and everything in it -
-    never what a link points at; absent is nothing to do."""
+    never what a link points at; absent is nothing to do. Called only on
+    what this module itself created."""
     if not os.path.lexists(path):
         return
     if _is_link(path) or not path.is_dir():
@@ -528,48 +534,165 @@ def _discard(path: Path) -> None:
         _remove_tree(path)
 
 
-def _move_one(source: Path, destination: Path) -> None:
-    """Move one entry to ``destination``, whose folder exists and which
-    does not: :func:`os.replace` on one volume; otherwise copy it (a file by
-    ``shutil.copy2``, a folder by ``copytree(symlinks=True)``, so a link
-    inside is copied as a link), compare every file's size and SHA-256, and
-    only then remove the source. A failed or mismatched copy removes what
-    it copied and keeps the source. Raises :class:`OSError` on failure."""
-    if _same_volume(source, destination.parent):
-        os.replace(source, destination)
-        return
+class _Taken(OSError):
+    """A destination that exists at the moment of a move: nothing is
+    overwritten, and the job says whose name it is."""
+
+    def __init__(self, name: str) -> None:
+        super().__init__(errno.EEXIST, "taken")
+        self.name = name
+
+
+class _PartlyRemoved(OSError):
+    """A folder copied whole and verified whose old copy, set aside beside
+    the program, could not be removed completely."""
+
+    def __init__(self, name: str, aside: Path) -> None:
+        super().__init__(errno.EIO, "partly removed")
+        self.name, self.aside = name, aside
+
+
+def _rename(source: Path, destination: Path) -> None:
+    """Rename on one volume, never over an existing name: ``os.rename`` on
+    Windows, which refuses one; elsewhere a file is hard-linked (which
+    refuses one) and then unlinked from its old name, and a folder is
+    renamed after the check - the one race left, stated: a folder that
+    appears empty at that name between the check and the rename is
+    replaced, which loses nothing. Raises :class:`_Taken` when the name is
+    taken."""
+    if os.path.lexists(destination):
+        raise _Taken(destination.name)
     try:
-        if source.is_dir():
-            shutil.copytree(source, destination, symlinks=True)
-        else:
-            shutil.copy2(source, destination, follow_symlinks=False)
+        if os.name == "nt" or source.is_dir():
+            os.rename(source, destination)
+            return
+        os.link(source, destination)
+    except FileExistsError:
+        raise _Taken(destination.name) from None
+    try:
+        os.unlink(source)
+    except OSError:
+        os.unlink(destination)
+        raise
+
+
+def _copy_file_across(source: Path, destination: Path) -> None:
+    """Copy one file to another volume into a name this call creates
+    (``open(..., "xb")`` refuses an existing one), verify size and SHA-256,
+    then remove the source. A failed or mismatched copy, **or a source that
+    cannot be removed** (an unlink fails whole, so the source is still
+    complete), removes the copy and keeps the source (review MF1)."""
+    try:
+        with source.open("rb") as original, open(destination, "xb") as copy:
+            shutil.copyfileobj(original, copy)
+    except FileExistsError:
+        raise _Taken(destination.name) from None
+    except OSError:
+        _discard_quietly(destination)
+        raise
+    try:
+        shutil.copystat(source, destination)
         if not _copies_match(source, destination):
-            raise OSError("the copy does not match its source")
+            raise OSError(errno.EIO, "the copy does not match its source")
+        _unlink(source)
+    except OSError:
+        _discard_quietly(destination)
+        raise
+
+
+def _copy_folder_across(source: Path, destination: Path) -> None:
+    """Copy one folder to another volume (review SF1): first rename it
+    aside, beside itself, to ``<name>.moving-<pid>``, so the name decision
+    186 lists is never left holding part of a copy; create the destination
+    (refusing an existing one), copy into it with ``copytree(symlinks=True)``
+    (a link inside is copied as a link), verify every file, then remove the
+    aside copy. A failure before the copy is verified removes what this
+    call created and renames the aside copy back; a failure while removing
+    it leaves the verified copy in place and says so."""
+    aside = source.with_name(f"{source.name}.moving-{os.getpid()}")
+    _rename(source, aside)
+    try:
+        try:
+            destination.mkdir()
+        except FileExistsError:
+            raise _Taken(destination.name) from None
+        try:
+            shutil.copytree(aside, destination, symlinks=True, dirs_exist_ok=True)
+            if not _copies_match(aside, destination):
+                raise OSError(errno.EIO, "the copy does not match its source")
+        except OSError:
+            _discard_quietly(destination)
+            raise
     except OSError:
         try:
-            _discard(destination)
+            _rename(aside, source)
         except OSError:
             pass
         raise
-    _discard(source)
+    try:
+        _remove_tree(aside)
+    except OSError:
+        raise _PartlyRemoved(source.name, aside) from None
+
+
+def _discard_quietly(path: Path) -> None:
+    """:func:`_discard` for a cleanup inside a failure already being
+    raised: the first failure is the one reported."""
+    try:
+        _discard(path)
+    except OSError:
+        pass
+
+
+def _move_one(source: Path, destination: Path) -> None:
+    """Move one entry to ``destination``, whose folder exists, **never over
+    anything** (review SF2; there is no ``os.replace`` here): a rename that
+    refuses an existing name on one volume (:func:`_rename`), and otherwise
+    - or when the rename finds another volume after all, a bind mount say -
+    a verified copy. The destination is checked again immediately before
+    the move (review MF2) and only what this call created is ever removed.
+    Raises :class:`OSError` on failure, :class:`_Taken` when the name is
+    taken."""
+    if os.path.lexists(destination):
+        raise _Taken(destination.name)
+    if _same_volume(source, destination.parent):
+        try:
+            _rename(source, destination)
+            return
+        except OSError as problem:
+            if problem.errno != errno.EXDEV:
+                raise
+    if source.is_dir():
+        _copy_folder_across(source, destination)
+    else:
+        _copy_file_across(source, destination)
 
 
 def move_left_behind(items: list[Path], home: Path) -> MoveOutcome:
     """Move what an earlier version left beside the program into ``home``,
     each under its own name (R9). ``items`` is decision 186's move group,
-    never a list of this module's own; one absent is not left behind.
+    never a list of this module's own; one absent, or already in ``home``,
+    is not left behind.
 
     Nothing present is nothing to do and no sentence. Otherwise it checks
-    everything before moving anything: an item that is a link or junction
-    (:func:`_is_link`), or a name already in ``home``, moves nothing and
-    fails in its own sentence - the checkpoint and its journal are never
-    split. A move that fails part way moves back what it had already moved,
-    so a failure leaves the items where they were (or, where a move back
-    itself fails, whole in ``home``); it never overwrites and never deletes
-    anything that was not first copied whole."""
-    present = [Path(item) for item in items if os.path.lexists(item)]
+    everything before moving anything: two items of one name, an item that
+    is a link or junction (:func:`_is_link`), or a name already in ``home``,
+    moves nothing and fails in its own sentence - the checkpoint and its
+    journal are never split. A move that fails part way moves back what it
+    had already moved, by the same careful move, so a failure leaves the
+    items where they were (or, where a move back itself fails or finds its
+    old name taken, whole in ``home``). Nothing is ever overwritten, and
+    nothing is removed that was not first copied whole and verified.
+
+    On Windows ``copytree`` follows a junction inside ``recovered/``; the
+    verification then finds a folder where the source has a link, the copy
+    is removed and the job fails, safely, until a person looks."""
+    present = [Path(item) for item in items
+               if os.path.lexists(item) and Path(item).parent != home]
     if not present:
         return MoveOutcome()
+    if len({item.name for item in present}) != len(present):
+        return MoveOutcome(sentence=LEFT_BEHIND_MOVE_FAILED.format(home=home), failed=True)
     for item in present:
         if _is_link(item):
             return MoveOutcome(sentence=LEFT_BEHIND_IS_LINK.format(name=item.name, home=home),
@@ -584,13 +707,22 @@ def move_left_behind(items: list[Path], home: Path) -> MoveOutcome:
         for item in present:
             _move_one(item, home / item.name)
             done.append(item)
-    except OSError:
+    except _PartlyRemoved as partly:
+        return MoveOutcome(moved=tuple(present[:len(done) + 1]),
+                           sentence=LEFT_BEHIND_PARTLY_REMOVED.format(
+                               home=home, name=partly.name, aside=partly.aside.name),
+                           failed=True)
+    except OSError as problem:
         for item in reversed(done):
             try:
                 _move_one(home / item.name, item)
             except OSError:
                 pass
-        return MoveOutcome(sentence=LEFT_BEHIND_MOVE_FAILED.format(home=home), failed=True)
+        if isinstance(problem, _Taken):
+            sentence = LEFT_BEHIND_DESTINATION_TAKEN.format(name=problem.name, home=home)
+        else:
+            sentence = LEFT_BEHIND_MOVE_FAILED.format(home=home)
+        return MoveOutcome(sentence=sentence, failed=True)
     return MoveOutcome(moved=tuple(present), sentence=LEFT_BEHIND_MOVED.format(home=home))
 
 
