@@ -6794,10 +6794,6 @@ def find_filed(
     raise FilingError(f"nothing in the index is called {original!r}")
 
 
-#: The name this lookup had while it was the filer's alone; kept for one
-#: release, as the module does elsewhere.
-_find_filed = find_filed
-
 
 # --------------------------------------------------------------- recovery ----
 
