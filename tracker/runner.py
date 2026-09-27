@@ -157,7 +157,7 @@ from contextlib import ExitStack, nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tracker import checkpoint, content_check, door, ledger, ocr, store
+from tracker import checkpoint, content_check, door, errors, ledger, ocr, store
 from tracker.filer import (
     HOUSEHOLD_NO_ROOM,
     NEEDS_REVIEW,
@@ -194,7 +194,7 @@ from tracker.manifest import (
     load_manifest,
     summarize,
 )
-from tracker.page import esc, page_text, table, tolerant_console
+from tracker.page import esc, page_text, policy, table, tolerant_console
 from tracker.progress import PASSES_DIRNAME, Watch
 from tracker.records import ENGAGEMENT_LABELS, NO, YES
 from tracker.registry import (
@@ -207,17 +207,18 @@ from tracker.registry import (
 )
 from tracker.reminder import (
     APPROVED_NOTE,
+    APPROVED_THEN_EDITED,
     DRAFT_FILENAME,
     DRAFT_WRITTEN_BESIDE,
     NEW_DRAFT_FILENAME,
     DraftsEditedError,
     ReminderError,
+    approval_state,
     draft_changed,
     draft_reminder,
     drafted_event,
     held_refusal,
     held_too_long,
-    is_approved_this_week,
     is_protected,
     last_draft_event,
     record_draft,
@@ -522,9 +523,17 @@ STAGE_NOTE = "stage {n}"
 #: same engagement.
 SKIP_INACTIVE = f"inactive (the engagement's details say {ENGAGEMENT_LABELS['active']}: {NO})"
 RECORD_UNREADABLE = "the record could not be read: {problem}"
+#: A return whose folder is gone. The row already names the return; the
+#: folder's path is a client's name and never reaches a page (decision 190).
+FOLDER_NOT_FOUND = "folder not found"
 #: What a pass says about a view whose replace did not land. Not an error:
 #: the view carries no fact, so the old one standing costs a person one pass.
 VIEW_NOT_REGENERATED = "status report open (not regenerated)"
+#: The household's system and temporary files the sort left alone by name
+#: (decision 190): one line per household per pass, in the run's own line
+#: and on the practice page. A count and never a name - a person who
+#: expected a file to be sorted sees that something was left and looks.
+IGNORED_NOTE = "{n} system or temporary files in the inbox were left alone"
 #: When a reading is slow enough to be worth saying (decision 127). A
 #: scanned page costs about a second to read on the office machine, so
 #: twenty seconds is a document doing something unusual - a long scan, a
@@ -674,6 +683,9 @@ class EngagementRun:
     #: each is counted in ``filed`` and ``review`` like any drop.
     opened: int = 0
     waiting: int = 0
+    #: The household's files left alone as system or temporary by name
+    #: (decision 190), counted on its first return's run only.
+    ignored: int = 0
     file_errors: list[str] = field(default_factory=list)  # drops that went wrong
     warnings: list[str] = field(default_factory=list)     # rows the rules cannot act on; strays in Prepared/
     #: The request list :func:`_worth_a_pass` loaded for ``check_rules``,
@@ -694,6 +706,10 @@ class EngagementRun:
     #: app (decision 118). The pass leaves it exactly as it leaves an
     #: edited one, and the practice page says so instead of a stage.
     approved: bool = False
+    #: Whether a person approved this week's draft and then edited it
+    #: (decision 190): the approval no longer covers the file, and the log
+    #: and the page say "approved, then edited" rather than "approved".
+    approval_lapsed: bool = False
     #: How many things hold this engagement's reminder: its ambiguous rows
     #: (decision 115) and the files still waiting in its household's inbox
     #: (decision 133); ``draft_note`` names them.
@@ -741,6 +757,8 @@ class EngagementRun:
             parts.append(f"review {self.review}")
         if self.waiting:
             parts.append(f"syncing {self.waiting}")
+        if self.ignored:
+            parts.append(IGNORED_NOTE.format(n=self.ignored))
         if self.file_errors:
             parts.append(f"could not sort {len(self.file_errors)}")
         if self.view_stale:
@@ -752,6 +770,8 @@ class EngagementRun:
                 parts.append(STAGE_NOTE.format(n=self.stage))
         if self.approved:
             parts.append(APPROVED_NOTE)
+        elif self.approval_lapsed:
+            parts.append(APPROVED_THEN_EDITED)
         if self.held:
             parts.append(f"held {self.held}")
         # A reading that took its time is said, once, with the document
@@ -1163,13 +1183,14 @@ def run_household(
         for run in working or [one for one in runs if not one.skipped and not one.error]:
             if not run.error:
                 # Its class and code, never its message (security principle
-                # 7; the review's S2): the message can name a client's
-                # folder, and this reaches the page and the run log. The
-                # whole trace is on stderr for a person.
-                run.error = content_check.said_as_class(exc)
-                run.code = CODE_CRASHED.format(kind=exc.__class__.__name__)
-        log.error("A household stopped early (%s)", content_check.said_as_class(exc),
-                  exc_info=True)
+                # 7; the review's S2; decision 190): the message can name a
+                # client's folder or quote a client's file, and this reaches
+                # the page, the run log and the app. The words and the trace
+                # are kept on the debug log, and only there.
+                run.error = errors.error_class(exc)
+                run.code = CODE_CRASHED.format(kind=errors.error_class(exc, with_code=False))
+        errors.keep("runner: household pass", exc, name=household.name)
+        log.error("A household stopped early (%s)", errors.error_class(exc))
     stopped = watch is not None and watch.stop_asked()
     if unreached or any(run.out_of_time for run in working):
         # The household's time ran out (decision 189), or a person stopped
@@ -1248,7 +1269,9 @@ def _feeds_of(household: Path, year: int, registry: object) -> tuple[list[Engage
     try:
         feeds = load_household_info(household).feeds
     except Exception as exc:
-        return [], [FEEDS_UNREAD.format(error=f"{exc.__class__.__name__}: {exc}")]
+        errors.keep("runner: the household's feeds", exc, name=household.name)
+        return [], [FEEDS_UNREAD.format(
+            error=errors.said(exc, (ManifestError, LedgerError, StoreError)))]
     if not feeds:
         return [], []
     found, said = resolve_feeds(household, feeds, year, registry)
@@ -1297,6 +1320,7 @@ def _sort_step(household: Path, sorting: list[EngagementRun], fed: list[Engageme
         run.opened = len(filed.opened)
         run.review = len(filed.review)
         run.waiting = len(filed.waiting)
+        run.ignored = filed.ignored
         run.file_errors = [f"{e.name}: {e.error}" for e in filed.errors]
         run.slowest = filed.slowest
         # An original already sorted whose record no longer fits the disk
@@ -1389,15 +1413,16 @@ def run_engagement(
         run.code = CODE_LOCK_HELD
     except (ManifestError, ReminderError) as exc:
         run.error = str(exc)
-        run.code = CODE_REFUSED.format(kind=exc.__class__.__name__)
+        run.code = CODE_REFUSED.format(kind=errors.error_class(exc, with_code=False))
     except Exception as exc:  # one client's surprise must not stop the rest
-        # Its class and code, never its message (decision 193, security
-        # principle 7): this reaches the page and the run log, and the
-        # message can name a client's folder. The whole trace goes to the
-        # local error log - the same rule as run_household's.
-        run.error = content_check.said_as_class(exc)
-        run.code = CODE_CRASHED.format(kind=exc.__class__.__name__)
-        log.error("A return's pass stopped early (%s)", run.error, exc_info=True)
+        # Its class and code, never its message (decisions 190 and 193,
+        # security principle 7): this reaches the page and the run log, and
+        # the message can name a client's folder. The words and the trace
+        # are kept on the debug log only - the same rule as run_household's.
+        errors.keep("runner: engagement pass", exc, name=engagement.path.name)
+        run.error = errors.error_class(exc)
+        run.code = CODE_CRASHED.format(kind=errors.error_class(exc, with_code=False))
+        log.error("A return's pass stopped early (%s)", run.error)
     return run
 
 
@@ -1419,8 +1444,9 @@ def _view_step(run: EngagementRun) -> None:
     try:
         run.view_stale = write_view(run.engagement.path).stale
     except Exception as exc:
+        errors.keep("runner", exc, name=run.engagement.label)
         log.warning("Could not write %s for %s (%s)",
-                    VIEW_FILENAME, run.engagement.label, exc)
+                    VIEW_FILENAME, run.engagement.label, errors.error_class(exc))
 
 
 def why_skipped(engagement: Engagement) -> tuple[str, str]:
@@ -1462,7 +1488,7 @@ def _worth_a_pass(run: EngagementRun) -> bool:
         run.code = code
         return False
     if not engagement.path.is_dir():
-        run.error = f"folder not found: {engagement.path}"
+        run.error = FOLDER_NOT_FOUND
         run.code = CODE_FOLDER_MISSING
         return False
     if engagement.problem:
@@ -1518,8 +1544,11 @@ def _draft_step(run: EngagementRun, *, dry_run: bool, today: dt.date,
     # A draft a person approved in the app this week is this week's answer
     # (decision 118): the pass leaves the file alone exactly as it leaves
     # one somebody edited, and the page says so.
-    run.approved = is_approved_this_week(engagement.path, engagement.path / DRAFT_FILENAME,
-                                         since=week)
+    # One edited after its approval is not approved (decision 190): it is
+    # still left alone, because it was edited, and the page says which.
+    approval = approval_state(engagement.path, engagement.path / DRAFT_FILENAME, since=week)
+    run.approved = approval == APPROVED_NOTE
+    run.approval_lapsed = approval == APPROVED_THEN_EDITED
 
     if draft.is_held:
         # One ambiguous row holds the whole reminder: nothing that reads
@@ -1589,7 +1618,8 @@ def _retire_unedited_drafts(engagement_dir: Path, *,
         try:
             path.unlink()
         except OSError as exc:    # open in Word, or a sync client mid-upload: next time
-            log.warning("Could not retire %s (%s)", path.name, exc)
+            errors.keep("runner", exc, name=path.name)
+            log.warning("Could not retire %s (%s)", path.name, errors.error_class(exc))
 
 
 def _refresh_stale_draft(draft, engagement_dir: Path, *, changed_from: dict | None = None,
@@ -1612,7 +1642,8 @@ def _refresh_stale_draft(draft, engagement_dir: Path, *, changed_from: dict | No
         try:
             refreshed.append(write_draft(draft, path=path, changed_from=changed_from))
         except OSError as exc:    # open in Word, or a sync client mid-upload: next time
-            log.warning("Could not refresh %s (%s)", path.name, exc)
+            errors.keep("runner", exc, name=path.name)
+            log.warning("Could not refresh %s (%s)", path.name, errors.error_class(exc))
     return refreshed
 
 
@@ -1754,7 +1785,7 @@ def _read_order_hint(report: RunReport) -> tuple[Path | None, dict]:
     try:
         path = store.store_path().parent / PASS_ORDER_FILENAME
     except Exception as exc:
-        log.warning("Could not tell where the pass order lives (%s)", exc.__class__.__name__)
+        log.warning("Could not tell where the pass order lives (%s)", errors.error_class(exc))
         _warn(report, CODE_ORDER_HINT_UNREADABLE, ORDER_HINT_UNREADABLE)
         return None, {}
     try:
@@ -1766,7 +1797,7 @@ def _read_order_hint(report: RunReport) -> tuple[Path | None, dict]:
     except FileNotFoundError:
         return path, {}
     except Exception as exc:
-        log.warning("Could not read %s (%s)", path.name, exc.__class__.__name__)
+        log.warning("Could not read %s (%s)", path.name, errors.error_class(exc))
         _warn(report, CODE_ORDER_HINT_UNREADABLE, ORDER_HINT_UNREADABLE)
         return path, {}
     households = payload.get("households") if isinstance(payload, dict) else None
@@ -1812,7 +1843,7 @@ def _write_order_hint(path: Path, hint: dict) -> None:
     except OSError as exc:
         # A hint: a pass that cannot keep it runs in the walk's order next
         # time, which is where every pass started before decision 189.
-        log.warning("Could not write %s (%s)", path.name, exc.__class__.__name__)
+        log.warning("Could not write %s (%s)", path.name, errors.error_class(exc))
 
 
 def _why_not_served(runs: list[EngagementRun]) -> str:
@@ -1878,17 +1909,17 @@ def records_needing_a_person(
         # Nothing may stop a pass before its first household (decision
         # 189): the pass goes on, and the page says why the lines from
         # other machines are not listed.
-        log.warning("Could not read the record checkpoint (%s)", content_check.said_as_class(exc))
-        return siblings, [], [FOREIGN_UNLISTED.format(why=checkpoint_said(exc))]
+        errors.keep("runner", exc, name="record checkpoint")
+        log.warning("Could not read the record checkpoint (%s)", errors.error_class(exc))
+        return siblings, [], [FOREIGN_UNLISTED.format(why=errors.said(exc, (checkpoint.CheckpointError,)))]
 
 
 def checkpoint_said(exc: BaseException) -> str:
     """How a checkpoint that could not be read is said on the page: its own
     fixed sentence (the file, the engine's code, the runbook's step - busy
-    or unreadable), or, for anything else, its class and code alone."""
-    if isinstance(exc, checkpoint.CheckpointError):
-        return str(exc)
-    return content_check.said_as_class(exc)
+    or unreadable), or, for anything else, its class and code alone
+    (:func:`tracker.errors.said`, decision 190)."""
+    return errors.said(exc, (checkpoint.CheckpointError,))
 
 
 # ------------------------------------------------------------------ output ----
@@ -2079,7 +2110,7 @@ def _log_a_failed_pass(log_file: Path | None, reason_code: str, kind: str) -> No
         append_rotating(log_file, f"[{stamp}] ! pass failed ({reason_code}): {said} ({kind})\n",
                         max_bytes=LOG_MAX_BYTES, keep=LOG_KEEP)
     except Exception as exc:
-        log.warning("Could not write %s (%s)", log_file.name, exc.__class__.__name__)
+        log.warning("Could not write %s (%s)", log_file.name, errors.error_class(exc))
 
 
 def last_pass_line(path: Path | None = None, *, now: dt.datetime | None = None) -> dict:
@@ -2104,7 +2135,7 @@ def last_pass_line(path: Path | None = None, *, now: dt.datetime | None = None) 
     except FileNotFoundError:
         return {"text": LAST_PASS_NEVER, "level": LEVEL_WARN}
     except Exception as exc:
-        return {"text": LAST_PASS_UNREADABLE.format(error=exc.__class__.__name__), "level": LEVEL_ERR}
+        return {"text": LAST_PASS_UNREADABLE.format(error=errors.error_class(exc)), "level": LEVEL_ERR}
     try:
         if len(raw) > PASS_ORDER_MAX_BYTES:
             raise ValueError("past the file's size")
@@ -2115,7 +2146,7 @@ def last_pass_line(path: Path | None = None, *, now: dt.datetime | None = None) 
             raise ValueError("not a result this version writes")
         old = now - started > dt.timedelta(hours=LAST_PASS_AMBER_HOURS)
     except Exception as exc:
-        return {"text": LAST_PASS_UNREADABLE.format(error=exc.__class__.__name__), "level": LEVEL_ERR}
+        return {"text": LAST_PASS_UNREADABLE.format(error=errors.error_class(exc)), "level": LEVEL_ERR}
     when = started.strftime("%Y-%m-%d %H:%M")
     if result == PASS_FAILED:
         code = data.get("reason_code")
@@ -2166,7 +2197,9 @@ FOREIGN_UNLISTED = "Lines from other machines could not be listed this pass: {wh
 #: What a pass that could not prove its root says, first in the records
 #: section and in the problems list (the rebase review's MF1).
 CHECKPOINT_NOT_PROVED = "No household was served this pass: {why}"
-
+#: The heading over each household's count of files left alone by name
+#: (decision 190), drawn only when there is one.
+STATUS_IGNORED_HEADING = "Left alone in the inboxes"
 
 #: The two tables, column by column, in the order they are drawn. There is
 #: no "Deferred writes" column any more: nothing a pass decides waits for
@@ -2194,6 +2227,8 @@ tr:hover td { background: #f6f5f2; }
 ul { margin: 0; padding-left: 1.2rem; }
 li { margin-bottom: 0.3rem; }
 """
+#: The page's policy (decision 190): its own style and nothing else, by hash.
+_STATUS_POLICY = policy(style=_STATUS_STYLE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -2233,8 +2268,11 @@ def _parked_files(report: RunReport) -> tuple[dict[Path, list[ParkedFile]], list
         try:
             entries = read_index(engagement.path, follow=False)
         except Exception as exc:
+            # The firm's own sentence whole; anything else - an OS error
+            # whose message is the record's path - by its class (decision 190).
+            errors.keep("runner: the parked files", exc, name=engagement.path.name)
             problems.append(STATUS_INDEX_UNREADABLE.format(
-                label=engagement.label, error=content_check.said_as_class(exc)))
+                label=engagement.label, error=errors.said(exc, (ManifestError, LedgerError, StoreError))))
             continue
         parked[engagement.path] = [
             ParkedFile(engagement=engagement.label, received=entry.received,
@@ -2268,12 +2306,15 @@ def _page_title(root: Path) -> str:
 def _drafted_cell(run: EngagementRun) -> str:
     """What the practice page's Drafted column says about one engagement:
     the hold and its count, else that a person has approved this week's
-    draft, else the stage the draft was written at, else yes for a draft
+    draft, else that they approved it and then edited it (decision 190),
+    else the stage the draft was written at, else yes for a draft
     from before the stages, else nothing at all."""
     if run.held:
         return STATUS_HELD.format(n=run.held)
     if run.approved:
         return APPROVED_NOTE
+    if run.approval_lapsed:
+        return APPROVED_THEN_EDITED
     if run.stage:
         return STAGE_NOTE.format(n=run.stage)
     return YES if run.drafted else ""
@@ -2332,6 +2373,7 @@ def write_status_page(root: Path | str, report: RunReport, *,
         '<html lang="en">',
         "<head>",
         '<meta charset="utf-8">',
+        _STATUS_POLICY,
         f"<title>{esc(title)}</title>",
         f"<style>{_STATUS_STYLE}</style>",
         "</head>",
@@ -2351,6 +2393,14 @@ def write_status_page(root: Path | str, report: RunReport, *,
         f"<h2>{esc(STATUS_PROBLEMS_HEADING)} ({len(problems)})</h2>",
         *(["<ul>", *(f"<li>{esc(problem)}</li>" for problem in problems), "</ul>"]
           if problems else [f"<p>{esc(STATUS_NO_PROBLEMS)}</p>"]),
+        # What each household's inbox held that the sort leaves alone by
+        # name, as a count (decision 190). Not a problem: a person looks
+        # only when a count is not what they expected.
+        *([f"<h2>{esc(STATUS_IGNORED_HEADING)}</h2>", "<ul>",
+           *(f"<li>{esc(run.engagement.label)}: {esc(IGNORED_NOTE.format(n=run.ignored))}</li>"
+             for run in report.runs if run.ignored),
+           "</ul>"]
+          if any(run.ignored for run in report.runs) else []),
         # Every folder that does not fit the layout, with the one sentence
         # saying why it is left alone (decision 125, the owner's rule).
         # Nothing in one is ever read, moved or renamed; a person fixes it.
@@ -2404,7 +2454,9 @@ def _engagement_status(engagement: Engagement) -> EngagementRun:
         # One bad record costs its own row, never the page (decision 189),
         # said by its class and code: the message can name the record's
         # path, a client's folder (security principle 7; the review's S2).
-        run.error = RECORD_UNREADABLE.format(problem=content_check.said_as_class(exc))
+        # The words are kept on the debug log (decision 190).
+        errors.keep("runner: the return's record", exc, name=engagement.path.name)
+        run.error = RECORD_UNREADABLE.format(problem=errors.error_class(exc))
         run.code = CODE_RECORD_UNREADABLE
         return run
     run.statuses = summary.counts
@@ -2550,7 +2602,7 @@ def main(argv: list[str] | None = None) -> int:
                     failed_log = _log_file(ns)
                 except SettingsError:
                     failed_log = None           # no data home, so no run log to write
-                _log_a_failed_pass(failed_log, reason, exc.__class__.__name__)
+                _log_a_failed_pass(failed_log, reason, errors.error_class(exc))
             raise
         if last is not None:
             reason = (PASS_NOT_SERVED if code == NOT_SERVED_TWICE_EXIT_CODE
@@ -2567,7 +2619,7 @@ def _say_last_pass(path: Path, **said) -> None:
     try:
         write_last_pass(path, **said)
     except Exception as exc:
-        log.warning("Could not write %s (%s)", path.name, exc.__class__.__name__)
+        log.warning("Could not write %s (%s)", path.name, errors.error_class(exc))
 
 
 def _pass(ns, parser, reached: dict) -> int:
@@ -2695,10 +2747,13 @@ def _pass(ns, parser, reached: dict) -> int:
             outcome = "out_of_time" if any(run.out_of_time for run in result.runs) else "finished"
     except Exception as exc:
         # The runner's own code, not a household's (each of those is
-        # caught where it happens): said by its class, the whole trace on
-        # stderr for a person, and every ending below still attempted.
-        log.error("The pass stopped early", exc_info=True)
-        _warn(result, CODE_PASS_STOPPED, PASS_STOPPED.format(kind=exc.__class__.__name__))
+        # caught where it happens): said by its class, and every ending
+        # below still attempted. The trace goes where every trace goes,
+        # the debug log, and nowhere else (decision 190): a trace quotes
+        # the message, and the message can be a client's folder.
+        errors.keep("runner: the pass", exc)
+        log.error("The pass stopped early (%s)", errors.error_class(exc))
+        _warn(result, CODE_PASS_STOPPED, PASS_STOPPED.format(kind=errors.error_class(exc)))
         failed = True
     finally:
         watch.close(outcome)
@@ -2708,8 +2763,8 @@ def _pass(ns, parser, reached: dict) -> int:
         try:
             append_log(log_file, result)
         except Exception as exc:
-            log.warning("Could not write %s (%s)", log_file.name, exc.__class__.__name__)
-            _warn(result, CODE_LOG_NOT_WRITTEN, LOG_NOT_WRITTEN.format(kind=exc.__class__.__name__))
+            log.warning("Could not write %s (%s)", log_file.name, errors.error_class(exc))
+            _warn(result, CODE_LOG_NOT_WRITTEN, LOG_NOT_WRITTEN.format(kind=errors.error_class(exc)))
             print(f"\n  ! {result.warnings[-1]}")
             failed = True
         else:
@@ -2729,7 +2784,7 @@ def _pass(ns, parser, reached: dict) -> int:
             # end this in a traceback. But a page stuck on yesterday must not
             # look green (security principle 6; the review's S3): it is said
             # in the run log, by its class only, and the pass exits 1.
-            kind = exc.__class__.__name__
+            kind = errors.error_class(exc)
             log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, kind)
             print(f"\n  ! {PAGE_NOT_WRITTEN.format(kind=kind)}")
             failed = True
@@ -2738,7 +2793,7 @@ def _pass(ns, parser, reached: dict) -> int:
                     append_rotating(log_file, f"    codes {CODE_PAGE_NOT_WRITTEN}=1\n",
                                     max_bytes=LOG_MAX_BYTES, keep=LOG_KEEP)
                 except Exception as late:
-                    log.warning("Could not write %s (%s)", log_file.name, late.__class__.__name__)
+                    log.warning("Could not write %s (%s)", log_file.name, errors.error_class(late))
         else:
             print(f"\n  The practice: {page}")
 
@@ -2747,7 +2802,7 @@ def _pass(ns, parser, reached: dict) -> int:
     try:
         store.close()
     except Exception as exc:
-        log.warning("Could not close the store (%s)", exc.__class__.__name__)
+        log.warning("Could not close the store (%s)", errors.error_class(exc))
     if result.not_served_twice:
         return NOT_SERVED_TWICE_EXIT_CODE
     return 1 if failed or result.errors else 0
@@ -2781,7 +2836,7 @@ def _say_no_data_home_on_the_page(given: str, sentence: str) -> Path | None:
         _warn(report, CODE_NO_DATA_HOME, sentence)
         return write_status_page(root, report)
     except Exception as exc:
-        log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, exc.__class__.__name__)
+        log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, errors.error_class(exc))
         return None
 
 
@@ -2802,7 +2857,7 @@ def _say_the_pass_started(log_file: Path, report: RunReport) -> None:
     except FileNotFoundError:
         tail = []
     except OSError as exc:
-        log.warning("Could not read %s (%s)", log_file.name, exc.__class__.__name__)
+        log.warning("Could not read %s (%s)", log_file.name, errors.error_class(exc))
         tail = []
     unfinished = ""
     for line in tail:
@@ -2818,7 +2873,7 @@ def _say_the_pass_started(log_file: Path, report: RunReport) -> None:
         append_rotating(log_file, PASS_STARTED_LINE.format(stamp=stamp) + "\n",
                         max_bytes=LOG_MAX_BYTES, keep=LOG_KEEP)
     except OSError as exc:
-        log.warning("Could not write %s (%s)", log_file.name, exc.__class__.__name__)
+        log.warning("Could not write %s (%s)", log_file.name, errors.error_class(exc))
 
 
 if __name__ == "__main__":

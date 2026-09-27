@@ -18,7 +18,7 @@ import pytest
 import tracker.api as api
 from tests.conftest import TEST_CLIENT, app_stdin, make_engagement
 from tests.samples import PRIOR_YEAR, SCRATCH_PEOPLE
-from tracker import layout, ledger, reminder, store, view
+from tracker import layout, ledger, reasons, reminder, store, view
 from tracker.filer import FILED, NEEDS_REVIEW, read_index
 from tracker.households import load_household_info
 from tracker.layout import PRIVATE_TREE, inbox_of, return_dir_for
@@ -40,6 +40,8 @@ from tracker.records import (
     MAX_EXPECTED_COUNT,
     MAX_SIZE_KB,
     MIN_EXPECTED_COUNT,
+    IndexEntry,
+    ledger_key,
 )
 from tracker.rollover import next_tax_year
 from tracker.runner import DRAFT_WEEKDAY, LOG_FILENAME, STATUS_PAGE_FILENAME, WEEKDAY_NAMES
@@ -913,6 +915,142 @@ def test_a_parked_file_the_evidence_says_nothing_about_is_offered_nothing(
     [triaged] = payload["state"]["review"]
     assert triaged["original_name"] == "vacation photo.bmp"
     assert triaged["shortlist"] == [], "no evidence, no suggestion — the person reads it"
+
+
+def test_the_review_card_has_three_buckets_and_opens_only_a_documents_copy(capsys, demo_root, tmp_path):
+    """Decision 190's three buckets, decided here from the row's code and
+    its type on disk: each parked row and its triage carry ``bucket`` and
+    its true ``extension``; a document's row carries the key its review
+    copy is named under in ``paths`` - the only paths the shell opens - and
+    a program's carries none, nor, since Open follows 184, a container's,
+    nor a document the tracker never read (no request takes a .bmp)."""
+    from tests.test_scanner import text_pdf
+
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.bmp")
+    text_pdf(inbox_of(engagement) / "a letter.pdf", "\n".join(
+        f"Line {n:03d} of a fabricated letter that answers no request on the list" for n in range(400)))
+    (inbox_of(engagement) / "W-2 2025.pdf.exe").write_bytes(b"MZ")
+    (inbox_of(engagement) / "scans.zip").write_bytes(b"PK\x03\x04 not really a zip")
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    state = payload["state"]
+
+    rows = {e["original_name"]: e for e in state["index"] if e["decision"] == NEEDS_REVIEW}
+    assert {name: (e["bucket"], e["extension"]) for name, e in rows.items()} == {
+        "a letter.pdf": (api.BUCKET_DOCUMENT, "pdf"),
+        "vacation photo.bmp": (api.BUCKET_DOCUMENT, "bmp"),
+        "scans.zip": (api.BUCKET_CONTAINER, "zip"),
+        "W-2 2025.pdf.exe": (api.BUCKET_NOT_A_DOCUMENT, "exe"),
+    }
+    assert rows["W-2 2025.pdf.exe"]["open_key"] == "" and rows["scans.zip"]["open_key"] == ""
+    assert rows["vacation photo.bmp"]["code"] == reasons.NO_REQUEST_ACCEPTS_CODE
+    assert rows["vacation photo.bmp"]["open_key"] == "", "never read, so never opened here"
+    assert rows["a letter.pdf"]["code"] in api.READ_AND_PARKED_CODES, rows["a letter.pdf"]["code"]
+    opened = Path(state["paths"][rows["a letter.pdf"]["open_key"]])
+    assert opened.is_file() and opened.parent.name == REVIEW_DIR_NAME
+    assert {t["original_name"]: t["bucket"] for t in state["review"]} == {
+        name: e["bucket"] for name, e in rows.items()}
+
+
+def _parked_row(name: str, code: str) -> IndexEntry:
+    """A parked row with a review copy, as the filer writes one: fabricated."""
+    return IndexEntry(
+        received="2026-02-01", original_name=name, size_kb=12.0, digest="7" * 64,
+        identifier="", prepared_location=f"{REVIEW_DIR_NAME}/{name}",
+        pbc_location=f"pbc/{name}", decision=NEEDS_REVIEW, reason="fabricated", code=code)
+
+
+@pytest.mark.parametrize("name, code", [
+    *(("statement.pdf", code) for code in sorted(api.NO_OPEN_CODES - api._CONTAINER_CODES)),
+    *(("mail.eml", code) for code in sorted(api._CONTAINER_CODES)),
+    ("scans.zip", reasons.AMBIGUOUS_CODE),
+])
+def test_a_refused_file_has_no_open_on_the_designated_machine(name, code):
+    """Open follows 184 (decision 190): a file whose reading the tracker
+    refused or never made, and any email or zip, is opened, if at all, on a
+    machine with no Drive sign-in and no client folder - so the API names no
+    copy for it to open here, whatever its copy on disk, and the card
+    offers none."""
+    row = _parked_row(name, code)
+    payload = api._review_payload(row)
+    assert payload["open_key"] == "", (name, code, payload)
+    if name != "statement.pdf":
+        assert payload["bucket"] == api.BUCKET_CONTAINER, payload
+
+
+@pytest.mark.parametrize("code", ["", "a-code-nobody-has-placed"])
+def test_a_code_nobody_has_placed_gets_no_open(code):
+    """Open is an allow-list, so it fails closed: a row with no code, or with
+    a code no one has put in either set, offers no Open (decision 190)."""
+    payload = api._review_payload(_parked_row("statement.pdf", code))
+    assert payload["bucket"] == api.BUCKET_DOCUMENT and payload["open_key"] == "", payload
+
+
+def test_every_code_is_placed_in_exactly_one_of_the_two_open_sets():
+    """Every code a row may carry (reasons.KNOWN_CODES) is either one the
+    tracker read and parked for a filing reason - Open - or one that offers
+    no Open here; none is in both and none in neither, so a new code fails
+    this until a person places it."""
+    opens, closed = api.READ_AND_PARKED_CODES, api.NO_OPEN_CODES
+    assert not opens & closed, sorted(opens & closed)
+    assert opens | closed == reasons.KNOWN_CODES, (
+        sorted(reasons.KNOWN_CODES - (opens | closed)), sorted((opens | closed) - reasons.KNOWN_CODES))
+    not_read = {reasons.HEIC_NOT_SUPPORTED, reasons.NO_TEXT_LAYER, reasons.EXTENSION_NOT_ALLOWED,
+                reasons.GOOGLE_STUB, reasons.TOO_SMALL, reasons.UNCHECKABLE_TYPE}
+    assert not {reason.code for reason in not_read} & opens, "the tracker did not read these"
+    assert reasons.NO_REQUEST_ACCEPTS_CODE not in opens, "every request refused its type unread"
+
+
+@pytest.mark.parametrize("code", sorted(api.READ_AND_PARKED_CODES))
+def test_a_read_and_parked_document_opens_its_marked_copy(code):
+    """The other half of the rule: a document the tracker read and parked
+    for a filing reason carries the key of its review copy - the firm's
+    copy, marked for Protected View - and nothing else opens it."""
+    row = _parked_row("statement.pdf", code)
+    payload = api._review_payload(row)
+    assert payload["bucket"] == api.BUCKET_DOCUMENT
+    assert payload["open_key"] == f"review_copy {ledger_key(row)}", payload
+
+
+def test_every_parked_row_ships_a_unique_handle_and_a_program_from_a_zip_is_answered_by_it(
+    capsys, demo_root, tmp_path,
+):
+    """The review's M3: a program taken from a zip has no location, so the
+    row, its triage and every review command travel by ``handle`` - the
+    record's key, unique where ``""`` named every such row and the API
+    refused it. Setting the first aside by its handle sets aside that row
+    and no other; the card also shows a hidden program's type clean (M1)."""
+    import io
+    import zipfile
+
+    from tracker.filer import NOT_REQUESTED
+
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.bmp")
+    packed = io.BytesIO()
+    with zipfile.ZipFile(packed, "w") as archive:
+        archive.writestr("invoice.js", b"WScript.Echo(1)")
+        archive.writestr("payroll.exe", b"MZ")
+    (inbox_of(engagement) / "docs.zip").write_bytes(packed.getvalue())
+    (inbox_of(engagement) / "Pay.scr\ufeff").write_bytes(b"MZ another program")
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    state = payload["state"]
+
+    parked = {e["original_name"]: e for e in state["index"] if e["decision"] == NEEDS_REVIEW}
+    handles = [e["handle"] for e in parked.values()]
+    assert "" not in handles and len(set(handles)) == len(handles)
+    assert {t["handle"] for t in state["review"]} == set(handles)
+    assert parked["Pay.scr"]["bucket"] == api.BUCKET_NOT_A_DOCUMENT
+    assert parked["Pay.scr"]["extension"] == "scr" and parked["Pay.scr"]["open_key"] == ""
+
+    first = parked["invoice.js"]
+    assert first["pbc_location"] == ""
+    code, payload = run(capsys, "dismiss", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": first["handle"], "note": "", "seq": first["seq"]})
+    assert code == 0, payload
+    after = {e["original_name"]: e["decision"] for e in payload["state"]["index"]
+             if e["original_name"] in ("invoice.js", "payroll.exe")}
+    assert after == {"invoice.js": NOT_REQUESTED, "payroll.exe": NEEDS_REVIEW}
 
 
 def test_dismissing_a_file_takes_it_out_of_the_review_queue(capsys, demo_root, tmp_path):
@@ -2077,6 +2215,7 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
                                   "file_moved": FILE_MOVED}
     assert vocab["review_labels"] == {
         "dismiss": api.DISMISS_LABEL, "dismiss_note": api.DISMISS_NOTE_HINT,
+        "came_from": api.CAME_FROM_SUBFOLDER,
         "dismissed_heading": api.DISMISSED_HEADING, "file": api.FILE_LABEL,
         "file_anyway": api.FILE_ANYWAY_LABEL,
         "unfile": api.UNFILE_LABEL, "unfile_note": api.UNFILE_NOTE_HINT,
@@ -2096,6 +2235,9 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
         "hand_over_request": api.HAND_OVER_REQUEST_LABEL,
         "handed_over": api.HANDED_OVER_LINE,
         "file_where_it_waits": api.FILE_WHERE_IT_WAITS_LABEL,
+        "buckets": api.BUCKET_HEADINGS, "bucket_order": list(api.BUCKET_HEADINGS),
+        "not_a_document": api.BUCKET_NOT_A_DOCUMENT,
+        "open_copy": api.OPEN_COPY_LABEL, "true_type": api.TRUE_TYPE,
         "keyword": api.KEYWORD_LABEL, "keyword_help": api.KEYWORD_HELP,
         "issuer_label": api.ISSUER_LABEL, "issuer_help": api.ISSUER_HELP,
         "issuer_add": api.ISSUER_ADD_LABEL, "issuer_not_rescanned": api.ISSUER_NOT_RESCANNED,
@@ -2164,6 +2306,7 @@ def _the_reminder_card_words_are_all_pythons(words):
         "last_drafted_line": reminder.LAST_DRAFTED_LINE,
         "never_drafted_line": reminder.NEVER_DRAFTED_LINE,
         "approved_line": reminder.APPROVED_LINE,
+        "approved_then_edited": reminder.APPROVED_THEN_EDITED,
         "edited_by_hand": reminder.EDITED_BY_HAND,
         "stage_toggle_hint": reminder.STAGE_TOGGLE_HINT,
         "copied": reminder.COPIED_NOTE,
@@ -2267,7 +2410,8 @@ def test_state_carries_the_held_rows_and_every_word_is_the_vocabularys(capsys, d
     seed_statuses(folder, {
         "A01": StatusUpdate(status=Status.MISSING),
         "C01": StatusUpdate(status=Status.FAILED, file_count=1,
-                            validation_notes="x.pdf: " + reasons.WRONG_DOCUMENT.format(listed="'1098'")),
+                            validation_notes="x.pdf: " + reasons.WRONG_DOCUMENT.format(listed="'1098'"),
+                            note_codes=reasons.WRONG_DOCUMENT.code),
     })
     code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(folder))
     assert code == 0
@@ -2780,7 +2924,8 @@ def test_a_held_reminder_shows_no_letter_and_offers_no_action(capsys, demo_root)
     folder = chased_engagement(capsys, demo_root, name="Held")
     seed_statuses(folder, {"B01": StatusUpdate(
         status=Status.FAILED, file_count=1,
-        validation_notes="x.pdf: " + reasons.WRONG_DOCUMENT.format(listed="'1098'"))})
+        validation_notes="x.pdf: " + reasons.WRONG_DOCUMENT.format(listed="'1098'"),
+        note_codes=reasons.WRONG_DOCUMENT.code)})
 
     card = reminder_card(capsys, folder)
     assert [row["identifier"] for row in card["held"]] == ["B01"]
@@ -2795,6 +2940,37 @@ def test_a_held_reminder_shows_no_letter_and_offers_no_action(capsys, demo_root)
                         stdin={"stage": card["stage"], "fingerprint": card["fingerprint"]})
     assert code == 1 and "the reminder is held" in payload["error"]
     assert list(folder.glob("reminder-draft*")) == []
+
+
+def test_a_letter_that_only_asks_about_a_program_is_offered_on_the_card(capsys, demo_root):
+    """The re-check's S-N1 on this surface: every request is in and a
+    program is parked. The card offers the letter that asks about it -
+    editable, as the scheduler writes it - at no stage, and a stage asked
+    for re-stages nothing, because a file that is not a document is no
+    rung."""
+    from tests.conftest import seed_index, seed_statuses
+    from tracker import reasons
+    from tracker.filer import IndexEntry
+    from tracker.manifest import StatusUpdate
+    from tracker.reminder import SECTION_FAILED, STAGE_4_CONSEQUENCES
+
+    folder = chased_engagement(capsys, demo_root, name="Program")
+    seed_statuses(folder, {"A01": StatusUpdate(status=Status.RECEIVED, file_count=1),
+                           "B01": StatusUpdate(status=Status.RECEIVED, file_count=1)})
+    seed_index(folder, [IndexEntry(
+        received="2026-02-01", original_name="setup.exe", size_kb=0.1, digest="5" * 64,
+        identifier="", prepared_location="", pbc_location="pbc/setup.exe",
+        decision=NEEDS_REVIEW, reason=reasons.NOT_A_DOCUMENT.format(),
+        code=reasons.NOT_A_DOCUMENT.code,
+    )])
+
+    for stage in (None, 4):
+        card = reminder_card(capsys, folder, stage=stage)
+        assert card["held"] == [] and card["editable"] is True
+        assert card["asked"] == []
+        assert STAGE_4_CONSEQUENCES not in card["text"]
+        assert f"{SECTION_FAILED}\n  - setup.exe - " in card["text"]
+        assert "still needed" not in card["subject"]
 
 
 def test_the_card_shows_the_inbox_hold_in_the_apis_words_and_offers_no_approve(capsys, demo_root):
@@ -2903,12 +3079,16 @@ def test_an_edited_file_is_approved_as_it_stands_and_the_toggle_is_disabled(caps
 
     after = reminder_card(capsys, folder)
     assert after["file"]["edited"] is True and after["editable"] is False
+    # Edited after the approval, so the approval lapsed (decision 190).
+    assert after["approved"] is None and after["lapsed"] is True
     assert after["letter"] == {} and "ask about the rental" in after["text"]
     assert after["html"].startswith("<div") and "ask about the rental" in after["html"]
     assert EDITED_BY_HAND  # the sentence the card shows beside it, from the vocabulary
     assert run(capsys, "approve", api.ENGAGEMENT_FLAG, str(folder),
                stdin={"stage": after["stage"], "fingerprint": after["fingerprint"]})[0] == 0
     assert written.read_bytes() == edited, "an edited draft is approved as it stands"
+    again = reminder_card(capsys, folder)
+    assert again["approved"] is not None and again["lapsed"] is False
 
 
 def test_approve_never_sends(capsys, demo_root, monkeypatch):
@@ -2959,7 +3139,8 @@ def test_an_edited_drafts_footer_is_neither_shown_nor_copied(capsys, demo_root):
     # it under the footer instead of asking for it...
     seed_statuses(folder, {"B01": StatusUpdate(
         status=Status.FAILED, file_count=1,
-        validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format())})
+        validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format(),
+        note_codes=reasons.NO_TEXT_LAYER.code)})
     # ...and a file nobody has identified yet puts the warning there too.
     review = folder / PREPARED_DIR_NAME / REVIEW_DIR_NAME
     review.mkdir(parents=True, exist_ok=True)
@@ -3400,7 +3581,7 @@ def test_roll_household_after_a_failed_retirement_says_what_was_rolled_and_left_
     assert payload["retired"] == []
     assert payload["not_retired"] == [f"Park Family {default_tax_year()} 1120S - Park Landscaping LLC"]
     assert payload["warning"].startswith(f"Rolled into {year}: 1040 - John Park, 1040 - Sofia Park.")
-    assert "Not retired: 1120S - Park Landscaping LLC (the disk filled)" in payload["warning"]
+    assert "Not retired: 1120S - Park Landscaping LLC (OSError)" in payload["warning"]
     assert load_engagement_info(llc).active is True
     assert payload["state"]["paths"]["engagement"] == payload["rolled"][0]["created"]
 
@@ -3764,7 +3945,8 @@ def test_the_household_card_shows_every_returns_reminder_state(capsys, demo_root
     assert [one["return_name"] for one in returns] == [
         "1040 - John Park", "1120S - Park Landscaping"]
     for one in returns:
-        assert one["reminder"] == {"last": None, "approved": None, "held": 0, "unsorted": 0}
+        assert one["reminder"] == {"last": None, "approved": None, "lapsed": False,
+                                   "held": 0, "unsorted": 0}
     # The words the card fills those numbers into are the reminder's own.
     words = run(capsys, "list")[1]["vocab"]["reminder"]
     assert words["never_drafted_line"] == reminder.NEVER_DRAFTED_LINE
@@ -3895,7 +4077,7 @@ def test_run_now_sorts_against_the_feed_list_like_the_scheduled_pass(capsys, dem
     assert code == 0, payload
     assert read_index(llc) == []                    # the pass files nothing across
     [row] = read_index(father)
-    assert row.decision == NEEDS_REVIEW and reasons.NAMED_ACROSS_HOUSEHOLDS.matches(row.reason)
+    assert row.decision == NEEDS_REVIEW and row.code == reasons.NAMED_ACROSS_HOUSEHOLDS.code
     assert row.waiting_for.identifiers == ("B01",)
     assert payload["run"]["filed"] == 0
 
@@ -3944,6 +4126,36 @@ def test_a_waiting_row_offers_one_click_and_assign_waiting_files_it_with_no_targ
     assert code == 1
 
 
+def test_a_waiting_row_keeps_its_one_click_in_the_document_bucket_with_open_and_the_handle_it_is_drawn_by(
+        capsys, demo_root):
+    """Decision 190's three buckets over decision 204's one click: the row
+    that waits for another household's return is a document the tracker
+    read - the document bucket, with **Open** on its marked copy (its code
+    is on the allow-list) - and its triage entry, keyed by the handle the
+    card now draws a row by, still carries the click. Sent back with that
+    handle, the click files it exactly as 204 built it."""
+    from tracker import reasons
+
+    father, llc = two_households(capsys, demo_root)
+    waiting = waiting_document(capsys, father)
+    code, state = run(capsys, "state", api.ENGAGEMENT_FLAG, str(father))
+    assert code == 0, state
+    [row] = [e for e in state["index"] if e["decision"] == NEEDS_REVIEW]
+
+    assert row["code"] == reasons.NAMED_ACROSS_HOUSEHOLDS.code in api.READ_AND_PARKED_CODES
+    assert row["bucket"] == waiting["bucket"] == api.BUCKET_DOCUMENT
+    assert row["open_key"] and Path(state["paths"][row["open_key"]]).is_file()
+    assert waiting["handle"] == row["handle"]
+    assert waiting["waits_for"]["target"] == str(llc) and waiting["waits_for_refused"] == ""
+
+    code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(father),
+                        stdin={"original": waiting["handle"], "seq": waiting["seq"], "waiting": True})
+    assert code == 0, payload
+    assert payload["handed_over"]["identifier"] == "B01"
+    [taken] = read_index(llc)
+    assert taken.decision == FILED and taken.identifier == "B01"
+
+
 def test_a_waiting_row_whose_feed_was_trimmed_offers_no_click_and_says_not_fed(capsys, demo_root):
     """R-8: a claim that no longer resolves offers nothing. The card says why
     in the words a hand-over is refused with, the click sent anyway is
@@ -3972,8 +4184,11 @@ def test_a_claim_is_offered_only_on_the_row_the_click_would_take(capsys, demo_ro
     """The review's S-3: the card offers the click on exactly the rows the
     filer's refusal lets through - still parked, with the named-across
     reason. The same claim on a row a person set aside, or under any other
-    reason, draws no button and no sentence."""
+    cause, draws no button and no sentence. The cause is the row's code
+    (decision 190): its sentence reworded changes nothing."""
     from dataclasses import replace
+
+    from tracker import reasons
 
     father, llc = two_households(capsys, demo_root)
     waiting = waiting_document(capsys, father)
@@ -3981,8 +4196,10 @@ def test_a_claim_is_offered_only_on_the_row_the_click_would_take(capsys, demo_ro
     fed = lambda: {llc: "Park & Lee LLC 2025 1120S - Park & Lee LLC"}  # noqa: E731
     offer, _said = api._waiting_payload(father, row, fed)
     assert offer == waiting["waits_for"]
-    for other in (replace(row, decision="Not Requested"), replace(row, reason="a reason of its own")):
+    for other in (replace(row, decision="Not Requested"),
+                  replace(row, code=reasons.UNNAMED_ACROSS_HOUSEHOLDS.code)):
         assert api._waiting_payload(father, other, fed) == (None, "")
+    assert api._waiting_payload(father, replace(row, reason="a reason of its own"), fed)[0] == offer
 
 
 def test_a_waiting_row_whose_return_has_no_room_offers_no_click_and_says_so_in_that_returns_words(
@@ -6279,6 +6496,36 @@ def test_an_unexpected_error_is_said_by_class_on_screen_and_in_full_only_in_the_
     assert "Traceback" in logged and "templates failed" in logged
 
 
+def test_a_broken_journal_is_said_in_the_firms_sentence_with_its_line_and_run_recover(
+        capsys, demo_root, monkeypatch, tmp_path):
+    """Decision 190's landing review, MF1: the app says a LedgerError as the
+    status page and the run report do - whole, with its line and the one
+    instruction that fixes it - while a disk's or a store's failure stays
+    by its class and code."""
+    return_dir = tmp_path / "1040 - Sample Household"
+    return_dir.mkdir()
+    ledger.path_for(return_dir).write_bytes(b"this line is not an event\n{}\n")
+
+    def reads_the_broken_journal(argv):
+        ledger.read_events(return_dir)
+
+    monkeypatch.setitem(api.COMMANDS, "templates", reads_the_broken_journal)
+    code, payload = run(capsys, "templates")
+    sentence = ledger.NOT_AN_EVENT.format(name=ledger.path_for(return_dir).name, line=1,
+                                          why="it is not JSON")
+    assert code == 1 and payload["error"] == sentence, payload
+    assert payload["failure"]["kind"] == "refused" and ledger.RUN_RECOVER in payload["error"]
+
+    for raised, kind in ((ledger.RecordNotWritten("ENOSPC"), "RecordNotWritten (ENOSPC)"),
+                         (store.StoreUnavailable("SQLITE_BUSY"), "StoreUnavailable (SQLITE_BUSY)")):
+        def fails(argv, raised=raised):
+            raise raised
+
+        monkeypatch.setitem(api.COMMANDS, "templates", fails)
+        code, payload = run(capsys, "templates")
+        assert code == 1 and said_by_class(payload, kind), payload
+
+
 def test_the_error_log_rotates_and_never_syncs_to_disk(capsys, demo_root, monkeypatch):
     from tracker import settings
     from tracker.settings import error_log_path
@@ -6918,9 +7165,11 @@ def _sided_engagement(capsys, demo_root):
     seed_statuses(folder, {
         "A01": StatusUpdate(status=Status.MISSING),
         "B01": StatusUpdate(status=Status.FAILED, file_count=1,
-                            validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format()),
+                            validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format(),
+                            note_codes=reasons.NO_TEXT_LAYER.code),
         "C01": StatusUpdate(status=Status.FAILED, file_count=1,
-                            validation_notes="1099.pdf: " + reasons.WRONG_DOCUMENT.format(listed="'1098'")),
+                            validation_notes="1099.pdf: " + reasons.WRONG_DOCUMENT.format(listed="'1098'"),
+                            note_codes=reasons.WRONG_DOCUMENT.code),
         "D01": StatusUpdate(status=Status.RECEIVED, file_count=1),
     })
     return folder
@@ -7037,7 +7286,7 @@ def test_a_card_parked_for_an_unnamed_issuer_offers_the_next_free_issuer_row(cap
     from tracker import reasons
 
     engagement, row = _issuer_return(capsys, demo_root)
-    assert reasons.ISSUER_NOT_NAMED.matches(row["reason"])
+    assert row["code"] == reasons.ISSUER_NOT_NAMED.code
     [card] = api._state(engagement)["review"]
     assert card["issuer"] == {"identifier": "F03"}
 

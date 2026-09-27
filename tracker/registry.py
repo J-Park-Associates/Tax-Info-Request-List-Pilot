@@ -67,8 +67,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from tracker import layout, ledger, store
-from tracker.content_check import said_as_class
+from tracker import errors, layout, ledger, store
 from tracker.households import load_household_info, pause_of
 from tracker.ledger import LedgerError
 from tracker.manifest import ManifestError, load_engagement_info
@@ -337,12 +336,13 @@ def _children(folder: Path, found: _Walk) -> list[Path] | None:
     try:
         return sorted((p for p in folder.iterdir() if p.is_dir()), key=lambda p: p.name.lower())
     except OSError as exc:
-        # By its class and code, never its text (decision 193, security
-        # principle 7): the text names the folder, and this sentence reaches
-        # the app, the page and the run log. The whole of it goes to the
-        # local error log only.
-        found.misfits.append(Misfit(folder, UNLISTED.format(error=said_as_class(exc))))
-        log.warning("Could not list a folder (%s)", said_as_class(exc), exc_info=True)
+        # By its class and code, never its text (decisions 190 and 193,
+        # security principle 7): the text names the folder, and this sentence
+        # reaches the app, the page and the run log. The whole of it is kept
+        # on the debug log only (errors.keep).
+        errors.keep("registry", exc, name=folder.name)
+        found.misfits.append(Misfit(folder, UNLISTED.format(error=errors.error_class(exc))))
+        log.warning("Could not list a folder (%s)", errors.error_class(exc))
         return None
 
 
@@ -542,8 +542,9 @@ def household_from(folder: Path) -> Household:
             return Household(path=folder, problem=MISFIT_RECORD_MISPLACED)
     except (ManifestError, LedgerError, StoreError) as exc:
         return Household(path=folder, problem=str(exc))
-    except Exception as exc:        # one folder's surprise, said, not fatal
-        return Household(path=folder, problem=f"{type(exc).__name__}: {exc}")
+    except Exception as exc:        # one folder's surprise, said by its class, not fatal
+        errors.keep("registry: the household's record", exc, name=folder.name)
+        return Household(path=folder, problem=errors.error_class(exc))
     return Household(path=folder, info=info)
 
 
@@ -566,8 +567,12 @@ def engagement_from(folder: Path) -> Engagement:
         rules = store.rules(store.connect(), folder) or []
     except (ManifestError, LedgerError, StoreError) as exc:
         return Engagement(path=folder, problem=str(exc), household_path=household_path)
-    except Exception as exc:        # one folder's surprise, said, not fatal
-        return Engagement(path=folder, problem=f"{type(exc).__name__}: {exc}",
+    except Exception as exc:        # one folder's surprise, said by its class, not fatal
+        # Never its message: an OS error's names the record's path, a
+        # client's folder, and the problem reaches the page, the app and
+        # the run log (decision 190). The words go to the debug log.
+        errors.keep("registry: the return's record", exc, name=folder.name)
+        return Engagement(path=folder, problem=errors.error_class(exc),
                           household_path=household_path)
     if not rules and (folder / LEGACY_MANIFEST_FILENAME).is_file():
         return Engagement(path=folder, info=info, household_path=household_path,
@@ -770,7 +775,8 @@ def households_named(private: Path | str, names: Iterable[str]) -> Registry:
                            if entry.is_dir() and layout.name_key(entry.name) in wanted),
                           key=lambda p: p.name.lower())
     except OSError as exc:
-        raise RegistryError(f"the firm's tree could not be listed ({type(exc).__name__})") from None
+        errors.keep("registry", exc, name=private.name)
+        raise RegistryError(f"the firm's tree could not be listed ({errors.error_class(exc)})") from None
     found = _Walk()
     for child in kept:
         _walk_one_household(child, found)

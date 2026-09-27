@@ -69,7 +69,7 @@ from collections.abc import Callable
 from contextlib import ExitStack
 from dataclasses import asdict, replace
 from functools import cache
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 
 from tracker import (
@@ -77,6 +77,7 @@ from tracker import (
     checkpoint,
     content_check,
     door,
+    errors,
     layout,
     ledger,
     names,
@@ -88,6 +89,7 @@ from tracker import (
     review,
     store,
 )
+from tracker.containers import is_container
 from tracker.filer import (
     DUPLICATE,
     FILE_MOVED,
@@ -152,6 +154,7 @@ from tracker.layout import (
     locate,
     originals_dir_for,
     private_household_dir,
+    recorded_name,
     return_dir_for,
     year_of,
 )
@@ -352,6 +355,7 @@ from tracker.templates import (  # the catalog; re-exported for the dialog
     shift_item,
     template_items,
 )
+from tracker.validators import extension_of, is_program
 from tracker.view import (
     SET_ASIDE_GROUP,
     SET_ASIDE_SECTION,
@@ -483,10 +487,14 @@ def _warn(sentence: str) -> None:
 def _failure_of(exc: BaseException) -> dict:
     """The one rule for how an error is said (decision 193, ruling 3):
     ``{"sentence", "kind", "seq", "identifier"}``, plus ``lock`` when
-    another pass holds the return. In this order: stale, locked, the
-    record's and the store's own failures by class (their text can quote
-    a journal line), the tracker's worded refusals, and anything else by
-    class."""
+    another pass holds the return. In this order: stale, locked, a
+    checkpoint left behind, the disk's and the store's failures by class
+    and code (:class:`~tracker.ledger.RecordNotWritten`,
+    :class:`~tracker.store.StoreUnavailable`), the tracker's worded
+    refusals - a broken journal's :class:`~tracker.ledger.LedgerError`
+    among them, said whole with its line and "Run recover" as the status
+    page and the run report say it (decision 190's landing review, MF1:
+    one rule for one question) - and anything else by class."""
     seq = getattr(exc, "seq", None)
     identifier = getattr(exc, "identifier", None)
     if seq is None:
@@ -506,15 +514,15 @@ def _failure_of(exc: BaseException) -> dict:
         # sits beside the program (the rebase review of 186, MF1): said as
         # the first screen says it - what to move and where - not as an error.
         kind, sentence = "refused", _left_behind_to_move(exc)
-    elif isinstance(exc, (store.StoreUnavailable, ledger.RecordNotWritten, ledger.LedgerError)):
-        kind, sentence = "failed", FAILED.format(kind=content_check.said_as_class(exc),
+    elif isinstance(exc, (store.StoreUnavailable, ledger.RecordNotWritten)):
+        kind, sentence = "failed", FAILED.format(kind=errors.error_class(exc),
                                                  log=ERROR_LOG_FILENAME)
     elif isinstance(exc, (ManifestError, FilingError, door.DoorError, layout.LayoutError,
                           SettingsError, reminder.ReminderError, RegistryError,
-                          store.StoreError)):
+                          store.StoreError, ledger.LedgerError)):
         kind, sentence = "refused", str(exc)
     else:
-        kind, sentence = "failed", FAILED.format(kind=content_check.said_as_class(exc),
+        kind, sentence = "failed", FAILED.format(kind=errors.error_class(exc),
                                                  log=ERROR_LOG_FILENAME)
     reply = progress.failure_reply(sentence, kind, seq=seq, identifier=identifier, **extra)
     return reply["failure"]
@@ -687,6 +695,13 @@ ROLLOVER_UNTICKED_NOTE = ("A return left unticked is retired for {year}: it is s
 #: on what is already filed, and what it asks them for. The renderer shows
 #: these; it types none of them.
 DISMISS_LABEL = "Not requested"
+#: What the card says of a row whose file the client dropped inside a
+#: folder of their own in the inbox (decision 147), filled from the row's
+#: own Client's Subfolder column. The sentence every such row's Reason used
+#: to end with, moved here unchanged when the subfolder became a column
+#: (decision 190): a folder the client called "not allowed" was read as
+#: the file type being refused.
+CAME_FROM_SUBFOLDER = "came from the client's subfolder '{folder}'"
 DISMISS_NOTE_HINT = "why nothing asks for it (optional)"
 DISMISSED_HEADING = "Not requested ({n})"
 FILE_LABEL = "File it"
@@ -734,6 +749,86 @@ OPEN_IN_LIST_LABEL = "Pick another request"
 CARD_MODE_LABEL = "One at a time"
 LIST_MODE_LABEL = "All at once"
 CARD_POSITION = "{n} of {total}"
+
+#: The review card's three buckets (decision 190), decided here from the
+#: row's code and its name on disk - never by the renderer: a document, an
+#: email or a zip, and a file that is not a document at all. The keys
+#: travel on each parked row as ``bucket``; the headings are the words the
+#: card groups them under.
+BUCKET_DOCUMENT = "document"
+BUCKET_CONTAINER = "container"
+BUCKET_NOT_A_DOCUMENT = "not_a_document"
+BUCKET_HEADINGS = {
+    BUCKET_DOCUMENT: "Documents",
+    BUCKET_CONTAINER: ("Emails and zips - opened, if at all, "
+                       f"{reasons.OTHER_MACHINE}, never this one"),
+    BUCKET_NOT_A_DOCUMENT: "Not documents - do not open; ask the client what they meant to send",
+}
+#: Open is an allow-list (decision 190, following 184): the codes of a
+#: document the tracker **read** and parked for a filing reason - no request
+#: or more than one accepted it, a request contested it, its name is not on
+#: the page or names another return or another household's person (decision
+#: 204, which waits for one click), its forms would not sort, its issuer
+#: is not named, it shows its form number, it came from an email or a zip
+#: and is not filed across households, and the others of that kind. Only a
+#: row carrying one of these opens its marked copy on this machine, the one
+#: that holds the Drive sign-in and every client folder. A text file read
+#: only in part (``reasons.TEXT_CUT``, bounded by 178) has no code of its
+#: own - the cut is appended to the verdict it explains - so it keeps Open
+#: where that verdict is here.
+READ_AND_PARKED_CODES = frozenset((
+    reasons.UNMATCHED_CODE, reasons.AMBIGUOUS_CODE, reasons.OCR_ONLY_CODE,
+    reasons.CONTESTED_CODE, reasons.SEVERAL_FORMS_UNSORTED_CODE,
+    reasons.CONTESTED_BETWEEN_RETURNS_CODE, reasons.NO_ROOM_CODE,
+    *(reason.code for reason in (
+        reasons.WRONG_DOCUMENT, reasons.NO_EXPECTED_KEYWORD, reasons.WRONG_PERIOD,
+        reasons.ISSUER_NOT_NAMED, reasons.SHOWS_ITS_FORM_NUMBER, reasons.NAME_POINTS_AT,
+        reasons.NAME_NOT_ON_PAGE, reasons.NAMES_ANOTHER_RETURN, reasons.NO_PEOPLE_ON_FILE,
+        reasons.UNNAMED_ACROSS_HOUSEHOLDS, reasons.OPENED_NOT_ACROSS,
+        # read, and it names another household's person: it waits for one
+        # click (decision 204), and a person looks at it before clicking
+        reasons.NAMED_ACROSS_HOUSEHOLDS)),
+))
+#: Every other code, which offers no Open here - listed, not derived, so
+#: that each code is placed by a person and a test proves every code is in
+#: exactly one of the two sets. The allow-list fails closed: a code nobody
+#: has placed yet, or a row with no code, gets no Open. The person asks the
+#: client to send it again, or opens it under 184's rule, on another
+#: machine.
+NO_OPEN_CODES = frozenset((
+    # a reading the tracker refused or could not finish
+    *(reason.code for reason in (
+        reasons.UNREADABLE_PDF, reasons.UNREADABLE_IMAGE, reasons.EXTRACTION_FAILED,
+        reasons.OCR_FAILED, reasons.READING_CRASHED, reasons.READING_STOPPED,
+        reasons.TOO_LARGE, reasons.PASSWORD_PROTECTED, reasons.NO_PAGES,
+        reasons.NO_READABLE_TEXT, reasons.NO_TEXT_AFTER_OCR, reasons.READER_UNAVAILABLE,
+        # a file the tracker did not read: no decoder, no reader on this
+        # machine, a type or a size it refuses, a cloud placeholder, gone
+        reasons.HEIC_NOT_SUPPORTED, reasons.NO_TEXT_LAYER, reasons.EXTENSION_NOT_ALLOWED,
+        reasons.GOOGLE_STUB, reasons.TOO_SMALL, reasons.UNCHECKABLE_TYPE,
+        reasons.PENDING_SYNC, reasons.VANISHED,
+        # not a document, and an email or a zip (their buckets say so too)
+        reasons.NOT_A_DOCUMENT, reasons.CONTAINER_LOCKED, reasons.CONTAINER_DAMAGED,
+        reasons.CONTAINER_EMPTY, reasons.CONTAINER_LIMIT,
+        # a working copy that is not the bytes the record filed, or not there
+        reasons.FILE_MOVED, reasons.COPY_CHANGED, reasons.COPY_MISSING,
+        reasons.COPY_AND_ORIGINAL_GONE, reasons.ANSWER_NOT_COUNTED,
+        reasons.INTERRUPTED_MOVE, reasons.INTERRUPTED_MOVE_LOST)),
+    # every request refused the file's type, so it was never read
+    reasons.NO_REQUEST_ACCEPTS_CODE,
+    # the filer's catch-all, which can stop inside a reading
+    reasons.COULD_NOT_FILE_CODE,
+    # a person's action, which can follow a refused reading as well as a read one
+    reasons.UNFILED_BY_PERSON_CODE, reasons.DISMISSED_BY_PERSON_CODE,
+    reasons.ASSIGNED_BY_PERSON_CODE, reasons.PUT_BACK_REFUSED_CODE,
+    # a filed row's, never a parked one's
+    reasons.MATCHED_CODE, reasons.SEVERAL_FORMS_CODE, reasons.FILED_WHOLE_CODE,
+))
+#: The action that opens a parked row's review copy - the firm's copy in
+#: the private tree, marked for Protected View when it can carry macros -
+#: and what the card says beside a not-a-document row's true type.
+OPEN_COPY_LABEL = "Open"
+TRUE_TYPE = "a .{extension} file"
 #: What a review command says when it was sent without the row's sequence
 #: number (decision 112). The app is drawn from ``state``, which carries one
 #: for every row, so a spec without it is a caller acting on no view at all -
@@ -1130,6 +1225,7 @@ def _vocab() -> dict:
         "decisions": {"filed": FILED, "needs_review": NEEDS_REVIEW, "duplicate": DUPLICATE,
                       "dismissed": NOT_REQUESTED, "file_moved": FILE_MOVED},
         "review_labels": {"dismiss": DISMISS_LABEL, "dismiss_note": DISMISS_NOTE_HINT,
+                          "came_from": CAME_FROM_SUBFOLDER,
                           "dismissed_heading": DISMISSED_HEADING, "file": FILE_LABEL,
                           "file_anyway": FILE_ANYWAY_LABEL,
                           "unfile": UNFILE_LABEL, "unfile_note": UNFILE_NOTE_HINT,
@@ -1169,6 +1265,12 @@ def _vocab() -> dict:
                           # another household's person, filed where it
                           # waits, with nothing picked on the page.
                           "file_where_it_waits": FILE_WHERE_IT_WAITS_LABEL,
+                          # Decision 190's three buckets, the action that
+                          # opens a review copy, and a program's true type.
+                          "buckets": dict(BUCKET_HEADINGS),
+                          "bucket_order": list(BUCKET_HEADINGS),
+                          "not_a_document": BUCKET_NOT_A_DOCUMENT,
+                          "open_copy": OPEN_COPY_LABEL, "true_type": TRUE_TYPE,
                           # Decision 201: the keyword box's label and title,
                           # and the unnamed issuer's box, sentence and button.
                           "keyword": KEYWORD_LABEL, "keyword_help": KEYWORD_HELP,
@@ -1379,6 +1481,7 @@ def _vocab() -> dict:
             "last_drafted_line": reminder.LAST_DRAFTED_LINE,
             "never_drafted_line": reminder.NEVER_DRAFTED_LINE,
             "approved_line": reminder.APPROVED_LINE,
+            "approved_then_edited": reminder.APPROVED_THEN_EDITED,
             "edited_by_hand": reminder.EDITED_BY_HAND,
             "stage_toggle_hint": reminder.STAGE_TOGGLE_HINT,
             "copied": reminder.COPIED_NOTE,
@@ -1645,6 +1748,84 @@ def _evidence_payload(entry: IndexEntry) -> dict[str, list[dict]]:
             for identifier, found in entry.evidence_record.items()}
 
 
+#: The codes a parked email or zip is refused with (decision 143).
+_CONTAINER_CODES = frozenset(reason.code for reason in (
+    reasons.CONTAINER_LOCKED, reasons.CONTAINER_DAMAGED, reasons.CONTAINER_EMPTY,
+    reasons.CONTAINER_LIMIT))
+
+
+def _name_on_disk(entry: IndexEntry) -> str:
+    """The name the row's original has on disk - raw, as the client named
+    it - or, for a program never written out of its email or zip, the name
+    it was recorded by."""
+    return PurePosixPath(entry.pbc_location).name if entry.pbc_location else entry.original_name
+
+
+def true_extension(entry: IndexEntry) -> str:
+    """The row's real type: the last suffix of its name on disk, lower case
+    and without the dot - what Windows would run it by (decision 190) -
+    as the recorded name spells it, so the card never prints an invisible
+    character (decision 190's review, M1)."""
+    return extension_of(Path(recorded_name(_name_on_disk(entry)).rstrip(". ")))
+
+
+def handle_of(entry: IndexEntry) -> str:
+    """The one handle a review command names a row by (decision 190's
+    review, M3): its original's location, or - for a program never written
+    out of its email or zip, which has none - the record's key for the row
+    (:func:`tracker.records.ledger_key`), which is unique where ``""``
+    would name every such row at once. Every lookup the review commands
+    make (:func:`tracker.filer.find_parked` and its siblings) accepts it."""
+    return ledger_key(entry)
+
+
+def review_bucket(entry: IndexEntry) -> str:
+    """Which of the review card's buckets a parked row sits in (decision
+    190): read from its code, and from its type on disk, never from its
+    sentence. A program recorded before the code existed is still not a
+    document, because the card must never offer to open one."""
+    name = _name_on_disk(entry)
+    # Either name saying program is enough (decision 190's review, M1): the
+    # raw one on disk, and the recorded one the review copy was named by.
+    if (entry.code == reasons.NOT_A_DOCUMENT.code or is_program(name)
+            or is_program(entry.original_name)):
+        return BUCKET_NOT_A_DOCUMENT
+    if entry.code in _CONTAINER_CODES or is_container(name):
+        return BUCKET_CONTAINER
+    return BUCKET_DOCUMENT
+
+
+def _review_copy_key(entry: IndexEntry) -> str:
+    """The key under ``paths`` of a parked row's review copy, or ``""``
+    where the card offers no Open. The shell opens only a path the API has
+    named (``paths``), so the copy is named there and the row carries only
+    its key, and the renderer offers Open exactly where there is one.
+
+    Open follows 184 (decision 190): only a document the tracker read and
+    parked for a filing reason opens its marked copy on this machine. A
+    not-a-document row never does; an email or a zip never does - it is
+    opened, if at all, on a machine with no Drive sign-in and no client
+    folder; nor does any row whose code is not on the allow-list
+    (:data:`READ_AND_PARKED_CODES`) - a refused reading, a file the tracker
+    did not read, a code nobody has placed yet; nor a row with no copy."""
+    if entry.decision != NEEDS_REVIEW or not entry.prepared_location:
+        return ""
+    if review_bucket(entry) != BUCKET_DOCUMENT or entry.code not in READ_AND_PARKED_CODES:
+        return ""
+    return f"review_copy {ledger_key(entry)}"
+
+
+def _review_payload(entry: IndexEntry) -> dict:
+    """What a parked row carries for the card beside its record: its
+    bucket, its true type and the key of the copy it opens. A set-aside
+    row carries its bucket too, so a program set aside is never offered
+    *File anyway*."""
+    if entry.decision not in (NEEDS_REVIEW, NOT_REQUESTED):
+        return {}
+    return {"bucket": review_bucket(entry), "extension": true_extension(entry),
+            "open_key": _review_copy_key(entry)}
+
+
 def _catalog_keys(form: str) -> frozenset[str]:
     """The identifiers the catalog of ``form`` has, compared the way the
     list compares them; none for a return with no catalog form recorded,
@@ -1668,7 +1849,7 @@ def _triage_payload(triaged: review.Triage, seqs: dict[str, int],
 
     The row itself is already in ``state["index"]``; what travels here is
     the part only :mod:`tracker.review` knows, joined back to that row by
-    ``pbc_location`` - the same handle every review command takes. The
+    ``handle`` (:func:`handle_of`) - the same handle every review command takes. The
     row's sequence number travels here too, beside the row rather than in
     it, so the card a person acts from carries the version of the record
     it was drawn on (decision 112).
@@ -1700,10 +1881,11 @@ def _triage_payload(triaged: review.Triage, seqs: dict[str, int],
     offer, refused = waiting
     entry = triaged.entry
     unnamed = (next_issuer is not None and entry.decision == NEEDS_REVIEW
-               and reasons.ISSUER_NOT_NAMED.matches(entry.reason))
+               and entry.code == reasons.ISSUER_NOT_NAMED.code)
     return {
         "original_name": triaged.entry.original_name,
         "pbc_location": triaged.entry.pbc_location,
+        "handle": handle_of(triaged.entry),
         "seq": seqs.get(ledger_key(triaged.entry)),
         "shortlist": [asdict(suggestion) for suggestion in triaged.shortlist],
         # The set-aside rows the evidence points at, named with their
@@ -1714,7 +1896,7 @@ def _triage_payload(triaged: review.Triage, seqs: dict[str, int],
         "waits_for": offer,
         "waits_for_refused": refused,
         "issuer": {"identifier": next_issuer} if unnamed else None,
-    }
+    } | _review_payload(triaged.entry)
 
 
 def _waiting_payload(engagement: Path, entry: IndexEntry,
@@ -1740,7 +1922,7 @@ def _waiting_payload(engagement: Path, entry: IndexEntry,
     """
     claim = entry.waiting_for
     if (claim is None or entry.decision != NEEDS_REVIEW
-            or not reasons.NAMED_ACROSS_HOUSEHOLDS.matches(entry.reason)):
+            or entry.code != reasons.NAMED_ACROSS_HOUSEHOLDS.code):
         return None, ""
     returns = fed()
     target = waiting_target(claim, returns)
@@ -1799,6 +1981,7 @@ def _moved_payload(engagement: Path, entries: list[IndexEntry], items,
         rows.append({
             "original_name": entry.original_name,
             "pbc_location": entry.pbc_location,
+            "handle": handle_of(entry),
             "seq": seqs.get(ledger_key(entry)),
             "home": entry.prepared_location,
             "now": now,
@@ -1868,20 +2051,22 @@ def _return_reminder(path: Path, today: dt.date, label: str = "") -> dict:
     the line, and a warning on the reply, by class; the full text goes to
     the error log.
     """
-    blank = {"last": None, "approved": None, "held": 0, "unsorted": 0}
+    blank = {"last": None, "approved": None, "lapsed": False, "held": 0, "unsorted": 0}
     try:
         items = load_manifest(path)
         entries = read_index(path)
         _, _, held = reminder.triage(items, entries)
         last = reminder.last_draft_event(path, carrying=ledger.FILE_KEY)
         approved = reminder.last_approved_event(path)
-        in_force = reminder.is_approved_this_week(
+        approval = reminder.approval_state(
             path, path / reminder.DRAFT_FILENAME,
             since=last_draft_day(today, DRAFT_WEEKDAY))
+        in_force = approval == reminder.APPROVED_NOTE
         unsorted = reminder.unsorted_in_inbox(path)
     except Exception as exc:                 # the card still draws, and says so
-        kind = content_check.said_as_class(exc)
-        log.warning("A reminder line could not be read (%s)", kind, exc_info=True)
+        kind = errors.error_class(exc)
+        errors.keep("api: _return_reminder", exc)
+        log.warning("A reminder line could not be read (%s)", kind)
         _warn(REMINDER_LINE_UNREADABLE.format(label=label or path.name, kind=kind))
         return {**blank, "unreadable": True, "kind": kind}
     return {
@@ -1890,6 +2075,9 @@ def _return_reminder(path: Path, today: dt.date, label: str = "") -> dict:
         "approved": ({"date": ledger.day_of(str(approved.get(ledger.AT_KEY, ""))).isoformat(),
                       "stage": approved.get(reminder.STAGE_KEY) or 0}
                      if approved and in_force else None),
+        # An approval the letter was edited after (decision 190): said as
+        # ``vocab.reminder.approved_then_edited`` in place of "approved".
+        "lapsed": approval == reminder.APPROVED_THEN_EDITED,
         "held": len(held),
         "unsorted": unsorted,
     }
@@ -1913,8 +2101,8 @@ def _the_practice() -> Registry | None:
     except EmptyRoot:
         return None
     except RegistryError as exc:
-        log.warning("The clients root could not be walked (%s)", content_check.said_as_class(exc),
-                    exc_info=True)
+        errors.keep("api: _the_practice", exc)
+        log.warning("The clients root could not be walked (%s)", errors.error_class(exc))
         _warn(PRACTICE_NOT_WALKED)
         return None
 
@@ -1954,8 +2142,8 @@ def _feed_payload(household_dir: Path, years: list[int]) -> tuple[list[dict], li
         try:
             practice = households_named(household_dir.parent, [one.household for one in info.feeds])
         except RegistryError as exc:
-            log.warning("The feeds could not be resolved (%s)", content_check.said_as_class(exc),
-                        exc_info=True)
+            errors.keep("api: _feed_payload", exc)
+            log.warning("The feeds could not be resolved (%s)", errors.error_class(exc))
             _warn(PRACTICE_NOT_WALKED)
             return ([{"household": one.household, "return_name": one.return_name,
                       "label": "", "path": "", "warning": PRACTICE_NOT_WALKED}
@@ -2024,23 +2212,26 @@ def _fed_by_payload(household_dir: Path) -> list[dict]:
         built = [Household(path=root.joinpath(*key.split("/")), info=info)
                  for key, info in store.households(conn)]
     except faults as exc:
+        errors.keep("api: fed_by", exc)
         log.warning("fed_by: the store's households could not be read at once (%s)",
-                    type(exc).__name__)
+                    errors.error_class(exc))
         try:
             conn = store.connect()
             with os.scandir(household_dir.parent) as entries:
                 folders = sorted(Path(entry.path) for entry in entries if entry.is_dir())
         except (*faults, OSError) as again:
-            log.warning("fed_by: nothing could be read one by one (%s)", type(again).__name__)
-            unreadable.append(type(again).__name__)
+            errors.keep("api: fed_by", again)
+            log.warning("fed_by: nothing could be read one by one (%s)", errors.error_class(again))
+            unreadable.append(errors.error_class(again))
             folders = []
         for folder in folders:
             try:
                 info = store.household_info(conn, folder)
             except faults as one:
+                errors.keep("api: fed_by", one)
                 log.warning("fed_by: one household's stored record could not be read (%s)",
-                            type(one).__name__)
-                unreadable.append(type(one).__name__)
+                            errors.error_class(one))
+                unreadable.append(errors.error_class(one))
                 continue
             if info is not None:
                 built.append(Household(path=folder, info=info))
@@ -2338,7 +2529,8 @@ def _state(engagement: Path) -> dict:
                                "candidates": e.candidate_list,
                                "answered": [identifier for identifier, _ in e.answered],
                                "evidence": _evidence_payload(e),
-                               "seq": seqs.get(ledger_key(e))}
+                               "handle": handle_of(e),
+                               "seq": seqs.get(ledger_key(e))} | _review_payload(e)
                   for e in entries],
         # The review queue, triaged: one entry per parked file, its
         # shortlist best-first with the sentence behind each suggestion.
@@ -2395,6 +2587,11 @@ def _state(engagement: Path) -> dict:
             # paths the API has named, and a person looking at one
             # engagement is one click from the whole practice.
             "status": str(root / STATUS_PAGE_FILENAME) if root else "",
+            # Each parked document's review copy (decision 190), for its
+            # card's Open: named here because the shell opens only the
+            # paths this map holds, and never for a not-a-document row.
+            **{key: str(locate(engagement, e.prepared_location)) for e in entries
+               if (key := _review_copy_key(e))},
         },
     }
 
@@ -2503,8 +2700,9 @@ def _record_pass(runs: list[EngagementRun] | EngagementRun,
         append_log(log_path(), RunReport(today=dt.date.today(), reminders=REMINDERS_NEVER,
                                          runs=every, warnings=said, warning_codes=codes))
     except Exception as exc:
-        log.warning("Could not write %s (%s)", LOG_FILENAME, exc.__class__.__name__)
-        failed.append(LOG_NOT_WRITTEN.format(kind=exc.__class__.__name__))
+        errors.keep("api: after the pass", exc, name=LOG_FILENAME)
+        log.warning("Could not write %s (%s)", LOG_FILENAME, errors.error_class(exc))
+        failed.append(LOG_NOT_WRITTEN.format(kind=errors.error_class(exc)))
     root = _saved_root()
     if root is None or not root.is_dir():
         return failed
@@ -2515,8 +2713,9 @@ def _record_pass(runs: list[EngagementRun] | EngagementRun,
     try:
         write_status_page(root, status_report(registry, passed=every, warnings=said + failed))
     except Exception as exc:
-        log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, exc)
-        failed.append(PAGE_NOT_WRITTEN.format(kind=exc.__class__.__name__))
+        errors.keep("api: after the pass", exc, name=STATUS_PAGE_FILENAME)
+        log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, errors.error_class(exc))
+        failed.append(PAGE_NOT_WRITTEN.format(kind=errors.error_class(exc)))
     return failed
 
 
@@ -2625,8 +2824,9 @@ def _cmd_scan(argv: list[str]) -> dict:
         # ManifestError included (the review's M2): the counts are the
         # pass's and stand, ``run.error`` already says what the pass met,
         # and the page is drawn again from the record by the app.
-        kind = content_check.said_as_class(exc)
-        log.warning("The page could not be redrawn after a pass (%s)", kind, exc_info=True)
+        kind = errors.error_class(exc)
+        errors.keep("api: _cmd_scan", exc)
+        log.warning("The page could not be redrawn after a pass (%s)", kind)
         payload["state"] = None
         _warn(STATE_NOT_REDRAWN.format(kind=kind))
     # The list from the pass's own walk, which adds none (decision 194, R7):
@@ -3012,8 +3212,8 @@ def _cmd_list(argv: list[str]) -> dict:
     except RegistryError as exc:
         # One that could not be walked is said, never answered as empty
         # (decision 193): the class to the log, the sentence to the page.
-        log.warning("The clients root could not be walked (%s)", content_check.said_as_class(exc),
-                    exc_info=True)
+        errors.keep("api: _cmd_list", exc)
+        log.warning("The clients root could not be walked (%s)", errors.error_class(exc))
         _warn(PRACTICE_NOT_WALKED)
         return {**empty, "needs_root": False, "root": str(root),
                 "root_problem": PRACTICE_NOT_WALKED, "vocab": _vocab(),
@@ -3103,8 +3303,8 @@ def _listing(registry: Registry | None = None) -> dict | None:
             return {"engagements": [], "households": [], "misfits": [], "root": str(root)}
         return _list_payload(root, walked)
     except (RegistryError, door.DoorError, SettingsError) as exc:   # the write stands (N4)
-        log.warning("The clients root could not be walked (%s)", content_check.said_as_class(exc),
-                    exc_info=True)
+        errors.keep("api: _listing", exc)
+        log.warning("The clients root could not be walked (%s)", errors.error_class(exc))
         _warn(PRACTICE_NOT_WALKED)
         return None
 
@@ -4097,7 +4297,7 @@ def _cmd_add_issuer_and_file(argv: list[str]) -> dict:
     try:
         scan_engagement(engagement)
     except ScanLockedError as exc:
-        scan_note = ISSUER_NOT_RESCANNED.format(kind=type(exc).__name__)
+        scan_note = ISSUER_NOT_RESCANNED.format(kind=errors.error_class(exc))
     _refresh_readmes(engagement)
     return {
         "added_and_filed": {
@@ -4364,8 +4564,9 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
     exists = path.is_file()
     edited = exists and not reminder.is_unedited(path)
     approved = reminder.last_approved_event(engagement)
-    in_force = reminder.is_approved_this_week(engagement, path,
-                                              since=last_draft_day(today, DRAFT_WEEKDAY))
+    approval = reminder.approval_state(engagement, path,
+                                       since=last_draft_day(today, DRAFT_WEEKDAY))
+    in_force = approval == reminder.APPROVED_NOTE
     # Said in the app, not only on the page (decision 193): a fresh draft
     # sitting beside an edited one, and a hold older than a week.
     if (engagement / reminder.NEW_DRAFT_FILENAME).is_file():
@@ -4379,7 +4580,10 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
     else:
         recorded = last.get(reminder.STAGE_KEY) if last else None
         stage = requested if requested is not None else (recorded or day_stage)
-        if draft.has_outstanding and stage != draft.stage:
+        # Only a letter with requests on it has a rung to re-stage: one that
+        # only asks about a file that is not a document has none (decision
+        # 190's re-check, S-N1).
+        if draft.lines and stage != draft.stage:
             try:
                 draft = reminder.draft_reminder(engagement, today=today, stage=int(stage))
             except reminder.ReminderError as exc:
@@ -4399,7 +4603,7 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
         subject, text = draft.subject, draft.body
         html, letter = reminder.render_html(draft), draft.letter
 
-    shown = f"{reminder.SUBJECT_PREFIX}{subject}\n\n{text}" if subject else text
+    shown = reminder.shown_text(subject, text)
     return {
         "draft": draft,
         "stage": stage,
@@ -4415,6 +4619,9 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
                       "stage": approved.get(reminder.STAGE_KEY) or 0,
                       "file": approved.get(ledger.FILE_KEY, "")}
                      if approved and in_force else None),
+        # The approval lapsed because the letter was edited after it
+        # (decision 190): the card says so rather than "approved".
+        "lapsed": approval == reminder.APPROVED_THEN_EDITED,
         "file": {"name": path.name, "exists": exists, "edited": edited, "path": str(path)},
         "subject": subject,
         "text": text,
@@ -4482,8 +4689,9 @@ def _reminder_said(engagement: Path) -> dict:
     except Exception as exc:
         failure = _failure_of(exc)
         if failure["kind"] == "failed":
+            errors.keep("api: _reminder_said", exc)
             log.warning("The Reminder card could not be composed (%s)",
-                        content_check.said_as_class(exc), exc_info=True)
+                        errors.error_class(exc))
         _warn(failure["sentence"])
         return {"reminder": None, "unreadable": failure["sentence"]}
 
@@ -4587,7 +4795,8 @@ def _short_of_room(root: Path) -> list[dict]:
         try:
             room = room_for(engagement.path, load_manifest(engagement.path))
         except Exception as exc:          # the pass and the picker say this return's problem
-            log.warning("Could not measure %s (%s)", engagement.label, exc)
+            errors.keep("api", exc, name=engagement.label)
+            log.warning("Could not measure %s (%s)", engagement.label, errors.error_class(exc))
             continue
         if room.short or room.parks:
             short.append({"engagement": engagement.label, "short": room.short, "parks": room.parks,
@@ -4729,6 +4938,8 @@ COMMANDS = {
 }
 
 
+
+
 def main(argv: list[str]) -> int:
     """Run one command and print its one reply (decision 193's envelope):
     ``warnings`` on every reply, ``failure`` beside ``error`` on every
@@ -4748,7 +4959,10 @@ def main(argv: list[str]) -> int:
                 payload = COMMANDS[argv[0]](argv[1:])
         except Exception as exc:  # said as JSON, never a traceback on screen
             if _failure_of(exc)["kind"] == "failed":
-                log.error("%s failed", argv[0], exc_info=True)   # the whole text: the log only
+                # Its class on the log line; its words and trace kept apart
+                # (decision 190), in the error log only.
+                errors.keep("api: " + argv[0], exc)
+                log.error("%s failed (%s)", argv[0], errors.error_class(exc))
             return _reply_failure(exc)
         finally:
             # The store is opened on first use by whatever command needed it;

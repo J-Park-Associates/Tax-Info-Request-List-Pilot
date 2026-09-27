@@ -201,6 +201,28 @@ def test_the_page_has_the_four_sections_and_a_navigation_to_each(engagement):
     assert view.VIEW_NOTE in page
 
 
+def test_the_page_carries_a_policy_allowing_only_its_own_style_and_script(engagement):
+    """The page sits in the office's folder, where anyone could edit it. Its
+    policy (decision 190) lets a browser run the style and the sort script
+    the page was written with, each by the SHA-256 of its text as it stands
+    on the page, and fetch nothing."""
+    import base64
+    import hashlib
+
+    view.write_view(engagement)
+    page = page_of(engagement)
+
+    def allowed(block: str) -> str:
+        digest = hashlib.sha256(block.encode("utf-8")).digest()
+        return f"'sha256-{base64.b64encode(digest).decode('ascii')}'"
+
+    (style,) = re.findall(r"<style>(.*?)</style>", page, re.S)
+    (script,) = re.findall(r"<script>(.*?)</script>", page, re.S)
+    (policy,) = re.findall(r'<meta http-equiv="Content-Security-Policy" content="([^"]*)">', page)
+    assert policy == f"default-src 'none'; style-src {allowed(style)}; script-src {allowed(script)}"
+    assert page.index("Content-Security-Policy") < page.index("<style>")
+
+
 def test_every_index_row_is_on_the_page_as_the_reader_gives_it(engagement):
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     drop(engagement, "puzzle.pdf", "a page about nothing anybody asked for")
@@ -379,7 +401,7 @@ def test_the_page_fetches_nothing_when_it_is_opened(engagement):
     page = page_of(engagement)
 
     assert "src=" not in page
-    assert "http" not in page
+    assert "://" not in page, "no address to fetch from"
     assert all(link.startswith("#") for link in re.findall(r'href="([^"]*)"', page))
 
 

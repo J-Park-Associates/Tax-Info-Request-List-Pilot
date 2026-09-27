@@ -62,10 +62,11 @@ wrote is renamed out of the way (``.v<N>.old``, never deleted) and a fresh
 one built from the journals, which also empties the verdict cache it
 keeps, so the next pass reads and OCRs every document again; a newer one
 is refused by name. A version is instead **upgraded in
-place** only where the change is one new column that is additive, has an
-empty default, and that no journal line written before the new version
-can carry - so every existing row's true value is that default, and
-:func:`check` holds the column to the journal from then on. Each such step
+place** only where the change is new columns, each of which is additive
+and that no journal line written before the new version can carry - so
+every existing row's true value is empty, which the column holds as NULL
+exactly as a rebuild would, and :func:`check` holds the columns to the
+journal from then on (decision 204's one column; decision 190's three). Each such step
 is written out by name in :data:`_IN_PLACE` (from-version -> statements),
 never inferred; every other older version is set aside, and a newer one
 refused.
@@ -315,18 +316,60 @@ COPY_INSIDE_APP = ("{path} is inside the app's own folder {app}; a copy of the d
 #: fed return line and what its list accepted. It is the store's first
 #: **in-place** step (the module docstring's rule, :data:`_IN_PLACE`): no
 #: journal line before 204 carries the field, so every version-16 row
-#: waits for nothing, and a version-16 file gains the column with an empty
-#: default and keeps its verdict cache. Every other earlier version is set
-#: aside and rebuilt (decision 159, E3); a newer one refused.
-SCHEMA_VERSION = 17
+#: waits for nothing, and a version-16 file gains the column (NULL, as a
+#: rebuild writes it - decision 190) and keeps its verdict cache. Every
+#: other earlier version is set aside and rebuilt (decision 159, E3); a
+#: newer one refused.
+#: Version 18 (decision 190) added ``code`` and ``subfolder`` to
+#: ``documents`` and ``note_codes`` to ``statuses``: a row's cause, the
+#: client subfolder it came from and the causes a request's notes say, each
+#: a column rather than a phrase inside a sentence. It is an in-place step
+#: too, by the same rule applied to each column: all three are additive,
+#: and no journal line before 190 carries any of them, so
+#: every version-17 row's cause reads as ``""`` - not recorded, and nothing
+#: reads one out of its words - which is what a rebuild from the journals
+#: would give. The verdicts a version-17 file cached are kept as rows but no
+#: longer answer: they were cached before a verdict carried its code, and
+#: :data:`tracker.content_check.CACHE_VERSION` moved with this step.
+SCHEMA_VERSION = 18
 
 #: The explicit in-place upgrades (the module docstring's rule): the
 #: version a file is at, and the statements that bring it to the next one.
-#: Only a new additive column with an empty default that no earlier journal
-#: line can carry qualifies; anything else is a delete-and-rebuild bump.
+#: Only new additive columns that no earlier journal line can carry
+#: qualify; anything else is a delete-and-rebuild bump. Each is added with
+#: no default - NULL on every existing row, which is exactly what a rebuild
+#: writes for a line that does not carry the field, and what the records
+#: read back as empty - so ``store check`` compares the upgraded file with
+#: the journal and finds nothing. (A default of ``''`` would not be what a
+#: rebuild writes, and the check named every earlier row; decision 190
+#: found that in 204's step and made both steps add NULL.)
 _IN_PLACE: dict[int, tuple[str, ...]] = {
-    16: ("""ALTER TABLE documents ADD COLUMN "waits_for" TEXT DEFAULT ''""",),
+    16: ("""ALTER TABLE documents ADD COLUMN "waits_for" TEXT""",),
+    17: ("""ALTER TABLE documents ADD COLUMN "code" TEXT""",
+         """ALTER TABLE documents ADD COLUMN "subfolder" TEXT""",
+         """ALTER TABLE statuses ADD COLUMN "note_codes" TEXT"""),
 }
+
+#: The ``(table, column)`` pairs an in-place step added, read off
+#: :data:`_IN_PLACE` so that a new step is covered without a second list.
+#: In these columns only, ``store check`` holds NULL and ``''`` as the one
+#: value (decision 190's review of the port, S3): a file main's 204 step
+#: already upgraded, with its old ``DEFAULT ''``, holds ``''`` where a
+#: rebuild writes NULL, the records read both back as empty, and a person
+#: could act on the difference only by a full rebuild. Every other column
+#: still tells NULL from ``''``, and a real value still differs.
+_ADDED_IN_PLACE: frozenset[tuple[str, str]] = frozenset(
+    (words[2], words[5].strip('"'))
+    for statements in _IN_PLACE.values() for statement in statements
+    for words in (statement.split(),))
+
+
+def _agree(table: str, field: str, held: object, theirs: object) -> bool:
+    """Whether a store cell and the record's value are the same, for
+    :func:`check` - NULL and ``''`` as one in :data:`_ADDED_IN_PLACE`."""
+    if held == theirs:
+        return True
+    return (table, field) in _ADDED_IN_PLACE and held in (None, "") and theirs in (None, "")
 
 #: What a row of ``engagements`` holds the record of: one return, or one
 #: household (decision 125). Both are folders with a journal, keyed by
@@ -382,6 +425,10 @@ class StoreUnavailable(StoreError):
     ``SQLITE_IOERR_WRITE``); an error that did not come from the engine -
     a closed connection - has none and reads ``SQLITE_ERROR``.
     """
+
+    #: Said as ``<class> (<code>)`` by :func:`tracker.errors.error_class`
+    #: (the marker :data:`tracker.errors.SAYS_ITS_CODE`, decision 190).
+    says_its_code = True
 
     def __init__(self, code: str) -> None:
         super().__init__(STORE_UNAVAILABLE.format(code=code))
@@ -709,8 +756,8 @@ def open(path: Path | str) -> sqlite3.Connection:  # noqa: A001 - the store is o
     its record, proved against this machine's checkpoint. Until 159 an
     older store was refused until a person deleted it, and the sentence
     that told them to also offered "or run that version". **Except a
-    version upgraded in place** (decision 204, :data:`_IN_PLACE`): version
-    16 gains its column where it stands and keeps its verdict cache; only
+    version upgraded in place** (decisions 204 and 190, :data:`_IN_PLACE`):
+    versions 16 and 17 gain their columns where they stand; only
     an older version no in-place step reaches is set aside. The record
     checkpoint beside it is another file with its own version, and no step
     here touches it. The caller closes the connection.
@@ -1706,7 +1753,7 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
     events name a request and a word, both as text and neither blank, or
     the line is refused like any other.
     """
-    from tracker import layout
+    from tracker import layout, reasons
 
     name = event.get(ledger.EVENT_KEY)
 
@@ -1733,9 +1780,29 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
         if (code := layout.segment_problem(str(label))) is not None:
             refuse(f"carries {field!r} that is not one folder name ({code})")
 
+    def a_code(field: str, code: object, what: str) -> None:
+        # A cause's code is read by the letter, its holds and the review
+        # card (decision 190), so it is one this version names, or none.
+        if code and code not in reasons.KNOWN_CODES:
+            refuse(f"carries {what} whose {field!r} is not a cause's code")
+
     def a_row(row: dict) -> None:
         if problem := records.entry_problem(row):
             refuse(f"carries a row whose {problem}")
+        a_code("code", row.get("code"), "a row")
+        # The client's subfolder is written one folder name per part, each
+        # through layout.recorded_subfolder_part - the filer joins the parts
+        # below the inbox with a backslash. A part that rule would change
+        # ("." or "..", one holding "/", ":" or a control, one with nothing
+        # visible) is a name no writer wrote: the writer and this admission
+        # share the one rule (decision 190's review of the port, S2). Not
+        # the household and return name rule (layout.segment_problem): since
+        # decision 188 that refuses "2025", "_old" and "(scans)", which are
+        # folders a client may well make in their inbox.
+        subfolder = row.get("subfolder")
+        if subfolder and any(layout.recorded_subfolder_part(part) != part
+                             for part in str(subfolder).split("\\")):
+            refuse("carries a row whose 'subfolder' is not a name as the record keeps one")
         for field in ("pbc_location", "prepared_location", "container"):
             if row.get(field):
                 a_place(field, row[field], writes=False, what="a row")
@@ -1817,6 +1884,8 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
                 refuse("carries a status that is not a mapping")
             if problem := records.status_problem(stored):
                 refuse(f"carries a status whose {problem}")
+            for code in records.split_codes(stored.get("note_codes")):
+                a_code("note_codes", code, "a status")
     elif name == ledger.MOVING:
         # The intent is what a later pass will finish a half-made move
         # from, so its shape is checked here rather than trusted in the
@@ -1903,11 +1972,13 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
                 refuse(f"carries {key!r} that {problem}")
     elif name in (ledger.DRAFTED, ledger.DRAFT_APPROVED):
         # A week's draft (decision 118): what was asked and held, the file,
-        # its fingerprint and the stage - each read back by the app.
+        # its fingerprint and the stage - each read back by the app - and,
+        # on an approval, the fingerprint of the letter approved (decision
+        # 190), which the pass compares.
         for key in (ledger.ASKED_KEY, ledger.HELD_KEY):
             if key in event and (problem := records.text_list_problem(event[key])):
                 refuse(f"carries {key!r} that {problem}")
-        for key in (ledger.FILE_KEY, ledger.FINGERPRINT_KEY):
+        for key in (ledger.FILE_KEY, ledger.FINGERPRINT_KEY, ledger.TEXT_FINGERPRINT_KEY):
             if key in event and (problem := records.text_problem(event[key])):
                 refuse(f"carries {key!r} that {problem}")
         if event.get(ledger.STAGE_KEY) is not None and (
@@ -2537,8 +2608,12 @@ def _beside(conn: sqlite3.Connection, held: sqlite3.Connection | None = None):
         try:
             opened.close()
         except checkpoint.CheckpointError as exc:
-            log.warning("Could not close the record checkpoint (%s)", exc.code
-                        if isinstance(exc, checkpoint.CheckpointUnavailable) else type(exc).__name__)
+            # At call time: the store imports only the record, the journal,
+            # the lock and the checkpoint at load. By its class and code
+            # (decision 190).
+            from tracker import errors
+
+            log.warning("Could not close the record checkpoint (%s)", errors.error_class(exc))
 
 
 @dataclass
@@ -3167,7 +3242,7 @@ def _check_documents(
             continue
         for field in DOCUMENT_COLUMNS:
             theirs = _to_sql(row.get(field))
-            if held[field] != theirs:
+            if not _agree("documents", field, held[field], theirs):
                 problems.append(
                     f"{name}: index row {key!r}, {field}: the store says {held[field]!r}, "
                     f"the record says {theirs!r}")
@@ -3264,7 +3339,7 @@ def _check_statuses(
             continue
         for field in STATUS_COLUMNS:
             theirs = _to_sql(status.get(field))
-            if held[field] != theirs:
+            if not _agree("statuses", field, held[field], theirs):
                 problems.append(
                     f"{name}: request {identifier}, {field}: the store says {held[field]!r}, "
                     f"the record says {theirs!r}")
@@ -3577,8 +3652,11 @@ def recover(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | s
     except OSError as exc:
         # Said by its class and the folder, never a traceback, and nothing
         # was discarded: the replay comes only after the export (S2).
+        from tracker import errors
+
+        errors.keep("store", exc, name=base.parent.name)
         raise StoreError(EXPORT_NOT_WRITTEN.format(folder=base.parent,
-                                                   kind=exc.__class__.__name__)) from None
+                                                   kind=errors.error_class(exc))) from None
 
     problem, readable = "", 0
     try:
@@ -3834,7 +3912,7 @@ if __name__ == "__main__":
     # root held to the settings' rule, the folder a return's or a
     # household's place under it, rebuilt from its own names.
     from tracker import door
-
+    from tracker.layout import LayoutError
     try:
         clients_root = door.checked_root(ns.root)
         if ns.engagement:
@@ -3842,7 +3920,7 @@ if __name__ == "__main__":
                 one = door.return_dir(Path(ns.engagement).absolute(), root=clients_root)
             except ValueError:
                 one = door.household_dir(Path(ns.engagement).absolute(), root=clients_root)
-    except ValueError as exc:
+    except (door.DoorError, LayoutError) as exc:     # the door's own sentences
         parser.error(str(exc))
     if ns.command == "recover" and not ns.engagement:
         parser.error("recover needs --engagement <the return folder>")

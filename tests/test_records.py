@@ -546,3 +546,43 @@ def test_a_stored_waits_for_cell_is_refused_unless_it_reads_back_whole():
     row = {"received": "2026-07-01", "original_name": "w2.pdf", "size_kb": 1.0, "digest": "ab" * 32,
            "decision": "Needs Review", "reason": "", "waits_for": "a / b"}
     assert entry_problem(row) == f"'waits_for' {WAITS_FOR_BOUNDS}"
+
+
+def test_rows_written_before_190_read_as_cause_not_recorded():
+    """Decision 190. A row stored before the Code and Client's Subfolder
+    columns, and a status stored before its notes had codes, read back with
+    ``""`` in each: the cause was not recorded, and nothing here reads one
+    out of the sentence - even one that is a reason's own words, from a
+    subfolder named like another reason."""
+    from tracker import reasons
+    from tracker.records import StatusUpdate, status_from_json, status_to_json
+
+    old = {
+        "received": "2026-01-01", "original_name": "w2.pdf", "size_kb": 9.4, "digest": "d",
+        "identifier": "", "prepared_location": "", "pbc_location": "../w2.pdf",
+        "decision": "Needs Review",
+        "reason": f"{reasons.PASSWORD_PROTECTED.template}; "
+                  "came from the client's subfolder 'not allowed'",
+    }
+    entry = entry_from_json(old)
+    assert entry.code == "" and entry.subfolder == ""
+    assert entry_from_json({**old, "code": None, "subfolder": None}).code == ""
+    now = entry_from_json({**old, "code": reasons.PASSWORD_PROTECTED.code, "subfolder": "Scans"})
+    assert entry_from_json(entry_to_json(now)) == now
+
+    status = status_from_json({"status": "Failed Validation",
+                               "validation_notes": "x.pdf: " + reasons.NO_TEXT_LAYER.template})
+    assert status.note_codes == "" and status.note_code_list == []
+    coded = StatusUpdate(status="Failed Validation", note_codes=", ".join(
+        [reasons.NO_TEXT_LAYER.code, reasons.PASSWORD_PROTECTED.code]))
+    assert status_from_json(status_to_json(coded)) == coded
+    assert coded.note_code_list == [reasons.NO_TEXT_LAYER.code, reasons.PASSWORD_PROTECTED.code]
+
+
+def test_the_code_and_the_subfolder_are_columns_of_the_index():
+    """Decision 190: a row's cause and the client's subfolder each have a
+    column of their own - a header in the one layout table, so the Status
+    Report shows them - and the Reason carries neither."""
+    assert INDEX_LAYOUT["code"][0] == "Code"
+    assert INDEX_LAYOUT["subfolder"][0] == "Client's Subfolder"
+    assert {"Code", "Client's Subfolder"} <= set(INDEX_COLUMNS)

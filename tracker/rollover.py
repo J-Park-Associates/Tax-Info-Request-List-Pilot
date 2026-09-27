@@ -80,6 +80,7 @@ from contextlib import ExitStack
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+from tracker import errors
 from tracker.fsio import make_new_folders
 from tracker.households import (
     household_returns,
@@ -519,6 +520,14 @@ def _unfiled_last_year(prior_dir: Path) -> list[str]:
     Reported, never acted on: a request row needs a name and rules a person
     chooses. But a document that arrived and fitted nowhere is exactly the
     gap next year's list should close.
+
+    One line per original, keyed by where the original rests
+    (``pbc_location``, the record's own key), never by the name the client
+    gave it (decision 190): two different files called ``scan.pdf`` are two
+    documents never filed, and counting them as one would under-state the
+    gap. The line quotes the row's Reason, which since 190 carries no
+    subfolder - that is its own column, and the client's folder name is not
+    a reason anything was not filed.
     """
     from tracker.filer import NEEDS_REVIEW, ensure, read_index
 
@@ -530,11 +539,12 @@ def _unfiled_last_year(prior_dir: Path) -> list[str]:
         rows = read_index(prior_dir)
     except Exception:  # an unreadable index must never block a rollover
         return []
-    seen: dict[str, str] = {}
+    seen: dict[str, tuple[str, str]] = {}
     for row in rows:
-        if row.decision == NEEDS_REVIEW and row.original_name not in seen:
-            seen[row.original_name] = row.reason
-    return [f"{name} — {reason}" for name, reason in seen.items()]
+        key = row.pbc_location or row.digest or row.original_name
+        if row.decision == NEEDS_REVIEW and key not in seen:
+            seen[key] = (row.original_name, row.reason)
+    return [f"{name} — {reason}" for name, reason in seen.values()]
 
 
 # ------------------------------------------------------- the household roll ----
@@ -705,7 +715,9 @@ def roll_household(
         # A name the layout refuses (decision 188) is the plan's refusal too,
         # in the same voice (the port review's note).
         except (ManifestError, OSError, LayoutError) as exc:
-            raise ManifestError(_nothing_rolled(one.path.name, exc)) from exc
+            errors.keep("rollover", exc, name=one.path.name)
+            raise ManifestError(_nothing_rolled(
+                one.path.name, errors.said(exc, (ManifestError, LayoutError)))) from exc
         targets.add(name_key(roll.target.name))
         rolls.append(roll)
     # What nobody ticked is finished with: one details edit on its own
@@ -724,7 +736,8 @@ def roll_household(
             stored = _rows_as_stored(one.path)
             validated(stored, recorded=stored)
         except (ManifestError, OSError) as exc:
-            raise ManifestError(_nothing_rolled(one.path.name, exc)) from exc
+            errors.keep("rollover", exc, name=one.path.name)
+            raise ManifestError(_nothing_rolled(one.path.name, errors.said(exc, (ManifestError,)))) from exc
         retiring.append(one.path)
 
     result = HouseholdRollover(target_year=target_year)
@@ -743,7 +756,9 @@ def roll_household(
                 for target, folders in reversed(made):
                     _unmake(target, folders)
                 if isinstance(exc, (ManifestError, OSError)):
-                    raise ManifestError(_nothing_rolled(roll.prior.name, exc)) from exc
+                    errors.keep("rollover", exc, name=roll.prior.name)
+                    raise ManifestError(_nothing_rolled(
+                        roll.prior.name, errors.said(exc, (ManifestError,)))) from exc
                 raise
             result.rolled.append((roll.prior, roll.target, roll.report))
 
@@ -758,8 +773,10 @@ def roll_household(
                 save_rules(folder, _rows_as_stored(folder), replace(info, active=False),
                            lock_held=True)
             except Exception as exc:
+                errors.keep("rollover", exc, name=folder.name)
                 not_retired = RolledNotAllRetired(
-                    result, [one for one in retiring if one not in result.retired], exc)
+                    result, [one for one in retiring if one not in result.retired],
+                    errors.said(exc, (ManifestError,)))
                 break
             result.retired.append(folder)
 
@@ -777,7 +794,8 @@ def roll_household(
         try:
             step(household_dir)
         except Exception as exc:
-            not_retired.also.append(f"{step.__name__} failed ({exc})")
+            errors.keep("rollover", exc, name=household_dir.name)
+            not_retired.also.append(f"{step.__name__} failed ({errors.said(exc, (ManifestError,))})")
     raise not_retired
 
 
@@ -966,13 +984,13 @@ if __name__ == "__main__":
     # own names - a folder in the client tree is neither, whatever journal
     # somebody put in it.
     from tracker import door
-
+    from tracker.layout import LayoutError
     try:
         try:
             given = door.household_dir(Path(ns.folder).absolute())
         except ValueError:
             given = door.return_dir(Path(ns.folder).absolute())
-    except ValueError as exc:
+    except (door.DoorError, LayoutError) as exc:     # the door's own sentences
         parser.error(str(exc))
     if not ledger.path_for(given).is_file():
         parser.error(f"no record in {given}")

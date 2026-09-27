@@ -311,6 +311,29 @@ def test_unfiled_documents_from_last_year_are_surfaced(prior, tmp_path):
     assert any("K-1 Redwood LP.pdf" in s for s in report.unfiled_last_year)
 
 
+def test_two_unfiled_documents_of_one_name_are_two_and_no_subfolder_is_quoted(prior, tmp_path):
+    """Decision 190 (C-13). The client names the files: two different
+    scans both called ``scan.pdf`` are two documents never filed, keyed by
+    where each original rests, and the subfolder each came from is its
+    row's own column, never a clause of the line next year's report quotes."""
+    from tests.conftest import seed_index
+    from tracker import reasons
+    from tracker.filer import NEEDS_REVIEW, IndexEntry
+
+    seed_index(prior, [
+        IndexEntry(received="2026-03-01", original_name="scan.pdf", size_kb=12.0, digest=digest,
+                   identifier="", prepared_location=f"{PREPARED_DIR_NAME}/{REVIEW_DIR_NAME}/{copy}",
+                   pbc_location=f"../../../../Clients/Test Household/2025/{copy}",
+                   decision=NEEDS_REVIEW, reason=UNMATCHED, code=reasons.UNMATCHED_CODE,
+                   subfolder="not allowed")
+        for digest, copy in (("a" * 64, "scan.pdf"), ("b" * 64, "scan (2).pdf"))
+    ])
+    report = roll_forward(prior)
+    lines = [s for s in report.unfiled_last_year if s.startswith("scan.pdf")]
+    assert len(lines) == 2
+    assert not any("not allowed" in line or "subfolder" in line for line in lines)
+
+
 def test_rollover_without_a_template_still_works(prior):
     report = roll_forward(prior)
     assert [r.item.identifier for r in report.rolled] == ["A01", "B01", "C01", "D01"]
@@ -1153,9 +1176,10 @@ def test_household_roll_forward_rolls_all_or_none(park, monkeypatch):
         return real_create(folder, items, info, **kwargs)
 
     monkeypatch.setattr(rollover, "create_engagement", the_third_fails)
-    with pytest.raises(ManifestError, match="the disk filled") as failed:
+    with pytest.raises(ManifestError) as failed:
         roll_household(household, target_year=2027, plans=ticked)
-    assert str(failed.value).startswith("1120S - Park Landscaping LLC: ")
+    # The OS's error by its class, never its words (decision 190).
+    assert str(failed.value) == "1120S - Park Landscaping LLC: OSError. Nothing was rolled."
     conn = store.connect()
     for target in targets:
         assert not target.exists()
@@ -1304,7 +1328,7 @@ def test_a_failed_retirement_says_what_was_rolled_and_left_open_and_still_refres
     assert said.result.retired == [] and said.not_retired == [leo, sofia]
     assert str(said) == ROLLOVER_NOT_RETIRED.format(
         year=2027, rolled="1040 - John Park, 1120S - Park Landscaping LLC", retired="none",
-        left="1040 - Leo Park, 1040 - Sofia Park", why="the disk filled")
+        left="1040 - Leo Park, 1040 - Sofia Park", why="OSError")               # its class, never its words (decision 190)
     assert return_dir_for(root, PARK, 2027, "1040 - John Park").is_dir()
     assert load_engagement_info(leo).active is True and load_engagement_info(sofia).active is True
     assert refreshed == [household]
@@ -1341,7 +1365,7 @@ def test_the_command_line_says_rolled_not_all_retired_after_a_failed_retirement(
     assert code == 1, shown
     assert NOT_ALL_RETIRED_HEADING in shown and f"  {NOT_ROLLED_HEADING}\n" not in shown
     assert "was not rolled forward" not in shown
-    assert "Not retired: 1040 - Sofia Park (the disk filled)" in shown
+    assert "Not retired: 1040 - Sofia Park (OSError)" in shown
     assert return_dir_for(root, PARK, 2027, "1040 - John Park").is_dir()
 
 

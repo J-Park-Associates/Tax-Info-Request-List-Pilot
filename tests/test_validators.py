@@ -76,7 +76,7 @@ def test_google_native_stub_fails_with_guidance(tmp_path):
     result = check_file(stub, ANY_ITEM)
     assert result.ok is False
     assert result.pending_sync is False
-    assert reasons.GOOGLE_STUB.matches(result.reason)
+    assert result.code == reasons.GOOGLE_STUB.code
     assert reasons.GOOGLE_EXPORT_HINT in result.reason
 
 
@@ -134,13 +134,13 @@ def test_corrupt_pdf_fails(tmp_path):
     fake = tmp_path / "fake.pdf"
     fake.write_bytes(b"this is not a pdf at all" * 10)
     result = check_file(fake, PDF_ITEM)
-    assert not result.ok and reasons.UNREADABLE_PDF.matches(result.reason)
+    assert not result.ok and result.code == reasons.UNREADABLE_PDF.code
 
 
 def test_password_protected_pdf_fails(tmp_path):
     locked = write_pdf(tmp_path / "locked.pdf", password="secret123")
     result = check_file(locked, PDF_ITEM)
-    assert not result.ok and reasons.PASSWORD_PROTECTED.matches(result.reason)
+    assert not result.ok and result.code == reasons.PASSWORD_PROTECTED.code
 
 
 # ------------------------------------------------- photos are documents ----
@@ -197,9 +197,9 @@ def test_a_file_pillow_cannot_open_is_refused_as_an_unreadable_image(tmp_path):
     not_a_photo.write_bytes(b"this is not a photo at all" * 10)
 
     result = check_file(not_a_photo, PDF_ITEM)
-    assert not result.ok and reasons.UNREADABLE_IMAGE.matches(result.reason)
-    assert reasons.find(result.reason) is reasons.UNREADABLE_IMAGE
-    assert reasons.UNREADABLE_IMAGE not in reasons.FIRM_SIDE      # the client can fix it
+    assert not result.ok and result.code == reasons.UNREADABLE_IMAGE.code
+    assert result.code == reasons.UNREADABLE_IMAGE.code
+    assert reasons.UNREADABLE_IMAGE.code not in reasons.FIRM_SIDE      # the client can fix it
 
 
 def test_a_heic_photo_is_refused_by_name_when_the_reader_is_absent_and_read_when_it_is_present(
@@ -212,8 +212,8 @@ def test_a_heic_photo_is_refused_by_name_when_the_reader_is_absent_and_read_when
     absent = tmp_path / "receipt.heic"
     absent.write_bytes(b"\x00" * 4096)
     result = check_file(absent, PDF_ITEM)
-    assert not result.ok and reasons.HEIC_NOT_SUPPORTED.matches(result.reason)
-    assert reasons.HEIC_NOT_SUPPORTED in reasons.FIRM_SIDE
+    assert not result.ok and result.code == reasons.HEIC_NOT_SUPPORTED.code
+    assert reasons.HEIC_NOT_SUPPORTED.code in reasons.FIRM_SIDE
     assert reasons.HEIC_NOT_SUPPORTED.client_ask == reasons.GENERIC_ASK   # never asked
 
     monkeypatch.undo()
@@ -276,7 +276,7 @@ def test_a_file_that_vanishes_mid_scan_is_pending_not_a_crash(tmp_path):
     result = check_file(ghost, PDF_ITEM)
     assert result.ok is False
     assert result.pending_sync is True
-    assert reasons.VANISHED.matches(result.reason)
+    assert result.code == reasons.VANISHED.code
 
 
 def test_pdf_readability_is_parsed_once_per_run_not_per_process(tmp_path, monkeypatch):
@@ -339,3 +339,71 @@ def test_the_dry_run_names_a_persons_folder_once(tmp_path):
     said = reasons.PERSONS_FOLDER.format(folder="my notes", prepared=PREPARED_DIR_NAME)
     assert done.stdout.count("my notes") == 1 and f"    ? {said}" in done.stdout
     assert done.stdout.count("stray.pdf") == 1
+
+
+# ------------------------------------------- decision 190: programs and macros ----
+
+
+def test_a_program_is_known_by_its_real_last_extension():
+    from tracker.validators import is_program
+
+    assert is_program("W-2 2025.pdf.exe")
+    assert is_program("W2‮fdp.exe")
+    assert is_program("statement.pdf.LNK")
+    assert is_program("payroll.exe. ")                  # Windows drops the trailing dot and space
+    assert is_program("folder.library-ms")
+    assert not is_program("W-2 2025.exe.pdf")
+    assert not is_program("W-2.pdf")
+
+
+def test_an_office_file_bears_macros_by_its_type_or_its_vba_project(tmp_path):
+    import zipfile
+
+    from tracker.validators import bears_macros
+
+    plain = tmp_path / "budget.xlsx"
+    with zipfile.ZipFile(plain, "w") as package:
+        package.writestr("xl/workbook.xml", "<workbook/>")
+    renamed = tmp_path / "renamed.xlsx"
+    with zipfile.ZipFile(renamed, "w") as package:
+        package.writestr("xl/workbook.xml", "<workbook/>")
+        package.writestr("xl/vbaProject.bin", b"\x00")
+    broken = tmp_path / "broken.docx"
+    broken.write_bytes(b"not a zip")
+    (tmp_path / "macros.docm").write_bytes(b"")
+    (tmp_path / "old.xls").write_bytes(b"")
+
+    assert bears_macros(tmp_path / "macros.docm") and bears_macros(tmp_path / "old.xls")
+    assert bears_macros(renamed)
+    assert bears_macros(broken)                          # cannot look: marked, the safe way
+    assert not bears_macros(plain)
+    assert not bears_macros(tmp_path / "W-2.pdf")
+
+
+@pytest.mark.parametrize("raw", ["W2.exe​", "Pay.scr﻿.", "W2.ex​e", "x.lnk‬"])
+def test_a_program_is_known_by_either_name(raw):
+    """The review's M1: an invisible character after or inside the suffix
+    hides a program from its raw name; the recorded name - which names its
+    review copy and its card - shows it, and either name is enough."""
+    from tracker.validators import is_program
+
+    assert is_program(raw)
+
+
+def test_the_review_widened_the_program_and_macro_lists_and_left_web_pages_alone(tmp_path):
+    """Decision 190's review (S5, N1): the installer packages, the shell
+    types and the Access databases are programs; the legacy templates,
+    add-ins and the binary workbook bear macros; a saved web page is not
+    a program, because a client can legitimately send a statement as one."""
+    from tracker.validators import bears_macros, is_program
+
+    for name in ("app.msix", "setup.appinstaller", "run.pyw", "fix.diagcab", "books.accdb",
+                 "old.mdb", "go.website", "x.shs"):
+        assert is_program(name), name
+    for name in ("statement.html", "statement.htm", "chart.svg", "notes.one"):
+        assert not is_program(name), name
+    for name in ("book.xlsb", "addin.xla", "form.xlt", "letter.dot", "deck.pot", "show.pps",
+                 "tool.ppa", "book.xlsm​"):
+        path = tmp_path / name
+        path.write_bytes(b"not an office file")
+        assert bears_macros(path), name

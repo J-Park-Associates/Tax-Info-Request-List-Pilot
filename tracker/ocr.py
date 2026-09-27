@@ -116,8 +116,9 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from tracker import errors
 from tracker.locking import pid_alive
-from tracker.settings import scratch_root
+from tracker.settings import SettingsError, scratch_root
 
 log = logging.getLogger(__name__)
 
@@ -230,7 +231,7 @@ def _build_engine(*, cuda: bool):
         import onnxruntime
         from rapidocr import RapidOCR
     except ImportError as exc:
-        raise ReaderUnavailable(f"{exc.__class__.__name__}: {exc}") from exc
+        raise ReaderUnavailable(f"{errors.error_class(exc)}: {exc}") from exc
     _refuse_downloads()
     onnxruntime.set_default_logger_severity(3)
     folder = models_folder()
@@ -257,7 +258,7 @@ def _build_engine(*, cuda: bool):
     except ReaderUnavailable:
         raise
     except Exception as exc:
-        raise ReaderUnavailable(f"{exc.__class__.__name__}: {exc}") from exc
+        raise ReaderUnavailable(f"{errors.error_class(exc)}: {exc}") from exc
 
 
 def _providers(engine) -> dict[str, list[str]]:
@@ -337,7 +338,7 @@ def _engine():
         except Exception as exc:
             # The reasons this module words itself are sentences already.
             reason = (str(exc) if isinstance(exc, RuntimeError) and str(exc)
-                      else f"{exc.__class__.__name__}: {exc}")
+                      else f"{errors.error_class(exc)}: {exc}")
             log.warning(PACK_UNUSABLE.format(reason=reason))
             _NOTES.append(("pack-unusable", reason))
     _ENGINE, _DEVICE = _build_engine(cuda=False), DEVICE_PROCESSOR
@@ -412,8 +413,10 @@ def read_page(image, *, name: str = "") -> str:
         # A fault on the card poisons the engine, not the page: every later
         # page in this process would fail the same way. Read this page
         # again on the processor, and stay there for the rest of the pass.
-        log.warning("The graphics card failed while reading %s (%s: %s); reading on the processor",
-                    name or "a page", exc.__class__.__name__, exc)
+        # Its class only: this runs in the reading child, on a client's page,
+        # and the child keeps no words of an error (decision 190).
+        log.warning("The graphics card failed while reading %s (%s); reading on the processor",
+                    name or "a page", errors.error_class(exc))
         _NOTES.append(("gpu-fault", name or "a page"))
         processor_only()
         del engine
@@ -539,17 +542,23 @@ class Outcome:
     """What became of one job sent to the child.
 
     ``kind`` is ``"read"`` (``answer`` is what the job returned),
-    ``"failed"`` (the job raised: ``error`` and ``trace``), ``"stopped"``
+    ``"failed"`` (the job raised: ``error`` is its class, ``message`` and
+    ``trace`` its words, which only the debug log may hold - decision 190), ``"stopped"``
     (ended at the stop), ``"died"`` (ended without an answer after it
     started) or ``"not_started"`` (never started the job: the machine's)."""
 
     kind: str
     answer: object = None
     error: str = ""
+    #: A failed job's own message: never shown, only kept (decision 190).
+    message: str = ""
     trace: str = ""
     seconds: float = 0.0
     #: What the reader said with its answer (:func:`take_notes`).
     notes: list = field(default_factory=list)
+    #: What the child kept while it served this job (:func:`tracker.errors.take_kept`):
+    #: words for the pass's debug log, which the pass keeps (decision 190, Part 4).
+    kept: list = field(default_factory=list)
 
 
 #: Every way a library finds the temp folder, pointed by a reading child at
@@ -581,8 +590,9 @@ def sweep_scratch(root: Path) -> list[Path]:
         try:
             shutil.rmtree(folder)
         except OSError as exc:
+            errors.keep("ocr: the scratch sweep", exc, name=folder.name)
             log.warning("Could not remove the scratch folder %s (%s); the next reading sweeps it",
-                        folder, exc)
+                        folder, errors.error_class(exc))
             continue
         removed.append(folder)
     return removed
@@ -607,8 +617,9 @@ def _remove_scratch(folder: Path) -> None:
     except FileNotFoundError:
         pass
     except OSError as exc:
+        errors.keep("ocr: the reading's scratch", exc, name=folder.name)
         log.warning("Could not remove the reading's scratch folder %s (%s); the next reading sweeps it",
-                    folder, exc)
+                    folder, errors.error_class(exc))
 
 
 class ReadingChild:
@@ -660,7 +671,7 @@ class ReadingChild:
         try:
             self._jobs.send((job, args, kwargs))
         except OSError as exc:
-            return Outcome("not_started", error=f"the reading's process was gone ({exc})",
+            return Outcome("not_started", error=f"the reading's process was gone ({errors.error_class(exc)})",
                            seconds=awake_clock() - started)
         kind, answer, begun, over = "died", (), False, False
         while True:
@@ -694,10 +705,11 @@ class ReadingChild:
             return Outcome("stopped", seconds=seconds)
         self.served += 1
         if kind == "read":
-            return Outcome("read", answer=answer[0], notes=answer[1], seconds=seconds)
-        if kind == "failed":
-            return Outcome("failed", error=answer[0], trace=answer[1], notes=answer[2],
+            return Outcome("read", answer=answer[0], notes=answer[1], kept=answer[2],
                            seconds=seconds)
+        if kind == "failed":
+            return Outcome("failed", error=answer[0], message=answer[1], trace=answer[2],
+                           notes=answer[3], kept=answer[4], seconds=seconds)
         error = f"the reading's process ended with exit code {self._exit_code()}"
         if _job_memory(self._job_object)[1] >= self.memory_limit * 0.9:
             error += f"; it had reached its memory limit ({self.memory_limit / 1024**3:.0f} GB)"
@@ -750,6 +762,9 @@ def _the_child(jobs, sender, lifeline, processor_only_: bool, scratch: str) -> N
     the file's - and hands back the answer, or what the job raised as
     words, never left to end the process in silence. Every answer carries
     what the reader has to tell the pass (:func:`take_notes`)."""
+    # Every keep in this process travels back with an answer, and none is
+    # logged here: the child never opens a log (decision 190, Part 4).
+    errors.keep_for_the_parent()
     try:
         _take_scratch(Path(scratch))
     except OSError:
@@ -777,16 +792,28 @@ def _the_child(jobs, sender, lifeline, processor_only_: bool, scratch: str) -> N
             try:
                 answer = job(*args, **kwargs)
             except BaseException as exc:
-                _answer(sender, ("failed", f"{exc.__class__.__name__}: {exc}",
-                                 traceback.format_exc(), take_notes()))
+                # The class, and apart from it the words and the trace: the
+                # pass shows the first and keeps the rest on its debug log.
+                # This process never opens a log of its own (decision 190).
+                _answer(sender, ("failed", errors.error_class(exc), _message_of(exc),
+                                 traceback.format_exc(), take_notes(), errors.take_kept()))
                 if isinstance(exc, MemoryError):
                     # Past its memory limit: said, and done - the pass
                     # replaces it (SPEC-169 section 9).
                     os._exit(OUT_OF_MEMORY_EXIT_CODE)
             else:
-                _answer(sender, ("read", answer, take_notes()))
+                _answer(sender, ("read", answer, take_notes(), errors.take_kept()))
     finally:
         sender.close()
+
+
+def _message_of(exc: BaseException) -> str:
+    """An exception's own words, for the pass's debug log; an exception
+    whose ``__str__`` itself fails is said by its class."""
+    try:
+        return str(exc)
+    except Exception:
+        return errors.error_class(exc)
 
 
 def _answer(sender, message) -> None:
@@ -956,7 +983,8 @@ def _end(process) -> None:
                            capture_output=True, timeout=CHILD_EXIT_SECONDS, check=False,
                            creationflags=subprocess.CREATE_NO_WINDOW)
         except (OSError, subprocess.SubprocessError) as exc:
-            log.warning("Could not end the reading's process tree (%s)", exc)
+            errors.keep("ocr", exc)
+            log.warning("Could not end the reading's process tree (%s)", errors.error_class(exc))
     else:
         try:
             if os.getpgid(process.pid) == process.pid:      # it leads its own group
@@ -999,9 +1027,12 @@ class Session:
             if outcome.kind == "read":
                 self.device, why = outcome.answer
             else:
-                self.device, why = DEVICE_PROCESSOR, outcome.error or "the reader did not answer"
-                if outcome.error.startswith(ReaderUnavailable.__name__):
-                    cannot_run = outcome.error.partition(": ")[2] or outcome.error
+                # The warm-up reads the firm's own self-test, never a client's
+                # file, so its words are the machine's and are said in full.
+                said = ": ".join(part for part in (outcome.error, outcome.message) if part)
+                self.device, why = DEVICE_PROCESSOR, said or "the reader did not answer"
+                if outcome.error == ReaderUnavailable.__name__:
+                    cannot_run = outcome.message or outcome.error
         else:
             try:
                 self.device, why = warm_up()
@@ -1056,11 +1087,19 @@ class Session:
             try:
                 self.child = ReadingChild(processor_only=self._processor_only)
             except Exception as exc:
-                return Outcome("not_started", error=f"{exc.__class__.__name__}: {exc}",
+                # The class travels towards the row; the words are kept apart
+                # (decision 190) - except a data home the firm's own settings
+                # refused (decision 186), whose sentence is the firm's.
+                errors.keep("ocr: the reading child could not be made", exc)
+                return Outcome("not_started", error=errors.said(exc, (SettingsError,)),
                                seconds=awake_clock() - started), None
         child = self.child
         outcome = child.run(job, args, kwargs, stop, since=started if fresh else None)
         self.hear(outcome.notes)
+        # The child keeps nothing itself: what it kept crossed with its
+        # answer, and lands on this process's debug log (decision 190, Part 4).
+        for entry in outcome.kept:
+            errors.keep("ocr: the reading child", entry)
         # Replaced after a stop, a crash, running out of memory or a child
         # that never started, a fault on the card, and every
         # DOCUMENTS_PER_CHILD documents (R-4).

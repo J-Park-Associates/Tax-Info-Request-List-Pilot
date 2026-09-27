@@ -107,6 +107,17 @@ def a_reader_that_dies_on_a_crash(path: Path, *, ocr: bool = True):
     return content_check.extract(path, ocr=ocr)
 
 
+#: What the stand-in below says as it fails (decision 190): the shape of
+#: a W-2's own words, and fabricated - nobody's number, nobody's name.
+QUOTED_BY_THE_PARSER = "bad object near 'SSN 123-45-6789 Jane Fabricated'"
+
+
+def a_reader_whose_error_quotes_the_document(path: Path, *, ocr: bool = True):
+    """A reader that fails the way pypdf does on a broken file: its message
+    quotes the document."""
+    raise ValueError(QUOTED_BY_THE_PARSER)
+
+
 def a_reader_that_starts_a_reader_of_its_own(path: Path, *, ocr: bool = True):
     """A reader that has started a process of its own and then never
     finishes. The helper's process id is left
@@ -144,6 +155,19 @@ def a_reader_that_tells_the_pass(path: Path, *, ocr: bool = True):
         elif "unusable" in path.name:
             reader._NOTES.append(("pack-unusable", "the self-test read nothing"))
     return _who_read()
+
+
+def a_reader_that_keeps_what_it_met(path: Path, *, ocr: bool = True):
+    """A parser that fails on a page, keeps the failure's words and reads
+    on - the way the filer's and the readers' own catch-alls keep - so a
+    test can see a child's keeps reach the pass's log (decision 190, Part 4)."""
+    from tracker import errors
+
+    try:
+        raise ValueError(QUOTED_BY_THE_PARSER)
+    except ValueError as exc:
+        errors.keep("child_readers: a page", exc, name=path.name)
+    return content_check.Extraction("the words that did read")
 
 
 def a_card_that_dies(path: Path, *, ocr: bool = True):

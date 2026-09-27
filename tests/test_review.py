@@ -89,8 +89,16 @@ def engagement(tmp_path):
     return make_engagement(tmp_path, ITEMS, household="Smith Family")
 
 
-def parked_row(name, record, *, reason=UNMATCHED, decision=NEEDS_REVIEW, candidates=()):
-    """One index row as the filer writes it, evidence through its own formatter."""
+def parked_row(name, record, *, reason=UNMATCHED, decision=NEEDS_REVIEW, candidates=(),
+               code=None):
+    """One index row as the filer writes it, evidence through its own formatter.
+
+    Its code (decision 190) is the one ``reason`` was said with, as the
+    filer takes it, unless the test gives one; the router's two bare
+    sentences carry theirs as the router gives them."""
+    if code is None:
+        code = reasons.code_of(reason) or {
+            UNMATCHED: reasons.UNMATCHED_CODE, AMBIGUOUS: reasons.AMBIGUOUS_CODE}.get(reason, "")
     return IndexEntry(
         received="2026-01-01", original_name=name, size_kb=9.4, digest=hashlib.sha256(name.encode()).hexdigest(),
         identifier="", prepared_location="",
@@ -98,6 +106,7 @@ def parked_row(name, record, *, reason=UNMATCHED, decision=NEEDS_REVIEW, candida
         decision=decision, reason=reason,
         candidates=_CANDIDATE_SEP.join(candidates),
         evidence=format_evidence(record),
+        code=code,
     )
 
 
@@ -511,3 +520,38 @@ def test_a_named_across_row_is_never_offered_as_a_request_of_the_home_list(engag
 
     assert "B01" not in identifiers(triaged)
     assert tuple(triaged.shortlist) == ()
+
+
+@pytest.mark.parametrize("reason", reasons.ALL, ids=lambda r: r.code)
+def test_no_client_text_can_change_what_a_row_means(reason):
+    """Decision 190, the SPEC-167 cross product re-aimed at the card. A
+    row's placeholders and its file's name filled with each other reason's
+    marker - the words a search used to find another cause by - leave the
+    row's code, what the card says about the name, the refusals it names
+    and the order it offers the requests exactly as they are with words
+    that say nothing. The card reads the code, never the sentence."""
+    import string
+
+    from tracker.records import RULE_ANY, RULE_REFUSED
+    from tracker.review import _refusals_for
+
+    names = {name for _, name, _, _ in string.Formatter().parse(reason.template) if name}
+    numbers = {"size_kb": 1.0, "minimum": 5}
+
+    def card(text):
+        said = reason.format(**{name: numbers.get(name, text) for name in names})
+        row = parked_row(f"{text}.pdf", {
+            "A01": (Evidence(RULE_ANY, "wage", WHERE_DEEP, 4),
+                    Evidence(RULE_REFUSED, reasons.TOO_SMALL.code)),
+        }, reason=f"{reasons.CONTESTED_PREFIX} A01 ({said}) - a person should confirm",
+            candidates=("A01",), code=said.code)
+        shortlist = shortlist_for(row, ITEMS)
+        found = row.evidence_record["A01"]
+        return (row.code, [(s.identifier, s.rank, s.name.outcome if s.name else None)
+                           for s in shortlist],
+                _refusals_for(row, "A01", found))
+
+    plain = card("x")
+    assert plain[0] == reason.code
+    for other in reasons.ALL:
+        assert card(other.marker) == plain, other.code

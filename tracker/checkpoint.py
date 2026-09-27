@@ -179,6 +179,10 @@ class CheckpointUnavailable(CheckpointError):
     which of the two sentences it is: :data:`BUSY` (try again) or
     :data:`UNREADABLE` (set it aside by hand)."""
 
+    #: Said as ``<class> (<code>)`` by :func:`tracker.errors.error_class`
+    #: (the marker :data:`tracker.errors.SAYS_ITS_CODE`, decision 190).
+    says_its_code = True
+
     def __init__(self, path: Path | str, code: str) -> None:
         self.busy = code.startswith(_BUSY_CODES)
         super().__init__((BUSY if self.busy else UNREADABLE).format(path=path, why=code))
@@ -186,7 +190,10 @@ class CheckpointUnavailable(CheckpointError):
 
 
 def _unavailable(exc: sqlite3.Error, path: Path | str) -> CheckpointUnavailable:
-    return CheckpointUnavailable(path, getattr(exc, "sqlite_errorname", None) or type(exc).__name__)
+    # The engine's code, or - for an error that did not come from the
+    # engine - SQLITE_ERROR, as the store says it; never the class named
+    # here, which only tracker.errors.error_class says (decision 190).
+    return CheckpointUnavailable(path, getattr(exc, "sqlite_errorname", None) or "SQLITE_ERROR")
 
 
 def _let_go_of(cursor: sqlite3.Cursor) -> None:
@@ -623,5 +630,10 @@ if __name__ == "__main__":
                           f"  {one['at']}  {one['key']}")
                 for line in unacknowledged(connection):
                     print(f"  another machine: {line.key} line {line.seq} on {line.host} {line.at}")
-    except (CheckpointError, sqlite3.Error) as exc:
+    except CheckpointError as exc:
         parser.exit(1, f"{exc}\n")
+    except sqlite3.Error as exc:
+        # The checkpoint's own single error path: the file and the engine's
+        # code, never its message (decision 190).
+        unavailable = _unavailable(exc, where)
+        parser.exit(1, f"{unavailable}\n")

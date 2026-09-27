@@ -83,7 +83,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))   # run as a script: the package and the suite must import
 
 from tools.repo_map import git_text_auto_eol_lf  # noqa: E402
-from tracker.content_check import dominant_forms, extract, said_as_class, says  # noqa: E402
+from tracker.content_check import dominant_forms, extract, says  # noqa: E402
+from tracker.errors import error_class  # noqa: E402
 from tracker.manifest import RequestItem, validated  # noqa: E402
 from tracker.settings import (  # noqa: E402
     ENV_REAL_CORPUS,
@@ -191,8 +192,8 @@ def _read(path: Path) -> tuple[str, str]:
     The text layer only (``ocr=False``): the report never ran the reader,
     and CI, which builds the committed report, has none. A scan or a photo
     gives its thin text layer or nothing, as the bare extractor did.
-    ``error`` is the parser's failure as its class (decision 189's
-    ``said_as_class``), ``""`` for a document that read - a type with no
+    ``error`` is the parser's failure as its class (decision 189's rule,
+    :func:`tracker.errors.error_class`), ``""`` for a document that read - a type with no
     extractor included, which reads as no words and is no failure. The
     size check before the reading is outside ``extract``'s own guard, so
     an ``OSError`` there (a file locked or refused) is said the same way.
@@ -200,7 +201,7 @@ def _read(path: Path) -> tuple[str, str]:
     try:
         reading = extract(path, ocr=False)
     except OSError as exc:
-        return "", said_as_class(exc)
+        return "", error_class(exc)
     return reading.text or "", reading.error
 
 
@@ -249,7 +250,7 @@ def real_documents() -> list[Document]:
         folder, rows = real_corpus()
     except ValueError as exc:
         # The reader's own message names a row and a column; say the class only (decision 208).
-        raise ReportError(f"{EXPECTATIONS_FILENAME} could not be read ({said_as_class(exc)}): "
+        raise ReportError(f"{EXPECTATIONS_FILENAME} could not be read ({error_class(exc)}): "
                           "check its columns and that every row has a year") from None
     if folder is None:
         return []

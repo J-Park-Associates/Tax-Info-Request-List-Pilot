@@ -28,7 +28,7 @@ What the client is asked for:
 
 What holds the whole reminder back for a person (decision 115):
 
-- ``Status.FAILED`` with no firm-side marker, and ``Status.PARTIAL`` whose
+- ``Status.FAILED`` with no firm-side code, and ``Status.PARTIAL`` whose
   shortfall is a file the rules refused. Something arrived and the rules
   could not use it - but a copy the router filed cannot fail the content
   rules on its own filing (the scan's verdict is the router's), so a Failed
@@ -83,7 +83,7 @@ What the client is deliberately *not* asked for:
   holds for a ``Status.PARTIAL`` row too: if the file that would complete it is one
   we have not read, "1 of 2 received" is not something we know yet. And it
   holds on any outstanding status - a ``Status.MISSING`` row whose note
-  carries a firm-side marker is the firm's as well (decision 109's rule,
+  carries a firm-side code is the firm's as well (decision 109's rule,
   stated once here). A firm-side row rides the staff-side report under the
   draft, which is still written; it never holds it.
 - (Until decision 168, a row whose request folder did not exist was held
@@ -126,7 +126,14 @@ both, :func:`write_draft` puts the regenerated draft beside it, and
 rather than deleting it, because nothing under an engagement is the
 machine's to throw away. The approval is one ``ledger.DRAFT_APPROVED``
 line carrying a number, a name and identifiers, like every other line
-here. Which day the draft week began is handed in rather than worked out:
+here. **An approval covers the text that was approved and nothing after
+it** (decision 190): the event carries the fingerprint of the letter as
+the person read it, and a later edit to the file lapses the approval - it
+reads "approved, then edited", the file stays protected because it was
+edited, and the person approves again. The header's own fingerprint could
+not do this: it is the machine's body hash, and an edit never changes it.
+An approval written before 190 carries no such fingerprint and so is not
+an approval. Which day the draft week began is handed in rather than worked out:
 the runner decides the draft day (decision 12) and it sits above this
 module.
 
@@ -148,7 +155,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tracker import ledger, page, reasons, store
+from tracker import errors, ledger, page, reasons, store
 from tracker.fsio import temp_owner, write_text_atomically
 from tracker.layout import README_NAME, household_name_of, inbox_of, label_for, locate, year_of
 from tracker.manifest import (
@@ -238,6 +245,16 @@ SUBJECT_COMPLETE = "{engagement}: we have everything - thank you"
 SUBJECT_RESPONSE = "{engagement}: {n} document(s) still needed - response requested"
 SUBJECT_URGENT = "URGENT - {engagement}: final notice, {n} document(s) still needed"
 DRAFT_BANNER = "DRAFT - NOTHING HAS BEEN SENT."
+#: The header's line about the firm's telephone number (decision 190): the
+#: number comes from the settings beside the app, typed by whoever set it,
+#: so the person about to send the letter is told which number it gives -
+#: or that it gives none - before a client calls a wrong one. Above the
+#: rule, so it is never pasted and never part of the fingerprinted body.
+#: Only the final notice offers a call, so a number that is set but that
+#: this stage's letter does not carry is said as such, not as "in this letter".
+FIRM_PHONE_LINE = "Firm phone in this letter: {phone}"
+FIRM_PHONE_UNUSED_LINE = "Firm phone on file: {phone}; this letter gives none."
+NO_FIRM_PHONE_LINE = "No firm phone is set; this letter gives none."
 #: The sentence every draft opens its instructions with.
 DROP_ANYWHERE = "Everything goes in the same place - just drop it into the shared"
 #: What is said before the stage's own opening, at every stage, whenever
@@ -309,7 +326,7 @@ HELD_REFUSAL = (
 #: exactly what was asked for - only of a person here confirming it. Said
 #: of the confirm-held rows alone; a draft held both ways says both.
 CONFIRM_REFUSAL = (
-    "the reminder is held until a person confirms the parked file (open it in Needs Review) "
+    "the reminder is held until a person confirms the parked file (open it from its card) "
     "- {listed}; nothing was written"
 )
 #: The one line the app shows for a held reminder (through the API's vocabulary).
@@ -356,9 +373,12 @@ PARTIAL_ASK_COMPLETE = "{have} of {expected} received"
 SECTION_MISSING = "NOT YET RECEIVED"
 SECTION_PARTIAL = "STARTED, BUT NOT COMPLETE"
 #: The section a Failed row used to be asked under. Unreachable from a pass
-#: since decision 115 - a Failed row with no firm-side marker holds the
+#: since decision 115 - a Failed row with no firm-side code holds the
 #: draft instead - so it is not in ``SECTION_ORDER``; the name stays because
 #: an "ask the client again" action a person records would put a row here.
+#: Since decision 190 it heads the files that are not documents
+#: (:func:`unusable_files`), which name no request and are asked about
+#: after every request's section.
 SECTION_FAILED = "RECEIVED, BUT WE COULD NOT USE IT"
 
 SECTION_ORDER = (SECTION_MISSING, SECTION_PARTIAL)
@@ -391,6 +411,10 @@ APPROVED_LINE = "approved {date} at stage {n}"
 #: what the practice page's Drafted column says about an approved one.
 EDITED_BY_HAND = "edited by hand - approve it as it stands, or delete it to regenerate at a stage"
 APPROVED_NOTE = "approved"
+#: An approval whose letter was edited since (decision 190): it no longer
+#: covers the file, so the card, the practice page and the run log say so in
+#: one label rather than claiming the edited text was approved.
+APPROVED_THEN_EDITED = "approved, then edited"
 #: The sentence under the toggle: the pass chose the rung, and moving it is
 #: a person's call, made before they send and not recorded as a fact.
 STAGE_TOGGLE_HINT = ("the pass pre-selects the stage from the Due Date; move it up or down "
@@ -707,6 +731,9 @@ class ReminderDraft:
     #: and 0 on a quiet week - there is no ladder when we have everything.
     stage: int = 0
     lines: list[ReminderLine] = field(default_factory=list)
+    #: The files the letter asks about that are not documents (decision
+    #: 190), by their recorded names (:func:`unusable_files`).
+    unusable: list[str] = field(default_factory=list)
     needs_attention: list[FirmSideFlag] = field(default_factory=list)
     #: The ambiguous rows (decision 115). One of these holds the whole draft.
     held: list[FirmSideFlag] = field(default_factory=list)
@@ -727,10 +754,19 @@ class ReminderDraft:
     #: :data:`LINK_DROPPED` when the recorded link was left out because it
     #: is not a web address (decision 137, L5), else ``""``.
     link_dropped: str = ""
+    #: The firm telephone number the draft was composed with, "" when none
+    #: is set; the file's header names it (decision 190).
+    phone: str = ""
 
     @property
     def has_outstanding(self) -> bool:
-        return bool(self.lines)
+        """Whether the letter asks the client for anything: a request, or
+        a file that is not a document (decision 190's re-check, S-N1). The
+        scheduler writes the draft, and the app's card offers it, on this
+        one answer, so a letter that only asks about a program is written
+        and editable like any other - never refreshed over as "nothing
+        outstanding"."""
+        return bool(self.lines or self.unusable)
 
     @property
     def is_held(self) -> bool:
@@ -794,9 +830,10 @@ def stage_named(number: int) -> Stage:
 def client_ask(item: RequestItem) -> str:
     """One plain sentence telling the client what to do about ``item``.
 
-    Driven by the scanner's validation note, never quoting it. A Partial
-    row's sentence is the count, and the row's own reason after it when the
-    note carries a client-side one. A Failed row's sentence still translates
+    Driven by the codes of the scanner's validation note (decision 190),
+    never by its words and never quoting it. A Partial row's sentence is
+    the count, and the row's own reason after it when the note carries a
+    client-side one. A Failed row's sentence still translates
     here - the generic ask when nothing in the note is recognised - but
     since decision 115 no pass asks it: :func:`triage` holds a Failed row
     for a person instead, and this branch waits for the action that would
@@ -810,7 +847,7 @@ def client_ask(item: RequestItem) -> str:
                if missing else PARTIAL_ASK_COMPLETE.format(have=have, expected=expected))
         # A count alone hides why: the client who sent both W-2s, one of
         # them password-protected, is told what to fix, not just "1 of 2".
-        reason = reasons.find(item.validation_notes or "")
+        reason = reasons.first_of(item.note_code_list)
         if reason is not None and not reason.firm_side:
             ask = f"{ask}; {_ask_for(reason, item)}"
         return ask
@@ -818,7 +855,7 @@ def client_ask(item: RequestItem) -> str:
     if item.status != Status.FAILED:
         return ""
 
-    reason = reasons.find(item.validation_notes or "")
+    reason = reasons.first_of(item.note_code_list)
     return _ask_for(reason, item) if reason else GENERIC_ASK
 
 
@@ -840,10 +877,10 @@ def _ask_for(reason: reasons.Reason, item: RequestItem) -> str:
 
 
 def _firm_side_reason(item: RequestItem) -> str:
-    """Why this row is the firm's problem rather than the client's, or ""."""
-    note = item.validation_notes or ""
-    for reason in reasons.FIRM_SIDE:
-        if reason.matches(note):
+    """Why this row is the firm's problem rather than the client's, or "":
+    the first firm-side cause its notes' codes name (decision 190)."""
+    for reason in reasons.ALL:
+        if reason.code in reasons.FIRM_SIDE and reason.code in item.note_code_list:
             return reason.firm_side_note
     return ""
 
@@ -865,7 +902,7 @@ def _section_for(item: RequestItem) -> str:
 def _ambiguous_reason(item: RequestItem) -> str:
     """Why this row holds the draft, or "" when it does not (decision 115).
 
-    Called for a row no firm-side marker claimed. A Failed row is ambiguous
+    Called for a row no firm-side code claimed. A Failed row is ambiguous
     as it stands: something arrived and the rules refused it, and whether
     the client resends or we fix it here is not the draft's to decide. A
     Partial row is ambiguous when its shortfall is a refused file - the
@@ -873,12 +910,45 @@ def _ambiguous_reason(item: RequestItem) -> str:
     The reason's own sentence rides in brackets so the person sees what the
     scan said.
     """
-    reason = reasons.find(item.validation_notes or "")
+    reason = reasons.first_of(item.note_code_list)
     if item.status == Status.FAILED:
         return f"{AMBIGUOUS_HOLD} ({_ask_for(reason, item)})" if reason else AMBIGUOUS_HOLD
     if item.status == Status.PARTIAL and reason is not None:
         return f"{AMBIGUOUS_HOLD} ({_ask_for(reason, item)})"
     return ""
+
+
+def _still_parked(row) -> bool:
+    """Whether an index row is still a question for a person: parked, or a
+    parked row whose copy and original are both gone (decision 157) that
+    nobody filed or set aside - read from its decision and its code
+    (decision 190), never from its sentence."""
+    from tracker.filer import NEEDS_REVIEW, both_gone
+
+    if row.decision == NEEDS_REVIEW:
+        return True
+    return (both_gone(row) and not row.identifier
+            and row.code != reasons.DISMISSED_BY_PERSON_CODE)
+
+
+def unusable_files(parked: Sequence) -> list[str]:
+    """The files the client sent that are not documents (decision 190's
+    ``reasons.NOT_A_DOCUMENT``), by their recorded names, each once, in the
+    record's order - what the letter asks about under
+    :data:`SECTION_FAILED`.
+
+    SPEC-190 R3 and the review's S1: a program names no request, so no
+    request line can carry its ask and it holds nothing (``holds=False``):
+    the letter is still written. It is asked about in the words any
+    unusable file gets (``NOT_A_DOCUMENT.ask``, which *is*
+    ``EXTENSION_NOT_ALLOWED``'s) - no new client words - beside the name
+    the client gave it, the only way they can tell which file it was. A row
+    a person has set aside is their answer and is not asked again."""
+    names: dict[str, None] = {}
+    for row in parked:
+        if _still_parked(row) and row.code == reasons.NOT_A_DOCUMENT.code:
+            names.setdefault(row.original_name, None)
+    return list(names)
 
 
 def _parked_holds(items: Sequence[RequestItem], parked: Sequence) -> dict[str, FirmSideFlag]:
@@ -920,6 +990,14 @@ def _parked_holds(items: Sequence[RequestItem], parked: Sequence) -> dict[str, F
     Only rows the filer parked are read: a row a person dismissed is their
     answer, and a row they filed or unfiled is a decision, not a question.
 
+    **The row's code, never its sentence** (decision 190). The Reason cell
+    carries what the client chose - the file's name, the subfolder it came
+    from - so the cause is read from the Code column alone. A row written
+    before 190 has no code: its cause was not recorded. It **holds** where
+    its shortlist names a request, asked with :data:`GENERIC_ASK` - the safe
+    direction, since a person confirms it - and nothing reads a cause back
+    out of its words.
+
     **A parked row whose copy and original are both gone** (decision 157,
     ruling B5, and its review's S-1) still holds. The pass turns it into
     ``FILE_MOVED`` with the both-gone sentence, keeping what it said before,
@@ -927,33 +1005,37 @@ def _parked_holds(items: Sequence[RequestItem], parked: Sequence) -> dict[str, F
     the file either, so the question it raised is still open: the request
     it points at stays held until a person decides (an override, or the
     file coming back). A set-aside row that went the same way does not: its
-    Reason still starts with the person's answer.
+    code is still the person's answer (``reasons.DISMISSED_BY_PERSON_CODE``),
+    read from the Code column and never from the start of its Reason.
     """
-    from tracker.filer import DISMISSED_BY_PERSON, NEEDS_REVIEW, both_gone
     from tracker.review import shortlist_for
-
-    def still_parked(row) -> bool:
-        if row.decision == NEEDS_REVIEW:
-            return True
-        return (both_gone(row) and not row.identifier
-                and not (row.reason or "").startswith(DISMISSED_BY_PERSON))
 
     rows = {item.identifier: item for item in items}
     listed = list(items)
     holds: dict[str, FirmSideFlag] = {}
     for row in parked:
-        if not still_parked(row):
+        if not _still_parked(row):
             continue
-        reason = reasons.find(row.reason or "")
-        if reason is None or not reason.holds:
+
+        code = row.code or ""
+        reason = reasons.BY_CODE.get(code)
+        if code and code not in reasons.HOLDS:
             continue
         for suggestion in shortlist_for(row, listed):
             item = rows.get(suggestion.identifier)
-            if item is not None:
-                holds[suggestion.identifier] = (
-                    FirmSideFlag(item=item, reason=CONFIRM_HOLD.format(note=reason.firm_side_note),
-                                 confirm=True) if reason.firm_side
-                    else FirmSideFlag(item=item, reason=PARKED_HOLD.format(ask=_ask_for(reason, item))))
+            if item is None:
+                continue
+            if reason is None:
+                # Written before 190: the cause was not recorded (the
+                # ``code and`` above lets only these through without one).
+                holds[suggestion.identifier] = FirmSideFlag(
+                    item=item, reason=PARKED_HOLD.format(ask=GENERIC_ASK))
+            elif reason.firm_side:
+                holds[suggestion.identifier] = FirmSideFlag(
+                    item=item, reason=CONFIRM_HOLD.format(note=reason.firm_side_note), confirm=True)
+            else:
+                holds[suggestion.identifier] = FirmSideFlag(
+                    item=item, reason=PARKED_HOLD.format(ask=_ask_for(reason, item)))
     return holds
 
 
@@ -969,7 +1051,7 @@ def triage(items: Sequence[RequestItem], parked: Sequence = ()) -> tuple[
     A row nobody asked for (decision 142) is dropped first, whatever its
     status or notes. Overridden rows and anything already in are dropped
     here too and never reach the draft. For the rest, in this order: a row carrying any
-    firm-side marker, on any outstanding
+    firm-side code, on any outstanding
     status, is the firm's (decisions 20, 21, 58, and 109's rule for a
     Missing row); a Failed row, or a Partial whose shortfall is a refused
     file, is ambiguous and held; a Missing row, and a Partial with no
@@ -1079,7 +1161,9 @@ def count_needs_review(engagement_dir: Path) -> int:
     try:
         rows = read_index(engagement_dir)
     except Exception as exc:
-        log.warning("Could not read the index for the files a person has seen: %s", exc)
+        errors.keep("reminder", exc, name=engagement_dir.name)
+        log.warning("Could not read the index for the files a person has seen (%s)",
+                    errors.error_class(exc))
         return len(parked)
     # The newest row for a working copy is the one that counts: a name freed
     # and taken by the next drop called the same is not the earlier decision.
@@ -1112,10 +1196,24 @@ RUN_CONSEQUENCES = "consequences"
 #: to give, and without one.
 DROP_WITH_LINK = "folder. One folder, no sorting and no naming needed; we do that:"
 DROP_NO_LINK = "folder we set up. One folder, no sorting and no naming needed."
+#: The quiet week's first sentence, which both of its paragraphs open with.
+_EVERYTHING_IN = "Good news - we have everything we asked for on {engagement}."
 #: The quiet week's paragraph, wrapped as it is written into the file.
-NOTHING_OWED = ("Good news - we have everything we asked for on {engagement}.\n"
+NOTHING_OWED = (f"{_EVERYTHING_IN}\n"
                 "Nothing further is needed from you right now, and we will be in\n"
                 "touch if anything else comes up.")
+#: What a week whose only problem is a file that is not a document says in
+#: place of "nothing further is needed", which the ask below it would
+#: contradict (decision 190; Jason's answer 1b, 2026-09-26).
+UNUSABLE_ONLY_NOTE = "One file you sent could not be used; please see the note below."
+#: The same note when more than one such file is listed below it: "One
+#: file" above a list of two would be a wrong count (decision 190's review
+#: of the port, S1).
+UNUSABLE_SOME_NOTE = "Some files you sent could not be used; please see the note below."
+#: That week's paragraph: the quiet week's first sentence, then the note -
+#: UNUSABLE_ONLY for one file, UNUSABLE_SOME for more than one.
+UNUSABLE_ONLY = f"{_EVERYTHING_IN}\n{UNUSABLE_ONLY_NOTE}"
+UNUSABLE_SOME = f"{_EVERYTHING_IN}\n{UNUSABLE_SOME_NOTE}"
 #: How every letter signs off, above the sender and the firm.
 SIGN_OFF = "Thank you,"
 
@@ -1196,19 +1294,26 @@ def _compose_letter(
     filing_deadline: dt.date | None = None,
     phone: str = "",
     also_received: int = 0,
+    unusable: Sequence[str] = (),
 ) -> Letter:
     """The letter as a shape: the greeting, the stage's own three sentences
     around the list, and the sign-off.
 
-    ``stage`` is None only on a quiet week, where there is nothing to chase
-    and no ladder to be on. The deadline paragraph is written only when the
+    ``stage`` is None on a week with no request to chase, where there is
+    no ladder to be on: a quiet week, or one whose only asks are files that
+    are not documents (decision 190's re-check, S-N1). The deadline paragraph is written only when the
     engagement has a Due Date to name: a stage the caller forced with no
     date to put in it drops the paragraph rather than printing half of it.
+
+    ``unusable`` is the files that are not documents (:func:`unusable_files`),
+    asked about under :data:`SECTION_FAILED`, after the requests, one line
+    each in the shape a request's line has: the client's name for the file
+    and the unusable-file ask.
     """
     greeting = f"Hi {client_name}," if client_name else "Hello,"
     signoff = (SIGN_OFF, *(name for name in (sender, firm) if name))
 
-    if not lines or stage is None:
+    if not (lines or unusable) or (stage is None and not unusable):
         return Letter(greeting=greeting, intro=NOTHING_OWED.format(engagement=engagement),
                       signoff=signoff)
 
@@ -1223,7 +1328,25 @@ def _compose_letter(
         Section(name, tuple(line.render() for line in lines if line.section == name))
         for name in SECTION_ORDER
         if any(line.section == name for line in lines)
-    )
+    ) + ((Section(SECTION_FAILED, tuple(f"  - {name} - {reasons.NOT_A_DOCUMENT.ask}"
+                                        for name in unusable)),) if unusable else ())
+    if stage is None:
+        # Only files that are not documents to ask about (decision 190's
+        # re-check, S-N1): they are no rung of the ladder, so the letter
+        # has none - the quiet week's first sentence and one that points at
+        # the note below (Jason's answer 1b; "Some files" past one), the
+        # ask under its heading and where to drop the replacement, and no
+        # deadline and no close.
+        return Letter(
+            greeting=greeting,
+            progress=progress_line(received, total, also_received),
+            intro=(UNUSABLE_SOME if len(unusable) > 1 else UNUSABLE_ONLY).format(
+                engagement=engagement),
+            sections=sections,
+            drop=(DROP_ANYWHERE, DROP_WITH_LINK if share_link else DROP_NO_LINK),
+            link=share_link,
+            signoff=signoff,
+        )
     return Letter(
         greeting=greeting,
         progress=progress_line(received, total, also_received),
@@ -1253,7 +1376,9 @@ def _parked_index_rows(engagement_dir: Path) -> list:
     try:
         return read_index(engagement_dir)
     except Exception as exc:
-        log.warning("Could not read the index for the files a person is holding: %s", exc)
+        errors.keep("reminder", exc, name=engagement_dir.name)
+        log.warning("Could not read the index for the files a person is holding (%s)",
+                    errors.error_class(exc))
         return []
 
 
@@ -1367,7 +1492,11 @@ def draft_reminder(
             f"`python -m tracker.scanner {engagement_dir}` first"
         )
 
-    lines, attention, held = triage(items, _parked_index_rows(engagement_dir))
+    parked = _parked_index_rows(engagement_dir)
+    lines, attention, held = triage(items, parked)
+    # A file that is not a document holds nothing and names no request, so
+    # it is asked about on its own (decision 190's review, S1).
+    unusable = unusable_files(parked)
     summary = summarize(items)
     received, total = summary.received, summary.total
     # The household, the year and the return, as everything that names one
@@ -1380,7 +1509,10 @@ def draft_reminder(
     )
 
     # The stage is the letter's, so a week with nothing to chase has none:
-    # "we have everything" is not a rung of a ladder.
+    # "we have everything" is not a rung of a ladder. Nor is a file that is
+    # not a document (decision 190's re-check, S-N1): it is asked about,
+    # and the stage, the subject's count and the progress line are the
+    # requests' alone - a stray program never climbs to a final notice.
     number = (stage if stage is not None else stage_for(due_date, today)) if lines else 0
     rung = stage_named(number) if number else None
 
@@ -1398,6 +1530,7 @@ def draft_reminder(
         stage=rung,
         filing_deadline=filing_deadline,
         phone=phone,
+        unusable=unusable,
     )
     body = letter.text()
 
@@ -1412,6 +1545,7 @@ def draft_reminder(
         body=body,
         stage=number,
         lines=lines,
+        unusable=unusable,
         needs_attention=attention,
         held=held,
         unsorted=unsorted_in_inbox(engagement_dir),
@@ -1421,6 +1555,7 @@ def draft_reminder(
         labels={item.identifier: item.label for item in items},
         letter=letter,
         link_dropped=link_dropped,
+        phone=phone,
     )
 
 
@@ -1610,6 +1745,25 @@ def draft_fingerprint(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
+def shown_text(subject: str, text: str) -> str:
+    """A letter as a person reads it on the card: the subject line, then the
+    body. The one composition of the two - what the app fingerprints and
+    what an approval records (decision 190)."""
+    return f"{SUBJECT_PREFIX}{subject}\n\n{text}" if subject else text
+
+
+def letter_fingerprint(path: Path | str) -> str:
+    """The fingerprint of the letter a draft file holds now, read as a
+    person reads it (:func:`pasted_text`, :func:`split_pasted`,
+    :func:`shown_text`), or "" when the file holds none or cannot be read.
+
+    Unlike the header's line this changes when anyone edits the letter,
+    which is what lets an approval lapse on an edit (decision 190).
+    """
+    body = pasted_text(path)
+    return draft_fingerprint(shown_text(*split_pasted(body))) if body else ""
+
+
 def recorded_fingerprint(path: Path | str) -> str:
     """The fingerprint in a draft file's header, or "" when it has none or
     cannot be read. The one reading of that line: ``is_unedited()``
@@ -1663,15 +1817,56 @@ def last_approved_event(engagement_dir: Path | str) -> dict | None:
 
 def approved_event(draft: ReminderDraft, written: Path) -> dict:
     """The ``DRAFT_APPROVED`` event for what a person approved: the stage,
-    the file, the fingerprint in its header and the identifiers it asks
-    for. A number, a name and identifiers - no word of the letter, as the
-    draft's own event carries none."""
+    the file, the fingerprint in its header, the fingerprint of the letter
+    it holds as they read it (:func:`letter_fingerprint`, decision 190) and
+    the identifiers it asks for. Numbers, a name and identifiers - no word
+    of the letter, as the draft's own event carries none.
+
+    The letter's fingerprint is read back from the file just written or
+    approved as it stands, not taken from the screen: the caller has
+    already refused a panel that no longer shows that text, so the two are
+    the same letter, and reading the file makes the later comparison one of
+    like with like."""
     return ledger.new(ledger.DRAFT_APPROVED, **{
         STAGE_KEY: draft.stage,
         ledger.FILE_KEY: Path(written).name,
         ledger.FINGERPRINT_KEY: recorded_fingerprint(written),
+        ledger.TEXT_FINGERPRINT_KEY: letter_fingerprint(written),
         ledger.ASKED_KEY: draft.asked,
     })
+
+
+def approval_state(engagement_dir: Path | str, path: Path | str, *,
+                   since: dt.date | None) -> str:
+    """What the last approval says about the file at ``path``:
+    :data:`APPROVED_NOTE` while it covers the letter the file holds,
+    :data:`APPROVED_THEN_EDITED` when the letter was edited after it, and
+    "" when there is no approval of this file (none, another file's, one
+    spent by the draft day ``since``, or one for a different draft written
+    to the same name).
+
+    An approval recorded before decision 190 carries no letter fingerprint,
+    so it cannot say which text the person read: it reads as
+    :data:`APPROVED_THEN_EDITED` - not approved, the person approves again -
+    rather than "". Reading it as no approval at all would also take away
+    its protection (:func:`is_protected`), and the pass would write over the
+    letter a person approved in the week of the deploy with no copy set
+    aside; an approval that has lapsed still keeps its file.
+
+    ``since`` is read as :func:`is_approved_this_week` reads it.
+    """
+    event = last_approved_event(engagement_dir)
+    if event is None or event.get(ledger.FILE_KEY) != Path(path).name:
+        return ""
+    if since is not None and ledger.day_of(str(event.get(ledger.AT_KEY, ""))) < since:
+        return ""
+    recorded = recorded_fingerprint(path)
+    if not recorded or event.get(ledger.FINGERPRINT_KEY) != recorded:
+        return ""
+    approved_text = event.get(ledger.TEXT_FINGERPRINT_KEY)
+    if not approved_text:
+        return APPROVED_THEN_EDITED
+    return APPROVED_NOTE if letter_fingerprint(path) == approved_text else APPROVED_THEN_EDITED
 
 
 def is_approved_this_week(engagement_dir: Path | str, path: Path | str, *,
@@ -1695,16 +1890,12 @@ def is_approved_this_week(engagement_dir: Path | str, path: Path | str, *,
 
     Matched on the fingerprint in the file's own header, not on its name: a
     different draft written to the same name is not the one that was
-    approved, and a file a person edited after approving it is protected
-    because they edited it.
+    approved. **And on the letter's own fingerprint** (decision 190): a
+    file a person edited after approving it is no longer approved - the
+    approval covered the text they read, not the text it became - though it
+    is still protected, because they edited it. See :func:`approval_state`.
     """
-    event = last_approved_event(engagement_dir)
-    if event is None or event.get(ledger.FILE_KEY) != Path(path).name:
-        return False
-    if since is not None and ledger.day_of(str(event.get(ledger.AT_KEY, ""))) < since:
-        return False
-    fingerprint = recorded_fingerprint(path)
-    return bool(fingerprint) and event.get(ledger.FINGERPRINT_KEY) == fingerprint
+    return approval_state(engagement_dir, path, since=since) == APPROVED_NOTE
 
 
 def is_protected(engagement_dir: Path | str, path: Path | str, *,
@@ -1718,10 +1909,14 @@ def is_protected(engagement_dir: Path | str, path: Path | str, *,
     it - the pass does, and it is what spends the approval next week.
     Without one the approval still protects the file: an approval is not
     the pass's to overrule, whichever writer is asking.
+
+    An approval that no longer counts - the letter edited since, or one
+    recorded before decision 190 with no letter fingerprint - still
+    protects: it stops being an approval, never a person's file to lose.
     """
     if not is_unedited(path):
         return True
-    return is_approved_this_week(engagement_dir, path, since=approved_since)
+    return approval_state(engagement_dir, path, since=approved_since) != ""
 
 
 def set_aside_other_draft(engagement_dir: Path | str, today: dt.date) -> Path | None:
@@ -1807,6 +2002,17 @@ def _changed_block(draft: ReminderDraft, changed_from: dict | None) -> list[str]
     return block
 
 
+def phone_line(draft: ReminderDraft) -> str:
+    """The header's telephone line for ``draft`` (decision 190): the number
+    the letter gives, a number that is set and that this letter does not
+    give, or that none is set."""
+    if not draft.phone:
+        return NO_FIRM_PHONE_LINE
+    if draft.phone in draft.text:
+        return FIRM_PHONE_LINE.format(phone=draft.phone)
+    return FIRM_PHONE_UNUSED_LINE.format(phone=draft.phone)
+
+
 def write_draft(draft: ReminderDraft, path: Path | str | None = None,
                 engagement_dir: Path | str | None = None,
                 preserve_edits: bool = False, *,
@@ -1886,6 +2092,7 @@ def write_draft(draft: ReminderDraft, path: Path | str | None = None,
         f"{_FINGERPRINT_PREFIX}{draft_fingerprint(body)}",
         "(That line is how the weekly job tells whether you have edited this",
         " draft. Edit it freely - an edited draft is never overwritten.)",
+        phone_line(draft),
         *_changed_block(draft, changed_from),
         _SEPARATOR,
         "",
@@ -1992,10 +2199,11 @@ if __name__ == "__main__":
     # A typed folder is parsed, never trusted: it must be a return's
     # place under the checked clients root (decision 188).
     from tracker import door
+    from tracker.layout import LayoutError
 
     try:
         ns.engagement_dir = door.return_dir(Path(ns.engagement_dir).absolute())
-    except ValueError as exc:
+    except (door.DoorError, LayoutError) as exc:     # the door's own sentences
         parser.error(str(exc))
 
     def _day(flag: str, typed: str) -> dt.date | None:

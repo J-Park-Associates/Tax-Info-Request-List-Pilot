@@ -132,6 +132,7 @@ from tracker.records import (
     rule_row_fault,
     rule_to_json,
     short_title_problem,
+    split_codes,
 )
 
 # ---------------------------------------------------------------- schema ----
@@ -460,6 +461,15 @@ class RequestItem:
     #: by default and everywhere a row is read without one: blank is
     #: derived from the document title (:attr:`short_name`).
     short_title: str = ""
+    #: The code of each cause the Validation Notes say (decision 190), as
+    #: the record's status carries it (``StatusUpdate.note_codes``): what the
+    #: reminder reads, never the notes' words. The record's, never typed.
+    note_codes: str = ""
+
+    @property
+    def note_code_list(self) -> list[str]:
+        """The notes' codes as the list they were joined from."""
+        return split_codes(self.note_codes)
 
     @property
     def short_name(self) -> str:
@@ -1280,6 +1290,7 @@ def _with_the_record(
                 "file_count": update.file_count,
                 "received_date": update.received_date,
                 "validation_notes": update.validation_notes,
+                "note_codes": update.note_codes,
             }),
         ))
     return out

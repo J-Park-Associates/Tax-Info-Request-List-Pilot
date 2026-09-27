@@ -233,7 +233,9 @@ class Watch:
                 # hint lags a line (the next one catches it up).
                 os.replace(temp, target)
         except OSError as exc:
-            log.debug("Could not keep the progress file (%s)", exc.__class__.__name__)
+            from tracker import errors  # at call time: L0 imports nothing of the package at load
+
+            log.debug("Could not keep the progress file (%s)", errors.error_class(exc))
             try:
                 temp.unlink(missing_ok=True)
             except OSError:
@@ -258,7 +260,9 @@ class Watch:
             except (OSError, ValueError) as exc:
                 # Nobody is listening any more; the pass goes on and its
                 # reply, not a progress line, is what the record keeps.
-                log.debug("Could not print a progress line (%s)", exc.__class__.__name__)
+                from tracker import errors  # at call time, as above
+
+                log.debug("Could not print a progress line (%s)", errors.error_class(exc))
         self._keep(said)
 
     def stop_asked(self) -> bool:

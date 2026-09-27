@@ -202,8 +202,12 @@ def atomic_replacement(path: Path, *, limit: int | None = None) -> Iterator[Path
         # read as "held by another program".
         try:
             _remove_temp(temp)
-        except OSError as exc:
-            log.warning("Temporary file %s could not be removed (%s)", temp.name, exc)
+        except OSError:
+            # Neither its words nor its name (a client's file's, with a
+            # pid and a tag) are said here (decision 190): fsio imports
+            # nothing, so it cannot hand them to errors.keep, and an OS
+            # error's words carry the whole path.
+            log.warning("A temporary file could not be removed after its write failed")
 
 
 def write_text_atomically(
@@ -277,6 +281,32 @@ def copy_atomically(
             os.fsync(handle.fileno())
         if prove is not None:
             prove(temp)
+
+
+#: The alternate data stream Windows reads a file's origin from, and what
+#: it holds for a file from the internet (zone 3). Office opens a file
+#: carrying it in Protected View, macros off (decision 190).
+ZONE_STREAM = ":Zone.Identifier"
+ZONE_FROM_INTERNET = "[ZoneTransfer]\r\nZoneId=3\r\n"
+
+
+def mark_from_internet(path: Path, *, _opener: Callable | None = None) -> bool:
+    """Mark ``path`` as a file from the internet, so Office opens it in
+    Protected View: True once marked, False where there is no such mark to
+    write (anything but Windows).
+
+    **Fails loudly, never quietly** (decision 190). On Windows an error
+    writing the stream - a volume that holds no streams, FAT or a network
+    share that drops them - is raised, and the caller does not make the
+    copy: an unmarked copy of a macro workbook in the review folder is the
+    thing this exists to stop. Read ``os.name`` when called, so a test can
+    stand in for Windows with ``_opener``, the one thing it touches."""
+    if os.name != "nt":
+        return False
+    opener = _opener or open
+    with opener(str(path) + ZONE_STREAM, "w", encoding="ascii", newline="") as stream:
+        stream.write(ZONE_FROM_INTERNET)
+    return True
 
 
 def _born(info: os.stat_result) -> float:
@@ -413,8 +443,11 @@ def append_rotating(path: Path, text: str, *, max_bytes: int, keep: int) -> Path
     if _too_big_for(path, len(data), max_bytes):
         try:
             _rotate(path, len(data), max_bytes=max_bytes, keep=keep)
-        except OSError as exc:
-            log.warning("Could not rotate %s (%s); appending and trying again next time", path, exc)
+        except OSError:
+            # No words and no class: this module imports nothing of the
+            # package, even at call time, so it cannot reach errors.error_class,
+            # and a caught error's words never reach a log line (decision 190).
+            log.warning("Could not rotate %s; appending and trying again next time", path)
     with path.open("ab") as handle:
         handle.write(data)
     return path

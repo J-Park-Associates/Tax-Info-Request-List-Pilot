@@ -89,7 +89,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tracker import ledger, review
+from tracker import errors, ledger, review
 from tracker.filer import (
     INDEX_HEADING,
     NEEDS_REVIEW,
@@ -132,7 +132,18 @@ from tracker.manifest import (
     status_key,
     status_label,
 )
-from tracker.page import Cell, Row, details, esc, page_text, slug, table, tolerant_console, unesc
+from tracker.page import (
+    Cell,
+    Row,
+    details,
+    esc,
+    page_text,
+    policy,
+    slug,
+    table,
+    tolerant_console,
+    unesc,
+)
 from tracker.records import (
     BEHIND,
     CURRENT,
@@ -218,7 +229,7 @@ VIEW_OPEN_LABEL = "Open Status Report"
 
 #: The index columns the review section repeats. The headers still come
 #: from the index's own table, so there is one owner for them.
-NEEDS_REVIEW_FIELDS = ("received", "original_name", "pbc_location", "reason",
+NEEDS_REVIEW_FIELDS = ("received", "original_name", "subfolder", "pbc_location", "reason",
                        "candidates", "evidence")
 
 #: What a coloured status word is classed as, and what a row set aside as
@@ -314,6 +325,9 @@ for (const th of document.querySelectorAll("th[data-sort]")) {
   });
 }
 """
+#: The page's policy (decision 190): its own style and its own sort script,
+#: each by hash, and nothing fetched.
+_POLICY = policy(style=_STYLE, script=_SORT_SCRIPT)
 
 
 class ViewError(RuntimeError):
@@ -554,7 +568,9 @@ def _readers(
         # A record the readers refuse: there is nothing to draw, and the
         # caller decides what that means. A pass says it in a log line and
         # stands.
-        raise ViewError(f"{engagement_dir.name}: the view could not be built ({exc})") from exc
+        errors.keep("view", exc, name=engagement_dir.name)
+        raise ViewError(f"{engagement_dir.name}: the view could not be built "
+                        f"({errors.said(exc, (ManifestError, FilingError, ledger.LedgerError))})") from exc
     return head, (recorded[-1] if recorded else None), items, entries
 
 
@@ -679,6 +695,7 @@ def _page(
         '<html lang="en">',
         "<head>",
         '<meta charset="utf-8">',
+        _POLICY,
         f"<title>{esc(label_of(engagement_dir))} — {esc(VIEW_LABEL)}</title>",
         *(f'<meta name="{esc(META_NAMES[label])}" content="{esc(value)}">'
           for label, value in stamp.items() if label in META_NAMES),
@@ -755,9 +772,10 @@ def write_view(
         # Somebody has it open, and on Windows an open read handle is
         # enough to refuse the swap. Nothing here is a fact, so this is the
         # one write in the system that may simply not happen.
+        errors.keep("view", exc, name=engagement_dir.name)
         log.warning(
             "%s: %s was not regenerated (%s); it stays one pass behind and the run stands",
-            engagement_dir.name, VIEW_FILENAME, exc,
+            engagement_dir.name, VIEW_FILENAME, errors.error_class(exc),
         )
         result.stale = True
     return result
@@ -835,10 +853,10 @@ if __name__ == "__main__":
     # A typed folder is parsed, never trusted: it must be a return's
     # place under the checked clients root (decision 188).
     from tracker import door
-
+    from tracker.layout import LayoutError
     try:
         ns.engagement_dir = door.return_dir(Path(ns.engagement_dir).absolute())
-    except ValueError as exc:
+    except (door.DoorError, LayoutError) as exc:     # the door's own sentences
         parser.error(str(exc))
 
     folder = Path(ns.engagement_dir)

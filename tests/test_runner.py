@@ -412,6 +412,30 @@ def test_nothing_outstanding_means_no_draft_file(tmp_path, samples):
     assert not (folder / DRAFT_FILENAME).exists()
 
 
+def test_a_week_whose_only_ask_is_a_program_writes_its_draft_at_no_stage(tmp_path, samples):
+    """The re-check's S-N1: every request is in and the client dropped a
+    program. The letter asks about it, so the week's draft is written - not
+    recorded as nothing outstanding while the file says otherwise - and it
+    is at no stage, because a file that is not a document is no rung."""
+    from tracker.reminder import SECTION_FAILED
+
+    only_the_return = [i for i in DEMO_ITEMS if i.identifier == "B01"]
+    folder = make_engagement(tmp_path, only_the_return, return_name="Settled TY2025",
+                             people=SCRATCH_PEOPLE, scaffold=False)
+    scaffolded = scaffold_engagement(folder)
+    name = f"{PRIOR_YEAR} Form 1040 Tax Return.pdf"
+    (scaffolded.inbox / name).write_bytes((samples / name).read_bytes())
+    (scaffolded.inbox / "setup.exe").write_bytes(b"MZ not a document")
+
+    run = a_pass(as_engagement(folder, client="John Smith"), today=SATURDAY)
+
+    assert run.statuses == {Status.RECEIVED: 1} and run.outstanding == 0
+    assert run.draft_note != NOTHING_OUTSTANDING
+    assert run.drafted == folder / DRAFT_FILENAME and run.stage == 0
+    text = run.drafted.read_text(encoding="utf-8")
+    assert SECTION_FAILED in text and "setup.exe" in text
+
+
 def test_the_draft_step_hands_the_pass_day_to_the_drafter_and_records_the_stage(tmp_path, samples, stamped_on):
     """Decision 117: the stage is measured from the day the pass is making,
     not from the clock - so a dated run writes the letter that day was
@@ -639,6 +663,16 @@ def test_the_practice_page_says_held_with_the_count(tmp_path, samples, stamped_o
 def test_a_missing_folder_is_recorded_not_raised(tmp_path):
     run = a_pass(Engagement(path=tmp_path / "no-such-client"), today=SATURDAY)
     assert run.error.startswith("folder not found")
+
+
+def test_a_missing_folder_is_said_without_its_path(tmp_path):
+    """The row already names the return; the folder's path is a client's
+    name and never reaches the page (decision 190)."""
+    from tracker.runner import FOLDER_NOT_FOUND
+
+    run = a_pass(Engagement(path=tmp_path / "Test Household" / "no-such-client"), today=SATURDAY)
+    assert run.error == FOLDER_NOT_FOUND
+    assert "Test Household" not in run.error and "no-such-client" not in run.error
 
 
 def test_an_unreadable_record_is_recorded_not_raised(tmp_path):
@@ -947,8 +981,54 @@ def test_a_real_pass_writes_the_status_page_into_the_root_and_a_dry_run_does_not
     assert product_name() in text
     assert STATUS_GENERATED.split("{")[0].strip() in text
     assert "Smith TY2025" in text
-    assert "<script" not in text and "http" not in text, "one file, nothing fetched to render it"
+    assert "<script" not in text and "://" not in text, "one file, nothing fetched to render it"
     capsys.readouterr()
+
+
+def _policy_matches_the_blocks(text: str) -> None:
+    """The page's policy, recomputed from the page as written: each inline
+    style and script is allowed by the SHA-256 of its own text, and nothing
+    else is allowed at all."""
+    import base64
+    import hashlib
+    import re
+
+    def allowed(block: str) -> str:
+        digest = hashlib.sha256(block.encode("utf-8")).digest()
+        return f"'sha256-{base64.b64encode(digest).decode('ascii')}'"
+
+    policies = re.findall(r'<meta http-equiv="Content-Security-Policy" content="([^"]*)">', text)
+    assert len(policies) == 1, "one policy per page"
+    directives = dict(part.strip().split(" ", 1) for part in policies[0].split(";"))
+    styles = re.findall(r"<style>(.*?)</style>", text, re.S)
+    scripts = re.findall(r"<script>(.*?)</script>", text, re.S)
+    assert directives.pop("default-src") == "'none'"
+    assert directives.pop("style-src") == " ".join(allowed(block) for block in styles)
+    if scripts:
+        assert directives.pop("script-src") == " ".join(allowed(block) for block in scripts)
+    assert directives == {}, "nothing beyond its own blocks"
+    assert text.index("Content-Security-Policy") < text.index("<style>")
+
+
+def test_both_pages_carry_a_policy_whose_hashes_match(tmp_path, samples, capsys):
+    """A page in a shared folder can be edited by anyone who can reach it; its
+    policy lets a browser run the page's own style and script and nothing
+    else (decision 190). Both pages a pass writes carry one, and the hashes
+    in it are the hashes of the blocks actually on the page."""
+    from tracker.view import VIEW_FILENAME
+    # A root of its own: tmp_path holds the suite's app folder (decision 185).
+    root = tmp_path / "root"
+
+    engagement = build_engagement(root, samples)
+    assert main([str(root), "--date", FRIDAY.isoformat()]) == 0
+    capsys.readouterr()
+
+    status = (root / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
+    report = (engagement.path / VIEW_FILENAME).read_text(encoding="utf-8")
+    _policy_matches_the_blocks(status)
+    _policy_matches_the_blocks(report)
+    assert "script-src" not in status, "the practice page runs no script"
+    assert "script-src" in report, "the engagement page's sort script is allowed by its hash"
 
 
 def test_the_page_lists_every_engagement_the_registry_finds_including_an_unreadable_one(
@@ -1190,6 +1270,27 @@ def test_an_approved_draft_is_not_overwritten_by_the_days_repeat_and_is_supersed
     assert first.read_bytes() != kept or is_unedited(first)
 
 
+def test_a_draft_edited_after_its_approval_is_left_alone_and_said_as_approved_then_edited(
+        tmp_path, samples, stamped_on):
+    """An edit after the approval lapses it (decision 190): the pass leaves
+    the file as it leaves any edited one, and the run log and the practice
+    page say "approved, then edited" rather than "approved"."""
+    from tracker.reminder import APPROVED_THEN_EDITED
+    from tracker.runner import _drafted_cell
+
+    engagement = build_engagement(tmp_path, samples)
+    first = pass_on(stamped_on, engagement, SATURDAY).drafted
+    approve_the_standing_draft(engagement.path, SATURDAY)
+    first.write_bytes(first.read_bytes() + b"\r\nPS: one more thing.\r\n")
+    kept = first.read_bytes()
+
+    repeat = pass_on(stamped_on, engagement, SATURDAY)
+    assert first.read_bytes() == kept, "an edited draft is never overwritten"
+    assert repeat.approved is False and repeat.approval_lapsed is True
+    assert APPROVED_THEN_EDITED in repeat.summary()
+    assert _drafted_cell(repeat) == APPROVED_THEN_EDITED
+
+
 def test_an_approved_draft_survives_a_hold_like_an_edited_one(tmp_path, samples, stamped_on):
     """A hold retires the run's own unedited drafts. One a person approved
     is not the run's - it is this week's answer, and it stays."""
@@ -1246,6 +1347,39 @@ def a_household(tmp_path, samples, household="Park Family", drops=()):
     for name in drops:
         (result.inbox / name).write_bytes((samples / name).read_bytes())
     return engagement_from(personal), engagement_from(business)
+
+
+def test_ignored_names_are_counted_once_per_pass(tmp_path, samples, capsys):
+    """The files the sort leaves alone by name - a system file, an Office
+    lock file (a client's own ``~$W2.pdf`` among them), anything under a
+    sync client's staging folder - are counted once per household per pass
+    (decision 190): one line in the run's report and on the practice page,
+    a count and never a name. An unfinished transfer is named as syncing
+    already, so it is not counted twice."""
+    from tracker.runner import IGNORED_NOTE, STATUS_IGNORED_HEADING
+    # A root of its own: tmp_path holds the suite's app folder (decision 185).
+    root = tmp_path / "root"
+
+    personal, business = a_household(root, samples, drops=(f"W-2 John Smith {YEAR}.pdf",))
+    inbox = inbox_of(personal.path)
+    junk = ["desktop.ini", "Thumbs.db", "~$W2 for the year.pdf"]
+    for name in junk:
+        (inbox / name).write_bytes(b"left alone")
+    staging = inbox / ".tmp.drivedownload"
+    staging.mkdir()
+    (staging / "part-of-a-statement.pdf").write_bytes(b"left alone")
+    (inbox / "bank statement.pdf.driveupload").write_bytes(b"still coming")
+
+    assert main([str(root), "--date", FRIDAY.isoformat()]) == 0
+    said = capsys.readouterr().out
+
+    line = IGNORED_NOTE.format(n=4)
+    assert said.count(line) == 1, said
+    page = (root / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
+    assert STATUS_IGNORED_HEADING in page and page.count(line) == 1
+    for name in [*junk, "part-of-a-statement.pdf"]:
+        assert html.escape(name) not in page and name not in said, name
+    assert (inbox / "~$W2 for the year.pdf").read_bytes() == b"left alone"
 
 
 def test_the_household_pass_takes_every_open_returns_lock_in_name_order_and_releases_them(
@@ -1605,7 +1739,7 @@ def test_the_dropping_households_pass_files_nothing_into_a_fed_return_and_the_do
     assert run.ok and run.filed == 0 and run.review == 1
     assert read_index(fed.path) == []
     [row] = read_index(personal.path)
-    assert row.decision == NEEDS_REVIEW and reasons.NAMED_ACROSS_HOUSEHOLDS.matches(row.reason)
+    assert row.decision == NEEDS_REVIEW and row.code == reasons.NAMED_ACROSS_HOUSEHOLDS.code
     assert row.waiting_for.identifiers == ("B01",)
     assert not any(fed.label in warning for warning in run.warnings)
 
@@ -2263,6 +2397,100 @@ def test_a_record_the_disk_refuses_is_said_by_its_class_and_code_never_its_path(
     assert where not in _page(tmp_path) and engagement.path.name not in row.error
 
 
+#: A fabricated OS error's path, shaped like a client's inbox (decision 190).
+A_CLIENT_PATH = "/Clients/Test Household/Drop files here/W2.pdf"
+
+
+def _refused_with_a_client_path():
+    import errno
+
+    return PermissionError(errno.EACCES, "Permission denied", A_CLIENT_PATH)
+
+
+def _says_no_client_path(**said: str) -> None:
+    for where, text in said.items():
+        assert A_CLIENT_PATH not in text and "Drop files here/W2.pdf" not in text, (
+            f"a client's folder reached {where}: {text}")
+
+
+def test_a_record_the_registry_cannot_read_is_said_by_its_class_never_its_path(
+        tmp_path, samples, monkeypatch, capsys):
+    """A record the registry cannot read for a reason of the disk's is the
+    return's problem by its class and errno alone: the OS error's message is
+    a client's folder, and neither the problem, the page, the run log nor
+    the console quotes it (decision 190, the review's S1)."""
+    import tracker.registry as registry
+    from tracker.registry import engagement_from
+
+    root = tmp_path / "Clients"
+    engagement = build_engagement(root, samples)
+    real = registry.load_engagement_info
+
+    def refused(folder, *args, **kwargs):
+        if Path(folder).name == engagement.path.name:
+            raise _refused_with_a_client_path()
+        return real(folder, *args, **kwargs)
+
+    monkeypatch.setattr(registry, "load_engagement_info", refused)
+
+    found = engagement_from(engagement.path)
+    assert found.problem == "PermissionError (EACCES)"
+    assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER, "--log") == 1
+    page = _page(root)
+    assert RECORD_UNREADABLE.format(problem="PermissionError (EACCES)") in page
+    printed = capsys.readouterr()
+    _says_no_client_path(problem=found.problem, page=page, stdout=printed.out, stderr=printed.err,
+                         run_log=log_path().read_text(encoding="utf-8"))
+
+
+def test_a_feed_list_the_disk_refuses_is_said_by_its_class_never_its_path(tmp_path, samples, monkeypatch):
+    """The feed list's warning, which reaches the page and the run log,
+    names a disk's refusal by its class and errno, never the message that
+    carries a client's folder (decision 190, the review's S1)."""
+    import tracker.runner as runner
+    from tracker.runner import FEEDS_UNREAD
+
+    def refused(*_args, **_kwargs):
+        raise _refused_with_a_client_path()
+
+    monkeypatch.setattr(runner, "load_household_info", refused)
+    found, said = runner._feeds_of(tmp_path / "Test Household", YEAR, None)
+    assert found == [] and said == [FEEDS_UNREAD.format(error="PermissionError (EACCES)")]
+    _says_no_client_path(warning=said[0])
+
+
+def test_a_pass_that_stops_prints_no_trace_and_no_message(tmp_path, samples, monkeypatch, capsys, caplog):
+    """The pass-level catch says the stop by its class; the trace, which
+    quotes the message, goes to the debug log alone - one rule for where a
+    trace goes (decision 190, the review's S2)."""
+    import logging
+
+    import tracker.runner as runner
+    from tracker.errors import DEBUG_LOGGER
+    from tracker.runner import PASS_STOPPED
+
+    root = tmp_path / "Clients"
+    build_engagement(root, samples)
+    asked = []
+
+    def fails_at_the_end_of_the_pass():
+        asked.append(True)
+        if len(asked) == 2:
+            raise _refused_with_a_client_path()
+        return ""
+
+    monkeypatch.setattr(runner, "reader_start_warning", fails_at_the_end_of_the_pass)
+    with caplog.at_level(logging.DEBUG):
+        assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER, "--log") == 1
+    assert PASS_STOPPED.format(kind="PermissionError (EACCES)") in _page(root)
+    logged = [record for record in caplog.records if record.name != DEBUG_LOGGER]
+    assert not any(record.exc_info for record in logged), "a trace was printed"
+    printed = capsys.readouterr()
+    assert "Traceback" not in printed.err
+    _says_no_client_path(page=_page(root), stdout=printed.out, stderr=printed.err,
+                         logged="\n".join(record.getMessage() for record in logged),
+                         run_log=log_path().read_text(encoding="utf-8"))
+
 def test_a_household_that_stops_is_said_by_its_class_never_its_message(
         tmp_path, samples, monkeypatch, capsys):
     """A household's surprise costs its returns, and each carries the class
@@ -2294,8 +2522,9 @@ def test_a_page_that_cannot_be_written_is_said_in_the_log_and_fails_the_run(
         tmp_path, samples, monkeypatch, capsys):
     """The page is how a person finds out; one stuck on yesterday must not
     look green (security principle 6; the review's S3). A page that cannot
-    be written is said in the run log by its class alone, and the pass
-    exits 1."""
+    be written is said in the run log by its class alone - in the one
+    spelling, errors.error_class, with its errno (decision 190, the
+    review's M1) - and the pass exits 1."""
     import tracker.runner as runner
     from tracker.runner import PAGE_NOT_WRITTEN
 
@@ -2311,7 +2540,7 @@ def test_a_page_that_cannot_be_written_is_said_in_the_log_and_fails_the_run(
     log_text = log_path().read_text(encoding="utf-8")
     assert f"codes {CODE_PAGE_NOT_WRITTEN}=1" in log_text
     assert "a client's folder" not in log_text
-    assert PAGE_NOT_WRITTEN.format(kind="PermissionError") in capsys.readouterr().out
+    assert PAGE_NOT_WRITTEN.format(kind="PermissionError (EACCES)") in capsys.readouterr().out
     capsys.readouterr()
 
 
@@ -3605,6 +3834,97 @@ def test_lines_from_other_machines_that_cannot_be_listed_are_said_where_they_wou
     page = html.unescape(write_status_page(clients, report).read_text(encoding="utf-8"))
     assert "Lines from other machines could not be listed this pass: record-heads.db" in page
     assert "SQLITE_IOERR_READ" in page
+
+
+# ------------------------------- errors are classes, end to end (decision 190) ----
+
+
+def test_no_byte_of_a_damaged_document_reaches_the_record_store_pages_or_run_log(
+        tmp_path, tmp_path_factory, monkeypatch, capsys):
+    """A broken PDF, a zip and an email, each of whose parser is made to
+    raise with words in a W-2's shape (fabricated: nobody's number, nobody's
+    name), and a PDF the filer itself fails on. After a real pass, the run
+    log, the practice page and the app, not a byte of those words is in any
+    file under the root - the record, the store, both pages, the log - nor
+    in what the app says. They reach the debug log, and only it."""
+    import io
+    import json
+    import logging
+    import zipfile
+
+    from tracker import api, containers, content_check, errors, filer, validators
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    number, name = "123-45-6789", "Jane Fabricated"
+    quoted = f"bad object near 'SSN {number} {name}'"
+
+    def quotes_the_document(*_args, **_kwargs):
+        raise ValueError(quoted)
+
+    real_zip = zipfile.ZipFile
+
+    def zip_that_quotes(file, *args, **kwargs):
+        if isinstance(file, io.BytesIO):            # the container's own opening, nothing else
+            raise zipfile.BadZipFile(quoted)
+        return real_zip(file, *args, **kwargs)
+
+    real_decide = filer._decide_across
+
+    def decide(drop, *args, **kwargs):
+        if drop.name == "boom.pdf":
+            raise ValueError(quoted)
+        return real_decide(drop, *args, **kwargs)
+
+    monkeypatch.setattr(validators, "PdfReader", quotes_the_document)
+    monkeypatch.setattr(content_check, "extract_text", quotes_the_document)
+    monkeypatch.setattr(containers.zipfile, "ZipFile", zip_that_quotes)
+    import email  # imported at call time since decision 193 (S2): patched where it is read
+
+    monkeypatch.setattr(email, "message_from_bytes", quotes_the_document)
+    monkeypatch.setattr(filer, "_decide_across", decide)
+
+    kept: list[str] = []
+
+    class Keeper(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            kept.append(record.getMessage())
+
+    keeper = Keeper(level=logging.DEBUG)
+    logging.getLogger(errors.DEBUG_LOGGER).addHandler(keeper)
+    try:
+        w2 = RequestItem(identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),
+                         min_size_kb=0, required_keywords=("W-2",))
+        engagement = make_engagement(tmp_path, [w2])
+        inbox = inbox_of(engagement)
+        (inbox / "W2.pdf").write_bytes(b"%PDF-1.4\nbroken\n%%EOF\n")
+        (inbox / "boom.pdf").write_bytes(b"%PDF-1.4\nalso broken\n%%EOF\n")
+        (inbox / "docs.zip").write_bytes(b"PK\x03\x04 broken")
+        (inbox / "mail.eml").write_bytes(b"From: someone@example.invalid\n\nbody\n")
+
+        report = run_registry(discover_engagements(tmp_path), today=FRIDAY, reminders=REMINDERS_NEVER)
+        append_log(tmp_path / LOG_FILENAME, report)
+        write_status_page(tmp_path, report)
+        monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path_factory.mktemp("app")))
+        set_clients_root(tmp_path)
+        assert api.main(["state", api.ENGAGEMENT_FLAG, str(engagement)]) == 0
+        said_to_the_app = capsys.readouterr().out
+    finally:
+        logging.getLogger(errors.DEBUG_LOGGER).removeHandler(keeper)
+
+    rows = {row.original_name: row.reason for row in read_index(engagement)}
+    assert "(ValueError)" in rows["W2.pdf"]
+    assert "could not be filed (ValueError)" in rows["boom.pdf"]
+    assert "(BadZipFile)" in rows["docs.zip"]
+    assert "(ValueError)" in rows["mail.eml"]
+    written = [path for path in tmp_path.rglob("*") if path.is_file()]
+    assert any(path.name == STATUS_PAGE_FILENAME for path in written)
+    assert any(path.name == LOG_FILENAME for path in written)
+    for path in written:
+        data = path.read_bytes()
+        assert number.encode() not in data and name.encode() not in data, path
+    json.loads(said_to_the_app)
+    assert number not in said_to_the_app and name not in said_to_the_app
+    assert any(quoted in one for one in kept)
 
 
 # ------------------- the page reads the store the walk left (decision 192) ----

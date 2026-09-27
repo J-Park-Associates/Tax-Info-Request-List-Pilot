@@ -42,6 +42,7 @@ from tracker.reminder import (
     DRAFT_BANNER,
     DRAFT_FILENAME,
     EXTENSION_ASK,
+    GENERIC_ASK,
     HELD_REFUSAL,
     HOLD_COLOUR,
     LETTER_INK,
@@ -94,9 +95,22 @@ from tracker.scanner import OVERRIDE_NOTE, PARTIAL_NOTE, SYNCING_NOTE
 
 
 def item(identifier, document, status, **kwargs):
+    """A request with the record's status on it. Notes said with a code -
+    :func:`failure`, or a Reason's own sentence - carry that code into
+    ``note_codes`` as the scan records it (decision 190); plain text carries
+    none, however it reads."""
+    notes = kwargs.get("validation_notes", "")
+    if "note_codes" not in kwargs and reasons.code_of(notes):
+        kwargs["note_codes"] = reasons.code_of(notes)
     return RequestItem(
         identifier=identifier, document=document, status=status, **kwargs
     )
+
+
+def failure(name, said):
+    """One failure as the scanner notes it, ``name.pdf: sentence``, carrying
+    the sentence's code (decision 190)."""
+    return reasons.Said(f"{name}: {said}", reasons.code_of(said))
 
 
 SCANNED = [
@@ -105,7 +119,7 @@ SCANNED = [
     item("A02", "Bank Statements", Status.PARTIAL,
          period="TY2025", expected_count=3, file_count=2),
     item("A03", "2024 Form 1040 Tax Return", Status.FAILED, period="TY2024",
-         validation_notes="prior.pdf: " + reasons.PASSWORD_PROTECTED.format()),
+         validation_notes=failure("prior.pdf", reasons.PASSWORD_PROTECTED.format())),
     item("A04", "Mortgage Interest Statement", Status.RECEIVED,
          period="TY2025", file_count=1, received_date=dt.date(2026, 2, 1)),
     item("A05", "Charitable Donations", Status.MISSING, manual_override=Override.NOT_APPLICABLE),
@@ -171,6 +185,7 @@ def engagement(tmp_path, items=SCANNED, name="Smith TY2025"):
             file_count=i.file_count or 0,
             received_date=i.received_date,
             validation_notes=i.validation_notes,
+            note_codes=i.note_codes,
         )
         for i in items if i.status
     }
@@ -215,13 +230,13 @@ def test_partial_says_how_many_are_left():
 
 
 @pytest.mark.parametrize("note, expected_fragment", [
-    ("x.pdf: " + reasons.PASSWORD_PROTECTED.format(), reasons.PASSWORD_PROTECTED.client_ask),
-    ("x.gdoc: " + reasons.GOOGLE_STUB.format(extension="gdoc"), reasons.GOOGLE_STUB.client_ask),
-    ("x.pdf: " + reasons.TOO_SMALL.format(size_kb=0.1, minimum=5), reasons.TOO_SMALL.client_ask),
-    ("x.zip: " + reasons.EXTENSION_NOT_ALLOWED.format(extension="zip", allowed="pdf"),
+    (failure("x.pdf", reasons.PASSWORD_PROTECTED.format()), reasons.PASSWORD_PROTECTED.client_ask),
+    (failure("x.gdoc", reasons.GOOGLE_STUB.format(extension="gdoc")), reasons.GOOGLE_STUB.client_ask),
+    (failure("x.pdf", reasons.TOO_SMALL.format(size_kb=0.1, minimum=5)), reasons.TOO_SMALL.client_ask),
+    (failure("x.zip", reasons.EXTENSION_NOT_ALLOWED.format(extension="zip", allowed="pdf")),
      reasons.EXTENSION_NOT_ALLOWED.client_ask),
-    ("x.pdf: " + reasons.WRONG_DOCUMENT.format(listed="'W-2'"), reasons.WRONG_DOCUMENT.client_ask),
-    ("x.pdf: " + reasons.WRONG_PERIOD.format(pattern="2025"), reasons.WRONG_PERIOD.client_ask),
+    (failure("x.pdf", reasons.WRONG_DOCUMENT.format(listed="'W-2'")), reasons.WRONG_DOCUMENT.client_ask),
+    (failure("x.pdf", reasons.WRONG_PERIOD.format(pattern="2025")), reasons.WRONG_PERIOD.client_ask),
 ])
 def test_failures_translate_to_a_plain_instruction(note, expected_fragment):
     ask = client_ask(item("A01", "Doc", Status.FAILED, validation_notes=note))
@@ -247,7 +262,7 @@ def test_multi_file_requests_say_how_many_are_expected(tmp_path):
 
 def test_rows_we_have_not_read_go_to_the_accountant_not_the_client():
     rows = [item("B01", "Receipts", Status.FAILED,
-                 validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format())]
+                 validation_notes=failure("scan.pdf", reasons.NO_TEXT_LAYER.format()))]
     lines, attention, held = triage(rows)
     assert lines == [] and held == []
     assert [f.item.identifier for f in attention] == ["B01"]
@@ -423,7 +438,7 @@ def test_write_draft_marks_it_as_a_draft(tmp_path):
 def test_written_draft_appends_firm_side_notes_below_the_email(tmp_path):
     rows = SENDABLE + [
         item("B01", "Receipts", Status.FAILED,
-             validation_notes="scan.pdf: " + reasons.NO_TEXT_AFTER_OCR.format()),
+             validation_notes=failure("scan.pdf", reasons.NO_TEXT_AFTER_OCR.format())),
         item("B02", "Payroll Reports", Status.MISSING,
              validation_notes=reasons.FILE_MOVED.format(
                  listed="Prepared/B02 - Payroll - TY2025.pdf -> nowhere under Prepared")),
@@ -452,7 +467,9 @@ def test_a_partial_row_we_have_not_finished_reading_is_ours_not_the_clients():
     # client may well have sent both, so "1 of 2 received" is not known yet.
     row = item("A01", "W-2 Wage Statements", Status.PARTIAL, expected_count=2,
                file_count=1,
-               validation_notes=f"{PARTIAL_NOTE.format(count=1, expected=2)}; scan.pdf: " + reasons.NO_TEXT_LAYER.format())
+               validation_notes=(f"{PARTIAL_NOTE.format(count=1, expected=2)}; scan.pdf: "
+                                 + reasons.NO_TEXT_LAYER.format()),
+               note_codes=reasons.NO_TEXT_LAYER.code)
     lines, attention, held = triage([row])
     assert lines == [] and held == []
     assert [flag.item.identifier for flag in attention] == ["A01"]
@@ -513,9 +530,8 @@ def test_the_draft_reads_the_engagement_details_itself(tmp_path):
 def test_an_ocr_failure_is_the_firms_to_retry_not_the_clients_to_resend():
     from tracker import reasons
 
-    assert reasons.OCR_FAILED in reasons.FIRM_SIDE
-    note = "scan.pdf: " + reasons.OCR_FAILED.format(error="ONNXRuntimeError: FAIL")
-    assert reasons.find(note) is reasons.OCR_FAILED
+    assert reasons.OCR_FAILED.code in reasons.FIRM_SIDE
+    assert reasons.first_of([reasons.OCR_FAILED.code]) is reasons.OCR_FAILED
 
 
 # ------------------------------------------- the gate: an ambiguity holds ----
@@ -530,7 +546,7 @@ def _held_engagement(tmp_path, rows=None):
     return engagement(tmp_path, rows or [
         item("A01", "W-2 Wage Statements", Status.MISSING, expected_count=2),
         item("C01", "Form 1098 Mortgage Interest Statement", Status.FAILED,
-             validation_notes="1099.pdf: " + reasons.WRONG_DOCUMENT.format(listed="'1098'")),
+             validation_notes=failure("1099.pdf", reasons.WRONG_DOCUMENT.format(listed="'1098'"))),
     ])
 
 
@@ -554,7 +570,7 @@ def test_a_failed_row_with_a_firm_side_reason_does_not_hold(tmp_path):
     folder = engagement(tmp_path, [
         item("A01", "W-2 Wage Statements", Status.MISSING),
         item("B01", "Receipts", Status.FAILED,
-             validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format()),
+             validation_notes=failure("scan.pdf", reasons.NO_TEXT_LAYER.format())),
     ])
     draft = draft_reminder(folder)
     assert not draft.is_held and draft.held == []
@@ -567,7 +583,8 @@ def test_a_failed_row_with_a_firm_side_reason_does_not_hold(tmp_path):
 def test_a_partial_whose_shortfall_is_a_refused_file_holds_and_a_plain_partial_is_asked():
     refused = item("A02", "Bank Statements", Status.PARTIAL, expected_count=3, file_count=2,
                    validation_notes=f"{PARTIAL_NOTE.format(count=2, expected=3)}; nov.pdf: "
-                                    + reasons.PASSWORD_PROTECTED.format())
+                                    + reasons.PASSWORD_PROTECTED.format(),
+                   note_codes=reasons.PASSWORD_PROTECTED.code)
     plain = item("A03", "Brokerage Statements", Status.PARTIAL, expected_count=2, file_count=1,
                  validation_notes=PARTIAL_NOTE.format(count=1, expected=2))
     lines, attention, held = triage([refused, plain])
@@ -582,7 +599,7 @@ def test_a_missing_row_with_a_firm_side_marker_is_held_back_not_asked():
     """Decision 109's rule, stated once here: a firm-side marker on any
     outstanding status is the firm's, Missing included."""
     row = item("D01", "Charitable Donations", Status.MISSING,
-               validation_notes="receipts.pdf: " + reasons.VANISHED.format(error="moved"))
+               validation_notes=failure("receipts.pdf", reasons.VANISHED.format(error="moved")))
     lines, attention, held = triage([row])
     assert lines == [] and held == []
     assert [flag.item.identifier for flag in attention] == ["D01"]
@@ -604,9 +621,9 @@ def test_the_held_refusal_names_every_held_row_and_writes_nothing(tmp_path):
     folder = _held_engagement(tmp_path, [
         item("A01", "W-2 Wage Statements", Status.MISSING),
         item("C01", "Mortgage Interest", Status.FAILED,
-             validation_notes="x.pdf: " + reasons.WRONG_PERIOD.format(pattern="2025")),
+             validation_notes=failure("x.pdf", reasons.WRONG_PERIOD.format(pattern="2025"))),
         item("D01", "Donations", Status.FAILED,
-             validation_notes="y.pdf: " + reasons.TOO_SMALL.format(size_kb=0.1, minimum=5)),
+             validation_notes=failure("y.pdf", reasons.TOO_SMALL.format(size_kb=0.1, minimum=5))),
     ])
     draft = draft_reminder(folder)
     with pytest.raises(ReminderHeldError) as caught:
@@ -617,8 +634,8 @@ def test_the_held_refusal_names_every_held_row_and_writes_nothing(tmp_path):
     assert list(folder.glob("reminder-draft*")) == []
     # A hold's bracketed reason is in the row's own terms, as an ask would be.
     _, _, [xlsx] = triage([item("E01", "Sheet", Status.FAILED, allowed_extensions=("xlsx",),
-                                   validation_notes="x.zip: " + reasons.EXTENSION_NOT_ALLOWED.format(
-                                       extension="zip", allowed="xlsx"))])
+                                   validation_notes=failure("x.zip", reasons.EXTENSION_NOT_ALLOWED.format(
+                                       extension="zip", allowed="xlsx")))])
     assert EXTENSION_ASK.format(accepted=".xlsx") in xlsx.reason
 
 
@@ -695,7 +712,8 @@ def test_section_failed_is_unreachable_from_a_pass(tmp_path):
     assert SECTION_FAILED == "RECEIVED, BUT WE COULD NOT USE IT"
     assert SECTION_FAILED not in SECTION_ORDER
     every_failed = [
-        item(f"F{n:02d}", "Doc", Status.FAILED, validation_notes="x.pdf: " + reason.marker)
+        item(f"F{n:02d}", "Doc", Status.FAILED, validation_notes="x.pdf: " + reason.marker,
+             note_codes=reason.code)
         for n, reason in enumerate(reasons.ALL)
     ] + [item("F99", "Doc", Status.FAILED, validation_notes="x.pdf: nobody predicted this")]
     lines, attention, held = triage(every_failed)
@@ -705,7 +723,7 @@ def test_section_failed_is_unreachable_from_a_pass(tmp_path):
     }
     folder = engagement(tmp_path, SENDABLE + [
         item("B01", "Receipts", Status.FAILED,
-             validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format()),
+             validation_notes=failure("scan.pdf", reasons.NO_TEXT_LAYER.format())),
     ])
     text = write_draft(draft_reminder(folder), engagement_dir=folder).read_text(encoding="utf-8")
     assert SECTION_FAILED not in text
@@ -722,7 +740,7 @@ def test_a_missing_row_with_a_file_moved_note_is_the_firms_and_the_draft_never_a
                      "was Received 2026-02-01; files changed",
                      reasons.FILE_MOVED.format(listed="Prepared/A08 - W-2 - TY2025.pdf "
                                                       "-> Prepared/C01 - A08 - W-2 - TY2025.pdf"),
-                 ]))
+                 ]), note_codes=reasons.FILE_MOVED.code)
 
     lines, attention, held = triage(SENDABLE + [moved])
 
@@ -816,9 +834,50 @@ def test_stage_four_drops_the_phone_sentence_when_the_firm_has_no_phone(tmp_path
     assert STAGES[3].close.format(phone_clause="") in without.body
 
 
+def test_the_draft_header_names_the_firm_phone(tmp_path, monkeypatch):
+    """The header says which firm number the letter gives, or that it gives
+    none (decision 190), so a number changed in the settings is seen before
+    the letter goes. The line sits above the rule: the body's fingerprint
+    is the same with or without it, and the draft still reads unedited."""
+    from tracker.reminder import (
+        FIRM_PHONE_LINE,
+        FIRM_PHONE_UNUSED_LINE,
+        NO_FIRM_PHONE_LINE,
+        pasted_text,
+    )
+
+    def header_and_body(path):
+        header, _, body = path.read_text(encoding="utf-8").partition("=" * 60)
+        return header.splitlines(), body
+
+    folder = engagement(tmp_path, SENDABLE)
+    unset = write_draft(draft_reminder(folder, due_date=DUE, today=DUE), engagement_dir=folder)
+    header, body = header_and_body(unset)
+    assert NO_FIRM_PHONE_LINE in header and NO_FIRM_PHONE_LINE not in body
+    assert is_unedited(unset)
+    quiet_line = write_draft(draft_reminder(folder, due_date=DUE, today=DUE, stage=1),
+                             engagement_dir=folder)
+    stage_one_without = (recorded_fingerprint(quiet_line), pasted_text(quiet_line))
+
+    monkeypatch.setattr(reminder_module, "firm_phone", lambda: PHONE)
+    final = write_draft(draft_reminder(folder, due_date=DUE, today=DUE), engagement_dir=folder)
+    header, body = header_and_body(final)
+    assert FIRM_PHONE_LINE.format(phone=PHONE) in header and PHONE in body
+    assert is_unedited(final)
+
+    # A stage that offers no call: the number is on file, the header does
+    # not claim the letter gives it - and only the header changed, so the
+    # body and its fingerprint are those of the same letter with no number set.
+    early = write_draft(draft_reminder(folder, due_date=DUE, today=DUE, stage=1), engagement_dir=folder)
+    header, body = header_and_body(early)
+    assert FIRM_PHONE_UNUSED_LINE.format(phone=PHONE) in header and PHONE not in body
+    assert (recorded_fingerprint(early), pasted_text(early)) == stage_one_without
+    assert is_unedited(early)
+
+
 def test_the_recipient_set_is_identical_at_every_stage_and_a_firm_side_row_is_in_none(tmp_path):
     rows = SENDABLE + [item("B01", "Receipts", Status.FAILED,
-                            validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format())]
+                            validation_notes=failure("scan.pdf", reasons.NO_TEXT_LAYER.format()))]
     folder = engagement(tmp_path, rows, name="Every Stage TY2025")
     drafts = [draft_reminder(folder, due_date=DUE, today=DUE, stage=n) for n in (1, 2, 3, 4)]
     assert {tuple(draft.asked) for draft in drafts} == {("A01", "A02")}
@@ -948,7 +1007,7 @@ def test_a_locked_pdf_named_for_a_request_parks_with_that_request_on_its_shortli
 
     [row] = parked_rows(folder)
     assert row.candidates == "", "a name is no candidate; nothing is filed on one"
-    assert reasons.PASSWORD_PROTECTED.matches(row.reason)
+    assert row.code == reasons.PASSWORD_PROTECTED.code
     assert [s.identifier for s in shortlist_for(row, DROPPED)] == ["A01"]
 
     draft = draft_reminder(folder)
@@ -1009,7 +1068,7 @@ def test_a_parked_file_with_a_firm_side_reason_holds_nothing(tmp_path, monkeypat
     assert len(report.review) == 1
 
     [row] = parked_rows(folder)
-    assert reasons.NO_READABLE_TEXT.matches(row.reason)
+    assert row.code == reasons.NO_READABLE_TEXT.code
     assert [s.identifier for s in shortlist_for(row, DROPPED)] == ["A01"]
 
     draft = draft_reminder(folder)
@@ -1126,7 +1185,7 @@ def test_a_near_miss_holds_the_reminder_and_blames_no_file(tmp_path):
     assert len(report.review) == 1
 
     [row] = parked_rows(folder)
-    assert reasons.find(row.reason) is reasons.SHOWS_ITS_FORM_NUMBER
+    assert row.code == reasons.SHOWS_ITS_FORM_NUMBER.code
     assert row.candidates == "", "a suggestion is never a candidate"
     assert [s.identifier for s in shortlist_for(row, NEAR_MISSED)] == ["A01"]
 
@@ -1142,7 +1201,7 @@ def test_a_near_miss_holds_the_reminder_and_blames_no_file(tmp_path):
             assert word not in said, word
     refusal = held_refusal(draft)
     assert refusal == CONFIRM_REFUSAL.format(listed=draft.held[0].item.label)
-    assert "held until a person confirms the parked file (open it in Needs Review)" in refusal
+    assert "held until a person confirms the parked file (open it from its card)" in refusal
     assert "resends" not in refusal and "fix it here" not in refusal
     with pytest.raises(ReminderHeldError, match="A01"):
         write_draft(draft, engagement_dir=folder)
@@ -1176,6 +1235,10 @@ HELD_BEFORE_140 = {
 #: zip, which the client can fix by sending the documents on their own -
 #: hold as a locked or damaged PDF does.
 HELD_SINCE_143 = {"container-locked", "container-damaged"}
+#: The one client-side reason that holds nothing (decision 190): a program
+#: is not a document, is decided before anything reads its name, and so
+#: names no request to hold.
+CLIENT_SIDE_NOT_HELD = {"not-a-document"}
 
 
 @pytest.mark.parametrize("reason", reasons.ALL, ids=lambda r: r.code)
@@ -1194,7 +1257,7 @@ def test_every_existing_reason_holds_exactly_as_before(reason):
     from tracker.reminder import _ask_for, _parked_holds
 
     row = parked_row("scan.pdf", {"A01": (Evidence(RULE_REQUIRED, "W-2", WHERE_TITLE, 1),)},
-                     reason="scan.pdf: " + _sample(reason))
+                     reason="scan.pdf: " + _sample(reason), code=reason.code)
     holds = {identifier: (flag.reason, flag.confirm)
              for identifier, flag in _parked_holds(DROPPED, [row]).items()}
     if reason in (reasons.SHOWS_ITS_FORM_NUMBER, reasons.NAME_POINTS_AT):
@@ -1202,7 +1265,8 @@ def test_every_existing_reason_holds_exactly_as_before(reason):
         assert holds == {"A01": (CONFIRM_HOLD.format(note=reason.firm_side_note), True)}
         return
     held = HELD_BEFORE_140 | HELD_SINCE_143
-    assert reason.holds == (reason.code in held) == (not reason.firm_side)
+    assert reason.holds == (reason.code in held)
+    assert reason.holds == (not reason.firm_side) or reason.code in CLIENT_SIDE_NOT_HELD
     expected = ({"A01": (PARKED_HOLD.format(ask=_ask_for(reason, DROPPED[0])), False)}
                 if reason.code in held else {})
     assert holds == expected
@@ -1421,6 +1485,84 @@ def test_an_approval_names_a_text_and_not_a_filename(tmp_path):
 
     written.write_bytes(written.read_bytes() + b"\r\nPS: and the boat.\r\n")
     assert is_protected(folder, written, approved_since=week), "an edit protects it anyway"
+
+
+def test_an_approval_lapses_when_the_letter_is_edited(tmp_path):
+    """An approval covers the text a person read, not what the file becomes
+    (decision 190). It records that text's fingerprint - the one the card
+    shows for it - and an edit after it lapses the approval: the file is
+    still protected, because it was edited, and it reads "approved, then
+    edited". An approval recorded before 190, with no text fingerprint,
+    reads the same way: not an approval, so the person approves again."""
+    from tracker import store
+    from tracker.locking import engagement_lock
+    from tracker.reminder import (
+        APPROVED_THEN_EDITED,
+        approval_state,
+        draft_fingerprint,
+        letter_fingerprint,
+        shown_text,
+    )
+
+    folder = engagement(tmp_path, SENDABLE, name="Lapsed TY2025")
+    draft = draft_reminder(folder, due_date=DUE, today=DUE)
+    written = write_draft(draft, engagement_dir=folder)
+    week = dt.date.today() - dt.timedelta(days=1)
+    approve(folder, draft, written)
+
+    event = approved_event(draft, written)
+    assert event[ledger.TEXT_FINGERPRINT_KEY] == draft_fingerprint(shown_text(draft.subject, draft.body))
+    assert approval_state(folder, written, since=week) == APPROVED_NOTE
+
+    written.write_bytes(written.read_bytes() + b"\r\nPS: and the boat.\r\n")
+    assert letter_fingerprint(written) != event[ledger.TEXT_FINGERPRINT_KEY]
+    assert approval_state(folder, written, since=week) == APPROVED_THEN_EDITED
+    assert not is_approved_this_week(folder, written, since=week)
+    assert not is_approved_this_week(folder, written, since=None)
+    assert is_protected(folder, written, approved_since=week), "edited, so still protected"
+
+    # Approved again as it now stands: in force, and the edit is covered.
+    approve(folder, draft, written)
+    assert approval_state(folder, written, since=week) == APPROVED_NOTE
+
+    # An event from before 190 names no text: it is not an approval.
+    legacy = {key: value for key, value in approved_event(draft, written).items()
+              if key != ledger.TEXT_FINGERPRINT_KEY}
+    with engagement_lock(folder):
+        store.record(store.connect(), folder, legacy)
+    assert approval_state(folder, written, since=week) == APPROVED_THEN_EDITED
+    assert not is_approved_this_week(folder, written, since=week)
+
+
+def test_an_approval_from_before_190_still_protects_its_letter_in_the_deploy_week(tmp_path):
+    """An approval recorded before decision 190 has no letter fingerprint,
+    so it no longer counts: the card reads "approved, then edited" and the
+    person approves again. It still protects the file it names - the pass
+    in the week of the deploy writes its draft beside the approved letter,
+    never over it, though nobody has edited it (nothing vanishes)."""
+    from tracker import store
+    from tracker.locking import engagement_lock
+    from tracker.reminder import APPROVED_THEN_EDITED, approval_state, is_unedited
+
+    folder = engagement(tmp_path, SENDABLE, name="Deploy Week TY2025")
+    draft = draft_reminder(folder, due_date=DUE, today=DUE)
+    written = write_draft(draft, engagement_dir=folder)
+    approved_letter = written.read_bytes()
+    legacy = {key: value for key, value in approved_event(draft, written).items()
+              if key != ledger.TEXT_FINGERPRINT_KEY}
+    with engagement_lock(folder):
+        store.record(store.connect(), folder, legacy)
+    week = dt.date.today() - dt.timedelta(days=1)
+
+    assert is_unedited(written), "nobody edited the approved letter"
+    assert approval_state(folder, written, since=week) == APPROVED_THEN_EDITED
+    assert not is_approved_this_week(folder, written, since=week)
+    assert is_protected(folder, written, approved_since=week)
+
+    regenerated = write_draft(draft_reminder(folder, due_date=DUE, today=DUE, stage=1),
+                              engagement_dir=folder, preserve_edits=True, approved_since=week)
+    assert regenerated.name == NEW_DRAFT_FILENAME, regenerated
+    assert written.read_bytes() == approved_letter, "the approved letter was written over"
 
 
 def test_approve_sets_the_other_draft_aside_by_name_and_never_deletes_anything(tmp_path):
@@ -1816,9 +1958,9 @@ def test_the_reminder_never_chases_or_reports_a_not_asked_row(tmp_path):
         *SENDABLE,
         item("B01", "Social Security Benefit Statement", Status.MISSING, asked=False),
         item("B02", "1099-C", Status.MISSING, asked=False,
-             validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format()),
+             validation_notes=failure("scan.pdf", reasons.NO_TEXT_LAYER.format())),
         item("B03", "W-2G", Status.FAILED, asked=False,
-             validation_notes="w2g.pdf: " + reasons.PASSWORD_PROTECTED.format()),
+             validation_notes=failure("w2g.pdf", reasons.PASSWORD_PROTECTED.format())),
         item("B04", "1098-E", Status.RECEIVED, asked=False, file_count=1,
              received_date=dt.date(2026, 2, 1)),
     ]
@@ -1862,6 +2004,272 @@ def test_the_letters_count_is_jasons_sentence_in_the_singular_and_the_plural(rec
     from tracker.reminder import progress_line
 
     assert progress_line(received, total, also) == said
+
+
+# ------------------------------------------- codes are columns (decision 190) ----
+# A row's cause is its code. The Reason cell and the Validation Notes carry
+# what the client chose - a file's name, a subfolder's name - and a reason's
+# placeholders carry a parser's class or a page's spelling; none of it can
+# change what the letter asks or what it holds.
+
+
+def _filled(reason, text):
+    """``reason``'s sentence with every string placeholder filled with
+    ``text``, and the numeric ones with numbers."""
+    import string
+
+    names = {name for _, name, _, _ in string.Formatter().parse(reason.template) if name}
+    numbers = {"size_kb": 1.0, "minimum": 5}
+    return reason.format(**{name: numbers.get(name, text) for name in names})
+
+
+def _what_the_letter_does(reason, text):
+    """What one reason, its detail and its file named ``text``, makes the
+    letter do: the Failed row's ask, the hold of a parked row pointing at
+    A01, and where a Failed row goes."""
+    from tests.test_review import parked_row
+    from tracker.records import RULE_REQUIRED, WHERE_TITLE, Evidence
+    from tracker.reminder import _parked_holds
+
+    said = _filled(reason, text)
+    failed = item("A01", "W-2 Wage Statements", Status.FAILED,
+                  validation_notes=failure(f"{text}.pdf", said))
+    row = parked_row(f"{text}.pdf", {"A01": (Evidence(RULE_REQUIRED, "W-2", WHERE_TITLE, 1),)},
+                     reason=f"{reasons.UNMATCHED}; {said}", code=said.code)
+    lines, attention, held = triage([failed])
+    holds = {identifier: (flag.reason, flag.confirm)
+             for identifier, flag in _parked_holds(DROPPED, [row]).items()}
+    return (row.code, client_ask(failed), holds,
+            [f.reason for f in attention], [f.reason for f in held], len(lines))
+
+
+@pytest.mark.parametrize("reason", reasons.ALL, ids=lambda r: r.code)
+def test_no_client_text_can_change_what_a_row_means(reason):
+    """Decision 190, the SPEC-167 cross product re-aimed. Every reason's
+    placeholders, and the file's own name, filled with each other reason's
+    marker - the words a search used to find another cause by - and the
+    row's code, the ask and the hold are exactly what they are with
+    placeholders that say nothing."""
+    plain = _what_the_letter_does(reason, "x")
+    assert plain[0] == reason.code
+    for other in reasons.ALL:
+        assert _what_the_letter_does(reason, other.marker) == plain, other.code
+
+
+def test_rows_written_before_190_read_as_cause_not_recorded():
+    """A row or a note written before decision 190 has no code. Its cause
+    was not recorded, and nothing reads one back out of its words: a
+    parked row holds where its shortlist names a request - the safe
+    direction, since a person confirms it - and is asked with the generic
+    sentence; a Failed request's ask is the generic one and it is held."""
+    from tests.test_review import parked_row
+    from tracker.records import RULE_REQUIRED, WHERE_TITLE, Evidence
+    from tracker.reminder import _parked_holds
+
+    record = {"A01": (Evidence(RULE_REQUIRED, "W-2", WHERE_TITLE, 1),)}
+    for sentence in (reasons.PASSWORD_PROTECTED.format(), reasons.NO_READABLE_TEXT.format(),
+                     reasons.EXTENSION_NOT_ALLOWED.format(extension="exe", allowed="pdf")):
+        old = parked_row("w2.pdf", record, reason=str(sentence), code="")
+        holds = _parked_holds(DROPPED, [old])
+        assert {i: (f.reason, f.confirm) for i, f in holds.items()} == {
+            "A01": (PARKED_HOLD.format(ask=GENERIC_ASK), False)}
+    nowhere = parked_row("scan.pdf", {}, reason=str(reasons.PASSWORD_PROTECTED.format()), code="")
+    assert _parked_holds(DROPPED, [nowhere]) == {}
+
+    failed = item("A01", "W-2 Wage Statements", Status.FAILED,
+                  validation_notes="x.pdf: " + str(reasons.NO_TEXT_LAYER.format()))
+    assert failed.note_codes == ""
+    assert client_ask(failed) == GENERIC_ASK
+    lines, attention, held = triage([failed])
+    assert attention == [] and [f.reason for f in held] == [AMBIGUOUS_HOLD]
+
+
+def test_no_client_facing_text_carries_a_reason_sentence(tmp_path):
+    """Decision 190. The letter and the client's README of a return with a
+    parked file of every kind - each from a subfolder the client named
+    after a refusal - hold none of a reason's own words, none of the
+    router's and the filer's parking sentences, and not the subfolder
+    label: only the fixed asks reach a client."""
+    import string
+
+    from tests.conftest import seed_index
+    from tests.test_review import parked_row
+    from tracker.api import CAME_FROM_SUBFOLDER
+    from tracker.filer import CONTESTED_BETWEEN_RETURNS, refresh_household_readme
+    from tracker.layout import household_of
+    from tracker.records import RULE_REQUIRED, WHERE_TITLE, Evidence
+    from tracker.scaffold import README_NAME, scaffold_engagement
+
+    folder = engagement(tmp_path, DROPPED, name="Every Kind TY2025")
+    scaffold_engagement(folder)
+    record = {"A01": (Evidence(RULE_REQUIRED, "W-2", WHERE_TITLE, 1),)}
+    rows = [replace(parked_row(f"{n:02d} {r.code}.pdf", record, reason=_filled(r, "x")),
+                    subfolder="not allowed")
+            for n, r in enumerate(reasons.ALL)]
+    seed_index(folder, rows)
+    letter = draft_reminder(folder).body
+    refresh_household_readme(household_of(folder))
+    readme = (inbox_of(folder) / README_NAME).read_text(encoding="utf-8")
+
+    asks = [GENERIC_ASK, *(r.ask for r in reasons.ALL if r.ask)]
+    templates = [r.template for r in reasons.ALL] + [
+        reasons.UNMATCHED, reasons.AMBIGUOUS, reasons.OCR_ONLY, reasons.NO_REQUEST_ACCEPTS,
+        CONTESTED_BETWEEN_RETURNS, CAME_FROM_SUBFOLDER]
+    for template in templates:
+        for literal, *_ in string.Formatter().parse(template):
+            words = literal.strip(" ;:()'.-")
+            if len(words) < 12 or any(words in ask for ask in asks):
+                continue
+            assert words not in letter, words
+            assert words not in readme, words
+
+
+def test_an_executable_gets_no_review_copy_shows_its_true_type_and_does_not_hold_the_letter():
+    """The letter's half of G-4 (decision 190): a program named like a W-2,
+    whose name a shortlist would once have pointed at A01, holds nothing -
+    it is not a document, and no request is asked about because of it."""
+    from tests.test_review import parked_row
+    from tracker.records import RULE_REQUIRED, WHERE_TITLE, Evidence
+    from tracker.reminder import _parked_holds
+
+    record = {"A01": (Evidence(RULE_REQUIRED, "W-2", WHERE_TITLE, 1),)}
+    program = parked_row("W-2 2025.pdf.exe", record, reason=str(reasons.NOT_A_DOCUMENT.format()),
+                         code=reasons.NOT_A_DOCUMENT.code)
+    assert _parked_holds(DROPPED, [program]) == {}
+
+
+def test_a_file_that_is_not_a_document_is_asked_about_in_the_letter_and_holds_nothing(tmp_path):
+    """SPEC-190 R3 and the review's S1: a program names no request, so no
+    request line can carry its ask - it is asked about on its own, under
+    the kept "could not use it" heading, by the name the client gave it and
+    in the unusable-file words, and the letter is still written. A program
+    a person has set aside is their answer and is not asked again."""
+    from tests.conftest import seed_index
+    from tracker.filer import NEEDS_REVIEW, NOT_REQUESTED, IndexEntry
+
+    folder = engagement(tmp_path, SENDABLE)
+
+    def row(name, decision, code):
+        return IndexEntry(
+            received="2026-02-01", original_name=name, size_kb=0.1, digest=hashlib.sha256(name.encode()).hexdigest(),
+            identifier="", prepared_location="", pbc_location=f"pbc/{name}",
+            decision=decision, reason=reasons.NOT_A_DOCUMENT.format(), code=code,
+        )
+
+    seed_index(folder, [
+        row("W-2 2025.pdf.exe", NEEDS_REVIEW, reasons.NOT_A_DOCUMENT.code),
+        row("set aside.exe", NOT_REQUESTED, reasons.DISMISSED_BY_PERSON_CODE),
+    ])
+
+    draft = draft_reminder(folder)
+
+    assert not draft.is_held
+    assert draft.unusable == ["W-2 2025.pdf.exe"]
+    assert f"{SECTION_FAILED}\n  - W-2 2025.pdf.exe - {reasons.EXTENSION_NOT_ALLOWED.ask}\n" in draft.body
+    assert draft.body.count(reasons.EXTENSION_NOT_ALLOWED.ask) == 1
+    assert "set aside.exe" not in draft.body
+
+
+def test_a_program_only_weeks_letter_says_one_file_could_not_be_used_and_never_that_nothing_is_needed(
+        tmp_path):
+    """Jason's answer 1b (decision 190): a week whose only problem is a file
+    that is not a document does not say "Nothing further is needed from you
+    right now" and then ask about the file. That sentence is replaced by the
+    one new sentence pointing at the note below; a week with no problem at
+    all still says it, and a week with a request outstanding and a program
+    keeps its staged letter."""
+    from tests.conftest import seed_index
+    from tracker.filer import NEEDS_REVIEW, IndexEntry
+    from tracker.reminder import NOTHING_OWED, UNUSABLE_ONLY_NOTE
+
+    nothing_needed = "Nothing further is needed from you right now"
+    assert nothing_needed in NOTHING_OWED
+    program = IndexEntry(
+        received="2026-02-01", original_name="setup.exe", size_kb=0.1,
+        digest=hashlib.sha256(b"setup.exe").hexdigest(), identifier="", prepared_location="",
+        pbc_location="pbc/setup.exe", decision=NEEDS_REVIEW, reason=reasons.NOT_A_DOCUMENT.format(),
+        code=reasons.NOT_A_DOCUMENT.code)
+
+    all_in = engagement(tmp_path / "in", [item("A04", "Mortgage Interest Statement", Status.RECEIVED,
+                                               period="TY2025", file_count=1,
+                                               received_date=dt.date(2026, 2, 1))])
+    assert nothing_needed in draft_reminder(all_in, due_date=DUE, today=day(20)).body
+    seed_index(all_in, [program])
+    week = draft_reminder(all_in, due_date=DUE, today=day(20)).body
+    assert UNUSABLE_ONLY_NOTE in week and week.count(UNUSABLE_ONLY_NOTE) == 1
+    assert nothing_needed not in week
+    assert week.index(UNUSABLE_ONLY_NOTE) < week.index(SECTION_FAILED)
+
+    owed = engagement(tmp_path / "owed", SENDABLE)
+    seed_index(owed, [program])
+    staged = draft_reminder(owed, due_date=DUE, today=day(20))
+    assert staged.stage and staged.asked and staged.unusable == ["setup.exe"]
+    assert UNUSABLE_ONLY_NOTE not in staged.body and nothing_needed not in staged.body
+
+
+def test_a_program_only_week_with_two_files_says_some_files_could_not_be_used_never_one_file(tmp_path):
+    """Decision 190's review of the port, S1: the program-only sentence
+    counts. Two files that are not documents are both listed under the
+    failed heading, so the letter says "Some files you sent could not be
+    used", once, above that list - never "One file"."""
+    from tests.conftest import seed_index
+    from tracker.filer import NEEDS_REVIEW, IndexEntry
+    from tracker.reminder import UNUSABLE_ONLY_NOTE, UNUSABLE_SOME, UNUSABLE_SOME_NOTE
+
+    def program(name: str) -> IndexEntry:
+        return IndexEntry(
+            received="2026-02-01", original_name=name, size_kb=0.1,
+            digest=hashlib.sha256(name.encode()).hexdigest(), identifier="", prepared_location="",
+            pbc_location=f"pbc/{name}", decision=NEEDS_REVIEW, reason=reasons.NOT_A_DOCUMENT.format(),
+            code=reasons.NOT_A_DOCUMENT.code)
+
+    folder = engagement(tmp_path, [item("A04", "Mortgage Interest Statement", Status.RECEIVED,
+                                        period="TY2025", file_count=1,
+                                        received_date=dt.date(2026, 2, 1))])
+    seed_index(folder, [program("setup.exe"), program("helper.bat")])
+    draft = draft_reminder(folder, due_date=DUE, today=day(20))
+    assert sorted(draft.unusable) == ["helper.bat", "setup.exe"], draft.unusable
+    week = draft.body
+    assert UNUSABLE_SOME.format(engagement=draft.engagement) in week, week
+    assert week.count(UNUSABLE_SOME_NOTE) == 1, week
+    assert UNUSABLE_ONLY_NOTE not in week and "One file" not in week, week
+    assert week.index(UNUSABLE_SOME_NOTE) < week.index(SECTION_FAILED), week
+
+
+def test_a_program_alone_is_asked_about_but_never_climbs_the_ladder(tmp_path):
+    """The re-check's S-N1: every request is in and one program is parked.
+    It is asked about, so the draft has something outstanding - the
+    scheduler writes it and the app offers it - but it is no request: the
+    letter has no stage on any day, not even past the firm's deadline, no
+    deadline paragraph, and neither the subject nor the progress line
+    counts it as a document still needed."""
+    from tests.conftest import seed_index
+    from tracker.filer import NEEDS_REVIEW, IndexEntry
+    from tracker.reminder import STAGE_4_CONSEQUENCES, SUBJECT_COMPLETE, UNUSABLE_ONLY
+
+    folder = engagement(tmp_path, [item("A04", "Mortgage Interest Statement", Status.RECEIVED,
+                                        period="TY2025", file_count=1,
+                                        received_date=dt.date(2026, 2, 1))])
+    seed_index(folder, [IndexEntry(
+        received="2026-02-01", original_name="setup.exe", size_kb=0.1, digest=hashlib.sha256(b"setup.exe").hexdigest(),
+        identifier="", prepared_location="", pbc_location="pbc/setup.exe",
+        decision=NEEDS_REVIEW, reason=reasons.NOT_A_DOCUMENT.format(),
+        code=reasons.NOT_A_DOCUMENT.code,
+    )])
+
+    for today in (day(20), DEADLINE + dt.timedelta(days=1)):
+        draft = draft_reminder(folder, due_date=DUE, filing_deadline=DEADLINE, today=today,
+                               phone=PHONE)
+        assert draft.has_outstanding and not draft.is_held
+        assert draft.stage == 0 and draft.asked == [] and draft.unusable == ["setup.exe"]
+        assert draft.subject == SUBJECT_COMPLETE.format(engagement=draft.engagement)
+        assert "still needed" not in draft.subject
+        assert f"{SECTION_FAILED}\n  - setup.exe - {reasons.NOT_A_DOCUMENT.ask}\n" in draft.body
+        assert UNUSABLE_ONLY.format(engagement=draft.engagement) in draft.body
+        assert STAGE_4_CONSEQUENCES not in draft.body and "March 15" not in draft.body
+        assert "Of the 1 item we asked for, 1 is in." in draft.body
+    # A forced stage is a request's: with none on the letter, it forces nothing.
+    assert draft_reminder(folder, due_date=DUE, today=day(20), stage=4).stage == 0
 
 
 def test_a_hold_is_said_only_past_a_week_counted_from_the_last_letter_else_the_creation(
@@ -1922,7 +2330,8 @@ def _parked_w2():
     from tracker.records import RULE_REQUIRED, WHERE_TITLE, Evidence
 
     return parked_row("scan.pdf", {"A01": (Evidence(RULE_REQUIRED, "W-2", WHERE_TITLE, 1),)},
-                      reason="scan.pdf: " + reasons.PASSWORD_PROTECTED.format())
+                      reason="scan.pdf: " + reasons.PASSWORD_PROTECTED.format(),
+                      code=reasons.PASSWORD_PROTECTED.code)
 
 
 def test_every_outstanding_asked_row_has_exactly_one_side():
@@ -1961,7 +2370,8 @@ def test_each_side_carries_the_rows_own_sentence():
 def _us_engagement(tmp_path):
     return engagement(tmp_path, SENDABLE + [
         item("B01", "Receipts", Status.FAILED,
-             validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format())])
+             validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format(),
+             note_codes=reasons.NO_TEXT_LAYER.code)])
 
 
 def test_the_staff_footer_names_the_us_side_and_each_rows_label(tmp_path):
@@ -2019,7 +2429,8 @@ def test_nothing_in_the_footer_or_the_cli_says_not_asked_for_the_firms_work(tmp_
     folder = engagement(tmp_path, [
         item("A01", "W-2 Wage Statements", Status.MISSING, expected_count=2),
         item("B01", "Receipts", Status.FAILED,
-             validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format()),
+             validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format(),
+             note_codes=reasons.NO_TEXT_LAYER.code),
     ])
     text = write_draft(draft_reminder(folder), engagement_dir=folder).read_text(encoding="utf-8")
     footer = text.partition(US_HEADING)[2]
@@ -2028,9 +2439,11 @@ def test_nothing_in_the_footer_or_the_cli_says_not_asked_for_the_firms_work(tmp_
     held = _held_engagement(tmp_path / "held", [
         item("A01", "W-2 Wage Statements", Status.MISSING, expected_count=2),
         item("B01", "Receipts", Status.FAILED,
-             validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format()),
+             validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format(),
+             note_codes=reasons.NO_TEXT_LAYER.code),
         item("C01", "Form 1098 Mortgage Interest Statement", Status.FAILED,
-             validation_notes="1099.pdf: " + reasons.WRONG_DOCUMENT.format(listed="'1098'")),
+             validation_notes="1099.pdf: " + reasons.WRONG_DOCUMENT.format(listed="'1098'"),
+             note_codes=reasons.WRONG_DOCUMENT.code),
     ])
     repo = Path(__file__).resolve().parents[1]
     env = child_env(PYTHONIOENCODING="utf-8")   # armed by the tripwire (decision 185)

@@ -156,7 +156,7 @@ def test_a_missing_model_means_the_reader_cannot_run_and_the_scan_waits(tmp_path
 
     reading = extract(scan)
     assert reading.text is None and reading.transient
-    assert reasons.NO_TEXT_LAYER.matches(reading.reason)
+    assert reading.code == reasons.NO_TEXT_LAYER.code
     assert "the reader could not run on this machine" in reading.reason
     assert "OCR is not installed" not in reading.reason
 
@@ -647,7 +647,7 @@ def test_a_reader_that_cannot_run_is_not_blamed_on_the_card(monkeypatch, a_card)
 
     in_a_child = ocr.Session()
     monkeypatch.setattr(ocr.Session, "run", lambda *a, **k: ocr.Outcome(
-        "failed", error="ReaderUnavailable: the model PP-OCRv6_det_small.onnx is missing"))
+        "failed", error="ReaderUnavailable", message="the model PP-OCRv6_det_small.onnx is missing"))
     in_a_child.settle()
     assert in_a_child.note == session.note
 
@@ -717,7 +717,7 @@ def test_time_asleep_does_not_count_toward_the_reading_stop(monkeypatch):
         """The pipe: the first wait is slept through, then the child answers."""
 
         def __init__(self):
-            self.said = [("started",), ("read", "the words", [])]
+            self.said = [("started",), ("read", "the words", [], [])]
             self.waits = 0
 
         def poll(self, left):

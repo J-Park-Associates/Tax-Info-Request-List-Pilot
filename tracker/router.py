@@ -211,24 +211,26 @@ from tracker.validators import (
     TEXT_READ_CAP_MB,
     PdfVerdictCache,
     check_file,
-    extension_of,
     google_stub_reason,
     is_cloud_placeholder,
     is_ignored,
+    said_extension,
     too_large_reason,
 )
 
-#: Why a file was not routed. Stored verbatim in the index's Reason column.
-UNMATCHED = "matched no request"
-AMBIGUOUS = "matched more than one request"
+#: Why a file was not routed. Stored verbatim in the index's Reason column,
+#: with its code (decision 190) in the Code column. Worded, and coded, once,
+#: in :mod:`tracker.reasons`.
+UNMATCHED = reasons.UNMATCHED
+AMBIGUOUS = reasons.AMBIGUOUS
 #: OCR text matched a request's looser keywords only; not enough to file on.
-OCR_ONLY = "matched only by OCR text"
+OCR_ONLY = reasons.OCR_ONLY
 PENDING = reasons.PENDING_SYNC.format()
 #: No word of the document could be read, so nothing but its name is left
 #: and a name files nothing. Worded once, in :mod:`tracker.reasons`.
 UNREADABLE = reasons.NO_READABLE_TEXT.format()
 #: Every request refused the file type: said once, checked by tests by name.
-NO_REQUEST_ACCEPTS = "no request accepts .{extension} files"
+NO_REQUEST_ACCEPTS = reasons.NO_REQUEST_ACCEPTS
 #: The list asks for this document one row per issuer and the document
 #: names none of them. Worded once, in :mod:`tracker.reasons`.
 ISSUER_NOT_NAMED = reasons.ISSUER_NOT_NAMED
@@ -248,7 +250,6 @@ NAME_POINTS_AT = reasons.NAME_POINTS_AT
 FILED_WHOLE = reasons.FILED_WHOLE
 ALSO_ANSWERS = reasons.ALSO_ANSWERS
 
-_WORD_SPLIT = re.compile(r"[^a-z0-9]+")
 #: What a file name uses between words, read as spaces; a hyphen stays,
 #: because "1098-T.pdf" names the form it names.
 _SEPARATORS = re.compile(r"[^a-z0-9-]+")
@@ -283,16 +284,16 @@ def _filename_evidence(path: Path, item: RequestItem) -> tuple[Evidence, ...]:
     )
 
 
-def _refusal_evidence(reason: str) -> tuple[Evidence, ...]:
+def _refusal_evidence(code: str) -> tuple[Evidence, ...]:
     """A tier-2 refusal as evidence: the Reason's code, not its sentence.
 
     The sentence is written for a person and may be reworded; the code is
     the cause's one name (:mod:`tracker.reasons`), which is what a later
-    reader compares. A refusal nothing in ALL recognises leaves no
-    evidence rather than a made-up code.
+    reader compares. It is the code the refusal was said with (decision
+    190), taken from the verdict and never read off its words; a refusal
+    no Reason names leaves no evidence rather than a made-up code.
     """
-    found = reasons.find(reason)
-    return (Evidence(RULE_REFUSED, found.code),) if found is not None else ()
+    return (Evidence(RULE_REFUSED, code),) if code in reasons.BY_CODE else ()
 
 
 def _recorded_for(
@@ -380,6 +381,7 @@ def _near_miss(
         identifier=None,
         reason=because.format(listed=", ".join(shown)) + hint,
         evidence_record=_recorded_for(record, shown),
+        code=because.code,
     )
 
 
@@ -392,18 +394,21 @@ def _considers(item: RequestItem) -> bool:
     return item.manual_override != Override.NOT_APPLICABLE and has_routing_rules(item)
 
 
-#: How a contested file's reason starts. The candidates travel as data
-#: (Routing.candidates, then the index's Candidates column); nothing parses
-#: this sentence to get them back.
-CONTESTED_PREFIX = "looks like"
+#: How a contested file's reason starts. Worded once, in
+#: :mod:`tracker.reasons`.
+CONTESTED_PREFIX = reasons.CONTESTED_PREFIX
 
 
 def _contested(
-    path: Path, near: list[tuple[str, str]],
+    path: Path, near: list[tuple[str, str, str]],
     record: dict[str, tuple[Evidence, ...]] | None = None,
 ) -> Routing:
-    listed = "; ".join(f"{ident} ({why})" for ident, why in near)
-    candidates = tuple(ident for ident, _ in near)
+    """Park a file that looks like each ``(identifier, why, code)`` in
+    ``near`` and fails a rule of each. Its code is the most specific of the
+    refusals' (decision 190): the rule that stopped it is what decided it."""
+    listed = "; ".join(f"{ident} ({why})" for ident, why, _code in near)
+    candidates = tuple(ident for ident, _why, _code in near)
+    decided = reasons.first_of(code for _ident, _why, code in near)
     return Routing(
         path=path,
         identifier=None,
@@ -411,6 +416,7 @@ def _contested(
         candidates=candidates,
         evidence=EVIDENCE_CONTENT,
         evidence_record=_recorded_for(record or {}, candidates),
+        code=decided.code if decided is not None else reasons.CONTESTED_CODE,
     )
 
 
@@ -478,6 +484,7 @@ def _filed_whole(
         evidence=EVIDENCE_CONTENT,
         evidence_record=_recorded_for(record, candidates),
         answers=answers,
+        code=reasons.FILED_WHOLE_CODE,
     )
 
 
@@ -559,6 +566,7 @@ def _multi_form(
             candidates=tuple(filed),
             evidence=EVIDENCE_CONTENT,
             evidence_record=_recorded_for(record, filed),
+            code=reasons.SEVERAL_FORMS_CODE,
         )
     return Routing(
         path=path,
@@ -568,6 +576,7 @@ def _multi_form(
         candidates=shortlist,
         evidence=EVIDENCE_CONTENT,
         evidence_record=_recorded_for(record, shortlist),
+        code=reasons.SEVERAL_FORMS_UNSORTED_CODE,
     )
 
 
@@ -637,18 +646,19 @@ def route_file(
     once per manifest row.
     """
     if is_cloud_placeholder(path):
-        return Routing(path=path, identifier=None, reason=PENDING, pending=True)
+        return Routing(path=path, identifier=None, reason=PENDING, pending=True,
+                       code=reasons.PENDING_SYNC.code)
 
     # A Google-native stub can never be filed, and the client can fix it —
     # say so instead of the generic UNMATCHED.
     if stub := google_stub_reason(path):
-        return Routing(path=path, identifier=None, reason=stub)
+        return Routing(path=path, identifier=None, reason=stub, code=reasons.GOOGLE_STUB.code)
 
     # Past the size ceiling the file is never read (decision 137, M5): it
     # parks for a person with the one sentence that says why, and nothing
     # about its name or its type is weighed.
     if too_large := too_large_reason(path):
-        return Routing(path=path, identifier=None, reason=too_large)
+        return Routing(path=path, identifier=None, reason=too_large, code=reasons.TOO_LARGE.code)
 
     if judgment is None:
         judgment = (read_once(path, questions_for(items)) if reading is None
@@ -661,12 +671,10 @@ def route_file(
     # does. The open test was made in the same child, so it stopped with it.
     # A pass never records the last of these: tracker.filer leaves a drop
     # whose reader could not start for the next pass (the re-review's ruling).
-    if reading.text is None and (reasons.TOO_LARGE.matches(reading.reason)
-                                 or reasons.READING_STOPPED.matches(reading.reason)
-                                 or reasons.READING_CRASHED.matches(reading.reason)
-                                 or reasons.READER_UNAVAILABLE.matches(reading.reason)):
+    if reading.text is None and reading.code in _PARKS_ON_ITS_READING:
         _keep_the_stop(path, items, reading, digest, cache)
-        return Routing(path=path, identifier=None, reason=reading.reason, seconds=reading.seconds)
+        return Routing(path=path, identifier=None, reason=reading.reason, seconds=reading.seconds,
+                       code=reading.code)
     # How long the reading took rides back with the decision (decision
     # 127), so the pass can name its slowest documents. It changes no
     # decision and cuts no reading short.
@@ -695,21 +703,30 @@ def _keep_the_stop(
     be judged again - for another stop - until the file or the row's rules
     change. Only those two: a file too large is never read at all, and a
     reader that could not start is the machine's (transient), which
-    nothing keeps.
+    nothing keeps. Both are known by the reading's code, never its
+    sentence (decision 190).
     """
     if cache is None or reading.transient:
         return
-    if not (reasons.READING_STOPPED.matches(reading.reason)
-            or reasons.READING_CRASHED.matches(reading.reason)):
+    if reading.code not in (reasons.READING_STOPPED.code, reasons.READING_CRASHED.code):
         return
     digest = digest or cache.digest_of(path)
     if not digest:
         return
-    verdict = ContentResult(ok=False, reason=reading.reason, extractable=False)
-    cache.put_by_digest(digest, OPEN_TEST_FINGERPRINT, ContentResult(ok=False, reason=reading.reason))
+    verdict = ContentResult(ok=False, reason=reading.reason, extractable=False, code=reading.code)
+    cache.put_by_digest(digest, OPEN_TEST_FINGERPRINT,
+                        ContentResult(ok=False, reason=reading.reason, code=reading.code))
     for item in items:
         if _considers(item):
             cache.put_by_digest(digest, rules_fingerprint(item), verdict)
+
+
+#: The readings a file parks on by themselves, before any request is asked
+#: (decisions 137 and 150): read by their code, never their sentence.
+_PARKS_ON_ITS_READING = frozenset({
+    reasons.TOO_LARGE.code, reasons.READING_STOPPED.code,
+    reasons.READING_CRASHED.code, reasons.READER_UNAVAILABLE.code,
+})
 
 
 def _decide(
@@ -753,12 +770,13 @@ def _decide(
     open_test = None
     if reading.opened is not None:
         opened = reading.opened
+        opened_code = reasons.code_of(opened)
         open_test = lambda _path: opened  # noqa: E731
-        if cache is not None and not reasons.HEIC_NOT_SUPPORTED.matches(opened):
+        if cache is not None and opened_code != reasons.HEIC_NOT_SUPPORTED.code:
             open_digest = digest or cache.digest_of(path)
             if open_digest:
                 cache.put_by_digest(open_digest, OPEN_TEST_FINGERPRINT,
-                                    ContentResult(ok=not opened, reason=opened))
+                                    ContentResult(ok=not opened, reason=opened, code=opened_code))
 
     # Which forms the page counts as its own is content_check's one reading,
     # own_forms() (decision 107): the ordinary reading here, the split below
@@ -776,12 +794,13 @@ def _decide(
     strong: list[str] = []      # required keywords matched and every rule passed
     medium: list[str] = []      # passed on any_keywords / date alone
     ocr_only: list[str] = []    # passed on any_keywords, but the text is OCR's word for it
-    near: list[tuple[str, str]] = []   # looks like this request but fails a rule
+    #: Looks like this request but fails a rule: (identifier, why, code).
+    near: list[tuple[str, str, str]] = []
     #: A signed return of the wrong year: a return row's required keywords
     #: matched and only its period failed (decision 141). Parks even when
     #: another row matched strongly.
-    signed: list[tuple[str, str]] = []
-    leads: list[tuple[str, str]] = []  # its keywords matched and only the year did not
+    signed: list[tuple[str, str, str]] = []
+    leads: list[tuple[str, str, str]] = []  # its keywords matched and only the year did not
     #: Nothing could be read, and the file's *name* carries this row's
     #: keywords. Never filed on (decision 92) and never a candidate: it is
     #: the shortlist a person gets beside a document they must open - and,
@@ -790,8 +809,8 @@ def _decide(
     #: could not read a word of (a locked PDF, an empty upload) is asked
     #: the same question as an unreadable scan, and lands here too.
     named: list[str] = []
-    blocked: list[tuple[str, str]] = []  # content fits, but tier 2 refused the file
-    refusals: list[str] = []    # every tier-2 reason, for an honest "why not"
+    blocked: list[tuple[str, str, str]] = []  # content fits, but tier 2 refused the file
+    refusals: list[tuple[str, str]] = []    # every tier-2 (reason, code), for an honest "why not"
     #: Why, per row: the keywords that matched and where, or the refusal.
     #: Kept for every row considered and cut down at the end to the rows
     #: the decision names (``_recorded_for``).
@@ -806,15 +825,15 @@ def _decide(
             continue
         tier2 = check_file(path, item, pdf_cache=pdf_cache, open_test=open_test)
         if not tier2.ok:
-            refusals.append(tier2.reason)
-            refused = _refusal_evidence(tier2.reason)
+            refusals.append((tier2.reason, tier2.code))
+            refused = _refusal_evidence(tier2.code)
             record[item.identifier] = refused
             # The verdict was already read to know whether this is a
             # blocked file; keeping its evidence beside the refusal costs
             # nothing and is the only thing that says which request the
             # document looked like. Nothing is filed differently for it.
             if words and (verdict := verdict_for(item)).ok:
-                blocked.append((item.identifier, tier2.reason))
+                blocked.append((item.identifier, tier2.reason, tier2.code))
                 record[item.identifier] = verdict.evidence + refused
             elif not words and (said_by_the_name := _filename_evidence(path, item)):
                 # Refused, and not a word of it could be read - a locked
@@ -841,15 +860,15 @@ def _decide(
                 else:
                     medium.append(item.identifier)
             elif judgment.row(item).required_matched:
-                near.append((item.identifier, verdict.reason))
-                if asks_for_a_return(item) and reasons.WRONG_PERIOD.matches(verdict.reason):
-                    signed.append((item.identifier, verdict.reason))
-            elif reasons.WRONG_PERIOD.matches(verdict.reason) and judgment.row(item).any_matched:
+                near.append((item.identifier, verdict.reason, verdict.code))
+                if asks_for_a_return(item) and verdict.code == reasons.WRONG_PERIOD.code:
+                    signed.append((item.identifier, verdict.reason, verdict.code))
+            elif verdict.code == reasons.WRONG_PERIOD.code and judgment.row(item).any_matched:
                 # Every keyword this row asks for matched and only its year
                 # did not. That is no filing decision - the year is a check,
                 # never evidence (decision 40) - but it is the lead a person
                 # needs, and it is all this file is going to give them.
-                leads.append((item.identifier, verdict.reason))
+                leads.append((item.identifier, verdict.reason, verdict.code))
         elif said_by_the_name := _filename_evidence(path, item):
             record[item.identifier] = said_by_the_name
             named.append(item.identifier)
@@ -914,6 +933,7 @@ def _decide(
                 candidates=shortlist,
                 evidence=EVIDENCE_CONTENT,
                 evidence_record=_recorded_for(record, shortlist),
+                code=ISSUER_NOT_NAMED.code,
             )
 
     # A broker's consolidated 1099 (decision 146, the owner's go-live item
@@ -946,6 +966,7 @@ def _decide(
                 candidates=tuple(hits),
                 evidence=strength,
                 evidence_record=_recorded_for(record, hits),
+                code=reasons.MATCHED_CODE,
             )
         if len(hits) > 1:
             return Routing(
@@ -955,6 +976,7 @@ def _decide(
                 candidates=tuple(hits),
                 evidence=strength,
                 evidence_record=_recorded_for(record, hits),
+                code=reasons.AMBIGUOUS_CODE,
             )
 
     # OCR's reading of the looser keywords is a lead for a person, not a
@@ -968,6 +990,7 @@ def _decide(
             candidates=tuple(ocr_only),
             evidence=EVIDENCE_CONTENT,
             evidence_record=_recorded_for(record, ocr_only),
+            code=reasons.OCR_ONLY_CODE,
         )
 
     # The content says which request this is, but the file itself was
@@ -981,26 +1004,34 @@ def _decide(
     # reason: that reason is the story (a corrupt PDF, a locked PDF, a
     # file type nobody accepts), not the keyword rules.
     if refusals and len(refusals) == sum(1 for i in items if _considers(i)):
-        if len(set(refusals)) == 1:
+        if len({reason for reason, _code in refusals}) == 1:
             # What its name said rides with it, for the person and for the
             # reminder's hold (decision 117). Still no candidate: nothing
             # is filed on a name, and the reason is the refusal's, not a
-            # guess at which request this was.
-            return Routing(path=path, identifier=None, reason=f"{UNMATCHED}; {refusals[0]}",
-                           evidence_record=_recorded_for(record, named))
-        if all(reasons.EXTENSION_NOT_ALLOWED.matches(r) for r in refusals):
-            ext = extension_of(path) or "(none)"
+            # guess at which request this was - and so is its code.
+            reason, code = refusals[0]
+            return Routing(path=path, identifier=None, reason=f"{UNMATCHED}; {reason}",
+                           evidence_record=_recorded_for(record, named),
+                           code=code or reasons.UNMATCHED_CODE)
+        if all(code == reasons.EXTENSION_NOT_ALLOWED.code for _reason, code in refusals):
+            ext = said_extension(path) or "(none)"
             return Routing(
                 path=path,
                 identifier=None,
                 reason=f"{UNMATCHED}; {NO_REQUEST_ACCEPTS.format(extension=ext)}",
+                code=reasons.NO_REQUEST_ACCEPTS_CODE,
             )
 
     if reading.error:
+        # ``reading.error`` is the failure's class or the firm's own
+        # sentence, never a parser's words (decision 190), so the row may
+        # carry it.
         return Routing(
             path=path,
             identifier=None,
             reason=f"{UNMATCHED}; could not read it ({reading.error})",
+            # The reading's own cause: what it could not do is what decided.
+            code=reading.code or reasons.UNMATCHED_CODE,
         )
 
     # No word of the document could be read - a scan with no text layer and
@@ -1018,6 +1049,7 @@ def _decide(
             identifier=None,
             reason=UNREADABLE,
             evidence_record=_recorded_for(record, named),
+            code=reasons.NO_READABLE_TEXT.code,
         )
 
     # Nothing accepted the file, and a row's keywords all matched but its
@@ -1042,7 +1074,8 @@ def _decide(
     # the person as a shortlist and hold the letter; nothing is filed.
     if near_miss := _near_miss(path, allowed, record, hint):
         return near_miss
-    return Routing(path=path, identifier=None, reason=f"{UNMATCHED}{hint}")
+    return Routing(path=path, identifier=None, reason=f"{UNMATCHED}{hint}",
+                   code=reasons.UNMATCHED_CODE)
 
 
 def route_files(paths: list[Path], items: list[RequestItem]) -> list[Routing]:
@@ -1069,10 +1102,10 @@ if __name__ == "__main__":
     # A typed folder is parsed, never trusted: it must be a return's
     # place under the checked clients root (decision 188).
     from tracker import door
-
+    from tracker.layout import LayoutError
     try:
         ns.engagement_dir = door.return_dir(Path(ns.engagement_dir).absolute())
-    except ValueError as exc:
+    except (door.DoorError, LayoutError) as exc:     # the door's own sentences
         parser.error(str(exc))
 
     manifest_items = load_manifest(Path(ns.engagement_dir))

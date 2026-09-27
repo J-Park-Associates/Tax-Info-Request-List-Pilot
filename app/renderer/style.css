@@ -769,6 +769,12 @@ body {
 .review li:first-child { border-top: none; }
 .review .r-name { grid-area: name; font-weight: 600; color: #b45309; }
 .review .r-why { grid-area: why; color: var(--subtle); font-size: 12.5px; }
+.r-subfolder { display: block; }
+/* Decision 190's buckets: a heading per bucket, a program's true type in
+   the place a picker would be, and Open beneath the row. */
+.review li.r-bucket { display: block; font-weight: 600; color: var(--subtle); padding-top: 14px; }
+.review .r-type { grid-area: select; font-weight: 600; }
+.review .r-open-copy { grid-column: 1; justify-self: start; }
 .review select, .review input {
   font: inherit;
   font-size: 13px;
