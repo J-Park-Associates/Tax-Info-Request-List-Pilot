@@ -6,13 +6,23 @@ and since decision 104 the whole of the person's rules and the engagement's
 details too - there is nothing anywhere else for it to disagree with.
 Three autouse fixtures hold that honest after **every** test.
 
-**A store of its own** (``a_store_of_its_own``). The store keeps one
+**An app folder of its own** (``an_app_folder_of_its_own``). The store keeps one
 connection per process and the file it would otherwise open sits beside
 the settings file, which on a developer's machine is the repository.
 ``TRACKER_STORE`` points it at this test's own ``tmp_path`` instead, and
 the connection is closed at teardown before the temporary folder goes,
 because Windows will not delete a database a handle is open on. No test
-can see another's rows.
+can see another's rows. The settings folder is ``tmp_path / "app"``, the
+same folder as the store, so no test reads the checkout's ``settings.json``
+(decision 185).
+
+**And the suite can never see a real root** (decision 185). The session
+points itself at a folder of its own before collection, and a tripwire
+(``tests/tripwire/sitecustomize.py``), armed here and in every Python child
+that inherits the suite's environment (the tripwire's docstring lists what
+escapes), stops and records any reach for a place
+:func:`real_places` names; any record, or any folder the session leaves in
+the checkout, fails the whole session.
 
 **And the view agrees with the readers** (decisions 89 and 91). Wherever a
 test left a view behind, the page is **drawn again from the live readers**
@@ -80,7 +90,10 @@ from __future__ import annotations
 import datetime as dt
 import io
 import json
+import os
 import shutil
+import subprocess
+import sys
 import tempfile
 from contextlib import ExitStack
 from dataclasses import replace
@@ -88,10 +101,13 @@ from pathlib import Path
 
 import pytest
 
-from tracker import content_check, ledger, store, view
+from tests.tripwire import sitecustomize as tripwire
+from tracker import content_check, ledger, settings, store, view
 from tracker.filer import ensure, file_household_drops, refresh_household_readme
 from tracker.households import create_household
 from tracker.layout import (
+    CLIENTS_TREE,
+    PRIVATE_TREE,
     inbox_of,
     lock_order_key,
     originals_of,
@@ -105,10 +121,44 @@ from tracker.names import propose_spellings
 from tracker.records import HouseholdInfo, Person, entry_to_json, ledger_key, status_to_json
 from tracker.scaffold import scaffold_engagement
 
+REPO = Path(__file__).resolve().parent.parent
+#: The folder, inside a test's tmp_path or the session's folder, that plays
+#: "beside the app": the settings file and the store live in it. Most tests
+#: that set TRACKER_SETTINGS_DIR themselves already name this one.
+APP_FOLDER = "app"
+TRIPWIRE_DIR = Path(__file__).resolve().parent / "tripwire"
+
+
+def own_folders(patch: pytest.MonkeyPatch, folder: Path) -> None:
+    """Point this process, and every child it starts, at ``folder`` for the
+    settings file and the store (decision 185): the one place the suite says
+    where "beside the app" is - and at :func:`data_home_for` ``folder`` for
+    the data home (decision 186), never the account's own."""
+    patch.setenv(settings.ENV_SETTINGS_DIR, str(folder))
+    patch.setenv(store.ENV_STORE, str(folder / store.STORE_FILENAME))
+    patch.setenv(settings.ENV_DATA_HOME, str(data_home_for(folder)))
+
+
+def data_home_for(folder: Path) -> Path:
+    """The suite's data home for the app folder ``folder``: a sibling of the
+    folder that holds it (``<tmp_path>-data`` for a test's
+    ``<tmp_path>/app``), never inside it - many tests make ``tmp_path``
+    itself the clients root, and a root may not hold the data home
+    (``settings.ROOT_HOLDS_DATA``, decision 186)."""
+    holder = Path(folder).parent
+    return holder.with_name(holder.name + "-data")
+
 
 @pytest.fixture(autouse=True)
-def a_store_of_its_own(tmp_path):
-    """Every test gets its own database, and no test leaks one into another.
+def an_app_folder_of_its_own(tmp_path):
+    """Every test gets its own settings folder and its own database, and no
+    test leaks either into another - nor reads the checkout's (decision 185).
+
+    Both sit in ``tmp_path / "app"``, set through :func:`own_folders`, the
+    one place the suite says where "beside the app" is. This is the one
+    fixture that does it for a test, and it cannot be taken away: a test's
+    ``monkeypatch.undo()`` restores what was there before the test, which is
+    this fixture's value, never the checkout's.
 
     ``tracker.store`` keeps one connection per process, to the file beside
     the settings file - which on a developer's machine is the repository
@@ -133,7 +183,11 @@ def a_store_of_its_own(tmp_path):
     agreement fixtures below have to still see them when they run.
     """
     patch = pytest.MonkeyPatch()
-    patch.setenv(store.ENV_STORE, str(tmp_path / "app" / store.STORE_FILENAME))
+    own_folders(patch, tmp_path / APP_FOLDER)
+    # The firm's corpus is seen only by tests/test_real_corpus.py's rows,
+    # which captured it at collection; no other test, and no tool a test
+    # calls, reads it by accident.
+    patch.delenv(settings.ENV_REAL_CORPUS, raising=False)
     store.close()
     _ALSO_WALK.clear()
     try:
@@ -477,3 +531,285 @@ def seed_statuses(engagement_dir, updates):
             **{ledger.STATUSES_KEY: {i: status_to_json(u) for i, u in updates.items()}},
         ))
     return updates
+
+
+# ------------------------------------------- the suite can never see a real root ----
+
+
+def real_places(repo: Path) -> tuple[tuple[str, Path], ...]:
+    """Every place a real settings file, store, scratch folder or client tree
+    resolves to on this machine when nothing of the suite's overrides it:
+    beside the app as the checkout resolves it, and wherever the shell running
+    the suite names instead. The tripwire guards each; decision 186 adds the
+    data home - the account's real one, worked out with ``ENV_DATA_HOME``
+    set aside (none, if this machine has none), and one the shell names."""
+    from tracker.checkpoint import CHECKPOINT_FILENAME
+    from tracker.progress import PASSES_DIRNAME
+    from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
+    from tracker.runner import LAST_PASS_FILENAME, LOG_FILENAME, STATUS_PAGE_FILENAME
+    from tracker.scheduling import SCHEDULE_XML_FILENAME
+
+    named = settings.settings_path()                     # the shell's, if it sets one
+    with pytest.MonkeyPatch.context() as bare:
+        bare.delenv(settings.ENV_SETTINGS_DIR, raising=False)
+        beside = settings.settings_path()                 # the checkout's own
+    places = []
+    for where in dict.fromkeys((beside, named)):          # one entry when they agree
+        places += [("settings file", where),
+                   ("store", where.with_name(store.STORE_FILENAME)),
+                   ("store's write-ahead log", where.with_name(store.STORE_WAL_FILENAME)),
+                   ("store's shared memory", where.with_name(store.STORE_SHM_FILENAME)),
+                   ("scheduled task file", where.with_name(SCHEDULE_XML_FILENAME)),
+                   # Decision 159 writes these beside the store: the record
+                   # checkpoint, the last pass's outcome, and the recovered
+                   # copies of a return's lines (record-derived, like the store).
+                   ("record checkpoint", where.with_name(CHECKPOINT_FILENAME)),
+                   ("last-pass file", where.with_name(LAST_PASS_FILENAME)),
+                   ("recovered record copies", where.with_name(store.RECOVERED_DIR)),
+                   # Decision 193 writes these beside the store too: the error
+                   # log (its rotated copies share its name) and the passes' progress.
+                   ("error log", where.with_name(settings.ERROR_LOG_FILENAME)),
+                   ("passes folder", where.with_name(PASSES_DIRNAME))]
+    if os.environ.get(store.ENV_STORE):
+        places.append(("store", Path(os.environ[store.ENV_STORE])))
+    # The data home (decision 186, SPEC-186 section 9): the real one, which
+    # default_data_home() works out without ENV_DATA_HOME; a machine that has
+    # none (a SettingsError) adds nothing. Then whatever the shell names.
+    try:
+        places.append(("data home", settings.default_data_home()))
+    except settings.SettingsError:
+        pass
+    if os.environ.get(settings.ENV_DATA_HOME, "").strip():
+        places.append(("data home", Path(os.environ[settings.ENV_DATA_HOME])))
+    app = settings.app_dir()
+    places += [("OCR scratch folder", app / settings.OCR_SCRATCH_DIRNAME),
+               ("client tree", repo / CLIENTS_TREE),
+               ("private tree", repo / PRIVATE_TREE),
+               ("run log", repo / LOG_FILENAME),
+               ("status page", repo / STATUS_PAGE_FILENAME),
+               ("reminder draft", repo / DRAFT_FILENAME),
+               ("reminder draft", repo / NEW_DRAFT_FILENAME)]
+    return tuple(places)
+
+
+#: Folders the walk of the checkout never enters: another tool's, and big.
+_NEVER_ENTERED = {".git", "node_modules", ".venv", "venv"}
+#: Folders the interpreter and pytest make of their own accord, not a test's doing.
+_CACHES = {"__pycache__", ".pytest_cache", ".ruff_cache"}
+#: Folders whose files change for reasons that are nobody's doing.
+_UNWATCHED = {".claude", "build-portable", "dist", "build"}
+
+
+def _walk_checkout(repo: Path, places):
+    """Yield ``(relative path, DirEntry)`` for everything in the checkout, never
+    entering ``.git``, the environments or a guarded place: listing a client
+    tree or the scratch folder would trip the wire itself."""
+    guarded = {os.path.normcase(os.path.abspath(path)) for _label, path in places}
+    pending = [Path(repo)]
+    while pending:
+        folder = pending.pop()
+        with os.scandir(folder) as entries:
+            for entry in entries:
+                if os.path.normcase(os.path.abspath(entry.path)) in guarded:
+                    continue
+                rel = os.path.relpath(entry.path, repo)
+                if entry.is_dir(follow_symlinks=False):
+                    if entry.name in _NEVER_ENTERED:
+                        continue
+                    yield rel, entry
+                    pending.append(Path(entry.path))
+                else:
+                    yield rel, entry
+
+
+def checkout_folders(repo: Path, places) -> frozenset[str]:
+    """Every folder in the checkout by relative path, the caches left out."""
+    return frozenset(rel for rel, entry in _walk_checkout(repo, places)
+                     if entry.is_dir(follow_symlinks=False)
+                     and not _CACHES.intersection(Path(rel).parts))
+
+
+def checkout_snapshot(repo: Path, places) -> dict[str, tuple[int, int]]:
+    """Every file in the checkout by relative path, as ``(size, mtime_ns)``,
+    the caches and the unwatched folders left out."""
+    skip = _CACHES | _UNWATCHED
+    found = {}
+    for rel, entry in _walk_checkout(repo, places):
+        if entry.is_dir(follow_symlinks=False) or skip.intersection(Path(rel).parts):
+            continue
+        stat = entry.stat(follow_symlinks=False)
+        found[rel] = (stat.st_size, stat.st_mtime_ns)
+    return found
+
+
+def child_env(*, drop: tuple[str, ...] = (), **extra: str) -> dict[str, str]:
+    """The environment every Python child the suite starts gets (decision 185):
+    this process's, less ``drop``, with the tripwire first on the path and the
+    repository after it, plus ``extra``."""
+    env = {name: value for name, value in os.environ.items() if name not in drop}
+    env["PYTHONPATH"] = os.pathsep.join([str(TRIPWIRE_DIR), str(REPO)])
+    env.update(extra)
+    return env
+
+
+_STATE = pytest.StashKey[dict]()
+#: The heading the session's verdict is printed under.
+TRIPWIRE_HEADING = "decision 185: the suite reached a real place"
+
+
+def pytest_configure(config):
+    places = real_places(REPO)                     # before own_folders(): the shell's own values count
+    session = Path(tempfile.mkdtemp(prefix="tracker-suite-"))
+    log = session / "tripwire.log"
+    patch = pytest.MonkeyPatch()
+    own_folders(patch, session / APP_FOLDER)
+    patch.setenv(tripwire.ENV_TRIPWIRE, json.dumps(
+        {"places": [[label, str(path)] for label, path in places], "log": str(log)}))
+    patch.setenv("PYTHONPATH", os.pathsep.join(
+        [str(TRIPWIRE_DIR), *filter(None, [os.environ.get("PYTHONPATH")])]))
+    before = checkout_folders(REPO, places)
+    # In-process: SEEN, and a Python child this process starts through a
+    # watched route is judged (the tripwire's docstring lists the routes).
+    # The log is written only from a process this one forks (a fork that execs).
+    tripwire.install(tripwire.prepare(places), log=str(log), children=os.environ[tripwire.ENV_TRIPWIRE])
+    config.stash[_STATE] = {"patch": patch, "session": session, "log": log,
+                            "places": places, "before": before, "said": []}
+
+
+#: What the session says of a line in the tripwire's log it cannot read.
+UNREADABLE_LOG_LINE = "the tripwire's log has a line it cannot read"
+#: What the session says when the tripwire's log cannot be read at all.
+UNREADABLE_LOG = "the tripwire's log could not be read"
+
+
+def _hit_said(test: str, event: str, label: str) -> str:
+    """One hit as the session says it: a reach for a place, or a child
+    started around the wire."""
+    if label.startswith(tripwire.UNARMED):
+        return f"{test}: {event} started an {label}"
+    return f"{test}: {event} of the checkout's {label}"
+
+
+def tripwire_log_said(lines) -> list[str]:
+    """Each line of the session's tripwire log as the session says it. A line
+    that is not a hit the wire wrote - a torn write, a stray byte - is said
+    plainly as a violation, never an internal error: an unread line might
+    have been a hit."""
+    said = []
+    for number, line in enumerate(lines, start=1):
+        try:
+            hit = json.loads(line)
+            said.append(f"{_hit_said(hit['test'], hit['event'], hit['label'])} (pid {hit['pid']})")
+        except (ValueError, TypeError, KeyError, AttributeError):
+            said.append(f"{UNREADABLE_LOG_LINE} (line {number})")
+    return said
+
+
+def read_tripwire_log(log: Path) -> list[str]:
+    """The session's tripwire log as the session says it. No file is no hit;
+    a log that exists and cannot be read might hold one, so it is said as a
+    violation, never skipped and never an internal error."""
+    try:
+        lines = log.read_text(encoding="utf-8", errors="replace").splitlines()
+    except FileNotFoundError:
+        return []                      # nothing was ever written: no child hit anything
+    except OSError as exc:
+        return [f"{UNREADABLE_LOG} ({type(exc).__name__})"]
+    return tripwire_log_said(lines)
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_sessionfinish(session):
+    state = session.config.stash[_STATE]
+    said = [_hit_said(test, event, label) for test, event, label in tripwire.SEEN]
+    said += read_tripwire_log(state["log"])
+    said += [f"the session left a new folder in the checkout: {rel}"
+             for rel in sorted(checkout_folders(REPO, state["places"]) - state["before"])]
+    if said:
+        state["said"] = said
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
+def pytest_terminal_summary(terminalreporter, config):
+    said = config.stash[_STATE]["said"]
+    if said:
+        terminalreporter.write_sep("=", TRIPWIRE_HEADING, red=True)
+        for line in said:
+            terminalreporter.write_line(line)
+
+
+def pytest_unconfigure(config):
+    state = config.stash.get(_STATE, None)
+    if state is None:
+        return
+    store.close()
+    state["patch"].undo()
+    shutil.rmtree(state["session"], ignore_errors=True)
+    shutil.rmtree(data_home_for(state["session"] / APP_FOLDER), ignore_errors=True)
+
+
+# ---------------------------------------------------- the office-shaped copy ----
+
+#: Set to run the whole suite, not the bounded set, in the office-shaped copy.
+ENV_OFFICE_SHAPED_FULL = "TRACKER_OFFICE_SHAPED_FULL"
+
+
+@pytest.fixture(scope="session")
+def office_shaped_copy(tmp_path_factory):
+    """The checkout copied with fabricated, real-looking files beside the app
+    (decision 185): a settings file naming a clients root with one
+    engagement, a store, the retired scratch folder with a page in it, the
+    scheduled task's file, a client tree and a run log - everything the
+    tripwire guards, in the shape an office checkout has it. Returns the copy
+    and a ``{relative path: bytes}`` record of the fabricated files, so a
+    nested run can be shown to have changed none of them.
+
+    The copy is a Git repository of its own (``git init``, ``git add -A``) so
+    a test that asks ``git ls-files`` gets the copy's answer."""
+    from tracker.manifest import RequestItem
+
+    base = tmp_path_factory.mktemp("office")
+    copy = base / "checkout"
+    listed = subprocess.run(["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+                            cwd=REPO, capture_output=True, text=True, check=True).stdout
+    for rel in filter(None, listed.split("\0")):
+        source = REPO / rel
+        if not source.is_file():
+            continue                       # deleted in the working tree, not yet staged
+        target = copy / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+
+    office_root = base / "office-root"
+    make_engagement(office_root, [RequestItem(identifier="A01", document="W-2")])
+    (copy / settings.SETTINGS_FILENAME).write_text(json.dumps(
+        {settings.KEY_CLIENTS_ROOT: str(office_root), settings.KEY_FIRM: PRIVATE_TREE}), encoding="utf-8")
+    store.open(copy / store.STORE_FILENAME).close()
+    (copy / settings.OCR_SCRATCH_DIRNAME).mkdir()
+    (copy / settings.OCR_SCRATCH_DIRNAME / "page-1.png").write_bytes(b"fabricated")
+    from tracker.runner import LOG_FILENAME
+    from tracker.scheduling import SCHEDULE_XML_FILENAME
+    (copy / SCHEDULE_XML_FILENAME).write_text("<Task/>", encoding="utf-8")
+    (copy / CLIENTS_TREE / TEST_HOUSEHOLD).mkdir(parents=True)
+    (copy / CLIENTS_TREE / TEST_HOUSEHOLD / "note.txt").write_text("fabricated", encoding="utf-8")
+    (copy / LOG_FILENAME).write_text("fabricated\n", encoding="utf-8")
+    fabricated = {}
+    for path in (copy / settings.SETTINGS_FILENAME, copy / store.STORE_FILENAME,
+                 copy / settings.OCR_SCRATCH_DIRNAME / "page-1.png", copy / SCHEDULE_XML_FILENAME,
+                 copy / CLIENTS_TREE / TEST_HOUSEHOLD / "note.txt", copy / LOG_FILENAME):
+        fabricated[path.relative_to(copy).as_posix()] = path.read_bytes()
+
+    for command in (["git", "init", "-q"], ["git", "add", "-A"]):
+        subprocess.run(command, cwd=copy, capture_output=True, check=True)
+    return copy, fabricated
+
+
+def run_in_copy(copy: Path, *args: str, timeout: int = 600, **extra: str) -> subprocess.CompletedProcess:
+    """``python -m pytest -q <args>`` in the copy, started as a fresh shell
+    would start it: no settings folder, store or data home of the suite's.
+    The outer tripwire's variable is kept, so this session watches the
+    nested one."""
+    env = child_env(drop=(settings.ENV_SETTINGS_DIR, store.ENV_STORE, settings.ENV_DATA_HOME,
+                          "PYTEST_CURRENT_TEST"), **extra)
+    return subprocess.run([sys.executable, "-m", "pytest", "-q", *args], cwd=copy, env=env,
+                          capture_output=True, text=True, timeout=timeout)

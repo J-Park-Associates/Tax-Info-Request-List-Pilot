@@ -19,12 +19,13 @@ synced between the office machine and the drive by a cloud client, and a
 synced SQLite file is a corrupted SQLite file: the client copies a page at
 a time, has no idea what a write-ahead log is, and will happily resurrect
 an old copy over a live one. That is decision 87's finding and it stands.
-So the store is **one file per clients root, on the designated machine's
-own local disk, beside the settings file** - never under the clients root,
-never in a folder anything syncs. :func:`path_for` is the whole of that
-rule. One machine per clients root is already the law (:mod:`tracker.locking`
-says why the lock needs it), so one store per clients root takes nothing
-away. The owner settled this on 2026-09-19: the journal stays where it is,
+So the store is **one file in the tracker's data home on the designated
+machine** (:func:`tracker.settings.data_home`, decision 186) - never under the
+clients root, never in a folder anything syncs, never beside the program and
+never in a checkout. :func:`store_path` is the whole of that rule. Every row is
+keyed by its clients root (:func:`key_root`), so the one file serves whatever
+root the settings name; one machine per clients root is already the law
+(:mod:`tracker.locking` says why the lock needs it). The owner settled this on 2026-09-19: the journal stays where it is,
 in the folder, synced; the store is local and disposable.
 
 **Journal first, then apply.** :func:`record` appends every event to the
@@ -61,10 +62,11 @@ wrote is renamed out of the way (``.v<N>.old``, never deleted) and a fresh
 one built from the journals, which also empties the verdict cache it
 keeps, so the next pass reads and OCRs every document again; a newer one
 is refused by name. A version is instead **upgraded in
-place** only where the change is one new column that is additive, has an
-empty default, and that no journal line written before the new version
-can carry - so every existing row's true value is that default, and
-:func:`check` holds the column to the journal from then on. Each such step
+place** only where the change is new columns, each of which is additive
+and that no journal line written before the new version can carry - so
+every existing row's true value is empty, which the column holds as NULL
+exactly as a rebuild would, and :func:`check` holds the columns to the
+journal from then on (decision 204's one column; decision 190's three). Each such step
 is written out by name in :data:`_IN_PLACE` (from-version -> statements),
 never inferred; every other older version is set aside, and a newer one
 refused.
@@ -128,7 +130,7 @@ file for the life of the process, created on first use and closed by
 :func:`close`. One file per clients root is the placement rule and one
 connection per process is what makes it cheap: a pass over two hundred
 engagements opens the database once, and the app's command opens it once.
-Where that file is comes from :func:`path_for` over the settings file,
+Where that file is comes from :func:`store_path` - the data home,
 **unless** the environment variable :data:`ENV_STORE` names an absolute
 path. The variable exists because two callers legitimately need a store
 that is not the machine's: the suite, which gives every test a database
@@ -196,8 +198,8 @@ from tracker.records import (
 
 log = logging.getLogger("tracker.store")
 
-#: The database, on the designated machine's local disk beside the settings
-#: file. One per clients root; a person never opens it and never backs it up
+#: The database, in the tracker's data home on the designated machine
+#: (decision 186). One per account on that machine; a person never opens it and never backs it up
 #: (the journals are the backup).
 STORE_FILENAME = "tracker.db"
 #: The two files SQLite keeps beside it while a write-ahead log is live.
@@ -206,10 +208,24 @@ STORE_FILENAME = "tracker.db"
 STORE_WAL_FILENAME = f"{STORE_FILENAME}-wal"
 STORE_SHM_FILENAME = f"{STORE_FILENAME}-shm"
 
-#: An absolute path to a store to use instead of the one beside the settings
-#: file. The suite sets it per test; a person may set it to ask a question of
+#: An absolute path to a store to use instead of the one in the data home.
+#: The suite sets it per test; a person may set it to ask a question of
 #: a copy. Read by :func:`connect` and nowhere else.
 ENV_STORE = "TRACKER_STORE"
+#: What :func:`store_path` says of an :data:`ENV_STORE` the data home's own
+#: checks refuse (decision 186's review, N4): it is a second answer to
+#: "where is the store", so it is held to the same two.
+STORE_OVERRIDE_NOT_ABSOLUTE = ENV_STORE + " must name a whole path, got {value!r}"
+STORE_OVERRIDE_IN_PROGRAM = (ENV_STORE + " names {path}, inside the program's own folder {program}; "
+                             "client data never sits beside the program")
+STORE_OVERRIDE_NOT_LOCAL = (ENV_STORE + " names {path}, which is not on this computer's own disk; "
+                            "the tracker keeps its database only on a fixed disk")
+#: What the command line says of a copy named inside the app's own folder
+#: (decision 186's review, N4): client data never lives in a code checkout,
+#: and ``rebuild`` would create it there.
+COPY_INSIDE_APP = ("{path} is inside the app's own folder {app}; a copy of the database is never "
+                   "kept there. Copy it into the tracker's data folder under a new name and name "
+                   "that instead")
 
 #: What this version of the code knows how to read, written into the file as
 #: ``user_version``. A file carrying anything else is refused by name rather
@@ -300,18 +316,60 @@ ENV_STORE = "TRACKER_STORE"
 #: fed return line and what its list accepted. It is the store's first
 #: **in-place** step (the module docstring's rule, :data:`_IN_PLACE`): no
 #: journal line before 204 carries the field, so every version-16 row
-#: waits for nothing, and a version-16 file gains the column with an empty
-#: default and keeps its verdict cache. Every other earlier version is set
-#: aside and rebuilt (decision 159, E3); a newer one refused.
-SCHEMA_VERSION = 17
+#: waits for nothing, and a version-16 file gains the column (NULL, as a
+#: rebuild writes it - decision 190) and keeps its verdict cache. Every
+#: other earlier version is set aside and rebuilt (decision 159, E3); a
+#: newer one refused.
+#: Version 18 (decision 190) added ``code`` and ``subfolder`` to
+#: ``documents`` and ``note_codes`` to ``statuses``: a row's cause, the
+#: client subfolder it came from and the causes a request's notes say, each
+#: a column rather than a phrase inside a sentence. It is an in-place step
+#: too, by the same rule applied to each column: all three are additive,
+#: and no journal line before 190 carries any of them, so
+#: every version-17 row's cause reads as ``""`` - not recorded, and nothing
+#: reads one out of its words - which is what a rebuild from the journals
+#: would give. The verdicts a version-17 file cached are kept as rows but no
+#: longer answer: they were cached before a verdict carried its code, and
+#: :data:`tracker.content_check.CACHE_VERSION` moved with this step.
+SCHEMA_VERSION = 18
 
 #: The explicit in-place upgrades (the module docstring's rule): the
 #: version a file is at, and the statements that bring it to the next one.
-#: Only a new additive column with an empty default that no earlier journal
-#: line can carry qualifies; anything else is a delete-and-rebuild bump.
+#: Only new additive columns that no earlier journal line can carry
+#: qualify; anything else is a delete-and-rebuild bump. Each is added with
+#: no default - NULL on every existing row, which is exactly what a rebuild
+#: writes for a line that does not carry the field, and what the records
+#: read back as empty - so ``store check`` compares the upgraded file with
+#: the journal and finds nothing. (A default of ``''`` would not be what a
+#: rebuild writes, and the check named every earlier row; decision 190
+#: found that in 204's step and made both steps add NULL.)
 _IN_PLACE: dict[int, tuple[str, ...]] = {
-    16: ("""ALTER TABLE documents ADD COLUMN "waits_for" TEXT DEFAULT ''""",),
+    16: ("""ALTER TABLE documents ADD COLUMN "waits_for" TEXT""",),
+    17: ("""ALTER TABLE documents ADD COLUMN "code" TEXT""",
+         """ALTER TABLE documents ADD COLUMN "subfolder" TEXT""",
+         """ALTER TABLE statuses ADD COLUMN "note_codes" TEXT"""),
 }
+
+#: The ``(table, column)`` pairs an in-place step added, read off
+#: :data:`_IN_PLACE` so that a new step is covered without a second list.
+#: In these columns only, ``store check`` holds NULL and ``''`` as the one
+#: value (decision 190's review of the port, S3): a file main's 204 step
+#: already upgraded, with its old ``DEFAULT ''``, holds ``''`` where a
+#: rebuild writes NULL, the records read both back as empty, and a person
+#: could act on the difference only by a full rebuild. Every other column
+#: still tells NULL from ``''``, and a real value still differs.
+_ADDED_IN_PLACE: frozenset[tuple[str, str]] = frozenset(
+    (words[2], words[5].strip('"'))
+    for statements in _IN_PLACE.values() for statement in statements
+    for words in (statement.split(),))
+
+
+def _agree(table: str, field: str, held: object, theirs: object) -> bool:
+    """Whether a store cell and the record's value are the same, for
+    :func:`check` - NULL and ``''`` as one in :data:`_ADDED_IN_PLACE`."""
+    if held == theirs:
+        return True
+    return (table, field) in _ADDED_IN_PLACE and held in (None, "") and theirs in (None, "")
 
 #: What a row of ``engagements`` holds the record of: one return, or one
 #: household (decision 125). Both are folders with a journal, keyed by
@@ -337,6 +395,19 @@ class StoreError(RuntimeError):
     """The store could not be opened, written to, or read as one."""
 
 
+class CheckpointNotMade(StoreError):
+    """One return's catch-up met :class:`tracker.checkpoint.CheckpointLeftBehind`
+    (the rebase review of decision 186, MF1): a :class:`StoreError`, so every
+    caller that already says one return's problem by name says this, and
+    carries ``old`` and ``home`` so the app can say it in the first
+    screen's own sentence."""
+
+    def __init__(self, left: checkpoint.CheckpointLeftBehind) -> None:
+        super().__init__(str(left))
+        self.old = left.old
+        self.home = left.home
+
+
 #: What a database the engine refused says (decision 189): the SQLite
 #: error's name and nothing else. The engine's own text can carry a path
 #: or a fragment of a statement, so it stays on ``__cause__`` for a person
@@ -354,6 +425,10 @@ class StoreUnavailable(StoreError):
     ``SQLITE_IOERR_WRITE``); an error that did not come from the engine -
     a closed connection - has none and reads ``SQLITE_ERROR``.
     """
+
+    #: Said as ``<class> (<code>)`` by :func:`tracker.errors.error_class`
+    #: (the marker :data:`tracker.errors.SAYS_ITS_CODE`, decision 190).
+    says_its_code = True
 
     def __init__(self, code: str) -> None:
         super().__init__(STORE_UNAVAILABLE.format(code=code))
@@ -669,17 +744,6 @@ SCHEMA: tuple[str, ...] = (
 # ------------------------------------------------------------ open, place ----
 
 
-def path_for(settings_path: Path | str) -> Path:
-    """Where the store lives for the clients root the settings file names.
-
-    **Beside the settings file**, which is beside the app on the machine
-    that runs the schedule - not under the clients root, which syncs. The
-    settings module is not imported to ask where that is: the caller has
-    the path already, and this module stays at the bottom of the package.
-    """
-    return Path(settings_path).with_name(STORE_FILENAME)
-
-
 def open(path: Path | str) -> sqlite3.Connection:  # noqa: A001 - the store is opened
     """Open the store at ``path``, creating the schema when it is not there.
 
@@ -692,8 +756,8 @@ def open(path: Path | str) -> sqlite3.Connection:  # noqa: A001 - the store is o
     its record, proved against this machine's checkpoint. Until 159 an
     older store was refused until a person deleted it, and the sentence
     that told them to also offered "or run that version". **Except a
-    version upgraded in place** (decision 204, :data:`_IN_PLACE`): version
-    16 gains its column where it stands and keeps its verdict cache; only
+    version upgraded in place** (decisions 204 and 190, :data:`_IN_PLACE`):
+    versions 16 and 17 gain their columns where they stand; only
     an older version no in-place step reaches is set aside. The record
     checkpoint beside it is another file with its own version, and no step
     here touches it. The caller closes the connection.
@@ -830,18 +894,33 @@ _CONNECTION_PATH: Path | None = None
 
 def store_path() -> Path:
     """The store this process uses: :data:`ENV_STORE` if it is set, else the
-    one beside the settings file.
+    one in the data home (:func:`tracker.settings.data_home`, decision 186).
+    :data:`ENV_STORE` is held to the data home's two checks - a whole path,
+    not inside the program, on a fixed disk - and refused with a
+    :class:`~tracker.settings.SettingsError` otherwise, as the data home is.
 
     :mod:`tracker.settings` is imported here rather than at the top of the
     module: this module sits at the bottom of the package and must not pull
     in, at load time, the chain that walks folders and moves files.
     """
-    override = os.environ.get(ENV_STORE)
-    if override:
-        return Path(override)
-    from tracker.settings import settings_path
+    from tracker import settings
 
-    return path_for(settings_path())
+    override = (os.environ.get(ENV_STORE) or "").strip()
+    if not override:
+        return settings.data_home() / STORE_FILENAME
+    # Held to the data home's own two checks (decision 186's review, N4): a
+    # whole path, not inside the program, on a fixed disk - the same
+    # SettingsError, so every caller that says a data home cannot be had
+    # says this too.
+    path = Path(override)
+    if not path.is_absolute():
+        raise settings.SettingsError(STORE_OVERRIDE_NOT_ABSOLUTE.format(value=override))
+    for program in settings.program_folders():
+        if settings._inside(path, program):
+            raise settings.SettingsError(STORE_OVERRIDE_IN_PROGRAM.format(path=path, program=program))
+    if settings.drive_type(path) != settings.DRIVE_FIXED:
+        raise settings.SettingsError(STORE_OVERRIDE_NOT_LOCAL.format(path=path))
+    return path
 
 
 def connect(path: Path | str | None = None) -> sqlite3.Connection:
@@ -1674,7 +1753,7 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
     events name a request and a word, both as text and neither blank, or
     the line is refused like any other.
     """
-    from tracker import layout
+    from tracker import layout, reasons
 
     name = event.get(ledger.EVENT_KEY)
 
@@ -1701,9 +1780,29 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
         if (code := layout.segment_problem(str(label))) is not None:
             refuse(f"carries {field!r} that is not one folder name ({code})")
 
+    def a_code(field: str, code: object, what: str) -> None:
+        # A cause's code is read by the letter, its holds and the review
+        # card (decision 190), so it is one this version names, or none.
+        if code and code not in reasons.KNOWN_CODES:
+            refuse(f"carries {what} whose {field!r} is not a cause's code")
+
     def a_row(row: dict) -> None:
         if problem := records.entry_problem(row):
             refuse(f"carries a row whose {problem}")
+        a_code("code", row.get("code"), "a row")
+        # The client's subfolder is written one folder name per part, each
+        # through layout.recorded_subfolder_part - the filer joins the parts
+        # below the inbox with a backslash. A part that rule would change
+        # ("." or "..", one holding "/", ":" or a control, one with nothing
+        # visible) is a name no writer wrote: the writer and this admission
+        # share the one rule (decision 190's review of the port, S2). Not
+        # the household and return name rule (layout.segment_problem): since
+        # decision 188 that refuses "2025", "_old" and "(scans)", which are
+        # folders a client may well make in their inbox.
+        subfolder = row.get("subfolder")
+        if subfolder and any(layout.recorded_subfolder_part(part) != part
+                             for part in str(subfolder).split("\\")):
+            refuse("carries a row whose 'subfolder' is not a name as the record keeps one")
         for field in ("pbc_location", "prepared_location", "container"):
             if row.get(field):
                 a_place(field, row[field], writes=False, what="a row")
@@ -1785,6 +1884,8 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
                 refuse("carries a status that is not a mapping")
             if problem := records.status_problem(stored):
                 refuse(f"carries a status whose {problem}")
+            for code in records.split_codes(stored.get("note_codes")):
+                a_code("note_codes", code, "a status")
     elif name == ledger.MOVING:
         # The intent is what a later pass will finish a half-made move
         # from, so its shape is checked here rather than trusted in the
@@ -1871,11 +1972,13 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
                 refuse(f"carries {key!r} that {problem}")
     elif name in (ledger.DRAFTED, ledger.DRAFT_APPROVED):
         # A week's draft (decision 118): what was asked and held, the file,
-        # its fingerprint and the stage - each read back by the app.
+        # its fingerprint and the stage - each read back by the app - and,
+        # on an approval, the fingerprint of the letter approved (decision
+        # 190), which the pass compares.
         for key in (ledger.ASKED_KEY, ledger.HELD_KEY):
             if key in event and (problem := records.text_list_problem(event[key])):
                 refuse(f"carries {key!r} that {problem}")
-        for key in (ledger.FILE_KEY, ledger.FINGERPRINT_KEY):
+        for key in (ledger.FILE_KEY, ledger.FINGERPRINT_KEY, ledger.TEXT_FINGERPRINT_KEY):
             if key in event and (problem := records.text_problem(event[key])):
                 refuse(f"carries {key!r} that {problem}")
         if event.get(ledger.STAGE_KEY) is not None and (
@@ -2435,6 +2538,44 @@ def _checkpoint_file(conn: sqlite3.Connection) -> Path | None:
     return None
 
 
+def _spelled(path: Path) -> str:
+    """A path as the filesystem compares it: resolved, and without case on
+    Windows - so the store beside a settings folder reached through a link
+    is still that folder."""
+    return os.path.normcase(str(Path(path).resolve()))
+
+
+def _checkpoint_may_be_made(where: Path) -> None:
+    """Refuse to make a checkpoint at ``where`` while an earlier version's
+    sits beside the program (the rebase review of decision 186, MF1).
+
+    **Refuse to create, never refuse to open**: nothing is asked when
+    ``where`` is already a file. Otherwise a :data:`checkpoint.CHECKPOINT_FILENAME`
+    in any folder :func:`tracker.settings.beside_the_program` names, other
+    than ``where`` itself, raises :class:`checkpoint.CheckpointLeftBehind` -
+    a fresh file would seed every record "as it is" and drop what the old
+    one vouched for. The checkpoint of the store in use is never "left
+    behind", as :func:`tracker.runner.left_behind` never names it: with
+    ``TRACKER_STORE`` beside the settings file (the suite's fixture) the
+    file there is the live one, and a store opened elsewhere by path (a
+    rebuild into a scratch file) is not refused for it. Moving or renaming
+    the old file lifts the refusal; nothing here moves anything.
+    :mod:`tracker.settings` is reached at call time, as :func:`store_path`
+    reaches it, so the layers hold."""
+    if where.is_file():
+        return
+    from tracker import settings
+
+    try:
+        in_use = _spelled(checkpoint.path_for(store_path()))
+    except settings.SettingsError:
+        in_use = None       # no data home: nothing beside the program is the live one
+    for folder in settings.beside_the_program():
+        old = folder / checkpoint.CHECKPOINT_FILENAME
+        if os.path.lexists(old) and _spelled(old) not in (_spelled(where), in_use):
+            raise checkpoint.CheckpointLeftBehind(old, where.parent)
+
+
 @contextmanager
 def _beside(conn: sqlite3.Connection, held: sqlite3.Connection | None = None):
     """The checkpoint beside ``conn``'s store, opened for one question and
@@ -2449,7 +2590,11 @@ def _beside(conn: sqlite3.Connection, held: sqlite3.Connection | None = None):
         yield None
         return
     try:
+        _checkpoint_may_be_made(where)
         opened = checkpoint.open(where)
+    except checkpoint.CheckpointLeftBehind as exc:
+        # Every return says it (MF1), in the same sentence, as its own.
+        raise CheckpointNotMade(exc) from None
     except checkpoint.CheckpointError as exc:
         # One return's problem, said by name (the review's S4).
         raise StoreError(str(exc)) from None
@@ -2463,8 +2608,12 @@ def _beside(conn: sqlite3.Connection, held: sqlite3.Connection | None = None):
         try:
             opened.close()
         except checkpoint.CheckpointError as exc:
-            log.warning("Could not close the record checkpoint (%s)", exc.code
-                        if isinstance(exc, checkpoint.CheckpointUnavailable) else type(exc).__name__)
+            # At call time: the store imports only the record, the journal,
+            # the lock and the checkpoint at load. By its class and code
+            # (decision 190).
+            from tracker import errors
+
+            log.warning("Could not close the record checkpoint (%s)", errors.error_class(exc))
 
 
 @dataclass
@@ -2640,6 +2789,9 @@ def prove_the_root(root: Path | str, *, claim: bool = True) -> None:
 
     now = Path(root).resolve()
     where = checkpoint.path_for(store_path())
+    # Before the early return (MF1): a typed root with no checkpoint yet
+    # must not pass on to households that would each make one.
+    _checkpoint_may_be_made(where)
     if not claim and not where.is_file():
         return
     with checkpoint.opened(where) as held:
@@ -2670,7 +2822,9 @@ def acknowledge_foreign(engagement_dir: Path | str) -> int:
     conn = connect()
     row = _engagement_row(conn, engagement_dir)
     key = row["path"] if row is not None else engagement_path(key_root(engagement_dir), engagement_dir)
-    with checkpoint.opened(checkpoint.path_for(store_path())) as held:
+    where = checkpoint.path_for(store_path())
+    _checkpoint_may_be_made(where)
+    with checkpoint.opened(where) as held:
         return checkpoint.acknowledge(held, key)
 
 
@@ -3088,7 +3242,7 @@ def _check_documents(
             continue
         for field in DOCUMENT_COLUMNS:
             theirs = _to_sql(row.get(field))
-            if held[field] != theirs:
+            if not _agree("documents", field, held[field], theirs):
                 problems.append(
                     f"{name}: index row {key!r}, {field}: the store says {held[field]!r}, "
                     f"the record says {theirs!r}")
@@ -3185,7 +3339,7 @@ def _check_statuses(
             continue
         for field in STATUS_COLUMNS:
             theirs = _to_sql(status.get(field))
-            if held[field] != theirs:
+            if not _agree("statuses", field, held[field], theirs):
                 problems.append(
                     f"{name}: request {identifier}, {field}: the store says {held[field]!r}, "
                     f"the record says {theirs!r}")
@@ -3498,8 +3652,11 @@ def recover(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | s
     except OSError as exc:
         # Said by its class and the folder, never a traceback, and nothing
         # was discarded: the replay comes only after the export (S2).
+        from tracker import errors
+
+        errors.keep("store", exc, name=base.parent.name)
         raise StoreError(EXPORT_NOT_WRITTEN.format(folder=base.parent,
-                                                   kind=exc.__class__.__name__)) from None
+                                                   kind=errors.error_class(exc))) from None
 
     problem, readable = "", 0
     try:
@@ -3652,15 +3809,30 @@ def verify(conn: sqlite3.Connection, held: sqlite3.Connection | None, root: Path
 # -------------------------------------------------------------------- CLI ----
 
 
-def store_named(given: Path) -> Path | None:
-    """The store file a command-line argument means, or None for one it cannot mean.
+#: The one spelling the command line refuses by name (decision 186): the
+#: store an earlier version kept beside the program.
+OLD_STORE_NAMED = ("{path} is the old database beside the program; it is no longer used and "
+                   "nothing was opened. The tracker's database is {store}. Delete the old one.")
+
+
+def store_named(given: Path) -> Path | str | None:
+    """The store file a command-line argument means, a sentence refusing it,
+    or None for one it cannot mean.
 
     Three spellings, because the runbook says "the app folder" and a person
-    at the office will type any of them: an existing folder is the app
-    folder and the store is :data:`STORE_FILENAME` inside it; a path named
-    :data:`STORE_FILENAME` is the store itself, whether or not it exists yet
-    (``rebuild`` creates it); an existing file is the settings file and the
-    store sits beside it (:func:`path_for`). Anything else is refused rather
+    at the office will type any of them. The app folder, its settings
+    folder or its settings file means **this account's store**, in the data
+    home (:func:`store_path`, decision 186). A path named
+    :data:`STORE_FILENAME` is that file - a copy a person wants to ask
+    about - whether or not it exists yet (``rebuild`` creates it), except
+    the old store beside the program, which is refused by name
+    (:data:`OLD_STORE_NAMED`) so it is never opened and a ``rebuild`` never
+    recreates it; the store in use is never "old", wherever
+    :data:`ENV_STORE` puts it. Another existing folder holds a copy, named
+    :data:`STORE_FILENAME` inside it. A copy inside the app's own folder
+    - on a source install, the checkout - is refused with
+    :data:`COPY_INSIDE_APP` (decision 186's review, N4), since ``rebuild``
+    would create client data there. Anything else is refused rather
     than resolved, because the resolution used to be ``with_name`` on
     whatever was typed, and the integration run of decision 107 typed the
     app folder as the runbook said and silently got an empty store *beside*
@@ -3668,13 +3840,28 @@ def store_named(given: Path) -> Path | None:
     ``rebuild`` typed next would have built into the wrong file. A typo must
     never create a store.
     """
-    if given.is_dir():
-        return given / STORE_FILENAME
+    from tracker import settings
+
+    whole = Path(os.path.abspath(given))
+
+    def same(a: Path, b: Path) -> bool:
+        return settings._inside(a, b) and settings._inside(b, a)
+
+    mine = (settings.settings_dir(), settings.app_dir())
+    if whole.exists() and any(same(whole, place) for place in (*mine, settings.settings_path())):
+        return store_path()
     if given.name == STORE_FILENAME:
-        return given
-    if given.is_file():
-        return path_for(given)
-    return None
+        in_use = store_path()
+        if not same(whole, Path(os.path.abspath(in_use))) and any(same(whole.parent, place) for place in mine):
+            return OLD_STORE_NAMED.format(path=given, store=in_use)
+        copy = given
+    elif given.is_dir():
+        copy = given / STORE_FILENAME
+    else:
+        return None
+    if settings.inside_the_app(copy):
+        return COPY_INSIDE_APP.format(path=copy, app=settings.app_dir())
+    return copy
 
 
 if __name__ == "__main__":
@@ -3694,7 +3881,8 @@ if __name__ == "__main__":
         description="Build, check, verify, recover and export the store: one database on this "
                     "machine, rebuilt from each engagement's own record.",
     )
-    parser.add_argument("store", help="the app folder, the settings file in it, or the store file itself")
+    parser.add_argument("store", help="the app folder or its settings file (this account's database), "
+                                      "or a store file")
     parser.add_argument("command", choices=("rebuild", "check", "export", "state", "verify", "recover"))
     parser.add_argument("root", help="the clients root")
     parser.add_argument("--engagement", help="one engagement folder instead of every one "
@@ -3709,15 +3897,22 @@ if __name__ == "__main__":
     ns = parser.parse_args()
 
     given = Path(ns.store)
-    chosen = store_named(given)
+    from tracker.settings import SettingsError
+
+    try:
+        chosen = store_named(given)
+    except SettingsError as exc:      # no data home on this machine: said, never a traceback
+        parser.exit(1, f"{exc}\n")
     if chosen is None:
         parser.error(f"{given} is not the app folder, a settings file in it, or a {STORE_FILENAME}; "
                      f"nothing was opened and no store was created")
+    if isinstance(chosen, str):
+        parser.exit(1, f"{chosen}\n")
     # The root and a typed folder through the one door (decision 188): the
     # root held to the settings' rule, the folder a return's or a
     # household's place under it, rebuilt from its own names.
     from tracker import door
-
+    from tracker.layout import LayoutError
     try:
         clients_root = door.checked_root(ns.root)
         if ns.engagement:
@@ -3725,7 +3920,7 @@ if __name__ == "__main__":
                 one = door.return_dir(Path(ns.engagement).absolute(), root=clients_root)
             except ValueError:
                 one = door.household_dir(Path(ns.engagement).absolute(), root=clients_root)
-    except ValueError as exc:
+    except (door.DoorError, LayoutError) as exc:     # the door's own sentences
         parser.error(str(exc))
     if ns.command == "recover" and not ns.engagement:
         parser.error("recover needs --engagement <the return folder>")

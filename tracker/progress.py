@@ -240,7 +240,9 @@ class Watch:
                 # hint lags a line (the next one catches it up).
                 os.replace(temp, target)
         except OSError as exc:
-            log.debug("Could not keep the progress file (%s)", exc.__class__.__name__)
+            from tracker import errors  # at call time: L0 imports nothing of the package at load
+
+            log.debug("Could not keep the progress file (%s)", errors.error_class(exc))
             try:
                 temp.unlink(missing_ok=True)
             except OSError:
@@ -270,12 +272,16 @@ class Watch:
                 # recorded, the locks are let go and the rest waits (119).
                 # Not a kill, which would leave the lock for 2 h 05 m, and
                 # not a pass left running where no one can stop it.
-                log.debug("Could not print a progress line (%s)", exc.__class__.__name__)
+                from tracker import errors  # at call time, as above
+
+                log.debug("Could not print a progress line (%s)", errors.error_class(exc))
                 self.emit = None
                 self._gone = True
             except ValueError as exc:
                 # A closed stream in this process, not a reader gone.
-                log.debug("Could not print a progress line (%s)", exc.__class__.__name__)
+                from tracker import errors  # at call time, as above
+
+                log.debug("Could not print a progress line (%s)", errors.error_class(exc))
         self._keep(said)
 
     def stop_asked(self) -> bool:

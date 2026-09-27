@@ -374,8 +374,11 @@ KEYWORD_UNLEARNED = "keyword_unlearned"
 #: removed identifiers (``REMOVED_KEY``), the Engagement fields that moved
 #: (``INFO_KEY``). The first one - the create - carries the whole list and
 #: every field, every one after it only what moved, so the fold of them
-#: all is the list. Written by ``tracker.manifest.create_engagement`` and
-#: ``save_rules`` and by nothing else.
+#: all is the list. Written by ``tracker.manifest.create_engagement``,
+#: ``save_rules`` and the rename (``renamed_rules``, decision 160), by a
+#: filing that teaches a spelling (decision 128) or adds its issuer row
+#: (decision 201) in ``tracker.filer.assign_review_file``, and by the API's
+#: *Accept the folder's name* (decision 188) - and by nothing else.
 RULES_CHANGED = "rules_changed"
 #: The household's own details were recorded or edited (decision 125): its
 #: name, the members a person typed as who the folder is meant to be
@@ -426,12 +429,17 @@ FINGERPRINT_KEY = "fingerprint"
 #: 187, beside the event it belongs to, so the store's gate can bound it
 #: without reaching up to the reminder; ``tracker.reminder`` re-exports it.
 STAGE_KEY = "stage"
+#: The fingerprint of the letter a person approved, as they read it
+#: (decision 190): carried by :data:`DRAFT_APPROVED` alone, so an edit made
+#: after the approval lapses it. A hash - no word of the letter.
+TEXT_FINGERPRINT_KEY = "text_fingerprint"
 #: A person read the week's draft in the app and approved it (decision
 #: 118). Folded by nothing, exactly as :data:`DRAFTED` is: it is a fact
 #: about a week, not a row of the index. It carries the same four keys a
 #: written draft does - the stage (:data:`STAGE_KEY`), the
 #: file, the fingerprint in that file's header and the identifiers asked -
-#: and, like every event here, not one word a client would read. Until the
+#: and the fingerprint of the letter approved (:data:`TEXT_FINGERPRINT_KEY`,
+#: decision 190), and, like every event here, not one word a client would read. Until the
 #: next draft day the pass treats the file it names as it treats one a
 #: person edited: never overwritten, a regenerated draft beside it.
 DRAFT_APPROVED = "draft_approved"
@@ -554,6 +562,10 @@ class RecordNotWritten(LedgerError):
     already catches one catches this - a full disk or a sync client's
     lock costs its household, never the practice pass - and ``code`` is
     the errno's name (``ENOSPC``, ``EACCES``), data rather than prose."""
+
+    #: Said as ``<class> (<code>)`` by :func:`tracker.errors.error_class`
+    #: (the marker :data:`tracker.errors.SAYS_ITS_CODE`, decision 190).
+    says_its_code = True
 
     def __init__(self, code: str) -> None:
         super().__init__(RECORD_NOT_WRITTEN.format(code=code))
@@ -850,7 +862,12 @@ def _parse_lines(data: bytes, name: str) -> list[tuple[dict, bytes]]:
             why = ("it is not UTF-8" if isinstance(exc, UnicodeDecodeError) else
                    "it is not JSON" if isinstance(exc, json.JSONDecodeError) else
                    "it holds a number too long to read")
-            log.warning("%s line %d does not read: %s", name, number, exc)
+            # At call time: the ledger imports nothing of the package but
+            # the lock at load. The words go to the debug sink only (190).
+            from tracker import errors
+
+            errors.keep("ledger", exc, name=f"{name} line {number}")
+            log.warning("%s line %d does not read (%s)", name, number, errors.error_class(exc))
             raise LedgerError(NOT_AN_EVENT.format(name=name, line=number, why=why), line=number) from None
         except RecursionError:
             # Nested past the interpreter's limit: a line that does not
@@ -1331,10 +1348,11 @@ if __name__ == "__main__":
     # A typed folder is parsed, never trusted: it must be a return's
     # place under the checked clients root (decision 188).
     from tracker import door
+    from tracker.layout import LayoutError
 
     try:
         ns.engagement_dir = door.return_dir(Path(ns.engagement_dir).absolute())
-    except ValueError as exc:
+    except (door.DoorError, LayoutError) as exc:     # the door's own sentences
         parser.error(str(exc))
 
     # There is nothing left here to compare with a workbook. Until decision

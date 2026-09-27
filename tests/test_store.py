@@ -201,6 +201,60 @@ A_ROW_ORIGINAL = "../../../../Clients/Smith Family/2025/w2.pdf"
 #: before the first in-place step (decision 204 upgrades a version-16 file
 #: where it stands, so "the version before this one" is not set aside).
 REFUSED_EARLIER = min(store._IN_PLACE) - 1
+#: What turns a store of this version back into one at version 17: the
+#: columns decision 190's in-place step adds, taken off again.
+AS_AT_17 = ('ALTER TABLE documents DROP COLUMN "code"',
+            'ALTER TABLE documents DROP COLUMN "subfolder"',
+            'ALTER TABLE statuses DROP COLUMN "note_codes"')
+#: ... and back to version 16: decision 204's column too.
+AS_AT_16 = (*AS_AT_17, 'ALTER TABLE documents DROP COLUMN "waits_for"')
+
+
+def journal_as_written_before(engagement, fields: tuple[str, ...]) -> None:
+    """Take ``fields`` back out of every line of a journal this version
+    wrote - wherever a row, an intent or a status carries them - so it
+    reads as one written before the decision that added them."""
+    def before(value):
+        if isinstance(value, dict):
+            return {key: before(one) for key, one in value.items() if key not in fields}
+        if isinstance(value, list):
+            return [before(one) for one in value]
+        return value
+
+    events = [before(event) for event in ledger.read_events(engagement)]
+    # Each line linked again, as the version that wrote it would have
+    # linked it (decision 159): a rewrite the chain does not see, so the
+    # rebuild reads it as that version's record rather than refusing an edit.
+    ledger.path_for(engagement).write_bytes(b"")
+    for event in events:
+        written_elsewhere(engagement, {k: v for k, v in event.items() if k not in ledger.LINE_KEYS},
+                          host=event.get(ledger.HOST_KEY) or ledger.this_host())
+
+
+#: The fields decision 190 added to the record, and decision 204's.
+FIELDS_OF_190 = ("code", "subfolder", "note_codes")
+FIELDS_OF_204 = ("waits_for",)
+
+
+def as_a_rebuild_leaves_it(conn, root, engagement, tmp_path) -> bool:
+    """Whether ``conn``'s rows and statuses are, cell for cell - NULL as
+    NULL - what a store rebuilt from the engagement's journal holds: the
+    claim an in-place step makes (the store's rule, decisions 204 and 190).
+    ``store check`` cannot be asked here, because the fixture's journal was
+    rewritten after the store applied it, which the check rightly names."""
+    rebuilt = store.open(tmp_path / "rebuilt" / store.STORE_FILENAME)
+    try:
+        store.rebuild_engagement(rebuilt, root, engagement)
+
+        def cells(one):
+            return {table: sorted(tuple(sorted((k, row[k]) for k in row.keys()
+                                               if k not in ("engagement_id",)))
+                                  for row in one.execute(f"SELECT * FROM {table}"))
+                    for table in ("documents", "statuses")}
+
+        return cells(conn) == cells(rebuilt)
+    finally:
+        rebuilt.close()
 
 
 def a_row(**fields) -> dict:
@@ -220,7 +274,7 @@ def test_opening_a_file_that_is_not_there_creates_the_schema(tmp_path):
 
     conn = store.open(path)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 17
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 18
         tables = {row[0] for row in conn.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table'")}
         assert tables == {"engagements", "requests", "statuses", "learned_keywords",
@@ -838,23 +892,42 @@ def test_the_command_lines_check_exits_one_and_names_what_disagrees(root, engage
     assert "index row" in disagreed.stdout
 
 
-def test_the_command_line_takes_the_app_folder_the_settings_file_or_the_store_and_refuses_a_typo(
-        root, engagement, tmp_path):
+@pytest.fixture
+def this_account(tmp_path, monkeypatch):
+    """The app's settings folder and this account's data home, as a machine
+    with no ``TRACKER_STORE`` has them (decision 186): the store is the data
+    home's, and the settings folder holds only the pointer."""
+    from tracker.settings import ENV_DATA_HOME, ENV_SETTINGS_DIR, SETTINGS_FILENAME
+
+    app, home = tmp_path / "app", tmp_path / "account-data"
+    app.mkdir(exist_ok=True)
+    (app / SETTINGS_FILENAME).write_text("{}", encoding="utf-8")
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(app))
+    monkeypatch.setenv(ENV_DATA_HOME, str(home))
+    monkeypatch.delenv(store.ENV_STORE)
+    store.close()
+    yield app, home
+    store.close()
+
+
+def test_the_command_line_takes_the_app_folder_to_mean_the_data_homes_store(this_account, root, engagement,
+                                                                            tmp_path):
     """The runbook says "the app folder"; the integration run of decision 107
-    typed it and got an empty store beside the folder, because the argument
-    was resolved with ``with_name``. Three spellings mean one file, and a
-    typo means no file at all."""
+    typed it and got an empty store beside the folder. Since decision 186
+    the app folder and its settings file both mean this account's store, in
+    the data home; a store file named elsewhere is that copy, and a typo
+    means no file at all."""
     from tracker.settings import SETTINGS_FILENAME
 
-    app = tmp_path / "app"                                          # where the suite's store already is
-    app.mkdir(exist_ok=True)
+    app, home = this_account
     settings = app / SETTINGS_FILENAME
-    settings.write_text("{}", encoding="utf-8")
-    the_store = app / store.STORE_FILENAME
+    the_store = home / store.STORE_FILENAME
+    assert store.store_path() == the_store
 
     assert store.store_named(app) == the_store
     assert store.store_named(settings) == the_store
-    assert store.store_named(the_store) == the_store                # exists or not: rebuild creates it
+    a_copy = tmp_path / "copy" / store.STORE_FILENAME
+    assert store.store_named(a_copy) == a_copy                      # exists or not: rebuild creates it
     assert store.store_named(tmp_path / "apps") is None            # a typo of a folder
     assert store.store_named(app / f"{store.STORE_FILENAME}x") is None   # a typo of the file
 
@@ -865,7 +938,72 @@ def test_the_command_line_takes_the_app_folder_the_settings_file_or_the_store_an
 
     refused = cli(tmp_path / "apps", "check", root)
     assert refused.returncode == 2 and "nothing was opened" in refused.stderr
-    assert set(tmp_path.rglob(store.STORE_FILENAME)) == {the_store}  # and no store beside the typo
+    assert not list(app.rglob(store.STORE_FILENAME))                # nothing beside the program
+
+
+def test_the_command_line_refuses_the_old_store_beside_the_program_and_creates_nothing(
+        this_account, root, engagement):
+    app, home = this_account
+    old = app / store.STORE_FILENAME
+    assert store.store_named(old) == store.OLD_STORE_NAMED.format(path=old, store=home / store.STORE_FILENAME)
+
+    refused = cli(old, "rebuild", root)
+    assert refused.returncode == 1
+    assert store.OLD_STORE_NAMED.format(path=old, store=home / store.STORE_FILENAME) in refused.stderr
+    assert "Traceback" not in refused.stderr and "Traceback" not in refused.stdout
+    assert not old.exists()                                         # never opened, so never made
+
+
+def test_the_command_line_refuses_a_copy_inside_the_apps_own_folder_and_creates_nothing(
+        this_account, root, engagement):
+    """Decision 186's review, N4: a folder or a store file inside the app's
+    own folder - on a source install, the checkout - is refused in a
+    sentence, so a ``rebuild`` never creates client data there."""
+    from tracker.settings import app_dir
+
+    inside = app_dir() / "docs"
+    copy = inside / store.STORE_FILENAME
+    said = store.COPY_INSIDE_APP.format(path=copy, app=app_dir())
+    assert store.store_named(inside) == said
+    assert store.store_named(copy) == said
+
+    refused = cli(inside, "rebuild", root)
+    assert refused.returncode == 1
+    assert said in refused.stderr
+    assert "Traceback" not in refused.stderr and "Traceback" not in refused.stdout
+    assert not copy.exists()
+
+
+def test_a_store_the_environment_names_is_held_to_the_data_homes_two_checks(tmp_path, monkeypatch):
+    """Decision 186's review, N4: ``TRACKER_STORE`` is a second answer to
+    "where is the store", so it is held to the data home's checks - a whole
+    path, not inside the program, on a fixed disk - and refused, as the data
+    home is, with a SettingsError that says why."""
+    from tracker import settings
+
+    store.close()
+    allowed = tmp_path / "elsewhere" / store.STORE_FILENAME
+    monkeypatch.setenv(store.ENV_STORE, str(allowed))
+    assert store.store_path() == allowed
+
+    monkeypatch.setenv(store.ENV_STORE, "relative/tracker.db")
+    with pytest.raises(settings.SettingsError) as refused:
+        store.store_path()
+    assert str(refused.value) == store.STORE_OVERRIDE_NOT_ABSOLUTE.format(value="relative/tracker.db")
+
+    in_the_program = settings.app_dir() / store.STORE_FILENAME
+    monkeypatch.setenv(store.ENV_STORE, str(in_the_program))
+    with pytest.raises(settings.SettingsError) as refused:
+        store.store_path()
+    assert str(refused.value) == store.STORE_OVERRIDE_IN_PROGRAM.format(path=in_the_program,
+                                                                       program=settings.app_dir())
+
+    monkeypatch.setenv(store.ENV_STORE, str(allowed))
+    monkeypatch.setattr(settings, "drive_type", lambda path: settings.DRIVE_REMOVABLE)
+    with pytest.raises(settings.SettingsError) as refused:
+        store.store_path()
+    assert str(refused.value) == store.STORE_OVERRIDE_NOT_LOCAL.format(path=allowed)
+    assert not allowed.exists() and not in_the_program.exists()
 
 
 def test_the_command_line_says_a_refused_store_in_one_sentence(root, tmp_path):
@@ -887,13 +1025,17 @@ def test_the_command_line_says_a_refused_store_in_one_sentence(root, tmp_path):
 # -------------------------------------------------------------- the placement ----
 
 
-def test_the_store_is_placed_beside_the_settings_file_and_never_in_the_synced_folder(
-        root, by_hand, tmp_path):
-    settings = tmp_path / "app" / "settings.json"
-    assert store.path_for(settings) == settings.with_name(store.STORE_FILENAME)
-    assert root not in store.path_for(settings).parents
+def test_the_store_is_placed_in_the_data_home_and_never_beside_the_settings_file(
+        this_account, root, by_hand):
+    from tracker.settings import data_home, settings_path
 
-    conn = store.open(store.path_for(settings))
+    app, home = this_account
+    placed = store.store_path()
+    assert placed == data_home() / store.STORE_FILENAME == home / store.STORE_FILENAME
+    assert root not in placed.parents
+    assert placed.parent != settings_path().parent
+
+    conn = store.open(placed)
     try:
         build(conn, root, by_hand)
         with engagement_lock(by_hand):
@@ -901,9 +1043,43 @@ def test_the_store_is_placed_beside_the_settings_file_and_never_in_the_synced_fo
                 ledger.FILED, key="p/one", row=a_row(pbc_location="p/one")))
         # While it is open, which is when the write-ahead log exists.
         assert _database_files_under(root) == []
+        assert _database_files_under(app) == []
     finally:
         conn.close()
     assert _database_files_under(root) == []
+    assert _database_files_under(app) == []
+
+
+def test_a_store_left_behind_is_rebuilt_from_the_record_in_its_new_home(root, engagement, tmp_path,
+                                                                         monkeypatch):
+    """Nothing is carried over (decision 186): the store an earlier version
+    kept beside the settings file is never read, and the empty one in the
+    data home is built from the engagement's own record on first use."""
+    from tracker.settings import ENV_DATA_HOME, ENV_SETTINGS_DIR
+
+    app = tmp_path / "app"
+    old = app / store.STORE_FILENAME                                # the fixture's store: the old place
+    conn = store.connect()
+    assert Path(store.store_path()) == old
+    build(conn, root, engagement)
+    store.close()
+    before = old.read_bytes()
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(app))
+    monkeypatch.setenv(ENV_DATA_HOME, str(tmp_path / "account-data"))
+    monkeypatch.delenv(store.ENV_STORE)
+    # The checkpoint is moved, as the runbook's upgrade step says: one left
+    # beside the program refuses a fresh one (186's rebase review, MF1).
+    (tmp_path / "account-data").mkdir()
+    os.replace(app / checkpoint.CHECKPOINT_FILENAME, tmp_path / "account-data" / checkpoint.CHECKPOINT_FILENAME)
+    fresh = store.connect()
+    try:
+        assert store.store_path() == tmp_path / "account-data" / store.STORE_FILENAME
+        assert store.catch_up(fresh, root, engagement) >= 1
+        assert store.check(fresh, root, engagement) == []
+    finally:
+        store.close()
+    assert old.read_bytes() == before
 
 
 def _database_files_under(folder: Path) -> list[str]:
@@ -2212,7 +2388,7 @@ def test_a_row_written_without_asked_reads_as_asked(conn, root, by_hand):
 
     build(conn, root, by_hand)
     build(store.connect(), root, by_hand)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 17
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 18
     assert all(row["asked"] is True for row in store.rules(conn, by_hand))
     assert all(item.asked for item in load_manifest(by_hand))
     assert store.check(conn, root, by_hand) == []
@@ -2242,7 +2418,7 @@ def test_a_row_written_without_a_short_title_reads_as_blank(conn, root, by_hand)
 
     build(conn, root, by_hand)
     build(store.connect(), root, by_hand)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 17
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 18
     assert all(item.short_title == "" for item in load_manifest(by_hand))
     assert all(item.short_name for item in load_manifest(by_hand))
     assert store.check(conn, root, by_hand) == []
@@ -2334,8 +2510,37 @@ IMPOSSIBLE = [
     ("file_count", ledger.new(ledger.SCANNED, statuses={
         "A01": {"status": Status.MISSING, "file_count": -1}})),
     ("at", {**learned("A01", "lender"), ledger.AT_KEY: 12345}),
+    # Decision 190's columns, held to 187's rule: a cause's code is one this
+    # version names, and the client's subfolder is one line of text.
+    ("code", ledger.new(ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(code="not-a-cause"))),
+    ("subfolder", ledger.new(ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(subfolder="Scans\n2025"))),
+    ("subfolder", ledger.new(ledger.FILED, key=A_ROW_ORIGINAL,
+                             row=a_row(subfolder="Scans\\W2\u202efdp.exe"))),
+    ("subfolder", ledger.new(ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(subfolder="a/../../x"))),
+    ("note_codes", ledger.new(ledger.SCANNED, statuses={
+        "A01": {"status": Status.MISSING, "note_codes": "not-a-cause"}})),
     ("at", {**learned("A01", "lender"), ledger.AT_KEY: "1900-01-01T00:00:00Z"}),
 ]
+
+
+@pytest.mark.parametrize("subfolder", ["a/../../x", "..", "Scans\\.", "Scans\\..\\..", "C:\\Scans"])
+def test_a_subfolder_part_that_is_a_path_of_its_own_is_a_name_no_writer_wrote(conn, root, by_hand, subfolder):
+    """The filer writes a client's subfolder as its folder names joined with
+    a backslash, each one folder name, so a part holding "/", naming "." or
+    "..", or a drive is refused at the door in and on every read, even
+    though the recorded-name rule alone would keep it (the review's S3,
+    decision 190). A subfolder the filer does write is admitted - a client's
+    folder named like a year, or beginning with "_" or "(", included, which
+    decision 188's household-name rule would refuse."""
+    build(conn, root, by_hand)
+    with engagement_lock(by_hand):
+        for written in ("Scans\\2025", "2025\\_old\\(scans) \u00a0x"):
+            store.record(conn, by_hand, ledger.new(ledger.FILED, key=A_ROW_ORIGINAL,
+                                                   row=a_row(subfolder=written)))
+        with pytest.raises(store.StoreError) as refused:
+            store.record(conn, by_hand, ledger.new(ledger.FILED, key=A_ROW_ORIGINAL,
+                                                   row=a_row(subfolder=subfolder)))
+    assert "'subfolder'" in str(refused.value), f"{subfolder!r} was admitted: {refused.value}"
 
 
 @pytest.mark.parametrize("field, event", IMPOSSIBLE, ids=[f"{field}-{n}" for n, (field, _) in
@@ -2612,7 +2817,7 @@ def test_an_index_of_the_previous_version_reads_with_waits_for_empty(conn, root,
     assert "waits_for" not in ledger.path_for(by_hand).read_text(encoding="utf-8")
 
     build(conn, root, by_hand)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 17
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 18
     [row] = [entry_from_json(one) for one in store.documents(conn, by_hand)]
     assert row.waits_for == "" and row.waiting_for is None
     assert store.check(conn, root, by_hand) == []
@@ -2621,11 +2826,13 @@ def test_an_index_of_the_previous_version_reads_with_waits_for_empty(conn, root,
 
 def test_a_version_16_store_is_upgraded_in_place_and_keeps_its_cached_verdicts(tmp_path):
     """Decision 204, the store's first in-place step (the module docstring's
-    rule): a version-16 file gains ``waits_for`` with an empty default and
-    becomes version 17 where it stands - its verdict cache kept, so the
+    rule): a version-16 file gains ``waits_for``, NULL on every row as a
+    rebuild writes it, and becomes version 17 where it stands - its verdict cache kept, so the
     first pass after the upgrade reads nothing again - and every row it
-    held reads as waiting for nothing, which is what the journal says. Any
-    other earlier version is set aside and rebuilt (decision 159, E3)."""
+    held reads as waiting for nothing, which is what the journal - one
+    written before 204 - says, cell for cell as a rebuild leaves it. It goes on
+    through decision 190's step to this version. Any other earlier
+    version is set aside and rebuilt (decision 159, E3)."""
     from tests.conftest import sort
     from tests.test_scanner import text_pdf
     from tracker.layout import inbox_of
@@ -2646,19 +2853,21 @@ def test_a_version_16_store_is_upgraded_in_place_and_keeps_its_cached_verdicts(t
     old.parent.mkdir()
     written = sqlite3.connect(old)
     live.backup(written)
-    written.execute('ALTER TABLE documents DROP COLUMN "waits_for"')     # what version 16 was
+    for statement in AS_AT_16:                                           # what version 16 was
+        written.execute(statement)
     written.execute("PRAGMA user_version = 16")
     written.commit()
     written.close()
+    journal_as_written_before(engagement, FIELDS_OF_190 + FIELDS_OF_204)
 
     conn = store.open(old)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 17
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 18
         assert conn.execute(f"SELECT COUNT(*) FROM {store.VERDICTS_TABLE}").fetchone()[0] == cached
         assert conn.execute(f"SELECT COUNT(*) FROM {store.FILE_MEMOS_TABLE}").fetchone()[0] == memos
         rows = [entry_from_json(one) for one in store.documents(conn, engagement)]
         assert len(rows) == 2 and all(row.waits_for == "" for row in rows)
-        assert store.check(conn, tmp_path / "root", engagement) == []
+        assert as_a_rebuild_leaves_it(conn, tmp_path / "root", engagement, tmp_path)
     finally:
         conn.close()
     reopened = store.open(old)                   # a second open finds nothing to do
@@ -2679,11 +2888,13 @@ def test_two_openers_of_one_version_16_store_both_succeed(tmp_path, monkeypatch)
     """The in-place step re-reads the version under the write lock (the port
     review's should-fix): an opener that read 16 before another opener
     upgraded the file finds the step made and goes on, rather than failing
-    on the column the other added. Both end at version 17."""
+    on the column the other added. Both end at this version (18
+    since decision 190: each step is re-read the same way)."""
     path = tmp_path / "shared" / store.STORE_FILENAME
     store.open(path).close()
     written = sqlite3.connect(path)
-    written.execute('ALTER TABLE documents DROP COLUMN "waits_for"')
+    for statement in AS_AT_16:
+        written.execute(statement)
     written.execute("PRAGMA user_version = 16")
     written.commit()
     written.close()
@@ -2700,11 +2911,112 @@ def test_two_openers_of_one_version_16_store_both_succeed(tmp_path, monkeypatch)
     conn = store.open(path)
     try:
         assert raced["done"]
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 17
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 18
         columns = [row[1] for row in conn.execute("PRAGMA table_info(documents)")]
-        assert columns.count("waits_for") == 1
+        assert columns.count("waits_for") == 1 and columns.count("code") == 1
     finally:
         conn.close()
+
+
+def test_a_version_17_store_gains_the_cause_columns_in_place_and_every_old_row_reads_not_recorded(
+        tmp_path):
+    """Decision 190's in-place step (the store's rule, applied to each of
+    its three columns): a version-17 file gains ``code`` and ``subfolder``
+    on its rows and ``note_codes`` on its statuses, all empty, and becomes
+    version 18 where it stands. That is what a rebuild from a journal
+    written before 190 gives, cell for cell - no such line carries a cause -
+    and no row's cause is read out of its words."""
+    from tests.conftest import sort
+    from tests.test_scanner import text_pdf
+    from tracker.layout import inbox_of
+    from tracker.records import entry_from_json
+
+    engagement = make_engagement(tmp_path / "root", [RequestItem(
+        identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),
+        min_size_kb=0, required_keywords=("W-2",))])
+    text_pdf(inbox_of(engagement) / "notice.pdf", "an agency notice nothing asks for")
+    sort(engagement)
+    live = store.connect()
+
+    old = tmp_path / "v17" / store.STORE_FILENAME
+    old.parent.mkdir()
+    written = sqlite3.connect(old)
+    live.backup(written)
+    for statement in AS_AT_17:                                           # what version 17 was
+        written.execute(statement)
+    written.execute("PRAGMA user_version = 17")
+    written.commit()
+    written.close()
+    journal_as_written_before(engagement, FIELDS_OF_190)
+
+    conn = store.open(old)
+    try:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 18
+        [row] = [entry_from_json(one) for one in store.documents(conn, engagement)]
+        assert row.original_name == "notice.pdf" and row.code == "" and row.subfolder == ""
+        assert "note_codes" in [one[1] for one in conn.execute("PRAGMA table_info(statuses)")]
+        assert as_a_rebuild_leaves_it(conn, tmp_path / "root", engagement, tmp_path)
+    finally:
+        conn.close()
+
+
+def test_a_store_that_204s_old_step_upgraded_with_empty_cells_passes_check_after_190s_step(tmp_path):
+    """Decision 190's review of the port, S3. Main's 204 step added
+    ``waits_for`` with ``DEFAULT ''``, so a file it upgraded holds ``''``
+    on every earlier row where a rebuild from the journal writes NULL. After
+    190's step that file must pass ``store check``: NULL and ``''`` are the
+    one value in the columns an in-place step added, and in those only - a
+    real value there, and NULL against ``''`` in any other column, are
+    still named."""
+    from tests.conftest import sort
+    from tests.test_scanner import text_pdf
+    from tracker.layout import inbox_of
+
+    root = tmp_path / "root"
+    engagement = make_engagement(root, [RequestItem(
+        identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),
+        min_size_kb=0, required_keywords=("W-2",))])
+    text_pdf(inbox_of(engagement) / "w2.pdf", "Form W-2 Wage and Tax Statement 2025 Test Client")
+    text_pdf(inbox_of(engagement) / "notice.pdf", "an agency notice nothing asks for")
+    sort(engagement)
+    journal_as_written_before(engagement, FIELDS_OF_190 + FIELDS_OF_204)
+
+    old = tmp_path / "v16" / store.STORE_FILENAME
+    built = store.open(old)
+    try:
+        store.rebuild_engagement(built, root, engagement)          # what version 16 held, cell for cell
+    finally:
+        built.close()
+    written = sqlite3.connect(old)
+    for statement in AS_AT_16:
+        written.execute(statement)
+    written.execute("""ALTER TABLE documents ADD COLUMN "waits_for" TEXT DEFAULT ''""")    # 204's old step
+    written.execute("PRAGMA user_version = 17")
+    written.commit()
+    assert {row[0] for row in written.execute('SELECT "waits_for" FROM documents')} == {""}
+    written.close()
+
+    conn = store.open(old)                                          # 190's step: NULL columns
+    try:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION
+        conn.execute("""UPDATE statuses SET "note_codes" = ''""")
+        conn.commit()
+        assert store.check(conn, root, engagement) == []
+
+        conn.execute("""UPDATE documents SET "waits_for" = 'A01' WHERE "position" = 0""")
+        conn.commit()
+        named = store.check(conn, root, engagement)
+        assert len(named) == 1 and "waits_for: the store says 'A01'" in named[0], named
+        conn.execute("""UPDATE documents SET "waits_for" = ''""")
+        conn.execute("""UPDATE documents SET "candidates" = NULL WHERE "candidates" = ''""")
+        conn.commit()
+        named = store.check(conn, root, engagement)
+        assert len(named) == 1 and all("candidates: the store says None, the record says ''" in one
+                             for one in named), named
+    finally:
+        conn.close()
+
+
 # ------------------------------- decision 159: the record can show it was not altered ----
 #
 # Each "refused by a fresh store" case builds a store from nothing beside the
@@ -3342,8 +3654,8 @@ def test_a_machine_whose_name_no_line_may_carry_writes_nothing(conn, root, by_ha
 
 
 def test_one_upgrade_policy_a_version_sixteen_store_is_upgraded_in_place_and_never_set_aside(tmp_path):
-    """Decisions 204 and 159: a version :data:`store._IN_PLACE` names gains
-    its column where it stands - never set aside, its verdict cache kept -
+    """Decisions 204, 190 and 159: a version :data:`store._IN_PLACE` names gains
+    its columns where it stands - never set aside, its verdict cache kept -
     and only an older version is set aside and rebuilt. The record
     checkpoint beside it is a file of its own with its own version, and no
     step of the store's upgrade touches it."""
@@ -3353,7 +3665,8 @@ def test_one_upgrade_policy_a_version_sixteen_store_is_upgraded_in_place_and_nev
     checkpoint.open(heads).close()
     before = heads.read_bytes()
     written_at_sixteen = sqlite3.connect(path)
-    written_at_sixteen.execute("ALTER TABLE documents DROP COLUMN waits_for")
+    for statement in AS_AT_16:                     # 204's column and 190's three
+        written_at_sixteen.execute(statement)
     written_at_sixteen.execute("PRAGMA user_version = 16")
     written_at_sixteen.close()
 
@@ -3466,7 +3779,7 @@ def test_an_export_that_cannot_be_written_is_refused_by_name_and_discards_nothin
 
     monkeypatch.setattr(store, "_exclusively", refused)
     with pytest.raises(store.StoreError, match=r"the export could not be written into .*"
-                                               r"\(PermissionError\); nothing was discarded"):
+                                               r"\(PermissionError \(EACCES\)\); nothing was discarded"):
         store.recover(conn, root, by_hand, accept_loss=by_hand.name)
     assert rows(conn, "events") == before
 
@@ -3513,3 +3826,81 @@ def test_households_are_every_stored_household_row_read_as_it_stands(root, monke
     # behind the store is there to be read.
     assert load_household_info(family).feeds == ()
     assert ledger.path_for(family) in read
+
+
+# ------------------- decision 186's rebase review: the checkpoint left beside the program ----
+
+
+def _upgraded_before_the_move(monkeypatch) -> tuple[Path, Path]:
+    """A machine that ran 159 before 186, upgraded before its checkpoint was
+    moved: the store and checkpoint the fixture made beside the settings
+    file (159's layout), and the store now asked of the data home, where no
+    checkpoint is yet. Returns the old checkpoint and where the new one
+    would be."""
+    from tracker import settings
+
+    old = settings.settings_dir() / checkpoint.CHECKPOINT_FILENAME
+    assert old.is_file()
+    store.close()
+    monkeypatch.setenv(store.ENV_STORE, str(settings.data_home() / store.STORE_FILENAME))
+    return old, checkpoint.path_for(store.store_path())
+
+
+def test_no_fresh_checkpoint_is_made_while_the_old_one_sits_beside_the_program(root, engagement,
+                                                                                monkeypatch):
+    """MF1: a fresh checkpoint would seed every record "as it is" and drop
+    what the old one vouched for. Every open that could make one refuses -
+    the root's proof, claiming or not, and a person's acknowledgement -
+    naming the old file and the folder it belongs in; nothing is made and
+    the old file is not touched."""
+    old, new = _upgraded_before_the_move(monkeypatch)
+    before = old.read_bytes()
+    said = checkpoint.LEFT_BEHIND.format(old=old.resolve(), home=new.parent)
+    for attempt in (lambda: store.prove_the_root(root), lambda: store.prove_the_root(root, claim=False),
+                    lambda: store.acknowledge_foreign(engagement)):
+        with pytest.raises(checkpoint.CheckpointLeftBehind) as refused:
+            attempt()
+        assert str(refused.value) == said
+    assert not new.exists() and old.read_bytes() == before
+
+
+def test_a_catch_up_says_the_checkpoint_left_behind_as_that_returns_problem(root, engagement, monkeypatch):
+    """MF1: the catch-up every reader runs first (a read-only view of one
+    return included) makes no checkpoint either; it says so as a
+    :class:`store.StoreError`, so every caller that names one return's
+    problem names this, and carries the two folders for the app."""
+    old, new = _upgraded_before_the_move(monkeypatch)
+    with pytest.raises(store.CheckpointNotMade) as refused:
+        ensure(engagement)
+    assert isinstance(refused.value, store.StoreError)
+    assert (refused.value.old, refused.value.home) == (old.resolve(), new.parent)
+    assert not new.exists()
+
+
+def test_moving_or_renaming_the_old_checkpoint_lifts_the_refusal(root, engagement, monkeypatch):
+    """MF1's escape: the runbook's move - or keeping it under a dated name -
+    is all it takes; moved into the data home, it is the checkpoint, with
+    the root it claimed."""
+    old, new = _upgraded_before_the_move(monkeypatch)
+    kept = old.with_name(old.name + ".2026-09-27")
+    old.rename(kept)
+    store.prove_the_root(root, claim=False)                  # nothing to refuse, nothing made
+    assert not new.exists()
+    kept.rename(old)
+    new.parent.mkdir(parents=True, exist_ok=True)
+    os.replace(old, new)
+    store.prove_the_root(root)
+    with checkpoint.opened(new) as held:
+        assert checkpoint.root_of(held) == str(root.resolve())
+    ensure(engagement)
+
+
+def test_the_store_beside_the_settings_file_is_never_refused_its_checkpoint(root, engagement):
+    """The suite's own shape (``TRACKER_STORE`` beside the settings file):
+    the old place and the new are the same file, so a checkpoint missing
+    there is simply made."""
+    where = checkpoint.path_for(store.store_path())
+    store.close()
+    where.unlink()
+    store.prove_the_root(root)
+    assert where.is_file()

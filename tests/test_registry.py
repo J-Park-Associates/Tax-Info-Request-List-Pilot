@@ -733,3 +733,20 @@ def test_a_folder_that_cannot_be_listed_is_said_by_class_never_by_its_text(root,
     said = next(m.sentence for m in registry.misfits if m.path == denied)
     assert said == UNLISTED.format(error="PermissionError (EACCES)")
     assert "Permission denied" not in said and str(denied) not in said
+
+
+def test_a_root_whose_only_household_lost_its_record_says_restore_never_nothing_found(tmp_path):
+    """Decision 185's port: a household whose record is gone is something
+    found. A root holding only it is discovered, the household stopped with
+    the sentence that says restore it - never "is this the right folder?"."""
+    from tracker.registry import HOUSEHOLD_RECORD_MISSING
+
+    root = tmp_path / "root"
+    folder = make_engagement(root, [RequestItem(identifier="A01", document="W-2")], scaffold=False)
+    household = private_household_dir(root, TEST_HOUSEHOLD)
+    ledger.path_for(household).unlink()
+
+    registry = discover_engagements(root)
+    said = HOUSEHOLD_RECORD_MISSING.format(folder=TEST_HOUSEHOLD)
+    assert registry.stopped == {household: said}
+    assert [(one.path, one.problem) for one in registry.engagements] == [(folder, said)]

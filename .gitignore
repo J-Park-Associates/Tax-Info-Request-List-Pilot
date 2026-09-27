@@ -65,18 +65,18 @@ _README.txt
 Status Report.html
 _Opened/
 
-# Scheduled-run artifacts. Drafts quote real clients' outstanding documents,
-# and the run log and the status page name them. None of it belongs in the
-# repo: the log and the page live in the clients root, the drafts beside
-# each engagement.
+# Scheduled-run artifacts. Drafts quote real clients' outstanding documents
+# and the page names them; the page lives in the clients root and the drafts
+# beside each engagement. The run log carries counts and codes and lives in
+# the tracker's data folder since decision 186; a checkout from before it
+# may hold one.
 runs.log
 status.html
 # The clients root, written once by the app (or python -m tracker.settings).
 settings.json
-# The store (decision 101): one SQLite database beside the settings file,
-# which in a source checkout is this folder. It is rebuilt from each
-# engagement's own journal, so it is never worth committing - and it holds
-# every client's index rows, so it must never be.
+# The store (decision 101). Since decision 186 it lives in the tracker's
+# data folder, never in a checkout; a checkout from before it may still hold
+# one, and it holds every client's index rows, so it must never be committed.
 tracker.db
 tracker.db-wal
 tracker.db-shm
@@ -107,10 +107,22 @@ passes/
 ocr-scratch/
 
 # Tools' own working folders (decision 137): Claude Code's worktrees and
-# settings, and the knowledge-graph tool's output, which quotes the tree.
-.claude/
+# personal settings, and the knowledge-graph tool's output, which quotes the
+# tree. The project's own agent settings are tracked (decision 186) and carry
+# a deny list of the data home, the client Shared Drive and every file that
+# names a client, anywhere on the machine - a guard rail, not a wall: it
+# loads only in a session started in a checkout and binds only the agent's
+# file tools; the wall is the separate Windows account the office's AI
+# tooling runs under.
+.claude/*
+!.claude/settings.json
 graphify-out/
 tax-tracker.xml
 reminder-draft.txt
 reminder-draft.NEW.txt
 reminder-draft.set-aside-*.txt
+# A temp the tracker writes beside a target before renaming it
+# (fsio.TEMP_SUFFIX), and the real corpus's expectations file, which names
+# the firm's own documents (decision 186).
+*.tmp
+expectations.csv

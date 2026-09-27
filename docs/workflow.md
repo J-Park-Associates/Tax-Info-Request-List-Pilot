@@ -8,7 +8,7 @@ people side.
 
 - **Engagement lead** — owns each return's request list: picks the return
   type or rolls last year's list forward, trims and extends it, and fills in
-  the client, share link and due date in the wizard (they land in the
+  the client, share link and due date in Add a return (they land in the
   record as the engagement's details; nothing else needs registering). Owns
   the household too — its members, its contact and its inbox link, saved in
   the app's household card. Starts the
@@ -69,9 +69,10 @@ an engagement's list is cut from it into the record, where the app's
 editor shows it.
 
 - **Returning client (the default):** roll the household's year forward.
-  In the desktop app, *New Engagement* opens on the returning-client page,
-  which lists the household's open-year returns with every one ticked and
-  rolls them all at once; a return left unticked is retired for that year.
+  In the desktop app, the household's card carries *Roll forward to `<year>`*
+  once that year has ended; it lists the household's open-year returns
+  with every one ticked and rolls them all at once; a return left unticked
+  is retired for that year.
   On the command line it is `python -m tracker.rollover <the household's
   folder> --year 2027 --all`, or `<last year's return> --form 1040` for one
   return on its own. Last year's rows win on every field; the form
@@ -80,7 +81,7 @@ editor shows it.
 - **New client:** pick the return type (`tracker.templates.FORM_TYPES`),
   tick the rows to **ask the client** for, add anything unusual. Every
   catalog row goes on the return either way. Every request needs a
-  keyword the document itself contains; the wizard defaults it to the
+  keyword the document itself contains; the request list defaults it to the
   document name so a custom request can still auto-file.
 
 Every row is in one of three states (decisions 116 and 142):
@@ -125,13 +126,15 @@ person types.
 6. **Accepted / Not Applicable** (Manual Override) — a person's decision. The
    scanner keeps refreshing the facts but never touches the status again,
    and the reminder never asks for the row. Accepted carries the reason the
-   person gave; Not Applicable is shown with the row's year and folded away
-   on the Status Report and in the editor.
+   person gave; Not Applicable is shown with the row's year and folded
+   under Set aside on the Status Report, in the app and in the editor.
 
 ## Rules
 
-- **Never commit client material.** `runs.log` and the drafts are gitignored
-  because they carry real names and share links.
+- **Never commit client material.** The drafts and the status pages are
+  gitignored because they carry real names and share links; the store, the
+  run log and a reading's temporary files never live in a checkout at all
+  (decision 186).
   Client documents live in the synced engagement folders, never here.
 - **Originals are never altered.** Work from the `Prepared/` copies; the
   originals in the client's folder for the year are the record, and the
@@ -286,8 +289,8 @@ person types.
   the file itself. A draft you have edited by hand is shown as it stands
   with the toggle dead — approve it as it is, or delete it to get a
   regenerated one. What the card shows and copies is the letter alone: the
-  staff-side lines the file ends with, under their own dashed rule, are the
-  machine's note to you and never reach the clipboard. A held reminder
+  staff-side lines the file ends with, under their own dashed rule and
+  headed "US", are the machine's note to you and never reach the clipboard. A held reminder
   shows the hold and the requests holding it and nothing that reads like
   something to send.
 

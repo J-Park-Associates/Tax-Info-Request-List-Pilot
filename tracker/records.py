@@ -278,6 +278,13 @@ def identifier_key(identifier: str) -> str:
 #: other working copies in Also Filed.
 CANDIDATE_SEP = ", "
 
+
+def split_codes(joined: str) -> list[str]:
+    """Codes joined with :data:`CANDIDATE_SEP` (decision 190's
+    ``note_codes``) as the list they were joined from."""
+    return [code for code in (part.strip() for part in (joined or "").split(CANDIDATE_SEP)) if code]
+
+
 #: How the Also Answers cell (decision 146) sets one answered request apart
 #: from the next, and brackets the sections that answered it:
 #: ``A02 (1099-int, 1099-div); A04 (1099-misc)``. A request's identifier
@@ -439,6 +446,20 @@ class IndexEntry:
     #: carries it; empty on every other row, which is every row written
     #: before decision 204.
     waits_for: str = ""
+    #: The code of the cause that decided the row (decision 190,
+    #: :mod:`tracker.reasons`): what the reminder, the review card and every
+    #: other reader read to know why a row is what it is. The Reason cell is
+    #: the sentence a person reads, and it carries what the client chose - a
+    #: file's name, a parser's class, a page's spelling - so nothing reads a
+    #: cause out of it. ``""`` on every row written before decision 190:
+    #: its cause was not recorded, and is never re-derived from its words.
+    code: str = ""
+    #: The client's subfolder of the inbox the drop came out of (decision
+    #: 147), as the path below the inbox, and ``""`` for a drop made at the
+    #: inbox's top. Its own column since decision 190: it was a clause of
+    #: the Reason sentence, and a folder the client called "not allowed"
+    #: read as the file type being refused.
+    subfolder: str = ""
 
     @property
     def waiting_for(self) -> WaitsFor | None:
@@ -507,6 +528,8 @@ INDEX_LAYOUT: dict[str, tuple[str, int]] = {
     "container": ("Came Inside", 30),
     "answers": ("Also Answers", 30),
     "waits_for": ("Waits For", 40),
+    "code": ("Code", 16),
+    "subfolder": ("Client's Subfolder", 24),
 }
 assert tuple(INDEX_LAYOUT) == tuple(f.name for f in fields(IndexEntry))
 INDEX_COLUMNS = tuple(header for header, _ in INDEX_LAYOUT.values())
@@ -661,6 +684,10 @@ class Routing:
     #: nothing is copied into their folders - and empty on every other
     #: decision.
     answers: tuple[Answer, ...] = ()
+    #: The code of the cause the reason sentence says (decision 190):
+    #: a :mod:`tracker.reasons` code, set where the sentence is said. The
+    #: row the filer writes takes it as its own ``code``.
+    code: str = ""
 
     @property
     def routed(self) -> bool:
@@ -887,13 +914,13 @@ class EngagementInfo:
 #: What the return's own name is called and what it is for. Named here
 #: because the details' table below carries it, and read back out of here
 #: by the API's vocabulary, so the label a person reads in the editor and
-#: the one the wizard's box carries are one string.
+#: the one the new-return dialog's box carries are one string.
 RETURN_NAME_LABEL = "Return"
 RETURN_NAME_HELP = "the return's folder name, form first; the same name every year"
 
 #: What the return's people list is called and what it is for (decision
 #: 128). One home for both, read back by the editor's block and the
-#: wizard's, so the words a person sees are the record's.
+#: dialog's, so the words a person sees are the record's.
 PEOPLE_LABEL = "People"
 PEOPLE_HELP = ("who this return is for, with the spellings documents use; a named request "
                "files only where one of these is on the page")
@@ -1130,8 +1157,6 @@ HOUSEHOLD_FIELDS = (
     ("Inbox Link", "link"),
     ("Also feeds", "feeds"),
 )
-#: field name -> the label, for messages that name a field.
-HOUSEHOLD_LABELS = {field_name: label for label, field_name in HOUSEHOLD_FIELDS}
 #: The fields a person may change once the household exists. The name is
 #: not among them: the folder is the name, exactly as a return's is.
 #: ``feeds`` is (decision 129) and is edited through its own list rather
@@ -1322,6 +1347,17 @@ class StatusUpdate:
     file_count: int = 0
     received_date: dt.date | None = None
     validation_notes: str = ""
+    #: The code of each cause the notes say, in the notes' order (decision
+    #: 190), joined as the index joins its Candidates (``CANDIDATE_SEP``):
+    #: what the reminder reads to know what to ask, never the notes' words,
+    #: which carry the client's file names. ``""`` on a status written
+    #: before 190, whose causes were not recorded.
+    note_codes: str = ""
+
+    @property
+    def note_code_list(self) -> list[str]:
+        """The note's codes as the list they were joined from."""
+        return split_codes(self.note_codes)
 
 
 def status_to_json(update: StatusUpdate) -> dict:
@@ -1956,7 +1992,7 @@ def household_problem(household: dict) -> str:
 
 #: An index row's fields by the check each is held to. Where a location
 #: points is not a value: the store asks the layout (``place_problem``).
-_ENTRY_TEXT = ("identifier", "decision", "candidates")
+_ENTRY_TEXT = ("identifier", "decision", "candidates", "code", "subfolder")
 #: A file's own name and the locations of real files (M5).
 _ENTRY_NAMES = ("original_name", "prepared_location", "pbc_location", "container")
 _ENTRY_LONG_TEXT = ("reason", "evidence", "also_filed", "answers", "waits_for")
@@ -2018,4 +2054,6 @@ def status_problem(status: dict) -> str:
         checks.append(_field("received_date", date_problem(status["received_date"])))
     if status.get("validation_notes") is not None:
         checks.append(_field("validation_notes", text_problem(status["validation_notes"], long=True)))
+    if status.get("note_codes") is not None:
+        checks.append(_field("note_codes", text_problem(status["note_codes"])))
     return _first(*checks)

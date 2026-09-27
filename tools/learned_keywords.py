@@ -44,10 +44,25 @@ this report exists to find.
 **The counts alone, by default.** An engagement folder name is a client's
 name, so the default output carries only how many engagements typed each
 keyword; ``--engagements`` names them, for the person deciding whether a
-keyword is one client's habit or the firm's. An engagement whose manifest
-cannot be read is named either way, with its problem: a report that quietly
-skipped it would say the firm has taught nothing where it may have taught
-most.
+keyword is one client's habit or the firm's. An engagement whose record
+cannot be read is counted by default and named, with its problem, only under
+``--engagements``: the folder is a client's name and the problem can quote
+the record (decision 185). A report that quietly skipped it would say the
+firm has taught nothing where it may have taught most. A custom row - a
+request somebody added by hand - is printed by default by its number in the
+list and its counts (how many keywords, how many engagements), never its
+document or its keywords: a hand-typed request is as often a client's
+words ("K-1 from" a family trust) as a form's, and ``--engagements`` prints
+its document and keywords with the engagements. What remains in the
+default output: the catalog rows' learned keywords are words a person
+typed, and one can be a client's employer or a lender's name. They are the
+report's purpose and stay.
+
+**Names go only into a file** (Jason's decision J1 of decision 185).
+``--engagements`` is refused unless ``--out`` names a file outside the
+repository, before anything is read. A console is where an AI session
+reads, and a client's name that reaches one is in its transcript; a file a
+person chose to write is read by a person (security principle 11).
 
 ``--lint`` runs each candidate over the blank forms in ``tests/irs/`` the
 way ``tools/vocab_report.py`` runs the catalog's own keywords - the same
@@ -62,7 +77,7 @@ its keywords are only ever reported as said, never as misfiling.
 
     python tools/learned_keywords.py                     # the clients root the settings file names
     python tools/learned_keywords.py "D:\\Clients"       # or one named here
-    python tools/learned_keywords.py --engagements       # name the engagements, not just count them
+    python tools/learned_keywords.py --engagements --out D:\\learned.md   # name the engagements, into a file only
     python tools/learned_keywords.py --lint              # mark the ones that would misfile a known form
 """
 
@@ -91,18 +106,31 @@ from tracker.manifest import (  # noqa: E402
     load_manifest,
 )
 from tracker.registry import SKIP_ROLLED_FORWARD, RegistryError, discover_engagements  # noqa: E402
-from tracker.settings import NO_ROOT_HINT, SettingsError, clients_root, settings_path  # noqa: E402
+from tracker.settings import (  # noqa: E402
+    NO_ROOT_HINT,
+    SettingsError,
+    clients_root,
+    inside_the_app,
+    settings_path,
+)
 
 #: How an engagement the run would no longer chase is flagged where it is named.
 FLAG_INACTIVE = "inactive"
 #: How a keyword's reach is said, per engagement count and per corpus form.
 CARRIED_BY = "{n} engagement(s)"
+#: Why ``--engagements`` without ``--out`` is refused (decision 185, J1).
+ENGAGEMENTS_NEED_A_FILE = ("--engagements names clients, so it writes only into a file: add --out <file> "
+                           "outside the repository")
 MISFILE = "would misfile: {form} {placement}"
 FILES_AS = "files as {identifier} in the {catalog} catalog"
 PARKS = "parks in the {catalog} catalog"
 SAID_BY = "said by: {forms}"
 #: What a row with no matching catalog row is called, and what is said of it.
 CUSTOM_ROW = "no catalog holds this row"
+#: A custom row as the default output names it: by number, never its document.
+CUSTOM_ROW_NUMBERED = "Custom row {n}"
+#: A custom row's counts, in place of its keywords, in the default output.
+CUSTOM_COUNTS = "- {keywords} keyword(s), carried by {pairs} engagement-keyword pair(s)"
 IN_CATALOGS = "in the {catalogs} catalog(s)"
 NONE = "- none"
 
@@ -342,8 +370,7 @@ def render(report: Report, *, engagements: bool = False) -> str:
         "that no catalog row carrying the same identifier and document carries, grouped by request row. "
         "Nothing was written, moved or locked to make this: the manifests were only read.",
         "",
-        f"Clients root: {report.root}",
-        "",
+        *([f"Clients root: {report.root}", ""] if engagements else []),
         summary_line(report),
         "",
     ]
@@ -363,10 +390,20 @@ def render(report: Report, *, engagements: bool = False) -> str:
 
     lines += ["## Custom rows", "",
               "Requests somebody added by hand, which no catalog knows at all. Every keyword they "
-              "carry was typed by a person, so all of them are listed.", ""]
-    for row in report.custom:
-        lines += [f"### {row.label} — {CUSTOM_ROW}", ""]
-        lines += _keyword_lines(row, engagements=engagements)
+              "carry was typed by a person, so all of them are candidates"
+              + (", listed with each row's document." if engagements else
+                 ". A hand-typed request and its keywords can echo a client's own words, so each row "
+                 "is counted here by number - how many keywords, how many engagements - and "
+                 "--engagements (into a file) lists its document and its keywords."), ""]
+    for number, row in enumerate(report.custom, start=1):
+        if engagements:
+            lines += [f"### {row.label} — {CUSTOM_ROW}", ""]
+            lines += _keyword_lines(row, engagements=engagements)
+        else:
+            # By number and counts: a hand-typed request can be a client's
+            # words, and so can its keywords (decision 185).
+            lines += [f"### {CUSTOM_ROW_NUMBERED.format(n=number)} — {CUSTOM_ROW}", "",
+                      CUSTOM_COUNTS.format(keywords=len(row.keywords), pairs=row.count)]
         lines.append("")
     if not report.custom:
         lines += [NONE, ""]
@@ -374,7 +411,15 @@ def render(report: Report, *, engagements: bool = False) -> str:
     lines += ["## Problems", "",
               "Engagements whose manifest could not be read. Whatever they have taught the router is "
               "not in the lists above.", ""]
-    lines += [f"- {folder} — {problem}" for folder, problem in report.problems] or [NONE]
+    if engagements:
+        lines += [f"- {folder} — {problem}" for folder, problem in report.problems] or [NONE]
+    elif report.problems:
+        # Counted, never named: the folder is a client's name and the
+        # problem can quote the record (decision 185).
+        lines.append(f"{len(report.problems)} engagement(s) could not be read; "
+                     "--engagements (into a file) names them and says why.")
+    else:
+        lines.append(NONE)
     lines.append("")
     return "\n".join(lines)
 
@@ -390,7 +435,7 @@ def out_path(named: str) -> Path:
     """
     path = Path(named).expanduser()
     resolved = (Path.cwd() / path).resolve() if not path.is_absolute() else path.resolve()
-    if resolved == ROOT or resolved.is_relative_to(ROOT):
+    if inside_the_app(resolved):
         raise LearnedKeywordsError(f"refusing to write inside the repository: {resolved}")
     return resolved
 
@@ -425,10 +470,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", default="",
                         help="write the report to this file instead of printing it; never inside the repository")
     parser.add_argument("--engagements", action="store_true",
-                        help="name the engagement folders carrying each keyword (they carry client names)")
+                        help="name the engagement folders carrying each keyword (they carry client names); needs --out")
     parser.add_argument("--lint", action="store_true",
                         help="run each keyword over the IRS forms in tests/irs/ and mark one that would misfile")
     ns = parser.parse_args(argv)
+    if ns.engagements and not ns.out:
+        print(f"learned_keywords: {ENGAGEMENTS_NEED_A_FILE}", file=sys.stderr)
+        return 2
 
     try:
         target = out_path(ns.out) if ns.out else None

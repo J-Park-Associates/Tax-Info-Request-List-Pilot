@@ -157,7 +157,7 @@ def test_failed_validation_with_reasons(engagement):
     scan_engagement(engagement, today=DAY1)
     row = statuses(engagement)["A01"]
     assert row.status == Status.FAILED
-    assert reasons.WRONG_DOCUMENT.matches(row.validation_notes) and "'Chase'" in row.validation_notes
+    assert reasons.WRONG_DOCUMENT.code in row.note_code_list and "'Chase'" in row.validation_notes
 
 
 def test_received_date_sticky_across_scans(engagement):
@@ -204,7 +204,7 @@ def test_manual_override_status_untouched(tmp_path):
     assert row.status == Status.RECEIVED           # override kept it
     assert row.received_date == DAY1
     assert row.validation_notes.startswith(OVERRIDE_NOTE.format(override=Override.ACCEPTED))
-    assert reasons.WRONG_DOCUMENT.matches(row.validation_notes) and "'Chase'" in row.validation_notes  # facts still recorded
+    assert reasons.WRONG_DOCUMENT.code in row.note_code_list and "'Chase'" in row.validation_notes  # facts still recorded
 
 
 def test_duplicates_do_not_inflate_count(engagement):
@@ -638,7 +638,7 @@ def test_an_empty_note_replaces_the_old_one(engagement):
     # its cause would hold the row back, or ask the client, for ever.
     text_pdf(folder(engagement, "A01") / "wrong.pdf", "Wells Fargo Statement Dec 2025")
     scan_engagement(engagement, today=DAY1)
-    assert reasons.WRONG_DOCUMENT.matches(statuses(engagement)["A01"].validation_notes)
+    assert reasons.WRONG_DOCUMENT.code in statuses(engagement)["A01"].note_code_list
     (folder(engagement, "A01") / "wrong.pdf").unlink()
     scaffold_engagement(engagement)
     scan_engagement(engagement, today=DAY2)
@@ -726,12 +726,12 @@ def test_a_moved_copys_request_reads_missing_with_the_firm_side_note_and_the_wan
     assert moved.status == Status.MISSING and moved.file_count == 0
     assert moved.received_date == DAY1
     assert moved.validation_notes.startswith(_regressed_from(DAY1) + REGRESSION_FILES_CHANGED)
-    assert reasons.FILE_MOVED.matches(moved.validation_notes)
+    assert reasons.FILE_MOVED.code in moved.note_code_list
     assert f"{filed.prepared_location} -> {moved_to(row)}" in moved.validation_notes
 
     elsewhere = report.updates["A02"]
     assert elsewhere.file_count == 0 and elsewhere.status == Status.MISSING
-    assert reasons.find(elsewhere.validation_notes) is None   # not counted, and not refused either
+    assert reasons.first_of(elsewhere.note_code_list) is None   # not counted, and not refused either
 
 
 def test_a_filed_copy_replaced_by_a_different_passing_file_is_not_counted_and_says_copy_changed(
@@ -754,7 +754,7 @@ def test_a_filed_copy_replaced_by_a_different_passing_file_is_not_counted_and_sa
     assert row.status == Status.MISSING and row.file_count == 0
     assert row.received_date == DAY1
     assert row.validation_notes.startswith(_regressed_from(DAY1) + REGRESSION_FILES_CHANGED)
-    assert reasons.COPY_CHANGED.matches(row.validation_notes)
+    assert reasons.COPY_CHANGED.code in row.note_code_list
     assert home.name in row.validation_notes
     assert report.warnings == [
         f"{home.name}: {reasons.COPY_CHANGED.format(listed=home.name)}"
@@ -778,9 +778,9 @@ def test_a_filed_copy_replaced_by_a_failing_file_is_not_counted_either_and_says_
     row = report.updates["A01"]
     assert row.status == Status.MISSING and row.file_count == 0
     assert row.validation_notes.startswith(_regressed_from(DAY1) + REGRESSION_FILES_CHANGED)
-    assert reasons.COPY_CHANGED.matches(row.validation_notes)
+    assert reasons.COPY_CHANGED.code in row.note_code_list
     # Not the document, so the rules are not run on it: no client ask.
-    assert not reasons.WRONG_DOCUMENT.matches(row.validation_notes)
+    assert reasons.WRONG_DOCUMENT.code not in row.note_code_list
 
 
 def test_a_copy_that_disagrees_with_its_original_is_not_counted(engagement):
@@ -812,7 +812,7 @@ def test_a_copy_that_disagrees_with_its_original_is_not_counted(engagement):
 
     a01 = report.updates["A01"]
     assert a01.status == Status.MISSING and a01.file_count == 0
-    assert reasons.COPY_CHANGED.matches(a01.validation_notes)
+    assert reasons.COPY_CHANGED.code in a01.note_code_list
     assert report.warnings == [f"{home.name}: {reasons.COPY_CHANGED.format(listed=home.name)}"]
     draft = draft_reminder(engagement)
     assert "A01" in [flag.item.identifier for flag in draft.needs_attention]

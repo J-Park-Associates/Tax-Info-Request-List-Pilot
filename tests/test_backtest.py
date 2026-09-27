@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import checkout_snapshot, real_places
 from tests.samples import lines_1099_int, text_pdf, w2_lines
 from tracker.settings import COLUMN_EXPECTED, EXPECTATIONS_COLUMNS, EXPECTATIONS_FILENAME
 
@@ -320,20 +321,6 @@ def test_the_committed_baseline_records_no_agreement_until_the_office_run():
 
 # ------------------------------------------------ nothing reaches the tree ----
 
-#: Folders whose contents change for reasons that are nobody's doing.
-_UNWATCHED = {".git", ".claude", "__pycache__", ".pytest_cache", ".ruff_cache",
-              "node_modules", "build-portable", "dist", "build"}
-
-
-def repository_snapshot() -> dict[str, int]:
-    found = {}
-    for dirpath, dirnames, filenames in os.walk(REPO):
-        dirnames[:] = [d for d in dirnames if d not in _UNWATCHED]
-        for name in filenames:
-            path = Path(dirpath) / name
-            found[str(path.relative_to(REPO))] = path.stat().st_mtime_ns
-    return found
-
 
 def test_the_tool_writes_nothing_under_the_repository_root(tmp_path, capsys, monkeypatch):
     """Everything a pass makes - the catalogs it builds, the links it
@@ -341,15 +328,15 @@ def test_the_tool_writes_nothing_under_the_repository_root(tmp_path, capsys, mon
     made from client documents."""
     folder = two_documents(tmp_path)
     monkeypatch.chdir(tmp_path)
-    before = repository_snapshot()
+    before = checkout_snapshot(REPO, real_places(REPO))
     assert main(["run", str(folder), OUT_FLAG, str(tmp_path / "report.json"), OCR_FLAG]) == 0
     assert main(["collect", str(folder), "--catalog", "1040", "--year", str(YEAR),
                  OUT_FLAG, str(tmp_path / "skeleton.csv")]) == 0
-    assert repository_snapshot() == before
+    assert checkout_snapshot(REPO, real_places(REPO)) == before
     # And it refuses to be pointed at the tree in the first place.
     assert main(["run", str(folder), OUT_FLAG, str(REPO / "report.json")]) == 2
     assert "outside the repository" in capsys.readouterr().err
-    assert repository_snapshot() == before
+    assert checkout_snapshot(REPO, real_places(REPO)) == before
 
 
 def test_a_row_naming_a_document_that_is_not_there_is_reported_by_its_number(tmp_path):
@@ -360,3 +347,88 @@ def test_a_row_naming_a_document_that_is_not_there_is_reported_by_its_number(tmp
     with pytest.raises(BacktestError) as raised:
         run(folder)
     assert "row 1" in str(raised.value) and W2_FILE not in str(raised.value)
+
+
+def test_a_copy_of_a_document_is_made_in_the_data_home_never_the_machines_temp_folder(tmp_path, monkeypatch):
+    """Decision 186 (F-7): where a link cannot be made the backtest copies
+    the firm's document, so its scratch is this process's own folder in the
+    data home - swept by process number if the run is killed - and gone
+    when the run returns. The machine's temp folder is put apart from the
+    data home for the test (the suite's data home otherwise lies inside the
+    machine's temp folder), so "never the machine's temp folder" is proved,
+    not assumed (decision 186's review, S5)."""
+    import tempfile
+
+    from tracker import settings
+
+    machine_temp = tmp_path / "machine-temp"
+    machine_temp.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(machine_temp))
+    for name in ("TMP", "TEMP", "TMPDIR"):
+        monkeypatch.setenv(name, str(machine_temp))
+    assert not settings._inside(settings.data_home(), machine_temp)
+    assert not settings._inside(machine_temp, settings.data_home())
+    corpus = two_documents(tmp_path)
+
+    def no_links(source, target):
+        raise OSError("this file system has no links")
+
+    seen = []
+
+    def remember(path, items, *, ocr):
+        seen.append(path)
+        assert path.is_file() and not path.is_symlink()
+        return None, False, "text"
+
+    monkeypatch.setattr(backtest.os, "link", no_links)
+    monkeypatch.setattr(backtest, "route_one", remember)
+    backtest.route_corpus(corpus, corpus / EXPECTATIONS_FILENAME)
+
+    assert len(seen) == 2
+    for path in seen:
+        assert settings._inside(path, settings.process_scratch())      # this process's own folder
+        assert path.parents[2] == settings.process_scratch()           # own / backtest-* / <row> / doc
+        assert not settings._inside(path, machine_temp)
+    assert list(machine_temp.iterdir()) == []
+    assert not settings.process_scratch().exists()
+
+
+def test_a_reading_in_this_process_writes_through_the_temp_folder_into_the_runs_own_scratch(tmp_path,
+                                                                                           monkeypatch):
+    """Decision 186's review, N5: with ``ocr=True`` the backtest reads in its
+    own process, so for the run ``TMP``, ``TEMP``, ``TMPDIR`` and
+    ``tempfile.tempdir`` all point at its own scratch in the data home - a
+    library's temp file of a firm document lands there and goes with the
+    run - and each is put back afterwards, an unset one unset."""
+    import tempfile
+
+    from tracker import settings
+
+    machine_temp = tmp_path / "machine-temp"
+    machine_temp.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(machine_temp))
+    monkeypatch.setenv("TMP", str(machine_temp))
+    monkeypatch.setenv("TEMP", str(machine_temp))
+    monkeypatch.delenv("TMPDIR", raising=False)
+    corpus = two_documents(tmp_path)
+    written = []
+
+    def a_library_writes_a_temp_file(path, items, *, ocr):
+        own = str(settings.process_scratch())
+        assert tempfile.gettempdir() == own
+        assert [os.environ[name] for name in ("TMP", "TEMP", "TMPDIR")] == [own, own, own]
+        with tempfile.NamedTemporaryFile(delete=False) as handle:
+            handle.write(b"a page of a firm document")
+        written.append(Path(handle.name))
+        return None, False, "text"
+
+    monkeypatch.setattr(backtest, "route_one", a_library_writes_a_temp_file)
+    backtest.route_corpus(corpus, corpus / EXPECTATIONS_FILENAME, ocr=True)
+
+    assert len(written) == 2
+    assert all(settings._inside(path, settings.process_scratch()) for path in written)
+    assert not any(path.exists() for path in written)                  # gone with the run
+    assert list(machine_temp.iterdir()) == []
+    assert tempfile.tempdir == str(machine_temp)
+    assert os.environ["TMP"] == str(machine_temp) and os.environ["TEMP"] == str(machine_temp)
+    assert "TMPDIR" not in os.environ
