@@ -110,8 +110,10 @@ ocr-scratch/
 # personal settings, and the knowledge-graph tool's output, which quotes the
 # tree. The project's own agent settings are tracked (decision 186) and carry
 # a deny list of the data home, the client Shared Drive and every file that
-# names a client - a guard rail, not a wall: the wall is the separate Windows
-# account the office's AI tooling runs under.
+# names a client, anywhere on the machine - a guard rail, not a wall: it
+# loads only in a session started in a checkout and binds only the agent's
+# file tools; the wall is the separate Windows account the office's AI
+# tooling runs under.
 .claude/*
 !.claude/settings.json
 graphify-out/

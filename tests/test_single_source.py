@@ -8,7 +8,6 @@ instead of a silent drift. Nothing here restates a value; every assertion
 reads the owner and the consumer and compares them.
 """
 
-import fnmatch
 import json
 import re
 from pathlib import Path
@@ -328,8 +327,8 @@ def test_gitignore_knows_every_runtime_file_python_writes_outside_the_repo():
 
 def test_the_projects_agent_settings_can_be_committed_and_nothing_else_under_claude():
     """Decision 186: ``.claude/settings.json`` can be tracked, so the
-    project's agent settings carry a deny list (a guard rail, not a wall); a person's own settings and Claude Code's worktrees stay
-    ignored."""
+    project's agent settings carry a deny list (a guard rail, not a wall);
+    a person's own settings and Claude Code's worktrees stay ignored."""
     import subprocess
 
     def ignored(rel: str) -> int:
@@ -342,51 +341,42 @@ def test_the_projects_agent_settings_can_be_committed_and_nothing_else_under_cla
 
 def test_the_agent_deny_list_names_the_data_home_and_every_file_that_names_a_client():
     """Decision 186 (Jason's answer A to its Q1): the project's agent
-    settings deny Claude's own file tools the data home, the client Shared
-    Drive and every file the tracker writes that names a client, each
-    spelled from the constant that owns the name, so renaming one without
-    the rule fails here. A guard rail, not a wall: a deny rule stops the
-    agent's file tools on the spellings it lists, a shell command can still
-    read the file, and the wall is the separate Windows account the office's
-    AI tooling runs under (security principle 11)."""
-    from tracker.checkpoint import CHECKPOINT_FILENAME, CHECKPOINT_JOURNAL_FILENAME, SET_ASIDE_SUFFIX
+    settings deny Claude's own file tools, reading and editing alike, the
+    data home, the client Shared Drive and every file or folder the tracker
+    writes that names a client, wherever on the machine it sits (``//**/``,
+    never only under the checkout) - the list equal, rule for rule, to one
+    spelled from the constants that own the names, so a rule dropped,
+    narrowed or respelled fails here. A guard rail, not a wall (security
+    principle 8): a deny rule stops the agent's file tools on the spellings
+    it lists, a shell command can still read the file, and the wall is the
+    separate Windows account the office's AI tooling runs under."""
+    from tracker.checkpoint import CHECKPOINT_FILENAME, SET_ASIDE_SUFFIX
+    from tracker.content_check import RETIRED_CACHE_FILENAME
     from tracker.ledger import LEDGER_FILENAME
     from tracker.progress import PASSES_DIRNAME
+    from tracker.registry import LEGACY_MANIFEST_FILENAME
     from tracker.reminder import DRAFT_FILENAME
     from tracker.runner import LAST_PASS_FILENAME, LOG_FILENAME, PASS_ORDER_FILENAME, STATUS_PAGE_FILENAME
-    from tracker.settings import DATA_HOME_NAME, ERROR_LOG_FILENAME
+    from tracker.settings import DATA_HOME_NAME, ERROR_LOG_FILENAME, EXPECTATIONS_FILENAME, OCR_SCRATCH_DIRNAME
     from tracker.store import RECOVERED_DIR, STORE_FILENAME, STORE_SHM_FILENAME, STORE_WAL_FILENAME
     from tracker.view import VIEW_FILENAME
 
-    deny = json.loads(read(".claude/settings.json"))["permissions"]["deny"]
-    assert all(re.fullmatch(r"(Read|Edit)\(.+\)", rule) for rule in deny), deny
-    read_rules = [rule[len("Read("):-1] for rule in deny if rule.startswith("Read(")]
-    edit_rules = [rule[len("Edit("):-1] for rule in deny if rule.startswith("Edit(")]
+    aside = SET_ASIDE_SUFFIX.split("{", 1)[0] + "*"
+    stem, ext = DRAFT_FILENAME.rsplit(".", 1)
+    places = [f"//c/Users/*/AppData/Local/{DATA_HOME_NAME}/**", f"~/.local/state/{DATA_HOME_NAME}/**",
+              "//g/Shared drives/**"]
+    files = [STORE_FILENAME, STORE_WAL_FILENAME, STORE_SHM_FILENAME, STORE_FILENAME + aside,
+             CHECKPOINT_FILENAME, CHECKPOINT_FILENAME + "-*", CHECKPOINT_FILENAME + ".*",
+             LEDGER_FILENAME, LOG_FILENAME, LOG_FILENAME + ".*", ERROR_LOG_FILENAME, ERROR_LOG_FILENAME + ".*",
+             LAST_PASS_FILENAME, LAST_PASS_FILENAME + ".*", PASS_ORDER_FILENAME, f"{stem}*.{ext}",
+             STATUS_PAGE_FILENAME, VIEW_FILENAME, EXPECTATIONS_FILENAME, RETIRED_CACHE_FILENAME,
+             LEGACY_MANIFEST_FILENAME]
+    folders = [RECOVERED_DIR, PASSES_DIRNAME, OCR_SCRATCH_DIRNAME]
+    paths = places + [f"//**/{name}" for name in files] + [f"//**/{name}/**" for name in folders]
+    expected = [f"{tool}({path})" for path in paths for tool in ("Read", "Edit")]
+    assert json.loads(read(".claude/settings.json"))["permissions"]["deny"] == expected
 
-    def denied(name: str) -> bool:
-        """A file rule matches by its last part; a folder rule (``.../x/**``)
-        only names folder ``x`` - its ``**`` is never taken to match a file."""
-        for rule in read_rules:
-            if rule.endswith("/**"):
-                if rule[:-3].rsplit("/", 1)[-1] == name:
-                    return True
-            elif fnmatch.fnmatchcase(name, rule.rsplit("/", 1)[-1]):
-                return True
-        return False
 
-    stem = DRAFT_FILENAME.rsplit(".", 1)[0]
-    for name in (STORE_FILENAME, STORE_WAL_FILENAME, STORE_SHM_FILENAME,
-                 STORE_FILENAME + SET_ASIDE_SUFFIX.format(version=15),
-                 CHECKPOINT_FILENAME, CHECKPOINT_JOURNAL_FILENAME, CHECKPOINT_FILENAME + "-wal",
-                 CHECKPOINT_FILENAME + SET_ASIDE_SUFFIX.format(version=15), CHECKPOINT_FILENAME + ".damaged",
-                 LEDGER_FILENAME, LOG_FILENAME, LOG_FILENAME + ".1", ERROR_LOG_FILENAME,
-                 ERROR_LOG_FILENAME + ".1", LAST_PASS_FILENAME, PASS_ORDER_FILENAME,
-                 DRAFT_FILENAME, f"{stem}-2.txt", STATUS_PAGE_FILENAME, VIEW_FILENAME,
-                 RECOVERED_DIR, PASSES_DIRNAME):
-        assert denied(name), name
-    for rules in (read_rules, edit_rules):
-        assert any(f"/{DATA_HOME_NAME}/**" in rule and "AppData/Local" in rule for rule in rules), rules
-        assert any(rule.startswith("//g/Shared drives/") for rule in rules), rules
 
 def test_every_file_beside_the_store_is_ignored_by_git():
     """Decision 159 (the final review's MF1): the checkpoint, the last-pass

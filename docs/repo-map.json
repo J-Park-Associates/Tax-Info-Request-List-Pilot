@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 164,
     "edges": 1020,
-    "reused": 124
+    "reused": 122
   },
   "node_types": [
     "artifact",
@@ -3495,7 +3495,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "4f02f4039c028074",
+      "sha256": "6a5e0628429932ca",
       "lines": 436,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -3686,8 +3686,8 @@
       "id": ".claude/settings.json",
       "type": "file",
       "layer": "root",
-      "sha256": "15ae4ffc877bdd79",
-      "lines": 31
+      "sha256": "67577279a874a135",
+      "lines": 60
     },
     {
       "id": "Build App.bat",
@@ -6695,8 +6695,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "da5f16823719385b",
-      "lines": 2156,
+      "sha256": "1da662c4a4d668e2",
+      "lines": 2146,
       "exports": [
         "CONSOLE_EXEMPT",
         "CONSOLE_GUARDED",
