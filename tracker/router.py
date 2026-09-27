@@ -250,7 +250,6 @@ NAME_POINTS_AT = reasons.NAME_POINTS_AT
 FILED_WHOLE = reasons.FILED_WHOLE
 ALSO_ANSWERS = reasons.ALSO_ANSWERS
 
-_WORD_SPLIT = re.compile(r"[^a-z0-9]+")
 #: What a file name uses between words, read as spaces; a hyphen stays,
 #: because "1098-T.pdf" names the form it names.
 _SEPARATORS = re.compile(r"[^a-z0-9-]+")
