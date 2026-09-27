@@ -99,6 +99,22 @@ def test_the_tripwire_guards_every_place_a_real_settings_file_store_or_scratch_r
     assert beside in guarded                      # the checkout's own stays guarded
 
 
+def test_no_test_opens_the_real_data_home(tmp_path):
+    """Decision 186 (SPEC-186 section 9): the account's real data home - the
+    store, the run log, a reading's scratch - is a guarded place, armed for
+    the session, and no test's own data home is it or lies inside it; each
+    is a sibling of the test's folder, never a clients root's child."""
+    try:
+        real = settings.default_data_home()
+    except settings.SettingsError:
+        pytest.skip("this machine has no data home to guard")
+    armed = json.loads(os.environ[tripwire.ENV_TRIPWIRE])["places"]
+    assert ["data home", str(real)] in armed
+    mine = settings.data_home()
+    assert not mine.is_relative_to(real) and not real.is_relative_to(mine)
+    assert not mine.is_relative_to(tmp_path)                 # a root at tmp_path never holds it
+
+
 def test_the_ignore_file_knows_every_place_the_tripwire_guards(monkeypatch):
     """A place the wire guards is a place a real file lands in a checkout;
     the ignore file must keep each out of a commit, by the same name."""
@@ -305,8 +321,11 @@ CANARY = textwrap.dedent('''
 
 
     def test_b_store(monkeypatch):
+        # Since decision 186 the store with nothing overriding it is the
+        # account's real data home's, which the wire guards.
         monkeypatch.delenv(settings.ENV_SETTINGS_DIR)
         monkeypatch.delenv(store.ENV_STORE)
+        monkeypatch.delenv(settings.ENV_DATA_HOME)
         store.close()
         store.connect()
 
@@ -375,7 +394,7 @@ CANARY = textwrap.dedent('''
         assert status == 0
 ''')
 #: Each canary, and what its line under the tripwire's heading says.
-CANARIES = {"test_a_settings": "the checkout's settings file", "test_b_store": "the checkout's store",
+CANARIES = {"test_a_settings": "the checkout's settings file", "test_b_store": "data home",
             "test_c_scratch": "the checkout's OCR scratch folder",
             "test_d_client_tree": "the checkout's client tree",
             "test_e_child": "the checkout's settings file", "test_f_reading_child": "the checkout's settings file",
@@ -412,8 +431,14 @@ def test_the_suite_in_an_office_shaped_copy_stops_every_way_to_a_real_place(offi
     folders = checkout_folders(copy, ())
     canary = copy / "tests" / "test_canary_185.py"
     canary.write_text(CANARY, encoding="utf-8")
+    # The nested session's own "real" data home (decision 186), beside the
+    # copy: the canary that reaches it is then the nested wire's to catch,
+    # never this session's own real one.
+    account = copy.parent / "account"
+    account.mkdir(exist_ok=True)
     try:
-        done = run_in_copy(copy, "-p", "no:cacheprovider", "tests/test_canary_185.py")
+        done = run_in_copy(copy, "-p", "no:cacheprovider", "tests/test_canary_185.py",
+                           LOCALAPPDATA=str(account), XDG_STATE_HOME=str(account))
     finally:
         canary.unlink()
     output = done.stdout + done.stderr

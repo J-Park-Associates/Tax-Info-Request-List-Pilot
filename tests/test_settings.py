@@ -292,6 +292,22 @@ def test_the_error_log_lives_beside_the_tracker_database(beside_the_app, monkeyp
     assert not (settings_dir() / ERROR_LOG_FILENAME).exists()
 
 
+def test_the_error_log_is_none_when_the_data_home_cannot_be_had(monkeypatch):
+    """Decision 186 on 193: the error log sits beside the store, in the
+    data home; with no data home there is no log, and the block still runs
+    rather than raising before the command can say why."""
+    import logging
+
+    from tracker import store
+    from tracker.settings import ENV_DATA_HOME, error_log
+
+    monkeypatch.delenv(store.ENV_STORE, raising=False)
+    monkeypatch.setenv(ENV_DATA_HOME, "relative-data")
+    with error_log() as path:
+        logging.getLogger("tracker.test").warning("a fabricated warning")
+    assert path is None
+
+
 # ------------------------------------------ decision 185: the suite's own folder ----
 
 

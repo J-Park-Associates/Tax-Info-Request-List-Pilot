@@ -1171,7 +1171,7 @@ def _vocab() -> dict:
                   "killed_at": SHELL_KILLED_AT, "no_reply": SHELL_NO_REPLY,
                   "could_not_start": SHELL_COULD_NOT_START,
                   "could_not_send": SHELL_COULD_NOT_SEND, "page_error": PAGE_ERROR,
-                  "error_log": str(error_log_path())},
+                  "error_log": _error_log_said()},
         # The lock notice (decision 193, D4): when, where, and - on this
         # machine - which file; nothing waits and nothing needs clearing.
         "lock": {"running": LOCK_RUNNING, "running_other": LOCK_RUNNING_OTHER, "on": LOCK_ON, "greyed": LOCK_GREYED,
@@ -2208,6 +2208,17 @@ def _refresh_readmes(*engagements: Path) -> None:
     a refused action refreshes nothing."""
     for household_dir in dict.fromkeys(household_of(Path(one)) for one in engagements):
         refresh_household_readme(household_dir, said=_WARNINGS)
+
+
+def _error_log_said() -> str:
+    """The error log's path for the shell, or ``""`` when no data home can
+    be had (decision 186): the log sits beside the store, in the data home,
+    and ``list`` must still answer so the first screen can say why. The
+    shell keeps no path it is given empty."""
+    try:
+        return str(error_log_path())
+    except SettingsError:
+        return ""
 
 
 def _cmd_state(argv: list[str]) -> dict:

@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 163,
-    "edges": 1018,
-    "reused": 115
+    "edges": 1019,
+    "reused": 120
   },
   "node_types": [
     "artifact",
@@ -75,8 +75,8 @@
       "id": ".github/workflows/build.yml",
       "type": "workflow",
       "layer": "ci",
-      "sha256": "0bd970b6fd0fc14e",
-      "lines": 234,
+      "sha256": "f48be766f524ebde",
+      "lines": 236,
       "role": "Builds the portable package from a `v*` tag and nothing else (decision 191) by running Build App.bat itself on a Windows runner, proves the frozen executable answers in both of its modes, prints the build-info file, zips the package, publishes its SHA-256 beside it and on the run's summary page, and uploads the zip and the .sha256 as the run's artifact for seven days.",
       "notes": "Decision 78. It runs the batch file rather than re-implementing the build, because a second copy of the build is the one that drifts; tests/test_build.py refuses a workflow that names PyInstaller, the packager or the copy itself. The batch file pauses for a person at every exit, so it reads one documented switch that skips the waits, named in its own header and set here. The two smoke checks run the frozen executable, not the source: `list` with the shell's two environment variables set, which must answer JSON rather than a traceback on an install with no clients root yet, and one dry pass over a scratch clients root tests/samples.py builds, which walks filing, routing, scanning and drafting. Since decision 169 the root holds a scan only the reader can file (SCRATCH_SCAN), and the step compares the package's engagement line with the source's own dry pass and reads the run log's first line for reader=processor, so a package missing the reader or a model fails here. It installs the tree in the two steps every install makes (R-11): requirements.lock then rapidocr with --no-deps from requirements-nodeps.lock, both hash-checked (decision 191). Where the package landed is read back out of the batch file's own OUT/PLATFORM/ARCH and app/package.json's two names, so no path here is a second copy of one. Not on push: a freeze, an npm install, an Electron download and a few hundred megabytes of artifact are not what a commit should cost. Decision 191: no workflow_dispatch - v* tags are protected, so a package is the build of reviewed code - and a job guard `if: startsWith(github.ref, 'refs/tags/v')`; the checksum step runs after both smoke checks, and the runbook compares the summary page's hash with certutil -hashfile before a stick is written (transport, not provenance). Its checkout keeps no credentials (F-12). Decision 186: a step right after the dependencies gives every run of the tracker in the job a data folder under the runner's temp (TRACKER_DATA_HOME through GITHUB_ENV, since a job-level env cannot read the runner context), and a step before the zip fails the build when the package holds any name the data home or the settings folder holds (the store and its side files, runs.log, pass-order.json, tax-tracker.xml, ocr-scratch, the data home's own name, settings.json), each pinned to its constant by tests/test_build.py."
     },
@@ -135,8 +135,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "1fba32755c393611",
-      "lines": 4416,
+      "sha256": "002c49e393203d11",
+      "lines": 4427,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_FOLDER_NAME_HELP",
@@ -2520,8 +2520,8 @@
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "e805586a0322da2f",
-      "lines": 2787,
+      "sha256": "6166e39af93520f7",
+      "lines": 2796,
       "cli": "python -m tracker.runner",
       "exports": [
         "ACKNOWLEDGE_COMMAND",
@@ -2961,8 +2961,8 @@
       "id": "tracker/settings.py",
       "type": "module",
       "layer": "core",
-      "sha256": "6d39e62c7054cf81",
-      "lines": 721,
+      "sha256": "ecb482e1a1fff64c",
+      "lines": 725,
       "cli": "python -m tracker.settings",
       "exports": [
         "COLUMN_CATALOG",
@@ -3482,7 +3482,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "11265c55ff8a6787",
+      "sha256": "33d3f5707fb442d4",
       "lines": 436,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -3500,7 +3500,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "af9c163db7c97807",
+      "sha256": "fef586d01dee91fa",
       "lines": 1050,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -3509,8 +3509,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "8ca485f7a67b2681",
-      "lines": 2275,
+      "sha256": "09731f950b2ee4ce",
+      "lines": 2277,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -3830,7 +3830,7 @@
       "id": "artifact:the data home",
       "type": "artifact",
       "layer": "runtime",
-      "role": "The one per-user local folder on the designated machine where the tracker keeps what it derives from clients (decision 186): settings.data_home(), %LOCALAPPDATA%\\tax-document-tracker (or TRACKER_DATA_HOME). Holds the store, decision 189's pass-order.json beside it, decision 159's record checkpoint (checkpoint.CHECKPOINT_FILENAME), recovered/ folder (store.RECOVERED_DIR) and last-pass file (runner.LAST_PASS_FILENAME) beside it too - each one an older version left beside the settings file or the frozen executable named by runner.left_behind() and refused in the package by build.yml's proof; the checkpoint and recovered/ are named only in LEFT_BEHIND_TO_MOVE (move, never delete: security principle 10), the rest in LEFT_BEHIND - the scheduler's task file, scratch/<pid> for each reading child and logs/ for the run log. Never beside the program, in a checkout, on removable media or in the temp folder; data_home() refuses rather than fall back, and creates nothing."
+      "role": "The one per-user local folder on the designated machine where the tracker keeps what it derives from clients (decision 186): settings.data_home(), %LOCALAPPDATA%\\tax-document-tracker (or TRACKER_DATA_HOME). Holds the store, decision 189's pass-order.json beside it, decision 159's record checkpoint (checkpoint.CHECKPOINT_FILENAME), recovered/ folder (store.RECOVERED_DIR) and last-pass file (runner.LAST_PASS_FILENAME) beside it too - each one an older version left beside the settings file or the frozen executable named by runner.left_behind() and refused in the package by build.yml's proof; decision 193's error log (settings.ERROR_LOG_FILENAME, with its rotated copies) and passes/ folder (progress.PASSES_DIRNAME) beside it too, in the same way; the checkpoint and recovered/ are named only in LEFT_BEHIND_TO_MOVE (move, never delete: security principle 10), the rest in LEFT_BEHIND - the scheduler's task file, scratch/<pid> for each reading child and logs/ for the run log. Never beside the program, in a checkout, on removable media or in the temp folder; data_home() refuses rather than fall back, and creates nothing."
     },
     {
       "id": "artifact:the household inbox",
@@ -3885,8 +3885,8 @@
       "id": "tests/conftest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "74058ff0aa4f8f47",
-      "lines": 803,
+      "sha256": "6a7f03ff954be92e",
+      "lines": 815,
       "exports": [
         "APP_FOLDER",
         "ENV_OFFICE_SHAPED_FULL",
@@ -3943,7 +3943,7 @@
         "ENV_OFFICE_SHAPED_FULL": "'TRACKER_OFFICE_SHAPED_FULL'"
       },
       "role": "What every test pays for once: an app folder of its own (settings and store, via own_folders()), the tripwire's arming and its session verdict (decision 185), the store and view agreement checks, and the one way to make an engagement, sort an inbox and start a Python child (child_env()).",
-      "notes": "Decision 185: own_folders() is the one place a process is told where beside-the-app is - the session calls it in pytest_configure before collection, every test through an_app_folder_of_its_own (its own MonkeyPatch, so a test's undo cannot take it); real_places() is the one list of places a real settings file, store, scratch or client tree resolves to, from the constants that name them, and 186 adds the data home to both. pytest_configure installs the hook with the session's TRACKER_TEST_TRIPWIRE value and the session log, so this process also judges the Python children it starts by the routes the tripwire's docstring lists (and what escapes is listed there too); a process it forks writes its records to the log. pytest_sessionfinish fails the session on any tripwire record, the pytest process's or a child's (the session log, read_tripwire_log(): a line it cannot read, or a log it cannot read at all (any OSError), is itself said as a violation, never an internal error), and on any folder the session left in the checkout (checkout_folders(), which never lists a guarded place). office_shaped_copy is the checkout copied with fabricated real-looking files beside it, for the nested proofs."
+      "notes": "Decision 185: own_folders() is the one place a process is told where beside-the-app is - the session calls it in pytest_configure before collection, every test through an_app_folder_of_its_own (its own MonkeyPatch, so a test's undo cannot take it); real_places() is the one list of places a real settings file, store, scratch or client tree resolves to, from the constants that name them, and 186 adds the data home to both. pytest_configure installs the hook with the session's TRACKER_TEST_TRIPWIRE value and the session log, so this process also judges the Python children it starts by the routes the tripwire's docstring lists (and what escapes is listed there too); a process it forks writes its records to the log. pytest_sessionfinish fails the session on any tripwire record, the pytest process's or a child's (the session log, read_tripwire_log(): a line it cannot read, or a log it cannot read at all (any OSError), is itself said as a violation, never an internal error), and on any folder the session left in the checkout (checkout_folders(), which never lists a guarded place). office_shaped_copy is the checkout copied with fabricated real-looking files beside it, for the nested proofs. Decision 186: own_folders() also sets TRACKER_DATA_HOME to data_home_for(folder), a sibling of the folder holding the app folder (<tmp_path>-data for a test, <session>-data for the session, removed at unconfigure), so no clients root a test makes of tmp_path holds it (ROOT_HOLDS_DATA); real_places() guards the account's real data home (settings.default_data_home(), none on a machine without one) and one the shell names, and names the store by where.with_name(STORE_FILENAME) since store.path_for() is gone; run_in_copy() drops the suite's data home, as a fresh shell has none."
     },
     {
       "id": "tests/samples.py",
@@ -4332,8 +4332,8 @@
       "id": "tests/test_build.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a2f6b24cf5d9849c",
-      "lines": 691,
+      "sha256": "6afcad043d28443f",
+      "lines": 701,
       "exports": [
         "BUILD_ENVIRONMENT",
         "BUILD_LOCKS",
@@ -6255,8 +6255,8 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "628b228a99766772",
-      "lines": 4258,
+      "sha256": "eb3f0330bd87cfec",
+      "lines": 4268,
       "exports": [
         "DRAFT_DAY",
         "FRIDAY",
@@ -6631,8 +6631,8 @@
       "id": "tests/test_settings.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "4f926d41e1e7ed7a",
-      "lines": 522,
+      "sha256": "35ac8981ba2484ff",
+      "lines": 538,
       "exports": [
         "beside_the_app",
         "test_a_cleared_folder_box_is_refused_not_recorded_as_the_working_folder",
@@ -6655,6 +6655,7 @@
         "test_the_data_home_is_the_accounts_own_local_application_data_folder",
         "test_the_data_home_must_be_on_this_computers_own_disk",
         "test_the_data_home_off_windows_is_the_users_own_state_folder",
+        "test_the_error_log_is_none_when_the_data_home_cannot_be_had",
         "test_the_error_log_lives_beside_the_tracker_database",
         "test_the_firm_phone_is_written_beside_the_firm_name_and_blank_when_unset",
         "test_the_real_corpus_is_a_folder_outside_the_repo_or_it_is_nothing",
@@ -7030,8 +7031,8 @@
       "id": "tests/test_tripwire.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "fbfc92f8d88e7c8b",
-      "lines": 500,
+      "sha256": "28153011ab80550c",
+      "lines": 525,
       "exports": [
         "ALL_PASS",
         "CANARIES",
@@ -7048,6 +7049,7 @@
         "test_a_verbatim_windows_spelling_is_the_same_place",
         "test_every_python_child_starts_with_the_tripwire_armed",
         "test_every_test_has_a_settings_folder_and_a_store_of_its_own",
+        "test_no_test_opens_the_real_data_home",
         "test_no_test_sees_the_real_corpus_unless_it_names_one",
         "test_no_test_starts_a_python_child_around_the_tripwire",
         "test_the_atomic_writes_temporary_beside_a_guarded_file_is_guarded_too",
@@ -8312,6 +8314,12 @@
     {
       "from": "tests/test_build.py",
       "to": "tracker/content_check.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_build.py",
+      "to": "tracker/progress.py",
       "type": "exercises",
       "source": "derived"
     },

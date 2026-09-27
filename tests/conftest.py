@@ -541,7 +541,8 @@ def real_places(repo: Path) -> tuple[tuple[str, Path], ...]:
     resolves to on this machine when nothing of the suite's overrides it:
     beside the app as the checkout resolves it, and wherever the shell running
     the suite names instead. The tripwire guards each; decision 186 adds the
-    data home."""
+    data home - the account's real one, worked out with ``ENV_DATA_HOME``
+    set aside (none, if this machine has none), and one the shell names."""
     from tracker.checkpoint import CHECKPOINT_FILENAME
     from tracker.progress import PASSES_DIRNAME
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
@@ -571,6 +572,15 @@ def real_places(repo: Path) -> tuple[tuple[str, Path], ...]:
                    ("passes folder", where.with_name(PASSES_DIRNAME))]
     if os.environ.get(store.ENV_STORE):
         places.append(("store", Path(os.environ[store.ENV_STORE])))
+    # The data home (decision 186, SPEC-186 section 9): the real one, which
+    # default_data_home() works out without ENV_DATA_HOME; a machine that has
+    # none (a SettingsError) adds nothing. Then whatever the shell names.
+    try:
+        places.append(("data home", settings.default_data_home()))
+    except settings.SettingsError:
+        pass
+    if os.environ.get(settings.ENV_DATA_HOME, "").strip():
+        places.append(("data home", Path(os.environ[settings.ENV_DATA_HOME])))
     app = settings.app_dir()
     places += [("OCR scratch folder", app / settings.OCR_SCRATCH_DIRNAME),
                ("client tree", repo / CLIENTS_TREE),
@@ -796,8 +806,10 @@ def office_shaped_copy(tmp_path_factory):
 
 def run_in_copy(copy: Path, *args: str, timeout: int = 600, **extra: str) -> subprocess.CompletedProcess:
     """``python -m pytest -q <args>`` in the copy, started as a fresh shell
-    would start it: no settings folder or store of the suite's. The outer
-    tripwire's variable is kept, so this session watches the nested one."""
-    env = child_env(drop=(settings.ENV_SETTINGS_DIR, store.ENV_STORE, "PYTEST_CURRENT_TEST"), **extra)
+    would start it: no settings folder, store or data home of the suite's.
+    The outer tripwire's variable is kept, so this session watches the
+    nested one."""
+    env = child_env(drop=(settings.ENV_SETTINGS_DIR, store.ENV_STORE, settings.ENV_DATA_HOME,
+                          "PYTEST_CURRENT_TEST"), **extra)
     return subprocess.run([sys.executable, "-m", "pytest", "-q", *args], cwd=copy, env=env,
                           capture_output=True, text=True, timeout=timeout)

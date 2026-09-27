@@ -194,7 +194,7 @@ from tracker.manifest import (
     summarize,
 )
 from tracker.page import esc, page_text, table, tolerant_console
-from tracker.progress import Watch
+from tracker.progress import PASSES_DIRNAME, Watch
 from tracker.records import ENGAGEMENT_LABELS, NO, YES
 from tracker.registry import (
     SKIP_ROLLED_FORWARD,
@@ -226,6 +226,8 @@ from tracker.scaffold import scaffold_engagement, scaffold_household
 from tracker.scanner import ScanLockedError, scan_engagement
 from tracker.settings import (
     ENV_SETTINGS_DIR,
+    ERROR_LOG_BACKUPS,
+    ERROR_LOG_FILENAME,
     NO_ROOT_HINT,
     OCR_SCRATCH_DIRNAME,
     SettingsError,
@@ -295,12 +297,14 @@ def _spelled(path: Path) -> str:
 def left_behind(root: Path | None) -> list[Path]:
     """What an earlier version left where client data no longer lives: the store
     and its two SQLite side files, the pass-order hint, decision 159's record
-    checkpoint, ``recovered`` folder and last-pass file, and the old OCR
+    checkpoint, ``recovered`` folder and last-pass file, decision 193's error
+    log (and its rotated copies) and ``passes`` folder, and the old OCR
     scratch folder beside the settings file (and beside the frozen
     executable, where a package without the shell kept them). Only what
     exists; nothing is opened, moved or deleted. The store in use and every
     file that follows it - its two side files, the hint, the checkpoint, the
-    ``recovered`` folder and the last-pass file beside it - are never named (``TRACKER_STORE`` may point beside the settings file:
+    ``recovered`` folder, the last-pass file, the error log and ``passes``
+    beside it - are never named (``TRACKER_STORE`` may point beside the settings file:
     the suite's own fixture does). In a source checkout only the settings
     folder is looked at. ``root`` is the clients root, whose old
     :data:`LOG_FILENAME` - which named clients and files - is named too:
@@ -312,8 +316,13 @@ def left_behind(root: Path | None) -> list[Path]:
     # Decision 159's three files sit beside the store, so they followed it
     # into the data home (decision 186); one beside the settings file is
     # an older version's, and the checkpoint and ``recovered`` name clients.
+    # Decision 193's error log, its rotated copies and ``passes`` follow the
+    # store too; each can be made again, so they are in the delete group.
     beside = (store.STORE_WAL_FILENAME, store.STORE_SHM_FILENAME, PASS_ORDER_FILENAME,
-              checkpoint.CHECKPOINT_FILENAME, store.RECOVERED_DIR, LAST_PASS_FILENAME)
+              checkpoint.CHECKPOINT_FILENAME, store.RECOVERED_DIR, LAST_PASS_FILENAME,
+              ERROR_LOG_FILENAME,
+              *(f"{ERROR_LOG_FILENAME}.{n}" for n in range(1, ERROR_LOG_BACKUPS + 1)),
+              PASSES_DIRNAME)
     kept = {_spelled(in_use)} | {_spelled(in_use.with_name(name)) for name in beside}
     names = (store.STORE_FILENAME, *beside, OCR_SCRATCH_DIRNAME)
     found = [folder / name for folder in folders for name in names

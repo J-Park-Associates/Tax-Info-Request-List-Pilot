@@ -469,8 +469,10 @@ changes nothing:
   one: move the old one into the data folder under a new name with today's
   date, keep it, and treat that day as the moment of trust (§6). **To delete:** `tracker.db`,
   `tracker.db-wal`, `tracker.db-shm`, `pass-order.json`, `last-pass.json`,
-  an `ocr-scratch` folder, and the old `runs.log` in the clients folder,
-  which names clients. Nothing deletes them for you: delete them.
+  the error log `tracker-errors.log` and its copies `tracker-errors.log.1`
+  to `.3`, a `passes` folder (decision 193), an `ocr-scratch` folder, and
+  the old `runs.log` in the clients folder, which names clients. Nothing
+  deletes them for you: delete them.
 
 There used to be a second one, a comparison flag on the ledger's own
 statuses against the request list's. There is nothing left for it to

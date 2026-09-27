@@ -230,20 +230,24 @@ class _ErrorLog(logging.Handler):
 
 
 @contextmanager
-def error_log(logger_name: str = "tracker") -> Iterator[Path]:
+def error_log(logger_name: str = "tracker") -> Iterator[Path | None]:
     """Attach the rotating error log to ``logger_name`` for the block.
 
     WARNING and above, UTF-8, opened only when something is written, and
     never ``fsync``-ed: it is a debug aid, and a sync per line would cost
     the pass that is failing. A folder that cannot hold it costs the log,
-    never the command.
+    never the command - and so does a data home that cannot be had
+    (decision 186): the log sits beside the store, which lives there, so
+    there is no log and the block yields ``None``; the command says why.
     """
-    path = error_log_path()
     logger = logging.getLogger(logger_name)
+    path: Path | None = None
+    handler: logging.Handler | None = None
     try:
+        path = error_log_path()
         path.parent.mkdir(parents=True, exist_ok=True)
-        handler: logging.Handler | None = _ErrorLog(path)
-    except OSError:
+        handler = _ErrorLog(path)
+    except (OSError, SettingsError):
         handler = None
     if handler is not None:
         handler.setFormatter(logging.Formatter(ERROR_LOG_FORMAT))
