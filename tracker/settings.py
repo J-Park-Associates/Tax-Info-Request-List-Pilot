@@ -575,10 +575,12 @@ def program_drive_refusal(*, app: Path | None = None, settings: Path | None = No
     DRIVE_REMOTE -> PROGRAM_ON_NETWORK, anything else (unknown, no root, a RAM
     disk) -> PROGRAM_DRIVE_UNKNOWN: nothing is guessed (decision 186).
 
-    Asked by Install Schedule (the app and the command line) and said on the
-    app's first screen - never by the scheduled pass, which would only go
-    quiet if it refused: a job installed from a stick keeps running until
-    Install Schedule is pressed from the copy on the disk. ``drive_type`` is
+    Asked by the schedule's registration (``scheduling.schedule_decision``,
+    the first answer of every door of the after-install step, decision 209)
+    and by the scheduling command line, and said on the app's first screen -
+    never by the scheduled pass, which would only go quiet if it refused: a
+    job installed from a stick keeps running until the schedule is
+    registered again from the copy on the disk. ``drive_type`` is
     looked up when called, not bound at definition, so a test's patch of
     the module's :func:`drive_type` reaches it. Off Windows every drive is
     fixed and the answer is "".

@@ -14,6 +14,7 @@ import os
 import platform
 import sys
 import time
+from pathlib import Path
 
 import pytest
 
@@ -153,6 +154,28 @@ def test_a_computer_with_no_task_scheduler_registers_nothing(root, monkeypatch):
     assert done.schedule == scheduling.NO_TASK_SCHEDULER and done.exit_code == 0
     assert done.schedule_sentence == scheduling.SCHEDULE_NOT_HERE
     assert not designation_file(root).exists()      # a desk without Task Scheduler never claims
+
+
+def test_a_removable_drive_is_still_refused(root, windows, monkeypatch):
+    """Decision 186 inside 209 (SPEC-209 section 9): the schedule runs
+    whatever program sits where the app is, so a program on a stick is the
+    step's first answer - ``refused_drive``, in 186's own sentence, a
+    failure - asked before the designation, so nothing is claimed, no task
+    file is written and no task is registered, from every door."""
+    from tracker import settings as settings_module
+
+    program = settings_module.app_dir()
+    monkeypatch.setattr(settings_module, "drive_type",
+                        lambda path: settings_module.DRIVE_REMOVABLE if Path(path) == program
+                        else settings_module.DRIVE_FIXED)
+    said = settings_module.PROGRAM_ON_REMOVABLE.format(folder=program)
+    for reason in (after_install.REASON_SETUP, after_install.REASON_REPAIR, after_install.REASON_ROOT):
+        done = after_install.run(reason=reason)
+        assert done.schedule == scheduling.REFUSED_DRIVE and done.schedule_sentence == said
+        assert said in done.failed and done.exit_code == 1 and not done.installed
+    assert windows["calls"] == []
+    assert not designation_file(root).exists()
+    assert not scheduling.schedule_xml_path().exists()
 
 
 def test_an_unreadable_designation_changes_no_schedule(root, windows, monkeypatch, capsys):
@@ -622,8 +645,6 @@ def test_no_test_reaches_the_real_checkouts_test_cache(app, tmp_path, monkeypatc
     fabricated stand-in is the only thing removed; the real checkout's
     cache, whatever it holds, is left exactly as it was - nothing real is
     made or deleted here."""
-    from pathlib import Path
-
     real = Path(after_install.__file__).resolve().parent.parent
     assert after_install.CHECKOUT != real            # the suite's own guard (tests/conftest.py)
     real_cache = real / after_install.TEST_CACHE_DIRNAME
@@ -687,6 +708,44 @@ def test_a_junction_in_the_test_cache_is_removed_not_followed(app, checkout, tmp
 
     assert done.failed == () and not cache.exists()
     assert (outside / "keep.txt").read_text(encoding="utf-8") == "not the cache's"
+
+
+def test_setup_moves_what_186_lists_to_move_and_nothing_it_lists_to_delete(app, monkeypatch, capsys):
+    """R9 wired: the step's first job moves decision 186's move group - the
+    record checkpoint, its journal and ``recovered/``, as
+    ``runner.left_behind_to_move`` lists them - from beside a fabricated
+    program folder into the folder the store lives in (the suite's data
+    home), and leaves 186's delete group - an old store, last-pass and
+    after-install notes - exactly where it was, for a person to delete."""
+    from tracker import runner, store
+    from tracker.settings import data_home
+
+    monkeypatch.setenv(store.ENV_STORE, str(data_home() / store.STORE_FILENAME))
+    store.close()
+    beside = app.resolve()
+    moving = left_behind(beside)
+    deleting = {store.STORE_FILENAME: b"an old store", runner.LAST_PASS_FILENAME: b"{}",
+                runner.AFTER_INSTALL_FILENAME: b"{}"}
+    for name, data in deleting.items():
+        (beside / name).write_bytes(data)
+    assert sorted(runner.left_behind_to_move(None)) == sorted(moving)
+    home = store.store_path().parent
+    assert home == data_home() and home != beside
+
+    code, out = cli(monkeypatch, capsys, "--reason", "setup")
+
+    assert code == 0, out
+    assert after_install.LEFT_BEHIND_MOVED.format(home=home) in out.splitlines()
+    assert not any(os.path.lexists(item) for item in moving)
+    assert (home / CHECKPOINT).read_bytes() == b"checkpoint\x00heads"
+    assert (home / JOURNAL).read_bytes() == b"journal"
+    assert (home / "recovered" / "Household A" / "record.json").is_file()
+    for name, data in deleting.items():                       # 186's delete group: untouched
+        assert (beside / name).read_bytes() == data, name
+    assert runner.left_behind_to_move(None) == []
+    assert [code for code, _ in runner.left_behind_warnings(None)] == [runner.CODE_LEFT_BEHIND]
+    assert after_install.record_path() == home / after_install.RECORD_FILENAME
+    assert after_install.record_path().is_file()
 
 
 # --- The careful mover (R9): decision 186's move group into the data home ---

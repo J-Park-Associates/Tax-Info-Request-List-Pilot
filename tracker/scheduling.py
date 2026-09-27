@@ -483,6 +483,9 @@ HOST_NAME = re.compile(r"[a-z0-9._-]{1,63}")
 MAX_DESIGNATION_BYTES = 256
 
 #: The outcomes of :func:`schedule_decision`, by key.
+#: The program is on a drive the schedule may not run it from (decision
+#: 186's ``settings.program_drive_refusal``, its sentence): a failure.
+REFUSED_DRIVE = "refused_drive"
 NO_ROOT = "no_root"
 NO_TASK_SCHEDULER = "no_task_scheduler"
 CLAIMED = "claimed"
@@ -641,15 +644,20 @@ def move_here(root: str | Path) -> Moved:
 @dataclass(frozen=True, slots=True)
 class ScheduleDecision:
     """What :func:`schedule_decision` found: the outcome's key, and the
-    computer the designation names (this one for :data:`CLAIMED`), or ""."""
+    computer the designation names (this one for :data:`CLAIMED`), or "";
+    for :data:`REFUSED_DRIVE`, decision 186's sentence saying why."""
 
     outcome: str
     host: str = ""
+    sentence: str = ""
 
 
 def schedule_decision(root: str | Path | None) -> ScheduleDecision:
     """Whether this computer registers the schedule for ``root``, in order:
-    no root (:data:`NO_ROOT`); no Task Scheduler (:data:`NO_TASK_SCHEDULER`);
+    the program on a removable, network or unnamed drive
+    (:data:`REFUSED_DRIVE`, decision 186's ``program_drive_refusal`` - the
+    one authority, asked here once for every door of the after-install
+    step); no root (:data:`NO_ROOT`); no Task Scheduler (:data:`NO_TASK_SCHEDULER`);
     this computer's own name is not one the file can hold
     (:data:`UNNAMED_HOST`), asked before the file is read; no designation,
     so this computer claims it (:data:`CLAIMED`); the file names this
@@ -657,6 +665,8 @@ def schedule_decision(root: str | Path | None) -> ScheduleDecision:
     (:data:`ELSEWHERE`); or the file is not one computer's name
     (:data:`UNREADABLE`). Decides only: claiming, registering and removing
     are the caller's."""
+    if refusal := program_drive_refusal():
+        return ScheduleDecision(REFUSED_DRIVE, sentence=refusal)
     if root is None:
         return ScheduleDecision(NO_ROOT)
     if not task_scheduler_here():

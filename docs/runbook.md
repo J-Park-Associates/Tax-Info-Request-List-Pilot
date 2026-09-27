@@ -536,19 +536,22 @@ changes nothing:
   copy of it renamed `record-heads.db.damaged` or set aside as
   `record-heads.db.v1.old`, and a `recovered` folder (decision 159) - the
   checkpoint cannot be made again, a journal can hold its last write, and
-  the old copies and the records in `recovered` are evidence. **Move them
-  before the new version runs at all**: turn the schedule off, keep the app
-  closed, install the new version, move `record-heads.db` (and any
-  `record-heads.db-journal` with it, together), the other copies and
-  `recovered` from beside the app into `%LOCALAPPDATA%\tax-document-tracker`,
-  and only then open the app or let the schedule run. Until
+  the old copies and the records in `recovered` are evidence. **Setup moves
+  them** (decision 209): its after-install step, whose first job this is,
+  moves `record-heads.db` and its journal together, the other copies and
+  `recovered` from beside the app into `%LOCALAPPDATA%\tax-document-tracker`
+  under their own names, before it registers the schedule; the packaged
+  app does the same at its first start after the upgrade. It never
+  overwrites: if the data folder already holds one of those names, nothing
+  moves, and the step says so in one sentence - then, and only then, a
+  person acts, as below. It moves nothing on the delete list. Until
   `record-heads.db` is moved the tracker makes no new checkpoint - one
   would trust every record as it is that day (*the moment of trust*, §6) -
   so nothing is written: the pass serves no household, writes its page
   and its log and says *No record checkpoint was made* (reason
   `checkpoint-left-behind` in the last-pass line), and the app refuses to
   open a return or run a button that writes, saying what to move and
-  where. Moving the file ends that. If the data folder already holds a
+  where. The move ends that. If the data folder already holds a
   new checkpoint anyway (made before this refusal existed, by the first
   pass or by the app opening any return), do not copy the old file over
   the new one: move the old one
@@ -556,6 +559,7 @@ changes nothing:
   treat that day as the moment of trust (§6). **To delete:** `tracker.db`,
   `tracker.db-wal`, `tracker.db-shm`, a `tracker.db.v<N>.old` (and its
   `-wal`, `-shm` and `.1` copies) a version change set aside, `pass-order.json`, `last-pass.json`,
+  `after-install.json` (decision 209),
   the error log `tracker-errors.log` and its copies `tracker-errors.log.1`
   to `.3`, a `passes` folder (decision 193), an `ocr-scratch` folder, and
   the old `runs.log` in the clients folder, which names clients. Nothing

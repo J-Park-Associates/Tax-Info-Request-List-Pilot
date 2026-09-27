@@ -114,12 +114,14 @@ import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from tracker import door, errors, ledger, registry, scheduling, settings, store
+from tracker import door, errors, ledger, registry, runner, scheduling, settings, store
 from tracker.fsio import write_json_atomically
 from tracker.locking import this_host
 
-#: The note of the last run, beside the store.
-RECORD_FILENAME = "after-install.json"
+#: The note of the last run, beside the store - in the data home (decision
+#: 186) - and named by ``runner.left_behind`` when an old copy is beside
+#: the program. One spelling, the runner's.
+RECORD_FILENAME = runner.AFTER_INSTALL_FILENAME
 #: The checkout this step runs from - the folder holding ``tracker/`` - and
 #: the one folder the test-cache job may clear inside it (R8).
 CHECKOUT = Path(__file__).resolve().parent.parent
@@ -204,6 +206,8 @@ LEFT_BEHIND_MOVE_FAILED = ("The files an earlier version left beside the program
                            "the move (runbook, decision 186).")
 LEFT_BEHIND_PARTLY_REMOVED = ("{home} now holds the whole copy of {name}; part of the old copy is still "
                               "beside the program as {aside} and can be deleted.")
+#: The mover's step key (R9), beside the schedule's and the check's.
+MOVE_KEY = "left_behind"
 #: What Setup prints when the step exits 1 (``Setup.bat`` echoes the same words).
 SETUP_RETRY = "The after-install step could not finish (above). Start the app: it tries again at launch."
 
@@ -338,6 +342,10 @@ def _schedule(root: Path | None, start: str, every: int) -> _Step:
     """The first job: register, re-register, remove, or say why not."""
     decision = scheduling.schedule_decision(root)
     outcome = decision.outcome
+    if outcome == scheduling.REFUSED_DRIVE:
+        # Decision 186: the schedule runs whatever program sits here, every
+        # pass - never from a stick or a network drive. Nothing is written.
+        return _Step(outcome, decision.sentence, failed=True)
     if outcome == scheduling.NO_ROOT:
         return _Step(outcome, scheduling.SCHEDULE_WAITS_FOR_ROOT)
     if outcome == scheduling.NO_TASK_SCHEDULER:
@@ -728,6 +736,23 @@ def move_left_behind(items: list[Path], home: Path) -> MoveOutcome:
     return MoveOutcome(moved=tuple(present), sentence=LEFT_BEHIND_MOVED.format(home=home))
 
 
+def _move_what_186_lists(root: Path | None) -> _Step | None:
+    """:func:`move_left_behind` on decision 186's own move group
+    (``runner.left_behind_to_move``) into ``store.store_path().parent``;
+    ``None`` when there is nothing to do. With no data home to move into
+    there is nothing it can do: the first screen already says why (186's
+    ``machine_warnings``), and the store cannot open either."""
+    try:
+        items = runner.left_behind_to_move(root)
+        home = Path(store.store_path()).parent
+    except settings.SettingsError:
+        return None
+    done = move_left_behind(items, home)
+    if done.sentence is None:
+        return None
+    return _Step(MOVE_KEY, done.sentence, failed=done.failed)
+
+
 def run(*, reason: str, start: str = scheduling.DEFAULT_START,
         every: int = scheduling.DEFAULT_REPEAT_MINUTES, checkout: Path | None = None) -> AfterInstall:
     """Every one-time job, in order, and the record of what they did.
@@ -740,6 +765,11 @@ def run(*, reason: str, start: str = scheduling.DEFAULT_START,
         raise ValueError(f"reason must be one of {', '.join(REASONS)}, not {reason!r}")
     ran_at = dt.datetime.now().isoformat(timespec="seconds")
     root, refused = _saved_root()
+    # The first job (R9): what decision 186 lists to move, from beside the
+    # program into the folder the store now lives in, before the schedule,
+    # the check and the cache - the store and the check must find the
+    # checkpoint where 186 expects it. 186's delete group is not touched.
+    moving = _move_what_186_lists(root)
     if refused:
         schedule = _Step(scheduling.NO_ROOT, refused, failed=True)
         check = _Step(CHECK_FAILED_KEY, refused, failed=True)
@@ -747,7 +777,7 @@ def run(*, reason: str, start: str = scheduling.DEFAULT_START,
         schedule = _schedule(root, start, every)
         check = _check(root)
     cache = _clear_test_cache(checkout)
-    failed = list(dict.fromkeys(step.sentence for step in (schedule, check, cache)
+    failed = list(dict.fromkeys(step.sentence for step in (moving, schedule, check, cache)
                                 if step is not None and step.failed))
     identity = "" if failed else program_identity()
     now = designation_now(root)
@@ -761,7 +791,8 @@ def run(*, reason: str, start: str = scheduling.DEFAULT_START,
     except OSError:
         failed.append(RECORD_UNWRITABLE.format(file=record_path()))
         identity = ""
-    lines = [schedule.sentence]
+    lines = [moving.sentence] if moving is not None and not moving.failed else []
+    lines.append(schedule.sentence)
     if check.sentence != schedule.sentence:
         lines.append(check.sentence)
     lines += [f"  {finding}" for finding in check.findings]

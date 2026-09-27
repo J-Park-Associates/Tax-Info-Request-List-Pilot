@@ -6474,6 +6474,15 @@ def test_a_writing_command_says_a_busy_checkpoint_as_busy_not_as_another_root(ca
     assert not where(demo_root, "Jones").exists()
 
 
+#: Moves that are not a write of a record or a client's file, by (module,
+#: function), each with why. The after-install mover (decision 209, R9)
+#: renames the tracker's own files - decision 186's move group, the record
+#: checkpoint and ``recovered/`` - from beside the program into the data
+#: home; it runs before any root is proved, by design, because the
+#: checkpoint it moves is what the proof reads.
+NOT_A_RECORD_WRITE = {("after_install", "_rename"): "the tracker's own files into the data home"}
+
+
 def _writers_in_the_package() -> set[str]:
     """Every function in ``tracker/`` that reaches a write of a record or a
     client's file - ``store.record``, ``ledger.append``, a move
@@ -6492,6 +6501,8 @@ def _writers_in_the_package() -> set[str]:
             if not isinstance(node, ast.FunctionDef):
                 continue
             named = calls.setdefault(node.name, set())
+            if (path.stem, node.name) in NOT_A_RECORD_WRITE:
+                continue
             for call in (one for one in ast.walk(node) if isinstance(one, ast.Call)):
                 func = call.func
                 if isinstance(func, ast.Attribute):
@@ -7300,16 +7311,20 @@ def _program_on(monkeypatch, kind):
 
 def test_install_schedule_refuses_when_the_program_is_on_a_removable_drive(capsys, demo_root, monkeypatch):
     """Decision 186: the schedule runs whatever program sits where the app
-    is, so Install Schedule refuses a stick - in the API's own sentence,
-    before any file is written and before the task is registered."""
+    is, so the repair path refuses a stick - in 186's own sentence, as the
+    step's first answer (decision 209: ``refused_drive``, a failure), before
+    any file is written and before the task is registered."""
+    from tracker import scheduling
     from tracker import settings as settings_module
     from tracker.scheduling import schedule_xml_path
 
     calls = _on_the_office_computer(monkeypatch)
     _program_on(monkeypatch, settings_module.DRIVE_REMOVABLE)
     code, payload = run(capsys, "install-schedule", stdin={})
-    assert code != 0
-    assert payload["error"] == settings_module.PROGRAM_ON_REMOVABLE.format(folder=settings_module.app_dir())
+    said = settings_module.PROGRAM_ON_REMOVABLE.format(folder=settings_module.app_dir())
+    assert code == 0, payload
+    assert payload["outcome"] == scheduling.REFUSED_DRIVE and payload["sentence"] == said
+    assert payload["installed"] is False and said in payload["after_install"]["failed"]
     assert calls == []
     assert not schedule_xml_path().exists()
 
@@ -7322,8 +7337,8 @@ def test_install_schedule_refuses_a_network_drive_and_one_windows_cannot_name(ca
                        (settings_module.DRIVE_UNKNOWN, settings_module.PROGRAM_DRIVE_UNKNOWN)):
         _program_on(monkeypatch, kind)
         code, payload = run(capsys, "install-schedule", stdin={})
-        assert code != 0
-        assert payload["error"] == said.format(folder=settings_module.app_dir())
+        assert code == 0 and payload["installed"] is False, payload
+        assert payload["sentence"] == said.format(folder=settings_module.app_dir())
 
 
 def test_the_first_screen_says_when_the_app_runs_from_a_removable_drive(capsys, demo_root, monkeypatch):

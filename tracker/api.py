@@ -4696,11 +4696,9 @@ def _cmd_install_schedule(argv: list[str]) -> dict:
     settings folder, never the root (decision 131).
     """
     spec = _read_spec()
-    # The schedule runs whatever program sits where the app is, every pass:
-    # never from a removable or network drive (decision 186). Asked before
-    # any file is written.
-    if refusal := program_drive_refusal():
-        raise ManifestError(refusal)
+    # A program on a removable or network drive (decision 186) is the step's
+    # own first answer (scheduling.schedule_decision, outcome
+    # refused_drive): asked there, once, before any file is written.
     start = str(spec.get("start") or DEFAULT_START)
     every = int(spec["every"]) if spec.get("every") not in (None, "") else DEFAULT_REPEAT_MINUTES
     done = after_install.run(reason=after_install.REASON_REPAIR, start=start, every=every)

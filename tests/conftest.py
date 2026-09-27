@@ -593,7 +593,7 @@ def real_places(repo: Path) -> tuple[tuple[str, Path], ...]:
     from tracker.checkpoint import CHECKPOINT_FILENAME
     from tracker.progress import PASSES_DIRNAME
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
-    from tracker.runner import LAST_PASS_FILENAME, LOG_FILENAME, STATUS_PAGE_FILENAME
+    from tracker.runner import AFTER_INSTALL_FILENAME, LAST_PASS_FILENAME, LOG_FILENAME, STATUS_PAGE_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
 
     named = settings.settings_path()                     # the shell's, if it sets one
@@ -612,6 +612,8 @@ def real_places(repo: Path) -> tuple[tuple[str, Path], ...]:
                    # copies of a return's lines (record-derived, like the store).
                    ("record checkpoint", where.with_name(CHECKPOINT_FILENAME)),
                    ("last-pass file", where.with_name(LAST_PASS_FILENAME)),
+                   # Decision 209's note of the last after-install run, beside the store too.
+                   ("after-install note", where.with_name(AFTER_INSTALL_FILENAME)),
                    ("recovered record copies", where.with_name(store.RECOVERED_DIR)),
                    # Decision 193 writes these beside the store too: the error
                    # log (its rotated copies share its name) and the passes' progress.
