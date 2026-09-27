@@ -72,6 +72,25 @@ still holds, for this child:
 many documents, so a reader must never change module state (a global, a
 patched function) for one document and leave it for the next.
 
+**Nor may anything it writes.** The child points the temp folder - ``TMP``,
+``TEMP``, ``TMPDIR`` and :data:`tempfile.tempdir` - at a folder of its own,
+``scratch_root() / <its pid>`` in the data home, before it serves anything
+(decision 186). The reader writes no temporary file today (SPEC-169 section
+6); that was a measurement, and this makes it a place: whatever a library
+writes *through the temp folder* (``tempfile``, ``GetTempPath``, ``TMPDIR``)
+lands in the child's folder, which is removed when the child ends, and never
+in the machine's temp folder. One folder per process, and only a folder
+whose process is gone is ever swept, so a preview's child can never empty the
+folder under a running pass (D-14).
+
+What this does not cover (SPEC-186 section 10, the review's S2): a library
+that writes to a path of its own choosing is not caught. A reading made in
+this process (``reading_session(in_a_child=False)``) redirects nothing - the
+backtest, which reads in its own process, points the temp folder at its own
+scratch for the run instead. A killed child's folder lives until the next
+child starts and sweeps it; a folder whose process number Windows has reused
+for a live process lives until that process ends.
+
 The pass opens its child with :func:`reading_session` (the runner for a
 pass, the app for one command); a reading made with none open gets a
 session of its own for that one reading. The pass and the child talk over
@@ -84,9 +103,11 @@ import contextlib
 import io
 import logging
 import os
+import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import traceback
@@ -94,6 +115,10 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from tracker import errors
+from tracker.locking import pid_alive
+from tracker.settings import SettingsError, scratch_root
 
 log = logging.getLogger(__name__)
 
@@ -206,7 +231,7 @@ def _build_engine(*, cuda: bool):
         import onnxruntime
         from rapidocr import RapidOCR
     except ImportError as exc:
-        raise ReaderUnavailable(f"{exc.__class__.__name__}: {exc}") from exc
+        raise ReaderUnavailable(f"{errors.error_class(exc)}: {exc}") from exc
     _refuse_downloads()
     onnxruntime.set_default_logger_severity(3)
     folder = models_folder()
@@ -233,7 +258,7 @@ def _build_engine(*, cuda: bool):
     except ReaderUnavailable:
         raise
     except Exception as exc:
-        raise ReaderUnavailable(f"{exc.__class__.__name__}: {exc}") from exc
+        raise ReaderUnavailable(f"{errors.error_class(exc)}: {exc}") from exc
 
 
 def _providers(engine) -> dict[str, list[str]]:
@@ -313,7 +338,7 @@ def _engine():
         except Exception as exc:
             # The reasons this module words itself are sentences already.
             reason = (str(exc) if isinstance(exc, RuntimeError) and str(exc)
-                      else f"{exc.__class__.__name__}: {exc}")
+                      else f"{errors.error_class(exc)}: {exc}")
             log.warning(PACK_UNUSABLE.format(reason=reason))
             _NOTES.append(("pack-unusable", reason))
     _ENGINE, _DEVICE = _build_engine(cuda=False), DEVICE_PROCESSOR
@@ -388,8 +413,10 @@ def read_page(image, *, name: str = "") -> str:
         # A fault on the card poisons the engine, not the page: every later
         # page in this process would fail the same way. Read this page
         # again on the processor, and stay there for the rest of the pass.
-        log.warning("The graphics card failed while reading %s (%s: %s); reading on the processor",
-                    name or "a page", exc.__class__.__name__, exc)
+        # Its class only: this runs in the reading child, on a client's page,
+        # and the child keeps no words of an error (decision 190).
+        log.warning("The graphics card failed while reading %s (%s); reading on the processor",
+                    name or "a page", errors.error_class(exc))
         _NOTES.append(("gpu-fault", name or "a page"))
         processor_only()
         del engine
@@ -515,17 +542,84 @@ class Outcome:
     """What became of one job sent to the child.
 
     ``kind`` is ``"read"`` (``answer`` is what the job returned),
-    ``"failed"`` (the job raised: ``error`` and ``trace``), ``"stopped"``
+    ``"failed"`` (the job raised: ``error`` is its class, ``message`` and
+    ``trace`` its words, which only the debug log may hold - decision 190), ``"stopped"``
     (ended at the stop), ``"died"`` (ended without an answer after it
     started) or ``"not_started"`` (never started the job: the machine's)."""
 
     kind: str
     answer: object = None
     error: str = ""
+    #: A failed job's own message: never shown, only kept (decision 190).
+    message: str = ""
     trace: str = ""
     seconds: float = 0.0
     #: What the reader said with its answer (:func:`take_notes`).
     notes: list = field(default_factory=list)
+    #: What the child kept while it served this job (:func:`tracker.errors.take_kept`):
+    #: words for the pass's debug log, which the pass keeps (decision 190, Part 4).
+    kept: list = field(default_factory=list)
+
+
+#: Every way a library finds the temp folder, pointed by a reading child at
+#: its own folder in the data home (decision 186), with :data:`tempfile.tempdir`.
+SCRATCH_ENV = ("TMP", "TEMP", "TMPDIR")
+
+
+def sweep_scratch(root: Path) -> list[Path]:
+    """Remove the folders under ``root`` whose process is gone, and say which.
+
+    Only a folder named by a process number, and only when
+    :func:`tracker.locking.pid_alive` answers that the process is gone:
+    a live process's folder, or one whose process cannot be known, is
+    kept, so a preview's child never empties a running pass's (D-14). A
+    name that is not a number is not the tracker's and is never touched. A
+    folder that cannot be removed now - a dying process still holds it - is
+    logged and left for the next sweep; nothing here raises."""
+    removed: list[Path] = []
+    try:
+        folders = sorted(root.iterdir())
+    except OSError:
+        return removed                          # no scratch yet: nothing to sweep
+    for folder in folders:
+        name = folder.name
+        if not (name.isascii() and name.isdigit()) or not folder.is_dir():
+            continue
+        if pid_alive(name) is not False:
+            continue
+        try:
+            shutil.rmtree(folder)
+        except OSError as exc:
+            errors.keep("ocr: the scratch sweep", exc, name=folder.name)
+            log.warning("Could not remove the scratch folder %s (%s); the next reading sweeps it",
+                        folder, errors.error_class(exc))
+            continue
+        removed.append(folder)
+    return removed
+
+
+def _take_scratch(root: Path) -> Path:
+    """Make this process's own temp folder under ``root`` and point every way
+    a library finds the temp folder at it. Sweeps first (:func:`sweep_scratch`)."""
+    sweep_scratch(root)
+    own = root / str(os.getpid())
+    own.mkdir(parents=True, exist_ok=True)
+    for name in SCRATCH_ENV:
+        os.environ[name] = str(own)
+    tempfile.tempdir = str(own)
+    return own
+
+
+def _remove_scratch(folder: Path) -> None:
+    """Remove an ended child's own folder; a warning, never a raise, when it cannot be."""
+    try:
+        shutil.rmtree(folder)
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        errors.keep("ocr: the reading's scratch", exc, name=folder.name)
+        log.warning("Could not remove the reading's scratch folder %s (%s); the next reading sweeps it",
+                    folder, errors.error_class(exc))
 
 
 class ReadingChild:
@@ -535,6 +629,11 @@ class ReadingChild:
     def __init__(self, *, processor_only: bool) -> None:
         import multiprocessing
 
+        # Where the child keeps whatever a library writes (decision 186),
+        # asked before any process or pipe exists: no data home is a child
+        # that cannot start - the machine's fault, and the file waits.
+        self._scratch_root = scratch_root()
+        self._pid: int | None = None
         context = multiprocessing.get_context("spawn")          # Windows has no fork
         self._answers, sender = context.Pipe(duplex=False)
         jobs, self._jobs = context.Pipe(duplex=False)
@@ -546,7 +645,7 @@ class ReadingChild:
         self.on_the_card = not processor_only and gpu_pack() is not None
         self.memory_limit = GRAPHICS_CARD_CHILD_MEMORY if self.on_the_card else PROCESSOR_CHILD_MEMORY
         self._process = context.Process(
-            target=_the_child, args=(jobs, sender, lifeline, processor_only),
+            target=_the_child, args=(jobs, sender, lifeline, processor_only, str(self._scratch_root)),
             name="tracker-reading", daemon=True)
         try:
             self._process.start()
@@ -558,6 +657,7 @@ class ReadingChild:
             # The child holds its own ends: end-of-file means it is gone.
             for end in (sender, jobs, lifeline):
                 end.close()
+        self._pid = self._process.pid
         self._job_object = _kill_on_close_job(self._process.pid, memory_limit=self.memory_limit)
 
     @property
@@ -571,7 +671,7 @@ class ReadingChild:
         try:
             self._jobs.send((job, args, kwargs))
         except OSError as exc:
-            return Outcome("not_started", error=f"the reading's process was gone ({exc})",
+            return Outcome("not_started", error=f"the reading's process was gone ({errors.error_class(exc)})",
                            seconds=awake_clock() - started)
         kind, answer, begun, over = "died", (), False, False
         while True:
@@ -605,10 +705,11 @@ class ReadingChild:
             return Outcome("stopped", seconds=seconds)
         self.served += 1
         if kind == "read":
-            return Outcome("read", answer=answer[0], notes=answer[1], seconds=seconds)
-        if kind == "failed":
-            return Outcome("failed", error=answer[0], trace=answer[1], notes=answer[2],
+            return Outcome("read", answer=answer[0], notes=answer[1], kept=answer[2],
                            seconds=seconds)
+        if kind == "failed":
+            return Outcome("failed", error=answer[0], message=answer[1], trace=answer[2],
+                           notes=answer[3], kept=answer[4], seconds=seconds)
         error = f"the reading's process ended with exit code {self._exit_code()}"
         if _job_memory(self._job_object)[1] >= self.memory_limit * 0.9:
             error += f"; it had reached its memory limit ({self.memory_limit / 1024**3:.0f} GB)"
@@ -641,22 +742,33 @@ class ReadingChild:
                 end.close()
         _close_job(self._job_object)
         self._job_object = None
+        if self._pid is not None and not self._process.is_alive():
+            _remove_scratch(self._scratch_root / str(self._pid))
         if self._process.exitcode is not None:
             with contextlib.suppress(ValueError):
                 self._process.close()
 
 
-def _the_child(jobs, sender, lifeline, processor_only_: bool) -> None:
+def _the_child(jobs, sender, lifeline, processor_only_: bool, scratch: str) -> None:
     """The child's whole life: serve jobs one at a time until the pass says
     it is done, or is gone.
 
-    On POSIX it leads a process group of its own first, so ending it ends
+    First it takes a temp folder of its own under ``scratch``
+    (:func:`_take_scratch`, decision 186); a folder it cannot make ends it
+    before "started", as a job it cannot unpack does. On POSIX it leads a process group of its own first, so ending it ends
     whatever it started. It watches its lifeline from a thread of its own
     (:func:`_watch_the_pass`). For each job it says "started" before
     anything touches the file - an end before it is the machine's, after it
     the file's - and hands back the answer, or what the job raised as
     words, never left to end the process in silence. Every answer carries
     what the reader has to tell the pass (:func:`take_notes`)."""
+    # Every keep in this process travels back with an answer, and none is
+    # logged here: the child never opens a log (decision 190, Part 4).
+    errors.keep_for_the_parent()
+    try:
+        _take_scratch(Path(scratch))
+    except OSError:
+        os._exit(UNREADABLE_JOB_EXIT_CODE)      # the machine's, never the file's
     if hasattr(os, "setsid"):
         os.setsid()
     threading.Thread(target=_watch_the_pass, args=(lifeline,), name="tracker-lifeline",
@@ -680,16 +792,28 @@ def _the_child(jobs, sender, lifeline, processor_only_: bool) -> None:
             try:
                 answer = job(*args, **kwargs)
             except BaseException as exc:
-                _answer(sender, ("failed", f"{exc.__class__.__name__}: {exc}",
-                                 traceback.format_exc(), take_notes()))
+                # The class, and apart from it the words and the trace: the
+                # pass shows the first and keeps the rest on its debug log.
+                # This process never opens a log of its own (decision 190).
+                _answer(sender, ("failed", errors.error_class(exc), _message_of(exc),
+                                 traceback.format_exc(), take_notes(), errors.take_kept()))
                 if isinstance(exc, MemoryError):
                     # Past its memory limit: said, and done - the pass
                     # replaces it (SPEC-169 section 9).
                     os._exit(OUT_OF_MEMORY_EXIT_CODE)
             else:
-                _answer(sender, ("read", answer, take_notes()))
+                _answer(sender, ("read", answer, take_notes(), errors.take_kept()))
     finally:
         sender.close()
+
+
+def _message_of(exc: BaseException) -> str:
+    """An exception's own words, for the pass's debug log; an exception
+    whose ``__str__`` itself fails is said by its class."""
+    try:
+        return str(exc)
+    except Exception:
+        return errors.error_class(exc)
 
 
 def _answer(sender, message) -> None:
@@ -859,7 +983,8 @@ def _end(process) -> None:
                            capture_output=True, timeout=CHILD_EXIT_SECONDS, check=False,
                            creationflags=subprocess.CREATE_NO_WINDOW)
         except (OSError, subprocess.SubprocessError) as exc:
-            log.warning("Could not end the reading's process tree (%s)", exc)
+            errors.keep("ocr", exc)
+            log.warning("Could not end the reading's process tree (%s)", errors.error_class(exc))
     else:
         try:
             if os.getpgid(process.pid) == process.pid:      # it leads its own group
@@ -902,9 +1027,12 @@ class Session:
             if outcome.kind == "read":
                 self.device, why = outcome.answer
             else:
-                self.device, why = DEVICE_PROCESSOR, outcome.error or "the reader did not answer"
-                if outcome.error.startswith(ReaderUnavailable.__name__):
-                    cannot_run = outcome.error.partition(": ")[2] or outcome.error
+                # The warm-up reads the firm's own self-test, never a client's
+                # file, so its words are the machine's and are said in full.
+                said = ": ".join(part for part in (outcome.error, outcome.message) if part)
+                self.device, why = DEVICE_PROCESSOR, said or "the reader did not answer"
+                if outcome.error == ReaderUnavailable.__name__:
+                    cannot_run = outcome.message or outcome.error
         else:
             try:
                 self.device, why = warm_up()
@@ -959,11 +1087,19 @@ class Session:
             try:
                 self.child = ReadingChild(processor_only=self._processor_only)
             except Exception as exc:
-                return Outcome("not_started", error=f"{exc.__class__.__name__}: {exc}",
+                # The class travels towards the row; the words are kept apart
+                # (decision 190) - except a data home the firm's own settings
+                # refused (decision 186), whose sentence is the firm's.
+                errors.keep("ocr: the reading child could not be made", exc)
+                return Outcome("not_started", error=errors.said(exc, (SettingsError,)),
                                seconds=awake_clock() - started), None
         child = self.child
         outcome = child.run(job, args, kwargs, stop, since=started if fresh else None)
         self.hear(outcome.notes)
+        # The child keeps nothing itself: what it kept crossed with its
+        # answer, and lands on this process's debug log (decision 190, Part 4).
+        for entry in outcome.kept:
+            errors.keep("ocr: the reading child", entry)
         # Replaced after a stop, a crash, running out of memory or a child
         # that never started, a fault on the card, and every
         # DOCUMENTS_PER_CHILD documents (R-4).

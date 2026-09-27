@@ -22,7 +22,7 @@ from tracker import after_install, ledger, scheduling, store
 from tracker.layout import PRIVATE_TREE, designation_file
 from tracker.locking import engagement_lock
 from tracker.records import rule_to_json
-from tracker.settings import ENV_SETTINGS_DIR, set_clients_root, settings_dir
+from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
 from tracker.templates import template_items
 
 HERE = "office-pc"
@@ -102,7 +102,7 @@ def test_setup_registers_the_schedule_on_the_designated_computer(root, windows, 
                                                 every=scheduling.DEFAULT_REPEAT_MINUTES)
     assert out.splitlines()[0] == said
     assert len(creates(windows["calls"])) == 1
-    assert scheduling.schedule_xml_path(settings_dir()).is_file()
+    assert scheduling.schedule_xml_path().is_file()
     assert json.loads(after_install.record_path().read_text(encoding="utf-8"))["reason"] == "setup"
 
 

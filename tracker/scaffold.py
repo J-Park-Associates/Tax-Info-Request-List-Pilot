@@ -73,7 +73,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tracker import door
+from tracker import door, errors
 from tracker.fsio import write_text_atomically
 from tracker.layout import (
     INBOX_DIR_NAME,
@@ -472,7 +472,9 @@ class _ReturnLine:
         try:
             return cls(path=folder, info=load_engagement_info(folder), items=load_manifest(folder))
         except Exception as exc:
-            log.warning("Could not read %s for the household's README (%s)", folder.name, exc)
+            errors.keep("scaffold", exc, name=folder.name)
+            log.warning("Could not read %s for the household's README (%s)",
+                        folder.name, errors.error_class(exc))
             return None
 
     @property
@@ -622,7 +624,8 @@ def write_readme(
         inbox.mkdir(exist_ok=True)
         write_text_atomically(readme, text, encoding="utf-8", newline="\r\n")
     except (OSError, door.DoorError) as exc:
-        log.warning("Could not refresh %s (%s); the pass goes on", readme.name, exc)
+        errors.keep("scaffold", exc, name=readme.name)
+        log.warning("Could not refresh %s (%s); the pass goes on", readme.name, errors.error_class(exc))
         return None
     return readme
 
@@ -791,10 +794,10 @@ if __name__ == "__main__":
     # A typed folder is parsed, never trusted: it must be a return's
     # place under the checked clients root (decision 188).
     from tracker import door
-
+    from tracker.layout import LayoutError
     try:
         ns.engagement_dir = door.return_dir(Path(ns.engagement_dir).absolute())
-    except ValueError as exc:
+    except (door.DoorError, LayoutError) as exc:     # the door's own sentences
         parser.error(str(exc))
 
     res = scaffold_engagement(ns.engagement_dir)

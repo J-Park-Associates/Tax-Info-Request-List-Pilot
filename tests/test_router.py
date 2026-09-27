@@ -98,7 +98,7 @@ def test_wrong_year_is_not_routed(tmp_path):
     routing = route_file(f, [*ITEMS, prior_year])
     assert routing.identifier is None
     assert f"{CONTESTED_PREFIX} A01" in routing.reason
-    assert reasons.WRONG_PERIOD.matches(routing.reason)
+    assert routing.code == reasons.WRONG_PERIOD.code
 
 
 def test_a_scan_with_a_good_name_parks_and_suggests_rather_than_filing(tmp_path, monkeypatch):
@@ -123,7 +123,7 @@ def test_a_scan_with_a_good_name_parks_and_suggests_rather_than_filing(tmp_path,
         assert routing.identifier is None, name
         assert routing.evidence == "", name        # no tier: nothing was decided
         assert routing.candidates == (), name      # nothing accepted it
-        assert reasons.NO_READABLE_TEXT.matches(routing.reason), name
+        assert routing.code == reasons.NO_READABLE_TEXT.code, name
         assert named_by(routing) == {suggested: (term,)}, name
 
 
@@ -391,8 +391,9 @@ def test_a_multi_page_scan_with_no_text_layer_is_no_more_read_than_one_page(tmp_
 def test_google_stub_review_reason_tells_the_client_what_to_do(tmp_path):
     f = tmp_path / "Donation Receipts 2025.gsheet"
     f.write_text('{"url": "https://docs.google.com/..."}', encoding="utf-8")
-    reason = route_file(f, ITEMS).reason
-    assert reasons.GOOGLE_STUB.matches(reason)
+    routing = route_file(f, ITEMS)
+    reason = routing.reason
+    assert routing.code == reasons.GOOGLE_STUB.code
     assert reasons.GOOGLE_EXPORT_HINT in reason
 
 
@@ -410,7 +411,7 @@ def test_a_matching_document_the_row_refuses_says_why(tmp_path):
     routing = route_file(f, [strict])
     assert routing.identifier is None
     assert f"{CONTESTED_PREFIX} A01" in routing.reason
-    assert reasons.TOO_SMALL.matches(routing.reason) and "50 KB" in routing.reason
+    assert routing.code == reasons.TOO_SMALL.code and "50 KB" in routing.reason
     assert routing.candidates == ("A01",)
 
 
@@ -427,7 +428,7 @@ def test_a_corrupt_pdf_is_a_review_reason_not_a_crash(tmp_path):
     f.write_bytes(b"%PDF-1.4 garbage " * 40)
     routing = route_file(f, ITEMS)
     assert routing.identifier is None
-    assert reasons.UNREADABLE_PDF.matches(routing.reason)
+    assert routing.code == reasons.UNREADABLE_PDF.code
 
 
 def test_a_name_read_for_the_reviewer_tolerates_the_run_together_spelling(tmp_path, monkeypatch):
@@ -460,7 +461,7 @@ def test_a_derived_year_never_routes_on_its_own_but_still_contests(tmp_path):
     old = text_pdf(tmp_path / "old.pdf", "Form 1098 Mortgage Interest Statement 2024")
     routing = route_file(old, items)
     assert routing.identifier is None
-    assert f"{CONTESTED_PREFIX} C01" in routing.reason and reasons.WRONG_PERIOD.matches(routing.reason)
+    assert f"{CONTESTED_PREFIX} C01" in routing.reason and routing.code == reasons.WRONG_PERIOD.code
 
     current = text_pdf(tmp_path / "new.pdf", "Form 1098 Mortgage Interest Statement 2025")
     assert route_file(current, items).identifier == "C01"
@@ -480,7 +481,7 @@ def test_a_scanners_stamp_is_not_a_text_layer(tmp_path, monkeypatch):
         f = text_pdf(tmp_path / "Form 1098 Mortgage Interest.pdf", text, pages=pages)
         routing = route_file(f, ITEMS)
         assert routing.identifier is None, text
-        assert reasons.NO_READABLE_TEXT.matches(routing.reason), text
+        assert routing.code == reasons.NO_READABLE_TEXT.code, text
         assert named_by(routing) == {"C01": ("1098",)}, text
 
 
@@ -564,7 +565,7 @@ def test_a_document_whose_year_alone_failed_names_the_row_it_looks_like(tmp_path
     assert f"{CONTESTED_PREFIX} J01" in routing.reason
     assert routing.candidates == ("J01",)
     assert routing.evidence == EVIDENCE_CONTENT
-    assert reasons.find(routing.reason) is reasons.WRONG_PERIOD
+    assert routing.code == reasons.WRONG_PERIOD.code
 
 
 def test_a_lead_never_takes_a_filing_from_the_row_that_accepted_the_file(tmp_path):
@@ -675,7 +676,7 @@ def test_a_tier_two_refusal_nothing_could_be_read_out_of_carries_the_names_evide
     locked = write_pdf(tmp_path / "W-2 Jane Smith 2025.pdf", password="secret123")
     routing = route_file(locked, ITEMS)
     assert routing.identifier is None and routing.candidates == ()
-    assert reasons.PASSWORD_PROTECTED.matches(routing.reason) and UNMATCHED in routing.reason
+    assert routing.code == reasons.PASSWORD_PROTECTED.code and UNMATCHED in routing.reason
     # Only the row its name pointed at, with the refusal beside it.
     assert set(routing.evidence_record) == {"A01"}
     assert [(e.rule, e.term, e.where) for e in routing.evidence_record["A01"]] == [
@@ -829,7 +830,7 @@ def test_a_k_1_from_an_issuer_nobody_listed_parks(tmp_path):
     routing = route_file(f, rows)
 
     assert routing.identifier is None
-    assert reasons.ISSUER_NOT_NAMED.matches(routing.reason)
+    assert routing.code == reasons.ISSUER_NOT_NAMED.code
     assert "F02, F03" in routing.reason
     # The row that did accept it leads the shortlist: it says what the
     # document is. The issuer rows follow, so a person sees which
@@ -943,7 +944,7 @@ def test_a_w2_whose_ocr_lost_one_phrase_parks_with_a01_on_its_shortlist(tmp_path
 
     assert routing.identifier is None
     assert routing.candidates == (), "a suggestion is never a candidate"
-    assert reasons.find(routing.reason) is reasons.SHOWS_ITS_FORM_NUMBER
+    assert routing.code == reasons.SHOWS_ITS_FORM_NUMBER.code
     assert routing.reason.startswith(UNMATCHED), "it still matched no request"
     assert list(routing.evidence_record) == ["A01"]
     [suggestion] = _shortlist(routing, items)
@@ -962,7 +963,7 @@ def test_a_garbled_w2_named_w2_gets_its_file_name_as_the_hint(tmp_path):
     routing = _read_by_ocr(tmp_path, "Employer W2.pdf", GARBLED, items)
 
     assert routing.identifier is None and routing.candidates == ()
-    assert reasons.find(routing.reason) is reasons.NAME_POINTS_AT
+    assert routing.code == reasons.NAME_POINTS_AT.code
     assert [e.rule for e in routing.evidence_record["A01"]] == [RULE_FILENAME]
     [suggestion] = _shortlist(routing, items, "Employer W2.pdf")
     assert suggestion.identifier == "A01" and "the file name says W-2" in suggestion.reason
@@ -990,7 +991,7 @@ def test_a_near_miss_is_never_filed(tmp_path, name, text):
     routing = _read_by_ocr(tmp_path, name, text, only_a01)
     assert routing.identifier is None and routing.also == ()
     assert routing.candidates == ()
-    assert reasons.find(routing.reason) in (reasons.SHOWS_ITS_FORM_NUMBER, reasons.NAME_POINTS_AT)
+    assert routing.code in (reasons.SHOWS_ITS_FORM_NUMBER.code, reasons.NAME_POINTS_AT.code)
 
 
 def test_a_near_miss_on_the_file_name_says_the_file_name_not_the_page(tmp_path):
@@ -999,7 +1000,7 @@ def test_a_near_miss_on_the_file_name_says_the_file_name_not_the_page(tmp_path):
     so: "file name", never that the page shows a form number it did not."""
     routing = _read_by_ocr(tmp_path, "Employer W2.pdf", GARBLED, _catalog_1040())
     assert "file name" in routing.reason
-    assert not reasons.SHOWS_ITS_FORM_NUMBER.matches(routing.reason)
+    assert routing.code != reasons.SHOWS_ITS_FORM_NUMBER.code
     assert routing.reason.startswith(UNMATCHED)
     assert routing.reason == reasons.NAME_POINTS_AT.format(listed="A01")
 

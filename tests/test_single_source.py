@@ -14,7 +14,9 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import child_env
 from tracker.content_check import RETIRED_CACHE_FILENAME
+from tracker.reasons import OTHER_MACHINE
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -76,7 +78,10 @@ def test_the_shell_and_the_preload_agree_on_every_ipc_channel():
     # the launch step finished having run, and the page listens for it.
     sent = set(re.findall(r'const [A-Z_]+_CHANNEL = "([a-z-]+)"', read("app/main.js")))
     heard = set(re.findall(r'ipcRenderer\.on\("([a-z-]+)"', read("app/preload.js")))
-    assert sent == heard == {"after-install-done"}
+    assert sent == {"after-install-done"} and sent <= heard
+    # With the pass's progress channel (decision 193), those are all it hears.
+    sent |= set(re.findall(r'event\.sender\.send\("([a-z-]+)"', read("app/main.js")))
+    assert sent == heard == {"after-install-done", "tracker-progress"}
     assert "webContents.send(LAUNCH_DONE_CHANNEL)" in read("app/main.js")
     assert "window.tracker.onAfterInstallDone(" in read("app/renderer/app.js")
 
@@ -294,22 +299,191 @@ def test_ci_tests_the_python_floor_pyproject_declares():
 def test_gitignore_knows_every_runtime_file_python_writes_outside_the_repo():
     """The store counts, and so do the two files SQLite keeps beside it.
 
-    It lives beside the settings file, which in a source checkout is the
-    repository root: a developer who runs the app, or a subprocess test
-    that does not name a store of its own, writes one into the tree.
+    Since decision 186 it lives in the tracker's data folder, never in a
+    checkout - but a checkout from before it may still hold one, and so
+    may the run log. A temp the tracker writes beside a target
+    (``fsio.TEMP_SUFFIX``) and the real corpus's expectations file, which
+    names the firm's own documents, are ignored too, and none is tracked.
     """
+    import fnmatch
+    import subprocess
+
+    from tracker.fsio import TEMP_SUFFIX
+    from tracker.progress import PASSES_DIRNAME
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
     from tracker.runner import LOG_FILENAME, STATUS_PAGE_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
-    from tracker.settings import SETTINGS_FILENAME
+    from tracker.settings import (
+        ERROR_LOG_FILENAME,
+        EXPECTATIONS_FILENAME,
+        OCR_SCRATCH_DIRNAME,
+        SETTINGS_FILENAME,
+    )
     from tracker.store import STORE_FILENAME, STORE_SHM_FILENAME, STORE_WAL_FILENAME
 
     ignored = [line.strip() for line in read(".gitignore").splitlines()
                if line.strip() and not line.startswith("#")]
     for name in (DRAFT_FILENAME, NEW_DRAFT_FILENAME, LOG_FILENAME, STATUS_PAGE_FILENAME,
                  SCHEDULE_XML_FILENAME, SETTINGS_FILENAME,
-                 STORE_FILENAME, STORE_WAL_FILENAME, STORE_SHM_FILENAME):
+                 STORE_FILENAME, STORE_WAL_FILENAME, STORE_SHM_FILENAME,
+                 # Decision 193: the error log, its rotated copies and the
+                 # passes folder, beside the store.
+                 ERROR_LOG_FILENAME, f"{ERROR_LOG_FILENAME}.*", PASSES_DIRNAME + "/",
+                 f"{OCR_SCRATCH_DIRNAME}/", f"*{TEMP_SUFFIX}", EXPECTATIONS_FILENAME):
         assert ignored.count(name) == 1, name
+    tracked = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True,
+                             check=True).stdout.splitlines()
+    assert [rel for rel in tracked
+            if fnmatch.fnmatch(Path(rel).name, f"*{TEMP_SUFFIX}")
+            or Path(rel).name == EXPECTATIONS_FILENAME] == []
+
+
+def test_the_projects_agent_settings_can_be_committed_and_nothing_else_under_claude():
+    """Decision 186: ``.claude/settings.json`` can be tracked, so the
+    project's agent settings carry a deny list (a guard rail, not a wall);
+    a person's own settings and Claude Code's worktrees stay ignored."""
+    import subprocess
+
+    def ignored(rel: str) -> int:
+        return subprocess.run(["git", "check-ignore", "-q", "--no-index", rel], cwd=REPO).returncode
+
+    assert ignored(".claude/settings.json") == 1
+    assert ignored(".claude/settings.local.json") == 0
+    assert ignored(".claude/worktrees/x/y") == 0
+
+
+def _deny_list_from_the_constants() -> list[str]:
+    """The agent deny list, spelled from the constants that own each name
+    (decision 186). A folder is never denied by its bare name alone: a
+    person's own folders share names like the firm's or ``Clients`` (the
+    office's Claude workspace sits in a folder named like the firm's tree,
+    and a bare rule for it refused every session its own files - the undoing
+    of #133 by #134). So a client folder is named by the tree's shape under
+    the clients root - a household, then a year, then a return or the
+    inbox - and only a name no person's folder carries (``ocr-scratch``)
+    stands alone."""
+    from tracker.checkpoint import CHECKPOINT_FILENAME, SET_ASIDE_SUFFIX
+    from tracker.content_check import RETIRED_CACHE_FILENAME
+    from tracker.layout import CLIENTS_TREE, INBOX_DIR_NAME, OPENED_DIR_NAME, PRIVATE_TREE, RETURN_NAME_PATTERN
+    from tracker.ledger import LEDGER_FILENAME
+    from tracker.registry import LEGACY_MANIFEST_FILENAME
+    from tracker.reminder import DRAFT_FILENAME
+    from tracker.runner import LAST_PASS_FILENAME, LOG_FILENAME, PASS_ORDER_FILENAME, STATUS_PAGE_FILENAME
+    from tracker.settings import DATA_HOME_NAME, ERROR_LOG_FILENAME, EXPECTATIONS_FILENAME, OCR_SCRATCH_DIRNAME
+    from tracker.store import RECOVERED_DIR, STORE_FILENAME, STORE_SHM_FILENAME, STORE_WAL_FILENAME
+    from tracker.view import VIEW_FILENAME
+
+    aside = SET_ASIDE_SUFFIX.split("{", 1)[0] + "*"
+    stem, ext = DRAFT_FILENAME.rsplit(".", 1)
+    year = "[12][0-9][0-9][0-9]"
+    a_return = RETURN_NAME_PATTERN.format(form="[0-9]*", client="*")    # every form id begins with a digit
+    places = [f"//c/Users/*/AppData/Local/{DATA_HOME_NAME}/**", f"~/.local/state/{DATA_HOME_NAME}/**",
+              "//g/Shared drives/**",
+              f"//**/{CLIENTS_TREE}/*/{INBOX_DIR_NAME}/**", f"//**/{CLIENTS_TREE}/*/{year}/**",
+              f"//**/{PRIVATE_TREE}/*/{year}/{a_return}/**", f"//**/{PRIVATE_TREE}/*/{year}/{OPENED_DIR_NAME}/**",
+              f"//**/{OCR_SCRATCH_DIRNAME}/**",
+              f"//**/{RECOVERED_DIR}/*__*.jsonl"]    # recover's exports, named by the return's path
+    files = [STORE_FILENAME, STORE_WAL_FILENAME, STORE_SHM_FILENAME, STORE_FILENAME + aside,
+             CHECKPOINT_FILENAME, CHECKPOINT_FILENAME + "-*", CHECKPOINT_FILENAME + ".*",
+             LEDGER_FILENAME, LOG_FILENAME, LOG_FILENAME + ".*", ERROR_LOG_FILENAME, ERROR_LOG_FILENAME + ".*",
+             LAST_PASS_FILENAME, LAST_PASS_FILENAME + ".*", PASS_ORDER_FILENAME, f"{stem}*.{ext}",
+             STATUS_PAGE_FILENAME, VIEW_FILENAME, EXPECTATIONS_FILENAME, RETIRED_CACHE_FILENAME,
+             LEGACY_MANIFEST_FILENAME]
+    paths = places + [f"//**/{name}" for name in files]
+    return [f"{tool}({path})" for path in paths for tool in ("Read", "Edit")]
+
+
+def _denied(deny: list[str], path: str) -> bool:
+    """Whether a Read rule of ``deny`` matches the absolute ``path`` (``/c/...``),
+    read the way the rules are written - gitignore's: ``**/`` any folders,
+    ``*`` within one name, ``[...]`` one character of a set - and without
+    regard to case, as Windows reads a path, so the test errs toward
+    "refused" when it asks that a person's own folder stays readable."""
+    for rule in deny:
+        if not rule.startswith("Read(//"):
+            continue
+        pattern, out, i = rule[len("Read(/"):-1], "", 0
+        while i < len(pattern):
+            if pattern.startswith("**/", i):
+                out, i = out + "(?:[^/]*/)*", i + 3
+            elif pattern.startswith("/**", i) and i + 3 == len(pattern):
+                out, i = out + "/.*", i + 3
+            elif pattern[i] == "*":
+                out, i = out + "[^/]*", i + 1
+            elif pattern[i] == "[":
+                end = pattern.index("]", i)
+                out, i = out + pattern[i:end + 1], end + 1
+            else:
+                out, i = out + re.escape(pattern[i]), i + 1
+        if re.fullmatch(out, path, flags=re.IGNORECASE):
+            return True
+    return False
+
+
+def test_the_agent_deny_list_names_the_data_home_and_every_file_that_names_a_client():
+    """Decision 186 (Jason's answer A to its Q1): the project's agent
+    settings deny Claude's own file tools, reading and editing alike, the
+    data home, the client Shared Drive, a client tree by its shape under the
+    clients root, and every file the tracker writes that names a client,
+    wherever on the machine it sits - the list equal, rule for rule, to one
+    spelled from the constants, so a rule dropped, widened, narrowed or
+    respelled fails here; and ``.github/CODEOWNERS`` routes ``/.claude/`` to
+    the owner. A guard rail, not a wall (security principle 8): a deny rule
+    stops the agent's file tools on the spellings it lists, a shell command
+    can still read the file, and the wall is the separate Windows account
+    the office's AI tooling runs under."""
+    deny = json.loads(read(".claude/settings.json"))["permissions"]["deny"]
+    assert deny == _deny_list_from_the_constants()
+    owners = [line.split()[0] for line in read(".github/CODEOWNERS").splitlines()
+              if line.strip() and not line.startswith("#")]
+    assert "/.claude/" in owners, owners      # the list is the owner's to review
+
+
+def test_the_deny_list_never_refuses_a_persons_own_folder_that_shares_a_client_folders_name():
+    """#133 landed a rule for the firm's tree by its bare name, and the
+    office's Claude workspace sits in a folder of that same name: every
+    session was refused its own START HERE, the Patches folder and the
+    checkout, and #134 undid it. So no folder is denied by its name alone:
+    a person's folders named like the firm's tree, ``Clients``, the inbox or
+    the review folder - with no household, year and return beneath them -
+    stay readable, while the same trees in the clients root's shape, on any
+    drive, are refused."""
+    from tracker.layout import (
+        CLIENTS_TREE,
+        INBOX_DIR_NAME,
+        OPENED_DIR_NAME,
+        PREPARED_DIR_NAME,
+        PRIVATE_TREE,
+        RETURN_NAME_PATTERN,
+        REVIEW_DIR_NAME,
+    )
+    from tracker.store import RECOVERED_DIR
+
+    deny = json.loads(read(".claude/settings.json"))["permissions"]["deny"]
+    workspace = f"/c/Users/staff/{PRIVATE_TREE}"
+    own = [f"{workspace}/START HERE.md", f"{workspace}/Patches/0001-fix.patch",
+           f"{workspace}/Claude/notes/2026/plan.md",
+           f"{workspace}/Handoffs/2026/CODE UPDATE - 09-27/notes.md",
+           f"{workspace}/Tax-Info-Request-List/tracker/runner.py",
+           f"{workspace}/Tax-Info-Request-List/docs/runbook.md",
+           f"/c/Users/staff/Documents/{CLIENTS_TREE}/list.txt",
+           f"/c/Users/staff/{INBOX_DIR_NAME}/scan.pdf",
+           f"/c/Users/staff/Desktop/{REVIEW_DIR_NAME}/todo.txt",
+           "/c/Users/staff/Documents/recovered/photo.jpg", "/c/Users/staff/Documents/passes/ticket.pdf"]
+    for path in own:
+        assert not _denied(deny, path), path
+    root = "/e/Firm"
+    a_return = RETURN_NAME_PATTERN.format(form="1040", client="Sample Client")
+    client = [f"{root}/{CLIENTS_TREE}/Sample Household/{INBOX_DIR_NAME}/W-2.pdf",
+              f"{root}/{CLIENTS_TREE}/Sample Household/2025/W-2.pdf",
+              f"{root}/{PRIVATE_TREE}/Sample Household/2025/{a_return}/{PREPARED_DIR_NAME}/W-2.pdf",
+              f"{root}/{PRIVATE_TREE}/Sample Household/2025/{a_return}/{REVIEW_DIR_NAME}/scan.pdf",
+              f"{root}/{PRIVATE_TREE}/Sample Household/2025/{OPENED_DIR_NAME}/letter.pdf",
+              f"/c/Tools/tracker/{RECOVERED_DIR}/{PRIVATE_TREE}__Sample Household__2025__"
+              f"{a_return}-2026-09-26-120000.jsonl",
+              "/g/Shared drives/Any Drive/anything.pdf"]
+    for path in client:
+        assert _denied(deny, path), path
 
 
 def test_every_file_beside_the_store_is_ignored_by_git():
@@ -356,6 +530,18 @@ def test_gitignore_knows_both_client_trees_and_every_file_written_inside_them():
     for name in (f"{CLIENTS_TREE}/", f"{PRIVATE_TREE}/", f"{OPENED_DIR_NAME}/", LEDGER_FILENAME,
                  LOCK_FILENAME, README_LOCK_FILENAME, README_NAME, VIEW_FILENAME):
         assert ignored.count(name) == 1, name
+
+
+def test_the_tools_ask_one_rule_whether_a_path_is_inside_the_repository():
+    """Decision 185: ``settings.inside_the_app()`` is the one answer to
+    "inside the repository", judged by the folder itself as well as its
+    spelling; no tool spells the rule a second time."""
+    spelled = re.compile(r"is_relative_to\(ROOT\)|ROOT in .*\.parents|== ROOT\b")
+    for path in sorted((REPO / "tools").glob("*.py")):
+        text = path.read_text(encoding="utf-8")
+        assert not spelled.search(text), path.name
+    for name in ("backtest.py", "learned_keywords.py"):
+        assert "inside_the_app(" in read(f"tools/{name}"), name
 
 
 def test_openpyxl_is_imported_only_to_read_a_clients_spreadsheet():
@@ -475,9 +661,9 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
                     UNSCANNED_LABEL, *[h for h in HEADERS if " " in h]):
         assert literal not in html, literal
     assert 'min="' not in html and 'max="' not in html
-    # Every word the household's card, the wizard's household step and the
+    # Every word the household's card, the dialog's household step and the
     # misfit list show is the API's too, and so are the two trees and the
-    # two patterns the wizard's previews fill (decision 125).
+    # two patterns the dialog's previews fill (decision 125).
     import tracker.api as api_module
 
     words = api_module._vocab()
@@ -487,7 +673,7 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
         assert f'"{literal}"' not in js and f"'{literal}'" not in js, literal
         assert f">{literal}<" not in html, literal
     # Decision 142 (its review, R1): every word it adds is the API's - the
-    # status of a row nobody asked for, the count beside it, the wizard's
+    # status of a row nobody asked for, the count beside it, the dialog's
     # heading and note, the folded table's name and heading, the rollover's
     # label and line, the one refusal, the column's help and the rollover's
     # notes. None is typed in the renderer or the page, quoted or not.
@@ -500,14 +686,14 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
              api_module.NEW_NOT_ASKED_CARRIED.split("{n}")[1].split(" - ")[0].strip(),
              rollover.NEW_NOT_ASKED_NOTE, rollover.NOT_ASKED_NOTE,
              rollover.NOW_ASKED_NOTE.split("{")[0].strip(), '"' + _slug(NOT_ASKED_LABEL) + '"',
-             api_module.NOT_ASKED_SECTION.split("{")[0].strip() + " (")
+             api_module.SET_ASIDE_SECTION.split("{")[0].strip())
     for literal in added:
         assert literal and literal not in js and literal not in html, literal
     for key in ("not_asked_label", "not_asked_key", "ask_the_client", "ask_the_client_note",
                 "not_asked_table_label", "roll_template_label", "nothing_asked",
                 "new_not_asked_carried", "origin_new"):
         assert f"vocab.{key}" in js, key
-    assert "vocab.editor.not_asked_heading" in js and "vocab.editor.yes_no_fields" in js
+    assert "vocab.set_aside.heading" in js and "vocab.editor.yes_no_fields" in js
     # Decision 131: the room's heading and its two sentences are the API's.
     # The renderer fills neither pattern: the set-root reply carries each
     # return's sentences already filled.
@@ -519,18 +705,345 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
 
 
 def test_the_renderers_one_list_writer_flattens_what_it_is_handed():
-    """Half the callers build a list as "one fixed node, then a mapped
+    """Half the callers once built a list as "one fixed node, then a mapped
     array", and ``replaceChildren`` turns an array it is handed into the
     text ``[object HTMLOptionElement],...`` instead of its elements - so
-    the wizard's list of existing households and the rollover's list of
-    form templates each came out holding one option and a line of noise.
-    One flatten in the writer, not a rule every call site has to remember.
+    the old list of existing households and the rollover's list of form
+    templates each came out holding one option and a line of noise. One
+    flatten in the writer, not a rule every call site has to remember; it
+    stays for any caller that builds a list that way.
     """
     js = read("app/renderer/app.js")
     body = js.split("function show(id, nodes) {", 1)[1].split("}", 1)[0]
     assert "nodes.flat(" in body, body
-    # And the pattern the flatten exists for is still written this way.
-    assert re.search(r'show\("hh-existing", \[\s*\n.*\n\s*households\.map\(', js)
+
+
+# ------------------ decision 196: Roll forward and Add a return ----
+
+
+def _js_function(js: str, header: str) -> str:
+    """One function of ``app.js`` exactly as it is spelled, braces matched."""
+    start = js.index(header)
+    depth = 0
+    for at in range(js.index("{", start + len(header) - 1), len(js)):
+        depth += {"{": 1, "}": -1}.get(js[at], 0)
+        if depth == 0:
+            return js[start:at + 1]
+    raise AssertionError(f"{header} in app.js has no closing brace")
+
+
+def test_the_renderer_keeps_no_hidden_household_choice():
+    """D1 was a household picked on one page into a variable the roll page
+    never read. The wizard is gone whole, and with it every place a
+    household could be chosen except the card being looked at: the one
+    household a new return is added to by path is set from that card, and
+    only there."""
+    js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
+    for name in ("chosenHousehold", "rollFor", "rollHousehold", "priorsOfHousehold",
+                 "openWizard"):
+        assert not re.search(rf"\b{name}\b", js), name
+    assert 'call(["priors"]' not in js
+    for ident in ("hh-existing", "ro-household", "ro-year", "wiz-prior", "wp-new-client",
+                  "wf-back", 'btn-new"'):
+        assert ident not in js and ident not in html, ident
+    assigned = re.findall(r"\baddingTo = ([^;]+);", js)
+    assert len(assigned) == 4, assigned          # the declaration, and the three below
+    opening = _js_function(js, "async function openAddReturn(hh) {")
+    fresh = _js_function(js, "async function openNewHousehold() {")
+    closing = _js_function(js, "function closeNewReturn() {")
+    assert re.findall(r"\baddingTo = ([^;]+);", opening) == ["hh.path"]
+    assert re.findall(r"\baddingTo = ([^;]+);", fresh) == ["null"]
+    assert re.findall(r"\baddingTo = ([^;]+);", closing) == ["null"]
+    assert "let addingTo = null;" in js
+
+
+def _a_household(name: str, year: int) -> dict:
+    """A fabricated household payload as ``state.household`` carries it:
+    two returns of the open year, one already rolled on, one retired."""
+    home = f"/fabricated/{name}"
+    def one(label, **more):
+        return {"label": f"{name} {year} {label}", "path": f"{home}/{year}/{label}", "year": year,
+                "active": True, "superseded_by": None, "rollable": True, "form": "1040",
+                "people": [f"{label} person"], **more}
+    return {"name": name, "path": home, "open_years": [year], "roll_year": year + 1,
+            "returns": [one("1040 - One"), one("1120S - Two", form="1120S"),
+                        one("1040 - Rolled", superseded_by="later", rollable=False),
+                        one("1040 - Retired", active=False, rollable=False)]}
+
+
+def test_roll_forward_rolls_the_household_on_screen_and_names_no_other(tmp_path):
+    """The roll call is one pure function of the household on screen: run
+    as written, with another household's choices left over, it names only
+    the household it was handed - its open-year return, its ticked returns,
+    the year the card named - and nothing when no roll is offered."""
+    import shutil
+    import subprocess
+
+    import tracker.api as api_module
+
+    js = read("app/renderer/app.js")
+    body = _js_function(js, "function rollHouseholdCall(hh, choice) {")
+    # The static half, which always runs: the one roll call is built here,
+    # and this function reads nothing but what it is handed.
+    assert js.count('"roll-household"') == 1 and '"roll-household"' in body
+    for name in ("households", "active", "lastState", "document", "$("):
+        assert not re.search(rf"(?<![\w.]){re.escape(name)}", body), name
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not on PATH (CI installs it); the roll call's source is still held by name")
+    here, there = _a_household("Alpha Household", 2026), _a_household("Beta Household", 2026)
+    a_ticked, a_unticked = here["returns"][0]["path"], here["returns"][1]["path"]
+    b_first = there["returns"][0]["path"]
+    script = tmp_path / "roll_call.js"
+    script.write_text(
+        "const input = JSON.parse(require('fs').readFileSync(0, 'utf8'));\n"
+        "const vocab = { engagement_flag: input.flag };\n"
+        f"{body}\n"
+        "const choice = (c) => c && { household: c.household, unticked: new Set(c.unticked),\n"
+        "                              forms: new Map(c.forms) };\n"
+        "process.stdout.write(JSON.stringify(input.cases.map(\n"
+        "  ([hh, c]) => rollHouseholdCall(hh, choice(c)))));\n",
+        encoding="utf-8", newline="\n")
+    leftover = {"household": there["path"], "unticked": [a_ticked], "forms": [[b_first, "1065"]]}
+    own = {"household": here["path"], "unticked": [a_unticked], "forms": [[a_ticked, "1040"]]}
+    cases = [[here, leftover], [here, own], [{**here, "roll_year": None}, own]]
+    done = subprocess.run([node, str(script)], capture_output=True, text=True, encoding="utf-8",
+                          input=json.dumps({"flag": api_module.ENGAGEMENT_FLAG, "cases": cases}),
+                          timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    with_leftover, with_own, offered_none = json.loads(done.stdout)
+
+    open_year = [r["path"] for r in here["returns"] if r["rollable"]]
+    for argv, spec in (with_leftover, with_own):
+        assert argv[:2] == ["roll-household", api_module.ENGAGEMENT_FLAG]
+        assert argv[2] in open_year
+        assert spec["year"] == here["roll_year"]
+        assert all(one["prior"] in open_year for one in spec["returns"])
+        assert "Beta" not in json.dumps([argv, spec])
+    # Beta's leftover untick and pick are nobody's here: every open-year
+    # return is ticked, each with its own recorded form.
+    assert with_leftover[1]["returns"] == [{"prior": a_ticked, "form": "1040"},
+                                           {"prior": a_unticked, "form": "1120S"}]
+    # Alpha's own untick leaves that return out, to be retired by the API.
+    assert with_own[1]["returns"] == [{"prior": a_ticked, "form": "1040"}]
+    assert offered_none is None
+
+
+def test_the_card_hands_the_roll_call_the_household_it_shows_and_no_other(tmp_path):
+    """D1 at the caller: the card's roll button builds its call from the
+    household on screen, and from nothing else in reach. Run as written,
+    with another household first in the list the page holds, it hands
+    ``rollHouseholdCall`` the household on screen - and nothing at all
+    when no household is on screen."""
+    import shutil
+    import subprocess
+
+    js = read("app/renderer/app.js")
+    body = _js_function(js, "async function rollFromCard() {")
+    # The static half: one call site, in this function, fed from the state
+    # the card was drawn from, and no list of households or returns read.
+    calls = [m.start() for m in re.finditer(r"(?<!function )\brollHouseholdCall\(", js)]
+    assert len(calls) == 1 and "rollHouseholdCall(" in body, calls
+    assert "const hh = lastState && lastState.household;" in body
+    for name in ("households", "engagements"):
+        assert not re.search(rf"\b{name}\b", body), name
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not on PATH (CI installs it); the caller's source is still held by name")
+    here, there = _a_household("Alpha Household", 2026), _a_household("Beta Household", 2026)
+    script = tmp_path / "roll_caller.js"
+    script.write_text(
+        "const input = JSON.parse(require('fs').readFileSync(0, 'utf8'));\n"
+        "const vocab = { household: {} };\n"
+        "const handed = [];\n"
+        "let lastState = null;\n"
+        "const households = input.households;\n"
+        "const engagements = input.households.map((hh) => ({ path: hh.returns[0].path }));\n"
+        "function gatherRollChoice(hh) { return { household: hh.path, unticked: new Set(),\n"
+        "                                         forms: new Map() }; }\n"
+        "function rollHouseholdCall(hh, choice) {\n"
+        "  handed.push([hh.path, choice.household]); return null; }\n"
+        f"{body}\n"
+        "(async () => {\n"
+        "  for (const shown of input.shown) { lastState = { household: shown }; await rollFromCard(); }\n"
+        "  process.stdout.write(JSON.stringify(handed));\n"
+        "})();\n",
+        encoding="utf-8", newline="\n")
+    done = subprocess.run([node, str(script)], capture_output=True, text=True, encoding="utf-8",
+                          input=json.dumps({"households": [there, here],
+                                            "shown": [here, None, there]}),
+                          timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    assert json.loads(done.stdout) == [[here["path"], here["path"]],
+                                       [there["path"], there["path"]]]
+
+
+def test_the_roll_fold_says_what_unticking_does_and_a_paused_card_offers_neither_entry():
+    """The retire-on-untick sentence (decision 126) is drawn inside the
+    fold, beside the ticks and before the button, naming the year; the
+    fold is hidden whenever the API offers no roll (a paused household
+    among them), and Add a return is hidden while the household is paused
+    (decision 188), because then the pause is the work."""
+    js = read("app/renderer/app.js")
+    fold = _js_function(js, "function renderRollFold(hh) {")
+    assert 'fold.classList.toggle("hidden", !hh.roll_year);' in fold
+    note = fold.index('fill(words.rollover_unticked, { year })')
+    assert fold.index('className: "roll-tick"') < note < fold.index('id: "btn-roll"')
+    card = _js_function(js, "function renderHousehold(state) {")
+    assert "renderRollFold(hh);" in card
+    assert '$("btn-add-return").classList.toggle("hidden", Boolean(pause.sentence));' in card
+    assert "const pause = hh.pause || {};" in card
+
+
+#: The words decision 196 adds under ``vocab.household``.
+ROLL_AND_ADD_KEYS = ("roll_forward_to", "roll_ticked", "roll_intro", "roll_no_template",
+                     "roll_done", "roll_carried", "roll_unfiled", "roll_retired_line",
+                     "roll_forms_unloaded", "add_return", "add_return_title", "new_intro",
+                     "form_step_title", "form_step_note", "change_form", "change_household",
+                     "items_title", "create_return", "return_created", "empty_root")
+
+
+def test_every_word_of_roll_forward_add_a_return_and_new_household_is_the_apis():
+    """Every visible word of the roll fold, Add a return and New household
+    comes from the API's vocabulary: each is read by its key, none is typed
+    in the renderer or the page, and the wizard's own typed words are gone
+    from the app and from the docs that walked a person through it."""
+    import tracker.api as api_module
+
+    js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
+    words = api_module._vocab()["household"]
+    assert "existing" not in words
+    for key in ROLL_AND_ADD_KEYS:
+        assert isinstance(words[key], str) and words[key], key
+        assert f"vocab.household.{key}" in js or f"words.{key}" in js, key
+        literal = words[key]
+        stem = literal.split("{")[0].strip()
+        if stem:
+            for quoted in (f'"{stem}', f"'{stem}", f"`{stem}", f">{stem}"):
+                assert quoted not in js and quoted not in html, (key, quoted)
+        else:
+            # A text that opens on a placeholder is typed, when it is, after
+            # a `${...}` inside a template string: its words after the first
+            # placeholder are looked for bare.
+            bare = literal.split("}")[1].split("{")[0].strip()
+            assert bare not in js and bare not in html, (key, bare)
+    for typed in ("New Engagement", "Create Engagement", "Roll Forward<", "returning client",
+                  "No engagements under",
+                  "No template — carry", "return(s) rolled into", "request(s) carried",
+                  "file(s) sent last year were never filed"):
+        assert typed not in js and typed not in html, typed
+    for doc in ("docs/runbook.md", "README.md", "docs/workflow.md"):
+        assert "New Engagement" not in read(doc), doc
+
+
+def test_a_refused_create_stays_in_the_dialog():
+    """A refused create - 188's duplicate household name among them - is
+    shown in the dialog's own note, where it stays until a field is edited
+    or the dialog closed, so nothing typed is lost; a toast would vanish."""
+    js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
+    body = _js_function(js, "async function createEngagement() {")
+    caught = body.split("} catch (err) {", 1)[1].split("} finally {", 1)[0]
+    # A1's split (decision 196, the restack review's S2): a refusal stays in
+    # the dialog, in failureSentence's words; anything else is a notice.
+    refusal, other = caught.split("} else {", 1)
+    assert 'if (err.failure && err.failure.kind === "refused") {' in refusal, caught
+    assert '$("ne-note").textContent = failureSentence(err);' in refusal, caught
+    assert other.strip().startswith("failed(err);"), caught
+    assert "err.message" not in caught and "toast(" not in caught, caught
+    assert '<p id="ne-note" class="rem-hold hidden" role="alert"></p>' in html
+
+
+def test_a_refused_create_is_said_in_the_dialog_and_a_locked_one_is_a_notice(tmp_path):
+    """A1's split, run as written (decision 196, the restack review's S2):
+    ``createEngagement``'s refusal lands in the dialog's note in the API's
+    sentence and raises no notice; a locked create lands in the notices
+    area and leaves the note alone; an error of the page's own is said by
+    its class there, never its text."""
+    harness = """
+const classes = () => { const on = new Set(["hidden"]);
+  return { remove: (c) => on.delete(c), contains: (c) => on.has(c) }; };
+const page = { "tmpl-list": { querySelectorAll: () => [] }, "ne-create": { disabled: false },
+               "ne-note": { textContent: "", classList: classes() } };
+const $ = (id) => page[id] || { value: "" };
+const templates = [];
+const customItems = [{ identifier: "X01", document: "Letter from the county" }];
+const wizardPeople = [];
+const selectedForm = "1040";
+const householdSpec = () => ({});
+const personSpec = (p) => p;
+const call = async () => { throw THROWN; };
+const toast = (text) => { throw new Error(`toasted: ${text}`); };
+const vocab = { nothing_asked: "", shell: { page_error: "Own error ({kind})." } };
+const fill = (text, values) => text.replace("{kind}", values.kind);
+const done = { notices: [], logged: 0 };
+const window = { tracker: { logError: () => { done.logged += 1; } } };
+const notice = (failure) => done.notices.push([failure.sentence, failure.kind]);
+createEngagement().then(() => process.stdout.write(JSON.stringify({
+  ...done, note: page["ne-note"].textContent, shown: !page["ne-note"].classList.contains("hidden"),
+  enabled: !page["ne-create"].disabled })));
+"""
+    headers = ("async function createEngagement() {", "function failed(err, retry) {",
+               "function failureSentence(err) {")
+
+    def thrown(sentence: str, kind: str) -> str:
+        return (f"Object.assign(new Error({json.dumps(sentence)}), {{ failure: "
+                f"{{ sentence: {json.dumps(sentence)}, kind: {json.dumps(kind)}, identifier: null }} }})")
+
+    refused = "A household of that name is already on the list (fabricated)."
+    seen = _run_renderer(tmp_path, "create_refused", headers, harness.replace("THROWN", thrown(refused, "refused")))
+    assert seen == {"notices": [], "logged": 0, "note": refused, "shown": True, "enabled": True}
+    locked = "Another pass holds this household (fabricated)."
+    seen = _run_renderer(tmp_path, "create_locked", headers, harness.replace("THROWN", thrown(locked, "locked")))
+    assert seen == {"notices": [[locked, "locked"]], "logged": 0, "note": "", "shown": False, "enabled": True}
+    seen = _run_renderer(tmp_path, "create_own", headers,
+                         harness.replace("THROWN", 'new TypeError("x is undefined at C:/private")'))
+    assert seen == {"notices": [["Own error (TypeError).", "failed"]], "logged": 1, "note": "",
+                    "shown": False, "enabled": True}
+
+
+def test_new_households_refusal_leads_back_to_the_name_field_with_everything_typed_kept():
+    """188's duplicate-name refusal is read on the request list, and its
+    advice is to change the household's name. New household's request list
+    carries the way back to the name field, and Continue returns to the list
+    as it was left: neither clears a field, the form, the ticks or the
+    people. Add a return has no household step, so it has no such button."""
+    js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
+    assert '<button id="wi-household" class="wiz-back hidden"></button>' in html
+    assert "vocab.household.change_household" in js
+    chosen = _js_function(js, "function chooseForm(formId) {")
+    assert '$("wi-household").classList.toggle("hidden", Boolean(addingTo));' in chosen
+    back = js.split('$("wi-household").addEventListener("click", () => {', 1)[1].split("});", 1)[0]
+    assert 'showStep("household");' in back and '$("hh-name").focus();' in back, back
+    assert "renderHouseholdStep" not in back and "chooseForm" not in back, back
+    assert ('$("wh-next").addEventListener("click", () => showStep(selectedForm ? "items" : "form"));'
+            in js)
+
+
+def test_a_catalog_that_will_not_load_is_said_in_the_roll_fold_and_the_page_is_drawn():
+    """The roll fold's form pick needs the catalog; a ``templates`` call that
+    fails is said there, in the API's words, and the card is drawn all the
+    same. No pick is drawn then, so the roll keeps each return's recorded
+    form instead of sending "no template" for every one."""
+    js = read("app/renderer/app.js")
+    # Start-up loads the catalog once (decision 194: a switch reads the
+    # state alone, so the catalog is not read again on every click).
+    starting = _js_function(js, "async function bootstrap(preferPath) {")
+    guarded = starting.split("try {\n      await loadForms();\n    } catch (err) {", 1)
+    assert len(guarded) == 2, starting
+    # Said in the words a notice would use: a page error by its class alone
+    # (principle 7), never its message.
+    assert guarded[1].lstrip().startswith("formsUnloaded = failureSentence(err);"), guarded[1]
+    assert "err.message" not in guarded[1].split("}", 1)[0], guarded[1]
+    fold = _js_function(js, "function renderRollFold(hh) {")
+    said = fold.index("fill(words.roll_forms_unloaded, { reason: formsUnloaded })")
+    assert fold.index("formsUnloaded\n") < said < fold.index('className: "roll-form-pick"')
+    assert 'formsUnloaded = "";' in _js_function(js, "async function loadForms() {")
 
 
 def test_the_renderer_names_no_catalog_of_its_own():
@@ -784,7 +1297,7 @@ def test_documents_name_only_runtime_files_the_code_owns():
     from tracker.runner import LAST_PASS_FILENAME, LOG_FILENAME, PASS_ORDER_FILENAME, STATUS_PAGE_FILENAME
     from tracker.scaffold import README_NAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
-    from tracker.settings import SETTINGS_FILENAME
+    from tracker.settings import ERROR_LOG_FILENAME, SETTINGS_FILENAME
     from tracker.store import STORE_FILENAME
     from tracker.view import VIEW_FILENAME
 
@@ -792,7 +1305,7 @@ def test_documents_name_only_runtime_files_the_code_owns():
     owned = {LEDGER_FILENAME, LOCK_FILENAME, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
              LOG_FILENAME, STATUS_PAGE_FILENAME, README_NAME, README_LOCK_FILENAME,
              SCHEDULE_XML_FILENAME, SETTINGS_FILENAME, STORE_FILENAME, VIEW_FILENAME,
-             PASS_ORDER_FILENAME,
+             PASS_ORDER_FILENAME, ERROR_LOG_FILENAME,
              # Decision 159: the checkpoint, the scheduled pass's own note, the race's lock.
              CHECKPOINT_FILENAME, LAST_PASS_FILENAME, RACE_LOCK_FILENAME,
              # Decision 209: the after-install step's note, and the build's.
@@ -1185,6 +1698,7 @@ CONSOLE_EXEMPT = {
     "api": "stdout is the shell's JSON channel, written with ensure_ascii; nothing a console encodes",
     "settings": "prints the firm's own root and settings, never a client's name (decision 97's hold)",
     "scheduling": "prints the task's root and paths, never a client's name",
+    "errors": "prints an exception's class or a fixed sentence, never a client's name",
 }
 
 
@@ -1212,10 +1726,12 @@ def test_every_command_line_that_prints_a_clients_name_takes_the_tolerant_consol
     for module in CONSOLE_GUARDED:
         source = _command_line_source(module)
         guarded_at = source.find("tolerant_console()")
-        parses_at = source.find("argparse.ArgumentParser(")
+        # The parser built in place, or by the runner's ``_parser()`` (decision 203).
+        found = [at for at in (source.find("argparse.ArgumentParser("), source.find("= _parser()"))
+                 if at != -1]
         assert guarded_at != -1, module
-        assert parses_at != -1, module
-        assert guarded_at < parses_at, module
+        assert found, module
+        assert guarded_at < min(found), module
 
 
 def test_every_command_line_is_either_guarded_or_exempt_by_name():
@@ -1306,8 +1822,9 @@ def test_every_review_action_the_renderer_sends_carries_the_rows_seq():
         body = re.search(rf"async function {handler}\(.*?\n\}}", js, re.S)
         assert body, handler
         assert "fileRow(" in body.group(0) and "dataset.seq" in body.group(0), handler
-    # Both row builders put it on the element the handlers read it back from.
-    assert js.count("seq: e.seq") == 2
+    # Every row builder puts it on the element the handlers read it back
+    # from - since decision 190 one more: the row that is not a document.
+    assert js.count("seq: e.seq") == 3
     # And the sentence a refusal shows is the API's, never the renderer's.
     assert api.NO_SEQ not in js
 
@@ -1775,3 +2292,1502 @@ def _is_this_host_lines() -> range:
     [function] = [node for node in tree.body
                   if isinstance(node, ast.FunctionDef) and node.name == "is_this_host"]
     return range(function.lineno, function.end_lineno + 1)
+
+
+# ---------------------------- decision 190: programs, and the runbook's Open ----
+
+
+def _sentences(text: str) -> list[str]:
+    """``text`` as sentences and table cells, across its line breaks."""
+    return re.split(r"(?<=[.;:!?])\s+|\s\|\s", re.sub(r"\s+", " ", text))
+
+
+def test_the_runbook_sends_no_one_to_open_a_file_themselves():
+    """A parked document is opened with **Open** on its card - the firm's
+    copy, marked when it can carry macros - never from Explorer, the
+    client's folder or "this machine" (decision 190, R6). Until then six
+    sentences told a person to open a client's file "yourself"."""
+    telling = [sentence for sentence in _sentences(read("docs/runbook.md"))
+               if re.search(r"\bopen\b", sentence, re.IGNORECASE)
+               and re.search(r"\byourself\b|\bon this machine\b", sentence, re.IGNORECASE)]
+    assert telling == [], telling
+
+
+def test_the_runbook_opens_nothing_where_it_sits_and_drops_nothing_in_the_clients_folder():
+    """The review of decision 190 (S3): a "what you do" that begins **Open
+    it** or **Look at it** sends a person to a client's file where it sits,
+    unmarked and with no card, unless it says the card's **Open**; and a
+    file dropped, put or moved into "the client's folder" is a sort nobody
+    runs - the inbox is the only folder a pass sorts, and an original's own
+    place is always named as the client's folder *for the year*."""
+    runbook = read("docs/runbook.md")
+    # Widened by the re-check (its items 6 and 7): anywhere in a sentence,
+    # not only at its start, and "both", "them", "either" and "the
+    # original" as well as "it" - "Look at both" sent a person to the
+    # client's replaced original. A sentence that says not to, or says the
+    # card's **Open**, is the rule itself; three sentences open something
+    # that is not a client's file: the list editor, the firm's own review
+    # copy past a spreadsheet program's path limit, a paused household
+    # in the app (decision 188), and the app's Roll forward dialog
+    # (decision 196).
+    not_a_clients_file = ("Close the editor, open it again", "open it from a shorter folder",
+                          "Open it in the app and press **Accept the folder's name**",
+                          "Open it and it shows the open year's returns")
+    opened = [sentence for sentence in _sentences(runbook)
+              if re.search(r"(?<!not )(?<!never )\b(open|look at) (it|both|them|either|the original)\b",
+                           sentence, re.IGNORECASE)
+              and not re.search(r"on its card|from its card|\*\*Open\*\*", sentence)
+              and OTHER_MACHINE not in sentence
+              and not any(allowed in sentence for allowed in not_a_clients_file)]
+    assert opened == [], opened
+    dropped = [sentence for sentence in _sentences(runbook)
+               if re.search(r"\b(drop|put|move|copy)\b.*\b(in|into|to) the client's folder\b"
+                            r"(?! for the year)", sentence, re.IGNORECASE)]
+    assert dropped == [], dropped
+
+
+def test_the_runbook_opens_no_container_or_refused_file_on_this_machine():
+    """Open follows 184 (decision 190) and is an allow-list: no row for a
+    cause outside ``api.READ_AND_PARKED_CODES`` - an email or a zip, a file
+    whose reading was refused or never made - sends a person to **Open** on
+    this machine - it is opened, if at all, on a machine with no Drive
+    sign-in and no client folder - and no sentence about a container
+    offers the card's **Open** either."""
+    from tracker import api, reasons
+
+    closed = api.NO_OPEN_CODES & set(reasons.BY_CODE)
+    names = {name for name, value in vars(reasons).items()
+             if isinstance(value, reasons.Reason) and value.code in closed}
+    assert len(names) == len(closed), sorted(names)
+    offers_open = re.compile(r"(?<!no )\*\*Open\*\* (on|from) its card|(?<!no )with \*\*Open\*\*")
+    rows = [line for line in read("docs/runbook.md").splitlines() if line.startswith("| `reasons.")]
+    covered = {name for line in rows for name in names if f"`reasons.{name}`" in line.split(" | ")[0]}
+    wrong = [line[:80] for line in rows
+             if any(f"`reasons.{name}`" in line.split(" | ")[0] for name in names)
+             and offers_open.search(line)]
+    assert wrong == [], wrong
+    assert covered, "the runbook's Reason table names none of the closed codes"
+    about = [sentence for sentence in _sentences(read("docs/runbook.md"))
+             if offers_open.search(sentence)
+             and re.search(r"container|email or (a )?zip", sentence)]
+    assert about == [], about
+
+
+def test_the_runbook_sends_documents_from_a_container_to_the_households_inbox():
+    """What a person takes out of an email or a zip goes into this
+    household's inbox, where the next pass sorts it - never into the
+    client's folder for the year (decision 190, G-6)."""
+    from tracker.layout import INBOX_DIR_NAME
+
+    runbook = read("docs/runbook.md")
+    assert f"into this household's `{INBOX_DIR_NAME}`" in runbook
+    assert not [sentence for sentence in _sentences(runbook)
+                if re.search(r"\bdrop\b.*\bin(to)? the client's folder for the year\b", sentence)]
+
+
+def test_the_runbook_reads_a_file_with_open_on_its_card_never_in_a_folder_of_ones_own():
+    """Jason's answer 2b (2026-09-26, decision 190): decision 184's route of
+    reading a file kept in "a folder of your own" inside a return's
+    `Prepared` is gone - it had no card and no mark. A file is read with
+    **Open** on its card, and a card with no **Open** goes to 184's other
+    machine or to the client. No sentence may offer a folder of one's own,
+    or send a file into one inside `Prepared`, again."""
+    runbook = read("docs/runbook.md")
+    offered = [sentence for sentence in _sentences(runbook)
+               if re.search(r"\bfolder of your own\b", sentence, re.IGNORECASE)
+               or ("`Prepared`" in sentence and re.search(r"\byour own\b", sentence, re.IGNORECASE))]
+    assert offered == [], offered
+    section = runbook[runbook.index("### A document the tracker did not file"):]
+    section = section[:section.index("\n### ", 4)]
+    assert "**Open** on its" in section and "decision 184" in section, section
+
+
+def test_the_program_list_is_spelled_once():
+    """``validators.PROGRAM_EXTENSIONS`` is the one list of programs
+    (decision 190): no other file under tracker/ or app/ spells one of them
+    as an extension - ``".exe"``, ``'*.lnk'`` - or lists one bare beside a
+    document type, as a second list would."""
+    from tracker.validators import IMAGE_EXTENSIONS, PDF_EXTENSION, PROGRAM_EXTENSIONS
+
+    alternatives = "|".join(re.escape(ext) for ext in sorted(PROGRAM_EXTENSIONS, key=len, reverse=True))
+    dotted = re.compile(rf"""["'`]\*?\.({alternatives})["'`]""", re.IGNORECASE)
+    documents = {PDF_EXTENSION, "xlsx", "csv", *IMAGE_EXTENSIONS}
+    found = []
+    for path in sorted([*(REPO / "tracker").rglob("*.py"), *(REPO / "app").rglob("*.js"),
+                        *(REPO / "app").rglob("*.html")]):
+        if "node_modules" in path.parts or path.name == "validators.py":
+            continue
+        text = path.read_text(encoding="utf-8")
+        found += [f"{path.relative_to(REPO)}: {m.group(0)}" for m in dotted.finditer(text)]
+        if path.suffix == ".py":
+            import ast
+
+            for node in ast.walk(ast.parse(text)):
+                if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+                    words = {n.value.lower() for n in node.elts
+                             if isinstance(n, ast.Constant) and isinstance(n.value, str)}
+                    if words & documents and words & PROGRAM_EXTENSIONS:
+                        found.append(f"{path.relative_to(REPO)}:{node.lineno}: "
+                                     f"{sorted(words & PROGRAM_EXTENSIONS)}")
+    assert found == [], "\n".join(found)
+
+
+# ========== decision 193: replies never go quiet, and a pass can be watched ==========
+
+#: main.js run by node against a stand-in for Electron whose ``tracker-cmd``
+#: handler is kept and called, with ``child_process.spawn`` pointed at a
+#: scripted fake tracker (``_FAKE_TRACKER``) - a real child process, so the
+#: shell's reading of stdout, its kill and its stderr are the real code.
+_SHELL_HARNESS = r"""
+const Module = require("module");
+const realSpawn = require("child_process").spawn;
+const realFs = require("fs");
+const [mainJs, fake, calls] = process.argv.slice(2);
+let handler = null;
+const sent = [];
+const appHandlers = {};
+const electron = {
+  app: { isPackaged: false, requestSingleInstanceLock: () => true, quit() {},
+         on(name, fn) { appHandlers[name] = fn; },
+         whenReady: () => new Promise(() => {}) },
+  BrowserWindow: class {}, Menu: { setApplicationMenu() {} },
+  ipcMain: { handle(name, fn) { if (name === "tracker-cmd") handler = fn; } },
+  shell: {}, dialog: {},
+};
+const load = Module._load;
+Module._load = function (request, ...rest) {
+  if (request === "electron") return electron;
+  if (request === "child_process") {
+    return { spawn: (cmd, args, opts) => process.env.FAKE_SPAWN_FAILS
+      ? realSpawn("/no/such/tracker-for-this-test", [], opts)
+      : realSpawn(process.execPath, [fake, ...args], { ...opts, cwd: undefined }) };
+  }
+  if (request === "fs") return { ...realFs, existsSync: () => true };
+  return load.call(this, request, ...rest);
+};
+require(mainJs);
+const began0 = Date.now();
+const event = { sender: { isDestroyed: () => false,
+                          send: (channel, message) => sent.push({ channel, message, ms: Date.now() - began0 }) } };
+(async () => {
+  const out = [];
+  for (const args of JSON.parse(calls)) {
+    const began = Date.now();
+    const reply = await handler(event, args, undefined);
+    out.push({ args, reply, ms: Date.now() - began, at: Date.now() - began0 });
+  }
+  // The app closing (decision 203): what the shell does on will-quit.
+  if (process.env.HARNESS_QUIT && appHandlers["will-quit"]) appHandlers["will-quit"]();
+  // The shell appends a failed child's stderr without waiting on it, and a
+  // pass ends after its click was answered; give both their moment before
+  // the harness ends.
+  setTimeout(() => {
+    const pipeBroke = realFs.existsSync(`${process.env.FAKE_LOG}.pipe-broke`);
+    process.stdout.write(JSON.stringify({ out, sent, pipeBroke }));
+    process.exit(0);
+  }, Number(process.env.HARNESS_WAIT || 500));
+})();
+"""
+
+#: The fake tracker: what each command prints, as the real API would.
+_FAKE_TRACKER = r"""
+const given = process.argv.slice(2);
+const command = given[given.indexOf("tracker.api") + 1];
+const folder = given[given.indexOf("tracker.api") + 3];
+const say = (o) => process.stdout.write(JSON.stringify(o) + "\n");
+const line = (fields) => say({ progress: { v: 1, pass: 4242, at: "2026-01-02T03:04:05", ...fields } });
+if (command === "list") {
+  say({ vocab: { commands: ["list", "run-now", "scan", "state", "templates", "priors"],
+                 engagement_flag: "--engagement", pass_command: "run-now",
+                 shell: { error_log: process.env.FAKE_LOG } } });
+} else if (command === "run-now" && folder === "/sample/return") {
+  // A pass (decision 203): it begins, runs on, and ends with its final line.
+  line({ event: "started", limit_seconds: 7200, households: 1 });
+  line({ event: "household", household: "Sample Household", n: 1, of: 1 });
+  setTimeout(() => {
+    line({ event: "file", step: "sort", name: "W-2 Sample.pdf", household: "Sample Household" });
+    say({ pass: 4242, exit: 0, runs: [{ label: "Sample", filed: 1 }], pass_warnings: [], warnings: [] });
+  }, 1500);
+} else if (command === "run-now" && folder === "/sample/slow") {
+  // A pass that outlives the limit its own first line states.
+  line({ event: "started", limit_seconds: 1, households: 1 });
+  line({ event: "file", step: "sort", name: "W-2 Sample.pdf", household: "Sample Household" });
+  setTimeout(() => {}, 60000);
+} else if (command === "run-now" && folder === "/sample/stays") {
+  // A pass still running when the app closes: it stops when its pipe breaks.
+  line({ event: "started", limit_seconds: 7200, households: 1 });
+  process.stdout.on("error", () => {
+    require("fs").writeFileSync(process.env.FAKE_LOG + ".pipe-broke", "");
+    process.exit(0);
+  });
+  setInterval(() => line({ event: "file", step: "sort", name: "W-2 Sample.pdf" }), 100);
+} else if (command === "run-now") {
+  // Refused before it began: one reply, as any command's.
+  say({ error: "refused", failure: { sentence: "refused", kind: "refused", seq: null, identifier: null },
+        warnings: [] });
+  process.exit(1);
+} else if (command === "state") {
+  line({ event: "started", limit_seconds: 1, households: 1 });
+  line({ event: "household", household: "Sample Household", n: 1, of: 1 });
+  line({ event: "file", step: "scan", name: "A01", household: "Sample Household" });
+  setTimeout(() => {}, 60000);
+} else if (command === "templates") {
+  process.stderr.write("Traceback: a fabricated message naming Sample Client's folder\n");
+  process.exit(1);
+}
+"""
+
+
+def _run_the_shell(tmp_path, calls, **env):
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not on PATH (CI installs it)")
+    harness = tmp_path / "shell_harness.js"
+    harness.write_text(_SHELL_HARNESS, encoding="utf-8", newline="\n")
+    fake = tmp_path / "fake_tracker.js"
+    fake.write_text(_FAKE_TRACKER, encoding="utf-8", newline="\n")
+    done = subprocess.run([node, str(harness), str(REPO / "app" / "main.js"), str(fake),
+                           json.dumps(calls)],
+                          capture_output=True, text=True, encoding="utf-8", timeout=120, check=False,
+                          env=child_env(**{"FAKE_LOG": str(tmp_path / "tracker-errors.log"), **env}))
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+def test_the_app_returns_before_the_pass_ends(tmp_path):
+    """Decision 203: the command the API names as its pass (learned, never
+    typed) is answered at its ``started`` line while the process runs on;
+    its later lines, then its final line and exit code, reach the window
+    on the progress channel. A pass refused before it began answers as any
+    command does."""
+    args = ["run-now", "--engagement", "/sample/return"]
+    ran = _run_the_shell(tmp_path, [["list"], args, ["run-now", "--engagement", "/sample/nowhere"]],
+                         HARNESS_WAIT="3000")
+    started = ran["out"][1]
+    assert started["reply"]["pass"] == 4242 and started["reply"]["started"]["event"] == "started"
+    assert started["ms"] < 1500, "answered while the pass still runs"
+    assert ran["out"][2]["reply"]["failure"]["kind"] == "refused"
+    said = [m for m in ran["sent"] if m["channel"] == "tracker-progress"]
+    assert all(m["message"]["args"] == args for m in said)
+    events = [m["message"]["progress"]["event"] for m in said if "progress" in m["message"]]
+    assert events == ["started", "household", "file"]
+    [ended] = [m for m in said if "reply" in m["message"]]
+    assert ended is said[-1] and ended["ms"] > started["at"]
+    assert ended["message"]["code"] == 0
+    assert ended["message"]["reply"] == {"pass": 4242, "exit": 0, "runs": [{"label": "Sample", "filed": 1}],
+                                         "pass_warnings": [], "warnings": []}
+
+
+def test_run_now_is_cut_off_only_at_the_run_limit_its_own_first_line_states():
+    """Decision 203 and the lane's ruling on its Q1: the thirty-minute cap
+    stays for every plain command, and Sort & Scan - the runner's pass - is
+    killed only at the limit its ``started`` line states, which is
+    ``locking.RUN_TIME_LIMIT_SECONDS``: the number the stale-lock rule and
+    the schedule are built on, and no second constant in the shell. The
+    shell learns which command is the pass; it never types it."""
+    import tracker.api as api
+    from tracker.locking import RUN_TIME_LIMIT_SECONDS
+
+    main_js = read("app/main.js")
+    assert str(RUN_TIME_LIMIT_SECONDS) not in main_js and "2 * 60 * 60" not in main_js
+    assert "said.limit_seconds * 1000" in main_js
+    assert "vocab.pass_command" in main_js and f'"{api.PASS_COMMAND}"' not in main_js
+    assert api._vocab()["pass_command"] == api.PASS_COMMAND
+    runner = read("tracker/runner.py")
+    main = runner[runner.index("def _pass(ns, parser, reached: dict)"):]
+    assert "limit_seconds=RUN_TIME_LIMIT_SECONDS)" in main[:main.index('watch.say("started"')]
+    assert f'"{api.PASS_COMMAND}"' not in read("app/renderer/app.js")
+    assert "withEng(vocab.pass_command)" in read("app/renderer/app.js")
+
+
+def test_the_runbooks_189_sentence_is_rewritten():
+    """Decision 203: the runbook said Run now worked inside the app's short
+    kill; it is the scheduled pass now, said once. Its own test rather than
+    ``STRUCK``, which scans the decision log, whose rows quote the old
+    sentence as history."""
+    runbook = read("docs/runbook.md")
+    for text in (runbook, read("README.md")):
+        assert "inside the app's thirty-minute limit" not in text
+        assert "thirty-minute" not in text
+    assert runbook.count("**Run now** (Sort & Scan) is\nthe scheduled pass") == 1
+
+
+#: The renderer's lock and pass-ending functions, lifted from app.js and run
+#: by node (the review of decision 203, M2): the shown return met the pass's
+#: own lock during the pass, the pass ended, then the lock went.
+_BUTTON_PROBE = r"""
+const fs = require("fs");
+const src = fs.readFileSync(process.argv[2], "utf8");
+function grab(sig) { const i = src.indexOf(sig); const j = src.indexOf("\n}\n", i); return src.slice(i, j + 3); }
+const buttons = src.slice(src.indexOf("const LOCKED_BUTTONS"), src.indexOf("function applyLock"));
+const parts = [buttons, grab("function applyLock() {"), grab("function setLocked(on) {"), grab("function scanDone() {")];
+const nodes = {};
+const node = (id) => ({ id, classList: { add() {}, remove() {} }, textContent: "", disabled: false, dataset: {},
+                        querySelectorAll: () => [] });
+const ctx = `let locked = false; let scanning = {}; const SCAN_LABEL = "Sort & Scan";
+const $ = (id) => (nodes[id] ||= node(id));
+${parts.join("\n")}
+return { setLocked, scanDone };`;
+const r = new Function("nodes", "node", ctx)(nodes, node);
+const btn = () => (nodes["btn-scan"] ||= node("btn-scan"));
+btn().disabled = true;     // runScan
+r.setLocked(true);         // a state during the pass shows its lock
+r.scanDone();              // the pass ends while the lock notice shows
+const whileLocked = btn().disabled;
+r.setLocked(false);        // the redraw's state: the lock has gone
+process.stdout.write(JSON.stringify({ whileLocked, after: btn().disabled }));
+"""
+
+
+def test_the_end_of_a_pass_gives_sort_and_scan_back_through_the_locks_mark(tmp_path):
+    """Decision 203's review, M2: the button comes back through applyLock's
+    mark, so the lock going gives it back - never an unmarked disable that
+    nothing ever lifts."""
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not on PATH (CI installs it)")
+    probe = tmp_path / "button_probe.js"
+    probe.write_text(_BUTTON_PROBE, encoding="utf-8", newline="\n")
+    done = subprocess.run([node, str(probe), str(REPO / "app" / "renderer" / "app.js")], capture_output=True,
+                          text=True, encoding="utf-8", timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    assert json.loads(done.stdout) == {"whileLocked": True, "after": False}
+    ended = _body(read("app/renderer/app.js"), "function scanDone() {")
+    assert "btn.disabled = locked" not in ended and "applyLock();" in ended
+
+
+def test_a_pass_killed_at_its_own_limit_ends_with_the_killed_sentence(tmp_path):
+    import tracker.api as api
+
+    ran = _run_the_shell(tmp_path, [["list"], ["run-now", "--engagement", "/sample/slow"]],
+                         HARNESS_WAIT="3000")
+    assert ran["out"][1]["reply"]["pass"] == 4242
+    [ended] = [m["message"] for m in ran["sent"] if "reply" in m["message"]]
+    assert ended["reply"]["killed"] is True
+    assert ended["reply"]["error"] == (api.SHELL_KILLED.format(minutes=1) + " "
+                                       + api.SHELL_KILLED_AT.format(household="Sample Household",
+                                                                    name="W-2 Sample.pdf"))
+
+
+def test_closing_the_app_breaks_its_passes_pipe_rather_than_killing_it(tmp_path):
+    """Decision 203, R6: on will-quit the shell destroys each running pass's
+    stdout; the pass sees its pipe break (the runner's Stop) and ends of its
+    own accord."""
+    calls = [["list"], ["run-now", "--engagement", "/sample/stays"]]
+    assert _run_the_shell(tmp_path, calls, HARNESS_QUIT="1", HARNESS_WAIT="2000")["pipeBroke"]
+    (tmp_path / "tracker-errors.log.pipe-broke").unlink()
+    left_open = tmp_path / "left open"
+    left_open.mkdir()
+    assert not _run_the_shell(left_open, calls, HARNESS_WAIT="1000")["pipeBroke"], \
+        "without will-quit the pipe stays open"
+
+
+def test_the_shells_kill_follows_the_limit_the_pass_reported_and_says_where_it_was(tmp_path):
+    import tracker.api as api
+
+    ran = _run_the_shell(tmp_path, [["list"], ["state", "--engagement", "/sample/return"]])
+    killed = ran["out"][1]
+    assert killed["ms"] < 20_000, "the kill follows limit_seconds, not the thirty minutes"
+    reply = killed["reply"]
+    assert reply["killed"] is True and reply["failure"]["kind"] == "failed"
+    assert reply["error"] == reply["failure"]["sentence"]
+    assert reply["error"] == (api.SHELL_KILLED.format(minutes=1) + " "
+                              + api.SHELL_KILLED_AT.format(household="Sample Household", name="A01"))
+    assert reply["progress"]["name"] == "A01"
+
+
+def test_the_shell_never_puts_stderr_on_screen_and_appends_it_to_the_error_log(tmp_path):
+    import tracker.api as api
+
+    ran = _run_the_shell(tmp_path, [["list"], ["templates"]])
+    reply = ran["out"][1]["reply"]
+    assert reply["error"] == api.SHELL_NO_REPLY.format(code=1)
+    assert reply["failure"]["kind"] == "failed" and "fabricated" not in json.dumps(reply)
+    logged = (tmp_path / "tracker-errors.log").read_text(encoding="utf-8")
+    assert "a fabricated message naming Sample Client's folder" in logged
+
+
+def test_with_no_error_log_the_shell_says_stderr_in_the_reply_and_writes_no_file(tmp_path):
+    """The rebase review of 186 (MF2): with no data home the API names no
+    error log, and the shell never builds one beside the program or in the
+    settings folder - a failed command's stderr is said in its own reply,
+    and no file is written anywhere."""
+    import tracker.api as api
+    from tracker.settings import ERROR_LOG_FILENAME
+
+    ran = _run_the_shell(tmp_path, [["list"], ["templates"]], FAKE_LOG="")
+    reply = ran["out"][1]["reply"]
+    stderr = "Traceback: a fabricated message naming Sample Client's folder\n"
+    sentence = api.SHELL_NO_REPLY.format(code=1) + "\n\n" + api.SHELL_NO_LOG.format(stderr=stderr)
+    assert reply["error"] == sentence and reply["failure"]["sentence"] == sentence
+    assert reply["failure"]["kind"] == "failed"
+    assert not (REPO / ERROR_LOG_FILENAME).exists()
+    assert not list(tmp_path.rglob(ERROR_LOG_FILENAME))
+
+
+def test_a_failed_spawn_is_said_by_its_code(tmp_path):
+    import tracker.api as api
+
+    ran = _run_the_shell(tmp_path, [["list"]], FAKE_SPAWN_FAILS="1")
+    reply = ran["out"][0]["reply"]
+    assert reply["error"] == api.SHELL_COULD_NOT_START.format(code="ENOENT")
+    assert "/no/such" not in reply["error"] and reply["failure"]["kind"] == "failed"
+
+
+def test_the_progress_key_is_typed_once_per_language_and_the_error_log_only_by_the_api():
+    from tracker.progress import PROGRESS_KEY
+    from tracker.settings import ERROR_LOG_FILENAME
+
+    main_js = read("app/main.js")
+    assert f'const PROGRESS_KEY = "{PROGRESS_KEY}";' in main_js
+    assert main_js.count(f'"{PROGRESS_KEY}"') == 1
+    # The log's path is the API's, and the shell never builds one of its own
+    # (the rebase review of 186, MF2): its name is not in the shell at all.
+    assert ERROR_LOG_FILENAME not in main_js
+    assert "vocab.shell" in main_js and "said.error_log" in main_js
+
+
+def test_the_shells_default_words_are_the_apis_word_for_word():
+    import tracker.api as api
+
+    main_js = read("app/main.js")
+
+    def default(name):
+        head = main_js.split(f"let {name} =", 1)[1].split(";\n", 1)[0]
+        return "".join(re.findall(r'"([^"]*)"', head))
+
+    assert default("killed") == api.SHELL_KILLED
+    assert default("killedAt") == api.SHELL_KILLED_AT
+    assert default("noReply") == api.SHELL_NO_REPLY
+    assert default("couldNotStart") == api.SHELL_COULD_NOT_START
+    assert default("couldNotSend") == api.SHELL_COULD_NOT_SEND
+    assert default("noLog") == api.SHELL_NO_LOG
+    shell = api._vocab()["shell"]
+    assert (shell["killed"], shell["killed_at"], shell["no_reply"], shell["could_not_start"]) == (
+        api.SHELL_KILLED, api.SHELL_KILLED_AT, api.SHELL_NO_REPLY, api.SHELL_COULD_NOT_START)
+
+
+def test_the_notice_buttons_are_the_apis_labels_word_for_word():
+    import tracker.api as api
+
+    html = read("app/renderer/index.html")
+    template = html.split('<template id="notice-buttons">', 1)[1].split("</template>", 1)[0]
+    buttons = dict(re.findall(r'data-act="([a-z]+)">([^<]+)</button>', template))
+    assert buttons == api.NOTICE_LABELS
+    assert api._vocab()["notices"]["labels"] == api.NOTICE_LABELS
+
+
+def test_no_failure_is_toasted():
+    js = read("app/renderer/app.js")
+    assert "toast(err" not in js
+    assert "throw new Error(result.error)" not in js
+
+
+def test_every_draw_after_an_await_goes_through_renderFor():
+    js = read("app/renderer/app.js")
+    calls = [m.start() for m in re.finditer(r"(?<![\w.])render\(", js)]
+    body = js.split("function renderFor(view, state) {", 1)[1].split("\n}\n", 1)[0]
+    definition = js.index("function render(state)")
+    inside = js.index("function renderFor(view, state) {")
+    assert [at for at in calls if at != definition + len("function ")] == \
+        [inside + len("function renderFor(view, state) {") + body.index("render(")]
+    assert "view !== viewGeneration" in body
+    # The shown return changes in one place, and every change bumps the view.
+    assert len(re.findall(r"(?<![\w.])(?<!let )(?<!const )active = ", js)) == 1
+    # Since decision 194 a switch is showReturn, which selects before it asks.
+    assert "showReturn(button.dataset.path)" in js and "showReturn(e.target.value)" in js
+    show = js.split("async function showReturn(path) {", 1)[1].split("\n}\n", 1)[0]
+    assert show.index("const view = select(path)") < show.index("call(")
+
+
+def test_the_reminder_card_is_never_hidden_on_an_error():
+    js = read("app/renderer/app.js")
+    body = js.split("async function loadReminder() {", 1)[1].split("\n}\n", 1)[0]
+    caught = body.split("} catch (err) {", 1)[1]
+    assert '"hidden"' not in caught
+    assert "vocab.reminder.unreadable" in caught and "failed(err" in caught
+    # One card from either source (decision 194): the not-yet line and the
+    # sentence saying why a card could not be composed are drawn on it.
+    assert "drawReminderReply(result)" in body
+    drawn = js.split("function drawReminderReply(reply) {", 1)[1].split("\n}\n", 1)[0]
+    assert "reply.not_yet" in drawn and "reply.unreadable" in drawn and '"hidden"' not in drawn
+
+
+def test_every_reply_warning_becomes_a_notice():
+    js = read("app/renderer/app.js")
+    body = js.split("async function call(args, payload, { ofAnother = false } = {}) {", 1)[1].split("\n}\n", 1)[0]
+    assert "result.warnings" in body and "warningNotices(" in body
+    assert "throw new TrackerError(" in body
+    assert "warningNotices(ended.pass_warnings" in js     # a pass's own, from its final line (203)
+
+
+def test_a_failed_first_list_is_a_notice_with_retry_needing_no_vocabulary():
+    js = read("app/renderer/app.js")
+    start = js.split("async function bootstrap(preferPath) {", 1)[1].split("\n}\n", 1)[0]
+    assert "failed(err, () => bootstrap(preferPath))" in start
+    # The notice draws its buttons from the static template and reads the
+    # vocabulary only for a repeat count, and only when there is one.
+    draw = js.split("function drawNotice(entry) {", 1)[1].split("\n}\n", 1)[0]
+    assert "entry.count > 1 && vocab" in draw and "noticeButton" in draw
+    button = js.split("function noticeButton(act) {", 1)[1].split("\n}\n", 1)[0]
+    assert '$("notice-buttons").content' in button and "vocab" not in button
+
+
+def test_the_lock_notice_types_no_sentence_and_polls_only_while_a_lock_shows():
+    js = read("app/renderer/app.js")
+    for name in ("function renderLock(state) {", "function showLock(lock) {"):
+        body = js.split(name, 1)[1].split("\n}\n", 1)[0]
+        literals = re.findall(r'"([^"]*)"|`([^`]*)`', body)
+        assert not [lit for pair in literals for lit in pair if " " in lit.strip()], name
+    assert "Sort & Scan will wait" not in js and "will wait for it" not in js
+    assert js.count('call(["watch"') == 1 and 'withEng("watch")' not in js
+    watch = js.split("function watchLock(lock) {", 1)[1].split("\n}\n", 1)[0]
+    assert 'call(["watch", vocab.engagement_flag, target])' in watch
+    assert "vocab.lock.watch_seconds" in watch and "view !== viewGeneration" in watch
+    # It watches the lock it was given (the review's S1), not the shown return.
+    assert "const target = lock.engagement || active;" in watch
+    show = js.split("function showLock(lock) {", 1)[1].split("\n}\n", 1)[0]
+    assert "watchLock(lock)" in show and "stopLockWatch()" in show
+    assert "words.running_other" in show
+
+
+def test_the_shell_sends_on_only_the_channels_the_preload_listens_to():
+    sent = set(re.findall(r'event\.sender\.send\("([a-z-]+)"', read("app/main.js")))
+    heard = set(re.findall(r'ipcRenderer\.on\("([a-z-]+)"', read("app/preload.js")))
+    # Decision 209's launch channel is the one other the preload hears.
+    assert sent == {"tracker-progress"} and heard == sent | {"after-install-done"}
+
+
+# ------------------------------------------ decision 193: the review's fixes ----
+
+#: The renderer's lock functions, lifted out of app.js as they are and driven
+#: with fake timers and a fake API (the review's M1 probe, kept as a claim).
+_LOCK_HARNESS = r"""
+const fs = require("fs");
+const src = fs.readFileSync(process.argv[2], "utf8");
+function grab(sig) { const i = src.indexOf(sig); const j = src.indexOf("\n}\n", i); return src.slice(i, j + 3); }
+const parts = ["function select(path) {", "function lockStarted(lock) {", "function showLock(lock) {",
+  "function applyLock() {", "function setLocked(on) {", "function stopLockWatch() {",
+  "function watchLock(lock) {"].map(grab);
+const intervals = []; const held = { A: true, B: true }; const asked = [];
+const node = () => ({ classList: { toggle() {}, add() {}, remove() {} }, textContent: "",
+                      querySelectorAll: () => [], dataset: {} });
+const nodes = {};
+const body = `
+let active = "A"; let viewGeneration = 0; let locked = false; let lockWatch = null; let lockWatched = null;
+const vocab = { engagement_flag: "--engagement",
+  lock: { running: "r", running_other: "o", on: "o", greyed: "g", left_behind: "l", watch_seconds: 5,
+          buttons_back: "back" } };
+const LOCKED_BUTTONS = []; const LOCKED_CARDS = [];
+const $ = (id) => (nodes[id] ||= node());
+const fill = (p) => p;
+async function call(args) { asked.push(args[2]); return { lock: held[args[2]] ? lockOf(args[2]) : null }; }
+const lockOf = (path) => ({ started: "", host: "h", stale: false, engagement: path, label: path });
+function notice() {}
+function refresh() {}
+function failed() {}
+const setInterval = (fn) => { intervals.push(fn); return intervals.length; };
+const clearInterval = (id) => { if (id) intervals[id - 1] = null; };
+${parts.join("\n")}
+return { select, showLock, lockOf, get locked() { return locked; }, get watching() { return lockWatched; } };`;
+const api = new Function("nodes", "node", "intervals", "held", "asked", body)(nodes, node, intervals, held, asked);
+(async () => {
+  const tick = async () => { for (const fn of intervals.slice()) if (fn) await fn(); };
+  api.showLock(api.lockOf("A"));
+  await tick();
+  api.select("B");
+  api.showLock(api.lockOf("B"));
+  await tick();
+  held.B = false;
+  await tick();
+  const afterB = { locked: api.locked, watching: api.watching };
+  api.showLock(api.lockOf("C"));     // a sibling's lock reported while B is shown
+  held.C = true;
+  await tick();
+  process.stdout.write(JSON.stringify({ asked, afterB, sibling: api.watching }));
+})();
+"""
+
+
+def test_a_switch_between_two_locked_returns_watches_the_second_and_gives_its_buttons_back(tmp_path):
+    """The review's M1: the watch of the return left behind used to keep the
+    second from starting its own, and then stopped itself - the second
+    return stayed greyed after its pass let go. And S1: the watch asks
+    about the folder the lock was reported in, not the shown return."""
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not on PATH (CI installs it)")
+    harness = tmp_path / "lock_harness.js"
+    harness.write_text(_LOCK_HARNESS, encoding="utf-8", newline="\n")
+    done = subprocess.run([node, str(harness), str(REPO / "app" / "renderer" / "app.js")],
+                          capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    ran = json.loads(done.stdout)
+    assert ran["asked"][:3] == ["A", "B", "B"], ran
+    assert ran["afterB"] == {"locked": False, "watching": None}, "B's buttons back, its watch done"
+    assert ran["sibling"] == "C" and ran["asked"][-1] == "C", "the lock it was given is watched"
+
+
+def test_the_editors_failures_are_notices_too():
+    """Every editor catch says one sentence, in the editor and as a notice:
+    ``failed``'s, never an error's own text (principle 7; the restack
+    review's M1)."""
+    js = read("app/renderer/app.js")
+    for name in ("async function saveEditor() {", "async function renameRequest() {",
+                 "async function unlearnKeyword(identifier, keyword) {"):
+        body = js.split(name, 1)[1].split("\n}\n", 1)[0]
+        assert 'editorNote(failed(err), "err");' in body, name
+        assert "err.message" not in body, name
+
+
+def test_an_errors_own_message_is_read_only_where_failureSentence_logs_it():
+    """UX principle 7, by shape: the one place app.js reads a caught error's
+    message is ``failureSentence``, which sends it to the error log."""
+    js = read("app/renderer/app.js")
+    inside = _js_function(js, "function failureSentence(err) {")
+    outside = js.replace(inside, "")
+    assert inside.count(".message") == 1 and "window.tracker.logError(" in inside
+    assert re.search(r"\.message\b", outside) is None
+
+
+def test_every_word_a_scan_reply_is_said_in_is_the_apis():
+    import tracker.api as api
+
+    js = read("app/renderer/app.js")
+    body = js.split("function scanSummary(run, others, summary) {", 1)[1].split("\n}\n", 1)[0]
+    words = api._vocab()["scan"]
+    for key, literal in words.items():
+        assert f"words.{key}" in body or f"vocab.scan.{key}" in js, key
+        stem = literal.split("{")[0].strip()
+        assert " " not in stem or stem not in js, literal
+    assert "Scanning" not in js and "Pass complete" not in js and "Nothing done" not in js
+
+
+def test_an_error_of_the_page_or_the_shell_is_said_by_class_and_its_message_only_logged():
+    import tracker.api as api
+
+    js = read("app/renderer/app.js")
+    body = js.split("function failureSentence(err) {", 1)[1].split("\n}\n", 1)[0]
+    assert "vocab.shell.page_error" in body and "window.tracker.logError(" in body
+    assert "sentence: String(" not in body
+    failing = js.split("function failed(err, retry) {", 1)[1].split("\n}\n", 1)[0]
+    assert "const sentence = failureSentence(err);" in failing and "err.message" not in failing
+    main_js = read("app/main.js")
+    # runTracker's check, then spawnTracker (decision 209's launch door
+    # shares it), read as the one path a command takes.
+    run = main_js[main_js.index("function runTracker"):]
+    run = run[:run.index("\n}\n", run.index("function spawnTracker"))]
+    assert "shellFailure(fill(couldNotSend" in run and "`The app could not send" not in run
+    assert "err.message" not in run.split("keepInLog(", 1)[0]
+    assert 'ipcMain.handle("log-error"' in main_js
+    assert api._vocab()["shell"]["page_error"] == api.PAGE_ERROR
+
+
+# ============= one spawn per click (decision 194) ===========================
+
+
+def _body(js: str, head: str) -> str:
+    return js.split(head, 1)[1].split("\n}\n", 1)[0]
+
+
+def _handler(js: str, head: str) -> str:
+    return js.split(head, 1)[1].split("\n});\n", 1)[0]
+
+
+def test_switching_returns_is_one_state_call():
+    """A switch is one process: ``showReturn`` asks ``state`` and nothing
+    else, the three places a person switches and a refusal all go through
+    it, and the list is read once, at start-up (and again only after the
+    clients folder is set, R8) - and once when a Sort & Scan pass ends,
+    before its one ``state`` (decision 203, the lane's ruling on 194's Q5)."""
+    js = read("app/renderer/app.js")
+    show = _body(js, "async function showReturn(path) {")
+    assert show.count("call(") == 1 and 'call(["state", ' in show
+    for head in ('$("household-returns").addEventListener("click", (e) => {',
+                 '$("eng-select").addEventListener("change", (e) => {',
+                 '$("household-roll").addEventListener("click", async (e) => {'):
+        handler = _handler(js, head)
+        if "reviewPeople(" in handler:       # the roll fold's people button (S4)
+            handler += _body(js, "async function reviewPeople(path) {")
+        assert "showReturn(" in handler, head
+        for other in ("refresh(", "bootstrap(", "loadReminder(", "call("):
+            assert other not in handler, (head, other)
+    refused = _body(js, "async function refused(err, btn) {")
+    assert "showReturn(active)" in refused and "bootstrap(" not in refused
+    assert "refresh(" not in js
+    # The third: decision 209's launch step finished, and only its notice is redrawn.
+    assert js.count('call(["list"])') == 3
+    assert 'renderAfterInstall((await call(["list"])).after_install)' in js
+    assert 'call(["list"])' in _body(js, "async function loadEngagements(preferPath, asked) {")
+    ended = _body(js, "async function passEnded({ reply }) {")
+    assert ended.index('call(["list"])') < ended.index('call(withEng("state"))')
+    calls = [m.start() for m in re.finditer(r"(?<![\w.])bootstrap\(", js)]
+    assert len(calls) == 4        # its definition, its own Retry, saveRoot and start-up
+    assert "await bootstrap();" in _body(js, "async function saveRoot() {")
+    assert js.rstrip().endswith("bootstrap();")
+
+
+def test_the_reminder_card_is_drawn_from_state():
+    """The card arrives with the state (decision 194): ``renderReminder``
+    draws ``state.reminder_card``, and the ``reminder`` command is called
+    from one place, reached only from the stage toggle, a refused approve
+    and the one branch that keeps a rung a person moved (R3)."""
+    js = read("app/renderer/app.js")
+    card = _body(js, "function renderReminder(state) {")
+    assert "drawReminderReply(state.reminder_card" in card
+    assert "reminderStage !== null" in card and "loadReminder()" in card
+    assert js.count('withEng("reminder")') == 1
+    assert 'withEng("reminder")' in _body(js, "async function loadReminder() {")
+    heads = ("function renderReminder(state) {", "async function approveReminder() {",
+             '$("reminder-stages").addEventListener("click"')
+    callers = [m.start() for m in re.finditer(r"(?<![\w.])(?<!function )loadReminder\(", js)]
+    places = sorted(max((js[:at].rfind(head), head) for head in heads)[1] for at in callers)
+    assert places == sorted(heads)
+
+
+def test_the_editor_opens_on_the_state_on_screen():
+    """D13: the editor opens on the state already drawn for this return,
+    with no refetch; a save is still judged by the list's head (160)."""
+    js = read("app/renderer/app.js")
+    body = _body(js, "async function openEditor() {")
+    assert "lastState.paths.engagement === active" in body
+    assert body.index("lastState") < body.index("call(")
+    assert "head: editorState.list_head" in _body(js, "async function saveEditor() {")
+
+
+def test_every_editor_write_whose_reply_carries_state_redraws_through_renderFor():
+    """The editor opens on the state on screen (D13), so each editor write
+    that answers with a state redraws the page from it - an unlearned
+    keyword never comes back on the next open (the review's S2)."""
+    js = read("app/renderer/app.js")
+    for head in ("async function unlearnKeyword(identifier, keyword) {",
+                 "async function renameRequest() {", "async function saveEditor() {"):
+        body = _body(js, head)
+        assert "const view = viewGeneration;" in body and "renderFor(view, result.state)" in body, head
+
+
+def test_a_warning_about_another_return_is_said_under_its_label():
+    """The hand-over picker reads another return's state; what that reply
+    warns is about that return, so it is said under its label in the API's
+    format and never as if about the return shown (the review's S1)."""
+    import tracker.api as api
+
+    js = read("app/renderer/app.js")
+    handover = _body(js, "async function loadHandOverRequests() {")
+    assert "{ ofAnother: true }" in handover
+    head = "async function call(args, payload, { ofAnother = false } = {}) {"
+    body = _body(js, head)
+    assert "vocab.notices.about" in body and "labelOfState(result)" in body
+    assert js.count("ofAnother: true") == 1
+    assert api._vocab()["notices"]["about"] == api.NOTICE_ABOUT
+    assert set(re.findall(r"{(\w+)}", api.NOTICE_ABOUT)) == {"label", "sentence"}
+
+
+# ------------------------------- statuses in a preparer's words (d200) ----
+
+
+def _typed(word: str, text: str) -> bool:
+    """Is ``word`` written into ``text`` as a word of its own - quoted, or
+    as an element's whole text - rather than said in a comment's prose?"""
+    return any(form in text for form in (f'"{word}"', f"'{word}'", f"`{word}`", f">{word}<"))
+
+
+def test_the_renderer_types_no_status_label():
+    """Decision 200: every label and sentence the app shows for a row's
+    status, every side and the Set aside headings reach the page through
+    the API's vocabulary, and the renderer and the page type none."""
+    from tracker import reminder, view
+    from tracker.manifest import STATUS_LABELS
+
+    js = read("app/renderer/app.js")
+    # A column heading is not a status: the Received column holds a date.
+    html = re.sub(r"<th[^>]*>[^<]*</th>", "", read("app/renderer/index.html"))
+    for text in (js, html):
+        for shown in STATUS_LABELS.values():
+            assert not _typed(shown.label, text), shown.label
+            assert shown.sentence not in text, shown.sentence
+        for side in reminder.SIDES:
+            assert not _typed(side.label, text), side.label
+            assert side.sentence not in text, side.sentence
+        assert view.SET_ASIDE_SECTION.split("{")[0].strip() not in text
+        assert view.SET_ASIDE_GROUP not in text
+    assert "vocab.labels" in js and "vocab.reminder.sides" in js
+    assert "vocab.set_aside.heading" in js and "vocab.set_aside.group" in js
+
+
+def test_the_renderer_types_no_override_word():
+    """The row's override is its label on the side line (decision 200), not
+    a typed "override:" after the Period. A key such as ``manual_override:``
+    is the record's field name, not a word shown."""
+    assert re.search(r"(?<!\w)override:", read("app/renderer/app.js"), re.IGNORECASE) is None
+
+
+# A document just large enough for app.js's own el(): elements keep their
+# children in order, and a child that is not an element becomes text, as a
+# browser's append() makes it. Each drawn tree comes back as JSON.
+_DOM_SHIM = """
+class Node {}
+class Text extends Node { constructor(data) { super(); this.data = data; } }
+class Element extends Node {
+  constructor(tag) { super(); this.tag = tag; this.className = ""; this.dataset = {};
+                     this.attributes = {}; this.childNodes = []; }
+  setAttribute(key, value) { this.attributes[key] = String(value); }
+  append(...nodes) { for (const n of nodes) this.childNodes.push(n instanceof Node ? n : new Text(String(n))); }
+  replaceChildren(...nodes) { this.childNodes = []; this.append(...nodes); }
+  addEventListener() {}
+}
+const document = { createElement: (tag) => new Element(tag), activeElement: null };
+const tree = (n) => n instanceof Text ? n.data
+  : { tag: n.tag, className: n.className, attributes: n.attributes, children: n.childNodes.map(tree) };
+"""
+
+
+def _run_renderer(tmp_path, name: str, headers: tuple[str, ...], script: str):
+    """Run ``script`` under node with app.js's own ``el()`` (and its
+    attribute list) and the named
+    functions exactly as written, against :data:`_DOM_SHIM`; what the
+    script writes to stdout comes back parsed. Skipped where node is not
+    on PATH (CI installs it)."""
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not on PATH (CI installs it)")
+    js = read("app/renderer/app.js")
+    start = js.index("const EL_ATTRIBUTES = new Set([")
+    allowed = js[start:js.index("]);", start) + 3]
+    bodies = "\n".join([allowed] + [_js_function(js, header) for header in (
+        "function el(tag, attrs = {}, ...children) {", *headers)])
+    path = tmp_path / f"{name}.js"
+    path.write_text(f"{_DOM_SHIM}\n{bodies}\n{script}\n", encoding="utf-8", newline="\n")
+    done = subprocess.run([node, str(path)], capture_output=True, text=True, encoding="utf-8",
+                          timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+def _texts(node) -> list[str]:
+    """Every text in a drawn tree, in order."""
+    if isinstance(node, str):
+        return [node]
+    return [text for child in node["children"] for text in _texts(child)]
+
+
+def test_the_editor_set_aside_fold_draws_each_group_as_elements(tmp_path):
+    """The editor's Set aside fold, drawn by ``renderEditorRows`` as
+    written through the real ``el()``, holds each group's heading and its
+    rows' box as elements - never the text "[object ...]" that an array of
+    [heading, box] pairs handed to ``el()`` unflattened becomes, which left
+    every set-aside row out of the editor."""
+    drawn = _run_renderer(tmp_path, "editor_fold", (
+        "function renderEditorRows() {", "function setAsideHeading(group) {",
+        "function fill(pattern, values) {"), """
+const NOT_ASKED_GROUP = "not asked";
+const vocab = { columns: [], set_aside: { heading: "Set aside ({n})", group: "{label} ({n})" },
+                editor: { plain_columns: [], routing_columns: [], routing_all: "", routing_help: "" } };
+const editorState = { learned: {} };
+const editorFolds = new Map();
+const editorRowIsCustom = () => false;
+const editorRowFoldOpen = () => false;
+const showEveryFold = () => {};
+const editorRows = [
+  { identifier: "A01", group: "" },
+  { identifier: "B01", group: NOT_ASKED_GROUP },
+  { identifier: "C01", group: "Not Applicable in TY2025" },
+];
+const editorGroupKey = (row) => row.group;
+const editorRowYear = () => 2025;
+const unlearnKeyword = () => {};
+function requestRows(box, rows) { for (const row of rows) box.append(el("div", { className: "row" }, row.identifier)); }
+function setAsideGroups(rows) {
+  return rows.map((row) => ({ label: row.group, sentence: "A fabricated sentence.", rows: [row] }));
+}
+const page = { "ed-rows": document.createElement("div") };
+const $ = (id) => page[id];
+renderEditorRows();
+process.stdout.write(JSON.stringify(tree(page["ed-rows"])));
+""")
+    above, active, fold = drawn["children"]
+    assert above["className"] == "editor-actions"   # the routing toggle (decision 201)
+    assert fold["tag"] == "details" and fold["className"] == "ed-set-aside"
+    assert [child["tag"] if isinstance(child, dict) else child for child in fold["children"]] == [
+        "summary", "div", "div", "div", "div"]
+    assert not any("[object" in text for text in _texts(drawn))
+    assert [box["children"][0]["children"] for box in fold["children"][2::2]] == [["B01"], ["C01"]]
+    assert _texts(active) == ["A01"]
+
+
+def _class_names(node) -> list[str]:
+    """Every ``className`` in a drawn tree, in order."""
+    if isinstance(node, str):
+        return []
+    return [node["className"]] + [name for child in node["children"] for name in _class_names(child)]
+
+
+def test_the_plain_view_draws_one_box_per_column_and_a_custom_rows_document_in_the_plain_part(
+        tmp_path):
+    """Decision 201: ``requestRows`` with the fold, run as written, draws
+    one box for every column of every row across the plain part and the
+    fold - none twice, none lost - and a custom row's Document with the
+    plain boxes, because nothing else names it; a catalog row's Document
+    is in the fold."""
+    drawn = _run_renderer(tmp_path, "plain_view", (
+        "function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack, "
+        "learned = {}, keyed = true, fold = null }) {",), """
+const vocab = { editor: { routing: "Routing", routing_help: "How it is recognised.", remove_row: "Remove" },
+                triage: { identifier_separator: " - " } };
+const keys = ["identifier", "document", "required_keywords", "expected_count", "asked"];
+const columns = keys.map((key) => ({ key, label: key, help: "" }));
+const drawnBoxes = [];
+function cellInput(row, column) {
+  drawnBoxes.push([row.identifier, column.key]);
+  return el("span", { className: `cell-${column.key}` });
+}
+const rows = [{ identifier: "A01", document: "W-2", custom: false },
+              { identifier: "X01", document: "Letter from the county", custom: true }];
+const box = document.createElement("div");
+requestRows(box, rows, { columns, onChange: () => {}, onRemove: () => {}, keyed: false, fold: {
+  plain: ["expected_count", "asked"], routing: ["identifier", "document", "required_keywords"],
+  custom: (row) => row.custom, isOpen: () => false, setOpen: () => {} } });
+process.stdout.write(JSON.stringify({ boxes: drawnBoxes, tree: tree(box) }));
+""")
+    keys = ["identifier", "document", "required_keywords", "expected_count", "asked"]
+    assert sorted(map(tuple, drawn["boxes"])) == sorted((row, key) for row in ("A01", "X01") for key in keys)
+    [table] = drawn["tree"]["children"]
+    catalog_plain, catalog_fold, custom_plain, custom_fold = table["children"][1]["children"]
+    cells = {name: [c[len("cell-"):] for c in _class_names(part) if c.startswith("cell-")]
+             for name, part in (("catalog_plain", catalog_plain), ("catalog_fold", catalog_fold),
+                                ("custom_plain", custom_plain), ("custom_fold", custom_fold))}
+    assert cells == {"catalog_plain": ["expected_count", "asked"],
+                     "catalog_fold": ["identifier", "document", "required_keywords"],
+                     "custom_plain": ["document", "expected_count", "asked"],
+                     "custom_fold": ["identifier", "required_keywords"]}
+
+
+def test_a_notice_for_a_numeric_identifier_outlines_that_request_and_no_editor_row(tmp_path):
+    """Since decision 193 ``data-row`` is the row a notice names, so
+    ``requestRows`` keeps each row's index in ``data-index`` instead: a
+    notice for request "2", run through ``outlineRefused`` as written,
+    outlines the request table's row "2" and never the editor's or the
+    wizard's third row (the restack review's S1)."""
+    js = read("app/renderer/app.js")
+    drawing = _js_function(js, "function requestRows(container, rows, { columns, onChange, onRemove, "
+                               "onTakeBack, learned = {}, keyed = true, fold = null }) {")
+    assert "row:" not in drawing and "dataset.row" not in drawing
+    seen = _run_renderer(tmp_path, "outline_numeric", (
+        "function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack, "
+        "learned = {}, keyed = true, fold = null }) {", "function outlineRefused() {"), """
+Object.defineProperty(Element.prototype, "classList", { get() {
+  const node = this;
+  return { toggle(name, on) {
+    const names = new Set(node.className.split(" ").filter(Boolean));
+    if (on) names.add(name); else names.delete(name);
+    node.className = [...names].join(" ");
+  } };
+} });
+const vocab = { editor: { routing: "Routing", routing_help: "", remove_row: "Remove" },
+                triage: { identifier_separator: " - " } };
+const columns = ["identifier", "document", "expected_count"].map((key) => ({ key, label: key, help: "" }));
+const cellInput = () => el("span", {});
+const columnsByKey = (keys) => columns.filter((c) => keys.includes(c.key));
+const rows = [{ identifier: "A01", document: "W-2" }, { identifier: "B01", document: "1099-INT" },
+              { identifier: "C01", document: "1098" }];
+const table = el("tr", { dataset: { row: "2" } });
+const editor = document.createElement("div");
+requestRows(editor, rows, { columns, onChange: () => {}, onRemove: () => {}, fold: {
+  plain: ["expected_count"], routing: ["identifier", "document"], custom: () => false,
+  isOpen: () => false, setOpen: () => {} } });
+const wizard = document.createElement("div");
+requestRows(wizard, rows, { columns, onChange: () => {}, onRemove: () => {}, keyed: false });
+const all = [];
+const walk = (n) => { if (n instanceof Element) { all.push(n); n.childNodes.forEach(walk); } };
+[table, editor, wizard].forEach(walk);
+document.querySelectorAll = (selector) => all.filter((n) => selector === "[data-row]" && "row" in n.dataset);
+const notices = [{ identifier: "2" }];
+outlineRefused();
+const outlined = (root) => { const found = []; const look = (n) => { if (n instanceof Element) {
+  if (n.className.split(" ").includes("refused")) found.push(n.dataset.index ?? n.dataset.row);
+  n.childNodes.forEach(look); } }; look(root); return found; };
+process.stdout.write(JSON.stringify({ table: outlined(table), editor: outlined(editor),
+                                      wizard: outlined(wizard),
+                                      indexed: all.filter((n) => n.tag === "tr" && "index" in n.dataset).length }));
+""")
+    assert seen == {"table": ["2"], "editor": [], "wizard": [], "indexed": 9}
+
+
+# The dialogs' guard as written: the registry, the snapshot, the dirty test
+# and requestClose, against a page of plain stand-ins.
+_DIALOG_GUARD = ("const DIALOGS = {", "function snapshotOf(id) {", "function isDirty(id) {",
+                 "function rebaseline(id, keys) {", "function unsavedBar(id) {",
+                 "function requestClose(id) {")
+_DIALOG_PAGE = """
+const vocab = { dialogs: { unsaved: "Unsaved.", keep_editing: "Keep", discard: "Discard" } };
+const classes = (...names) => { const on = new Set(names);
+  return { contains: (c) => on.has(c), add: (c) => on.add(c), remove: (c) => on.delete(c),
+           toggle: (c, force) => { if (force ?? !on.has(c)) on.add(c); else on.delete(c); } }; };
+const bar = { classList: classes("hidden"), parts: {},
+              querySelector(sel) { return this.parts[sel] ||= { textContent: "", focus() {} }; } };
+const page = new Map();
+const $ = (id) => {
+  if (!page.has(id)) page.set(id, { value: "", textContent: "", classList: classes(), focus() {},
+                                    querySelector: () => bar, querySelectorAll: () => [] });
+  return page.get(id);
+};
+const dialogSnapshot = {};
+const dialogKept = {};
+const closed = [];
+const closeDialog = (id) => closed.push(id);
+const keepEditing = () => {};
+let editorRows = [];
+let details = {};
+const engagementFromFields = () => details;
+let editorFeeds = [];
+let handingOver = null;
+const closeNewReturn = () => {};
+"""
+
+
+def _dialog_guard(tmp_path, name: str, headers: tuple[str, ...], script: str):
+    return _run_renderer(tmp_path, name, (*_DIALOG_GUARD, *headers), _DIALOG_PAGE + script)
+
+
+def test_closing_the_editor_closes_it_clean_and_raises_the_bar_on_a_changed_row_or_detail(tmp_path):
+    """F-T-7, run as written: ``requestClose`` on an editor nothing moved in
+    closes it; one whose rows moved, or whose details alone moved, shows
+    the unsaved bar and stays open."""
+    seen = _dialog_guard(tmp_path, "dialog_close", (), """
+const wizardModel = () => null;
+const outcome = () => ({ closed: closed.splice(0), bar: !bar.classList.contains("hidden") });
+const results = {};
+editorRows = [{ identifier: "A01", document: "W-2" }]; details = { client: "Pat" };
+dialogSnapshot.editor = snapshotOf("editor");
+requestClose("editor"); results.clean = outcome();
+editorRows[0].document = "W-2s"; requestClose("editor"); results.row = outcome();
+bar.classList.add("hidden"); editorRows[0].document = "W-2"; details.client = "Pat Lee";
+requestClose("editor"); results.detail = outcome();
+process.stdout.write(JSON.stringify(results));
+""")
+    assert seen["clean"] == {"closed": ["editor"], "bar": False}
+    assert seen["row"] == {"closed": [], "bar": True}
+    assert seen["detail"] == {"closed": [], "bar": True}
+
+
+def test_picking_a_form_is_not_unsaved_work_but_typing_after_it_is(tmp_path):
+    """Decision 201: picking a form fills its defaults in, which is not the
+    person's typing - ``chooseForm`` as written leaves New household clean;
+    a box typed in afterwards makes it dirty."""
+    seen = _dialog_guard(tmp_path, "choose_form", (
+        "function chooseForm(formId) {", "function wizardModel() {", "function fill(pattern, values) {"), """
+Object.assign(vocab, { household: { items_title: "{form} requests" }, ask_the_client: "Ask",
+                       ask_the_client_note: "Note" });
+const forms = [{ id: "1040", label: "1040", who: "Individuals" }];
+const templatesByForm = { "1040": [{ identifier: "A01" }] };
+let selectedForm = null, templates = [], customItems = [], nameIsAuto = false, wizardPeople = [];
+const defaultYear = 2026, addingTo = null;
+let ticks = [];
+$("tmpl-list").querySelectorAll = () => ticks;
+const householdContact = () => "Pat Lee";
+const syncNameDefault = () => { $("ne-name").value = "1040 - Pat Lee"; };
+const blankPerson = () => ({ kind: "taxpayer", name: "", own: false, proposed: [] });
+const labelPeopleBlock = () => {}, renderPeople = () => {}, refreshProposals = () => {};
+const renderTemplateList = () => { ticks = [{ checked: true }]; };
+const renderCustomRows = () => {}, showStep = () => {};
+dialogSnapshot.modal = snapshotOf("modal");
+chooseForm("1040");
+const picked = isDirty("modal");
+$("ne-due").value = "2027-04-15";
+process.stdout.write(JSON.stringify({ picked, typed: isDirty("modal") }));
+""")
+    assert seen == {"picked": False, "typed": True}
+
+
+def test_a_refused_save_opens_every_fold_and_keeps_the_editor_open(tmp_path):
+    """Decision 201, R5, run as written: a refusal names a row and a column,
+    so ``saveEditor``'s refusal opens every fold, says the API's sentence
+    in the editor and does not close it. Decision 193: the refusal arrives
+    as the tracker's envelope and is also a notice, in the same sentence;
+    an error of the page's own is said in both places by its class alone,
+    its message only logged (principle 7)."""
+    headers = ("async function saveEditor() {", "function failed(err, retry) {",
+               "function failureSentence(err) {")
+    harness = """
+const page = { "ed-save": { disabled: false } };
+const $ = (id) => page[id];
+const withEng = (command) => [command];
+const call = async () => { throw THROWN; };
+const editorRows = [], editorState = { list_head: "h" };
+const engagementFromFields = () => ({});
+const viewGeneration = 0;
+const vocab = { shell: { page_error: "Own error ({kind})." } };
+const fill = (text, values) => text.replace("{kind}", values.kind);
+const done = { folds: 0, notes: [], notices: [], logged: 0, closed: [] };
+const window = { tracker: { logError: () => { done.logged += 1; } } };
+const notice = (failure) => done.notices.push([failure.sentence, failure.kind]);
+const showEveryFold = () => { done.folds += 1; };
+const editorNote = (text, cls) => done.notes.push([text, cls]);
+const closeDialog = (id) => done.closed.push(id);
+const renderFor = () => { throw new Error("a refused save draws nothing"); };
+const banner = () => {};
+saveEditor().then(() => process.stdout.write(JSON.stringify(done)));
+"""
+    sentence = "Row A01: a fabricated refusal"
+    refusal = (f"Object.assign(new Error({json.dumps(sentence)}), {{ failure: "
+               f"{{ sentence: {json.dumps(sentence)}, kind: \"refused\", identifier: \"A01\" }} }})")
+    seen = _run_renderer(tmp_path, "save_refused", headers, harness.replace("THROWN", refusal))
+    assert seen == {"folds": 1, "notes": [[sentence, "err"]], "notices": [[sentence, "refused"]],
+                    "logged": 0, "closed": []}
+    own = _run_renderer(tmp_path, "save_own_error", headers,
+                        harness.replace("THROWN", 'new TypeError("x is undefined at C:/private")'))
+    assert own == {"folds": 1, "notes": [["Own error (TypeError).", "err"]],
+                   "notices": [["Own error (TypeError).", "failed"]], "logged": 1, "closed": []}
+
+
+def test_edit_request_list_says_so_when_the_state_is_still_another_returns(tmp_path):
+    """The review's S4, on decision 194's model: when the state read for
+    the editor is still another return's - a switch landed while it was
+    read - Edit Request List puts the API's sentence in the banner and
+    opens nothing - never a button that does nothing."""
+    from tracker import api
+
+    seen = _run_renderer(tmp_path, "open_editor", ("async function openEditor() {",), f"""
+const vocab = {{ editor: {{ not_this_return: {json.dumps(api.EDITOR_NOT_THIS_RETURN)} }} }};
+const active = "/root/J Park & Associates/Lee/2026/1040 - Pat Lee";
+const other = {{ paths: {{ engagement: "/root/J Park & Associates/Lee/2026/1120S - Lee LLC" }} }};
+let lastState = other, editorState = null;
+const done = {{ called: [], banners: [], opened: [], failed: 0 }};
+const withEng = (command) => [command, "--engagement", active];
+const call = async (args) => {{ done.called.push(args[0]); return other; }};
+const failed = () => {{ done.failed += 1; }};
+const banner = (text, cls) => done.banners.push([text, cls]);
+const openDialog = (id) => done.opened.push(id);
+openEditor().then(() => process.stdout.write(JSON.stringify(done)));
+""")
+    assert seen == {"called": ["state"], "banners": [[api.EDITOR_NOT_THIS_RETURN, "err"]],
+                    "opened": [], "failed": 0}
+
+
+#: The roll fold's people button, run as written: the real ``showReturn``,
+#: ``select`` and ``renderFor`` with the call, the draw and the editor faked.
+_PEOPLE_HEADERS = ("function select(path) {", "function renderFor(view, state) {",
+                   "async function showReturn(path) {", "async function reviewPeople(path) {")
+_PEOPLE_HARNESS = """
+const vocab = { engagement_flag: "--engagement" };
+const clicked = "/root/J Park & Associates/Lee/2026/1040 - Pat Lee";
+const other = "/root/J Park & Associates/Lee/2026/1120S - Lee LLC";
+let active = other, viewGeneration = 0;
+const done = { called: 0, failed: 0, opened: [] };
+const stopLockWatch = () => {}, renderEngagements = () => {}, render = () => {};
+const applyLock = () => {}, outlineRefused = () => {};
+const failed = () => { done.failed += 1; };
+const openEditor = () => { done.opened.push(active); };
+const call = async (args) => { done.called += 1; READ };
+reviewPeople(clicked).then(() => process.stdout.write(JSON.stringify(done)));
+"""
+
+
+def test_the_roll_folds_people_button_opens_the_editor_only_on_the_read_it_asked_for(tmp_path):
+    """The rebase review's S4, decision 194 and 193's late-reply rule: the
+    people button is one ``state`` call and the editor on it. A failed read
+    is one notice and no second call; a switch during the read opens no
+    editor, never another return's."""
+    def run(name, read):
+        return _run_renderer(tmp_path, name, _PEOPLE_HEADERS,
+                             _PEOPLE_HARNESS.replace("READ", read))
+
+    drawn = "return { paths: { engagement: args[2] } };"
+    assert run("people_ok", drawn) == {"called": 1, "failed": 0, "opened": [
+        "/root/J Park & Associates/Lee/2026/1040 - Pat Lee"]}
+    assert run("people_failed", 'throw new Error("a fabricated failure");') == {
+        "called": 1, "failed": 1, "opened": []}
+    assert run("people_switched", f"select(other); {drawn}") == {
+        "called": 1, "failed": 0, "opened": []}
+
+
+def test_the_roll_banner_says_a_failed_retirement_and_turns_warn(tmp_path):
+    """The rebase review's S5, decision 159: when every ticked return
+    rolled and a retirement then failed, the API's own sentence is a line
+    of the card's roll banner and the banner is a warning, not a success."""
+    from tracker import api
+    from tracker.rollover import ROLLOVER_NOT_RETIRED
+
+    warning = ROLLOVER_NOT_RETIRED.format(year=2027, rolled="1040 - Pat Lee",
+                                          retired="none", left="1120S - Lee LLC",
+                                          why="a fabricated failure")
+    words = api._vocab()
+    seen = _run_renderer(tmp_path, "roll_banner", (
+        "function fill(pattern, values) {", "async function rollFromCard() {"), f"""
+const vocab = {json.dumps({key: words[key] for key in (
+    "household", "people", "origin_not_applicable", "origin_new",
+    "not_applicable_carried", "new_not_asked_carried")})};
+const state = {{ paths: {{ engagement: "/root/J Park & Associates/Lee/2027/1040 - Pat Lee" }} }};
+let lastState = {{ household: {{ path: "/root/J Park & Associates/Lee" }} }}, rollChoice = null;
+const done = {{ banners: [], failed: 0 }};
+const button = {{ disabled: false, open: true }};
+const $ = () => button;
+const gatherRollChoice = () => ({{}});
+const rollHouseholdCall = () => [["roll-household"], {{}}];
+const call = async () => ({{ target_year: 2027, state, rolled: [{{ label: "1040 - Pat Lee",
+  carried: [], unfiled_last_year: [], warnings: [] }}], retired: [], skipped: [],
+  warning: {json.dumps(warning)} }});
+const adoptList = () => {{}}, renderFor = () => {{}}, renderEngagements = () => {{}};
+const select = () => 1;
+const failed = () => {{ done.failed += 1; }};
+const banner = (text, cls) => done.banners.push([text, cls]);
+rollFromCard().then(() => process.stdout.write(JSON.stringify(done)));
+""")
+    assert seen["failed"] == 0
+    [(text, cls)] = seen["banners"]
+    assert warning in text.split("\n") and cls == "warn"
+
+
+def _side_lines(tmp_path, labels: dict, items: list[dict]) -> list:
+    """``sideLine`` as written, for each of ``items``, with the tracker's
+    own sides and the label table given."""
+    from tracker import reminder
+
+    sides = [{"key": side.key, "label": side.label} for side in reminder.SIDES]
+    return _run_renderer(tmp_path, "side_line", (
+        "function sideLine(item) {", "function isSetAside(override) {"), f"""
+const vocab = {{ labels: {json.dumps(labels)}, reminder: {{ sides: {json.dumps(sides)} }},
+                overrides: {{ not_applicable: "Not Applicable" }} }};
+const items = {json.dumps(items)};
+process.stdout.write(JSON.stringify(items.map((item) => {{ const line = sideLine(item); return line && tree(line); }})));
+""")
+
+
+def _titles(node) -> list[str]:
+    """Every ``title`` - a tooltip - in a drawn tree."""
+    if isinstance(node, str):
+        return []
+    own = [node["attributes"]["title"]] if "title" in node["attributes"] else []
+    return own + [title for child in node["children"] for title in _titles(child)]
+
+
+def test_the_side_sentence_is_text_beside_the_chip_and_never_a_tooltip(tmp_path):
+    """Decision 200: whose move a row is, in bold, and the row's own
+    sentence as a text child of the same line - on the page for a person
+    to read, never moved into a ``title`` to hover for."""
+    from tracker import reminder
+
+    items = [{"identifier": side.key, "side": side.key, "manual_override": "",
+              "side_sentence": f"{side.sentence} (fabricated row)"} for side in reminder.SIDES]
+    lines = _side_lines(tmp_path, {}, items)
+    for side, item, line in zip(reminder.SIDES, items, lines, strict=True):
+        assert line["className"] == "req-side"
+        bold, gap, sentence = line["children"]
+        assert bold == {"tag": "span", "className": "side", "attributes": {}, "children": [side.label]}
+        assert (gap, sentence) == (" ", item["side_sentence"])
+        assert _titles(line) == []
+
+
+def test_an_accepted_rows_side_word_is_the_label_tables_not_the_records(tmp_path):
+    """An Accepted row has no side; its line says the label table's word
+    for the override and that label's sentence. Relabelled in the table,
+    the line follows the table, not the word the record keeps."""
+    labels = {"Accepted": {"key": "Accepted", "label": "Signed off (fabricated)",
+                           "sentence": "A fabricated sentence for the accepted row."}}
+    [line] = _side_lines(tmp_path, labels, [{"identifier": "A01", "side": None, "side_sentence": "",
+                                             "manual_override": "Accepted"}])
+    bold, gap, sentence = line["children"]
+    assert bold["children"] == ["Signed off (fabricated)"]
+    assert (gap, sentence) == (" ", "A fabricated sentence for the accepted row.")
+    assert "Accepted" not in _texts(line)
+
+
+def test_the_runbook_status_table_is_the_label_table():
+    """The runbook's two columns - what the record says, what the app shows
+    - are the tracker's one table, row for row, in its order. Not
+    Applicable's label is said with <year>, as the README spells it. The
+    sides table beneath it is ``reminder.SIDES``, word and sentence, in
+    triage's order, so neither can drift from what the app shows."""
+    from tracker import reminder
+    from tracker.manifest import STATUS_LABELS
+
+    runbook = read("docs/runbook.md")
+    section = runbook.split("### What the record says, and what the app shows", 1)[1]
+    lines = section.split("| The record says | The app shows |\n|---|---|\n", 1)[1].splitlines()
+    rows = lines[:next(i for i, line in enumerate(lines) if not line.startswith("|"))]
+    assert rows == [f"| **{word}** | {shown.label.replace('{year}', '<year>')} - {shown.sentence} |"
+                    for word, shown in STATUS_LABELS.items()]
+    assert "TY<year>" in read("README.md")
+    lines = section.split("| Whose move | The sentence beside it |\n|---|---|\n", 1)[1].splitlines()
+    sides = lines[:next(i for i, line in enumerate(lines) if not line.startswith("|"))]
+    assert sides == [f"| **{side.label}** | {side.sentence} |" for side in reminder.SIDES]
+
+
+# ------------------ decision 201: the editor opens on what a preparer touches ----
+
+
+_DIALOG_IDS = re.compile(r'<div id="([a-z-]+)" class="modal-overlay')
+
+
+def _registry(js: str) -> set[str]:
+    """The ids the one dialog registry names, at its top level."""
+    block = js.split("const DIALOGS = {", 1)[1].split("\n};\n", 1)[0]
+    return set(re.findall(r'^  "?([a-z-]+)"?: \{', block, flags=re.MULTILINE))
+
+
+def test_every_dialog_is_in_the_one_registry_and_closes_through_one_guard():
+    """D10: every ``.modal-overlay`` in the page is in ``DIALOGS``, and no
+    code but ``closeDialog`` hides one - and none but ``openDialog`` shows
+    one - so no dialog can close its own way again."""
+    js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
+    ids = set(_DIALOG_IDS.findall(html))
+    assert ids == {"editor", "household-modal", "handover-modal", "modal"}
+    assert _registry(js) == ids
+    for ident in ids:
+        assert f'$("{ident}").classList.add("hidden")' not in js, ident
+        assert f'$("{ident}").classList.remove("hidden")' not in js, ident
+        assert f'$("{ident}").classList.toggle("hidden"' not in js, ident
+    closing = _js_function(js, "function closeDialog(id) {")
+    opening = _js_function(js, "function openDialog(id, first) {")
+    assert '$(id).classList.add("hidden");' in closing
+    assert 'overlay.classList.remove("hidden");' in opening
+    rest = js.replace(closing, "").replace(opening, "")
+    assert '$(id).classList.add("hidden")' not in rest and "overlay.classList" not in rest
+
+
+def test_escape_and_an_overlay_click_reach_every_dialog_the_same_way():
+    """One keydown handler on the document sends Escape to ``requestClose``
+    for the topmost dialog; a click on any dialog's dim is the same call;
+    and every Cancel button makes it too."""
+    js = read("app/renderer/app.js")
+    assert js.count('document.addEventListener("keydown"') == 1
+    handler = js.split('document.addEventListener("keydown", (e) => {', 1)[1].split("\n});", 1)[0]
+    assert 'e.key === "Escape"' in handler and "requestClose(id);" in handler
+    assert "trapTab(e, id);" in handler
+    assert js.count('"Escape"') == 1
+    overlay = js.split("for (const id of Object.keys(DIALOGS)) {", 1)[1].split("\n}\n", 1)[0]
+    assert "if (e.target === $(id)) requestClose(id);" in overlay
+    assert not re.search(r"e\.target === \$\(\"[a-z-]+\"\)", js)
+    for button, dialog in (("hh-edit-cancel", "household-modal"), ("ho-cancel", "handover-modal"),
+                           ("ed-cancel", "editor"), ("wh-cancel", "modal"), ("wf-cancel", "modal"),
+                           ("ne-cancel", "modal")):
+        assert f'$("{button}").addEventListener("click", () => requestClose("{dialog}"));' in js, button
+
+
+def test_every_dialog_opens_with_focus_inside_and_gives_it_back():
+    """``openDialog`` remembers what had focus and puts it on a control
+    inside; Tab is kept inside while it is open; ``closeDialog`` gives it
+    back. Every opener goes through it."""
+    js = read("app/renderer/app.js")
+    opening = _js_function(js, "function openDialog(id, first) {")
+    assert "dialogOpener[id] = document.activeElement;" in opening
+    assert "target.focus();" in opening and "DIALOGS[id].first()" in opening
+    closing = _js_function(js, "function closeDialog(id) {")
+    assert "const back = dialogOpener[id];" in closing and "back.focus();" in closing
+    for opener, ident in (("async function openEditor() {", "editor"),
+                          ("function openHouseholdEditor() {", "household-modal"),
+                          ("async function openHandOver(original, seq) {", "handover-modal"),
+                          ("async function openAddReturn(hh) {", "modal"),
+                          ("async function openNewHousehold() {", "modal")):
+        assert f'openDialog("{ident}")' in _js_function(js, opener), opener
+    registry = js.split("const DIALOGS = {", 1)[1].split("\n};\n", 1)[0]
+    assert registry.count("first: () =>") == 4
+    trap = _js_function(js, "function trapTab(e, id) {")
+    assert "e.preventDefault();" in trap and "first.focus();" in trap and "last.focus();" in trap
+
+
+def test_escape_never_discards_unsaved_work():
+    """F-T-7: while the unsaved bar is showing, every way of asking to close
+    means Keep editing; a dialog with changes raises the bar and does not
+    close; and the bar's discard button is the only way from it to
+    ``closeDialog``."""
+    js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
+    asking = _js_function(js, "function requestClose(id) {")
+    showing, rest = asking.split("keepEditing(id);", 1)
+    assert 'bar && !bar.classList.contains("hidden")' in showing and "closeDialog" not in showing
+    clean, dirty = rest.split("if (!isDirty(id)) {", 1)[1].split("}", 1)
+    assert "closeDialog(id);" in clean
+    assert "closeDialog" not in dirty and 'bar.querySelector(".dlg-keep").focus();' in dirty
+    assert "closeDialog" not in _js_function(js, "function keepEditing(id) {")
+    assert js.count('.dlg-discard")') == 2          # its words, and its one listener
+    assert 'bar.querySelector(".dlg-discard").addEventListener("click", () => closeDialog(id));' in js
+    assert 'bar.querySelector(".dlg-keep").addEventListener("click", () => keepEditing(id));' in js
+    # Every dialog a person types in carries the bar; the hand-over is two
+    # picks and never dirty.
+    assert html.count('class="dlg-unsaved banner warn hidden" role="alert"') == 3
+    assert "model: null," in js.split("const DIALOGS = {", 1)[1].split('"handover-modal": {', 1)[1]
+    # Acts recorded at once move the snapshot: the rename renames it.
+    assert "for (const row of dialogSnapshot.editor.rows)" in _js_function(js, "async function renameRequest() {")
+
+
+def test_the_editor_opens_on_the_state_on_screen_with_every_fold_closed():
+    """D13 on decision 194's model: the editor opens on ``lastState`` - the
+    reply the page is showing - and reads ``state`` only for a return a
+    switch has not landed on yet, one call; each open starts with every
+    fold closed, and the save is still judged by ``list_head``."""
+    js = read("app/renderer/app.js")
+    body = _js_function(js, "async function openEditor() {")
+    assert body.count("call(") == 1 and 'call(withEng("state"))' in body
+    assert "? { ...lastState }" in body and body.index("lastState") < body.index("call(")
+    assert "refresh(" not in body
+    assert body.index("editorFolds.clear();") < body.index("renderEditorRows();")
+    assert "head: editorState.list_head" in _js_function(js, "async function saveEditor() {")
+
+
+def test_no_text_box_is_named_only_by_its_placeholder():
+    """D11: a placeholder is gone the moment somebody types. The renderer
+    types no placeholder of its own; the keyword, spelling and note boxes
+    are each built inside a visible label, by one builder each; and the
+    setup card's three boxes sit inside labels in the page."""
+    js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
+    assert 'placeholder: "' not in js
+    assert "keyword to learn" not in js.lower() and "Keyword to add to the request" not in js
+    for cls, builder in (("r-keyword", "function keywordBox() {"),
+                         ("r-note", "function noteBox(words) {"),
+                         ("r-spelling", "function teachSpelling(triage, people) {")):
+        assert js.count(f'className: "{cls}"') == 1, cls
+        body = _js_function(js, builder)
+        label = body.split('el("label", { className: "field', 1)[1]
+        assert f'className: "{cls}"' in label, cls
+    assert len(re.findall(r"\bkeywordBox\(\)", js)) == 4        # the builder and its three places
+    for ident in ("phone-input", "firm-input", "root-input"):
+        assert re.search(rf'<label class="field">\s*<span id="[a-z]+-label"></span>\s*<input id="{ident}"', html), ident
+        tag = re.search(rf'<input id="{ident}"[^>]*>', html).group(0)
+        assert "placeholder=" not in tag and "aria-label=" not in tag, tag
+
+
+def test_the_issuer_action_has_one_call_site():
+    """Decision 201: the list's row and the deck's card add the issuer
+    through one function, as filing has one (decision 114) - the page
+    sends the row, its version, the list's version and the name, and no
+    identifier or row of its own."""
+    js = read("app/renderer/app.js")
+    assert js.count('withEng("add-issuer-and-file")') == 1
+    assert len(re.findall(r"\baddIssuerAndFile\(", js)) == 3     # the definition and its two callers
+    sent = re.search(r'call\(withEng\("add-issuer-and-file"\), \{(.*?)\}\)', js, re.S).group(1)
+    assert set(re.findall(r"(\w+):", sent)) == {"original", "seq", "head", "issuer"}
+
+
+def test_each_step_of_the_new_return_dialog_names_the_dialog_by_its_own_heading():
+    """196's review N5, carried into decision 201: New household opens on
+    its household step, where the form step's heading is hidden, so the
+    dialog is named by the heading of whichever step it shows."""
+    js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
+    assert ('const STEP_HEADINGS = { household: "household-title", form: "form-title", '
+            'items: "items-title" };') in js
+    step = _js_function(js, "function showStep(step) {")
+    assert "setAttribute(\"aria-labelledby\", STEP_HEADINGS[step])" in step
+    for heading in ("household-title", "form-title", "items-title"):
+        assert f'<h3 id="{heading}"></h3>' in html, heading

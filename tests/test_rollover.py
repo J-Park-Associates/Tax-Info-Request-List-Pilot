@@ -9,7 +9,7 @@ import datetime as dt
 
 import pytest
 
-from tests.conftest import ensure, make_engagement, seed_statuses, written_elsewhere
+from tests.conftest import child_env, ensure, make_engagement, seed_statuses, written_elsewhere
 from tracker import ledger
 from tracker.layout import inbox_of, root_of
 from tracker.manifest import (
@@ -311,6 +311,29 @@ def test_unfiled_documents_from_last_year_are_surfaced(prior, tmp_path):
     assert any("K-1 Redwood LP.pdf" in s for s in report.unfiled_last_year)
 
 
+def test_two_unfiled_documents_of_one_name_are_two_and_no_subfolder_is_quoted(prior, tmp_path):
+    """Decision 190 (C-13). The client names the files: two different
+    scans both called ``scan.pdf`` are two documents never filed, keyed by
+    where each original rests, and the subfolder each came from is its
+    row's own column, never a clause of the line next year's report quotes."""
+    from tests.conftest import seed_index
+    from tracker import reasons
+    from tracker.filer import NEEDS_REVIEW, IndexEntry
+
+    seed_index(prior, [
+        IndexEntry(received="2026-03-01", original_name="scan.pdf", size_kb=12.0, digest=digest,
+                   identifier="", prepared_location=f"{PREPARED_DIR_NAME}/{REVIEW_DIR_NAME}/{copy}",
+                   pbc_location=f"../../../../Clients/Test Household/2025/{copy}",
+                   decision=NEEDS_REVIEW, reason=UNMATCHED, code=reasons.UNMATCHED_CODE,
+                   subfolder="not allowed")
+        for digest, copy in (("a" * 64, "scan.pdf"), ("b" * 64, "scan (2).pdf"))
+    ])
+    report = roll_forward(prior)
+    lines = [s for s in report.unfiled_last_year if s.startswith("scan.pdf")]
+    assert len(lines) == 2
+    assert not any("not allowed" in line or "subfolder" in line for line in lines)
+
+
 def test_rollover_without_a_template_still_works(prior):
     report = roll_forward(prior)
     assert [r.item.identifier for r in report.rolled] == ["A01", "B01", "C01", "D01"]
@@ -437,11 +460,10 @@ def test_the_rollover_command_line_records_where_the_prior_year_really_is(prior)
 
     from tracker.manifest import load_engagement_info
 
-    repo = Path(__file__).resolve().parent.parent
     subprocess.run(
         [sys.executable, "-m", "tracker.rollover", prior.name, "--year", "2026"],
         cwd=prior.parent, check=True, capture_output=True,
-        env={**__import__("os").environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"},
+        env=child_env(PYTHONIOENCODING="utf-8"),
     )
     info = load_engagement_info(rolled_into(prior, 2026))
     assert Path(info.rolled_from).is_absolute() and Path(info.rolled_from) == prior.resolve()
@@ -483,21 +505,20 @@ def test_the_carry_clears_both_of_last_years_dates(tmp_path):
 def test_the_rollover_command_line_writes_the_carried_form_into_next_year(tmp_path):
     """End to end: the prior's details say which catalog, and so do next
     year's - the details the app shows."""
-    import os
     import subprocess
     import sys
-    from pathlib import Path
 
     from tracker.manifest import load_engagement_info
 
-    prior = make_engagement(tmp_path, PRIOR,
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    prior = make_engagement(tmp_path / "root", PRIOR,
                             EngagementInfo(client="John Smith", form="1040"),
                             household="Smith Family", scaffold=False)
-    repo = Path(__file__).resolve().parent.parent
     subprocess.run(
         [sys.executable, "-m", "tracker.rollover", prior.name, "--year", "2026"],
         cwd=prior.parent, check=True, capture_output=True,
-        env={**os.environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"},
+        env=child_env(PYTHONIOENCODING="utf-8"),
     )
     rolled = rolled_into(prior, 2026)
     info = load_engagement_info(rolled)
@@ -514,18 +535,17 @@ def test_the_rollover_command_line_fills_the_new_years_dates_from_the_form(tmp_p
     was stage 1, months after the tax year. A prior with no form and no
     ``--form`` still fills nothing: the no-guess rule is unchanged.
     """
-    import os
     import subprocess
     import sys
-    from pathlib import Path
 
     from tracker.manifest import load_engagement_info
     from tracker.templates import ask_by_for, filing_deadline_for
 
-    repo = Path(__file__).resolve().parent.parent
-    env = {**os.environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"}
+    env = child_env(PYTHONIOENCODING="utf-8")
 
-    prior = make_engagement(tmp_path, PRIOR,
+    # The clients root is a folder of its own, not tmp_path: the suite's
+    # settings folder is tmp_path/app, and a root holding it is refused (decision 185).
+    prior = make_engagement(tmp_path / "root", PRIOR,
                             EngagementInfo(client="John Smith", form="1040"),
                             household="Smith Family", scaffold=False)
     subprocess.run(
@@ -537,7 +557,7 @@ def test_the_rollover_command_line_fills_the_new_years_dates_from_the_form(tmp_p
     assert info.due == ask_by_for(info.filing_deadline)
 
     # No form recorded and none asked for: a statutory date is never guessed.
-    unknown = make_engagement(tmp_path, PRIOR, EngagementInfo(client="Jane Jones"),
+    unknown = make_engagement(tmp_path / "root", PRIOR, EngagementInfo(client="Jane Jones"),
                               household="Jones Family", return_name="1040 - Jones",
                               scaffold=False)
     subprocess.run(
@@ -685,6 +705,91 @@ def test_the_rollover_carries_a_row_per_issuer(tmp_path):
     assert [i.identifier for i in load_manifest(written)] == ["F01", "F02", "F03"]
 
 
+@pytest.fixture
+def pair_prior(tmp_path, monkeypatch):
+    """Last year's return whose list already holds two issuer rows of one
+    name, F02 and F03, as a list recorded before decision 201 could."""
+    from dataclasses import replace
+
+    from tracker import store
+    from tracker.locking import engagement_lock
+    from tracker.records import rule_to_json
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+    from tracker.templates import issuer_row, item_from_spec, template_items
+
+    settings = tmp_path.parent / f"{tmp_path.name}-app"
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    settings.mkdir(exist_ok=True)
+    set_clients_root(tmp_path)
+    k1 = next(i for i in template_items("1040", year=2025) if i.identifier == "F01")
+    eng = make_engagement(tmp_path, [k1, item_from_spec(issuer_row("F02", "Ashford Holdings LP"))],
+                          household="Lee Family", scaffold=False)
+    twin = replace(load_manifest(eng)[1], identifier="F03", row=3)
+    with engagement_lock(eng):
+        store.record(store.connect(), eng, ledger.new(ledger.RULES_CHANGED, **{
+            ledger.RULES_KEY: [rule_to_json(twin)], ledger.REMOVED_KEY: [], ledger.INFO_KEY: {},
+        }))
+    return eng
+
+
+PAIR_SAID = {"inner": "F02", "outer": "F03", "broad": "F01", "name": "Ashford Holdings LP"}
+
+
+def test_a_household_roll_carries_a_same_name_pair_last_year_held_and_says_so(pair_prior):
+    """Decision 201, the review's S1: two issuer rows of one name that last
+    year's list already held do not make the list unrollable. The pair is
+    carried as it was, and the roll's report carries the sentence rather
+    than leaving it to the first later save."""
+    from tracker.layout import private_household_dir
+    from tracker.manifest import ISSUER_NAMED_TWICE
+    from tracker.rollover import ReturnPlan, roll_household
+
+    done = roll_household(private_household_dir(root_of(pair_prior), "Lee Family"),
+                          target_year=2026, plans=[ReturnPlan(prior=pair_prior)])
+    assert done.skipped == []
+    [(_, created, report)] = done.rolled
+    assert report.warnings == [ISSUER_NAMED_TWICE.format(**PAIR_SAID)]
+    carried = {i.identifier: i.required_keywords for i in load_manifest(created)}
+    assert carried["F02"] == carried["F03"] == ("Ashford Holdings LP",)
+
+
+def test_a_household_roll_retires_an_unticked_return_whose_list_holds_a_same_name_pair(
+    pair_prior,
+):
+    """Decision 201, the rebase review's S1: the plan judges an unticked
+    return's stored rows as held, so a same-name pair its list already
+    holds is retired with it, never a refusal of the whole roll."""
+    from dataclasses import replace
+
+    from tracker.layout import private_household_dir
+    from tracker.manifest import load_engagement_info
+    from tracker.rollover import ReturnPlan, roll_household
+
+    w2 = [replace(W2[0], period="TY2025")]
+    other = make_engagement(root_of(pair_prior), w2, household="Lee Family",
+                            return_name="1040 - Mina Lee", scaffold=False)
+    done = roll_household(private_household_dir(root_of(pair_prior), "Lee Family"),
+                          target_year=2026, plans=[ReturnPlan(prior=other)])
+    assert done.retired == [pair_prior]
+    assert load_engagement_info(pair_prior).active is False
+
+
+def test_the_rollover_command_line_carries_a_same_name_pair_and_prints_the_warning(
+    pair_prior, monkeypatch,
+):
+    import io
+
+    from tracker.manifest import ISSUER_NAMED_TWICE
+
+    console = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+    code = run_the_command_line(monkeypatch, [str(pair_prior), "--year", "2026"], console)
+    console.flush()
+    shown = console.buffer.getvalue().decode("utf-8")
+    assert code == 0, shown
+    assert f"WARNING: {ISSUER_NAMED_TWICE.format(**PAIR_SAID)}" in shown
+    assert {"F02", "F03"} <= {i.identifier for i in load_manifest(rolled_into(pair_prior, 2026))}
+
+
 # ------------------------------------------------ through the app (d104) ----
 
 
@@ -755,7 +860,6 @@ def test_rollover_rolls_a_return_into_the_next_years_folder_of_the_same_househol
     the API nor the command line takes a target folder: they are given the
     prior and the year, and the layout says where it goes.
     """
-    import os
     import subprocess
     import sys
     from pathlib import Path
@@ -791,8 +895,7 @@ def test_rollover_rolls_a_return_into_the_next_years_folder_of_the_same_househol
 
     # The command line takes no target either: the prior and the year.
     repo = Path(__file__).resolve().parent.parent
-    env = {**os.environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8",
-           ENV_SETTINGS_DIR: str(tmp_path / "app")}
+    env = child_env(PYTHONIOENCODING="utf-8", **{ENV_SETTINGS_DIR: str(tmp_path / "app")})
     done = subprocess.run(
         [sys.executable, "-m", "tracker.rollover", str(target), "--year", "2027"],
         cwd=repo, capture_output=True, text=True, encoding="utf-8", env=env,
@@ -1067,15 +1170,16 @@ def test_household_roll_forward_rolls_all_or_none(park, monkeypatch):
 
     real_create = rollover.create_engagement
 
-    def the_third_fails(folder, items, info):
+    def the_third_fails(folder, items, info, **kwargs):
         if folder == targets[2]:
             raise OSError("the disk filled while the third return was made")
-        return real_create(folder, items, info)
+        return real_create(folder, items, info, **kwargs)
 
     monkeypatch.setattr(rollover, "create_engagement", the_third_fails)
-    with pytest.raises(ManifestError, match="the disk filled") as failed:
+    with pytest.raises(ManifestError) as failed:
         roll_household(household, target_year=2027, plans=ticked)
-    assert str(failed.value).startswith("1120S - Park Landscaping LLC: ")
+    # The OS's error by its class, never its words (decision 190).
+    assert str(failed.value) == "1120S - Park Landscaping LLC: OSError. Nothing was rolled."
     conn = store.connect()
     for target in targets:
         assert not target.exists()
@@ -1224,7 +1328,7 @@ def test_a_failed_retirement_says_what_was_rolled_and_left_open_and_still_refres
     assert said.result.retired == [] and said.not_retired == [leo, sofia]
     assert str(said) == ROLLOVER_NOT_RETIRED.format(
         year=2027, rolled="1040 - John Park, 1120S - Park Landscaping LLC", retired="none",
-        left="1040 - Leo Park, 1040 - Sofia Park", why="the disk filled")
+        left="1040 - Leo Park, 1040 - Sofia Park", why="OSError")               # its class, never its words (decision 190)
     assert return_dir_for(root, PARK, 2027, "1040 - John Park").is_dir()
     assert load_engagement_info(leo).active is True and load_engagement_info(sofia).active is True
     assert refreshed == [household]
@@ -1261,7 +1365,7 @@ def test_the_command_line_says_rolled_not_all_retired_after_a_failed_retirement(
     assert code == 1, shown
     assert NOT_ALL_RETIRED_HEADING in shown and f"  {NOT_ROLLED_HEADING}\n" not in shown
     assert "was not rolled forward" not in shown
-    assert "Not retired: 1040 - Sofia Park (the disk filled)" in shown
+    assert "Not retired: 1040 - Sofia Park (OSError)" in shown
     assert return_dir_for(root, PARK, 2027, "1040 - John Park").is_dir()
 
 

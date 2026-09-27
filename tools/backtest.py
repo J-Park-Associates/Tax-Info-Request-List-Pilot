@@ -85,6 +85,7 @@ import sys
 import tempfile
 import time
 from collections import Counter
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -95,8 +96,15 @@ if str(ROOT) not in sys.path:
 
 from tracker.content_check import extract  # noqa: E402
 from tracker.manifest import RequestItem  # noqa: E402
+from tracker.ocr import SCRATCH_ENV  # noqa: E402
 from tracker.router import route_file  # noqa: E402
-from tracker.settings import COLUMN_EXPECTED, EXPECTATIONS_COLUMNS, EXPECTATIONS_FILENAME  # noqa: E402
+from tracker.settings import (  # noqa: E402
+    COLUMN_EXPECTED,
+    EXPECTATIONS_COLUMNS,
+    EXPECTATIONS_FILENAME,
+    inside_the_app,
+    process_scratch,
+)
 from tracker.templates import FORM_TYPES, template_items  # noqa: E402
 from tracker.validators import IMAGE_EXTENSIONS, extension_allowed, extension_of, is_ignored  # noqa: E402
 
@@ -263,11 +271,44 @@ def route_one(path: Path, rows: list[RequestItem], *, ocr: bool) -> tuple[str | 
     return route_file(path, rows, reading=reading).identifier, False, kind
 
 
+@contextmanager
+def _temp_pointed_at(folder: Path):
+    """Point every way a library finds the temp folder - ``TMP``, ``TEMP``,
+    ``TMPDIR`` (``ocr.SCRATCH_ENV``) and :data:`tempfile.tempdir` - at
+    ``folder`` for the block, and put each back as it was afterwards, unset
+    ones unset."""
+    saved = {name: os.environ.get(name) for name in SCRATCH_ENV}
+    saved_tempdir = tempfile.tempdir
+    try:
+        for name in SCRATCH_ENV:
+            os.environ[name] = str(folder)
+        tempfile.tempdir = str(folder)
+        yield folder
+    finally:
+        for name, value in saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+        tempfile.tempdir = saved_tempdir
+
+
 def route_corpus(folder: Path, expectations: Path, *, ocr: bool = False) -> tuple[list[Outcome], float]:
     """Route every row of ``expectations``, and say how long the whole pass took.
 
-    The catalogs and the scratch links live in one temporary folder outside
-    the repository, which goes away with the pass.
+    The catalogs and the scratch links live in one temporary folder in this
+    process's own scratch in the data home (decision 186), never the machine's
+    temp folder: a link that cannot be made is a copy of a client document. It
+    goes away with the pass, and a killed pass's folder is swept by its process
+    number.
+
+    **The reading is in this process** (with ``ocr=True`` there is no reading
+    child), so for the pass the temp folder itself - ``TMP``, ``TEMP``,
+    ``TMPDIR`` and :data:`tempfile.tempdir` - points at that same scratch
+    folder, and is put back afterwards (decision 186's review, N5): what a
+    library writes *through the temp folder* while reading a firm document
+    lands there and goes with the pass. A library that writes to a path of
+    its own choosing is not caught, here or in the reading child.
     """
     catalog_rows, read_expectations = _harness()
     rows = read_expectations(expectations)
@@ -277,20 +318,25 @@ def route_corpus(folder: Path, expectations: Path, *, ocr: bool = False) -> tupl
 
     outcomes: list[Outcome] = []
     started = time.perf_counter()
-    with tempfile.TemporaryDirectory(prefix="backtest-") as scratch_name:
-        scratch = Path(scratch_name)
-        workspace = scratch / "catalogs"
-        workspace.mkdir()
-        built: dict = {}
-        for row, (name, catalog, year, expected) in enumerate(rows, start=1):
-            items = catalog_rows(workspace, catalog, year, built)
-            link = _linked_under_a_neutral_name(_document_path(folder, name, row), scratch, row)
-            began = time.perf_counter()
-            got, no_text, kind = route_one(link, items, ocr=ocr)
-            outcomes.append(Outcome(
-                row=row, catalog=catalog, expected=expected, got=got,
-                no_text=no_text, seconds=time.perf_counter() - began, kind=kind,
-            ))
+    own = process_scratch()
+    own.mkdir(parents=True, exist_ok=True)
+    try:
+        with _temp_pointed_at(own), tempfile.TemporaryDirectory(prefix="backtest-", dir=own) as scratch_name:
+            scratch = Path(scratch_name)
+            workspace = scratch / "catalogs"
+            workspace.mkdir()
+            built: dict = {}
+            for row, (name, catalog, year, expected) in enumerate(rows, start=1):
+                items = catalog_rows(workspace, catalog, year, built)
+                link = _linked_under_a_neutral_name(_document_path(folder, name, row), scratch, row)
+                began = time.perf_counter()
+                got, no_text, kind = route_one(link, items, ocr=ocr)
+                outcomes.append(Outcome(
+                    row=row, catalog=catalog, expected=expected, got=got,
+                    no_text=no_text, seconds=time.perf_counter() - began, kind=kind,
+                ))
+    finally:
+        shutil.rmtree(own, ignore_errors=True)    # a folder still held is swept later by its dead pid
     return outcomes, time.perf_counter() - started
 
 
@@ -568,7 +614,7 @@ def _outside_the_repository(path: Path) -> Path:
     into the tree is a file somebody commits.
     """
     resolved = path.expanduser().resolve()
-    if resolved == ROOT or ROOT in resolved.parents:
+    if inside_the_app(resolved):
         raise BacktestError(f"{OUT_FLAG} must name a path outside the repository: {resolved}")
     return resolved
 

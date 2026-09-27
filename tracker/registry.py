@@ -60,17 +60,21 @@ practice.
 
 from __future__ import annotations
 
+import logging
 import os
 import stat
+from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from tracker import layout, ledger, store
+from tracker import errors, layout, ledger, store
 from tracker.households import load_household_info, pause_of
 from tracker.ledger import LedgerError
 from tracker.manifest import ManifestError, load_engagement_info
 from tracker.records import EngagementInfo, HouseholdInfo
 from tracker.store import StoreError
+
+log = logging.getLogger(__name__)
 
 #: The workbook the request list lived in until decision 104. Its only
 #: reader in the package is the walk below, which uses it to say what a
@@ -147,6 +151,12 @@ HOUSEHOLD_RECORD_MISSING = (f"The household record `{ledger.LEDGER_FILENAME}` of
 
 class RegistryError(Exception):
     """The clients root could not be walked, or holds nothing at all."""
+
+
+class EmptyRoot(RegistryError):
+    """The clients root was walked and holds nothing at all: a practice not
+    set up yet, which the app answers as such - unlike a root that could
+    not be walked, which it says (decision 193)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -326,7 +336,13 @@ def _children(folder: Path, found: _Walk) -> list[Path] | None:
     try:
         return sorted((p for p in folder.iterdir() if p.is_dir()), key=lambda p: p.name.lower())
     except OSError as exc:
-        found.misfits.append(Misfit(folder, UNLISTED.format(error=exc.strerror or exc)))
+        # By its class and code, never its text (decisions 190 and 193,
+        # security principle 7): the text names the folder, and this sentence
+        # reaches the app, the page and the run log. The whole of it is kept
+        # on the debug log only (errors.keep).
+        errors.keep("registry", exc, name=folder.name)
+        found.misfits.append(Misfit(folder, UNLISTED.format(error=errors.error_class(exc))))
+        log.warning("Could not list a folder (%s)", errors.error_class(exc))
         return None
 
 
@@ -416,22 +432,29 @@ def _walk_private(private: Path, found: _Walk) -> None:
     if children is None:
         return
     for child in children:
-        if _skip(child) or _badly_named(child, found):
-            continue
-        record = _has_record(child)
-        if record is None and _cannot_be_read(child, found):
-            continue
-        if record:
-            found.households.append(child)
-            found.under[child] = []
-            _walk_household(child, found)
-            continue
-        # A household whose record is gone and whose returns still hold
-        # theirs is stopped, not left alone (SPEC-162 ruling 4).
-        if returns := _returns_with_records(child):
-            found.record_missing[child] = returns
-            continue
-        found.misfits.append(Misfit(child, MISFIT_NO_HOUSEHOLD_RECORD))
+        _walk_one_household(child, found)
+
+
+def _walk_one_household(child: Path, found: _Walk) -> None:
+    """One folder at the household position: a household, a household
+    whose record is gone, or a misfit - the one rule the practice's walk
+    and :func:`households_named` both apply (decision 192)."""
+    if _skip(child) or _badly_named(child, found):
+        return
+    record = _has_record(child)
+    if record is None and _cannot_be_read(child, found):
+        return
+    if record:
+        found.households.append(child)
+        found.under[child] = []
+        _walk_household(child, found)
+        return
+    # A household whose record is gone and whose returns still hold
+    # theirs is stopped, not left alone (SPEC-162 ruling 4).
+    if returns := _returns_with_records(child):
+        found.record_missing[child] = returns
+        return
+    found.misfits.append(Misfit(child, MISFIT_NO_HOUSEHOLD_RECORD))
 
 
 def _walk_household(household: Path, found: _Walk) -> None:
@@ -519,8 +542,9 @@ def household_from(folder: Path) -> Household:
             return Household(path=folder, problem=MISFIT_RECORD_MISPLACED)
     except (ManifestError, LedgerError, StoreError) as exc:
         return Household(path=folder, problem=str(exc))
-    except Exception as exc:        # one folder's surprise, said, not fatal
-        return Household(path=folder, problem=f"{type(exc).__name__}: {exc}")
+    except Exception as exc:        # one folder's surprise, said by its class, not fatal
+        errors.keep("registry: the household's record", exc, name=folder.name)
+        return Household(path=folder, problem=errors.error_class(exc))
     return Household(path=folder, info=info)
 
 
@@ -543,8 +567,12 @@ def engagement_from(folder: Path) -> Engagement:
         rules = store.rules(store.connect(), folder) or []
     except (ManifestError, LedgerError, StoreError) as exc:
         return Engagement(path=folder, problem=str(exc), household_path=household_path)
-    except Exception as exc:        # one folder's surprise, said, not fatal
-        return Engagement(path=folder, problem=f"{type(exc).__name__}: {exc}",
+    except Exception as exc:        # one folder's surprise, said by its class, not fatal
+        # Never its message: an OS error's names the record's path, a
+        # client's folder, and the problem reaches the page, the app and
+        # the run log (decision 190). The words go to the debug log.
+        errors.keep("registry: the return's record", exc, name=folder.name)
+        return Engagement(path=folder, problem=errors.error_class(exc),
                           household_path=household_path)
     if not rules and (folder / LEGACY_MANIFEST_FILENAME).is_file():
         return Engagement(path=folder, info=info, household_path=household_path,
@@ -619,17 +647,15 @@ def mark_superseded(engagements: list[Engagement]) -> list[Engagement]:
     ]
 
 
-def discover_engagements(root: Path | str, *, max_depth: int = MAX_DEPTH) -> Registry:
-    """Walk ``root`` and return every household, return and misfit under it."""
-    root = Path(root)
-    if not root.is_dir():
-        raise RegistryError(f"clients root is not a folder: {root}")
-    found = _walk_root(root)
-    if not found.returns and not found.households and not found.misfits:
-        raise RegistryError(
-            f"nothing found under {root} ({layout.PRIVATE_TREE}/<household>/<year>/<return> "
-            f"holding {ledger.LEDGER_FILENAME}) - is this the right folder?"
-        )
+def _kept(found: _Walk) -> tuple[list[Household], list[Engagement], list[Misfit], dict[Path, str]]:
+    """What a walk found, read: the households kept, their returns (the
+    superseded marked, a stopped household's returns each carrying its
+    sentence), the misfits, and the stopped households.
+
+    One rule for :func:`discover_engagements` and :func:`households_named`
+    (decision 192), so a feed the card resolves over the households it
+    names is resolved exactly as the pass resolves it over the practice.
+    """
     households = [household_from(folder) for folder in found.households]
     misfits = list(found.misfits)
     # A household whose record is a return's is the layout before decision
@@ -657,6 +683,23 @@ def discover_engagements(root: Path | str, *, max_depth: int = MAX_DEPTH) -> Reg
         stopped[household] = said
         engagements.extend(Engagement(path=one, problem=said, household_path=household)
                            for one in returns)
+    return keep, engagements, misfits, stopped
+
+
+def discover_engagements(root: Path | str, *, max_depth: int = MAX_DEPTH) -> Registry:
+    """Walk ``root`` and return every household, return and misfit under it."""
+    root = Path(root)
+    if not root.is_dir():
+        raise RegistryError(f"clients root is not a folder: {root}")
+    found = _walk_root(root)
+    # A household whose record is gone is something found: its sentence says
+    # restore it, never "is this the right folder?" (decision 185's port).
+    if not found.returns and not found.households and not found.misfits and not found.record_missing:
+        raise EmptyRoot(
+            f"nothing found under {root} ({layout.PRIVATE_TREE}/<household>/<year>/<return> "
+            f"holding {ledger.LEDGER_FILENAME}) - is this the right folder?"
+        )
+    keep, engagements, misfits, stopped = _kept(found)
     grouped: dict[Path, list[Engagement]] = {}
     for one in engagements:
         grouped.setdefault(one.household_path, []).append(one)
@@ -689,6 +732,60 @@ def discover_engagements(root: Path | str, *, max_depth: int = MAX_DEPTH) -> Reg
         misfits=sorted(misfits, key=lambda m: str(m.path).lower()),
         paused=paused,
         stopped=stopped,
+    )
+
+
+def households_named(private: Path | str, names: Iterable[str]) -> Registry:
+    """The households under the private tree ``private`` whose folder names
+    are one of ``names`` by the layout's key, walked exactly as the
+    practice's walk walks them - and nothing else (decision 192).
+
+    **A click walks nothing.** A return's card has to resolve the feeds
+    its household's record names, and it used to walk the whole clients
+    root and read every household's and every return's journal to do it.
+    The feeds name their households, so the card lists the private tree's
+    first level once, by name, and reads only the folders a feed names:
+    a household with no feed reads no other folder at all.
+
+    **The walk's own rule, not a second one.** Each kept folder goes
+    through the per-household walk (:func:`_walk_one_household`) and the
+    same reading (:func:`_kept`) :func:`discover_engagements` uses, so a
+    feed resolves over this registry exactly as it resolves over the
+    practice's. Folders are matched by :func:`layout.name_key`, so two
+    folders that claim one household both come back, as the walk gives
+    both to :func:`tracker.households.resolve_feeds`.
+
+    **Read fresh**, never from the store's rows: the hand-over and the
+    waiting row's click check their target against this same resolution
+    before they write, and a write is never answered from a cache.
+
+    ``paused`` and ``stopped`` are left empty: nothing that asks this
+    registry reads them, and saying them would take the walk of the whole
+    practice this function exists to avoid. No names - no listing and an
+    empty registry. A private tree that cannot be listed raises
+    :class:`RegistryError`.
+    """
+    private = Path(private)
+    wanted = {layout.name_key(name) for name in names}
+    if not wanted:
+        return Registry(source=private.parent)
+    try:
+        with os.scandir(private) as entries:
+            kept = sorted((Path(entry.path) for entry in entries
+                           if entry.is_dir() and layout.name_key(entry.name) in wanted),
+                          key=lambda p: p.name.lower())
+    except OSError as exc:
+        errors.keep("registry", exc, name=private.name)
+        raise RegistryError(f"the firm's tree could not be listed ({errors.error_class(exc)})") from None
+    found = _Walk()
+    for child in kept:
+        _walk_one_household(child, found)
+    keep, engagements, misfits, _stopped = _kept(found)
+    return Registry(
+        source=private.parent,
+        engagements=engagements,
+        households=keep,
+        misfits=sorted(misfits, key=lambda m: str(m.path).lower()),
     )
 
 

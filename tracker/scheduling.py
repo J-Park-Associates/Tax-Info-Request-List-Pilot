@@ -64,10 +64,15 @@ question, left to its own decision.
 ``schtasks`` is local and run through :mod:`subprocess` alone
 (:func:`_schtasks`, the one seam the tests replace); nothing here reaches
 the network.
+
+Importing this module loads no network library (decision 194):
+``tests/test_layers.py::test_importing_the_api_loads_no_network_module``
+holds it there.
 """
 
 from __future__ import annotations
 
+import html
 import json
 import os
 import re
@@ -75,13 +80,12 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from xml.sax.saxutils import escape
 
 from tracker.fsio import write_text_atomically
 from tracker.layout import designation_file
 from tracker.locking import RUN_TIME_LIMIT_SECONDS, is_this_host, this_host
 from tracker.runner import DRAFT_DAY_NAME, LOG_FLAG, RUNNER_MODE_FLAG, SETTINGS_FLAG
-from tracker.settings import SETTINGS_FILENAME, product_name
+from tracker.settings import SETTINGS_FILENAME, app_dir, data_home, product_name, program_drive_refusal
 
 #: The scheduled task is named after the product, wherever that is set.
 TASK_NAME = product_name()
@@ -89,10 +93,16 @@ DEFAULT_START = "07:00"
 #: Filing and scanning repeat through the day this often (minutes); the
 #: reminder still drafts only on the drafting day. 0 = once a day.
 DEFAULT_REPEAT_MINUTES = 120
-#: The generated Task Scheduler definition, beside the app's settings.
+#: The generated Task Scheduler definition, in the tracker's data home (decision 186).
 SCHEDULE_XML_FILENAME = "tax-tracker.xml"
 #: Any date in the past will do for a daily trigger; it is when the series began.
 _START_BOUNDARY_DATE = "2026-01-01"
+
+
+def schedule_xml_path() -> Path:
+    """Where Install Schedule writes the task's file: the data home (decision
+    186), never beside the program. Only a path; the installer makes the folder."""
+    return data_home() / SCHEDULE_XML_FILENAME
 
 
 def iso_duration(seconds: int) -> str:
@@ -203,7 +213,15 @@ def refuse_shell_special(field: str, value: str | Path) -> None:
 
 
 def _xml_escape(value: str) -> str:
-    return escape(str(value))
+    """``&``, ``<`` and ``>`` escaped, and nothing else - byte for byte what
+    ``xml.sax.saxutils.escape`` gave (decision 194, D8).
+
+    Not saxutils: it imports ``urllib.request``, which loads ``http.client``
+    and ``ssl``, and even at call time (decision 193's review, S2) that is a
+    network library in the process for one escape. ``quote=False``, because
+    ``quote=True`` would turn a ``"`` inside ``<Arguments>`` into ``&quot;``:
+    valid XML, but a changed task file for no reason."""
+    return html.escape(str(value), quote=False)
 
 
 def _settings_file(settings: str | Path) -> str:
@@ -407,18 +425,6 @@ def _schtasks(command: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(command, capture_output=True, text=True)
 
 
-def _working_dir(frozen: bool) -> Path:
-    """The folder the job runs in: the packaged executable's own folder, or
-    this checkout (the folder holding the package)."""
-    return Path(sys.executable).resolve().parent if frozen else Path(__file__).resolve().parent.parent
-
-
-def schedule_xml_path(settings_folder: str | Path) -> Path:
-    """Where the generated job definition is written: beside the settings
-    file in the app's settings folder."""
-    return Path(settings_folder) / SCHEDULE_XML_FILENAME
-
-
 def register_here(settings_folder: str | Path, *, start: str = DEFAULT_START,
                   every: int = DEFAULT_REPEAT_MINUTES) -> list[str]:
     """Write the job for this app's settings folder and register it with
@@ -433,11 +439,14 @@ def register_here(settings_folder: str | Path, *, start: str = DEFAULT_START,
     refuses raises ``RuntimeError`` with what it said.
     """
     frozen = bool(getattr(sys, "frozen", False))
-    xml_path = schedule_xml_path(settings_folder)
+    # The task's file goes into the data home (decision 186), never beside
+    # the program; its folder is made as the installer makes it.
+    xml_path = schedule_xml_path()
+    xml_path.parent.mkdir(parents=True, exist_ok=True)
     write_text_atomically(
         xml_path,
         task_scheduler_xml(python=sys.executable, settings=settings_folder,
-                           working_dir=_working_dir(frozen), start_time=start,
+                           working_dir=app_dir(), start_time=start,
                            repeat_minutes=every, frozen=frozen),
         encoding=SCHEDULE_XML_ENCODING,
     )
@@ -690,10 +699,18 @@ if __name__ == "__main__":
     parser.add_argument(OUT_FLAG, default="",
                         help="write to this file instead of standard output")
     parser.add_argument(INSTALL_FLAG, action="store_true",
-                        help=f"also register the task with Task Scheduler (Windows; needs {OUT_FLAG})")
+                        help="also register the task with Task Scheduler (Windows); the task's file "
+                             f"goes into the tracker's data folder unless {OUT_FLAG} names another")
     ns = parser.parse_args()
-    if ns.install and (ns.format != FORMAT_XML or not ns.out):
-        parser.error(f"{INSTALL_FLAG} needs {FORMAT_FLAG} xml and {OUT_FLAG}")
+    if ns.install and ns.format != FORMAT_XML:
+        parser.error(f"{INSTALL_FLAG} needs {FORMAT_FLAG} xml")
+    if ns.install and not ns.out:
+        from tracker.settings import SettingsError
+
+        try:
+            ns.out = str(schedule_xml_path())
+        except SettingsError as exc:
+            parser.error(str(exc))
 
     if not ns.settings:
         # None given: this checkout's own settings folder, which must already
@@ -706,6 +723,11 @@ if __name__ == "__main__":
                          f"{NO_ROOT_HINT}")
         ns.settings = str(settings_dir())
     settings_arg = resolve_folder(ns.settings, ns.working_dir)
+    if ns.install:
+        # The task runs whatever program sits there, every pass: never one on
+        # a removable or network drive (decision 186). Refused before writing.
+        if refusal := program_drive_refusal(settings=Path(settings_arg)):
+            parser.error(refusal)
 
     try:
         if ns.format == FORMAT_XML:
@@ -739,6 +761,7 @@ if __name__ == "__main__":
 
     if ns.out:
         # Task Scheduler wants SCHEDULE_XML_ENCODING for an XML it will import.
+        Path(ns.out).parent.mkdir(parents=True, exist_ok=True)
         write_text_atomically(Path(ns.out), payload, encoding=encoding)
         print(f"Wrote {ns.out}")
         if ns.install:

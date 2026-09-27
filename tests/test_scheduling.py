@@ -265,7 +265,8 @@ def test_register_here_is_the_one_registration(monkeypatch, tmp_path):
     """Decision 209: the repair path and the after-install step both come
     through ``register_here``. The job names the app's settings folder and
     no clients root (decision 131), from source with this Python and in the
-    packaged app with its own executable in runner mode."""
+    packaged app with its own executable in runner mode. The task's file
+    goes where decision 186 puts it."""
     import sys
 
     from tracker.runner import LOG_FLAG, RUNNER_MODE_FLAG, SETTINGS_FLAG
@@ -280,7 +281,8 @@ def test_register_here_is_the_one_registration(monkeypatch, tmp_path):
     folder.mkdir()
     calls = fake_schtasks(monkeypatch)
     command = register_here(folder, start="06:30", every=60)
-    xml_path = schedule_xml_path(folder)
+    xml_path = schedule_xml_path()                   # the data home (decision 186), never the settings folder
+    assert not (folder / xml_path.name).exists()
     assert calls == [command] and command[:4] == ["schtasks", "/create", "/xml", str(xml_path)]
     xml = xml_path.read_text(encoding=SCHEDULE_XML_ENCODING)
     assert f"{SETTINGS_FLAG} {quote_argument(folder)}" in xml
@@ -426,3 +428,77 @@ def test_the_scheduled_job_names_the_settings_folder_and_no_clients_root():
     # From anywhere: a POSIX settings folder is named in its own flavour.
     posix = task_scheduler_xml(**{**ARGS, "settings": "/srv/tracker"})
     assert f"/srv/tracker/{SETTINGS_FILENAME}" in posix
+
+
+def test_the_task_xml_is_escaped_exactly_as_before():
+    """Decision 194 (D8): the escape moved off ``xml.sax.saxutils`` - which
+    loads a network library - to ``html.escape(quote=False)``, and the task
+    file is byte-identical: ``&``, ``<`` and ``>`` escaped, quotes left as
+    they are, so a quoted Windows path in ``<Arguments>`` reads the same.
+    The test may import saxutils; ``tracker/`` may not."""
+    from xml.sax.saxutils import escape
+
+    from tracker import scheduling
+
+    for text in ('A & B <Park> "quoted" \'single\'',
+                 '--settings "C:\\Program Files\\J Park & Associates\\" --log',
+                 "&amp; already escaped &lt;", "", "plain"):
+        assert scheduling._xml_escape(text) == escape(text)
+    assert scheduling._xml_escape(2026) == escape("2026")
+def test_install_without_out_writes_the_task_file_into_the_data_home(monkeypatch, tmp_path, capsys):
+    """Decision 186: ``--install`` alone writes the task's file into the
+    tracker's data home, making the folder as it writes, and registers that
+    file - never one beside the program or in the working folder."""
+    import platform
+    import runpy
+    import sys
+
+    from tracker.runner import SETTINGS_FLAG
+    from tracker.scheduling import INSTALL_FLAG, SCHEDULE_XML_FILENAME, schedule_xml_path
+    from tracker.settings import ENV_DATA_HOME
+
+    home = tmp_path / "account-data"
+    monkeypatch.setenv(ENV_DATA_HOME, str(home))
+    monkeypatch.setattr(platform, "system", lambda: "Linux")    # install_task only shows its command
+    monkeypatch.chdir(tmp_path)
+    settings = tmp_path / "app"
+    settings.mkdir()
+    monkeypatch.setattr(sys, "argv", ["tracker.scheduling", SETTINGS_FLAG, str(settings), INSTALL_FLAG])
+
+    runpy.run_module("tracker.scheduling", run_name="__main__")
+
+    written = schedule_xml_path()
+    assert written == home / SCHEDULE_XML_FILENAME and written.is_file()
+    out = capsys.readouterr().out
+    assert f"Wrote {written}" in out and f"/xml {written}" in out
+    assert not (settings / SCHEDULE_XML_FILENAME).exists()
+    assert not (tmp_path / SCHEDULE_XML_FILENAME).exists()
+
+
+def test_the_command_line_install_refuses_a_program_on_a_removable_drive(monkeypatch, tmp_path, capsys):
+    """Decision 186: the command line's ``--install`` refuses a program on a
+    stick with the app's own sentence, before any file is written."""
+    import runpy
+    import sys
+
+    from tracker import settings as settings_module
+    from tracker.runner import SETTINGS_FLAG
+    from tracker.scheduling import INSTALL_FLAG, schedule_xml_path
+
+    monkeypatch.chdir(tmp_path)
+    settings = tmp_path / "app"
+    settings.mkdir()
+    program = {settings_module.app_dir(), settings}     # the data home stays on the fixed disk
+    monkeypatch.setattr(settings_module, "drive_type",
+                        lambda path: settings_module.DRIVE_REMOVABLE if path in program
+                        else settings_module.DRIVE_FIXED)
+    monkeypatch.setattr(sys, "argv", ["tracker.scheduling", SETTINGS_FLAG, str(settings), INSTALL_FLAG])
+
+    with pytest.raises(SystemExit) as stopped:
+        runpy.run_module("tracker.scheduling", run_name="__main__")
+
+    assert stopped.value.code == 2
+    said = capsys.readouterr().err
+    assert settings_module.PROGRAM_ON_REMOVABLE.format(folder=settings_module.app_dir()) in said
+    assert not schedule_xml_path().exists()
+    assert list(settings.iterdir()) == []

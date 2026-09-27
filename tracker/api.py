@@ -1,7 +1,7 @@
 """JSON bridge for the desktop app (Electron) — python -m tracker.api <command>.
 
-Commands print a single JSON object to stdout and exit 0, or {"error": ...}
-and exit 1. All real logic lives in the tracker package; this module only
+Commands print a single JSON object to stdout and exit 0, or {"error": ...,
+"failure": ...} and exit 1. All real logic lives in the tracker package; this module only
 serializes it, so the UI can never disagree with the scanner.
 
 Commands:
@@ -9,7 +9,7 @@ Commands:
             root, plus the vocabulary the app shows
   templates the form catalog and the calendar's default tax year
   create    a new return, and its household where it is a new one, from
-            the wizard's spec (JSON on stdin)
+            the new-return dialog's spec (JSON on stdin)
   edit      save the request list and the engagement's details from the
             app's editor (JSON on stdin), as one recorded event
   edit-household  save the household's members, contact and inbox link
@@ -26,12 +26,15 @@ Commands:
             inbox with the client - the firm's word, dated
   accept-folder-name  record that a paused household (or one return) is now
             called by its folder's name - a person's word, dated (decision 188)
-  scan      one pass over this return's household, exactly as the scheduled
-            run makes it (no draft)
+  run-now   start this return's household's pass - the scheduled runner, for
+            one household - and print its progress lines and its final
+            line (no draft; decision 203)
   reminder  the week's draft as the record and the file now stand, at any
             of the four stages, with the body Outlook wants (never sends)
   approve   make the text the panel showed this week's draft, and record it
   assign    file one Needs Review document under a request (a person's call)
+  add-issuer-and-file  add the issuer row a parked K-1's card offers and file
+            the document under it, in one step (a person's call, decision 201)
   dismiss   record that no request asks for one Needs Review document
   unfile    send one filed document back to Needs Review (a person's call)
   mark-missing  take one request off what a consolidated statement answers,
@@ -50,6 +53,15 @@ Commands:
   unlock    clear a stale engagement lock (a fresh one is refused)
   acknowledge-foreign  a person has looked at the lines another machine wrote
             in one return's record; they stop being named (decision 159)
+  watch     whether a pass still holds this return, and where it is (a read
+            of the lock and the pass's progress file; no store)
+  cancel-pass  ask a running Sort & Scan this app started to stop at its
+            next file (JSON on stdin: {"pass": id})
+
+Every reply carries ``warnings``; every error also carries ``failure``
+({sentence, kind, seq, identifier}) beside ``error`` (decision 193).
+Sort & Scan is ``run-now``: the scheduled runner itself (``tracker.runner.main``),
+which prints progress lines and ends with one final line (tracker.progress).
 """
 
 from __future__ import annotations
@@ -64,7 +76,8 @@ from collections.abc import Callable
 from contextlib import ExitStack
 from dataclasses import asdict, replace
 from functools import cache
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from types import SimpleNamespace
 
 from tracker import (
     STANDING_RULES,
@@ -72,16 +85,20 @@ from tracker import (
     checkpoint,
     content_check,
     door,
+    errors,
     layout,
     ledger,
     names,
     ocr,
+    progress,
     reasons,
     records,
     reminder,
     review,
+    runner,
     store,
 )
+from tracker.containers import is_container
 from tracker.filer import (
     DUPLICATE,
     FILE_MOVED,
@@ -93,6 +110,7 @@ from tracker.filer import (
     ROOM_SHORT,
     FilingError,
     Spelling,
+    StaleRowError,
     assign_review_file,
     both_gone,
     dismiss_review_file,
@@ -145,10 +163,21 @@ from tracker.layout import (
     locate,
     originals_dir_for,
     private_household_dir,
+    recorded_name,
     return_dir_for,
     year_of,
 )
-from tracker.locking import STALE_LOCK_SECONDS, clear_stale_lock, engagement_lock, lock_status
+from tracker.locking import (
+    LOCK_FILENAME,
+    LOCKED,
+    STALE_LOCK_SECONDS,
+    EngagementLockedError,
+    clear_stale_lock,
+    engagement_lock,
+    is_this_host,
+    lock_status,
+    pid_alive,
+)
 from tracker.manifest import (
     ANY_EXTENSION,
     COLUMN_HELP,
@@ -160,13 +189,14 @@ from tracker.manifest import (
     MIN_SIZE_KB_FLOOR,
     NO_DATE_CHECK,
     NO_LIST_HEAD,
-    NOT_APPLICABLE_LABEL,
     NOT_ASKED_LABEL,
     OVERRIDE_REASON_OTHER,
     OVERRIDE_REASONS,
+    STATUS_LABELS,
     UNSCANNED_LABEL,
     YEAR_MAX,
     YEAR_MIN,
+    ListMoved,
     ManifestError,
     Override,
     Status,
@@ -183,7 +213,7 @@ from tracker.manifest import (
     recorded_rules,
     rule_as_read,
     save_rules,
-    status_label,
+    status_key,
     summarize,
     unlearn_keyword,
 )
@@ -222,11 +252,14 @@ from tracker.records import (
     person_to_json,
 )
 from tracker.registry import (
+    EmptyRoot,
     Engagement,
+    Household,
     Registry,
     RegistryError,
     discover_engagements,
     engagement_from,
+    households_named,
     mark_superseded,
 )
 from tracker.registry import (
@@ -250,23 +283,15 @@ from tracker.rollover import (
 )
 from tracker.runner import (
     DRAFT_WEEKDAY,
-    LOG_FILENAME,
-    LOG_NOT_WRITTEN,
+    LEFT_BEHIND_TO_MOVE,
     NOTHING_OUTSTANDING,
-    PAGE_NOT_WRITTEN,
-    REMINDERS_NEVER,
     STATUS_PAGE_FILENAME,
     WEEKDAY_NAMES,
-    EngagementRun,
-    RunReport,
-    append_log,
+    created_on,
     last_draft_day,
     last_drafted,
     last_pass_line,
-    reader_start_warning,
-    run_household,
-    status_report,
-    write_status_page,
+    left_behind_warnings,
 )
 from tracker.scaffold import (
     PREPARED_DIR_NAME,
@@ -282,36 +307,46 @@ from tracker.scheduling import (
     TASK_NAME,
 )
 from tracker.settings import (
+    ERROR_LOG_FILENAME,
     EXAMPLE_ROOT,
     SET_ROOT_HINT,
     SettingsError,
     clients_root,
+    data_home,
+    error_log,
+    error_log_path,
     firm,
     firm_phone,
     product_name,
+    program_drive_refusal,
     set_clients_root,
     set_firm,
     set_firm_phone,
     settings_dir,
     settings_path,
 )
-from tracker.templates import (  # the catalog; re-exported for the wizard
+from tracker.templates import (  # the catalog; re-exported for the dialog
     EXTENSION_DEFAULT_NOTE,
     FORM_TEMPLATES,
     FORM_TYPES,
+    K1_IDENTIFIER,
     KEYWORD_DEFAULT_NOTE,
     PERIOD_PATTERN,
     YEAR_NOTE,
     base_year,
     default_tax_year,
+    issuer_item,
+    issuer_row,
     item_from_spec,
+    next_issuer_identifier,
     require_form,
     shift_item,
     template_items,
 )
+from tracker.validators import extension_of, is_program
 from tracker.view import (
-    NOT_APPLICABLE_SECTION,
-    NOT_ASKED_SECTION,
+    SET_ASIDE_GROUP,
+    SET_ASIDE_SECTION,
     VIEW_FILENAME,
     VIEW_LABEL,
     VIEW_OPEN_LABEL,
@@ -320,6 +355,182 @@ from tracker.view import (
 )
 
 log = logging.getLogger("tracker.api")
+
+# ------------------------------------------------------------ the envelope ----
+#
+# Every reply carries ``warnings``, and every error one ``failure`` beside
+# the unchanged ``error`` string (decision 193). How an error is said is
+# decided in one place, :func:`_failure_of`: a refusal the tracker words
+# for a person is said in its own sentence; anything else by its class and
+# code, and its full text and traceback go only to the local error log.
+
+#: This command's envelope warnings - what a person must see about the
+#: reply beyond its result - reset by :func:`main`.
+_WARNINGS: list[str] = []
+#: The spec :func:`_read_spec` parsed, so a failure can name the row the
+#: person clicked; reset by :func:`main`.
+_ASKED: dict = {}
+#: The command :func:`main` is running, which :func:`_with_list` holds to
+#: :data:`LIST_CHANGING` (decision 194's review, S3); set by :func:`main`.
+_RUNNING: dict = {"command": ""}
+
+#: The usage line, a refusal like any other (its text is unchanged).
+USAGE = "usage: tracker.api {commands}"
+#: What an error the tracker did not expect is said as: its class and code,
+#: never its message, and where its detail went.
+FAILED = ("The tracker hit an error it did not expect ({kind}). What it finished is on the record; "
+          "the details are in {log} beside the tracker's database.")
+#: The notices' three buttons (decision 193, ruling 12). Static in
+#: ``index.html``'s template, pinned to these word for word, because a
+#: notice must work when the very first ``list`` fails, before any
+#: vocabulary exists.
+NOTICE_LABELS = {"retry": "Retry", "look": "Look again", "dismiss": "Dismiss"}
+
+
+#: A clients root that could not be walked (decision 193): said, never an
+#: empty answer that reads as a practice with nothing in it.
+PRACTICE_NOT_WALKED = ("The clients folder could not be walked just now, so what needs the whole "
+                       f"practice is not shown; the details are in {ERROR_LOG_FILENAME}.")
+#: The Reminder card kept on screen when its reminder cannot be read (D7).
+REMINDER_UNREADABLE = "This return's reminder could not be read just now; the notice above says why."
+#: One return's reminder line on the household card that could not be read.
+REMINDER_LINE_UNREADABLE = "{label}: its reminder could not be read ({kind})"
+#: Stop asked of a pass this app is not running (ruling 7 and the lane's).
+NOTHING_TO_STOP = "There is no pass this app started running to stop; nothing was changed."
+#: How often the app asks whether a lock it shows has gone (ruling 10).
+LOCK_WATCH_SECONDS = 5
+#: The lock notice's words (D4): nothing waits, and nothing needs clearing.
+LOCK_RUNNING = "A pass that started at {started} on {host} is holding this return."
+#: The same, about a lock that is not the shown return's - a sibling, a fed
+#: return or the household (the review's S1): named by its own label.
+LOCK_RUNNING_OTHER = "A pass that started at {started} on {host} is holding {label}."
+LOCK_ON = "It is on {household}: {name}."
+LOCK_GREYED = ("This return's buttons are greyed while it runs and come back by themselves the "
+               "moment it lets go.")
+LOCK_LEFT_BEHIND = ("A pass that started at {started} on {host} left its lock behind ({minutes} min "
+                    "old); it has most likely ended. The next pass replaces it, or clear it here.")
+LOCK_CLEARED = "The lock left behind was cleared ({minutes} min old)."
+LOCK_BUTTONS_BACK = "The pass let go of this return; its buttons are back."
+#: Sort & Scan, watched (decision 193).
+PROGRESS_HOUSEHOLD = "{household} ({n} of {of})"
+PROGRESS_SORT = "Sorting {name}"
+PROGRESS_SCAN = "Checking {name}"
+PROGRESS_STOP = "Stop"
+PROGRESS_STOPPING = "Stopping after this file\u2026"
+#: What the shell says when a child is killed, ends with no reply, or
+#: cannot start - learned from here, with pinned defaults for a first
+#: start (``app/main.js``).
+SHELL_KILLED = ("The pass ran past its limit of {minutes} minutes and was stopped. What it finished "
+                "is on the record, and the next pass does the rest.")
+SHELL_KILLED_AT = "It was on {household}: {name}."
+SHELL_NO_REPLY = "The tracker ended without a reply (exit code {code}); the details are in the error log."
+SHELL_COULD_NOT_START = "The tracker could not start ({code})."
+SHELL_COULD_NOT_SEND = "The app could not send that to the tracker ({kind}); nothing was changed."
+#: With no error log (no data folder yet), a failed command's stderr is said
+#: in its own reply instead - the shell never writes a log beside the
+#: program (decision 186's rebase review, MF2).
+SHELL_NO_LOG = ("There is no error log to hold the details - the tracker has no data folder yet - so "
+                "they are here instead: {stderr}")
+#: An error of the page's own, said by its class; its message goes to the
+#: error log through the shell (the review's S5).
+PAGE_ERROR = "The app met an error of its own ({kind}); the details are in the error log."
+#: The same, when no data home can be had and so there is no error log to
+#: point at (decision 186): never a sentence naming a file that is not there.
+PAGE_ERROR_NO_LOG = ("The app met an error of its own ({kind}); there is no error log to hold "
+                     "the details, because the tracker has no data folder - the first screen says why.")
+#: What a Sort & Scan reply is said as (the review's S4, decision 42).
+SCAN_SCANNING = "Scanning\u2026"
+SCAN_NOTHING_DONE = "Nothing done: {why}."
+SCAN_PROBLEM = "The pass reported a problem: {error}"
+SCAN_COMPLETE = "Pass complete \u2014 {did}.   {summary}"
+SCAN_FILED = "filed {n}"
+SCAN_REVIEW = "{n} to review"
+SCAN_SYNCING = "{n} still syncing"
+SCAN_NOT_SORTED = "{n} file(s) could not be sorted"
+SCAN_BUT = "But {problems}."
+#: A pass whose final line does not name the return it was asked for
+#: (decision 203's review, S2): its counts are not guessed from another's.
+SCAN_NOT_IN_PASS = ("The pass ended, but its final line does not name this return, so its counts "
+                    "are not shown; the page is drawn from the record.")
+#: A notice said more than once is one notice with a count.
+NOTICE_REPEATED = "({n} times)"
+#: A warning a reply brought about a return other than the one shown - the
+#: hand-over picker's read of its target (decision 194's review, S1): said
+#: with that return's label, so no notice reads as about the return shown.
+NOTICE_ABOUT = "{label}: {sentence}"
+
+
+class _Stale(ManifestError):
+    """The record moved under a click that is not a row's (decision 193):
+    a household accepted from an old page, a draft approved after it
+    changed. Said as *stale* - look again - and still a ManifestError."""
+
+
+def _warn(sentence: str) -> None:
+    """Say ``sentence`` in this reply's ``warnings``, once."""
+    if sentence and sentence not in _WARNINGS:
+        _WARNINGS.append(sentence)
+
+
+def _failure_of(exc: BaseException) -> dict:
+    """The one rule for how an error is said (decision 193, ruling 3):
+    ``{"sentence", "kind", "seq", "identifier"}``, plus ``lock`` when
+    another pass holds the return. In this order: stale, locked, a
+    checkpoint left behind, the disk's and the store's failures by class
+    and code (:class:`~tracker.ledger.RecordNotWritten`,
+    :class:`~tracker.store.StoreUnavailable`), the tracker's worded
+    refusals - a broken journal's :class:`~tracker.ledger.LedgerError`
+    among them, said whole with its line and "Run recover" as the status
+    page and the run report say it (decision 190's landing review, MF1:
+    one rule for one question) - and anything else by class."""
+    seq = getattr(exc, "seq", None)
+    identifier = getattr(exc, "identifier", None)
+    if seq is None:
+        seq = _ASKED.get("seq")
+    if identifier is None:
+        identifier = _ASKED.get("original") or _ASKED.get("identifier")
+    extra: dict = {}
+    if isinstance(exc, (StaleRowError, ListMoved, _Stale)):
+        kind, sentence = "stale", str(exc)
+    elif isinstance(exc, EngagementLockedError):
+        kind, sentence = "locked", str(exc)
+        held = getattr(exc, "lock", None)
+        extra["lock"] = (_lock_payload(Path(held).parent)
+                         if held and Path(held).name == LOCK_FILENAME else None)
+    elif isinstance(exc, (store.CheckpointNotMade, checkpoint.CheckpointLeftBehind)):
+        # A read that would have made a fresh checkpoint while the old one
+        # sits beside the program (the rebase review of 186, MF1): said as
+        # the first screen says it - what to move and where - not as an error.
+        kind, sentence = "refused", _left_behind_to_move(exc)
+    elif isinstance(exc, (store.StoreUnavailable, ledger.RecordNotWritten)):
+        kind, sentence = "failed", FAILED.format(kind=errors.error_class(exc),
+                                                 log=ERROR_LOG_FILENAME)
+    elif isinstance(exc, (ManifestError, FilingError, door.DoorError, layout.LayoutError,
+                          SettingsError, reminder.ReminderError, RegistryError,
+                          store.StoreError, ledger.LedgerError)):
+        kind, sentence = "refused", str(exc)
+    else:
+        kind, sentence = "failed", FAILED.format(kind=errors.error_class(exc),
+                                                 log=ERROR_LOG_FILENAME)
+    reply = progress.failure_reply(sentence, kind, seq=seq, identifier=identifier, **extra)
+    return reply["failure"]
+
+
+def _left_behind_to_move(exc: store.CheckpointNotMade | checkpoint.CheckpointLeftBehind) -> str:
+    """The first screen's :data:`LEFT_BEHIND_TO_MOVE` for the one checkpoint
+    that stopped a command (the rebase review of 186, MF1): the app says
+    this state in one sentence wherever it meets it."""
+    return LEFT_BEHIND_TO_MOVE.format(paths=exc.old, home=exc.home)
+
+
+def _reply_failure(exc: BaseException) -> int:
+    failure = _failure_of(exc)
+    reply = progress.failure_reply(failure["sentence"], failure["kind"], seq=failure["seq"],
+                                   identifier=failure["identifier"], warnings=_WARNINGS,
+                                   **{k: v for k, v in failure.items()
+                                      if k not in ("sentence", "kind", "seq", "identifier")})
+    print(json.dumps(reply))
+    return 1
 
 
 def _root() -> Path:
@@ -338,7 +549,7 @@ def _root() -> Path:
 def _saved_root() -> Path | None:
     """The saved clients root held to the rule, as :func:`_root` holds it,
     or ``None`` where none is saved - for the commands that answer without
-    one (the list before a root is chosen, the wizard's priors)."""
+    one (the list before a root is chosen, the command line's priors)."""
     return None if clients_root() is None else door.checked_root()
 
 # ----------------------------------------------------------------- commands ----
@@ -346,7 +557,7 @@ def _saved_root() -> Path | None:
 
 #: The one flag the app passes: which engagement a command is about.
 ENGAGEMENT_FLAG = "--engagement"
-#: Every word the household's card, the wizard's household step and the
+#: Every word the household's card, the New household step and the
 #: misfit list show (decision 125). The renderer types none of it: it
 #: reads these from the vocabulary, as it reads every other word Python
 #: owns.
@@ -363,7 +574,37 @@ OPEN_CLIENT_FOLDER_LABEL = "Open Client Folder"
 OPEN_INBOX_LABEL = "Open Inbox"
 EDIT_HOUSEHOLD_LABEL = "Edit household"
 NEW_HOUSEHOLD_LABEL = "New household"
-EXISTING_HOUSEHOLD_LABEL = "Add a return to an existing household"
+#: Decision 196: the household's card carries the two ways a return is made
+#: for a household the tracker knows - Roll forward to the next year, and Add
+#: a return - and the toolbar's New household makes one it does not. There is
+#: no wizard and no household picked on one page for another to act on; every
+#: word of the three is here, and the page types none of them.
+ROLL_FORWARD_TO = "Roll forward to {year}"
+ROLL_TICKED_LABEL = "Roll the ticked returns forward to {year}"
+ROLL_INTRO = ("Last year's list is the starting point. Everything the client actually sent, set "
+              "aside or under-delivered carries forward - what was set aside as not applicable "
+              "under its own heading, for a fresh decision; the form template only fills blanks.")
+ROLL_NO_TEMPLATE = "No template — carry last year's list as it is"
+ROLL_DONE_LINE = "{rolled} return(s) rolled into {year}; {retired} retired"
+ROLL_CARRIED = "{n} request(s) carried"
+ROLL_UNFILED = "{n} file(s) sent last year were never filed"
+ROLL_RETIRED_LINE = "{label}: retired."
+ROLL_FORMS_UNLOADED = ("The return types could not be loaded, so each return keeps the form it "
+                       "recorded: {reason}")
+ADD_RETURN_LABEL = "Add a return"
+ADD_RETURN_TITLE = "Add a return to {household}"
+NEW_HOUSEHOLD_INTRO = ("A client folder is a household: one folder per tax year inside it, one "
+                       "folder per return inside that, and one inbox the client drops everything "
+                       "into.")
+FORM_STEP_TITLE = "What type of return?"
+FORM_STEP_NOTE = "The request list is tailored to the form you pick."
+CHANGE_FORM_LABEL = "Change form type"
+CHANGE_HOUSEHOLD_LABEL = "Change household details"
+EMPTY_ROOT_LINE = "No households under {root} yet — click {new} to create the first."
+ITEMS_TITLE = "New {form} return"
+CREATE_RETURN_LABEL = "Create return"
+RETURN_CREATED_LINE = ('Return "{label}" created with {n} request(s) asked for, client README '
+                       "generated. Open the Client Folder to show it.")
 HOUSEHOLD_RETURNS_HEADING = "Returns this year"
 HOUSEHOLD_QUEUE_LINE = "{n} document(s) waiting for a person across this household"
 #: The feed list (decision 129): what a drop folder feeds beyond its own
@@ -432,7 +673,7 @@ SHARING_NOTE = ("The tracker cannot see Drive's sharing. The two grants are the 
 #: Why *Mark as shared* refuses: the inbox's link is the one part of the
 #: three the tracker can see was done, so it is the one part it insists on.
 SHARE_LINK_FIRST = "paste the inbox's link into the household first"
-#: What the returning-client page says under its checklist of returns, so
+#: What the roll fold on the household's card says beside its ticks, so
 #: nobody unticks a return expecting it to sit still (decision 126).
 ROLLOVER_UNTICKED_NOTE = ("A return left unticked is retired for {year}: it is set inactive and "
                           "stops being chased. Tick it later and roll it on its own if that changes.")
@@ -440,6 +681,13 @@ ROLLOVER_UNTICKED_NOTE = ("A return left unticked is retired for {year}: it is s
 #: on what is already filed, and what it asks them for. The renderer shows
 #: these; it types none of them.
 DISMISS_LABEL = "Not requested"
+#: What the card says of a row whose file the client dropped inside a
+#: folder of their own in the inbox (decision 147), filled from the row's
+#: own Client's Subfolder column. The sentence every such row's Reason used
+#: to end with, moved here unchanged when the subfolder became a column
+#: (decision 190): a folder the client called "not allowed" was read as
+#: the file type being refused.
+CAME_FROM_SUBFOLDER = "came from the client's subfolder '{folder}'"
 DISMISS_NOTE_HINT = "why nothing asks for it (optional)"
 DISMISSED_HEADING = "Not requested ({n})"
 FILE_LABEL = "File it"
@@ -487,6 +735,86 @@ OPEN_IN_LIST_LABEL = "Pick another request"
 CARD_MODE_LABEL = "One at a time"
 LIST_MODE_LABEL = "All at once"
 CARD_POSITION = "{n} of {total}"
+
+#: The review card's three buckets (decision 190), decided here from the
+#: row's code and its name on disk - never by the renderer: a document, an
+#: email or a zip, and a file that is not a document at all. The keys
+#: travel on each parked row as ``bucket``; the headings are the words the
+#: card groups them under.
+BUCKET_DOCUMENT = "document"
+BUCKET_CONTAINER = "container"
+BUCKET_NOT_A_DOCUMENT = "not_a_document"
+BUCKET_HEADINGS = {
+    BUCKET_DOCUMENT: "Documents",
+    BUCKET_CONTAINER: ("Emails and zips - opened, if at all, "
+                       f"{reasons.OTHER_MACHINE}, never this one"),
+    BUCKET_NOT_A_DOCUMENT: "Not documents - do not open; ask the client what they meant to send",
+}
+#: Open is an allow-list (decision 190, following 184): the codes of a
+#: document the tracker **read** and parked for a filing reason - no request
+#: or more than one accepted it, a request contested it, its name is not on
+#: the page or names another return or another household's person (decision
+#: 204, which waits for one click), its forms would not sort, its issuer
+#: is not named, it shows its form number, it came from an email or a zip
+#: and is not filed across households, and the others of that kind. Only a
+#: row carrying one of these opens its marked copy on this machine, the one
+#: that holds the Drive sign-in and every client folder. A text file read
+#: only in part (``reasons.TEXT_CUT``, bounded by 178) has no code of its
+#: own - the cut is appended to the verdict it explains - so it keeps Open
+#: where that verdict is here.
+READ_AND_PARKED_CODES = frozenset((
+    reasons.UNMATCHED_CODE, reasons.AMBIGUOUS_CODE, reasons.OCR_ONLY_CODE,
+    reasons.CONTESTED_CODE, reasons.SEVERAL_FORMS_UNSORTED_CODE,
+    reasons.CONTESTED_BETWEEN_RETURNS_CODE, reasons.NO_ROOM_CODE,
+    *(reason.code for reason in (
+        reasons.WRONG_DOCUMENT, reasons.NO_EXPECTED_KEYWORD, reasons.WRONG_PERIOD,
+        reasons.ISSUER_NOT_NAMED, reasons.SHOWS_ITS_FORM_NUMBER, reasons.NAME_POINTS_AT,
+        reasons.NAME_NOT_ON_PAGE, reasons.NAMES_ANOTHER_RETURN, reasons.NO_PEOPLE_ON_FILE,
+        reasons.UNNAMED_ACROSS_HOUSEHOLDS, reasons.OPENED_NOT_ACROSS,
+        # read, and it names another household's person: it waits for one
+        # click (decision 204), and a person looks at it before clicking
+        reasons.NAMED_ACROSS_HOUSEHOLDS)),
+))
+#: Every other code, which offers no Open here - listed, not derived, so
+#: that each code is placed by a person and a test proves every code is in
+#: exactly one of the two sets. The allow-list fails closed: a code nobody
+#: has placed yet, or a row with no code, gets no Open. The person asks the
+#: client to send it again, or opens it under 184's rule, on another
+#: machine.
+NO_OPEN_CODES = frozenset((
+    # a reading the tracker refused or could not finish
+    *(reason.code for reason in (
+        reasons.UNREADABLE_PDF, reasons.UNREADABLE_IMAGE, reasons.EXTRACTION_FAILED,
+        reasons.OCR_FAILED, reasons.READING_CRASHED, reasons.READING_STOPPED,
+        reasons.TOO_LARGE, reasons.PASSWORD_PROTECTED, reasons.NO_PAGES,
+        reasons.NO_READABLE_TEXT, reasons.NO_TEXT_AFTER_OCR, reasons.READER_UNAVAILABLE,
+        # a file the tracker did not read: no decoder, no reader on this
+        # machine, a type or a size it refuses, a cloud placeholder, gone
+        reasons.HEIC_NOT_SUPPORTED, reasons.NO_TEXT_LAYER, reasons.EXTENSION_NOT_ALLOWED,
+        reasons.GOOGLE_STUB, reasons.TOO_SMALL, reasons.UNCHECKABLE_TYPE,
+        reasons.PENDING_SYNC, reasons.VANISHED,
+        # not a document, and an email or a zip (their buckets say so too)
+        reasons.NOT_A_DOCUMENT, reasons.CONTAINER_LOCKED, reasons.CONTAINER_DAMAGED,
+        reasons.CONTAINER_EMPTY, reasons.CONTAINER_LIMIT,
+        # a working copy that is not the bytes the record filed, or not there
+        reasons.FILE_MOVED, reasons.COPY_CHANGED, reasons.COPY_MISSING,
+        reasons.COPY_AND_ORIGINAL_GONE, reasons.ANSWER_NOT_COUNTED,
+        reasons.INTERRUPTED_MOVE, reasons.INTERRUPTED_MOVE_LOST)),
+    # every request refused the file's type, so it was never read
+    reasons.NO_REQUEST_ACCEPTS_CODE,
+    # the filer's catch-all, which can stop inside a reading
+    reasons.COULD_NOT_FILE_CODE,
+    # a person's action, which can follow a refused reading as well as a read one
+    reasons.UNFILED_BY_PERSON_CODE, reasons.DISMISSED_BY_PERSON_CODE,
+    reasons.ASSIGNED_BY_PERSON_CODE, reasons.PUT_BACK_REFUSED_CODE,
+    # a filed row's, never a parked one's
+    reasons.MATCHED_CODE, reasons.SEVERAL_FORMS_CODE, reasons.FILED_WHOLE_CODE,
+))
+#: The action that opens a parked row's review copy - the firm's copy in
+#: the private tree, marked for Protected View when it can carry macros -
+#: and what the card says beside a not-a-document row's true type.
+OPEN_COPY_LABEL = "Open"
+TRUE_TYPE = "a .{extension} file"
 #: What a review command says when it was sent without the row's sequence
 #: number (decision 112). The app is drawn from ``state``, which carries one
 #: for every row, so a spec without it is a caller acting on no view at all -
@@ -548,19 +876,19 @@ RENAME_TO_LABEL = "New identifier"
 RENAME_LABEL = "Rename"
 RENAMED_NOTE = "{old} renamed {new}; {moved} working copy(ies) moved with it and the request was re-scanned"
 RENAME_LEFT_NOTE = "left in the old folder because no row names them: {left}"
-#: What the returning-client page says of last year's set-aside rows, in
+#: What the roll's banner says of last year's set-aside rows, in
 #: one line beside the carried counts.
 NOT_APPLICABLE_CARRIED = "{n} request(s) not applicable last year - review them in the editor"
 #: And of the catalog rows the client never had, added as not asked
 #: (decision 142, rewording decision 9: they used to be offered, not added).
 NEW_NOT_ASKED_CARRIED = ("{n} catalog row(s) this client never had added as not asked - "
                          "a document for one files there; set Asked in the editor to ask for it")
-#: The wizard's heading over the catalog's checkboxes, and the sentence
+#: The request list's heading over the catalog's checkboxes, and the sentence
 #: under it (decision 142): a tick is a request the client is asked for
 #: and reminded of; every row is on the return either way.
 ASK_THE_CLIENT = "Ask the client"
 #: The name the app's folded table of not-asked rows is read out by, and
-#: the returning-client page's label over the template pick (decision 142).
+#: the roll fold's label over the template pick (decision 142).
 NOT_ASKED_TABLE_LABEL = "Requests not asked for"
 ROLL_TEMPLATE_LABEL = "Form template (fills blanks, adds the rows this client never had as not asked)"
 ASK_THE_CLIENT_NOTE = ("Every row is on the return. A ticked row is asked for and reminded; "
@@ -571,9 +899,62 @@ ASK_THE_CLIENT_NOTE = ("Every row is on the return. A ticked row is asked for an
 #: engagement's, and only the final-notice reminder ever says it.
 FIRM_PHONE_LABEL = "Firm phone"
 FIRM_PHONE_HELP = "named in the final-notice reminder; blank drops that sentence"
+#: And the setup card's other two boxes, each named by a label that stays
+#: while a person types (decision 201, D11): a placeholder is gone the
+#: moment somebody types, so no box is named by one alone.
+FIRM_NAME_LABEL = "Firm name"
+FIRM_NAME_HELP = "as it should sign the reminders"
+CLIENTS_FOLDER_LABEL = "Clients folder"
+
+# ---- the dialogs and the editor's plain view (decision 201) -----------------
+#: What every dialog says when it is asked to close with changes not saved,
+#: and its two answers: Keep editing, focused, and the only way out.
+UNSAVED_CHANGES = "You have changes here that are not saved."
+KEEP_EDITING = "Keep editing"
+DISCARD_CHANGES = "Discard my changes"
+#: The editor's plain view (M13): the boxes a preparer changes, shown on
+#: every row, and the routing columns folded per row - a custom row's
+#: Document is drawn with the plain boxes, because nothing else names it.
+#: Together they are exactly the request list's columns, asserted below.
+PLAIN_COLUMNS = ("expected_count", "asked", "manual_override", "override_reason", "short_title")
+ROUTING_COLUMNS = ("identifier", "document", "period", "allowed_extensions", "min_size_kb",
+                   "required_keywords", "any_keywords", "date_pattern", "named")
+assert (sorted((*PLAIN_COLUMNS, *ROUTING_COLUMNS)) == sorted(field for _, field in COLUMNS)
+        and not set(PLAIN_COLUMNS) & set(ROUTING_COLUMNS)), \
+    "the plain view and the routing fold must share the request list's columns between them"
+ROUTING_LABEL = "Routing rules"
+ROUTING_ALL_LABEL = "Show every row's routing rules"
+ROUTING_HELP = ("How the tracker recognises this document when it arrives. A save checks these "
+                "the same way whether the fold is open or not.")
+#: Edit Request List pressed while the state on screen is still another
+#: return's, after reading it again (decision 201, the review's S4): said
+#: in the banner rather than a button that does nothing.
+EDITOR_NOT_THIS_RETURN = ("The request list could not be opened: what is on screen is still another "
+                          "return's. Pick the return again, then open its request list.")
+#: The keyword box on a parked or moved document's card (decision 201,
+#: D11): its label, and what the word does, as its title.
+KEYWORD_LABEL = "Keyword to learn (optional)"
+KEYWORD_HELP = ("A word this document contains that others like it will too. Taught to the "
+                "request so the next one files itself; the editor shows it beside the row.")
+#: The card of a K-1 parked for an unnamed issuer (decision 201): its one
+#: box, what it will add - the next free row, named before anything is
+#: pressed - and its one button; and what the banner says once it is done.
+ISSUER_LABEL = "Issuer's name, as the K-1 prints it"
+ISSUER_HELP = ("Adds {identifier}, a K-1 row for this issuer, to the request list and files this "
+               "document under it. Type the distinctive words and leave off the suffix (L.P., LLC).")
+ISSUER_ADD_LABEL = "Add the issuer and file it"
+ISSUER_ADDED_AND_FILED = "{identifier} - {document} added to the request list, and {name} filed under it."
+#: The issuer added and filed, but the re-scan after it met the engagement
+#: lock: said by the error's class, never its text (principle 7; the
+#: restack review's N2). The next pass puts the row's status right.
+ISSUER_NOT_RESCANNED = "not re-scanned ({kind}); the next pass re-scans it"
+#: A card's issuer that is not a piece of text - only a hand-written
+#: stdin can send one - refused rather than turned into a name (the
+#: review's N4, as ``_seq_of`` refuses a missing version).
+ISSUER_NOT_TEXT = "the issuer's name must be typed as text, as the K-1 prints it"
 
 # ---- the people block (decision 128) ----------------------------------------
-#: Every word the wizard's and the editor's People block shows. The record
+#: Every word the new-return dialog's and the editor's People block shows. The record
 #: owns the heading and what the list is for (``records.PEOPLE_LABEL`` and
 #: ``PEOPLE_HELP``) and :mod:`tracker.names` owns the two refusals; these
 #: are the block's own controls, and the page types none of them.
@@ -607,7 +988,7 @@ def _folder_name(value: object, what: str) -> str:
     A household and a return are each **one** folder name: the layout puts
     them where they go (decision 125), and the layout's one name rule
     (decision 188, ``layout.checked_name``) says what one may be - the
-    same sentence wherever a name is typed: the wizard, a new return, a
+    same sentence wherever a name is typed: the dialog, a new return, a
     rolled return's new name, a feed.
     """
     try:
@@ -621,7 +1002,7 @@ def _new_return_dir(root: Path, household: str, year: int, return_name: str,
     """Where a new return goes: ``<root>/<private tree>/<household>/<year>/<return>``.
 
     Refused when the household or the return is not a single folder name,
-    when the year is outside the bounds the wizard shows, when a return of
+    when the year is outside the bounds the dialog shows, when a return of
     that name already exists for that household and year, and when the
     deepest working copy the list implies would pass what Windows will
     open (§3.9.1 of decision 125): a folder made today that cannot hold a
@@ -704,6 +1085,8 @@ def _read_spec() -> dict:
     spec = json.loads(raw or "{}")
     if not isinstance(spec, dict):
         raise ManifestError(NOT_A_SPEC)
+    # Kept for the failure envelope: the row a click was about (decision 193).
+    _ASKED.update(spec)
     return spec
 
 
@@ -770,34 +1153,45 @@ def _vocab() -> dict:
     value and its label from the row's year, the parked list from the
     decision value, the picker from candidates).
     """
+    error_log = _error_log_said()
     return {
         "product": product_name(),
         "firm": firm(),
         "statuses": [{"value": status, "key": _slug(status)} for status in Status.ALL],
+        # What each word the record keeps for a row is shown as (decision
+        # 200): keyed by the record's word, with the chip class that word
+        # is drawn with, the preparer's label and its one sentence. Not
+        # Applicable's label is the year pattern, filled per row from the
+        # row's ``year`` - the one exposure of that constant.
+        "labels": {word: {"key": _slug(word), "label": shown.label, "sentence": shown.sentence}
+                   for word, shown in STATUS_LABELS.items()},
+        # The one fold under the request table, the Status Report's and
+        # the editor's, of every row nobody waits on, and each group's
+        # heading inside it (decision 200).
+        "set_aside": {"heading": SET_ASIDE_SECTION, "group": SET_ASIDE_GROUP},
         "unscanned_label": UNSCANNED_LABEL,
         "unscanned_key": _slug(UNSCANNED_LABEL),
         # What a row nobody asked for is called while nothing has arrived
         # for it (decision 142), and the chip class it is drawn with.
         "not_asked_label": NOT_ASKED_LABEL,
         "not_asked_key": _slug(NOT_ASKED_LABEL),
-        # The wizard's heading over the catalog's ticks, and its sentence.
+        # The dialog's heading over the catalog's ticks, and its sentence.
         "ask_the_client": ASK_THE_CLIENT,
         "ask_the_client_note": ASK_THE_CLIENT_NOTE,
         "not_asked_table_label": NOT_ASKED_TABLE_LABEL,
         # The one refusal of a list nobody is asked for (R6), which the
-        # wizard also says before it calls.
+        # dialog also says before it calls.
         "nothing_asked": NOTHING_ASKED,
         "roll_template_label": ROLL_TEMPLATE_LABEL,
         "overrides": {"accepted": Override.ACCEPTED, "not_applicable": Override.NOT_APPLICABLE},
-        # How a set-aside row is named to a person: the value with the
-        # row's year, which travels per item as ``year`` in the state so
-        # the renderer computes nothing from the Period's text. The
-        # reasons a person may give for Accepted, and the word that opens
-        # the box for their own words - which is never itself stored.
-        "not_applicable_label": NOT_APPLICABLE_LABEL,
+        # The reasons a person may give for Accepted, and the word that
+        # opens the box for their own words - which is never itself stored.
+        # A set-aside row's name is ``labels``' Not Applicable pattern with
+        # the row's year, which travels per item as ``year`` in the state
+        # so the renderer computes nothing from the Period's text.
         "override_reasons": list(OVERRIDE_REASONS),
         "override_reason_other": OVERRIDE_REASON_OTHER,
-        # The one line the returning-client page adds for last year's
+        # The one line the roll's banner adds for last year's
         # set-aside rows, and the origin value it groups them on.
         "origin_not_applicable": ORIGIN_NOT_APPLICABLE,
         "not_applicable_carried": NOT_APPLICABLE_CARRIED,
@@ -817,6 +1211,7 @@ def _vocab() -> dict:
         "decisions": {"filed": FILED, "needs_review": NEEDS_REVIEW, "duplicate": DUPLICATE,
                       "dismissed": NOT_REQUESTED, "file_moved": FILE_MOVED},
         "review_labels": {"dismiss": DISMISS_LABEL, "dismiss_note": DISMISS_NOTE_HINT,
+                          "came_from": CAME_FROM_SUBFOLDER,
                           "dismissed_heading": DISMISSED_HEADING, "file": FILE_LABEL,
                           "file_anyway": FILE_ANYWAY_LABEL,
                           "unfile": UNFILE_LABEL, "unfile_note": UNFILE_NOTE_HINT,
@@ -855,7 +1250,23 @@ def _vocab() -> dict:
                           # Decision 204's one click: a row that names
                           # another household's person, filed where it
                           # waits, with nothing picked on the page.
-                          "file_where_it_waits": FILE_WHERE_IT_WAITS_LABEL},
+                          "file_where_it_waits": FILE_WHERE_IT_WAITS_LABEL,
+                          # Decision 190's three buckets, the action that
+                          # opens a review copy, and a program's true type.
+                          "buckets": dict(BUCKET_HEADINGS),
+                          "bucket_order": list(BUCKET_HEADINGS),
+                          "not_a_document": BUCKET_NOT_A_DOCUMENT,
+                          "open_copy": OPEN_COPY_LABEL, "true_type": TRUE_TYPE,
+                          # Decision 201: the keyword box's label and title,
+                          # and the unnamed issuer's box, sentence and button.
+                          "keyword": KEYWORD_LABEL, "keyword_help": KEYWORD_HELP,
+                          "issuer_label": ISSUER_LABEL, "issuer_help": ISSUER_HELP,
+                          "issuer_add": ISSUER_ADD_LABEL,
+                          "issuer_not_rescanned": ISSUER_NOT_RESCANNED},
+        # What every dialog says when closed with changes not saved, and
+        # its two answers (decision 201).
+        "dialogs": {"unsaved": UNSAVED_CHANGES, "keep_editing": KEEP_EDITING,
+                    "discard": DISCARD_CHANGES},
         # Every word tracker.review gives the card, from the module that
         # owns it: what is said when the evidence suggests nothing, the one
         # separator between an identifier and what follows it (the reason
@@ -905,7 +1316,7 @@ def _vocab() -> dict:
         "extension_default_note": EXTENSION_DEFAULT_NOTE,
         # The shape of the clients root, from the module that owns it
         # (decision 125): the two trees, the one inbox, and the two
-        # patterns the wizard's previews fill.
+        # patterns the dialog's previews fill.
         "layout": {
             "clients_tree": CLIENTS_TREE,
             "private_tree": PRIVATE_TREE,
@@ -913,8 +1324,9 @@ def _vocab() -> dict:
             "return_name_pattern": RETURN_NAME_PATTERN,
             "engagement_label_pattern": ENGAGEMENT_LABEL_PATTERN,
         },
-        # Every word the household's card, the wizard's household step and
-        # the misfit list show. The page types none of them.
+        # Every word the household's card, its roll fold, the Add a return
+        # and New household dialog and the misfit list show. The page types
+        # none of them.
         "household": {
             "heading": HOUSEHOLD_HEADING,
             "name_label": HOUSEHOLD_NAME_LABEL,
@@ -930,7 +1342,19 @@ def _vocab() -> dict:
             "open_inbox": OPEN_INBOX_LABEL,
             "edit": EDIT_HOUSEHOLD_LABEL,
             "new": NEW_HOUSEHOLD_LABEL,
-            "existing": EXISTING_HOUSEHOLD_LABEL,
+            # Add a return and New household (decision 196): the dialog goes
+            # form, then request list, and says whose return it makes.
+            "add_return": ADD_RETURN_LABEL,
+            "add_return_title": ADD_RETURN_TITLE,
+            "new_intro": NEW_HOUSEHOLD_INTRO,
+            "form_step_title": FORM_STEP_TITLE,
+            "form_step_note": FORM_STEP_NOTE,
+            "change_form": CHANGE_FORM_LABEL,
+            "change_household": CHANGE_HOUSEHOLD_LABEL,
+            "empty_root": EMPTY_ROOT_LINE,
+            "items_title": ITEMS_TITLE,
+            "create_return": CREATE_RETURN_LABEL,
+            "return_created": RETURN_CREATED_LINE,
             "returns_heading": HOUSEHOLD_RETURNS_HEADING,
             "queue_line": HOUSEHOLD_QUEUE_LINE,
             "misfits_heading": MISFITS_HEADING,
@@ -945,9 +1369,19 @@ def _vocab() -> dict:
             "mark_shared": MARK_SHARED_LABEL,
             "shared_on_line": SHARED_ON_LINE,
             "not_yet_shared_line": NOT_YET_SHARED_LINE,
-            # And the one line the returning-client page needs of its own:
-            # what unticking a return does to it.
+            # The roll fold's words (decision 196): the line that names the
+            # year, what rolling carries, what unticking a return does to it,
+            # the button, and the banner a roll leaves.
             "rollover_unticked": ROLLOVER_UNTICKED_NOTE,
+            "roll_forward_to": ROLL_FORWARD_TO,
+            "roll_ticked": ROLL_TICKED_LABEL,
+            "roll_intro": ROLL_INTRO,
+            "roll_no_template": ROLL_NO_TEMPLATE,
+            "roll_done": ROLL_DONE_LINE,
+            "roll_carried": ROLL_CARRIED,
+            "roll_unfiled": ROLL_UNFILED,
+            "roll_retired_line": ROLL_RETIRED_LINE,
+            "roll_forms_unloaded": ROLL_FORMS_UNLOADED,
             # The feed list (decision 129): what this drop folder also
             # feeds, who feeds it, the word that adds one, and the two
             # warnings a person reads before extending either. The page
@@ -969,10 +1403,41 @@ def _vocab() -> dict:
         "example_root": EXAMPLE_ROOT,
         "engagement_flag": ENGAGEMENT_FLAG,
         "commands": sorted(COMMANDS),
+        # Sort & Scan's command (decision 203): the shell watches it as a
+        # pass, and the renderer sends it; neither types it.
+        "pass_command": PASS_COMMAND,
         # What each path the API reports is (decision 188, E-14): the shell
         # opens one only while it is still that kind of thing and no link.
         "path_kinds": PATH_KINDS,
-        "shell": {"not_opened": SHELL_NOT_OPENED},
+        # The shell's own sentences (decision 193), learned here with pinned
+        # defaults in main.js for a first start, and the error log it appends
+        # a failed child's stderr to: beside the tracker's database, a path
+        # the shell never builds itself.
+        "shell": {"not_opened": SHELL_NOT_OPENED, "killed": SHELL_KILLED,
+                  "killed_at": SHELL_KILLED_AT, "no_reply": SHELL_NO_REPLY,
+                  "could_not_start": SHELL_COULD_NOT_START,
+                  "could_not_send": SHELL_COULD_NOT_SEND, "no_log": SHELL_NO_LOG,
+                  "page_error": PAGE_ERROR if error_log else PAGE_ERROR_NO_LOG,
+                  "error_log": error_log},
+        # The lock notice (decision 193, D4): when, where, and - on this
+        # machine - which file; nothing waits and nothing needs clearing.
+        "lock": {"running": LOCK_RUNNING, "running_other": LOCK_RUNNING_OTHER, "on": LOCK_ON, "greyed": LOCK_GREYED,
+                 "left_behind": LOCK_LEFT_BEHIND, "cleared": LOCK_CLEARED,
+                 "buttons_back": LOCK_BUTTONS_BACK, "watch_seconds": LOCK_WATCH_SECONDS},
+        # What a Sort & Scan reply is said as (decision 193's review, S4).
+        "scan": {"scanning": SCAN_SCANNING, "nothing_done": SCAN_NOTHING_DONE,
+                 "problem": SCAN_PROBLEM, "complete": SCAN_COMPLETE, "filed": SCAN_FILED,
+                 "review": SCAN_REVIEW, "syncing": SCAN_SYNCING, "not_sorted": SCAN_NOT_SORTED,
+                 "but": SCAN_BUT, "not_in_pass": SCAN_NOT_IN_PASS},
+        # Sort & Scan, watched, and its Stop (decision 193).
+        "progress": {"household": PROGRESS_HOUSEHOLD, "sort": PROGRESS_SORT,
+                     "scan": PROGRESS_SCAN, "stop": PROGRESS_STOP,
+                     "stopping": PROGRESS_STOPPING},
+        # The notices area's one word of its own; its buttons are static in
+        # index.html (NOTICE_LABELS), because a notice must work before any
+        # vocabulary has arrived.
+        "notices": {"repeated": NOTICE_REPEATED, "about": NOTICE_ABOUT,
+                    "labels": dict(NOTICE_LABELS)},
         "rules": standing_rules(),
         "schedule": {
             "start": DEFAULT_START,
@@ -1017,22 +1482,33 @@ def _vocab() -> dict:
             "last_drafted_line": reminder.LAST_DRAFTED_LINE,
             "never_drafted_line": reminder.NEVER_DRAFTED_LINE,
             "approved_line": reminder.APPROVED_LINE,
+            "approved_then_edited": reminder.APPROVED_THEN_EDITED,
             "edited_by_hand": reminder.EDITED_BY_HAND,
             "stage_toggle_hint": reminder.STAGE_TOGGLE_HINT,
             "copied": reminder.COPIED_NOTE,
             "set_aside_line": reminder.SET_ASIDE_LINE,
+            "not_yet": reminder.REMINDER_NOT_YET,
+            "unreadable": REMINDER_UNREADABLE,
+            "line_unreadable": REMINDER_LINE_UNREADABLE,
             "nothing_to_send": NOTHING_OUTSTANDING,
             "stages": _stages(),
             "palette": dict(PALETTE),
             "hold_colour": reminder.HOLD_COLOUR,
             "letter_ink": dict(reminder.LETTER_INK),
+            # Whose move each outstanding row is (decision 200): the
+            # reminder's own three lists, named for a preparer.
+            "sides": [{"key": side.key, "label": side.label, "sentence": side.sentence}
+                      for side in reminder.SIDES],
         },
         # The settings page's own box for the firm's telephone number
         # (decision 117): its label, the sentence under it, and the number
         # as recorded - so a person who re-points the app at their clients
         # folder does not save a blank over a number they typed once.
         "settings": {"phone_label": FIRM_PHONE_LABEL, "phone_help": FIRM_PHONE_HELP,
-                     "phone": firm_phone()},
+                     "phone": firm_phone(),
+                     # The setup card's other two labels (decision 201).
+                     "firm_label": FIRM_NAME_LABEL, "firm_help": FIRM_NAME_HELP,
+                     "root_label": CLIENTS_FOLDER_LABEL},
         # The page a pass regenerates, the three words that say whether the
         # one on disk still describes the engagement, and what the button
         # that opens it says. The app compares nothing itself and types
@@ -1078,31 +1554,54 @@ def _vocab() -> dict:
             # so the page never offers a number the store's gate refuses.
             "maximums": {"expected_count": records.MAX_EXPECTED_COUNT,
                          "min_size_kb": records.MAX_SIZE_KB},
-            # The folded group the editor keeps the set-aside rows in,
-            # headed as the Status Report heads its own (decision 116).
-            "set_aside_heading": NOT_APPLICABLE_SECTION,
-            # The folded group of rows nobody asked for (decision 142),
-            # headed as the Status Report heads its own, and the columns
-            # that are a yes/no pick rather than a box - so the editor
-            # sends each back as the record holds it.
-            "not_asked_heading": NOT_ASKED_SECTION,
-            # The app's request table folds the same rows the same way,
-            # closed, under the same heading.
+            # The columns that are a yes/no pick rather than a box - so the
+            # editor sends each back as the record holds it. The editor's
+            # set-aside rows fold under ``set_aside`` (decision 200).
             "yes_no_fields": [key for _, key in COLUMNS if key in RULE_FLAG_FIELDS],
+            # The plain view (decision 201): which columns every row shows
+            # and which fold under its Routing rules, and the fold's words.
+            "plain_columns": list(PLAIN_COLUMNS), "routing_columns": list(ROUTING_COLUMNS),
+            "routing": ROUTING_LABEL, "routing_all": ROUTING_ALL_LABEL, "routing_help": ROUTING_HELP,
+            "not_this_return": EDITOR_NOT_THIS_RETURN,
         },
     }
 
 
 def _lock_payload(engagement: Path) -> dict | None:
+    """The engagement's lock as the app's notice says it (decision 193):
+    when the pass started, on which machine, and - for a live pass on this
+    machine - the household and the file it is on, from its progress file.
+    Reads the lock file and that one small file; opens no store."""
     status = lock_status(engagement)
     if status is None:
         return None
+    this_machine = is_this_host(status.host)
+    running = None
+    if this_machine and status.pid.isdigit() and pid_alive(status.pid):
+        running = progress.read_latest(store.store_path().parent, int(status.pid))
     return {
         "started": status.started,
         "age_minutes": int(status.age_seconds // 60),
         "stale": status.stale,
         "stale_after_minutes": STALE_LOCK_SECONDS // 60,
+        "host": status.host,
+        "this_machine": this_machine,
+        "pass": running,
+        "engagement": str(engagement),
+        # How a person reads the folder the lock is in (the review's S1): a
+        # return by its label, a household by its name - from the path, so
+        # no store is opened.
+        "label": _lock_label(engagement),
     }
+
+
+def _lock_label(folder: Path) -> str:
+    """A locked folder as a person reads it: the return's label, or the
+    household's folder name. From the layout's names alone."""
+    folder = Path(folder)
+    if layout.year_of(folder) is not None:
+        return layout.label_for(layout.household_name_of(folder), layout.year_of(folder), folder.name)
+    return folder.name
 
 
 def _info_payload(info: EngagementInfo) -> dict:
@@ -1125,13 +1624,13 @@ def _info_payload(info: EngagementInfo) -> dict:
 
 def _info_from_spec(spec: dict, *, carry: EngagementInfo | None = None,
                     blank_clears: bool = False) -> EngagementInfo:
-    """The engagement's details: what the wizard or the editor sent, over
+    """The engagement's details: what the dialog or the editor sent, over
     what is carried (last year's details on a rollover, the details as
     recorded on an edit), over the firm default.
 
     ``blank_clears`` is the editor's rule: a key present with a blank
     value clears the recorded value, and a key absent keeps it - a person
-    who empties the Link box means the link to go. The wizard and the
+    who empties the Link box means the link to go. The dialog and the
     rollover keep their fallback: a blank there is nothing typed, and the
     carried or default value stands.
 
@@ -1181,7 +1680,7 @@ def _info_from_spec(spec: dict, *, carry: EngagementInfo | None = None,
 
 
 def _people_from_spec(sent: object) -> tuple[Person, ...]:
-    """The return's people as the wizard and the editor's block send them:
+    """The return's people as the dialog and the editor's block send them:
     a list of ``{kind, name, spellings}`` (decision 128).
 
     Every refusal is by name and in the words their one owner gives them:
@@ -1228,7 +1727,7 @@ def _placed(info: EngagementInfo, household: str, year: int, return_name: str) -
 
 def _tax_year(given, default: int | None = None) -> int | None:
     """The tax year a spec asks for: a whole number within the bounds the
-    wizard shows (``YEAR_MIN``..``YEAR_MAX``), or ``default`` when none
+    dialog shows (``YEAR_MIN``..``YEAR_MAX``), or ``default`` when none
     was given. The renderer's number box only suggests the bounds."""
     if given in (None, ""):
         return default
@@ -1250,13 +1749,108 @@ def _evidence_payload(entry: IndexEntry) -> dict[str, list[dict]]:
             for identifier, found in entry.evidence_record.items()}
 
 
+#: The codes a parked email or zip is refused with (decision 143).
+_CONTAINER_CODES = frozenset(reason.code for reason in (
+    reasons.CONTAINER_LOCKED, reasons.CONTAINER_DAMAGED, reasons.CONTAINER_EMPTY,
+    reasons.CONTAINER_LIMIT))
+
+
+def _name_on_disk(entry: IndexEntry) -> str:
+    """The name the row's original has on disk - raw, as the client named
+    it - or, for a program never written out of its email or zip, the name
+    it was recorded by."""
+    return PurePosixPath(entry.pbc_location).name if entry.pbc_location else entry.original_name
+
+
+def true_extension(entry: IndexEntry) -> str:
+    """The row's real type: the last suffix of its name on disk, lower case
+    and without the dot - what Windows would run it by (decision 190) -
+    as the recorded name spells it, so the card never prints an invisible
+    character (decision 190's review, M1)."""
+    return extension_of(Path(recorded_name(_name_on_disk(entry)).rstrip(". ")))
+
+
+def handle_of(entry: IndexEntry) -> str:
+    """The one handle a review command names a row by (decision 190's
+    review, M3): its original's location, or - for a program never written
+    out of its email or zip, which has none - the record's key for the row
+    (:func:`tracker.records.ledger_key`), which is unique where ``""``
+    would name every such row at once. Every lookup the review commands
+    make (:func:`tracker.filer.find_parked` and its siblings) accepts it."""
+    return ledger_key(entry)
+
+
+def review_bucket(entry: IndexEntry) -> str:
+    """Which of the review card's buckets a parked row sits in (decision
+    190): read from its code, and from its type on disk, never from its
+    sentence. A program recorded before the code existed is still not a
+    document, because the card must never offer to open one."""
+    name = _name_on_disk(entry)
+    # Either name saying program is enough (decision 190's review, M1): the
+    # raw one on disk, and the recorded one the review copy was named by.
+    if (entry.code == reasons.NOT_A_DOCUMENT.code or is_program(name)
+            or is_program(entry.original_name)):
+        return BUCKET_NOT_A_DOCUMENT
+    if entry.code in _CONTAINER_CODES or is_container(name):
+        return BUCKET_CONTAINER
+    return BUCKET_DOCUMENT
+
+
+def _review_copy_key(entry: IndexEntry) -> str:
+    """The key under ``paths`` of a parked row's review copy, or ``""``
+    where the card offers no Open. The shell opens only a path the API has
+    named (``paths``), so the copy is named there and the row carries only
+    its key, and the renderer offers Open exactly where there is one.
+
+    Open follows 184 (decision 190): only a document the tracker read and
+    parked for a filing reason opens its marked copy on this machine. A
+    not-a-document row never does; an email or a zip never does - it is
+    opened, if at all, on a machine with no Drive sign-in and no client
+    folder; nor does any row whose code is not on the allow-list
+    (:data:`READ_AND_PARKED_CODES`) - a refused reading, a file the tracker
+    did not read, a code nobody has placed yet; nor a row with no copy."""
+    if entry.decision != NEEDS_REVIEW or not entry.prepared_location:
+        return ""
+    if review_bucket(entry) != BUCKET_DOCUMENT or entry.code not in READ_AND_PARKED_CODES:
+        return ""
+    return f"review_copy {ledger_key(entry)}"
+
+
+def _review_payload(entry: IndexEntry) -> dict:
+    """What a parked row carries for the card beside its record: its
+    bucket, its true type and the key of the copy it opens. A set-aside
+    row carries its bucket too, so a program set aside is never offered
+    *File anyway*."""
+    if entry.decision not in (NEEDS_REVIEW, NOT_REQUESTED):
+        return {}
+    return {"bucket": review_bucket(entry), "extension": true_extension(entry),
+            "open_key": _review_copy_key(entry)}
+
+
+def _catalog_keys(form: str) -> frozenset[str]:
+    """The identifiers the catalog of ``form`` has, compared the way the
+    list compares them; none for a return with no catalog form recorded,
+    whose every row is then its own (decision 201)."""
+    return frozenset(identifier_key(str(spec["identifier"])) for spec in FORM_TEMPLATES.get(form or "", ()))
+
+
+def _next_issuer(items: list) -> str | None:
+    """The identifier a card's issuer box would add, or ``None`` when F's
+    block is full - the editor is then the place to add a row."""
+    try:
+        return next_issuer_identifier(items)
+    except ManifestError:
+        return None
+
+
 def _triage_payload(triaged: review.Triage, seqs: dict[str, int],
-                    waiting: tuple[dict | None, str] = (None, "")) -> dict:
+                    waiting: tuple[dict | None, str] = (None, ""),
+                    next_issuer: str | None = None) -> dict:
     """One parked file's shortlist as JSON, in triage order.
 
     The row itself is already in ``state["index"]``; what travels here is
     the part only :mod:`tracker.review` knows, joined back to that row by
-    ``pbc_location`` - the same handle every review command takes. The
+    ``handle`` (:func:`handle_of`) - the same handle every review command takes. The
     row's sequence number travels here too, beside the row rather than in
     it, so the card a person acts from carries the version of the record
     it was drawn on (decision 112).
@@ -1278,11 +1872,21 @@ def _triage_payload(triaged: review.Triage, seqs: dict[str, int],
     :func:`_waiting_payload` - ``{target, label, requests, answers}``, or
     null - and ``waits_for_refused`` the sentence that stands in for it
     where the claim no longer resolves.
+
+    ``issuer`` is the one box a card parked for an unnamed issuer offers
+    (decision 201): ``{"identifier"}``, the row ``add-issuer-and-file``
+    would add - ``next_issuer``, worked out once for the whole screen by
+    :func:`tracker.templates.next_issuer_identifier` - so the card names it
+    before anything is pressed; null on every other card.
     """
     offer, refused = waiting
+    entry = triaged.entry
+    unnamed = (next_issuer is not None and entry.decision == NEEDS_REVIEW
+               and entry.code == reasons.ISSUER_NOT_NAMED.code)
     return {
         "original_name": triaged.entry.original_name,
         "pbc_location": triaged.entry.pbc_location,
+        "handle": handle_of(triaged.entry),
         "seq": seqs.get(ledger_key(triaged.entry)),
         "shortlist": [asdict(suggestion) for suggestion in triaged.shortlist],
         # The set-aside rows the evidence points at, named with their
@@ -1292,7 +1896,8 @@ def _triage_payload(triaged: review.Triage, seqs: dict[str, int],
         "group": triaged.group,
         "waits_for": offer,
         "waits_for_refused": refused,
-    }
+        "issuer": {"identifier": next_issuer} if unnamed else None,
+    } | _review_payload(triaged.entry)
 
 
 def _waiting_payload(engagement: Path, entry: IndexEntry,
@@ -1318,7 +1923,7 @@ def _waiting_payload(engagement: Path, entry: IndexEntry,
     """
     claim = entry.waiting_for
     if (claim is None or entry.decision != NEEDS_REVIEW
-            or not reasons.NAMED_ACROSS_HOUSEHOLDS.matches(entry.reason)):
+            or entry.code != reasons.NAMED_ACROSS_HOUSEHOLDS.code):
         return None, ""
     returns = fed()
     target = waiting_target(claim, returns)
@@ -1377,6 +1982,7 @@ def _moved_payload(engagement: Path, entries: list[IndexEntry], items,
         rows.append({
             "original_name": entry.original_name,
             "pbc_location": entry.pbc_location,
+            "handle": handle_of(entry),
             "seq": seqs.get(ledger_key(entry)),
             "home": entry.prepared_location,
             "now": now,
@@ -1429,7 +2035,7 @@ def _sharing_checklist(root: Path, household: str) -> dict:
     }
 
 
-def _return_reminder(path: Path, today: dt.date) -> dict:
+def _return_reminder(path: Path, today: dt.date, label: str = "") -> dict:
     """One return's reminder state for the household card (decision 128):
     when it was last drafted, whether this week's draft is approved, how
     many requests are holding it, and how many files wait unsorted in the
@@ -1442,49 +2048,40 @@ def _return_reminder(path: Path, today: dt.date) -> dict:
     ``never_drafted_line`` and ``held_line``), so the returns of a
     household stand side by side in the words their own panel uses and the
     page types nothing new. A return whose record this read cannot open
-    says nothing rather than breaking the card.
+    still draws the card, but says so (decision 193): ``unreadable`` on
+    the line, and a warning on the reply, by class; the full text goes to
+    the error log.
     """
-    blank = {"last": None, "approved": None, "held": 0, "unsorted": 0}
+    blank = {"last": None, "approved": None, "lapsed": False, "held": 0, "unsorted": 0}
     try:
         items = load_manifest(path)
         entries = read_index(path)
         _, _, held = reminder.triage(items, entries)
         last = reminder.last_draft_event(path, carrying=ledger.FILE_KEY)
         approved = reminder.last_approved_event(path)
-        in_force = reminder.is_approved_this_week(
+        approval = reminder.approval_state(
             path, path / reminder.DRAFT_FILENAME,
             since=last_draft_day(today, DRAFT_WEEKDAY))
+        in_force = approval == reminder.APPROVED_NOTE
         unsorted = reminder.unsorted_in_inbox(path)
-    except Exception:                        # said elsewhere; the card still draws
-        return blank
+    except Exception as exc:                 # the card still draws, and says so
+        kind = errors.error_class(exc)
+        errors.keep("api: _return_reminder", exc)
+        log.warning("A reminder line could not be read (%s)", kind)
+        _warn(REMINDER_LINE_UNREADABLE.format(label=label or path.name, kind=kind))
+        return {**blank, "unreadable": True, "kind": kind}
     return {
         "last": ({"date": ledger.day_of(str(last.get(ledger.AT_KEY, ""))).isoformat(),
                   "stage": last.get(reminder.STAGE_KEY) or 0} if last else None),
         "approved": ({"date": ledger.day_of(str(approved.get(ledger.AT_KEY, ""))).isoformat(),
                       "stage": approved.get(reminder.STAGE_KEY) or 0}
                      if approved and in_force else None),
+        # An approval the letter was edited after (decision 190): said as
+        # ``vocab.reminder.approved_then_edited`` in place of "approved".
+        "lapsed": approval == reminder.APPROVED_THEN_EDITED,
         "held": len(held),
         "unsorted": unsorted,
     }
-
-
-def _the_practice() -> Registry | None:
-    """One walk of the clients root, or ``None`` where it cannot be walked
-    (decision 129).
-
-    The feed list is resolved against the practice: a feed names a return
-    line in another household, and only a walk can say which return that
-    is this year. Every caller here wants the same thing and the same
-    forgiveness - a root that is unset, gone or unreadable answers with
-    nothing rather than failing the card or the pass - so the walk is
-    asked for in one place and both the card (:func:`_feed_payload`) and
-    *Run now* (:func:`_cmd_scan`) ask it the same way.
-    """
-    root = _saved_root()
-    try:
-        return discover_engagements(root) if root and root.is_dir() else None
-    except RegistryError:
-        return None
 
 
 def _feed_payload(household_dir: Path, years: list[int]) -> tuple[list[dict], list[dict]]:
@@ -1497,22 +2094,38 @@ def _feed_payload(household_dir: Path, years: list[int]) -> tuple[list[dict], li
     nothing. ``fed_by`` is the other direction, for the destination's own
     card: who else may drop for a return that lives here.
 
-    One walk of the practice, and only for a household that has a feed or
-    might be fed - which is the question itself, so the walk is made
-    whenever the root can be walked at all. A root that cannot be walked
-    answers with nothing rather than failing the card.
+    **Nothing is walked** (decision 192). The feeds are resolved by
+    :func:`resolve_feeds`, unchanged, over
+    :func:`tracker.registry.households_named` - the households the feed
+    list names and no other, read fresh, because the hand-over and the
+    waiting row's click check their target through this same resolution
+    before they write, and a write is never answered from a cache. A
+    household with no feed, which is nearly every household, reads no
+    other folder at all. ``fed_by`` needs every household's feed list,
+    which only a walk or the store holds, so it is the store's
+    (:func:`_fed_by_payload`): a display, which may lag a feed added on
+    another computer. A private tree that cannot be listed answers the
+    feeds with nothing rather than failing the card.
     """
     try:
         info = load_household_info(household_dir)
     except ManifestError:
         info = HouseholdInfo()
-    registry = _the_practice()
-    if registry is None:
-        return ([{"household": one.household, "return_name": one.return_name,
-                  "label": "", "path": "", "warning": ""} for one in info.feeds], [])
+    fed = _fed_by_payload(household_dir)
     year = years[0] if len(years) == 1 else None
-    found, said = ((resolve_feeds(household_dir, info.feeds, year, registry))
-                   if year is not None else ([], []))
+    found: list[Engagement] = []
+    said: list[str] = []
+    if info.feeds and year is not None:
+        try:
+            practice = households_named(household_dir.parent, [one.household for one in info.feeds])
+        except RegistryError as exc:
+            errors.keep("api: _feed_payload", exc)
+            log.warning("The feeds could not be resolved (%s)", errors.error_class(exc))
+            _warn(PRACTICE_NOT_WALKED)
+            return ([{"household": one.household, "return_name": one.return_name,
+                      "label": "", "path": "", "warning": PRACTICE_NOT_WALKED}
+                     for one in info.feeds], fed)
+        found, said = resolve_feeds(household_dir, info.feeds, year, practice)
     by_line = {(one.info.household or one.household_path.name, one.info.return_name or one.path.name):
                one for one in found}
     unresolved = iter(said)
@@ -1527,9 +2140,88 @@ def _feed_payload(household_dir: Path, years: list[int]) -> tuple[list[dict], li
             "path": str(match.path) if match else "",
             "warning": "" if match else next(unresolved, ""),
         })
-    fed = [{"name": one.name, "path": str(one.path), "members": list(one.info.members)}
-           for one in fed_by(registry, household_dir)]
     return feeds, fed
+
+
+#: What *Fed by* says in place of a household whose stored record this
+#: computer could not read (decision 192): a name in the line's own list,
+#: so the card says it without a word of its own, and the class alone -
+#: an exception's text can name a client's folder (security principle 7).
+FED_BY_UNREADABLE = "a household whose record this computer could not read ({kind})"
+
+
+def _fed_by_payload(household_dir: Path) -> list[dict]:
+    """The households whose drop folders feed a return of this one, from
+    the store's household rows as they stand (decision 192).
+
+    The question needs every household's feed list, and a card may not
+    walk the practice to learn it; every walk tops the rows up, so this
+    answers as of the last time this computer listed the clients or ran a
+    pass - a feed added on another computer is named here after the next
+    of those (the runbook says so). Removed elsewhere, the feeder stays
+    named until then: over-telling, the safe direction for a disclosure
+    line. No write reads it.
+
+    Each match is held to the walk's own tests before it is shown: a
+    household position under this household's own private tree, a name
+    the layout accepts, and a journal that is still there (one ``stat``,
+    never a read) - so a folder renamed aside or a record removed is not
+    named from a row the store still holds. With no saved root there is
+    nothing to place the rows under and the answer is nobody.
+
+    **One row the store cannot read costs its own household, never every
+    card** (decision 192, the review's S1). The rows are read in one
+    query; where that fails, each household under this private tree is
+    read from the store on its own, in its own guard, and a household that
+    still cannot be read is left out and said in its place
+    (:data:`FED_BY_UNREADABLE`, by class; the class is logged). A card
+    must not fail on its disclosure line, and a line that leaves a
+    household out in silence would tell nobody it did.
+    """
+    root = _saved_root()
+    if root is None:
+        return []
+    faults = (store.StoreError, ValueError, TypeError)
+    unreadable: list[str] = []
+    built: list[Household] = []
+    try:
+        conn = store.connect()
+        built = [Household(path=root.joinpath(*key.split("/")), info=info)
+                 for key, info in store.households(conn)]
+    except faults as exc:
+        errors.keep("api: fed_by", exc)
+        log.warning("fed_by: the store's households could not be read at once (%s)",
+                    errors.error_class(exc))
+        try:
+            conn = store.connect()
+            with os.scandir(household_dir.parent) as entries:
+                folders = sorted(Path(entry.path) for entry in entries if entry.is_dir())
+        except (*faults, OSError) as again:
+            errors.keep("api: fed_by", again)
+            log.warning("fed_by: nothing could be read one by one (%s)", errors.error_class(again))
+            unreadable.append(errors.error_class(again))
+            folders = []
+        for folder in folders:
+            try:
+                info = store.household_info(conn, folder)
+            except faults as one:
+                errors.keep("api: fed_by", one)
+                log.warning("fed_by: one household's stored record could not be read (%s)",
+                            errors.error_class(one))
+                unreadable.append(errors.error_class(one))
+                continue
+            if info is not None:
+                built.append(Household(path=folder, info=info))
+    shown = [one for one in fed_by(SimpleNamespace(households=built), household_dir)
+             if layout.place_of(root, one.path).kind == layout.HOUSEHOLD
+             and one.path.parent == household_dir.parent
+             and layout.segment_problem(one.path.name) is None
+             and ledger.path_for(one.path).is_file()]
+    fed = [{"name": one.name, "path": str(one.path), "members": list(one.info.members)}
+           for one in sorted(shown, key=lambda one: one.path.name.lower())]
+    if unreadable:
+        fed.append({"name": FED_BY_UNREADABLE.format(kind=unreadable[0]), "path": "", "members": []})
+    return fed
 
 
 #: The app's action on a paused household (decision 188, R6) and its help.
@@ -1592,6 +2284,19 @@ def _household_payload(engagement: Path) -> dict:
     side. There is still **one letter per return** and the Reminder card
     is still the surface a person approves from: this is a line, never a
     send, and never a bundle.
+
+    And whether a roll is offered (decision 196): ``roll_year`` is the
+    next year only when the household has one open year, is not paused,
+    and that next year has ended - never mid-season, when a roll would
+    retire the returns being prepared. One open year already means a
+    return to roll: ``open_years`` counts only active returns, and a
+    return rolled on is retired. The rule is the API's, beside the pause
+    and the two-years note, and the page never computes it; the command's
+    own refusals stay the backstop. Each return says whether that roll
+    carries it (``rollable``), so the page filters nothing a second time;
+    and each carries its form and its people's names, read from the
+    records already loaded here, so the card's roll fold needs no walk of
+    the practice (``priors`` walks it, and stays for the command line).
     """
     today = dt.date.today()
     household_dir = household_of(engagement)
@@ -1607,6 +2312,11 @@ def _household_payload(engagement: Path) -> dict:
     # these years is finished with.
     returns = mark_superseded([engagement_from(folder)
                                for folder in household_returns(household_dir)])
+    # A Rolled From naming nothing, said on the return it is about
+    # (decision 193): the registry's own sentence, not only its CLI's.
+    for one in returns:
+        if one.path == engagement and one.warning:
+            _warn(one.warning)
     years = open_years(returns)
     queue = sum(
         sum(1 for entry in read_index(one.path) if entry.decision == NEEDS_REVIEW)
@@ -1614,6 +2324,18 @@ def _household_payload(engagement: Path) -> dict:
     )
     feeds, fed = _feed_payload(household_dir, years)
     pause = _pause_payload(household_dir, info, returns)
+    roll_year = None
+    if (len(years) == 1 and not pause["sentence"]
+            and next_tax_year(years[0]) <= default_tax_year(today)):
+        roll_year = next_tax_year(years[0])
+    # The returns that roll carries: the open year's, active, not rolled on.
+    # One open year implies at least one; were a hand-edited record to say
+    # otherwise, an empty roll is not offered.
+    rollable = set() if roll_year is None else {
+        one.path for one in returns
+        if one.active and not one.superseded_by and one.tax_year in years}
+    if not rollable:
+        roll_year = None
     return {
         # Why the pass touches nothing of this household, and what a person
         # may accept (decision 188): the card draws the sentence and the
@@ -1627,12 +2349,18 @@ def _household_payload(engagement: Path) -> dict:
         "feeds": feeds,
         "fed_by": fed,
         "open_years": years,
+        # The year the card's roll fold names, or None when no roll is
+        # offered (decision 196).
+        "roll_year": roll_year,
         "returns": [
             {"label": one.label, "path": str(one.path),
              "year": one.tax_year if one.tax_year is not None else year_of(one.path),
              "return_name": one.info.return_name or one.path.name,
              "active": one.active, "superseded_by": one.superseded_by,
-             "reminder": (_return_reminder(one.path, today)
+             "rollable": one.path in rollable,
+             "form": one.info.form,
+             "people": [person.name for person in one.info.people],
+             "reminder": (_return_reminder(one.path, today, one.label)
                           if one.active and one.tax_year in years else None)}
             for one in returns
         ],
@@ -1679,6 +2407,11 @@ def _state(engagement: Path) -> dict:
     info = load_engagement_info(engagement)
     summary = summarize(items)
     entries = read_index(engagement)
+    # The reminder's triage, run once for the whole screen (decision 200):
+    # the card's held rows and every row's side come from the same three
+    # lists, so the chips and the card cannot disagree.
+    triaged = reminder.triage(items, entries)
+    placed = reminder.sides(*triaged)
     conn = store.connect()
     rules = store.rules(conn, engagement) or []
     taught = store.learned_keywords(conn, engagement)      # keyed without case, as the store keys it
@@ -1690,9 +2423,14 @@ def _state(engagement: Path) -> dict:
     # measured from the list already loaded - no second read - so a person
     # opening a return sees the number without waiting for a pass.
     room = room_for(engagement, items)
+    # The household payload, built once (decision 192): the card and the
+    # feed list a waiting row is offered from are drawn from the same one.
+    household = _household_payload(engagement)
     # The feed list, read once and only if a parked row waits for another
     # household (decision 204).
-    fed_once = cache(lambda: _fed_returns(engagement))
+    fed_once = cache(lambda: _fed_returns(engagement, household))
+    catalog = _catalog_keys(info.form)
+    next_issuer = _next_issuer(items)
     return {
         # The derived page, and whether it still describes this engagement.
         # Reading the stamp takes no lock and tolerates another program
@@ -1701,18 +2439,23 @@ def _state(engagement: Path) -> dict:
         "engagement": _info_payload(info),
         "lock": _lock_payload(engagement),
         "summary": {
-            "line": summary.line, "counts": summary.counts, "total": summary.total,
+            "line": summary.shown_line, "counts": summary.counts, "total": summary.total,
             "received": summary.received, "outstanding": summary.outstanding,
             "not_applicable": summary.not_applicable, "unscanned": summary.unscanned,
             "also_received": summary.also_received, "not_asked": summary.not_asked,
         },
         # Each row with the year its own Period gives, so the renderer
         # labels a set-aside row without reading the Period's text, and
-        # the word its status is shown as - "Not asked" for a row nobody
-        # asked for with nothing in (decision 142) - so it types none.
+        # the record's word for its status (decision 200), the key the
+        # renderer shows through ``vocab.labels`` - "Not asked" for a row
+        # nobody asked for with nothing in (decision 142) - so it types
+        # none. An outstanding row carries whose move
+        # it is and the row's own sentence; any other row has no side.
         "items": [
             asdict(i) | {"received_date": i.received_date.isoformat() if i.received_date else None,
-                         "year": i.year, "status_label": status_label(i),
+                         "year": i.year, "status_key": status_key(i),
+                         "side": placed[i.identifier][0].key if i.identifier in placed else None,
+                         "side_sentence": placed[i.identifier][1] if i.identifier in placed else "",
                          # Decision 142, the designer's ruling on the build:
                          # a row nobody asked for folds away in the request
                          # table only while no document at all is in it; the
@@ -1721,7 +2464,11 @@ def _state(engagement: Path) -> dict:
                          # The short name the row's copies go by
                          # (decision 144): its own, or the one its document
                          # derives - the editor's placeholder for a blank.
-                         "short_name": i.short_name}
+                         "short_name": i.short_name,
+                         # Whether a catalog row of the return's form has
+                         # this identifier (decision 201): a custom row's
+                         # Document is drawn in the editor's plain view.
+                         "catalog_row": identifier_key(i.identifier) in catalog}
             for i in items
         ],
         # The person's rows as stored - read the way every reader reads
@@ -1759,14 +2506,18 @@ def _state(engagement: Path) -> dict:
                                "candidates": e.candidate_list,
                                "answered": [identifier for identifier, _ in e.answered],
                                "evidence": _evidence_payload(e),
-                               "seq": seqs.get(ledger_key(e))}
+                               "handle": handle_of(e),
+                               "seq": seqs.get(ledger_key(e))} | _review_payload(e)
                   for e in entries],
         # The review queue, triaged: one entry per parked file, its
         # shortlist best-first with the sentence behind each suggestion.
         # There is no `review` command - the card draws from the one state
         # the app already reads - and the manifest and the index are handed
         # to triage() so each is read once for the whole screen.
-        "review": [_triage_payload(t, seqs, _waiting_payload(engagement, t.entry, fed_once))
+        # A card parked for an unnamed issuer names the row it would add
+        # (decision 201): the next free one in F's block, worked out once.
+        "review": [_triage_payload(t, seqs, _waiting_payload(engagement, t.entry, fed_once),
+                                   next_issuer=next_issuer)
                    for t in review.triage(engagement, entries, items=items)],
         # The working copies that are not where the record put them
         # (decision 109 found them; decision 110 is what a person does
@@ -1777,12 +2528,17 @@ def _state(engagement: Path) -> dict:
         # draft is written - and the day of the last draft. Sorted by the
         # reminder's own triage over the rows already loaded; nothing here
         # reads a draft file, and nothing here drafts (decision 12).
-        "reminder": _reminder_payload(engagement, items, entries),
+        "reminder": _reminder_payload(engagement, triaged),
+        # The Reminder card itself, at the record's stage (decision 194):
+        # exactly what the ``reminder`` command answers, so a switch or a
+        # write is one reply and the card cannot disagree with the table.
+        # The command stays for the stage toggle alone.
+        "reminder_card": _reminder_said(engagement),
         # The household this return belongs to (decision 125): its own
         # record, the years still open across it, its returns and the one
         # queue a person works. The card is drawn from this and types
         # nothing of its own.
-        "household": _household_payload(engagement),
+        "household": household,
         "paths": {
             "engagement": str(engagement),
             # The household's one inbox and the folder the client sees for
@@ -1808,6 +2564,11 @@ def _state(engagement: Path) -> dict:
             # paths the API has named, and a person looking at one
             # engagement is one click from the whole practice.
             "status": str(root / STATUS_PAGE_FILENAME) if root else "",
+            # Each parked document's review copy (decision 190), for its
+            # card's Open: named here because the shell opens only the
+            # paths this map holds, and never for a not-a-document row.
+            **{key: str(locate(engagement, e.prepared_location)) for e in entries
+               if (key := _review_copy_key(e))},
         },
     }
 
@@ -1820,15 +2581,16 @@ def _room_sentences(room) -> list[str]:
     return said + ([ROOM_PARKS.format(count=room.parks)] if room.parks else [])
 
 
-def _reminder_payload(engagement: Path, items, entries) -> dict:
+def _reminder_payload(engagement: Path, triaged) -> dict:
     """What holds this engagement's reminder, and when it was last drafted.
 
-    The index rows go in because a parked file the client could fix holds
-    the request it points at (decision 117), and the card must show the
-    same hold the draft day will: the rows are the ones ``state`` has
-    already read, so nothing is read twice to answer this.
+    ``triaged`` is the reminder's own triage of the rows and the index
+    ``state`` has already read - the index because a parked file the
+    client could fix holds the request it points at (decision 117) - so
+    the card shows the same hold the draft day will, and the same hold
+    the rows' sides say (decision 200): one triage for the whole screen.
     """
-    _, _, held = reminder.triage(items, entries)
+    _, _, held = triaged
     drafted = last_drafted(engagement)
     return {
         "held": _held_rows(held),
@@ -1853,135 +2615,105 @@ def _refresh_readmes(*engagements: Path) -> None:
     once each (decision 130): after an action that creates or edits a
     return or changes a document's row, what the client reads is current
     at once rather than at the next pass. A hand-over across households
-    names both. Never raises - :func:`filer.refresh_household_readme` is a
-    log line on failure - and is reached only after the action succeeded,
-    so a refused action refreshes nothing."""
+    names both. Never raises - :func:`filer.refresh_household_readme`
+    says a failure by class in this reply's warnings (decision 193) and
+    logs it in full - and is reached only after the action succeeded, so
+    a refused action refreshes nothing."""
     for household_dir in dict.fromkeys(household_of(Path(one)) for one in engagements):
-        refresh_household_readme(household_dir)
+        refresh_household_readme(household_dir, said=_WARNINGS)
+
+
+def _error_log_said() -> str:
+    """The error log's path for the shell, or ``""`` when no data home can
+    be had (decision 186): the log sits beside the store, in the data home,
+    and ``list`` must still answer so the first screen can say why. The
+    shell keeps no path it is given empty, and then writes no log at all:
+    a failed command's stderr is said in its reply (:data:`SHELL_NO_LOG`)."""
+    try:
+        return str(error_log_path())
+    except SettingsError:
+        return ""
 
 
 def _cmd_state(argv: list[str]) -> dict:
     return _state(_engagement_dir(argv))
 
 
-def _record_pass(runs: list[EngagementRun] | EngagementRun,
-                 warnings: list[str] | None = None) -> list[str]:
-    """Leave the record the scheduled run leaves: a line in the run log and
-    the practice's status page, both in the clients root.
+#: Sort & Scan's command (decision 203): the scheduled runner for this
+#: return's household, in the process the shell spawned. Learned by the
+#: shell (``vocab.pass_command``), which watches it as a pass: resolved at
+#: its ``started`` line, its later lines streamed, its final line sent when
+#: it ends.
+PASS_COMMAND = "run-now"
 
-    The app's button makes the same pass as the job, so it must leave the
-    same trace - a pass with no record is a pass nobody can check
-    afterwards, and a page that is a night old is one nobody believes. The
-    page is redrawn from every engagement under the root, because it is
-    about the practice and not about the engagement that was just run.
 
-    Neither takes a lock or touches an engagement, and neither failing is
-    allowed to fail the pass: the files have already been moved and the
-    statuses recorded, so the person is told what happened either way -
-    **in the reply** (decision 189): the sentence for each that failed is
-    returned, because stderr is what the app discards when the reply
-    parses. ``warnings`` are the pass's own sentences, logged and put on
-    the page as the scheduled pass puts its own.
-    """
-    every = [runs] if isinstance(runs, EngagementRun) else list(runs)
-    said = list(warnings or [])
-    root = _saved_root()
-    if root is None or not root.is_dir():
-        return []
-    failed: list[str] = []
-    # Broadly, both of them: the pass has already moved the client's files
-    # and recorded what it found, so nothing about recording it afterwards
-    # may turn a finished pass into an error message in the app.
+def _cmd_run_now(argv: list[str]) -> int:
+    """Start this return's household's pass - **the scheduled runner
+    itself** (decision 203), with the schedule's own arguments plus no
+    draft, the progress lines and the household
+    (``runner.run_now_arguments``) - and return its exit code.
+
+    Before it, and nothing else: the return through the one door, its
+    household from the layout, and whether a live pass holds any return of
+    that household. Held - by the schedule or another Run now - it is
+    193's lock notice and nothing starts; the race between this look and
+    the pass taking its locks costs nothing, because the second pass is
+    locked out, says so and moves nothing (the lock says who holds a
+    household, never the shell). The runner checks the household through
+    the door again, writes the ``pass started`` line, the run log and the
+    practice page exactly as the schedule does, and closes the store: this
+    command writes no log and no page of its own, and is dispatched by
+    :func:`main` before its reading session and its reply."""
+    with error_log("tracker"):
+        try:
+            household = household_of(_engagement_dir(argv))
+            for one in household_returns(household):
+                status = lock_status(one)
+                if status is not None and not status.stale:
+                    raise EngagementLockedError(
+                        LOCKED.format(seconds=int(status.age_seconds)), one / LOCK_FILENAME)
+        except Exception as exc:  # said as the one envelope, never a traceback
+            if _failure_of(exc)["kind"] == "failed":
+                # Its class on the log line; its words and trace kept apart
+                # (decision 190), in the error log only.
+                errors.keep("api: " + PASS_COMMAND, exc)
+                log.error("%s failed (%s)", PASS_COMMAND, errors.error_class(exc))
+            return _reply_failure(exc)
+        finally:
+            store.close()
+    return runner.main(runner.run_now_arguments(settings_dir(), household))
+
+
+def _cmd_watch(argv: list[str]) -> dict:
+    """Whether a pass still holds this return, and where it is (decision
+    193): the lock file and the pass's progress file, and nothing else - no
+    store, no journal. The app asks it every ``LOCK_WATCH_SECONDS`` while a
+    live lock shows, and brings the buttons back on the first ``null``.
+
+    The folder is the one the lock was reported in - a return, or a
+    household folder under the root (the review's S1) - each checked by
+    the one door."""
     try:
-        append_log(root / LOG_FILENAME, RunReport(today=dt.date.today(), reminders=REMINDERS_NEVER,
-                                                  runs=every, warnings=said))
-    except Exception as exc:
-        log.warning("Could not write %s (%s)", LOG_FILENAME, exc)
-        failed.append(LOG_NOT_WRITTEN.format(kind=exc.__class__.__name__))
-    try:
-        write_status_page(root, status_report(discover_engagements(root), passed=every,
-                                              warnings=said + failed))
-    except Exception as exc:
-        log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, exc)
-        failed.append(PAGE_NOT_WRITTEN.format(kind=exc.__class__.__name__))
-    return failed
+        folder = _engagement_dir(argv)
+    except (ManifestError, door.DoorError, layout.LayoutError):
+        at = argv.index(ENGAGEMENT_FLAG) + 1 if ENGAGEMENT_FLAG in argv else len(argv)
+        if at >= len(argv) or not argv[at].strip():
+            raise
+        folder = _household_dir(argv[at].strip())
+    return {"lock": _lock_payload(folder)}
 
 
-def _cmd_scan(argv: list[str]) -> dict:
-    """One pass over this return's **household** - the same pass the
-    scheduled job makes.
-
-    Scaffold, sort the household's one inbox, scan, in that order, with
-    the same locks, the same error isolation and the same warnings; only
-    the weekly draft is left to the scheduled run (or `python -m
-    tracker.reminder`). There is one definition of a pass, in
-    tracker.runner, and this is it - including the record it leaves behind
-    (:func:`_record_pass`).
-
-    **The reply carries what the pass said** (decision 189): ``run`` is the
-    asked return, ``household`` is every other return of the household the
-    pass touched (its error, skip and warnings), and ``pass_warnings`` are
-    the pass's own - the reader's path, a reader that could not start, the
-    card, and a run log or page that could not be written. Nothing the
-    pass said is left on stderr alone.
-
-    **The whole inbox, always** (decision 125). One folder feeds every
-    return of the household, so Run now on one return sorts all of it;
-    sorting a share of a pile nobody sorted is not a thing the tracker can
-    honestly do. The reply is about the return that was asked for.
-
-    **And the whole feed list with it** (decision 129). The practice is
-    walked and handed down, so the returns this drop folder feeds in other
-    households are judged, locked and filed into here exactly as the
-    scheduled pass does it: without the walk the same trial balance would
-    file under the co-owned LLC on the schedule and park at home on Run
-    now, which is two definitions of a pass and one of them wrong. Since
-    decision 132 the pass cannot be called without the walk at all: a root
-    that cannot be walked is refused by the runner in one sentence
-    (``tracker.runner.NO_PRACTICE``), which is this reply's ``error``, and
-    nothing is sorted.
-    """
-    engagement = _engagement_dir(argv)
-    household_dir = household_of(engagement)
-    returns = mark_superseded([engagement_from(folder)
-                               for folder in household_returns(household_dir)]) \
-        or [engagement_from(engagement)]
-    runs = run_household(household_dir, returns, reminders=REMINDERS_NEVER,
-                         registry=_the_practice())
-    run = next((one for one in runs if one.engagement.path == engagement),
-               EngagementRun(engagement=engagement_from(engagement)))
-    # Said once, as the pass's own (decisions 150, 169 and 189).
-    pass_warnings = [w for w in (ocr.reader_path_warning(), reader_start_warning()) if w]
-    if ocr_session := ocr.current_session():
-        pass_warnings.extend(ocr_session.warnings())
-    pass_warnings.extend(_record_pass(runs, pass_warnings))
-    payload = {
-        "run": {
-            "ok": run.ok,
-            "error": run.error,
-            "skipped": run.skipped,
-            "filed": run.filed,
-            "review": run.review,
-            "waiting": run.waiting,
-            "file_errors": run.file_errors,
-            "warnings": run.warnings,
-            "statuses": run.statuses,
-            "outstanding": run.outstanding,
-        },
-        "household": [
-            {"label": one.engagement.label, "ok": one.ok, "error": one.error,
-             "skipped": one.skipped, "warnings": one.warnings}
-            for one in runs if one is not run
-        ],
-        "pass_warnings": pass_warnings,
-    }
-    try:
-        payload["state"] = _state(engagement)
-    except ManifestError:
-        if run.error:
-            raise ManifestError(run.error) from None
-        raise
-    return payload
+def _cmd_cancel_pass(argv: list[str]) -> dict:
+    """Ask a running pass this app started to stop at its next file
+    (decision 193). JSON on stdin: ``{"pass": <id>}``, the id its progress
+    lines carry. Refused (:data:`NOTHING_TO_STOP`) unless that pass is
+    live and may be stopped from here; the scheduled pass never may."""
+    spec = _read_spec()
+    pass_id = spec.get("pass")
+    if not isinstance(pass_id, int) or isinstance(pass_id, bool) or pass_id <= 0 \
+            or not progress.ask_to_stop(store.store_path().parent, pass_id):
+        raise ManifestError(NOTHING_TO_STOP)
+    return {"stopping": True}
 
 
 def _cmd_templates(argv: list[str]) -> dict:
@@ -1996,10 +2728,10 @@ def _cmd_propose_spellings(argv: list[str]) -> dict:
     -> ``{"spellings": [...]}``. A **read**:
     no folder is touched, no lock taken and nothing recorded, because a
     proposal is not a decision - what a return matches on is what somebody
-    ticked and the wizard or the editor then saves with the rest of the
+    ticked and the dialog or the editor then saves with the rest of the
     details (decision 128).
 
-    The twenty-third command, and the only one the wizard calls while
+    The twenty-third command, and the only one the dialog calls while
     somebody is still typing.
     """
     spec = _read_spec()
@@ -2076,18 +2808,28 @@ def _cmd_edit(argv: list[str]) -> dict:
                        check=lambda: _refuse_taking_away_documents(engagement, recorded, items))
     _refresh_readmes(engagement)
     state = _state(engagement)
-    return {
+    # What the list already held and this save did not touch - two issuer
+    # rows of one name (decision 201) - is the envelope's to say: a notice
+    # that stays until dismissed (decision 193).
+    for sentence in saved.warnings:
+        _warn(sentence)
+    reply = {
         "saved": {"changed": list(saved.changed), "removed": list(saved.removed),
                   "engagement": list(saved.info_fields), "recorded": saved.recorded},
-        "warnings": state["warnings"],
+        # The editor's rule warnings are ``state.warnings``; the reply's own
+        # ``warnings`` is the envelope's, with one meaning (decision 193).
         "state": state,
     }
+    # ``active`` is the one field saved here that the list shows - the
+    # feed picker reads it - so only a save that changed it walks (R6,
+    # decision 194).
+    return _with_list(reply) if "active" in saved.info_fields else reply
 
 
 #: The keys a row the editor sends may carry (decision 160): the columns of
 #: ``records.RULE_FIELDS`` - the two the person never types included,
 #: because ``state`` hands them out and a caller sends the rows back - and
-#: ``extensions``, the name the wizard has always sent the file types by.
+#: ``extensions``, the name the dialog has always sent the file types by.
 _ROW_KEYS = frozenset(RULE_FIELDS) | {"extensions"}
 
 
@@ -2247,6 +2989,27 @@ def _cmd_unlock(argv: list[str]) -> dict:
             "state": _state(engagement)}
 
 
+def _machine_warnings(root: Path | None) -> list[str]:
+    """This machine's own problems, each a sentence the app's first screen
+    keeps showing until it is fixed (decision 186): what an earlier version
+    left beside the app, or a data home that cannot be had at all, and an app
+    running from a drive Install Schedule refuses (removable, network, or one
+    Windows cannot name) - said every time the app opens from there."""
+    warnings = []
+    try:
+        # Asked first and on its own (decision 186's review, M1): what was
+        # left behind asks the data home only when it finds something, and
+        # not at all under ``TRACKER_STORE``, so it cannot be the one to say
+        # the data home is missing.
+        data_home()
+        warnings += [sentence for _code, sentence in left_behind_warnings(root)]
+    except SettingsError as exc:
+        warnings.append(str(exc))
+    if refusal := program_drive_refusal():
+        warnings.append(refusal)
+    return warnings
+
+
 def _cmd_list(argv: list[str]) -> dict:
     """Every household, return and left-alone folder under the root - the
     same discovery the scheduled run uses.
@@ -2264,6 +3027,7 @@ def _cmd_list(argv: list[str]) -> dict:
              # 159, E4): one line on the main screen, in the runner's words,
              # with or without a root - a missing root is one way it stops.
              "last_pass": last_pass_line(),
+             "machine_warnings": _machine_warnings(None),
              # What the last after-install run left for a person (decision
              # 209), or None: a notice above everything, until a run finds
              # nothing.
@@ -2276,13 +3040,42 @@ def _cmd_list(argv: list[str]) -> dict:
     except door.DoorError as exc:
         return {**empty, "needs_root": True, "root": str(clients_root() or ""),
                 "root_problem": str(exc), "vocab": _vocab()}
+    except SettingsError:
+        # A data home that cannot be had (decision 186's review, M1): the root
+        # cannot be held to its rule without it, so it is not walked - but the
+        # first screen still arrives, and its banner (``machine_warnings``,
+        # built above with no root) already carries the sentence. The root
+        # is kept, not asked for again: it is the machine that needs fixing.
+        return {**empty, "needs_root": False, "root": str(clients_root() or ""),
+                "vocab": _vocab()}
     if root is None or not root.is_dir():
         return {**empty, "needs_root": True, "root": str(root or ""), "vocab": _vocab()}
     try:
         registry = discover_engagements(root)
-    except RegistryError:
+    except EmptyRoot:
         # An empty root is a practice nobody has set up yet, not a failure.
-        return {**empty, "needs_root": False, "root": str(root), "vocab": _vocab()}
+        return {**empty, "needs_root": False, "root": str(root), "vocab": _vocab(),
+                "machine_warnings": _machine_warnings(root)}
+    except RegistryError as exc:
+        # One that could not be walked is said, never answered as empty
+        # (decision 193): the class to the log, the sentence to the page.
+        errors.keep("api: _cmd_list", exc)
+        log.warning("The clients root could not be walked (%s)", errors.error_class(exc))
+        _warn(PRACTICE_NOT_WALKED)
+        return {**empty, "needs_root": False, "root": str(root),
+                "root_problem": PRACTICE_NOT_WALKED, "vocab": _vocab(),
+                "machine_warnings": _machine_warnings(root)}
+    return {**_list_payload(root, registry), "needs_root": False, "vocab": _vocab(),
+            "reader_warning": empty["reader_warning"], "last_pass": empty["last_pass"],
+            "after_install": empty["after_install"],
+            "machine_warnings": _machine_warnings(root)}
+
+
+def _list_payload(root: Path, registry: Registry) -> dict:
+    """The list half of the ``list`` reply - the households, the returns
+    and the left-alone folders of one walk, and the root - without the
+    vocabulary (decision 194). ``list`` adds the vocabulary; a write that
+    changes the list carries this alone (:data:`LIST_CHANGING`)."""
     grouped = registry.by_household()
     households = []
     for household in registry.households:
@@ -2321,14 +3114,65 @@ def _cmd_list(argv: list[str]) -> dict:
                      "where": str(Path(*below)) if (below := layout.parts_below(root, misfit.path))
                      else str(misfit.path)}
                     for misfit in registry.misfits],
-        "needs_root": False, "root": str(root), "vocab": _vocab(),
-        "reader_warning": empty["reader_warning"],
-        "last_pass": empty["last_pass"],
-        "after_install": empty["after_install"],
+        "root": str(root),
     }
 
 
-#: What the wizard is told when a household name typed again is, by the
+#: The commands whose reply carries the list, because they change it
+#: (decision 194). Showing a return reads the list no more: the app keeps
+#: start-up's and takes the one these writes carry. Each is a whole walk
+#: (:func:`_listing`), never one household's entry patched in (R5): two
+#: folders claiming one household, and the walk's order, are practice-wide
+#: facts a one-household read cannot give, and a spliced list could
+#: disagree with the walk that is the only discovery (decision 125). They
+#: are set-up acts, once per return per season, so the walk there costs no
+#: daily click. ``edit`` carries it only when it changed ``active``, the
+#: one field it saves that the list shows (R6). Sort & Scan is not here
+#: since decision 203: its pass is the runner's, which prints no list, and
+#: the app asks ``list`` once when the pass ends, then ``state`` (the lane's
+#: ruling on 194's Q5). ``set-root`` is not here either: the app starts
+#: again after it, because the vocabulary depends on the settings it
+#: writes (R8).
+LIST_CHANGING = ("create", "rollover", "roll-household", "edit-household",
+                 "accept-folder-name", "edit")
+
+
+def _listing(registry: Registry | None = None) -> dict | None:
+    """The list a :data:`LIST_CHANGING` write carries: :func:`_list_payload`
+    of ``registry``, or of one walk of the saved root, without the
+    vocabulary. ``None`` where the root cannot be walked - said once, as
+    :data:`PRACTICE_NOT_WALKED` - and the app keeps the list it has; the
+    write itself stands."""
+    try:
+        root = _saved_root()
+        if root is None or not root.is_dir():
+            return None
+        try:
+            walked = registry if registry is not None else discover_engagements(root)
+        except EmptyRoot:
+            return {"engagements": [], "households": [], "misfits": [], "root": str(root)}
+        return _list_payload(root, walked)
+    except (RegistryError, door.DoorError, SettingsError) as exc:   # the write stands (N4)
+        errors.keep("api: _listing", exc)
+        log.warning("The clients root could not be walked (%s)", errors.error_class(exc))
+        _warn(PRACTICE_NOT_WALKED)
+        return None
+
+
+def _with_list(reply: dict, registry: Registry | None = None) -> dict:
+    """``reply`` with the list added, when the root could be walked - and
+    only for a command :data:`LIST_CHANGING` names, which is what decides
+    it (decision 194's review, S3): a command outside it neither walks nor
+    carries a list, whoever calls this."""
+    if _RUNNING["command"] not in LIST_CHANGING:
+        return reply
+    listed = _listing(registry)
+    if listed is not None:
+        reply["list"] = listed
+    return reply
+
+
+#: What New household is told when a household name typed again is, by the
 #: layout's key, a household already in the list (decision 188, R7; the
 #: tie-breaker is Jason's ruling of 2026-09-26: a first name or a middle
 #: initial, then the city - never an identifier).
@@ -2391,6 +3235,8 @@ def _cmd_create(argv: list[str]) -> dict:
     over by every return added to it. The same holds for a household named
     by ``household``, where the record already knows one of that name.
     Otherwise a new household is made first, and the return after it.
+    The app sends ``household_path`` from Add a return on the household's
+    card and the four fields from New household (decision 196).
 
     The year defaults to the most recently ended year; catalog rows are
     shifted to it. The return's greeting and link default to the
@@ -2422,7 +3268,7 @@ def _cmd_create(argv: list[str]) -> dict:
         _refuse_a_taken_household_name(root, household)
         household_dir = private_household_dir(root, household)
     # A household the record already knows is that household, whether the
-    # wizard named it by its folder or a person typed its name again: its
+    # dialog named it by its folder or a person typed its name again: its
     # own details stand, and ``edit-household`` is where they change.
     existing = ledger.path_for(household_dir).is_file()
     made_household: Path | None = None
@@ -2443,12 +3289,12 @@ def _cmd_create(argv: list[str]) -> dict:
             link=" ".join(str(spec.get("link", "") or "").split()),
         )
 
-    # Decision 142: the wizard sends every catalog row, each with its tick
+    # Decision 142: the dialog sends every catalog row, each with its tick
     # as ``asked``, and the custom rows (always asked). A list nobody is
     # asked for is still refused - it would chase nothing.
     items = [item_from_spec(s) for s in spec.get("items", [])]
     _refuse_a_list_nobody_is_asked_for(items)
-    # The wizard sends catalog rows as written (the base year); shift them
+    # The dialog sends catalog rows as written (the base year); shift them
     # to the return's year so TY2025 does not get asked for in 2027.
     base = base_year(form) if form else None
     if base:
@@ -2457,7 +3303,7 @@ def _cmd_create(argv: list[str]) -> dict:
     return_name = str(spec.get("return_name", "") or "").strip() or default_return_name(form, client)
     engagement = _new_return_dir(root, household, year, return_name, items)
 
-    # The wizard's dates, or the form's own (decision 117) - a new return
+    # The dialog's dates, or the form's own (decision 117) - a new return
     # is on the reminder's ladder from its first draft. Its greeting and
     # its link come from the household where the spec is silent.
     # A household link recorded before decision 137's rule that is not a web
@@ -2492,7 +3338,7 @@ def _cmd_create(argv: list[str]) -> dict:
             create_household(household_dir, household_info)
             made_household = household_dir
         made += make_new_folders(engagement)
-        # The catalog the wizard chose is recorded in the details: a
+        # The catalog the dialog chose is recorded in the details: a
         # return that cannot say which checklist it came from cannot be
         # checked against it later. The list is validated whole before a
         # line is written, so a bad row leaves nothing behind.
@@ -2516,7 +3362,7 @@ def _cmd_create(argv: list[str]) -> dict:
     # nothing is ever re-shared.
     if made_household is not None:
         reply["checklist"] = _sharing_checklist(root, household)
-    return reply
+    return _with_list(reply)   # a new return, perhaps a new household (decision 194)
 
 
 def _undo_made(made: list[Path], owned: set[Path]) -> None:
@@ -2649,13 +3495,14 @@ def _cmd_edit_household(argv: list[str]) -> dict:
         feeds=_feeds_from_spec(spec["feeds"], household_dir) if "feeds" in spec else held.feeds,
     )
     saved = save_household(household_dir, info)
-    return {"saved": {"household": list(saved.fields)}, "state": _state(engagement)}
+    # The household's members, contact and link are in the list (decision 194).
+    return _with_list({"saved": {"household": list(saved.fields)}, "state": _state(engagement)})
 
 
 def _cmd_priors(argv: list[str]) -> dict:
     """Engagements already on disk that a new year could be rolled from.
 
-    The same discovery the scheduled run uses, so what the wizard offers
+    The same discovery the scheduled run uses, so what the command line offers
     and what the job walks are one list; superseded_by comes from it too.
     """
     root = _saved_root()
@@ -2681,13 +3528,13 @@ def _cmd_priors(argv: list[str]) -> dict:
             "household": str(engagement.household_path),
             "household_name": engagement.info.household or engagement.household_path.name,
             "return_name": engagement.info.return_name or engagement.path.name,
-            # The catalog the return was cut from, which the returning-client
-            # page picks by default so the rows it never had arrive as not
+            # The catalog the return was cut from, which the card's roll
+            # fold picks by default so the rows it never had arrive as not
             # asked without anybody choosing (decision 142's review, R2).
             "form": engagement.info.form,
             "client": engagement.client,
-            # Who the return is for (decision 128): the returning-client
-            # page lists them under each ticked return, because the roll
+            # Who the return is for (decision 128): the card's roll fold
+            # lists them under each ticked return, because the roll
             # carries the list unchanged and it is worth one look.
             "people": [person_to_json(one) for one in engagement.info.people],
             "rolled_from": engagement.rolled_from,
@@ -2750,7 +3597,7 @@ def _cmd_rollover(argv: list[str]) -> dict:
                                  report.items)
 
     # Last year's details, carried by the one rule (tracker.rollover); the
-    # wizard's fields go over it. Rolled From is what retires the prior.
+    # plan's fields go over it. Rolled From is what retires the prior.
     carried = carry_engagement_info(prior_info, rolled_from=str(prior),
                                     tax_year=report.target_year)
     # The household's own contact and inbox link refill what the carry
@@ -2777,14 +3624,15 @@ def _cmd_rollover(argv: list[str]) -> dict:
         # call's own mkdir made is undone (decision 137), and the year only
         # when it is empty.
         made += make_new_folders(engagement)
-        create_engagement(engagement, report.items, info)
+        report.warnings = list(create_engagement(engagement, report.items, info,
+                                                 carried=report.from_last_year))
         scaffold_engagement(engagement)
     except Exception:
         _undo_made(made, {engagement})
         raise
     _refresh_readmes(engagement)
 
-    return {
+    return _with_list({   # next year's return is in the list now (decision 194)
         "created": Engagement(path=engagement, info=info,
                               household_path=household_dir).label,
         "rollover": {
@@ -2794,7 +3642,7 @@ def _cmd_rollover(argv: list[str]) -> dict:
             **_carried_payload(report, prior),
         },
         "state": _state(engagement),
-    }
+    })
 
 
 def _carried_payload(report, prior: Path) -> dict:
@@ -2802,7 +3650,8 @@ def _carried_payload(report, prior: Path) -> dict:
     origin, its note and whether it is asked, last year's unfiled files, and
     - since decision 177 - the prior's own warning, which decision 188
     leaves empty for a disagreement: a household whose folders and record
-    disagree is paused and never rolls."""
+    disagree is paused and never rolls - and, since decision 201, the
+    sentence for each same-name issuer pair carried as it was."""
     return {
         "warning": engagement_from(prior).warning,
         "carried": [
@@ -2813,6 +3662,9 @@ def _carried_payload(report, prior: Path) -> dict:
         "unfiled_last_year": report.unfiled_last_year,
         # Decision 137 (L5): the prior's link, when it was left behind.
         "link_dropped": report.link_dropped,
+        # Decision 201: a same-name issuer pair last year's list held,
+        # carried as it was - said here, not first on some later save.
+        "warnings": list(report.warnings),
     }
 
 
@@ -2839,7 +3691,10 @@ def _cmd_roll_household(argv: list[str]) -> dict:
     left open and ``warning`` is the rollover's own sentence
     (``RolledNotAllRetired``), which the app shows as its banner.
 
-    The year defaults to the one after the household's open year. Nothing
+    The app calls it from the household's card (decision 196), with the
+    household on screen and the year the card named; the command line keeps
+    ``year`` for the rare case. The year defaults to the one after the
+    household's open year. Nothing
     under the client tree is touched but the new year's folder, and no
     permission is changed: the inbox was shared once, and a new year is a
     new folder under the same grant.
@@ -2885,7 +3740,8 @@ def _cmd_roll_household(argv: list[str]) -> dict:
     # the one it was pointed at - a household rollover that rolled nothing
     # still has a household card to redraw.
     landed = done.rolled[0][1] if done.rolled else engagement
-    return {
+    # The year's returns, and the ones retired, are in the list now (decision 194).
+    return _with_list({
         "rolled": rolled,
         "skipped": [{"prior": was.name, "reason": why} for was, why in done.skipped],
         "retired": [Engagement(path=one, household_path=household_dir,
@@ -2897,7 +3753,7 @@ def _cmd_roll_household(argv: list[str]) -> dict:
         "warning": warning,
         "target_year": target_year,
         "state": _state(landed),
-    }
+    })
 
 
 def _cmd_mark_shared(argv: list[str]) -> dict:
@@ -2964,7 +3820,7 @@ def _cmd_accept_folder_name(argv: list[str]) -> dict:
         for folder in [household_dir, *sorted(returns, key=layout.lock_order_key)]:
             locks.enter_context(engagement_lock(folder))
         if seq != _household_seq(household_dir):
-            raise ManifestError(ACCEPT_STALE)
+            raise _Stale(ACCEPT_STALE)
         info = load_household_info(household_dir)
         details = {one: load_engagement_info(one) for one in returns}
         if not pause_of(household_dir, info, list(details.items())):
@@ -2994,7 +3850,8 @@ def _cmd_accept_folder_name(argv: list[str]) -> dict:
             store.record(conn, one, ledger.new(
                 ledger.RULES_CHANGED, **{ledger.INFO_KEY: named}, **accepted))
             written.append(str(one))
-    return {"accepted": written, "state": _state(engagement)}
+    # An accepted name is the list's name now (decision 194).
+    return _with_list({"accepted": written, "state": _state(engagement)})
 
 
 def _originals_under_another_name(household_dir: Path, returns: list[Path]) -> bool:
@@ -3049,9 +3906,13 @@ def _shortlist_now(engagement: Path, original: str) -> list[str]:
     return [s.identifier for s in review.shortlist_for(entry, load_manifest(engagement))]
 
 
-def _fed_returns(engagement: Path) -> dict[Path, str]:
+def _fed_returns(engagement: Path, household: dict | None = None) -> dict[Path, str]:
     """Every return this return's drop folder feeds, by folder, with its
     label (decision 129).
+
+    ``household`` is the payload :func:`_state` already built, so a state
+    builds it once (decision 192); the two clicks that write through the
+    list pass none and build it fresh.
 
     Its household's own open-year returns and the return lines a person
     extended it to. The one list that says what a hand-over may name, and
@@ -3059,7 +3920,7 @@ def _fed_returns(engagement: Path) -> dict[Path, str]:
     document where the feed list already goes.
     """
     household_dir = household_of(engagement)
-    payload = _household_payload(engagement)
+    payload = household or _household_payload(engagement)
     years = payload["open_years"]
     fed = {Path(one["path"]): one["label"] for one in payload["returns"]
            if one["active"] and one["year"] in years}
@@ -3227,6 +4088,82 @@ def _cmd_assign(argv: list[str]) -> dict:
             "spelling": result.spelling,
             "spelling_note": result.spelling_note,
             "scan_note": scan_note,
+        },
+        "state": _state(engagement),
+    }
+
+
+def _cmd_add_issuer_and_file(argv: list[str]) -> dict:
+    """Add the issuer row a parked K-1's card offers, and file the K-1 under it.
+
+    JSON spec on stdin: {"original": "<PBC location or original name>",
+                         "seq": <the row's record version, as shown>,
+                         "head": <state's list_head the card was drawn from>,
+                         "issuer": "<the name as the K-1 prints it>"}
+
+    Decision 201 (F-D-7). A K-1 that names none of the list's issuers parks
+    (``reasons.ISSUER_NOT_NAMED``), and the row it needs is the one
+    :func:`tracker.templates.issuer_row` already builds; the six cells a
+    person copied by hand become one box on the card. **The app sends no
+    identifier and no row**: the identifier is the next free one in F's
+    block (:func:`tracker.templates.next_issuer_identifier`), the row is
+    ``issuer_row`` shifted to the return's year
+    (:func:`tracker.templates.issuer_item`), and a name that normalises to
+    nothing is refused here, before anything else is read.
+
+    Everything after is one filing (:func:`tracker.filer.assign_review_file`
+    with ``adding`` and ``head``): under the one engagement lock the list's
+    version, the row's, the card's reason, the editor's own ``validated()``
+    and the row's narrowing are judged before a byte is read, and the row's
+    ``assigned_by_person`` and a ``rules_changed`` carrying the new row are
+    two events in one ``store.record()`` call - the list gains the row only
+    if the filing lands. Then, as ``assign`` does, a re-scan and the
+    READMEs; the reply names the row added and the document filed.
+    """
+    engagement = _engagement_dir(argv)
+    spec = _read_spec()
+    original = str(spec.get("original", "")).strip()
+    if not original:
+        raise ManifestError("Pick the file whose issuer this is")
+    seq = _seq_of(spec)
+    head = spec.get("head")
+    if not isinstance(head, str) or not head.strip():
+        raise ManifestError(NO_LIST_HEAD)
+    issuer = spec.get("issuer", "") or ""
+    if not isinstance(issuer, str):
+        raise ManifestError(ISSUER_NOT_TEXT)
+    # A name that normalises to nothing is refused in issuer_row's own
+    # sentence, before the list or the index is read.
+    issuer_row(K1_IDENTIFIER, issuer)
+    info = load_engagement_info(engagement)
+    items = load_manifest(engagement)
+    identifier = next_issuer_identifier(items)
+    row = issuer_item(identifier, issuer, info.tax_year)
+    result = assign_review_file(
+        engagement, original, identifier, seq=seq, shortlist=_shortlist_now(engagement, original),
+        adding=row, head=head,
+    )
+    scan_note = ""
+    try:
+        scan_engagement(engagement)
+    except ScanLockedError as exc:
+        scan_note = ISSUER_NOT_RESCANNED.format(kind=errors.error_class(exc))
+    _refresh_readmes(engagement)
+    return {
+        "added_and_filed": {
+            "added": {"identifier": row.identifier, "document": row.document},
+            "assigned": {
+                "original_name": result.entry.original_name,
+                "identifier": result.entry.identifier,
+                "filed_as": result.entry.filed_as,
+                "prepared_location": result.entry.prepared_location,
+                "moved_review_copy": result.moved_review_copy,
+                "left_in_review": result.left_in_review,
+                "overrode_shortlist": result.overrode_shortlist,
+                "scan_note": scan_note,
+            },
+            "said": ISSUER_ADDED_AND_FILED.format(identifier=row.identifier, document=row.document,
+                                                  name=result.entry.original_name),
         },
         "state": _state(engagement),
     }
@@ -3477,15 +4414,26 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
     exists = path.is_file()
     edited = exists and not reminder.is_unedited(path)
     approved = reminder.last_approved_event(engagement)
-    in_force = reminder.is_approved_this_week(engagement, path,
-                                              since=last_draft_day(today, DRAFT_WEEKDAY))
+    approval = reminder.approval_state(engagement, path,
+                                       since=last_draft_day(today, DRAFT_WEEKDAY))
+    in_force = approval == reminder.APPROVED_NOTE
+    # Said in the app, not only on the page (decision 193): a fresh draft
+    # sitting beside an edited one, and a hold older than a week.
+    if (engagement / reminder.NEW_DRAFT_FILENAME).is_file():
+        _warn(reminder.DRAFT_WRITTEN_BESIDE)
+    late = (reminder.held_too_long(engagement, today, created=created_on(engagement))
+            if draft.is_held else "")
+    _warn(late)
 
     if draft.is_held:
         stage = day_stage
     else:
         recorded = last.get(reminder.STAGE_KEY) if last else None
         stage = requested if requested is not None else (recorded or day_stage)
-        if draft.has_outstanding and stage != draft.stage:
+        # Only a letter with requests on it has a rung to re-stage: one that
+        # only asks about a file that is not a document has none (decision
+        # 190's re-check, S-N1).
+        if draft.lines and stage != draft.stage:
             try:
                 draft = reminder.draft_reminder(engagement, today=today, stage=int(stage))
             except reminder.ReminderError as exc:
@@ -3505,13 +4453,14 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
         subject, text = draft.subject, draft.body
         html, letter = reminder.render_html(draft), draft.letter
 
-    shown = f"{reminder.SUBJECT_PREFIX}{subject}\n\n{text}" if subject else text
+    shown = reminder.shown_text(subject, text)
     return {
         "draft": draft,
         "stage": stage,
         "held": _held_rows(draft.held),
         "unsorted": draft.unsorted,
         "refusal": reminder.held_refusal(draft) if draft.is_held else "",
+        "held_too_long": late,
         "last": ({"date": ledger.day_of(str(last.get(ledger.AT_KEY, ""))).isoformat(),
                   "stage": last.get(reminder.STAGE_KEY) or 0,
                   "asked": list(last.get(ledger.ASKED_KEY) or []),
@@ -3520,6 +4469,9 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
                       "stage": approved.get(reminder.STAGE_KEY) or 0,
                       "file": approved.get(ledger.FILE_KEY, "")}
                      if approved and in_force else None),
+        # The approval lapsed because the letter was edited after it
+        # (decision 190): the card says so rather than "approved".
+        "lapsed": approval == reminder.APPROVED_THEN_EDITED,
         "file": {"name": path.name, "exists": exists, "edited": edited, "path": str(path)},
         "subject": subject,
         "text": text,
@@ -3555,9 +4507,43 @@ def _cmd_reminder(argv: list[str]) -> dict:
     reading next week's letter this week; the app is used on the day.
     """
     engagement = _engagement_dir(argv)
-    spec = _read_spec()
-    return {"reminder": _reminder_card(
-        _reminder_now(engagement, _stage_asked(spec), dt.date.today()))}
+    return _reminder_reply(engagement, _stage_asked(_read_spec()), dt.date.today())
+
+
+def _reminder_reply(engagement: Path, requested: int | None, today: dt.date) -> dict:
+    """What the ``reminder`` command answers, without the envelope - and
+    what ``state`` carries as ``reminder_card`` (decision 194), so the card
+    drawn from either is the same card."""
+    # A return nobody has scanned yet has no reminder: a line on the card,
+    # not an error (D7, decision 193). Anything else that fails is a failure
+    # the app shows, and the card stays.
+    items = load_manifest(engagement)
+    if not any(item.status for item in items):
+        return {"reminder": None, "not_yet": reminder.REMINDER_NOT_YET}
+    return {"reminder": _reminder_card(_reminder_now(engagement, requested, today))}
+
+
+def _reminder_said(engagement: Path) -> dict:
+    """The Reminder card at the record's stage, for ``state`` (decision 194).
+
+    **Said, never hidden** (193's D7, carried here): a letter that cannot
+    be composed does not take the page with it. Its failure is said by the
+    one rule (:func:`_failure_of`) - a worded refusal as itself, anything
+    else by its class, with the traceback to the log only (security
+    principle 7) - as ``unreadable`` on the card and in the reply's
+    ``warnings``. Only the card is caught: the rest of ``state`` fails as
+    it always did, because catching more would hide real failures.
+    """
+    try:
+        return _reminder_reply(engagement, None, dt.date.today())
+    except Exception as exc:
+        failure = _failure_of(exc)
+        if failure["kind"] == "failed":
+            errors.keep("api: _reminder_said", exc)
+            log.warning("The Reminder card could not be composed (%s)",
+                        errors.error_class(exc))
+        _warn(failure["sentence"])
+        return {"reminder": None, "unreadable": failure["sentence"]}
 
 
 def _cmd_approve(argv: list[str]) -> dict:
@@ -3587,7 +4573,7 @@ def _cmd_approve(argv: list[str]) -> dict:
         if state["draft"].is_held:
             raise ManifestError(state["refusal"])
         if shown != state["fingerprint"]:
-            raise ManifestError(DRAFT_MOVED)
+            raise _Stale(DRAFT_MOVED)
         draft = state["draft"]
         path = engagement / reminder.DRAFT_FILENAME
         written = path if state["file"]["edited"] else reminder.write_draft(
@@ -3664,7 +4650,8 @@ def _short_of_room(root: Path) -> list[dict]:
         try:
             room = room_for(engagement.path, load_manifest(engagement.path))
         except Exception as exc:          # the pass and the picker say this return's problem
-            log.warning("Could not measure %s (%s)", engagement.label, exc)
+            errors.keep("api", exc, name=engagement.label)
+            log.warning("Could not measure %s (%s)", engagement.label, errors.error_class(exc))
             continue
         if room.short or room.parks:
             short.append({"engagement": engagement.label, "short": room.short, "parks": room.parks,
@@ -3709,6 +4696,11 @@ def _cmd_install_schedule(argv: list[str]) -> dict:
     settings folder, never the root (decision 131).
     """
     spec = _read_spec()
+    # The schedule runs whatever program sits where the app is, every pass:
+    # never from a removable or network drive (decision 186). Asked before
+    # any file is written.
+    if refusal := program_drive_refusal():
+        raise ManifestError(refusal)
     start = str(spec.get("start") or DEFAULT_START)
     every = int(spec["every"]) if spec.get("every") not in (None, "") else DEFAULT_REPEAT_MINUTES
     done = after_install.run(reason=after_install.REASON_REPAIR, start=start, every=every)
@@ -3764,12 +4756,13 @@ def _cmd_after_install(argv: list[str]) -> dict:
                             f"{after_install.REASON_LAUNCH!r}, not {reason!r}")
     try:
         done = after_install.launch()
-    except Exception:
+    except Exception as exc:
         # The review's N1: the shell does not read this reply, so a failure
-        # returned only here would vanish. It is logged whole and recorded
-        # in one constant sentence, which the first screen's notice shows,
-        # and the next launch tries again.
-        log.exception("the after-install step could not finish at launch")
+        # returned only here would vanish. It is kept whole on the local
+        # error log (decision 190's errors.keep, never the console) and
+        # recorded in one constant sentence, which the first screen's notice
+        # shows, and the next launch tries again.
+        errors.keep("api: the after-install step at launch", exc)
         after_install.record_failure(after_install.LAUNCH_FAILED)
         return {"ran": True, "failed": [after_install.LAUNCH_FAILED]}
     return {"ran": False} if done is None else {"ran": True, **done.reply()}
@@ -3790,12 +4783,19 @@ def _cmd_acknowledge_foreign(argv: list[str]) -> dict:
 #: E5): a checkpoint that belongs to another root is refused by name
 #: before anything is written.
 WRITING_COMMANDS = frozenset({
-    "rollover", "roll-household", "mark-shared", "scan", "approve", "create", "assign",
+    "rollover", "roll-household", "mark-shared", "approve", "create", "assign",
     "dismiss", "unfile", "restore", "edit", "edit-household", "unlearn", "rename",
     "mark-missing", "acknowledge-foreign",
+    # Sort & Scan (decision 203) is the runner's pass: :func:`main` hands it
+    # over before this list is asked, and ``runner.main`` proves the
+    # settings' root itself, as it does for the schedule.
+    PASS_COMMAND,
     # Decision 188's accept writes the household's and its returns' records
     # (the port review's M2): held to the checkpoint's root like every other.
     "accept-folder-name",
+    # Decision 201's one-click issuer: it learns the keyword and files the
+    # document, so it is held to the checkpoint's root like every writer.
+    "add-issuer-and-file",
 })
 
 
@@ -3809,6 +4809,8 @@ def _prove_the_root() -> None:
         return
     try:
         store.prove_the_root(root)
+    except checkpoint.CheckpointLeftBehind as exc:
+        raise ManifestError(_left_behind_to_move(exc)) from None
     except (store.StoreError, checkpoint.CheckpointError) as exc:
         # Not this machine's root, or its checkpoint busy or unreadable -
         # each in its own sentence (the rebase review's SF1).
@@ -3822,13 +4824,14 @@ COMMANDS = {
     "roll-household": _cmd_roll_household,
     "mark-shared": _cmd_mark_shared,
     "accept-folder-name": _cmd_accept_folder_name,
-    "scan": _cmd_scan,
+    PASS_COMMAND: _cmd_run_now,
     "reminder": _cmd_reminder,
     "approve": _cmd_approve,
     "templates": _cmd_templates,
     "list": _cmd_list,
     "create": _cmd_create,
     "assign": _cmd_assign,
+    "add-issuer-and-file": _cmd_add_issuer_and_file,
     "dismiss": _cmd_dismiss,
     "unfile": _cmd_unfile,
     "restore": _cmd_restore,
@@ -3839,6 +4842,8 @@ COMMANDS = {
     "rename": _cmd_rename,
     "mark-missing": _cmd_mark_missing,
     "unlock": _cmd_unlock,
+    "watch": _cmd_watch,
+    "cancel-pass": _cmd_cancel_pass,
     "settings": _cmd_settings,
     "set-root": _cmd_set_root,
     "install-schedule": _cmd_install_schedule,
@@ -3848,30 +4853,45 @@ COMMANDS = {
 }
 
 
+
+
 def main(argv: list[str]) -> int:
-    if not argv or argv[0] not in COMMANDS:
-        print(json.dumps({"error": f"usage: tracker.api {'|'.join(COMMANDS)}"}))
-        return 1
-    try:
-        if argv[0] in WRITING_COMMANDS:
-            _prove_the_root()
-        # One reading child for the command, started only if something is
-        # read, and ended with it (decision 169, R-4).
-        with ocr.reading_session(in_a_child=content_check.READ_IN_A_CHILD):
-            payload = COMMANDS[argv[0]](argv[1:])
-    except (ManifestError, ScanLockedError, FilingError, door.DoorError, layout.LayoutError) as exc:
-        print(json.dumps({"error": str(exc)}))
-        return 1
-    except Exception as exc:  # surface anything else as JSON, not a traceback
-        print(json.dumps({"error": f"{exc.__class__.__name__}: {exc}"}))
-        return 1
-    finally:
-        # The store is opened on first use by whatever command needed it;
-        # closing it here checkpoints the write-ahead log and takes its two
-        # side files with it, so the app's folder is left as it was found.
-        store.close()
-    print(json.dumps(payload))
-    return 0
+    """Run one command and print its one reply (decision 193's envelope):
+    ``warnings`` on every reply, ``failure`` beside ``error`` on every
+    error, the traceback of an unexpected one in the error log only."""
+    _WARNINGS.clear()
+    _ASKED.clear()
+    _RUNNING["command"] = argv[0] if argv else ""
+    if argv and argv[0] == PASS_COMMAND:
+        # Sort & Scan is the runner's pass (decision 203): no reading
+        # session, envelope or reply of the API's own comes between the
+        # door and ``runner.main``, which attaches its own error log.
+        return _cmd_run_now(argv[1:])
+    with error_log("tracker"):
+        if not argv or argv[0] not in COMMANDS:
+            return _reply_failure(ManifestError(USAGE.format(commands="|".join(COMMANDS))))
+        try:
+            if argv[0] in WRITING_COMMANDS:
+                _prove_the_root()
+            # One reading child for the command, started only if something is
+            # read, and ended with it (decision 169, R-4).
+            with ocr.reading_session(in_a_child=content_check.READ_IN_A_CHILD):
+                payload = COMMANDS[argv[0]](argv[1:])
+        except Exception as exc:  # said as JSON, never a traceback on screen
+            if _failure_of(exc)["kind"] == "failed":
+                # Its class on the log line; its words and trace kept apart
+                # (decision 190), in the error log only.
+                errors.keep("api: " + argv[0], exc)
+                log.error("%s failed (%s)", argv[0], errors.error_class(exc))
+            return _reply_failure(exc)
+        finally:
+            # The store is opened on first use by whatever command needed it;
+            # closing it here checkpoints the write-ahead log and takes its two
+            # side files with it, so the app's folder is left as it was found.
+            store.close()
+        payload["warnings"] = list(_WARNINGS)
+        print(json.dumps(payload))
+        return 0
 
 
 if __name__ == "__main__":

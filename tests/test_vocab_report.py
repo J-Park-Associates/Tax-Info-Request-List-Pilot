@@ -10,7 +10,10 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 from tracker.manifest import RequestItem
+from tracker.settings import ENV_REAL_CORPUS, EXPECTATIONS_COLUMNS, EXPECTATIONS_FILENAME
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
 import vocab_report  # noqa: E402
@@ -83,15 +86,15 @@ def test_a_document_from_the_firms_own_corpus_is_reported_beside_the_forms_and_t
     """The thirteenth reading is briefed from the report, so it must see the real ones too."""
     catalog = {"1040": [row("A01", "W-2", required=["w-2"])]}
     docs = [Document(IRS, "fw2.pdf", "Form W-2 2025", {"1040": "A01"}),
-            Document(REAL, "redacted w-2.pdf", "Form W-2 Wage and Tax Statement 2025", {"1040": "A01"})]
+            Document(REAL, "row 1", "Form W-2 Wage and Tax Statement 2025", {"1040": "A01"})]
     out = report(catalog, docs)
     hits = one(out)["rows"]["A01"]["keywords"][0]["reached_by"]
     assert hits == [{"kind": IRS, "name": "fw2.pdf", "expected": "A01"},
-                    {"kind": REAL, "name": "redacted w-2.pdf", "expected": "A01"}]
+                    {"kind": REAL, "name": "row 1", "expected": "A01"}]
     assert out["counts"]["documents"] == {IRS: 1, CASE: 0, REAL: 1}
     text = render_markdown(out)
     assert "1 real documents" in text
-    assert "- `w-2` (required) — fw2.pdf → **here**; redacted w-2.pdf → **here**" in text
+    assert "- `w-2` (required) — fw2.pdf → **here**; row 1 → **here**" in text
 
 
 def test_a_workbook_case_reads_the_same_to_the_report_as_to_the_suite(tmp_path):
@@ -132,6 +135,74 @@ def test_a_committed_report_naming_the_firms_own_documents_is_refused(tmp_path, 
     vocab_report.REPORT_PATH.write_text(json.dumps(data), encoding="utf-8")
     assert vocab_report.main(["check"]) == 1
     assert vocab_report.ENV_REAL_CORPUS in capsys.readouterr().out
+
+
+# ------------------------------------------- decision 185: the firm's own documents ----
+
+#: A fabricated document name, distinctive so a test can show it is never printed.
+FABRICATED_NAME = "Zephyrine Quillfeather W-2 2025.pdf"
+
+
+def one_pdf_corpus(folder: Path, rows: list[str]) -> Path:
+    """A corpus folder with one text PDF and an expectations file of ``rows``."""
+    from tests.test_scanner import text_pdf
+
+    folder.mkdir(parents=True, exist_ok=True)
+    text_pdf(folder / FABRICATED_NAME, "Form W-2 Wage and Tax Statement 2025")
+    (folder / EXPECTATIONS_FILENAME).write_text(
+        "\n".join([",".join(EXPECTATIONS_COLUMNS), *rows, ""]), encoding="utf-8")
+    return folder
+
+
+def test_a_build_with_a_real_corpus_present_refuses_to_write_the_committed_report(tmp_path, monkeypatch, capsys):
+    """A report read from the firm's own documents is never one `git add -A` from a commit."""
+    corpus = one_pdf_corpus(tmp_path / "corpus", [f"{FABRICATED_NAME},1040,2025,A01"])
+    monkeypatch.setenv(ENV_REAL_CORPUS, str(corpus))
+    before = (vocab_report.REPORT_PATH.read_bytes(), vocab_report.MARKDOWN_PATH.read_bytes())
+    assert vocab_report.main(["build"]) == 2
+    assert ENV_REAL_CORPUS in capsys.readouterr().err
+    assert (vocab_report.REPORT_PATH.read_bytes(), vocab_report.MARKDOWN_PATH.read_bytes()) == before
+
+
+def test_a_local_reading_is_written_only_outside_the_repository(tmp_path, monkeypatch, capsys):
+    """``--out`` inside the repository is refused; outside it, both files are written there."""
+    monkeypatch.setenv(ENV_REAL_CORPUS, str(tmp_path / "corpus"))
+    monkeypatch.setattr(vocab_report, "corpus_documents",
+                        lambda: [Document(IRS, "fw2.pdf", "Form W-2 2025", {"1040": "A01"})])
+    monkeypatch.setattr(vocab_report, "case_documents",
+                        lambda: [Document(CASE, "case", "Form W-2 2025", {"1040": "A01"})])
+    monkeypatch.setattr(vocab_report, "real_documents",
+                        lambda: [Document(REAL, "row 1", "Form W-2 2025", {"1040": "A01"})])
+    inside = vocab_report.ROOT / "x"
+    assert vocab_report.main(["build", vocab_report.OUT_FLAG, str(inside)]) == 2
+    assert "outside the repository" in capsys.readouterr().err
+    assert not inside.exists()
+    out = tmp_path / "reading"
+    assert vocab_report.main(["build", vocab_report.OUT_FLAG, str(out)]) == 0
+    assert (out / vocab_report.REPORT_PATH.name).is_file() and (out / vocab_report.MARKDOWN_PATH.name).is_file()
+    assert vocab_report.real_documents_in(
+        json.loads((out / vocab_report.REPORT_PATH.name).read_text(encoding="utf-8"))) == 1
+
+
+def test_a_real_document_is_named_by_its_row_never_its_file(tmp_path, monkeypatch):
+    corpus = one_pdf_corpus(tmp_path / "corpus", [f"{FABRICATED_NAME},1040,2025,A01"])
+    monkeypatch.setenv(ENV_REAL_CORPUS, str(corpus))
+    [document] = vocab_report.real_documents()
+    assert document.kind == REAL and document.name == "row 1"
+
+    missing = "Absalom Fairweather 1099-INT.pdf"
+    one_pdf_corpus(corpus, [f"{FABRICATED_NAME},1040,2025,A01", f"{missing},1040,2025,A02"])
+    with pytest.raises(vocab_report.ReportError) as raised:
+        vocab_report.real_documents()
+    assert "entry 2" in str(raised.value) and missing not in str(raised.value)
+    assert str(corpus) not in str(raised.value)
+
+    one_pdf_corpus(corpus, [f"{FABRICATED_NAME},1040,2025,A01", f"{missing},1040,,A02"])
+    with pytest.raises(vocab_report.ReportError) as raised:     # one sentence, never a traceback
+        vocab_report.real_documents()
+    # Said by its class (decision 208), never the reader's words.
+    assert f"{EXPECTATIONS_FILENAME} could not be read (ValueError)" in str(raised.value)
+    assert missing not in str(raised.value) and str(corpus) not in str(raised.value)
 
 
 def test_the_counts_add_up_across_catalogs():
@@ -206,3 +277,135 @@ def test_show_prints_a_catalog_and_names_an_unknown_one(capsys):
     assert vocab_report.main(["show", "1040"]) == 0
     assert "[A01]" in capsys.readouterr().out
     assert vocab_report.main(["show", "nope"]) == 1
+
+
+# ------------------------------------------------- a damaged document (208) ----
+
+GARBAGE = b"these bytes are no document at all \x00\x01\x02"
+HEADER = "file,catalog,year,expected\n"
+
+
+def fabricated_corpus(folder, files, lines):
+    """A corpus of fabricated bytes (never real data) and its expectations file."""
+    folder.mkdir()
+    for name, content in files.items():
+        (folder / name).write_bytes(content)
+    (folder / vocab_report.EXPECTATIONS_FILENAME).write_text(HEADER + "".join(lines), encoding="utf-8")
+    return folder
+
+
+def test_a_damaged_workbook_and_pdf_stop_the_build_by_their_entry_and_class(tmp_path, monkeypatch):
+    """The router parks a damaged file; the report cannot count it as saying
+    nothing, so it stops - once, naming every damaged document by its
+    expectations entry and its error's class. A blank spacer line is not an
+    entry, and the parser's own message never reaches the sentence."""
+    import pytest
+
+    folder = fabricated_corpus(
+        tmp_path / "Private Corpus Folder",
+        {"Client Secret W2.pdf": GARBAGE, "notes.csv": b"a,b\n1,2\n", "Client Secret K1.xlsx": GARBAGE},
+        ["notes.csv,1040,2025,\n", ",,,\n", "Client Secret K1.xlsx,1040,2025,\n", "Client Secret W2.pdf,1040,2025,A01\n"],
+    )
+    monkeypatch.setenv(vocab_report.ENV_REAL_CORPUS, str(folder))
+    with pytest.raises(vocab_report.ReportError) as raised:
+        vocab_report.real_documents()
+    said = str(raised.value)
+    assert "expectations entry 2 (BadZipFile)" in said
+    assert "expectations entry 3 (PdfminerException)" in said
+    assert "holds 2 documents" in said
+    for leak in ("Client Secret", "Private Corpus Folder", "Root", ".pdf", ".xlsx"):
+        assert leak not in said
+
+
+def test_build_says_the_damaged_rows_in_one_sentence_and_exits_2(tmp_path, monkeypatch, capsys):
+    """No traceback: the CLI prints the sentence, writes no report, and exits 2."""
+    folder = fabricated_corpus(tmp_path / "corpus", {"Client Secret.pdf": GARBAGE},
+                               ["Client Secret.pdf,1040,2025,\n"])
+    monkeypatch.setenv(vocab_report.ENV_REAL_CORPUS, str(folder))
+    monkeypatch.setattr(vocab_report, "REPORT_PATH", tmp_path / "out" / "vocab-coverage.json")
+    monkeypatch.setattr(vocab_report, "MARKDOWN_PATH", tmp_path / "out" / "vocab-coverage.md")
+    # With a corpus set, a reading goes only to --out outside the repository (decision 185).
+    reading = tmp_path / "reading"
+    assert vocab_report.main(["build", vocab_report.OUT_FLAG, str(reading)]) == 2
+    out, err = capsys.readouterr()
+    assert "expectations entry 1 (PdfminerException)" in err
+    assert "Client Secret" not in out + err
+    assert not (tmp_path / "out").exists() and not any(reading.glob("vocab-coverage.*"))
+
+
+def test_a_missing_document_is_named_by_its_entry_not_its_name(tmp_path, monkeypatch):
+    import pytest
+
+    folder = fabricated_corpus(tmp_path / "corpus", {"here.csv": b"a\n"},
+                               ["Zed Secret.pdf,1040,2025,\n", "here.csv,1040,2025,\n", "Client Secret.pdf,1040,2025,\n"])
+    monkeypatch.setenv(vocab_report.ENV_REAL_CORPUS, str(folder))
+    with pytest.raises(vocab_report.ReportError) as raised:
+        vocab_report.real_documents()
+    assert str(raised.value) == "expectations entries 1, 3 name a file that is not in the corpus folder"
+    assert "Client Secret" not in str(raised.value) and str(folder) not in str(raised.value)
+
+
+def test_a_contradicting_expectation_is_named_by_its_entry_not_its_name(tmp_path, monkeypatch):
+    import pytest
+
+    folder = fabricated_corpus(tmp_path / "corpus", {"Client Secret.csv": b"w-2\n"},
+                               ["Client Secret.csv,1040,2025,A01\n", "Client Secret.csv,1040,2025,A02\n"])
+    monkeypatch.setenv(vocab_report.ENV_REAL_CORPUS, str(folder))
+    with pytest.raises(vocab_report.ReportError) as raised:
+        vocab_report.real_documents()
+    assert str(raised.value).startswith("expectations entry 1 is expected at both A01 and A02")
+    assert "Client Secret" not in str(raised.value)
+
+
+def test_a_sound_corpus_still_reads_and_a_type_with_no_extractor_is_no_failure(tmp_path, monkeypatch):
+    """A garbage photo or docx never had words to the report; it still has none, and is not an error."""
+    folder = fabricated_corpus(
+        tmp_path / "corpus",
+        {"a.csv": b"Form W-2 Wage and Tax Statement 2025\n", "b.png": GARBAGE, "c.docx": GARBAGE},
+        ["a.csv,1040,2025,A01\n", "b.png,1040,2025,\n", "c.docx,1040,2025,\n"],
+    )
+    monkeypatch.setenv(vocab_report.ENV_REAL_CORPUS, str(folder))
+    documents = {doc.name: doc for doc in vocab_report.real_documents()}
+    # Each labelled by its entry, never by its name (decision 185).
+    assert set(documents) == {"row 1", "row 2", "row 3"}
+    assert "W-2" in documents["row 1"].text
+    assert documents["row 2"].text == documents["row 3"].text == ""
+
+
+def test_the_report_reads_documents_the_routers_way_only():
+    """One reading (decision 208): the bare extractor, which lets a parser's
+    traceback through, is not the report's to call."""
+    assert not hasattr(vocab_report, "extract_text")
+    assert vocab_report.extract.__module__ == "tracker.content_check"
+
+
+def test_a_malformed_expectations_file_is_said_by_its_class_not_its_text(tmp_path, monkeypatch, capsys):
+    """read_expectations' own message names the corpus folder and a document;
+    the report says only that the file could not be read, and what to check."""
+    folder = fabricated_corpus(tmp_path / "Private Corpus Folder", {"Client Secret.pdf": GARBAGE},
+                               ["Client Secret.pdf,1040,,\n"])
+    monkeypatch.setenv(vocab_report.ENV_REAL_CORPUS, str(folder))
+    assert vocab_report.main(["build", vocab_report.OUT_FLAG, str(tmp_path / "reading")]) == 2
+    out, err = capsys.readouterr()
+    assert "could not be read (ValueError)" in err
+    for leak in ("Client Secret", "Private Corpus Folder", "Traceback"):
+        assert leak not in out + err
+
+
+def test_a_file_the_system_refuses_is_said_by_its_class(tmp_path, monkeypatch):
+    """The size check sits before extract's own guard; a refusal there is a class, not a path."""
+    import errno
+
+    import pytest
+
+    folder = fabricated_corpus(tmp_path / "corpus", {"Client Secret.pdf": GARBAGE}, ["Client Secret.pdf,1040,2025,\n"])
+    monkeypatch.setenv(vocab_report.ENV_REAL_CORPUS, str(folder))
+
+    def refused(path, **_kwargs):
+        raise PermissionError(errno.EACCES, "Permission denied", str(path))
+
+    monkeypatch.setattr(vocab_report, "extract", refused)
+    with pytest.raises(vocab_report.ReportError) as raised:
+        vocab_report.real_documents()
+    assert "expectations entry 1 (PermissionError (EACCES))" in str(raised.value)
+    assert "Client Secret" not in str(raised.value) and str(folder) not in str(raised.value)

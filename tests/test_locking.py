@@ -35,7 +35,7 @@ def test_lock_is_taken_and_released(tmp_path):
 
 def test_a_fresh_lock_blocks_a_second_run(tmp_path):
     (tmp_path / LOCK_FILENAME).write_text(f"pid={os.getpid()}", encoding="utf-8")
-    with pytest.raises(EngagementLockedError, match="another scan or sort"):
+    with pytest.raises(EngagementLockedError, match="another pass holds"):
         acquire_lock(tmp_path)
 
 
@@ -311,7 +311,7 @@ def test_a_lock_this_process_really_holds_is_still_refused(tmp_path):
     # A double acquire is a bug, and stays loud.
     first = acquire_lock(tmp_path)
     try:
-        with pytest.raises(EngagementLockedError, match="another scan or sort"):
+        with pytest.raises(EngagementLockedError, match="another pass holds"):
             acquire_lock(tmp_path)
     finally:
         release_lock(first)
@@ -405,7 +405,7 @@ def test_a_lock_taken_while_another_is_let_go_is_still_held(tmp_path, monkeypatc
     b = taken["b"]
     try:
         caplog.clear()
-        with pytest.raises(EngagementLockedError, match="another scan or sort appears to be running"):
+        with pytest.raises(EngagementLockedError, match="another pass holds this return.s lock"):
             acquire_lock(tmp_path)                           # C
         assert "left by this process" not in caplog.text
         assert lock.read_text(encoding="utf-8") == b.token
@@ -555,7 +555,7 @@ def test_an_empty_lock_older_than_a_minute_is_stale(tmp_path):
     lock = tmp_path / LOCK_FILENAME
     lock.write_bytes(b"")
     assert not lock_status(tmp_path).stale, "a take between its create and its write"
-    with pytest.raises(EngagementLockedError, match="another scan or sort"):
+    with pytest.raises(EngagementLockedError, match="another pass holds"):
         acquire_lock(tmp_path)
     old = time.time() - EMPTY_LOCK_SECONDS - 1
     os.utime(lock, (old, old))
@@ -578,7 +578,7 @@ def test_a_fresh_lock_of_a_live_owner_still_holds(tmp_path, monkeypatch):
         (tmp_path / LOCK_FILENAME).write_text(lock_line(other.pid, dt.datetime.now()),
                                               encoding="utf-8")
         assert not lock_status(tmp_path).stale
-        with pytest.raises(EngagementLockedError, match="another scan or sort"):
+        with pytest.raises(EngagementLockedError, match="another pass holds"):
             acquire_lock(tmp_path)
     finally:
         other.kill()
@@ -1062,3 +1062,24 @@ def test_a_breaker_from_before_the_boot_is_abandoned_whatever_its_pid_says_now(t
     assert not locking_module._abandoned(breaker, seen), "a live owner and no boot rule: held"
     monkeypatch.setattr(locking_module, "boot_time", lambda: time.time() - 60)
     assert locking_module._abandoned(breaker, seen)
+
+
+def test_the_lock_refusal_never_tells_a_person_to_delete_the_lock_file(tmp_path):
+    # D4 (decision 193): a live pass lets go when it ends; a stale lock is
+    # the app's Clear lock, which proves it stale first (decision 171).
+    from tracker.locking import LOCKED
+
+    assert "delete" not in LOCKED.lower()
+    (tmp_path / LOCK_FILENAME).write_text(f"pid={os.getpid()}", encoding="utf-8")
+    with pytest.raises(EngagementLockedError) as refused:
+        acquire_lock(tmp_path)
+    said = str(refused.value)
+    assert "delete" not in said.lower() and LOCK_FILENAME not in said
+    assert said == LOCKED.format(seconds=said.split("taken ")[1].split(" s ago")[0])
+
+
+def test_a_lock_refusal_names_the_lock_it_met(tmp_path):
+    (tmp_path / LOCK_FILENAME).write_text(f"pid={os.getpid()}", encoding="utf-8")
+    with pytest.raises(EngagementLockedError) as refused:
+        acquire_lock(tmp_path)
+    assert refused.value.lock == tmp_path / LOCK_FILENAME

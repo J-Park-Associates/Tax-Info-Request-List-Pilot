@@ -207,10 +207,11 @@ def test_a_zip_in_a_subfolder_of_the_drop_is_flattened_and_only_its_own_row_name
     rows = read_index(engagement)
     [box] = [row for row in rows if row.decision == OPENED]
     assert box.pbc_location == original_at(engagement, "docs.zip")
-    assert box.reason.endswith("; came from the client's subfolder 'From the bank'")
+    # Its own column since decision 190, never a clause of the Reason.
+    assert box.subfolder == "From the bank" and "From the bank" not in box.reason
     filed = [row for row in rows if row.decision == FILED]
     assert len(filed) == 2
-    assert not any("subfolder" in row.reason for row in filed)
+    assert all(row.subfolder == "" for row in filed)
     assert not nested.exists()
 
 
@@ -395,7 +396,7 @@ def test_limits_depth():
     assert [(one.name, bool(one.parks)) for one in opened.attachments] == [
         ("w2.pdf", False), ("deeper.zip", True)]
     assert LIMIT_DEPTH in opened.attachments[1].parks
-    assert reasons.CONTAINER_LIMIT.matches(opened.attachments[1].parks)
+    assert opened.attachments[1].code == reasons.CONTAINER_LIMIT.code
     # At the edge: depth 2 opens.
     assert [one.name for one in open_container(eml([("m.zip", deepest)]), "eml").attachments] == ["k1.pdf"]
     # An embedded message past the depth has no bytes to hand back: it
@@ -466,7 +467,7 @@ def test_limits_park_the_container_with_the_limit_in_the_sentence(engagement):
 
     [row] = read_index(engagement)
     assert row.decision == NEEDS_REVIEW and LIMIT_RATIO in row.reason
-    assert reasons.CONTAINER_LIMIT.matches(row.reason)
+    assert row.code == reasons.CONTAINER_LIMIT.code
     assert done.opened == [] and not opened_dir_of(engagement).exists()
 
 
@@ -495,7 +496,7 @@ def test_an_encrypted_or_damaged_container_parks(engagement, name, data, reason)
     sort(engagement, today=DAY1)
 
     [row] = read_index(engagement)
-    assert row.decision == NEEDS_REVIEW and reason.matches(row.reason)
+    assert row.decision == NEEDS_REVIEW and row.code == reason.code
     assert row.prepared_location           # a review copy of the container, for a person
     assert not opened_dir_of(engagement).exists()
 
@@ -507,7 +508,7 @@ def test_an_unsupported_compression_is_said_as_password_protected(monkeypatch):
         data[where + at:where + at + 2] = (99).to_bytes(2, "little")      # AES
     with pytest.raises(NotOpened) as raised:
         open_container(bytes(data), "zip")
-    assert reasons.CONTAINER_LOCKED.matches(raised.value.sentence)
+    assert raised.value.code == reasons.CONTAINER_LOCKED.code
 
 
 def test_an_email_with_nothing_attached_parks(engagement):
@@ -521,7 +522,7 @@ def test_an_email_with_nothing_attached_parks(engagement):
     for row in rows:
         assert row.decision == NEEDS_REVIEW
         assert row.reason == "an email with nothing attached; read it here"
-        assert reasons.CONTAINER_EMPTY.matches(row.reason) and reasons.CONTAINER_EMPTY.firm_side
+        assert row.code == reasons.CONTAINER_EMPTY.code and reasons.CONTAINER_EMPTY.firm_side
 
 
 # ------------------------------------------------------------------ claim 9 ----
@@ -538,7 +539,7 @@ def test_an_email_with_nothing_attached_parks(engagement):
     ("nul", "attachment"),
     ("..", "attachment"),
     ("", "attachment"),
-    ("tab\there.pdf", "tab_here.pdf"),
+    ("tab\there.pdf", "tabhere.pdf"),        # a control character is dropped (decision 190)
     ("trailing dot. ", "trailing dot"),
 ])
 def test_an_attachment_name_cannot_leave_its_folder(raw, expected):
@@ -765,7 +766,7 @@ def test_a_content_id_alone_is_not_an_inline_signal():
 
 def test_a_nested_container_that_will_not_open_is_handed_back_to_park():
     opened = open_container(eml([("w2.pdf", b"%PDF w2"), ("locked.zip", locked_zip())]), "eml")
-    assert [(one.name, reasons.CONTAINER_LOCKED.matches(one.parks)) for one in opened.attachments] == [
+    assert [(one.name, one.code == reasons.CONTAINER_LOCKED.code) for one in opened.attachments] == [
         ("w2.pdf", False), ("locked.zip", True)]
 
 
@@ -863,7 +864,7 @@ def test_a_container_parser_that_never_finishes_is_stopped_and_the_container_par
     assert STOP_IN_TESTS <= took < STOP_IN_TESTS + 45
     [row] = read_index(engagement)
     assert row.decision == NEEDS_REVIEW and row.reason == STOPPED
-    assert reasons.find(row.reason) is reasons.READING_STOPPED
+    assert row.code == reasons.READING_STOPPED.code
     assert row.pbc_location == original_at(engagement, "mail.zip")
     assert not opened_dir_of(engagement).exists()
     assert no_child_left()
@@ -893,7 +894,7 @@ def test_a_container_parser_that_crashes_parks_the_container_not_the_pass(
     assert child_readers.opener_reached(Path("a mail.eml"), "parser").is_file()
     [parked] = done.review
     assert parked.original_name == "a mail.eml" and parked.reason == CRASHED
-    assert reasons.find(parked.reason) is reasons.READING_CRASHED
+    assert parked.code == reasons.READING_CRASHED.code
     [filed] = done.filed
     assert filed.original_name == "w2.pdf" and filed.identifier == "A01"
     assert not opened_dir_of(engagement).exists()
@@ -1035,7 +1036,7 @@ def test_a_zip_packed_with_bzip2_or_lzma_is_a_persons_to_open(engagement):
     sort(engagement, today=DAY1)
     [row] = read_index(engagement)
     assert row.decision == NEEDS_REVIEW and containers.LIMIT_PACKING in row.reason
-    assert reasons.CONTAINER_LIMIT.matches(row.reason) and reasons.CONTAINER_LIMIT.firm_side
+    assert row.code == reasons.CONTAINER_LIMIT.code and reasons.CONTAINER_LIMIT.firm_side
 
 
 def test_an_attachment_name_keeps_no_invisible_formatting_character():

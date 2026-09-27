@@ -305,6 +305,14 @@ def _issuer_row(values, status, ctx):
     return _columns_of(templates.item_from_spec(templates.issuer_row(ISSUER_IDENTIFIER, ISSUER)))
 
 
+def _issuer_item(values, status, ctx):
+    """``templates.issuer_item``: the issuer row a card adds (decision 201),
+    for a return one year after the catalog's."""
+    source = _catalog_spec(values)
+    ctx.monkeypatch.setattr(templates, "k1_row", lambda: source)
+    return _columns_of(templates.issuer_item(ISSUER_IDENTIFIER, ISSUER, templates.BASE_YEAR + 1))
+
+
 def _rollover(values, status, ctx):
     """``rollover._carry``: next year's row from last year's, with no template."""
     item, _, _ = _carry(_item(values, status), None, 1, 1)
@@ -452,6 +460,22 @@ PATHS: tuple[RowPath, ...] = (
         "short_title": Rewrite("K-1 and the issuer, so the firm's folder says whose K-1 it is, by the one "
                                "function a typed K-1 row derives it through too (decision 144)",
                                lambda v, s, out: out == issuer_short_title(entity_keyword(ISSUER))),
+    }, variants=(BASE,)),
+    RowPath("templates.issuer_item", _issuer_item, {
+        **_catalog_never_sets(),
+        "identifier": Rewrite("the next free identifier in the K-1 row's section, worked out by the API "
+                              "(decision 201)", lambda v, s, out: out == ISSUER_IDENTIFIER),
+        "document": Rewrite("the issuer's name in the Document, so the folder says whose K-1 it is "
+                            "(decision 128's issuer rows, cut by decision 201)",
+                            lambda v, s, out: out == templates.ISSUER_DOCUMENT.format(entity=entity_keyword(ISSUER))),
+        "required_keywords": Rewrite("the issuer's name is the row's Required Keyword (decision 201)",
+                                     lambda v, s, out: out == (entity_keyword(ISSUER),)),
+        "short_title": Rewrite("K-1 and the issuer, by the one function a typed K-1 row derives it "
+                               "through (decision 144)",
+                               lambda v, s, out: out == issuer_short_title(entity_keyword(ISSUER))),
+        "period": Rewrite("the return's year, as every catalog row a return is made from is shifted "
+                          "to it (decision 201, following the rollover's decision 36)",
+                          lambda v, s, out: out == shift_years(str(v["period"]), 1)),
     }, variants=(BASE,)),
     RowPath("rollover._carry", _rollover, {
         "row": _POSITION_IS_VALIDATEDS,
@@ -603,6 +627,11 @@ def test_the_api_hands_out_rules_it_reads_back_unchanged(ctx):
         if column == "manual_override":
             values["override_reason"] = _default("override_reason")
         values["identifier"] = f"C{n:02}"
+        # Each row its own Required Keyword: the rows share their Any
+        # Keywords, so the one with none is a broad row the rest narrow, and
+        # two narrowing rows of one name are refused (decision 201).
+        if values["required_keywords"]:
+            values["required_keywords"] = (f"required_keywords marker {n}",)
         rows.append(_item(values))
     folder = _new_return(ctx, rows)
     sent = _api(ctx, "state", api.ENGAGEMENT_FLAG, str(folder))["rules"]
@@ -685,3 +714,56 @@ def test_a_save_with_a_column_this_version_does_not_know_is_refused(ctx):
     assert code == 1
     assert payload["error"] == api.UNKNOWN_COLUMN.format(n=1, key="column_from_a_newer_build")
     assert ledger.path_for(folder).read_bytes() == before
+
+
+# ------------------------------------ decision 201: the editor's plain view ----
+
+
+def test_the_plain_view_and_the_routing_fold_partition_the_columns():
+    """Which column every row shows and which fold under its Routing rules
+    is the API's answer, and between them they are the request list's
+    columns - ``RULE_FIELDS`` without the two a person never types -
+    exactly once each (decision 201; decision 104's one schema)."""
+    editor = api._vocab()["editor"]
+    plain, routing = editor["plain_columns"], editor["routing_columns"]
+    typed = [column for column in records.RULE_FIELDS if column not in ("row", "date_pattern_derived")]
+    assert sorted(plain + routing) == sorted(typed)
+    assert not set(plain) & set(routing)
+    assert set(plain) == {"expected_count", "asked", "manual_override", "override_reason", "short_title"}
+
+
+def test_the_editor_sends_every_column_whether_folded_or_not():
+    """Folding hides cells and never drops them (decision 201): the editor
+    hands the one row component every column and the fold, the fold draws
+    a box for each column in one part or the other - a custom row's
+    Document in the plain part, a catalog row's in the fold - through the
+    one cellInput that writes into the row, and the save sends the rows
+    whole. The rows themselves are held above: ``editorRow`` carries every
+    column (run by node), and the API reads them back whole."""
+    js = APP_JS.read_text(encoding="utf-8")
+    render = _function_source(js, "function renderEditorRows() {")
+    assert "columns: vocab.columns," in render
+    assert "plain: vocab.editor.plain_columns," in render and "routing: vocab.editor.routing_columns," in render
+    start = js.index("function requestRows(container, rows, {")
+    rows = js[start:js.index("\n}\n", start) + 2]
+    folded = rows.split("if (fold) {", 1)[1].split("} else {", 1)[0]
+    assert "plain.map((c) => el(\"td\", { className: `ed-${c.key}` }, cellInput(row, c, changed)))" in folded
+    assert "inFold.map((c) => el(\"label\"" in folded and "cellInput(row, c, changed)" in folded
+    assert "routing.filter((c) => !(custom && c.key === \"document\"))" in folded
+    assert "custom ? cellInput(row, documentColumn, changed) : null" in folded
+    save = _function_source(js, "async function saveEditor() {")
+    assert "items: editorRows," in save
+    # Nothing between the boxes and the save drops a column: the rows go
+    # as the boxes left them, never filtered or rebuilt on the way.
+    assert "editorRows.filter" not in save and "editorRows.map" not in save
+
+
+def _function_source(js: str, header: str) -> str:
+    """One function of ``app.js`` exactly as it is spelled, braces matched."""
+    start = js.index(header)
+    depth = 0
+    for at in range(js.index("{", start + len(header) - 1), len(js)):
+        depth += {"{": 1, "}": -1}.get(js[at], 0)
+        if depth == 0:
+            return js[start:at + 1]
+    raise AssertionError(f"{header} in app.js has no closing brace")

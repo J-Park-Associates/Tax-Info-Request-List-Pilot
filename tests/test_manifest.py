@@ -938,6 +938,68 @@ def test_two_issuer_rows_whose_names_nest_are_refused_when_the_list_is_validated
     assert not ledger.path_for(folder).exists()
 
 
+def test_two_issuer_rows_with_the_same_name_are_refused_when_the_list_is_validated(tmp_path):
+    """Decision 201: two rows narrowing one row under one name make every
+    K-1 naming it contested - the nested-name harm at its limit - and a
+    list that adds them is refused in its own sentence, both rows named."""
+    from tracker.manifest import ISSUER_NAMED_TWICE
+
+    folder = tmp_path / "S"
+    folder.mkdir()
+    with pytest.raises(ManifestError) as caught:
+        create_engagement(folder, k1_rows(("F02", "Ashford Holdings"), ("F03", "ASHFORD HOLDINGS")))
+
+    assert str(caught.value) == ISSUER_NAMED_TWICE.format(
+        inner="F02", outer="F03", broad="F01", name="Ashford Holdings")
+    assert not ledger.path_for(folder).exists()
+
+
+def test_a_roll_carries_only_last_years_pair_and_refuses_a_row_it_adds_under_that_name(tmp_path):
+    """Decision 201, the review's S1: the rows a roll carries are the ones
+    last year's list held. A row the roll adds - not among them - that
+    names a carried row's issuer again is refused like any other write."""
+    from tracker.manifest import ISSUER_NAMED_TWICE
+
+    folder = tmp_path / "R"
+    folder.mkdir()
+    held = k1_rows(("F02", "Ashford Holdings"))
+    added = replace(held[1], identifier="F03")
+    with pytest.raises(ManifestError, match=ISSUER_NAMED_TWICE.split(" both")[0].format(
+            inner="F02", outer="F03")):
+        create_engagement(folder, [*held, added], carried=held)
+    assert create_engagement(folder, held, carried=held) == ()
+
+
+def test_a_list_already_holding_one_name_twice_saves_its_other_edits_and_warns(tmp_path):
+    """The orchestrator's ruling on R7 (decision 201): a list the record
+    already holds with two issuer rows of one name is not locked. A save
+    that touches neither row is recorded, and says which two rows share the
+    name; a save that adds a third of that name, or names another row so,
+    is refused."""
+    from tracker.manifest import ISSUER_NAMED_TWICE
+
+    folder = tmp_path / "S"
+    folder.mkdir()
+    held = k1_rows(("F02", "Ashford Holdings"), ("F03", "Ashford Holdings"), ("F04", "Birch Lane"))
+    said = ISSUER_NAMED_TWICE.format(inner="F02", outer="F03", broad="F01", name="Ashford Holdings")
+    # As last year's list rolled forward: carried, and the pair said.
+    assert create_engagement(folder, held, carried=held) == (said,)
+
+    edited = [replace(held[0], document="Schedule K-1s, all issuers"), *held[1:]]
+    saved = save_rules(folder, edited, load_engagement_info(folder))
+    assert saved.recorded and saved.changed == ("F01",)
+    assert saved.warnings == (said,)
+
+    renamed = [*edited[:3], replace(edited[3], required_keywords=("Ashford Holdings",))]
+    with pytest.raises(ManifestError, match="Rows F02 and F04 both narrow F01 with the same name"):
+        save_rules(folder, renamed, load_engagement_info(folder))
+    added = [*edited, replace(edited[1], identifier="F05")]
+    with pytest.raises(ManifestError, match="and F05 both narrow F01 with the same name"):
+        save_rules(folder, added, load_engagement_info(folder))
+    assert [i.document for i in load_manifest(folder)][0] == "Schedule K-1s, all issuers"
+    assert {i.identifier for i in load_manifest(folder)} == {"F01", "F02", "F03", "F04"}
+
+
 def test_two_issuer_names_that_merely_share_a_word_are_allowed():
     check_narrowing_names(k1_rows(("F02", "Ashford Holdings"), ("F03", "Birch Holdings")))
 
@@ -1000,7 +1062,7 @@ def test_summarize_counts_asked_rows_and_also_received_counts_the_rest():
     ``also_received``, so "N of M are in" never reads 7 of 5; and the word
     for a request nobody has scanned is never said of a row nobody asked
     for."""
-    from tracker.manifest import ALSO_RECEIVED_LABEL, NOT_ASKED_LABEL, status_label, summarize
+    from tracker.manifest import ALSO_RECEIVED_LABEL, NOT_ASKED_LABEL, status_key, summarize
 
     rows = [
         RequestItem(identifier="A01", document="W-2", status=Status.RECEIVED),
@@ -1021,7 +1083,7 @@ def test_summarize_counts_asked_rows_and_also_received_counts_the_rest():
     assert f"{ALSO_RECEIVED_LABEL}: 2" in summary.line and f"{NOT_ASKED_LABEL}: 2" in summary.line
     assert f"{UNSCANNED_LABEL}: 1" in summary.line
 
-    labels = {row.identifier: status_label(row) for row in rows}
+    labels = {row.identifier: status_key(row) for row in rows}
     assert labels["A03"] == UNSCANNED_LABEL
     assert labels["B03"] == labels["B04"] == NOT_ASKED_LABEL
     assert labels["B01"] == Status.RECEIVED and labels["B02"] == Status.PARTIAL
@@ -1131,3 +1193,107 @@ def test_a_line_break_in_a_description_is_saved_and_admitted():
     [item] = validated([RequestItem(identifier="A01", document="W-2\nWages", period="Jan\n2025",
                                     required_keywords=("W-2\nform",))])
     assert records.rule_row_problem(rule_to_json(item)) == ""
+
+
+def test_a_list_read_without_following_is_the_store_as_it_stands(tmp_path):
+    """Decision 192: the practice page reads each return's list as the
+    walk left the store, without reading its journal again. A line behind
+    the store is not seen that way and is seen by every other reader; a
+    return the store does not hold is followed either way, never shown
+    empty."""
+    from tests.conftest import written_elsewhere
+    from tracker.manifest import Status
+    from tracker.records import StatusUpdate, status_to_json
+
+    engagement = make_engagement(tmp_path / "Clients", SAMPLE_ITEMS, scaffold=False)
+    before = {item.identifier: item.status for item in load_manifest(engagement)}
+    first = SAMPLE_ITEMS[0].identifier
+    # A line behind the store is one another machine wrote: every line this
+    # machine writes goes through the store (decision 159's checkpoint).
+    written_elsewhere(engagement, ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: {
+        first: status_to_json(StatusUpdate(status=Status.RECEIVED, file_count=1))}}))
+
+    as_it_stands = {item.identifier: item.status for item in load_manifest(engagement, follow=False)}
+    assert as_it_stands == before and before[first] != Status.RECEIVED
+    assert {item.identifier: item.status
+            for item in load_manifest(engagement)}[first] == Status.RECEIVED
+
+    other = make_engagement(tmp_path / "Clients", SAMPLE_ITEMS, return_name="1040 - Other",
+                            scaffold=False)
+    assert store.forget(store.connect(), other)
+    assert [item.identifier for item in load_manifest(other, follow=False)] == [
+        item.identifier for item in SAMPLE_ITEMS]
+
+
+# ------------------------------- statuses in a preparer's words (d200) ----
+# The record keeps the scanner's words; one table says what each is shown
+# as. Neither ever stands in for the other.
+
+
+def test_every_word_the_record_keeps_for_a_row_has_one_label_and_one_sentence():
+    from tracker.manifest import NOT_ASKED_LABEL, STATUS_LABELS
+
+    assert set(STATUS_LABELS) == set(Status.ALL) | {UNSCANNED_LABEL, NOT_ASKED_LABEL} | set(Override.ALL)
+    assert len(STATUS_LABELS) == 9
+    for word, shown in STATUS_LABELS.items():
+        assert shown.label.strip() and shown.sentence.strip(), word
+    # Not Applicable keeps its year (decision 116): its label is the pattern.
+    from tracker.manifest import NOT_APPLICABLE_LABEL
+    assert STATUS_LABELS[Override.NOT_APPLICABLE].label == NOT_APPLICABLE_LABEL
+
+
+def test_the_record_keeps_its_five_status_values():
+    assert Status.ALL == ("Missing", "Partial", "Failed Validation", "Received", "Pending Sync")
+
+
+def test_status_key_is_the_record_word_and_status_label_is_the_preparers():
+    from tracker.manifest import status_key, status_label
+
+    rows = [
+        RequestItem(identifier="A01", document="1099-C", asked=False),                # idle, not asked
+        RequestItem(identifier="A02", document="1098"),                               # unscanned
+        RequestItem(identifier="A03", document="1099-INT", status=Status.MISSING),
+        RequestItem(identifier="A04", document="1099-B", status=Status.FAILED,
+                    manual_override=Override.ACCEPTED, override_reason="Client confirmed"),
+    ]
+    assert [status_key(row) for row in rows] == ["Not asked", "Requested", "Missing", "Received"]
+    assert [status_label(row) for row in rows] == [
+        "Not asked", "Not yet checked", "Outstanding", "Received"]
+
+
+def test_the_run_log_line_keeps_the_record_words_and_the_shown_line_the_labels():
+    from tracker.manifest import STATUS_LABELS, summarize
+
+    rows = [
+        RequestItem(identifier="A01", document="W-2", status=Status.MISSING),
+        RequestItem(identifier="A02", document="1099", status=Status.MISSING),
+        RequestItem(identifier="A03", document="1098", status=Status.FAILED),
+        RequestItem(identifier="A04", document="1095-A"),
+    ]
+    summary = summarize(rows)
+    assert "Missing: 2" in summary.line and "Outstanding" not in summary.line
+    assert f"{UNSCANNED_LABEL}: 1" in summary.line
+    assert "Outstanding: 2" in summary.shown_line and "Missing" not in summary.shown_line
+    assert f"{STATUS_LABELS[Status.FAILED].label}: 1" in summary.shown_line
+    assert f"{STATUS_LABELS[UNSCANNED_LABEL].label}: 1" in summary.shown_line
+    # The same parts, in the same order: one count, two renderings.
+    assert len(summary.line.split(" · ")) == len(summary.shown_line.split(" · ")) == 3
+
+
+def test_the_shown_line_and_the_run_log_line_are_one_count_part_for_part():
+    """With every part of the summary present, the app's line and the run
+    log's say the same figures in the same order; only the words differ,
+    and each shown word is the label table's for the record's word."""
+    from tracker.manifest import STATUS_LABELS, SUMMARY_SEPARATOR, Summary
+
+    counts = {status: n for n, status in enumerate(
+        (Status.MISSING, Status.PARTIAL, Status.FAILED, Status.PENDING_SYNC, Status.RECEIVED), start=1)}
+    summary = Summary(counts=counts, total=21, received=5, outstanding=6, not_applicable=4,
+                      unscanned=6, also_received=2, not_asked=3)
+    record = [part.rsplit(": ", 1) for part in summary.line.split(SUMMARY_SEPARATOR)]
+    shown = [part.rsplit(": ", 1) for part in summary.shown_line.split(SUMMARY_SEPARATOR)]
+    assert len(record) == len(shown) == 9
+    assert [n for _, n in record] == [n for _, n in shown]
+    for (word, _), (said, _) in zip(record, shown, strict=True):
+        assert said == (STATUS_LABELS[word].label if word in STATUS_LABELS
+                        and word != Override.NOT_APPLICABLE else word)

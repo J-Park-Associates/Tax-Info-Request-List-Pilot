@@ -18,6 +18,7 @@ seconds.
 from __future__ import annotations
 
 import datetime as dt
+import os
 import socket
 import sys
 import tempfile
@@ -155,7 +156,7 @@ def test_a_missing_model_means_the_reader_cannot_run_and_the_scan_waits(tmp_path
 
     reading = extract(scan)
     assert reading.text is None and reading.transient
-    assert reasons.NO_TEXT_LAYER.matches(reading.reason)
+    assert reading.code == reasons.NO_TEXT_LAYER.code
     assert "the reader could not run on this machine" in reading.reason
     assert "OCR is not installed" not in reading.reason
 
@@ -338,7 +339,8 @@ def test_a_gpu_fault_switches_the_rest_of_the_pass_to_the_cpu(tmp_path, a_card):
     assert report.reader == ocr.DEVICE_GRAPHICS_CARD                 # it began on the card
     assert report.warnings == [ocr.GPU_FAULT_WARNING.format(file="one.pdf")]
     log = append_log(tmp_path / "runs.log", report).read_text(encoding="utf-8")
-    assert log.count("the graphics card failed while reading one.pdf") == 1
+    # Counted by its code, the file never named (decision 186).
+    assert "one.pdf" not in log and "graphics-card-fault=1" in log
     rows = read_index(engagement)
     assert sorted(row.original_name for row in rows) == ["one.pdf", "two.pdf"]
     assert all(row.identifier == "A01" for row in rows), [row.reason for row in rows]
@@ -645,7 +647,7 @@ def test_a_reader_that_cannot_run_is_not_blamed_on_the_card(monkeypatch, a_card)
 
     in_a_child = ocr.Session()
     monkeypatch.setattr(ocr.Session, "run", lambda *a, **k: ocr.Outcome(
-        "failed", error="ReaderUnavailable: the model PP-OCRv6_det_small.onnx is missing"))
+        "failed", error="ReaderUnavailable", message="the model PP-OCRv6_det_small.onnx is missing"))
     in_a_child.settle()
     assert in_a_child.note == session.note
 
@@ -715,7 +717,7 @@ def test_time_asleep_does_not_count_toward_the_reading_stop(monkeypatch):
         """The pipe: the first wait is slept through, then the child answers."""
 
         def __init__(self):
-            self.said = [("started",), ("read", "the words", [])]
+            self.said = [("started",), ("read", "the words", [], [])]
             self.waits = 0
 
         def poll(self, left):
@@ -746,3 +748,100 @@ def test_time_asleep_does_not_count_toward_the_reading_stop(monkeypatch):
 def test_the_readings_own_stop_reads_the_awake_clock():
     assert content_check._clock is ocr.awake_clock
     assert ocr.awake_clock() <= ocr.awake_clock()
+
+
+# --------------------------------------- the reading child's scratch (decision 186) ----
+
+
+def test_a_reading_child_keeps_every_temporary_file_in_its_own_folder_in_the_data_home(in_a_child):
+    from tests import child_readers
+    from tracker.settings import _inside, scratch_root
+
+    child = ocr.ReadingChild(processor_only=True)
+    try:
+        own = scratch_root() / str(child.pid)
+        outcome = child.run(child_readers.where_temporary_files_go, (), {}, 60)
+        assert outcome.kind == "read", outcome
+        *places, pid = outcome.answer
+        assert int(pid) == child.pid
+        for place in places:
+            assert _inside(Path(place), own), place
+        assert Path(places[-1]).is_file()                          # made, and made there
+    finally:
+        child.finish()
+    assert not own.exists()                                        # gone when the child ends
+
+
+def test_a_sweep_never_empties_the_folder_of_a_process_that_is_alive(tmp_path, monkeypatch):
+    """D-14: a preview's child sweeps while a pass's child is reading. Only
+    a folder whose process is known to be gone is removed."""
+    import subprocess
+
+    ended = subprocess.Popen([sys.executable, "-c", "pass"])
+    ended.wait()
+    root = tmp_path / "scratch"
+    alive, dead, unknown = (root / str(os.getpid()), root / str(ended.pid), root / "4000000000")
+    for folder in (alive, dead, unknown):
+        folder.mkdir(parents=True)
+        (folder / "a-page.tmp").write_bytes(b"a page")
+    real = ocr.pid_alive
+    monkeypatch.setattr(ocr, "pid_alive", lambda pid: None if pid == "4000000000" else real(pid))
+
+    assert ocr.sweep_scratch(root) == [dead]
+    assert alive.is_dir() and unknown.is_dir() and not dead.exists()
+
+
+def test_a_folder_the_tracker_did_not_name_is_never_swept(tmp_path):
+    root = tmp_path / "scratch"
+    for name in ("notes", "123abc"):
+        (root / name).mkdir(parents=True)
+    (root / "42").write_bytes(b"a file, not a folder")
+    assert ocr.sweep_scratch(root) == []
+    assert {path.name for path in root.iterdir()} == {"notes", "123abc", "42"}
+    assert ocr.sweep_scratch(tmp_path / "nothing-here") == []
+
+
+def test_a_child_that_is_killed_leaves_its_folder_for_the_next_childs_sweep(in_a_child):
+    from tests import child_readers
+    from tracker.settings import scratch_root
+
+    first = ocr.ReadingChild(processor_only=True)
+    try:
+        assert first.run(child_readers.where_temporary_files_go, (), {}, 60).kind == "read"
+        folder = scratch_root() / str(first.pid)
+        assert folder.is_dir()
+        ocr._end(first._process)                                   # killed: nothing of the pass removes it
+        assert folder.is_dir()
+    finally:
+        first._done = True                                         # the pass never got to end it
+        for end in (first._jobs, first._answers, first._held):
+            end.close()
+        ocr._close_job(first._job_object)
+    second = ocr.ReadingChild(processor_only=True)
+    try:
+        assert second.run(child_readers.where_temporary_files_go, (), {}, 60).kind == "read"
+        assert not folder.exists()                                 # swept by the next child
+        assert (scratch_root() / str(second.pid)).is_dir()
+    finally:
+        second.finish()
+
+
+def test_no_reading_child_starts_without_a_data_home(tmp_path, in_a_child, monkeypatch):
+    """A relative data home is refused before any process starts: the
+    reading is the machine's "not started", the file waits, and nothing is
+    made in the temp folder or the checkout instead."""
+    from tests import child_readers
+    from tracker.settings import ENV_DATA_HOME, app_dir
+
+    monkeypatch.setenv(ENV_DATA_HOME, "data")
+    monkeypatch.chdir(tmp_path)
+    session = ocr.Session(in_a_child=True)
+    try:
+        outcome = session.run(child_readers.where_temporary_files_go, (), {}, 30)
+    finally:
+        session.close()
+    assert outcome.kind == "not_started" and "must name a whole path" in outcome.error
+    assert session.child is None                                    # no process was ever started
+    for fallback in (Path(tempfile.gettempdir()), app_dir(), tmp_path):
+        assert not (fallback / "data").exists(), fallback           # nothing made instead
+        assert not any(fallback.glob("reading-*")), fallback

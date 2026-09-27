@@ -81,12 +81,15 @@ import zipfile
 import zlib
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from email import message_from_bytes, policy
-from email.message import Message
 from pathlib import PurePath
+from typing import TYPE_CHECKING
 
 from tracker import content_check, reasons
-from tracker.layout import WINDOWS_ILLEGAL_CHARS, is_invisible, is_reserved_name
+from tracker.errors import error_class
+from tracker.layout import WINDOWS_ILLEGAL_CHARS, is_reserved_name, recorded_name
+
+if TYPE_CHECKING:
+    from email.message import Message
 
 #: The extensions that make a drop a container, lower case, no dot. The
 #: extension and nothing else decides (the module docstring says why).
@@ -171,11 +174,13 @@ class Attachment:
 
     ``parks`` is empty for an ordinary attachment. A container nested past
     :data:`MAX_DEPTH`, or one that would not open, is handed back whole as
-    an attachment of its own and carries the sentence it parks with."""
+    an attachment of its own and carries the sentence it parks with, and
+    that sentence's code (decision 190)."""
 
     name: str
     data: bytes
     parks: str = ""
+    code: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -195,11 +200,14 @@ class Opened:
 
 
 class NotOpened(Exception):
-    """The container does not open, and the sentence it parks with."""
+    """The container does not open, the sentence it parks with, and that
+    sentence's code (decision 190): given, or the one the sentence was
+    said with (:func:`tracker.reasons.code_of`) - never read off its words."""
 
-    def __init__(self, sentence: str):
+    def __init__(self, sentence: str, code: str | None = None):
         super().__init__(sentence)
         self.sentence = sentence
+        self.code = reasons.code_of(sentence) if code is None else code
 
 
 def is_container(name: str | PurePath) -> bool:
@@ -222,7 +230,9 @@ def safe_name(raw: object, fallback: str | Callable[[], str]) -> str:
     all, is ``fallback`` (a string, or a function asked only when it is
     needed, so an unnamed part's number is spent only on an unnamed part).
     A name the record cannot hold as UTF-8 is mended first, and every
-    invisible formatting character goes (decision 176): a right-to-left
+    invisible formatting character goes (decision 176; since decision 190
+    by :func:`tracker.layout.recorded_name`, which also composes the name
+    and drops control characters, for every name the record keeps): a right-to-left
     override made ``invoice<RLO>fdp.exe`` show in Explorer as
     ``invoiceexe.pdf``, a program dressed as a PDF in the firm's review
     folder, and a zero-width space made two names that look alike two
@@ -231,11 +241,7 @@ def safe_name(raw: object, fallback: str | Callable[[], str]) -> str:
     :data:`NAME_MAX` is cut here only so that the record never holds one
     longer than a file name can be.
     """
-    text = str(raw or "").encode("utf-8", "replace").decode("utf-8")
-    # The one invisible set is the layout's (decision 188): what the name
-    # rule refuses in a folder's name goes from an attachment's, but for
-    # white space and control characters, which the rule below makes ``_``.
-    text = "".join(ch for ch in text if not is_invisible(ch) or ch.isspace() or ch < " ")
+    text = recorded_name(raw, fallback="")        # the one normaliser (decision 190)
     text = text.replace("\\", "/").rsplit("/", 1)[-1]
     text = WINDOWS_ILLEGAL_CHARS.sub("_", text).strip().rstrip(". ")
     if len(text) > NAME_MAX:
@@ -301,7 +307,8 @@ def open_file(path: PurePath) -> Opened | str | OSError:
     try:
         return open_container(data, PurePath(path).suffix)
     except NotOpened as exc:
-        return exc.sentence
+        # Said, so its code crosses the pipe with it (decision 190).
+        return reasons.Said(exc.sentence, exc.code)
 
 
 _CHILD_OPENER = open_file
@@ -330,7 +337,7 @@ def open_bounded(path: PurePath) -> Opened | None:
         if failed is not None:
             if failed.transient:
                 return None
-            raise NotOpened(failed.reason)
+            raise NotOpened(failed.reason, failed.code)
     if isinstance(answer, OSError):
         raise answer
     if isinstance(answer, str):
@@ -379,7 +386,8 @@ class _Walk:
             return
         if depth + 1 > MAX_DEPTH:
             self.attachments.append(Attachment(
-                name, data, parks=reasons.CONTAINER_LIMIT.format(error=LIMIT_DEPTH)))
+                name, data, parks=reasons.CONTAINER_LIMIT.format(error=LIMIT_DEPTH),
+                code=reasons.CONTAINER_LIMIT.code))
             return
         # An inner container: its attachments are this one's. One that will
         # not open is handed back whole with its own sentence - unless what
@@ -392,9 +400,11 @@ class _Walk:
                 kind = KIND_ZIP if extension == "zip" else KIND_EMAIL
                 raise NotOpened(reasons.CONTAINER_EMPTY.format(kind=kind))
         except NotOpened as exc:
-            if reasons.CONTAINER_LIMIT.matches(exc.sentence) and LIMIT_DEPTH not in exc.sentence:
+            # The code says which cause; which limit is the firm's own
+            # phrase (LIMIT_*), the only detail that sentence carries.
+            if exc.code == reasons.CONTAINER_LIMIT.code and LIMIT_DEPTH not in exc.sentence:
                 raise
-            self.attachments.append(Attachment(name, data, parks=exc.sentence))
+            self.attachments.append(Attachment(name, data, parks=exc.sentence, code=exc.code))
             return
         if len(self.attachments) + len(inner.attachments) > MAX_ATTACHMENTS:
             raise NotOpened(reasons.CONTAINER_LIMIT.format(error=LIMIT_COUNT))
@@ -419,7 +429,7 @@ class _Walk:
         try:
             archive = zipfile.ZipFile(io.BytesIO(data))
         except (zipfile.BadZipFile, zipfile.LargeZipFile, ValueError, OSError, EOFError) as exc:
-            raise NotOpened(reasons.CONTAINER_DAMAGED.format(error=_said(exc))) from exc
+            raise NotOpened(reasons.CONTAINER_DAMAGED.format(error=error_class(exc))) from exc
         with archive:
             members = [info for info in archive.infolist() if not info.is_dir()]
             for info in archive.infolist():
@@ -459,14 +469,19 @@ class _Walk:
         except RuntimeError as exc:              # zipfile's "is encrypted, password required"
             raise NotOpened(reasons.CONTAINER_LOCKED.format()) from exc
         except (zipfile.BadZipFile, zlib.error, EOFError, ValueError, OSError) as exc:
-            raise NotOpened(reasons.CONTAINER_DAMAGED.format(error=_said(exc))) from exc
+            raise NotOpened(reasons.CONTAINER_DAMAGED.format(error=error_class(exc))) from exc
         return bytes(out)
 
     def _eml(self, data: bytes, depth: int) -> None:
+        # The parser is imported when an email is opened, not when the
+        # tracker loads (decision 193's review, S2): ``email.utils`` pulls in
+        # ``socket``, and importing the tracker loads no network module.
+        from email import message_from_bytes, policy
+
         try:
             message = message_from_bytes(data, policy=policy.default)
         except Exception as exc:         # the parser records defects; anything raised is damage
-            raise NotOpened(reasons.CONTAINER_DAMAGED.format(error=_said(exc))) from exc
+            raise NotOpened(reasons.CONTAINER_DAMAGED.format(error=error_class(exc))) from exc
         if not list(message.keys()):
             raise NotOpened(reasons.CONTAINER_DAMAGED.format(error="no message headers"))
         try:
@@ -474,12 +489,15 @@ class _Walk:
         except NotOpened:
             raise
         except (LookupError, ValueError, TypeError, AttributeError, RecursionError) as exc:
-            raise NotOpened(reasons.CONTAINER_DAMAGED.format(error=_said(exc))) from exc
+            raise NotOpened(reasons.CONTAINER_DAMAGED.format(error=error_class(exc))) from exc
 
     def _eml_part(self, part: Message, depth: int) -> None:
         """One MIME part: a multipart is walked, an attached message is a
         container of its own, and a leaf is a document, an inline image or
         the message's own text."""
+        from email import policy
+        from email.message import Message
+
         content_type = part.get_content_type()
         if content_type == "message/rfc822":
             inner = part.get_payload()
@@ -524,13 +542,13 @@ class _Walk:
         try:
             ole = olefile.OleFileIO(io.BytesIO(data), raise_defects=olefile.DEFECT_INCORRECT)
         except Exception as exc:         # olefile raises OSError and its own kinds for damage
-            raise NotOpened(reasons.CONTAINER_DAMAGED.format(error=_said(exc))) from exc
+            raise NotOpened(reasons.CONTAINER_DAMAGED.format(error=error_class(exc))) from exc
         try:
             self._msg_storage(ole, [], depth)
         except NotOpened:
             raise
         except Exception as exc:         # a malformed stream, a chain out of range, a loop
-            raise NotOpened(reasons.CONTAINER_DAMAGED.format(error=_said(exc))) from exc
+            raise NotOpened(reasons.CONTAINER_DAMAGED.format(error=error_class(exc))) from exc
         finally:
             ole.close()
 
@@ -641,12 +659,6 @@ _EXTENSION_FOR: dict[str, str] = {
 def _extension_for(content_type: str) -> str:
     """The extension a part with no name gets, from :data:`_EXTENSION_FOR`."""
     return _EXTENSION_FOR.get(content_type.lower(), "")
-
-
-def _said(exc: BaseException) -> str:
-    """An exception as a short clause: its kind, and its first line."""
-    text = str(exc).splitlines()[0][:120] if str(exc) else ""
-    return f"{exc.__class__.__name__}: {text}" if text else exc.__class__.__name__
 
 
 if __name__ == "__main__":

@@ -56,12 +56,14 @@ So the split is:
   the engagement's own history, the request list a person edits included,
   travelling with the engagement. Copy the folder to another machine and its
   whole history goes with it.
-- **On one machine, local, never synced:** `tracker.db`, one file per clients
-  root, beside the settings file — which is beside the app, on the machine
-  that runs the schedule. `store.path_for()` is the whole of that rule, and
+- **On one machine, local, never synced:** `tracker.db`, one file in the
+  tracker's data folder on the machine that runs the schedule
+  (`settings.data_home()`: `%LOCALAPPDATA%\tax-document-tracker`, decision
+  186), never beside the app or in a checkout, every row keyed by its
+  clients root. `store.store_path()` is the whole of that rule, and
   the suite walks a clients root after a build to prove nothing of the
   database landed under it. One machine per clients root was already the law
-  (the engagement lock needs it), so one store per clients root takes nothing
+  (the engagement lock needs it), so one store on that machine takes nothing
   away.
 
 The store is disposable. Delete it and every fact the journals still hold is
@@ -149,7 +151,7 @@ the rollback that puts a moved file back asks exactly that question.
 
 ## The schema
 
-One file, `PRAGMA user_version = 18` (decision 104 dropped the workbook's
+One file, `PRAGMA user_version = 19` (decision 104 dropped the workbook's
 digest column; decision 107 added the verdict cache's two tables; decision
 116 added the `override_reason` column to `requests`; decision 117 added
 the Filing Deadline to the engagement's details, and a detail is a column
@@ -167,7 +169,8 @@ chain, `applied_digest`, to `engagements`; decision 142 added the `asked`
 mark to `requests`, decision 143 `container` to `documents`, decision 144
 `short_title` to `requests`, and decision 146 `answers` to `documents` -
 the other requests a consolidated statement answers without a copy; decision
-204 added `waits_for` to `documents` and decision 209 (R3b) `admitted_by` to
+204 added `waits_for` to `documents`, decision 190 `code` and `subfolder` to
+`documents` and `note_codes` to `statuses`, and decision 209 (R3b) `admitted_by` to
 `engagements` - which admission judged the lines a row applied, so a line an
 earlier version applied is judged again when the rule tightens - each in
 place, where the file stands; a file at any older version is set aside and

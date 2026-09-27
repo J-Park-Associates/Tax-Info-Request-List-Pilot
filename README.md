@@ -81,7 +81,7 @@ engagement folder.
 fourteen columns an accountant edits, and the client, link, due date, the
 people the return is for and the rest, are edited in the app's **Edit Request List** editor and nowhere
 else; every save is journalled as one event and folded into one database
-on the machine that runs the schedule ([docs/storage.md](docs/storage.md)),
+in the tracker's data folder on the machine that runs the schedule ([docs/storage.md](docs/storage.md)),
 beside each request's Status, Received Date, File Count and Validation
 Notes and every original's index row. Nothing in the folder is a
 spreadsheet, and the machine reads and writes no workbook.
@@ -112,13 +112,15 @@ parks for a person with the reason, and a document that came inside one is
 never filed into another household's return. The client README's list of
 what has arrived shows each attachment that filed, under its request.
 
-1. Roll a returning client's list forward from last year (the default), or
-   pick the tax form type for a new client — the catalog lives in
-   `tracker/templates.py` and nowhere else. A new household's name is
-   unique across both trees by how it reads, not how it is spelled: the
-   wizard refuses a name that reads as a household already in the list and
-   points at it there - add a first name or a middle initial, then the
-   city, to tell two households apart (decision 188)
+1. Roll a household's returns forward from last year on its card (**Roll
+   forward to `<year>`**, offered once that year has ended), or add a return
+   to it with **Add a return** - pick the tax form type, then the request
+   list; the catalog lives in `tracker/templates.py` and nowhere else. A
+   household the tracker has no record of is made with **New household**
+   on the toolbar. Its name is unique across both trees by how it reads,
+   not how it is spelled: a name that reads as a household already in the
+   list is refused and pointed at it there - add a first name or a middle
+   initial, then the city, to tell two households apart (decision 188)
 2. List the engagement's document requests (and validation rules) in the
    app's request-list editor
 3. `python -m tracker.scaffold <return_dir>` — builds the household's
@@ -153,7 +155,10 @@ A `Manual Override` column (the values in `Override.ALL`) lets accountant
 judgment beat the rules: `Accepted` counts the row as Received and carries
 an `Override Reason` (picked from a list, or typed), `Not Applicable` takes
 the request out of every count for the year, shown as "Not Applicable in
-TY<year>" and kept in a folded section of the Status Report.
+TY<year>" and kept under **Set aside** on the Status Report, in the app
+and in the editor. The record keeps the scanner's own words for a status;
+the app shows a preparer's word for each ([docs/runbook.md](docs/runbook.md),
+*What the record says, and what the app shows*).
 
 ### Chasing what's still outstanding
 
@@ -199,8 +204,8 @@ the router filed cannot fail its own rules, so that row is a rule edited
 after filing, a copy dragged in by hand or a copy replaced — the firm's
 doing, or the client's, and not the draft's to guess. Nothing is written for
 that client until somebody decides; the run's own earlier draft is removed,
-an edited one is left, and the run log, the practice page and the app name
-the rows. The manual draft is held by the same question. So does a file the
+an edited one is left, and the practice page and the app name the rows; the
+run log counts the hold. The manual draft is held by the same question. So does a file the
 client sent that the rules could not use at all — a locked PDF, an empty
 upload, a file type nothing accepts — when what it looks like is a request
 still outstanding (decision 117): the drop parks for a person and never
@@ -224,8 +229,8 @@ warning people learn to send past.
 
 There is nothing to register. Point the scheduled job at the folder you keep
 your clients in; every folder under it holding `_ledger.jsonl` is an
-engagement, and the engagement's details (written by the wizard when you
-create or roll forward an engagement, edited in the app) say who the client
+engagement, and the engagement's details (written when you add, roll forward
+or make a household's return, edited in the app) say who the client
 is, the share link, the two dates, whether they are chased by email and
 whether the engagement is still active:
 
@@ -270,6 +275,12 @@ it in the app is all a move takes:
 python -m tracker.runner --settings "C:\Tools\tax-tracker" --log     # what the scheduled job runs
 ```
 
+`--log` alone appends the pass's counts and codes — never a client's name — to `runs.log` in the
+tracker's data folder, rotated at 256 KB with three older files kept; `--log <file>` names
+another, by its whole path - a person's explicit choice, written where it is named, so name a
+place in the data folder. A pass that cannot have its data folder files nothing, writes the
+status page with that one problem, and exits non-zero.
+
 A root on the command line together with `--log` is the shape of the job
 installed before decision 131, and it is refused - red, naming *Install
 Schedule* - unless that root is the settings file's own, so an old job
@@ -291,7 +302,7 @@ button opens that same page, and the app's own pass rewrites it too.
 Generate the job itself with:
 
 ```
-.venv\Scripts\python.exe -m tracker.scheduling --working-dir "C:\Tools\tax-tracker" --out tax-tracker.xml --install
+.venv\Scripts\python.exe -m tracker.scheduling --working-dir "C:\Tools\tax-tracker" --install
 ```
 
 Run it with the app's private Python, the one `Setup.bat` made (decision
@@ -299,7 +310,9 @@ Run it with the app's private Python, the one `Setup.bat` made (decision
 own Python holds none of the locked packages. `--settings` defaults to this checkout's own folder, whose `settings.json`
 must already name a clients root; the job carries no root of its own.
 `--install` registers the task as it writes the XML, and running the same
-line again changes the schedule. You rarely need to: the app registers the
+line again changes the schedule. It writes the task's file into the tracker's data folder unless
+`--out` names another (a person's explicit choice, written where it is named), and refuses when the program is on a removable or network drive (decision
+186). You rarely need to: the app registers the
 job itself (decision 209) - `Setup.bat` runs its after-install step last,
 the app runs the same step at its first start after an upgrade, and saving
 the clients root runs it too - from source with the Python it runs under,
@@ -467,7 +480,7 @@ land together. What did need a rule is the K-1 whose issuer nobody listed:
 with issuer rows present it parks (`tracker.reasons.ISSUER_NOT_NAMED`) with
 those rows named, rather than joining everybody else's on the generic row or
 being guessed onto whichever row is left over. `docs/runbook.md` §8 is how a
-person adds one.
+person adds one: from the parked K-1's card in one step, or in the editor.
 
 When a person files something out of `00 - Needs Review` they can type a
 keyword, and it is recorded against that one engagement's request and
@@ -497,11 +510,11 @@ office.
 ## Form-type templates
 
 For a returning client the request list is last year's, rolled forward
-(the desktop wizard's first page, or `python -m tracker.rollover`). For a
+(**Roll forward** on the household's card, or `python -m tracker.rollover`). For a
 new client you choose the return type (1040, 1120, 1120-S, 1065, 1041, 990)
 and every form carries its own checklist in `tracker/templates.py`,
 the only place it lives. Every row of it goes on the return (decision 142);
-the wizard's tick is **Ask the client**: a ticked row is asked for and
+the request list's tick is **Ask the client**: a ticked row is asked for and
 chased, an unticked one is never asked for but files a document that
 arrives for it. Add custom rows (always asked) as needed. It is cut for the
 tax year the calendar says, and the manifest it creates is the readable
@@ -537,6 +550,11 @@ for reading - the models ship in the package, and nothing is downloaded
 while it reads. On Windows it reads on the processor, or on an NVIDIA card
 with the graphics card pack beside the packaged app (`Build GPU Pack.bat`;
 [docs/runbook.md](docs/runbook.md) §6, step 5).
+
+The suite never reads this checkout's settings file, store, scratch folder or a
+client tree copied into it: every test gets a settings folder and a store of its
+own, and a tripwire fails the whole run if any test, or any Python process a
+test starts, reaches one of them (decision 185).
 
 ## Running the app
 

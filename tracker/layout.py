@@ -145,6 +145,46 @@ OPEN_LIMITS: dict[str, int] = {"xlsx": 218, "xlsm": 218, "xls": 218, "csv": 218}
 ROLLED_FROM_TAIL = 3
 
 
+#: What a drop whose name is nothing but invisible characters is recorded
+#: as (:func:`recorded_name`).
+NAMELESS = "unnamed"
+
+def recorded_name(raw: object, fallback: str = NAMELESS) -> str:
+    """A client's file or folder name as the record holds it: composed
+    (NFC), with none of the characters the layout's one invisible set
+    names (:func:`is_invisible`, decision 188) - no formatting, control,
+    private-use or default-ignorable character - but for a space other than
+    U+0020, which draws a space (decision 190).
+
+    **Once, where a name enters the record.** A right-to-left override made
+    ``W2<RLO>fdp.exe`` show as ``W2exe.pdf`` - a program dressed as a PDF on
+    every screen that shows the name - and a zero-width space made two
+    names that look alike two files. Decision 176 stripped them from an
+    attachment's name only; a top-level drop, the subfolder it came from and
+    its review copy kept them. This is the one normaliser of a client's
+    name, and :func:`tracker.containers.safe_name` delegates its character
+    stripping here; what counts as invisible is decided once, by
+    :func:`is_invisible`, for this, the name rule and the name key alike.
+    It is not a person's typed name (:func:`normalised_name`) nor a
+    matcher's fold (:func:`tracker.names.normalise`).
+
+    **The original keeps its raw name on disk** (standing rule 2), and a
+    row's ``pbc_location`` keeps the raw path, so a row still finds its file.
+    A name the record cannot hold as UTF-8 (an unpaired surrogate) is mended
+    first. A name with nothing visible left - nothing but dots, spaces and
+    underscores - is ``fallback``: :data:`NAMELESS` for a drop, and ``""``
+    for :func:`~tracker.containers.safe_name`, which then names the part
+    its own way. Arithmetic on a string: nothing here touches a disk.
+    """
+    text = str(raw or "").encode("utf-8", "replace").decode("utf-8")
+    text = unicodedata.normalize("NFC", text)
+    # The one invisible set (:func:`is_invisible`, decision 188) says what
+    # draws nothing; a space other than U+0020 is in it but draws a space,
+    # so it stays, as it always has in a client's file name.
+    text = "".join(ch for ch in text if not is_invisible(ch) or unicodedata.category(ch) == "Zs")
+    return text if text.strip("._ ") else fallback
+
+
 # --------------------------------------------------------------- the year ----
 
 
@@ -190,6 +230,28 @@ MACHINE_PREFIXES: tuple[str, ...] = (".", "_", "~$")
 _ILLEGAL_PUNCTUATION = '\\/:*?"<>|'
 WINDOWS_ILLEGAL_CHARS = re.compile("[" + re.escape(_ILLEGAL_PUNCTUATION) + r"\x00-\x1f]")
 WINDOWS_ILLEGAL_CHARS_TEXT = " ".join(_ILLEGAL_PUNCTUATION)
+
+
+def recorded_subfolder_part(part: object) -> str:
+    """One folder of a client's inbox subfolder as the record holds it: its
+    :func:`recorded_name`, with every character Windows keeps out of a
+    folder name made ``_``, as :func:`tracker.containers.safe_name` does.
+
+    **One rule for the writer and the admission** (decision 190's review of
+    the port, S2). On Linux or macOS a client can name an inbox folder
+    ``Q1: bank``; the filer used to record it raw and the store's admission
+    refused it, so the pass that had already moved the original raised.
+    The filer now records each part through this, and the store admits a
+    part exactly when this would not change it - so ``.``, ``..``, a part
+    holding ``/``, ``\\`` or ``:``, and one with nothing visible are refused,
+    because no writer wrote them. Not the household and return name rule
+    (:func:`segment_problem`): a client may well name an inbox folder
+    ``2025`` or ``_old``. The folder on disk keeps its name (standing rule
+    2); the field is display only, and nothing joins it to a path.
+    Idempotent: a part this returns comes back unchanged.
+    """
+    text = WINDOWS_ILLEGAL_CHARS.sub("_", recorded_name(part))
+    return text if text.strip("._ ") else NAMELESS
 #: The names Windows keeps for devices (decision 137, L6). A folder or a
 #: file named one of them - with or without an extension, in any case - is
 #: not a folder at all: ``NUL`` is the null device, ``COM1`` a serial port,
@@ -233,8 +295,9 @@ def is_invisible(char: str) -> bool:
     rule 5): a control, format, surrogate, private-use or unassigned
     character, a line or paragraph separator, a space other than U+0020,
     or a default-ignorable one. The one set: the name rule refuses them,
-    the key removes them, and ``tracker.containers`` strips them from an
-    attachment's name."""
+    the key removes them, and :func:`recorded_name` drops them - but for a
+    non-plain space - from every client name the record keeps, an
+    attachment's included (decision 190)."""
     category = unicodedata.category(char)
     return (category in _INVISIBLE_CATEGORIES or (category == "Zs" and char != " ")
             or ord(char) in _IGNORABLE_CODES)

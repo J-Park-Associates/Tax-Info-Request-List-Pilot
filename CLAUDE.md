@@ -184,7 +184,7 @@ that wording.
 ```
 pip install --require-hashes -r requirements.lock                     # hash-checked (decision 191)
 pip install --require-hashes --no-deps -r requirements-nodeps.lock    # the reader (decision 169)
-python -m pytest -q                 # the whole suite, all green
+python -m pytest -q                 # the whole suite (for a person; agents run the affected tests, below)
 python tools/repo_map.py check      # map matches the tree
 python -m ruff check .              # no dead code, no unused imports (CI runs this too)
 ```
@@ -211,8 +211,10 @@ Conventions worth matching:
   the package's `__init__` imports nothing. An import inside a function or a `__main__`
   block is a call-time import and may point anywhere.
 
-Client data never enters the repo: `runs.log` and the
-drafts are gitignored because they carry real client names and share links.
+Client data never enters the repo: the drafts and the status pages are
+gitignored because they carry real client names and share links, and the
+store, the run log and a reading's temporary files live in the tracker's data
+folder, never in a checkout (decision 186).
 
 ## Standing rule: GitHub Actions cost discipline
 
@@ -226,33 +228,82 @@ jobs alone accounting for more than 65% of that despite already being gated.
 be done on the github budget. test here and merge in bulk. make this the
 standing rule"):**
 
-- **Every session runs the whole suite before it pushes** (a tracker-lane
-  restack runs the narrower set below). Run
-  `python -m pytest -q`, `python -m ruff check .`, and both `check`s. A
-  cloud session runs them on its own machine, which costs no GitHub minutes.
-  The tracker lane runs them on the office PC: the owning tests of every
-  file a restack touched, plus ruff and both checks.
-- **CI runs once, on a ready pull request into `main`.** There is no run on
-  a push to `main`, and none on a push to any other branch. A **draft** pull
-  request runs nothing. The tracker lane opens every pull request as a draft
-  and marks it ready once, when the stack is final.
+- **Every session runs the gate before it pushes: dead code first, then the
+  affected tests only, never the whole suite** (Jason, 2026-09-26: "only run
+  tests on affected files in both python versions. the full suite seems
+  unnecessary. any components that seem hazy or gray areas of code should
+  be tested, but we need to reduce testing time drastically and push a
+  working app towards production. add a step to delete dead code before
+  these tests"). Dead code in the changed files - unused imports and
+  locals, commented-out code, a module-level name nothing uses - is deleted
+  before the tests run. The affected tests are the changed test files, each
+  changed module's own test file, the own test file of every module that
+  imports a changed one (the grey areas), and `test_layers`,
+  `test_single_source` and `test_repo_map`; they run under the floor
+  interpreter and the office's. Then `python -m ruff check .` and both
+  `check`s. After review fixes, only the tests the fix touches run again.
+  The tracker lane runs the same gate on the office PC before every merge.
+- **CI never fires per commit** (decision 211, revising 207). It runs on a
+  push to `main` (Linux, the net under what merged) and once when a person
+  marks a pull request ready (the run main's protection needs before a
+  merge). A push to a ready pull request runs nothing, and it **cannot
+  merge** until it is set back to draft and marked ready again, because the
+  required checks never saw the new head. Dependabot's pull requests open
+  ready and so get no run: whoever reviews one sets it to draft and marks it
+  ready. A **draft** pull request runs
+  nothing, and no other branch ever runs. The tracker lane opens every pull
+  request as a draft and marks it ready once, when the stack is final.
 - **Land in bulk.** One pull request may carry several reviewed decisions in
   landing order, each still its own commits. A stacked pull request stays a
   draft until it is retargeted onto `main`, then is marked ready: a pull
   request based on another branch runs nothing, and retargeting starts no
   run.
-- **Rebase merging is the default when several agents work on the same
-  head** (Jason, 2026-09-26): parallel lanes branched from one `main` tip land
-  by GitHub's rebase merge, so history stays one line and the next lane
-  rebases onto a straight tip. A single chain from one agent may still merge
-  with a merge commit. Never squash, and never force-push `main`.
-- **The `windows` label goes on while the pull request is a draft,** and
-  only when it touches the held engagement lock, the atomic replace, path
-  handling, or a Windows-only test. Labelling starts no run of its own.
+- **Every landing is a merge commit** (Jason, 2026-09-26, reversing the
+  rebase-merge default of earlier that day): it records the landing as its
+  own step, and the Decision History job reads the PR number from it. Never
+  a rebase merge, never a squash, never a force-push to `main`.
+- **Lanes land one at a time, in a queue: the default workflow** (Jason,
+  2026-09-26). Only the lane whose turn it is lands, on the orchestrator's
+  "YOUR TURN" message; until then a lane builds only on its own stack or
+  waits, and never rebases onto `main` early. **GitHub does the rebase:** at
+  a lane's turn the orchestrator opens its pull request as a **draft**,
+  rebases it onto `main` on GitHub (the pull request's "Update branch",
+  rebase option), **then**
+  marks it ready - its one run checks the rebased head - and lands it with
+  a merge commit. Any push to a ready pull request, GitHub's own rebase
+  included, gets no run, so it must go back to draft and be marked ready
+  again before it can merge. A lane rebases locally only when GitHub
+  reports a conflict it cannot apply.
+- **The `windows` label is the explicit ask for Windows,** and only for
+  work touching the held engagement lock, the atomic replace, path handling,
+  or a Windows-only test. Put on a draft, it rides the one run when the pull
+  request is marked ready; added to a ready pull request, it runs Windows
+  once. Windows never runs on a push to `main`.
 - **Never trigger `@claude` inside a GitHub issue or pull request.** That
   runs on GitHub Actions; start the work from claude.ai/code instead.
 - **Batch commits before pushing** rather than pushing after every small
   fixup. `concurrency: cancel-in-progress` only saves runs *superseded*
   before they finish; a run that completes is billed regardless.
 
-Set by Jason on 2026-09-22; revised to decision 207 on 2026-09-26.
+### Tests run locally, not on CI (Jason, 2026-09-26)
+
+The cost discipline above is now firm policy, and it is global — set in the
+global `~/.claude/CLAUDE.md`, in the project-folder `CLAUDE.md`, and here — so
+it binds every session and every agent, not only work in this repo.
+
+- **Subagents and builder agents run the suite on this machine, never on
+  GitHub Actions.** The local gate — `python -m pytest -q`,
+  `python tools/repo_map.py check`, `python -m ruff check .` and the
+  vocab/backtest checks — is run in the worktree before any push. CI is a rare
+  safety net, not the test runner; an agent never pushes a branch to "let CI
+  test it."
+- **Do not push or merge on every commit.** Batch the work and land to `main`
+  occasionally, in larger, less frequent merges. Every push to `main` and every
+  push to an open PR spends Actions minutes, and the quota is being hit.
+- **CI must not fire per commit.** `ci.yml` triggers only where a person
+  explicitly needs the safety net — a push to `main`, a pull request marked
+  ready, and the `windows` label — and never on `pull_request: synchronize`,
+  so pushing to a pull request branch does not re-run the suite (decision
+  211). Release tags are built and smoke-checked by `build.yml`.
+
+Set by Jason on 2026-09-22; revised to decision 207, then 211, on 2026-09-26.

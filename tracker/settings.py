@@ -19,6 +19,18 @@ since decision 117, the firm's telephone number), read and written whole,
 atomic on write. What is here is what belongs to the firm rather than to
 an engagement; there is no second copy of any of it to drift.
 
+Its absence is learned by opening it, never by asking whether it exists
+(decision 185): ``exists()`` raises no audit event, so the suite's tripwire
+sees every attempt on the file, on a machine that has one and on one without.
+
+**What the tracker derives from clients never sits here** (decision 186). The
+settings file is a pointer - the clients root, the firm's name and telephone
+number, nothing about a client - so it stays beside the app. The store, a
+reading's temporary files, the run log and the scheduler's task file live in
+:func:`data_home`: the Windows account's own local application-data folder,
+never beside the program, in a checkout, on removable media or in the temp
+folder, and :func:`data_home` refuses rather than fall back to any of them.
+
 ``ENV_REAL_CORPUS`` sits here for the same reason the clients root does:
 it is the other folder outside the repository the code is told about - the
 firm's own redacted documents, which the harness and the coverage report
@@ -31,14 +43,22 @@ on it.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from tracker import layout
 from tracker.fsio import write_json_atomically
 
 SETTINGS_FILENAME = "settings.json"
+#: The folder decision 137 (L7) kept OCR's page images in, beside the app.
+#: Retired by decision 169 - the reader writes none - but an old checkout or
+#: install may still hold it with a client's page inside, so the ignore file
+#: and the suite's tripwire (decision 185) both name it, from here.
+OCR_SCRATCH_DIRNAME = "ocr-scratch"
 #: The keys inside it.
 KEY_CLIENTS_ROOT = "clients_root"
 KEY_FIRM = "firm"
@@ -64,6 +84,48 @@ ENV_PRODUCT_NAME = "TRACKER_PRODUCT_NAME"
 PACKAGE_JSON = Path(__file__).resolve().parent.parent / "app" / "package.json"
 #: The folder of the firm's own redacted documents, outside the repository.
 ENV_REAL_CORPUS = "TRACKER_REAL_CORPUS"
+#: A corpus inside the app's own folder is refused by name (decision 186).
+CORPUS_INSIDE_APP = (ENV_REAL_CORPUS + " names {folder}, inside the app's own folder (the code "
+                     "checkout, from source); the firm's documents never sit there - move them out")
+#: Where the tracker keeps what it derives from clients on this machine
+#: (decision 186): the store, a reading's temporary files, the run log and the
+#: scheduler's task file. An absolute path; the suite and CI set it.
+ENV_DATA_HOME = "TRACKER_DATA_HOME"
+#: The data home's folder name: app/package.json's "name", held equal by a test.
+DATA_HOME_NAME = "tax-document-tracker"
+SCRATCH_DIR_NAME = "scratch"
+LOGS_DIR_NAME = "logs"
+#: GetDriveTypeW's answers (WinBase.h). Only DRIVE_FIXED may hold the program
+#: the schedule runs, or the data home.
+DRIVE_UNKNOWN, DRIVE_NO_ROOT_DIR, DRIVE_REMOVABLE, DRIVE_FIXED, DRIVE_REMOTE, DRIVE_CDROM, DRIVE_RAMDISK = range(7)
+
+NO_LOCAL_APPDATA = ("LOCALAPPDATA is not set for this Windows account, so the tracker has nowhere "
+                    "private to keep its database; it never keeps it beside the program or in the "
+                    "temp folder instead. Run the app as the account that runs the schedule")
+LOCAL_APPDATA_NOT_A_FOLDER = "LOCALAPPDATA names {folder}, which is not a folder on this computer"
+NO_HOME = ("this account has no home folder, so the tracker has nowhere private to keep its "
+           "database; set " + ENV_DATA_HOME + " to a folder of its own")
+DATA_HOME_NOT_ABSOLUTE = ENV_DATA_HOME + " must name a whole path, got {value!r}"
+DATA_HOME_BESIDE_PROGRAM = ("the tracker's data folder {home} would be inside the program's own "
+                            "folder {program}, or hold it; client data never sits beside the program")
+DATA_HOME_NOT_LOCAL = ("the tracker's data folder {home} is not on this computer's own disk; "
+                       "client data never sits on a removable or network drive")
+#: Why Install Schedule refuses to schedule the program from where it is
+#: (decision 186): the task runs whatever program sits at that path on every
+#: pass, so a stick or a share would carry the program - and, beside it, the
+#: settings - wherever the drive goes. One sentence per answer Windows gives.
+PROGRAM_ON_REMOVABLE = ("The app is running from a removable drive ({folder}). The schedule runs "
+                        "whatever program sits there, every pass, so it is not installed from here: "
+                        "copy the app's folder to this computer's own disk (a short path, such as "
+                        "C:\\Tools), start it from there and press Install Schedule.")
+PROGRAM_ON_NETWORK = ("The app is running from a network drive ({folder}). The schedule runs "
+                      "whatever program sits there, every pass, so it is not installed from here: "
+                      "copy the app's folder to this computer's own disk (a short path, such as "
+                      "C:\\Tools), start it from there and press Install Schedule.")
+PROGRAM_DRIVE_UNKNOWN = ("Windows cannot say what kind of drive the app is running from ({folder}), "
+                         "so the schedule is not installed from here: copy the app's folder to this "
+                         "computer's own disk (a short path, such as C:\\Tools), start it from there "
+                         "and press Install Schedule.")
 #: The file beside them that says where each one belongs, and its columns:
 #: the document's own name, the catalog it is routed against, the
 #: engagement year, and the identifier it must file under - blank for a
@@ -92,7 +154,8 @@ def settings_dir() -> Path:
 
     The Electron shell passes the folder in ``ENV_SETTINGS_DIR`` (next to
     the packaged executable). A frozen API without it uses its own folder;
-    source checkouts use the repository root.
+    source checkouts use the repository root. It holds the settings file
+    and nothing derived from a client (decision 186).
     """
     override = os.environ.get(ENV_SETTINGS_DIR)
     if override:
@@ -106,13 +169,129 @@ def settings_path() -> Path:
     return settings_dir() / SETTINGS_FILENAME
 
 
+#: The local debug log (decision 193, security principle 7): an
+#: unexpected error's full text and traceback, and every warning the
+#: package logs, go here and nowhere else - never on screen, in the record,
+#: on the page or in the run log. It can name a client's folder, so it
+#: lives beside the tracker's database, on this machine, never in either
+#: client tree; rotated by size, and never synced to disk per line.
+ERROR_LOG_FILENAME = "tracker-errors.log"
+ERROR_LOG_MAX_BYTES = 1_000_000
+ERROR_LOG_BACKUPS = 3
+ERROR_LOG_FORMAT = "%(asctime)s pid=%(process)d %(name)s %(levelname)s %(message)s"
+#: The one line said on stderr when the error log cannot take a record
+#: (decision 190's landing review, SF1): the failure's class and code,
+#: never the record - whose words go to the log "and nowhere else".
+ERROR_LOG_NOT_WRITTEN = "{name} could not be written ({kind}); what it would have held is not said here."
+
+
+def error_log_path() -> Path:
+    """Where :data:`ERROR_LOG_FILENAME` lives: beside the tracker's database
+    (the folder of ``store.store_path()``, the one the pass-order hint uses),
+    so it moves with the store wherever the store goes. ``store`` is asked
+    at call time: it sits above this module."""
+    from tracker import store
+
+    return store.store_path().parent / ERROR_LOG_FILENAME
+
+
+class _ErrorLog(logging.Handler):
+    """The error log's own few lines of rotation (decision 193's review,
+    S2): not ``logging.handlers``, which loads ``socket`` at import, so
+    importing the tracker loads no network module. Before a record that
+    would take the file past :data:`ERROR_LOG_MAX_BYTES` the file becomes
+    ``.1``, ``.1`` becomes ``.2`` and so on to :data:`ERROR_LOG_BACKUPS`;
+    each record is appended whole in UTF-8 and never ``fsync``-ed. Both
+    numbers are read when a record is written.
+
+    A record it cannot write is said by :meth:`handleError` as one fixed
+    line, never through ``logging``'s own, which prints the record's
+    message and arguments - a kept error's whole words - to stderr
+    (decision 190's landing review, SF1)."""
+
+    def __init__(self, path: Path) -> None:
+        super().__init__(logging.WARNING)
+        self.path = path
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            data = (self.format(record) + "\n").encode("utf-8")
+            try:
+                size = self.path.stat().st_size
+            except FileNotFoundError:
+                size = 0
+            if size and size + len(data) > ERROR_LOG_MAX_BYTES:
+                self._rotate()
+            with self.path.open("ab") as handle:
+                handle.write(data)
+        except Exception:
+            self.handleError(record)
+
+    def handleError(self, record: logging.LogRecord) -> None:
+        # At call time, as store is in error_log_path(): this module's
+        # load-time imports stay layout and fsio.
+        from tracker import errors
+
+        if logging.raiseExceptions and sys.stderr is not None:
+            try:
+                sys.stderr.write(ERROR_LOG_NOT_WRITTEN.format(
+                    name=self.path.name, kind=errors.error_class(sys.exc_info()[1])) + "\n")
+            except OSError:
+                pass    # no stderr to say it on either: as logging's own handleError does
+
+    def _rotate(self) -> None:
+        def kept(n: int) -> Path:
+            return self.path.with_name(f"{self.path.name}.{n}")
+
+        kept(ERROR_LOG_BACKUPS).unlink(missing_ok=True)
+        for n in range(ERROR_LOG_BACKUPS - 1, 0, -1):
+            if kept(n).exists():
+                os.replace(kept(n), kept(n + 1))
+        os.replace(self.path, kept(1))
+
+
+@contextmanager
+def error_log(logger_name: str = "tracker") -> Iterator[Path | None]:
+    """Attach the rotating error log to ``logger_name`` for the block.
+
+    WARNING and above, UTF-8, opened only when something is written, and
+    never ``fsync``-ed: it is a debug aid, and a sync per line would cost
+    the pass that is failing. A folder that cannot hold it costs the log,
+    never the command - and so does a data home that cannot be had
+    (decision 186): the log sits beside the store, which lives there, so
+    there is no log and the block yields ``None``; the command says why.
+    """
+    logger = logging.getLogger(logger_name)
+    path: Path | None = None
+    handler: logging.Handler | None = None
+    try:
+        path = error_log_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        handler = _ErrorLog(path)
+    except (OSError, SettingsError):
+        handler = None
+    if handler is not None:
+        handler.setFormatter(logging.Formatter(ERROR_LOG_FORMAT))
+        logger.addHandler(handler)
+    try:
+        yield path
+    finally:
+        if handler is not None:
+            logger.removeHandler(handler)
+            handler.close()
+
+
 def _read() -> dict:
     path = settings_path()
-    if not path.exists():
-        return {}
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        text = path.read_text(encoding="utf-8")
+    except (FileNotFoundError, NotADirectoryError):
+        return {}           # nothing written yet: the same answer exists() gave
+    except (OSError, UnicodeDecodeError) as exc:
+        raise SettingsError(f"{path} could not be read: {exc}") from None
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
         raise SettingsError(f"{path} could not be read: {exc}") from None
     if not isinstance(data, dict):
         raise SettingsError(f"{path} should hold one JSON object")
@@ -126,7 +305,7 @@ def clients_root() -> Path | None:
 
 
 def firm() -> str:
-    """The firm's name as typed once at setup; the wizard's default Firm."""
+    """The firm's name as typed once at setup; a new return's default Firm."""
     return str(_read().get(KEY_FIRM, "") or "").strip()
 
 
@@ -158,12 +337,21 @@ def real_corpus_dir() -> Path | None:
     there is nothing to route - and both answer None. Raising instead
     would fail the suite on every machine that has no corpus, CI's
     included; the harness and the report skip on None and say so.
+
+    A corpus inside the app's own folder is another matter (decision 186):
+    not a machine with nothing to route but a positive mistake - the
+    firm's documents one ``git add -A`` from every clone - so it raises
+    ``CORPUS_INSIDE_APP`` and fails loudly on that one machine.
     """
     named = os.environ.get(ENV_REAL_CORPUS, "").strip()
     if not named:
         return None
     folder = Path(named)
-    return folder if folder.is_dir() else None
+    if not folder.is_dir():
+        return None
+    if inside_the_app(folder):
+        raise SettingsError(CORPUS_INSIDE_APP.format(folder=folder))
+    return folder
 
 
 def _write(data: dict) -> None:
@@ -206,12 +394,208 @@ def app_dir() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
+def inside_the_app(path: Path | str) -> bool:
+    """Whether ``path`` is the app's own folder or lies inside it - the
+    repository, when run from source (decision 185).
+
+    The one answer the report tools ask before writing, because a file there
+    is one `git add -A` away from every clone; judged by the folder itself
+    as well as its spelling (:func:`_inside`). Decision 186 asks it too:
+    client data never lives in a code checkout.
+    """
+    return _inside(Path(path).expanduser().resolve(), app_dir())
+
+
 def system_drive_root() -> Path:
     """The root of the drive the operating system lives on
     (``%SystemDrive%\\``), or ``/`` where there are no drive letters."""
     if os.name == "nt":
         return Path(os.environ.get("SystemDrive", "C:") + os.sep)
     return Path("/")
+
+
+def drive_type(path: Path) -> int:
+    """GetDriveTypeW for the drive ``path`` is on (DRIVE_*). Off Windows there
+    are no drive letters to ask about and the program is never scheduled from
+    there (install_task only prints the command), so it answers DRIVE_FIXED.
+
+    What it buys (SPEC-186 section 10, the review's S2): it refuses what
+    Windows *reports* as removable, network or unknown - the stick the old
+    build script named - not every portable disk. A USB hard disk reports
+    DRIVE_FIXED and passes; so do a ``subst`` letter and a mounted VHD on a
+    fixed disk. Only ``path``'s own drive letter or share is asked, so a
+    folder junctioned onto another drive is judged by the drive its
+    spelling names: :func:`app_dir` and :func:`settings_dir` are resolved
+    first and are seen through a junction, the data home is not.
+    """
+    if os.name != "nt":
+        return DRIVE_FIXED
+    import ctypes
+    drive = os.path.splitdrive(os.path.abspath(str(path)))[0]   # "E:" or "\\\\server\\share"
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.GetDriveTypeW.argtypes = (ctypes.c_wchar_p,)
+    kernel32.GetDriveTypeW.restype = ctypes.c_uint
+    return int(kernel32.GetDriveTypeW(drive + "\\"))
+
+
+def program_folders() -> list[Path]:
+    """The folders the data home may neither sit in nor hold (decision 186):
+    the app's own folder (as :func:`inside_the_app` judges it - on a source
+    install, the checkout), and the settings folder **when it holds the app**
+    - the packaged app, whose shell keeps its settings in the unzipped
+    package the executable sits inside. A settings folder that does not
+    hold the program (the suite's per-test folder) is not the program."""
+    app = app_dir()
+    folders = [app]
+    settings = settings_dir().resolve()
+    if settings != app and _inside(app, settings):
+        folders.append(settings)
+    return folders
+
+
+def beside_the_program() -> list[Path]:
+    """Where an earlier version kept client data **beside the program**
+    (decision 186): the settings folder, and the frozen executable's own
+    folder when it is another (a package without the shell kept its store
+    there). The one answer to "beside the program": what was left behind
+    (:func:`tracker.runner.left_behind`) is looked for here, and the store
+    refuses to make a fresh record checkpoint while the old one sits here
+    (the rebase review's MF1). Not :func:`program_folders`, which is where
+    the data home may not be; in a source checkout this is the settings
+    folder alone, the repository root unless the shell names another."""
+    folders = [settings_dir().resolve()]
+    app = app_dir()
+    spelled = [os.path.normcase(os.path.abspath(str(folder))) for folder in (app, folders[0])]
+    if getattr(sys, "frozen", False) and spelled[0] != spelled[1]:
+        folders.append(app)
+    return folders
+
+
+def resolve_data_home(environ, *, windows: bool, home: Path | None, program, drive_type) -> Path:
+    """The data home for this environment - the pure core of :func:`data_home`,
+    so every branch is testable on any machine (decision 186).
+
+    In order: ``ENV_DATA_HOME`` when set and not blank, which must be a whole
+    path (a relative one would land in the working folder, which for a
+    source install's scheduled job is the checkout); on Windows
+    ``%LOCALAPPDATA%`` + ``DATA_HOME_NAME`` - the account's own local
+    application-data folder, never roamed, unlike ``%APPDATA%`` - and **no
+    fallback** when it is unset or not a folder; elsewhere
+    ``$XDG_STATE_HOME`` (when absolute) or ``~/.local/state``. Then, whoever
+    answered: never inside any of ``program`` nor holding one, and only on a
+    disk ``drive_type`` calls fixed. Only a path is answered; nothing is made.
+    """
+    override = (environ.get(ENV_DATA_HOME) or "").strip()
+    if override:
+        answer = Path(override)
+        if not answer.is_absolute():
+            raise SettingsError(DATA_HOME_NOT_ABSOLUTE.format(value=override))
+    elif windows:
+        local = (environ.get("LOCALAPPDATA") or "").strip()
+        if not local:
+            raise SettingsError(NO_LOCAL_APPDATA)
+        folder = Path(local)
+        if not folder.is_absolute() or not folder.is_dir():
+            raise SettingsError(LOCAL_APPDATA_NOT_A_FOLDER.format(folder=local))
+        answer = folder / DATA_HOME_NAME
+    else:
+        state = (environ.get("XDG_STATE_HOME") or "").strip()
+        if state and Path(state).is_absolute():
+            answer = Path(state) / DATA_HOME_NAME
+        elif home is None:
+            raise SettingsError(NO_HOME)
+        else:
+            answer = Path(home) / ".local" / "state" / DATA_HOME_NAME
+    for folder in program:
+        if _inside(answer, Path(folder)) or _inside(Path(folder), answer):
+            raise SettingsError(DATA_HOME_BESIDE_PROGRAM.format(home=answer, program=folder))
+    if drive_type(answer) != DRIVE_FIXED:
+        raise SettingsError(DATA_HOME_NOT_LOCAL.format(home=answer))
+    return answer
+
+
+def _home() -> Path | None:
+    try:
+        return Path.home()
+    except (RuntimeError, KeyError, OSError):   # no home folder for this account
+        return None
+
+
+def data_home() -> Path:
+    """Where this account keeps what the tracker derives from clients on this
+    machine (decision 186): the store, a reading's temporary files, the run
+    log and the scheduler's task file. :func:`resolve_data_home` over this
+    process's environment; not cached, so an override takes effect at once.
+    It creates nothing - each writer makes its own path when it writes.
+
+    What it buys (SPEC-186 section 10, the review's S2): it moves
+    client-derived data off the program's folder, the checkout, removable
+    media and the temp folder. It is not a wall: the folder is readable by
+    this Windows account, the machine's administrators, SYSTEM and any
+    program running as this account - which is why the AI tooling runs
+    under another account - and it is not encrypted. A ``TRACKER_DATA_HOME``
+    a person sets is trusted to be where they mean, within the two checks;
+    it is not resolved, so one junctioned elsewhere is judged by its own
+    spelling's drive (:func:`drive_type`)."""
+    return resolve_data_home(os.environ, windows=os.name == "nt", home=_home(),
+                             program=program_folders(), drive_type=drive_type)
+
+
+def default_data_home() -> Path:
+    """:func:`data_home` as it would be with no ``ENV_DATA_HOME``: the real
+    place on this machine, for a guard that must know it while an override
+    is set."""
+    environ = {key: value for key, value in os.environ.items() if key != ENV_DATA_HOME}
+    return resolve_data_home(environ, windows=os.name == "nt", home=_home(),
+                             program=program_folders(), drive_type=drive_type)
+
+
+def scratch_root() -> Path:
+    """The parent of every process's own temp folder, in the data home."""
+    return data_home() / SCRATCH_DIR_NAME
+
+
+def process_scratch() -> Path:
+    """This process's own temp folder in the data home: named by its pid, so
+    only a folder whose process is gone is ever swept."""
+    return scratch_root() / str(os.getpid())
+
+
+def logs_dir() -> Path:
+    """The folder of the tracker's logs, in the data home."""
+    return data_home() / LOGS_DIR_NAME
+
+
+def program_drive_refusal(*, app: Path | None = None, settings: Path | None = None,
+                          drive_type=None) -> str:
+    """Why the schedule may not run the program from where it is, or "".
+
+    The program's folder and its settings folder are each asked; only
+    DRIVE_FIXED passes. DRIVE_REMOVABLE and DRIVE_CDROM -> PROGRAM_ON_REMOVABLE,
+    DRIVE_REMOTE -> PROGRAM_ON_NETWORK, anything else (unknown, no root, a RAM
+    disk) -> PROGRAM_DRIVE_UNKNOWN: nothing is guessed (decision 186).
+
+    Asked by Install Schedule (the app and the command line) and said on the
+    app's first screen - never by the scheduled pass, which would only go
+    quiet if it refused: a job installed from a stick keeps running until
+    Install Schedule is pressed from the copy on the disk. ``drive_type`` is
+    looked up when called, not bound at definition, so a test's patch of
+    the module's :func:`drive_type` reaches it. Off Windows every drive is
+    fixed and the answer is "".
+    """
+    ask = drive_type if drive_type is not None else globals()["drive_type"]
+    folders = (app if app is not None else app_dir(),
+               settings if settings is not None else settings_dir().resolve())
+    for folder in folders:
+        kind = ask(Path(folder))
+        if kind == DRIVE_FIXED:
+            continue
+        if kind in (DRIVE_REMOVABLE, DRIVE_CDROM):
+            return PROGRAM_ON_REMOVABLE.format(folder=folder)
+        if kind == DRIVE_REMOTE:
+            return PROGRAM_ON_NETWORK.format(folder=folder)
+        return PROGRAM_DRIVE_UNKNOWN.format(folder=folder)
+    return ""
 
 
 #: Why a folder is refused as the clients root (decision 137). One sentence
@@ -222,12 +606,17 @@ def system_drive_root() -> Path:
 #: its files as engagements.
 ROOT_IS_SYSTEM_DRIVE = ("{root} is the whole system drive; the tracker would walk all of it. "
                         "Choose the folder the firm keeps its clients in")
-ROOT_HOLDS_SETTINGS = ("{root} holds the app's own settings and store ({settings}); "
+ROOT_HOLDS_SETTINGS = ("{root} holds the app's own settings ({settings}); "
                        "choose the folder the firm keeps its clients in")
 ROOT_INSIDE_SETTINGS = ("{root} is inside the app's settings folder ({settings}); "
                         "choose the folder the firm keeps its clients in")
 ROOT_HOLDS_APP = ("{root} holds the app itself ({app}); "
                   "choose the folder the firm keeps its clients in")
+#: The data home and the clients root never overlap (decision 186).
+ROOT_HOLDS_DATA = ("{root} holds the tracker's own data folder ({data}); "
+                   "choose the folder the firm keeps its clients in")
+ROOT_INSIDE_DATA = ("{root} is inside the tracker's own data folder ({data}); "
+                    "choose the folder the firm keeps its clients in")
 #: A root one level too deep (decision 188, D-3): a folder above it holds
 #: both trees, and the root lies inside one of them.
 ROOT_INSIDE_A_TREE = "{root} is inside the {tree} folder of the clients root {real}; choose {real}"
@@ -282,15 +671,17 @@ def _inside(inner: Path, outer: Path) -> bool:
     return False
 
 
-def root_refusal(root: Path, *, settings: Path, app: Path, system: Path) -> str:
+def root_refusal(root: Path, *, settings: Path, app: Path, system: Path,
+                 data: Path | None = None) -> str:
     """Why ``root`` may not be the clients root, or ``""`` when it may.
 
     Pure, so every rule is testable on any machine: ``settings`` is the
-    folder holding ``SETTINGS_FILENAME`` (and the store beside it), ``app`` the
+    folder holding ``SETTINGS_FILENAME``, ``data`` the data home, ``app`` the
     app's own folder, ``system`` the system drive's root. Refused (decision
     137): the system drive's root; the settings folder, any folder that
-    holds it, and any folder inside it; the app's folder and any folder
-    that holds it. **Another drive's root is allowed**: a letter mapped to
+    holds it, and any folder inside it; the data home, any folder that
+    holds it and any folder inside it (decision 186); the app's folder and
+    any folder that holds it. **Another drive's root is allowed**: a letter mapped to
     the clients share (``S:``, a Shared Drive letter) is a real root. And
     since decision 188 a folder inside one of the two trees of a real root
     (``ROOT_INSIDE_A_TREE``), which is the one rule here that looks at what
@@ -302,6 +693,10 @@ def root_refusal(root: Path, *, settings: Path, app: Path, system: Path) -> str:
         return ROOT_HOLDS_SETTINGS.format(root=root, settings=settings)
     if _inside(root, settings):
         return ROOT_INSIDE_SETTINGS.format(root=root, settings=settings)
+    if data is not None and _inside(data, root):
+        return ROOT_HOLDS_DATA.format(root=root, data=data)
+    if data is not None and _inside(root, data):
+        return ROOT_INSIDE_DATA.format(root=root, data=data)
     if _inside(app, root):
         return ROOT_HOLDS_APP.format(root=root, app=app)
     if (deeper := _holding_both_trees(root)) is not None:
@@ -311,13 +706,13 @@ def root_refusal(root: Path, *, settings: Path, app: Path, system: Path) -> str:
 
 def clients_root_refusal(root: Path | str) -> str:
     """:func:`root_refusal` for ``root`` on this machine, with this app's
-    settings folder, its own folder and the system drive: ``""`` when it
-    may be the clients root. What :func:`set_clients_root` asks before it
+    settings folder, its data home, its own folder and the system drive:
+    ``""`` when it may be the clients root. What :func:`set_clients_root` asks before it
     records a root, and what the scheduled pass asks again of the root it
     was saved with (decision 137's review, F12), so a root recorded before
     the rule is not walked either."""
     return root_refusal(Path(root), settings=settings_dir().resolve(), app=app_dir(),
-                        system=system_drive_root())
+                        system=system_drive_root(), data=data_home())
 
 
 def set_clients_root(root: Path | str) -> Path:

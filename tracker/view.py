@@ -20,15 +20,17 @@ might be. Four sections, in the order a person reads them:
   sentence that says it is regenerated every pass and holds nothing of its
   own.
 - **Requests** - the person's rules, the keywords a filing taught, and each
-  row's status as a badge. The rows a person set aside as
-  ``Override.NOT_APPLICABLE`` are not in that table: they sit below it in
-  a folded block per year (:data:`NOT_APPLICABLE_SECTION`), dimmed, in
-  the same columns - off the working view, kept and findable (decision
-  116). The rows nobody asked for with no document at all fold the same
-  way into one block, :data:`NOT_ASKED_SECTION` (decision 142); a row
-  nobody asked for with *any* document - received, partial, refused or
-  still syncing - is real work, and sits in the table like any row,
-  marked not asked.
+  row's status as a badge that says a preparer's word
+  (``manifest.STATUS_LABELS``) and is classed by the record's own word,
+  so no colour moves with a label (decision 200). The rows nobody waits
+  on - set aside as ``Override.NOT_APPLICABLE`` (decision 116), or nobody
+  asked for with no document at all (decision 142) - are not in that
+  table: they sit below it in one folded block, :data:`SET_ASIDE_SECTION`,
+  with a sub-heading per label (:data:`SET_ASIDE_GROUP`) and its sentence,
+  "Not asked" first and then each year, dimmed, in the same columns - off
+  the working view, kept and findable (decision 200). A row nobody asked
+  for with *any* document - received, partial, refused or still syncing -
+  is real work, and sits in the table like any row, marked not asked.
 - **Index** - every original, in the index's own column order.
 - **Needs Review** - the rows parked for a person, and under each the
   shortlist the app's review card shows, in the words
@@ -87,7 +89,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tracker import ledger, review
+from tracker import errors, ledger, review
 from tracker.filer import (
     INDEX_HEADING,
     NEEDS_REVIEW,
@@ -118,6 +120,7 @@ from tracker.manifest import (
     COL_VALIDATION_NOTES,
     HEADERS,
     NOT_ASKED_LABEL,
+    STATUS_LABELS,
     ManifestError,
     Override,
     RequestItem,
@@ -126,9 +129,21 @@ from tracker.manifest import (
     load_engagement_info,
     load_manifest,
     override_label,
+    status_key,
     status_label,
 )
-from tracker.page import Cell, Row, details, esc, page_text, slug, table, tolerant_console, unesc
+from tracker.page import (
+    Cell,
+    Row,
+    details,
+    esc,
+    page_text,
+    policy,
+    slug,
+    table,
+    tolerant_console,
+    unesc,
+)
 from tracker.records import (
     BEHIND,
     CURRENT,
@@ -214,7 +229,7 @@ VIEW_OPEN_LABEL = "Open Status Report"
 
 #: The index columns the review section repeats. The headers still come
 #: from the index's own table, so there is one owner for them.
-NEEDS_REVIEW_FIELDS = ("received", "original_name", "pbc_location", "reason",
+NEEDS_REVIEW_FIELDS = ("received", "original_name", "subfolder", "pbc_location", "reason",
                        "candidates", "evidence")
 
 #: What a coloured status word is classed as, and what a row set aside as
@@ -223,16 +238,17 @@ NEEDS_REVIEW_FIELDS = ("received", "original_name", "pbc_location", "reason",
 #: its label says.
 BADGE_CLASS = "badge"
 NOT_APPLICABLE_CLASS = "not-applicable"
-#: The folded block's heading on the Requests section: the label (the
-#: value with the rows' year) and how many rows it holds.
-NOT_APPLICABLE_SECTION = "{label} ({n})"
 #: A row nobody asked for is classed apart, dimmed like a set-aside one
 #: while it waits in its fold and marked in the table once a document has
 #: arrived for it (decision 142).
 NOT_ASKED_CLASS = "not-asked"
-#: The one folded block of rows nobody asked for with no document at all,
-#: and how many it holds (decision 142).
-NOT_ASKED_SECTION = NOT_ASKED_LABEL + " ({n})"
+#: The one folded block under the Requests table of every row nobody waits
+#: on - not asked with nothing in, or not applicable - and how many it
+#: holds (decision 200, replacing decision 142's and 116's own folds).
+SET_ASIDE_SECTION = "Set aside ({n})"
+#: Each group's heading inside it: the row's label (the Not Applicable
+#: label with the rows' year) and how many rows the group holds.
+SET_ASIDE_GROUP = "{label} ({n})"
 _BADGE_COLOURS: dict[str, str] = {
     Status.RECEIVED: "background: #ecfdf5; border-color: #a7f3d0; color: #047857;",
     Status.PARTIAL: "background: #fffbeb; border-color: #fde68a; color: #b45309;",
@@ -309,6 +325,9 @@ for (const th of document.querySelectorAll("th[data-sort]")) {
   });
 }
 """
+#: The page's policy (decision 190): its own style and its own sort script,
+#: each by hash, and nothing fetched.
+_POLICY = policy(style=_STYLE, script=_SORT_SCRIPT)
 
 
 class ViewError(RuntimeError):
@@ -388,7 +407,9 @@ def request_row(item: RequestItem) -> dict[str, str]:
         # the name every new copy takes, as the Date Pattern cell shows the
         # check a blank derives. A copy made before keeps its own name.
         COL_SHORT_TITLE: _text(item.short_name),
-        COL_STATUS: NOT_ASKED_LABEL if status_label(item) == NOT_ASKED_LABEL else _text(item.status),
+        # A preparer's word for the status (decision 200): the record's
+        # word stays in the journal, the run log and the scanner's CLI.
+        COL_STATUS: status_label(item),
         COL_RECEIVED_DATE: _text(item.received_date),
         COL_FILE_COUNT: _text(item.file_count),
         COL_VALIDATION_NOTES: _text(item.validation_notes),
@@ -404,9 +425,12 @@ def _needs_review_row(entry: IndexEntry) -> list[str]:
     return [_text(getattr(entry, name)) for name in NEEDS_REVIEW_FIELDS]
 
 
-def _badge(word: str) -> Cell:
-    """One status or override as a coloured word, classed by the value."""
-    return Cell(word, class_name=f"{BADGE_CLASS} {BADGE_CLASS}-{slug(word)}", badge=True)
+def _badge(key: str) -> Cell:
+    """One status as a coloured word: the label :data:`STATUS_LABELS` gives
+    the record's word, classed by that word, so a label never moves a
+    colour (decision 200)."""
+    return Cell(STATUS_LABELS[key].label, class_name=f"{BADGE_CLASS} {BADGE_CLASS}-{slug(key)}",
+                badge=True)
 
 
 def _request_cells(item: RequestItem) -> Row:
@@ -423,7 +447,7 @@ def _request_cells(item: RequestItem) -> Row:
             values.append(Cell(word, class_name=f"{BADGE_CLASS} {BADGE_CLASS}-{slug(item.manual_override)}",
                                badge=True))
         elif header == COL_STATUS and word:
-            values.append(_badge(word))
+            values.append(_badge(status_key(item)))
         else:
             values.append(word)
     classes = [name for name, on in ((NOT_APPLICABLE_CLASS, set_aside),
@@ -431,37 +455,38 @@ def _request_cells(item: RequestItem) -> Row:
     return Row(tuple(values), class_name=" ".join(classes))
 
 
-def _not_asked_block(items: list[RequestItem]) -> list[str]:
-    """The rows nobody asked for with no document at all (decision 142),
-    folded away under the Requests table in one ``<details>``, in the same
-    columns, the way the set-aside rows fold. Nothing is drawn when there
-    are none."""
-    rows = [item for item in items if is_idle_unasked(item)]
-    if not rows:
-        return []
-    return details(
-        NOT_ASKED_SECTION.format(n=len(rows)),
-        table(REQUEST_COLUMNS, (_request_cells(item) for item in rows), sortable=True),
-    )
-
-
-def _not_applicable_blocks(items: list[RequestItem]) -> list[str]:
-    """The rows set aside as not applicable, folded away under the Requests
-    table: one ``<details>`` per distinct label, in year order, each
-    holding its rows in the same columns, dimmed. Nothing is drawn when
-    there are none - the page does not announce an empty section."""
+def _set_aside_block(items: list[RequestItem]) -> list[str]:
+    """Every row nobody waits on, folded away under the Requests table in
+    one ``<details>`` (decision 200): the rows nobody asked for with no
+    document at all first (decision 142), then the rows set aside as not
+    applicable, one group per year, oldest first (decision 116). Each group
+    has its heading, its label's sentence as text and its rows in the same
+    columns, dimmed. Nothing is drawn when there are none - the page does
+    not announce an empty section."""
+    groups: dict[str, list[RequestItem]] = {}
+    sentences: dict[str, str] = {}
+    idle = [item for item in items if is_idle_unasked(item)]
+    if idle:
+        label = STATUS_LABELS[NOT_ASKED_LABEL].label
+        groups[label] = idle
+        sentences[label] = STATUS_LABELS[NOT_ASKED_LABEL].sentence
     by_label: dict[str, list[RequestItem]] = {}
     for item in items:
         if item.manual_override == Override.NOT_APPLICABLE:
             by_label.setdefault(override_label(item), []).append(item)
-    drawn: list[str] = []
     for label in sorted(by_label, key=lambda word: (by_label[word][0].year or 0, word)):
-        rows = by_label[label]
-        drawn += details(
-            NOT_APPLICABLE_SECTION.format(label=label, n=len(rows)),
-            table(REQUEST_COLUMNS, (_request_cells(item) for item in rows), sortable=True),
-        )
-    return drawn
+        groups[label] = by_label[label]
+        sentences[label] = STATUS_LABELS[Override.NOT_APPLICABLE].sentence
+    if not groups:
+        return []
+    drawn: list[str] = []
+    for label, rows in groups.items():
+        drawn += [
+            f"<h3>{esc(SET_ASIDE_GROUP.format(label=label, n=len(rows)))}</h3>",
+            f'<p class="stamp">{esc(sentences[label])}</p>',
+            *table(REQUEST_COLUMNS, (_request_cells(item) for item in rows), sortable=True),
+        ]
+    return details(SET_ASIDE_SECTION.format(n=sum(len(rows) for rows in groups.values())), drawn)
 
 
 # ------------------------------------------------------------------ write ----
@@ -543,7 +568,9 @@ def _readers(
         # A record the readers refuse: there is nothing to draw, and the
         # caller decides what that means. A pass says it in a log line and
         # stands.
-        raise ViewError(f"{engagement_dir.name}: the view could not be built ({exc})") from exc
+        errors.keep("view", exc, name=engagement_dir.name)
+        raise ViewError(f"{engagement_dir.name}: the view could not be built "
+                        f"({errors.said(exc, (ManifestError, FilingError, ledger.LedgerError))})") from exc
     return head, (recorded[-1] if recorded else None), items, entries
 
 
@@ -638,13 +665,12 @@ def _body(
         *(f'<a href="#{esc(_anchor(section))}">{esc(section)}</a>' for section in SECTIONS),
         "</nav>",
         *_summary(stamp),
-        # The active rows in the table; the rows set aside as not applicable
-        # folded below it, per year, so the working view is the working
+        # The active rows in the table; every row nobody waits on folded
+        # below it under one Set aside, so the working view is the working
         # view and what was set aside is one click away.
         *_heading(REQUESTS_SECTION, len(active)),
         *table(REQUEST_COLUMNS, (_request_cells(item) for item in active), sortable=True),
-        *_not_asked_block(items),
-        *_not_applicable_blocks(items),
+        *_set_aside_block(items),
         "</section>",
         *_heading(INDEX_HEADING, len(entries)),
         *table(INDEX_COLUMNS, (index_row(entry) for entry in entries), sortable=True),
@@ -669,6 +695,7 @@ def _page(
         '<html lang="en">',
         "<head>",
         '<meta charset="utf-8">',
+        _POLICY,
         f"<title>{esc(label_of(engagement_dir))} — {esc(VIEW_LABEL)}</title>",
         *(f'<meta name="{esc(META_NAMES[label])}" content="{esc(value)}">'
           for label, value in stamp.items() if label in META_NAMES),
@@ -745,9 +772,10 @@ def write_view(
         # Somebody has it open, and on Windows an open read handle is
         # enough to refuse the swap. Nothing here is a fact, so this is the
         # one write in the system that may simply not happen.
+        errors.keep("view", exc, name=engagement_dir.name)
         log.warning(
             "%s: %s was not regenerated (%s); it stays one pass behind and the run stands",
-            engagement_dir.name, VIEW_FILENAME, exc,
+            engagement_dir.name, VIEW_FILENAME, errors.error_class(exc),
         )
         result.stale = True
     return result
@@ -825,10 +853,10 @@ if __name__ == "__main__":
     # A typed folder is parsed, never trusted: it must be a return's
     # place under the checked clients root (decision 188).
     from tracker import door
-
+    from tracker.layout import LayoutError
     try:
         ns.engagement_dir = door.return_dir(Path(ns.engagement_dir).absolute())
-    except ValueError as exc:
+    except (door.DoorError, LayoutError) as exc:     # the door's own sentences
         parser.error(str(exc))
 
     folder = Path(ns.engagement_dir)

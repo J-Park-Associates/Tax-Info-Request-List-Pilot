@@ -114,7 +114,7 @@ import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from tracker import door, ledger, registry, scheduling, settings, store
+from tracker import door, errors, ledger, registry, scheduling, settings, store
 from tracker.fsio import write_json_atomically
 from tracker.locking import this_host
 
@@ -373,7 +373,7 @@ def _schedule(root: Path | None, start: str, every: int) -> _Step:
     sentence = (scheduling.SCHEDULE_CLAIMED if outcome == scheduling.CLAIMED
                 else scheduling.SCHEDULE_REGISTERED)
     return _Step(outcome, sentence.format(host=decision.host, start=start, every=every),
-                 command=tuple(command), xml=str(scheduling.schedule_xml_path(folder)))
+                 command=tuple(command), xml=str(scheduling.schedule_xml_path()))
 
 
 def _check(root: Path | None) -> _Step:
@@ -397,10 +397,12 @@ def _check(root: Path | None) -> _Step:
             except (ledger.LedgerError, OSError) as exc:
                 # A record the reader refuses is that household's to wait
                 # on, as the pass makes it: named, and the rest go on.
-                findings.append(f"{folder.name}: {exc}")
+                # The record's own refusal whole; an OS error by its class
+                # (decision 190: its message can spell a client's path).
+                findings.append(f"{folder.name}: {errors.said(exc, (ledger.LedgerError,))}")
         findings += store.gone_journals(conn, root)
     except (store.StoreError, ledger.LedgerError, OSError) as exc:
-        problem = str(exc).rstrip(".") + "."
+        problem = errors.said(exc, (store.StoreError, ledger.LedgerError)).rstrip(".") + "."
         return _Step(CHECK_FAILED_KEY, CHECK_FAILED.format(problem=problem), failed=True)
     if not findings and not judged:
         return _Step(CHECK_NOTHING_HELD_KEY, CHECK_NOTHING_HELD)
@@ -845,8 +847,14 @@ def record_failure(sentence: str) -> None:
 def notice() -> dict | None:
     """What the app's first screen shows, from the note of the last run:
     its findings and failures while there are any, else ``None``. Not
-    dismissible - it is true until a later run finds nothing."""
-    record = read_record()
+    dismissible - it is true until a later run finds nothing. With no data
+    home to hold the note (decision 186's review, M1) there is none to show:
+    the first screen's ``machine_warnings`` already says why, and ``list``
+    still arrives."""
+    try:
+        record = read_record()
+    except settings.SettingsError:
+        return None
     if record is None:
         return None
     findings = [str(one) for one in record.get("findings") or [] if isinstance(one, str)]

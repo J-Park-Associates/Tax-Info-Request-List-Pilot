@@ -25,6 +25,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - after_install : every one-time step after installing or upgrading - the schedule on the computer that runs it, the record check - run by Setup, the app's launch and the first root saved
 - templates     : the per-form request catalog, the one place the checklists live
 - locking       : the one lock per engagement that sort and scan both hold
+- progress      : how a running pass is watched and asked to stop - the one progress line, its file beside the database, and the cancel marker
 - ledger        : the engagement's own append-only record of what was decided, written beside the client's files under that lock
 - checkpoint    : what this machine last saw of each record, beside the store; a record shorter, rewritten or claiming this machine is refused
 - store         : the database on this machine, rebuilt from the record; one file per clients root, and the index is read from it
@@ -33,6 +34,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - view          : the page a person opens, regenerated from the record and the readers every pass
 - settings      : the settings file beside the app - the clients root and firm, written once
 - reasons       : every refusal said once: the note, the client's ask, whose problem it is
+- errors        : an error named by its class where a person sees it; its words kept apart
 - api           : the desktop app's command layer, one JSON command in, one JSON reply out
 
 The standing rules below are the ones every module upholds. They are read

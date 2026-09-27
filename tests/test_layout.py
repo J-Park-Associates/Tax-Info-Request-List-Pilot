@@ -538,3 +538,46 @@ def test_the_designation_file_is_never_a_misfit(tmp_path):
     found = discover_engagements(root)
     assert found.misfits == []
     assert [household.name for household in found.households] == [TEST_HOUSEHOLD]
+
+
+# ------------------------------------------------ decision 190: recorded names ----
+
+
+def test_a_recorded_name_keeps_no_invisible_or_control_character():
+    from tracker.layout import NAMELESS, recorded_name
+
+    assert recorded_name("W2‮fdp.exe") == "W2fdp.exe"
+    assert recorded_name("﻿receipt​⁦.pdf") == "receipt.pdf"
+    assert recorded_name("tab\there\x85.pdf") == "tabhere.pdf"
+    assert recorded_name("Café.pdf") == "Café.pdf"            # composed once (NFC)
+    assert recorded_name("​") == NAMELESS
+    assert recorded_name("​", fallback="") == ""
+    assert recorded_name("Mar\ud800ia.pdf") == "Mar?ia.pdf"               # mended, never refused
+    assert recorded_name("W-2 2025.pdf") == "W-2 2025.pdf"
+
+
+def test_a_recorded_subfolder_part_has_no_windows_illegal_character_and_is_its_own_recorded_form():
+    """Decision 190's review of the port, S2: the one rule the filer writes
+    a client's inbox folder by and the store admits it by. A character
+    Windows keeps out of a folder name becomes "_", an invisible one goes,
+    a part with nothing visible is NAMELESS, and whatever it returns comes
+    back unchanged - so everything the filer writes, the store admits."""
+    from tracker.layout import NAMELESS, recorded_subfolder_part
+
+    cases = {"Q1: bank": "Q1_ bank", "what?": "what_", "a*b": "a_b", 'x"<>|y': "x____y",
+             "Scans\u202e": "Scans", ".": NAMELESS, "..": NAMELESS, ":::": NAMELESS,
+             "Mar\ud800ia": "Mar_ia", "2025": "2025", "_old": "_old", "(scans) \u00a0x": "(scans) \u00a0x"}
+    for raw, recorded in cases.items():
+        assert recorded_subfolder_part(raw) == recorded, raw
+        assert recorded_subfolder_part(recorded) == recorded, f"{raw!r} -> {recorded!r} is not a fixed point"
+
+
+def test_a_recorded_name_keeps_no_line_or_paragraph_separator():
+    """The review's N2: U+2028 and U+2029 break a line where
+    ``str.splitlines`` reads it, and a recorded name now reaches a letter
+    (a file that is not a document is asked about by its name)."""
+    from tracker.layout import recorded_name
+
+    assert recorded_name("a b.pdf") == "ab.pdf"
+    assert recorded_name("a b.pdf") == "ab.pdf"
+    assert recorded_name("a b.pdf") == "a b.pdf"

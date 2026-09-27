@@ -40,10 +40,22 @@ The design system is a folder beside the repository that nothing here may
 read at run time - a page that fetched its own colours would be a page
 reaching outside the engagement it describes - so this is the mirror, and
 a test holds it to the tokens wherever they can be read.
+
+**Each page carries its own policy** (decision 190). :func:`policy` is a
+``Content-Security-Policy`` meta tag that lets a page run exactly its own
+inline style and script and nothing else: ``default-src 'none'`` refuses
+every fetch, and each inline block is allowed by the SHA-256 of its text.
+The hashes are computed from the module constants the page writes, so the
+policy cannot drift from the page; ``'unsafe-inline'`` was the rejected
+alternative, because it would let a block the page did not write run too.
+A page is written into a shared folder where anyone could edit it; the
+policy is what keeps a browser from doing more with it than the firm did.
 """
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import html
 import sys
 from collections.abc import Iterable
@@ -173,6 +185,25 @@ def details(summary: str, lines: Iterable[str]) -> list[str]:
     the lines are markup this module drew and are not escaped again.
     """
     return [f"<details><summary>{esc(summary)}</summary>", *lines, "</details>"]
+
+
+def source_hash(text: str) -> str:
+    """The policy source that allows one inline block: ``'sha256-...'``
+    over the block's text exactly as it sits between its tags, encoded as
+    the page is (UTF-8)."""
+    digest = hashlib.sha256(text.encode("utf-8")).digest()
+    return f"'sha256-{base64.b64encode(digest).decode('ascii')}'"
+
+
+def policy(*, style: str, script: str | None = None) -> str:
+    """The ``<meta>`` tag that holds a page to its own inline ``style`` and,
+    if it has one, its own inline ``script``: nothing is fetched, nothing
+    else runs. Goes in the page's ``<head>``, before the blocks it names."""
+    sources = ["default-src 'none'", f"style-src {source_hash(style)}"]
+    if script is not None:
+        sources.append(f"script-src {source_hash(script)}")
+    return (f'<meta http-equiv="Content-Security-Policy" '
+            f'content="{"; ".join(sources)}">')
 
 
 def page_text(lines: Iterable[str]) -> str:

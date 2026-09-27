@@ -88,6 +88,25 @@ Everything it holds comes out of the journal, so the database that answers
 for the readers never depends on the modules that walk folders and move
 files; its command line imports the registry at call time, which is where
 a cycle is allowed to close.
+
+**An allow-list, not only a denylist** (decision 190). The denylist above
+names what anyone would think of; a module it does not name would arrive
+quietly. So every top-level name imported anywhere under ``tracker/`` must
+be in :data:`ALLOWED_STDLIB` or :data:`ALLOWED_THIRD_PARTY`, and a new one
+fails the suite until a person adds it here with its reason. The
+third-party set is classified, because the first standing rule is about
+what may read a client's document: readers, and optical character
+recognition. The OCR engine runs models - deterministic models of letter
+shapes, which turn a page image into the characters on it and generate
+nothing (decision 169) - and it is named as OCR so that nobody reads "a
+model" as "generative AI". A named set of generative-AI packages is checked
+against the imports and against every requirements file and every lock
+file decision 191 installs from (read, never installed), each allowed
+third-party import is one a lock file pins, an import made by string
+(``importlib``, ``__import__``) is forbidden so the allow-list cannot be
+walked around, and the desktop app's scripts are scanned for any network
+call - the renderer's policy already refuses one, and the scan pins it.
+The denylist stays: it says the rule in the words a reader looks for.
 """
 
 from __future__ import annotations
@@ -103,8 +122,11 @@ LAYERS: dict[int, frozenset[str]] = {
     # ``door`` joins L0 with decision 188: the disk half of the layout. It
     # imports ``layout``, ``fsio`` and ``settings``, all L0, so L0 is the
     # lowest layer the table allows it - and every layer above may ask it.
+    # ``progress`` joins L0 with decision 193: the one progress-line format
+    # and the cancel marker, stdlib only, so the filer, the scanner and the
+    # runner can take a Watch without reaching up to ``api``.
     0: frozenset({"__init__", "reasons", "locking", "checkpoint", "page", "fsio", "settings",
-                  "layout", "door"}),
+                  "layout", "door", "errors", "progress"}),
     1: frozenset({"households", "ledger", "manifest", "records", "scaffold", "store",
                   "templates", "validators"}),
     2: frozenset({"containers", "content_check", "names", "ocr", "router"}),
@@ -162,6 +184,80 @@ READER_MODULES: tuple[str, ...] = ("PIL.Image", "pillow_heif", "pypdfium2", "onn
 #: build.
 READER_IMPORTS_ALLOWED: frozenset[str] = frozenset(
     {"socket", "urllib", "requests", "http", "ssl", "email"})
+
+
+#: Every standard-library module the package may import, by top-level name
+#: (decision 190). ``email`` is here for :data:`MAIL_PARSING_ALLOWED` alone -
+#: the denylist still forbids it everywhere else. ``errno``, ``logging`` and
+#: ``traceback`` are what the error module is built on, and ``builtins`` is
+#: where its command line looks up the built-in exception it is named.
+#: ``math`` is decision 187's value rule in ``records`` (a number the record
+#: holds must be finite). ``functools`` is decision 204's ``cache`` in
+#: ``api``: the feed list read once for a state, and only if a row waits.
+#: Named when 190 landed on main 63aef39: ``types`` is decision 192's
+#: ``SimpleNamespace`` in ``api`` (a registry of the stored households),
+#: ``typing`` the ``TYPE_CHECKING`` guard in ``containers``, ``tempfile`` decision 186's
+#: reading child pointing its temp folder at its own scratch in ``ocr``,
+#: and ``fnmatch`` the checkpoint set-asides ``runner`` finds left behind
+#: beside the program (decision 186).
+ALLOWED_STDLIB: frozenset[str] = frozenset({
+    "__future__", "argparse", "base64", "builtins", "collections", "contextlib", "csv", "ctypes",
+    "dataclasses", "datetime", "email", "errno", "fnmatch", "functools", "hashlib", "html", "io",
+    "json", "logging", "math",
+    "multiprocessing", "ntpath", "os", "pathlib", "platform", "posixpath", "re", "secrets",
+    "shutil", "signal", "sqlite3", "stat", "subprocess", "sys", "tempfile", "threading", "time",
+    "traceback", "types", "typing", "unicodedata", "xml", "zipfile", "zlib",
+})
+
+#: Every third-party module the package may import, by what it is for.
+#: Readers turn a file's bytes into its text, tables or pixels, by rule.
+#: Optical character recognition turns a page's pixels into its letters:
+#: RapidOCR and the ONNX Runtime it runs on, with NumPy for the arrays. Its
+#: models are deterministic models of letter shapes - the same page gives
+#: the same text - and they generate nothing (decision 169), which is why
+#: they are named here as OCR and not left to be mistaken for generative AI.
+ALLOWED_THIRD_PARTY: dict[str, frozenset[str]] = {
+    "readers": frozenset({"pypdf", "pdfplumber", "pypdfium2", "openpyxl", "olefile", "PIL",
+                          "pillow_heif"}),
+    "optical character recognition": frozenset({"rapidocr", "onnxruntime", "numpy"}),
+}
+
+#: Generative-AI packages, by import name and by distribution name, that no
+#: module may import and no requirements file may name (decision 190). A
+#: name ending in ``*`` is a family.
+GENERATIVE_AI_IMPORTS: tuple[str, ...] = (
+    "anthropic", "openai", "google.generativeai", "google.genai", "transformers", "torch",
+    "tensorflow", "langchain*", "llama_cpp", "ollama", "mistralai", "cohere", "huggingface_hub",
+    "sentence_transformers",
+)
+GENERATIVE_AI_DISTRIBUTIONS: tuple[str, ...] = (
+    "anthropic", "openai", "google-generativeai", "google-genai", "transformers", "torch",
+    "tensorflow", "langchain*", "llama-cpp-python", "ollama", "mistralai", "cohere",
+    "huggingface-hub", "sentence-transformers",
+)
+
+#: What the desktop app's own scripts may never do: open a connection of
+#: their own, fetch, load a page from anywhere but its own files, or hand a
+#: link to the system browser (decision 190). A tripwire over the source's
+#: text, not a proof: it names the shapes a network call takes, and a
+#: ``require`` it cannot read - a template, a sum, a variable - is refused
+#: for being unreadable, so the shapes cannot be spelled around it.
+_NETWORK_MODULE = r"(?:node:)?(?:net|http|https|http2|tls|dgram)"
+APP_NETWORK_CALLS: dict[str, str] = {
+    "a network module": rf"""\brequire\s*\(\s*["'`]{_NETWORK_MODULE}["'`]\s*\)""",
+    "a network module imported": rf"""\bfrom\s*["'`]{_NETWORK_MODULE}["'`]""",
+    "a require of anything but a plain string": r"""\brequire\s*\(\s*(?!["'][^"'`\n]*["']\s*\))""",
+    "a dynamic import": r"\bimport\s*\(",
+    "electron's net": r"\bnet\s*\.\s*(?:request|fetch)\b|\{[^}]*\bnet\b[^}]*\}\s*=\s*require\b",
+    "loadURL of anything but a file": r"""\.loadURL\s*\(\s*(?!["'`]file:)""",
+    "fetch": r"\bfetch\s*\(",
+    "XMLHttpRequest": r"\bXMLHttpRequest\b",
+    "WebSocket": r"\bWebSocket\b",
+    "EventSource": r"\bEventSource\b",
+    "sendBeacon": r"\bsendBeacon\b",
+    "window.open": r"\bwindow\s*\.\s*open\s*\(",
+    "openExternal": r"\bopenExternal\b",
+}
 
 
 def _is_main_guard(node: ast.If) -> bool:
@@ -374,6 +470,180 @@ def test_no_module_under_tracker_imports_a_mail_or_network_module():
     assert not found, found
 
 
+def _tracker_trees() -> list[tuple[Path, ast.AST]]:
+    return [(path, ast.parse(path.read_text(encoding="utf-8"), filename=str(path)))
+            for path in sorted(PACKAGE.rglob("*.py"))]
+
+
+def test_every_import_under_tracker_is_allowed():
+    """Decision 190: every top-level name imported anywhere under tracker/,
+    at load time or at call time, is the package itself, a standard-library
+    module on :data:`ALLOWED_STDLIB` or a reader or the OCR engine on
+    :data:`ALLOWED_THIRD_PARTY`. An unknown import fails here, whatever it
+    is, until a person names it and says what it is for. A relative import
+    is refused too: it would reach a module this walk does not name."""
+    allowed = {"tracker"} | ALLOWED_STDLIB | set().union(*ALLOWED_THIRD_PARTY.values())
+    found = []
+    for path, tree in _tracker_trees():
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.level:
+                found.append(f"{path.name}: a relative import of {node.module or '.'}")
+        for name in _imported_names(tree):
+            if name.split(".")[0] not in allowed:
+                found.append(f"{path.name} imports {name}")
+    assert not found, found
+
+
+def _generative(name: str, names: tuple[str, ...]) -> bool:
+    for listed in names:
+        if listed.endswith("*"):
+            if name.startswith(listed[:-1]):
+                return True
+        elif name == listed or name.startswith(listed + "."):
+            return True
+    return False
+
+
+def _required_names(path: Path) -> list[str]:
+    """The distribution names a requirements or lock file lists,
+    normalised as pip compares them (lower case, ``_`` and ``.`` as ``-``)."""
+    import re
+
+    names = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.split("#", 1)[0].strip()
+        if not line or line.startswith("-"):
+            continue
+        match = re.match(r"[A-Za-z0-9][A-Za-z0-9._-]*", line)
+        if match:
+            names.append(re.sub(r"[-_.]+", "-", match.group(0)).lower())
+    return names
+
+
+def _requirement_files() -> list[Path]:
+    """Every requirements file and every lock file decision 191 installs
+    from, as the repository holds them."""
+    return sorted(REPO.glob("requirements*.txt")) + sorted(REPO.glob("requirements*.lock"))
+
+
+#: The distribution each allowed third-party import comes from, where the
+#: two names differ (the rest are the same name, as pip normalises it).
+DISTRIBUTION_OF: dict[str, str] = {"PIL": "pillow", "pillow_heif": "pillow-heif"}
+
+
+def test_every_allowed_third_party_import_is_a_locked_package():
+    """The allow-list and decision 191's lock name one set: each allowed
+    third-party import is pinned, with its hash, by a lock file, so a name
+    added here that nothing installs - or a package the lock drops - fails
+    here rather than at a client's pass. Read, never installed from."""
+    locked = {name for path in sorted(REPO.glob("requirements*.lock")) for name in _required_names(path)}
+    assert locked, "no lock file found"
+    allowed = {name for group in ALLOWED_THIRD_PARTY.values() for name in group}
+    unpinned = sorted(name for name in allowed
+                      if DISTRIBUTION_OF.get(name, name).replace("_", "-").lower() not in locked)
+    assert unpinned == [], unpinned
+
+
+def test_no_generative_ai_package_is_imported_or_required():
+    """The first standing rule, pinned (decision 190): no generative AI ever
+    reads a client document, so no generative-AI package is imported under
+    tracker/ - by any name, at any depth - and none is named in any
+    requirements file or in any lock file (decision 191's hash-checked
+    install), where a build would install it. The files are read, never
+    installed from."""
+    files = _requirement_files()
+    assert (REPO / "requirements.txt") in files and (REPO / "requirements.lock") in files, files
+    found = [f"{path.name} imports {name}"
+             for path, tree in _tracker_trees() for name in _imported_names(tree)
+             if _generative(name, GENERATIVE_AI_IMPORTS)]
+    found += [f"{path.name} requires {name}"
+              for path in files for name in _required_names(path)
+              if _generative(name, GENERATIVE_AI_DISTRIBUTIONS)]
+    assert not found, found
+
+
+def test_nothing_under_tracker_imports_by_string():
+    """An import made from a string - ``importlib``, ``__import__`` - is
+    one no walk of the source can see, so the allow-list above could be
+    walked around by it. None is made under tracker/ (decision 190)."""
+    found = []
+    for path, tree in _tracker_trees():
+        found += [f"{path.name} imports {name}" for name in _imported_names(tree)
+                  if name.split(".")[0] == "importlib"]
+        found += [f"{path.name}:{node.lineno} names __import__" for node in ast.walk(tree)
+                  if (isinstance(node, ast.Name) and node.id == "__import__")
+                  or (isinstance(node, ast.Attribute) and node.attr == "__import__")]
+    assert not found, found
+
+
+def test_the_app_has_no_network_call():
+    """The desktop app talks to the tracker through the API's command line
+    and to nothing else (decision 190). Its own scripts - the main process,
+    the preload and the renderer, never a dependency under node_modules -
+    load no network module, fetch nothing, open no socket and hand no link
+    to the system browser.
+
+    The scan is a tripwire over the scripts' text, not a proof that no
+    call exists: it catches the shapes :data:`APP_NETWORK_CALLS` names,
+    and refuses a ``require`` it cannot read, so that a change that means
+    to reach the network has to do it in a shape a reviewer will see."""
+    import re
+
+    scripts = sorted(path for path in (REPO / "app").rglob("*.js")
+                     if "node_modules" not in path.relative_to(REPO / "app").parts)
+    assert {path.name for path in scripts} >= {"main.js", "preload.js", "app.js"}, scripts
+    found = []
+    for path in scripts:
+        text = path.read_text(encoding="utf-8")
+        for what, pattern in APP_NETWORK_CALLS.items():
+            for match in re.finditer(pattern, text):
+                line = text.count("\n", 0, match.start()) + 1
+                found.append(f"{path.relative_to(REPO).as_posix()}:{line}: {what}")
+    assert not found, found
+
+
+def test_the_network_tripwire_catches_the_shapes_that_walked_around_it():
+    """Each line here reached the network, or could, and passed the first
+    scan (the review of decision 190): electron's own ``net``, a page
+    loaded from a URL, a beacon, a template-literal ``require`` and one
+    built from a sum. Each is caught now, and the app's own requires - a
+    plain string naming electron, a Node module or its own file - and its
+    ``loadFile`` are not."""
+    import re
+
+    def caught(line: str) -> list[str]:
+        return [what for what, pattern in APP_NETWORK_CALLS.items() if re.search(pattern, line)]
+
+    walked_around = [
+        'const { net, shell } = require("electron");',
+        "const https = require(`https`);",
+        'net.request("https://example.com");',
+        'net.fetch("https://example.com");',
+        'win.loadURL("https://example.com");',
+        "win.loadURL(address);",
+        'navigator.sendBeacon("https://example.com", "x");',
+        'const h2 = require("node:" + "https");',
+        "const mod = require(name);",
+        'import https from "node:https";',
+        'const later = await import("https");',
+        'new EventSource("https://example.com");',
+        'window.open("https://example.com");',
+    ]
+    missed = [line for line in walked_around if not caught(line)]
+    assert not missed, missed
+
+    the_apps_own = [
+        'const { app, BrowserWindow, ipcMain, shell, dialog } = require("electron");',
+        'const { spawn } = require("child_process");',
+        'const PKG = require("./package.json");',
+        'win.loadFile(path.join(__dirname, "renderer", "index.html"));',
+        'win.loadURL("file:///local/index.html");',
+        "// blocks on the look: strict parking is the safety net.",
+    ]
+    flagged = {line: caught(line) for line in the_apps_own if caught(line)}
+    assert not flagged, flagged
+
+
 def test_the_email_parser_reaches_no_mail_client_and_no_network_call():
     """Decision 143's one exception, measured rather than trusted: the
     module that opens a client's ``.eml`` is imported in an interpreter of
@@ -474,10 +744,11 @@ ALLOWED_SPELLINGS: dict[tuple[str, str], str] = {
     ("tracker/locking.py", "holds"): ("whether a held token was written to this very lock file, "
                                       "under any spelling (decision 159) - one file, not a place "
                                       "in either tree"),
+    ("tracker/validators.py", "bears_macros"): ("a member's name inside an Office package's zip "
+                                                "(decision 190), never a folder of the layout"),
     ("tools/repo_map.py", "*"): "the repository's paths, never a client's",
     ("tools/vocab_report.py", "*"): "the repository's paths, never a client's",
     ("tools/backtest.py", "*"): "the repository's paths, never a client's",
-    ("tools/learned_keywords.py", "out_path"): "the repository's paths, never a client's",
 }
 #: The owners: the only modules that may spell a rule about the trees.
 SPELLING_OWNERS = ("tracker/layout.py", "tracker/door.py")
@@ -668,3 +939,32 @@ def test_the_app_never_works_out_whether_a_path_lies_under_another():
         text = (REPO / rel).read_text(encoding="utf-8")
         assert "path.relative(" not in text, rel
         assert "startsWith(" not in text, rel
+
+
+def test_importing_the_api_loads_no_network_module():
+    """Decision 193's review (S2): importing the tracker - the API, which
+    imports every other module - loads no module that could open a
+    connection. The error log rotates by its own few lines rather than
+    ``logging.handlers`` (which loads ``socket``), and the two standard
+    library helpers that drag one in - the email parser and XML escaping -
+    are imported where they are used. Measured in a fresh interpreter.
+
+    Decision 194 (D8) closes the escape for good: ``tracker.scheduling``
+    escapes the task file with ``html.escape(quote=False)``, byte for byte
+    what ``xml.sax.saxutils`` gave, so ``xml.sax`` - which loads
+    ``urllib.request``, ``http.client`` and ``ssl`` - is not in the process
+    at all, and the scheduling module is held to it on its own too."""
+    import json
+    import subprocess
+    import sys
+
+    for module in ("tracker.api", "tracker.scheduling"):
+        program = (
+            "import json,sys\n"
+            f"import {module}\n"
+            "print(json.dumps(sorted(m for m in ('socket', 'http', 'ssl', 'urllib.request', "
+            "'xml.sax') if m in sys.modules)))\n"
+        )
+        done = subprocess.run([sys.executable, "-c", program], capture_output=True, text=True,
+                              check=True, cwd=REPO)
+        assert json.loads(done.stdout) == [], module
