@@ -782,14 +782,98 @@ def test_the_left_behind_checkpoint_moves_into_the_data_home(tmp_path):
 def test_a_taken_destination_moves_nothing_and_says_so(tmp_path):
     items = left_behind(tmp_path / "program")
     home = tmp_path / "data home"
-    home.mkdir()
-    (home / JOURNAL).write_bytes(b"the data home's own")
+    (home / "recovered").mkdir(parents=True)
+    (home / "recovered" / "own.json").write_bytes(b"the data home's own")
     done = after_install.move_left_behind(items, home)
     assert done.failed and done.moved == ()
-    assert done.sentence == after_install.LEFT_BEHIND_DESTINATION_TAKEN.format(name=JOURNAL, home=home)
+    assert done.sentence == after_install.LEFT_BEHIND_DESTINATION_TAKEN.format(name="recovered", home=home)
     assert all(os.path.lexists(item) for item in items)
+    assert sorted(os.listdir(home)) == ["recovered"]
+    assert (home / "recovered" / "own.json").read_bytes() == b"the data home's own"
+    # A part of the checkpoint already in the home is the unit's refusal (MF1).
+    (home / JOURNAL).write_bytes(b"the data home's own")
+    done = after_install.move_left_behind(items, home)
+    assert done.failed and done.sentence == after_install.LEFT_BEHIND_JOURNAL_ALONE.format(home=home)
+    assert all(os.path.lexists(item) for item in items)
+
+
+def test_a_lone_journal_never_moves_beside_another_checkpoint(tmp_path):
+    """The merge review's MF1, probe 1: a rollback journal left beside the
+    program without its checkpoint, while the data home holds a checkpoint
+    of its own, would be replayed into that checkpoint at its next open. It
+    moves nothing and fails in one sentence; the home is untouched."""
+    beside, home = tmp_path / "program", tmp_path / "data home"
+    beside.mkdir()
+    home.mkdir()
+    (beside / JOURNAL).write_bytes(b"an old journal")
+    (home / CHECKPOINT).write_bytes(b"the home's own checkpoint")
+    done = after_install.move_left_behind([beside / JOURNAL], home)
+    assert done == after_install.MoveOutcome(
+        sentence=after_install.LEFT_BEHIND_JOURNAL_ALONE.format(home=home), failed=True)
+    assert (beside / JOURNAL).read_bytes() == b"an old journal"
+    assert sorted(os.listdir(home)) == [CHECKPOINT]
+    # With no checkpoint in the home either, a journal alone still moves nothing.
+    (home / CHECKPOINT).unlink()
+    assert after_install.move_left_behind([beside / JOURNAL], home).failed
+    assert os.listdir(home) == []
+
+
+def test_a_checkpoint_never_moves_beside_another_journal(tmp_path):
+    """MF1, probe 2, the reverse: the checkpoint left behind while the data
+    home holds a lone journal moves nothing - it would meet a journal that
+    is not its own."""
+    beside, home = tmp_path / "program", tmp_path / "data home"
+    beside.mkdir()
+    home.mkdir()
+    (beside / CHECKPOINT).write_bytes(b"checkpoint\x00heads")
+    (home / JOURNAL).write_bytes(b"a stranger's journal")
+    done = after_install.move_left_behind([beside / CHECKPOINT], home)
+    assert done == after_install.MoveOutcome(
+        sentence=after_install.LEFT_BEHIND_JOURNAL_ALONE.format(home=home), failed=True)
+    assert (beside / CHECKPOINT).read_bytes() == b"checkpoint\x00heads"
     assert sorted(os.listdir(home)) == [JOURNAL]
-    assert (home / JOURNAL).read_bytes() == b"the data home's own"
+
+
+def test_move_schedule_here_from_a_removable_drive_changes_nothing(root, windows, monkeypatch, capsys):
+    """The merge review's SF2: from a copy on a stick, ``--move-schedule-here``
+    asks decision 186's refusal first - the designation still names the old
+    computer, no task is registered, and the command says 186's sentence."""
+    from tracker import settings as settings_module
+
+    designation_file(root).write_text(f"{ELSEWHERE}\n", encoding="utf-8")
+    program = settings_module.app_dir()
+    monkeypatch.setattr(settings_module, "drive_type",
+                        lambda path: settings_module.DRIVE_REMOVABLE if Path(path) == program
+                        else settings_module.DRIVE_FIXED)
+    code, out = cli(monkeypatch, capsys, "--move-schedule-here")
+    assert code == 1
+    assert out.splitlines()[0] == settings_module.PROGRAM_ON_REMOVABLE.format(folder=program)
+    assert designation_file(root).read_text(encoding="utf-8") == f"{ELSEWHERE}\n"
+    assert windows["calls"] == []
+
+
+def test_an_os_error_in_the_record_check_is_said_by_class_and_kept_whole(root, monkeypatch, caplog):
+    """The merge review's SF3: the check says an OSError by its class, never
+    its words (they can spell a client's path), and keeps the whole of it
+    on the local debug log (decision 190's ``errors.keep``)."""
+    import errno
+    import logging
+
+    from tracker import errors, store
+
+    secret = "C:/Clients/Jane Roe/SSN 123-45-6789"
+
+    def refused(*args, **kwargs):
+        raise PermissionError(errno.EACCES, "denied", secret)
+
+    after_install.run(reason=after_install.REASON_SETUP)      # a store to check
+    monkeypatch.setattr(store, "holds", refused)
+    with caplog.at_level(logging.WARNING, logger=errors.DEBUG_LOGGER):
+        done = after_install.run(reason=after_install.REASON_SETUP)
+    assert done.findings and all(secret not in finding for finding in done.findings)
+    assert any("PermissionError (EACCES)" in finding for finding in done.findings)
+    assert secret not in "\n".join(done.lines)
+    assert secret in caplog.text
 
 
 def test_a_linked_left_behind_item_is_refused(tmp_path):

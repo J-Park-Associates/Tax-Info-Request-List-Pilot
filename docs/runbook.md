@@ -541,10 +541,13 @@ changes nothing:
   moves `record-heads.db` and its journal together, the other copies and
   `recovered` from beside the app into `%LOCALAPPDATA%\tax-document-tracker`
   under their own names, before it registers the schedule; the packaged
-  app does the same at its first start after the upgrade. It never
-  overwrites: if the data folder already holds one of those names, nothing
-  moves, and the step says so in one sentence - then, and only then, a
-  person acts, as below. It moves nothing on the delete list. Until
+  app does the same at its first start after the upgrade. The checkpoint,
+  its journal and a `.damaged` copy move as one: a journal found without
+  its checkpoint beside it, or a data folder that already holds any of the
+  three, moves nothing - a journal beside a checkpoint that is not its own
+  would be replayed into it. It never overwrites: if the data folder
+  already holds one of those names, nothing moves, and the step says so in
+  one sentence - then, and only then, a person acts, as below. It moves nothing on the delete list. Until
   `record-heads.db` is moved the tracker makes no new checkpoint - one
   would trust every record as it is that day (*the moment of trust*, §6) -
   so nothing is written: the pass serves no household, writes its page

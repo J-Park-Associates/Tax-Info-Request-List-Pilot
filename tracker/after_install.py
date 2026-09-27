@@ -114,7 +114,7 @@ import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from tracker import door, errors, ledger, registry, runner, scheduling, settings, store
+from tracker import checkpoint, door, errors, ledger, registry, runner, scheduling, settings, store
 from tracker.fsio import write_json_atomically
 from tracker.locking import this_host
 
@@ -199,6 +199,13 @@ LEFT_BEHIND_MOVED = ("Moved the record checkpoint and recovered records an earli
 LEFT_BEHIND_DESTINATION_TAKEN = ("{name} is already in {home}, so the files an earlier version left "
                                  "beside the program were not moved; a person must compare the two and "
                                  "keep one (runbook, decision 186).")
+#: The record checkpoint, its rollback journal and a copy a person renamed
+#: ``.damaged``, by 186's own names: moved together or not at all (MF1).
+CHECKPOINT_UNIT = (checkpoint.CHECKPOINT_FILENAME, checkpoint.CHECKPOINT_JOURNAL_FILENAME,
+                   checkpoint.CHECKPOINT_DAMAGED_FILENAME)
+LEFT_BEHIND_JOURNAL_ALONE = ("The record checkpoint's journal beside the program has no checkpoint with "
+                             "it, or {home} already holds part of the checkpoint; nothing was moved - a "
+                             "person must look (runbook, decision 186).")
 LEFT_BEHIND_IS_LINK = ("{name}, left beside the program by an earlier version, is a link, so nothing was "
                        "moved into {home}; a person must move what it points at (runbook, decision 186).")
 LEFT_BEHIND_MOVE_FAILED = ("The files an earlier version left beside the program could not all be moved "
@@ -363,7 +370,8 @@ def _schedule(root: Path | None, start: str, every: int) -> _Step:
             scheduling.claim(root)
         except scheduling.DesignationError as exc:
             return _Step(outcome, str(exc), failed=True)
-        except OSError:
+        except OSError as exc:
+            errors.keep("after_install: claiming the schedule", exc)
             return _Step(outcome, DESIGNATION_UNWRITABLE.format(
                 file=scheduling.designation_file(root)), failed=True)
     try:
@@ -376,7 +384,8 @@ def _schedule(root: Path | None, start: str, every: int) -> _Step:
         command = scheduling.register_here(folder, start=start, every=every)
     except RuntimeError as exc:
         return _Step(outcome, SCHEDULE_FAILED.format(problem=exc), failed=True)
-    except OSError:
+    except OSError as exc:
+        errors.keep("after_install: registering the schedule", exc)
         return _Step(outcome, SCHEDULE_FAILED.format(problem=SCHEDULE_UNREACHABLE), failed=True)
     sentence = (scheduling.SCHEDULE_CLAIMED if outcome == scheduling.CLAIMED
                 else scheduling.SCHEDULE_REGISTERED)
@@ -406,10 +415,13 @@ def _check(root: Path | None) -> _Step:
                 # A record the reader refuses is that household's to wait
                 # on, as the pass makes it: named, and the rest go on.
                 # The record's own refusal whole; an OS error by its class
-                # (decision 190: its message can spell a client's path).
+                # (decision 190: its message can spell a client's path), and
+                # the whole of it kept on the local debug log, never shown.
+                errors.keep("after_install: the record check", exc, name=folder.name)
                 findings.append(f"{folder.name}: {errors.said(exc, (ledger.LedgerError,))}")
         findings += store.gone_journals(conn, root)
     except (store.StoreError, ledger.LedgerError, OSError) as exc:
+        errors.keep("after_install: the record check", exc)
         problem = errors.said(exc, (store.StoreError, ledger.LedgerError)).rstrip(".") + "."
         return _Step(CHECK_FAILED_KEY, CHECK_FAILED.format(problem=problem), failed=True)
     if not findings and not judged:
@@ -703,6 +715,16 @@ def move_left_behind(items: list[Path], home: Path) -> MoveOutcome:
         return MoveOutcome()
     if len({item.name for item in present}) != len(present):
         return MoveOutcome(sentence=LEFT_BEHIND_MOVE_FAILED.format(home=home), failed=True)
+    # The checkpoint and its journal are one unit (the merge review's MF1): a
+    # rollback journal beside a checkpoint that is not its own is replayed
+    # into it at its next open. A journal without its checkpoint beside it,
+    # or a home already holding any part of the unit, moves nothing.
+    if any(item.name in CHECKPOINT_UNIT for item in present) and (
+            any(item.name == checkpoint.CHECKPOINT_JOURNAL_FILENAME
+                and not os.path.lexists(item.parent / checkpoint.CHECKPOINT_FILENAME)
+                for item in present)
+            or any(os.path.lexists(home / name) for name in CHECKPOINT_UNIT)):
+        return MoveOutcome(sentence=LEFT_BEHIND_JOURNAL_ALONE.format(home=home), failed=True)
     for item in present:
         if _is_link(item):
             return MoveOutcome(sentence=LEFT_BEHIND_IS_LINK.format(name=item.name, home=home),
@@ -723,6 +745,7 @@ def move_left_behind(items: list[Path], home: Path) -> MoveOutcome:
                                home=home, name=partly.name, aside=partly.aside.name),
                            failed=True)
     except OSError as problem:
+        errors.keep("after_install: moving what was left behind", problem)
         for item in reversed(done):
             try:
                 _move_one(home / item.name, item)
@@ -902,7 +925,15 @@ def move_schedule_here() -> tuple[str, bool]:
     computer it replaces, and whether the file was written. The caller then
     runs the step, so this computer registers; the old one removes its own
     task at its next start, because the file no longer names what its
-    record says it named (:func:`launch`)."""
+    record says it named (:func:`launch`).
+
+    A program on a removable, network or unnamed drive (decision 186) is
+    asked first and changes nothing: a move from a stick would name this
+    computer, register no task here, and the old one would remove its own
+    at its next start - no computer would run the schedule (the merge
+    review's SF2)."""
+    if refusal := settings.program_drive_refusal():
+        return refusal, False
     root, refused = _saved_root()
     if refused:
         return refused, False
