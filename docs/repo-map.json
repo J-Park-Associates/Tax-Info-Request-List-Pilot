@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 164,
     "edges": 1020,
-    "reused": 121
+    "reused": 124
   },
   "node_types": [
     "artifact",
@@ -1963,8 +1963,8 @@
       "id": "tracker/records.py",
       "type": "module",
       "layer": "core",
-      "sha256": "e7160a98dbe75bef",
-      "lines": 2023,
+      "sha256": "c1a952f829a28897",
+      "lines": 2021,
       "exports": [
         "ANSWER_SEP",
         "BEHIND",
@@ -2009,7 +2009,6 @@
         "HOST_BOUNDS",
         "HOST_MAX",
         "HOUSEHOLD_FIELDS",
-        "HOUSEHOLD_LABELS",
         "HouseholdInfo",
         "INDEX_COLUMNS",
         "IndexEntry",

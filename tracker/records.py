@@ -1130,8 +1130,6 @@ HOUSEHOLD_FIELDS = (
     ("Inbox Link", "link"),
     ("Also feeds", "feeds"),
 )
-#: field name -> the label, for messages that name a field.
-HOUSEHOLD_LABELS = {field_name: label for label, field_name in HOUSEHOLD_FIELDS}
 #: The fields a person may change once the household exists. The name is
 #: not among them: the folder is the name, exactly as a return's is.
 #: ``feeds`` is (decision 129) and is edited through its own list rather
