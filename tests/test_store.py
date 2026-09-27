@@ -1014,6 +1014,10 @@ def test_a_store_left_behind_is_rebuilt_from_the_record_in_its_new_home(root, en
     monkeypatch.setenv(ENV_SETTINGS_DIR, str(app))
     monkeypatch.setenv(ENV_DATA_HOME, str(tmp_path / "account-data"))
     monkeypatch.delenv(store.ENV_STORE)
+    # The checkpoint is moved, as the runbook's upgrade step says: one left
+    # beside the program refuses a fresh one (186's rebase review, MF1).
+    (tmp_path / "account-data").mkdir()
+    os.replace(app / checkpoint.CHECKPOINT_FILENAME, tmp_path / "account-data" / checkpoint.CHECKPOINT_FILENAME)
     fresh = store.connect()
     try:
         assert store.store_path() == tmp_path / "account-data" / store.STORE_FILENAME
@@ -3631,3 +3635,81 @@ def test_households_are_every_stored_household_row_read_as_it_stands(root, monke
     # behind the store is there to be read.
     assert load_household_info(family).feeds == ()
     assert ledger.path_for(family) in read
+
+
+# ------------------- decision 186's rebase review: the checkpoint left beside the program ----
+
+
+def _upgraded_before_the_move(monkeypatch) -> tuple[Path, Path]:
+    """A machine that ran 159 before 186, upgraded before its checkpoint was
+    moved: the store and checkpoint the fixture made beside the settings
+    file (159's layout), and the store now asked of the data home, where no
+    checkpoint is yet. Returns the old checkpoint and where the new one
+    would be."""
+    from tracker import settings
+
+    old = settings.settings_dir() / checkpoint.CHECKPOINT_FILENAME
+    assert old.is_file()
+    store.close()
+    monkeypatch.setenv(store.ENV_STORE, str(settings.data_home() / store.STORE_FILENAME))
+    return old, checkpoint.path_for(store.store_path())
+
+
+def test_no_fresh_checkpoint_is_made_while_the_old_one_sits_beside_the_program(root, engagement,
+                                                                                monkeypatch):
+    """MF1: a fresh checkpoint would seed every record "as it is" and drop
+    what the old one vouched for. Every open that could make one refuses -
+    the root's proof, claiming or not, and a person's acknowledgement -
+    naming the old file and the folder it belongs in; nothing is made and
+    the old file is not touched."""
+    old, new = _upgraded_before_the_move(monkeypatch)
+    before = old.read_bytes()
+    said = checkpoint.LEFT_BEHIND.format(old=old.resolve(), home=new.parent)
+    for attempt in (lambda: store.prove_the_root(root), lambda: store.prove_the_root(root, claim=False),
+                    lambda: store.acknowledge_foreign(engagement)):
+        with pytest.raises(checkpoint.CheckpointLeftBehind) as refused:
+            attempt()
+        assert str(refused.value) == said
+    assert not new.exists() and old.read_bytes() == before
+
+
+def test_a_catch_up_says_the_checkpoint_left_behind_as_that_returns_problem(root, engagement, monkeypatch):
+    """MF1: the catch-up every reader runs first (a read-only view of one
+    return included) makes no checkpoint either; it says so as a
+    :class:`store.StoreError`, so every caller that names one return's
+    problem names this, and carries the two folders for the app."""
+    old, new = _upgraded_before_the_move(monkeypatch)
+    with pytest.raises(store.CheckpointNotMade) as refused:
+        ensure(engagement)
+    assert isinstance(refused.value, store.StoreError)
+    assert (refused.value.old, refused.value.home) == (old.resolve(), new.parent)
+    assert not new.exists()
+
+
+def test_moving_or_renaming_the_old_checkpoint_lifts_the_refusal(root, engagement, monkeypatch):
+    """MF1's escape: the runbook's move - or keeping it under a dated name -
+    is all it takes; moved into the data home, it is the checkpoint, with
+    the root it claimed."""
+    old, new = _upgraded_before_the_move(monkeypatch)
+    kept = old.with_name(old.name + ".2026-09-27")
+    old.rename(kept)
+    store.prove_the_root(root, claim=False)                  # nothing to refuse, nothing made
+    assert not new.exists()
+    kept.rename(old)
+    new.parent.mkdir(parents=True, exist_ok=True)
+    os.replace(old, new)
+    store.prove_the_root(root)
+    with checkpoint.opened(new) as held:
+        assert checkpoint.root_of(held) == str(root.resolve())
+    ensure(engagement)
+
+
+def test_the_store_beside_the_settings_file_is_never_refused_its_checkpoint(root, engagement):
+    """The suite's own shape (``TRACKER_STORE`` beside the settings file):
+    the old place and the new are the same file, so a checkpoint missing
+    there is simply made."""
+    where = checkpoint.path_for(store.store_path())
+    store.close()
+    where.unlink()
+    store.prove_the_root(root)
+    assert where.is_file()

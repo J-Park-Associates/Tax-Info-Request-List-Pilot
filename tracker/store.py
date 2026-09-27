@@ -352,6 +352,19 @@ class StoreError(RuntimeError):
     """The store could not be opened, written to, or read as one."""
 
 
+class CheckpointNotMade(StoreError):
+    """One return's catch-up met :class:`tracker.checkpoint.CheckpointLeftBehind`
+    (the rebase review of decision 186, MF1): a :class:`StoreError`, so every
+    caller that already says one return's problem by name says this, and
+    carries ``old`` and ``home`` so the app can say it in the first
+    screen's own sentence."""
+
+    def __init__(self, left: checkpoint.CheckpointLeftBehind) -> None:
+        super().__init__(str(left))
+        self.old = left.old
+        self.home = left.home
+
+
 #: What a database the engine refused says (decision 189): the SQLite
 #: error's name and nothing else. The engine's own text can carry a path
 #: or a fragment of a statement, so it stays on ``__cause__`` for a person
@@ -2454,6 +2467,44 @@ def _checkpoint_file(conn: sqlite3.Connection) -> Path | None:
     return None
 
 
+def _spelled(path: Path) -> str:
+    """A path as the filesystem compares it: resolved, and without case on
+    Windows - so the store beside a settings folder reached through a link
+    is still that folder."""
+    return os.path.normcase(str(Path(path).resolve()))
+
+
+def _checkpoint_may_be_made(where: Path) -> None:
+    """Refuse to make a checkpoint at ``where`` while an earlier version's
+    sits beside the program (the rebase review of decision 186, MF1).
+
+    **Refuse to create, never refuse to open**: nothing is asked when
+    ``where`` is already a file. Otherwise a :data:`checkpoint.CHECKPOINT_FILENAME`
+    in any folder :func:`tracker.settings.beside_the_program` names, other
+    than ``where`` itself, raises :class:`checkpoint.CheckpointLeftBehind` -
+    a fresh file would seed every record "as it is" and drop what the old
+    one vouched for. The checkpoint of the store in use is never "left
+    behind", as :func:`tracker.runner.left_behind` never names it: with
+    ``TRACKER_STORE`` beside the settings file (the suite's fixture) the
+    file there is the live one, and a store opened elsewhere by path (a
+    rebuild into a scratch file) is not refused for it. Moving or renaming
+    the old file lifts the refusal; nothing here moves anything.
+    :mod:`tracker.settings` is reached at call time, as :func:`store_path`
+    reaches it, so the layers hold."""
+    if where.is_file():
+        return
+    from tracker import settings
+
+    try:
+        in_use = _spelled(checkpoint.path_for(store_path()))
+    except settings.SettingsError:
+        in_use = None       # no data home: nothing beside the program is the live one
+    for folder in settings.beside_the_program():
+        old = folder / checkpoint.CHECKPOINT_FILENAME
+        if os.path.lexists(old) and _spelled(old) not in (_spelled(where), in_use):
+            raise checkpoint.CheckpointLeftBehind(old, where.parent)
+
+
 @contextmanager
 def _beside(conn: sqlite3.Connection, held: sqlite3.Connection | None = None):
     """The checkpoint beside ``conn``'s store, opened for one question and
@@ -2468,7 +2519,11 @@ def _beside(conn: sqlite3.Connection, held: sqlite3.Connection | None = None):
         yield None
         return
     try:
+        _checkpoint_may_be_made(where)
         opened = checkpoint.open(where)
+    except checkpoint.CheckpointLeftBehind as exc:
+        # Every return says it (MF1), in the same sentence, as its own.
+        raise CheckpointNotMade(exc) from None
     except checkpoint.CheckpointError as exc:
         # One return's problem, said by name (the review's S4).
         raise StoreError(str(exc)) from None
@@ -2659,6 +2714,9 @@ def prove_the_root(root: Path | str, *, claim: bool = True) -> None:
 
     now = Path(root).resolve()
     where = checkpoint.path_for(store_path())
+    # Before the early return (MF1): a typed root with no checkpoint yet
+    # must not pass on to households that would each make one.
+    _checkpoint_may_be_made(where)
     if not claim and not where.is_file():
         return
     with checkpoint.opened(where) as held:
@@ -2689,7 +2747,9 @@ def acknowledge_foreign(engagement_dir: Path | str) -> int:
     conn = connect()
     row = _engagement_row(conn, engagement_dir)
     key = row["path"] if row is not None else engagement_path(key_root(engagement_dir), engagement_dir)
-    with checkpoint.opened(checkpoint.path_for(store_path())) as held:
+    where = checkpoint.path_for(store_path())
+    _checkpoint_may_be_made(where)
+    with checkpoint.opened(where) as held:
         return checkpoint.acknowledge(held, key)
 
 

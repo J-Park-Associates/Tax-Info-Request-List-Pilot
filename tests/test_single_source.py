@@ -1715,7 +1715,7 @@ def _run_the_shell(tmp_path, calls, **env):
     done = subprocess.run([node, str(harness), str(REPO / "app" / "main.js"), str(fake),
                            json.dumps(calls)],
                           capture_output=True, text=True, encoding="utf-8", timeout=120, check=False,
-                          env=child_env(FAKE_LOG=str(tmp_path / "tracker-errors.log"), **env))
+                          env=child_env(**{"FAKE_LOG": str(tmp_path / "tracker-errors.log"), **env}))
     assert done.returncode == 0, done.stderr
     return json.loads(done.stdout)
 
@@ -1754,6 +1754,24 @@ def test_the_shell_never_puts_stderr_on_screen_and_appends_it_to_the_error_log(t
     assert "a fabricated message naming Sample Client's folder" in logged
 
 
+def test_with_no_error_log_the_shell_says_stderr_in_the_reply_and_writes_no_file(tmp_path):
+    """The rebase review of 186 (MF2): with no data home the API names no
+    error log, and the shell never builds one beside the program or in the
+    settings folder - a failed command's stderr is said in its own reply,
+    and no file is written anywhere."""
+    import tracker.api as api
+    from tracker.settings import ERROR_LOG_FILENAME
+
+    ran = _run_the_shell(tmp_path, [["list"], ["templates"]], FAKE_LOG="")
+    reply = ran["out"][1]["reply"]
+    stderr = "Traceback: a fabricated message naming Sample Client's folder\n"
+    sentence = api.SHELL_NO_REPLY.format(code=1) + "\n\n" + api.SHELL_NO_LOG.format(stderr=stderr)
+    assert reply["error"] == sentence and reply["failure"]["sentence"] == sentence
+    assert reply["failure"]["kind"] == "failed"
+    assert not (REPO / ERROR_LOG_FILENAME).exists()
+    assert not list(tmp_path.rglob(ERROR_LOG_FILENAME))
+
+
 def test_a_failed_spawn_is_said_by_its_code(tmp_path):
     import tracker.api as api
 
@@ -1763,15 +1781,16 @@ def test_a_failed_spawn_is_said_by_its_code(tmp_path):
     assert "/no/such" not in reply["error"] and reply["failure"]["kind"] == "failed"
 
 
-def test_the_progress_key_and_the_error_log_name_are_typed_once_per_language():
+def test_the_progress_key_is_typed_once_per_language_and_the_error_log_only_by_the_api():
     from tracker.progress import PROGRESS_KEY
     from tracker.settings import ERROR_LOG_FILENAME
 
     main_js = read("app/main.js")
     assert f'const PROGRESS_KEY = "{PROGRESS_KEY}";' in main_js
-    assert f'const ERROR_LOG_FILENAME = "{ERROR_LOG_FILENAME}";' in main_js
-    assert main_js.count(f'"{ERROR_LOG_FILENAME}"') == 1 and main_js.count(f'"{PROGRESS_KEY}"') == 1
-    # The log's path is the API's; the shell builds it only before it has heard.
+    assert main_js.count(f'"{PROGRESS_KEY}"') == 1
+    # The log's path is the API's, and the shell never builds one of its own
+    # (the rebase review of 186, MF2): its name is not in the shell at all.
+    assert ERROR_LOG_FILENAME not in main_js
     assert "vocab.shell" in main_js and "said.error_log" in main_js
 
 
@@ -1789,6 +1808,7 @@ def test_the_shells_default_words_are_the_apis_word_for_word():
     assert default("noReply") == api.SHELL_NO_REPLY
     assert default("couldNotStart") == api.SHELL_COULD_NOT_START
     assert default("couldNotSend") == api.SHELL_COULD_NOT_SEND
+    assert default("noLog") == api.SHELL_NO_LOG
     shell = api._vocab()["shell"]
     assert (shell["killed"], shell["killed_at"], shell["no_reply"], shell["could_not_start"]) == (
         api.SHELL_KILLED, api.SHELL_KILLED_AT, api.SHELL_NO_REPLY, api.SHELL_COULD_NOT_START)

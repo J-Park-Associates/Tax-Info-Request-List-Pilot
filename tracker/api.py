@@ -272,6 +272,7 @@ from tracker.runner import (
     CODE_READER_COULD_NOT_START,
     CODE_READER_PATH_WARNING,
     DRAFT_WEEKDAY,
+    LEFT_BEHIND_TO_MOVE,
     LOG_FILENAME,
     LOG_NOT_WRITTEN,
     NOTHING_OUTSTANDING,
@@ -431,6 +432,11 @@ SHELL_KILLED_AT = "It was on {household}: {name}."
 SHELL_NO_REPLY = "The tracker ended without a reply (exit code {code}); the details are in the error log."
 SHELL_COULD_NOT_START = "The tracker could not start ({code})."
 SHELL_COULD_NOT_SEND = "The app could not send that to the tracker ({kind}); nothing was changed."
+#: With no error log (no data folder yet), a failed command's stderr is said
+#: in its own reply instead - the shell never writes a log beside the
+#: program (decision 186's rebase review, MF2).
+SHELL_NO_LOG = ("There is no error log to hold the details - the tracker has no data folder yet - so "
+                "they are here instead: {stderr}")
 #: An error of the page's own, said by its class; its message goes to the
 #: error log through the shell (the review's S5).
 PAGE_ERROR = "The app met an error of its own ({kind}); the details are in the error log."
@@ -485,6 +491,11 @@ def _failure_of(exc: BaseException) -> dict:
         held = getattr(exc, "lock", None)
         extra["lock"] = (_lock_payload(Path(held).parent)
                          if held and Path(held).name == LOCK_FILENAME else None)
+    elif isinstance(exc, (store.CheckpointNotMade, checkpoint.CheckpointLeftBehind)):
+        # A read that would have made a fresh checkpoint while the old one
+        # sits beside the program (the rebase review of 186, MF1): said as
+        # the first screen says it - what to move and where - not as an error.
+        kind, sentence = "refused", _left_behind_to_move(exc)
     elif isinstance(exc, (store.StoreUnavailable, ledger.RecordNotWritten, ledger.LedgerError)):
         kind, sentence = "failed", FAILED.format(kind=content_check.said_as_class(exc),
                                                  log=ERROR_LOG_FILENAME)
@@ -497,6 +508,13 @@ def _failure_of(exc: BaseException) -> dict:
                                                  log=ERROR_LOG_FILENAME)
     reply = progress.failure_reply(sentence, kind, seq=seq, identifier=identifier, **extra)
     return reply["failure"]
+
+
+def _left_behind_to_move(exc: store.CheckpointNotMade | checkpoint.CheckpointLeftBehind) -> str:
+    """The first screen's :data:`LEFT_BEHIND_TO_MOVE` for the one checkpoint
+    that stopped a command (the rebase review of 186, MF1): the app says
+    this state in one sentence wherever it meets it."""
+    return LEFT_BEHIND_TO_MOVE.format(paths=exc.old, home=exc.home)
 
 
 def _reply_failure(exc: BaseException) -> int:
@@ -1170,7 +1188,8 @@ def _vocab() -> dict:
         "shell": {"not_opened": SHELL_NOT_OPENED, "killed": SHELL_KILLED,
                   "killed_at": SHELL_KILLED_AT, "no_reply": SHELL_NO_REPLY,
                   "could_not_start": SHELL_COULD_NOT_START,
-                  "could_not_send": SHELL_COULD_NOT_SEND, "page_error": PAGE_ERROR,
+                  "could_not_send": SHELL_COULD_NOT_SEND, "no_log": SHELL_NO_LOG,
+                  "page_error": PAGE_ERROR,
                   "error_log": _error_log_said()},
         # The lock notice (decision 193, D4): when, where, and - on this
         # machine - which file; nothing waits and nothing needs clearing.
@@ -2214,7 +2233,8 @@ def _error_log_said() -> str:
     """The error log's path for the shell, or ``""`` when no data home can
     be had (decision 186): the log sits beside the store, in the data home,
     and ``list`` must still answer so the first screen can say why. The
-    shell keeps no path it is given empty."""
+    shell keeps no path it is given empty, and then writes no log at all:
+    a failed command's stderr is said in its reply (:data:`SHELL_NO_LOG`)."""
     try:
         return str(error_log_path())
     except SettingsError:
@@ -4353,6 +4373,8 @@ def _prove_the_root() -> None:
         return
     try:
         store.prove_the_root(root)
+    except checkpoint.CheckpointLeftBehind as exc:
+        raise ManifestError(_left_behind_to_move(exc)) from None
     except (store.StoreError, checkpoint.CheckpointError) as exc:
         # Not this machine's root, or its checkpoint busy or unreadable -
         # each in its own sentence (the rebase review's SF1).

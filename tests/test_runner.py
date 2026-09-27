@@ -3981,8 +3981,10 @@ def test_the_store_in_use_is_never_named_as_left_behind(tmp_path, monkeypatch):
     monkeypatch.setenv(ENV_SETTINGS_DIR, str(app))
     store.connect()                                              # the fixture's store, in use
     for name in (store.STORE_WAL_FILENAME, runner_module.PASS_ORDER_FILENAME,
-                 checkpoint.CHECKPOINT_FILENAME, runner_module.LAST_PASS_FILENAME,
-                 ERROR_LOG_FILENAME, f"{ERROR_LOG_FILENAME}.1"):
+                 checkpoint.CHECKPOINT_FILENAME, checkpoint.CHECKPOINT_JOURNAL_FILENAME,
+                 checkpoint.CHECKPOINT_DAMAGED_FILENAME, runner_module.LAST_PASS_FILENAME,
+                 ERROR_LOG_FILENAME, f"{ERROR_LOG_FILENAME}.1",
+                 f"{store.STORE_FILENAME}.v3.old", f"{checkpoint.CHECKPOINT_FILENAME}.v1.old"):
         if not (app / name).exists():                              # the store may have made one
             (app / name).write_bytes(b"")
     (app / store.RECOVERED_DIR).mkdir(exist_ok=True)
@@ -3990,6 +3992,73 @@ def test_the_store_in_use_is_never_named_as_left_behind(tmp_path, monkeypatch):
     assert Path(store.store_path()).parent == app
     assert runner_module.left_behind(tmp_path) == []
     assert runner_module.left_behind_warnings(tmp_path) == []
+
+
+def test_159s_set_asides_and_the_checkpoints_journal_left_behind_are_named_in_their_groups(
+        tmp_path, monkeypatch):
+    """The rebase review of 186 (SF3, N1): what 159's set-aside renamed out of
+    the way beside the program is client data too. The store's (rebuilt from
+    the records) is named to delete; the checkpoint's set-asides, a copy a
+    person renamed ``.damaged`` and its rollback journal are named to move,
+    with it - none is ever touched."""
+    from tracker import checkpoint
+    from tracker.settings import ENV_SETTINGS_DIR, data_home
+
+    settings = tmp_path / "settings"
+    settings.mkdir()
+    to_delete = [f"{store.STORE_FILENAME}.v3.old", f"{store.STORE_FILENAME}.v3.old-wal",
+                 f"{store.STORE_FILENAME}.v3.old.1"]
+    to_move = [checkpoint.CHECKPOINT_FILENAME, checkpoint.CHECKPOINT_JOURNAL_FILENAME,
+               checkpoint.CHECKPOINT_DAMAGED_FILENAME, f"{checkpoint.CHECKPOINT_FILENAME}.v1.old"]
+    for name in to_delete + to_move:
+        (settings / name).write_bytes(name.encode())
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    monkeypatch.setenv(store.ENV_STORE, str(data_home() / store.STORE_FILENAME))
+    store.close()
+
+    said = dict(runner_module.left_behind_warnings(None))
+
+    def named(code, before):
+        return sorted(Path(one).name for one in said[code].split(": ", 1)[1].split(before, 1)[0].split("; "))
+
+    assert named(runner_module.CODE_LEFT_BEHIND, ". They hold") == sorted(to_delete)
+    assert named(runner_module.CODE_LEFT_BEHIND_TO_MOVE, ". These cannot") == sorted(to_move)
+    for name in to_delete + to_move:
+        assert (settings / name).read_bytes() == name.encode()      # named, never touched
+
+
+def test_a_pass_serves_no_household_while_the_old_checkpoint_sits_beside_the_program(tmp_path, monkeypatch):
+    """The rebase review of 186 (MF1): a machine upgraded before its
+    checkpoint was moved. The scheduled pass makes no fresh checkpoint - that
+    would trust every record "as it is" - reaches its root, writes its page
+    (the refusal first) and its log (the code, never the sentence), serves
+    no household, exits non-zero and says why in the last-pass file."""
+    import json
+
+    from tracker import checkpoint
+    from tracker.settings import data_home, set_clients_root, settings_dir
+
+    clients = tmp_path / "Clients"
+    make_engagement(clients, [RequestItem(identifier="A01", document="W-2")], household="Smith Family")
+    set_clients_root(clients)
+    old = settings_dir() / checkpoint.CHECKPOINT_FILENAME    # the fixture's: 159's layout
+    before = old.read_bytes()
+    store.close()
+    monkeypatch.setenv(store.ENV_STORE, str(data_home() / store.STORE_FILENAME))
+    new = checkpoint.path_for(store.store_path())
+
+    code = main([SETTINGS_FLAG, str(settings_dir()), "--reminders", "never", "--log"])
+
+    assert code == 1
+    page = html.unescape((clients / STATUS_PAGE_FILENAME).read_text(encoding="utf-8"))
+    first = page[page.index(runner_module.STATUS_RECORDS_HEADING):].split("<li>", 2)[1]
+    assert first.startswith("No household was served this pass") and "No record checkpoint was made" in first
+    logged = runner_module.log_path().read_text(encoding="utf-8")
+    assert f"{runner_module.CODE_CHECKPOINT_NOT_PROVED}=1" in logged
+    assert "No record checkpoint was made" not in logged
+    written = json.loads(runner_module.last_pass_path().read_text(encoding="utf-8"))
+    assert written["reason_code"] == runner_module.PASS_CHECKPOINT_LEFT_BEHIND
+    assert not new.exists() and old.read_bytes() == before
 
 
 # ------------------------------------------------ the run log: counts and codes ----

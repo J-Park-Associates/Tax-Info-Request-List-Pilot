@@ -385,6 +385,27 @@ def test_a_data_home_override_must_be_a_whole_path(tmp_path):
         tmp_path / ".local" / "state" / data_rules.DATA_HOME_NAME)   # blank is unset
 
 
+def test_beside_the_program_is_the_settings_folder_and_a_frozen_executables_own(tmp_path, monkeypatch):
+    """The one answer to "beside the program" (the rebase review of 186,
+    MF1): where what an earlier version left is looked for, and a fresh
+    checkpoint refused - the settings folder, and, frozen, the executable's
+    folder when it is another one."""
+    import sys
+
+    settings = tmp_path / "settings"
+    settings.mkdir()
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    assert data_rules.beside_the_program() == [settings.resolve()]
+    executable = tmp_path / "package" / "tracker-api.exe"
+    executable.parent.mkdir()
+    executable.write_bytes(b"")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(executable))
+    assert data_rules.beside_the_program() == [settings.resolve(), executable.parent.resolve()]
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(executable.parent))
+    assert data_rules.beside_the_program() == [executable.parent.resolve()]
+
+
 def test_the_data_home_is_never_inside_the_program_nor_holds_it(tmp_path, monkeypatch):
     app = data_rules.app_dir()                                 # the checkout, from source
     for inside_or_around in (app / "data", app, app.parent):

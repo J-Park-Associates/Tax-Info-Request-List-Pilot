@@ -456,23 +456,36 @@ changes nothing:
   office hours. Its version does not change. Until you delete them, the
   app's first screen names what the old version left beside the app, in
   two sentences. **To move, never to delete:** the record checkpoint
-  `record-heads.db` and a `recovered` folder (decision 159) - the
-  checkpoint cannot be made again, and the records in `recovered` are
-  evidence. **Move them before the new version runs at all**: turn the
-  schedule off, keep the app closed, install the new version, move
-  `record-heads.db` and `recovered` from beside the app into
-  `%LOCALAPPDATA%\tax-document-tracker`, and only then open the app or let
-  the schedule run. The order matters: the first pass, or the app's first
-  button that writes, finds no checkpoint in the data folder, makes a new
-  one and trusts every record as it is that day (*the moment of trust*,
-  §6). If that has already happened, do not copy the old file over the new
-  one: move the old one into the data folder under a new name with today's
-  date, keep it, and treat that day as the moment of trust (§6). **To delete:** `tracker.db`,
-  `tracker.db-wal`, `tracker.db-shm`, `pass-order.json`, `last-pass.json`,
+  `record-heads.db` with its `record-heads.db-journal` if there is one, a
+  copy of it renamed `record-heads.db.damaged` or set aside as
+  `record-heads.db.v1.old`, and a `recovered` folder (decision 159) - the
+  checkpoint cannot be made again, a journal can hold its last write, and
+  the old copies and the records in `recovered` are evidence. **Move them
+  before the new version runs at all**: turn the schedule off, keep the app
+  closed, install the new version, move `record-heads.db` (and any
+  `record-heads.db-journal` with it, together), the other copies and
+  `recovered` from beside the app into `%LOCALAPPDATA%\tax-document-tracker`,
+  and only then open the app or let the schedule run. Until
+  `record-heads.db` is moved the tracker makes no new checkpoint - one
+  would trust every record as it is that day (*the moment of trust*, §6) -
+  so nothing is written: the pass serves no household, writes its page
+  and its log and says *No record checkpoint was made* (reason
+  `checkpoint-left-behind` in the last-pass line), and the app refuses to
+  open a return or run a button that writes, saying what to move and
+  where. Moving the file ends that. If the data folder already holds a
+  new checkpoint anyway (made before this refusal existed, by the first
+  pass or by the app opening any return), do not copy the old file over
+  the new one: move the old one
+  into the data folder under a new name with today's date, keep it, and
+  treat that day as the moment of trust (§6). **To delete:** `tracker.db`,
+  `tracker.db-wal`, `tracker.db-shm`, a `tracker.db.v<N>.old` (and its
+  `-wal`, `-shm` and `.1` copies) a version change set aside, `pass-order.json`, `last-pass.json`,
   the error log `tracker-errors.log` and its copies `tracker-errors.log.1`
   to `.3`, a `passes` folder (decision 193), an `ocr-scratch` folder, and
   the old `runs.log` in the clients folder, which names clients. Nothing
-  deletes them for you: delete them.
+  deletes them for you: delete them. The app never writes an error log
+  beside itself: with no data folder, what a failed command said is shown
+  in its message instead.
 
 There used to be a second one, a comparison flag on the ledger's own
 statuses against the request list's. There is nothing left for it to
@@ -1887,8 +1900,8 @@ the same judgment the pass makes - a line outside the record's rule, said
 as the pass says a malformed line (below, section 9: a writer that is not
 a machine's name among them), the database holding lines the record
 does not, a recorded file missing or holding other bytes) and exits non-zero if there
-is any. It writes nothing anywhere. `python -m tracker.checkpoint "<the app
-folder>" state` shows the root the checkpoint belongs to and what it
+is any. It writes nothing anywhere. `python -m tracker.checkpoint "<the tracker's
+data folder>" state` shows the root the checkpoint belongs to and what it
 vouches for.
 
 **What this protects, said plainly.** The link in every line detects

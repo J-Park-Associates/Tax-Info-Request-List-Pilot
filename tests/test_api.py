@@ -1942,6 +1942,35 @@ def test_the_first_screen_says_to_move_the_checkpoint_left_behind_never_to_delet
     assert (app / checkpoint.CHECKPOINT_FILENAME).read_bytes() == b"an old checkpoint"
 
 
+def test_opening_a_return_never_makes_a_fresh_checkpoint_while_the_old_one_sits_beside_the_program(
+        capsys, demo_root, monkeypatch):
+    """The rebase review of 186 (MF1): opening one return is a read, yet its
+    catch-up would make a fresh checkpoint in the data home and trust every
+    record "as it is". It makes none: the view and a writing command are
+    each refused in the first screen's own sentence - what to move, and
+    where - and the old file is not touched."""
+    from tracker import checkpoint
+    from tracker.runner import LEFT_BEHIND_TO_MOVE
+    from tracker.settings import data_home, settings_dir
+
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = where(demo_root, "Smith")
+    old = settings_dir() / checkpoint.CHECKPOINT_FILENAME    # the fixture's: 159's layout
+    before = old.read_bytes()
+    store.close()
+    monkeypatch.setenv(store.ENV_STORE, str(data_home() / store.STORE_FILENAME))
+    new = checkpoint.path_for(store.store_path())
+    said = LEFT_BEHIND_TO_MOVE.format(paths=old.resolve(), home=new.parent)
+
+    for argv in (("state", api.ENGAGEMENT_FLAG, str(engagement)),
+                 ("acknowledge-foreign", api.ENGAGEMENT_FLAG, str(engagement))):
+        code, payload = run(capsys, *argv)
+        assert code == 1 and payload["failure"]["kind"] == "refused", argv
+        assert payload["error"] == said, argv
+    assert not new.exists() and old.read_bytes() == before
+
+
 def test_a_data_home_that_cannot_be_had_is_a_banner_on_the_first_screen_never_an_error(
         capsys, tmp_path, monkeypatch):
     """Decision 186's review, M1: with a clients root saved, a data home that

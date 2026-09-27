@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 163,
-    "edges": 1019,
-    "reused": 120
+    "edges": 1020,
+    "reused": 122
   },
   "node_types": [
     "artifact",
@@ -75,8 +75,8 @@
       "id": ".github/workflows/build.yml",
       "type": "workflow",
       "layer": "ci",
-      "sha256": "f48be766f524ebde",
-      "lines": 236,
+      "sha256": "a59d3c653a546bcd",
+      "lines": 238,
       "role": "Builds the portable package from a `v*` tag and nothing else (decision 191) by running Build App.bat itself on a Windows runner, proves the frozen executable answers in both of its modes, prints the build-info file, zips the package, publishes its SHA-256 beside it and on the run's summary page, and uploads the zip and the .sha256 as the run's artifact for seven days.",
       "notes": "Decision 78. It runs the batch file rather than re-implementing the build, because a second copy of the build is the one that drifts; tests/test_build.py refuses a workflow that names PyInstaller, the packager or the copy itself. The batch file pauses for a person at every exit, so it reads one documented switch that skips the waits, named in its own header and set here. The two smoke checks run the frozen executable, not the source: `list` with the shell's two environment variables set, which must answer JSON rather than a traceback on an install with no clients root yet, and one dry pass over a scratch clients root tests/samples.py builds, which walks filing, routing, scanning and drafting. Since decision 169 the root holds a scan only the reader can file (SCRATCH_SCAN), and the step compares the package's engagement line with the source's own dry pass and reads the run log's first line for reader=processor, so a package missing the reader or a model fails here. It installs the tree in the two steps every install makes (R-11): requirements.lock then rapidocr with --no-deps from requirements-nodeps.lock, both hash-checked (decision 191). Where the package landed is read back out of the batch file's own OUT/PLATFORM/ARCH and app/package.json's two names, so no path here is a second copy of one. Not on push: a freeze, an npm install, an Electron download and a few hundred megabytes of artifact are not what a commit should cost. Decision 191: no workflow_dispatch - v* tags are protected, so a package is the build of reviewed code - and a job guard `if: startsWith(github.ref, 'refs/tags/v')`; the checksum step runs after both smoke checks, and the runbook compares the summary page's hash with certutil -hashfile before a stick is written (transport, not provenance). Its checkout keeps no credentials (F-12). Decision 186: a step right after the dependencies gives every run of the tracker in the job a data folder under the runner's temp (TRACKER_DATA_HOME through GITHUB_ENV, since a job-level env cannot read the runner context), and a step before the zip fails the build when the package holds any name the data home or the settings folder holds (the store and its side files, runs.log, pass-order.json, tax-tracker.xml, ocr-scratch, the data home's own name, settings.json), each pinned to its constant by tests/test_build.py."
     },
@@ -135,8 +135,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "002c49e393203d11",
-      "lines": 4427,
+      "sha256": "85e12855b32f9f78",
+      "lines": 4449,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_FOLDER_NAME_HELP",
@@ -288,6 +288,7 @@
         "SHELL_KILLED",
         "SHELL_KILLED_AT",
         "SHELL_NOT_OPENED",
+        "SHELL_NO_LOG",
         "SHELL_NO_REPLY",
         "SKIP_LABEL",
         "SPELLINGS_HELP",
@@ -334,6 +335,7 @@
         "SHELL_NO_REPLY": "'The tracker ended without a reply (exit code {code}); the details are in the error log.'",
         "SHELL_COULD_NOT_START": "'The tracker could not start ({code}).'",
         "SHELL_COULD_NOT_SEND": "'The app could not send that to the tracker ({kind}); nothing was changed.'",
+        "SHELL_NO_LOG": "'There is no error log to hold the details - the tracker has no data folder yet - so they are here instead: {stderr}'",
         "PAGE_ERROR": "'The app met an error of its own ({kind}); the details are in the error log.'",
         "SCAN_SCANNING": "'Scanning\u2026'",
         "SCAN_NOTHING_DONE": "'Nothing done: {why}.'",
@@ -479,18 +481,22 @@
       "id": "tracker/checkpoint.py",
       "type": "module",
       "layer": "core",
-      "sha256": "9a9680800d6a651d",
-      "lines": 591,
+      "sha256": "204eaa7362b8dc6d",
+      "lines": 627,
       "cli": "python -m tracker.checkpoint",
       "exports": [
         "BUSY",
         "BUSY_TIMEOUT_MS",
+        "CHECKPOINT_DAMAGED_FILENAME",
         "CHECKPOINT_FILENAME",
+        "CHECKPOINT_JOURNAL_FILENAME",
         "CHECKPOINT_VERSION",
         "CheckpointError",
+        "CheckpointLeftBehind",
         "CheckpointUnavailable",
         "Foreign",
         "Intent",
+        "LEFT_BEHIND",
         "NEWER_FILE",
         "SET_ASIDE_SUFFIX",
         "UNREADABLE",
@@ -518,6 +524,7 @@
         "BUSY_TIMEOUT_MS": "5000",
         "SET_ASIDE_SUFFIX": "'.v{version}.old'",
         "NEWER_FILE": "\"{path} was written by a newer version of the tracker (version {version}; this one knows {known}). This machine has a newer version of the tracker's {what}; install that version again.\"",
+        "LEFT_BEHIND": "\"No record checkpoint was made: the one an earlier version kept is still at {old}. Move it into {home} (the runbook's decision-186 upgrade step); until then nothing is written.\"",
         "UNREADABLE": "\"{path}: the tracker cannot read this machine's record checkpoint ({why}). Set the file aside by hand (runbook \u00a76); the next pass seeds it again from the records - the moment of trust.\"",
         "BUSY": "\"{path}: this machine's record checkpoint is busy - another run is using it ({why}). Nothing was changed; the next pass tries again. Do not set the file aside for this.\""
       },
@@ -2520,8 +2527,8 @@
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "6166e39af93520f7",
-      "lines": 2796,
+      "sha256": "4315fcfc67c4f685",
+      "lines": 2827,
       "cli": "python -m tracker.runner",
       "exports": [
         "ACKNOWLEDGE_COMMAND",
@@ -2590,6 +2597,7 @@
         "PAGE_NOT_WRITTEN",
         "PASS_CANCELLED",
         "PASS_CHECKPOINT_BUSY",
+        "PASS_CHECKPOINT_LEFT_BEHIND",
         "PASS_CHECKPOINT_UNREADABLE",
         "PASS_DID_NOT_FINISH",
         "PASS_ENDED_EARLY",
@@ -2709,6 +2717,7 @@
         "PASS_NOT_SERVED": "'not-served-twice'",
         "PASS_CHECKPOINT_BUSY": "'checkpoint-busy'",
         "PASS_CHECKPOINT_UNREADABLE": "'checkpoint-unreadable'",
+        "PASS_CHECKPOINT_LEFT_BEHIND": "'checkpoint-left-behind'",
         "PASS_ENDED_EARLY": "'stopped'",
         "LAST_PASS_LINE": "'Last scheduled pass: {when}, {result}.'",
         "LAST_PASS_FAILED_LINE": "'Last scheduled pass: {when}, failed ({reason}).'",
@@ -2961,8 +2970,8 @@
       "id": "tracker/settings.py",
       "type": "module",
       "layer": "core",
-      "sha256": "ecb482e1a1fff64c",
-      "lines": 725,
+      "sha256": "97de6201e0078c21",
+      "lines": 743,
       "cli": "python -m tracker.settings",
       "exports": [
         "COLUMN_CATALOG",
@@ -3011,6 +3020,7 @@
         "SET_ROOT_HINT",
         "SettingsError",
         "app_dir",
+        "beside_the_program",
         "clients_root",
         "clients_root_refusal",
         "data_home",
@@ -3084,8 +3094,8 @@
       "id": "tracker/store.py",
       "type": "module",
       "layer": "core",
-      "sha256": "5b24c5bfb588a4cc",
-      "lines": 3911,
+      "sha256": "9717b61429e1a741",
+      "lines": 3971,
       "cli": "python -m tracker.store",
       "exports": [
         "ACCEPTED",
@@ -3094,6 +3104,7 @@
         "BUSY_TIMEOUT_MS",
         "CLAIMS_THIS_MACHINE",
         "COPY_INSIDE_APP",
+        "CheckpointNotMade",
         "DISCARDED_LINE",
         "DOCUMENTS_CSV",
         "DOCUMENT_COLUMNS",
@@ -3402,10 +3413,10 @@
       "id": "app/main.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "55de1cdfd6f71ec7",
-      "lines": 338,
+      "sha256": "142113bdb8e09330",
+      "lines": 362,
       "role": "Electron main process. Spawns the Python API (`-m tracker.api` under the checkout's .venv interpreter, by its full path, or the frozen executable package.json's config.apiName names in the portable build) and relays its JSON to the renderer over IPC. Since decision 193 it passes each progress line a pass prints (tracker.progress's format) to the window on the tracker-progress channel, keeps the last non-progress line as the reply, follows the kill to the limit_seconds the pass reports and says where it was, answers every failure of its own in the API's envelope, and puts no stderr on screen - a failed command's goes to the error log the API names.",
-      "notes": "This is the cross-language boundary: everything the UI can do is a tracker.api command. The renderer is untrusted here: a command must be in vocab.commands (before the vocabulary arrives, only BOOTSTRAP_COMMAND, pinned to tracker.api.COMMANDS by a guard) with the one argument shape the renderer uses; open-path opens only a path the API reported in state.paths; the tracker's exit code is read, not discarded, and a tracker that outlives TRACKER_TIMEOUT_MS is killed and reported. The window is sandboxed, cannot navigate and cannot open windows. Decision 160: the shell takes app.requestSingleInstanceLock(); a second launch quits before any window is made, and the running one restores and focuses its window on second-instance - two windows were two editors, and the earlier one's save took the later one's back. Decision 176: devTools is off when packaged, and runTracker() serialises the payload before the tracker starts and writes it as UTF-8, which is how tracker.api._read_spec() reads it. Decision 191: from source it runs .venv/Scripts/python.exe (or .venv/bin/python), never a bare python, and answers with the lock tool's NOT_SET_UP sentence when that is missing; in the packaged app Menu.setApplicationMenu(null) runs before the window is made, so no reload, zoom or developer-tools accelerator exists there (E-7). Decision 188 (E-14): learn() keeps each reported path with its kind from vocab.path_kinds, and openPath lstat()s it and opens it only when it is no symbolic link (Node reports a junction as one) and still a directory for 'folder' or a regular file for 'file'; otherwise vocab.shell.not_opened. No path.relative( and no startsWith( (tests/test_layers.py)."
+      "notes": "This is the cross-language boundary: everything the UI can do is a tracker.api command. The renderer is untrusted here: a command must be in vocab.commands (before the vocabulary arrives, only BOOTSTRAP_COMMAND, pinned to tracker.api.COMMANDS by a guard) with the one argument shape the renderer uses; open-path opens only a path the API reported in state.paths; the tracker's exit code is read, not discarded, and a tracker that outlives TRACKER_TIMEOUT_MS is killed and reported. The window is sandboxed, cannot navigate and cannot open windows. Decision 160: the shell takes app.requestSingleInstanceLock(); a second launch quits before any window is made, and the running one restores and focuses its window on second-instance - two windows were two editors, and the earlier one's save took the later one's back. Decision 176: devTools is off when packaged, and runTracker() serialises the payload before the tracker starts and writes it as UTF-8, which is how tracker.api._read_spec() reads it. Decision 191: from source it runs .venv/Scripts/python.exe (or .venv/bin/python), never a bare python, and answers with the lock tool's NOT_SET_UP sentence when that is missing; in the packaged app Menu.setApplicationMenu(null) runs before the window is made, so no reload, zoom or developer-tools accelerator exists there (E-7). Decision 188 (E-14): learn() keeps each reported path with its kind from vocab.path_kinds, and openPath lstat()s it and opens it only when it is no symbolic link (Node reports a junction as one) and still a directory for 'folder' or a regular file for 'file'; otherwise vocab.shell.not_opened. No path.relative( and no startsWith( (tests/test_layers.py). Decision 186's rebase review (MF2): keepInLog() writes only to the error log the API named and never builds a path - no ERROR_LOG_FILENAME in the shell; with none, a failed command's stderr (its last STDERR_ON_SCREEN_CAP) is said in its reply after vocab.shell.no_log (api.SHELL_NO_LOG), and a renderer error is not kept."
     },
     {
       "id": "app/package-lock.json",
@@ -3482,7 +3493,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "33d3f5707fb442d4",
+      "sha256": "bb1cf2886a9b03e2",
       "lines": 436,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -3500,7 +3511,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "fef586d01dee91fa",
+      "sha256": "a8b0b4c275e33db6",
       "lines": 1050,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -3509,8 +3520,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "09731f950b2ee4ce",
-      "lines": 2277,
+      "sha256": "4158f572dfbc514d",
+      "lines": 2290,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -3784,7 +3795,7 @@
       "id": "artifact:record-heads.db",
       "type": "artifact",
       "layer": "runtime",
-      "role": "The record checkpoint (decision 159, tracker/checkpoint.py): one small SQLite file beside tracker.db (so in the data home since decision 186) on the machine that writes, never synced and never under the clients root. Survives deleting tracker.db; carried to a new machine over the office network with tracker.db (runbook section 6), never through USB, the program's folder or the Shared Drive. Client data: its keys name returns."
+      "role": "The record checkpoint (decision 159, tracker/checkpoint.py): one small SQLite file beside tracker.db (so in the data home since decision 186) on the machine that writes, never synced and never under the clients root. Survives deleting tracker.db; carried to a new machine over the office network with tracker.db (runbook section 6), never through USB, the program's folder or the Shared Drive. Client data: its keys name returns. One an earlier version left beside the program (settings.beside_the_program()) stops any fresh one being made in the data home - store._checkpoint_may_be_made() raises checkpoint.CheckpointLeftBehind from _beside (store.CheckpointNotMade for one return, so even opening a return makes none), prove_the_root (claiming or not) and acknowledge_foreign; the pass serves no household (runner.PASS_CHECKPOINT_LEFT_BEHIND) and the app says LEFT_BEHIND_TO_MOVE, until it is moved or renamed; the live store's own checkpoint is never refused (decision 186's rebase review, MF1). Its rollback journal (CHECKPOINT_JOURNAL_FILENAME), a copy renamed .damaged (CHECKPOINT_DAMAGED_FILENAME) and its set-asides (SET_ASIDE_SUFFIX) move with it and are named in LEFT_BEHIND_TO_MOVE (SF3, N1)."
     },
     {
       "id": "artifact:recovered/",
@@ -3830,7 +3841,7 @@
       "id": "artifact:the data home",
       "type": "artifact",
       "layer": "runtime",
-      "role": "The one per-user local folder on the designated machine where the tracker keeps what it derives from clients (decision 186): settings.data_home(), %LOCALAPPDATA%\\tax-document-tracker (or TRACKER_DATA_HOME). Holds the store, decision 189's pass-order.json beside it, decision 159's record checkpoint (checkpoint.CHECKPOINT_FILENAME), recovered/ folder (store.RECOVERED_DIR) and last-pass file (runner.LAST_PASS_FILENAME) beside it too - each one an older version left beside the settings file or the frozen executable named by runner.left_behind() and refused in the package by build.yml's proof; decision 193's error log (settings.ERROR_LOG_FILENAME, with its rotated copies) and passes/ folder (progress.PASSES_DIRNAME) beside it too, in the same way; the checkpoint and recovered/ are named only in LEFT_BEHIND_TO_MOVE (move, never delete: security principle 10), the rest in LEFT_BEHIND - the scheduler's task file, scratch/<pid> for each reading child and logs/ for the run log. Never beside the program, in a checkout, on removable media or in the temp folder; data_home() refuses rather than fall back, and creates nothing."
+      "role": "The one per-user local folder on the designated machine where the tracker keeps what it derives from clients (decision 186): settings.data_home(), %LOCALAPPDATA%\\tax-document-tracker (or TRACKER_DATA_HOME). Holds the store, decision 189's pass-order.json beside it, decision 159's record checkpoint (checkpoint.CHECKPOINT_FILENAME), recovered/ folder (store.RECOVERED_DIR) and last-pass file (runner.LAST_PASS_FILENAME) beside it too - each one an older version left beside the settings file or the frozen executable named by runner.left_behind() and refused in the package by build.yml's proof; decision 193's error log (settings.ERROR_LOG_FILENAME, with its rotated copies) and passes/ folder (progress.PASSES_DIRNAME) beside it too, in the same way; the checkpoint and recovered/ are named only in LEFT_BEHIND_TO_MOVE (move, never delete: security principle 10), the rest in LEFT_BEHIND - the scheduler's task file, scratch/<pid> for each reading child and logs/ for the run log. Never beside the program, in a checkout, on removable media or in the temp folder; data_home() refuses rather than fall back, and creates nothing. Decision 186's rebase review: runner.left_behind() also names 159's set-asides (the store's to delete, the checkpoint's to move) and the checkpoint's journal and .damaged copy, and build.yml's proof refuses them; while the old checkpoint sits beside the program no fresh one is made here (MF1)."
     },
     {
       "id": "artifact:the household inbox",
@@ -3842,7 +3853,7 @@
       "id": "artifact:tracker-errors.log",
       "type": "artifact",
       "layer": "runtime",
-      "role": "The rotated local debug log beside the tracker's database (decision 193, security principle 7; ERROR_LOG_FILENAME and error_log() in tracker/settings.py, 1 MB x 3, never synced per line): an unexpected error's full text and traceback and every warning the package logs, and a failed child's stderr the shell appends - never on screen, in the record, on the page or in runs.log. It can name a client's folder; it stays on this machine and is gitignored.",
+      "role": "The rotated local debug log beside the tracker's database (decision 193, security principle 7; ERROR_LOG_FILENAME and error_log() in tracker/settings.py, 1 MB x 3, never synced per line): an unexpected error's full text and traceback and every warning the package logs, and a failed child's stderr the shell appends - never on screen, in the record, on the page or in runs.log. It can name a client's folder; it stays on this machine and is gitignored. Only at a path the API names (vocab.shell.error_log): with no data home there is none, and the shell writes no log beside the program or in the settings folder - a failed command's stderr is said in its reply instead (api.SHELL_NO_LOG; decision 186's rebase review, MF2).",
       "write_only": true
     },
     {
@@ -3996,8 +4007,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "b0b3780b740ab49b",
-      "lines": 6687,
+      "sha256": "74494fbf2ff8f6ce",
+      "lines": 6716,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -4151,6 +4162,7 @@
         "test_mark_shared_refuses_without_a_link_records_one_event_and_the_state_says_the_day",
         "test_no_command_outside_the_list_changing_ones_carries_the_list",
         "test_one_name_rule_gives_one_sentence_wherever_a_name_is_typed",
+        "test_opening_a_return_never_makes_a_fresh_checkpoint_while_the_old_one_sits_beside_the_program",
         "test_priors_carry_next_year_and_the_index_carries_candidates",
         "test_priors_then_rollover_is_the_desktop_returning_client_path",
         "test_propose_spellings_is_a_read_and_the_renderer_types_no_kind_label_or_note",
@@ -4332,8 +4344,8 @@
       "id": "tests/test_build.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6afcad043d28443f",
-      "lines": 701,
+      "sha256": "fadc2173e8b4335f",
+      "lines": 712,
       "exports": [
         "BUILD_ENVIRONMENT",
         "BUILD_LOCKS",
@@ -4694,8 +4706,8 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "f7210a35e3f18a76",
-      "lines": 9196,
+      "sha256": "f58a29506de21aa9",
+      "lines": 9201,
       "exports": [
         "A_PASS_KILLED_MID_COPY",
         "BUSINESS",
@@ -6255,8 +6267,8 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "eb3f0330bd87cfec",
-      "lines": 4268,
+      "sha256": "7101cda92c25614d",
+      "lines": 4337,
       "exports": [
         "DRAFT_DAY",
         "FRIDAY",
@@ -6285,6 +6297,7 @@
         "samples",
         "slow_for",
         "stamped_on",
+        "test_159s_set_asides_and_the_checkpoints_journal_left_behind_are_named_in_their_groups",
         "test_a_busy_checkpoint_is_never_called_another_root",
         "test_a_checkpoint_that_will_not_open_stops_the_pass_by_name",
         "test_a_clients_folder_drives_a_real_run_with_nothing_registered",
@@ -6334,6 +6347,7 @@
         "test_a_pass_cannot_be_run_without_the_practice",
         "test_a_pass_killed_mid_sort_keeps_every_reading_it_finished",
         "test_a_pass_over_a_root_the_checkpoint_does_not_belong_to_is_refused_however_the_root_is_given",
+        "test_a_pass_serves_no_household_while_the_old_checkpoint_sits_beside_the_program",
         "test_a_pass_that_never_ended_is_said_by_the_next_one",
         "test_a_pass_that_stops_after_its_root_logs_the_kind_never_the_words",
         "test_a_pass_that_stops_before_its_root_is_logged_in_the_data_home",
@@ -6631,8 +6645,8 @@
       "id": "tests/test_settings.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "35ac8981ba2484ff",
-      "lines": 538,
+      "sha256": "bc56d764622b88df",
+      "lines": 559,
       "exports": [
         "beside_the_app",
         "test_a_cleared_folder_box_is_refused_not_recorded_as_the_working_folder",
@@ -6645,6 +6659,7 @@
         "test_an_absent_settings_file_is_found_absent_by_opening_it",
         "test_an_unreadable_settings_file_is_an_error_not_a_default",
         "test_asking_where_the_data_home_is_creates_nothing",
+        "test_beside_the_program_is_the_settings_folder_and_a_frozen_executables_own",
         "test_nothing_set_means_none_not_a_guess",
         "test_one_rule_says_what_lies_inside_the_app_folder",
         "test_only_a_fixed_disk_may_hold_the_program_the_schedule_runs",
@@ -6670,8 +6685,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "12ae2f95b41f0585",
-      "lines": 2088,
+      "sha256": "9f04816e509e66b8",
+      "lines": 2108,
       "exports": [
         "CONSOLE_EXEMPT",
         "CONSOLE_GUARDED",
@@ -6748,7 +6763,7 @@
         "test_the_packaged_app_has_no_menu_and_the_source_app_runs_its_private_python",
         "test_the_pass_and_the_hand_over_file_into_another_household_through_one_function",
         "test_the_product_name_has_one_home",
-        "test_the_progress_key_and_the_error_log_name_are_typed_once_per_language",
+        "test_the_progress_key_is_typed_once_per_language_and_the_error_log_only_by_the_api",
         "test_the_projects_agent_settings_can_be_committed_and_nothing_else_under_claude",
         "test_the_readme_engagement_details_table_matches_the_fields",
         "test_the_reminder_card_is_drawn_from_state",
@@ -6787,7 +6802,8 @@
         "test_the_words_for_the_engagements_page_are_pythons_alone",
         "test_the_workflow_document_names_every_status_and_override",
         "test_tree_diagrams_name_only_runtime_files_the_code_owns",
-        "test_tree_diagrams_show_catalog_copies_as_the_filer_names_them"
+        "test_tree_diagrams_show_catalog_copies_as_the_filer_names_them",
+        "test_with_no_error_log_the_shell_says_stderr_in_the_reply_and_writes_no_file"
       ],
       "constants": {
         "DOCUMENTS": "('README.md', 'docs/ROADMAP.md', 'docs/workflow.md', 'docs/runbook.md', 'docs/storage.md', 'CLAUDE.md')",
@@ -6801,8 +6817,8 @@
       "id": "tests/test_store.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "00822040f6e8f3a4",
-      "lines": 3633,
+      "sha256": "b47c5946d8faaff2",
+      "lines": 3715,
       "exports": [
         "A_ROW_ORIGINAL",
         "DAY1",
@@ -6842,6 +6858,7 @@
         "scanned",
         "test_188s_accepted_word_and_204s_waiting_row_are_lines_like_any_other",
         "test_a_caller_root_still_wins_over_the_position",
+        "test_a_catch_up_says_the_checkpoint_left_behind_as_that_returns_problem",
         "test_a_catch_up_with_nothing_to_apply_takes_no_lock",
         "test_a_checkpoint_that_will_not_open_is_that_returns_problem_by_name",
         "test_a_differently_cased_name_of_this_machine_is_this_machine",
@@ -6924,6 +6941,8 @@
         "test_households_are_every_stored_household_row_read_as_it_stands",
         "test_keywords_taught_under_two_spellings_of_one_request_are_checked_in_the_order_they_were_taught",
         "test_last_event_returns_the_newest_of_that_name_or_none",
+        "test_moving_or_renaming_the_old_checkpoint_lifts_the_refusal",
+        "test_no_fresh_checkpoint_is_made_while_the_old_one_sits_beside_the_program",
         "test_one_call_is_one_transaction_over_the_journal_and_the_tables",
         "test_one_process_has_one_connection_and_a_second_file_is_refused",
         "test_one_record_of_several_scan_lines_keeps_the_last",
@@ -6964,6 +6983,7 @@
         "test_the_settings_root_still_wins_over_the_position",
         "test_the_state_is_current_behind_or_unknown",
         "test_the_store_admits_the_accepted_key_with_one_value",
+        "test_the_store_beside_the_settings_file_is_never_refused_its_checkpoint",
         "test_the_store_check_names_a_line_the_gate_now_refuses",
         "test_the_store_is_placed_in_the_data_home_and_never_beside_the_settings_file",
         "test_the_store_is_the_one_the_environment_names",
@@ -8782,6 +8802,12 @@
     {
       "from": "tests/test_filer.py",
       "to": "tracker/api.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_filer.py",
+      "to": "tracker/checkpoint.py",
       "type": "exercises",
       "source": "derived"
     },

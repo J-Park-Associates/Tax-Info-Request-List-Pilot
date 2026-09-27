@@ -137,7 +137,12 @@ def test_the_package_is_proved_to_hold_no_store_log_task_file_or_settings():
     home or the settings folder holds - each spelled by its constant,
     decision 159's three files and decision 193's error log, its rotated
     copies and its ``passes`` folder beside the store among them."""
-    from tracker.checkpoint import CHECKPOINT_FILENAME
+    from tracker.checkpoint import (
+        CHECKPOINT_DAMAGED_FILENAME,
+        CHECKPOINT_FILENAME,
+        CHECKPOINT_JOURNAL_FILENAME,
+        SET_ASIDE_SUFFIX,
+    )
     from tracker.progress import PASSES_DIRNAME
     from tracker.runner import LAST_PASS_FILENAME, LOG_FILENAME, PASS_ORDER_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
@@ -158,10 +163,16 @@ def test_the_package_is_proved_to_hold_no_store_log_task_file_or_settings():
     listed = re.search(r"\$names = @\(([^)]*)\)", body).group(1)
     assert set(re.findall(r"'([^']+)'", listed)) == {
         STORE_FILENAME, STORE_WAL_FILENAME, STORE_SHM_FILENAME, LOG_FILENAME, PASS_ORDER_FILENAME,
-        CHECKPOINT_FILENAME, RECOVERED_DIR, LAST_PASS_FILENAME,
+        CHECKPOINT_FILENAME, CHECKPOINT_JOURNAL_FILENAME, CHECKPOINT_DAMAGED_FILENAME,
+        RECOVERED_DIR, LAST_PASS_FILENAME,
         ERROR_LOG_FILENAME, *(f"{ERROR_LOG_FILENAME}.{n}" for n in range(1, ERROR_LOG_BACKUPS + 1)),
         PASSES_DIRNAME,
         SCHEDULE_XML_FILENAME, OCR_SCRATCH_DIRNAME, DATA_HOME_NAME, SETTINGS_FILENAME}
+    # 159's set-asides by the pattern set_aside() gives them (186's rebase review, SF3).
+    patterns = re.search(r"\$patterns = @\(([^)]*)\)", body).group(1)
+    assert set(re.findall(r"'([^']+)'", patterns)) == {
+        name + SET_ASIDE_SUFFIX.format(version="*") + "*" for name in (STORE_FILENAME, CHECKPOINT_FILENAME)}
+    assert "$names -contains $name" in body and "$name -like $_" in body
     assert "$env:PACKAGE_DIR -Recurse -Force" in body and "throw" in body
 
 

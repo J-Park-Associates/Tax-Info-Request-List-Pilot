@@ -432,6 +432,24 @@ def program_folders() -> list[Path]:
     return folders
 
 
+def beside_the_program() -> list[Path]:
+    """Where an earlier version kept client data **beside the program**
+    (decision 186): the settings folder, and the frozen executable's own
+    folder when it is another (a package without the shell kept its store
+    there). The one answer to "beside the program": what was left behind
+    (:func:`tracker.runner.left_behind`) is looked for here, and the store
+    refuses to make a fresh record checkpoint while the old one sits here
+    (the rebase review's MF1). Not :func:`program_folders`, which is where
+    the data home may not be; in a source checkout this is the settings
+    folder alone, the repository root unless the shell names another."""
+    folders = [settings_dir().resolve()]
+    app = app_dir()
+    spelled = [os.path.normcase(os.path.abspath(str(folder))) for folder in (app, folders[0])]
+    if getattr(sys, "frozen", False) and spelled[0] != spelled[1]:
+        folders.append(app)
+    return folders
+
+
 def resolve_data_home(environ, *, windows: bool, home: Path | None, program, drive_type) -> Path:
     """The data home for this environment - the pure core of :func:`data_home`,
     so every branch is testable on any machine (decision 186).

@@ -145,6 +145,7 @@ one says when a start never finished (:data:`PASS_DID_NOT_FINISH`).
 from __future__ import annotations
 
 import datetime as dt
+import fnmatch
 import json
 import logging
 import os
@@ -232,6 +233,7 @@ from tracker.settings import (
     OCR_SCRATCH_DIRNAME,
     SettingsError,
     app_dir,
+    beside_the_program,
     clients_root,
     data_home,
     error_log,
@@ -294,32 +296,41 @@ def _spelled(path: Path) -> str:
     return os.path.normcase(os.path.abspath(str(path)))
 
 
+def _set_asides(filename: str) -> str:
+    """The pattern decision 159's set-aside gives ``filename`` and its side
+    files (``.v15.old``, ``.v15.old.1``, ``.v15.old-wal`` after its name):
+    :data:`checkpoint.SET_ASIDE_SUFFIX` with any version, and anything after."""
+    return filename + checkpoint.SET_ASIDE_SUFFIX.format(version="*") + "*"
+
+
 def left_behind(root: Path | None) -> list[Path]:
     """What an earlier version left where client data no longer lives: the store
     and its two SQLite side files, the pass-order hint, decision 159's record
-    checkpoint, ``recovered`` folder and last-pass file, decision 193's error
-    log (and its rotated copies) and ``passes`` folder, and the old OCR
-    scratch folder beside the settings file (and beside the frozen
-    executable, where a package without the shell kept them). Only what
-    exists; nothing is opened, moved or deleted. The store in use and every
-    file that follows it - its two side files, the hint, the checkpoint, the
-    ``recovered`` folder, the last-pass file, the error log and ``passes``
-    beside it - are never named (``TRACKER_STORE`` may point beside the settings file:
-    the suite's own fixture does). In a source checkout only the settings
-    folder is looked at. ``root`` is the clients root, whose old
+    checkpoint (with its rollback journal and a copy a person renamed
+    ``.damaged``), ``recovered`` folder and last-pass file, what 159's
+    set-aside renamed out of the way (the store's and the checkpoint's
+    ``.v<N>.old`` files), decision 193's error log (and its rotated copies)
+    and ``passes`` folder, and the old OCR scratch folder - beside the
+    program (:func:`tracker.settings.beside_the_program`: the settings
+    folder, and the frozen executable's where a package without the shell
+    kept them). Only what exists; nothing is opened, moved or deleted. The
+    store in use and every file that follows it - its two side files, the
+    hint, the checkpoint and its journal, the ``recovered`` folder, the
+    last-pass file, the error log, ``passes`` and the set-asides beside it -
+    are never named (``TRACKER_STORE`` may point beside the settings file:
+    the suite's own fixture does). ``root`` is the clients root, whose old
     :data:`LOG_FILENAME` - which named clients and files - is named too:
     the run log lives in the data home since decision 186 (186d)."""
-    folders = [settings_dir().resolve()]
-    if getattr(sys, "frozen", False) and _spelled(app_dir()) != _spelled(folders[0]):
-        folders.append(app_dir())
+    folders = beside_the_program()
     in_use = store.store_path()
-    # Decision 159's three files sit beside the store, so they followed it
-    # into the data home (decision 186); one beside the settings file is
-    # an older version's, and the checkpoint and ``recovered`` name clients.
+    # Decision 159's files sit beside the store, so they followed it into
+    # the data home (decision 186); one beside the settings file is an older
+    # version's, and the checkpoint and ``recovered`` name clients.
     # Decision 193's error log, its rotated copies and ``passes`` follow the
     # store too; each can be made again, so they are in the delete group.
     beside = (store.STORE_WAL_FILENAME, store.STORE_SHM_FILENAME, PASS_ORDER_FILENAME,
-              checkpoint.CHECKPOINT_FILENAME, store.RECOVERED_DIR, LAST_PASS_FILENAME,
+              checkpoint.CHECKPOINT_FILENAME, checkpoint.CHECKPOINT_JOURNAL_FILENAME,
+              checkpoint.CHECKPOINT_DAMAGED_FILENAME, store.RECOVERED_DIR, LAST_PASS_FILENAME,
               ERROR_LOG_FILENAME,
               *(f"{ERROR_LOG_FILENAME}.{n}" for n in range(1, ERROR_LOG_BACKUPS + 1)),
               PASSES_DIRNAME)
@@ -327,6 +338,14 @@ def left_behind(root: Path | None) -> list[Path]:
     names = (store.STORE_FILENAME, *beside, OCR_SCRATCH_DIRNAME)
     found = [folder / name for folder in folders for name in names
              if os.path.lexists(folder / name) and _spelled(folder / name) not in kept]
+    # 159's set-asides (the rebase review's SF3): named by the pattern
+    # set_aside() gives them, except beside the store in use, where they
+    # followed it.
+    for folder in folders:
+        if _spelled(folder) == _spelled(in_use.parent):
+            continue
+        for name in (store.STORE_FILENAME, checkpoint.CHECKPOINT_FILENAME):
+            found += sorted(folder.glob(_set_asides(name)))
     if root is not None and (Path(root) / LOG_FILENAME).is_file():
         found.append(Path(root) / LOG_FILENAME)
     return found
@@ -340,8 +359,13 @@ def log_path() -> Path:
 
 def _to_move(path: Path) -> bool:
     """Whether a left-behind path is one to move into the data home rather
-    than delete: the record checkpoint and the ``recovered`` folder."""
-    return path.name in (checkpoint.CHECKPOINT_FILENAME, store.RECOVERED_DIR)
+    than delete: what cannot be made again or is evidence - the record
+    checkpoint with its rollback journal, a copy renamed ``.damaged``, its
+    set-asides, and the ``recovered`` folder. The store's set-asides are
+    rebuilt from the records, so they are in the delete group."""
+    return (path.name in (checkpoint.CHECKPOINT_FILENAME, checkpoint.CHECKPOINT_JOURNAL_FILENAME,
+                          checkpoint.CHECKPOINT_DAMAGED_FILENAME, store.RECOVERED_DIR)
+            or fnmatch.fnmatchcase(path.name, _set_asides(checkpoint.CHECKPOINT_FILENAME)))
 
 
 def left_behind_warnings(root: Path | None) -> list[tuple[str, str]]:
@@ -423,6 +447,9 @@ PASS_NOT_SERVED = "not-served-twice"
 #: move-root.
 PASS_CHECKPOINT_BUSY = "checkpoint-busy"
 PASS_CHECKPOINT_UNREADABLE = "checkpoint-unreadable"
+#: The checkpoint an earlier version kept still sits beside the program, and
+#: a fresh one is refused until it is moved (the rebase review of 186, MF1).
+PASS_CHECKPOINT_LEFT_BEHIND = "checkpoint-left-behind"
 PASS_ENDED_EARLY = "stopped"
 PASS_REASONS = {
     PASS_SETTINGS: "the settings file could not be read",
@@ -439,6 +466,9 @@ PASS_REASONS = {
                            "no household was served, and the next pass tries again"),
     PASS_CHECKPOINT_UNREADABLE: ("this machine's record checkpoint could not be read; no household "
                                  "was served - the practice page says what to do (runbook §6)"),
+    PASS_CHECKPOINT_LEFT_BEHIND: ("the record checkpoint an earlier version kept is still beside the "
+                                  "program; no household was served until it is moved into the data "
+                                  "folder (the runbook's decision-186 upgrade step)"),
 }
 LAST_PASS_LINE = "Last scheduled pass: {when}, {result}."
 LAST_PASS_FAILED_LINE = "Last scheduled pass: {when}, failed ({reason})."
@@ -2605,7 +2635,8 @@ def _pass(ns, parser, reached: dict) -> int:
         store.prove_the_root(root, claim=False)
     except checkpoint.CheckpointError as exc:
         unproved = exc
-        reached["reason"] = (PASS_CHECKPOINT_BUSY if getattr(exc, "busy", False)
+        reached["reason"] = (PASS_CHECKPOINT_LEFT_BEHIND if isinstance(exc, checkpoint.CheckpointLeftBehind)
+                             else PASS_CHECKPOINT_BUSY if getattr(exc, "busy", False)
                              else PASS_CHECKPOINT_UNREADABLE)
     except StoreError as exc:
         raise PassFailed(PASS_ROOT_NOT_CLAIMED, f"Clients folder problem: {exc}") from None
