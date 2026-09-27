@@ -710,3 +710,37 @@ def test_the_smoke_check_fails_when_the_package_printed_nothing_to_compare():
     run = commands()
     guard = run.index("if (-not (& $lines $frozen)) { throw")
     assert guard < run.index("if ((& $lines $frozen) -ne (& $lines $source))")
+
+
+def test_setup_runs_the_after_install_step_last_after_the_stamp():
+    """Decision 209: every one-time step after installing is Setup's own last
+    step - after the stamp, which records what was installed whatever the
+    step then finds - and its failure is said in the module's own words."""
+    from tracker.after_install import SETUP_RETRY
+
+    setup = _commands(read(SETUP_SCRIPT))
+    runs = [line for line in setup if not line.startswith((":", "if ", "pause", "exit", "goto"))]
+    assert runs[-1] == "%PY% -m tracker.after_install --reason setup", runs[-1]
+    [stamp] = [i for i, line in enumerate(setup) if re.search(r"tools\\lockfiles\.py stamp \.venv", line)]
+    [step] = [i for i, line in enumerate(setup) if "-m tracker.after_install --reason setup" in line]
+    assert step > stamp
+    assert f"echo {SETUP_RETRY}" in read(SETUP_SCRIPT)
+
+
+def test_batch_files_check_out_with_crlf():
+    """cmd reads a batch file by byte offset, and loses its place in an LF
+    file (Setup printed a stray "'mputer' is not recognized" after a pause
+    on the office computer): every .bat checks out CRLF, while the
+    repository still holds LF, which is what the map hashes."""
+    import shutil
+    import subprocess
+
+    import pytest
+
+    if shutil.which("git") is None:
+        pytest.skip("git is not on PATH; the attribute cannot be asked")
+    names = ["Setup.bat", "Start App.bat", "Build App.bat", "Build GPU Pack.bat"]
+    assert set(names) <= set(batch_files())
+    said = subprocess.run(["git", "check-attr", "eol", "--", *names], cwd=REPO,
+                          capture_output=True, text=True, check=True).stdout.splitlines()
+    assert said == [f"{name}: eol: crlf" for name in names], said

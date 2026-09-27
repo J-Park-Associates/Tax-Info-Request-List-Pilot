@@ -309,7 +309,8 @@ def left_behind(root: Path | None) -> list[Path]:
     """What an earlier version left where client data no longer lives: the store
     and its two SQLite side files, the pass-order hint, decision 159's record
     checkpoint (with its rollback journal and a copy a person renamed
-    ``.damaged``), ``recovered`` folder and last-pass file, what 159's
+    ``.damaged``), ``recovered`` folder, last-pass file and decision 209's after-install
+    note, what 159's
     set-aside renamed out of the way (the store's and the checkpoint's
     ``.v<N>.old`` files), decision 193's error log (and its rotated copies)
     and ``passes`` folder, and the old OCR scratch folder - beside the
@@ -329,11 +330,12 @@ def left_behind(root: Path | None) -> list[Path]:
     # the data home (decision 186); one beside the settings file is an older
     # version's, and the checkpoint and ``recovered`` name clients.
     # Decision 193's error log, its rotated copies and ``passes`` follow the
-    # store too; each can be made again, so they are in the delete group.
+    # store too, as does decision 209's after-install note; each can be
+    # made again, so they are in the delete group.
     beside = (store.STORE_WAL_FILENAME, store.STORE_SHM_FILENAME, PASS_ORDER_FILENAME,
               checkpoint.CHECKPOINT_FILENAME, checkpoint.CHECKPOINT_JOURNAL_FILENAME,
               checkpoint.CHECKPOINT_DAMAGED_FILENAME, store.RECOVERED_DIR, LAST_PASS_FILENAME,
-              ERROR_LOG_FILENAME,
+              AFTER_INSTALL_FILENAME, ERROR_LOG_FILENAME,
               *(f"{ERROR_LOG_FILENAME}.{n}" for n in range(1, ERROR_LOG_BACKUPS + 1)),
               PASSES_DIRNAME)
     kept = {_spelled(in_use)} | {_spelled(in_use.with_name(name)) for name in beside}
@@ -370,6 +372,15 @@ def _to_move(path: Path) -> bool:
             or fnmatch.fnmatchcase(path.name, _set_asides(checkpoint.CHECKPOINT_FILENAME)))
 
 
+def left_behind_to_move(root: Path | None) -> list[Path]:
+    """The move group of :func:`left_behind`: what cannot be made again or is
+    evidence (:func:`_to_move`), to be moved into the data home and never
+    deleted. Spelled once, here: the first screen's :data:`LEFT_BEHIND_TO_MOVE`
+    and the after-install step that moves them (decision 209, R9) both read
+    it, so neither keeps a list of its own."""
+    return [path for path in left_behind(root) if _to_move(path)]
+
+
 def left_behind_warnings(root: Path | None) -> list[tuple[str, str]]:
     """What :func:`left_behind` found, as ``(code, sentence)`` pairs, one per
     group that is not empty: :data:`LEFT_BEHIND` for what to delete
@@ -380,8 +391,8 @@ def left_behind_warnings(root: Path | None) -> list[tuple[str, str]]:
     if not found:
         return []
     home = data_home()
-    delete = [path for path in found if not _to_move(path)]
-    move = [path for path in found if _to_move(path)]
+    move = left_behind_to_move(root)
+    delete = [path for path in found if path not in move]
     said = []
     if delete:
         said.append((CODE_LEFT_BEHIND, LEFT_BEHIND.format(paths="; ".join(map(str, delete)), home=home)))
@@ -389,6 +400,8 @@ def left_behind_warnings(root: Path | None) -> list[tuple[str, str]]:
         said.append((CODE_LEFT_BEHIND_TO_MOVE,
                      LEFT_BEHIND_TO_MOVE.format(paths="; ".join(map(str, move)), home=home)))
     return said
+
+
 #: The runner's own flags, named once so the scheduler builds a command
 #: line the parser below still accepts.
 LOG_FLAG = "--log"
@@ -419,9 +432,10 @@ NO_HOUSEHOLD_NAMED = f"{HOUSEHOLD_FLAG} names no household; Run now runs one, na
 #: named a clients root on its command line with ``--log``; after the root
 #: moves in the app it would go on sorting the old tree silently, so a run
 #: of that shape whose root is not the settings file's is refused, red,
-#: until *Install Schedule* is pressed once (decision 131's review, F3).
-OLD_JOB_ROOT = ("the scheduled job still names an old clients root ({root}); open the app and "
-                "press Install Schedule")
+#: until the job is registered again (decision 131's review, F3) - which the
+#: app does itself at its first start after the upgrade (decision 209).
+OLD_JOB_ROOT = ("the scheduled job still names an old clients root ({root}); start the app on this "
+                "computer - it registers the job again - or press Repair the schedule")
 
 #: The scheduled pass says when it ran and how it ended (decision 159, E4):
 #: a job that stops - settings unreadable, the root gone, the task deleted -
@@ -441,6 +455,13 @@ OLD_JOB_ROOT = ("the scheduled job still names an old clients root ({root}); ope
 #: and the page, which say the rest; ``pass-order.json`` beside it is 189's
 #: order hint per household, not a status of the pass.
 LAST_PASS_FILENAME = "last-pass.json"
+#: Decision 209's note of the last after-install run
+#: (``tracker.after_install.RECORD_FILENAME`` is this name): beside the
+#: store like the last-pass file, so it follows the store into the data
+#: home, and :func:`left_behind` names an old copy beside the program. It
+#: is spelled here because ``after_install`` imports this module, never
+#: the other way.
+AFTER_INSTALL_FILENAME = "after-install.json"
 #: The app's line turns amber when the last scheduled pass started longer
 #: ago than this. The schedule repeats every two hours by default, so four
 #: hours is one missed run and a margin.

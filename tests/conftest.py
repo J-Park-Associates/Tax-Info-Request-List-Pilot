@@ -102,7 +102,7 @@ from pathlib import Path
 import pytest
 
 from tests.tripwire import sitecustomize as tripwire
-from tracker import content_check, ledger, settings, store, view
+from tracker import after_install, content_check, ledger, scheduling, settings, store, view
 from tracker.filer import ensure, file_household_drops, refresh_household_readme
 from tracker.households import create_household
 from tracker.layout import (
@@ -212,6 +212,53 @@ def reading_in_this_process():
     """
     patch = pytest.MonkeyPatch()
     patch.setattr(content_check, "READ_IN_A_CHILD", False)
+    try:
+        yield
+    finally:
+        patch.undo()
+
+
+#: The real answer to "is there a Task Scheduler here", for the one test
+#: that asks it of the platform (decision 209).
+REAL_TASK_SCHEDULER_HERE = scheduling.task_scheduler_here
+
+
+def _schtasks_unfaked(command):
+    raise AssertionError(f"a test reached schtasks without faking it: {command}")
+
+
+@pytest.fixture(autouse=True)
+def no_task_scheduler_unless_faked():
+    """No test registers or deletes a real scheduled task (decision 209).
+
+    Saving a clients root, the app's launch and Setup all run the
+    after-install step, which registers the daily job on a Windows machine
+    that has Task Scheduler - the Windows CI runner included. Every test
+    starts on a computer with none; a test about registering says it is on
+    Windows and fakes ``schtasks`` itself, and one that forgets fails here
+    rather than reaching the real one. A ``MonkeyPatch`` of its own, like
+    the store's, so ``monkeypatch.undo()`` in a test cannot lift it.
+    """
+    patch = pytest.MonkeyPatch()
+    patch.setattr(scheduling, "task_scheduler_here", lambda: False)
+    patch.setattr(scheduling, "_schtasks", _schtasks_unfaked)
+    try:
+        yield
+    finally:
+        patch.undo()
+
+
+@pytest.fixture(autouse=True)
+def no_real_test_cache_is_cleared(tmp_path_factory):
+    """No test clears this checkout's own ``.pytest_cache`` (SPEC-209 R8).
+
+    Every door of the after-install step runs its test-cache job, and the
+    suite is running from that very checkout: left alone, the first test
+    to save a root would remove the cache pytest is writing. The job is
+    pointed at a folder that is never made; a test about the job names its
+    own fabricated checkout. Its own ``MonkeyPatch``, as above."""
+    patch = pytest.MonkeyPatch()
+    patch.setattr(after_install, "CHECKOUT", tmp_path_factory.getbasetemp() / "no-checkout-here")
     try:
         yield
     finally:
@@ -546,7 +593,7 @@ def real_places(repo: Path) -> tuple[tuple[str, Path], ...]:
     from tracker.checkpoint import CHECKPOINT_FILENAME
     from tracker.progress import PASSES_DIRNAME
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
-    from tracker.runner import LAST_PASS_FILENAME, LOG_FILENAME, STATUS_PAGE_FILENAME
+    from tracker.runner import AFTER_INSTALL_FILENAME, LAST_PASS_FILENAME, LOG_FILENAME, STATUS_PAGE_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
 
     named = settings.settings_path()                     # the shell's, if it sets one
@@ -565,6 +612,8 @@ def real_places(repo: Path) -> tuple[tuple[str, Path], ...]:
                    # copies of a return's lines (record-derived, like the store).
                    ("record checkpoint", where.with_name(CHECKPOINT_FILENAME)),
                    ("last-pass file", where.with_name(LAST_PASS_FILENAME)),
+                   # Decision 209's note of the last after-install run, beside the store too.
+                   ("after-install note", where.with_name(AFTER_INSTALL_FILENAME)),
                    ("recovered record copies", where.with_name(store.RECOVERED_DIR)),
                    # Decision 193 writes these beside the store too: the error
                    # log (its rotated copies share its name) and the passes' progress.

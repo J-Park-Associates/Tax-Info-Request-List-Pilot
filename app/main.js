@@ -66,6 +66,17 @@ const STDERR_ON_SCREEN_CAP = 4 * 1024;
 // allowlist) and vocab.engagement_flag. Pinned to tracker.api.COMMANDS and
 // to the renderer's first call by tests/test_single_source.py.
 const BOOTSTRAP_COMMAND = "list";
+// The after-install step's launch door (decision 209): the shell runs it
+// itself, once, at start. It returns at once when the program has not
+// changed since it last ran cleanly and the designation still names the
+// computer it named; after an upgrade it registers the schedule on the
+// computer that runs it and checks every record, which on a streamed
+// Drive folder can take minutes. So it runs in the background and no call
+// from the page waits for it (the review's S7): the first screen is drawn
+// at once, and when the step did run the page is told on
+// LAUNCH_DONE_CHANNEL and asks again, so its notice appears.
+const LAUNCH_COMMAND = "after-install";
+const LAUNCH_DONE_CHANNEL = "after-install-done";
 let allowedCommands = null;   // vocab.commands, once seen
 let engagementFlag = null;    // vocab.engagement_flag, once seen
 // Sort & Scan's command (decision 203), learned, never typed: a process
@@ -175,6 +186,12 @@ function commandProblem(args) {
 function runTracker(args, payload, onProgress, onEnded) {
   const problem = commandProblem(args);
   if (problem) return Promise.resolve(shellFailure(problem, "refused"));
+  return spawnTracker(args, payload, onProgress, onEnded);
+}
+
+// Start the tracker with one command already allowed: the renderer's
+// through runTracker's check, and the shell's own launch door (decision 209).
+function spawnTracker(args, payload, onProgress, onEnded) {
   // Serialised before anything starts (decision 176): a payload that will
   // not serialise used to throw once the tracker was already running and
   // waiting on stdin, which it then did until the timeout below.
@@ -377,6 +394,7 @@ function createWindow() {
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.webContents.on("will-navigate", (event) => event.preventDefault());
   win.loadFile(path.join(__dirname, "renderer", "index.html"));
+  return win;
 }
 
 // One window (decision 160). A second double-click used to open a second
@@ -393,7 +411,17 @@ if (!app.requestSingleInstanceLock()) {
     if (win.isMinimized()) win.restore();
     win.focus();
   });
-  app.whenReady().then(createWindow);
+  app.whenReady().then(() => {
+    const win = createWindow();
+    // Not awaited by anything: a step that fails records its own sentence
+    // for the notice (tracker.api's launch door), and one that cannot
+    // start is tried again at the next launch.
+    spawnTracker([LAUNCH_COMMAND], { reason: "launch" })
+      .then((result) => {
+        if (result && result.ran && !win.isDestroyed()) win.webContents.send(LAUNCH_DONE_CHANNEL);
+      })
+      .catch(() => null);
+  });
 }
 app.on("window-all-closed", () => app.quit());
 // Closing the app stops its pass after the file it is on (decision 203,

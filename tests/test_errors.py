@@ -375,7 +375,11 @@ SAID_WHOLE_ON_PURPOSE = {
     ("ocr.py", "_engine"): "the graphics card's engine failing to build: the machine's words",
     ("registry.py", "_children"): "listing a folder of the clients root: the OS's words, never a document's",
     ("api.py", "_failure_of"): "decision 193's refused kind: the tracker's own errors, said whole (R2)",
-    ("api.py", "_cmd_install_schedule"): "Task Scheduler refusing a task: the machine's words",
+    ("after_install.py", "_schedule"): "Task Scheduler refusing a task: the machine's words; and "
+                                         "scheduling's DesignationError, always one of its constants",
+    ("after_install.py", "move_schedule_here"): "scheduling's DesignationError, always one of its constants",
+    ("after_install.py", "move_left_behind"): "the mover's own _Taken and _PartlyRemoved, which carry "
+                                              "the left-behind item's name, never a document's words",
     ("ledger.py", "_bytes_of"): "the return's own event log could not be read (SPEC-190 R2: stays)",
     ("ledger.py", "_parse_lines"): "a line of the firm's own event log that does not parse (R2: stays)",
     ("manifest.py", "validated"): "the firm's own date pattern that does not compile",

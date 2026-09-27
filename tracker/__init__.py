@@ -22,6 +22,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - registry      : finds every engagement under the clients root (no registry file)
 - runner        : the unattended pass (file -> scan -> weekly draft)
 - scheduling    : generate the Task Scheduler / n8n job
+- after_install : every one-time step after installing or upgrading - the schedule on the computer that runs it, the record check - run by Setup, the app's launch and the first root saved
 - templates     : the per-form request catalog, the one place the checklists live
 - locking       : the one lock per engagement that sort and scan both hold
 - progress      : how a running pass is watched and asked to stop - the one progress line, its file beside the database, and the cancel marker

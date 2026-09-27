@@ -46,7 +46,7 @@ from tracker.records import (
 from tracker.rollover import next_tax_year
 from tracker.runner import DRAFT_WEEKDAY, LOG_FILENAME, STATUS_PAGE_FILENAME, WEEKDAY_NAMES
 from tracker.scaffold import PREPARED_DIR_NAME, REVIEW_DIR_NAME
-from tracker.scheduling import SCHEDULE_XML_ENCODING, TASK_NAME
+from tracker.scheduling import DEFAULT_REPEAT_MINUTES, DEFAULT_START, SCHEDULE_XML_ENCODING, TASK_NAME
 from tracker.templates import BASE_YEAR, default_tax_year
 
 #: What a count outside the record's bounds is refused with (decision 187).
@@ -2069,52 +2069,100 @@ def test_the_firm_is_typed_once_in_settings_and_signs_every_engagement(capsys, d
     assert run(capsys, "list")[1]["vocab"]["firm"] == "New Name LLP"
 
 
-def test_install_schedule_uses_the_same_root_as_the_app(capsys, demo_root, monkeypatch):
-    import tracker.api as api_module
+def _on_the_office_computer(monkeypatch, *, task_exists=False):
+    """This computer is ``office-pc`` with Task Scheduler, and its
+    ``schtasks`` a fake that keeps every command (decision 209)."""
+    import platform
+
+    from tracker import scheduling
 
     calls = []
-    monkeypatch.setattr(api_module, "install_task", lambda xml, name=TASK_NAME: (calls.append(xml), ["schtasks", "/create", "/xml", str(xml)])[1])
-    code, payload = run(capsys, "install-schedule", stdin={"start": "06:30", "every": 60})
+
+    class Said:
+        def __init__(self, returncode=0):
+            self.returncode, self.stdout, self.stderr = returncode, "", ""
+
+    def answer(command):
+        calls.append(command)
+        return Said(0 if task_exists or command[1] != "/query" else 1)
+
+    monkeypatch.setattr(platform, "node", lambda: "OFFICE-PC")
+    monkeypatch.setattr(scheduling, "task_scheduler_here", lambda: True)
+    monkeypatch.setattr(scheduling, "_schtasks", answer)
+    return calls
+
+
+def test_saving_the_root_registers_the_schedule_on_the_designated_computer(capsys, tmp_path, monkeypatch):
+    """Decision 209: the first root saved on the computer that runs the
+    schedule registers it with no button - claimed, since no computer is
+    named yet - and the reply says so in the scheduler's sentence."""
+    from tracker import scheduling
+    from tracker.layout import designation_file
+    from tracker.settings import ENV_SETTINGS_DIR
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    calls = _on_the_office_computer(monkeypatch)
+    clients = tmp_path / "Clients"
+    clients.mkdir()
+    code, payload = run(capsys, "set-root", stdin={"root": str(clients)})
     assert code == 0, payload
-    assert payload["root"] == str(demo_root)
-    xml = Path(payload["xml"]).read_text(encoding=SCHEDULE_XML_ENCODING)
-    # The job reads the root the app reads, from the one settings file
-    # (decision 131) - it names the folder of that file, never the root.
-    assert payload["settings"] in xml and "T06:30:00" in xml and "PT60M" in xml
-    assert calls == [Path(payload["xml"])]
+    done = payload["after_install"]
+    assert done["schedule"] == scheduling.CLAIMED and done["installed"] is True
+    assert done["schedule_sentence"] == scheduling.SCHEDULE_CLAIMED.format(
+        host="office-pc", start=DEFAULT_START, every=DEFAULT_REPEAT_MINUTES)
+    assert designation_file(clients).read_text(encoding="utf-8") == "office-pc\n"
+    assert [command[1] for command in calls] == ["/create"]
 
 
-def test_install_schedule_writes_the_job_from_the_apps_own_settings_folder(
-    capsys, demo_root, monkeypatch, tmp_path,
-):
-    """Decision 131: the job's command line names the settings folder this
-    app runs with - the one the Electron shell hands it - and no clients
-    root, so a root changed in the app is the root the job walks next."""
-    import tracker.api as api_module
-    from tracker.runner import SETTINGS_FLAG
-    from tracker.scheduling import quote_argument
+def test_install_schedule_is_the_repair_path_and_says_its_outcome(capsys, demo_root, monkeypatch):
+    """Decision 209: ``install-schedule`` runs the after-install step again,
+    on purpose; the reply carries the outcome's key and the sentence the app
+    shows as it is, and ``installed`` only when a task was registered here."""
+    from tracker import scheduling
+    from tracker.layout import designation_file
     from tracker.settings import settings_dir
 
-    monkeypatch.setattr(api_module, "install_task", lambda xml, name=TASK_NAME: ["schtasks"])
-    code, payload = run(capsys, "install-schedule", stdin={})
+    code, payload = run(capsys, "install-schedule", stdin={})     # no Task Scheduler here
     assert code == 0, payload
-    assert payload["settings"] == str(settings_dir()) == str(tmp_path / "app")
+    assert payload["outcome"] == scheduling.NO_TASK_SCHEDULER and payload["installed"] is False
+    assert payload["sentence"] == scheduling.SCHEDULE_NOT_HERE
+
+    calls = _on_the_office_computer(monkeypatch)
+    designation_file(demo_root).parent.mkdir(exist_ok=True)
+    designation_file(demo_root).write_text("office-pc\n", encoding="utf-8")
+    code, payload = run(capsys, "install-schedule", stdin={"start": "06:30", "every": 60})
+    assert code == 0, payload
+    assert payload["outcome"] == scheduling.REGISTERED and payload["installed"] is True
+    assert payload["sentence"] == scheduling.SCHEDULE_REGISTERED.format(start="06:30", every=60)
+    assert payload["start"] == "06:30" and payload["every"] == 60
+    assert payload["draft_day"] == WEEKDAY_NAMES[DRAFT_WEEKDAY]
+    assert payload["xml"] == str(scheduling.schedule_xml_path())
+    assert payload["root"] == str(demo_root) and payload["settings"] == str(settings_dir())
     xml = Path(payload["xml"]).read_text(encoding=SCHEDULE_XML_ENCODING)
-    assert f"{SETTINGS_FLAG} {quote_argument(settings_dir())}" in xml
-    assert str(demo_root) not in xml
+    assert "T06:30:00" in xml and "PT60M" in xml and str(demo_root) not in xml
+    assert calls == [payload["command"]]
+
+    designation_file(demo_root).write_text("front-desk\n", encoding="utf-8")
+    calls = _on_the_office_computer(monkeypatch, task_exists=True)
+    code, payload = run(capsys, "install-schedule", stdin={})
+    assert payload["outcome"] == scheduling.ELSEWHERE and payload["installed"] is False
+    assert payload["sentence"] == scheduling.SCHEDULE_ELSEWHERE.format(
+        host="front-desk", removed=scheduling.SCHEDULE_REMOVED)
+    assert [command[1] for command in calls] == ["/query", "/delete"]
+    assert payload["host"] == "front-desk"          # the page's offer to move it names it
 
 
 def test_install_schedule_writes_the_task_file_into_the_data_home(capsys, demo_root, monkeypatch):
     """Decision 186: the task's file names the program and the settings
     folder, and is written into the tracker's data home - never beside the
     program in the settings folder."""
-    import tracker.api as api_module
     from tracker.scheduling import SCHEDULE_XML_FILENAME, schedule_xml_path
     from tracker.settings import settings_dir
 
-    monkeypatch.setattr(api_module, "install_task", lambda xml, name=TASK_NAME: ["schtasks"])
+    _on_the_office_computer(monkeypatch)            # decision 209: the one computer that registers
     code, payload = run(capsys, "install-schedule", stdin={})
     assert code == 0, payload
+    assert payload["installed"] is True, payload
     assert payload["xml"] == str(schedule_xml_path())
     assert Path(payload["xml"]).is_file()
     assert not (settings_dir() / SCHEDULE_XML_FILENAME).exists()
@@ -2261,26 +2309,107 @@ def test_the_first_screen_says_every_machine_warning_in_a_banner_of_its_own():
     assert 'machine.map((sentence) => el("p", {}, sentence))' in js
 
 
-def test_the_packaged_app_installs_a_schedule_against_its_own_executable(capsys, demo_root, monkeypatch, tmp_path):
-    import sys
+def test_move_schedule_here_moves_the_schedule_from_the_packaged_app(capsys, demo_root, monkeypatch):
+    """Decision 209, the review's S5: the packaged app has no command line,
+    so ``move-schedule-here`` is the same move as ``--move-schedule-here`` -
+    the designation names this computer, and the step runs as a repair and
+    registers here. The page asks only after Repair found another computer
+    named, in ``vocab.schedule.move_confirm`` with that computer's name."""
+    from tracker import after_install, scheduling
+    from tracker.layout import designation_file
 
-    import tracker.api as api_module
-    from tracker.runner import LOG_FLAG, RUNNER_MODE_FLAG
+    calls = _on_the_office_computer(monkeypatch)
+    designation_file(demo_root).parent.mkdir(exist_ok=True)
+    designation_file(demo_root).write_text("front-desk\n", encoding="utf-8")
 
-    exe = tmp_path / "package" / "resources" / "api" / "api.exe"
-    exe.parent.mkdir(parents=True)
-    monkeypatch.setattr(sys, "frozen", True, raising=False)
-    monkeypatch.setattr(sys, "executable", str(exe))
-    monkeypatch.setattr(api_module, "install_task", lambda xml, name=TASK_NAME: ["schtasks"])
+    code, payload = run(capsys, "move-schedule-here", stdin={})
 
-    code, payload = run(capsys, "install-schedule", stdin={})
     assert code == 0, payload
-    assert payload["frozen"] is True
-    xml = Path(payload["xml"]).read_text(encoding=SCHEDULE_XML_ENCODING)
-    assert f"<Command>{exe}</Command>" in xml
-    assert f"<Arguments>{RUNNER_MODE_FLAG} " in xml and LOG_FLAG in xml and payload["settings"] in xml
-    assert f"<WorkingDirectory>{exe.parent}</WorkingDirectory>" in xml
-    assert "-m tracker.runner" not in xml
+    assert payload["moved"] is True and payload["installed"] is True
+    assert payload["sentence"] == scheduling.MOVED_FROM.format(host="front-desk", here="office-pc")
+    assert payload["outcome"] == scheduling.REGISTERED
+    assert payload["after_install"]["reason"] == after_install.REASON_REPAIR
+    assert designation_file(demo_root).read_text(encoding="utf-8") == "office-pc\n"
+    assert [command[1] for command in calls] == ["/create"]
+    js = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(encoding="utf-8")
+    assert 'call(["move-schedule-here"]' in js and "vocab.schedule.move_confirm" in js
+    assert "front-desk" not in api.SCHEDULE_MOVE_CONFIRM and "{host}" in api.SCHEDULE_MOVE_CONFIRM
+
+
+def test_a_launch_step_that_raises_is_recorded_for_the_notice(capsys, tmp_path, monkeypatch):
+    """The review's N1: the shell does not read the launch door's reply, so
+    anything the step raises is recorded in one constant sentence, which
+    the first screen's notice shows, and the next launch tries again."""
+    from tracker import after_install
+    from tracker.settings import ENV_SETTINGS_DIR
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+
+    def broken():
+        raise OSError("a pull is rewriting the modules")
+
+    monkeypatch.setattr(after_install, "program_identity", broken)
+    code, launched = run(capsys, "after-install", stdin={"reason": "launch"})
+
+    assert code == 0 and launched == {"ran": True, "failed": [after_install.LAUNCH_FAILED], "warnings": []}
+    notice = run(capsys, "list")[1]["after_install"]
+    assert notice["failed"] == [after_install.LAUNCH_FAILED] and "rewriting" not in str(notice)
+    monkeypatch.undo()
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    assert run(capsys, "after-install", stdin={"reason": "launch"})[1]["ran"] is True
+
+
+def test_state_carries_the_after_install_findings_until_a_clean_run(capsys, tmp_path, monkeypatch):
+    """Decision 209, R3: the first screen's call carries what the last
+    after-install run left for a person - with a root or without one - and
+    nothing once a run finds nothing. The launch door does nothing when the
+    program has not changed."""
+    import json as _json
+
+    from tracker import after_install
+    from tracker.settings import ENV_SETTINGS_DIR
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    assert run(capsys, "list")[1]["after_install"] is None
+
+    finding = "Some Household: line 2 of the record is malformed"
+    path = after_install.record_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_json.dumps({"program": "", "ran_at": "2026-09-26T08:00:00", "reason": "setup",
+                                 "schedule": "no_root", "findings": [finding], "failed": []}),
+                    encoding="utf-8")
+    code, listed = run(capsys, "list")
+    assert code == 0 and listed["needs_root"] is True
+    assert listed["after_install"] == {"findings": [finding], "failed": [], "ran_at": "2026-09-26T08:00:00",
+                                       "wait": after_install.FINDINGS_WAIT}
+    assert listed["vocab"]["after_install"]["heading"] == api.AFTER_INSTALL_HEADING
+
+    code, launched = run(capsys, "after-install", stdin={"reason": "launch"})
+    assert code == 0 and launched["ran"] is True and launched["findings"] == []
+    assert run(capsys, "list")[1]["after_install"] is None
+    assert run(capsys, "after-install", stdin={"reason": "launch"})[1] == {"ran": False, "warnings": []}   # the envelope (decision 193)
+
+
+def test_the_schedule_is_repaired_from_the_toolbar_in_the_apis_words():
+    """Decision 209, R4: the Install Schedule button is gone; the repair
+    path's button takes its label and tooltip from ``vocab.schedule``, its
+    confirm dialog too, and the banner shows the API's sentence - the page
+    types none of it. It sits beside the client-folder button, because the
+    clients-folder card is shown only until a root is set."""
+    here = Path(__file__).resolve().parent.parent / "app" / "renderer"
+    js = (here / "app.js").read_text(encoding="utf-8")
+    html = (here / "index.html").read_text(encoding="utf-8")
+    assert "btn-schedule" not in html and "btn-schedule" not in js and "Install Schedule" not in html
+    toolbar = html[html.index('id="btn-client-folder"'):html.index('id="btn-edit"')]
+    assert 'id="btn-repair-schedule" class="btn"' in toolbar
+    assert "vocab.schedule.repair;" in js and "vocab.schedule.repair_help;" in js
+    assert "confirm(vocab.schedule.repair_confirm)" in js
+    assert "banner(result.sentence," in js
+    for literal in (api.SCHEDULE_REPAIR_LABEL, api.SCHEDULE_REPAIR_HELP, api.AFTER_INSTALL_HEADING):
+        assert literal not in js and literal not in html, literal
+    assert "vocab.after_install.heading" in js and 'id="after-install"' in html
+    # Above everything on the first screen, before any banner or count.
+    assert html.index('id="after-install"') < html.index('id="banner"')
 
 
 # ------------------------------------------------------------- vocabulary ----
@@ -2362,7 +2491,12 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
     assert [r["headline"] for r in vocab["rules"]] == [h for h, _ in STANDING_RULES]
     assert vocab["schedule"] == {"start": DEFAULT_START, "every": DEFAULT_REPEAT_MINUTES,
                                  "draft_day": WEEKDAY_NAMES[DRAFT_WEEKDAY],
-                                 "task_name": TASK_NAME}
+                                 "task_name": TASK_NAME,
+                                 "repair": api.SCHEDULE_REPAIR_LABEL,
+                                 "repair_help": api.SCHEDULE_REPAIR_HELP,
+                                 "repair_confirm": api.SCHEDULE_REPAIR_CONFIRM.format(
+                                     draft_day=WEEKDAY_NAMES[DRAFT_WEEKDAY]),
+                                 "move_confirm": api.SCHEDULE_MOVE_CONFIRM}
     # The settings page's phone box: its label, its sentence and the
     # number as recorded (decision 117).
     assert vocab["settings"] == {"phone_label": api.FIRM_PHONE_LABEL,
@@ -2564,17 +2698,6 @@ def test_the_state_carries_each_rows_evidence_as_data_not_as_a_string(capsys, de
     vocab = listed["vocab"]["evidence"]
     assert vocab["rules"] == list(EVIDENCE_RULES) and vocab["places"] == list(EVIDENCE_PLACES)
     assert RULE_REQUIRED in vocab["rules"] and WHERE_TITLE in vocab["places"]
-
-
-def test_install_schedule_defaults_come_from_scheduling(capsys, demo_root, monkeypatch):
-    import tracker.api as api_module
-    from tracker.scheduling import DEFAULT_REPEAT_MINUTES, DEFAULT_START
-
-    monkeypatch.setattr(api_module, "install_task", lambda xml, name=TASK_NAME: ["schtasks"])
-    code, payload = run(capsys, "install-schedule", stdin={})
-    assert code == 0, payload
-    assert payload["start"] == DEFAULT_START and payload["every"] == DEFAULT_REPEAT_MINUTES
-    assert payload["draft_day"] == WEEKDAY_NAMES[DRAFT_WEEKDAY]
 
 
 # ----------- a person's action is judged against the record (d112) ----
@@ -6351,6 +6474,15 @@ def test_a_writing_command_says_a_busy_checkpoint_as_busy_not_as_another_root(ca
     assert not where(demo_root, "Jones").exists()
 
 
+#: Moves that are not a write of a record or a client's file, by (module,
+#: function), each with why. The after-install mover (decision 209, R9)
+#: renames the tracker's own files - decision 186's move group, the record
+#: checkpoint and ``recovered/`` - from beside the program into the data
+#: home; it runs before any root is proved, by design, because the
+#: checkpoint it moves is what the proof reads.
+NOT_A_RECORD_WRITE = {("after_install", "_rename"): "the tracker's own files into the data home"}
+
+
 def _writers_in_the_package() -> set[str]:
     """Every function in ``tracker/`` that reaches a write of a record or a
     client's file - ``store.record``, ``ledger.append``, a move
@@ -6369,6 +6501,8 @@ def _writers_in_the_package() -> set[str]:
             if not isinstance(node, ast.FunctionDef):
                 continue
             named = calls.setdefault(node.name, set())
+            if (path.stem, node.name) in NOT_A_RECORD_WRITE:
+                continue
             for call in (one for one in ast.walk(node) if isinstance(one, ast.Call)):
                 func = call.func
                 if isinstance(func, ast.Attribute):
@@ -7151,13 +7285,19 @@ def test_no_command_outside_the_list_changing_ones_carries_the_list():
 
 
 def test_the_scheduled_tasks_working_folder_is_the_apps_own_not_the_settings_folder(tmp_path, monkeypatch):
-    """Decision 185: ``REPO_ROOT`` is the app's own folder, whatever settings
-    folder was named when the module was imported."""
-    from tracker import settings
+    """Decision 185: the task's working folder is the app's own folder,
+    whatever settings folder is named. Since decision 209 the one
+    registration (``scheduling.register_here``) writes it, so it is asked
+    there, of the task file it writes."""
+    from tracker import scheduling, settings
 
     monkeypatch.setenv(settings.ENV_SETTINGS_DIR, str(tmp_path / "app"))
-    assert api.REPO_ROOT == settings.app_dir()
-    assert api.REPO_ROOT != settings.settings_dir()
+    monkeypatch.setattr(scheduling, "install_task", lambda xml, name=TASK_NAME: ["schtasks"])
+    scheduling.register_here(settings.settings_dir())
+    written = scheduling.schedule_xml_path().read_text(encoding=scheduling.SCHEDULE_XML_ENCODING)
+    # The folder is written XML-escaped: an "&" in the office PC's path is "&amp;".
+    assert f"<WorkingDirectory>{scheduling._xml_escape(settings.app_dir())}</WorkingDirectory>" in written
+    assert settings.app_dir() != settings.settings_dir()
 
 
 def _program_on(monkeypatch, kind):
@@ -7172,33 +7312,34 @@ def _program_on(monkeypatch, kind):
 
 def test_install_schedule_refuses_when_the_program_is_on_a_removable_drive(capsys, demo_root, monkeypatch):
     """Decision 186: the schedule runs whatever program sits where the app
-    is, so Install Schedule refuses a stick - in the API's own sentence,
-    before any file is written and before the task is registered."""
-    import tracker.api as api_module
+    is, so the repair path refuses a stick - in 186's own sentence, as the
+    step's first answer (decision 209: ``refused_drive``, a failure), before
+    any file is written and before the task is registered."""
+    from tracker import scheduling
     from tracker import settings as settings_module
     from tracker.scheduling import schedule_xml_path
 
-    calls = []
-    monkeypatch.setattr(api_module, "install_task", lambda xml, name=TASK_NAME: calls.append(xml) or ["schtasks"])
+    calls = _on_the_office_computer(monkeypatch)
     _program_on(monkeypatch, settings_module.DRIVE_REMOVABLE)
     code, payload = run(capsys, "install-schedule", stdin={})
-    assert code != 0
-    assert payload["error"] == settings_module.PROGRAM_ON_REMOVABLE.format(folder=settings_module.app_dir())
+    said = settings_module.PROGRAM_ON_REMOVABLE.format(folder=settings_module.app_dir())
+    assert code == 0, payload
+    assert payload["outcome"] == scheduling.REFUSED_DRIVE and payload["sentence"] == said
+    assert payload["installed"] is False and said in payload["after_install"]["failed"]
     assert calls == []
     assert not schedule_xml_path().exists()
 
 
 def test_install_schedule_refuses_a_network_drive_and_one_windows_cannot_name(capsys, demo_root, monkeypatch):
-    import tracker.api as api_module
     from tracker import settings as settings_module
 
-    monkeypatch.setattr(api_module, "install_task", lambda xml, name=TASK_NAME: ["schtasks"])
+    _on_the_office_computer(monkeypatch)
     for kind, said in ((settings_module.DRIVE_REMOTE, settings_module.PROGRAM_ON_NETWORK),
                        (settings_module.DRIVE_UNKNOWN, settings_module.PROGRAM_DRIVE_UNKNOWN)):
         _program_on(monkeypatch, kind)
         code, payload = run(capsys, "install-schedule", stdin={})
-        assert code != 0
-        assert payload["error"] == said.format(folder=settings_module.app_dir())
+        assert code == 0 and payload["installed"] is False, payload
+        assert payload["sentence"] == said.format(folder=settings_module.app_dir())
 
 
 def test_the_first_screen_says_when_the_app_runs_from_a_removable_drive(capsys, demo_root, monkeypatch):

@@ -8,6 +8,13 @@
 # the same everywhere, which is what lets CI run the same check on Windows.
 * text=auto eol=lf
 
+# Except a batch file, which checks out CRLF (decision 209, R7). cmd reads a
+# .bat by byte offset and loses its place in an LF file - Setup.bat printed a
+# stray "'mputer' is not recognized" after a pause on the office computer.
+# Later lines win, so this overrides the rule above for .bat alone; the
+# repository still holds LF, so the map's hashes do not change.
+*.bat text eol=crlf
+
 # Rendered by the tools from docs/repo-map.json and the coverage inputs and
 # committed so a fresh clone reads them (CLAUDE.md's first instruction is to
 # read the map); collapsed in pull-request review because nobody edits them.

@@ -312,13 +312,26 @@ must already name a clients root; the job carries no root of its own.
 `--install` registers the task as it writes the XML, and running the same
 line again changes the schedule. It writes the task's file into the tracker's data folder unless
 `--out` names another (a person's explicit choice, written where it is named), and refuses when the program is on a removable or network drive (decision
-186). The app's **Install Schedule** button does exactly this for the
-folder it is showing - from source with the Python it runs under, and in
-the packaged app with its own executable, which runs the job when given
-`--run` first (there is no Python on that machine). A job registered by a
-version before decision 131 still carries the root it was installed with:
-press **Install Schedule** once after upgrading, and never again for a
-move. Every pass also re-scaffolds each engagement, so a
+186). You rarely need to: the app registers the
+job itself (decision 209) - `Setup.bat` runs its after-install step last,
+the app runs the same step at its first start after an upgrade, and saving
+the clients root runs it too - from source with the Python it runs under,
+and in the packaged app with its own executable, which runs the job when
+given `--run` first (there is no Python on that machine). It registers the
+job only on the computer that runs the schedule: the one named in
+`J Park & Associates\_Scheduling computer.txt` under the clients root,
+which the first Windows computer to set the root claims; any other
+computer registers none and removes its own. The app's
+**Repair the schedule** runs the step again, for a job that was deleted or broken; when
+another computer runs the schedule it offers to move it to this one, which
+is what `python -m tracker.after_install --move-schedule-here` does from
+source (docs/runbook.md §6), and the old computer removes its own task at
+its next start. Upgrade the office computer first: the first computer to
+start the upgraded app claims the schedule. The same step checks every
+record against today's rules and lists anything a person must look at, at
+the end of Setup and at the top of the app (in the app it runs in the
+background, so the first screen never waits for it), and removes the
+checkout's leftover `.pytest_cache`. Every pass also re-scaffolds each engagement, so a
 deleted inbox or review folder is back by the next run, and rewrites the
 household's README once, after the sort (decision 130), and
 an engagement that has been rolled forward is retired by its successor

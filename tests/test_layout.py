@@ -519,6 +519,27 @@ def test_the_key_of_a_key_is_the_key_and_a_capital_look_alike_is_its_letter():
     assert name_key("\u04ba\u0410\u0405") == name_key("Has")
 
 
+def test_the_designation_file_is_never_a_misfit(tmp_path):
+    """Decision 209: the file naming the computer that runs the schedule
+    sits directly in the private tree, where only households live - and
+    every walk of that tree lists folders only, so discovery never names it
+    a folder that does not fit, and a household beside it is found as ever."""
+    from tests.conftest import TEST_HOUSEHOLD, make_engagement
+    from tracker.layout import DESIGNATION_FILENAME, PRIVATE_TREE, designation_file, private_tree_of
+    from tracker.registry import discover_engagements
+
+    root = tmp_path / "Clients"
+    root.mkdir()
+    make_engagement(root, template_items("1040", core_only=True), household=TEST_HOUSEHOLD)
+    designation_file(root).write_text("office-pc\n", encoding="utf-8")
+
+    assert designation_file(root) == private_tree_of(root) / DESIGNATION_FILENAME
+    assert designation_file(root).parent.name == PRIVATE_TREE
+    found = discover_engagements(root)
+    assert found.misfits == []
+    assert [household.name for household in found.households] == [TEST_HOUSEHOLD]
+
+
 # ------------------------------------------------ decision 190: recorded names ----
 
 

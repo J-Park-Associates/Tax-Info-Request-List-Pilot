@@ -49,12 +49,13 @@ writes one, go to a folder of that reading's own in the data folder
 moves client data off the program's folder, the checkout, removable media
 and the temp folder; it is not a lock. It is not encrypted, and anything
 running as the schedule's Windows account can read it — which is why the AI
-tooling runs under another account. Install Schedule refuses a program on
+tooling runs under another account. Registering the schedule refuses a program on
 what Windows *reports* as removable, network or unknown: an external hard disk,
 a `subst` letter and a mounted VHD all report a fixed disk and pass, and a
-job installed from a stick before 186 keeps running from it until Install
-Schedule is pressed from the copy on the disk (the app's first screen says
-so every time it opens from the stick). A data folder set with
+job installed from a stick before 186 keeps running from it until the
+schedule is registered again from the copy on the disk - `Setup.bat` there,
+or **Repair the schedule** in that copy's app (decision 209) - and the app's
+first screen says so every time it opens from the stick. A data folder set with
 `TRACKER_DATA_HOME` is trusted to be where it says, within the two checks,
 and one junctioned elsewhere is judged by the drive its own spelling names.
 A reading's `scratch` folder catches what a library writes *through the
@@ -88,16 +89,35 @@ lines that differ, and only then, if a person agrees, the rebuild. A plain
 machine last saw, because rebuilding from it would silently lose the lines
 that went missing.
 
-**Once, after installing the version that holds every record line to the
-editor's bounds** (decision 187). Run the store check once
-(`python -m tracker.store "<the app folder>" check "<clients root>"`). It
-judges every line of every return's record by today's rule, so a line an
-earlier version accepted that the rule now refuses - a Date Pattern that
-could run away, a step outside its return's folders, a value of the wrong
-kind - is named on the day of the upgrade. A return it names as
-"malformed" is shown to Jason before that household is sorted, and
-repaired the way any malformed line is repaired (section 9); until then
-its household stops with the same sentence.
+**The record check after every install and upgrade runs itself** (decisions
+187 and 209). `Setup.bat` runs the after-install step as its last step, and
+the app runs the same step at its first start after the program changed
+(the packaged app included, which has no Setup). In the app it runs in the
+background: the first screen appears at once, and the notice below appears
+when the check finishes - on a streamed Drive folder the first start after
+an upgrade can take a minute or two to check every record. It judges every line of
+every return's record by today's rule, so a line an earlier version
+accepted that the rule now refuses - a Date Pattern that could run away, a
+step outside its return's folders, a value of the wrong kind - is named on
+the day of the upgrade: at the end of Setup, and in a notice at the top of
+the app's first screen headed *After installing: needs a person*. The
+notice stays until a later run finds nothing; it cannot be dismissed,
+because the finding is true until the record is repaired. A return it
+names as "malformed", or as "changed behind the tracker's back", is shown
+to Jason before that household is sorted, and repaired the way any such
+line is repaired (section 9); until then its household stops with the same
+sentence and the rest of the practice runs as normal - the pass judges
+every line an earlier version applied again under today's rule, once per
+return, so an old line stops its household exactly as a new one would
+(decision 209, R3b). Any other line the check names (a record that is gone,
+a store that disagrees with its record) is for a person to look at and
+does not stop anything by itself. The notice counts the records it
+judged; a store that holds none yet says so rather than "nothing to
+repair". A finding is not a failure: Setup still
+finishes. If the step itself could not run - the store would not open, the
+settings could not be read - Setup says so in one sentence and the app
+tries again at its next start. The store check below is the same check,
+for a deliberate look.
 
 **The clients root is a folder of clients, and only that.** The app refuses
 the system drive's root (`C:\`), the app's own folder, the folder holding its
@@ -483,6 +503,19 @@ changes nothing:
   one new column, nothing deleted, the verdict cache kept - so the pass
   after it reads nothing again. Only an older one is set aside and
   rebuilt by itself, as above (one policy for both decisions).
+- **Decision 209** (`user_version` 19) needs nothing either: a version-18
+  `tracker.db` gains one column where it stands (a version-17 or version-16
+  one takes decision 190's and 204's in-place steps first, the same way), and the first time each
+  return's record is read after it - by the scheduled pass, or by the app
+  when it first lists the clients folder - every line the record already
+  holds is judged by today's rule, once per return. Measured on returns of
+  two hundred lines: about three seconds for a hundred returns when one
+  line in ten is a request-list edit (each carries the whole list), and
+  about twelve when every line is one; it is processor time, not reading
+  from Drive. So the first screen after this upgrade can take a few
+  seconds to list the clients, once. A return whose old line the rule
+  refuses stops, as above, and is judged again at every pass until it is
+  repaired.
 - **Once, when decision 169 lands** (the new reader). The database's
   version does not change, so there is nothing to delete for it (set
   `tracker.db` aside only if another decision in the same install asks).
@@ -503,19 +536,25 @@ changes nothing:
   copy of it renamed `record-heads.db.damaged` or set aside as
   `record-heads.db.v1.old`, and a `recovered` folder (decision 159) - the
   checkpoint cannot be made again, a journal can hold its last write, and
-  the old copies and the records in `recovered` are evidence. **Move them
-  before the new version runs at all**: turn the schedule off, keep the app
-  closed, install the new version, move `record-heads.db` (and any
-  `record-heads.db-journal` with it, together), the other copies and
-  `recovered` from beside the app into `%LOCALAPPDATA%\tax-document-tracker`,
-  and only then open the app or let the schedule run. Until
+  the old copies and the records in `recovered` are evidence. **Setup moves
+  them** (decision 209): its after-install step, whose first job this is,
+  moves `record-heads.db` and its journal together, the other copies and
+  `recovered` from beside the app into `%LOCALAPPDATA%\tax-document-tracker`
+  under their own names, before it registers the schedule; the packaged
+  app does the same at its first start after the upgrade. The checkpoint,
+  its journal and a `.damaged` copy move as one: a journal found without
+  its checkpoint beside it, or a data folder that already holds any of the
+  three, moves nothing - a journal beside a checkpoint that is not its own
+  would be replayed into it. It never overwrites: if the data folder
+  already holds one of those names, nothing moves, and the step says so in
+  one sentence - then, and only then, a person acts, as below. It moves nothing on the delete list. Until
   `record-heads.db` is moved the tracker makes no new checkpoint - one
   would trust every record as it is that day (*the moment of trust*, §6) -
   so nothing is written: the pass serves no household, writes its page
   and its log and says *No record checkpoint was made* (reason
   `checkpoint-left-behind` in the last-pass line), and the app refuses to
   open a return or run a button that writes, saying what to move and
-  where. Moving the file ends that. If the data folder already holds a
+  where. The move ends that. If the data folder already holds a
   new checkpoint anyway (made before this refusal existed, by the first
   pass or by the app opening any return), do not copy the old file over
   the new one: move the old one
@@ -523,6 +562,7 @@ changes nothing:
   treat that day as the moment of trust (§6). **To delete:** `tracker.db`,
   `tracker.db-wal`, `tracker.db-shm`, a `tracker.db.v<N>.old` (and its
   `-wal`, `-shm` and `.1` copies) a version change set aside, `pass-order.json`, `last-pass.json`,
+  `after-install.json` (decision 209),
   the error log `tracker-errors.log` and its copies `tracker-errors.log.1`
   to `.3`, a `passes` folder (decision 193), an `ocr-scratch` folder, and
   the old `runs.log` in the clients folder, which names clients. Nothing
@@ -548,7 +588,18 @@ same client's files at once is a lock file
 (`tracker.locking.LOCK_FILENAME`), and a file a cloud client copies between
 two machines is not a lock — both machines can create their own before
 either copy arrives. From another desk, one way to work at the designated
-machine today is Remote Desktop into it. Any other machine may open a
+machine today is Remote Desktop into it. Which computer runs the schedule
+is written in one file in the firm's tree,
+`J Park & Associates\_Scheduling computer.txt` under the clients root
+(decision 209): the first Windows computer to set the root claims it, and
+the app registers the schedule on that computer only. **When upgrading to
+the version that holds decision 209, upgrade the office computer first and
+start its app once before any other desk's**: every desk that once pressed
+Install Schedule has a root set, and whichever starts the new version first
+claims the schedule - if that is not the office computer, the office
+computer then removes its own task. If another desk claimed first, press
+**Repair the schedule** on the office computer and answer yes when it
+offers to move the schedule there (§6). Any other machine may open a
 return's Status Report and read it; it does not run the app against the
 clients folder. This is the rule for now, while the owner decides how
 several machines may write; this paragraph changes when that decision
@@ -558,14 +609,25 @@ The schedule is one daily task that starts at
 `tracker.scheduling.DEFAULT_START` and repeats every
 `tracker.scheduling.DEFAULT_REPEAT_MINUTES` through the day. Each pass
 files what arrived, scans it, and on the draft day writes the chase emails.
-The app's **Install Schedule** button registers it for this app's own
-settings: the job names the settings folder, never the clients root, and
-reads the root from `settings.json` there at every run (decision 131). So
-changing the root in the app is all it takes for the schedule to follow.
-A job installed by a version before decision 131 carries the root it was
-installed with: **press Install Schedule once after upgrading**, and never
-again for a move. It refuses, with a sentence saying why, when the app is on
-a removable drive, a network drive or one Windows cannot name (decision 186):
+Nobody registers it by hand (decision 209). `Setup.bat` runs the
+after-install step last, the app runs it at its first start after an
+upgrade, and saving the clients root in the app runs it - and it registers
+the task only on the computer the designation file names (above). The
+first Windows computer to run it with a root set writes its own name into
+that file; any other computer registers none, and removes a task of its
+own if it had one. The job names the app's settings folder, never the
+clients root, and reads the root from `settings.json` there at every run
+(decision 131), so changing the root in the app is all it takes for the
+schedule to follow. **Repair the schedule** in the app runs the step again
+on purpose, for a task that was deleted or broken; its banner says what it
+did in one sentence. The file is detection, not a lock: two desks that
+set the root before the sync client carries the first claim can both
+claim, and Drive then keeps one file and renames the other, which nothing
+reads. The one-machine rule above still holds. A computer whose own
+name cannot be written in the file (a name with a space or an accent) is
+told so in one sentence and registers nothing.
+Registering refuses, with a sentence saying why, when the app is on a
+removable drive, a network drive or one Windows cannot name (decision 186):
 the schedule runs whatever program sits there on every pass, so it must be
 on this computer's own disk. The app's first screen says the same for as
 long as it runs from such a drive.
@@ -1101,8 +1163,9 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    - nothing read, nothing moved, nothing scanned - and will not be until
    the clients root is shorter; move the root and set it again in the app.
    A scheduled run that ends red with *the scheduled job still names an
-   old clients root* is the job installed before this version: open the
-   app and press *Install Schedule* once.
+   old clients root* is a job installed before decision 131: the app
+   registers it again at its next start on the designated machine, and
+   **Repair the schedule** does it at once.
 
    **Every logged pass says it started** (decision 189): the run log has
    a `[time] pass started` line before each pass's summary. When the next
@@ -1153,7 +1216,7 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    - **Amber**, *Nothing newer for over 4 hours*: no scheduled pass has
      started for four hours, which is one missed run at the default
      every-two-hours and a margin. On the designated machine, open Task Scheduler and
-     check the task is there and enabled, or press **Install Schedule** in
+     check the task is there and enabled, or press **Repair the schedule** in
      the app. Amber also shows before the first scheduled pass on a new
      machine (*No scheduled pass has run on this machine yet*), and on a
      schedule installed as once a day. *Started <time>, not finished*
@@ -1868,12 +1931,13 @@ exactly as it came.
    the machine's own Python. After that `Start App.bat` starts offline and
    installs nothing; when the lock files change (an update pulled from
    the repository), it says "The package list changed since Setup ran on
-   this computer" - run `Setup.bat` again. **After `Setup.bat`, press
-   Install Schedule once** (step 4): the button registers the Python the
-   app runs under, which from source is now `.venv`'s; a job registered
-   before `Setup.bat` names the machine's own Python, which holds none of
-   the locked packages, and would fail every run. The packaged build needs
-   neither. Keep the folder's path short — a
+   this computer" - run `Setup.bat` again. `Setup.bat`'s last step
+   registers the schedule with the Python the app runs under, which from
+   source is `.venv`'s, on the computer that runs the schedule (step 4);
+   a job registered before `Setup.bat` names the machine's own Python,
+   which holds none of the locked packages, and would fail every run. The
+   packaged build needs neither: the app runs the same step at its first
+   start. Keep the folder's path short — a
    few levels deep at most, like the `C:\Tools\tax-tracker` the README's
    scheduling example uses: past the classic Windows path limit the packaged
    program silently loses its command line and answers every call with a
@@ -1883,10 +1947,20 @@ exactly as it came.
    number beside it. This is the one place the root is set;
    if the new machine mounts it at a longer path, the reply lists every
    return that leaves short of room (§1, *If the clients root moves*).
-4. Press **Install Schedule** - once, from the app's copy on this
-   computer's own disk (it refuses from a stick or a network drive). Since decision 131 the job names the
-   app's settings folder and reads the clients root from it at every run,
-   so a later change of root is made in the app alone.
+4. **Move the schedule to this machine** (decision 209). The designation
+   file still names the old machine, so this one registers nothing until
+   it is told to. In the app press **Repair the schedule**: it says which
+   machine runs the schedule and offers to move it here; answer yes (the
+   packaged app's way, and the same move as
+   `python -m tracker.after_install --move-schedule-here` run in the app's
+   folder from source, with `.venv\Scripts\python.exe`). It says which
+   machine it replaces, names this one in the file and registers the task
+   here. The old machine removes its own task the next time its app
+   starts, if it still does - the file no longer names what that machine
+   last saw. Since decision 131 the job names the app's settings folder and
+   reads the clients root from it at every run, so a later change of root
+   is made in the app alone. Run it from the app's copy on this computer's
+   own disk: it refuses from a stick or a network drive (decision 186).
 5. **Reading needs nothing installed** (decision 169). The reader -
    RapidOCR and its three models - ships inside the app and reads scans and
    photos (a JPEG, a PNG, an iPhone's HEIC, a scanner's TIFF) on the
@@ -2077,8 +2151,8 @@ would live on the machine it protects, and a lost key would make the
 firm's own record unwritable.
 
 **Jason's two live checks** (they need the office machine's synced drive
-and cannot be proved in the cloud; run them once after installing
-decision 159, and again after moving machines):
+and cannot be proved in the cloud; Jason makes them a first time on the
+version that holds decision 159, and again after moving machines):
 
 - **L1, one holder.** Pick a return folder on `G:` that nobody is working
   on and run:

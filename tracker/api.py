@@ -44,7 +44,12 @@ Commands:
   rename    give a request another identifier and move its filed documents
             with it, as one recorded act (JSON on stdin)
   settings / set-root      where the clients live (the settings file beside the app)
-  install-schedule         register the daily job for that same folder
+  install-schedule         the repair path: run the after-install step again, which
+            registers the daily job on the computer that runs it (decision 209)
+  after-install  the app's launch door: the one-time steps after installing
+            or upgrading, run when the program changed since they last ran
+  move-schedule-here  name this computer as the one that runs the schedule,
+            then run the step (a deliberate move, runbook section 6)
   unlock    clear a stale engagement lock (a fresh one is refused)
   acknowledge-foreign  a person has looked at the lines another machine wrote
             in one return's record; they stop being named (decision 159)
@@ -76,6 +81,7 @@ from types import SimpleNamespace
 
 from tracker import (
     STANDING_RULES,
+    after_install,
     checkpoint,
     content_check,
     door,
@@ -126,7 +132,7 @@ from tracker.filer import (
     unfile_document,
     waiting_target,
 )
-from tracker.fsio import make_new_folders, write_text_atomically
+from tracker.fsio import make_new_folders
 from tracker.households import (
     HOUSEHOLD_PAUSED_YEAR,
     claim_disagrees,
@@ -298,19 +304,13 @@ from tracker.scanner import ScanLockedError, scan_engagement
 from tracker.scheduling import (
     DEFAULT_REPEAT_MINUTES,
     DEFAULT_START,
-    SCHEDULE_XML_ENCODING,
     TASK_NAME,
-    install_task,
-    is_scheduling_host,
-    schedule_xml_path,
-    task_scheduler_xml,
 )
 from tracker.settings import (
     ERROR_LOG_FILENAME,
     EXAMPLE_ROOT,
     SET_ROOT_HINT,
     SettingsError,
-    app_dir,
     clients_root,
     data_home,
     error_log,
@@ -532,9 +532,7 @@ def _reply_failure(exc: BaseException) -> int:
     print(json.dumps(reply))
     return 1
 
-#: The folder the app runs from (the repository from source, beside the
-#: executable when frozen) - the same answer tracker.settings gives.
-REPO_ROOT = app_dir()
+
 def _root() -> Path:
     """The clients root from the settings file - the one place it is kept -
     held to the settings' rule on every command that reads it (decision
@@ -1446,7 +1444,19 @@ def _vocab() -> dict:
             "every": DEFAULT_REPEAT_MINUTES,
             "draft_day": WEEKDAY_NAMES[DRAFT_WEEKDAY],
             "task_name": TASK_NAME,
+            # The repair path (decision 209): the button's label and its
+            # tooltip, and the confirm dialog's words. The page types none.
+            "repair": SCHEDULE_REPAIR_LABEL,
+            "repair_help": SCHEDULE_REPAIR_HELP,
+            "repair_confirm": SCHEDULE_REPAIR_CONFIRM.format(
+                draft_day=WEEKDAY_NAMES[DRAFT_WEEKDAY]),
+            # Asked when Repair finds another computer named (the review's
+            # S5): {host} is that computer, filled in by the page.
+            "move_confirm": SCHEDULE_MOVE_CONFIRM,
         },
+        # The notice at the top of the first screen while the last
+        # after-install run left findings or failures (decision 209).
+        "after_install": {"heading": AFTER_INSTALL_HEADING, "wait": after_install.FINDINGS_WAIT},
         # The room a return has under the clients root (decision 131): the
         # two sentences the return's page, the warnings and the set-root
         # reply fill - ROOM_SHORT as information, ROOM_PARKS as a warning
@@ -3017,7 +3027,11 @@ def _cmd_list(argv: list[str]) -> dict:
              # 159, E4): one line on the main screen, in the runner's words,
              # with or without a root - a missing root is one way it stops.
              "last_pass": last_pass_line(),
-             "machine_warnings": _machine_warnings(None)}
+             "machine_warnings": _machine_warnings(None),
+             # What the last after-install run left for a person (decision
+             # 209), or None: a notice above everything, until a run finds
+             # nothing.
+             "after_install": after_install.notice()}
     # A saved root the rule refuses (decision 188, E-13) is never walked:
     # the app asks for the folder again and says why, and the rest of the
     # app - its vocabulary, its commands - still arrives with this reply.
@@ -3053,6 +3067,7 @@ def _cmd_list(argv: list[str]) -> dict:
                 "machine_warnings": _machine_warnings(root)}
     return {**_list_payload(root, registry), "needs_root": False, "vocab": _vocab(),
             "reader_warning": empty["reader_warning"], "last_pass": empty["last_pass"],
+            "after_install": empty["after_install"],
             "machine_warnings": _machine_warnings(root)}
 
 
@@ -4599,10 +4614,15 @@ def _cmd_set_root(argv: list[str]) -> dict:
         set_firm(str(spec["firm"]))
     if spec.get("phone") is not None:
         set_firm_phone(str(spec["phone"]))
+    # The first root saved on the computer that runs the schedule registers
+    # it, with no button (decision 209); on any other computer the step
+    # says why it registers none. Run before the walk below opens anything.
+    done = after_install.run(reason=after_install.REASON_ROOT)
     return {"root": str(root), "firm": firm(), "phone": firm_phone(),
             "settings_path": str(settings_path()),
             "engagements": _cmd_list([])["engagements"],
-            "short_of_room": _short_of_room(root)}
+            "short_of_room": _short_of_room(root),
+            "after_install": done.reply()}
 
 
 def _short_of_room(root: Path) -> list[dict]:
@@ -4639,59 +4659,111 @@ def _short_of_room(root: Path) -> list[dict]:
     return sorted(short, key=lambda one: one["engagement"])
 
 
+#: The repair path's button, its tooltip and its confirm dialog (decision
+#: 209): the schedule registers itself at Setup, at the first launch after an
+#: upgrade and when the clients root is saved; this is the deliberate re-run.
+SCHEDULE_REPAIR_LABEL = "Repair the schedule"
+SCHEDULE_REPAIR_HELP = ("Register the daily job again on this computer - only needed if the schedule "
+                        "was deleted or broken")
+SCHEDULE_REPAIR_CONFIRM = ("Register the daily job with Task Scheduler again, on this computer, for this "
+                           "clients folder?\n\nIt files, scans and (on {draft_day}s) drafts reminders. "
+                           "Nothing is ever sent.")
+#: Asked when **Repair the schedule** finds that another computer runs it
+#: (decision 209, the review's S5): the packaged app's way to move the
+#: schedule, as ``--move-schedule-here`` is from source. ``{host}`` is the
+#: computer the designation names; the page fills it in and types nothing
+#: else.
+SCHEDULE_MOVE_CONFIRM = ("{host} runs the schedule for this clients folder, so this computer registered "
+                         "none.\n\nMove the schedule to this computer? Do this only when {host} has "
+                         "stopped running it for good (it removes its own task at its next start). "
+                         "Nothing is ever sent.")
+#: The heading of the first screen's notice while the last after-install
+#: run left findings or failures.
+AFTER_INSTALL_HEADING = "After installing: needs a person"
+
+
 def _cmd_install_schedule(argv: list[str]) -> dict:
-    """Generate the Task Scheduler job for this app's settings and register it.
+    """The repair path (decision 209): run the after-install step again, now.
 
     JSON on stdin (all optional): {"start": "HH:MM", "every": minutes},
     defaulting to tracker.scheduling's DEFAULT_START / DEFAULT_REPEAT_MINUTES.
-    The job names this app's settings folder and the working folder it runs
-    from, and reads the clients root from the settings file at every run
-    (decision 131), so it walks exactly the folder the app shows - today
-    and after the root is changed. A root must be set before a job is
-    registered; the reply names it for the dialog's sentence. From a source checkout the job
-    is the Python this API runs under; in the packaged app it is this same
-    executable in runner mode (api_entry.py, RUNNER_MODE_FLAG), which needs
-    none of the environment the shell gives the API.
+    The schedule registers itself - at Setup, at the first launch after an
+    upgrade, when the clients root is saved - on the computer the
+    designation file names; this is the deliberate re-run for a task that
+    was deleted or broken. The reply carries the schedule's outcome key and
+    its sentence, which the app shows as they are; ``installed`` is true
+    only when a task was registered here. The job names this app's
+    settings folder, never the root (decision 131).
     """
     spec = _read_spec()
-    # The schedule runs whatever program sits where the app is, every pass:
-    # never from a removable or network drive (decision 186). Asked before
-    # the root is read and before any file is written.
-    if refusal := program_drive_refusal():
-        raise ManifestError(refusal)
-    root = _root()
-    # The job names this app's settings folder, never the root (decision
-    # 131): it reads the root from the settings file at every run, so a
-    # root changed in the app is the root the job walks next.
-    folder = settings_dir()
+    # A program on a removable or network drive (decision 186) is the step's
+    # own first answer (scheduling.schedule_decision, outcome
+    # refused_drive): asked there, once, before any file is written.
     start = str(spec.get("start") or DEFAULT_START)
     every = int(spec["every"]) if spec.get("every") not in (None, "") else DEFAULT_REPEAT_MINUTES
-    frozen = bool(getattr(sys, "frozen", False))
-    working_dir = Path(sys.executable).resolve().parent if frozen else REPO_ROOT
-    # The task's file goes into the data home (decision 186), never beside the program.
-    xml_path = schedule_xml_path()
-    xml_path.parent.mkdir(parents=True, exist_ok=True)
-    write_text_atomically(
-        xml_path,
-        task_scheduler_xml(python=sys.executable, settings=folder, working_dir=working_dir,
-                           start_time=start, repeat_minutes=every, frozen=frozen),
-        encoding=SCHEDULE_XML_ENCODING,
-    )
-    try:
-        command = install_task(xml_path)
-    except RuntimeError as exc:
-        raise ManifestError(str(exc)) from None
+    done = after_install.run(reason=after_install.REASON_REPAIR, start=start, every=every)
     return {
-        "installed": is_scheduling_host(),
-        "xml": str(xml_path),
-        "command": command,
-        "root": str(root),
-        "settings": str(folder),
+        "installed": done.installed,
+        "outcome": done.schedule,
+        "sentence": done.schedule_sentence,
+        "xml": done.xml,
+        "command": list(done.command),
+        "root": str(clients_root() or ""),
+        "settings": str(settings_dir()),
         "start": start,
         "every": every,
         "draft_day": WEEKDAY_NAMES[DRAFT_WEEKDAY],
-        "frozen": frozen,
+        "frozen": bool(getattr(sys, "frozen", False)),
+        # The computer that runs it, when that is another one, else "": the
+        # page offers to move it here (move-schedule-here) only when set.
+        "host": done.schedule_host,
+        "after_install": done.reply(),
     }
+
+
+def _cmd_move_schedule_here(argv: list[str]) -> dict:
+    """A deliberate move of the schedule to this computer (decision 209, the
+    review's S5): the same function as ``python -m tracker.after_install
+    --move-schedule-here``, so the packaged app, which has no command line,
+    can move it too. The page asks first (``vocab.schedule.move_confirm``)
+    and only after **Repair the schedule** found another computer named.
+    ``moved`` says whether the designation now names this computer; when it
+    does, the step ran as a repair and its reply is here as the repair's is.
+    """
+    said, moved = after_install.move_schedule_here()
+    if not moved:
+        return {"moved": False, "sentence": said, "installed": False}
+    done = after_install.run(reason=after_install.REASON_REPAIR)
+    return {"moved": True, "sentence": said, "installed": done.installed,
+            "outcome": done.schedule, "schedule_sentence": done.schedule_sentence,
+            "after_install": done.reply()}
+
+
+def _cmd_after_install(argv: list[str]) -> dict:
+    """The app's launch door (decision 209): {"reason": "launch"} on stdin.
+    Nothing, at once, when this program is the one that last ran the
+    after-install step cleanly and the designation names the computer it
+    named; otherwise the step, whose findings the first screen then shows.
+    The shell calls it at start, in the background; when ``ran`` is true it
+    tells the page, which asks ``list`` again for the notice. Anything the
+    step raises is recorded as :data:`after_install.LAUNCH_FAILED`."""
+    spec = _read_spec()
+    reason = str(spec.get("reason") or after_install.REASON_LAUNCH)
+    if reason != after_install.REASON_LAUNCH:
+        raise ManifestError(f"after-install is the launch door; its reason is "
+                            f"{after_install.REASON_LAUNCH!r}, not {reason!r}")
+    try:
+        done = after_install.launch()
+    except Exception as exc:
+        # The review's N1: the shell does not read this reply, so a failure
+        # returned only here would vanish. It is kept whole on the local
+        # error log (decision 190's errors.keep, never the console) and
+        # recorded in one constant sentence, which the first screen's notice
+        # shows, and the next launch tries again.
+        errors.keep("api: the after-install step at launch", exc)
+        after_install.record_failure(after_install.LAUNCH_FAILED)
+        return {"ran": True, "failed": [after_install.LAUNCH_FAILED]}
+    return {"ran": False} if done is None else {"ran": True, **done.reply()}
 
 
 def _cmd_acknowledge_foreign(argv: list[str]) -> dict:
@@ -4773,6 +4845,8 @@ COMMANDS = {
     "settings": _cmd_settings,
     "set-root": _cmd_set_root,
     "install-schedule": _cmd_install_schedule,
+    "after-install": _cmd_after_install,
+    "move-schedule-here": _cmd_move_schedule_here,
     "acknowledge-foreign": _cmd_acknowledge_foreign,
 }
 

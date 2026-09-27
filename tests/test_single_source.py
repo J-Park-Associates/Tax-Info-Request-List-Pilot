@@ -74,6 +74,16 @@ def test_the_shell_and_the_preload_agree_on_every_ipc_channel():
     handled = set(re.findall(r'ipcMain\.handle\("([a-z-]+)"', read("app/main.js")))
     invoked = set(re.findall(r'ipcRenderer\.invoke\("([a-z-]+)"', read("app/preload.js")))
     assert handled == invoked and handled
+    # The one channel the shell sends on (decision 209, the review's S7):
+    # the launch step finished having run, and the page listens for it.
+    sent = set(re.findall(r'const [A-Z_]+_CHANNEL = "([a-z-]+)"', read("app/main.js")))
+    heard = set(re.findall(r'ipcRenderer\.on\("([a-z-]+)"', read("app/preload.js")))
+    assert sent == {"after-install-done"} and sent <= heard
+    # With the pass's progress channel (decision 193), those are all it hears.
+    sent |= set(re.findall(r'event\.sender\.send\("([a-z-]+)"', read("app/main.js")))
+    assert sent == heard == {"after-install-done", "tracker-progress"}
+    assert "webContents.send(LAUNCH_DONE_CHANNEL)" in read("app/main.js")
+    assert "window.tracker.onAfterInstallDone(" in read("app/renderer/app.js")
 
 
 def test_the_renderer_calls_only_commands_the_api_has_and_types_no_flag():
@@ -484,6 +494,7 @@ def test_every_file_beside_the_store_is_ignored_by_git():
     the code writes, so a pattern that does not match is caught."""
     import subprocess
 
+    from tracker.after_install import RECORD_FILENAME
     from tracker.checkpoint import CHECKPOINT_FILENAME, SET_ASIDE_SUFFIX
     from tracker.fsio import TEMP_SUFFIX
     from tracker.runner import LAST_PASS_FILENAME
@@ -492,6 +503,8 @@ def test_every_file_beside_the_store_is_ignored_by_git():
     aside = STORE_FILENAME + SET_ASIDE_SUFFIX.format(version=15)
     names = [CHECKPOINT_FILENAME, CHECKPOINT_FILENAME + "-wal", CHECKPOINT_FILENAME + "-shm",
              LAST_PASS_FILENAME, f"{LAST_PASS_FILENAME}.1234.abcd{TEMP_SUFFIX}",
+             # Decision 209's note of the last after-install run.
+             RECORD_FILENAME, f"{RECORD_FILENAME}.1234.abcd{TEMP_SUFFIX}",
              f"{RECOVERED_DIR}/J Park & Associates__Household__2025__Return-2026-09-26-120000.jsonl",
              aside, aside + ".1", aside + "-wal"]
     for name in names:
@@ -1274,6 +1287,7 @@ def test_documents_name_only_runtime_files_the_code_owns():
     repo file, or one of the files the log retired (``RETIRED_FILES``)."""
     import subprocess
 
+    from tracker.after_install import BUILD_INFO_FILENAME, RECORD_FILENAME
     from tracker.checkpoint import CHECKPOINT_FILENAME
     from tracker.filer import README_LOCK_FILENAME
     from tracker.ledger import LEDGER_FILENAME
@@ -1293,7 +1307,9 @@ def test_documents_name_only_runtime_files_the_code_owns():
              SCHEDULE_XML_FILENAME, SETTINGS_FILENAME, STORE_FILENAME, VIEW_FILENAME,
              PASS_ORDER_FILENAME, ERROR_LOG_FILENAME,
              # Decision 159: the checkpoint, the scheduled pass's own note, the race's lock.
-             CHECKPOINT_FILENAME, LAST_PASS_FILENAME, RACE_LOCK_FILENAME}
+             CHECKPOINT_FILENAME, LAST_PASS_FILENAME, RACE_LOCK_FILENAME,
+             # Decision 209: the after-install step's note, and the build's.
+             RECORD_FILENAME, BUILD_INFO_FILENAME}
     tracked = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True).stdout.split()
     repo_files = {Path(t).name for t in tracked} | {t for t in tracked}
     for rel in DOCUMENTS:
@@ -1369,6 +1385,7 @@ def test_documents_name_buttons_by_their_labels():
         LIST_MODE_LABEL,
         OPEN_IN_LIST_LABEL,
         RESTORE_LABEL,
+        SCHEDULE_REPAIR_LABEL,
         SEND_TO_REVIEW_LABEL,
         SKIP_LABEL,
         UNLEARN_LABEL,
@@ -1396,6 +1413,8 @@ def test_documents_name_buttons_by_their_labels():
     # And the Reminder card's three, filled in at runtime from the module
     # that owns the draft (decision 118). None of them sends anything.
     labels |= {reminder.COPY_LABEL, reminder.APPROVE_LABEL, reminder.OPEN_DRAFT_LABEL}
+    # And the schedule's repair path, filled in from the API (decision 209).
+    labels.add(SCHEDULE_REPAIR_LABEL)
     labels = {label for label in labels if label and "${" not in label}
     for rel in (*DOCUMENTS, "docs/repo-map.curated.json"):
         text = read(rel)
@@ -1672,7 +1691,7 @@ def test_tree_diagrams_name_only_runtime_files_the_code_owns():
 CONSOLE_GUARDED = ("rollover", "filer", "scanner", "registry", "review", "scaffold",
                    "store", "reminder", "runner", "router", "content_check",
                    "view", "ledger", "validators", "names", "containers", "ocr", "door",
-                   "checkpoint", "locking")
+                   "checkpoint", "locking", "after_install")
 #: The command lines that print no client's name, each with why it is not
 #: guarded - so a new command line has to be named in one list or the other.
 CONSOLE_EXEMPT = {
@@ -2088,6 +2107,191 @@ def test_the_shell_lstats_before_it_opens_and_refuses_a_link_or_a_changed_kind()
     vocab = api._vocab()
     assert vocab["shell"]["not_opened"] == api.SHELL_NOT_OPENED
     assert set(vocab["path_kinds"].values()) == {"folder", "file"}
+
+
+# ------------------------------------------ one-time steps run themselves ----
+
+#: Where a person is told what to do: the two documents and the two batch
+#: files a person double-clicks (decision 209, R5).
+ONE_TIME_STEP_DOCUMENTS = ("README.md", "docs/runbook.md", "Setup.bat", "Start App.bat")
+#: The first word of a clause that is an instruction to a person.
+INSTRUCTIONS = frozenset({"press", "run", "click", "double-click", "type", "open"})
+#: What "after installing" may be said with, within three words of "after".
+AFTER_WHAT = frozenset({"installing", "upgrading", "install", "upgrade", "setup", "setup.bat"})
+
+
+def one_time_step_clauses(text: str) -> list[str]:
+    """Every clause of ``text`` that tells a person to run a one-time step
+    after installing or upgrading - the shape Jason's standing preference
+    retires (decision 209): an instruction - the first word of the clause
+    or of any comma-separated part of it, so "After upgrading, press X
+    once" is one - with the word ``once``, and ``after`` followed within
+    three words by installing, upgrading or Setup; or a clause that is
+    itself the lead-in "Once, after installing ..." (the review's S1, the
+    shape of the base runbook's decision-187 heading). Wrapped lines are
+    joined (a ``rem`` prefix and Markdown list and quote markers dropped);
+    clauses end at ``.``, ``:``, ``;`` and blank lines."""
+    lines = []
+    for line in text.splitlines():
+        line = re.sub(r"^\s*rem(\s|$)", "", line, flags=re.I)
+        line = re.sub(r"^\s*(?:[-*+>]|\d+\.)\s+", "", line)
+        lines.append(line.strip())
+    joined = "\n".join(lines)
+    caught = []
+    for paragraph in re.split(r"\n\s*\n", joined):
+        for clause in re.split(r"[.:;]", " ".join(paragraph.split())):
+            plain = re.sub(r"[*`_(]", "", clause).strip().lower()
+            words = plain.split()
+            if not words:
+                continue
+            bare = [word.strip(",)!?\"'") for word in words]
+            after = any(word == "after" and set(bare[i + 1:i + 4]) & AFTER_WHAT
+                        for i, word in enumerate(bare))
+            starts = {part.split()[0] for part in plain.split(",") if part.split()}
+            instruction = bool(starts & INSTRUCTIONS) and "once" in bare
+            lead_in = bare[0] == "once" and after and bare[1:2] == ["after"]
+            if (instruction and after) or lead_in:
+                caught.append(clause.strip())
+    return caught
+
+
+@pytest.mark.parametrize(("clause", "caught"), [
+    ("Run the store check once after installing.", True),
+    ("installed with: **press Install Schedule once after upgrading**, and never", True),
+    ("Setup runs it once, after installing.", False),
+    ("Press Repair the schedule to register it again.", False),
+    ("Run Setup.bat once.", False),
+    ("rem Double-click it once after `Setup.bat` finishes.", True),
+    ("Open the app once a week after lunch.", False),
+    # The review's S1: the base runbook's decision-187 lead-in, and the
+    # condition put first.
+    ("**Once, after installing the version that holds every record line to the\neditor's bounds** "
+     "(decision 187). Run the store check once", True),
+    ("After upgrading, press Install Schedule once.", True),
+    ("After installing, run the store check once.", True),
+])
+def test_the_one_time_step_matcher_catches_and_spares(clause, caught):
+    assert bool(one_time_step_clauses(clause)) is caught, clause
+
+
+def test_no_document_tells_a_person_to_run_a_one_time_step():
+    """Jason's standing preference (decision 209): any one-time step after
+    installing or upgrading is built into installation - Setup, the app's
+    launch, the first root saved - never a line telling a person to run it."""
+    for rel in ONE_TIME_STEP_DOCUMENTS:
+        caught = one_time_step_clauses(read(rel))
+        assert not caught, (rel, caught)
+
+
+def _package_trees():
+    """Every module under ``tracker/``, at any depth, parsed."""
+    import ast
+
+    for path in sorted((REPO / "tracker").rglob("*.py")):
+        yield path.relative_to(REPO).as_posix(), ast.parse(path.read_text(encoding="utf-8"))
+
+
+def test_only_the_lock_asks_the_platform_for_this_computers_name():
+    """``platform.node`` is called in ``locking.this_host`` and nowhere else
+    under the package (decision 209): the lock line and the designation of
+    the computer that runs the schedule normalise one name one way. By the
+    syntax tree, at any depth (the review's N7), so ``from platform import
+    node`` is caught as surely as ``platform.node()``."""
+    import ast
+
+    found = []
+    for rel, tree in _package_trees():
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and node.attr == "node" and \
+                    isinstance(node.value, ast.Name) and node.value.id == "platform":
+                found.append(rel)
+            if isinstance(node, ast.ImportFrom) and node.module == "platform" and \
+                    any(alias.name == "node" for alias in node.names):
+                found.append(f"{rel} (from platform import node)")
+    assert found == ["tracker/locking.py"], found
+    locking = read("tracker/locking.py")
+    this_host = locking[locking.index("def this_host"):]
+    this_host = this_host[:this_host.index("\ndef ")]
+    assert "platform.node" in this_host
+
+
+def hand_comparisons(source: str) -> list[int]:
+    """The lines of ``source`` that compare a name with this computer's by
+    hand: ``==``, ``!=``, ``in`` or ``not in`` where one side is a
+    ``this_host()`` call, a name bound from one in the same function, or a
+    tuple, list or set holding either (the re-review's SF2: 5bb5d3c bound
+    ``here = this_host()`` and compared ``named == here``)."""
+    import ast
+
+    def calls_this_host(node):
+        return isinstance(node, ast.Call) and (
+            isinstance(node.func, ast.Name) and node.func.id == "this_host"
+            or isinstance(node.func, ast.Attribute) and node.func.attr == "this_host")
+
+    tree = ast.parse(source)
+    scopes = [tree, *(node for node in ast.walk(tree)
+                      if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)))]
+    found = set()
+    for scope in scopes:
+        bound = {target.id for node in ast.walk(scope)
+                 if isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr))
+                 and node.value is not None and calls_this_host(node.value)
+                 for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
+                 if isinstance(target, ast.Name)}
+
+        def is_this_host(node, bound=bound):
+            if calls_this_host(node) or isinstance(node, ast.Name) and node.id in bound:
+                return True
+            return isinstance(node, (ast.Tuple, ast.List, ast.Set)) and \
+                any(is_this_host(one, bound) for one in node.elts)
+
+        for node in ast.walk(scope):
+            if isinstance(node, ast.Compare) and \
+                    any(isinstance(op, (ast.Eq, ast.NotEq, ast.In, ast.NotIn)) for op in node.ops) and \
+                    any(is_this_host(side) for side in (node.left, *node.comparators)):
+                found.add(node.lineno)
+    return sorted(found)
+
+
+@pytest.mark.parametrize(("source", "caught"), [
+    ("ok = named == this_host()", True),
+    ("ok = locking.this_host() != named", True),
+    # 5bb5d3c's schedule_decision: the name bound first, compared after.
+    ("def decide(named):\n    here = this_host()\n    return named == here", True),
+    ("ok = named in (this_host(),)", True),
+    ("here = this_host()\nok = named not in {here}", True),
+    ("line = this_host() + '\\n'", False),
+    ("ok = is_this_host(named)", False),
+])
+def test_the_hand_comparison_matcher_catches_and_spares(source, caught):
+    assert bool(hand_comparisons(source)) is caught, source
+
+
+def test_no_module_compares_a_name_with_this_host_by_hand():
+    """Every comparison of a computer's name with this one is decision 159's
+    ``locking.is_this_host`` - the one comparison of a host, in any case and
+    spacing - never ``== this_host()``, ``!= here`` after ``here =
+    this_host()``, or ``in (this_host(),)``. ``this_host()`` stays where
+    this computer's name is *written* (the lock line, the designation file,
+    a sentence)."""
+    found = []
+    for path in sorted((REPO / "tracker").rglob("*.py")):
+        rel = path.relative_to(REPO).as_posix()
+        for line in hand_comparisons(path.read_text(encoding="utf-8")):
+            if rel == "tracker/locking.py" and line in _is_this_host_lines():
+                continue            # the one comparison itself
+            found.append(f"{rel}:{line}")
+    assert found == [], found
+
+
+def _is_this_host_lines() -> range:
+    """The lines of ``locking.is_this_host``, which is the comparison."""
+    import ast
+
+    tree = ast.parse(read("tracker/locking.py"))
+    [function] = [node for node in tree.body
+                  if isinstance(node, ast.FunctionDef) and node.name == "is_this_host"]
+    return range(function.lineno, function.end_lineno + 1)
 
 
 # ---------------------------- decision 190: programs, and the runbook's Open ----
@@ -2660,7 +2864,8 @@ def test_the_lock_notice_types_no_sentence_and_polls_only_while_a_lock_shows():
 def test_the_shell_sends_on_only_the_channels_the_preload_listens_to():
     sent = set(re.findall(r'event\.sender\.send\("([a-z-]+)"', read("app/main.js")))
     heard = set(re.findall(r'ipcRenderer\.on\("([a-z-]+)"', read("app/preload.js")))
-    assert sent == heard == {"tracker-progress"}
+    # Decision 209's launch channel is the one other the preload hears.
+    assert sent == {"tracker-progress"} and heard == sent | {"after-install-done"}
 
 
 # ------------------------------------------ decision 193: the review's fixes ----
@@ -2783,8 +2988,10 @@ def test_an_error_of_the_page_or_the_shell_is_said_by_class_and_its_message_only
     failing = js.split("function failed(err, retry) {", 1)[1].split("\n}\n", 1)[0]
     assert "const sentence = failureSentence(err);" in failing and "err.message" not in failing
     main_js = read("app/main.js")
+    # runTracker's check, then spawnTracker (decision 209's launch door
+    # shares it), read as the one path a command takes.
     run = main_js[main_js.index("function runTracker"):]
-    run = run[:run.index("\n}\n")]
+    run = run[:run.index("\n}\n", run.index("function spawnTracker"))]
     assert "shellFailure(fill(couldNotSend" in run and "`The app could not send" not in run
     assert "err.message" not in run.split("keepInLog(", 1)[0]
     assert 'ipcMain.handle("log-error"' in main_js
@@ -2823,7 +3030,9 @@ def test_switching_returns_is_one_state_call():
     refused = _body(js, "async function refused(err, btn) {")
     assert "showReturn(active)" in refused and "bootstrap(" not in refused
     assert "refresh(" not in js
-    assert js.count('call(["list"])') == 2
+    # The third: decision 209's launch step finished, and only its notice is redrawn.
+    assert js.count('call(["list"])') == 3
+    assert 'renderAfterInstall((await call(["list"])).after_install)' in js
     assert 'call(["list"])' in _body(js, "async function loadEngagements(preferPath, asked) {")
     ended = _body(js, "async function passEnded({ reply }) {")
     assert ended.index('call(["list"])') < ended.index('call(withEng("state"))')
