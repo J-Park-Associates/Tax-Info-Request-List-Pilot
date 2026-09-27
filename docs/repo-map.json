@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 158,
     "edges": 994,
-    "reused": 120
+    "reused": 118
   },
   "node_types": [
     "artifact",
@@ -135,8 +135,8 @@
       "id": "tracker/after_install.py",
       "type": "module",
       "layer": "core",
-      "sha256": "1dad7d1270912fea",
-      "lines": 649,
+      "sha256": "94e4cbc2a71f044b",
+      "lines": 796,
       "cli": "python -m tracker.after_install",
       "exports": [
         "AfterInstall",
@@ -161,6 +161,11 @@
         "DESIGNATION_UNWRITABLE",
         "FINDINGS_WAIT",
         "LAUNCH_FAILED",
+        "LEFT_BEHIND_DESTINATION_TAKEN",
+        "LEFT_BEHIND_IS_LINK",
+        "LEFT_BEHIND_MOVED",
+        "LEFT_BEHIND_MOVE_FAILED",
+        "MoveOutcome",
         "REASONS",
         "REASON_LAUNCH",
         "REASON_REPAIR",
@@ -178,6 +183,7 @@
         "designation_now",
         "launch",
         "main",
+        "move_left_behind",
         "move_schedule_here",
         "notice",
         "program_identity",
@@ -218,10 +224,14 @@
         "CACHE_FAILED_KEY": "'failed'",
         "CACHE_CLEARED": "\"Removed the test cache left in the app's folder by earlier versions (.pytest_cache); nothing the app uses was in it.\"",
         "CACHE_NOT_CLEARED": "\"The test cache left in the app's folder by earlier versions (.pytest_cache) could not be removed; the app tries again at its next start.\"",
+        "LEFT_BEHIND_MOVED": "'Moved the record checkpoint and recovered records an earlier version kept beside the program into {home}; nothing was deleted.'",
+        "LEFT_BEHIND_DESTINATION_TAKEN": "'{name} is already in {home}, so the files an earlier version left beside the program were not moved; a person must compare the two and keep one (runbook, decision 186).'",
+        "LEFT_BEHIND_IS_LINK": "'{name}, left beside the program by an earlier version, is a link, so nothing was moved into {home}; a person must move what it points at (runbook, decision 186).'",
+        "LEFT_BEHIND_MOVE_FAILED": "'The files an earlier version left beside the program could not be moved into {home}; nothing was deleted that was not copied whole first, and a person must finish the move (runbook, decision 186).'",
         "SETUP_RETRY": "'The after-install step could not finish (above). Start the app: it tries again at launch.'"
       },
       "role": "Every one-time step after installing or upgrading, in one function (decision 209, Jason's standing preference): run(reason) registers the schedule on the computer the designation file names (scheduling.schedule_decision) and runs decision 187's record check (store.check per record folder, store.gone_journals), then records what it did in after-install.json beside the store.",
-      "notes": "Three doors, one function: Setup.bat runs it last (--reason setup, after the lock stamp); the app's shell runs the API's after-install command before the page's first call, which returns {ran: false} at once when program_identity() (sys.executable, package.json's version, store.SCHEMA_VERSION, and every tracker/*.py from source or BUILD-INFO.txt when frozen) matches the record - measured at about 7 ms; and set-root runs it, so the first root saved on the office computer registers the schedule with no button. install-schedule (the app's Repair the schedule) is the deliberate re-run. A finding is not a failure: exit 0 with the findings listed (FINDINGS_WAIT); exit 1 only when a job could not run (designation unreadable, schtasks refused, store will not open, saved root refused), each one sentence, never a traceback or a file's content. The program identity is recorded only when nothing failed, so a failed run is tried again at the next launch. It never creates a store: the check is skipped when the store file is not there, and a folder the store never met (store.holds) is left to the first catch-up rather than named. The first screen's list reply carries after_install.notice() while the record holds findings or failures; the app shows it at the top, not dismissible. --move-schedule-here rewrites the designation to this computer (runbook section 6). Layer 4: imports scheduling, store, registry, ledger, door, settings, locking, fsio; the API imports it. The review fixes: launch() also runs the step when designation_now(root) differs from the record's 'designated' (so the old computer removes its task at its next start after a move); only the claim's OSError is DESIGNATION_UNWRITABLE, a job file or schtasks that cannot be reached is SCHEDULE_FAILED with the constant SCHEDULE_UNREACHABLE; an unnameable computer is scheduling.UNNAMED_HOST; the check counts what it judged (CHECK_CLEAN names n, CHECK_NOTHING_HELD for a store holding none); move_schedule_here() says MOVED_FROM_UNREADABLE over a garbage file and is also the API's move-schedule-here; record_failure(LAUNCH_FAILED) is what the API's launch door writes when launch() raises. FINDINGS_WAIT claims waiting only for malformed and changed-behind-the-back returns - both proved by tests, the first true since store R3b (the strict xfail is now a plain pass). R8, the third job: _clear_test_cache() removes CHECKOUT/.pytest_cache from source only, by lstat and an explicit bottom-up walk that unlinks any link and never descends into one - a link is a symbolic link or a junction only (S_ISLNK or the reparse tag IO_REPARSE_TAG_SYMLINK/MOUNT_POINT); any other reparse point, such as a cloud placeholder folder, is walked as a folder (CACHE_CLEARED / CACHE_NOT_CLEARED); run(checkout=...) lets tests name a fabricated checkout, and tests/conftest.py points CHECKOUT at a folder never made so the suite never clears its own cache. The command line is main(argv) in the imported module and the __main__ block only calls it: a runpy copy of the module had its own CHECKOUT, so tests reached the real cache (second review, MF1); the tests call main() and a guard test asserts the real checkout's cache is untouched."
+      "notes": "Three doors, one function: Setup.bat runs it last (--reason setup, after the lock stamp); the app's shell runs the API's after-install command before the page's first call, which returns {ran: false} at once when program_identity() (sys.executable, package.json's version, store.SCHEMA_VERSION, and every tracker/*.py from source or BUILD-INFO.txt when frozen) matches the record - measured at about 7 ms; and set-root runs it, so the first root saved on the office computer registers the schedule with no button. install-schedule (the app's Repair the schedule) is the deliberate re-run. A finding is not a failure: exit 0 with the findings listed (FINDINGS_WAIT); exit 1 only when a job could not run (designation unreadable, schtasks refused, store will not open, saved root refused), each one sentence, never a traceback or a file's content. The program identity is recorded only when nothing failed, so a failed run is tried again at the next launch. It never creates a store: the check is skipped when the store file is not there, and a folder the store never met (store.holds) is left to the first catch-up rather than named. The first screen's list reply carries after_install.notice() while the record holds findings or failures; the app shows it at the top, not dismissible. --move-schedule-here rewrites the designation to this computer (runbook section 6). Layer 4: imports scheduling, store, registry, ledger, door, settings, locking, fsio; the API imports it. The review fixes: launch() also runs the step when designation_now(root) differs from the record's 'designated' (so the old computer removes its task at its next start after a move); only the claim's OSError is DESIGNATION_UNWRITABLE, a job file or schtasks that cannot be reached is SCHEDULE_FAILED with the constant SCHEDULE_UNREACHABLE; an unnameable computer is scheduling.UNNAMED_HOST; the check counts what it judged (CHECK_CLEAN names n, CHECK_NOTHING_HELD for a store holding none); move_schedule_here() says MOVED_FROM_UNREADABLE over a garbage file and is also the API's move-schedule-here; record_failure(LAUNCH_FAILED) is what the API's launch door writes when launch() raises. FINDINGS_WAIT claims waiting only for malformed and changed-behind-the-back returns - both proved by tests, the first true since store R3b (the strict xfail is now a plain pass). R8, the third job: _clear_test_cache() removes CHECKOUT/.pytest_cache from source only, by lstat and an explicit bottom-up walk that unlinks any link and never descends into one - a link is a symbolic link or a junction only (S_ISLNK or the reparse tag IO_REPARSE_TAG_SYMLINK/MOUNT_POINT); any other reparse point, such as a cloud placeholder folder, is walked as a folder (CACHE_CLEARED / CACHE_NOT_CLEARED); run(checkout=...) lets tests name a fabricated checkout, and tests/conftest.py points CHECKOUT at a folder never made so the suite never clears its own cache. The command line is main(argv) in the imported module and the __main__ block only calls it: a runpy copy of the module had its own CHECKOUT, so tests reached the real cache (second review, MF1); the tests call main() and a guard test asserts the real checkout's cache is untouched. The careful mover (SPEC-209 R9) is move_left_behind(items, home) -> MoveOutcome, a pure function over decision 186's move group: every destination checked and any link or junction (_is_link) refused before anything moves, os.replace on one volume, otherwise copy2 / copytree(symlinks=True) with size and SHA-256 compared before the source is removed, a failed copy cleaned from the destination with the source kept and earlier moves moved back, nothing present is nothing to do; its sentences are the LEFT_BEHIND_* constants. Not yet wired into run(): it is wired first there, fed by runner.left_behind_to_move, when 186 lands."
     },
     {
       "id": "tracker/api.py",
@@ -3368,7 +3378,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "b277995862e3e302",
+      "sha256": "3f15bfb6f4e59599",
       "lines": 430,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -3386,7 +3396,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "190c1ca8086e1ec9",
+      "sha256": "7ae63f017cc25097",
       "lines": 975,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -3836,17 +3846,20 @@
       "id": "tests/test_after_install.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6358b1bef9cd82fc",
-      "lines": 689,
+      "sha256": "ad0fe813668c2ccd",
+      "lines": 815,
       "exports": [
+        "CHECKPOINT",
         "ELSEWHERE",
         "HERE",
+        "JOURNAL",
         "Said",
         "TRACEBACK",
         "app",
         "checkout",
         "cli",
         "creates",
+        "left_behind",
         "malformed",
         "root",
         "test_a_changed_program_runs_the_step_at_launch",
@@ -3854,6 +3867,8 @@
         "test_a_clean_record_is_said_to_be_clean",
         "test_a_computer_whose_name_the_file_cannot_hold_is_said_whole",
         "test_a_computer_with_no_task_scheduler_registers_nothing",
+        "test_a_copy_across_volumes_is_verified_before_the_source_goes",
+        "test_a_failed_copy_keeps_the_source_and_cleans_the_destination",
         "test_a_failed_job_file_is_not_said_to_be_an_unwritten_designation",
         "test_a_failed_run_is_tried_again_at_the_next_launch",
         "test_a_finding_is_not_a_failure",
@@ -3861,6 +3876,7 @@
         "test_a_household_whose_record_changed_behind_the_trackers_back_waits_in_the_app",
         "test_a_junction_in_the_test_cache_is_removed_not_followed",
         "test_a_link_in_the_test_cache_is_removed_not_followed",
+        "test_a_linked_left_behind_item_is_refused",
         "test_a_linked_test_cache_removes_only_the_link",
         "test_a_missing_test_cache_is_nothing_to_do",
         "test_a_move_elsewhere_removes_this_computers_task_at_its_next_start",
@@ -3868,6 +3884,7 @@
         "test_a_reparse_folder_that_is_no_link_is_walked_as_a_folder",
         "test_a_store_holding_no_record_is_not_said_to_be_clean",
         "test_a_store_that_cannot_open_is_a_failure",
+        "test_a_taken_destination_moves_nothing_and_says_so",
         "test_a_test_cache_that_cannot_be_removed_is_a_failure",
         "test_an_unreadable_designation_changes_no_schedule",
         "test_another_computer_registers_nothing_and_removes_its_own_task",
@@ -3875,12 +3892,14 @@
         "test_no_root_means_the_schedule_waits_for_the_folder",
         "test_no_store_means_the_check_waits_for_the_first_pass",
         "test_no_test_reaches_the_real_checkouts_test_cache",
+        "test_nothing_left_behind_is_nothing_to_do",
         "test_running_it_twice_is_the_same_as_once",
         "test_setup_clears_the_checkouts_test_cache",
         "test_setup_registers_the_schedule_on_the_designated_computer",
         "test_the_designation_asks_is_this_host",
         "test_the_first_computer_to_register_claims_the_schedule",
         "test_the_launch_door_does_nothing_when_the_program_is_unchanged",
+        "test_the_left_behind_checkpoint_moves_into_the_data_home",
         "test_the_packaged_app_has_no_checkout_to_clear",
         "test_two_claims_on_one_disk_create_the_file_once",
         "windows"
@@ -3888,7 +3907,9 @@
       "constants": {
         "HERE": "'office-pc'",
         "ELSEWHERE": "'front-desk'",
-        "TRACEBACK": "'Traceback'"
+        "TRACEBACK": "'Traceback'",
+        "CHECKPOINT": "'record-heads.db'",
+        "JOURNAL": "'record-heads.db-journal'"
       }
     },
     {

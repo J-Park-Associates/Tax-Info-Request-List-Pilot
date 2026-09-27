@@ -46,6 +46,18 @@ else - not a line in the runbook, not a button.
    rather than ``shutil.rmtree`` (whose handling of junctions differs by
    version). Absent is nothing to do and says nothing.
 
+**The careful mover** (SPEC-209 R9, by the standing preference) -
+decision 186's hand step, moving the record checkpoint and ``recovered/``
+from beside the program into the data home, becomes
+:func:`move_left_behind`: it moves 186's own move group and never a list of
+its own, and never touches 186's delete group (deleting what holds client
+names stays a person's call). It checks every destination and refuses any
+link before moving anything, because a checkpoint split from its journal
+is worse than one not moved; it moves by ``os.replace`` on one volume and
+otherwise copies, compares size and SHA-256, and only then removes the
+source - a rename that silently became a copy and delete is where a file
+is lost. It is wired first into :func:`run` when 186 lands.
+
 **A finding names a household that waits** - for the kinds that do. A
 line an earlier version applied that today's admission refuses stops its
 household - at the pass, in the app's walk of the clients folder and on
@@ -93,6 +105,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import shutil
 import stat
 import sys
 from dataclasses import asdict, dataclass, field
@@ -173,6 +186,19 @@ CACHE_CLEARED = ("Removed the test cache left in the app's folder by earlier ver
                  "nothing the app uses was in it.")
 CACHE_NOT_CLEARED = ("The test cache left in the app's folder by earlier versions (.pytest_cache) could "
                      "not be removed; the app tries again at its next start.")
+#: The careful mover (R9): what it says when it moved decision 186's move
+#: group into the data home, and each way it refused or failed (constant
+#: sentences; no operating-system message is quoted).
+LEFT_BEHIND_MOVED = ("Moved the record checkpoint and recovered records an earlier version kept beside "
+                     "the program into {home}; nothing was deleted.")
+LEFT_BEHIND_DESTINATION_TAKEN = ("{name} is already in {home}, so the files an earlier version left "
+                                 "beside the program were not moved; a person must compare the two and "
+                                 "keep one (runbook, decision 186).")
+LEFT_BEHIND_IS_LINK = ("{name}, left beside the program by an earlier version, is a link, so nothing was "
+                       "moved into {home}; a person must move what it points at (runbook, decision 186).")
+LEFT_BEHIND_MOVE_FAILED = ("The files an earlier version left beside the program could not be moved into "
+                           "{home}; nothing was deleted that was not copied whole first, and a person "
+                           "must finish the move (runbook, decision 186).")
 #: What Setup prints when the step exits 1 (``Setup.bat`` echoes the same words).
 SETUP_RETRY = "The after-install step could not finish (above). Start the app: it tries again at launch."
 
@@ -445,6 +471,127 @@ def _clear_test_cache(checkout: Path | None = None) -> _Step | None:
     except OSError:
         return _Step(CACHE_FAILED_KEY, CACHE_NOT_CLEARED, failed=True)
     return _Step(CACHE_CLEARED_KEY, CACHE_CLEARED)
+
+
+@dataclass(frozen=True, slots=True)
+class MoveOutcome:
+    """What :func:`move_left_behind` did: the items it moved (their old
+    paths), its one sentence - ``None`` when there was nothing to do - and
+    whether it failed."""
+
+    moved: tuple[Path, ...] = ()
+    sentence: str | None = None
+    failed: bool = False
+
+
+def _same_volume(source: Path, home: Path) -> bool:
+    """Whether ``source`` (never followed) and the existing folder ``home``
+    are on one volume, so :func:`os.replace` moves without copying."""
+    return os.lstat(source).st_dev == os.stat(home).st_dev
+
+
+def _size_and_digest(path: Path) -> tuple[int, str]:
+    """The size and SHA-256 of one regular file, read from one handle."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        size = os.fstat(handle.fileno()).st_size
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return size, digest.hexdigest()
+
+
+def _copies_match(source: Path, copy: Path) -> bool:
+    """Whether ``copy`` is ``source`` entry for entry: a link is a link to
+    the same target (never followed), a folder holds the same names, and a
+    file has the same size and SHA-256."""
+    if _is_link(source):
+        return _is_link(copy) and os.readlink(source) == os.readlink(copy)
+    if _is_link(copy):
+        return False
+    if source.is_dir():
+        if not copy.is_dir():
+            return False
+        names = sorted(os.listdir(source))
+        return names == sorted(os.listdir(copy)) and all(
+            _copies_match(source / name, copy / name) for name in names)
+    return copy.is_file() and _size_and_digest(source) == _size_and_digest(copy)
+
+
+def _discard(path: Path) -> None:
+    """Remove ``path`` - an entry, or a real folder and everything in it -
+    never what a link points at; absent is nothing to do."""
+    if not os.path.lexists(path):
+        return
+    if _is_link(path) or not path.is_dir():
+        _unlink(path)
+    else:
+        _remove_tree(path)
+
+
+def _move_one(source: Path, destination: Path) -> None:
+    """Move one entry to ``destination``, whose folder exists and which
+    does not: :func:`os.replace` on one volume; otherwise copy it (a file by
+    ``shutil.copy2``, a folder by ``copytree(symlinks=True)``, so a link
+    inside is copied as a link), compare every file's size and SHA-256, and
+    only then remove the source. A failed or mismatched copy removes what
+    it copied and keeps the source. Raises :class:`OSError` on failure."""
+    if _same_volume(source, destination.parent):
+        os.replace(source, destination)
+        return
+    try:
+        if source.is_dir():
+            shutil.copytree(source, destination, symlinks=True)
+        else:
+            shutil.copy2(source, destination, follow_symlinks=False)
+        if not _copies_match(source, destination):
+            raise OSError("the copy does not match its source")
+    except OSError:
+        try:
+            _discard(destination)
+        except OSError:
+            pass
+        raise
+    _discard(source)
+
+
+def move_left_behind(items: list[Path], home: Path) -> MoveOutcome:
+    """Move what an earlier version left beside the program into ``home``,
+    each under its own name (R9). ``items`` is decision 186's move group,
+    never a list of this module's own; one absent is not left behind.
+
+    Nothing present is nothing to do and no sentence. Otherwise it checks
+    everything before moving anything: an item that is a link or junction
+    (:func:`_is_link`), or a name already in ``home``, moves nothing and
+    fails in its own sentence - the checkpoint and its journal are never
+    split. A move that fails part way moves back what it had already moved,
+    so a failure leaves the items where they were (or, where a move back
+    itself fails, whole in ``home``); it never overwrites and never deletes
+    anything that was not first copied whole."""
+    present = [Path(item) for item in items if os.path.lexists(item)]
+    if not present:
+        return MoveOutcome()
+    for item in present:
+        if _is_link(item):
+            return MoveOutcome(sentence=LEFT_BEHIND_IS_LINK.format(name=item.name, home=home),
+                               failed=True)
+    for item in present:
+        if os.path.lexists(home / item.name):
+            return MoveOutcome(sentence=LEFT_BEHIND_DESTINATION_TAKEN.format(name=item.name, home=home),
+                               failed=True)
+    done: list[Path] = []
+    try:
+        home.mkdir(parents=True, exist_ok=True)
+        for item in present:
+            _move_one(item, home / item.name)
+            done.append(item)
+    except OSError:
+        for item in reversed(done):
+            try:
+                _move_one(home / item.name, item)
+            except OSError:
+                pass
+        return MoveOutcome(sentence=LEFT_BEHIND_MOVE_FAILED.format(home=home), failed=True)
+    return MoveOutcome(moved=tuple(present), sentence=LEFT_BEHIND_MOVED.format(home=home))
 
 
 def run(*, reason: str, start: str = scheduling.DEFAULT_START,

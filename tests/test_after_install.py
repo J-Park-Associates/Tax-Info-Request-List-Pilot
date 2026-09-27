@@ -687,3 +687,129 @@ def test_a_junction_in_the_test_cache_is_removed_not_followed(app, checkout, tmp
 
     assert done.failed == () and not cache.exists()
     assert (outside / "keep.txt").read_text(encoding="utf-8") == "not the cache's"
+
+
+# --- The careful mover (R9): decision 186's move group into the data home ---
+
+CHECKPOINT = "record-heads.db"
+JOURNAL = "record-heads.db-journal"
+
+
+def left_behind(beside):
+    """A fabricated checkpoint, its journal and ``recovered/`` beside a
+    fabricated program folder, as an earlier version left them."""
+    beside.mkdir(parents=True, exist_ok=True)
+    (beside / CHECKPOINT).write_bytes(b"checkpoint\x00heads")
+    (beside / JOURNAL).write_bytes(b"journal")
+    (beside / "recovered" / "Household A").mkdir(parents=True)
+    (beside / "recovered" / "Household A" / "record.json").write_text('{"fabricated": 1}', encoding="utf-8")
+    return [beside / CHECKPOINT, beside / JOURNAL, beside / "recovered"]
+
+
+def test_the_left_behind_checkpoint_moves_into_the_data_home(tmp_path):
+    items = left_behind(tmp_path / "program")
+    home = tmp_path / "data home"
+    done = after_install.move_left_behind(items, home)
+    assert done == after_install.MoveOutcome(
+        moved=tuple(items), sentence=after_install.LEFT_BEHIND_MOVED.format(home=home))
+    assert not any(os.path.lexists(item) for item in items)
+    assert (home / CHECKPOINT).read_bytes() == b"checkpoint\x00heads"
+    assert (home / JOURNAL).read_bytes() == b"journal"
+    assert (home / "recovered" / "Household A" / "record.json").read_text(encoding="utf-8") == '{"fabricated": 1}'
+    # Run again: what was moved is no longer left behind.
+    assert after_install.move_left_behind(items, home) == after_install.MoveOutcome()
+
+
+def test_a_taken_destination_moves_nothing_and_says_so(tmp_path):
+    items = left_behind(tmp_path / "program")
+    home = tmp_path / "data home"
+    home.mkdir()
+    (home / JOURNAL).write_bytes(b"the data home's own")
+    done = after_install.move_left_behind(items, home)
+    assert done.failed and done.moved == ()
+    assert done.sentence == after_install.LEFT_BEHIND_DESTINATION_TAKEN.format(name=JOURNAL, home=home)
+    assert all(os.path.lexists(item) for item in items)
+    assert sorted(os.listdir(home)) == [JOURNAL]
+    assert (home / JOURNAL).read_bytes() == b"the data home's own"
+
+
+def test_a_linked_left_behind_item_is_refused(tmp_path):
+    beside = tmp_path / "program"
+    items = left_behind(beside)
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    (outside / "keep.json").write_text("not the program's", encoding="utf-8")
+    after_install._remove_tree(beside / "recovered")
+    try:
+        os.symlink(outside, beside / "recovered", target_is_directory=True)
+    except OSError:
+        pytest.skip("this computer cannot make a symbolic link")
+    home = tmp_path / "data home"
+    done = after_install.move_left_behind(items, home)
+    assert done.failed and done.moved == ()
+    assert done.sentence == after_install.LEFT_BEHIND_IS_LINK.format(name="recovered", home=home)
+    assert all(os.path.lexists(item) for item in items) and not home.exists()
+    assert (outside / "keep.json").read_text(encoding="utf-8") == "not the program's"
+
+
+def test_nothing_left_behind_is_nothing_to_do(tmp_path):
+    beside = tmp_path / "program"
+    beside.mkdir()
+    home = tmp_path / "data home"
+    items = [beside / CHECKPOINT, beside / JOURNAL, beside / "recovered"]
+    assert after_install.move_left_behind(items, home) == after_install.MoveOutcome()
+    assert after_install.move_left_behind([], home) == after_install.MoveOutcome()
+    assert not home.exists()
+
+
+def test_a_copy_across_volumes_is_verified_before_the_source_goes(tmp_path, monkeypatch):
+    beside = tmp_path / "program"
+    items = left_behind(beside)
+    try:
+        os.symlink("Household A", beside / "recovered" / "linked", target_is_directory=True)
+        linked = True
+    except OSError:
+        linked = False
+    home = tmp_path / "data home"
+    monkeypatch.setattr(after_install, "_same_volume", lambda source, folder: False)
+
+    def no_rename(*args, **kwargs):
+        raise AssertionError("a move across volumes must never rename")
+
+    monkeypatch.setattr(os, "replace", no_rename)
+    compared = []
+    real_match = after_install._copies_match
+
+    def watched(source, copy):
+        compared.append((source.name, os.path.lexists(source)))
+        return real_match(source, copy)
+
+    monkeypatch.setattr(after_install, "_copies_match", watched)
+    done = after_install.move_left_behind(items, home)
+    assert not done.failed and done.moved == tuple(items)
+    assert [name for name, _ in compared[:1]] == [CHECKPOINT]
+    assert all(present for _, present in compared), "a source went before its copy was compared"
+    assert not any(os.path.lexists(item) for item in items)
+    assert (home / CHECKPOINT).read_bytes() == b"checkpoint\x00heads"
+    assert (home / "recovered" / "Household A" / "record.json").read_text(encoding="utf-8") == '{"fabricated": 1}'
+    if linked:
+        assert os.path.islink(home / "recovered" / "linked")
+        assert os.readlink(home / "recovered" / "linked") == "Household A"
+
+
+def test_a_failed_copy_keeps_the_source_and_cleans_the_destination(tmp_path, monkeypatch):
+    items = left_behind(tmp_path / "program")
+    home = tmp_path / "data home"
+    monkeypatch.setattr(after_install, "_same_volume", lambda source, folder: False)
+    real_match = after_install._copies_match
+    # The folder's copy comes out wrong; the two files before it copied cleanly.
+    monkeypatch.setattr(after_install, "_copies_match",
+                        lambda source, copy: source.name != "recovered" and real_match(source, copy))
+    done = after_install.move_left_behind(items, home)
+    assert done == after_install.MoveOutcome(
+        sentence=after_install.LEFT_BEHIND_MOVE_FAILED.format(home=home), failed=True)
+    assert TRACEBACK not in done.sentence
+    assert items[0].read_bytes() == b"checkpoint\x00heads"
+    assert items[1].read_bytes() == b"journal"
+    assert (items[2] / "Household A" / "record.json").read_text(encoding="utf-8") == '{"fabricated": 1}'
+    assert os.listdir(home) == []
