@@ -357,18 +357,19 @@ def _deny_list_from_the_constants() -> list[str]:
     from tracker.reminder import DRAFT_FILENAME
     from tracker.runner import LAST_PASS_FILENAME, LOG_FILENAME, PASS_ORDER_FILENAME, STATUS_PAGE_FILENAME
     from tracker.settings import DATA_HOME_NAME, ERROR_LOG_FILENAME, EXPECTATIONS_FILENAME, OCR_SCRATCH_DIRNAME
-    from tracker.store import STORE_FILENAME, STORE_SHM_FILENAME, STORE_WAL_FILENAME
+    from tracker.store import RECOVERED_DIR, STORE_FILENAME, STORE_SHM_FILENAME, STORE_WAL_FILENAME
     from tracker.view import VIEW_FILENAME
 
     aside = SET_ASIDE_SUFFIX.split("{", 1)[0] + "*"
     stem, ext = DRAFT_FILENAME.rsplit(".", 1)
     year = "[12][0-9][0-9][0-9]"
-    a_return = RETURN_NAME_PATTERN.format(form="*", client="*")
+    a_return = RETURN_NAME_PATTERN.format(form="[0-9]*", client="*")    # every form id begins with a digit
     places = [f"//c/Users/*/AppData/Local/{DATA_HOME_NAME}/**", f"~/.local/state/{DATA_HOME_NAME}/**",
               "//g/Shared drives/**",
               f"//**/{CLIENTS_TREE}/*/{INBOX_DIR_NAME}/**", f"//**/{CLIENTS_TREE}/*/{year}/**",
               f"//**/{PRIVATE_TREE}/*/{year}/{a_return}/**", f"//**/{PRIVATE_TREE}/*/{year}/{OPENED_DIR_NAME}/**",
-              f"//**/{OCR_SCRATCH_DIRNAME}/**"]
+              f"//**/{OCR_SCRATCH_DIRNAME}/**",
+              f"//**/{RECOVERED_DIR}/*__*.jsonl"]    # recover's exports, named by the return's path
     files = [STORE_FILENAME, STORE_WAL_FILENAME, STORE_SHM_FILENAME, STORE_FILENAME + aside,
              CHECKPOINT_FILENAME, CHECKPOINT_FILENAME + "-*", CHECKPOINT_FILENAME + ".*",
              LEDGER_FILENAME, LOG_FILENAME, LOG_FILENAME + ".*", ERROR_LOG_FILENAME, ERROR_LOG_FILENAME + ".*",
@@ -382,7 +383,9 @@ def _deny_list_from_the_constants() -> list[str]:
 def _denied(deny: list[str], path: str) -> bool:
     """Whether a Read rule of ``deny`` matches the absolute ``path`` (``/c/...``),
     read the way the rules are written - gitignore's: ``**/`` any folders,
-    ``*`` within one name, ``[...]`` one character of a set."""
+    ``*`` within one name, ``[...]`` one character of a set - and without
+    regard to case, as Windows reads a path, so the test errs toward
+    "refused" when it asks that a person's own folder stays readable."""
     for rule in deny:
         if not rule.startswith("Read(//"):
             continue
@@ -399,7 +402,7 @@ def _denied(deny: list[str], path: str) -> bool:
                 out, i = out + pattern[i:end + 1], end + 1
             else:
                 out, i = out + re.escape(pattern[i]), i + 1
-        if re.fullmatch(out, path):
+        if re.fullmatch(out, path, flags=re.IGNORECASE):
             return True
     return False
 
@@ -441,11 +444,13 @@ def test_the_deny_list_never_refuses_a_persons_own_folder_that_shares_a_client_f
         RETURN_NAME_PATTERN,
         REVIEW_DIR_NAME,
     )
+    from tracker.store import RECOVERED_DIR
 
     deny = json.loads(read(".claude/settings.json"))["permissions"]["deny"]
     workspace = f"/c/Users/staff/{PRIVATE_TREE}"
     own = [f"{workspace}/START HERE.md", f"{workspace}/Patches/0001-fix.patch",
            f"{workspace}/Claude/notes/2026/plan.md",
+           f"{workspace}/Handoffs/2026/CODE UPDATE - 09-27/notes.md",
            f"{workspace}/Tax-Info-Request-List/tracker/runner.py",
            f"{workspace}/Tax-Info-Request-List/docs/runbook.md",
            f"/c/Users/staff/Documents/{CLIENTS_TREE}/list.txt",
@@ -461,6 +466,8 @@ def test_the_deny_list_never_refuses_a_persons_own_folder_that_shares_a_client_f
               f"{root}/{PRIVATE_TREE}/Sample Household/2025/{a_return}/{PREPARED_DIR_NAME}/W-2.pdf",
               f"{root}/{PRIVATE_TREE}/Sample Household/2025/{a_return}/{REVIEW_DIR_NAME}/scan.pdf",
               f"{root}/{PRIVATE_TREE}/Sample Household/2025/{OPENED_DIR_NAME}/letter.pdf",
+              f"/c/Tools/tracker/{RECOVERED_DIR}/{PRIVATE_TREE}__Sample Household__2025__"
+              f"{a_return}-2026-09-26-120000.jsonl",
               "/g/Shared drives/Any Drive/anything.pdf"]
     for path in client:
         assert _denied(deny, path), path

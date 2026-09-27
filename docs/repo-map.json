@@ -3495,7 +3495,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "b385af60fb3183e8",
+      "sha256": "7efe1c5933e7ff87",
       "lines": 436,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -3686,8 +3686,8 @@
       "id": ".claude/settings.json",
       "type": "file",
       "layer": "root",
-      "sha256": "85d1a8d9b0e32632",
-      "lines": 64
+      "sha256": "3999349ed15c0401",
+      "lines": 66
     },
     {
       "id": "Build App.bat",
@@ -6695,8 +6695,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "d3ec60e7afe4b5f7",
-      "lines": 2234,
+      "sha256": "28e151faf48719f9",
+      "lines": 2241,
       "exports": [
         "CONSOLE_EXEMPT",
         "CONSOLE_GUARDED",
