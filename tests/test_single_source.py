@@ -2517,6 +2517,8 @@ def test_switching_returns_is_one_state_call():
                  '$("eng-select").addEventListener("change", (e) => {',
                  '$("household-roll").addEventListener("click", async (e) => {'):
         handler = _handler(js, head)
+        if "reviewPeople(" in handler:       # the roll fold's people button (S4)
+            handler += _body(js, "async function reviewPeople(path) {")
         assert "showReturn(" in handler, head
         for other in ("refresh(", "bootstrap(", "loadReminder(", "call("):
             assert other not in handler, (head, other)
@@ -2969,6 +2971,80 @@ openEditor().then(() => process.stdout.write(JSON.stringify(done)));
 """)
     assert seen == {"called": ["state"], "banners": [[api.EDITOR_NOT_THIS_RETURN, "err"]],
                     "opened": [], "failed": 0}
+
+
+#: The roll fold's people button, run as written: the real ``showReturn``,
+#: ``select`` and ``renderFor`` with the call, the draw and the editor faked.
+_PEOPLE_HEADERS = ("function select(path) {", "function renderFor(view, state) {",
+                   "async function showReturn(path) {", "async function reviewPeople(path) {")
+_PEOPLE_HARNESS = """
+const vocab = { engagement_flag: "--engagement" };
+const clicked = "/root/J Park & Associates/Lee/2026/1040 - Pat Lee";
+const other = "/root/J Park & Associates/Lee/2026/1120S - Lee LLC";
+let active = other, viewGeneration = 0;
+const done = { called: 0, failed: 0, opened: [] };
+const stopLockWatch = () => {}, renderEngagements = () => {}, render = () => {};
+const applyLock = () => {}, outlineRefused = () => {};
+const failed = () => { done.failed += 1; };
+const openEditor = () => { done.opened.push(active); };
+const call = async (args) => { done.called += 1; READ };
+reviewPeople(clicked).then(() => process.stdout.write(JSON.stringify(done)));
+"""
+
+
+def test_the_roll_folds_people_button_opens_the_editor_only_on_the_read_it_asked_for(tmp_path):
+    """The rebase review's S4, decision 194 and 193's late-reply rule: the
+    people button is one ``state`` call and the editor on it. A failed read
+    is one notice and no second call; a switch during the read opens no
+    editor, never another return's."""
+    def run(name, read):
+        return _run_renderer(tmp_path, name, _PEOPLE_HEADERS,
+                             _PEOPLE_HARNESS.replace("READ", read))
+
+    drawn = "return { paths: { engagement: args[2] } };"
+    assert run("people_ok", drawn) == {"called": 1, "failed": 0, "opened": [
+        "/root/J Park & Associates/Lee/2026/1040 - Pat Lee"]}
+    assert run("people_failed", 'throw new Error("a fabricated failure");') == {
+        "called": 1, "failed": 1, "opened": []}
+    assert run("people_switched", f"select(other); {drawn}") == {
+        "called": 1, "failed": 0, "opened": []}
+
+
+def test_the_roll_banner_says_a_failed_retirement_and_turns_warn(tmp_path):
+    """The rebase review's S5, decision 159: when every ticked return
+    rolled and a retirement then failed, the API's own sentence is a line
+    of the card's roll banner and the banner is a warning, not a success."""
+    from tracker import api
+    from tracker.rollover import ROLLOVER_NOT_RETIRED
+
+    warning = ROLLOVER_NOT_RETIRED.format(year=2027, rolled="1040 - Pat Lee",
+                                          retired="none", left="1120S - Lee LLC",
+                                          why="a fabricated failure")
+    words = api._vocab()
+    seen = _run_renderer(tmp_path, "roll_banner", (
+        "function fill(pattern, values) {", "async function rollFromCard() {"), f"""
+const vocab = {json.dumps({key: words[key] for key in (
+    "household", "people", "origin_not_applicable", "origin_new",
+    "not_applicable_carried", "new_not_asked_carried")})};
+const state = {{ paths: {{ engagement: "/root/J Park & Associates/Lee/2027/1040 - Pat Lee" }} }};
+let lastState = {{ household: {{ path: "/root/J Park & Associates/Lee" }} }}, rollChoice = null;
+const done = {{ banners: [], failed: 0 }};
+const button = {{ disabled: false, open: true }};
+const $ = () => button;
+const gatherRollChoice = () => ({{}});
+const rollHouseholdCall = () => [["roll-household"], {{}}];
+const call = async () => ({{ target_year: 2027, state, rolled: [{{ label: "1040 - Pat Lee",
+  carried: [], unfiled_last_year: [], warnings: [] }}], retired: [], skipped: [],
+  warning: {json.dumps(warning)} }});
+const adoptList = () => {{}}, renderFor = () => {{}}, renderEngagements = () => {{}};
+const select = () => 1;
+const failed = () => {{ done.failed += 1; }};
+const banner = (text, cls) => done.banners.push([text, cls]);
+rollFromCard().then(() => process.stdout.write(JSON.stringify(done)));
+""")
+    assert seen["failed"] == 0
+    [(text, cls)] = seen["banners"]
+    assert warning in text.split("\n") and cls == "warn"
 
 
 def _side_lines(tmp_path, labels: dict, items: list[dict]) -> list:

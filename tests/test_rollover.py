@@ -730,6 +730,27 @@ def test_a_household_roll_carries_a_same_name_pair_last_year_held_and_says_so(pa
     assert carried["F02"] == carried["F03"] == ("Ashford Holdings LP",)
 
 
+def test_a_household_roll_retires_an_unticked_return_whose_list_holds_a_same_name_pair(
+    pair_prior,
+):
+    """Decision 201, the rebase review's S1: the plan judges an unticked
+    return's stored rows as held, so a same-name pair its list already
+    holds is retired with it, never a refusal of the whole roll."""
+    from dataclasses import replace
+
+    from tracker.layout import private_household_dir
+    from tracker.manifest import load_engagement_info
+    from tracker.rollover import ReturnPlan, roll_household
+
+    w2 = [replace(W2[0], period="TY2025")]
+    other = make_engagement(root_of(pair_prior), w2, household="Lee Family",
+                            return_name="1040 - Mina Lee", scaffold=False)
+    done = roll_household(private_household_dir(root_of(pair_prior), "Lee Family"),
+                          target_year=2026, plans=[ReturnPlan(prior=other)])
+    assert done.retired == [pair_prior]
+    assert load_engagement_info(pair_prior).active is False
+
+
 def test_the_rollover_command_line_carries_a_same_name_pair_and_prints_the_warning(
     pair_prior, monkeypatch,
 ):

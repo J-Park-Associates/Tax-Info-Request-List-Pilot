@@ -2170,14 +2170,17 @@ function adoptList(listed) {
 
 // Show one return: one `state`, and nothing else (decision 194). The card,
 // the table and the household all arrive in that one reply, and a reply
-// that lands after another return was chosen is dropped (D6).
+// that lands after another return was chosen is dropped (D6). True only
+// when this read drew the page.
 async function showReturn(path) {
   const view = select(path);
   renderEngagements();
   try {
     renderFor(view, await call(["state", vocab.engagement_flag, path]));
+    return view === viewGeneration;
   } catch (err) {
     if (view === viewGeneration) failed(err, () => showReturn(path));
+    return false;
   }
 }
 
@@ -3612,6 +3615,14 @@ $("modal").addEventListener("input", hideCreateNote);
 // are held for the household on screen, its one button rolls it, and
 // the people button opens the editor on that return - which redraws the card
 // of the same household, so the choices come back as they were left.
+// The roll fold's people button: one state call for the return (decision
+// 194), then the editor on it - only when that read drew this return. A
+// failed read has said so once (failed()) and a switch during the read owns
+// the page (193's late-reply rule), so neither opens an editor or reads
+// state again (the rebase review's S4).
+async function reviewPeople(path) {
+  if (await showReturn(path) && active === path) openEditor();
+}
 $("household-roll").addEventListener("change", (e) => {
   if (!e.target.closest(".roll-tick, .roll-form-pick")) return;
   if (lastState && lastState.household) gatherRollChoice(lastState.household);
@@ -3624,9 +3635,7 @@ $("household-roll").addEventListener("click", async (e) => {
   const button = e.target.closest("button.roll-review-people");
   if (!button) return;
   if (lastState && lastState.household) gatherRollChoice(lastState.household);
-  // One state call for the return (decision 194), then the editor on it.
-  await showReturn(button.dataset.path);
-  openEditor();
+  reviewPeople(button.dataset.path);
 });
 $("btn-schedule").addEventListener("click", installSchedule);
 $("btn-save-root").addEventListener("click", saveRoot);
