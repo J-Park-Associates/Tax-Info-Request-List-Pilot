@@ -4,13 +4,19 @@ Status: **draft for Jason's approval** (2026-09-28). Wording in sections 7 and 8
 is proposed copy; builders use it exactly as approved.
 
 Read first: [`README.md`](README.md) (branch rules), [`DECISIONS.md`](DECISIONS.md)
-(P1-P15). Decisions referenced below as P-numbers.
+(P1-P19). Decisions referenced below as P-numbers.
+
+**Where this lives (P17).** This SPEC belongs to the separate repository
+`J-Park-Associates/Tax-Info-Request-List-Pilot`. Its `main` is the pilot. The
+original repository `J-Park-Associates/Tax-Info-Request-List` is added as the
+remote `upstream`; "`upstream/main`" below means the original product.
 
 ## 1. What this is
 
-A Windows installer for **Tax Document Tracker - Pilot**, given to a first batch
+A Windows installer for **Tax Document Tracker Pilot**, given to a first batch
 of other CPA firms to run on their own clients' files. It is the current product
-from `main`, unchanged in how it sorts, plus three pilot additions:
+from `upstream/main`, unchanged in how it sorts, under its own names on the PC
+(section 3a), plus three pilot additions:
 
 1. a **"Pilot edition 0.1" badge** in the header;
 2. a **terms screen**, shown once, that the tester must accept before using it;
@@ -23,13 +29,16 @@ And, outside the app: an **installer** (`setup.iss` + a build script) and a
 
 ### Non-goals (do not build)
 
-- No change under `tracker/` (P7). No change to `app/main.js`, `app/preload.js`,
-  `app/renderer/app.js`, `app/renderer/style.css` or `app/package.json` (P10).
+- No change under `tracker/` except the one data-folder line in section 3a
+  (P7, P18). No change to `app/main.js`, `app/preload.js`,
+  `app/renderer/app.js` or `app/renderer/style.css` (P10); `app/package.json`
+  changes only in the two name lines of section 3a.
 - No sample sandbox, feedback button, usage collection or expiry (P5).
 - No network call of any kind, no new IPC channel (P10).
 - The tour **only points**. It never clicks a button, never runs a pass, never
   calls `window.tracker`, never opens a file or folder.
-- The schedule on/off setting is **not** built here; it is built on `main`
+- The schedule setting is **not** built here; it is built in the original
+  repository
   (P14, section 12).
 
 ## 2. Constraints every pilot file obeys
@@ -41,7 +50,7 @@ These come from tests that already run over the app; breaking one fails the gate
 | CSP `script-src 'self'; style-src 'self'`: scripts and styles only as files; no inline `<script>` body, no `on...=` attributes, no `style=` attributes in HTML | `index.html` CSP; `tests/test_single_source.py` |
 | No `fetch(`, `XMLHttpRequest`, `WebSocket`, `EventSource`, `sendBeacon`, `window.open(`, `openExternal`, `import(`, `loadURL`, non-string `require(` - **not even in comments** | `tests/test_layers.py::test_the_app_has_no_network_call` (scans every `app/**/*.js`) |
 | No new IPC channel; `main.js` and `preload.js` channel lists stay as they are | `tests/test_single_source.py` |
-| The product name literal ("Tax Document Tracker") never typed in renderer files; read `vocab.product` at run time if needed | `tests/test_single_source.py` (and P11 for new files) |
+| The product name literal (`productName`, "Tax Document Tracker Pilot" after section 3a) never typed in renderer files; read `vocab.product` at run time if needed | `tests/test_single_source.py` (and P11 for new files) |
 | Existing lines of `index.html` are not moved, reflowed or reformatted; only the four lines in section 3 are added | many exact-text assertions in `tests/test_api.py`, `tests/test_single_source.py` |
 | No `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `document.write`, `eval(`, `new Function`, `startsWith(` in pilot JS | pilot tests (section 11), matching the rules `app.js` is held to |
 | DOM built only with `document.createElement`, `textContent`, `classList`, `setAttribute` for `aria-*`/`role`/`type`/`disabled`, and `element.style.setProperty` for spotlight/card position only | pilot tests |
@@ -63,6 +72,56 @@ Add exactly these lines, nothing else:
     <script src="pilot.js"></script>
     <script src="tour.js"></script>
   ```
+
+## 3a. The pilot's own names on the PC (P18, P19)
+
+So the pilot can never touch the real product's program, data or schedule -
+even on the same Windows account - every name the PC sees is different.
+These are the only edits to existing files besides section 3:
+
+| File | Line | From | To |
+|---|---|---|---|
+| `app/package.json` | `name` | `tax-document-tracker` | `tax-document-tracker-pilot` |
+| `app/package.json` | `productName` | `Tax Document Tracker` | `Tax Document Tracker Pilot` |
+| `pyproject.toml` | `name` | `tax-document-tracker` | `tax-document-tracker-pilot` |
+| `tracker/settings.py` | `DATA_HOME_NAME` | `"tax-document-tracker"` | `"tax-document-tracker-pilot"` |
+| `README.md` | first line | `# Tax Document Tracker (...)` | `# Tax Document Tracker Pilot (...)` |
+| `docs/ROADMAP.md` | first line | `# Tax Document Tracker — ...` | `# Tax Document Tracker Pilot — ...` |
+
+What follows from them, with no further edit:
+
+- program `Tax Document Tracker Pilot.exe`, packaged folder
+  `build-portable\dist\Tax Document Tracker Pilot-win32-x64` (`Build App.bat`
+  reads the name from `package.json`);
+- data folder `%LOCALAPPDATA%\tax-document-tracker-pilot`;
+- scheduled task `Tax Document Tracker Pilot` (`scheduling.TASK_NAME` is
+  `product_name()`);
+- window title from `vocab.product`.
+
+`app/package-lock.json` keeps its old `name` field: `npm ci` does not compare
+it, and leaving it avoids a conflict with every upstream lock update.
+
+**The AI-tooling deny list keeps both data folders blocked (P19).**
+`.claude/settings.json`'s deny list names the data folder so an agent's file
+tools never open client data, and
+`tests/test_single_source.py::test_the_agent_deny_list_names_the_data_home_and_every_file_that_names_a_client`
+requires it to equal the list built from `DATA_HOME_NAME`. After the rename
+that list would name only the pilot's folder, and the real product's folder
+would drop out of the deny list on any computer working in this repository -
+a weaker wall around client data. So:
+
+- `.claude/settings.json` lists the entries for **both** folder names (the
+  pilot's and `tax-document-tracker`);
+- the test changes from "equals the constants' list" to "equals the constants'
+  list plus the same entries for the original folder name
+  `tax-document-tracker`", named in the test as `UPSTREAM_DATA_HOME_NAME`,
+  so neither folder can drop out.
+
+Every other test that reads these names reads them from `package.json` or the
+constant and follows on its own; the build session runs the whole
+name-sensitive set to prove it: `test_single_source`, `test_settings`,
+`test_build`, `test_scheduling`, `test_after_install`, `test_api`,
+`test_layers`, `test_repo_map`.
 
 ## 4. `app/renderer/pilot-content.js` - the one file Jason edits for wording
 
@@ -202,7 +261,7 @@ not copy Jason edits).
   "version": 1,
   "title": "Before you start: this is a pilot",
   "paragraphs": [
-    "This is a pilot edition of Tax Document Tracker, given to a small group of firms to try before general release. It works, but it is still being finished. Expect rough edges, and please tell us about them.",
+    "This is a pilot edition of our tax document tracker, given to a small group of firms to try before general release. It works, but it is still being finished. Expect rough edges, and please tell us about them.",
     "Keep your own backups. Before you point this program at a clients folder, make sure that folder is backed up. For your first tries, we suggest a copy of a few real client folders rather than your live ones.",
     "How it treats your files. Files a client drops in are moved, byte for byte and under their own names, into that client's folder for the year. They are never edited, renamed or compressed. All sorting and renaming happens on copies, and every move is recorded.",
     "No AI reads your documents. Every sorting decision comes from fixed, written rules. A document the rules cannot place with certainty goes to Needs Review for a person to decide.",
@@ -325,7 +384,7 @@ Eleven steps, in this order.
 ```
 
 **Schedule wording** (P14). The wrap-up `limit` names the on/off setting. Until
-the pilot has merged the `main` commit that adds that setting, the sentence
+the pilot has merged the `upstream/main` commit that adds that setting, the sentence
 "which can be turned on or off, and its run time set, in the app's settings"
 is replaced by "(an on/off and run-time setting is coming in the release build)", and the pilot is **not
 released** (section 12).
@@ -362,33 +421,32 @@ installer; it is free and needs no admin rights to run the result (P4).
 - `#define AppVersion` comes from the command line (`/DAppVersion=...`); the
   script refuses to compile without it (`#ifndef AppVersion` -> `#error`).
 - `#define SourceDir` from the command line: the packaged folder
-  `build-portable\dist\Tax Document Tracker-win32-x64`.
+  `build-portable\dist\Tax Document Tracker Pilot-win32-x64`.
 - `[Setup]`:
-  - `AppName=Tax Document Tracker - Pilot` (a plain hyphen in files; the
-    en-dash only in display text is optional),
+  - `AppName=Tax Document Tracker Pilot`,
   - `AppVersion={#AppVersion}`, `AppPublisher=J Park & Associates, CPA`,
   - a fixed `AppId` GUID (generate once; never change it - it is how
     upgrades find the old install),
   - `PrivilegesRequired=lowest`,
   - `DefaultDirName={localappdata}\Programs\Tax Document Tracker Pilot`,
-  - `DefaultGroupName=Tax Document Tracker - Pilot`,
+  - `DefaultGroupName=Tax Document Tracker Pilot`,
   - `OutputDir=..\..\build-portable\installer`,
   - `OutputBaseFilename=Tax-Document-Tracker-Pilot-Setup-{#AppVersion}`,
-  - `UninstallDisplayName=Tax Document Tracker - Pilot {#AppVersion}`,
+  - `UninstallDisplayName=Tax Document Tracker Pilot {#AppVersion}`,
   - `ArchitecturesAllowed=x64compatible`, `ArchitecturesInstallIn64BitMode=x64compatible`,
   - `WizardStyle=modern`, `DisableProgramGroupPage=yes`.
 - `[Files]`: `Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion`.
-- `[Icons]`: Start-menu `Tax Document Tracker - Pilot` -> `{app}\Tax Document Tracker.exe`;
+- `[Icons]`: Start-menu `Tax Document Tracker Pilot` -> `{app}\Tax Document Tracker Pilot.exe`;
   optional desktop icon under a `[Tasks]` checkbox, unticked by default.
-- `[Run]`: offer "Launch Tax Document Tracker - Pilot" at the end
+- `[Run]`: offer "Launch Tax Document Tracker Pilot" at the end
   (`postinstall nowait skipifsilent`).
-- `[UninstallRun]`: `Filename: "{sys}\schtasks.exe"; Parameters: "/Delete /TN ""Tax Document Tracker"" /F"; Flags: runhidden; RunOnceId: "RemoveSchedule"`.
+- `[UninstallRun]`: `Filename: "{sys}\schtasks.exe"; Parameters: "/Delete /TN ""Tax Document Tracker Pilot"" /F"; Flags: runhidden; RunOnceId: "RemoveSchedule"`.
   The task name is `tracker.scheduling.TASK_NAME`, which is `product_name()`,
-  i.e. `productName` = "Tax Document Tracker"; the test in section 11 checks the
+  i.e. `productName` = "Tax Document Tracker Pilot" (section 3a); the test in section 11 checks the
   two agree. A missing task is fine (schtasks fails quietly, the uninstall goes on).
 - **No `[UninstallDelete]` section.** Uninstall removes only the files it
   installed. It never touches the clients root, the data folder
-  `%LOCALAPPDATA%\tax-document-tracker`, or `settings.json` (written beside the
+  `%LOCALAPPDATA%\tax-document-tracker-pilot`, or `settings.json` (written beside the
   exe after install, so not an installed file and left in place) (P12).
 
 ### `pilot/Build Pilot Installer.bat`
@@ -408,7 +466,7 @@ Steps, stopping with a clear message and non-zero exit on any failure:
    `node -p "require('./app/renderer/pilot-content.js').edition.version"` into
    `VER`; exit if empty.
 4. `set TRACKER_BUILD_NONINTERACTIVE=1` and `call "Build App.bat"`; exit if it
-   failed or `build-portable\dist\Tax Document Tracker-win32-x64\Tax Document Tracker.exe`
+   failed or `build-portable\dist\Tax Document Tracker Pilot-win32-x64\Tax Document Tracker Pilot.exe`
    is missing.
 5. Find `ISCC.exe` in `%ProgramFiles(x86)%\Inno Setup 6\`,
    `%ProgramFiles%\Inno Setup 6\`, `%LOCALAPPDATA%\Programs\Inno Setup 6\`.
@@ -468,7 +526,7 @@ Name each test as the claim it makes. Run under Python 3.11 and the office's.
   package's `productName` (import `tracker.scheduling`; compare to
   `app/package.json` `productName`).
 - `test_uninstalling_never_deletes_client_or_tracker_data` - no
-  `[UninstallDelete]` section; no `{localappdata}\tax-document-tracker`,
+  `[UninstallDelete]` section; no `{localappdata}\tax-document-tracker-pilot` (nor the original `tax-document-tracker`),
   `settings.json` or `Delete` of anything outside `{app}`.
 - `test_the_installer_needs_a_version_to_compile` - `#ifndef AppVersion` and `#error`.
 - `test_the_pilot_build_refuses_what_is_not_committed` - the `.bat` runs
@@ -481,7 +539,7 @@ Name each test as the claim it makes. Run under Python 3.11 and the office's.
 Plus the standing affected tests: `tests/test_layers.py` (the network scan now
 covers the new JS), `tests/test_single_source.py`, `tests/test_repo_map.py`.
 
-## 12. Dependency on `main`: the schedule setting - on/off and run time (P14, P16)
+## 12. Dependency on the original repository: the schedule setting - on/off and run time (P14, P16)
 
 Jason asked for the scheduled job to be a setting testers can turn on or off in
 the app, and whose run time they can set (P16). The app re-registers the
@@ -491,10 +549,10 @@ must live in the engine and be respected there: today that step re-registers
 with the defaults (`scheduling.DEFAULT_START` = 07:00, repeating every
 `DEFAULT_REPEAT_MINUTES` = 120 minutes), which would silently undo a time a
 person chose. It is
-therefore a `main`-lane feature with its own SPEC and decision number, built,
-reviewed and merged on `main` like any other.
+therefore a feature of the original repository with its own SPEC and decision
+number, built, reviewed and merged on its `main` like any other.
 
-Brief for that `main` session (it writes its own SPEC; this is input, not the SPEC):
+Brief for that session in the original repository (it writes its own SPEC; this is input, not the SPEC):
 
 - A per-computer setting, "Run the schedule on this computer", on or off, shown
   where the app shows its settings.
@@ -518,7 +576,7 @@ Brief for that `main` session (it writes its own SPEC; this is input, not the SP
   switch or the time.
 - Nothing is ever sent; Scan still works with the schedule off.
 
-Pilot side: the pilot takes it at its next merge from `main`. Until then the
+Pilot side: the pilot takes it at its next merge from `upstream/main`. Until then the
 wrap-up copy uses the "coming in the release build" sentence (section 8), and
 **pilot 0.1 is not released** until that merge is in and the wrap-up sentence
 is swapped back. The Tester Guide names the setting only once it exists.
@@ -544,21 +602,22 @@ Plain English, for a CPA, not a programmer. Sections:
    the reminder.
 7. **The schedule** - what it does, which computer runs it, and the setting
    to turn it on or off and choose when it runs (added once it exists on
-   `main`, section 12).
+   the original repository, section 12).
 8. **What it will not do yet** - the limits from the wrap-up step.
-9. **Uninstall** - Windows Settings -> Apps -> Tax Document Tracker - Pilot.
+9. **Uninstall** - Windows Settings -> Apps -> Tax Document Tracker Pilot.
    It removes the program and its scheduled task. It leaves your clients
    folder, your settings and the program's data folder
-   (`%LOCALAPPDATA%\tax-document-tracker`) where they are.
+   (`%LOCALAPPDATA%\tax-document-tracker-pilot`) where they are.
 10. **Problems and ideas** - email jasonpark@jparkassociates.com; never attach
     client documents; describe or screenshot with names covered.
 
-## 14. Safety note for testing at J Park (P15)
+## 14. Safety note for testing at J Park (P15, revised by P18)
 
-The pilot shares the real product's data folder name
-(`%LOCALAPPDATA%\tax-document-tracker`) and scheduled-task name. Install and test
-it **only under a Windows account that does not run the firm's real schedule**,
-and point it at a copy of client folders, never the live clients root.
+After section 3a the pilot has its own program, data folder and scheduled task,
+so it cannot touch the real product's data or schedule, and a separate Windows
+account is no longer required. Still point it at a **copy** of client folders,
+never the live clients root, and never let the pilot and the real product run
+schedules over the same clients folder.
 
 ## 15. Build split and done criteria
 
@@ -567,20 +626,22 @@ and point it at a copy of client folders, never the live clients root.
 - **Build B (sonnet):** `app/renderer/pilot-content.js` (sections 4, 7, 8 as
   approved), `pilot.js`, `tour.js`, `pilot-style.css`, the four `index.html`
   lines, `tests/test_pilot.py`, `tests/test_tour.py`.
-- Each build works in its own worktree on a branch cut from
-  `pilot/first-edition` (`pilot/build-a`, `pilot/build-b`), is merged back with
-  a merge commit, and runs `python tools/repo_map.py update` after the merge;
-  the second merge re-runs it.
+- Each build works on its own branch of this repository (`build-a`,
+  `build-b`), cut from `main`, and is merged back into `main` with a merge
+  commit; each runs `python tools/repo_map.py update` after its merge, the
+  second one again.
+- **Build A** also makes the section 3a renames and the P19 deny-list change,
+  first, as its own commit, and runs the name-sensitive tests listed there.
 - Build A's `.bat` reads `pilot-content.js`, which Build B writes; Build A's
   test fixture may use a temporary copy in the section 4 shape.
 
-Done when, on the merged branch:
+Done when, on this repository's `main`:
 
 - the gate passes: dead code removed, `ruff check .`, `repo_map.py check`, the
   affected tests (section 11 plus `test_layers`, `test_single_source`,
   `test_repo_map`) under both interpreters;
-- `git diff origin/main...pilot/first-edition -- tracker/ app/main.js app/preload.js app/renderer/app.js app/renderer/style.css app/package.json`
-  is empty;
+- `git diff upstream/main...main -- tracker/ app/main.js app/preload.js app/renderer/app.js app/renderer/style.css app/package.json`
+  shows only the section 3a lines;
 - run from source on a scratch root (`tests/samples.py::build_scratch_root`,
   local only): the terms show once and cannot be escaped; the tour starts after
   accepting; every step either highlights its element or shows its fallback;
