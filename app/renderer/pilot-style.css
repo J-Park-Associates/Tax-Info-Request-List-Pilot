@@ -1,0 +1,274 @@
+/* Pilot edition styles (pilot SPEC section 9). Only pilot names, plus .brand
+   for the badge's spacing, so nothing here can change how the app looks. */
+
+.brand .pilot-badge {
+  align-self: center;
+}
+
+.pilot-badge {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #f59e0b;
+  color: #1f2937;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+}
+
+.pilot-badge-float {
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  z-index: 70;
+  margin-left: 0;
+}
+
+/* ── Terms ─────────────────────────────────────────────────────────────── */
+
+.pilot-terms-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.pilot-terms-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 640px;
+  max-height: 85vh;
+  padding: 20px 24px;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1f2937;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.35);
+}
+
+.pilot-terms-card h2 {
+  margin: 0 0 12px;
+  font-size: 18px;
+}
+
+.pilot-terms-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.pilot-terms-section {
+  margin-bottom: 12px;
+  padding-left: 10px;
+  border-left: 3px solid #f59e0b;
+}
+
+.pilot-terms-section h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.pilot-terms-section ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 14px;
+}
+
+.pilot-terms-section li {
+  margin-bottom: 2px;
+}
+
+.pilot-terms-check {
+  display: block;
+  margin: 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pilot-terms-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ── Tour ──────────────────────────────────────────────────────────────── */
+
+.pilot-tour-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: transparent;
+}
+
+.pilot-tour-layer.is-centred {
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.pilot-tour-spot {
+  position: fixed;
+  border-radius: 8px;
+  box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.55);
+  outline: 3px solid #f59e0b;
+  transition: all 0.2s;
+  pointer-events: none;
+}
+
+.pilot-tour-spot.is-hidden {
+  display: none;
+}
+
+.pilot-tour-card {
+  position: fixed;
+  width: 400px;
+  max-width: 92vw;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 16px 18px;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1f2937;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.35);
+}
+
+.pilot-tour-card.is-wide {
+  width: 600px;
+}
+
+.pilot-tour-card h2 {
+  margin: 4px 0 10px;
+  font-size: 17px;
+}
+
+.pilot-tour-card h3 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+}
+
+.pilot-tour-card p,
+.pilot-tour-card li {
+  font-size: 14px;
+}
+
+.pilot-tour-card p {
+  margin: 0;
+}
+
+.pilot-tour-card ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.pilot-tour-card li {
+  margin-bottom: 4px;
+}
+
+.pilot-tour-card section {
+  margin-bottom: 10px;
+}
+
+.pilot-tour-count {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.pilot-tour-stages {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.pilot-tour-stage {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  font-size: 11px;
+  white-space: nowrap;
+  color: #4b5563;
+}
+
+.pilot-tour-stage + .pilot-tour-stage {
+  margin-left: 8px;
+  position: relative;
+}
+
+.pilot-tour-stage + .pilot-tour-stage::after {
+  content: "";
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  width: 8px;
+  border-top: 1px solid #d1d5db;
+}
+
+.pilot-tour-stage.is-current {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: #1f2937;
+  font-weight: 700;
+}
+
+.pilot-tour-stage.is-done {
+  border-color: transparent;
+  color: #6b7280;
+}
+
+.pilot-tour-stage.is-done::before {
+  content: "\2713\00a0";
+}
+
+.pilot-tour-ok h3::before {
+  content: "\2713\00a0";
+  color: #16a34a;
+}
+
+.pilot-tour-warn {
+  padding-left: 8px;
+  border-left: 3px solid #fcd34d;
+}
+
+.pilot-tour-warn h3::before {
+  content: "!\00a0";
+  color: #d97706;
+}
+
+.pilot-tour-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.pilot-tour-fallback {
+  margin-bottom: 10px;
+  font-style: italic;
+  color: #6b7280;
+}
+
+.pilot-tour-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 520px) {
+  .pilot-tour-compare {
+    grid-template-columns: 1fr;
+  }
+}

@@ -9,6 +9,18 @@
   `J-Park-Associates/Tax-Info-Request-List-Pilot`, whose `main` is the pilot.
   SPEC gained section 3a (the pilot's own names on the PC and the two-folder
   deny list). The renames are **not made yet**: Build A makes them first.
+- **Build B (2026-09-28, branch `claude/practical-feynman-ua2clc`, draft PR to `main`):**
+  `app/renderer/pilot-content.js` (terms and tour JSON copied from SPEC sections 7 and 8
+  by script, so the wording is exact), `pilot.js`, `tour.js`, `pilot-style.css`, the four
+  `index.html` lines, `tests/test_pilot.py`, `tests/test_tour.py`. Checked in real Chromium
+  with a stubbed tracker (Electron is not installed in the cloud): badge shows, terms show
+  once and Escape/Tab cannot leave them, the tour starts after accepting, all 11 steps
+  highlight their element or show their fallback, and terms and tour do not reappear after
+  a reload. Not checked in the packaged Electron window. Gate run under Python 3.11 only.
+  **For the reviewer:** four approved tour steps (new-household, drop-files, scan, status)
+  point at a button but have an empty `fallback`, which SPEC section 4 forbids; the approved
+  wording won, so `test_a_step_that_points_says_what_to_expect_when_it_cannot` only requires
+  a string. Jason to decide whether to add fallback lines.
 
 ## Waiting on Jason
 
