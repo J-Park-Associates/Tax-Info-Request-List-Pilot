@@ -930,12 +930,13 @@ schedules over the same clients folder.
 - **Build C (sonnet): the schedule setting** - section 12: `tracker/scheduling.py`,
   `settings.py`, `after_install.py`, `api.py`, `runner.py`, the Schedule
   button and dialog in `index.html` / `app.js`, `docs/runbook.md`, and the
-  tests in 12.8. It starts **after Build B has merged** (both edit
-  `index.html`); Build A runs in parallel with B.
-- Each build works on its own branch of this repository (`build-a`,
-  `build-b`, `build-c`), cut from `main`, and is merged back into `main` with a merge
-  commit; each runs `python tools/repo_map.py update` after its merge, the
-  second one again.
+  tests in 12.8. It runs **in parallel with A and B** (P23): B and C edit
+  different spots of `index.html`, so the merge keeps both sides.
+- Each build works on its own session branch cut from `main`, pushes it and
+  opens a **draft pull request** to `main` (P23). After review and fixes, the
+  integrate session merges them in the order **B, A, C**, each as a merge
+  commit, running `python tools/repo_map.py update` and the gate after each.
+  The prompts for every session are in [`PROMPTS.md`](PROMPTS.md).
 - **Build A** also makes the section 3a renames and the P19 deny-list change,
   first, as its own commit, and runs the name-sensitive tests listed there.
 - Build A's `.bat` reads `pilot-content.js`, which Build B writes; Build A's

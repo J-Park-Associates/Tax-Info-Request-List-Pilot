@@ -15,7 +15,7 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 174,
+    "nodes": 175,
     "edges": 1126,
     "reused": 130
   },
@@ -4002,15 +4002,22 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "eab8490f799fe735",
-      "lines": 29
+      "sha256": "a6d3bffb4c65c12c",
+      "lines": 30
     },
     {
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "f40e0cae6e743837",
-      "lines": 52
+      "sha256": "3d391ac28b6444fa",
+      "lines": 45
+    },
+    {
+      "id": "pilot/PROMPTS.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "19af5b386732415c",
+      "lines": 153
     },
     {
       "id": "pilot/README.md",
@@ -4023,8 +4030,8 @@
       "id": "pilot/SPEC.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ae1a78f1df3ef064",
-      "lines": 956
+      "sha256": "b57e1a8fbedbd92a",
+      "lines": 957
     },
     {
       "id": "requirements-build.txt",

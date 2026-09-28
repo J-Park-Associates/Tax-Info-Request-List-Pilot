@@ -15,23 +15,16 @@
 Nothing. Terms (P20) and tour (P22) wording approved; Actions are off in this
 repository; the old `pilot/first-edition` branch is deleted from the original.
 
-## Next: builds (sonnet), each its own fresh session
+## Next: run the sessions in [`PROMPTS.md`](PROMPTS.md) (P23)
 
-Every build reads only `pilot/README.md`, `pilot/DECISIONS.md` and
-`pilot/SPEC.md` (no transcript, no whole `docs/repo-map.md`; use
-`python tools/repo_map.py show <file>`), runs the gate (SPEC section 15),
-merges back into `main` with a merge commit, runs
-`python tools/repo_map.py update`, and updates this file.
-
-- **2A - names and installer** (parallel with 2B): SPEC section 3a first (its
-  own commit, with the name-sensitive tests), then sections 10, 13, 11
-  (installer tests) and 14. Branch `build-a`.
-- **2B - badge, terms, tour** (parallel with 2A): SPEC sections 2-9 and 11
-  (pilot and tour tests). Branch `build-b`.
-- **2C - schedule setting** (after 2B has merged; both edit `index.html`):
-  SPEC section 12. Branch `build-c`.
-- Why this order: A and B touch disjoint files and share only the
-  `pilot-content.js` shape; C changes the engine and the same page file as B.
+1. **Prompts 1, 2, 3 in parallel** (Sonnet): Build A (names and installer),
+   Build B (badge, terms, tour), Build C (schedule setting). Each pushes its
+   session branch and opens a draft pull request to `main`.
+2. **Prompt 4** (Opus, high effort): one review of all three pull requests,
+   findings in `pilot/reviews/review-1.md`.
+3. **Prompt 5** in each build session that has findings.
+4. **Prompt 6** (Opus): confirm fixes, merge B -> A -> C, gate, write
+   `pilot/RELEASE.md`.
 
 ## Then
 
