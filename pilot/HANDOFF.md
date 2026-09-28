@@ -75,6 +75,11 @@ cca50a7, 96853df). Reviews: `pilot/reviews/review-1.md`, `review-2.md`.
 
 ## Waiting on Jason
 
+The Windows check. Easiest: the test kit in `pilot/wintest/` - paste
+`pilot/wintest/PROMPT.md` into Claude Code on any Windows test PC (P28); the
+result arrives on branch `wintest-results` and as a `[WINTEST]` comment on
+board #5. By hand: `RELEASE.md`.
+
 The Windows steps in [`RELEASE.md`](RELEASE.md): run the gate under the
 office's Python, build the installer, install and try it, uninstall, then tag
 `pilot-0.1` and send it.

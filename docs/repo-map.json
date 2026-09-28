@@ -3,7 +3,7 @@
   "generated": "2026-09-28",
   "generator": "tools/repo_map.py",
   "generator_sha256": "78ed6f39661035ec",
-  "module_table_sha256": "37515d192b8b4b41",
+  "module_table_sha256": "98e5907a447ae88b",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 187,
-    "edges": 1132,
-    "reused": 144
+    "nodes": 191,
+    "edges": 1133,
+    "reused": 149
   },
   "node_types": [
     "artifact",
@@ -4106,15 +4106,15 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "99434cf447308314",
-      "lines": 33
+      "sha256": "2501e4c0b15973c8",
+      "lines": 34
     },
     {
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "7f8bdfce64b0efed",
-      "lines": 90
+      "sha256": "f4722485d41f20f1",
+      "lines": 95
     },
     {
       "id": "pilot/PROMPTS.md",
@@ -4134,8 +4134,8 @@
       "id": "pilot/RELEASE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "bd1612f9b94f96a7",
-      "lines": 67
+      "sha256": "0a00b2b58759ec6c",
+      "lines": 79
     },
     {
       "id": "pilot/SPEC.md",
@@ -4164,6 +4164,27 @@
       "layer": "docs",
       "sha256": "6f4e1530c056c1b1",
       "lines": 38
+    },
+    {
+      "id": "pilot/wintest/PROMPT.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "2044c8bab96432cb",
+      "lines": 75
+    },
+    {
+      "id": "pilot/wintest/RESULTS-TEMPLATE.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "f7e7dcd2e23c7313",
+      "lines": 57
+    },
+    {
+      "id": "pilot/wintest/SAMPLE-DOCUMENTS.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "df568354d562ae8c",
+      "lines": 26
     },
     {
       "id": "requirements-build.txt",
@@ -4349,6 +4370,19 @@
       "layer": "root",
       "sha256": "9d57f75bdd14b9b8",
       "lines": 82
+    },
+    {
+      "id": "pilot/wintest/make_samples.py",
+      "type": "module",
+      "layer": "root",
+      "sha256": "357c3c3aaed9ac1a",
+      "lines": 49,
+      "cli": "python -m pilot.wintest.make_samples",
+      "exports": [
+        "REPO",
+        "SANDBOX_PARENT",
+        "main"
+      ]
     },
     {
       "id": "artifact:.venv/tracker-lock.json",
@@ -8927,6 +8961,12 @@
       "to": "tracker/store.py",
       "type": "documents",
       "source": "curated"
+    },
+    {
+      "from": "pilot/wintest/make_samples.py",
+      "to": "tests/samples.py",
+      "type": "imports_at_call",
+      "source": "derived"
     },
     {
       "from": "tests/child_readers.py",

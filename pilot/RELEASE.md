@@ -18,7 +18,19 @@ PC. Allow about 45 minutes.
   removes the program and its scheduled task only.
 - **Tester Guide:** `pilot/Tester Guide.md`.
 
-## Steps on the office PC
+## The quick way: the Windows test kit (P28)
+
+Any Windows 10/11 test machine will do - it need not be the office PC.
+Install Claude Code there (the desktop app, so it can use computer use), open
+it in an empty folder, and paste the prompt in
+[`wintest/PROMPT.md`](wintest/PROMPT.md). It runs every check below itself -
+the automated part with `wintest/run_checks.ps1`, the clicks through the
+installed app, and the uninstall with `wintest/uninstall_checks.ps1` - on
+made-up sample documents only (`wintest/make_samples.py`), and delivers
+`RESULT.md` plus a `[WINTEST]` comment on board #5. It stops before tagging;
+the tag and sending stay yours.
+
+## Steps on the office PC (by hand)
 
 Use a Windows account that does not run the firm's real schedule, and a
 **copy** of a few client folders (P15).
