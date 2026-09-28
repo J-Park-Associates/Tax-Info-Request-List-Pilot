@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 181,
     "edges": 1129,
-    "reused": 0
+    "reused": 138
   },
   "node_types": [
     "artifact",
@@ -3907,8 +3907,8 @@
       "id": "app/renderer/pilot-style.css",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "d3946d5b70cffa86",
-      "lines": 274
+      "sha256": "8f25d161e7e63e20",
+      "lines": 275
     },
     {
       "id": "app/renderer/pilot.js",
@@ -4037,8 +4037,8 @@
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "a01e9080f27ccff3",
-      "lines": 57
+      "sha256": "b01406c6534a6a99",
+      "lines": 54
     },
     {
       "id": "pilot/PROMPTS.md",

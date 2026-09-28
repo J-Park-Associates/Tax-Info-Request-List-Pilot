@@ -17,10 +17,7 @@
   once and Escape/Tab cannot leave them, the tour starts after accepting, all 11 steps
   highlight their element or show their fallback, and terms and tour do not reappear after
   a reload. Not checked in the packaged Electron window. Gate run under Python 3.11 only.
-  **For the reviewer:** four approved tour steps (new-household, drop-files, scan, status)
-  point at a button but have an empty `fallback`, which SPEC section 4 forbids; the approved
-  wording won, so `test_a_step_that_points_says_what_to_expect_when_it_cannot` only requires
-  a string. Jason to decide whether to add fallback lines.
+  P24's four fallbacks are in; the test requires a non-empty fallback whenever anchors are non-empty.
 
 ## Waiting on Jason
 

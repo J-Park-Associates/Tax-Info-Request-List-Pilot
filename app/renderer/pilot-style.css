@@ -194,9 +194,10 @@
   list-style: none;
 }
 
-.pilot-tour-stage {
+.pilot-tour-stages .pilot-tour-stage {
   display: inline-block;
-  padding: 1px 6px;
+  margin-bottom: 0;
+  padding: 1px 5px;
   border: 1px solid #d1d5db;
   border-radius: 10px;
   font-size: 11px;
@@ -204,12 +205,12 @@
   color: #4b5563;
 }
 
-.pilot-tour-stage + .pilot-tour-stage {
+.pilot-tour-stages .pilot-tour-stage + .pilot-tour-stage {
   margin-left: 8px;
   position: relative;
 }
 
-.pilot-tour-stage + .pilot-tour-stage::after {
+.pilot-tour-stages .pilot-tour-stage + .pilot-tour-stage::after {
   content: "";
   position: absolute;
   right: 100%;
@@ -218,19 +219,19 @@
   border-top: 1px solid #d1d5db;
 }
 
-.pilot-tour-stage.is-current {
+.pilot-tour-stages .pilot-tour-stage.is-current {
   background: #f59e0b;
   border-color: #f59e0b;
   color: #1f2937;
   font-weight: 700;
 }
 
-.pilot-tour-stage.is-done {
+.pilot-tour-stages .pilot-tour-stage.is-done {
   border-color: transparent;
   color: #6b7280;
 }
 
-.pilot-tour-stage.is-done::before {
+.pilot-tour-stages .pilot-tour-stage.is-done::before {
   content: "\2713\00a0";
 }
 
