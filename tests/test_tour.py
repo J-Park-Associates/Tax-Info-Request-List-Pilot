@@ -48,12 +48,10 @@ def test_every_step_sits_on_the_strip():
 
 def test_a_step_that_points_says_what_to_expect_when_it_cannot():
     for step in tour()["steps"]:
-        assert isinstance(step["fallback"], str), step["id"]
-        if not step["anchors"]:
+        if step["anchors"]:
+            assert step["fallback"].strip(), step["id"]
+        else:
             assert step["fallback"] == "", step["id"]
-        # Four approved steps (new-household, drop-files, scan, status) point at a
-        # button and carry no fallback line; the wording is Jason's (P22), so none is added.
-
 
 
 def test_step_ids_are_unique_and_the_tour_opens_and_closes_centred():

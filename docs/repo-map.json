@@ -3900,7 +3900,7 @@
       "id": "app/renderer/pilot-content.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "e1f000fb2c18998a",
+      "sha256": "c15ad3e98a9cc524",
       "lines": 234
     },
     {
@@ -4030,15 +4030,15 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "a6d3bffb4c65c12c",
-      "lines": 30
+      "sha256": "53fe677ea4692b67",
+      "lines": 31
     },
     {
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "3d391ac28b6444fa",
-      "lines": 45
+      "sha256": "a01e9080f27ccff3",
+      "lines": 57
     },
     {
       "id": "pilot/PROMPTS.md",
@@ -4058,7 +4058,7 @@
       "id": "pilot/SPEC.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "b57e1a8fbedbd92a",
+      "sha256": "dce636da7cdf82ad",
       "lines": 957
     },
     {
@@ -8004,8 +8004,8 @@
       "id": "tests/test_tour.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ad74b4a2f93f85bb",
-      "lines": 84,
+      "sha256": "528441c7b67dcdbc",
+      "lines": 82,
       "exports": [
         "REPO",
         "test_a_step_that_points_says_what_to_expect_when_it_cannot",
