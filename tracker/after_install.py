@@ -177,6 +177,10 @@ ROOT_REFUSED = ("The clients folder saved in the app cannot be used ({refusal});
                 "record check wait until it is chosen again in the app.")
 SETTINGS_UNREADABLE = ("The app's settings file could not be read, so neither the schedule nor the "
                        "record check could run; choose the clients folder again in the app.")
+SETTINGS_UNWRITABLE = ("The app's settings file ({file}) could not be written, so the schedule choice was "
+                       "not saved and nothing was changed. Try again, or check the folder's permissions.")
+SCHEDULE_OFF_HERE = ("The schedule is off on this computer; turn it on with the Schedule button before "
+                     "moving it here.")
 PREFERENCE_UNUSABLE = ("The schedule setting in the app's settings file cannot be used ({problem}) No "
                        "schedule was changed. Choose it again with the Schedule button.")
 #: The schedule key the record holds when the saved choice was refused.
@@ -384,6 +388,8 @@ def _save_choice(start: object, every: object) -> str:
         return SETTINGS_UNREADABLE
     except scheduling.ScheduleChoiceError as exc:
         return str(exc)
+    except OSError:
+        return SETTINGS_UNWRITABLE.format(file=settings.SETTINGS_FILENAME)
     return ""
 
 
@@ -1022,6 +1028,9 @@ def move_schedule_here() -> tuple[str, bool]:
         return refused, False
     if root is None:
         return scheduling.SCHEDULE_WAITS_FOR_ROOT, False
+    preference, _ = _saved_preference()
+    if preference is not None and not preference.enabled:
+        return SCHEDULE_OFF_HERE, False
     try:
         moved = scheduling.move_here(root)
     except scheduling.DesignationError as exc:

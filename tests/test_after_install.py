@@ -206,6 +206,31 @@ def test_move_schedule_here_rewrites_the_designation(root, windows, monkeypatch,
     assert len(creates(windows["calls"])) == 1
 
 
+def test_move_schedule_here_refuses_when_the_saved_choice_is_off(root, windows, monkeypatch, capsys):
+    settings.set_schedule(False, "07:00", 120)
+    designation_file(root).write_text(f"{ELSEWHERE}\n", encoding="utf-8")
+
+    code, out = cli(monkeypatch, capsys, "--move-schedule-here")
+
+    assert code == 1
+    assert out.splitlines()[0] == after_install.SCHEDULE_OFF_HERE
+    assert designation_file(root).read_text(encoding="utf-8") == f"{ELSEWHERE}\n"
+    assert windows["calls"] == []
+
+
+def test_a_settings_file_that_cannot_be_written_is_recorded_not_raised(root, windows, monkeypatch):
+    settings.set_schedule(True, "07:00", 120)
+
+    def refuse(*args, **kwargs):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(settings, "set_schedule", refuse)
+    done = after_install.run(reason=after_install.REASON_REPAIR, start="06:15")
+
+    assert done.exit_code == 1 and creates(windows["calls"]) == []
+    assert done.schedule_sentence == after_install.SETTINGS_UNWRITABLE.format(file=settings.SETTINGS_FILENAME)
+
+
 # -------------------------------------------------------- the record check ----
 
 

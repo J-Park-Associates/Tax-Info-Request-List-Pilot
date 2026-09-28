@@ -4783,7 +4783,7 @@ def _cmd_set_schedule(argv: list[str]) -> dict:
     then the after-install step runs as a repair. That step registers the
     saved choice - or, off, removes this computer's task - and its sentence
     is the reply's ``sentence``. ``next_run`` is the plain sentence for
-    when it next runs, "" when off."""
+    when it next runs, "" when off or when this computer registered nothing."""
     spec = _read_spec()
     try:
         chosen = set_schedule(spec.get("enabled"), spec.get("start"), spec.get("every"))
@@ -4796,7 +4796,7 @@ def _cmd_set_schedule(argv: list[str]) -> dict:
         "every": chosen.every,
         "outcome": done.schedule,
         "sentence": done.schedule_sentence,
-        "next_run": next_run(chosen),
+        "next_run": next_run(chosen) if done.installed else "",
         "installed": done.installed,
         "after_install": done.reply(),
     }

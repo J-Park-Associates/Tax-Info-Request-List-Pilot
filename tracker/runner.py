@@ -2215,7 +2215,9 @@ def last_pass_line(path: Path | None = None, *, now: dt.datetime | None = None) 
     now = now or dt.datetime.now()
     try:
         preference = schedule_preference()
-    except (SettingsError, ScheduleChoiceError) as exc:
+    except ScheduleChoiceError as exc:
+        return {"text": str(exc), "level": LEVEL_ERR}
+    except SettingsError as exc:
         return {"text": LAST_PASS_UNREADABLE.format(error=errors.error_class(exc)), "level": LEVEL_ERR}
     if not preference.enabled:
         return {"text": LAST_PASS_OFF, "level": LEVEL_OK}

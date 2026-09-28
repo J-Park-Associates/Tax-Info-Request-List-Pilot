@@ -763,7 +763,7 @@ if __name__ == "__main__":
                         help="the folder holding the tracker package")
     parser.add_argument(START_FLAG, default=DEFAULT_START,
                         help=f"daily start time, HH:MM (default: {DEFAULT_START})")
-    parser.add_argument("--every", type=int, default=DEFAULT_REPEAT_MINUTES, metavar="MINUTES",
+    parser.add_argument("--every", default=DEFAULT_REPEAT_MINUTES, metavar="MINUTES",
                         help=f"repeat filing and scanning through the day (default: "
                              f"{DEFAULT_REPEAT_MINUTES}; 0 = once a day)")
     parser.add_argument("--author", default="", help="task author, for the XML")
@@ -811,7 +811,7 @@ if __name__ == "__main__":
                 settings=settings_arg,
                 working_dir=ns.working_dir,
                 start_time=hhmm,
-                repeat_minutes=ns.every,
+                repeat_minutes=check_every(ns.every),
                 author=ns.author,
                 task_name=ns.name,
             )

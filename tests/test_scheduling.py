@@ -574,6 +574,21 @@ def test_the_command_line_uses_the_one_start_time_check(monkeypatch, tmp_path, c
     assert settings_module.START_REFUSED.format(value="7pm") in capsys.readouterr().err
 
 
+def test_the_command_line_uses_the_one_interval_check(monkeypatch, tmp_path, capsys):
+    import runpy
+    import sys
+
+    from tracker.runner import SETTINGS_FLAG
+
+    app = tmp_path / "app"
+    app.mkdir()
+    monkeypatch.setattr(sys, "argv", ["tracker.scheduling", SETTINGS_FLAG, str(app), "--every", "45"])
+    with pytest.raises(SystemExit) as stopped:
+        runpy.run_module("tracker.scheduling", run_name="__main__")
+    assert stopped.value.code == 2
+    assert settings_module.EVERY_REFUSED.format(value="45") in capsys.readouterr().err
+
+
 NOW = dt.datetime(2026, 3, 2, 10, 0)
 
 

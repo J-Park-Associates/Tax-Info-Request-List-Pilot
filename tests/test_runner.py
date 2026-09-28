@@ -3791,7 +3791,8 @@ def test_a_saved_choice_that_will_not_read_turns_the_line_red_and_names_no_guess
     settings.settings_path().write_text('{"schedule_every": 45}', encoding="utf-8")
     line = runner_module.last_pass_line(tmp_path / runner_module.LAST_PASS_FILENAME)
     assert line["level"] == runner_module.LEVEL_ERR
-    assert line["text"] == runner_module.LAST_PASS_UNREADABLE.format(error="ScheduleChoiceError")
+    assert settings.EVERY_REFUSED.format(value=45) in line["text"]      # the refusal's own sentence
+    assert line["text"] != runner_module.LAST_PASS_UNREADABLE.format(error="ScheduleChoiceError")
 
 
 def test_the_last_pass_line_is_amber_when_old_and_red_when_failed(tmp_path):

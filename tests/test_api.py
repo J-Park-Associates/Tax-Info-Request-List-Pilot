@@ -2140,6 +2140,20 @@ def test_set_schedule_saves_the_choice_registers_it_and_says_the_next_run(capsys
     assert off["next_run"] == "" and off["installed"] is False and off["enabled"] is False
 
 
+def test_set_schedule_promises_no_next_run_on_a_computer_that_registered_nothing(capsys, demo_root, monkeypatch):
+    from tracker.layout import designation_file
+
+    calls = _on_the_office_computer(monkeypatch)
+    designation_file(demo_root).parent.mkdir(exist_ok=True)
+    designation_file(demo_root).write_text("front-desk\n", encoding="utf-8")
+
+    code, payload = run(capsys, "set-schedule", stdin={"enabled": True, "start": "06:30", "every": 60})
+
+    assert code == 0, payload
+    assert payload["installed"] is False and payload["next_run"] == ""
+    assert not [command for command in calls if command[1] == "/create"]
+
+
 @pytest.mark.parametrize("stdin", [
     {"enabled": True, "start": "25:00", "every": 60},
     {"enabled": True, "start": "06:30", "every": 45},

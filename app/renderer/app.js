@@ -2431,6 +2431,8 @@ async function openSchedule() {
     $("sc-next").textContent = current.next_run;
     scheduleError(current.schedule_problem);
     greyScheduleFields();
+    // What "Next run" says is true of the saved choice only (hidden again on any change, below).
+    $("sc-next").classList.remove("hidden");
     $("sc-loading").classList.add("hidden");
     $("sc-form").classList.remove("hidden");
     $("sc-save").disabled = false;
@@ -2453,8 +2455,14 @@ async function saveSchedule() {
       every: Number($("sc-every").value),
     });
     closeDialog("schedule-modal");
-    banner(result.sentence, result.installed || !result.enabled ? "ok" : "warn");
+    const worked = result.after_install.exit === 0 && (result.installed || !result.enabled);
+    banner(result.next_run ? `${result.sentence} ${result.next_run}` : result.sentence, worked ? "ok" : "warn");
     renderAfterInstall(noticeOf(result.after_install));
+    try {
+      await loadEngagements();     // the last-pass line follows the new choice
+    } catch (err) {
+      failed(err);
+    }
   } catch (err) {
     scheduleError(failureSentence(err));   // a refusal stays in the dialog, which stays open
   } finally {
@@ -3914,6 +3922,9 @@ $("btn-repair-schedule").addEventListener("click", repairSchedule);
 $("btn-schedule").addEventListener("click", openSchedule);
 $("sc-on").addEventListener("change", greyScheduleFields);
 $("sc-off").addEventListener("change", greyScheduleFields);
+for (const kind of ["input", "change"]) {
+  $("sc-form").addEventListener(kind, () => $("sc-next").classList.add("hidden"));
+}
 $("sc-save").addEventListener("click", saveSchedule);
 $("sc-cancel").addEventListener("click", () => requestClose("schedule-modal"));
 $("btn-save-root").addEventListener("click", saveRoot);
