@@ -10,33 +10,28 @@
   SPEC gained section 3a (the pilot's own names on the PC and the two-folder
   deny list). The renames are **not made yet**: Build A makes them first.
 
-## Waiting on Jason before any build starts
+## Waiting on Jason
 
-1. **Approve or mark up the tour wording** in `SPEC.md` section 8. (Section 7,
-   the terms, was approved on 2026-09-28 - P20.) Builders copy both exactly.
-2. **Turn off GitHub Actions for this repository** (Settings -> Actions ->
-   General -> Disable actions). The workflow files came with the copy, and the
-   weekly audit would otherwise run here.
-3. **Start the job in the original repository for the schedule setting - on/off and run time** (P14, P16,
-   `SPEC.md` section 12 has the brief). It runs in its own session in
-   `Tax-Info-Request-List` under the normal lane (SPEC, build, review, decision number). Pilot 0.1 is
-   not released until the pilot has merged it.
+Nothing. Terms (P20) and tour (P22) wording approved; Actions are off in this
+repository; the old `pilot/first-edition` branch is deleted from the original.
 
-## Next: Jobs 2A and 2B in parallel (sonnet), after approval
+## Next: builds (sonnet), each its own fresh session
 
-Both read only `pilot/README.md`, `pilot/DECISIONS.md` and `pilot/SPEC.md`
-(no transcript, no whole `docs/repo-map.md`; use
-`python tools/repo_map.py show <file>`).
+Every build reads only `pilot/README.md`, `pilot/DECISIONS.md` and
+`pilot/SPEC.md` (no transcript, no whole `docs/repo-map.md`; use
+`python tools/repo_map.py show <file>`), runs the gate (SPEC section 15),
+merges back into `main` with a merge commit, runs
+`python tools/repo_map.py update`, and updates this file.
 
-- **2A - names and installer:** `SPEC.md` section 3a first (its own commit,
-  with the name-sensitive tests), then sections 10, 13, 11 (installer tests)
-  and 14. Branch `build-a` from `main`.
-- **2B - app:** `SPEC.md` sections 2-9, 11 (pilot and tour tests).
-  Branch `build-b` from `main`.
-- Each: run the gate (section 15), merge back into `main` with a merge commit,
-  run `python tools/repo_map.py update`, and update this file.
-- Why parallel: the two touch disjoint files and share only the
-  `pilot-content.js` shape the SPEC fixes (section 4).
+- **2A - names and installer** (parallel with 2B): SPEC section 3a first (its
+  own commit, with the name-sensitive tests), then sections 10, 13, 11
+  (installer tests) and 14. Branch `build-a`.
+- **2B - badge, terms, tour** (parallel with 2A): SPEC sections 2-9 and 11
+  (pilot and tour tests). Branch `build-b`.
+- **2C - schedule setting** (after 2B has merged; both edit `index.html`):
+  SPEC section 12. Branch `build-c`.
+- Why this order: A and B touch disjoint files and share only the
+  `pilot-content.js` shape; C changes the engine and the same page file as B.
 
 ## Then
 
@@ -46,8 +41,7 @@ Both read only `pilot/README.md`, `pilot/DECISIONS.md` and `pilot/SPEC.md`
   `pilot\Build Pilot Installer.bat`, install, accept terms, run the tour on a
   copy of client folders, uninstall, confirm the clients folder, data folder
   and `settings.json` remain and the scheduled task is gone.
-- **Job 5:** after the original's schedule setting is merged in from `upstream` and the wrap-up
-  sentence swapped (SPEC section 8), tag `pilot-0.1` (never `v*`) and send the
+- **Job 5:** once Builds A, B and C are merged, reviewed and checked on Windows, tag `pilot-0.1` (never `v*`) and send the
   installer and `Tester Guide.md`.
 
 ## Environment notes for cloud sessions

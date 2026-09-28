@@ -4002,15 +4002,15 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "7805cd1be7740a36",
-      "lines": 27
+      "sha256": "eab8490f799fe735",
+      "lines": 29
     },
     {
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "1f589c528e3e65e3",
-      "lines": 58
+      "sha256": "f40e0cae6e743837",
+      "lines": 52
     },
     {
       "id": "pilot/README.md",
@@ -4023,8 +4023,8 @@
       "id": "pilot/SPEC.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "a2fb0bc1a4abf11b",
-      "lines": 836
+      "sha256": "ae1a78f1df3ef064",
+      "lines": 956
     },
     {
       "id": "requirements-build.txt",

@@ -30,16 +30,16 @@ And, outside the app: an **installer** (`setup.iss` + a build script) and a
 ### Non-goals (do not build)
 
 - No change under `tracker/` except the one data-folder line in section 3a
-  (P7, P18). No change to `app/main.js`, `app/preload.js`,
-  `app/renderer/app.js` or `app/renderer/style.css` (P10); `app/package.json`
-  changes only in the two name lines of section 3a.
+  (P7, P18) and the schedule setting in section 12 (P21). No change to
+  `app/main.js`, `app/preload.js` or `app/renderer/style.css` (P10), and none
+  to `app/renderer/app.js` except the Schedule dialog of section 12 (P21);
+  `app/package.json` changes only in the two name lines of section 3a.
 - No sample sandbox, feedback button, usage collection or expiry (P5).
 - No network call of any kind, no new IPC channel (P10).
 - The tour **only points**. It never clicks a button, never runs a pass, never
   calls `window.tracker`, never opens a file or folder.
-- The schedule setting is **not** built here; it is built in the original
-  repository
-  (P14, section 12).
+- The schedule setting (section 12) is the one engine feature the pilot
+  builds itself (P21); it is Build C, not part of the tour or installer.
 
 ## 2. Constraints every pilot file obeys
 
@@ -348,7 +348,7 @@ How it reads on screen:
   }
 ```
 
-## 8. Tour copy (draft for approval, bulleted and visual)
+## 8. Tour copy (approved by Jason, 2026-09-28, P22)
 
 Every step is one screen of short lines. Three visuals carry the flow:
 
@@ -370,7 +370,7 @@ Every step is one screen of short lines. Three visuals carry the flow:
    • Runs offline on your Windows PC   • Windows only
    • No AI reads client documents      • About 74 document kinds, 6 return types
    • Originals never altered           • Scans slow without the graphics pack
-   • Nothing guessed, nothing sent     • Schedule on/off and run time in Settings
+   • Nothing guessed, nothing sent     • Schedule on/off and run time: the Schedule button
                                        • Installer unsigned: Windows warns
                                        • Problems or ideas: {email}
    ```
@@ -389,7 +389,7 @@ At a glance:
 | 8 | Check | Needs Review | Unknown, ambiguous or unreadable files wait here with likely matches. File with one click, or dismiss. | Nothing is guessed. You see why it stopped. | Expect more items in the first weeks. The rules don't change on their own. |
 | 9 | Track | Status page | Opens the status page: every requested document, received or missing, with validation notes. | One page answers 'what are we still waiting for?' | A file on this computer, not a client portal. |
 | 10 | Remind | Drafted reminder | Weekly, drafts a reminder listing what's missing. You copy and send it. | Nothing is ever sent. No client is contacted without you. | Send from your own email; no Outlook or Gmail link. |
-| 11 | overview | What to expect | Replay this tour any time with the Tour button. | Runs offline on your own Windows PC • No AI reads client documents • Originals never altered • Nothing guessed, nothing sent | Windows only • About 74 document kinds, 6 return types • Scans slow without the optional graphics pack • Schedule on/off and run time in Settings • Installer unsigned: Windows shows a warning • Problems or ideas: {email} |
+| 11 | overview | What to expect | Replay this tour any time with the Tour button. | Runs offline on your own Windows PC • No AI reads client documents • Originals never altered • Nothing guessed, nothing sent | Windows only • About 74 document kinds, 6 return types • Scans slow without the optional graphics pack • Schedule on/off and run time: the Schedule button • Installer unsigned: Windows shows a warning • Problems or ideas: {email} |
 
 The content, exactly:
 
@@ -543,7 +543,7 @@ The content, exactly:
           "Windows only",
           "About 74 document kinds, 6 return types",
           "Scans slow without the optional graphics pack",
-          "Schedule on/off and run time in Settings",
+          "Schedule on/off and run time: the Schedule button",
           "Installer unsigned: Windows shows a warning",
           "Problems or ideas: {email}"
         ],
@@ -553,11 +553,9 @@ The content, exactly:
   }
 ```
 
-**Schedule wording** (P14). Until the pilot has merged the `upstream/main`
-commit that adds the schedule setting, the wrap-up limit
-"Schedule on/off and run time in Settings" reads
-"Schedule on/off and run time: coming in the release build", and the pilot is
-**not released** (section 12).
+**Schedule wording** (P21). The wrap-up limit names the Schedule button that
+Build C adds (section 12). If Build C has not merged when Build B does, Build B
+still uses this wording; the pilot is not released until Build C is in.
 
 ## 9. `app/renderer/pilot-style.css`
 
@@ -726,47 +724,163 @@ Name each test as the claim it makes. Run under Python 3.11 and the office's.
 Plus the standing affected tests: `tests/test_layers.py` (the network scan now
 covers the new JS), `tests/test_single_source.py`, `tests/test_repo_map.py`.
 
-## 12. Dependency on the original repository: the schedule setting - on/off and run time (P14, P16)
+## 12. The schedule setting: on/off, start time, how often (P16, P21)
 
-Jason asked for the scheduled job to be a setting testers can turn on or off in
-the app, and whose run time they can set (P16). The app re-registers the
-schedule by itself (decision 209's after-install step runs at launch, at Setup,
-and when the clients root is saved), so both the switch and the chosen time
-must live in the engine and be respected there: today that step re-registers
-with the defaults (`scheduling.DEFAULT_START` = 07:00, repeating every
-`DEFAULT_REPEAT_MINUTES` = 120 minutes), which would silently undo a time a
-person chose. It is
-therefore a feature of the original repository with its own SPEC and decision
-number, built, reviewed and merged on its `main` like any other.
+Jason asked for the scheduled job to be a setting testers turn on or off, and
+whose run time they choose (P16), built in the pilot only (P21). This is
+**Build C**.
 
-Brief for that session in the original repository (it writes its own SPEC; this is input, not the SPEC):
+### 12.1 Why the engine must change
 
-- A per-computer setting, "Run the schedule on this computer", on or off, shown
-  where the app shows its settings.
-- **Off** removes this computer's task and is remembered, so the after-install
-  step at launch, at Setup and on saving the clients root does not register it
-  again; the first screen says plainly that the schedule is off.
-- **On** registers it through the existing after-install path (the same outcome
-  and sentences as **Repair the schedule**).
-- **Run time.** In the same setting: the time of day the schedule first runs
-  (`HH:MM`, default 07:00) and how often it repeats after that (default every
-  120 minutes, with "once a day" as a choice). The API's `install-schedule`
-  already takes `start` and `every`; what is new is that the chosen values are
-  **saved per computer and used by every re-registration** (launch, Setup,
-  saving the clients root, **Repair the schedule**), never reset to the
-  defaults. Changing the time re-registers the task at once and the setting
-  shows the next run.
-- A time that is not a valid `HH:MM`, or an interval outside what Task
-  Scheduler accepts, is refused with a sentence saying why; nothing is saved.
-- The weekly reminder draft day is unchanged by the run time.
-- The designation file (which computer runs the schedule) is unchanged by the
-  switch or the time.
-- Nothing is ever sent; Scan still works with the schedule off.
+- The schedule is registered from five places: the app's launch
+  (`api._cmd_after_install` -> `after_install.launch()`), `Setup.bat`
+  (`--reason setup`), saving the clients root (`api._cmd_set_root`),
+  **Repair the schedule** (`api._cmd_install_schedule`) and **Move schedule
+  here** (`api._cmd_move_schedule_here`). All but Repair use the fixed
+  defaults `scheduling.DEFAULT_START` (07:00) and
+  `DEFAULT_REPEAT_MINUTES` (120), and Repair's page always sends `{}`. A chosen
+  time would be overwritten by the next of any of them.
+- `after_install.launch()` compares only the program and the designation, so a
+  changed choice would never be re-registered at launch.
+- The start time is checked only by `scheduling`'s own command line; a bad
+  value from the API reaches the task file unchecked. A `ValueError` from a
+  bad interval is not caught in `_schedule`.
+- `every = 0` already makes a once-a-day task (no `<Repetition>` block), but
+  `SCHEDULE_CLAIMED` / `SCHEDULE_REGISTERED` would say "every 0 minutes".
+- The morning last-pass line (`runner.LAST_PASS_AMBER_HOURS = 4`,
+  `LAST_PASS_OLD`) assumes the 2-hour default.
+- There is no settings screen once the clients root is set.
 
-Pilot side: the pilot takes it at its next merge from `upstream/main`. Until then the
-wrap-up copy uses the "coming in the release build" sentence (section 8), and
-**pilot 0.1 is not released** until that merge is in and the wrap-up sentence
-is swapped back. The Tester Guide names the setting only once it exists.
+### 12.2 Where the choice lives
+
+`settings.json`, beside the program (`settings.settings_dir()`), which is per
+computer and already holds the clients root, firm and phone. Three keys,
+written only when a person saves the setting (so
+`tests/test_settings.py`'s root-only file test still holds):
+
+| Key | Type | Default when absent |
+|---|---|---|
+| `schedule_enabled` | `true` / `false` | `true` |
+| `schedule_start` | `"HH:MM"`, 00:00-23:59 | `scheduling.DEFAULT_START` |
+| `schedule_every` | minutes; `0` = once a day | `scheduling.DEFAULT_REPEAT_MINUTES` |
+
+`settings.py` gains `schedule_preference()` -> `SchedulePreference(enabled,
+start, every)` and `set_schedule(enabled, start, every)` (atomic
+read-modify-write like the other setters). The preference is a small frozen
+dataclass in `scheduling.py` so `after_install` and `api` share one type.
+
+### 12.3 The allowed choices, checked in one place
+
+- **How often:** once a day (`0`), or every 30, 60, 120 (default), 240 or 480
+  minutes - `scheduling.EVERY_CHOICES = (0, 30, 60, 120, 240, 480)`.
+- **Start:** `HH:MM`, two digits each, 00:00-23:59.
+- `scheduling.check_start(value) -> str` and `scheduling.check_every(value) -> int`
+  raise `ScheduleChoiceError(sentence)` naming the value and what is allowed.
+  They are used by `set_schedule`, by `schedule_preference()` (a hand-edited
+  bad value in `settings.json` is refused with a sentence naming the file and
+  the key - never guessed, never silently reset), by `register_here` and by
+  `scheduling`'s command line (which drops its own check).
+- An unreadable preference at after-install time is a failure of the step,
+  recorded and shown in the first-screen notice like `SETTINGS_UNREADABLE`;
+  no task is registered from a guess.
+
+### 12.4 Every registration path uses the saved choice
+
+- `after_install.run(*, reason, start=None, every=None, checkout=None)`: when
+  `start` / `every` are `None` it reads `schedule_preference()`. Every caller
+  listed in 12.1 passes nothing, so all five paths use the saved choice.
+  Repair's explicit `{start, every}` stays accepted for the command line, and
+  is saved first when given (so Repair never registers something the setting
+  does not show).
+- **Off:** `_schedule` removes this computer's task (`scheduling.remove_task()`)
+  and returns a new outcome `scheduling.OFF = "off"` with
+  `SCHEDULE_OFF = "The schedule is off on this computer. Scan still works. Turn it on with the Schedule button."`
+  It does **not** claim or change the designation: turning the schedule off
+  on the designated computer leaves no computer running it, which the
+  sentence says plainly; turning it on again registers it as before.
+- **Launch:** the after-install record gains `preference`
+  (`{"enabled", "start", "every"}`); `launch()` runs the step again when the
+  saved preference differs from the recorded one, and stays a no-op (no
+  `schtasks` call) when program, designation and preference are unchanged.
+- **Wording:** `SCHEDULE_CLAIMED` / `SCHEDULE_REGISTERED` gain once-a-day
+  forms ("every day at {start}"), chosen by `every == 0`.
+- **Last pass:** the amber threshold becomes two missed runs of the saved
+  interval - `max(4, 2 * every / 60)` hours, or 48 hours for once a day - and
+  `LAST_PASS_OLD` says the interval it assumed. With the schedule off the line
+  says the schedule is off instead of turning amber.
+
+### 12.5 API
+
+- New command **`set-schedule`**, JSON on stdin `{enabled, start, every}`:
+  check, save, run `after_install.run(reason=REASON_REPAIR)`, reply
+  `{enabled, start, every, outcome, sentence, next_run, installed, after_install}`.
+  `next_run` is a plain sentence ("Next run: today at 13:00" / "tomorrow at
+  07:00" / "" when off), computed from the start, the interval and the local
+  time. Added to `COMMANDS`, `WRITING_COMMANDS` and the module docstring's
+  command list.
+- `settings` also returns `schedule: {enabled, start, every}` and `next_run`.
+- `install-schedule` defaults to the saved choice (12.4).
+- `vocab.schedule` gains every word the dialog shows: `button`, `title`,
+  `enabled_label`, `on`, `off`, `start_label`, `every_label`, the choice
+  labels (`every_choices`: list of `{minutes, label}` - "Once a day",
+  "Every 30 minutes", "Every hour", "Every 2 hours", "Every 4 hours",
+  "Every 8 hours"), `note` ("Scan works either way. Nothing is ever sent."),
+  `save`, `cancel`. The page types none of them
+  (`tests/test_single_source.py` bans `DEFAULT_START` in `app.js`).
+
+### 12.6 The Schedule dialog
+
+- A **Schedule** button (`#btn-schedule`, label from `vocab.schedule.button`)
+  inserted in `index.html` immediately **after** `#btn-edit` - outside the
+  toolbar stretch `btn-client-folder`..`btn-edit` that
+  `test_the_schedule_is_repaired_from_the_toolbar_in_the_apis_words` pins.
+- A dialog `#schedule-modal` in the app's existing pattern
+  (`modal-overlay hidden` > `modal`, registered in `app.js`'s `DIALOGS`, so
+  Escape, focus trap and click-away behave like the other dialogs):
+
+```
+ Schedule on this computer
+ Run the schedule    (●) On   ( ) Off
+ First run at        [ 07:00 ]        <input type="time">
+ How often           [ Every 2 hours ▾ ]
+ Next run: today at 13:00
+ Scan works either way. Nothing is ever sent.
+                                   [ Cancel ]  [ Save ]
+```
+
+- Opens with the values from `settings`. Turning it Off greys the two fields.
+- **Save** calls `set-schedule`; the reply's `sentence` shows in the usual
+  banner (`#banner`), and the dialog closes. A refusal
+  (`ScheduleChoiceError`) shows in the dialog and keeps it open.
+- **Repair the schedule** keeps its button and flow, now re-registering the
+  saved choice.
+
+### 12.7 Runbook
+
+`docs/runbook.md` changes where it assumes the fixed default: the schedule
+paragraph (~608-626, now a per-computer saved setting and the Schedule
+button), "every two hours" at ~125 and ~1530 ("on the saved schedule"), repair
+at ~1164-1168, the last-pass amber rule at ~1210-1224, and the move step in
+section 6 (~1950-1955).
+
+### 12.8 Tests (Build C)
+
+- `test_scheduling`: `check_start` / `check_every` accept every allowed value
+  and refuse the rest with the sentence; once-a-day task file has no
+  `<Repetition>`; once-a-day wording.
+- `test_settings`: the preference round-trips; absent keys give the defaults;
+  a bad saved value refuses naming file and key; saving the root alone still
+  writes only the root.
+- `test_after_install`: every path registers the saved choice; off removes
+  the task and claims nothing; launch re-runs when the preference changed and
+  stays a no-op (no `schtasks`) when nothing changed; an unreadable
+  preference is a recorded failure.
+- `test_api`: `set-schedule` round trip and refusal; Repair uses the saved
+  choice; `settings` returns the schedule; `vocab.schedule` equality
+  (~2492) and the command lists updated; the dialog uses only the API's
+  words; the toolbar slice test still passes.
+- `test_runner`: the amber threshold follows the interval and the off state.
+- `test_single_source`: the runbook passages; the docstring command list.
 
 ## 13. `pilot/Tester Guide.md`
 
@@ -787,9 +901,9 @@ Plain English, for a CPA, not a programmer. Sections:
    document it will not know), press Scan, then look at the moved originals,
    the Prepared folder, Needs Review, Status, and (after the weekly draft day)
    the reminder.
-7. **The schedule** - what it does, which computer runs it, and the setting
-   to turn it on or off and choose when it runs (added once it exists on
-   the original repository, section 12).
+7. **The schedule** - what it does, which computer runs it, and the
+   **Schedule** button: turn it on or off, choose the first run time and how
+   often (section 12).
 8. **What it will not do yet** - the limits from the wrap-up step.
 9. **Uninstall** - Windows Settings -> Apps -> Tax Document Tracker Pilot.
    It removes the program and its scheduled task. It leaves your clients
@@ -813,8 +927,13 @@ schedules over the same clients folder.
 - **Build B (sonnet):** `app/renderer/pilot-content.js` (sections 4, 7, 8 as
   approved), `pilot.js`, `tour.js`, `pilot-style.css`, the four `index.html`
   lines, `tests/test_pilot.py`, `tests/test_tour.py`.
+- **Build C (sonnet): the schedule setting** - section 12: `tracker/scheduling.py`,
+  `settings.py`, `after_install.py`, `api.py`, `runner.py`, the Schedule
+  button and dialog in `index.html` / `app.js`, `docs/runbook.md`, and the
+  tests in 12.8. It starts **after Build B has merged** (both edit
+  `index.html`); Build A runs in parallel with B.
 - Each build works on its own branch of this repository (`build-a`,
-  `build-b`), cut from `main`, and is merged back into `main` with a merge
+  `build-b`, `build-c`), cut from `main`, and is merged back into `main` with a merge
   commit; each runs `python tools/repo_map.py update` after its merge, the
   second one again.
 - **Build A** also makes the section 3a renames and the P19 deny-list change,
@@ -828,9 +947,10 @@ Done when, on this repository's `main`:
   affected tests (section 11 plus `test_layers`, `test_single_source`,
   `test_repo_map`) under both interpreters;
 - `git diff upstream/main...main -- tracker/ app/main.js app/preload.js app/renderer/app.js app/renderer/style.css app/package.json`
-  shows only the section 3a lines;
+  shows only the section 3a lines and the section 12 schedule setting;
 - run from source on a scratch root (`tests/samples.py::build_scratch_root`,
   local only): the terms show once and cannot be escaped; the tour starts after
   accepting; every step either highlights its element or shows its fallback;
-  the badge and Tour button show; Scan still works;
+  the badge and Tour button show; Scan still works; the Schedule dialog
+  saves on/off, start and interval, and the choice survives a restart;
 - the opus review (a session that built nothing) has no open findings.
