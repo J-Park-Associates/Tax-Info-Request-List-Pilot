@@ -318,7 +318,7 @@ Eleven steps, in this order.
     "title": "What to expect from the pilot",
     "does": "That is the whole flow: one inbox for the client, sorted originals, organized working copies, a Needs Review queue, a status page and drafted reminders. Replay this tour any time with the Tour button.",
     "strength": "Runs offline on your own Windows PC. No AI reads client documents, originals are never altered, nothing is guessed and nothing is sent.",
-    "limit": "Windows only. About 74 document kinds across 6 return types. Scans read slowly without the optional graphics-card pack. One computer should run the automatic schedule, which can be turned on or off in the app's settings. The installer is not yet signed, so Windows shows a warning when you install. Please send problems and ideas to {email}.",
+    "limit": "Windows only. About 74 document kinds across 6 return types. Scans read slowly without the optional graphics-card pack. One computer should run the automatic schedule, which can be turned on or off, and its run time set, in the app's settings. The installer is not yet signed, so Windows shows a warning when you install. Please send problems and ideas to {email}.",
     "fallback": ""
   }
 ]}
@@ -326,8 +326,8 @@ Eleven steps, in this order.
 
 **Schedule wording** (P14). The wrap-up `limit` names the on/off setting. Until
 the pilot has merged the `main` commit that adds that setting, the sentence
-"which can be turned on or off in the app's settings" is replaced by
-"(an on/off setting is coming in the release build)", and the pilot is **not
+"which can be turned on or off, and its run time set, in the app's settings"
+is replaced by "(an on/off and run-time setting is coming in the release build)", and the pilot is **not
 released** (section 12).
 
 ## 9. `app/renderer/pilot-style.css`
@@ -481,12 +481,16 @@ Name each test as the claim it makes. Run under Python 3.11 and the office's.
 Plus the standing affected tests: `tests/test_layers.py` (the network scan now
 covers the new JS), `tests/test_single_source.py`, `tests/test_repo_map.py`.
 
-## 12. Dependency on `main`: the schedule on/off setting (P14)
+## 12. Dependency on `main`: the schedule setting - on/off and run time (P14, P16)
 
 Jason asked for the scheduled job to be a setting testers can turn on or off in
-the app. The app re-registers the schedule by itself (decision 209's
-after-install step runs at launch, at Setup, and when the clients root is
-saved), so an off switch must live in the engine and be respected there. It is
+the app, and whose run time they can set (P16). The app re-registers the
+schedule by itself (decision 209's after-install step runs at launch, at Setup,
+and when the clients root is saved), so both the switch and the chosen time
+must live in the engine and be respected there: today that step re-registers
+with the defaults (`scheduling.DEFAULT_START` = 07:00, repeating every
+`DEFAULT_REPEAT_MINUTES` = 120 minutes), which would silently undo a time a
+person chose. It is
 therefore a `main`-lane feature with its own SPEC and decision number, built,
 reviewed and merged on `main` like any other.
 
@@ -499,8 +503,19 @@ Brief for that `main` session (it writes its own SPEC; this is input, not the SP
   again; the first screen says plainly that the schedule is off.
 - **On** registers it through the existing after-install path (the same outcome
   and sentences as **Repair the schedule**).
+- **Run time.** In the same setting: the time of day the schedule first runs
+  (`HH:MM`, default 07:00) and how often it repeats after that (default every
+  120 minutes, with "once a day" as a choice). The API's `install-schedule`
+  already takes `start` and `every`; what is new is that the chosen values are
+  **saved per computer and used by every re-registration** (launch, Setup,
+  saving the clients root, **Repair the schedule**), never reset to the
+  defaults. Changing the time re-registers the task at once and the setting
+  shows the next run.
+- A time that is not a valid `HH:MM`, or an interval outside what Task
+  Scheduler accepts, is refused with a sentence saying why; nothing is saved.
+- The weekly reminder draft day is unchanged by the run time.
 - The designation file (which computer runs the schedule) is unchanged by the
-  switch.
+  switch or the time.
 - Nothing is ever sent; Scan still works with the schedule off.
 
 Pilot side: the pilot takes it at its next merge from `main`. Until then the
@@ -527,8 +542,9 @@ Plain English, for a CPA, not a programmer. Sections:
    document it will not know), press Scan, then look at the moved originals,
    the Prepared folder, Needs Review, Status, and (after the weekly draft day)
    the reminder.
-7. **The schedule** - what it does, which computer runs it, and the on/off
-   setting (added once it exists on `main`, section 12).
+7. **The schedule** - what it does, which computer runs it, and the setting
+   to turn it on or off and choose when it runs (added once it exists on
+   `main`, section 12).
 8. **What it will not do yet** - the limits from the wrap-up step.
 9. **Uninstall** - Windows Settings -> Apps -> Tax Document Tracker - Pilot.
    It removes the program and its scheduled task. It leaves your clients

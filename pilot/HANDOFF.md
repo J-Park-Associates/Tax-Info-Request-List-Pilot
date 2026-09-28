@@ -10,7 +10,7 @@
 
 1. **Approve or mark up the wording** in `SPEC.md` section 7 (terms) and
    section 8 (tour). Builders copy it exactly as approved.
-2. **Start the `main`-lane job for the schedule on/off setting** (P14,
+2. **Start the `main`-lane job for the schedule setting - on/off and run time** (P14, P16,
    `SPEC.md` section 12 has the brief). It runs in its own session on `main`
    under the normal lane (SPEC, build, review, decision number). Pilot 0.1 is
    not released until the pilot has merged it.
