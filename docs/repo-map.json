@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "generated": "2026-09-27",
+  "generated": "2026-09-28",
   "generator": "tools/repo_map.py",
   "generator_sha256": "78ed6f39661035ec",
   "module_table_sha256": "8e31d341fd7a246a",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 170,
+    "nodes": 173,
     "edges": 1126,
-    "reused": 127
+    "reused": 129
   },
   "node_types": [
     "artifact",
@@ -3997,6 +3997,27 @@
       "sha256": "eedf2ceb95c95378",
       "lines": 301,
       "role": "How the day-to-day workflow runs."
+    },
+    {
+      "id": "pilot/DECISIONS.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "b2fae6b406f3c548",
+      "lines": 14
+    },
+    {
+      "id": "pilot/HANDOFF.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "c8f7ea21446d56e0",
+      "lines": 73
+    },
+    {
+      "id": "pilot/README.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "ecc9355fbdbb7ab9",
+      "lines": 52
     },
     {
       "id": "requirements-build.txt",
