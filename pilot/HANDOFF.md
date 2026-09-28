@@ -1,73 +1,50 @@
 # Pilot handoff
 
-## Done (Job 0, 2026-09-28)
+## Done
 
-- Branch `pilot/first-edition` cut from `origin/main` at `a2d6af4` (merge of
-  PR #139, decision 209), in its own worktree `../Tax-Tracker-Pilot`.
-- `pilot/README.md` (purpose and branch rules), `pilot/DECISIONS.md` (P1-P7),
-  this file. Repo map refreshed for the new files.
+- **Job 0 (2026-09-28):** branch `pilot/first-edition` cut from `main` at
+  `a2d6af4`, in worktree `../Tax-Tracker-Pilot`; `README.md`, `DECISIONS.md`.
+- **Job 1 (2026-09-28):** [`SPEC.md`](SPEC.md) written; decisions P8-P15 added.
 
-## Next: Job 1 - SPEC (opus, high effort) -> `pilot/SPEC.md`
+## Waiting on Jason before any build starts
 
-Read, in this order: `pilot/README.md`, `pilot/DECISIONS.md`, then the plan
-below. Use `python tools/repo_map.py show <file>` for single nodes; do not read
-`docs/repo-map.md` whole.
+1. **Approve or mark up the wording** in `SPEC.md` section 7 (terms) and
+   section 8 (tour). Builders copy it exactly as approved.
+2. **Start the `main`-lane job for the schedule on/off setting** (P14,
+   `SPEC.md` section 12 has the brief). It runs in its own session on `main`
+   under the normal lane (SPEC, build, review, decision number). Pilot 0.1 is
+   not released until the pilot has merged it.
 
-The SPEC must fix:
+## Next: Jobs 2A and 2B in parallel (sonnet), after approval
 
-1. **`pilot/edition.json`** - edition name, version (e.g. `0.1-pilot`), the
-   `main` commit it was built from, terms version. The app shows a "Pilot
-   edition" badge and version in the header.
-2. **Terms screen** - shown at first launch and again when the terms version
-   changes; wording in `pilot/terms.md` (Opus drafts, Jason approves);
-   acceptance stored in the tracker's data folder.
-3. **Guided tour** - overlay on the real UI, replayable from a Tour button,
-   all text in `pilot/tour-content.json`. Steps: choose clients root; create
-   household and request list; open "Drop files here" and drop documents;
-   Scan; originals moved to the year folder; organized working copies in
-   `Prepared/`; resolve a Needs Review item; Status page; drafted reminder
-   (never sent). Each step: "What it does", "Why it's safe / strength",
-   "Current limit".
-4. **Pros and cons copy** (first draft, Jason edits):
-   - Strengths: no AI reads a client document; originals moved byte for byte,
-     never altered; nothing guessed, doubt goes to a person; nothing sent,
-     drafts only; every move recorded; organized names follow the request
-     list; offline on your own PC.
-   - Limits: Windows only; about 74 document kinds across 6 return types,
-     unfamiliar layouts go to Needs Review; scans read slowly on the processor
-     without the optional graphics pack; one PC should run the schedule;
-     unsigned installer (SmartScreen); no email sending, by design; pilot,
-     expect rough edges.
-5. **Installer** - Inno Setup (`pilot/installer/pilot.iss`) wrapping
-   `Build App.bat`'s portable folder; per-user, no admin, Start-menu
-   shortcut, uninstaller that never touches the clients root or the data
-   folder. `pilot/Build Pilot Installer.bat` runs `Build App.bat`, stamps
-   `edition.json`, compiles. Office PC only, never Actions.
-6. **Tester guide** - `pilot/Tester Guide.md`.
-7. **Tests** - pin the `edition.json` shape; every element id in
-   `tour-content.json` exists in `app/renderer/index.html`; tour and terms text
-   carry no wording `tests/test_single_source.py` forbids.
+Both read only `pilot/README.md`, `pilot/DECISIONS.md` and `pilot/SPEC.md`
+(no transcript, no whole `docs/repo-map.md`; use
+`python tools/repo_map.py show <file>`).
 
-Open items to confirm with Jason in the SPEC session: final terms wording,
-final pros/cons wording, product name and version string on the badge.
+- **2A - installer:** `SPEC.md` sections 10, 13, 11 (installer tests), 14.
+  Worktree branch `pilot/build-a` from `pilot/first-edition`.
+- **2B - app:** `SPEC.md` sections 2-9, 11 (pilot and tour tests).
+  Worktree branch `pilot/build-b` from `pilot/first-edition`.
+- Each: run the gate (section 15), merge back into `pilot/first-edition` with a
+  merge commit, run `python tools/repo_map.py update`, update this file.
+- Why parallel: the two touch disjoint files and share only the
+  `pilot-content.js` shape the SPEC fixes (section 4).
 
-## After the SPEC
+## Then
 
-- Jobs 2A (installer + edition badge) and 2B (tour + terms + content) run in
-  parallel as sonnet builds; they touch disjoint files and share only the
-  `edition.json` shape.
-- Job 3: opus review in a session that built nothing; rebuild/review loop.
-- Job 4: Jason builds and installs on a clean Windows account, runs the tour,
-  uninstalls and confirms client folders and data folder are untouched.
-- Job 5: tag `pilot-0.1` (never `v*`), send installer and Tester Guide.
+- **Job 3:** opus review, high effort, in a session that built nothing:
+  numbered findings against `SPEC.md`; rebuild/review loop.
+- **Job 4 (Jason, office PC, separate Windows account - P15):** run
+  `pilot\Build Pilot Installer.bat`, install, accept terms, run the tour on a
+  copy of client folders, uninstall, confirm the clients folder, data folder
+  and `settings.json` remain and the scheduled task is gone.
+- **Job 5:** after the `main` schedule switch is merged in and the wrap-up
+  sentence swapped (SPEC section 8), tag `pilot-0.1` (never `v*`) and send the
+  installer and `Tester Guide.md`.
 
-## Useful references (from the engine, unchanged here)
+## Environment notes for cloud sessions
 
-- One pass: `tracker/runner.py` `run_engagement`; Scan button ->
-  `tracker/api.py` `_cmd_run_now`.
-- Working-copy names: `tracker/filer.py` `prepared_name_for`.
-- New household: `tracker/api.py` `_cmd_create` -> `households.create_household`
-  -> `scaffold.scaffold_engagement`; catalogs in `tracker/templates.py`.
-- Local test documents: `tests/samples.py` `build_scratch_root` (local checks
-  only, never shipped).
-- Build: `Build App.bat`, `api_entry.spec`; `build.yml` fires on `v*` tags only.
+`pip install -r requirements.lock` fails in the cloud container (a wheel will
+not build) and the system `cryptography` breaks `pypdf`. Use a fresh virtual
+environment and install only what the affected tests need:
+`pytest==9.1.1 ruff==0.14.3 pypdf==6.19.0 openpyxl==3.1.5`.
