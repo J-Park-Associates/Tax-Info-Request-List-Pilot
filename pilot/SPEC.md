@@ -441,7 +441,7 @@ The content, exactly:
         "does": "Create a household, pick the return type, tick the documents you expect.",
         "strength": "Files are matched to your own request list, in your order.",
         "limit": "Unknown document types go to Needs Review, never guessed.",
-        "fallback": ""
+        "fallback": "New household is at the top of the window."
       },
       {
         "id": "drop-files",
@@ -453,7 +453,7 @@ The content, exactly:
         "does": "Inbox opens 'Drop files here'. PDFs, scans, photos, spreadsheets, zips and emails all go in.",
         "strength": "The client never names or sorts anything.",
         "limit": "Photos and faint scans read slowly and may go to Needs Review.",
-        "fallback": ""
+        "fallback": "Inbox opens once a household is chosen at the top left."
       },
       {
         "id": "scan",
@@ -465,7 +465,7 @@ The content, exactly:
         "does": "Reads each new file, matches it to a request, moves the original, makes a named copy.",
         "strength": "Filed only when exactly one request fits. Doubt goes to a person.",
         "limit": "First scans with many images take longer. The schedule also runs it automatically.",
-        "fallback": ""
+        "fallback": "Scan works once a household is chosen at the top left."
       },
       {
         "id": "originals",
@@ -513,7 +513,7 @@ The content, exactly:
         "does": "Opens the status page: every requested document, received or missing, with validation notes.",
         "strength": "One page answers 'what are we still waiting for?'",
         "limit": "A file on this computer, not a client portal.",
-        "fallback": ""
+        "fallback": "Status opens once a household is chosen at the top left."
       },
       {
         "id": "reminder",

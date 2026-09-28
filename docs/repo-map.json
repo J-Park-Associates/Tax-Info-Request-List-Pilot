@@ -3,7 +3,7 @@
   "generated": "2026-09-28",
   "generator": "tools/repo_map.py",
   "generator_sha256": "78ed6f39661035ec",
-  "module_table_sha256": "8e31d341fd7a246a",
+  "module_table_sha256": "d47d9f1b4d2ec0b2",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 175,
-    "edges": 1126,
-    "reused": 133
+    "nodes": 178,
+    "edges": 1128,
+    "reused": 0
   },
   "node_types": [
     "artifact",
@@ -4002,8 +4002,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "a6d3bffb4c65c12c",
-      "lines": 30
+      "sha256": "53fe677ea4692b67",
+      "lines": 31
     },
     {
       "id": "pilot/HANDOFF.md",
@@ -4030,8 +4030,15 @@
       "id": "pilot/SPEC.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "b57e1a8fbedbd92a",
+      "sha256": "dce636da7cdf82ad",
       "lines": 957
+    },
+    {
+      "id": "pilot/Tester Guide.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "6ec2ab88594a7e78",
+      "lines": 82
     },
     {
       "id": "requirements-build.txt",
@@ -4210,6 +4217,13 @@
         "ROOT"
       ],
       "role": "Puts the repo root on sys.path so tests can `import tracker` without installing the package - explicitly now, beside pyproject's pythonpath, for editor runners and pytest's rootdir detection."
+    },
+    {
+      "id": "pilot/Build Pilot Installer.bat",
+      "type": "script",
+      "layer": "root",
+      "sha256": "cfa9cde4e69f504e",
+      "lines": 76
     },
     {
       "id": "artifact:.venv/tracker-lock.json",
@@ -6408,6 +6422,32 @@
       ],
       "constants": {
         "ARROW": "'\u2192'"
+      }
+    },
+    {
+      "id": "tests/test_pilot_installer.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "3f9d2c767819b3af",
+      "lines": 139,
+      "exports": [
+        "BUILD",
+        "REPO",
+        "SETUP",
+        "UPSTREAM_DATA_HOME_NAME",
+        "test_the_desktop_icon_is_offered_but_not_ticked",
+        "test_the_installer_installs_for_one_user_without_admin",
+        "test_the_installer_is_named_and_placed_as_the_spec_says",
+        "test_the_installer_needs_a_version_to_compile",
+        "test_the_pilot_build_follows_the_root_scripts_rules",
+        "test_the_pilot_build_reads_the_version_from_a_pilot_content_file",
+        "test_the_pilot_build_refuses_what_is_not_committed",
+        "test_the_tester_guide_names_the_pilot_folders_it_leaves_alone",
+        "test_uninstalling_never_deletes_client_or_tracker_data",
+        "test_uninstalling_removes_the_schedule_it_ran"
+      ],
+      "constants": {
+        "UPSTREAM_DATA_HOME_NAME": "'tax-document-tracker'"
       }
     },
     {
@@ -10814,6 +10854,18 @@
       "from": "tests/test_page.py",
       "to": "tracker/page.py",
       "type": "tests",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_pilot_installer.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_pilot_installer.py",
+      "to": "tracker/scheduling.py",
+      "type": "exercises",
       "source": "derived"
     },
     {
