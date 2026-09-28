@@ -1,5 +1,5 @@
 [project]
-name = "tax-document-tracker"
+name = "tax-document-tracker-pilot"
 version = "1.1.0"
 description = "Deterministic tax-document request tracking for a CPA firm"
 requires-python = ">=3.11"

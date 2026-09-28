@@ -352,6 +352,11 @@ def test_the_projects_agent_settings_can_be_committed_and_nothing_else_under_cla
     assert ignored(".claude/worktrees/x/y") == 0
 
 
+#: The original product's data folder name (pilot decision P19): the pilot
+#: renamed ``DATA_HOME_NAME``, and the real product's folder stays denied too.
+UPSTREAM_DATA_HOME_NAME = "tax-document-tracker"
+
+
 def _deny_list_from_the_constants() -> list[str]:
     """The agent deny list, spelled from the constants that own each name
     (decision 186). A folder is never denied by its bare name alone: a
@@ -428,12 +433,18 @@ def test_the_agent_deny_list_names_the_data_home_and_every_file_that_names_a_cli
     wherever on the machine it sits - the list equal, rule for rule, to one
     spelled from the constants, so a rule dropped, widened, narrowed or
     respelled fails here; and ``.github/CODEOWNERS`` routes ``/.claude/`` to
-    the owner. A guard rail, not a wall (security principle 8): a deny rule
+    the owner. The pilot (P19) adds the original product's data folder,
+    ``UPSTREAM_DATA_HOME_NAME``, after the constants' list, so neither
+    folder can drop out. A guard rail, not a wall (security principle 8): a deny rule
     stops the agent's file tools on the spellings it lists, a shell command
     can still read the file, and the wall is the separate Windows account
     the office's AI tooling runs under."""
     deny = json.loads(read(".claude/settings.json"))["permissions"]["deny"]
-    assert deny == _deny_list_from_the_constants()
+    upstream = [f"{tool}({path})"
+                for path in (f"//c/Users/*/AppData/Local/{UPSTREAM_DATA_HOME_NAME}/**",
+                             f"~/.local/state/{UPSTREAM_DATA_HOME_NAME}/**")
+                for tool in ("Read", "Edit")]
+    assert deny == _deny_list_from_the_constants() + upstream    # pilot P19: both data folders
     owners = [line.split()[0] for line in read(".github/CODEOWNERS").splitlines()
               if line.strip() and not line.startswith("#")]
     assert "/.claude/" in owners, owners      # the list is the owner's to review

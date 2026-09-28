@@ -1,6 +1,6 @@
 {
-  "name": "tax-document-tracker",
-  "productName": "Tax Document Tracker",
+  "name": "tax-document-tracker-pilot",
+  "productName": "Tax Document Tracker Pilot",
   "version": "1.1.0",
   "description": "Deterministic tax-document request tracking for a CPA firm",
   "main": "main.js",
