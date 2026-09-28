@@ -122,7 +122,7 @@ for a deliberate look.
 **The clients root is a folder of clients, and only that.** The app refuses
 the system drive's root (`C:\`), the app's own folder, the folder holding its
 settings and store, and any folder that holds one of them, and says which
-(decision 137): a root like that would be walked every two hours and written
+(decision 137): a root like that would be walked on every scheduled pass and written
 into. Another drive's root is fine — a drive letter mapped to the clients
 share is a real root.
 
@@ -605,9 +605,23 @@ clients folder. This is the rule for now, while the owner decides how
 several machines may write; this paragraph changes when that decision
 does, and nothing else in these pages restates it.
 
-The schedule is one daily task that starts at
-`tracker.scheduling.DEFAULT_START` and repeats every
-`tracker.scheduling.DEFAULT_REPEAT_MINUTES` through the day. Each pass
+The schedule is one daily task. **Its time and how often it repeats are a
+setting on each computer** (pilot P21): the **Schedule** button in the app
+(after **Edit Request List**) turns it On or Off, sets the time of the
+first run, and picks how often it repeats - once a day, or every 30
+minutes, every hour, every 2, 4 or 8 hours. Until someone saves the
+setting it is on, from `tracker.scheduling.DEFAULT_START`, repeating every
+`tracker.scheduling.DEFAULT_REPEAT_MINUTES`. The choice is kept in
+`settings.json` beside the app, per computer, and **every** way the task
+is registered - `Setup.bat`, the app's first start after an upgrade,
+saving the clients root, **Repair the schedule**, the move to another computer (§6) -
+registers the saved choice, never the defaults. **Off** removes this
+computer's own task and leaves the designation file alone: turn it off on
+the designated computer and no computer runs the schedule, which the app
+says in one sentence; Scan still works by hand. A hand-edited value in
+`settings.json` that the setting does not allow is refused in a sentence
+naming the file and the key, at the first screen's notice, and no task is
+registered until the choice is saved again with the button. Each pass
 files what arrived, scans it, and on the draft day writes the chase emails.
 Nobody registers it by hand (decision 209). `Setup.bat` runs the
 after-install step last, the app runs it at its first start after an
@@ -619,8 +633,8 @@ own if it had one. The job names the app's settings folder, never the
 clients root, and reads the root from `settings.json` there at every run
 (decision 131), so changing the root in the app is all it takes for the
 schedule to follow. **Repair the schedule** in the app runs the step again
-on purpose, for a task that was deleted or broken; its banner says what it
-did in one sentence. The file is detection, not a lock: two desks that
+on purpose, for a task that was deleted or broken, registering the saved
+choice; its banner says what it did in one sentence. The file is detection, not a lock: two desks that
 set the root before the sync client carries the first claim can both
 claim, and Drive then keeps one file and renames the other, which nothing
 reads. The one-machine rule above still holds. A computer whose own
@@ -1213,13 +1227,15 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    a folder by hand, or a preview, does not touch it (a run naming only the
    app's settings folder is the scheduled job's shape, and does).
    - **Plain:** the schedule is running. Nothing to do.
-   - **Amber**, *Nothing newer for over 4 hours*: no scheduled pass has
-     started for four hours, which is one missed run at the default
-     every-two-hours and a margin. On the designated machine, open Task Scheduler and
+   - **Amber**, *Nothing newer for over N hours*: no scheduled pass has
+     started for two missed runs of the saved interval - four hours at the
+     default every-two-hours, never fewer than four, 48 hours for a
+     schedule set to once a day (pilot P21); the sentence states the N it
+     used. With the schedule switched off the line says so and stays
+     plain: no pass is due. On the designated machine, open Task Scheduler and
      check the task is there and enabled, or press **Repair the schedule** in
      the app. Amber also shows before the first scheduled pass on a new
-     machine (*No scheduled pass has run on this machine yet*), and on a
-     schedule installed as once a day. *Started <time>, not finished*
+     machine (*No scheduled pass has run on this machine yet*). *Started <time>, not finished*
      that turns amber means a pass was stopped part-way (the machine
      restarted, or the scheduler's time limit): the next pass finishes what
      it left.
@@ -1527,7 +1543,7 @@ held the same whole way, because the letter cannot know which request the
 file answers. The practice page's Drafted column says `held (N)`, `runs.log`
 counts it (`held=`), and the app's card says **"Reminder held: N
 file(s) still waiting to be sorted"**. On a Saturday that means: press **Sort &
-Scan** — Run now — (or wait for the next pass — the schedule runs every two hours, and the
+Scan** — Run now — (or wait for the next pass — the schedule runs on its saved interval, every two hours by default, and the
 pass that sorts the inbox drafts the reminder that same day), or deal with the
 file still waiting in the household's `Drop files here` — retire a year in the editor, rename a name the
 machine cannot handle, or remove a transfer that never finished. A file that
@@ -1955,7 +1971,8 @@ exactly as it came.
    `python -m tracker.after_install --move-schedule-here` run in the app's
    folder from source, with `.venv\Scripts\python.exe`). It says which
    machine it replaces, names this one in the file and registers the task
-   here. The old machine removes its own task the next time its app
+   here, with this computer's saved time and interval (the Schedule button;
+   a move never resets them to the defaults). The old machine removes its own task the next time its app
    starts, if it still does - the file no longer names what that machine
    last saw. Since decision 131 the job names the app's settings folder and
    reads the clients root from it at every run, so a later change of root

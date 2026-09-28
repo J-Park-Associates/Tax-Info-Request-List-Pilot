@@ -2114,6 +2114,126 @@ def test_saving_the_root_registers_the_schedule_on_the_designated_computer(capsy
     assert [command[1] for command in calls] == ["/create"]
 
 
+def test_set_schedule_saves_the_choice_registers_it_and_says_the_next_run(capsys, demo_root, monkeypatch):
+    """Pilot P21: ``set-schedule`` checks, saves, runs the after-install
+    step as a repair and answers with its sentence and the next run."""
+    from tracker import scheduling, settings
+    from tracker.layout import designation_file
+
+    calls = _on_the_office_computer(monkeypatch)
+    designation_file(demo_root).parent.mkdir(exist_ok=True)
+    designation_file(demo_root).write_text("office-pc\n", encoding="utf-8")
+
+    code, payload = run(capsys, "set-schedule", stdin={"enabled": True, "start": "06:30", "every": 60})
+
+    assert code == 0, payload
+    assert (payload["enabled"], payload["start"], payload["every"]) == (True, "06:30", 60)
+    assert payload["outcome"] == scheduling.REGISTERED and payload["installed"] is True
+    assert payload["sentence"] == scheduling.SCHEDULE_REGISTERED.format(start="06:30", every=60)
+    assert payload["next_run"].startswith("Next run: ") and payload["after_install"]["exit"] == 0
+    assert settings.schedule_preference() == scheduling.SchedulePreference(True, "06:30", 60)
+    assert [command[1] for command in calls] == ["/create"]
+
+    code, off = run(capsys, "set-schedule", stdin={"enabled": False, "start": "06:30", "every": 60})
+    assert code == 0, off
+    assert off["outcome"] == scheduling.OFF and off["sentence"] == scheduling.SCHEDULE_OFF
+    assert off["next_run"] == "" and off["installed"] is False and off["enabled"] is False
+
+
+def test_set_schedule_promises_no_next_run_on_a_computer_that_registered_nothing(capsys, demo_root, monkeypatch):
+    from tracker.layout import designation_file
+
+    calls = _on_the_office_computer(monkeypatch)
+    designation_file(demo_root).parent.mkdir(exist_ok=True)
+    designation_file(demo_root).write_text("front-desk\n", encoding="utf-8")
+
+    code, payload = run(capsys, "set-schedule", stdin={"enabled": True, "start": "06:30", "every": 60})
+
+    assert code == 0, payload
+    assert payload["installed"] is False and payload["next_run"] == ""
+    assert not [command for command in calls if command[1] == "/create"]
+
+
+@pytest.mark.parametrize("stdin", [
+    {"enabled": True, "start": "25:00", "every": 60},
+    {"enabled": True, "start": "06:30", "every": 45},
+    {"enabled": "yes", "start": "06:30", "every": 60},
+    {"start": "06:30", "every": 60},
+    {},
+])
+def test_set_schedule_refuses_a_bad_choice_in_a_sentence_and_saves_nothing(capsys, demo_root, stdin):
+    from tracker import settings
+
+    before = settings.settings_path().read_text(encoding="utf-8")
+    code, payload = run(capsys, "set-schedule", stdin=stdin)
+    assert code != 0 and payload["error"] and "allowed" in payload["error"]
+    assert settings.settings_path().read_text(encoding="utf-8") == before
+
+
+def test_settings_returns_the_saved_schedule_and_the_next_run(capsys, demo_root):
+    from tracker import settings
+
+    code, payload = run(capsys, "settings")
+    assert code == 0 and payload["schedule"] == {"enabled": True, "start": DEFAULT_START,
+                                                 "every": DEFAULT_REPEAT_MINUTES}
+    assert payload["next_run"].startswith("Next run: ") and payload["schedule_problem"] == ""
+
+    settings.set_schedule(False, "08:00", 0)
+    code, payload = run(capsys, "settings")
+    assert payload["schedule"] == {"enabled": False, "start": "08:00", "every": 0}
+    assert payload["next_run"] == ""
+
+
+def test_settings_says_a_hand_edited_schedule_is_unusable_rather_than_guessing(capsys, demo_root):
+    from tracker import settings
+
+    saved = json.loads(settings.settings_path().read_text(encoding="utf-8"))
+    settings.settings_path().write_text(json.dumps({**saved, "schedule_every": 45}), encoding="utf-8")
+    code, payload = run(capsys, "settings")
+    assert code == 0 and payload["schedule"] is None and payload["next_run"] == ""
+    assert "schedule_every" in payload["schedule_problem"]
+
+
+def test_repair_registers_the_saved_choice_when_the_page_sends_nothing(capsys, demo_root, monkeypatch):
+    from tracker import scheduling, settings
+    from tracker.layout import designation_file
+
+    settings.set_schedule(True, "05:15", 240)
+    _on_the_office_computer(monkeypatch)
+    designation_file(demo_root).parent.mkdir(exist_ok=True)
+    designation_file(demo_root).write_text("office-pc\n", encoding="utf-8")
+
+    code, payload = run(capsys, "install-schedule", stdin={})
+
+    assert code == 0, payload
+    assert payload["start"] == "05:15" and payload["every"] == 240
+    xml = Path(payload["xml"]).read_text(encoding=SCHEDULE_XML_ENCODING)
+    assert "T05:15:00" in xml and "PT240M" in xml
+    assert payload["sentence"] == scheduling.SCHEDULE_REGISTERED.format(start="05:15", every=240)
+
+
+def test_the_schedule_dialog_uses_only_the_apis_words(capsys):
+    """The page types none of the dialog's words: they come from
+    ``vocab.schedule``, and the button sits right after the edit button."""
+    here = Path(__file__).resolve().parent.parent / "app" / "renderer"
+    js = (here / "app.js").read_text(encoding="utf-8")
+    html = (here / "index.html").read_text(encoding="utf-8")
+    edit_at = html.index('id="btn-edit"')
+    assert edit_at < html.index('id="btn-schedule"') < html.index('id="btn-view"')
+    assert 'call(["set-schedule"]' in js and 'call(["settings"]' in js
+    for word in ("words.button", "words.title", "words.enabled_label", "words.on", "words.off",
+                 "words.start_label", "words.every_label", "words.every_choices", "words.note",
+                 "words.loading", "words.save", "words.cancel"):
+        assert word in js, word
+    for literal in (api.SCHEDULE_BUTTON, api.SCHEDULE_TITLE, api.SCHEDULE_ENABLED_LABEL,
+                    api.SCHEDULE_START_LABEL, api.SCHEDULE_EVERY_LABEL, api.SCHEDULE_NOTE,
+                    api.SCHEDULE_LOADING, *api.SCHEDULE_EVERY_LABELS.values()):
+        assert f'"{literal}"' not in js and f">{literal}<" not in html, literal
+    assert "DEFAULT_START" not in js
+    assert "set-schedule" in api.COMMANDS and "set-schedule" in api.WRITING_COMMANDS
+    assert "set-schedule" in api.__doc__
+
+
 def test_install_schedule_is_the_repair_path_and_says_its_outcome(capsys, demo_root, monkeypatch):
     """Decision 209: ``install-schedule`` runs the after-install step again,
     on purpose; the reply carries the outcome's key and the sentence the app
@@ -2399,9 +2519,10 @@ def test_the_schedule_is_repaired_from_the_toolbar_in_the_apis_words():
     here = Path(__file__).resolve().parent.parent / "app" / "renderer"
     js = (here / "app.js").read_text(encoding="utf-8")
     html = (here / "index.html").read_text(encoding="utf-8")
-    assert "btn-schedule" not in html and "btn-schedule" not in js and "Install Schedule" not in html
+    assert "Install Schedule" not in html
     toolbar = html[html.index('id="btn-client-folder"'):html.index('id="btn-edit"')]
     assert 'id="btn-repair-schedule" class="btn"' in toolbar
+    assert 'id="btn-schedule"' not in toolbar          # the Schedule button is after the edit button (P21)
     assert "vocab.schedule.repair;" in js and "vocab.schedule.repair_help;" in js
     assert "confirm(vocab.schedule.repair_confirm)" in js
     assert "banner(result.sentence," in js
@@ -2496,7 +2617,19 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
                                  "repair_help": api.SCHEDULE_REPAIR_HELP,
                                  "repair_confirm": api.SCHEDULE_REPAIR_CONFIRM.format(
                                      draft_day=WEEKDAY_NAMES[DRAFT_WEEKDAY]),
-                                 "move_confirm": api.SCHEDULE_MOVE_CONFIRM}
+                                 "move_confirm": api.SCHEDULE_MOVE_CONFIRM,
+                                 "button": "Schedule", "title": "Schedule on this computer",
+                                 "enabled_label": "Run the schedule", "on": "On", "off": "Off",
+                                 "start_label": "First run at", "every_label": "How often",
+                                 "every_choices": [
+                                     {"minutes": 0, "label": "Once a day"},
+                                     {"minutes": 30, "label": "Every 30 minutes"},
+                                     {"minutes": 60, "label": "Every hour"},
+                                     {"minutes": 120, "label": "Every 2 hours"},
+                                     {"minutes": 240, "label": "Every 4 hours"},
+                                     {"minutes": 480, "label": "Every 8 hours"}],
+                                 "note": "Scan works either way. Nothing is ever sent.",
+                                 "loading": api.SCHEDULE_LOADING, "save": "Save", "cancel": "Cancel"}
     # The settings page's phone box: its label, its sentence and the
     # number as recorded (decision 117).
     assert vocab["settings"] == {"phone_label": api.FIRM_PHONE_LABEL,

@@ -233,6 +233,7 @@ from tracker.settings import (
     ERROR_LOG_FILENAME,
     NO_ROOT_HINT,
     OCR_SCRATCH_DIRNAME,
+    ScheduleChoiceError,
     SettingsError,
     app_dir,
     beside_the_program,
@@ -243,6 +244,7 @@ from tracker.settings import (
     logs_dir,
     product_name,
     root_refusal,
+    schedule_preference,
     settings_dir,
     settings_path,
     system_drive_root,
@@ -463,9 +465,12 @@ LAST_PASS_FILENAME = "last-pass.json"
 #: the other way.
 AFTER_INSTALL_FILENAME = "after-install.json"
 #: The app's line turns amber when the last scheduled pass started longer
-#: ago than this. The schedule repeats every two hours by default, so four
-#: hours is one missed run and a margin.
+#: ago than two missed runs of the saved interval, and never sooner than
+#: this. The schedule repeats every two hours by default, so four hours is
+#: one missed run and a margin.
 LAST_PASS_AMBER_HOURS = 4
+#: A schedule that runs once a day is amber after two days.
+LAST_PASS_AMBER_HOURS_DAILY = 48
 #: The file's ``result``: a pass that started and has not ended (or was
 #: killed), one that ended cleanly, one that did not.
 PASS_RUNNING = "running"
@@ -513,10 +518,12 @@ PASS_REASONS = {
 LAST_PASS_LINE = "Last scheduled pass: {when}, {result}."
 LAST_PASS_FAILED_LINE = "Last scheduled pass: {when}, failed ({reason})."
 LAST_PASS_RUNNING_LINE = "Last scheduled pass: started {when}, not finished."
-LAST_PASS_OLD = (f" Nothing newer for over {LAST_PASS_AMBER_HOURS} hours: check that the schedule "
+#: ``{hours}`` is the wait the line assumed, from the saved interval.
+LAST_PASS_OLD = (" Nothing newer for over {hours} hours: check that the schedule "
                  "is still installed on the office machine (runbook, 'The last-pass line').")
 LAST_PASS_NEVER = ("No scheduled pass has run on this machine yet. If the schedule is installed "
-                   "here, one will run within two hours.")
+                   "here, one will run at its next scheduled time.")
+LAST_PASS_OFF = "The schedule is off on this computer, so no pass runs by itself. Scan still works."
 LAST_PASS_UNREADABLE = "The last scheduled pass could not be read ({error})."
 #: How the app colours the line: the API says it, the page only draws it.
 LEVEL_OK, LEVEL_WARN, LEVEL_ERR = "ok", "warn", "err"
@@ -2182,13 +2189,22 @@ def _log_a_failed_pass(log_file: Path | None, reason_code: str, kind: str) -> No
         log.warning("Could not write %s (%s)", log_file.name, errors.error_class(exc))
 
 
+def amber_hours(every: int) -> float:
+    """How long since the last pass began before the line turns amber: two
+    missed runs of the saved interval, never under
+    :data:`LAST_PASS_AMBER_HOURS`, and :data:`LAST_PASS_AMBER_HOURS_DAILY`
+    for a schedule that runs once a day (``every`` 0)."""
+    return LAST_PASS_AMBER_HOURS_DAILY if not every else max(LAST_PASS_AMBER_HOURS, 2 * every / 60)
+
+
 def last_pass_line(path: Path | None = None, *, now: dt.datetime | None = None) -> dict:
     """The app's one line about the schedule: ``{"text", "level"}``.
 
     Red when the last scheduled pass failed or the file cannot be read;
-    amber when the last one started more than :data:`LAST_PASS_AMBER_HOURS`
-    ago, or none has run; plain otherwise. The words are here so the app
-    types none of them (UX principle 6).
+    amber when the last one started more than :func:`amber_hours` ago - two
+    missed runs of the saved interval - or none has run; plain otherwise.
+    With the schedule off the line says so and is plain: no pass is due.
+    The words are here so the app types none of them (UX principle 6).
 
     Read as decision 189 reads its order hint: at most
     :data:`PASS_ORDER_MAX_BYTES`, every error - a nested file's
@@ -2197,6 +2213,14 @@ def last_pass_line(path: Path | None = None, *, now: dt.datetime | None = None) 
     three this module writes, a reason one of its codes. Never raises: it
     is part of the app's first call."""
     now = now or dt.datetime.now()
+    try:
+        preference = schedule_preference()
+    except ScheduleChoiceError as exc:
+        return {"text": str(exc), "level": LEVEL_ERR}
+    except SettingsError as exc:
+        return {"text": LAST_PASS_UNREADABLE.format(error=errors.error_class(exc)), "level": LEVEL_ERR}
+    if not preference.enabled:
+        return {"text": LAST_PASS_OFF, "level": LEVEL_OK}
     try:
         path = path or last_pass_path()
         with path.open("rb") as handle:
@@ -2213,7 +2237,8 @@ def last_pass_line(path: Path | None = None, *, now: dt.datetime | None = None) 
         result = data["result"]
         if result not in (PASS_RUNNING, PASS_SUCCEEDED, PASS_FAILED):
             raise ValueError("not a result this version writes")
-        old = now - started > dt.timedelta(hours=LAST_PASS_AMBER_HOURS)
+        hours = amber_hours(preference.every)
+        old = now - started > dt.timedelta(hours=hours)
     except Exception as exc:
         return {"text": LAST_PASS_UNREADABLE.format(error=errors.error_class(exc)), "level": LEVEL_ERR}
     when = started.strftime("%Y-%m-%d %H:%M")
@@ -2224,7 +2249,7 @@ def last_pass_line(path: Path | None = None, *, now: dt.datetime | None = None) 
     text = (LAST_PASS_RUNNING_LINE.format(when=when) if result == PASS_RUNNING
             else LAST_PASS_LINE.format(when=when, result=result))
     if old:
-        return {"text": text + LAST_PASS_OLD, "level": LEVEL_WARN}
+        return {"text": text + LAST_PASS_OLD.format(hours=f"{hours:g}"), "level": LEVEL_WARN}
     return {"text": text, "level": LEVEL_OK}
 
 

@@ -583,3 +583,71 @@ def test_only_a_fixed_disk_may_hold_the_program_the_schedule_runs(tmp_path):
                 return kind if path == odd else data_rules.DRIVE_FIXED
             refusal = data_rules.program_drive_refusal(app=app, settings=settings, drive_type=answer)
             assert refusal == (said.format(folder=odd) if said else "")
+
+
+# --------------------------------------- the schedule setting (pilot P21) ----
+
+
+def test_nothing_saved_means_the_schedule_defaults(beside_the_app):
+    chosen = data_rules.schedule_preference()
+    assert (chosen.enabled, chosen.start, chosen.every) == (True, "07:00", 120)
+
+
+def test_the_schedule_choice_round_trips_and_sits_beside_the_root(beside_the_app):
+    clients = beside_the_app / "Clients"
+    clients.mkdir()
+    set_clients_root(clients)
+
+    saved = data_rules.set_schedule(False, "06:30", 0)
+
+    assert saved == data_rules.SchedulePreference(False, "06:30", 0)
+    assert data_rules.schedule_preference() == saved
+    on_file = json.loads(settings_path().read_text(encoding="utf-8"))
+    assert on_file == {"clients_root": str(clients.resolve()), "schedule_enabled": False,
+                       "schedule_start": "06:30", "schedule_every": 0}
+    data_rules.set_schedule(True, "13:00", 480)
+    assert clients_root() == clients.resolve()          # the root is not disturbed
+
+
+def test_saving_the_root_alone_writes_only_the_root(beside_the_app):
+    clients = beside_the_app / "Clients"
+    clients.mkdir()
+    set_clients_root(clients)
+    assert json.loads(settings_path().read_text(encoding="utf-8")) == {"clients_root": str(clients.resolve())}
+    assert data_rules.schedule_preference() == data_rules.SchedulePreference()
+
+
+def test_a_missing_key_takes_its_default_and_the_others_are_kept(beside_the_app):
+    settings_path().parent.mkdir(parents=True)
+    settings_path().write_text(json.dumps({"schedule_start": "09:15"}), encoding="utf-8")
+    assert data_rules.schedule_preference() == data_rules.SchedulePreference(True, "09:15", 120)
+
+
+@pytest.mark.parametrize(("key", "value"), [
+    ("schedule_enabled", "yes"), ("schedule_enabled", 1), ("schedule_enabled", None),
+    ("schedule_start", "9am"), ("schedule_start", 900), ("schedule_start", "25:00"),
+    ("schedule_every", 45), ("schedule_every", "2 hours"), ("schedule_every", True), ("schedule_every", None),
+])
+def test_a_bad_saved_value_is_refused_naming_the_file_and_the_key(beside_the_app, key, value):
+    settings_path().parent.mkdir(parents=True)
+    settings_path().write_text(json.dumps({key: value}), encoding="utf-8")
+    with pytest.raises(data_rules.ScheduleChoiceError) as refused:
+        data_rules.schedule_preference()
+    assert str(settings_path()) in str(refused.value) and key in str(refused.value)
+
+
+@pytest.mark.parametrize("choice", [
+    ("yes", "07:00", 120), (True, "7:00", 120), (True, "07:00", 90), (True, "07:00", None),
+])
+def test_a_bad_choice_is_refused_and_nothing_is_written(beside_the_app, choice):
+    with pytest.raises(data_rules.ScheduleChoiceError):
+        data_rules.set_schedule(*choice)
+    assert not settings_path().exists()
+
+
+def test_a_settings_file_that_will_not_read_is_not_overwritten_by_a_save(beside_the_app):
+    settings_path().parent.mkdir(parents=True)
+    settings_path().write_text("{not json", encoding="utf-8")
+    with pytest.raises(SettingsError):
+        data_rules.set_schedule(True, "07:00", 120)
+    assert settings_path().read_text(encoding="utf-8") == "{not json"

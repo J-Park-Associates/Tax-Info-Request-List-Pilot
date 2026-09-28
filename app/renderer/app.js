@@ -2115,6 +2115,7 @@ function applyVocabulary() {
   // The schedule's repair path (decision 209): label and tooltip are the API's.
   $("repair-schedule-label").textContent = vocab.schedule.repair;
   $("btn-repair-schedule").title = vocab.schedule.repair_help;
+  applyScheduleVocabulary(vocab.schedule);
   $("household-title").textContent = vocab.household.new;
   $("hh-new-head").textContent = vocab.household.new;
   // Add a return and New household (decision 196): the toolbar's button,
@@ -2371,6 +2372,99 @@ async function repairSchedule() {
     }
   } catch (err) {
     failed(err, repairSchedule);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── the Schedule dialog (pilot P21) ──────────────────────────────────────
+// On or off, the first run's time and how often, kept per computer. Read
+// from `settings`, saved by `set-schedule`; every word is the API's
+// (vocab.schedule), and the API's sentence is what the banner says.
+
+function applyScheduleVocabulary(words) {
+  $("schedule-label").textContent = words.button;
+  $("sc-title").textContent = words.title;
+  $("sc-loading").textContent = words.loading;
+  $("sc-enabled-label").textContent = words.enabled_label;
+  $("sc-on-label").textContent = words.on;
+  $("sc-off-label").textContent = words.off;
+  $("sc-start-label").textContent = words.start_label;
+  $("sc-every-label").textContent = words.every_label;
+  $("sc-note").textContent = words.note;
+  $("sc-save").textContent = words.save;
+  $("sc-cancel").textContent = words.cancel;
+  $("sc-every").replaceChildren(
+    ...words.every_choices.map((one) => el("option", { value: String(one.minutes) }, one.label)));
+}
+
+// Off greys the two fields: there is nothing to choose while it does not run.
+function greyScheduleFields() {
+  const off = $("sc-off").checked;
+  $("sc-start").disabled = off;
+  $("sc-every").disabled = off;
+}
+
+function scheduleError(text) {
+  $("sc-error").textContent = text;
+  $("sc-error").classList.toggle("hidden", !text);
+}
+
+// The dialog opens at once on its loading line and fills when `settings`
+// answers; a failed read closes it and says why, as any failed read does.
+async function openSchedule() {
+  scheduleError("");
+  $("sc-loading").classList.remove("hidden");
+  $("sc-form").classList.add("hidden");
+  $("sc-save").disabled = true;
+  openDialog("schedule-modal");
+  try {
+    const current = await call(["settings"], {});
+    // A saved choice the file cannot be trusted for is said, and the dialog
+    // starts from the API's defaults for the person to choose again.
+    const chosen = current.schedule
+      || { enabled: true, start: vocab.schedule.start, every: vocab.schedule.every };
+    $("sc-on").checked = chosen.enabled;
+    $("sc-off").checked = !chosen.enabled;
+    $("sc-start").value = chosen.start;
+    $("sc-every").value = String(chosen.every);
+    $("sc-next").textContent = current.next_run;
+    scheduleError(current.schedule_problem);
+    greyScheduleFields();
+    // What "Next run" says is true of the saved choice only (hidden again on any change, below).
+    $("sc-next").classList.remove("hidden");
+    $("sc-loading").classList.add("hidden");
+    $("sc-form").classList.remove("hidden");
+    $("sc-save").disabled = false;
+    rebaseline("schedule-modal", ["enabled", "start", "every"]);
+    $("sc-start").focus();
+  } catch (err) {
+    closeDialog("schedule-modal");
+    failed(err, openSchedule);
+  }
+}
+
+async function saveSchedule() {
+  const btn = $("sc-save");
+  btn.disabled = true;
+  scheduleError("");
+  try {
+    const result = await call(["set-schedule"], {
+      enabled: $("sc-on").checked,
+      start: $("sc-start").value,
+      every: Number($("sc-every").value),
+    });
+    closeDialog("schedule-modal");
+    const worked = result.after_install.exit === 0 && (result.installed || !result.enabled);
+    banner(result.next_run ? `${result.sentence} ${result.next_run}` : result.sentence, worked ? "ok" : "warn");
+    renderAfterInstall(noticeOf(result.after_install));
+    try {
+      await loadEngagements();     // the last-pass line follows the new choice
+    } catch (err) {
+      failed(err);
+    }
+  } catch (err) {
+    scheduleError(failureSentence(err));   // a refusal stays in the dialog, which stays open
   } finally {
     btn.disabled = false;
   }
@@ -3626,6 +3720,10 @@ const DIALOGS = {
     first: () => null,
     closed: () => closeNewReturn(),
   },
+  "schedule-modal": {
+    model: () => ({ enabled: $("sc-on").checked, start: $("sc-start").value, every: $("sc-every").value }),
+    first: () => $("sc-cancel"),
+  },
 };
 
 const dialogStack = [];      // the open dialogs, the topmost last
@@ -3821,6 +3919,14 @@ $("household-roll").addEventListener("click", async (e) => {
   reviewPeople(button.dataset.path);
 });
 $("btn-repair-schedule").addEventListener("click", repairSchedule);
+$("btn-schedule").addEventListener("click", openSchedule);
+$("sc-on").addEventListener("change", greyScheduleFields);
+$("sc-off").addEventListener("change", greyScheduleFields);
+for (const kind of ["input", "change"]) {
+  $("sc-form").addEventListener(kind, () => $("sc-next").classList.add("hidden"));
+}
+$("sc-save").addEventListener("click", saveSchedule);
+$("sc-cancel").addEventListener("click", () => requestClose("schedule-modal"));
 $("btn-save-root").addEventListener("click", saveRoot);
 $("root-input").addEventListener("keydown", (e) => e.key === "Enter" && saveRoot());
 $("btn-browse").addEventListener("click", async () => {

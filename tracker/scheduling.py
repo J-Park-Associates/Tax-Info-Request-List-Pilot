@@ -72,6 +72,7 @@ holds it there.
 
 from __future__ import annotations
 
+import datetime as dt
 import html
 import json
 import os
@@ -85,14 +86,32 @@ from tracker.fsio import write_text_atomically
 from tracker.layout import designation_file
 from tracker.locking import RUN_TIME_LIMIT_SECONDS, is_this_host, this_host
 from tracker.runner import DRAFT_DAY_NAME, LOG_FLAG, RUNNER_MODE_FLAG, SETTINGS_FLAG
-from tracker.settings import SETTINGS_FILENAME, app_dir, data_home, product_name, program_drive_refusal
+
+# The schedule choice and its checks live in ``settings`` - the runner reads
+# the saved choice too, and the runner may not import this module - and are
+# named here as well (``as`` marks the re-export), because this is where the
+# schedule is spelled.
+from tracker.settings import (
+    DEFAULT_SCHEDULE_EVERY,
+    DEFAULT_SCHEDULE_START,
+    SETTINGS_FILENAME,
+    app_dir,
+    data_home,
+    product_name,
+    program_drive_refusal,
+)
+from tracker.settings import EVERY_CHOICES as EVERY_CHOICES
+from tracker.settings import ScheduleChoiceError as ScheduleChoiceError
+from tracker.settings import SchedulePreference as SchedulePreference
+from tracker.settings import check_every as check_every
+from tracker.settings import check_start as check_start
 
 #: The scheduled task is named after the product, wherever that is set.
 TASK_NAME = product_name()
-DEFAULT_START = "07:00"
+DEFAULT_START = DEFAULT_SCHEDULE_START
 #: Filing and scanning repeat through the day this often (minutes); the
 #: reminder still drafts only on the drafting day. 0 = once a day.
-DEFAULT_REPEAT_MINUTES = 120
+DEFAULT_REPEAT_MINUTES = DEFAULT_SCHEDULE_EVERY
 #: The generated Task Scheduler definition, in the tracker's data home (decision 186).
 SCHEDULE_XML_FILENAME = "tax-tracker.xml"
 #: Any date in the past will do for a daily trigger; it is when the series began.
@@ -438,6 +457,8 @@ def register_here(settings_folder: str | Path, *, start: str = DEFAULT_START,
     none of the environment the shell gives the API. A ``schtasks`` that
     refuses raises ``RuntimeError`` with what it said.
     """
+    start = check_start(start)
+    every = check_every(every)
     frozen = bool(getattr(sys, "frozen", False))
     # The task's file goes into the data home (decision 186), never beside
     # the program; its folder is made as the installer makes it.
@@ -474,6 +495,38 @@ def remove_task(task_name: str = TASK_NAME) -> bool:
     return True
 
 
+NEXT_RUN_TODAY = "Next run: today at {time}"
+NEXT_RUN_TOMORROW = "Next run: tomorrow at {time}"
+
+
+def next_run(preference: SchedulePreference, now: dt.datetime | None = None) -> str:
+    """When the setting next runs, in a sentence, from the start, the
+    interval and the local time: "Next run: today at 13:00" or "tomorrow at
+    07:00", and "" when the schedule is off.
+
+    The task starts a series at the start time every day and repeats it for
+    a day (:func:`task_scheduler_xml`), so the runs are the start plus whole
+    intervals, each day's series ending where the next begins. The series
+    that began yesterday still counts before today's start."""
+    if not preference.enabled:
+        return ""
+    now = now or dt.datetime.now()
+    hour, minute = (int(part) for part in check_start(preference.start).split(":"))
+    step = dt.timedelta(minutes=preference.every) if preference.every else dt.timedelta(days=1)
+    coming = []
+    for days in (-1, 0, 1):
+        day = now.date() + dt.timedelta(days=days)
+        begin = dt.datetime.combine(day, dt.time(hour, minute))
+        at = begin
+        while at < begin + dt.timedelta(days=1):
+            if at > now:
+                coming.append(at)
+            at += step
+    soonest = min(coming)
+    template = NEXT_RUN_TODAY if soonest.date() == now.date() else NEXT_RUN_TOMORROW
+    return template.format(time=soonest.strftime("%H:%M"))
+
+
 # ------------------------------------------- which computer runs it (209) ----
 
 #: A computer's name as the designation file holds it: what
@@ -495,6 +548,9 @@ UNREADABLE = "unreadable"
 UNNAMED_HOST = "unnamed_host"
 #: The outcomes that register a task on this computer.
 REGISTERING = frozenset({CLAIMED, REGISTERED})
+#: The schedule is switched off in the setting (pilot P21): this computer's
+#: task is removed and nothing is registered, whichever computer is named.
+OFF = "off"
 
 SCHEDULE_WAITS_FOR_ROOT = ("The schedule will be set up when the clients folder is chosen in the app, "
                            "on the computer that runs it.")
@@ -503,6 +559,14 @@ SCHEDULE_CLAIMED = ("This computer ({host}) now runs the schedule for this clien
                     "from {start}, every {every} minutes.")
 SCHEDULE_REGISTERED = ("The schedule is set: every day from {start}, every {every} minutes, with this "
                        "computer's copy of the app.")
+#: The same two for a schedule that runs once a day (``every`` 0): no
+#: repeat to state, so "every day at {start}".
+SCHEDULE_CLAIMED_DAILY = ("This computer ({host}) now runs the schedule for this clients folder: every day "
+                          "at {start}.")
+SCHEDULE_REGISTERED_DAILY = ("The schedule is set: every day at {start}, with this computer's copy of "
+                             "the app.")
+SCHEDULE_OFF = ("The schedule is off on this computer. Scan still works. Turn it on with the Schedule "
+                "button.")
 SCHEDULE_ELSEWHERE = "{host} runs the schedule for this clients folder, so this computer registers none{removed}."
 SCHEDULE_REMOVED = " and removed the one it had"
 #: The file's path is named; its content never is (it is whatever was left there).
@@ -699,7 +763,7 @@ if __name__ == "__main__":
                         help="the folder holding the tracker package")
     parser.add_argument(START_FLAG, default=DEFAULT_START,
                         help=f"daily start time, HH:MM (default: {DEFAULT_START})")
-    parser.add_argument("--every", type=int, default=DEFAULT_REPEAT_MINUTES, metavar="MINUTES",
+    parser.add_argument("--every", default=DEFAULT_REPEAT_MINUTES, metavar="MINUTES",
                         help=f"repeat filing and scanning through the day (default: "
                              f"{DEFAULT_REPEAT_MINUTES}; 0 = once a day)")
     parser.add_argument("--author", default="", help="task author, for the XML")
@@ -741,15 +805,13 @@ if __name__ == "__main__":
 
     try:
         if ns.format == FORMAT_XML:
-            hhmm = ns.start.strip()
-            if len(hhmm) != 5 or hhmm[2] != ":" or not hhmm.replace(":", "").isdigit():
-                parser.error(f"{START_FLAG} must be HH:MM, got {ns.start!r}")
+            hhmm = check_start(ns.start)
             payload = task_scheduler_xml(
                 python=ns.python,
                 settings=settings_arg,
                 working_dir=ns.working_dir,
                 start_time=hhmm,
-                repeat_minutes=ns.every,
+                repeat_minutes=check_every(ns.every),
                 author=ns.author,
                 task_name=ns.name,
             )
@@ -760,7 +822,7 @@ if __name__ == "__main__":
                     python=ns.python,
                     settings=settings_arg,
                     working_dir=ns.working_dir,
-                    hour=start_hour(ns.start),
+                    hour=start_hour(check_start(ns.start)),
                     task_name=ns.name,
                 ),
                 indent=2,

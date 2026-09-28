@@ -3661,7 +3661,7 @@ def test_every_dialog_is_in_the_one_registry_and_closes_through_one_guard():
     js = read("app/renderer/app.js")
     html = read("app/renderer/index.html")
     ids = set(_DIALOG_IDS.findall(html))
-    assert ids == {"editor", "household-modal", "handover-modal", "modal"}
+    assert ids == {"editor", "household-modal", "handover-modal", "modal", "schedule-modal"}
     assert _registry(js) == ids
     for ident in ids:
         assert f'$("{ident}").classList.add("hidden")' not in js, ident
@@ -3690,7 +3690,7 @@ def test_escape_and_an_overlay_click_reach_every_dialog_the_same_way():
     assert not re.search(r"e\.target === \$\(\"[a-z-]+\"\)", js)
     for button, dialog in (("hh-edit-cancel", "household-modal"), ("ho-cancel", "handover-modal"),
                            ("ed-cancel", "editor"), ("wh-cancel", "modal"), ("wf-cancel", "modal"),
-                           ("ne-cancel", "modal")):
+                           ("ne-cancel", "modal"), ("sc-cancel", "schedule-modal")):
         assert f'$("{button}").addEventListener("click", () => requestClose("{dialog}"));' in js, button
 
 
@@ -3708,10 +3708,11 @@ def test_every_dialog_opens_with_focus_inside_and_gives_it_back():
                           ("function openHouseholdEditor() {", "household-modal"),
                           ("async function openHandOver(original, seq) {", "handover-modal"),
                           ("async function openAddReturn(hh) {", "modal"),
-                          ("async function openNewHousehold() {", "modal")):
+                          ("async function openNewHousehold() {", "modal"),
+                          ("async function openSchedule() {", "schedule-modal")):
         assert f'openDialog("{ident}")' in _js_function(js, opener), opener
     registry = js.split("const DIALOGS = {", 1)[1].split("\n};\n", 1)[0]
-    assert registry.count("first: () =>") == 4
+    assert registry.count("first: () =>") == 5
     trap = _js_function(js, "function trapTab(e, id) {")
     assert "e.preventDefault();" in trap and "first.focus();" in trap and "last.focus();" in trap
 
@@ -3735,7 +3736,7 @@ def test_escape_never_discards_unsaved_work():
     assert 'bar.querySelector(".dlg-keep").addEventListener("click", () => keepEditing(id));' in js
     # Every dialog a person types in carries the bar; the hand-over is two
     # picks and never dirty.
-    assert html.count('class="dlg-unsaved banner warn hidden" role="alert"') == 3
+    assert html.count('class="dlg-unsaved banner warn hidden" role="alert"') == 4
     assert "model: null," in js.split("const DIALOGS = {", 1)[1].split('"handover-modal": {', 1)[1]
     # Acts recorded at once move the snapshot: the rename renames it.
     assert "for (const row of dialogSnapshot.editor.rows)" in _js_function(js, "async function renameRequest() {")
@@ -3802,3 +3803,23 @@ def test_each_step_of_the_new_return_dialog_names_the_dialog_by_its_own_heading(
     assert "setAttribute(\"aria-labelledby\", STEP_HEADINGS[step])" in step
     for heading in ("household-title", "form-title", "items-title"):
         assert f'<h3 id="{heading}"></h3>' in html, heading
+
+
+def test_the_runbook_describes_the_saved_schedule_and_the_interval_aware_amber_rule():
+    """Pilot P21: the schedule paragraph names the Schedule button and the
+    per-computer saved choice, no passage still assumes the fixed two-hour
+    default, the last-pass rule states the two-missed-runs threshold from
+    the runner, and the move step keeps the saved choice."""
+    from tracker.runner import LAST_PASS_AMBER_HOURS, LAST_PASS_AMBER_HOURS_DAILY
+
+    runbook = read("docs/runbook.md")
+    assert "**Schedule** button" in runbook and "`settings.json`" in runbook
+    for door in ("`Setup.bat`", "saving the clients root", "**Repair the schedule**", "the move to another computer"):
+        assert door in runbook.split("**Off** removes", 1)[0].split("setting on each computer", 1)[1], door
+    assert "every two hours" not in runbook.replace("every-two-hours", "").replace("every two hours by default", "")
+    amber = runbook.split("**Amber**, *Nothing newer for over N hours*", 1)[1].split("**Red**", 1)[0]
+    assert "two missed runs of the saved interval" in amber
+    assert f"{LAST_PASS_AMBER_HOURS_DAILY} hours" in amber and "fewer than four" in amber
+    assert LAST_PASS_AMBER_HOURS == 4
+    assert "never resets them to the defaults" in runbook
+    assert "the schedule is off on this computer" in runbook.lower() or "**Off** removes" in runbook

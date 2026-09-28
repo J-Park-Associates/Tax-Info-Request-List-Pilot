@@ -35,6 +35,39 @@
     `test_the_scratch_roots_scan_is_filed_by_the_reader_and_by_nothing_else`
     needs the scanned-text reader, which is not installable here.
 
+- **Build C (2026-09-28, P21, branch `claude/festive-mayer-wpxbo2`, draft PR to
+  `main`):** SPEC section 12 built - the saved schedule choice, every
+  registration path using it, the "off" outcome, the launch comparison, the
+  `set-schedule` command and `vocab.schedule`, the Schedule button and dialog,
+  the once-a-day wording, the interval-aware last-pass rule, the runbook
+  passages and the 12.8 tests. Gate run: ruff, repo-map `update` and `check`,
+  the affected tests under Python 3.11 and 3.13 (all pass except four
+  `test_ocr.py` tests and four setup errors that need `onnxruntime`/`rapidocr`,
+  which the cloud venv lacks; Build C touches no OCR code).
+  - **Deviations from SPEC 12 for the next reader:**
+    1. The choice, its checks (`check_start`, `check_every`, `EVERY_CHOICES`,
+       `ScheduleChoiceError`, `SchedulePreference`) and the two defaults live in
+       `tracker/settings.py`, not `scheduling.py`. The runner must read the
+       saved interval for the last-pass line and may not import `scheduling`
+       (`tests/test_layers.py`), and `settings` may not import upward.
+       `scheduling` re-exports the names, so `scheduling.check_start` etc.
+       work as the SPEC says. `scheduling.DEFAULT_START` /
+       `DEFAULT_REPEAT_MINUTES` are now aliases of the settings defaults.
+    2. `runner.LAST_PASS_NEVER` no longer says "within two hours" (untrue for a
+       longer interval); `LAST_PASS_OLD` is now a template taking `{hours}`.
+       New: `LAST_PASS_OFF`, `LAST_PASS_AMBER_HOURS_DAILY`, `amber_hours()`.
+    3. `settings` also returns `schedule_problem` (a sentence) and
+       `schedule: null` when a hand-edited value is refused; the dialog shows
+       the sentence and starts from the defaults.
+    4. Extra: `vocab.schedule.loading` (the dialog's loading line), and a few
+       CSS lines for the dialog in `style.css`.
+    5. The runbook's move step says a move keeps the saved time and interval.
+  - **Merge notes:** B and C both edit `index.html` (different spots). Both
+    edit `docs/repo-map.*`: merge, then `python tools/repo_map.py update`,
+    never hand-resolve.
+  - **Decision text to log** (the integrate session numbers it): none new;
+    P21 covers this build.
+
 ## Waiting on Jason
 
 Nothing. Terms (P20) and tour (P22) wording approved; Actions are off in this

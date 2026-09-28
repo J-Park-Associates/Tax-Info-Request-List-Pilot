@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 from tests.conftest import TEST_HOUSEHOLD, make_engagement
-from tracker import after_install, ledger, scheduling, store
+from tracker import after_install, ledger, scheduling, settings, store
 from tracker.layout import PRIVATE_TREE, designation_file
 from tracker.locking import engagement_lock
 from tracker.records import rule_to_json
@@ -204,6 +204,31 @@ def test_move_schedule_here_rewrites_the_designation(root, windows, monkeypatch,
         start=scheduling.DEFAULT_START, every=scheduling.DEFAULT_REPEAT_MINUTES)
     assert designation_file(root).read_text(encoding="utf-8") == f"{HERE}\n"
     assert len(creates(windows["calls"])) == 1
+
+
+def test_move_schedule_here_refuses_when_the_saved_choice_is_off(root, windows, monkeypatch, capsys):
+    settings.set_schedule(False, "07:00", 120)
+    designation_file(root).write_text(f"{ELSEWHERE}\n", encoding="utf-8")
+
+    code, out = cli(monkeypatch, capsys, "--move-schedule-here")
+
+    assert code == 1
+    assert out.splitlines()[0] == after_install.SCHEDULE_OFF_HERE
+    assert designation_file(root).read_text(encoding="utf-8") == f"{ELSEWHERE}\n"
+    assert windows["calls"] == []
+
+
+def test_a_settings_file_that_cannot_be_written_is_recorded_not_raised(root, windows, monkeypatch):
+    settings.set_schedule(True, "07:00", 120)
+
+    def refuse(*args, **kwargs):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(settings, "set_schedule", refuse)
+    done = after_install.run(reason=after_install.REASON_REPAIR, start="06:15")
+
+    assert done.exit_code == 1 and creates(windows["calls"]) == []
+    assert done.schedule_sentence == after_install.SETTINGS_UNWRITABLE.format(file=settings.SETTINGS_FILENAME)
 
 
 # -------------------------------------------------------- the record check ----
@@ -1077,3 +1102,169 @@ def test_two_left_behind_items_of_one_name_move_nothing(tmp_path):
     assert (tmp_path / "a" / "x").read_text(encoding="utf-8") == "A"
     assert (tmp_path / "b" / "x").read_text(encoding="utf-8") == "B"
     assert not home.exists()
+
+
+# ------------------------------------------ the schedule setting (P21) ----
+
+
+def registered_xml() -> str:
+    return scheduling.schedule_xml_path().read_text(encoding=scheduling.SCHEDULE_XML_ENCODING)
+
+
+def test_every_door_registers_the_saved_choice_not_the_defaults(root, windows, monkeypatch, capsys):
+    settings.set_schedule(True, "06:30", 60)
+    designation_file(root).write_text(f"{HERE}\n", encoding="utf-8")
+    doors = [
+        lambda: cli(monkeypatch, capsys, "--reason", "setup"),               # Setup.bat
+        lambda: after_install.run(reason=after_install.REASON_ROOT),         # saving the root
+        lambda: after_install.run(reason=after_install.REASON_REPAIR),       # Repair the schedule
+        lambda: cli(monkeypatch, capsys, "--move-schedule-here"),            # Move schedule here
+        lambda: after_install.run(reason=after_install.REASON_LAUNCH),       # the app's launch
+    ]
+    for door in doors:
+        scheduling.schedule_xml_path().unlink(missing_ok=True)
+        door()
+        xml = registered_xml()
+        assert "T06:30:00" in xml and "PT60M" in xml and "T07:00:00" not in xml and "PT120M" not in xml
+
+
+def test_a_launch_registers_the_saved_choice(root, windows):
+    settings.set_schedule(True, "05:45", 240)
+    after_install.launch()
+    assert "T05:45:00" in registered_xml() and "PT240M" in registered_xml()
+
+
+def test_once_a_day_registers_no_repeat_and_says_every_day_at_the_start(root, windows):
+    settings.set_schedule(True, "06:30", 0)
+    designation_file(root).write_text(f"{HERE}\n", encoding="utf-8")
+
+    done = after_install.run(reason=after_install.REASON_REPAIR)
+
+    assert done.installed and "<Repetition>" not in registered_xml()
+    assert done.schedule_sentence == scheduling.SCHEDULE_REGISTERED_DAILY.format(start="06:30")
+    designation_file(root).unlink()
+    claimed = after_install.run(reason=after_install.REASON_REPAIR)
+    assert claimed.schedule_sentence == scheduling.SCHEDULE_CLAIMED_DAILY.format(host=HERE, start="06:30")
+
+
+def test_off_removes_this_computers_task_claims_nothing_and_says_so(root, windows):
+    settings.set_schedule(False, "07:00", 120)
+    windows["exists"] = True
+    assert not designation_file(root).exists()
+
+    done = after_install.run(reason=after_install.REASON_REPAIR)
+
+    assert done.schedule == scheduling.OFF and done.exit_code == 0 and not done.installed
+    assert done.schedule_sentence == scheduling.SCHEDULE_OFF
+    assert creates(windows["calls"]) == []
+    assert ["schtasks", "/delete", "/tn", scheduling.TASK_NAME, "/f"] in windows["calls"]
+    assert not designation_file(root).exists()                    # not claimed, not changed
+    assert done.lines[0] == scheduling.SCHEDULE_OFF
+
+
+def test_off_leaves_the_designation_as_it_was(root, windows):
+    designation_file(root).write_text(f"{HERE}\n", encoding="utf-8")
+    settings.set_schedule(False, "07:00", 120)
+
+    after_install.run(reason=after_install.REASON_REPAIR)
+
+    assert designation_file(root).read_text(encoding="utf-8") == f"{HERE}\n"
+
+
+def test_off_with_no_task_here_deletes_nothing(root, windows):
+    settings.set_schedule(False, "07:00", 120)
+    after_install.run(reason=after_install.REASON_REPAIR)
+    assert all(command[1] == "/query" for command in windows["calls"])
+
+
+def test_turning_it_on_again_registers_as_before(root, windows):
+    settings.set_schedule(False, "07:00", 120)
+    after_install.run(reason=after_install.REASON_REPAIR)
+    settings.set_schedule(True, "07:00", 120)
+
+    done = after_install.run(reason=after_install.REASON_REPAIR)
+
+    assert done.schedule == scheduling.CLAIMED and done.installed
+    assert len(creates(windows["calls"])) == 1
+
+
+def test_a_task_that_cannot_be_removed_is_a_failure_not_a_silent_off(root, windows, monkeypatch):
+    settings.set_schedule(False, "07:00", 120)
+
+    def refuse(*args, **kwargs):
+        raise RuntimeError("schtasks could not delete the task (1): denied")
+
+    monkeypatch.setattr(scheduling, "remove_task", refuse)
+    done = after_install.run(reason=after_install.REASON_REPAIR)
+    assert done.exit_code == 1 and "denied" in done.schedule_sentence
+
+
+def test_the_launch_door_runs_again_when_the_choice_changed(root, windows):
+    assert after_install.run(reason=after_install.REASON_SETUP).exit_code == 0
+    assert after_install.launch() is None
+
+    settings.set_schedule(True, "09:00", 30)
+    rerun = after_install.launch()
+
+    assert rerun is not None and rerun.installed and "T09:00:00" in registered_xml()
+    assert after_install.launch() is None
+    settings.set_schedule(False, "09:00", 30)
+    assert after_install.launch().schedule == scheduling.OFF
+    assert after_install.launch() is None
+
+
+def test_the_launch_door_makes_no_schtasks_call_when_nothing_changed(root, windows, monkeypatch):
+    settings.set_schedule(True, "09:00", 30)
+    assert after_install.run(reason=after_install.REASON_SETUP).exit_code == 0
+    recorded = json.loads(after_install.record_path().read_text(encoding="utf-8"))
+    assert recorded["preference"] == {"enabled": True, "start": "09:00", "every": 30}
+    calls_before = len(windows["calls"])
+
+    assert after_install.launch() is None
+
+    assert len(windows["calls"]) == calls_before
+
+
+def test_a_record_from_before_the_setting_is_run_again_once(root, windows):
+    assert after_install.run(reason=after_install.REASON_SETUP).exit_code == 0
+    record = json.loads(after_install.record_path().read_text(encoding="utf-8"))
+    del record["preference"]
+    after_install.record_path().write_text(json.dumps(record), encoding="utf-8")
+
+    assert after_install.launch() is not None
+    assert after_install.launch() is None
+
+
+@pytest.mark.parametrize("bad", [{"schedule_start": "7pm"}, {"schedule_every": 45}, {"schedule_enabled": "no"}])
+def test_an_unreadable_choice_is_a_recorded_failure_and_no_task_is_registered(root, windows, bad):
+    saved = json.loads(settings.settings_path().read_text(encoding="utf-8"))
+    settings.settings_path().write_text(json.dumps({**saved, **bad}), encoding="utf-8")
+
+    done = after_install.run(reason=after_install.REASON_LAUNCH)
+
+    assert done.exit_code == 1 and done.schedule == after_install.PREFERENCE_KEY
+    assert creates(windows["calls"]) == []
+    assert str(settings.settings_path()) in done.schedule_sentence and "Schedule button" in done.schedule_sentence
+    assert after_install.notice()["failed"] == [done.schedule_sentence]
+    assert after_install.launch() is not None                       # tried again at the next start
+    # the record check still ran
+    assert done.check != "" and done.check_sentence != done.schedule_sentence
+
+
+def test_repair_with_a_named_start_and_interval_saves_them_first(root, windows):
+    settings.set_schedule(True, "07:00", 120)
+
+    done = after_install.run(reason=after_install.REASON_REPAIR, start="06:15", every=30)
+
+    assert done.installed and "T06:15:00" in registered_xml() and "PT30M" in registered_xml()
+    assert settings.schedule_preference() == scheduling.SchedulePreference(True, "06:15", 30)
+
+
+def test_repair_with_a_named_choice_that_is_not_allowed_saves_and_registers_nothing(root, windows):
+    settings.set_schedule(True, "07:00", 120)
+
+    done = after_install.run(reason=after_install.REASON_REPAIR, start="6pm")
+
+    assert done.exit_code == 1 and creates(windows["calls"]) == []
+    assert "'6pm'" in done.schedule_sentence
+    assert settings.schedule_preference() == scheduling.SchedulePreference(True, "07:00", 120)
