@@ -44,8 +44,10 @@ Commands:
   rename    give a request another identifier and move its filed documents
             with it, as one recorded act (JSON on stdin)
   settings / set-root      where the clients live (the settings file beside the app)
+  set-schedule  save the schedule choice (on or off, first run's time, how often)
+            and register it (JSON on stdin: {"enabled", "start", "every"})
   install-schedule         the repair path: run the after-install step again, which
-            registers the daily job on the computer that runs it (decision 209)
+            registers the saved schedule on the computer that runs it (decision 209)
   after-install  the app's launch door: the one-time steps after installing
             or upgrading, run when the program changed since they last ran
   move-schedule-here  name this computer as the one that runs the schedule,
@@ -302,11 +304,14 @@ from tracker.scaffold import (
 )
 from tracker.scanner import ScanLockedError, scan_engagement
 from tracker.scheduling import (
-    DEFAULT_REPEAT_MINUTES,
-    DEFAULT_START,
+    EVERY_CHOICES,
     TASK_NAME,
+    ScheduleChoiceError,
+    next_run,
 )
 from tracker.settings import (
+    DEFAULT_SCHEDULE_EVERY,
+    DEFAULT_SCHEDULE_START,
     ERROR_LOG_FILENAME,
     EXAMPLE_ROOT,
     SET_ROOT_HINT,
@@ -319,9 +324,11 @@ from tracker.settings import (
     firm_phone,
     product_name,
     program_drive_refusal,
+    schedule_preference,
     set_clients_root,
     set_firm,
     set_firm_phone,
+    set_schedule,
     settings_dir,
     settings_path,
 )
@@ -1440,8 +1447,8 @@ def _vocab() -> dict:
                     "labels": dict(NOTICE_LABELS)},
         "rules": standing_rules(),
         "schedule": {
-            "start": DEFAULT_START,
-            "every": DEFAULT_REPEAT_MINUTES,
+            "start": DEFAULT_SCHEDULE_START,
+            "every": DEFAULT_SCHEDULE_EVERY,
             "draft_day": WEEKDAY_NAMES[DRAFT_WEEKDAY],
             "task_name": TASK_NAME,
             # The repair path (decision 209): the button's label and its
@@ -1453,6 +1460,20 @@ def _vocab() -> dict:
             # Asked when Repair finds another computer named (the review's
             # S5): {host} is that computer, filled in by the page.
             "move_confirm": SCHEDULE_MOVE_CONFIRM,
+            # The Schedule dialog (pilot P21): every word it shows.
+            "button": SCHEDULE_BUTTON,
+            "title": SCHEDULE_TITLE,
+            "enabled_label": SCHEDULE_ENABLED_LABEL,
+            "on": SCHEDULE_ON,
+            "off": SCHEDULE_OFF_LABEL,
+            "start_label": SCHEDULE_START_LABEL,
+            "every_label": SCHEDULE_EVERY_LABEL,
+            "every_choices": [{"minutes": minutes, "label": SCHEDULE_EVERY_LABELS[minutes]}
+                              for minutes in EVERY_CHOICES],
+            "note": SCHEDULE_NOTE,
+            "loading": SCHEDULE_LOADING,
+            "save": SCHEDULE_SAVE,
+            "cancel": SCHEDULE_CANCEL,
         },
         # The notice at the top of the first screen while the last
         # after-install run left findings or failures (decision 209).
@@ -4587,6 +4608,15 @@ def _cmd_approve(argv: list[str]) -> dict:
 def _cmd_settings(argv: list[str]) -> dict:
     """Where the clients live, who the firm is, and where that is written down."""
     root = clients_root()
+    # A hand-edited schedule value the file cannot be trusted for is said,
+    # not replaced by a default: the Schedule dialog shows the sentence and
+    # asks for the choice again (pilot P21).
+    try:
+        chosen = schedule_preference()
+        schedule = {"enabled": chosen.enabled, "start": chosen.start, "every": chosen.every}
+        schedule_problem, upcoming = "", next_run(chosen)
+    except ScheduleChoiceError as exc:
+        schedule, schedule_problem, upcoming = None, str(exc), ""
     return {
         "root": str(root or ""),
         "exists": bool(root and root.is_dir()),
@@ -4594,6 +4624,9 @@ def _cmd_settings(argv: list[str]) -> dict:
         "phone": firm_phone(),
         "product": product_name(),
         "settings_path": str(settings_path()),
+        "schedule": schedule,
+        "schedule_problem": schedule_problem,
+        "next_run": upcoming,
     }
 
 
@@ -4677,6 +4710,21 @@ SCHEDULE_MOVE_CONFIRM = ("{host} runs the schedule for this clients folder, so t
                          "none.\n\nMove the schedule to this computer? Do this only when {host} has "
                          "stopped running it for good (it removes its own task at its next start). "
                          "Nothing is ever sent.")
+#: The Schedule button and its dialog (pilot P21): the page types none of
+#: these words.
+SCHEDULE_BUTTON = "Schedule"
+SCHEDULE_TITLE = "Schedule on this computer"
+SCHEDULE_ENABLED_LABEL = "Run the schedule"
+SCHEDULE_ON = "On"
+SCHEDULE_OFF_LABEL = "Off"
+SCHEDULE_START_LABEL = "First run at"
+SCHEDULE_EVERY_LABEL = "How often"
+SCHEDULE_EVERY_LABELS = {0: "Once a day", 30: "Every 30 minutes", 60: "Every hour",
+                         120: "Every 2 hours", 240: "Every 4 hours", 480: "Every 8 hours"}
+SCHEDULE_NOTE = "Scan works either way. Nothing is ever sent."
+SCHEDULE_LOADING = "Reading the schedule setting..."
+SCHEDULE_SAVE = "Save"
+SCHEDULE_CANCEL = "Cancel"
 #: The heading of the first screen's notice while the last after-install
 #: run left findings or failures.
 AFTER_INSTALL_HEADING = "After installing: needs a person"
@@ -4686,7 +4734,9 @@ def _cmd_install_schedule(argv: list[str]) -> dict:
     """The repair path (decision 209): run the after-install step again, now.
 
     JSON on stdin (all optional): {"start": "HH:MM", "every": minutes},
-    defaulting to tracker.scheduling's DEFAULT_START / DEFAULT_REPEAT_MINUTES.
+    defaulting to the choice saved in the settings file (the Schedule
+    button's, pilot P21); a start or interval sent outright is checked and
+    saved first, so Repair never registers what the setting does not show.
     The schedule registers itself - at Setup, at the first launch after an
     upgrade, when the clients root is saved - on the computer the
     designation file names; this is the deliberate re-run for a task that
@@ -4699,9 +4749,13 @@ def _cmd_install_schedule(argv: list[str]) -> dict:
     # A program on a removable or network drive (decision 186) is the step's
     # own first answer (scheduling.schedule_decision, outcome
     # refused_drive): asked there, once, before any file is written.
-    start = str(spec.get("start") or DEFAULT_START)
-    every = int(spec["every"]) if spec.get("every") not in (None, "") else DEFAULT_REPEAT_MINUTES
+    start = str(spec["start"]) if spec.get("start") not in (None, "") else None
+    every = spec["every"] if spec.get("every") not in (None, "") else None
     done = after_install.run(reason=after_install.REASON_REPAIR, start=start, every=every)
+    try:
+        chosen = schedule_preference()
+    except ScheduleChoiceError:
+        chosen = None    # the step already said so, as its failure
     return {
         "installed": done.installed,
         "outcome": done.schedule,
@@ -4710,13 +4764,40 @@ def _cmd_install_schedule(argv: list[str]) -> dict:
         "command": list(done.command),
         "root": str(clients_root() or ""),
         "settings": str(settings_dir()),
-        "start": start,
-        "every": every,
+        "start": chosen.start if chosen else None,
+        "every": chosen.every if chosen else None,
         "draft_day": WEEKDAY_NAMES[DRAFT_WEEKDAY],
         "frozen": bool(getattr(sys, "frozen", False)),
         # The computer that runs it, when that is another one, else "": the
         # page offers to move it here (move-schedule-here) only when set.
         "host": done.schedule_host,
+        "after_install": done.reply(),
+    }
+
+
+def _cmd_set_schedule(argv: list[str]) -> dict:
+    """Save the schedule choice and register it (pilot P21): JSON
+    {"enabled": true|false, "start": "HH:MM", "every": minutes} on stdin,
+    every one checked before any is saved (``ManifestError`` with the
+    sentence naming the value and what is allowed, and nothing is saved),
+    then the after-install step runs as a repair. That step registers the
+    saved choice - or, off, removes this computer's task - and its sentence
+    is the reply's ``sentence``. ``next_run`` is the plain sentence for
+    when it next runs, "" when off."""
+    spec = _read_spec()
+    try:
+        chosen = set_schedule(spec.get("enabled"), spec.get("start"), spec.get("every"))
+    except (ScheduleChoiceError, SettingsError) as exc:
+        raise ManifestError(str(exc)) from None
+    done = after_install.run(reason=after_install.REASON_REPAIR)
+    return {
+        "enabled": chosen.enabled,
+        "start": chosen.start,
+        "every": chosen.every,
+        "outcome": done.schedule,
+        "sentence": done.schedule_sentence,
+        "next_run": next_run(chosen),
+        "installed": done.installed,
         "after_install": done.reply(),
     }
 
@@ -4784,6 +4865,9 @@ WRITING_COMMANDS = frozenset({
     "rollover", "roll-household", "mark-shared", "approve", "create", "assign",
     "dismiss", "unfile", "restore", "edit", "edit-household", "unlearn", "rename",
     "mark-missing", "acknowledge-foreign",
+    # The schedule setting writes the settings file and the task (pilot
+    # P21), held to the checkpoint's root like every writer.
+    "set-schedule",
     # Sort & Scan (decision 203) is the runner's pass: :func:`main` hands it
     # over before this list is asked, and ``runner.main`` proves the
     # settings' root itself, as it does for the schedule.
@@ -4845,6 +4929,7 @@ COMMANDS = {
     "settings": _cmd_settings,
     "set-root": _cmd_set_root,
     "install-schedule": _cmd_install_schedule,
+    "set-schedule": _cmd_set_schedule,
     "after-install": _cmd_after_install,
     "move-schedule-here": _cmd_move_schedule_here,
     "acknowledge-foreign": _cmd_acknowledge_foreign,

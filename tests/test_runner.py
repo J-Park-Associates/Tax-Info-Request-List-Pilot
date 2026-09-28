@@ -3741,6 +3741,59 @@ def test_a_failure_before_the_root_is_written_to_the_last_pass_file(tmp_path, mo
     capsys.readouterr()
 
 
+@pytest.mark.parametrize(("every", "hours"), [
+    (30, 4), (60, 4), (120, 4),            # never under the floor of four hours
+    (240, 8), (480, 16),                   # two missed runs of the saved interval
+    (0, 48),                               # once a day: two days
+])
+def test_the_amber_threshold_is_two_missed_runs_of_the_saved_interval(tmp_path, every, hours):
+    """Pilot P21: the line turns amber after two missed runs of the interval
+    the person chose - four hours at the two-hour default - and says the
+    wait it assumed."""
+    from tracker import settings
+
+    settings.set_schedule(True, "07:00", every)
+    assert runner_module.amber_hours(every) == hours
+    now = dt.datetime(2026, 3, 2, 12, 0)
+    path = tmp_path / runner_module.LAST_PASS_FILENAME
+
+    inside = now - dt.timedelta(hours=hours) + dt.timedelta(minutes=1)
+    runner_module.write_last_pass(path, started=inside, ended=inside, root="R",
+                                  result=runner_module.PASS_SUCCEEDED)
+    assert runner_module.last_pass_line(path, now=now)["level"] == runner_module.LEVEL_OK
+
+    outside = now - dt.timedelta(hours=hours, minutes=1)
+    runner_module.write_last_pass(path, started=outside, ended=outside, root="R",
+                                  result=runner_module.PASS_SUCCEEDED)
+    line = runner_module.last_pass_line(path, now=now)
+    assert line["level"] == runner_module.LEVEL_WARN
+    assert line["text"].endswith(runner_module.LAST_PASS_OLD.format(hours=str(hours)))
+
+
+def test_the_last_pass_line_says_the_schedule_is_off_instead_of_turning_amber(tmp_path):
+    from tracker import settings
+
+    settings.set_schedule(False, "07:00", 120)
+    now = dt.datetime(2026, 3, 2, 12, 0)
+    path = tmp_path / runner_module.LAST_PASS_FILENAME
+    long_ago = now - dt.timedelta(days=30)
+    runner_module.write_last_pass(path, started=long_ago, ended=long_ago, root="R",
+                                  result=runner_module.PASS_SUCCEEDED)
+    assert runner_module.last_pass_line(path, now=now) == {
+        "text": runner_module.LAST_PASS_OFF, "level": runner_module.LEVEL_OK}
+    assert runner_module.last_pass_line(tmp_path / "missing.json", now=now)["text"] == runner_module.LAST_PASS_OFF
+
+
+def test_a_saved_choice_that_will_not_read_turns_the_line_red_and_names_no_guess(tmp_path):
+    from tracker import settings
+
+    settings.settings_path().parent.mkdir(parents=True, exist_ok=True)
+    settings.settings_path().write_text('{"schedule_every": 45}', encoding="utf-8")
+    line = runner_module.last_pass_line(tmp_path / runner_module.LAST_PASS_FILENAME)
+    assert line["level"] == runner_module.LEVEL_ERR
+    assert line["text"] == runner_module.LAST_PASS_UNREADABLE.format(error="ScheduleChoiceError")
+
+
 def test_the_last_pass_line_is_amber_when_old_and_red_when_failed(tmp_path):
     """The app's one line: plain when recent, amber after
     LAST_PASS_AMBER_HOURS or when no pass has run, red on a failure or a
@@ -3760,7 +3813,8 @@ def test_the_last_pass_line_is_amber_when_old_and_red_when_failed(tmp_path):
     runner_module.write_last_pass(path, started=old, ended=old, root="R",
                                   result=runner_module.PASS_SUCCEEDED)
     line = runner_module.last_pass_line(path, now=now)
-    assert line["level"] == runner_module.LEVEL_WARN and line["text"].endswith(runner_module.LAST_PASS_OLD)
+    assert line["level"] == runner_module.LEVEL_WARN
+    assert line["text"].endswith(runner_module.LAST_PASS_OLD.format(hours="4"))
 
     runner_module.write_last_pass(path, started=recent, ended=recent, root="",
                                   result=runner_module.PASS_FAILED,

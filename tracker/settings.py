@@ -45,9 +45,11 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 
 from tracker import layout
@@ -69,6 +71,29 @@ KEY_FIRM = "firm"
 #: reminder says it, and a blank one drops that sentence rather than
 #: printing an empty invitation to call.
 KEY_FIRM_PHONE = "firm_phone"
+#: The schedule setting (pilot decision P21): whether this computer runs the
+#: scheduled pass, the time of day it first runs, and how often it repeats.
+#: Written only when a person saves the setting, so a file holding just the
+#: clients root stays just that; every registration of the schedule reads it.
+KEY_SCHEDULE_ENABLED = "schedule_enabled"
+KEY_SCHEDULE_START = "schedule_start"
+KEY_SCHEDULE_EVERY = "schedule_every"
+#: What an absent key means. ``tracker.scheduling`` names the same two
+#: numbers ``DEFAULT_START`` and ``DEFAULT_REPEAT_MINUTES``.
+DEFAULT_SCHEDULE_ENABLED = True
+DEFAULT_SCHEDULE_START = "07:00"
+#: Filing and scanning repeat through the day this often (minutes); the
+#: reminder still drafts only on the drafting day. 0 = once a day.
+DEFAULT_SCHEDULE_EVERY = 120
+#: The intervals a person may choose: once a day, or every 30, 60, 120,
+#: 240 or 480 minutes.
+EVERY_CHOICES = (0, 30, 60, 120, 240, 480)
+_START_SHAPE = re.compile(r"([01][0-9]|2[0-3]):([0-5][0-9])")
+START_REFUSED = "The start time {value!r} is not allowed; write it as HH:MM, two digits each, from 00:00 to 23:59."
+EVERY_REFUSED = ("How often {value!r} is not allowed; choose once a day (0) or every 30, 60, 120, 240 "
+                 "or 480 minutes.")
+ENABLED_REFUSED = "Whether the schedule is on {value!r} is not allowed; it is on (true) or off (false)."
+SCHEDULE_KEY_REFUSED = "{file}: {key} - {problem}"
 #: How a person is told to set the root without the app.
 SET_ROOT_HINT = "python -m tracker.settings <folder>"
 #: What a command line with no clients root tells a person: the app first,
@@ -358,6 +383,81 @@ def _write(data: dict) -> None:
     path = settings_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     write_json_atomically(path, data)
+
+
+class ScheduleChoiceError(ValueError):
+    """A schedule choice that is not allowed; the message is the sentence
+    that names the value and what is allowed."""
+
+
+@dataclass(frozen=True, slots=True)
+class SchedulePreference:
+    """The saved schedule choice: on or off, the first run's time (``HH:MM``)
+    and the minutes between runs (0 = once a day). One type for the
+    settings file, the registration and the API."""
+
+    enabled: bool = DEFAULT_SCHEDULE_ENABLED
+    start: str = DEFAULT_SCHEDULE_START
+    every: int = DEFAULT_SCHEDULE_EVERY
+
+
+def check_start(value: object) -> str:
+    """``value`` as a start time, ``HH:MM`` from 00:00 to 23:59, or the
+    sentence saying what is allowed. The one check every door shares."""
+    text = value.strip() if isinstance(value, str) else ""
+    if not _START_SHAPE.fullmatch(text):
+        raise ScheduleChoiceError(START_REFUSED.format(value=value))
+    return text
+
+
+def check_every(value: object) -> int:
+    """``value`` as the minutes between runs - one of :data:`EVERY_CHOICES`
+    - or the sentence saying what is allowed. A whole number in a string
+    (a command line's) is taken; a fraction, a truth value and anything
+    else is refused, never rounded."""
+    number = value
+    if isinstance(value, str) and re.fullmatch(r"[0-9]{1,4}", value.strip()):
+        number = int(value.strip())
+    if isinstance(number, bool) or not isinstance(number, int) or number not in EVERY_CHOICES:
+        raise ScheduleChoiceError(EVERY_REFUSED.format(value=value))
+    return number
+
+
+def schedule_preference() -> SchedulePreference:
+    """The saved schedule choice; an absent key is its default. A value that
+    is not allowed - a hand-edited file - is refused in a sentence naming
+    the file and the key, never guessed and never reset."""
+    data = _read()
+    chosen: dict = {}
+    for key, name, check in ((KEY_SCHEDULE_ENABLED, "enabled", _check_enabled),
+                             (KEY_SCHEDULE_START, "start", check_start),
+                             (KEY_SCHEDULE_EVERY, "every", check_every)):
+        if key not in data:
+            continue
+        try:
+            chosen[name] = check(data[key])
+        except ScheduleChoiceError as exc:
+            raise ScheduleChoiceError(
+                SCHEDULE_KEY_REFUSED.format(file=settings_path(), key=key, problem=exc)) from None
+    return SchedulePreference(**chosen)
+
+
+def _check_enabled(value: object) -> bool:
+    if not isinstance(value, bool):
+        raise ScheduleChoiceError(ENABLED_REFUSED.format(value=value))
+    return value
+
+
+def set_schedule(enabled: object, start: object, every: object) -> SchedulePreference:
+    """Record the schedule choice beside the clients root, all three keys,
+    after every one is checked (nothing is written if any is refused)."""
+    chosen = SchedulePreference(_check_enabled(enabled), check_start(start), check_every(every))
+    data = _read()
+    data[KEY_SCHEDULE_ENABLED] = chosen.enabled
+    data[KEY_SCHEDULE_START] = chosen.start
+    data[KEY_SCHEDULE_EVERY] = chosen.every
+    _write(data)
+    return chosen
 
 
 def set_firm(name: str) -> str:

@@ -5,6 +5,7 @@ here is that the generated definition is well-formed, points at the right
 command, and says plainly that it drafts rather than sends.
 """
 
+import datetime as dt
 import json
 import os
 from xml.etree import ElementTree
@@ -13,6 +14,8 @@ import pytest
 
 # At collection, before any test's fixtures replace it (decision 209).
 from tests.conftest import REAL_TASK_SCHEDULER_HERE
+from tracker import scheduling
+from tracker import settings as settings_module
 from tracker.scheduling import (
     DEFAULT_START,
     N8N_RUN_NODE,
@@ -502,3 +505,92 @@ def test_the_command_line_install_refuses_a_program_on_a_removable_drive(monkeyp
     assert settings_module.PROGRAM_ON_REMOVABLE.format(folder=settings_module.app_dir()) in said
     assert not schedule_xml_path().exists()
     assert list(settings.iterdir()) == []
+
+
+# ------------------------------------------- the schedule setting (P21) ----
+
+
+@pytest.mark.parametrize("value", ["00:00", "07:00", "13:45", "23:59", " 06:30 "])
+def test_every_allowed_start_time_is_accepted(value):
+    assert scheduling.check_start(value) == value.strip()
+
+
+@pytest.mark.parametrize("value", ["", "7:00", "24:00", "12:60", "12-30", "0700", "07:00:00", "ab:cd",
+                                   "٠٧:٠٠", None, 700])
+def test_a_start_time_that_is_not_hh_mm_is_refused_naming_the_value(value):
+    with pytest.raises(scheduling.ScheduleChoiceError) as refused:
+        scheduling.check_start(value)
+    assert repr(value) in str(refused.value) and "HH:MM" in str(refused.value)
+
+
+@pytest.mark.parametrize("value", [0, 30, 60, 120, 240, 480, "120", " 0 "])
+def test_every_allowed_interval_is_accepted(value):
+    assert scheduling.check_every(value) == int(value)
+    assert scheduling.EVERY_CHOICES == (0, 30, 60, 120, 240, 480)
+
+
+@pytest.mark.parametrize("value", [15, -30, 90, 1440, 1.5, "1.5", "", "often", None, True, False])
+def test_an_interval_that_is_not_a_choice_is_refused_naming_the_value(value):
+    with pytest.raises(scheduling.ScheduleChoiceError) as refused:
+        scheduling.check_every(value)
+    assert repr(value) in str(refused.value) and "once a day" in str(refused.value)
+
+
+def test_a_once_a_day_task_has_no_repetition_and_a_repeating_one_has():
+    assert parsed(repeat_minutes=0).find(".//t:Repetition", NS) is None
+    assert parsed(repeat_minutes=480).find(".//t:Repetition/t:Interval", NS).text == "PT480M"
+
+
+def test_once_a_day_is_said_as_every_day_at_the_start_time():
+    daily = scheduling.SCHEDULE_REGISTERED_DAILY.format(start="06:30")
+    assert daily == "The schedule is set: every day at 06:30, with this computer's copy of the app."
+    assert "minutes" not in daily and "minutes" not in scheduling.SCHEDULE_CLAIMED_DAILY
+    assert scheduling.SCHEDULE_CLAIMED_DAILY.format(host="pc", start="06:30").endswith("every day at 06:30.")
+
+
+def test_register_here_refuses_a_bad_choice_before_writing_anything(monkeypatch, tmp_path):
+    fake_schtasks(monkeypatch)
+    monkeypatch.setattr(scheduling, "task_scheduler_here", lambda: True)
+    with pytest.raises(scheduling.ScheduleChoiceError):
+        scheduling.register_here(tmp_path, start="25:00")
+    with pytest.raises(scheduling.ScheduleChoiceError):
+        scheduling.register_here(tmp_path, every=17)
+    assert not scheduling.schedule_xml_path().exists()
+
+
+def test_the_command_line_uses_the_one_start_time_check(monkeypatch, tmp_path, capsys):
+    import runpy
+    import sys
+
+    from tracker.runner import SETTINGS_FLAG
+
+    app = tmp_path / "app"
+    app.mkdir()
+    monkeypatch.setattr(sys, "argv", ["tracker.scheduling", SETTINGS_FLAG, str(app),
+                                      scheduling.START_FLAG, "7pm"])
+    with pytest.raises(SystemExit) as stopped:
+        runpy.run_module("tracker.scheduling", run_name="__main__")
+    assert stopped.value.code == 2
+    assert settings_module.START_REFUSED.format(value="7pm") in capsys.readouterr().err
+
+
+NOW = dt.datetime(2026, 3, 2, 10, 0)
+
+
+@pytest.mark.parametrize(("start", "every", "now", "expected"), [
+    ("07:00", 120, NOW, "Next run: today at 11:00"),                       # 07, 09, 11
+    ("07:00", 120, dt.datetime(2026, 3, 2, 6, 0), "Next run: today at 07:00"),
+    ("07:00", 120, dt.datetime(2026, 3, 2, 23, 30), "Next run: tomorrow at 01:00"),  # yesterday's series runs on
+    ("07:00", 480, dt.datetime(2026, 3, 2, 23, 30), "Next run: tomorrow at 07:00"),  # 07, 15, 23, then 07
+    ("13:00", 0, NOW, "Next run: today at 13:00"),
+    ("07:00", 0, NOW, "Next run: tomorrow at 07:00"),
+    ("07:00", 0, dt.datetime(2026, 3, 2, 7, 0), "Next run: tomorrow at 07:00"),   # a run at this minute has begun
+    ("07:00", 60, dt.datetime(2026, 3, 2, 3, 15), "Next run: today at 04:00"),
+])
+def test_the_next_run_is_worked_out_from_the_start_the_interval_and_the_time(start, every, now, expected):
+    chosen = scheduling.SchedulePreference(True, start, every)
+    assert scheduling.next_run(chosen, now) == expected
+
+
+def test_no_next_run_is_promised_while_the_schedule_is_off():
+    assert scheduling.next_run(scheduling.SchedulePreference(False, "07:00", 120), NOW) == ""

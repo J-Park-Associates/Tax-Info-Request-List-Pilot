@@ -21,6 +21,12 @@ else - not a line in the runbook, not a button.
    is not one computer's name, a computer whose own name the file cannot
    hold, or a ``schtasks`` that refuses, is a failure - each in its own
    sentence, so a file that was written is never said to be unwritten.
+   What it registers is the choice saved in the settings file (pilot P21:
+   on or off, the first run's time, how often), read at every run, so no
+   door can undo the Schedule button; **off** removes this computer's own
+   task, leaves the designation alone and says so. A saved choice that is
+   refused (a hand-edited file) is a failure and registers nothing from a
+   guess.
 2. **The record check** - decision 187's ``store.check`` for every folder
    with a record, and ``store.gone_journals``, as the store's command line
    runs them. It changes no record (opening the store may set an older one
@@ -95,7 +101,12 @@ office computer registers the schedule with no button. The app's
 **It records what it did** beside the store, in :data:`RECORD_FILENAME`,
 as the scheduled pass records its own note beside the store: the program
 identity only when nothing failed, so a run that failed is tried again at
-the next launch, and the computer the designation named after it.
+the next launch, the computer the designation named after it, and the
+schedule choice it registered (``preference``): the launch door runs the
+step again when the saved choice differs from the recorded one, so a choice
+changed by hand or by another door is registered at the next start, and does
+nothing (no ``schtasks`` call) when program, designation and choice are all
+as recorded.
 
 It imports ``scheduling`` and the layers below it; the API imports it, and
 nothing lower does (layer 4, ``tests/test_layers.py``).
@@ -166,6 +177,10 @@ ROOT_REFUSED = ("The clients folder saved in the app cannot be used ({refusal});
                 "record check wait until it is chosen again in the app.")
 SETTINGS_UNREADABLE = ("The app's settings file could not be read, so neither the schedule nor the "
                        "record check could run; choose the clients folder again in the app.")
+PREFERENCE_UNUSABLE = ("The schedule setting in the app's settings file cannot be used ({problem}) No "
+                       "schedule was changed. Choose it again with the Schedule button.")
+#: The schedule key the record holds when the saved choice was refused.
+PREFERENCE_KEY = "preference_unusable"
 SCHEDULE_FAILED = ("The schedule could not be registered on this computer ({problem}). Start the app: "
                    "it tries again at launch, and Repair the schedule tries at once.")
 DESIGNATION_UNWRITABLE = ("The file naming the computer that runs the schedule ({file}) could not be "
@@ -345,8 +360,58 @@ def _saved_root() -> tuple[Path | None, str]:
         return None, ROOT_REFUSED.format(refusal=exc)
 
 
-def _schedule(root: Path | None, start: str, every: int) -> _Step:
+def _saved_preference() -> tuple[scheduling.SchedulePreference | None, str]:
+    """The schedule choice the settings file holds, or the one sentence
+    saying why none can be used. Never a guess: a choice that is refused
+    registers nothing."""
+    try:
+        return settings.schedule_preference(), ""
+    except settings.SettingsError:
+        return None, SETTINGS_UNREADABLE
+    except scheduling.ScheduleChoiceError as exc:
+        return None, PREFERENCE_UNUSABLE.format(problem=exc)
+
+
+def _save_choice(start: object, every: object) -> str:
+    """A start or interval the caller names outright (the command line's
+    Repair) is saved first, so the step never registers something the
+    Schedule button does not show; "" when saved, else the sentence."""
+    try:
+        current = settings.schedule_preference()
+        settings.set_schedule(current.enabled, current.start if start is None else start,
+                              current.every if every is None else every)
+    except settings.SettingsError:
+        return SETTINGS_UNREADABLE
+    except scheduling.ScheduleChoiceError as exc:
+        return str(exc)
+    return ""
+
+
+def _preference_record(preference: scheduling.SchedulePreference | None) -> dict | None:
+    """The choice as the record holds it, for :func:`launch` to compare."""
+    return None if preference is None else asdict(preference)
+
+
+def _off() -> _Step:
+    """The schedule is switched off: this computer's own task goes, the
+    designation is left as it is (turning it off on the designated computer
+    leaves no computer running it, which the sentence says), and nothing is
+    registered."""
+    try:
+        scheduling.remove_task()
+    except RuntimeError as exc:
+        return _Step(scheduling.OFF, SCHEDULE_FAILED.format(problem=exc), failed=True)
+    except OSError as exc:
+        errors.keep("after_install: removing the task", exc)
+        return _Step(scheduling.OFF, SCHEDULE_FAILED.format(problem=SCHEDULE_UNREACHABLE), failed=True)
+    return _Step(scheduling.OFF, scheduling.SCHEDULE_OFF)
+
+
+def _schedule(root: Path | None, preference: scheduling.SchedulePreference) -> _Step:
     """The first job: register, re-register, remove, or say why not."""
+    if not preference.enabled:
+        return _off()
+    start, every = preference.start, preference.every
     decision = scheduling.schedule_decision(root)
     outcome = decision.outcome
     if outcome == scheduling.REFUSED_DRIVE:
@@ -387,8 +452,11 @@ def _schedule(root: Path | None, start: str, every: int) -> _Step:
     except OSError as exc:
         errors.keep("after_install: registering the schedule", exc)
         return _Step(outcome, SCHEDULE_FAILED.format(problem=SCHEDULE_UNREACHABLE), failed=True)
-    sentence = (scheduling.SCHEDULE_CLAIMED if outcome == scheduling.CLAIMED
-                else scheduling.SCHEDULE_REGISTERED)
+    claimed = outcome == scheduling.CLAIMED
+    if every:
+        sentence = scheduling.SCHEDULE_CLAIMED if claimed else scheduling.SCHEDULE_REGISTERED
+    else:
+        sentence = scheduling.SCHEDULE_CLAIMED_DAILY if claimed else scheduling.SCHEDULE_REGISTERED_DAILY
     return _Step(outcome, sentence.format(host=decision.host, start=start, every=every),
                  command=tuple(command), xml=str(scheduling.schedule_xml_path()))
 
@@ -776,9 +844,15 @@ def _move_what_186_lists(root: Path | None) -> _Step | None:
     return _Step(MOVE_KEY, done.sentence, failed=done.failed)
 
 
-def run(*, reason: str, start: str = scheduling.DEFAULT_START,
-        every: int = scheduling.DEFAULT_REPEAT_MINUTES, checkout: Path | None = None) -> AfterInstall:
+def run(*, reason: str, start: str | None = None, every: int | None = None,
+        checkout: Path | None = None) -> AfterInstall:
     """Every one-time job, in order, and the record of what they did.
+
+    The schedule registers the choice saved in the settings file (pilot
+    P21) - on or off, the first run's time, how often - so every door
+    registers what the Schedule button shows. ``start`` and ``every``, when
+    a caller names them outright (the command line's Repair), are checked
+    and saved first.
 
     Idempotent: registering is ``schtasks /create ... /f``, the check
     changes no record, and the note is replaced whole - twice in a row is
@@ -787,6 +861,8 @@ def run(*, reason: str, start: str = scheduling.DEFAULT_START,
     if reason not in REASONS:
         raise ValueError(f"reason must be one of {', '.join(REASONS)}, not {reason!r}")
     ran_at = dt.datetime.now().isoformat(timespec="seconds")
+    unusable = _save_choice(start, every) if start is not None or every is not None else ""
+    preference, unreadable = _saved_preference()
     root, refused = _saved_root()
     # The first job (R9): what decision 186 lists to move, from beside the
     # program into the folder the store now lives in, before the schedule,
@@ -797,7 +873,10 @@ def run(*, reason: str, start: str = scheduling.DEFAULT_START,
         schedule = _Step(scheduling.NO_ROOT, refused, failed=True)
         check = _Step(CHECK_FAILED_KEY, refused, failed=True)
     else:
-        schedule = _schedule(root, start, every)
+        if preference is None or unusable:
+            schedule = _Step(PREFERENCE_KEY, unusable or unreadable, failed=True)
+        else:
+            schedule = _schedule(root, preference)
         check = _check(root)
     cache = _clear_test_cache(checkout)
     failed = list(dict.fromkeys(step.sentence for step in (moving, schedule, check, cache)
@@ -809,7 +888,9 @@ def run(*, reason: str, start: str = scheduling.DEFAULT_START,
         path.parent.mkdir(parents=True, exist_ok=True)
         write_json_atomically(path, {
             "program": identity, "ran_at": ran_at, "reason": reason, "schedule": schedule.key,
-            "designated": now if isinstance(now, str) else None, "findings": list(check.findings), "failed": failed,
+            "designated": now if isinstance(now, str) else None,
+            "preference": _preference_record(preference),
+            "findings": list(check.findings), "failed": failed,
         })
     except OSError:
         failed.append(RECORD_UNWRITABLE.format(file=record_path()))
@@ -874,7 +955,9 @@ def launch() -> AfterInstall | None:
     if record is not None and record.get("program") == program_identity():
         root, refused = _saved_root()
         now = None if refused else designation_now(root)
-        if now is not _UNREADABLE_NOW and record.get("designated") == now:
+        preference, _ = _saved_preference()
+        if (now is not _UNREADABLE_NOW and record.get("designated") == now
+                and preference is not None and record.get("preference") == _preference_record(preference)):
             return None
     return run(reason=REASON_LAUNCH)
 
