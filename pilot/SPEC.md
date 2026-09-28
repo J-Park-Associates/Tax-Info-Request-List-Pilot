@@ -136,7 +136,7 @@ const PILOT =
 // PILOT-CONTENT-BEGIN
 {
   "edition": {"label": "Pilot edition", "version": "0.1"},
-  "contact": {"email": "jasonpark@jparkassociates.com"},
+  "contact": {"email": "admin@jparkassociates.com"},
   "terms":   { ... section 7 ... },
   "tour":    {"steps": [ ... section 8 ... ]}
 }
@@ -151,15 +151,22 @@ Field rules:
   name come from it (P13). Bump it for every build sent to testers.
 - `terms.version`: integer >= 1. Raising it makes every tester see and accept
   the terms again.
-- `terms`: `title` (string), `paragraphs` (array of strings, shown in order),
-  `checkbox` (string), `accept` (button label), `quit` (button label).
+- `terms`: `title` (string), `sections` (array of `{heading, bullets[]}`,
+  shown in order), `checkbox` (string), `accept` (button label), `quit`
+  (button label).
+- `tour.stages`: the six stage names, in order, for the progress strip.
 - `tour.steps[]`: each step has
   - `id` - unique, lowercase, `a-z0-9-`;
   - `anchors` - array of element ids (no `#`), tried in order; the first one
     that is visible is highlighted; may be empty (a centred step);
-  - `title`, `does`, `strength`, `limit` - non-empty strings;
+  - `stage` - one of `tour.stages`, or `""` for the first and last steps
+    (they show the whole strip as an overview);
+  - `title` - non-empty string;
+  - `does`, `strength`, `limit` - a non-empty string, or a non-empty list of
+    non-empty strings shown as bullets;
   - `fallback` - string shown when no anchor is visible (non-empty whenever
     `anchors` is non-empty; `""` when `anchors` is empty).
+- Every sentence or bullet is at most 30 words - the copy stays scannable.
 - The literal `{email}` inside any string is replaced with `contact.email` at
   display time; no other substitution exists.
 
@@ -183,7 +190,7 @@ it to `.toolbar`; if that is missing, to the badge. Click -> `PilotTour.start()`
 div#pilot-terms.pilot-terms-overlay        (role="dialog", aria-modal="true",
   div.pilot-terms-card                       aria-labelledby="pilot-terms-title")
     h2#pilot-terms-title                   terms.title
-    div.pilot-terms-body                   one <p> per terms.paragraphs[i]
+    div.pilot-terms-body                   per section: div.pilot-terms-section > h3 heading + ul > li per bullet
     label.pilot-terms-check  <input type=checkbox id="pilot-terms-agree"> terms.checkbox
     div.pilot-terms-actions
       button#pilot-terms-quit.btn          terms.quit
@@ -217,16 +224,21 @@ Defines one global, `const PilotTour = { start, stop }`.
 div#pilot-tour.pilot-tour-layer                     z-index 55, full window,
   div.pilot-tour-spot                               the highlight box (hidden on centred steps)
   div.pilot-tour-card (role="dialog", aria-live="polite", aria-labelledby="pilot-tour-title")
+    ol.pilot-tour-stages          one li.pilot-tour-stage per tour.stages; .is-current on
+                                  the step's stage, .is-done on the ones before it
     div.pilot-tour-count          "Step 3 of 11"
     h2#pilot-tour-title           step.title
-    section: h3 "What it does"     p step.does
-    section: h3 "Why it's safe"    p step.strength
-    section: h3 "Current limit"    p step.limit
+    section: h3 "What it does"                     p, or ul when step.does is a list
+    section.pilot-tour-ok: h3 "Why it's safe"      p or ul (green ✓ marker)
+    section.pilot-tour-warn: h3 "Current limit"    p or ul (amber ! marker)
+      - when both strength and limit are lists (the wrap-up), the two sections
+        sit side by side inside div.pilot-tour-compare
     p.pilot-tour-fallback          step.fallback (only when no anchor is visible)
     div.pilot-tour-actions: button Back | button Next ("Finish" on the last) | button Close
 ```
 
-The three section headings are fixed words in `tour.js` (they are UI labels,
+The three section headings and the ✓ / ! markers are fixed in `tour.js` /
+`pilot-style.css` (they are UI labels,
 not copy Jason edits).
 
 **Behaviour.**
@@ -254,140 +266,298 @@ not copy Jason edits).
 - Text only via `textContent`. No `window.tracker`, no click simulation, no
   `.click()`, no `dispatchEvent`.
 
-## 7. Terms text (draft for approval)
+## 7. Terms text (approved by Jason, 2026-09-28, P20)
 
-```json
-"terms": {
-  "version": 1,
-  "title": "Before you start: this is a pilot",
-  "paragraphs": [
-    "This is a pilot edition of our tax document tracker, given to a small group of firms to try before general release. It works, but it is still being finished. Expect rough edges, and please tell us about them.",
-    "Keep your own backups. Before you point this program at a clients folder, make sure that folder is backed up. For your first tries, we suggest a copy of a few real client folders rather than your live ones.",
-    "How it treats your files. Files a client drops in are moved, byte for byte and under their own names, into that client's folder for the year. They are never edited, renamed or compressed. All sorting and renaming happens on copies, and every move is recorded.",
-    "No AI reads your documents. Every sorting decision comes from fixed, written rules. A document the rules cannot place with certainty goes to Needs Review for a person to decide.",
-    "Nothing is sent. The program drafts reminder emails for you to read and send yourself. It has no email sending of its own, and it does not send your data anywhere: it runs entirely on this computer and needs no internet connection.",
-    "No warranty. The pilot is provided as is, without warranty of any kind. You remain responsible for your clients' records and for checking what the program files.",
-    "Questions or problems: email {email}. Please do not send client documents; describe what happened, or send a screenshot with client names covered."
-  ],
-  "checkbox": "I have read this and will keep my own backups.",
-  "accept": "I agree - continue",
-  "quit": "Quit"
-}
+Jason's wording, set as short headed sections of bullets so a tester can scan
+it in about 30 seconds. Builders copy it exactly.
+
+How it reads on screen:
+
+```
+ Before you start: this is a Pilot
+ ┃ This is a Pilot
+ ┃  • A test edition of Tax Document Tracker, built by J Park & Associates.
+ ┃  • It works, but it is still being finished. Expect rough edges.
+ ┃  • Please tell us what you find.
+ ┃ Keep your own backups
+ ┃  • ...
+ [ ] I have read this and will keep my own backups.
+                                   [ Quit. ]  [ I agree. Continue. ]
 ```
 
-## 8. Tour copy (draft for approval)
-
-Eleven steps, in this order.
-
 ```json
-"tour": {"steps": [
-  {
-    "id": "welcome",
-    "anchors": [],
-    "title": "Welcome to the pilot",
-    "does": "This tour walks through one full season's flow: a client drops documents in one folder, the program sorts and renames them, and you see what arrived, what is missing, and what needs a person.",
-    "strength": "Everything you are about to see runs on this computer, with fixed rules you can read. No AI reads a client document, and nothing is ever sent.",
-    "limit": "This is a pilot. It covers individual, business, trust and exempt-organization returns (1040, 1120, 1120-S, 1065, 1041, 990), about 74 kinds of document in all.",
-    "fallback": ""
-  },
-  {
-    "id": "clients-folder",
-    "anchors": ["setup-card", "eng-select"],
-    "title": "One clients folder",
-    "does": "You choose one clients folder. Inside it, each household gets a folder you share with the client, holding a single inbox called 'Drop files here', and a private working folder that only your firm sees.",
-    "strength": "The client only ever sees their own shared folder. Your working copies, notes and records stay in the private tree.",
-    "limit": "Use a folder your firm already backs up and syncs (for example a shared drive). One computer should run the automatic schedule for a given clients folder.",
-    "fallback": "You have already chosen a clients folder. The switcher at the top left moves between returns."
-  },
-  {
-    "id": "new-household",
-    "anchors": ["btn-new-household"],
-    "title": "A household and its request list",
-    "does": "Create a household, pick the return type, and tick the documents you expect (W-2s, 1099s, K-1s, a prior-year return, and so on). That list is the request list the client works from.",
-    "strength": "Documents are matched against your own request list, so a file lands under the item you asked for, in the order you asked for it.",
-    "limit": "Requests are chosen from the built-in list for each return type, plus custom lines you add. A document type the program does not know yet will go to Needs Review rather than be guessed.",
-    "fallback": ""
-  },
-  {
-    "id": "drop-files",
-    "anchors": ["btn-inbox"],
-    "title": "The client drops files here",
-    "does": "Inbox opens the household's 'Drop files here' folder. The client (or you) drops everything in: PDFs, scans, phone photos, spreadsheets, even zipped folders and forwarded emails.",
-    "strength": "The client never has to name or sort anything. One folder, all year.",
-    "limit": "Phone photos and poor scans are read with on-device text recognition, which is slower on an ordinary processor and can miss faint text. Those files go to Needs Review rather than being guessed.",
-    "fallback": ""
-  },
-  {
-    "id": "scan",
-    "anchors": ["btn-scan"],
-    "title": "Scan sorts what arrived",
-    "does": "Scan runs one pass for this household now: it reads each new file, matches it to a request, moves the original out of the inbox, and makes a neatly named working copy.",
-    "strength": "A file is filed only when exactly one request accepts it. Anything ambiguous is set aside for a person - misfiling a tax document is worse than not filing it.",
-    "limit": "A pass takes longer on a first scan with many image files. The same pass also runs by itself on a schedule on the computer chosen to run it.",
-    "fallback": ""
-  },
-  {
-    "id": "originals",
-    "anchors": ["moved-card"],
-    "title": "Originals, moved and untouched",
-    "does": "This card lists the originals the last pass moved out of 'Drop files here' into the client's folder for the year, with a way to put any of them back.",
-    "strength": "Originals are moved byte for byte under their own names and never altered. Every move is recorded, so any of them can be undone.",
-    "limit": "Moving a file is final for the client's inbox: the client sees it leave 'Drop files here' once it has been taken in.",
-    "fallback": "This card appears after a scan has moved something out of the inbox."
-  },
-  {
-    "id": "working-copies",
-    "anchors": ["filed-card"],
-    "title": "Organized working copies",
-    "does": "Each accepted document is copied into the return's Prepared folder with an organized name taken from your request list - for example 'A01 - W-2 - TY2025.pdf' - ready for preparation.",
-    "strength": "Names follow your request list, so every return's folder reads the same way, and the working copies can be checked or re-made at any time from the originals.",
-    "limit": "Names follow the built-in pattern; custom naming schemes are not offered in the pilot.",
-    "fallback": "This list appears after the first document has been filed."
-  },
-  {
-    "id": "needs-review",
-    "anchors": ["review-card"],
-    "title": "Needs Review: a person decides",
-    "does": "Anything the rules could not place with certainty - an unknown form, a document two requests both accept, an unreadable scan - waits here with the likely matches, for you to file with one click or dismiss.",
-    "strength": "Nothing is guessed. The program shows you why it stopped and never files a doubtful document on its own.",
-    "limit": "Expect more items here in the first weeks, especially from firms whose clients send unusual layouts. Every item you file teaches you what the program recognizes; it does not change the rules by itself.",
-    "fallback": "This card appears when a pass has set a document aside for a person."
-  },
-  {
-    "id": "status",
-    "anchors": ["btn-status"],
-    "title": "Status: what is in, what is missing",
-    "does": "Status opens the household's status page: every requested document, whether it has arrived, and any validation notes (for example a document for the wrong year or the wrong person).",
-    "strength": "One page answers 'what are we still waiting for?' without opening a single folder.",
-    "limit": "The status page is a file on this computer; it is not a client portal and is not shared automatically.",
-    "fallback": ""
-  },
-  {
-    "id": "reminder",
-    "anchors": ["reminder-card"],
-    "title": "A drafted reminder - never sent",
-    "does": "Once a week the program drafts a reminder email listing what is still missing, in plain words the client can act on. You read it, copy it, and send it yourself.",
-    "strength": "Nothing is ever sent. There is no email sending in the program at all, so no client is ever contacted without you.",
-    "limit": "You send reminders from your own email program; the pilot does not connect to Outlook or Gmail.",
-    "fallback": "This card appears when a reminder has been drafted for this household."
-  },
-  {
-    "id": "wrap-up",
-    "anchors": [],
-    "title": "What to expect from the pilot",
-    "does": "That is the whole flow: one inbox for the client, sorted originals, organized working copies, a Needs Review queue, a status page and drafted reminders. Replay this tour any time with the Tour button.",
-    "strength": "Runs offline on your own Windows PC. No AI reads client documents, originals are never altered, nothing is guessed and nothing is sent.",
-    "limit": "Windows only. About 74 document kinds across 6 return types. Scans read slowly without the optional graphics-card pack. One computer should run the automatic schedule, which can be turned on or off, and its run time set, in the app's settings. The installer is not yet signed, so Windows shows a warning when you install. Please send problems and ideas to {email}.",
-    "fallback": ""
+  "terms": {
+    "version": 1,
+    "title": "Before you start: this is a Pilot",
+    "sections": [
+      {
+        "heading": "This is a Pilot",
+        "bullets": [
+          "A test edition of Tax Document Tracker, built by J Park & Associates.",
+          "It works, but it is still being finished. Expect rough edges.",
+          "Please tell us what you find."
+        ]
+      },
+      {
+        "heading": "Keep your own backups",
+        "bullets": [
+          "Back up a Client’s folder before you point this program at it.",
+          "For your first tries, use a copy of a few client folders, not your live ones."
+        ]
+      },
+      {
+        "heading": "How it treats your files",
+        "bullets": [
+          "Files a client drops in are moved, byte for byte and under their own names, into that client's folder for the year.",
+          "They are never edited, renamed or compressed.",
+          "Sorting and renaming happen only on copies. Every move is recorded."
+        ]
+      },
+      {
+        "heading": "No AI reads your documents",
+        "bullets": [
+          "Fixed, written rules make every sorting decision.",
+          "Anything uncertain goes to Needs Review for a person to decide."
+        ]
+      },
+      {
+        "heading": "Nothing is sent",
+        "bullets": [
+          "The program drafts reminder emails. You read and send them yourself.",
+          "No email sending, no data sent anywhere: it runs on this computer and needs no internet connection."
+        ]
+      },
+      {
+        "heading": "No warranty",
+        "bullets": [
+          "The Pilot is provided as is, without warranty of any kind.",
+          "You remain responsible for your clients' records and for checking what the program files."
+        ]
+      },
+      {
+        "heading": "Questions or problems",
+        "bullets": [
+          "Email {email}.",
+          "Please do not send client documents. Describe what happened, or send a screenshot with client names covered."
+        ]
+      }
+    ],
+    "checkbox": "I have read this and will keep my own backups.",
+    "accept": "I agree. Continue.",
+    "quit": "Quit."
   }
-]}
 ```
 
-**Schedule wording** (P14). The wrap-up `limit` names the on/off setting. Until
-the pilot has merged the `upstream/main` commit that adds that setting, the sentence
-"which can be turned on or off, and its run time set, in the app's settings"
-is replaced by "(an on/off and run-time setting is coming in the release build)", and the pilot is **not
-released** (section 12).
+## 8. Tour copy (draft for approval, bulleted and visual)
+
+Every step is one screen of short lines. Three visuals carry the flow:
+
+1. **Progress strip** across the top of the card - the six stages of a
+   season, current one filled amber, earlier ones ticked:
+
+   ```
+   ✓ Set up ─ ✓ Drop in ─ ● Sort ─ ○ Check ─ ○ Track ─ ○ Remind
+   ```
+
+   Welcome and Wrap-up show the whole strip unhighlighted, as an overview.
+2. **Callout markers** - "Why it's safe" with a green ✓, "Current limit" with
+   an amber !, drawn by CSS.
+3. **Wrap-up comparison** - two columns side by side, Strengths ✓ and Current
+   limits !, stacked on a narrow window:
+
+   ```
+   ✓ Strengths                         ! Current limits
+   • Runs offline on your Windows PC   • Windows only
+   • No AI reads client documents      • About 74 document kinds, 6 return types
+   • Originals never altered           • Scans slow without the graphics pack
+   • Nothing guessed, nothing sent     • Schedule on/off and run time in Settings
+                                       • Installer unsigned: Windows warns
+                                       • Problems or ideas: {email}
+   ```
+
+At a glance:
+
+| # | Stage | Title | What it does | ✓ Why it's safe | ! Current limit |
+|---|---|---|---|---|---|
+| 1 | overview | Welcome to the Pilot | A client drops documents in one folder. • The program sorts and renames them. • You see what arrived, what's missing, and what needs you. | Runs on this computer with fixed rules. No AI reads documents. Nothing is sent. | 6 return types (1040, 1120, 1120-S, 1065, 1041, 990), about 74 document kinds. |
+| 2 | Set up | One clients folder | Choose one clients folder. Each household gets a shared inbox and a private working folder. | Clients see only their own shared folder. Your working files stay private. | Use a folder your firm backs up. One computer runs the automatic schedule. |
+| 3 | Set up | Household and request list | Create a household, pick the return type, tick the documents you expect. | Files are matched to your own request list, in your order. | Unknown document types go to Needs Review, never guessed. |
+| 4 | Drop in | Drop files here | Inbox opens 'Drop files here'. PDFs, scans, photos, spreadsheets, zips and emails all go in. | The client never names or sorts anything. | Photos and faint scans read slowly and may go to Needs Review. |
+| 5 | Sort | Scan | Reads each new file, matches it to a request, moves the original, makes a named copy. | Filed only when exactly one request fits. Doubt goes to a person. | First scans with many images take longer. The schedule also runs it automatically. |
+| 6 | Sort | Originals, untouched | Lists the originals moved from the inbox into the client's year folder. | Moved byte for byte, never altered. Every move is recorded and can be undone. | Moved files leave the client's inbox. |
+| 7 | Sort | Organized working copies | Accepted documents are copied into Prepared with organized names, e.g. 'A01 - W-2 - TY2025.pdf'. | Every return's folder reads the same way. Copies can be re-made from the originals. | Fixed naming pattern; custom schemes aren't offered yet. |
+| 8 | Check | Needs Review | Unknown, ambiguous or unreadable files wait here with likely matches. File with one click, or dismiss. | Nothing is guessed. You see why it stopped. | Expect more items in the first weeks. The rules don't change on their own. |
+| 9 | Track | Status page | Opens the status page: every requested document, received or missing, with validation notes. | One page answers 'what are we still waiting for?' | A file on this computer, not a client portal. |
+| 10 | Remind | Drafted reminder | Weekly, drafts a reminder listing what's missing. You copy and send it. | Nothing is ever sent. No client is contacted without you. | Send from your own email; no Outlook or Gmail link. |
+| 11 | overview | What to expect | Replay this tour any time with the Tour button. | Runs offline on your own Windows PC • No AI reads client documents • Originals never altered • Nothing guessed, nothing sent | Windows only • About 74 document kinds, 6 return types • Scans slow without the optional graphics pack • Schedule on/off and run time in Settings • Installer unsigned: Windows shows a warning • Problems or ideas: {email} |
+
+The content, exactly:
+
+```json
+  "tour": {
+    "stages": [
+      "Set up",
+      "Drop in",
+      "Sort",
+      "Check",
+      "Track",
+      "Remind"
+    ],
+    "steps": [
+      {
+        "id": "welcome",
+        "stage": "",
+        "anchors": [],
+        "title": "Welcome to the Pilot",
+        "does": [
+          "A client drops documents in one folder.",
+          "The program sorts and renames them.",
+          "You see what arrived, what's missing, and what needs you."
+        ],
+        "strength": "Runs on this computer with fixed rules. No AI reads documents. Nothing is sent.",
+        "limit": "6 return types (1040, 1120, 1120-S, 1065, 1041, 990), about 74 document kinds.",
+        "fallback": ""
+      },
+      {
+        "id": "clients-folder",
+        "stage": "Set up",
+        "anchors": [
+          "setup-card",
+          "eng-select"
+        ],
+        "title": "One clients folder",
+        "does": "Choose one clients folder. Each household gets a shared inbox and a private working folder.",
+        "strength": "Clients see only their own shared folder. Your working files stay private.",
+        "limit": "Use a folder your firm backs up. One computer runs the automatic schedule.",
+        "fallback": "Clients folder already chosen. Switch returns from the list at top left."
+      },
+      {
+        "id": "new-household",
+        "stage": "Set up",
+        "anchors": [
+          "btn-new-household"
+        ],
+        "title": "Household and request list",
+        "does": "Create a household, pick the return type, tick the documents you expect.",
+        "strength": "Files are matched to your own request list, in your order.",
+        "limit": "Unknown document types go to Needs Review, never guessed.",
+        "fallback": ""
+      },
+      {
+        "id": "drop-files",
+        "stage": "Drop in",
+        "anchors": [
+          "btn-inbox"
+        ],
+        "title": "Drop files here",
+        "does": "Inbox opens 'Drop files here'. PDFs, scans, photos, spreadsheets, zips and emails all go in.",
+        "strength": "The client never names or sorts anything.",
+        "limit": "Photos and faint scans read slowly and may go to Needs Review.",
+        "fallback": ""
+      },
+      {
+        "id": "scan",
+        "stage": "Sort",
+        "anchors": [
+          "btn-scan"
+        ],
+        "title": "Scan",
+        "does": "Reads each new file, matches it to a request, moves the original, makes a named copy.",
+        "strength": "Filed only when exactly one request fits. Doubt goes to a person.",
+        "limit": "First scans with many images take longer. The schedule also runs it automatically.",
+        "fallback": ""
+      },
+      {
+        "id": "originals",
+        "stage": "Sort",
+        "anchors": [
+          "moved-card"
+        ],
+        "title": "Originals, untouched",
+        "does": "Lists the originals moved from the inbox into the client's year folder.",
+        "strength": "Moved byte for byte, never altered. Every move is recorded and can be undone.",
+        "limit": "Moved files leave the client's inbox.",
+        "fallback": "Appears after a scan moves something."
+      },
+      {
+        "id": "working-copies",
+        "stage": "Sort",
+        "anchors": [
+          "filed-card"
+        ],
+        "title": "Organized working copies",
+        "does": "Accepted documents are copied into Prepared with organized names, e.g. 'A01 - W-2 - TY2025.pdf'.",
+        "strength": "Every return's folder reads the same way. Copies can be re-made from the originals.",
+        "limit": "Fixed naming pattern; custom schemes aren't offered yet.",
+        "fallback": "Appears after the first document is filed."
+      },
+      {
+        "id": "needs-review",
+        "stage": "Check",
+        "anchors": [
+          "review-card"
+        ],
+        "title": "Needs Review",
+        "does": "Unknown, ambiguous or unreadable files wait here with likely matches. File with one click, or dismiss.",
+        "strength": "Nothing is guessed. You see why it stopped.",
+        "limit": "Expect more items in the first weeks. The rules don't change on their own.",
+        "fallback": "Appears when a pass sets a document aside."
+      },
+      {
+        "id": "status",
+        "stage": "Track",
+        "anchors": [
+          "btn-status"
+        ],
+        "title": "Status page",
+        "does": "Opens the status page: every requested document, received or missing, with validation notes.",
+        "strength": "One page answers 'what are we still waiting for?'",
+        "limit": "A file on this computer, not a client portal.",
+        "fallback": ""
+      },
+      {
+        "id": "reminder",
+        "stage": "Remind",
+        "anchors": [
+          "reminder-card"
+        ],
+        "title": "Drafted reminder",
+        "does": "Weekly, drafts a reminder listing what's missing. You copy and send it.",
+        "strength": "Nothing is ever sent. No client is contacted without you.",
+        "limit": "Send from your own email; no Outlook or Gmail link.",
+        "fallback": "Appears when a reminder is drafted."
+      },
+      {
+        "id": "wrap-up",
+        "stage": "",
+        "anchors": [],
+        "title": "What to expect",
+        "does": "Replay this tour any time with the Tour button.",
+        "strength": [
+          "Runs offline on your own Windows PC",
+          "No AI reads client documents",
+          "Originals never altered",
+          "Nothing guessed, nothing sent"
+        ],
+        "limit": [
+          "Windows only",
+          "About 74 document kinds, 6 return types",
+          "Scans slow without the optional graphics pack",
+          "Schedule on/off and run time in Settings",
+          "Installer unsigned: Windows shows a warning",
+          "Problems or ideas: {email}"
+        ],
+        "fallback": ""
+      }
+    ]
+  }
+```
+
+**Schedule wording** (P14). Until the pilot has merged the `upstream/main`
+commit that adds the schedule setting, the wrap-up limit
+"Schedule on/off and run time in Settings" reads
+"Schedule on/off and run time: coming in the release build", and the pilot is
+**not released** (section 12).
 
 ## 9. `app/renderer/pilot-style.css`
 
@@ -406,10 +576,20 @@ existing app id or class other than `.brand` (for the badge's spacing).
 - `.pilot-tour-spot`: `position: fixed; border-radius: 8px;
   box-shadow: 0 0 0 9999px rgba(15,23,42,.55); outline: 3px solid #f59e0b;
   transition: all .2s;`
-- `.pilot-tour-card`: `position: fixed;` white, 380px wide (max 92vw),
-  8px radius, shadow; the three `h3` headings 12px uppercase grey; the
-  "Current limit" section has a light amber left border so limits read as
-  honest caveats, not small print.
+- `.pilot-tour-card`: `position: fixed;` white, 400px wide (max 92vw),
+  8px radius, shadow; the three `h3` headings 12px uppercase grey; body text
+  14px, bullets with 4px spacing.
+- `.pilot-tour-stages`: a single row of small pills (11px) joined by thin
+  lines; `.pilot-tour-stage.is-current` amber fill, dark text;
+  `.is-done` grey text with a ✓ before it (CSS `::before`); others outlined.
+- `.pilot-tour-ok h3::before` a green (`#16a34a`) ✓; `.pilot-tour-warn`
+  a light amber left border and `h3::before` an amber (`#d97706`) !, so limits
+  read as honest caveats, not small print.
+- `.pilot-tour-compare`: two equal columns with a 16px gap; the card widens
+  to 600px (max 92vw) on that step; below 520px window width the columns
+  stack.
+- `.pilot-terms-section`: 3px amber left rule, 10px left padding, 12px
+  between sections; `h3` 14px bold; bullets 14px.
 
 ## 10. The installer
 
@@ -488,7 +668,11 @@ Name each test as the claim it makes. Run under Python 3.11 and the office's.
   `// PILOT-CONTENT-BEGIN` and `// PILOT-CONTENT-END` parses with `json.loads`.
 - `test_the_edition_version_is_a_plain_version_number`.
 - `test_the_terms_have_every_field_and_a_positive_version`.
-- `test_the_contact_is_an_email_address`.
+- `test_every_terms_section_has_a_heading_and_bullets`.
+- `test_the_contact_is_the_firms_admin_address` - `contact.email` is
+  `admin@jparkassociates.com`.
+- `test_every_line_of_copy_is_short` - every terms bullet and tour sentence or
+  bullet is at most 30 words.
 - `test_the_page_loads_the_pilot_after_the_app` - `index.html` has
   `pilot-style.css` after `style.css`, and `pilot-content.js`, `pilot.js`,
   `tour.js` in that order after `app.js`.
@@ -507,8 +691,11 @@ Name each test as the claim it makes. Run under Python 3.11 and the office's.
 
 - `test_every_tour_anchor_is_an_element_the_page_has` - each id in every
   `anchors` list occurs as `id="<id>"` in `index.html`.
-- `test_every_step_has_its_three_callouts` - `title`, `does`, `strength`,
-  `limit` non-empty.
+- `test_every_step_has_its_three_callouts` - `title` non-empty; `does`,
+  `strength`, `limit` each a non-empty string or a non-empty list of
+  non-empty strings.
+- `test_every_step_sits_on_the_strip` - each `stage` is in `tour.stages`;
+  only the first and last steps have `""`; stages never go backwards.
 - `test_a_step_that_points_says_what_to_expect_when_it_cannot` - non-empty
   `fallback` whenever `anchors` is non-empty.
 - `test_step_ids_are_unique_and_the_tour_opens_and_closes_centred` - unique
@@ -608,7 +795,7 @@ Plain English, for a CPA, not a programmer. Sections:
    It removes the program and its scheduled task. It leaves your clients
    folder, your settings and the program's data folder
    (`%LOCALAPPDATA%\tax-document-tracker-pilot`) where they are.
-10. **Problems and ideas** - email jasonpark@jparkassociates.com; never attach
+10. **Problems and ideas** - email admin@jparkassociates.com; never attach
     client documents; describe or screenshot with names covered.
 
 ## 14. Safety note for testing at J Park (P15, revised by P18)

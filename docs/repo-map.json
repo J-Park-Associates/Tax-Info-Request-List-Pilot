@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 174,
     "edges": 1126,
-    "reused": 129
+    "reused": 130
   },
   "node_types": [
     "artifact",
@@ -4002,14 +4002,14 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "d424f2c6ac60f7be",
-      "lines": 26
+      "sha256": "7805cd1be7740a36",
+      "lines": 27
     },
     {
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "d051c164b104dc2e",
+      "sha256": "1f589c528e3e65e3",
       "lines": 58
     },
     {
@@ -4023,8 +4023,8 @@
       "id": "pilot/SPEC.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "e8c04d1b4f30df5b",
-      "lines": 649
+      "sha256": "a2fb0bc1a4abf11b",
+      "lines": 836
     },
     {
       "id": "requirements-build.txt",

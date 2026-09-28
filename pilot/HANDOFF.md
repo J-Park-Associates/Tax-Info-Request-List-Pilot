@@ -12,8 +12,8 @@
 
 ## Waiting on Jason before any build starts
 
-1. **Approve or mark up the wording** in `SPEC.md` section 7 (terms) and
-   section 8 (tour). Builders copy it exactly as approved.
+1. **Approve or mark up the tour wording** in `SPEC.md` section 8. (Section 7,
+   the terms, was approved on 2026-09-28 - P20.) Builders copy both exactly.
 2. **Turn off GitHub Actions for this repository** (Settings -> Actions ->
    General -> Disable actions). The workflow files came with the copy, and the
    weekly audit would otherwise run here.
