@@ -137,7 +137,7 @@ or rebase). After each merge: resolve index.html by keeping both sides, run
 section 15's done criteria.
 
 Finish by writing pilot/RELEASE.md: the version (from app/renderer/pilot-content.js), the exact
-steps for Jason on the office PC (install Inno Setup 6, run "pilot\Build Pilot Installer.bat", the
+steps for Jason on the office PC (install Inno Setup 6.3 or later, run "pilot\Build Pilot Installer.bat", the
 section 4 Windows check from pilot/HANDOFF.md, tag pilot-<version>, send the installer plus
 "pilot/Tester Guide.md" to testers), and anything left open. Update pilot/HANDOFF.md, push main,
 and report in plain English.
@@ -145,7 +145,7 @@ and report in plain English.
 ---
 
 ## Then Jason, on the office PC (about 30 minutes)
-1. Install Inno Setup 6.
+1. Install Inno Setup 6.3 or later.
 2. Pull `main` and run `pilot\Build Pilot Installer.bat`.
 3. Install the pilot, accept the terms, run the tour on a copy of client folders, and try the
    Schedule dialog.

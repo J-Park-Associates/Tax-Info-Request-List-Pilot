@@ -1,10 +1,10 @@
 {
   "permissions": {
     "deny": [
-      "Read(//c/Users/*/AppData/Local/tax-document-tracker/**)",
-      "Edit(//c/Users/*/AppData/Local/tax-document-tracker/**)",
-      "Read(~/.local/state/tax-document-tracker/**)",
-      "Edit(~/.local/state/tax-document-tracker/**)",
+      "Read(//c/Users/*/AppData/Local/tax-document-tracker-pilot/**)",
+      "Edit(//c/Users/*/AppData/Local/tax-document-tracker-pilot/**)",
+      "Read(~/.local/state/tax-document-tracker-pilot/**)",
+      "Edit(~/.local/state/tax-document-tracker-pilot/**)",
       "Read(//g/Shared drives/**)",
       "Edit(//g/Shared drives/**)",
       "Read(//**/Clients/*/Drop files here/**)",
@@ -60,7 +60,11 @@
       "Read(//**/_content_cache.json)",
       "Edit(//**/_content_cache.json)",
       "Read(//**/_manifest.xlsx)",
-      "Edit(//**/_manifest.xlsx)"
+      "Edit(//**/_manifest.xlsx)",
+      "Read(//c/Users/*/AppData/Local/tax-document-tracker/**)",
+      "Edit(//c/Users/*/AppData/Local/tax-document-tracker/**)",
+      "Read(~/.local/state/tax-document-tracker/**)",
+      "Edit(~/.local/state/tax-document-tracker/**)"
     ]
   }
 }

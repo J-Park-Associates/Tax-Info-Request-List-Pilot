@@ -3,7 +3,7 @@
   "generated": "2026-09-28",
   "generator": "tools/repo_map.py",
   "generator_sha256": "78ed6f39661035ec",
-  "module_table_sha256": "73cb723c5bf1bec0",
+  "module_table_sha256": "37515d192b8b4b41",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 182,
-    "edges": 1129,
-    "reused": 140
+    "nodes": 185,
+    "edges": 1132,
+    "reused": 142
   },
   "node_types": [
     "artifact",
@@ -75,7 +75,7 @@
       "id": ".github/workflows/build.yml",
       "type": "workflow",
       "layer": "ci",
-      "sha256": "a59d3c653a546bcd",
+      "sha256": "0644476c928cb75e",
       "lines": 238,
       "role": "Builds the portable package from a `v*` tag and nothing else (decision 191) by running Build App.bat itself on a Windows runner, proves the frozen executable answers in both of its modes, prints the build-info file, zips the package, publishes its SHA-256 beside it and on the run's summary page, and uploads the zip and the .sha256 as the run's artifact for seven days.",
       "notes": "Decision 78. It runs the batch file rather than re-implementing the build, because a second copy of the build is the one that drifts; tests/test_build.py refuses a workflow that names PyInstaller, the packager or the copy itself. The batch file pauses for a person at every exit, so it reads one documented switch that skips the waits, named in its own header and set here. The two smoke checks run the frozen executable, not the source: `list` with the shell's two environment variables set, which must answer JSON rather than a traceback on an install with no clients root yet, and one dry pass over a scratch clients root tests/samples.py builds, which walks filing, routing, scanning and drafting. Since decision 169 the root holds a scan only the reader can file (SCRATCH_SCAN), and the step compares the package's engagement line with the source's own dry pass and reads the run log's first line for reader=processor, so a package missing the reader or a model fails here. It installs the tree in the two steps every install makes (R-11): requirements.lock then rapidocr with --no-deps from requirements-nodeps.lock, both hash-checked (decision 191). Where the package landed is read back out of the batch file's own OUT/PLATFORM/ARCH and app/package.json's two names, so no path here is a second copy of one. Not on push: a freeze, an npm install, an Electron download and a few hundred megabytes of artifact are not what a commit should cost. Decision 191: no workflow_dispatch - v* tags are protected, so a package is the build of reviewed code - and a job guard `if: startsWith(github.ref, 'refs/tags/v')`; the checksum step runs after both smoke checks, and the runbook compares the summary page's hash with certutil -hashfile before a stick is written (transport, not provenance). Its checkout keeps no credentials (F-12). Decision 186: a step right after the dependencies gives every run of the tracker in the job a data folder under the runner's temp (TRACKER_DATA_HOME through GITHUB_ENV, since a job-level env cannot read the runner context), and a step before the zip fails the build when the package holds any name the data home or the settings folder holds (the store and its side files, runs.log, pass-order.json, tax-tracker.xml, ocr-scratch, the data home's own name, settings.json), each pinned to its constant by tests/test_build.py."
@@ -3389,7 +3389,7 @@
       "id": "tracker/settings.py",
       "type": "module",
       "layer": "core",
-      "sha256": "f296b19050602396",
+      "sha256": "4047f91db584519e",
       "lines": 766,
       "cli": "python -m tracker.settings",
       "exports": [
@@ -3479,7 +3479,7 @@
         "ENV_PRODUCT_NAME": "'TRACKER_PRODUCT_NAME'",
         "ENV_REAL_CORPUS": "'TRACKER_REAL_CORPUS'",
         "ENV_DATA_HOME": "'TRACKER_DATA_HOME'",
-        "DATA_HOME_NAME": "'tax-document-tracker'",
+        "DATA_HOME_NAME": "'tax-document-tracker-pilot'",
         "SCRATCH_DIR_NAME": "'scratch'",
         "LOGS_DIR_NAME": "'logs'",
         "NO_LOCAL_APPDATA": "'LOCALAPPDATA is not set for this Windows account, so the tracker has nowhere private to keep its database; it never keeps it beside the program or in the temp folder instead. Run the app as the account that runs the schedule'",
@@ -3861,7 +3861,7 @@
       "id": "app/package.json",
       "type": "file",
       "layer": "desktop-app",
-      "sha256": "79f33233d09bfb40",
+      "sha256": "6e5b54b95b260de2",
       "lines": 18
     },
     {
@@ -3945,7 +3945,7 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "d515e187c57add02",
+      "sha256": "fdc9ae99966eb20c",
       "lines": 584,
       "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
     },
@@ -3953,7 +3953,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "0ddaa5280543f140",
+      "sha256": "4a3409f79daa541c",
       "lines": 442,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -4037,14 +4037,14 @@
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "b01406c6534a6a99",
-      "lines": 54
+      "sha256": "70fa88f7cca75677",
+      "lines": 73
     },
     {
       "id": "pilot/PROMPTS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "19af5b386732415c",
+      "sha256": "434497cb70763d81",
       "lines": 153
     },
     {
@@ -4058,8 +4058,15 @@
       "id": "pilot/SPEC.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "dce636da7cdf82ad",
+      "sha256": "d0348f3d49a95189",
       "lines": 957
+    },
+    {
+      "id": "pilot/Tester Guide.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "6ec2ab88594a7e78",
+      "lines": 82
     },
     {
       "id": "pilot/reviews/review-1.md",
@@ -4186,8 +4193,8 @@
       "id": ".claude/settings.json",
       "type": "file",
       "layer": "root",
-      "sha256": "3999349ed15c0401",
-      "lines": 66
+      "sha256": "1c46e4e8b142b055",
+      "lines": 70
     },
     {
       "id": "Build App.bat",
@@ -4245,6 +4252,13 @@
         "ROOT"
       ],
       "role": "Puts the repo root on sys.path so tests can `import tracker` without installing the package - explicitly now, beside pyproject's pythonpath, for editor runners and pytest's rootdir detection."
+    },
+    {
+      "id": "pilot/Build Pilot Installer.bat",
+      "type": "script",
+      "layer": "root",
+      "sha256": "9d57f75bdd14b9b8",
+      "lines": 82
     },
     {
       "id": "artifact:.venv/tracker-lock.json",
@@ -6475,6 +6489,33 @@
       }
     },
     {
+      "id": "tests/test_pilot_installer.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "19fb1faabef8cc03",
+      "lines": 147,
+      "exports": [
+        "BUILD",
+        "REPO",
+        "SETUP",
+        "UPSTREAM_DATA_HOME_NAME",
+        "test_the_desktop_icon_is_offered_but_not_ticked",
+        "test_the_installer_installs_for_one_user_without_admin",
+        "test_the_installer_is_named_and_placed_as_the_spec_says",
+        "test_the_installer_needs_a_version_to_compile",
+        "test_the_pilot_build_checks_it_is_a_git_checkout_before_the_dirty_check",
+        "test_the_pilot_build_follows_the_root_scripts_rules",
+        "test_the_pilot_build_refuses_what_is_not_committed",
+        "test_the_tester_guide_names_the_pilot_folders_it_leaves_alone",
+        "test_the_version_the_build_reads_is_the_one_the_badge_shows",
+        "test_uninstalling_never_deletes_client_or_tracker_data",
+        "test_uninstalling_removes_the_schedule_it_ran"
+      ],
+      "constants": {
+        "UPSTREAM_DATA_HOME_NAME": "'tax-document-tracker'"
+      }
+    },
+    {
       "id": "tests/test_progress.py",
       "type": "test",
       "layer": "tests",
@@ -7562,8 +7603,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ab7c705cf0efa269",
-      "lines": 3793,
+      "sha256": "8e1019e3d5b68fe1",
+      "lines": 3804,
       "exports": [
         "AFTER_WHAT",
         "CONSOLE_EXEMPT",
@@ -7582,6 +7623,7 @@
         "RETIRED_FILES",
         "ROLL_AND_ADD_KEYS",
         "STRUCK",
+        "UPSTREAM_DATA_HOME_NAME",
         "hand_comparisons",
         "one_time_step_clauses",
         "read",
@@ -7739,6 +7781,7 @@
         "test_with_no_error_log_the_shell_says_stderr_in_the_reply_and_writes_no_file"
       ],
       "constants": {
+        "UPSTREAM_DATA_HOME_NAME": "'tax-document-tracker'",
         "ROLL_AND_ADD_KEYS": "('roll_forward_to', 'roll_ticked', 'roll_intro', 'roll_no_template', 'roll_done', 'roll_carried', 'roll_unfiled', 'roll_retired_line', 'roll_forms_unloaded', 'add_return', 'add_return_title', 'new_intro', 'form_step_title', 'form_step_note', 'change_form', 'change_household', 'items_title', 'create_return', 'return_created', 'empty_root')",
         "DOCUMENTS": "('README.md', 'docs/ROADMAP.md', 'docs/workflow.md', 'docs/runbook.md', 'docs/storage.md', 'CLAUDE.md')",
         "GUARD_NAME": "'test_the_command_center_is_gone_from_everything_but_the_decision_log'",
@@ -10900,6 +10943,24 @@
       "from": "tests/test_pilot.py",
       "to": "app/renderer/pilot.js",
       "type": "tests",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_pilot_installer.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_pilot_installer.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_pilot_installer.py",
+      "to": "tracker/scheduling.py",
+      "type": "exercises",
       "source": "derived"
     },
     {

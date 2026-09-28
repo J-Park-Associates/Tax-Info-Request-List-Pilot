@@ -648,7 +648,7 @@ Steps, stopping with a clear message and non-zero exit on any failure:
    is missing.
 5. Find `ISCC.exe` in `%ProgramFiles(x86)%\Inno Setup 6\`,
    `%ProgramFiles%\Inno Setup 6\`, `%LOCALAPPDATA%\Programs\Inno Setup 6\`.
-   If none: print "Inno Setup 6 is not installed. Install it from
+   If none: print "Inno Setup 6.3 or later is not installed. Install it from
    jrsoftware.org (free), then run this again." and exit 1.
 6. Run `ISCC.exe /DAppVersion=%VER% /DSourceDir="<full path to the packaged folder>" pilot\installer\setup.iss`.
 7. Print the installer's full path and its SHA-256

@@ -92,7 +92,7 @@ CORPUS_INSIDE_APP = (ENV_REAL_CORPUS + " names {folder}, inside the app's own fo
 #: scheduler's task file. An absolute path; the suite and CI set it.
 ENV_DATA_HOME = "TRACKER_DATA_HOME"
 #: The data home's folder name: app/package.json's "name", held equal by a test.
-DATA_HOME_NAME = "tax-document-tracker"
+DATA_HOME_NAME = "tax-document-tracker-pilot"
 SCRATCH_DIR_NAME = "scratch"
 LOGS_DIR_NAME = "logs"
 #: GetDriveTypeW's answers (WinBase.h). Only DRIVE_FIXED may hold the program
