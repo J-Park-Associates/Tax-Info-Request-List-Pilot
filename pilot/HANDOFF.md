@@ -9,6 +9,23 @@
   `J-Park-Associates/Tax-Info-Request-List-Pilot`, whose `main` is the pilot.
   SPEC gained section 3a (the pilot's own names on the PC and the two-folder
   deny list). The renames are **not made yet**: Build A makes them first.
+- **Build A (2026-09-28, branch `claude/kind-fermi-cjkoxl`, draft PR to `main`):**
+  - Commit 1: the section 3a renames (`app/package.json`, `pyproject.toml`,
+    `tracker/settings.py`, README and ROADMAP first lines) and the P19 deny
+    list (both data folders) with its test change
+    (`UPSTREAM_DATA_HOME_NAME` in `tests/test_single_source.py`). One more
+    line the SPEC did not list: `.github/workflows/build.yml` names the data
+    folder in its "package holds no data" check, and `test_build.py` requires
+    it to equal `DATA_HOME_NAME`, so it now says `tax-document-tracker-pilot`.
+  - Commit 2: `pilot/installer/setup.iss`, `pilot/Build Pilot Installer.bat`,
+    `pilot/Tester Guide.md`, `tests/test_pilot_installer.py`.
+  - Left for others: the `.bat` and `setup.iss` were never run (no Windows or
+    Inno Setup here); the `.bat` needs `pilot-content.js` from Build B; the
+    Tester Guide's Schedule section describes Build C's button.
+  - Not caused by Build A, failing in the cloud only: three `test_build.py` /
+    `test_api.py` tests that need Tesseract (the scanned-text reader) are not
+    installable here; `test_the_scratch_roots_scan_is_filed_by_the_reader_and_by_nothing_else`
+    fails identically on the untouched code.
 
 ## Waiting on Jason
 
@@ -42,4 +59,7 @@ repository; the old `pilot/first-edition` branch is deleted from the original.
 `pip install -r requirements.lock` fails in the cloud container (a wheel will
 not build) and the system `cryptography` breaks `pypdf`. Use a fresh virtual
 environment and install only what the affected tests need:
-`pytest==9.1.1 ruff==0.14.3 pypdf==6.19.0 openpyxl==3.1.5`.
+`pytest==9.1.1 ruff==0.14.3 pypdf==6.19.0 openpyxl==3.1.5`, plus
+`pdfplumber==0.11.10 pdfminer.six==20260107 pillow==12.3.0 pypdfium2==5.11.0
+charset-normalizer==3.5.1 cryptography==50.0.1 cffi==2.1.1 pycparser==3.0`
+(`test_api` and `test_build` fail without them).
