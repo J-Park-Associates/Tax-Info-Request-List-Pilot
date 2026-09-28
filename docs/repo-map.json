@@ -3,7 +3,7 @@
   "generated": "2026-09-28",
   "generator": "tools/repo_map.py",
   "generator_sha256": "78ed6f39661035ec",
-  "module_table_sha256": "8e31d341fd7a246a",
+  "module_table_sha256": "73cb723c5bf1bec0",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 176,
-    "edges": 1126,
-    "reused": 134
+    "nodes": 182,
+    "edges": 1129,
+    "reused": 140
   },
   "node_types": [
     "artifact",
@@ -3885,8 +3885,8 @@
       "id": "app/renderer/index.html",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "ac8d22cdc70297cf",
-      "lines": 630,
+      "sha256": "1098ac3460353ab7",
+      "lines": 634,
       "role": "Desktop app shell markup: empty placeholders the renderer fills from the API's vocabulary, under a Content-Security-Policy that allows nothing but the app's own files. Since decision 104 it holds the request-list editor's modal (#editor), every label of which the renderer fills, and the Edit Request List button (#btn-edit) that opens it; the min of a number input is never typed here."
     },
     {
@@ -3897,12 +3897,40 @@
       "lines": 7
     },
     {
+      "id": "app/renderer/pilot-content.js",
+      "type": "module",
+      "layer": "desktop-app",
+      "sha256": "c15ad3e98a9cc524",
+      "lines": 234
+    },
+    {
+      "id": "app/renderer/pilot-style.css",
+      "type": "ui",
+      "layer": "desktop-app",
+      "sha256": "8f25d161e7e63e20",
+      "lines": 275
+    },
+    {
+      "id": "app/renderer/pilot.js",
+      "type": "module",
+      "layer": "desktop-app",
+      "sha256": "e2e71ca74bc7cd29",
+      "lines": 160
+    },
+    {
       "id": "app/renderer/style.css",
       "type": "ui",
       "layer": "desktop-app",
       "sha256": "f6653580ea5eea00",
       "lines": 995,
       "role": "Desktop app styling."
+    },
+    {
+      "id": "app/renderer/tour.js",
+      "type": "module",
+      "layer": "desktop-app",
+      "sha256": "e3c4eb5b784a7174",
+      "lines": 262
     },
     {
       "id": "CLAUDE.md",
@@ -4009,8 +4037,8 @@
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "3d391ac28b6444fa",
-      "lines": 45
+      "sha256": "b01406c6534a6a99",
+      "lines": 54
     },
     {
       "id": "pilot/PROMPTS.md",
@@ -6418,6 +6446,35 @@
       }
     },
     {
+      "id": "tests/test_pilot.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "82e2d0d8a19b4064",
+      "lines": 111,
+      "exports": [
+        "PILOT_JS",
+        "RENDERER",
+        "REPO",
+        "content",
+        "read",
+        "test_every_line_of_copy_is_short",
+        "test_every_terms_section_has_a_heading_and_bullets",
+        "test_the_contact_is_the_firms_admin_address",
+        "test_the_edition_version_is_a_plain_version_number",
+        "test_the_page_loads_the_pilot_after_the_app",
+        "test_the_pilot_content_is_json_between_its_markers",
+        "test_the_pilot_files_build_the_page_only_with_text",
+        "test_the_pilot_never_types_the_product_name",
+        "test_the_pilot_style_targets_only_its_own_names",
+        "test_the_terms_cannot_be_escaped",
+        "test_the_terms_have_every_field_and_a_positive_version",
+        "tour_lines"
+      ],
+      "constants": {
+        "PILOT_JS": "('pilot-content.js', 'pilot.js', 'tour.js')"
+      }
+    },
+    {
       "id": "tests/test_progress.py",
       "type": "test",
       "layer": "tests",
@@ -7948,6 +8005,24 @@
         "test_the_next_issuer_identifier_is_the_first_free_one_in_the_k1_block",
         "test_the_tax_year_comes_from_the_calendar",
         "test_unknown_form_is_refused"
+      ]
+    },
+    {
+      "id": "tests/test_tour.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "528441c7b67dcdbc",
+      "lines": 82,
+      "exports": [
+        "REPO",
+        "test_a_step_that_points_says_what_to_expect_when_it_cannot",
+        "test_every_step_has_its_three_callouts",
+        "test_every_step_sits_on_the_strip",
+        "test_every_tour_anchor_is_an_element_the_page_has",
+        "test_step_ids_are_unique_and_the_tour_opens_and_closes_centred",
+        "test_the_tour_only_points",
+        "test_the_tour_text_carries_no_placeholder_but_the_email",
+        "tour"
       ]
     },
     {
@@ -10822,6 +10897,12 @@
       "source": "derived"
     },
     {
+      "from": "tests/test_pilot.py",
+      "to": "app/renderer/pilot.js",
+      "type": "tests",
+      "source": "derived"
+    },
+    {
       "from": "tests/test_progress.py",
       "to": "tracker/__init__.py",
       "type": "exercises",
@@ -12450,6 +12531,18 @@
     {
       "from": "tests/test_templates.py",
       "to": "tracker/templates.py",
+      "type": "tests",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_tour.py",
+      "to": "tests/test_pilot.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_tour.py",
+      "to": "app/renderer/tour.js",
       "type": "tests",
       "source": "derived"
     },
