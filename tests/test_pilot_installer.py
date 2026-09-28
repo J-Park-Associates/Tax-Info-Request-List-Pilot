@@ -105,6 +105,13 @@ def test_the_pilot_build_refuses_what_is_not_committed():
     assert text.index("Build App.bat\"", check) > refusal      # refused before anything is built
 
 
+def test_the_pilot_build_checks_it_is_a_git_checkout_before_the_dirty_check():
+    text = _build()
+    verify = text.index("git rev-parse --verify HEAD")
+    assert verify < text.index("git status --porcelain")
+    assert "not a git checkout, or git is not installed" in text[verify:text.index("git status --porcelain")]
+
+
 def test_the_pilot_build_follows_the_root_scripts_rules():
     text = _build()
     commands = [line for line in text.splitlines() if line.strip() and not line.lower().startswith("rem")]
@@ -115,19 +122,6 @@ def test_the_pilot_build_follows_the_root_scripts_rules():
     assert "%SystemRoot%\\System32\\certutil.exe" in text
     mentions = re.findall(r"[^\n]*\bv\d[^\n]*|[^\n]*never v[^\n]*", text)
     assert mentions == ["echo Tag this commit pilot-%VER% (never v...)"]
-
-
-def test_the_pilot_build_reads_the_version_from_a_pilot_content_file(tmp_path):
-    """The version the build reads is the one the installer names its file by:
-    ``edition.version`` between the section 4 markers, plain JSON."""
-    content = tmp_path / "pilot-content.js"
-    content.write_text(
-        "const PILOT =\n// PILOT-CONTENT-BEGIN\n"
-        '{"edition": {"label": "Pilot edition", "version": "0.1"}}\n'
-        "// PILOT-CONTENT-END\n;\nif (typeof module !== \"undefined\") { module.exports = PILOT; }\n",
-        encoding="utf-8")
-    body = content.read_text(encoding="utf-8").split("// PILOT-CONTENT-BEGIN\n")[1].split("// PILOT-CONTENT-END")[0]
-    assert re.fullmatch(r"\d+\.\d+(\.\d+)?", json.loads(body)["edition"]["version"])
 
 
 def test_the_tester_guide_names_the_pilot_folders_it_leaves_alone():

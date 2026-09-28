@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 178,
     "edges": 1128,
-    "reused": 0
+    "reused": 134
   },
   "node_types": [
     "artifact",
@@ -4009,8 +4009,8 @@
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "3db398b58bef3ba2",
-      "lines": 65
+      "sha256": "6096cc89d3bde6d3",
+      "lines": 64
     },
     {
       "id": "pilot/PROMPTS.md",
@@ -4222,8 +4222,8 @@
       "id": "pilot/Build Pilot Installer.bat",
       "type": "script",
       "layer": "root",
-      "sha256": "cfa9cde4e69f504e",
-      "lines": 76
+      "sha256": "9d57f75bdd14b9b8",
+      "lines": 82
     },
     {
       "id": "artifact:.venv/tracker-lock.json",
@@ -6428,8 +6428,8 @@
       "id": "tests/test_pilot_installer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "3f9d2c767819b3af",
-      "lines": 139,
+      "sha256": "9cb6b887172fc294",
+      "lines": 133,
       "exports": [
         "BUILD",
         "REPO",
@@ -6439,8 +6439,8 @@
         "test_the_installer_installs_for_one_user_without_admin",
         "test_the_installer_is_named_and_placed_as_the_spec_says",
         "test_the_installer_needs_a_version_to_compile",
+        "test_the_pilot_build_checks_it_is_a_git_checkout_before_the_dirty_check",
         "test_the_pilot_build_follows_the_root_scripts_rules",
-        "test_the_pilot_build_reads_the_version_from_a_pilot_content_file",
         "test_the_pilot_build_refuses_what_is_not_committed",
         "test_the_tester_guide_names_the_pilot_folders_it_leaves_alone",
         "test_uninstalling_never_deletes_client_or_tracker_data",

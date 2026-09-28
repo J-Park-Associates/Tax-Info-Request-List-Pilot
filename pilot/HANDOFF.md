@@ -22,10 +22,9 @@
   - Left for others: the `.bat` and `setup.iss` were never run (no Windows or
     Inno Setup here); the `.bat` needs `pilot-content.js` from Build B; the
     Tester Guide's Schedule section describes Build C's button.
-  - Not caused by Build A, failing in the cloud only: three `test_build.py` /
-    `test_api.py` tests that need Tesseract (the scanned-text reader) are not
-    installable here; `test_the_scratch_roots_scan_is_filed_by_the_reader_and_by_nothing_else`
-    fails identically on the untouched code.
+  - Not caused by Build A, failing in the cloud only: one test fails (needs Tesseract, fails the same on main) and three are skipped:
+    `test_the_scratch_roots_scan_is_filed_by_the_reader_and_by_nothing_else`
+    needs the scanned-text reader, which is not installable here.
 
 ## Waiting on Jason
 

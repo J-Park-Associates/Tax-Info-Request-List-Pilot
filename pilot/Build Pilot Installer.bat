@@ -7,7 +7,7 @@ rem uncommitted change (pilot decision P13). The version comes from
 rem app\renderer\pilot-content.js, its one home; the commit is recorded by
 rem Build App.bat in BUILD-INFO.txt. Nothing is stamped into any file.
 rem
-rem Needs what Build App.bat needs (Python, Node, git) plus Inno Setup 6.
+rem Needs what Build App.bat needs (Python, Node, git) plus Inno Setup 6.3 or later.
 rem A person double-clicks this, so it waits for a key before every exit.
 rem TRACKER_BUILD_NONINTERACTIVE (set by any caller) makes the wait return at
 rem once; that name is read in exactly one place, the ":wait" label below.
@@ -21,6 +21,12 @@ cd /d "%~dp0.."
 if errorlevel 1 (echo Could not open the repository folder & call :wait & exit /b 1)
 
 echo [1/5] Checking that everything is committed...
+git rev-parse --verify HEAD >nul 2>&1
+if errorlevel 1 (
+  echo This folder is not a git checkout, or git is not installed: the installer must be built from a commit.
+  call :wait
+  exit /b 1
+)
 set "DIRTY="
 for /f "delims=" %%i in ('git status --porcelain') do set DIRTY=1
 if defined DIRTY (
@@ -50,7 +56,7 @@ if exist "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" set "ISCC=%ProgramFiles(x86
 if not defined ISCC if exist "%ProgramFiles%\Inno Setup 6\ISCC.exe" set "ISCC=%ProgramFiles%\Inno Setup 6\ISCC.exe"
 if not defined ISCC if exist "%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" set "ISCC=%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe"
 if not defined ISCC (
-  echo Inno Setup 6 is not installed. Install it from jrsoftware.org ^(free^), then run this again.
+  echo Inno Setup 6.3 or later is not installed. Install it from jrsoftware.org ^(free^), then run this again.
   call :wait
   exit /b 1
 )
