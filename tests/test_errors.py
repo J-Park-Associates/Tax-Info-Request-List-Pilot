@@ -378,6 +378,8 @@ SAID_WHOLE_ON_PURPOSE = {
     ("after_install.py", "_schedule"): "Task Scheduler refusing a task: the machine's words; and "
                                          "scheduling's DesignationError, always one of its constants",
     ("after_install.py", "move_schedule_here"): "scheduling's DesignationError, always one of its constants",
+    ("after_install.py", "_off"): "Task Scheduler refusing to delete this computer's task: the machine's "
+                                   "words, as in _schedule (pilot P21)",
     ("after_install.py", "move_left_behind"): "the mover's own _Taken and _PartlyRemoved, which carry "
                                               "the left-behind item's name, never a document's words",
     ("ledger.py", "_bytes_of"): "the return's own event log could not be read (SPEC-190 R2: stays)",
@@ -469,7 +471,11 @@ FIRM_WRITTEN = {"FilingError", "StaleRowError", "CopyMismatchError", "ManifestEr
                 # runbook's step), and a household roll that rolled and then
                 # could not retire, whose sentence is built from the firm's
                 # names and errors.said.
-                "CheckpointError", "CheckpointUnavailable", "RolledNotAllRetired"}
+                "CheckpointError", "CheckpointUnavailable", "RolledNotAllRetired",
+                # Pilot P16/P21: the schedule setting's refusal, a sentence
+                # the firm wrote naming the settings file, the key and the
+                # choices allowed - never a client document's words.
+                "ScheduleChoiceError"}
 
 #: Where a string becomes something a person sees: a keyword or an
 #: attribute of these names, or a call to these.

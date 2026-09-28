@@ -68,32 +68,16 @@
   - **Decision text to log** (the integrate session numbers it): none new;
     P21 covers this build.
 
+## Status (2026-09-28, orchestrator)
+
+Builds A, B and C are reviewed, fixed and merged into `main` (7a8432e,
+cca50a7, 96853df). Reviews: `pilot/reviews/review-1.md`, `review-2.md`.
+
 ## Waiting on Jason
 
-Nothing. Terms (P20) and tour (P22) wording approved; Actions are off in this
-repository; the old `pilot/first-edition` branch is deleted from the original.
-
-## Next: run the sessions in [`PROMPTS.md`](PROMPTS.md) (P23)
-
-1. **Prompts 1, 2, 3 in parallel** (Sonnet): Build A (names and installer),
-   Build B (badge, terms, tour), Build C (schedule setting). Each pushes its
-   session branch and opens a draft pull request to `main`.
-2. **Prompt 4** (Opus, high effort): one review of all three pull requests,
-   findings in `pilot/reviews/review-1.md`.
-3. **Prompt 5** in each build session that has findings.
-4. **Prompt 6** (Opus): confirm fixes, merge B -> A -> C, gate, write
-   `pilot/RELEASE.md`.
-
-## Then
-
-- **Job 3:** opus review, high effort, in a session that built nothing:
-  numbered findings against `SPEC.md`; rebuild/review loop.
-- **Job 4 (Jason, office PC, on a copy of client folders - P15, P18):** run
-  `pilot\Build Pilot Installer.bat`, install, accept terms, run the tour on a
-  copy of client folders, uninstall, confirm the clients folder, data folder
-  and `settings.json` remain and the scheduled task is gone.
-- **Job 5:** once Builds A, B and C are merged, reviewed and checked on Windows, tag `pilot-0.1` (never `v*`) and send the
-  installer and `Tester Guide.md`.
+The Windows steps in [`RELEASE.md`](RELEASE.md): run the gate under the
+office's Python, build the installer, install and try it, uninstall, then tag
+`pilot-0.1` and send it.
 
 ## Environment notes for cloud sessions
 
