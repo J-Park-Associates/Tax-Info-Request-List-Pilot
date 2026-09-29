@@ -803,7 +803,7 @@ const PAGES_TONES = { needs: "is-attention", waiting: "is-waiting", done: "is-do
 const PAGES_LATE = "9999-99-99";
 let pagesUid = 0; const pagesTokens = new Map(); let pagesSetAsideOpen = false; let pagesBroken = []; let pagesDrawn = "";
 let pagesFocus = null; let pagesLastLevel = ""; let pagesClientsAll = false;
-const notices = []; const failures = []; const logged = [];
+const notices = []; const failures = [];
 let syncNotices = (prefix, wanted) => notices.push([prefix, wanted.map((one) => [one.key, one.failure.sentence, one.detail || ""])]);
 const failed = (err) => failures.push(String(err.message));
 let shellHousehold = () => null; let households = [];

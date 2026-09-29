@@ -104,3 +104,45 @@ included). Looked at the shot in both. Pinned in `test_the_contrast_theme_fills_
 `pagesYear` puts a `page-gap` (`--sp-6`) between the H1 and the list, as Reminders does. Measured:
 H1 bottom 100, first row top 124 (24px), the same as Reminders under its page top. Test:
 `test_the_year_page_leaves_a_gap_under_its_h1_before_its_rows`.
+
+### F8 - the tests that were missing (added; each proved by mutation on a scratch copy)
+
+- `tests/test_shell.py`: the skeleton test's `gone` list adds `review-deck`, `review-mode`,
+  `mode-toggle`, `deck`; `test_the_renderer_defines_none_of_the_names_section_13_removes` (every
+  removed name, the deck's stored key, `.mode-toggle` / `.deck` / `--radius-pill` / `.chip` in
+  the stylesheets);
+  `test_no_page_draws_a_path_as_text_or_as_a_tooltip` (all seven pages drawn in node from data
+  whose paths hold `\` and `/`, one return the list does not know; no drawn text, attribute or
+  tooltip holds either, and the names that must be there are);
+  `test_every_loud_failure_of_the_old_screen_reaches_a_notice` (the call sites: reader and
+  machine warnings, after-install, folders skipped, names shortened, lock, the household notices);
+  and the F2/F3 tests above, which run the harness stub's long sentences through the app's own
+  notice functions (dropping the reader, folders-skipped, names-shortened or after-install
+  notice, or drawing a long sentence or a path, fails).
+- Mutations (scratch copy of the tree, `git init`; each run over `test_shell`,
+  `test_single_source`, `test_pilot_ui`, `test_api`): see the table at the end of this file.
+
+## Fields `pages.js` reads (SPEC 9.2; for the job that fixes the real `firm` reply)
+
+- `list`: `households[].{name, path, contact, returns[].{path, return_name, label, year, active, superseded_by}}`
+  (through `shellHousehold` / `shellReturn`).
+- `firm`: `returns[].{path, household, counts.{needs_you, waiting, received, set_aside}, oldest, due,
+  draft.{ready, stage, held, drafted}, problem}`, `files[].{return, name, code, received, suggestion, handle}`,
+  `totals.{need, waiting, complete, files, drafts}`, `next_sort`. `files[].return` is read as the
+  return's **path** and `files[].handle` must exist (both differ in S1's real reply, review 1's list).
+- `state`: `paths.engagement`, `engagement.due`, `household.{path, shared_on, open_years, pause.{sentence, scope},
+  feeds[].warning}`, `items[].{identifier, document, short_name, group, status_key, manual_override, year,
+  period, file_count, expected_count, received_date}`, `index[].{handle, original_name, decision, code,
+  received, bucket, identifier, answered}`, `review[].{handle, shortlist[].identifier}`,
+  `moved[].{handle, original_name, identifier, in_request}`.
+- Vocabulary: `vocab.screen.*` (SPEC 11.4), `vocab.reasons[code]` (`{short}` or a string),
+  `vocab.reminder.stages[].{number, short}`, `vocab.labels[key].label`, `vocab.decisions`,
+  `vocab.review_labels.{bucket_order, buckets, dismiss}`, `vocab.household.{two_open_years,
+  accept_folder_name}`, `vocab.notices.about`, `vocab.shell.page_error`, `vocab.after_install.{heading,
+  wait}`, `vocab.lock.{running, running_other, left_behind}`, `vocab.room.heading`, `vocab.menu.{new_household,
+  add_return}`, and (new, optional until S6) `vocab.screen.notices.{reader, machine, renamed, paused, feed}`.
+
+## Not done (out of scope, left for S5 / S6)
+
+Link kinds and the year on return names (rulings 8-13) are S5's. The real `firm` reply mismatches
+(review 1's list for S6) are another job's.
