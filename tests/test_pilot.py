@@ -109,3 +109,39 @@ def test_the_pilot_style_targets_only_its_own_names():
     selectors = [s.strip() for block in re.findall(r"([^{}]+)\{", css) for s in block.split(",")]
     allowed = (".pilot-", "#pilot-", "#btn-tour", ".brand")
     assert selectors and all(s.startswith(allowed) for s in selectors), selectors
+
+
+def test_acceptance_is_asked_of_the_durable_record_before_the_terms_stay():
+    """P31: the window's storage is only a cache. A launch whose cache says
+    nothing - storage that could not be opened reads as nothing - asks the
+    tracker's own record, through the one channel the page has, and the
+    terms go when it holds this version's acceptance."""
+    import tracker.api as api
+
+    js = read("pilot.js")
+    assert 'const COMMAND = "pilot-record";' in js and "pilot-record" in api.COMMANDS
+    assert "window.tracker.call([COMMAND], payload)" in js
+    # The shell allows it only once the page's first call named the commands.
+    assert "vocab.commands.indexOf(COMMAND)" in js
+    shown = js.index("document.body.appendChild(overlay);")
+    asked = js.index("PilotRecord.read().then((record) => {", shown)
+    assert "record.terms !== version" in js[asked:] and "close();" in js[asked:]
+    # Accepting records it durably, not only in the cache.
+    accepted = js[js.index('accept.addEventListener("click"'):]
+    assert "PilotRecord.acceptTerms(version);" in accepted.split("});")[0]
+    # Storage is touched in one place only.
+    assert js.count("window.localStorage.") == 2
+
+
+def test_the_tour_is_remembered_through_the_pilot_record():
+    tour = read("tour.js")
+    assert "PilotRecord.tourSeen();" in tour and "localStorage" not in tour
+    assert "tourSeen: () => {" in read("pilot.js")
+
+
+def test_the_shell_writes_the_pages_storage_as_the_window_closes():
+    """P31: flushed at close, not left to the end of a shutdown a quick
+    restart can overtake."""
+    main = (REPO / "app" / "main.js").read_text(encoding="utf-8")
+    assert 'win.on("close", () => win.webContents.session.flushStorageData());' in main
+    assert "app.requestSingleInstanceLock()" in main

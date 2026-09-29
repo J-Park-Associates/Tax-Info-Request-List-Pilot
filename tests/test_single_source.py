@@ -201,6 +201,7 @@ const win = {
   restore() { seen.restored += 1; },
   focus() { seen.focused += 1; },
   loadFile() {},
+  on() {},
   webContents: { setWindowOpenHandler() {}, on() {} },
 };
 const opened = [];

@@ -393,6 +393,11 @@ function createWindow() {
   // One page, no navigation, no pop-ups: the renderer has nowhere else to go.
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.webContents.on("will-navigate", (event) => event.preventDefault());
+  // What the page keeps in its storage goes to disk as the window closes
+  // (pilot P31), not at the end of a shutdown that a quick restart can
+  // overtake - Electron lets go of the one-instance lock before it closes
+  // that storage, so the new window found it held and read nothing.
+  win.on("close", () => win.webContents.session.flushStorageData());
   win.loadFile(path.join(__dirname, "renderer", "index.html"));
   return win;
 }

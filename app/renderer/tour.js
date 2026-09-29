@@ -3,7 +3,8 @@
 // The tour only points (SPEC section 1). It highlights an element that is
 // already on the page and says what it does, why it is safe and what its
 // current limit is. It never presses a button, runs a pass, opens a file or
-// talks to the tracker, and while it is open the layer under the card takes
+// talks to the tracker - that it was seen is pilot.js's to keep (P31), and
+// while it is open the layer under the card takes
 // every click, so a tester reading a step cannot set something off by
 // accident. The wording lives in pilot-content.js (P8); the three headings
 // below are UI labels, not copy.
@@ -15,7 +16,6 @@
 // bring the card in while the tester is reading.
 
 const PilotTour = (() => {
-  const SEEN_KEY = "pilot.tour.seen";
   const GAP = 12;
   const PAD = 6;
   const MARGIN = 8;
@@ -249,13 +249,9 @@ const PilotTour = (() => {
     spot = null;
     card = null;
     anchor = null;
-    if (!options || options.remember !== false) {
-      try {
-        window.localStorage.setItem(SEEN_KEY, "1");
-      } catch (err) {
-        // Not remembered: the tour offers itself again after the terms, harmless.
-      }
-    }
+    // Remembered where the terms are (P31): pilot.js's record, durable,
+    // with the window's storage as its cache.
+    if (!options || options.remember !== false) PilotRecord.tourSeen();
   }
 
   return { start, stop };

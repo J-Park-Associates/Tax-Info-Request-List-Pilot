@@ -108,6 +108,20 @@ changed by hand or by another door is registered at the next start, and does
 nothing (no ``schtasks`` call) when program, designation and choice are all
 as recorded.
 
+**One run at a time** (pilot P32). Every door - the launch in the
+background, Setup, saving the root, Repair, the Schedule button - is its own
+process, and two of them can overlap: the app's launch step runs unwaited
+and outlives its window, and a restart starts another. A run reads the saved
+choice and then acts on it, so a run that read "off" and acted after another
+had registered "on" removed the task the Schedule button still showed. So
+:func:`run` and :func:`launch` take one lock (:data:`LOCK_FILENAME`, beside
+the record, with ``locking``'s rules for a lock its owner left) and read the
+choice **inside** it: whichever run acts last acts on the choice saved last.
+A run that cannot have the lock within :data:`LOCK_WAIT_SECONDS` changes
+nothing and says so (:data:`STEP_BUSY`). Every task this step removes is
+noted on the local debug log with why, so a task that goes is never a
+mystery again.
+
 It imports ``scheduling`` and the layers below it; the API imports it, and
 nothing lower does (layer 4, ``tests/test_layers.py``).
 """
@@ -122,12 +136,15 @@ import os
 import shutil
 import stat
 import sys
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from tracker import checkpoint, door, errors, ledger, registry, runner, scheduling, settings, store
 from tracker.fsio import write_json_atomically
-from tracker.locking import this_host
+from tracker.locking import EngagementLockedError, acquire_lock, release_lock, this_host
 
 #: The note of the last run, beside the store - in the data home (decision
 #: 186) - and named by ``runner.left_behind`` when an old copy is beside
@@ -234,6 +251,19 @@ LEFT_BEHIND_PARTLY_REMOVED = ("{home} now holds the whole copy of {name}; part o
                               "beside the program as {aside} and can be deleted.")
 #: The mover's step key (R9), beside the schedule's and the check's.
 MOVE_KEY = "left_behind"
+#: The one lock every run of the step holds (pilot P32), beside the record;
+#: how long a run waits for another to finish, and how often it looks.
+LOCK_FILENAME = "after-install.lock"
+LOCK_WAIT_SECONDS = 10 * 60
+LOCK_POLL_SECONDS = 0.25
+#: The step's key, and its one sentence, when another run held the lock
+#: for longer than a run waits: nothing was changed and nothing recorded.
+BUSY_KEY = "busy"
+STEP_BUSY = ("Another run of the after-install step on this computer was still going after {minutes} "
+             "minutes, so this one changed nothing. Start the app again, or press Repair the schedule.")
+#: The same, when the lock itself could not be made in the data home.
+LOCK_UNAVAILABLE = ("The after-install step could not take its lock ({file}), so it changed nothing. "
+                    "Start the app: it tries again at launch.")
 #: What Setup prints when the step exits 1 (``Setup.bat`` echoes the same words).
 SETUP_RETRY = "The after-install step could not finish (above). Start the app: it tries again at launch."
 
@@ -398,13 +428,22 @@ def _preference_record(preference: scheduling.SchedulePreference | None) -> dict
     return None if preference is None else asdict(preference)
 
 
+def _note_removed(why: str) -> None:
+    """Keep on the local debug log that this step removed this computer's
+    task, and why (pilot P32): a task that disappears is a question a
+    person asks later, and this is its answer."""
+    errors.keep("after_install: removed this computer's scheduled task",
+                f"{why}; process {os.getpid()}")
+
+
 def _off() -> _Step:
     """The schedule is switched off: this computer's own task goes, the
     designation is left as it is (turning it off on the designated computer
     leaves no computer running it, which the sentence says), and nothing is
     registered."""
     try:
-        scheduling.remove_task()
+        if scheduling.remove_task():
+            _note_removed("the saved schedule choice is off")
     except RuntimeError as exc:
         return _Step(scheduling.OFF, SCHEDULE_FAILED.format(problem=exc), failed=True)
     except OSError as exc:
@@ -448,6 +487,8 @@ def _schedule(root: Path | None, preference: scheduling.SchedulePreference) -> _
     try:
         if outcome == scheduling.ELSEWHERE:
             removed = scheduling.remove_task()
+            if removed:
+                _note_removed(f"the designation names {decision.host}")
             return _Step(outcome, scheduling.SCHEDULE_ELSEWHERE.format(
                 host=decision.host, removed=scheduling.SCHEDULE_REMOVED if removed else ""),
                 host=decision.host)
@@ -850,8 +891,68 @@ def _move_what_186_lists(root: Path | None) -> _Step | None:
     return _Step(MOVE_KEY, done.sentence, failed=done.failed)
 
 
+class _Busy(Exception):
+    """This run could not have the step's lock; the sentence saying why."""
+
+
+@contextmanager
+def _one_at_a_time() -> Iterator[None]:
+    """Hold the step's lock (pilot P32) for a ``with`` block, waiting up to
+    :data:`LOCK_WAIT_SECONDS` for a run that holds it; :class:`_Busy` when
+    it cannot be had. With no data home there is no record to keep either,
+    and the run goes on as it always has (its record says it could not be
+    written)."""
+    try:
+        folder = record_path().parent
+    except settings.SettingsError:
+        folder = None
+    if folder is None:
+        yield
+        return
+    lock_file = folder / LOCK_FILENAME
+    deadline = time.monotonic() + LOCK_WAIT_SECONDS
+    while True:
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            held = acquire_lock(folder, LOCK_FILENAME)
+            break
+        except EngagementLockedError:
+            if time.monotonic() >= deadline:
+                raise _Busy(STEP_BUSY.format(minutes=LOCK_WAIT_SECONDS // 60)) from None
+            time.sleep(LOCK_POLL_SECONDS)
+        except OSError as exc:
+            errors.keep("after_install: taking the step's lock", exc)
+            raise _Busy(LOCK_UNAVAILABLE.format(file=lock_file)) from None
+    try:
+        yield
+    finally:
+        release_lock(held)
+
+
+def _busy(reason: str, sentence: str) -> AfterInstall:
+    """A run that could not have the lock: it changed nothing, recorded
+    nothing (the run that holds it records), and says why."""
+    return AfterInstall(reason=reason, ran_at=dt.datetime.now().isoformat(timespec="seconds"),
+                        schedule=BUSY_KEY, schedule_sentence=sentence, check=BUSY_KEY,
+                        check_sentence=sentence, failed=(sentence,), lines=(sentence,))
+
+
 def run(*, reason: str, start: str | None = None, every: int | None = None,
         checkout: Path | None = None) -> AfterInstall:
+    """Every one-time job, in order, and the record of what they did - one
+    run at a time (pilot P32): the step's lock is held from before the
+    saved choice is read until the record is written."""
+    if reason not in REASONS:
+        raise ValueError(f"reason must be one of {', '.join(REASONS)}, not {reason!r}")
+    try:
+        with _one_at_a_time():
+            return _run(reason=reason, start=start, every=every, checkout=checkout)
+    except _Busy as busy:
+        return _busy(reason, str(busy))
+
+
+def _run(*, reason: str, start: str | None = None, every: int | None = None,
+         checkout: Path | None = None) -> AfterInstall:
     """Every one-time job, in order, and the record of what they did.
 
     The schedule registers the choice saved in the settings file (pilot
@@ -862,10 +963,8 @@ def run(*, reason: str, start: str | None = None, every: int | None = None,
 
     Idempotent: registering is ``schtasks /create ... /f``, the check
     changes no record, and the note is replaced whole - twice in a row is
-    once.
+    once. The caller holds the step's lock.
     """
-    if reason not in REASONS:
-        raise ValueError(f"reason must be one of {', '.join(REASONS)}, not {reason!r}")
     ran_at = dt.datetime.now().isoformat(timespec="seconds")
     unusable = _save_choice(start, every) if start is not None or every is not None else ""
     preference, unreadable = _saved_preference()
@@ -956,16 +1055,27 @@ def launch() -> AfterInstall | None:
     condition is the review's M1: after the schedule moves to a new
     computer nothing about the old one's program changed, and without it
     the old computer kept its task - two computers running the pass -
-    until its next upgrade."""
-    record = read_record()
-    if record is not None and record.get("program") == program_identity():
-        root, refused = _saved_root()
-        now = None if refused else designation_now(root)
-        preference, _ = _saved_preference()
-        if (now is not _UNREADABLE_NOW and record.get("designated") == now
-                and preference is not None and record.get("preference") == _preference_record(preference)):
-            return None
-    return run(reason=REASON_LAUNCH)
+    until its next upgrade. Compared and run under the step's lock
+    (pilot P32), so what it compares is not changing under it."""
+    try:
+        with _one_at_a_time():
+            if _unchanged(read_record()):
+                return None
+            return _run(reason=REASON_LAUNCH)
+    except _Busy as busy:
+        return _busy(REASON_LAUNCH, str(busy))
+
+
+def _unchanged(record: dict | None) -> bool:
+    """Whether the program, the designation and the saved choice are all
+    what ``record`` says the last clean run left."""
+    if record is None or record.get("program") != program_identity():
+        return False
+    root, refused = _saved_root()
+    now = None if refused else designation_now(root)
+    preference, _ = _saved_preference()
+    return (now is not _UNREADABLE_NOW and record.get("designated") == now
+            and preference is not None and record.get("preference") == _preference_record(preference))
 
 
 def record_failure(sentence: str) -> None:

@@ -59,6 +59,9 @@ Commands:
             of the lock and the pass's progress file; no store)
   cancel-pass  ask a running Sort & Scan this app started to stop at its
             next file (JSON on stdin: {"pass": id})
+  pilot-record  the pilot's terms acceptance and "tour seen" for this Windows
+            account, read or recorded in the data home (pilot P31; JSON on
+            stdin: {} to read, {"terms": version} or {"tour_seen": true})
 
 Every reply carries ``warnings``; every error also carries ``failure``
 ({sentence, kind, seq, identifier}) beside ``error`` (decision 193).
@@ -134,7 +137,7 @@ from tracker.filer import (
     unfile_document,
     waiting_target,
 )
-from tracker.fsio import make_new_folders
+from tracker.fsio import make_new_folders, write_json_atomically
 from tracker.households import (
     HOUSEHOLD_PAUSED_YEAR,
     claim_disagrees,
@@ -4846,6 +4849,64 @@ def _cmd_after_install(argv: list[str]) -> dict:
     return {"ran": False} if done is None else {"ran": True, **done.reply()}
 
 
+#: The pilot edition's record of this Windows account's terms acceptance
+#: and "tour seen" (pilot P31), in the data home beside the store. The
+#: window's local storage is only its cache: a restart that could not reach
+#: that storage showed the terms again (the pilot 0.1 Windows check).
+PILOT_RECORD_FILENAME = "pilot-record.json"
+PILOT_RECORD_REFUSED = ('pilot-record takes {{}} to read, or "terms" as the version of the terms '
+                        'accepted, or "tour_seen": true; not {asked}.')
+
+
+def _terms_version(value: object) -> bool:
+    """Whether ``value`` is a terms version as ``pilot-content.js`` writes
+    it: a positive whole number, sent as a number or its digits."""
+    text = str(value) if isinstance(value, (int, str)) and not isinstance(value, bool) else ""
+    return text.isascii() and text.isdigit() and len(text) <= 6 and not text.startswith("0")
+
+
+def _pilot_record_path() -> Path:
+    return data_home() / PILOT_RECORD_FILENAME
+
+
+def _read_pilot_record() -> dict:
+    """The record as written, or nothing when there is none a program could
+    trust - which reads as "not accepted", the safe direction."""
+    try:
+        data = json.loads(_pilot_record_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _cmd_pilot_record(argv: list[str]) -> dict:
+    """The pilot's terms acceptance and "tour seen" (pilot P31): JSON on
+    stdin, ``{}`` to read, ``{"terms": "<version>"}`` when the terms are
+    accepted, ``{"tour_seen": true}`` when the tour is closed. Kept per
+    Windows account in the data home, which is where the app's own window
+    keeps its local storage too - so it asks no more of a person than the
+    cache did, and survives what the cache does not. Not a client record:
+    nothing here is held to the record checkpoint's root. Replies with the
+    record as it now stands: ``terms`` ("" when none) and ``tour_seen``."""
+    spec = _read_spec()
+    terms, seen = spec.get("terms"), spec.get("tour_seen")
+    asked = {key: value for key, value in spec.items() if key in ("terms", "tour_seen")}
+    if (set(spec) - {"terms", "tour_seen"} or (seen is not None and seen is not True)
+            or (terms is not None and not _terms_version(terms))):
+        raise ManifestError(PILOT_RECORD_REFUSED.format(asked=json.dumps(spec, sort_keys=True)))
+    record = _read_pilot_record()
+    if asked:
+        now = dt.datetime.now().isoformat(timespec="seconds")
+        if terms is not None:
+            record.update(terms=str(terms), terms_accepted_at=now)
+        if seen:
+            record.update(tour_seen=True, tour_seen_at=now)
+        path = _pilot_record_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write_json_atomically(path, record)
+    return {"terms": str(record.get("terms") or ""), "tour_seen": record.get("tour_seen") is True}
+
+
 def _cmd_acknowledge_foreign(argv: list[str]) -> dict:
     """A person has looked at the lines another machine wrote in one
     return's record (decision 159, C-1 (a)): they stop being named on the
@@ -4932,6 +4993,7 @@ COMMANDS = {
     "after-install": _cmd_after_install,
     "move-schedule-here": _cmd_move_schedule_here,
     "acknowledge-foreign": _cmd_acknowledge_foreign,
+    "pilot-record": _cmd_pilot_record,
 }
 
 

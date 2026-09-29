@@ -1268,3 +1268,148 @@ def test_repair_with_a_named_choice_that_is_not_allowed_saves_and_registers_noth
     assert done.exit_code == 1 and creates(windows["calls"]) == []
     assert "'6pm'" in done.schedule_sentence
     assert settings.schedule_preference() == scheduling.SchedulePreference(True, "07:00", 120)
+
+
+# --------------------------------------------- one run at a time (pilot P32) ----
+
+
+def task_scheduler(monkeypatch, *, exists=False):
+    """A fake ``schtasks`` that keeps whether our task exists, as Windows
+    does: ``/create`` makes it, ``/delete`` removes it, ``/query`` says."""
+    state = {"exists": exists, "calls": []}
+
+    def answer(command):
+        state["calls"].append(command[1])
+        if command[1] == "/create":
+            state["exists"] = True
+        elif command[1] == "/delete":
+            state["exists"] = False
+        return Said(0 if command[1] != "/query" or state["exists"] else 1)
+
+    monkeypatch.setattr(scheduling, "_schtasks", answer)
+    return state
+
+
+def test_the_windows_check_sequence_keeps_the_task_through_a_restart(root, windows, monkeypatch):
+    """The pilot 0.1 Windows check's steps 13-15, in order: saving the root
+    registers, Off removes, On at 06:30 every 240 minutes registers, and the
+    two launches of the restart change nothing - the task is still there."""
+    task = task_scheduler(monkeypatch)
+    after_install.run(reason=after_install.REASON_ROOT)
+    assert task["exists"]
+    settings.set_schedule(False, "07:00", 120)
+    after_install.run(reason=after_install.REASON_REPAIR)
+    assert not task["exists"]
+    settings.set_schedule(True, "06:30", 240)
+    assert after_install.run(reason=after_install.REASON_REPAIR).installed and task["exists"]
+    made = len(task["calls"])
+
+    assert after_install.launch() is None and after_install.launch() is None
+
+    assert task["exists"] and len(task["calls"]) == made
+    assert "T06:30:00" in registered_xml() and "PT240M" in registered_xml()
+
+
+def test_a_run_that_read_off_never_removes_what_a_later_on_registered(root, windows, monkeypatch):
+    """Pilot P32, the lost task of the pilot 0.1 Windows check: a run reads
+    the saved choice and then acts on it, and every door is its own process
+    - the launch step in the background, the Schedule button's save - so
+    two can overlap. A run that read "off", held up, and acted after "on"
+    was saved and registered, removed the task the Schedule dialog still
+    showed as on. One run at a time, with the choice read inside the lock,
+    means whichever acts last acts on the choice saved last."""
+    import threading
+
+    settings.set_schedule(False, "07:00", 120)
+    task = task_scheduler(monkeypatch, exists=True)
+    first = {}
+    read_off, go_on = threading.Event(), threading.Event()
+    real_move = after_install._move_what_186_lists
+
+    def held_up(root_):
+        # Called after the choice is read: the first run stops here until
+        # the second has had its chance to act.
+        if not first:
+            first["thread"] = threading.get_ident()
+        if first["thread"] == threading.get_ident():
+            read_off.set()
+            go_on.wait(10)
+        return real_move(root_)
+
+    monkeypatch.setattr(after_install, "_move_what_186_lists", held_up)
+    results = {}
+    slow = threading.Thread(target=lambda: results.update(
+        slow=after_install.run(reason=after_install.REASON_LAUNCH)))
+    slow.start()
+    assert read_off.wait(10)
+
+    def save_on():
+        settings.set_schedule(True, "06:30", 240)
+        results["on"] = after_install.run(reason=after_install.REASON_REPAIR)
+
+    later = threading.Thread(target=save_on)
+    later.start()
+    later.join(1.0)          # unguarded, "on" registers here, before "off" acts
+    go_on.set()
+    slow.join(20)
+    later.join(20)
+
+    assert results["slow"].schedule == scheduling.OFF and results["on"].installed
+    assert task["exists"], task["calls"]
+    assert task["calls"][-1] == "/create"
+    recorded = json.loads(after_install.record_path().read_text(encoding="utf-8"))
+    assert recorded["preference"] == {"enabled": True, "start": "06:30", "every": 240}
+
+
+def test_a_run_that_cannot_have_the_lock_changes_nothing_and_says_so(root, windows, monkeypatch):
+    task = task_scheduler(monkeypatch, exists=True)
+    settings.set_schedule(False, "07:00", 120)
+    monkeypatch.setattr(after_install, "LOCK_WAIT_SECONDS", 0)
+    folder = after_install.record_path().parent
+    folder.mkdir(parents=True, exist_ok=True)
+    held = after_install.acquire_lock(folder, after_install.LOCK_FILENAME)
+    try:
+        done = after_install.run(reason=after_install.REASON_REPAIR)
+        launched = after_install.launch()
+    finally:
+        after_install.release_lock(held)
+
+    busy = after_install.STEP_BUSY.format(minutes=0)
+    assert done.exit_code == 1 and done.schedule == after_install.BUSY_KEY and done.lines == (busy,)
+    assert launched is not None and launched.failed == (busy,)
+    assert task["exists"] and task["calls"] == []
+    assert not after_install.record_path().exists()
+
+
+def test_a_lock_its_owner_left_is_taken_over(root, windows, monkeypatch):
+    """A run killed while it held the lock (the app closed under it, or
+    the uninstall kit stopping it) never stops the next one: ``locking``'s
+    rule for a lock whose process is gone."""
+    import datetime as dt
+
+    from tracker.locking import lock_line
+
+    task_scheduler(monkeypatch)
+    folder = after_install.record_path().parent
+    folder.mkdir(parents=True, exist_ok=True)
+    gone = 2 ** 22 + 12345
+    monkeypatch.setattr("tracker.locking.pid_alive", lambda pid: False if str(pid) == str(gone) else True)
+    (folder / after_install.LOCK_FILENAME).write_text(lock_line(gone, dt.datetime.now()), encoding="utf-8")
+
+    done = after_install.run(reason=after_install.REASON_REPAIR)
+
+    assert done.exit_code == 0 and done.installed
+    assert not (folder / after_install.LOCK_FILENAME).exists()
+
+
+def test_every_task_the_step_removes_is_noted_with_why(root, windows, monkeypatch, caplog):
+    import logging
+
+    from tracker import errors
+
+    task_scheduler(monkeypatch, exists=True)
+    settings.set_schedule(False, "07:00", 120)
+    with caplog.at_level(logging.WARNING, logger=errors.DEBUG_LOGGER):
+        after_install.run(reason=after_install.REASON_REPAIR)
+    assert "removed this computer's scheduled task" in caplog.text
+    assert "the saved schedule choice is off" in caplog.text
