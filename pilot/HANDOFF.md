@@ -33,30 +33,26 @@ ground or read the logo's drawn text as black (SPEC 10.2 computes each theme
 on its own), the brand band's padding, and a hairline with a soft shadow on
 menus and the sheet (Windows 11's own flyout recipe, kept).
 
-**Jason's answers (2026-09-29):** Q1 yes, the `firm` command is approved
-(P79); Q2 grey the sort icon on firm pages for 0.2 (P80); Q3 no Tester guide
-in Help (P81); Q6 confirmed (P82).
+**Jason's answers (2026-09-29), all six:** Q1 yes, the `firm` command is
+approved (P79); Q2 grey the sort icon on firm pages for 0.2 (P80); Q3 no
+Tester guide in Help (P81); Q4 option A, a row's second column shows only
+the detail the record has (P83); Q5 the wording is approved as presented
+(P84); Q6 confirmed (P82). Nothing is waiting on Jason.
 
-**Still waiting on Jason before any build (SPEC section 15):**
-
-| # | Question | Status |
-|---|---|---|
-| Q4 | A row's second column: the record keeps no separate sender, so show the detail it has | Jason asked for more explanation (given in the session, 2026-09-29) |
-| Q5 | Approve the wording (`wording-shell.tsv` and SPEC 11.3-11.6) | Presented in full in the session for his review |
-
-**Next jobs, once Jason answers Q4 and Q5:** S1 and S3 run side by side,
-each a fresh session in its own worktree (SPEC section 16). S1 needs Q5
-(Q1 is approved); S3 needs only the SPEC and Q4.
+**Next jobs: S1 and S3, side by side**, each a fresh session in its own
+worktree (SPEC section 16). Then S2 and S4 side by side, then S5, then S6
+and the Windows check.
 
 S1 (sonnet):
 ```
 You are the S1 builder (engine and wording) for the Tax Document Tracker
 Pilot's app shell. Branch from claude/admiring-lamport-bp1sse.
-Read pilot/HANDOFF.md (top section: Jason's answers to Q1-Q6), then
+Read pilot/HANDOFF.md (top section: Jason's answers, P79-P84), then
 pilot/SPEC-shell.md sections 9, 11 and 14, and pilot/wording-shell.tsv.
 Use `python tools/repo_map.py show <file>` for tracker/api.py, reasons.py,
 reminder.py, __init__.py; read only the line ranges you need.
-Build exactly SPEC section 9 (if Jason said yes to Q1) and section 11: the
+The wording is approved (P84): use wording-shell.tsv exactly.
+Build exactly SPEC section 9 (approved, P79) and section 11: the
 vocabulary blocks menu and screen, api.MENU, short reasons, stage shorts,
 SAFEGUARDS, the approved rewording, and the docs that quote changed words.
 No renderer file. Run the gate in CLAUDE.md (dead code, the affected tests

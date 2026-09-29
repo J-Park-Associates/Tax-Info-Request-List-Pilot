@@ -4507,15 +4507,15 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "320eebe315083535",
-      "lines": 88
+      "sha256": "e941ad456e89461f",
+      "lines": 90
     },
     {
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "8b3d9dcc958ff217",
-      "lines": 463
+      "sha256": "e8a9b17e48f4669e",
+      "lines": 459
     },
     {
       "id": "pilot/PLAN-ui.md",
@@ -4556,7 +4556,7 @@
       "id": "pilot/SPEC-shell.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "cda37d87905fd614",
+      "sha256": "cc2887899e1ae46b",
       "lines": 1552
     },
     {

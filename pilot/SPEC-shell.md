@@ -10,8 +10,8 @@ the SPEC session (opus, high effort) from the confirmed brief
 is a private artifact; its link is in [`HANDOFF.md`](HANDOFF.md) and its
 source is [`mockup-shell.html`](mockup-shell.html) (open it in a browser).
 
-Two things needed Jason before any build (section 15); the engine part is
-now approved (P79), and the wording is under his review:
+Two things needed Jason before any build (section 15). Both are settled:
+the engine part is approved (P79) and the wording is approved (P84).
 
 1. **The wording table** (section 11 and [`wording-shell.tsv`](wording-shell.tsv)),
    as P66 requires.
@@ -1154,7 +1154,7 @@ data (names, file names) is content and is not counted.
 
 ### 11.2 Today's strings over five words
 
-All 212, today and proposed, one row each, in [`wording-shell.tsv`](wording-shell.tsv)
+**Approved by Jason (P84).** All 212, today and proposed, one row each, in [`wording-shell.tsv`](wording-shell.tsv)
 (columns: source, key, today, verdict, proposed, words, where, note).
 Verdicts: **reword** 67, **cut** 113 (not shown in the app any more),
 **error-log** 10 (the detail goes to the error log; a short line stays),
@@ -1472,10 +1472,10 @@ emulated). It is never loaded by the app, and pytest does not run it.
 
 ## 15. Questions for Jason (before the build)
 
-Answers so far (2026-09-29): **Q1 yes** (P79), **Q2 grey it for 0.2**
-(P80), **Q3 leave it out** (P81), **Q6 confirmed** (P82). **Q4** is being
-explained further and **Q5** (the wording) is under review; both are still
-open.
+All answered (2026-09-29): **Q1 yes** (P79), **Q2 grey it for 0.2** (P80),
+**Q3 leave it out** (P81), **Q4 option A**, the detail the record has
+(P83), **Q5 wording approved** (P84), **Q6 confirmed** (P82). The build may
+start.
 
 | # | Question | Recommendation |
 |---|---|---|
