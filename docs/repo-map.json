@@ -4018,8 +4018,8 @@
       "id": "CLAUDE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "e131b283a5068c7d",
-      "lines": 309,
+      "sha256": "ef1239701d68c2a8",
+      "lines": 329,
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
     },
