@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 194,
     "edges": 1135,
-    "reused": 150
+    "reused": 145
   },
   "node_types": [
     "artifact",
@@ -4134,29 +4134,29 @@
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "5bcbef02433462f6",
-      "lines": 406
+      "sha256": "8cbcb43217d0e1d5",
+      "lines": 136
     },
     {
       "id": "pilot/PROMPTS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "434497cb70763d81",
+      "sha256": "eb53ccc23948c364",
       "lines": 153
     },
     {
       "id": "pilot/README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "a36d72933cda49c6",
-      "lines": 49
+      "sha256": "707518139543427e",
+      "lines": 54
     },
     {
       "id": "pilot/RELEASE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "0a00b2b58759ec6c",
-      "lines": 79
+      "sha256": "513cee704d16cae0",
+      "lines": 87
     },
     {
       "id": "pilot/SPEC-glass.md",
@@ -4169,8 +4169,8 @@
       "id": "pilot/SPEC.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "eff4b374e4afc381",
-      "lines": 995
+      "sha256": "87796f0ba3885450",
+      "lines": 1000
     },
     {
       "id": "pilot/Tester Guide.md",
@@ -4197,21 +4197,21 @@
       "id": "pilot/wintest/PROMPT-RERUN-3.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "5242a20345d4b271",
+      "sha256": "2997d274d9686c8b",
       "lines": 56
     },
     {
       "id": "pilot/wintest/PROMPT.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "418a0762c6454334",
+      "sha256": "b839fae296263ba4",
       "lines": 88
     },
     {
       "id": "pilot/wintest/RESULTS-TEMPLATE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "da7fe3b80aee6a5d",
+      "sha256": "d82d4ab68a5704a1",
       "lines": 57
     },
     {

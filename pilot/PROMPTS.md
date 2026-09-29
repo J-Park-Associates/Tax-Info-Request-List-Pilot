@@ -150,4 +150,4 @@ and report in plain English.
 3. Install the pilot, accept the terms, run the tour on a copy of client folders, and try the
    Schedule dialog.
 4. Uninstall, and confirm the client folders and the data folder remain.
-5. Tag the release `pilot-0.1` and send it.
+5. Tag the release `pilot-0.2` and send it.

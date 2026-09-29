@@ -1,12 +1,14 @@
-# Pilot 0.1 - release steps
+# Pilot 0.2 - release steps
 
 Everything that can be done in the cloud is done. Builds A, B and C are
-merged into `main` (merges 7a8432e, cca50a7, 96853df), each after an
-independent review and a fix round (`pilot/reviews/review-1.md`,
-`review-2.md`). What is left needs Windows, so it is Jason's, on the office
-PC. Allow about 45 minutes.
+merged into `main`, each after an independent review and a fix round
+(`pilot/reviews/review-1.md`, `review-2.md`), followed by the restart and
+after-install fixes (P46, P47) and the Windows contrast-theme support (P50,
+pull request #11). The badge in `pilot-content.js` reads **0.2**, so this is
+the 0.2 release; the earlier 0.1 was only ever a test build. What is left
+needs Windows, so it is Jason's, on the office PC. Allow about 45 minutes.
 
-## What is in 0.1
+## What is in 0.2
 
 - **Its own names on the PC:** program *Tax Document Tracker Pilot*, data
   folder `%LOCALAPPDATA%\tax-document-tracker-pilot`, scheduled task
@@ -16,6 +18,12 @@ PC. Allow about 45 minutes.
   often - saved per computer and used everywhere the schedule is registered.
 - **Installer:** per user, no admin rights, Start-menu shortcut; uninstall
   removes the program and its scheduled task only.
+- **Restart and one-time-step fixes:** terms and "tour seen" survive a quick
+  restart (P46); one after-install run at a time (P47).
+- **Windows contrast themes:** buttons, cards, dialogs and status chips keep a
+  visible edge, and focus outlines use the system highlight colour, when a
+  contrast theme is on (P50). Check it: Settings, Accessibility, Contrast
+  themes, then open the app.
 - **Tester Guide:** `pilot/Tester Guide.md`.
 
 ## The quick way: the Windows test kit (P28)
@@ -48,7 +56,7 @@ Use a Windows account that does not run the firm's real schedule, and a
    anything fails on the office PC, stop and hand it to the orchestrator.
 4. **Build:** double-click `pilot\Build Pilot Installer.bat`. It refuses an
    uncommitted tree, builds the app, compiles the installer, and prints its
-   path (`build-portable\installer\Tax-Document-Tracker-Pilot-Setup-0.1.exe`)
+   path (`build-portable\installer\Tax-Document-Tracker-Pilot-Setup-0.2.exe`)
    and SHA-256. Keep that hash.
 5. **Install and try it** (the checklist testers will follow):
    - SmartScreen warns (unsigned): *More info* -> *Run anyway*.
@@ -61,12 +69,12 @@ Use a Windows account that does not run the firm's real schedule, and a
    - **Schedule** button: turn it off -> the task disappears from Task
      Scheduler; turn it on at a new time -> the task shows that time; restart
      the app -> the choice is kept.
-   - The header shows **Pilot edition 0.1**; the Tour button replays the tour.
+   - The header shows **Pilot edition 0.2**; the Tour button replays the tour.
 6. **Uninstall** (Settings -> Apps -> Tax Document Tracker Pilot). Check: the
    scheduled task is gone; the clients folder copy, `settings.json` beside
    where the program was, and `%LOCALAPPDATA%\tax-document-tracker-pilot`
    are still there.
-7. **Tag and send:** `git tag pilot-0.1 && git push origin pilot-0.1` (never a
+7. **Tag and send:** `git tag pilot-0.2 && git push origin pilot-0.2` (never a
    `v...` tag). Send testers the installer, its SHA-256 and
    `pilot/Tester Guide.md`. Problems come back to admin@jparkassociates.com.
 

@@ -1,4 +1,4 @@
-# Pilot 0.1 Windows check - prompt for Claude Code on the test PC
+# Pilot 0.2 Windows check - prompt for Claude Code on the test PC
 
 Before you start, on the Windows test PC:
 
@@ -12,7 +12,7 @@ Before you start, on the Windows test PC:
    in the box below.
 
 ```
-You are running the Windows check for Tax Document Tracker Pilot 0.1 on this computer, for Jason
+You are running the Windows check for Tax Document Tracker Pilot 0.2 on this computer, for Jason
 Park (a CPA, not a programmer - report in plain English). Follow these rules the whole time:
 
 SAFETY - never break these:
@@ -44,7 +44,7 @@ SAFETY - never break these:
    use. If you have no computer use, do not skip this part: tell Jason exactly what to click and
    what to look for, one step at a time, and record his answers. Take a screenshot at each step into %USERPROFILE%\PilotTest\results\screens. If
    Windows SmartScreen appears, choose "More info" then "Run anyway". Check, in order:
-   a. The header shows the badge "Pilot edition 0.1".
+   a. The header shows the badge "Pilot edition 0.2".
    b. The terms screen appears. Press Escape: it must stay. "I agree. Continue." must be greyed
       out until the checkbox is ticked. Tick it, press "I agree. Continue.": the tour starts.
    c. Walk all 11 tour steps with Next. Each either highlights a part of the screen or shows a
