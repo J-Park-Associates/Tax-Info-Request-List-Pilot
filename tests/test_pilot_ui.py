@@ -147,3 +147,10 @@ def test_the_structure_pass_adds_no_remote_or_forbidden_thing():
 def test_the_tour_leads_with_next():
     js = read("tour.js")
     assert re.search(r'next\.classList\.add\("btn-primary"\)', js)
+
+
+def test_cards_never_shrink_inside_the_scrolling_column():
+    """P55: without it .card { overflow: hidden } collapses every card to a
+    sliver when notices fill the window, instead of .main scrolling."""
+    rules = {sel.strip(): dict(declarations(body)) for _m, sel, body in blocks(read(CSS_NAME))}
+    assert rules[".main > *"]["flex-shrink"] == "0"

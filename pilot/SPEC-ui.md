@@ -286,6 +286,10 @@ Sort & Scan, Stop.
 - `.card`: 1px `--border`, `--radius`, no shadow.
 - `.card-head`: `padding: var(--sp-3) var(--sp-4)`, `align-items: center`.
   `.summary` caption, `--subtle`.
+- `.main > * { flex-shrink: 0 }`: a card never shrinks inside the scrolling
+  column. Without it, `.card { overflow: hidden }` lets every card collapse to
+  a sliver when notices fill the window (found by the harness, present before
+  this build; P55).
 - Card bodies whose `style.css` inset is 18px (`0 18px 14px` and the like)
   move to `--sp-4` (16px) on both sides and `--sp-4` at the bottom.
 

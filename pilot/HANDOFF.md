@@ -1,5 +1,104 @@
 # Pilot handoff
 
+## Build E, the structure pass (2026-09-29, built; branch `claude/keen-keller-vx7xxj`, not pushed)
+
+Built exactly [`SPEC-ui.md`](SPEC-ui.md) (P51-P55): one new file,
+`app/renderer/pilot-ui.css` (tokens, type ramp, one button shape in four
+importances and two sizes, command bar, surfaces, inputs, dialogs, a
+`forced-colors` block last), loaded between `style.css` and `pilot-style.css`.
+`style.css`, `app.js`, `main.js`, `preload.js` and `tracker/` are untouched.
+Other edits: one link line in `index.html`, `next.classList.add("btn-primary")`
+in `tour.js`, `pilot-style.css` now written in the tokens (no literal colour,
+size or step left), a `pilot-ui.css` node and `loads` edge in the curated map,
+`tests/test_pilot_ui.py` (9 tests). The SPEC author added P55 mid-build
+(`.main > * { flex-shrink: 0 }`, a bug of 0.1 that let every card collapse to a
+sliver when notices filled the window); it is in SPEC 7.1, `DECISIONS.md` and a
+test.
+
+Commits (each `[skip ci]`, map refreshed in each): step 1 tokens and type,
+step 2 buttons and the tour's Next, step 3 top bar and command bar, step 4
+surfaces/inputs/rows/dialogs, step 5 `pilot-style.css`, step 6 rendered-check
+fixes, P55, screenshots and this entry.
+
+**Open question for Jason (SPEC 5.7).** A Needs review row can show two
+primaries, **File it** and, in its own block, **File it under {label}** (a deck
+card likewise). Both stay primary; the second block is set apart with a tinted
+box so each primary leads its own block. Which answer should lead is a product
+decision.
+
+**Deviations from the SPEC, and why.**
+
+- `ul.review > li` is `padding: var(--sp-3) 0`, not `sp-3 sp-4`: the list is
+  already inset 16px by the card body, so 16px more would push rows in from the
+  card head.
+- `.pilot-tour-card h3` (the What it does / Why it's safe labels) is a sentence-
+  case caption in `--subtle` (SPEC 4's caption rule), not a dialog-sized title
+  as SPEC 4's last line reads for it; the tour's step title (`h2`) got the title
+  size. The stage chips in the tour card pad `0 var(--sp-1)` so five fit the
+  400px card.
+- Rules the SPEC does not name, added because the rendered check showed a fault
+  (all on the grid and in tokens): `.rem-stage .rem-stage-n { opacity: 1 }` (the
+  75% fade put the count at 3.5:1); `.editor-actions .btn { align-self: center }`
+  (a stretched flex row made two 24px buttons 28 and 32px tall);
+  `.editor-actions { gap }` and `.household-return { display: flex; gap }` (small
+  buttons and the "not drafted yet" note touched); `.form-chosen` wraps and
+  `.wiz-back`/`.chosen-badge` never wrap (labels broke onto two lines);
+  `.deck-card .c-open-copy { justify-self: start }` (Open stretched across the
+  card, as it did in 0.1); `.editor-table` first column has no left padding (it
+  lines up with the text above); `.where-it-waits { grid-column: 1 / -1 }`.
+- The wizard's per-person Remove has no hook class; `.person .editor-actions
+  .btn` matches it and nothing else, so it is danger (SPEC 5.5 satisfied).
+- Not changed, SPEC silent: `.rem-stage:disabled` still fades (`opacity: 0.55`
+  in `style.css`); a stage label in the Reminder card ("Response Requested;
+  Deadline Approaching") still wraps to two lines at 1366px, as in 0.1 (it is a
+  `.rem-stage`, not a `.btn`).
+- `tests/test_pilot.py` needed no change (no test pins the stylesheet list).
+
+**Rendered checks** (Chromium 1194, the harness page and stub, made-up names
+only; scripts in the session scratchpad, not the repo:
+`scratchpad/sweep/sweep.mjs`). Segoe UI is not on this machine, so text fell
+back to a wider sans: wrap findings are the pessimistic case.
+
+- 12.1 screenshots: 13 before (made from the pre-build commit `b8ad769`) and 13
+  after, in `pilot/reviews/ui-screens/before-<scenario>.png` and
+  `after-<scenario>.png`: main at 1366x860 and 1100x760 (full and `-viewport`),
+  review-cards, setup, editor, wizard, wizard-form, wizard-requests, schedule,
+  terms, tour. All 26 were looked at. After the P55 fix the `-viewport` shots
+  show whole cards with the page scrolling.
+- 12.2 sweep, 11 scenarios (dialogs and the tour swept inside their own
+  surface): 1,927 visible elements, 1,121 with text, 100 `.btn` and 71
+  `.btn-small`. **After the fixes above: 0 findings**: every `.btn` 32px and
+  every `.btn-small` 24px tall, every text size 12/14/16/20px, every weight
+  400/600, every text colour 4.5:1 or better against its effective background
+  (disabled excepted). The first run found 4 (two `.rem-stage-n` at 3.5:1;
+  `.ed-fold-all` 28px and `#ed-rename-btn` 32px), all fixed.
+- 12.3 toolbar at 1100px: 14 children on 3 visual rows, none clipped, none
+  overlapping, no horizontal scroll; `#btn-scan` is the only filled button.
+- 12.4 `forced-colors: active` and `prefers-reduced-motion: reduce`: 33 buttons,
+  0 without a border, selected control 2px `Highlight`, focus ring solid 2px
+  (`Highlight`), 0 running animations, every button's transition `0s`. In the
+  normal theme the first Tab lands on the engagement picker with a 2px blue
+  ring. A disabled button was set by hand and checked: `#94a3b8` on
+  `#f1f5f9`, opacity 1, the subtle one transparent.
+- 12.5: no console or page error in any scenario.
+
+**Gate.** `ruff` clean; `repo_map.py update` then `check` current (197 nodes);
+`test_pilot_ui`, `test_pilot`, `test_tour`, `test_single_source`,
+`test_layers`, `test_repo_map`, `test_api` pass under Python 3.11.15 and 3.13.12
+(9, 15, 8, 167, 29, 80 and 368 tests). Two things about the run, not the code:
+`test_single_source.py` exits 1 with all 167 passed, on this machine only,
+because the decision 185 tripwire sees `main.js` (run by the one-window test)
+start the checkout's real `tracker.api` when a `.venv` sits in the checkout;
+the pre-build commit does the same with a `.venv` beside it, so it is not from
+this build. `test_api.py` under both Pythons at once collides on
+`/tmp/Real root`; run the two interpreters one after the other.
+
+**Left.** Review by a separate Opus session that did not build it. Jason's look
+on Windows 11 at Segoe UI Variable's real rendering (widths differ from the
+fallback used here, so re-check the wizard's Change-form row, the tour's stage
+chips and the reminder stage labels), and the hands-on contrast-theme check
+from the section below.
+
 ## Done
 
 - **Job 0 (2026-09-28):** pilot started from the original's `main` at `a2d6af4`

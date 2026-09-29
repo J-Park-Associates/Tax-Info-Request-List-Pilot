@@ -197,6 +197,9 @@ table.requests, .editor-table, .summary, .chip, .rem-stage-n,
 }
 .btn-small svg { width: 12px; height: 12px; }
 .editor-table .ed-unlearn { padding: 0 var(--sp-2); }
+/* In a row that stretches its children (the editor's action rows) a button
+   keeps its own height instead of taking its neighbour's. */
+.editor-actions .btn { align-self: center; }
 
 /* Primary: the one main action of a region. */
 .btn-primary {
@@ -368,6 +371,12 @@ table.requests, .editor-table, .summary, .chip, .rem-stage-n,
 
 /* ── Surfaces: page, cards, rows, tables (P52, section 7) ────────────────── */
 
+/* A card never shrinks inside the scrolling column (P55). style.css has
+   .card { overflow: hidden } in a flex column, which lets every card, and the
+   toolbar's second row, collapse to a sliver when notices fill the window
+   instead of .main scrolling. Present in 0.1; fixed here, not in style.css. */
+.main > * { flex-shrink: 0; }
+
 .card {
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -388,6 +397,19 @@ table.requests, .editor-table, .summary, .chip, .rem-stage-n,
 .dismissed { padding: 0 var(--sp-4) var(--sp-4); }
 .dismissed .review { padding: 0; }
 .household-returns { gap: var(--sp-2); }
+.household-return { display: flex; align-items: center; gap: var(--sp-2); }
+.editor-actions { gap: var(--sp-2); }
+
+/* The chosen form's header row: labels never wrap inside a pill or a link;
+   the row wraps between items instead. */
+.form-chosen { flex-wrap: wrap; row-gap: var(--sp-2); }
+.wiz-back, .chosen-badge { white-space: nowrap; }
+.chosen-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--ctl-h-sm);
+  padding: 0 var(--sp-3);
+}
 
 table.requests th {
   padding: var(--sp-2) var(--sp-3);
@@ -432,12 +454,17 @@ ul.review > li.r-bucket { padding-top: var(--sp-4); }
   border-radius: var(--radius);
 }
 .where-it-waits .r-reasons { margin-bottom: var(--sp-2); }
+/* The card's Open button is a grid item with no area of its own: keep it its
+   own width instead of stretching across the card. */
+.deck-card .c-open-copy { justify-self: start; }
 
 .editor-table th {
   padding: var(--sp-2);
   border-bottom: 1px solid var(--border);
 }
 .editor-table td { padding: var(--sp-1) var(--sp-2); }
+/* The first column lines up with the text above the table. */
+.editor-table th:first-child, .editor-table td:first-child { padding-left: 0; }
 
 /* ── Inputs, selects, textareas (section 7.3) ────────────────────────────
    Every field in the page or a dialog: 32px, 4px corners, the input edge
@@ -531,6 +558,8 @@ input[type="checkbox"], input[type="radio"],
   transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease);
 }
 .rem-edited { padding: var(--sp-2) var(--sp-3); }
+/* The stage's count was drawn at 75% opacity, which puts it under 4.5:1. */
+.rem-stage .rem-stage-n { opacity: 1; }
 
 /* ── Assurances footer (section 7.7) ────────────────────────────────────── */
 
