@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 286,
     "edges": 1138,
-    "reused": 238
+    "reused": 241
   },
   "node_types": [
     "artifact",
@@ -262,8 +262,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "ce2697d9c16932f2",
-      "lines": 5521,
+      "sha256": "a704e0fee150121a",
+      "lines": 5531,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_FOLDER_NAME_HELP",
@@ -4730,8 +4730,8 @@
       "id": "pilot/handoffs/shell-S8a-rebuild-1.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "965131fa9e04f053",
-      "lines": 78
+      "sha256": "a80d133defe27a51",
+      "lines": 96
     },
     {
       "id": "pilot/handoffs/shell-S8a-review-1.md",
@@ -5483,8 +5483,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a63a195fdd617d42",
-      "lines": 8711,
+      "sha256": "40b41009f85ea2fd",
+      "lines": 8722,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -5771,6 +5771,7 @@
         "test_the_moved_card_offers_mark_missing_on_a_row_whose_copy_and_original_are_both_gone",
         "test_the_new_client_name_rule_lives_in_python_and_uses_the_form_label",
         "test_the_new_issuer_row_asks_for_the_returns_year_not_the_catalogs",
+        "test_the_notices_carry_a_short_word_for_every_kind_the_pages_show",
         "test_the_pilot_record_is_no_client_record",
         "test_the_pilot_record_keeps_terms_and_tour_in_the_data_home",
         "test_the_pilot_record_refuses_anything_but_a_version_or_tour_seen",
@@ -8624,8 +8625,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "0d5f8bbb3a5043fd",
-      "lines": 3970,
+      "sha256": "b4d45bb14bb34c1e",
+      "lines": 3972,
       "exports": [
         "AFTER_WHAT",
         "CONSOLE_EXEMPT",
