@@ -36,6 +36,17 @@ Source of each decision: [`shell-rulings.md`](shell-rulings.md) (rows 1-13) and 
 | Clickable mock-up (artifact) | **Current** through ruling 13 | - |
 | `HANDOFF.md`, `DECISIONS.md` | do not yet log P67+ or the rulings as rows | S6 (rows from P85) |
 
+## Defaults taken by the orchestrator (2026-09-29) pending Jason - the SPEC sync raised six questions
+
+| # | Question | Default used for now | Why |
+|---|---|---|---|
+| 1 | Approve the Overview word "Could Not Be Read" (a return whose record cannot be read) | Keep | Follows the approved "Reminder Could Not Be Read"; five words or fewer |
+| 2 | A cut name that is also a link: which tooltip wins? | The link's tooltip ("Show in File Explorer" / "Navigate to ...") wins; the full name is on the page heading and the side sheet title | Keeps one tooltip per element; the name is never lost |
+| 3 | How does a keyboard user follow a name link inside a row (Enter runs the row step)? | Right-click menu or the context key on the row: "Show in File Explorer" for file rows; Enter keeps running the row step, which for return and household rows opens the page anyway | No new keyboard model |
+| 4 | Add "Show in File Explorer" to a file row's right-click menu | Yes (the mock-up has it) | Gives question 3 its answer |
+| 5 | `triage.places.footer` (a fragment spliced into a longer reason) | Stays lower case as a fragment; listed as a Title Case exception | It is not a phrase on its own |
+| 6 | "Tracker Failed" (Title Case) vs ruling 6's "Tracker failed" | "Tracker Failed" (ruling 10 wins) | Casing rule applies to every drawn phrase |
+
 ## Still open for Jason
 
 Nothing blocks the build. The Windows check (installer, contrast themes) comes after S6.
