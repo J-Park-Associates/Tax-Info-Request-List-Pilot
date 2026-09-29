@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 261,
+    "nodes": 262,
     "edges": 1136,
-    "reused": 216
+    "reused": 217
   },
   "node_types": [
     "artifact",
@@ -4490,25 +4490,32 @@
       "role": "How the day-to-day workflow runs."
     },
     {
+      "id": "pilot/AUDIT-shell.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "b926849502fce113",
+      "lines": 208
+    },
+    {
       "id": "pilot/BRIEF-shell.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "eaacf3a12ea1eeae",
-      "lines": 178
+      "sha256": "be1ae5336fe1f72c",
+      "lines": 182
     },
     {
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "e9507883a716d621",
-      "lines": 68
+      "sha256": "2d30309e7caa1145",
+      "lines": 70
     },
     {
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "56a23965dcca8ad4",
-      "lines": 377
+      "sha256": "918ecdaab2f9765a",
+      "lines": 380
     },
     {
       "id": "pilot/PLAN-ui.md",
