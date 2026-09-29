@@ -1,10 +1,10 @@
-# Pilot 0.1 Windows check, run 3: narrow (P46, P47)
+# Pilot 0.2 Windows check, run 3: narrow (P46, P47)
 
 Only what the restart and scheduled-task fix touched (Jason's test-minimally
 preference, CLAUDE.md). Code at commit 95edfe8 or later on `main`.
 
 ```
-You are running a NARROW Windows check (run 3) for Tax Document Tracker Pilot 0.1 on this computer, for
+You are running a NARROW Windows check (run 3) for Tax Document Tracker Pilot 0.2 on this computer, for
 Jason Park (a CPA, not a programmer - report in plain English). Run 2 passed everything except two bugs,
 now fixed on main: (1) after a restart the terms and tour came back; (2) the pilot's scheduled task
 vanished before the uninstall. Test ONLY what that fix touched. Do not rerun the whole test suite, the
