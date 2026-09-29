@@ -63,6 +63,7 @@ return folder *is* the engagement folder. "Household" is the new word.
 
 from __future__ import annotations
 
+import functools
 import ntpath
 import os
 import posixpath
@@ -121,8 +122,22 @@ ENGAGEMENT_LABEL_PATTERN = "{household} {year} {return_name}"
 #: What Windows will open a path of. Creation refuses a return whose
 #: deepest working copy would pass it, naming the length (decision 125) -
 #: a folder made today that cannot hold a filed document in February is a
-#: failure at a filing deadline.
+#: failure at a filing deadline. The limit a measure is made against is
+#: :func:`path_limit`, which is this figure everywhere but a Windows that
+#: refuses long paths (pilot decision P29).
 MAX_PATH_LENGTH = 260
+#: What Windows keeps back from a folder's path for the 8.3 name of a file
+#: inside it, where long paths are off: ``CreateDirectory`` refuses a
+#: folder of ``MAX_PATH - 12`` characters or more (pilot decision P29).
+SHORT_NAME_RESERVE = 12
+#: What a folder the tracker writes into must leave, where long paths are
+#: off, for the temporary name every write passes through beside its
+#: target (``fsio.temp_path_for``, decision 155): the separator, one
+#: character of the target's name - the least the temp is cut to - and
+#: ``.<process id>.<tag>.tmp`` at its longest, a ten-digit process id
+#: (``fsio.TEMP_NAME``). Twenty-six. The longest, not this process's own,
+#: so a return's room is the same number at every run (pilot decision P29).
+TEMP_NAME_RESERVE = len("/x." + "9" * 10 + "." + "f" * 8 + ".tmp")
 #: What such a refusal says.
 PATH_TOO_LONG = ("the deepest file the tracker would write under {folder} would be {length} "
                  "characters, past the {limit} Windows allows; shorten the household or the return name")
@@ -963,7 +978,7 @@ def deepest_path_length(return_dir: Path | str, subpaths: Iterable[str]) -> int:
     """The longest path the tracker would write under ``return_dir``, in
     characters, over ``subpaths``.
 
-    What creation measures against :data:`MAX_PATH_LENGTH` before a folder
+    What creation measures against :func:`path_limit` before a folder
     is made: the deepest working copy a request list implies. ``0`` for no
     subpaths at all, because a return with no request has nothing to write.
     """
@@ -971,12 +986,87 @@ def deepest_path_length(return_dir: Path | str, subpaths: Iterable[str]) -> int:
     return max(lengths, default=0)
 
 
+@functools.cache
+def _long_paths_on() -> bool:
+    """Whether Windows lets this process past ``MAX_PATH``: the answer of
+    ``RtlAreLongPathsEnabled``, which is the registry's
+    ``LongPathsEnabled`` and the program's own manifest together.
+
+    Asked of ntdll rather than read from the registry because the registry
+    alone is half the answer: a program not built long-path aware is held
+    to ``MAX_PATH`` whatever the registry says, and the packaged app and
+    ``python.exe`` are different programs. Windows reads the setting once
+    per process, so it is asked once and kept. Anything that goes wrong
+    asking - no such function before Windows 10 1607, which had no long
+    paths to give - reads as off, the stricter answer: a limit measured
+    too short cuts a name a character early, one measured too long is the
+    ``WinError 206`` this exists to prevent.
+    """
+    try:
+        import ctypes
+
+        ask = ctypes.WinDLL("ntdll").RtlAreLongPathsEnabled
+        ask.argtypes = []
+        ask.restype = ctypes.c_ubyte          # a BOOLEAN: the low byte only
+        return bool(ask())
+    except (OSError, AttributeError):
+        return False
+
+
+def short_paths() -> bool:
+    """True on a Windows that holds this process to ``MAX_PATH`` - long
+    paths off, the Windows default (pilot decision P29).
+
+    Read when called, so a test stands in for either setting on any
+    machine by replacing this function."""
+    return os.name == "nt" and not _long_paths_on()
+
+
+def path_limit() -> int:
+    """The longest path, in characters, the tracker may write a file at:
+    the one limit every measure of room is made against (decision 131).
+
+    :data:`MAX_PATH_LENGTH` - except where :func:`short_paths` says long
+    paths are off. There ``MAX_PATH`` counts the terminating null, so a
+    file path of 260 characters is refused (``WinError 206``) and 259 is
+    the longest Windows opens. Pilot decision P29 found the 260 the room
+    rule allowed failing on a default Windows as "could not be filed
+    (FileNotFoundError)" instead of the room's own sentence. The figure is
+    not lowered everywhere: Linux, macOS and a long-path Windows write a
+    path of 260 characters, and every return measured there keeps the
+    room it had.
+    """
+    return MAX_PATH_LENGTH - 1 if short_paths() else MAX_PATH_LENGTH
+
+
+def folder_need(folder: Path | str) -> int:
+    """What a folder the tracker makes and writes into costs against
+    :func:`path_limit`: its length and the larger of
+    :data:`SHORT_NAME_RESERVE` and :data:`TEMP_NAME_RESERVE` where long
+    paths are off, else ``0`` - a folder is then never deeper than the
+    files it holds.
+
+    Windows refuses to *make* a folder of 248 characters or more with long
+    paths off although it opens a file of 259, so a return whose review
+    folder is 249 characters passed the room rule (its floor, a review
+    copy, is 260) and then failed its scaffold with ``WinError 206``; and a
+    review copy that fits is written through a temp up to twenty-four
+    characters longer, which Windows refused as well (pilot decision P29).
+    Measured this way a folder fits exactly when Windows will make it and
+    every write into it, its temp included."""
+    if not short_paths():
+        return 0
+    return len(str(folder)) + max(SHORT_NAME_RESERVE, TEMP_NAME_RESERVE)
+
+
 def limit_for(extension: str) -> int:
     """The longest path a working copy with ``extension`` may have: the
-    shortest of Windows's limit and any reader's (:data:`OPEN_LIMITS`).
+    shortest of Windows's limit (:func:`path_limit`) and any reader's
+    (:data:`OPEN_LIMITS`).
 
     ``xlsx``, ``.XLSX`` and ``.xlsx`` are one extension."""
-    return min(MAX_PATH_LENGTH, OPEN_LIMITS.get(extension.lower().lstrip("."), MAX_PATH_LENGTH))
+    limit = path_limit()
+    return min(limit, OPEN_LIMITS.get(extension.lower().lstrip("."), limit))
 
 
 # ------------------------------------------------ a return, after a move ----

@@ -778,6 +778,17 @@ reader's limit counts too: Excel opens a workbook from a path of at most
 the owner's ruling of 2026-09-23); creation still refuses only past
 Windows's own limit.
 
+On a Windows PC with long paths off - the Windows default
+(`LongPathsEnabled` = 0) - that limit is one character shorter, 259,
+because Windows counts the character that ends a path, and a folder costs
+more than its own length: Windows will not make a folder of 248
+characters or more, and every file the tracker writes passes through a
+temporary name up to twenty-six characters long beside it. So there each
+return's room is measured with its review folder counted that way, and a
+return that does not fit says so in the room's own sentences - never as
+"could not be filed (FileNotFoundError)" (pilot decision P29). The
+tracker asks Windows which applies when it starts; nothing needs setting.
+
 A person has exactly three levers, and every sentence the tracker says
 about room names one of them: **a shorter clients root** (a drive letter
 over a profile path, the Shared Drive's own folder over one deep inside

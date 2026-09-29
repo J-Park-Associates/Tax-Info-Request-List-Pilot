@@ -154,7 +154,6 @@ from tracker.layout import (
     CLIENTS_TREE,
     ENGAGEMENT_LABEL_PATTERN,
     INBOX_DIR_NAME,
-    MAX_PATH_LENGTH,
     PATH_TOO_LONG,
     PRIVATE_TREE,
     RETURN_NAME_PATTERN,
@@ -2927,10 +2926,10 @@ def _refuse_a_changed_row_past_the_limit(engagement: Path, items: list) -> None:
                or any(getattr(item, name) != getattr(stored[item.identifier], name)
                       for name in _PATH_FIELDS)
                or (item.asked and not stored[item.identifier].asked)]
-    need = room_for(engagement, changed).need
-    if need > MAX_PATH_LENGTH:
-        raise ManifestError(PATH_TOO_LONG.format(folder=engagement, length=need,
-                                                 limit=MAX_PATH_LENGTH))
+    room = room_for(engagement, changed)
+    if room.need > room.limit:
+        raise ManifestError(PATH_TOO_LONG.format(folder=engagement, length=room.need,
+                                                 limit=room.limit))
 
 
 def _cmd_unlearn(argv: list[str]) -> dict:

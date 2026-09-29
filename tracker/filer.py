@@ -217,6 +217,7 @@ from tracker.layout import (
     MAX_PATH_LENGTH,
     PATH_TOO_LONG,
     deepest_path_length,
+    folder_need,
     household_name_of,
     household_of,
     inbox_of,
@@ -228,6 +229,7 @@ from tracker.layout import (
     opened_dir_of,
     originals_of,
     parts_below,
+    path_limit,
     place_of,
     place_problem,
     private_tree_of,
@@ -763,7 +765,14 @@ class Room:
     applies to it - its own extension's (``layout.limit_for``), so a
     workbook measured against the 218 characters a reader allows is short
     where a PDF at the same depth is not; with no reader's limit in play it
-    is ``need - limit``. ``limit`` is Windows's own.
+    is ``need - limit``. ``limit`` is Windows's own (``layout.path_limit``).
+
+    Where long paths are off, ``floor`` also holds the review folder as
+    Windows measures a folder it makes (``layout.folder_need``): the pass
+    makes that folder, and one Windows will not make is a return with no
+    room for a review copy, said with the room's sentence rather than
+    ``WinError 206`` (pilot decision P29). ``need`` stays the rows' own
+    figure, so the editor's save still measures only the rows it changes.
     """
 
     need: int
@@ -824,7 +833,8 @@ def room_for(engagement_dir: Path, items: Sequence[RequestItem]) -> Room:
     longest_of_all = longest_of_all or max(DEFAULT_EXTENSIONS, key=len)
     review = prepared / REVIEW_DIR_NAME / numbered("x", _ROOM_COUNTER, f".{longest_of_all}")
     return Room(need=deepest_path_length(engagement_dir, canonical), least=least,
-                floor=len(str(review)), parks=parks, short=max(0, short))
+                floor=max(len(str(review)), folder_need(review.parent)), parks=parks,
+                short=max(0, short), limit=path_limit())
 
 
 def refuse_a_path_past_the_limit(engagement_dir: Path, items: Sequence[RequestItem]) -> None:
@@ -848,11 +858,19 @@ def refuse_a_path_past_the_limit(engagement_dir: Path, items: Sequence[RequestIt
     layer 5 - and because the file it measures is the one this module
     writes. Decision 131 gave the editor's save the same standard for the
     rows it changes, and measured every later write where it happens.
+
+    Where long paths are off the review folder is measured too, as Windows
+    measures a folder it makes (``layout.folder_need``): the scaffold makes
+    it at creation, and a return whose review folder Windows will not make
+    is refused here with this sentence, not by the scaffold's
+    ``WinError 206`` (pilot decision P29). Elsewhere that adds nothing.
     """
-    need = room_for(engagement_dir, items).need
-    if need > MAX_PATH_LENGTH:
+    limit = path_limit()
+    need = max(room_for(engagement_dir, items).need,
+               folder_need(Path(engagement_dir) / PREPARED_DIR_NAME / REVIEW_DIR_NAME))
+    if need > limit:
         raise ManifestError(PATH_TOO_LONG.format(
-            folder=engagement_dir, length=need, limit=MAX_PATH_LENGTH))
+            folder=engagement_dir, length=need, limit=limit))
 
 
 def copies_of(item: RequestItem, items: Sequence[RequestItem], prepared_dir: Path) -> list[Path]:
@@ -997,7 +1015,7 @@ def _copy_whole(
             # report names (decision 190).
             _mark_for_review(temp, name=target.name)
 
-    copy_atomically(source, target, prove=prove, limit=MAX_PATH_LENGTH)
+    copy_atomically(source, target, prove=prove, limit=path_limit())
     if cache is not None:
         cache.remember_digest(target, expect)
 
@@ -5645,9 +5663,9 @@ def _review_copy_path(review_dir: Path, name: str) -> tuple[Path, str]:
     try:
         return _unique_path(review_dir, name, room=limit - folder), ""
     except NoRoom:
-        if limit >= MAX_PATH_LENGTH:
+        if limit >= path_limit():
             raise
-    return _unique_path(review_dir, name, room=MAX_PATH_LENGTH - folder), REVIEW_COPY_PAST_READER
+    return _unique_path(review_dir, name, room=path_limit() - folder), REVIEW_COPY_PAST_READER
 
 
 def _park_it(
@@ -7834,9 +7852,9 @@ def rename_request(
                     raise FilingError(RENAME_COPY_CHANGED.format(location=was, old=old))
                 if target.exists() or now.casefold() in destinations:
                     raise FilingError(RENAME_COPY_TAKEN.format(location=now))
-                if len(str(target)) > MAX_PATH_LENGTH:
+                if len(str(target)) > path_limit():
                     raise FilingError(RENAME_PATH_TOO_LONG.format(
-                        location=now, length=len(str(target)), limit=MAX_PATH_LENGTH))
+                        location=now, length=len(str(target)), limit=path_limit()))
                 destinations.add(now.casefold())
                 ops.append(_op(engagement_dir, ledger.OP_MOVE, source, target, entry.digest))
             now_locations = [mapped.get(location, location) for location in locations]
