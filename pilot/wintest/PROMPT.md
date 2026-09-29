@@ -63,9 +63,11 @@ SAFETY - never break these:
       - it must report that the task does not exist. Turn it On, first run 06:30, every 4 hours,
       Save. Run
         schtasks /Query /TN "Tax Document Tracker Pilot" /XML
-      - the XML must show a start time of 06:30 and an interval of PT240M.
+      - the XML must show a start time of 06:30 and an interval of PT240M or PT4H (the same
+      four hours; Windows stores the shortest form).
    h. Close the app and open it again: the Schedule dialog still shows On, 06:30, every 4 hours;
-      the terms and the tour do not appear again.
+      the terms and the tour do not appear again. Close it, open it again within 2 seconds, and
+      check the same. Then run the schtasks /Query again: the task must still be there.
 
 4. UNINSTALL. Close the app, then run:
      powershell -ExecutionPolicy Bypass -File pilot\wintest\uninstall_checks.ps1

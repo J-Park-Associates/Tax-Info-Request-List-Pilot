@@ -3,23 +3,30 @@
 //
 // Why it is built this way: the pilot adds to the page and changes nothing
 // the app already does (P7, P10). So this file calls no app.js function,
-// joins none of its dialogs, opens no channel to the tracker, and builds
-// every element from text - the wording itself lives in pilot-content.js,
-// the one file Jason edits (P8).
+// joins none of its dialogs, and builds every element from text - the
+// wording itself lives in pilot-content.js, the one file Jason edits (P8).
 //
-// The terms are the safe direction by design: acceptance lives in the
-// window's local storage (P9), and anything that goes wrong reading it -
-// storage missing, blocked or cleared - shows the terms again rather than
-// letting a tester in who never saw them. While they are open nothing else
-// can be reached: no Escape, no click outside, and Tab stays in the card.
+// The terms are the safe direction by design, and acceptance is kept where
+// a restart finds it (P46). The durable record is the tracker's own, in its
+// data folder, through the one channel the page already has (the API's
+// pilot-record command); the window's local storage is only its cache. The
+// pilot 0.1 Windows check showed why: a restart made while the last window
+// was still closing could not open that storage, read nothing, and showed
+// the terms again. So a cache that says nothing is never the answer on its
+// own - the durable record is asked, and only when it cannot say either do
+// the terms stay. While they are open nothing else can be reached: no
+// Escape, no click outside, and Tab stays in the card.
 
-(function pilotEdition() {
+// Acceptance and "tour seen", kept in the durable record and cached in the
+// window's storage. The one thing tour.js uses from this file.
+const PilotRecord = (() => {
   const TERMS_KEY = "pilot.terms.accepted";
   const TOUR_KEY = "pilot.tour.seen";
-
-  function fill(text) {
-    return String(text).split("{email}").join(PILOT.contact.email);
-  }
+  // The API command, which the shell allows only once the page's first
+  // call has told it which commands exist (vocab.commands).
+  const COMMAND = "pilot-record";
+  const READY_WAIT_MS = 120000;
+  const READY_LOOK_MS = 200;
 
   function readStored(key) {
     try {
@@ -33,8 +40,68 @@
     try {
       window.localStorage.setItem(key, value);
     } catch (err) {
-      // Not remembered: the terms show again next launch, the safe direction.
+      // Not cached: the durable record still holds it.
     }
+  }
+
+  // Whether the shell will run the command yet: app.js's first call has
+  // answered and the API lists it. False when that never comes.
+  function ready() {
+    return new Promise((resolve) => {
+      const began = Date.now();
+      (function look() {
+        if (typeof vocab === "object" && vocab && Array.isArray(vocab.commands)) {
+          resolve(vocab.commands.indexOf(COMMAND) !== -1);
+        } else if (Date.now() - began > READY_WAIT_MS) {
+          resolve(false);
+        } else {
+          window.setTimeout(look, READY_LOOK_MS);
+        }
+      })();
+    });
+  }
+
+  // The durable record: {terms, tour_seen}, or null when it cannot be had.
+  // One call at a time: two writes sent together would each read, change and
+  // write the file, and one would lose the other's field (P46 review, 1).
+  let queue = Promise.resolve(null);
+  function ask(payload) {
+    const next = queue.then(() => askNow(payload));
+    queue = next.catch(() => null);
+    return next;
+  }
+  function askNow(payload) {
+    return ready()
+      .then((ok) => (ok ? window.tracker.call([COMMAND], payload) : null))
+      .then((reply) => {
+        if (reply && !reply.error) return reply;
+        if (reply) window.tracker.logError(`pilot record: ${reply.error}`);
+        return null;
+      }, () => null);
+  }
+
+  return {
+    termsCached: (version) => readStored(TERMS_KEY) === version,
+    tourCached: () => readStored(TOUR_KEY) === "1",
+    read: () => ask({}).then((record) => {
+      if (record && record.tour_seen) writeStored(TOUR_KEY, "1");
+      return record;
+    }),
+    acceptTerms: (version) => {
+      writeStored(TERMS_KEY, version);
+      return ask({ terms: version });
+    },
+    cacheTerms: (version) => writeStored(TERMS_KEY, version),
+    tourSeen: () => {
+      writeStored(TOUR_KEY, "1");
+      return ask({ tour_seen: true });
+    },
+  };
+})();
+
+(function pilotEdition() {
+  function fill(text) {
+    return String(text).split("{email}").join(PILOT.contact.email);
   }
 
   function make(tag, className, text) {
@@ -75,7 +142,15 @@
 
   // ── Terms ──────────────────────────────────────────────────────────────
   const terms = PILOT.terms;
-  if (readStored(TERMS_KEY) === String(terms.version)) return;
+  const version = String(terms.version);
+  if (PilotRecord.termsCached(version)) {
+    // The cache has it; the durable record is brought level in the
+    // background (a tester of 0.1 accepted before it existed).
+    PilotRecord.read().then((record) => {
+      if (record && record.terms !== version) PilotRecord.acceptTerms(version);
+    });
+    return;
+  }
 
   const overlay = make("div", "pilot-terms-overlay");
   overlay.id = "pilot-terms";
@@ -146,15 +221,29 @@
     accept.disabled = !agree.checked;
   });
   quit.addEventListener("click", () => window.close());
+  function close() {
+    document.removeEventListener("keydown", holdKeys, true);
+    if (overlay.contains(document.activeElement)) document.activeElement.blur();
+    overlay.remove();
+  }
   accept.addEventListener("click", () => {
     if (!agree.checked) return;
-    writeStored(TERMS_KEY, String(terms.version));
-    document.removeEventListener("keydown", holdKeys, true);
-    overlay.remove();
-    if (readStored(TOUR_KEY) !== "1") PilotTour.start();
+    PilotRecord.acceptTerms(version);
+    close();
+    if (!PilotRecord.tourCached()) PilotTour.start();
   });
 
   document.addEventListener("keydown", holdKeys, true);
   document.body.appendChild(overlay);
   agree.focus();
+
+  // The cache said nothing, which is not an answer (P46): the durable
+  // record is asked, and when it holds this version's acceptance the terms
+  // go without a word - and the tour, seen or not, is not started. When it
+  // cannot say, the terms stay: the safe direction.
+  PilotRecord.read().then((record) => {
+    if (!record || record.terms !== version || !overlay.isConnected) return;
+    PilotRecord.cacheTerms(version);
+    close();
+  });
 })();

@@ -475,7 +475,11 @@ FIRM_WRITTEN = {"FilingError", "StaleRowError", "CopyMismatchError", "ManifestEr
                 # Pilot P16/P21: the schedule setting's refusal, a sentence
                 # the firm wrote naming the settings file, the key and the
                 # choices allowed - never a client document's words.
-                "ScheduleChoiceError"}
+                "ScheduleChoiceError",
+                # Pilot P47: the after-install step's own lock could not be
+                # had - one of its constant sentences, naming at most the
+                # lock file in the data home.
+                "_Busy"}
 
 #: Where a string becomes something a person sees: a keyword or an
 #: attribute of these names, or a call to these.

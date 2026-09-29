@@ -43,7 +43,7 @@
 | 11 | Files the rules cannot place are in Needs Review | | |
 | 12 | Status opens | | |
 | 13 | Schedule Off: `schtasks /Query /TN "Tax Document Tracker Pilot"` finds no task | | |
-| 14 | Schedule On at 06:30, every 4 hours: task XML shows 06:30 and PT240M | | |
+| 14 | Schedule On at 06:30, every 4 hours: task XML shows 06:30 and PT240M or PT4H | | |
 | 15 | After restart the Schedule dialog keeps the choice | | |
 | 16 | After restart the terms and tour do not reappear | | |
 
