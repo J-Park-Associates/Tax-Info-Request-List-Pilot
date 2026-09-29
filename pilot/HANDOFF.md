@@ -68,16 +68,70 @@
   - **Decision text to log** (the integrate session numbers it): none new;
     P21 covers this build.
 
-## Status (2026-09-28, orchestrator)
+- **Job: reviews and recommendations (2026-09-29, branch
+  `claude/vigilant-mendel-qwuzme`):** a full security review and a
+  user-experience review of 0.1 as testers receive it, then structural
+  recommendations. Four independent Opus reviewers that built nothing (S1 the
+  shell, PC and build; S2 the engine and what it writes for people; U1a the
+  tester's first hour; U1b the working week), on synthetic "Smith Family" roots
+  only; the app was driven for real (the real `app/main.js`, engine and page) in
+  headless Chromium through a harness kept in the session's scratchpad; every
+  blocking finding and three others per half were verified against the code by
+  the orchestrating session, and every `path:line` was machine-checked.
+  - Files: [`reviews/security-review.md`](reviews/security-review.md) (21
+    findings: 2 blocking, 7 should-fix, 12 nit; 24 by-design answers for
+    testers), [`reviews/ux-review.md`](reviews/ux-review.md) (53 findings: 3
+    blocking, 35 should-fix, 15 nit; 18 by-design answers; the click count to
+    the first filed document), [`RECOMMENDATIONS.md`](RECOMMENDATIONS.md) (7
+    structural recommendations, each ending in a choice of P-rows for Jason; a
+    root-cause table placing every blocking and should-fix finding once; the
+    one-offs for the fix job).
+  - **Blocking:** S-1 / U-101, the failure notice sends a tester to
+    `tracker-errors.log`, which names clients, paths and can quote a document,
+    while the Guide only says "never attach client documents"; S-101, the
+    program list misses file types Windows runs on a double-click (`.msc`,
+    `.rdp`, `.jnlp`, `.html` and others), which then get unmarked review
+    copies; U-1 / U-2, the main column is a flex column whose cards shrink
+    instead of scrolling (`app/renderer/style.css:58-66`, the same rule in
+    the original at a2d6af4), so after the first scan Needs Review is a sliver
+    and on a fresh install the setup card's save button is off-screen.
+  - Nothing was fixed; nothing under `tracker/` or `app/` changed. Not done
+    here: Windows-only behaviour (installer, SmartScreen, Task Scheduler, the
+    packaged window), the OCR engines, the OSV dependency audit (blocked by the
+    cloud proxy). The harness is not in the repository; R-3 proposes it as a
+    standing local screen check.
+  - Cloud notes for a session that rebuilds the harness: Node Playwright
+    1.56.1 is installed globally and Chromium sits in `/opt/pw-browsers`; run
+    the real `main.js` from a copy of the tracked files with a stand-in
+    `electron` module as `tests/test_single_source.py`'s `_SHELL_HARNESS` does,
+    a `.venv` symlink, and `TRACKER_STORE` / `TRACKER_DATA_HOME` pointed at a
+    short scratch root (the engine measures the deepest path against 260).
+
+## Status (2026-09-29, review session)
 
 Builds A, B and C are reviewed, fixed and merged into `main` (7a8432e,
-cca50a7, 96853df). Reviews: `pilot/reviews/review-1.md`, `review-2.md`.
+cca50a7, 96853df; reviews `pilot/reviews/review-1.md`, `review-2.md`). The
+security and user-experience reviews of that tree are in and say **0.1 must
+not go to an outside firm until the five blocking findings are fixed**; the
+work that closes them is the "Before 0.1 ships" list in
+[`RECOMMENDATIONS.md`](RECOMMENDATIONS.md).
 
 ## Waiting on Jason
 
-The Windows steps in [`RELEASE.md`](RELEASE.md): run the gate under the
-office's Python, build the installer, install and try it, uninstall, then tag
-`pilot-0.1` and send it.
+1. Read [`RECOMMENDATIONS.md`](RECOMMENDATIONS.md). For each of R-1 to R-7
+   choose one row of its decision table and number it into
+   [`DECISIONS.md`](DECISIONS.md) (P25 is still missing its row; both earlier
+   reviews cite it for the Tesseract test).
+2. Then the fix jobs, each its own SPEC -> build -> review round, in the order
+   the "Order" section gives: the pre-0.1 work that lives in the original (R-2,
+   the R-3 stylesheet rule, the R-6 date check) goes up as one proposed change
+   there, then the upstream merge here, then R-1 and R-4 in the pilot.
+3. The Windows steps in [`RELEASE.md`](RELEASE.md) follow the pre-0.1 fixes,
+   not before: run the gate under the office's Python, build the installer,
+   install and try it, uninstall, then tag `pilot-0.1` and send it.
+
+The next session reads `RECOMMENDATIONS.md`, the two reviews, the chosen
+P-rows and this entry; it does not need this session's transcript.
 
 ## Environment notes for cloud sessions
 
