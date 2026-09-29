@@ -105,6 +105,16 @@ effort) for the tester feedback below. Two things a SPEC must respect:
 `app.js`, `preload.js` and `tracker/` change only where the SPEC names the lines,
 and every new control takes its words from the API's vocabulary.
 
+**Planned (2026-09-29, branch `claude/stoic-curie-1azsk7`):** Jason approved
+[`PLAN-ui.md`](PLAN-ui.md), a simpler screen that answers feedback 1-5 below:
+a sidebar tree of clients, tabs for one return, three top-bar buttons and a
+More menu, a custom tooltip, a start-up safety badge, and every sentence in
+plain English. His answers are in its Context table. The SPEC session reads
+that file and this one; it writes `pilot/SPEC-ui.md`, decision P51 (build in
+the pilot now, port to the main tracker later; supersedes P10 for this work)
+and the other P-rows the plan names, then shows Jason a mock-up with made-up
+names and the wording table before any build.
+
 ## Tester feedback for 0.2 (Jason, Windows re-run, 2026-09-29)
 
 Raised while clicking through 0.1. Each needs a SPEC before any build; 2 and 3
