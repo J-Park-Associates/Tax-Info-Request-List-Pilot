@@ -172,9 +172,9 @@ a path: F2 and F3.
   test_single_source, test_api, test_pilot_ui): putting back `#review-deck` and `#review-mode`
   in `#legacy` with a `renderDeck` and `REVIEW_MODE_KEY` in `app.js`; `pagesReturnName` falling
   back to the raw path; the household caption carrying `route.household` (a path); a file path
-  appended to the lock notice; the reader-warning notice dropped; the misfits notice dropped.
-  (Results for the machine, room and after-install notices dropped are in the note under
-  "Notes for Jason".)
+  appended to the lock notice; the reader-warning notice dropped; the misfits notice dropped;
+  the names-shortened (room) notice dropped; the after-install notice dropped. (Dropping the
+  machine warnings **is** caught, by `test_api`'s machine-warning test.)
 - **Smallest fix:** add `review-deck`, `review-mode`, `mode-toggle`, `deck` to the skeleton
   test's `gone` list and a test that `app.js` defines none of section 13's removed names; a
   node test that draws each page from list/firm/state data whose paths contain `\` and `/`
