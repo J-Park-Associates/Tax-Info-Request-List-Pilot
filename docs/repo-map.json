@@ -2,7 +2,7 @@
   "schema": 2,
   "generated": "2026-09-29",
   "generator": "tools/repo_map.py",
-  "generator_sha256": "78ed6f39661035ec",
+  "generator_sha256": "f7c436bb400c8b5e",
   "module_table_sha256": "f33a18ff158b1422",
   "pipeline": [
     "tracker.api / create",
@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 197,
-    "edges": 1134,
-    "reused": 0
+    "edges": 1135,
+    "reused": 155
   },
   "node_types": [
     "artifact",
@@ -4137,8 +4137,8 @@
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "9887c658b6458cbf",
-      "lines": 307
+      "sha256": "fb99c7971c4fa6c6",
+      "lines": 393
     },
     {
       "id": "pilot/PROMPTS.md",
@@ -6131,7 +6131,7 @@
       "id": "tests/test_glass.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9b1d5856e9c139de",
+      "sha256": "3acfeef258b1b6f1",
       "lines": 572,
       "exports": [
         "COLOUR",
@@ -8808,8 +8808,8 @@
       "id": "tools/repo_map.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "78ed6f39661035ec",
-      "lines": 1234,
+      "sha256": "f7c436bb400c8b5e",
+      "lines": 1239,
       "cli": "python -m tools.repo_map",
       "exports": [
         "CRLF_CHECKOUT_SUFFIXES",
@@ -10643,6 +10643,12 @@
     {
       "from": "tests/test_fsio.py",
       "to": "tracker/fsio.py",
+      "type": "tests",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_glass.py",
+      "to": "app/renderer/glass.js",
       "type": "tests",
       "source": "derived"
     },

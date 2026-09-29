@@ -164,7 +164,93 @@ Commit with "[skip ci]", push to your session branch, and report in plain
 English. Do not fix anything yourself.
 ```
 
-## Build D checkpoint (2026-09-29, branch `build-d`, pushed, NO pull request yet)
+## Build D (2026-09-29, branch `build-d`, draft PR "Build D: glass theme" to `main`)
+
+SPEC-glass section 11 steps 1-9 are built, one commit per step, every message
+with `[skip ci]`. **Waiting on: Review 3 (opus, a session that did not build),
+then Jason's section 12 checklist on his Windows PC.** The Windows check has not
+been run; the cloud cannot draw the packaged window.
+
+**Deviations from the SPEC, and why** (the reviewer should look at each)
+1. Lens map is inlined in `index.html` as a `data:` URI (SPEC section 3's
+   allowed fallback): a file `feImage` does not load inside a backdrop filter
+   in Chromium 141 (rim identical on and off); the inline bytes do (rim differs
+   in 1200 of 2500 pixels, centre in 0). `test_glass` checks the inline bytes
+   equal `glass-lens.png`.
+2. Dialog and terms dim fade through `background-color` on the overlay, not
+   `opacity` (SPEC 7.2): an overlay with opacity below 1 becomes a backdrop
+   root, so the glass card would draw with no blur until the fade ended.
+3. `display` is in no `transition` (SPEC 7.2 / 4.6 listed it with
+   `allow-discrete`): it would delay closing a dialog by the transition time;
+   entry motion works from `@starting-style` alone, and closing stays instant.
+4. **Found by the rendered sweep:** the reminder's hold line (`.rem-hold`) is
+   drawn in an engine palette colour (`#8a5a10`) that fails 4.5:1 on thin glass
+   over the navy end of the backdrop (2.35:1 worst case). P33 forbids this sheet
+   restyling that colour, so it now sits on a solid `--card` pill (5.9:1), and
+   `.rem-hold` was added to `GLASS_TARGETS` in `tests/test_glass.py`.
+5. `tools/repo_map.py` (`_owner_edges`) now counts only code types when it
+   decides which file a stem names: `glass.css` and `glass.js` share a stem, so
+   the map refused to say `tests/test_glass.py` owns the script and
+   `test_repo_map` failed. One edge was added to the map; nothing else changed.
+6. `tests/test_glass.py` treats the mask's `#000` as not a colour (the rim's
+   mask is read for alpha only).
+7. Known limits: a tall dialog (the editor) scrolls its lit rim with the
+   content (`.modal` is the scroll container); `.rem-stages` gets the inner
+   radius but nothing visible (a bare grid). The tour card's pointer light
+   keeps a cached rectangle until the pointer leaves it (the card moves without
+   pointer events).
+
+**Rendered sweep** (scratch Playwright in the cloud Chromium 141, the real
+`index.html` with the real Python engine on a made-up household, Smith Family;
+no client file opened). For main screen, New household dialog, tour and terms,
+at Glass, Glass with refraction and Solid: every text colour directly on a glass
+surface is one of the eight proven token colours (0 outside), and every text on
+a solid backing has at least 4.5:1 against that backing (0 below), after fix 4.
+Reduced preferences (`prefers-reduced-transparency`, `prefers-reduced-motion`,
+`prefers-contrast: more`, `forced-colors: active`), each at Glass and at
+refraction with a dialog open: no element has a computed `backdrop-filter` other
+than `none`, the header/toolbar/card/dialog backgrounds are opaque,
+`document.getAnimations().length` is 0, and the picker is disabled with its
+note showing.
+
+**Speed probe** (software rendering, no graphics card; SPEC 7.3 budget):
+
+| | Glass | Solid | Refraction (no budget) |
+|---|---|---|---|
+| pointer sweeping, frames/s | 58.5 / 60 (need 40) | 60 / 58.5-60 (need 55) | 37.7 / 33.8 |
+| scrolling, frames/s | 69 / 66 (need 40) | 106-119 | 44.5 / 39.4 |
+| dialog readable, ms | 117 / 121 (need 150) | 90-109 in five runs (one warm-up run 171) | 144 / 149 |
+| button pressed (scale 0.97), ms | 16.5 / 17.5 | 7.5-12.6 | 54 / 75 |
+
+The budget is met at Glass and Solid. At Glass the press reaches its scale in
+about one frame (16.7 ms). Refraction is slower in software, as SPEC 7.3 says.
+The Solid scrolling figures above 60 are the headless clock, not a faster page.
+
+**Gate:** dead code and `ruff check .` clean; `repo_map.py update` then `check`
+current; `test_glass` (24), `test_pilot` (11), `test_tour` (8), `test_layers`
+(29), `test_single_source` (167) and `test_repo_map` (80) pass, each as its own
+process, under Python 3.11 and 3.13. Whole suite not run (CLAUDE.md).
+`git diff main` is empty for `app.js`, `main.js`, `preload.js`, `style.css` and
+`tracker/`, and `index.html`'s diff is exactly the three SPEC lines.
+
+**Screenshots and clip:** `pilot/reviews/glass-screens/`: rows 1-4 at Glass
+(`-glass`), Solid (`-solid`) and emulated Transparency effects off
+(`-reduced-transparency`), `5-dialog-refraction.png`, and `6-motion.webm`
+(15.7 s at the refraction level: pointer across the toolbar, a scroll, a button
+press, the reminder card arriving, the New household dialog arriving). The card
+arrival is staged by hiding and unhiding the reminder card, since the real app
+shows it only after a pass. Made-up names only; the header says "Sample".
+
+**Left**
+- Review 3 (prompt above) and any rebuild.
+- Jason's section 12 checklist, on the screenshots and clip, then on Windows
+  with the installed 0.2. Tune `--glass-corner` (1.2-2.0) if corners look
+  circular.
+- The Mica job (below) and the tester-feedback SPEC.
+- The Fluent 2 skill and `fluent-ui` server are in (`.mcp.json`,
+  `.claude/skills/fluent-2-design`), opt-in only.
+
+## Build D checkpoint, earlier today (kept for the open requests it records)
 
 Status: **steps 1-5 of SPEC-glass section 11 are done and committed; steps 6-9
 are not.** Gate not run. Not ready to merge.

@@ -726,7 +726,12 @@ def _owner_edges(nodes: list[Node], edges: list[dict]) -> list[dict]:
     The owner edge is a fact about the file names, so it is derived from them.
     """
     by_id = {node.id for node in nodes}
-    owned = _unambiguous_stems([n.id for n in nodes if n.sha256 and n.type != "test"])
+    # Only code counts when deciding which file a stem names: app/renderer/glass.css
+    # and glass.js share a stem, and tests/test_glass.py owns the script; a style
+    # sheet is never what "the module" means here (the same types the map's
+    # own-test check covers).
+    owned = _unambiguous_stems([n.id for n in nodes
+                                if n.sha256 and n.type in ("module", "tool", "workflow", "script")])
     for stem, target in owned.items():
         test_path = f"tests/test_{stem}.py"
         if test_path not in by_id or test_path == target:
