@@ -1,10 +1,11 @@
 # Pilot 0.2 - Build D: the glass theme - SPEC
 
-Status: **revised 2026-09-29 for Jason's approval.** Decisions P30-P44
+Status: **revised 2026-09-29 for Jason's approval.** Decisions P30-P45
 (`DECISIONS.md`). Jason's answers: the backdrop is a **soft navy gradient**;
 **light mode only** for 0.2, dark mode later (P31). After seeing the first
 preview he asked for **more transparent glass, a 3D effect and movement
-animations** (P41); this revision builds them in.
+animations** (P41), then for every click and movement to be **optimised for
+efficiency and speed** (P45); this revision builds both in.
 
 Read first: [`README.md`](README.md), [`SPEC.md`](SPEC.md) sections 2, 3, 5, 6
 and 9 (the page rules this build still obeys), and this file. Builders look up
@@ -31,11 +32,12 @@ the three action cards - over a soft navy backdrop. The glass is thin: the
 backdrop and whatever scrolls behind it show through clearly, softened by
 blur. It has **depth**: a lit rim bright at the top-left and dim at the
 bottom-right, a light inner glow along the top edge, a faint inner shade along
-the bottom, and a two-layer drop shadow. It **moves**: a soft light follows the
-pointer across glass, buttons lift and press with a small spring, cards and
-dialogs settle into place when they appear, the toolbar deepens its shadow
-once the page scrolls, and at the top quality level the backdrop drifts slowly
-and the glass bends it at the rim.
+the bottom, and a two-layer drop shadow. It **moves**, fast: buttons lift and
+press with a small spring, cards and dialogs settle into place in a fifth of a
+second, the toolbar deepens its shadow once the page scrolls, and at the top
+quality level a soft light follows the pointer, the backdrop drifts slowly and
+the glass bends it at the rim. Every movement was measured for speed before
+this SPEC was merged (P45, section 7.3).
 
 Corners are **concentric**: a shape nested inside another's corner has the
 container's radius minus the gap between them, drawn as a continuous
@@ -154,8 +156,12 @@ Values not listed in a level's column are the Standard value.
 Applied as `body { background: var(--glass-backdrop) #f3f6fa; }`. The body does
 not scroll (`.main` does), so the backdrop is fixed to the window: navy behind
 the header and toolbar, fading to light slate behind the cards, with three soft
-glows for the glass to catch. At the Full level it drifts (section 7.3). The
-backdrop stays at every level, Solid included.
+glows for the glass to catch. The backdrop stays at every level, Solid
+included. At the Full level the glows move to their own layer and drift
+(section 7.2): `:root.glass-full body` keeps only the linear gradient, and
+`:root.glass-full body::before` (`position: fixed; inset: -8%; z-index: -1;
+pointer-events: none; will-change: transform;`) carries the three radial
+glows. Moving that layer by `transform` never repaints the page.
 
 ### 4.2 Glass surfaces (P41)
 
@@ -175,7 +181,7 @@ backdrop stays at every level, Solid included.
 | `--glass-depth-strong` | see below | `0 20px 50px rgba(15, 23, 42, 0.35)` | dialogs, terms, tour, the scrolled toolbar |
 | `--glass-depth-bar` | `inset 0 -1px 0 rgba(255, 255, 255, 0.10), 0 6px 20px rgba(15, 23, 42, 0.18)` | `none` | header |
 | `--glass-depth-inner` | `0 1px 0 rgba(255, 255, 255, 0.60), inset 0 1px 3px rgba(15, 23, 42, 0.08)` | `none` | the solid lists inside cards: set into the glass |
-| `--glass-sheen` | `rgba(255, 255, 255, 0.45)` | `transparent` | the pointer light (7.2) |
+| `--glass-sheen` | `rgba(255, 255, 255, 0.45)` | `transparent` | the pointer light, drawn at the Full level only (7.2, P45) |
 | `--glass-halo` | `0 0 10px rgba(255, 255, 255, 0.55)` | `none` | `text-shadow` on text sitting on light glass |
 
 ```
@@ -285,13 +291,18 @@ P36).
 
 | Token | Value | Used for |
 |---|---|---|
-| `--glass-spring` | `cubic-bezier(0.34, 1.56, 0.64, 1)` | button lift and press (a small overshoot) |
-| `--glass-settle` | `cubic-bezier(0.2, 0.9, 0.3, 1.15)` | cards and dialogs arriving |
-| `--glass-t-press` | `90ms` | press down |
-| `--glass-t-control` | `220ms` | hover lift, release |
-| `--glass-t-fade` | `260ms` | opacity in |
-| `--glass-t-settle` | `460ms` | dialogs and terms settling; cards use `420ms` (`--glass-t-card`) |
+| `--glass-spring` | `cubic-bezier(0.34, 1.56, 0.64, 1)` | button lift and release (a small overshoot) |
+| `--glass-settle` | `cubic-bezier(0.2, 0.9, 0.3, 1.05)` | cards and dialogs arriving (barely overshoots, so it reads as done at once) |
+| `--glass-t-press` | `50ms` | press down: the button answers within the frame the pointer goes down |
+| `--glass-t-control` | `140ms` | hover lift, release; hover colour and shadow `120ms` (`--glass-t-hover`) |
+| `--glass-t-fade` | `90ms` | a dialog's opacity in; the dim behind it `120ms` (`--glass-t-dim`) |
+| `--glass-t-settle` | `200ms` | dialogs and terms settling; cards `180ms` (`--glass-t-card`) |
+| `--glass-t-spot` | `160ms` | the tour spot gliding to its next anchor |
 | `--glass-drift` | `40s` | one sweep of the backdrop drift (Full only) |
+
+No duration except the drift exceeds 200ms (tested). The first draft's were up
+to 460ms; the preview measured a dialog taking about 200-240ms to become
+readable with them and about 100-130ms with these (7.3).
 
 ## 5. The concentric rule
 
@@ -359,7 +370,7 @@ spot; a card (20) gets 26; a dialog button (8) gets 14. `tour.js` reads
 `corner-shape: var(--glass-corner)` to the spot. The spot's existing
 `transition: all .2s` makes it glide between anchors; `glass.css` narrows it to
 `transition: top, left, width, height, border-radius` over
-`var(--glass-t-control)` with `var(--glass-settle)` (the spot is a
+`var(--glass-t-spot)` with `var(--glass-settle)` (the spot is a
 position-fixed box of its own, so moving it re-lays-out nothing else).
 
 ### 5.6 The lit rim (P41)
@@ -367,7 +378,7 @@ position-fixed box of its own, so moving it re-lays-out nothing else).
 Every light glass surface draws a 1px ring with a `::before`:
 
 ```
-position: absolute; inset: -1px; padding: 1px;
+position: absolute; inset: 0; padding: 1px;
 border-radius: inherit; corner-shape: var(--glass-corner);
 background: var(--glass-rim);
 -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
@@ -376,8 +387,11 @@ pointer-events: none;
 ```
 
 The surface itself gets `position: relative` (the toolbar is already sticky,
-the tour card fixed) and `border: 1px solid transparent`, so the ring sits
-exactly on the border. The gradient runs bright at the top-left, nearly clear
+the tour card fixed) and `border: 0`, and the ring is its outermost pixel,
+inside the padding box. It must not sit outside at `inset: -1px`: `.card` has
+`overflow: hidden`, which clips at the padding box, so a ring outside it would
+vanish on the three cards. Dropping the 1px border shrinks nothing visible,
+since the ring takes its place. The gradient runs bright at the top-left, nearly clear
 across the middle and half-bright at the bottom-right: light catching the
 edge of a thick pane. **Before adding a `::before`, the builder checks the
 target has none today** (`grep` the selector in `style.css` and
@@ -405,11 +419,13 @@ carries it).
 | Tables, lists, chips, banners, notices, toast, inputs outside dialogs | **unchanged** (buttons everywhere get the lift and press, 7.2) | - | - | - | - | - |
 | Overlays `.modal-overlay`, `.pilot-terms-overlay`, the tour's dim | dim as today, fade in (7.2), no blur on the overlay itself | - | - | - | - | - |
 
-Every light glass surface also gets `corner-shape: var(--glass-corner)`, the
-pointer light (7.2) as the top layer of its `background`
-(`radial-gradient(260px circle at var(--glass-x, 25%) var(--glass-y, -40px), var(--glass-sheen), transparent 70%), <tint>`;
-320px on dialogs and terms), `text-shadow: var(--glass-halo)`, and the scoped
-re-pointing of 4.3:
+Every light glass surface also gets `corner-shape: var(--glass-corner)`,
+`text-shadow: var(--glass-halo)`, and the scoped re-pointing of 4.3. At the
+Full level only, the pointer light (7.2) is added as a `background-image`
+(`radial-gradient(260px circle at var(--glass-x, 25%) var(--glass-y, -40px), var(--glass-sheen), transparent 70%)`)
+over the tint, from one rule:
+`:root.glass-full :is(<the light glass surfaces>) { background-image: ...; }`.
+The scoped re-pointing is:
 `--muted: var(--glass-secondary); --subtle: var(--glass-secondary); --blue: var(--glass-accent); --blue-dark: var(--glass-accent-dark);`.
 The header gets `color: var(--glass-on-bar)`, `position: relative;
 z-index: 6` (so the toolbar's deeper shadow never paints over it), and
@@ -461,9 +477,13 @@ dialog's band is wider than a narrow card's - accepted. The script's CLI:
 
 | Level | Class on `<html>` | Glass | 3D | Motion | For |
 |---|---|---|---|---|---|
-| **Glass** (default) | none, or `glass-standard` | blur, saturation | rim, depth, halo | pointer light, lift and press, arrivals, scrolled toolbar | most office PCs |
-| **Glass with refraction** | `glass-full` | adds `url(#glass-refract)` on the toolbar, dialogs, terms and tour card (never the header or cards) | same | adds the backdrop drift | a PC with a real graphics card |
-| **Solid** | `glass-solid` | every surface token its solid value (4.2), `--glass-filter*` `none` | none (flat shadows) | lift and press and arrivals only; no pointer light | remote desktop, slow PCs, or taste |
+| **Glass** (default) | none, or `glass-standard` | blur, saturation | rim, depth, halo | lift and press, arrivals, scrolled toolbar: nothing that runs every frame | most office PCs |
+| **Glass with refraction** | `glass-full` | adds `url(#glass-refract)` on the toolbar, dialogs, terms and tour card (never the header or cards) | same | adds the pointer light and the backdrop drift | a PC with a real graphics card |
+| **Solid** | `glass-solid` | every surface token its solid value (4.2), `--glass-filter*` `none` | none (flat shadows) | lift and press and arrivals only | remote desktop, slow PCs, or taste |
+
+The pointer light sits at Full, not at the default, because it was the
+single most expensive movement measured (P45, 7.3): it re-blurs the surface
+under the pointer on every frame the pointer moves.
 
 The default is what `glass.css` produces with no class, so the theme is correct
 even if `glass.js` fails (it then has no pointer light and no scrolled state,
@@ -496,19 +516,31 @@ two custom properties `--glass-x` and `--glass-y`, and nothing else.
 6. System preference: `const quiet = matchMedia("(prefers-reduced-transparency: reduce), (prefers-reduced-motion: reduce), (prefers-contrast: more), (forced-colors: active)")`.
    While `quiet.matches`, the select is `disabled` and the note shows; listen
    for `change` on `quiet` and update both live.
-7. **Pointer light.** One `pointermove` listener on `document`, `passive`.
-   It keeps only the latest event and, at most once per animation frame
-   (`requestAnimationFrame`), finds `event.target.closest(GLASS_SURFACES)` -
-   a constant string naming the light glass surfaces of 6.1 - and sets
-   `--glass-x` / `--glass-y` on that element to the pointer's position inside
-   it, in px. It does nothing while `quiet.matches` or at the Solid level.
-   Leaving a surface leaves the light where it was (no snap back).
-8. **Scrolled toolbar.** One `scroll` listener on `.main`, `passive`, toggles
-   `glass-scrolled` on `<html>` when `scrollTop > 4`. If `.main` is missing,
-   skip it.
+7. **Pointer light (Full level only).** A `pointerover` listener on
+   `document`, `passive`, remembers the light glass surface under the pointer
+   (`event.target.closest(GLASS_SURFACES)`, a constant string naming the
+   surfaces of 6.1) and forgets its cached rectangle when that surface
+   changes. A `pointermove` listener, `passive`, returns at once unless there
+   is such a surface, the level is `full` and `quiet` does not match;
+   otherwise it keeps the latest pointer position and, at most once per
+   animation frame (`requestAnimationFrame`), sets `--glass-x` / `--glass-y`
+   on that surface to the pointer's position inside it, in px. The surface's
+   rectangle is read once and cached until the surface changes, `.main`
+   scrolls or the window resizes, so no frame forces a layout. Leaving a
+   surface leaves the light where it was (no snap back).
+8. **Scrolled toolbar.** One `scroll` listener on `.main`, `passive`, computes
+   `scrollTop > 4` and toggles `glass-scrolled` on `<html>` **only when that
+   answer changes**, so scrolling costs no style work after the first 4px. It
+   also drops the cached rectangle of step 7. If `.main` is missing, skip it.
+9. **Pause the drift when the app is in the background.** `window` `blur`
+   adds `glass-paused` to `<html>`, `focus` removes it;
+   `:root.glass-paused body::before { animation-play-state: paused; }`.
+   Chromium already stops it when the window is minimised; this also stops it
+   while another program is in front.
 
 No timers, no `setInterval`, no animation loop of its own: every animation is
-CSS, and the script only moves two numbers when the pointer moves.
+CSS, and the script only moves two numbers when the pointer moves over glass
+at the Full level.
 
 ### 7.2 The motion, element by element
 
@@ -518,37 +550,69 @@ All in `glass.css`, all with `transition`/`@keyframes` on `transform`,
 
 | What | How |
 |---|---|
-| **Pointer light** | the radial layer of 6.1 follows `--glass-x/--glass-y`; no transition (it tracks the pointer frame by frame) |
-| **Buttons lift** | every `.btn`: `transition: transform var(--glass-t-control) var(--glass-spring), box-shadow var(--glass-t-control) ease, background-color 180ms ease`; `:hover` `translateY(-1px)`; on the toolbar `:hover` also `background-color: var(--glass-control-hover)` and a deeper shadow |
-| **Buttons press** | `.btn:active { transform: scale(0.96); transition-duration: var(--glass-t-press); }`, springing back on release |
-| **Cards arrive** | `.card { transition: opacity var(--glass-t-card) ease, transform var(--glass-t-card) var(--glass-settle), display var(--glass-t-card) allow-discrete; }` and `@starting-style { .card { opacity: 0; transform: translateY(10px) scale(0.985); } }`: when the renderer removes `hidden`, the card rises 10px into place with a slight settle. `hidden` is `display: none` in `style.css`, so this needs no script |
-| **Dialogs arrive** | `.modal-overlay` fades in (`opacity`, `--glass-t-fade`, `@starting-style { opacity: 0 }`); `.modal` and `.pilot-terms-card` rise 14px and grow from `scale(0.94)` over `--glass-t-settle` with `--glass-settle` |
-| **Toolbar deepens** | `:root.glass-scrolled .toolbar { box-shadow: var(--glass-depth-strong); }` with `transition: box-shadow 300ms ease` |
+| **Buttons press** | `.btn:active { transform: scale(0.96); transition-duration: var(--glass-t-press); }`. `:active` applies on the frame the pointer goes down, so the press shows before the click has even finished; the app's own click handler runs at the same moment, untouched |
+| **Buttons lift** | every `.btn`: `transition: transform var(--glass-t-control) var(--glass-spring), box-shadow var(--glass-t-hover) ease, background-color var(--glass-t-hover) ease`; `:hover` `translateY(-1px)`; on the toolbar `:hover` also `background-color: var(--glass-control-hover)` and a deeper shadow |
+| **Cards arrive** | `.card { transition: opacity var(--glass-t-card) ease, transform var(--glass-t-card) var(--glass-settle), display var(--glass-t-card) allow-discrete; }` and `@starting-style { .card { opacity: 0; transform: translateY(6px); } }`: when the renderer removes `hidden`, the card rises 6px into place. `hidden` is `display: none` in `style.css`, so this needs no script |
+| **Dialogs arrive** | `.modal-overlay` fades in over `--glass-t-dim` (`@starting-style { opacity: 0 }`); `.modal` and `.pilot-terms-card` fade in over `--glass-t-fade` and rise 6px from `scale(0.97)` over `--glass-t-settle` with `--glass-settle`. The dialog is readable after about 100ms and already takes typing: `app.js` focuses its first control at once, and nothing here delays that |
+| **Toolbar deepens** | `:root.glass-scrolled .toolbar { box-shadow: var(--glass-depth-strong); }` with `transition: box-shadow var(--glass-t-hover) ease` |
 | **Tour spot glides** | 5.5 |
-| **Backdrop drifts (Full only)** | `:root.glass-full body { background-size: 140% 140%; animation: glass-drift var(--glass-drift) ease-in-out infinite alternate; }`, `@keyframes glass-drift { from { background-position: 0% 0%; } to { background-position: 100% 60%; } }` |
+| **Pointer light (Full only)** | the `background-image` of 6.1 follows `--glass-x/--glass-y`; no transition (it tracks the pointer frame by frame) |
+| **Backdrop drifts (Full only)** | the glow layer of 4.1: `animation: glass-drift var(--glass-drift) ease-in-out infinite alternate;` with `@keyframes glass-drift { from { transform: translate(-3%, -2%); } to { transform: translate(3%, 3%); } }`, paused by `glass-paused` (7.1 step 9) |
 
 Closing a dialog is not animated: `app.js` adds `hidden` and the element is
 gone at once. That keeps Escape and Cancel instant, and animating an exit would
 need `app.js`.
 
-### 7.3 Cost, stated for the tester guide
+### 7.3 Speed: what was measured, and the budget (P45)
+
+Measured on 2026-09-29 on the preview mock-up in the cloud's Chromium 141,
+which has no graphics card and so draws in software, as Chromium does over
+Remote Desktop: a worst case. A frame-time probe (`requestAnimationFrame`
+timestamps) ran while the pointer swept the toolbar and a card, while the page
+scrolled 600px, and while a dialog opened. Frames per second, two runs each:
+
+| | First draft (all motion at Glass, long timings) | This SPEC |
+|---|---|---|
+| Glass: pointer moving | 27.5 / 27.5 | **46.0 / 45.2** |
+| Glass: scrolling | 37.1 / 37.8 | **41.6 / 41.6** |
+| Glass: dialog readable (opacity >= 0.9) | 201 / 242 ms | **119 / 132 ms** |
+| Solid: pointer, scrolling | 60 / 57.5 | **60 / 59.1** |
+| Solid: dialog readable | 184 ms | **103 / 95 ms** |
+| Glass with refraction: pointer, scrolling | 27.8 / 39.1 | 24.3 / 33.6 (software; this level is for a PC with a graphics card) |
+
+What made the difference, and what did not:
+
+- **The pointer light cost about 40% of the frames** in software (43 frames
+  per second without it, about 25 with it, however it was drawn: as a
+  background layer or as a separate layer moved by `transform`). It moved to
+  Full.
+- **Shorter timings** halved the time to a readable dialog.
+- **Less blur** (8/14px instead of 14/22) gained little and was not taken:
+  the thinner, clearer glass needs the blur it has.
+- **The drift** moves a separate layer by `transform`, not the page
+  background, so it never repaints the page; it still re-blurs every glass
+  surface each frame, which is why it stays at Full and pauses in the
+  background.
+
+Where the cost falls:
 
 - Blur costs graphics-card time for every frame in which what is behind a
   glass surface changes: scrolling cards under the toolbar, a dialog opening,
-  and - at Standard - the pointer light moving over one surface (its own
-  background repaints, so that one surface re-blurs while the pointer moves
-  over it).
+  a hover on a glass button (brief), and at Full the pointer light and the
+  drift.
 - On the main screen at most five blurred surfaces show at once (header,
   toolbar, three action cards).
-- Transforms and opacity (lift, press, arrivals) run on the compositor and are
-  cheap at every level.
-- **The backdrop drift re-blurs every glass surface on every frame**, for as
-  long as the window is visible. That is why it lives only at Full, which the
-  guide recommends only on a PC with a graphics card. Chromium pauses it when
-  the window is minimised.
 - Over Remote Desktop, Chromium often loses the graphics card and draws in
-  software, where blur is slow: the guide tells a tester on remote desktop to
+  software: the numbers above. The guide tells a tester on remote desktop to
   pick Solid.
+
+**The budget the build must meet** (section 11, step 6), measured the same way
+in the cloud Chromium on the real page with the stub: at Glass, at least **40**
+frames per second while the pointer sweeps and while the page scrolls; at
+Solid, at least **55**; at every level a dialog readable within **150ms** of
+being shown; a pressed button scaled within **one frame** of the pointer going
+down. A build that misses one says so in the handoff with its numbers, and the
+reviewer treats it as a finding.
 
 ### 7.4 Wording in `pilot-content.js` (P8; proposed, Jason approves)
 
@@ -596,8 +660,9 @@ drop-down list is legible.
 5. **Focus** stays visible: the app's `outline: 2px solid var(--blue)` becomes
    `--glass-accent` on glass (above 3:1 on every surface). A pressed or lifted
    button's outline moves with it.
-6. **Motion limits.** Nothing moves more than 14px or scales below 0.94; no
-   animation lasts longer than 460ms except the Full-level drift, which is
+6. **Motion limits.** Nothing moves more than 6px (the tour spot, which travels
+   to its next anchor, aside) or scales below 0.96; no
+   transition lasts longer than 200ms except the Full-level drift, which is
    slow (40s a sweep) and large-area, never a flash. Nothing blinks. No
    animation delays input: arrivals are transitions on elements that already
    accept clicks, and `pointer-events` is never turned off on app elements.
@@ -615,7 +680,7 @@ Last in `glass.css`:
 @media (prefers-reduced-transparency: reduce), (prefers-reduced-motion: reduce),
        (prefers-contrast: more), (forced-colors: active) {
   :root, :root.glass-standard, :root.glass-full, :root.glass-solid { ...solid tokens... }
-  :root.glass-full body { animation: none; background-size: 100% 100%; }
+  :root.glass-full body::before { animation: none; }
 }
 @supports not (backdrop-filter: blur(1px)) {
   :root, :root.glass-standard, :root.glass-full, :root.glass-solid { ...solid tokens... }
@@ -630,10 +695,10 @@ exactly (the test compares the three sets).
 ### 8.2 Tester Guide
 
 `pilot/Tester Guide.md` gets a short **Screen effects** section: where the
-picker is; Glass is the default and moves a soft light with the pointer; choose
-Solid on remote desktop or if scrolling or the pointer light stutters; Glass
-with refraction only on a PC with a graphics card, since its backdrop keeps
-moving; Windows' Transparency effects or Animation effects switch turns it
+picker is; Glass is the default and does nothing that runs continuously;
+choose Solid on remote desktop or if scrolling stutters; Glass with refraction
+(the pointer light and the drifting backdrop) only on a PC with a graphics
+card; Windows' Transparency effects or Animation effects switch turns it
 solid and still on its own. No Apple name.
 
 ## 9. What `glass.css` may target (P33)
@@ -645,7 +710,8 @@ own, closed rule, held in `tests/test_glass.py`:
 - Strip comments, `@media ... {`, `@supports ... {` and `@starting-style {`
   openers, `@keyframes glass-...` blocks (their `from`/`to` selectors), and a
   leading scope `:root.glass-standard `, `:root.glass-full `,
-  `:root.glass-solid ` or `:root.glass-scrolled ` from each selector.
+  `:root.glass-solid `, `:root.glass-scrolled ` or `:root.glass-paused ` from each
+  selector.
 - Every remaining selector starts with one of:
   - the theme's own names: `:root`, `body`, `.glass-`, `#glass-`;
   - the pilot's names: `.pilot-`, `#pilot-`;
@@ -698,20 +764,28 @@ Named as the claims they make; reading files as text; standard library only.
 - `test_motion_moves_only_what_the_compositor_can` - every property named in a
   `transition` or changed between `@keyframes` steps in `glass.css` is one of
   `transform`, `opacity`, `box-shadow`, `background-color`,
-  `background-position` (the drift only), `display` (with `allow-discrete`),
+  `display` (with `allow-discrete`),
   or, for `.pilot-tour-spot` only, `top`, `left`, `width`, `height`,
   `border-radius`.
 - `test_the_backdrop_drifts_only_at_the_full_level` - `animation:` appears
-  only under `:root.glass-full`.
+  only under `:root.glass-full`, on `body::before`, and a
+  `:root.glass-paused` rule pauses it.
+- `test_the_pointer_light_is_drawn_only_at_the_full_level` - `--glass-sheen`
+  is read only in a rule scoped `:root.glass-full`, and `glass.js` checks
+  for the `glass-full` class before moving it.
 - `test_reduced_motion_still_stops_every_animation` - `style.css` still has
   its `prefers-reduced-motion` rule with `animation: none !important` and
   `transition: none !important`, and `glass.css` has no `!important`.
-- `test_no_animation_runs_longer_than_its_limit` - every duration token is at
-  most `460ms`, except `--glass-drift`.
+- `test_no_animation_runs_longer_than_its_limit` - every duration token and
+  every literal duration in `glass.css` is at most `200ms`, except
+  `--glass-drift`.
 - `test_the_pointer_light_sets_only_its_two_numbers` - `glass.js` calls
   `style.setProperty` only with `"--glass-x"` or `"--glass-y"`, uses
-  `requestAnimationFrame`, registers its `pointermove` and `scroll` listeners
-  with `passive: true`, and contains no `setInterval` or `setTimeout`.
+  `requestAnimationFrame`, registers its `pointerover`, `pointermove`,
+  `scroll` and `resize` listeners with `passive: true`, reads
+  `getBoundingClientRect` only where the cached rectangle is empty, toggles
+  `glass-scrolled` only on a change, and contains no `setInterval` or
+  `setTimeout`.
 - `test_nested_corners_are_concentric` - from the tokens:
   `r_card_inner == max(r_min, r_card - pad_card)`, the same for dialog, tour
   and toolbar; `r_toolbar_control * 2 == h_toolbar_control`.
@@ -811,6 +885,8 @@ No parallel split: every step after 1 reads the one before.
    preferences and confirm no element has a computed `backdrop-filter` other
    than `none` and, under reduced motion, no running animation
    (`document.getAnimations().length == 0` after a dialog opens).
+   **Speed probe** (7.3): the same frame-time probe at Glass, Solid and Full;
+   report the numbers in the handoff against the budget.
 7. **Tester Guide** (8.2) and `docs/repo-map.curated.json` roles for
    `glass.css`, `glass.js`, `glass-lens.png`, `make_glass_lens.py`,
    `test_glass.py`.
@@ -833,6 +909,7 @@ the scratch script); no client file, real or copied, is ever opened.
   is empty, and `index.html`'s diff is exactly the section 3 lines;
 - the rendered sweep reports no pair under 4.5:1, no `backdrop-filter` and no
   running animation under the reduced-preference emulations;
+- the speed probe meets the 7.3 budget;
 - the screenshots and the clip exist for every row of section 12;
 - the Opus review has no open findings.
 
@@ -858,8 +935,10 @@ installed 0.2:
   card, and nowhere else; lists and tables are plain white.
 - ☐ The surfaces look thick and lit: bright top-left rim, soft inner glow,
   lifted shadow.
-- ☐ The pointer light, the button spring and the arrivals feel smooth and calm,
-  not busy.
+- ☐ Every click answers at once: the button presses as the mouse goes down,
+  and dialogs are readable before the eye has moved to them.
+- ☐ The button spring and the arrivals feel quick and calm, not busy; at Glass
+  with refraction, the pointer light and the drift feel smooth.
 - ☐ Nested corners look parallel; corners look continuous, not circular (tune
   `--glass-corner` if not).
 - ☐ Turning Windows Transparency effects or Animation effects off makes it
@@ -882,8 +961,10 @@ Numbered findings against this SPEC, in `pilot/reviews/review-3.md`:
 4. Glass is on exactly the surfaces of 6.1; lists and tables solid.
 5. Refraction and the drift only at Full; refraction only on the toolbar,
    dialogs, terms and tour.
-6. Motion: only the properties of 7.2, the limits of 8.6, no script timers, the
-   pointer light rAF-throttled and passive; the reviewer watches the clip.
+6. Motion: only the properties of 7.2, the limits of 8.6 and 4.6, no script
+   timers, the pointer light only at Full, rAF-throttled, passive and with a
+   cached rectangle; the speed probe meets the 7.3 budget; the reviewer
+   watches the clip and re-runs the probe.
 7. The fallback: with each of the four media features emulated and at Solid,
    no computed `backdrop-filter` other than `none`, every tint opaque, and
    under reduced motion no running animation.
