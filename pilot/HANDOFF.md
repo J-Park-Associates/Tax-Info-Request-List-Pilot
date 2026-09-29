@@ -115,8 +115,8 @@ It does not block 0.1.
   the budget Build D must meet.
 - **Waiting on Jason:** approve `SPEC-glass.md` (the picker wording in 7.2 is
   proposed copy), then merge the SPEC PR.
-- **Next: Build D** (sonnet), then **Review 3** (opus, high effort, a session
-  that did not build), then rebuild/review until no findings. The two prompts
+- **Build D is done** (see its entry below); next **Review 3** (opus, high
+  effort, a session that did not build), then rebuild/review until no findings. The two prompts
   are below; paste each into a fresh claude.ai/code session on this
   repository.
 
@@ -164,12 +164,14 @@ Commit with "[skip ci]", push to your session branch, and report in plain
 English. Do not fix anything yourself.
 ```
 
-## Build D checkpoint (2026-09-29, branch `build-d`, pushed, NO pull request yet)
+## Build D (2026-09-29, done; branch `claude/build-d-pilot-handoff-w5w7mx`, draft PR #10 to `main`)
 
-Status: **steps 1-5 of SPEC-glass section 11 are done and committed; steps 6-9
-are not.** Gate not run. Not ready to merge.
+Status: **all nine steps of SPEC-glass section 11 are done and the gate
+passes.** Steps 1-5 were built on `build-d` by the first session; a second
+session carried that branch forward (fast-forward, same commits) and did
+steps 6-9. Next: **Review 3** (prompt above), in a session that built nothing.
 
-**Done**
+**Steps 1-5 (first session)**
 - Step 1: `pilot/make_glass_lens.py` and `app/renderer/glass-lens.png`.
 - Step 2: the three `index.html` additions. **Deviation:** the lens image does
   not load from a file inside a backdrop filter in the cloud Chromium (rim
@@ -190,31 +192,138 @@ are not.** Gate not run. Not ready to merge.
 - Step 4: `glass.js`, the `glass` block and version 0.2 in `pilot-content.js`,
   `tour.js` and `pilot-style.css` (spot radius).
 - Step 5: `tests/test_glass.py` (24 tests) plus the `test_pilot.py` and
-  `test_tour.py` changes. 43 tests pass under Python 3.11 in the cloud venv.
-  Not run under 3.13. The contrast test passes on the tokens as the SPEC gives
-  them.
+  `test_tour.py` changes.
+
+**Step 6: rendered sweep, reduced preferences, speed (second session)**
+- *Contrast sweep:* every visible text inside a glass surface, its computed
+  colour against that surface's 10.2 worst case, with any translucent layer
+  between them composited on top, an opaque layer taken as the background,
+  and a gradient background sampled at the text's own height. 18 states (main
+  screen, New household, Edit household, Schedule, the request-list editor,
+  the handover dialog shown by class, the terms, all 11 tour steps) at Glass,
+  Glass with refraction and Solid: **2,247 pairs, none under 4.5:1.** Lowest:
+  header 4.87, card 5.02, toolbar 5.48, dialog 5.80 (Solid: 5.02-6.83). Three
+  failures were found and fixed on the way, all token or selector changes in
+  `glass.css`, which the reviewer checks against SPEC 13.2:
+  1. **Header picker** white text on its fill: 4.48:1. `--glass-picker-fill`
+     `rgba(255, 255, 255, 0.10)` -> `0.06` (SPEC 7.4 said 0.10): 4.87:1.
+  2. **Held-reminder line** (`.rem-hold`, coloured by the reminder stage's
+     `--stage-ink`) on the glass reminder card: 2.35:1. New rule
+     `#reminder-card .rem-hold { color: var(--glass-warn); }`: 5.95:1. The
+     selector is inside `GLASS_TARGETS` (`#reminder-card`), and `--stage-ink`
+     itself is untouched (the test still passes); the stage pills keep their
+     colours. The line reads dark brown instead of the stage's amber.
+  3. **Solid made Sort & Scan invisible** (found in the screenshots, which is
+     why the sweep now reads gradients): SPEC 4.2's Solid
+     `--glass-control-gloss` is `linear-gradient(#ffffff, #ffffff)`, an opaque
+     white layer over `.btn-primary`'s dark fill, so its white label was 1:1.
+     Now `linear-gradient(rgba(255, 255, 255, 0), rgba(255, 255, 255, 0))` at
+     Solid and in both fallback blocks (they must match): 14.69:1, and the
+     other toolbar controls stay white from `--glass-control`. **The SPEC's
+     table should be corrected** to the new value.
+- *Reduced preferences* (each emulated through the DevTools protocol at the
+  Full level, plus the Solid level alone, a dialog open): no element has a
+  computed `backdrop-filter`; header, toolbar, cards and dialog are opaque;
+  the picker is disabled with its note under each of the four (not at Solid,
+  as the SPEC says); **no running animation under reduced motion**. Under the
+  other three the dialog's arrival fade runs, which SPEC 8.2 allows.
+- *Speed probe* (SPEC 7.3 method, the real page with the stub, the cloud's
+  software rendering, two runs each; the dialog is timed from the moment it is
+  un-hidden, which is what "within 150ms of being shown" says - the app itself
+  takes about 10ms from click to showing it):
+
+  | | Pointer sweep | Scroll 600px | Dialog readable | Press |
+  |---|---|---|---|---|
+  | Glass (budget 40 fps, 150 ms) | 56.9 / 56.9 | 55.9 / 53.7 | 134 / 133 ms | first frame |
+  | Solid (budget 55 fps, 150 ms) | 60 / 60 | 60 / 60 | 102 / 107 ms | first frame |
+  | Glass with refraction (150 ms) | 19.5-20.7 | 21.5-25 | **116-219 ms (7 runs, median ~160)** | first frame |
+
+  "Press: first frame" means the button's scale transition has started on
+  the first animation frame after the pointer goes down, at every level.
+  **One budget miss, for the reviewer:** at Glass with refraction a dialog
+  is readable in more than 150ms in most runs. Pausing the drift (the theme's
+  own `glass-paused` switch) lifts the frame rate to about 50 but leaves the
+  dialog at 107-216ms, so the cost is the refraction filter drawn on the
+  dialog in software, not the drift. That level is the one the SPEC and the
+  Tester Guide reserve for a PC with a graphics card; no change was made.
+
+**Step 7:** Tester Guide section 8 "Screen effects" (later sections renumbered
+9-11; the one cross-reference, "section 8 says plainly what it will not do
+yet", now says section 9). Curated map roles for `glass.css`, `glass.js`,
+`make_glass_lens.py` and `test_glass.py`. **Deviation:** `glass-lens.png` has
+no role of its own, because the map indexes text files only (a curated node
+for an untracked type fails `check`); it is described in the roles of the
+script that draws it and the sheet that uses it.
+
+**Step 8:** `pilot/reviews/glass-screens/`: `1-main-scrolled-*`,
+`2-dialog-*`, `3-terms-*`, `4-tour-*` each as `-glass`, `-solid` and
+`-transparency-off` (emulated), `5-dialog-refraction.png`, and
+`6-motion-glass.webm` (17.9 s: cards arriving at load, pointer across the
+toolbar and the reminder card, a scroll, a held press released off the
+button, the New household dialog arriving). Extra, for Jason's "video of the
+theme in action": `6-motion-refraction.webm` (19.5 s, the same script at
+Glass with refraction, showing the pointer light and the drift). The tour
+shot is step 2, the first step whose spot sits on a toolbar control.
+**How they were drawn, and one finding for the Windows check:** Chromium's
+pure software drawing mode (the cloud default) does not blur the sticky
+toolbar's *buttons* behind a dialog or the tour card: they show through
+sharp and faded, while everything else behind is blurred. It is not the
+CSS: every property of the buttons was switched off in turn with no change,
+and with Chromium's GPU path emulated (SwiftShader,
+`--use-angle=swiftshader --enable-unsafe-swiftshader --enable-gpu`) the same
+page blurs them correctly. The screenshots and clips therefore use the GPU
+path, as a PC with a graphics card draws. Two consequences: over Remote
+Desktop, where Chromium can fall back to software, the sharp ghost may show
+(the guide already says to pick Solid there); and **at Glass with refraction
+the ghost shows even on the GPU path** (`5-dialog-refraction.png`), so the
+SVG filter probably forces that surface back to software drawing. Jason
+should look at a dialog at Glass with refraction on his own PC.
+
+**Step 9, the gate:** dead-code scan of the changed files (nothing unused or
+commented out in the JS or CSS); `ruff check .` found three lint issues in
+`tests/test_glass.py` (two `zip()` without `strict=`, one unused loop name),
+fixed. `repo_map.py check` then failed
+`test_a_module_is_tested_by_its_own_test_file_if_and_only_if_that_file_exists`:
+the generator gives a `tests/test_<stem>.py` its owner edge only when one file
+has that stem, and `glass.js` shares "glass" with `glass.css`. **Change
+outside the SPEC:** `tools/repo_map.py` now counts only the node types a test
+can own (`OWNED_TYPES`: module, tool, workflow, script, the same four the test
+checks), so a stylesheet no longer hides a script's owner. Before/after
+comparison: exactly one owner edge added (`tests/test_glass.py` ->
+`app/renderer/glass.js`), none removed. Map updated and `check` current.
+Tests, each file its own process, under Python 3.11 and 3.13: `test_glass`
+24, `test_pilot` 11, `test_tour` 8, `test_layers` 29, `test_single_source`
+167, `test_repo_map` 80, and `test_vocab_report` 28 (it imports the map
+tool): all pass. `git diff main` on `app.js`, `main.js`, `preload.js`,
+`style.css` and `tracker/` is empty.
 
 **Left**
-- Step 6: the rendered sweep (every text colour on a glass surface, the four
-  reduced-preference emulations, no running animation under reduced motion),
-  and the speed probe against SPEC 7.3 at Glass, Solid and Full.
-- Step 7: Tester Guide "Screen effects" section (8.2); `docs/repo-map.curated.json`
-  roles for `glass.css`, `glass.js`, `glass-lens.png`, `make_glass_lens.py`,
-  `test_glass.py`.
-- Step 8: screenshots for SPEC section 12 and the motion clip (Playwright
-  `recordVideo`, under 20 s), into `pilot/reviews/glass-screens/`. Jason asked
-  for a video of the theme in action: this is it.
-- Step 9: dead-code check, `ruff check .`, `repo_map.py update` then `check`,
-  the six named test files under 3.11 and 3.13, the draft PR titled
-  "Build D: glass theme", then Review 3.
+- Review 3 (opus, high effort, separate session; prompt above), then
+  rebuild/review until no findings.
+- Jason: the section 12 checklist on the screenshots and clips, then on
+  Windows with the installed 0.2 - including a dialog at Glass with
+  refraction (the ghost above) and one over Remote Desktop at Glass.
+- SPEC-glass 4.2 and 7.4 to be brought in line with the two token changes
+  (gloss at Solid, picker fill), once the review accepts them.
+- `.claude/skills/fluent-2-design/SKILL.md`, which the update below says was
+  added, is **not in the repository** (only `.mcp.json` is). Whoever takes
+  up Fluent 2 should add it or correct that line.
 
 **Scratch tooling (in the session's scratchpad, not committed; rebuild if the
-session is gone):** a Playwright harness that opens the real
-`app/renderer/index.html` over `file://` and replaces Electron's preload with a
-bridge to the real `python -m tracker.api`, using a made-up root built by
-`tests.samples.build_scratch_root` (Smith Family) and one `run-now` pass, so
-the review card has five items. No client file was opened. Terms and tour are
-skipped by setting `pilot.terms.accepted` and `pilot.tour.seen` in local storage.
+session is gone):** a Playwright harness (Node, the global `playwright`
+package, `NODE_PATH=$(npm root -g)`) that opens the real
+`app/renderer/index.html` over `file://` and replaces Electron's preload with
+a bridge (`page.exposeFunction`) to the real `python -m tracker.api`, with
+`TRACKER_SETTINGS_DIR` and `TRACKER_DATA_HOME` pointed at the scratchpad and a
+made-up root built by `tests.samples.build_scratch_root` (Smith Family),
+`set-root`, and one `run-now --engagement <its return>` pass, so the review
+card has five items and the reminder card shows. Terms and tour are skipped
+or shown by setting `pilot.terms.accepted` and `pilot.tour.seen` in local
+storage; the level by `pilot.glass.level`. Reduced preferences are emulated
+with CDP `Emulation.setEmulatedMedia` (Playwright has no
+`prefers-reduced-transparency`). The page's CSP refuses injected styles, so
+experiments use `element.style` or the theme's own classes. No client file
+was opened.
 
 **Requests received mid-build and NOT done (need Jason's decision)**
 1. *Fluent 2 as the default UI language.* Not set up. The safety check blocked
