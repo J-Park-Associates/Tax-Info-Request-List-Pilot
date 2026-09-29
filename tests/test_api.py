@@ -8123,7 +8123,10 @@ def _a_practice_for_the_firm_view(capsys, demo_root):
 
 
 def _tally(state: dict) -> dict:
+    """What the return's page draws under each group: the request rows and the
+    files that are not filed (a filed file is the Received row it answered)."""
     return {group: sum(1 for item in state["items"] if item["group"] == group)
+            + sum(1 for file in state["index"] if file["group"] == group and group != api.GROUP_RECEIVED)
             for group in api.GROUPS}
 
 
@@ -8140,10 +8143,70 @@ def test_firm_counts_match_the_return_pages_groups(capsys, demo_root):
     assert row["files"] == 1 and row["oldest"] == "2026-02-01"
     assert [f["name"] for f in firm["files"]] == ["setup.exe"]
     assert firm["files"][0]["code"] == reasons.NOT_A_DOCUMENT.code
-    assert firm["files"][0]["path"] == str(mixed)
+    assert firm["files"][0]["return"] == str(mixed)
     assert firm["totals"]["files"] == len(firm["files"]) == 1
     assert firm["totals"]["need"] + firm["totals"]["waiting"] + firm["totals"]["complete"] == len(
         firm["returns"])
+
+
+def test_firm_counts_parked_moved_and_set_aside_files_as_the_return_page_does(capsys, demo_root):
+    """A return whose only work is files still needs a person and its counts
+    are the tally of its own page (SPEC-shell 9.1: one source)."""
+    from tests.conftest import seed_index, seed_statuses
+    from tracker.filer import FILE_MOVED, NOT_REQUESTED, IndexEntry
+    from tracker.manifest import StatusUpdate
+
+    folder = chased_engagement(capsys, demo_root, name="Files only")
+    seed_statuses(folder, {"A01": StatusUpdate(status=Status.RECEIVED, file_count=1),
+                           "B01": StatusUpdate(status=Status.RECEIVED, file_count=1)})
+
+    def entry(name, decision, day, identifier="", home=""):
+        return IndexEntry(received=day, original_name=name, size_kb=0.1, digest=str(len(name)) * 64,
+                          identifier=identifier, prepared_location=home, pbc_location=f"pbc/{name}",
+                          decision=decision, reason="",
+                          code=reasons.NOT_A_DOCUMENT.code if decision == NEEDS_REVIEW else "")
+
+    seed_index(folder, [entry("setup.exe", NEEDS_REVIEW, "2026-02-01"),
+                        entry("w2.pdf", FILE_MOVED, "2026-02-02", "A01", "A01/w2.pdf"),
+                        entry("junk.pdf", NOT_REQUESTED, "2026-02-03")])
+    _code, firm = run(capsys, "firm")
+    [row] = firm["returns"]
+    assert row["counts"] == {"needs_you": 2, "waiting": 0, "received": 2, "set_aside": 1}
+    assert row["counts"] == _tally(payload_of_state(capsys, folder))
+    assert firm["totals"] == {"need": 1, "waiting": 0, "complete": 0, "files": 2, "drafts": 0}
+
+
+def test_firm_reply_names_its_fields_as_the_spec_does_and_carries_year_and_handle(capsys, demo_root):
+    """files[].return is the return's path (what the pages group and open by),
+    each file has the handle the Check step finds it by, and every return and
+    file carries the tax year beside its label (Jason, 2026-09-29)."""
+    mixed, _quiet, _retired = _a_practice_for_the_firm_view(capsys, demo_root)
+    _code, firm = run(capsys, "firm")
+    [file] = firm["files"]
+    assert set(file) == {"return", "year", "name", "handle", "code", "received", "suggestion"}
+    assert file["return"] == str(mixed) and file["year"] == 2025
+    [parked] = [one for one in payload_of_state(capsys, mixed)["index"] if one["original_name"] == "setup.exe"]
+    assert file["handle"] == parked["handle"] != ""
+    assert file["return"] in {one["path"] for one in firm["returns"]}
+    for one in firm["returns"]:
+        assert one["year"] == 2025 and set(one) == {
+            "path", "household", "year", "counts", "files", "oldest", "due", "draft", "problem"}
+    assert set(firm["totals"]) == {"need", "waiting", "complete", "files", "drafts"}
+
+
+def test_list_state_and_firm_agree_on_a_returns_year(capsys, demo_root):
+    mixed, _quiet, _retired = _a_practice_for_the_firm_view(capsys, demo_root)
+    listed = run(capsys, "list")[1]
+    [one] = [r for r in listed["engagements"] if r["path"] == str(mixed)]
+    [in_household] = [r for h in listed["households"] for r in h["returns"] if r["path"] == str(mixed)]
+    [in_firm] = [r for r in run(capsys, "firm")[1]["returns"] if r["path"] == str(mixed)]
+    assert one["year"] == in_household["year"] == in_firm["year"] == 2025 == (
+        payload_of_state(capsys, mixed)["engagement"]["tax_year"])
+
+
+def test_the_after_install_heading_is_the_specs_words():
+    assert api.AFTER_INSTALL_HEADING == "Setup needs attention"
+    assert api._vocab()["after_install"]["heading"] == "Setup needs attention"
 
 
 def test_firm_lists_every_file_it_counts_and_buckets_a_return_with_only_a_file(capsys, demo_root):
@@ -8168,7 +8231,7 @@ def test_firm_lists_every_file_it_counts_and_buckets_a_return_with_only_a_file(c
     _code, firm = run(capsys, "firm")
     [row] = firm["returns"]
     assert row["files"] == 2 and row["oldest"] == "2026-02-01"
-    assert [(f["name"], f["code"], f["path"]) for f in firm["files"]] == [
+    assert [(f["name"], f["code"], f["return"]) for f in firm["files"]] == [
         ("setup.exe", reasons.NOT_A_DOCUMENT.code, str(only_file)),
         ("w2.pdf", reasons.FILE_MOVED.code, str(only_file))]
     assert firm["totals"]["files"] == 2

@@ -5002,7 +5002,7 @@ SCHEDULE_SAVE = "Save"
 SCHEDULE_CANCEL = "Cancel"
 #: The heading of the first screen's notice while the last after-install
 #: run left findings or failures.
-AFTER_INSTALL_HEADING = "After installing: needs a person"
+AFTER_INSTALL_HEADING = "Setup needs attention"
 
 
 def _cmd_install_schedule(argv: list[str]) -> dict:
@@ -5223,6 +5223,7 @@ def _firm_row(one, household: str, today: dt.date) -> tuple[dict, list[dict]]:
     with the detail in the error log (decision 189): it never fails the reply,
     and the total counts it as needing a person, never as complete."""
     row = {"path": str(one.path), "household": household,
+           "year": one.tax_year if one.tax_year is not None else year_of(one.path),
            "counts": dict.fromkeys(GROUPS, 0), "files": 0, "oldest": None, "due": None,
            "draft": {"ready": False, "stage": 0, "held": 0, "drafted": None}, "problem": ""}
     if one.problem:
@@ -5245,13 +5246,23 @@ def _firm_row(one, household: str, today: dt.date) -> tuple[dict, list[dict]]:
         return row, []
     for item in items:
         row["counts"][item_group(item, placed)] += 1
+    # The files count in their groups too (SPEC-shell 9.1): parked and moved
+    # by hand are Needs you, set aside by a person are Set aside, and a filed
+    # file is already the Received row it answered. The same file_group the
+    # return's ``state`` sends on each index row, so a count here is the tally
+    # of that page and the two cannot disagree.
+    for entry in entries:
+        group = file_group(entry)
+        if group != GROUP_RECEIVED:
+            row["counts"][group] += 1
     by_name = {item.identifier: item for item in items}
-    files = [{"return": one.label, "path": str(one.path), "name": t.entry.original_name,
-              "code": t.entry.code, "received": t.entry.received,
+    files = [{"return": row["path"], "year": row["year"], "name": t.entry.original_name,
+              "handle": handle_of(t.entry), "code": t.entry.code, "received": t.entry.received,
               "suggestion": by_name[t.shortlist[0].identifier].label if t.shortlist else ""}
              for t in parked]
-    files.extend({"return": one.label, "path": str(one.path), "name": entry.original_name,
-                  "code": reasons.FILE_MOVED.code, "received": entry.received, "suggestion": ""}
+    files.extend({"return": row["path"], "year": row["year"], "name": entry.original_name,
+                  "handle": handle_of(entry), "code": reasons.FILE_MOVED.code,
+                  "received": entry.received, "suggestion": ""}
                  for entry in entries
                  if file_group(entry) == GROUP_NEEDS_YOU and entry.decision == FILE_MOVED)
     waiting_days = sorted(f["received"] for f in files)
@@ -5298,7 +5309,7 @@ def _cmd_firm(argv: list[str]) -> dict:
         reply["returns"].append(row)
         reply["files"].extend(files)
         counts = row["counts"]
-        if counts[GROUP_NEEDS_YOU] or row["files"] or row["problem"]:
+        if counts[GROUP_NEEDS_YOU] or row["problem"]:
             totals["need"] += 1
         elif counts[GROUP_WAITING]:
             totals["waiting"] += 1
