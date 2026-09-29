@@ -369,6 +369,18 @@ the title bar, and Windows' Transparency effects switch. Jason's steps are in
 causes are the window colour not being clear or the build number test; the
 rollback is `SPEC-mica.md` section 9.
 
+## Review 3 (2026-09-29): 5 findings, `pilot/reviews/review-3.md`
+
+Not ready to merge. **Finding 1 first:** the Mica node test in
+`tests/test_glass.py` lets the real `main.js` start the checkout's
+`after-install` job on any PC where `Setup.bat` has run. The tripwire caught
+it on Jason's PC. Findings 2-5 are SPEC wording and the Mica contrast model.
+The contrast sweep, emulations, probe and recording were not re-run (Jason:
+check the real app instead). His hands-on answers go at the end of the review.
+**Next:** a Sonnet rebuild of findings 1-5 only, which reruns `test_glass`
+(on Windows too, after `Setup.bat`, with no tripwire heading); then an Opus
+re-review.
+
 ## Earlier brief for the Mica job (now built, kept for its facts)
 
 A new job, not part of Build D (SPEC-glass forbids `main.js` edits, P32). It
