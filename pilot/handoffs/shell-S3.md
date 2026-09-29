@@ -143,3 +143,5 @@ command above).
 `pilot/SPEC-shell.md` (3, 6, 7, 13), this file, `app/renderer/shell.js` (its head
 comment lists the seams), `shell.css`, `pilot/harness/` (README, `pages-stub.js`,
 `app-stub.js`), `tests/test_shell.py`.
+
+Last code commit: `f8065ce` on `claude/admiring-lamport-bp1sse` (the handoff-only commit after it adds this line).
