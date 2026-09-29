@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 197,
+    "nodes": 198,
     "edges": 1136,
-    "reused": 155
+    "reused": 151
   },
   "node_types": [
     "artifact",
@@ -4011,8 +4011,8 @@
       "id": "app/renderer/pilot-ui.css",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "0583bd728d4a0afa",
-      "lines": 593,
+      "sha256": "fcd26c59fea870eb",
+      "lines": 611,
       "role": "Pilot Build E, the structure pass (P51-P54): one file that overrides style.css to give the app one button shape in four importances and two sizes, a four-step type ramp of two weights and a 4px spacing grid, loaded after style.css and before pilot-style.css so the original's files stay unedited.",
       "notes": "Its own tokens (:root) are the only place a colour, size or step is written; outside them tests/test_pilot_ui.py fails on a hex, a literal font size, weight or line height, or a padding, margin or gap off the grid. It never names .rem-preview: the reminder letter mirrors the emailed letter and keeps its own fonts and inks. It ends with a forced-colors block of system colours only. No url(), no @import, no @font-face, no bundled font."
     },
@@ -4143,8 +4143,8 @@
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "c2a5bfb4f367c5f3",
-      "lines": 505
+      "sha256": "8bd1c7a621da460c",
+      "lines": 553
     },
     {
       "id": "pilot/PROMPTS.md",
@@ -4157,8 +4157,8 @@
       "id": "pilot/README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "a36d72933cda49c6",
-      "lines": 49
+      "sha256": "364f121d10a3f55d",
+      "lines": 50
     },
     {
       "id": "pilot/RELEASE.md",
@@ -4185,8 +4185,8 @@
       "id": "pilot/SPEC.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "eff4b374e4afc381",
-      "lines": 995
+      "sha256": "9f1a5cb72d6fb251",
+      "lines": 996
     },
     {
       "id": "pilot/Tester Guide.md",
@@ -4208,6 +4208,13 @@
       "layer": "docs",
       "sha256": "6f4e1530c056c1b1",
       "lines": 38
+    },
+    {
+      "id": "pilot/reviews/review-e1.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "134a9051a7b02405",
+      "lines": 303
     },
     {
       "id": "pilot/wintest/PROMPT-RERUN-3.md",
@@ -6756,15 +6763,21 @@
       "id": "tests/test_pilot_ui.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "4964e983ab1deeca",
-      "lines": 156,
+      "sha256": "15e8e1fce827960e",
+      "lines": 249,
       "exports": [
         "COLOUR",
+        "COLOUR_PROPS",
         "CSS_NAME",
+        "GRID_PROPS",
         "GRID_TOKEN",
+        "NEVER_HIDDEN",
+        "NOT_A_COLOUR",
         "RENDERER",
         "REPO",
+        "SYSTEM_COLOURS",
         "blocks",
+        "colour_faults",
         "declarations",
         "outside_root",
         "read",
@@ -6774,10 +6787,12 @@
         "test_the_structure_pass_honours_contrast_themes_last",
         "test_the_structure_pass_leaves_the_letter_alone",
         "test_the_structure_pass_loads_between_the_app_and_the_pilot",
+        "test_the_structure_pass_never_unhides_a_hidden_element",
         "test_the_structure_pass_uses_only_the_spacing_grid",
         "test_the_structure_pass_uses_only_the_type_ramp",
         "test_the_structure_pass_writes_no_literal_colour_outside_its_tokens",
-        "test_the_tour_leads_with_next"
+        "test_the_tour_leads_with_next",
+        "top_level"
       ],
       "constants": {
         "CSS_NAME": "'pilot-ui.css'"

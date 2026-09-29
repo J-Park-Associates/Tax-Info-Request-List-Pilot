@@ -259,8 +259,10 @@ table.requests, .editor-table, .summary, .chip, .rem-stage-n,
 
 /* Quiet links that are not .btn: the same subtle look at .btn-small metrics.
    Every property is set, because none of it comes from .btn. */
-.rem-quiet, .wiz-back {
+.rem-quiet:not(.hidden), .wiz-back:not(.hidden) {
   display: inline-flex;
+}
+.rem-quiet, .wiz-back {
   align-items: center;
   justify-content: center;
   gap: var(--sp-1);
@@ -281,6 +283,16 @@ table.requests, .editor-table, .summary, .chip, .rem-stage-n,
   border-color: transparent;
 }
 .rem-quiet:active, .wiz-back:active { background: var(--surface-pressed); }
+/* Disabled is drawn, not faded (SPEC 5.2, the subtle variant): transparent
+   fill, the disabled text colour, the default cursor, and hover and press
+   change nothing. app.js disables #btn-open-draft until a draft file exists. */
+.rem-quiet:disabled, .rem-quiet:disabled:hover, .rem-quiet:disabled:active,
+.wiz-back:disabled, .wiz-back:disabled:hover, .wiz-back:disabled:active {
+  color: var(--text-disabled);
+  background: transparent;
+  border-color: transparent;
+  cursor: default;
+}
 .rem-quiet:focus-visible, .wiz-back:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 
 /* Selected is not primary: the accent means "the main action", so a chosen
@@ -341,8 +353,9 @@ table.requests, .editor-table, .summary, .chip, .rem-stage-n,
 
 /* Four runs by DOM order: places and upkeep (Tour, inbox, client folder,
    repair), the list (edit, schedule), pages (report, status), the run (Sort
-   & Scan, Stop). 4px inside a run, 16px between runs. */
-#btn-edit, #btn-view, #btn-scan { margin-left: var(--sp-3); }
+   & Scan, Stop). 4px inside a run, 12px between runs, set as a right margin on
+   the last button of the run before, so a row that wraps starts flush. */
+#btn-repair-schedule, #btn-schedule, #btn-status { margin-right: var(--sp-3); }
 
 #eng-select {
   min-height: var(--ctl-h);
@@ -397,15 +410,16 @@ table.requests, .editor-table, .summary, .chip, .rem-stage-n,
 .dismissed { padding: 0 var(--sp-4) var(--sp-4); }
 .dismissed .review { padding: 0; }
 .household-returns { gap: var(--sp-2); }
-.household-return { display: flex; align-items: center; gap: var(--sp-2); }
+.household-return:not(.hidden) { display: flex; }
+.household-return { align-items: center; gap: var(--sp-2); }
 .editor-actions { gap: var(--sp-2); }
 
 /* The chosen form's header row: labels never wrap inside a pill or a link;
    the row wraps between items instead. */
 .form-chosen { flex-wrap: wrap; row-gap: var(--sp-2); }
 .wiz-back, .chosen-badge { white-space: nowrap; }
+.chosen-badge:not(.hidden) { display: inline-flex; }
 .chosen-badge {
-  display: inline-flex;
   align-items: center;
   min-height: var(--ctl-h-sm);
   padding: 0 var(--sp-3);
@@ -580,7 +594,11 @@ input[type="checkbox"], input[type="radio"],
   }
 
   .btn:disabled,
-  .btn:disabled:hover {
+  .btn:disabled:hover,
+  .rem-quiet:disabled,
+  .rem-quiet:disabled:hover,
+  .wiz-back:disabled,
+  .wiz-back:disabled:hover {
     color: GrayText;
     border-color: GrayText;
   }

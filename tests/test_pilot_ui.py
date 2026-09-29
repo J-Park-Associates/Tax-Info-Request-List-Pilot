@@ -16,9 +16,36 @@ REPO = Path(__file__).resolve().parent.parent
 RENDERER = REPO / "app" / "renderer"
 CSS_NAME = "pilot-ui.css"
 
-# Colour-bearing tokens live in :root and nowhere else.
-COLOUR = re.compile(r"#[0-9a-fA-F]{3,8}\b|\brgba?\(")
+# Colour-bearing tokens live in :root and nowhere else. A literal colour is a
+# hex, a colour function, or a bare colour word (red, white, ...): outside :root
+# a colour value may only be a var(), transparent, currentColor, inherit or a
+# system colour, so the check is on what is allowed rather than a list of names.
+COLOUR = re.compile(
+    r"#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix)\(",
+    re.I,
+)
+COLOUR_PROPS = {
+    "color", "background", "background-color", "border", "border-color", "outline", "outline-color",
+    "fill", "stroke", "box-shadow", "text-shadow", "text-decoration", "text-decoration-color",
+    "caret-color", "accent-color", "column-rule", "column-rule-color",
+} | {f"border-{side}{tail}" for side in ("top", "right", "bottom", "left", "inline", "block") for tail in ("", "-color")}
+SYSTEM_COLOURS = {
+    "highlight", "highlighttext", "buttontext", "buttonface", "buttonborder", "graytext", "canvas",
+    "canvastext", "linktext", "visitedtext", "activetext", "field", "fieldtext", "mark", "marktext",
+}
+# Words that legitimately sit in a colour-bearing shorthand without being a colour.
+NOT_A_COLOUR = {
+    "transparent", "currentcolor", "inherit", "initial", "unset", "none", "solid", "dashed", "dotted",
+    "double", "inset", "outset", "groove", "ridge", "hidden", "underline", "overline", "line-through",
+    "no-repeat", "repeat", "center", "cover", "contain", "border-box", "padding-box", "content-box",
+    "important",
+}
 GRID_TOKEN = re.compile(r"^(?:0|auto|var\(--sp-[a-z0-9-]+\))$")
+# Every property that lays out by a distance: the physical and the logical sides.
+_SIDES = ("top", "right", "bottom", "left", "inline", "block", "inline-start", "inline-end", "block-start", "block-end")
+GRID_PROPS = {"gap", "row-gap", "column-gap", "inset", "padding", "margin"}
+GRID_PROPS |= {f"{p}-{side}" for p in ("padding", "margin") for side in _SIDES}
+GRID_PROPS |= {f"inset-{side}" for side in _SIDES}
 
 
 def read(name: str) -> str:
@@ -60,6 +87,35 @@ def blocks(css: str):
         pos += 1
 
 
+def top_level(css: str):
+    """Yield (prelude, body, end) for each top-level rule of comment-stripped css, by balanced braces."""
+    depth, start, prelude_start, prelude = 0, 0, 0, ""
+    for pos, ch in enumerate(css):
+        if ch == "{":
+            if depth == 0:
+                prelude, start = css[prelude_start:pos].strip(), pos + 1
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            assert depth >= 0, "unbalanced braces"
+            if depth == 0:
+                yield prelude, css[start:pos], pos + 1
+                prelude_start = pos + 1
+    assert depth == 0, "unbalanced braces"
+
+
+def colour_faults(prop: str, value: str):
+    """What in this declaration is a colour that is not a token or a system colour."""
+    if COLOUR.search(value):
+        yield value
+    if prop in COLOUR_PROPS:
+        bare = re.sub(r"var\([^)]*\)", " ", value)
+        bare = re.sub(r"[-+]?\d*\.?\d+[a-z%]*", " ", bare)  # lengths and numbers
+        for word in re.findall(r"[a-zA-Z][a-zA-Z-]*", bare):
+            if word.lower() not in SYSTEM_COLOURS | NOT_A_COLOUR:
+                yield word
+
+
 def declarations(body: str):
     for part in body.split(";"):
         if ":" in part:
@@ -89,7 +145,9 @@ def test_the_structure_pass_writes_no_literal_colour_outside_its_tokens():
                 if "rgba(" in value:
                     assert prop == "--shadow-overlay", f"only the overlay shadow may hold rgba(: {prop}"
             continue
-        assert not COLOUR.search(body), f"literal colour in {selector.strip()}"
+        for prop, value in declarations(body):
+            faults = list(colour_faults(prop, value))
+            assert not faults, f"literal colour {faults} in {selector.strip()}: {prop}: {value}"
     assert root_seen
 
 
@@ -98,6 +156,7 @@ def test_the_structure_pass_uses_only_the_type_ramp():
     seen = 0
     for _media, selector, body in outside_root():
         for prop, value in declarations(body):
+            assert prop != "font", f"{selector.strip()}: the font shorthand hides a size and a weight; write the three"
             if prop in wanted:
                 seen += 1
                 assert value.startswith(wanted[prop]), f"{selector.strip()}: {prop}: {value}"
@@ -105,12 +164,10 @@ def test_the_structure_pass_uses_only_the_type_ramp():
 
 
 def test_the_structure_pass_uses_only_the_spacing_grid():
-    props = {"padding", "margin", "gap", "row-gap", "column-gap"}
-    props |= {f"{p}-{side}" for p in ("padding", "margin") for side in ("top", "right", "bottom", "left", "inline", "block")}
     seen = 0
     for _media, selector, body in outside_root():
         for prop, value in declarations(body):
-            if prop not in props:
+            if prop not in GRID_PROPS:
                 continue
             seen += 1
             flat = re.sub(r"calc\(([^()]|\([^()]*\))*\)", "0", value)
@@ -127,21 +184,57 @@ def test_the_structure_pass_leaves_the_letter_alone():
 
 
 def test_the_structure_pass_honours_contrast_themes_last():
-    css = read(CSS_NAME)
-    block = re.search(r"@media \(forced-colors: active\) \{(.*)\n\}\n?$", css, flags=re.S)
-    assert block, "the forced-colors block must be the last rule of pilot-ui.css"
-    inner = block.group(1)
-    assert "Highlight" in inner and "ButtonText" in inner and "GrayText" in inner
-    assert not COLOUR.search(stripped(inner)), "system colours only"
+    css = stripped(read(CSS_NAME))
+    rules = list(top_level(css))
+    prelude, inner, end = rules[-1]
+    assert prelude == "@media (forced-colors: active)", f"the last rule of pilot-ui.css must be the forced-colors block, not {prelude!r}"
+    assert sum("forced-colors" in p for p, _b, _e in rules) == 1, "one forced-colors block, and it is the last rule"
+    assert not css[end:].strip(), "nothing may follow the forced-colors block"
+    used = {w.lower() for w in re.findall(r"\b[A-Za-z]+\b", inner)}
+    assert {"highlight", "buttontext", "graytext"} <= used
+    for _media, selector, body in blocks(prelude + " {" + inner + "}"):
+        for prop, value in declarations(body):
+            for word in colour_faults(prop, value):
+                raise AssertionError(f"system colours only: {selector.strip()}: {prop}: {word}")
 
 
 def test_the_structure_pass_adds_no_remote_or_forbidden_thing():
     css = stripped(read(CSS_NAME))
     for banned in ("url(", "@import", "@font-face", "glass", "backdrop-filter"):
         assert banned not in css.lower(), banned
-    for media, selector, body in outside_root():
+    for media, selector, body in blocks(read(CSS_NAME)):  # :root included
         if "!important" in body:
             assert any("prefers-reduced-motion" in m for m in media), selector.strip()
+
+
+# Rules whose element the page never hides with .hidden.
+NEVER_HIDDEN = {
+    ".mode-toggle": "the review Cards/List switch: its card is hidden, it never is",
+}
+
+
+def test_the_structure_pass_never_unhides_a_hidden_element():
+    """A `display` in a later stylesheet out-ranks style.css's `.hidden`
+    (same specificity, later source), so an element app.js hides comes back:
+    Build E did this to #wi-household ("Change household details" in Add a
+    return). Every display other than none is declared under :not(.hidden)."""
+    seen = 0
+    for name in (CSS_NAME, "pilot-style.css"):
+        for _media, selector, body in blocks(read(name)):
+            if selector.strip() == ":root":
+                continue
+            if not [v for p, v in declarations(body) if p == "display" and v != "none"]:
+                continue
+            for one in (part.strip() for part in selector.split(",")):
+                seen += 1
+                if ":not(.hidden)" in one or one in NEVER_HIDDEN:
+                    continue
+                # The pilot's own overlays, cards and chips are built and removed by pilot.js and
+                # tour.js, which never toggle .hidden (asserted below), so they cannot be unhidden.
+                assert name == "pilot-style.css" and ".pilot-" in one, f"{name}: {one} sets display without :not(.hidden)"
+    assert seen
+    for script in ("pilot.js", "tour.js", "pilot-content.js"):
+        assert not re.search(r"""["'`]hidden["'`]|\.hidden\b""", read(script)), f"{script} toggles .hidden: the exemption above is void"
 
 
 def test_the_tour_leads_with_next():

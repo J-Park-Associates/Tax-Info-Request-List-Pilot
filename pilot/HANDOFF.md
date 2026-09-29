@@ -10,7 +10,7 @@ importances and two sizes, command bar, surfaces, inputs, dialogs, a
 Other edits: one link line in `index.html`, `next.classList.add("btn-primary")`
 in `tour.js`, `pilot-style.css` now written in the tokens (no literal colour,
 size or step left), a `pilot-ui.css` node and `loads` edge in the curated map,
-`tests/test_pilot_ui.py` (9 tests). The SPEC author added P55 mid-build
+`tests/test_pilot_ui.py` (9 tests at build, 10 after Rebuild E1). The SPEC author added P55 mid-build
 (`.main > * { flex-shrink: 0 }`, a bug of 0.1 that let every card collapse to a
 sliver when notices filled the window); it is in SPEC 7.1, `DECISIONS.md` and a
 test.
@@ -36,6 +36,10 @@ decision.
   as SPEC 4's last line reads for it; the tour's step title (`h2`) got the title
   size. The stage chips in the tour card pad `0 var(--sp-1)` so five fit the
   400px card.
+- `.pilot-terms-section h3` (the terms card's six section headings) is body
+  size, 14/20 at 600, not the dialog title size SPEC 4 gives the terms card's
+  `h2`/`h3`: six 20px headings in one card would be loud. The card's own title
+  (`h2`) is title size.
 - Rules the SPEC does not name, added because the rendered check showed a fault
   (all on the grid and in tokens): `.rem-stage .rem-stage-n { opacity: 1 }` (the
   75% fade put the count at 3.5:1); `.editor-actions .btn { align-self: center }`
@@ -92,6 +96,50 @@ start the checkout's real `tracker.api` when a `.venv` sits in the checkout;
 the pre-build commit does the same with a `.venv` beside it, so it is not from
 this build. `test_api.py` under both Pythons at once collides on
 `/tmp/Real root`; run the two interpreters one after the other.
+
+**Rebuild E1** (fixes to [`reviews/review-e1.md`](reviews/review-e1.md), six
+findings, nothing else; `style.css`, `app.js`, `main.js`, `preload.js` and
+`tracker/` still untouched).
+
+1. *Blocking, a hidden link showed again.* `.wiz-back` set `display` in
+   `pilot-ui.css`, which loads after `style.css` and so out-ranked `.hidden`;
+   `#wi-household` ("Change household details") showed in Add a return.
+   `display` now sits only under `:not(.hidden)` for `.rem-quiet`, `.wiz-back`,
+   `.household-return` and `.chosen-badge` (the alignment and gap stay on the
+   plain selector). A sweep of both stylesheets found no other `display` on an
+   element the page can hide; `pilot-style.css`'s are the pilot's own overlays
+   and chips, built and removed by `pilot.js`/`tour.js`, which never toggle
+   `.hidden`. New test `test_the_structure_pass_never_unhides_a_hidden_element`
+   (fails on the old file; `.mode-toggle` is the one named exemption). Reproduced
+   and cleared with the reviewer's Add a return script: `display=flex` before,
+   `display=none` after.
+2. *Should-fix, Open the draft file looked enabled.* `.rem-quiet` and
+   `.wiz-back` now have the drawn disabled look of SPEC 5.2, subtle variant:
+   transparent fill, `--text-disabled` text, default cursor, and `:hover` and
+   `:active` change nothing; the forced-colors block gives them `GrayText`.
+3. *Should-fix, "contrast themes last" did not check last.* The test now parses
+   the comment-stripped file by balanced braces and asserts the last top-level
+   rule is the one forced-colors block, nothing follows it, and its colours
+   are system colours (checked on stripped text). A rule appended after the
+   block fails it (mutation-checked in a scratch copy).
+4. *Nit, three tests narrower than their names.* The colour test rejects any
+   colour that is not a `var()`, `transparent`, `currentColor`, `inherit` or a
+   system colour (named colours, `hsl()`, `hwb()`, `lab()`, ...); the type-ramp
+   test rejects the `font:` shorthand; the grid test covers the logical
+   `padding`/`margin`/`inset` properties; `!important` is checked in `:root`
+   too. Each was proved by a mutation in a scratch copy.
+5. *Nit, a wrapped toolbar row started 12px in.* The run gap is now a
+   `margin-right` on the last button of the run before (`#btn-repair-schedule`,
+   `#btn-schedule`, `#btn-status`); every row starts flush at 1100, 1366, 1440,
+   1536 and 1920, and Stop still sits 4px after Sort & Scan.
+6. *Nit, docs.* README rule 1 and `SPEC.md` (Build B's list) now count the
+   fifth `index.html` line and name `pilot-ui.css`; the terms card's
+   body-size headings are in the deviations above.
+
+Re-run after the fixes: the sweep is 0 findings in 11 scenarios; only
+`after-main-1366x860.png` and `after-main-1100x760.png` changed (the disabled
+Open the draft file). `test_pilot_ui` is now 10 tests. The Add a return flow
+is not in the harness's shoot scenarios; it was run by the reviewer's script.
 
 **Left.** Review by a separate Opus session that did not build it. Jason's look
 on Windows 11 at Segoe UI Variable's real rendering (widths differ from the
