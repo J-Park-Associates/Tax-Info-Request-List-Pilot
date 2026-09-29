@@ -1,5 +1,7 @@
 # Jason's rulings on the shell build (2026-09-29)
 
+> **Current state is in [`shell-ledger.md`](shell-ledger.md)** (one line per live decision, where it is applied, and its status). Rows 8, 9 and 11 below were amended by later rows: **12 wins over 11 over 9 over 8** for link behaviour (file names open File Explorer; household and return names navigate in the app), and **10 wins** over any lower-case spelling in rows 8 and 13.
+
 S6 (the join) applies these and logs each as a decision row (from P85).
 
 | # | Question | Ruling | What S6 does |

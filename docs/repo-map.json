@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 263,
+    "nodes": 264,
     "edges": 1136,
-    "reused": 221
+    "reused": 222
   },
   "node_types": [
     "artifact",
@@ -4574,11 +4574,18 @@
       "lines": 82
     },
     {
+      "id": "pilot/handoffs/shell-ledger.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "af98bb8b59604a2a",
+      "lines": 41
+    },
+    {
       "id": "pilot/handoffs/shell-rulings.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "49517cf9d7248738",
-      "lines": 19
+      "sha256": "7595c1adce9534e4",
+      "lines": 21
     },
     {
       "id": "pilot/reviews/review-1.md",
