@@ -89,8 +89,8 @@ Python 3.11 (`/tmp/v`) and 3.13 (`/tmp/v313`), each file its own process, in par
 | `test_layers` | 29 passed |
 | `test_pilot_installer` | 12 passed |
 | `test_row_columns` | 26 passed |
-| `test_api` | 368 passed after fixing six (the first run had 6 failures, all card tests of the 14.2 table); the affected six re-run: pass |
-| `test_repo_map` | see the last line of this file (run last) |
+| `test_api` | 368 passed (six card tests of the 14.2 table were fixed first). On 3.13 one test, `test_every_command_that_reads_the_root_rechecks_it`, hit a `/tmp/Real root` name clash with the 3.11 run going at the same time; alone it passes |
+| `test_repo_map` | passes on the final tree, after `repo_map.py update` and `check` (run last, so the map covers this file) |
 
 `python -m ruff check .` is clean. `interact.mjs`: "all interactions pass" (now 51
 checks; it drives the rows by keyboard and mouse, the Clients switch, a household's
@@ -194,4 +194,6 @@ its row label"; the folded-rows test reads `pages.js`).
 what it offers S5), `app/renderer/shell.js`, `pilot/harness/` (README, `stub.js`, `sheet-stub.js`),
 `tests/test_shell.py`.
 
-Last code commit: see the last line below.
+
+
+Last code commit: `92df828` on `claude/shell-s4-pages` (the commit after it only refreshes the repository map and this file).
