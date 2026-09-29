@@ -84,6 +84,12 @@ The Windows steps in [`RELEASE.md`](RELEASE.md): run the gate under the
 office's Python, build the installer, install and try it, uninstall, then tag
 `pilot-0.1` and send it.
 
+## Next after 0.1: Build D, the glass theme (pilot 0.2, P30)
+
+A fresh session writes its SPEC first (`pilot/SPEC-glass.md`), then the usual
+build -> review loop. The starting analysis is recorded in P30. It does not
+block 0.1.
+
 ## Environment notes for cloud sessions
 
 `pip install -r requirements.lock` fails in the cloud container (a wheel will
