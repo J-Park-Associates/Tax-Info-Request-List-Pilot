@@ -76,3 +76,21 @@ open of a reveal-only path is refused with `vocab.shell.not_opened`.
   Title Case already ("Filed {n}", "{n} to Review", "{n} Still Syncing"); they
   are listed as fragments too.
 - SPEC 5.7 / 9.3 should name the reveal-only kind and `shown_key`.
+
+## Notice words for the pages (coordinator's added item, from S4 rebuild 1)
+
+`vocab.screen.notices` (`api.SCREEN["notices"]`, beside `drive`), Title Case, five
+words or fewer, no path; the long sentences stay in the API for the error log.
+Rows added to `pilot/wording-shell.tsv` (`screen.notices.*`).
+
+| key | word | status |
+|---|---|---|
+| `reader` | Install Folder Name Too Long | SPEC E28 |
+| `machine` | Machine Needs Attention | **PROPOSED for Jason** (E30 names only `drive`; S1 sends machine warnings as sentences, so one short line covers a warning with no word of its own; no code map was needed) |
+| `renamed` | Folder Renamed | SPEC E47 |
+| `paused` | Two Years Open; Sorting Paused | **PROPOSED for Jason** (no words in the SPEC) |
+| `feed` | Feed Return Not Found | **PROPOSED for Jason** (no words in the SPEC) |
+| `drive` | Drive Not Signed In | existing |
+
+Test: `test_the_notices_carry_a_short_word_for_every_kind_the_pages_show`; the
+Title Case walk covers them too.

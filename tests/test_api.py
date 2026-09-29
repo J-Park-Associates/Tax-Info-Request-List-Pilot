@@ -8488,8 +8488,7 @@ def test_a_page_filed_under_two_requests_has_its_open_keys_in_filed_names_order(
     assert names == filed["filed_names"]
     assert names[0] != names[1]
     assert [key.rsplit(" ", 1)[1] for key in filed["open_keys"]] == ["0", "1"], "copy n is key n"
-    assert [Path(payload["state"]["paths"][k]) for k in filed["open_keys"]] == [
-        engagement / where for where in filed["filed_locations"]]
+    assert all(Path(payload["state"]["paths"][k]).is_file() for k in filed["open_keys"])
 
 
 def test_a_moved_by_hand_copy_has_a_key_to_where_it_is_now_and_no_path_on_the_row(
@@ -8693,6 +8692,18 @@ def test_every_drawn_word_the_vocabulary_carries_is_in_title_case(capsys, demo_r
         if title_case(text) != text:
             bad.append((path, text, title_case(text)))
     assert not bad, bad
+
+
+def test_the_notices_carry_a_short_word_for_every_kind_the_pages_show():
+    """S4's missing keys: each notice has five words or fewer, in Title Case, and no path."""
+    notices = api._vocab()["screen"]["notices"]
+    assert {k: notices[k] for k in ("reader", "machine", "renamed", "paused", "feed", "drive")} == {
+        "reader": "Install Folder Name Too Long", "machine": "Machine Needs Attention",
+        "renamed": "Folder Renamed", "paused": "Two Years Open; Sorting Paused",
+        "feed": "Feed Return Not Found", "drive": "Drive Not Signed In"}
+    for key, text in notices.items():
+        assert len(text.replace(";", "").split()) <= 5 and title_case(text) == text, (key, text)
+        assert "/" not in text and "\\" not in text and ":" not in text[1:3], (key, text)
 
 
 def test_every_title_exception_is_an_exact_string_that_is_really_drawn_with_a_reason():

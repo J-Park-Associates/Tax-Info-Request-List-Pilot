@@ -2148,7 +2148,9 @@ def test_the_shell_lstats_before_it_opens_and_refuses_a_link_or_a_changed_kind()
     assert main.count("shell.openPath(") == 1 and main.count("shell.showItemInFolder(") == 1
     vocab = api._vocab()
     assert vocab["shell"]["not_opened"] == api.SHELL_NOT_OPENED
-    assert set(vocab["path_kinds"].values()) == {"folder", "file"}
+    assert set(vocab["path_kinds"].values()) == {"folder", "file", "reveal"}
+    # A reveal-only kind is refused unless the call asked to reveal (F1).
+    assert 'kind === "reveal" && !reveal' in opener
 
 
 # ------------------------------------------ one-time steps run themselves ----

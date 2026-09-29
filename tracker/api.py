@@ -1318,6 +1318,16 @@ SCREEN: dict = {
         "show": "Show",
         "no_log": "No Error Log Yet",
         "drive": "Drive Not Signed In",
+        # The short words of the other notices (S4's missing keys). The long
+        # sentences stay in the API for the error log only; a notice shows
+        # these. ``machine`` is the line for a machine warning with no word
+        # of its own (PROPOSED for Jason); ``paused`` and ``feed`` are
+        # PROPOSED for Jason too, the SPEC names no words for them.
+        "reader": "Install Folder Name Too Long",
+        "machine": "Machine Needs Attention",
+        "renamed": "Folder Renamed",
+        "paused": "Two Years Open; Sorting Paused",
+        "feed": "Feed Return Not Found",
     },
     "misfits": {
         "title": "Folders Skipped",

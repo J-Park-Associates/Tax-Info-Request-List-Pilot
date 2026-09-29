@@ -211,3 +211,8 @@ pilot-content.js	tour.steps[9].does	Weekly, drafts a reminder listing what's mis
 pilot-content.js	tour.steps[9].fallback	Appears when a reminder is drafted.	cut		0	Nowhere; fallbacks cut	Audit §8
 pilot-content.js	tour.steps[9].limit	Send from your own email; no Outlook or Gmail link.	cut		0	Nowhere; limits cut	Audit §8
 pilot-content.js	tour.steps[9].strength	Nothing is ever sent. No client is contacted without you.	cut		0	Nowhere; strengths cut	Audit §8
+api._vocab	screen.notices.reader	(none: a long sentence)	reword	Install Folder Name Too Long	5	Notice	SPEC E28; the reader warning's sentence goes to the error log
+api._vocab	screen.notices.machine	(none: a long sentence)	reword	Machine Needs Attention	3	Notice	PROPOSED for Jason (SPEC E30 names only Drive Not Signed In); one short line for a machine warning with no word of its own; the sentences go to the error log
+api._vocab	screen.notices.renamed	(none: a long sentence)	reword	Folder Renamed	2	Notice	SPEC E47; notice with one action, Accept
+api._vocab	screen.notices.paused	(none: a long sentence)	reword	Two Years Open; Sorting Paused	5	Notice	PROPOSED for Jason (SPEC names no words); a year's pause, no Accept
+api._vocab	screen.notices.feed	(none: a long sentence)	reword	Feed Return Not Found	4	Notice	PROPOSED for Jason (SPEC names no words); a feed that resolves to nothing
