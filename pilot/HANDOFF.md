@@ -234,6 +234,13 @@ skipped by setting `pilot.terms.accepted` and `pilot.tour.seen` in local storage
    theme's whole look is painted in the page). This is a design change, not an
    add-on. It needs its own SPEC and a decision on which of the two, if either,
    and whether it replaces Build D's in-page glass or sits beside it.
+   **Update (Jason, later 2026-09-29):** Fluent 2 is *opt-in, not the default*
+   and the `fluent-ui` server is approved: `.mcp.json` (pinned 1.0.2) and
+   `.claude/skills/fluent-2-design/SKILL.md` are added; CLAUDE.md is unchanged.
+   Native materials: Electron itself has `BrowserWindow.backgroundMaterial`
+   (`mica`, `acrylic`, `tabbed`; Windows 11 22H2+, since Electron 26), so no
+   third-party module is needed; it still needs a `main.js` edit and a
+   transparent page, so it needs its own SPEC.
 3. Neither third-party integration should be added by a builder without
    Jason's explicit approval of the exact package and version.
 
