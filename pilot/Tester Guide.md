@@ -11,7 +11,7 @@ The four rules it never breaks:
 - **Nothing is guessed.** A document is filed only when exactly one request on the list accepts it. Anything unclear goes to the **Needs Review** folder for you.
 - **Nothing is ever sent.** The program drafts client emails and stops. You copy and send them from your own email.
 
-This is a **pilot**: a first edition for a small group of firms. It works, but it is unfinished, and section 8 says plainly what it will not do yet.
+This is a **pilot**: a first edition for a small group of firms. It works, but it is unfinished, and section 9 says plainly what it will not do yet.
 
 ## 2. Before you start
 
@@ -61,7 +61,17 @@ Press **Schedule** to:
 
 Pressing **Scan** by hand works whether the schedule is on or off.
 
-## 8. What it will not do yet
+## 8. Screen effects
+
+The top right corner of the window has a **Screen effects** choice. It changes only how the program looks, never what it does.
+
+- **Glass** (the starting choice) - the header, toolbar, the action cards and dialogs are see-through, over a soft navy background. Nothing on the screen moves unless you move the mouse, scroll or click.
+- **Solid** - plain, non-see-through panels. Choose it on remote desktop, on a slow computer, or if scrolling stutters.
+- **Glass with refraction** - adds a light that follows the mouse, a slowly drifting background, and a slight bend at the edges of the toolbar and dialogs. Only on a computer with a proper graphics card; elsewhere it can feel slow.
+
+If Windows' **Transparency effects** or **Animation effects** is turned off (Settings, Accessibility, Visual effects), the program turns solid and still on its own, and the choice is greyed out with a line saying why.
+
+## 9. What it will not do yet
 
 - Windows only.
 - About 74 document kinds and 6 return types.
@@ -69,13 +79,13 @@ Pressing **Scan** by hand works whether the schedule is on or off.
 - The installer is unsigned, so Windows shows a warning (section 3).
 - It does not send email. You send the drafts yourself.
 
-## 9. Uninstall
+## 10. Uninstall
 
 Open Windows **Settings**, then **Apps**, and remove **Tax Document Tracker Pilot**.
 
 Uninstalling removes the program and its scheduled task. It leaves your clients folder, your settings and the program's data folder (`%LOCALAPPDATA%\tax-document-tracker-pilot`) where they are.
 
-## 10. Problems and ideas
+## 11. Problems and ideas
 
 Email admin@jparkassociates.com.
 
