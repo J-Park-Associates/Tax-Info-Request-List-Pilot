@@ -1,6 +1,6 @@
 # Brief: the app shell (firm view, explorer breadcrumb, funnel menus)
 
-Status: **draft for Jason's confirmation** (2026-09-29). Shaped with the
+Status: **confirmed by Jason** (2026-09-29), decisions P58-P62. Shaped with the
 Impeccable skill (`shape`); product facts in [`../PRODUCT.md`](../PRODUCT.md).
 This brief refines [`PLAN-ui.md`](PLAN-ui.md) and replaces its sidebar tree and
 tabs. It is the input to the SPEC session; nothing is built yet.
@@ -30,8 +30,8 @@ often over Remote Desktop.
 ```
 ┌ File  Client  View  Tools  Help ─────────────────────────────────────────────┐
 ├──────────────┬───────────────────────────────────────────────────────────────┤
-│ ▣ Tracker    │ Clients › Smith Family › 2025 › 1040 - John & Jane Smith      │
-│              │                                           Actions ▾  Sort now │
+│ ▣ Tracker    │ Clients › Smith Family › 2025 › 1040 - J…   🔍 Find client  ⟳ │
+│              │                                                               │
 │ Overview     │                                                               │
 │ Needs review 3│ 1040 - John & Jane Smith                                     │
 │ Reminders   2│ 3 need you · 2 waiting on client · 9 received                 │
@@ -44,7 +44,7 @@ often over Remote Desktop.
 │              │ 1099-B      Schwab       Asked Mar 1                          │
 │              │ 1098        Chase        Asked Mar 1                          │
 │              │                                                               │
-│ Find  Ctrl+F │ Received  9                                                   │
+│              │ Received  9                                                   │
 │ Sorted 6:00 ✓│ W-2         Acme Corp    Mar 3                                │
 └──────────────┴───────────────────────────────────────────────────────────────┘
 ```
@@ -59,14 +59,16 @@ vague-to-specific funnel into the main area:
 | Reminders | returns with a reminder draft ready | drafts ready |
 | Clients | all households, searchable; opens filtered to "work waiting", one switch to "all" | none |
 
-Below them only: **Find** (search households by name, Ctrl+F) and the last-sort
-line ("Sorted 6:00 AM" with a tick, or the problem in words). The pilot badge and
+Below them only the last-sort line ("Sorted 6:00 AM" with a tick, or the
+problem in words; during a sort, its progress and a Stop). The pilot badge and
 tour stay where `pilot.js` puts them.
 
 **Breadcrumb (the explorer path).** `Clients › household › year › return`,
-every segment clickable, as the page's title row. The current level's name is
-the page heading beneath it. A year with one return still shows (the path
-matches the folders on disk).
+every segment clickable, as the page's title row. At its right end: the
+**search bar** (find a household or return by name, Ctrl+F) and, next to it,
+the **sort icon** (P60). The current level's name is
+the page heading beneath it. The **year is always in the path**, even when a
+household has one year: the path matches the folders on disk (P61).
 
 **Pages, one per level:**
 
@@ -83,17 +85,18 @@ matches the folders on disk).
 
 ## 4. The funnel: fewer buttons
 
-**Rule:** one button per context is visible; everything else sits one level
-down, behind the broader control that owns it.
+**Rule:** one control is visible; everything else sits one level down, behind
+the broader control that owns it (P60).
 
-- **On screen, always:** **Sort now** (the one primary button, top right). It
-  is the heart of the product and the only action run many times a day.
-- **On screen, per level:** one **Actions ▾** button that opens only that
-  level's actions:
-  - household: Edit household, Add a return, Mark as shared, Open client folder,
-    Open inbox (Drop files here);
-  - return: Edit request list, Open working folder, Open client folder, Open
-    this return's report.
+- **On screen, always, and the only button:** the **sort icon** beside the
+  search bar. It runs Sort now. Being icon-only, it carries its name for screen
+  readers, a tooltip with its words from the API ("Sort now"), and F9. While a
+  sort runs it turns into Stop.
+- **A level's actions** (household: Edit household, Add a return, Mark as
+  shared, Open client folder, Open inbox; return: Edit request list, Open
+  working folder, Open client folder, Open this return's report) live in the
+  menu bar's **Client** menu and in a **right-click menu** on the breadcrumb,
+  a row, or the page heading. No Actions button on screen.
 - **On a row, on hover or focus only:** its one next step (**Check ›**,
   **Draft reminder ›**). Filing choices open from there.
 - **In the menu bar (one-time and rare actions):**
@@ -102,7 +105,7 @@ down, behind the broader control that owns it.
 |---|---|
 | File | New household… (Ctrl+N), Change clients folder…, Open clients folder, Exit |
 | Client | Edit household…, Add a return…, Edit request list… (Ctrl+E), Mark as shared, Open client folder, Open inbox. Greyed when no client is open |
-| View | Overview (Ctrl+1), Needs review (Ctrl+2), Reminders (Ctrl+3), Clients (Ctrl+4), Find client (Ctrl+F), Refresh (F5: re-reads, never reloads the page) |
+| View | Overview (Ctrl+1), Needs review (Ctrl+2), Reminders (Ctrl+3), Clients (Ctrl+4), Find (Ctrl+F: focuses the search bar), Refresh (F5: re-reads, never reloads the page) |
 | Tools | Sort now (F9), Stop sorting, Schedule…, Repair the schedule, Firm status report, Clear a stuck lock |
 | Help | Take the tour, Safeguards, Terms, Tester guide, About (version 0.2) |
 
@@ -126,9 +129,9 @@ E-7 reason for hiding Electron's default menu still holds.
    unitless and landing on the 4px grid.
 5. **Contrast:** WCAG AA for everything; AAA (7:1) for body text and row
    names. Status is a word plus a small dot, never colour alone.
-6. **Light and dark:** the shell follows the Windows setting, light or dark.
-   Every token gets a dark value, and both are checked for contrast. This
-   reverses P31's "light mode only" (a decision row).
+6. **Light and dark:** the shell follows the Windows setting, light or dark,
+   in 0.2 (P59). Every token gets a dark value, and both are checked for
+   contrast. The window's first-paint colour follows the setting too.
 7. **Alignment:** everything on the page aligns to one left keyline; numbers
    right-aligned in their column; icons nudged optically where needed.
 8. **Consistency:** one button shape (P52), one menu style, one row style used
@@ -153,20 +156,23 @@ a return with nothing received yet; a household with no returns.
 - **Untouched:** everything under `tracker/`, the reminder letter's text, the
   four standing rules' wording (still reachable: Help > Safeguards and the
   start-up line from PLAN-ui section 6).
-- **Changes that need decision rows:** `main.js` gains a custom menu, and
-  `preload.js` one channel from the menu to the page (P32 and P46 kept
-  `main.js` fixed); P31 reversed for dark mode; the grid steps in `pilot-ui.css`
-  change.
-- **Anti-goals:** a dashboard of charts; icons without words; tabs; a second
-  button row; anything glass or blurred.
+- **Approved changes to fixed files (P58, P59):** `main.js` gains a custom
+  menu and follows the Windows light/dark setting for its first paint;
+  `preload.js` gains one channel from the menu to the page. P10 and P51 kept
+  both files unedited; P58 relaxes that for these lines only. The grid steps in
+  `pilot-ui.css` change.
+- **Anti-goals:** a dashboard of charts; icons without words (the sort icon is
+  the one exception, and carries its name and tooltip); tabs; a second button
+  row; anything glass or blurred.
 - Carried over from PLAN-ui unchanged: the custom tooltip, plain English
   everywhere with a wording table for Jason, the start-up safety line, one
   notice area.
 
-## 8. Open decisions for Jason
+## 8. Decisions (Jason, 2026-09-29)
 
-1. **Dark mode in 0.2**, or light only now and dark later?
-2. **Sort now** stays as the one visible button (recommended), or moves to
-   Tools only with the side panel's last-sort line as its way in?
-3. Keep the **year** level in the breadcrumb even when a household has one
-   year (recommended, it matches the folders), or skip it?
+| Question | Answer | Row |
+|---|---|---|
+| Edit `main.js` and `preload.js` for the menu bar | Yes | P58 |
+| Dark mode in 0.2 | Yes, following Windows | P59 |
+| What stays visible | Only Sort now, as a sort icon next to a search bar | P60 |
+| Year in the path | Always | P61 |

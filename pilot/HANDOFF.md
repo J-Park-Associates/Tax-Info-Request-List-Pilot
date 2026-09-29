@@ -1,5 +1,39 @@
 # Pilot handoff
 
+## App shell brief confirmed (2026-09-29, P58-P62; branch `claude/amazing-maxwell-b4hdzo`)
+
+Shaped with the Impeccable skill (Jason named `ui-ux-pro`, which is not
+installed; Impeccable covers the same work). Written: [`../PRODUCT.md`](../PRODUCT.md)
+(product facts the skill requires) and [`BRIEF-shell.md`](BRIEF-shell.md) (the
+confirmed design brief). Jason's decisions: side panel = four firm sections;
+explorer breadcrumb with the year always shown; one grouped list per return;
+the only visible button is a sort icon beside a search bar; one-time actions in
+a real menu bar (`main.js`/`preload.js` edits approved); dark mode following
+Windows. Reference look: Dribbble "file manager UI" (fetched through Firecrawl;
+dribbble.com is blocked by the cloud proxy). Nothing in the app is changed yet.
+
+**Next job: the SPEC** (opus, high effort, a fresh session). Jason may add more
+design references first; the SPEC session reads them with the brief.
+
+```
+You are the SPEC author for the Tax Document Tracker Pilot's new app shell.
+Read first, and nothing else to start: PRODUCT.md, pilot/BRIEF-shell.md (the
+confirmed brief), pilot/DECISIONS.md P50-P62, pilot/PLAN-ui.md (sections 5-8
+still stand), pilot/SPEC-ui.md sections on tokens and buttons (Build E), and
+.claude/skills/winui-design/SKILL.md (a reference; ignore its XAML and C#).
+Use `python tools/repo_map.py show <file>` for app/main.js, app/preload.js,
+app/renderer/index.html, app.js, style.css, pilot-ui.css; read only the line
+ranges you need. Load the Impeccable skill for design judgment.
+Write pilot/SPEC-shell.md: every element of today's screen and where it goes
+(kept, tooltip, Client menu, menu bar, removed); the menu template and the one
+preload channel; the pages per level and their states; tokens for light and
+dark with computed contrast; the wording table for Jason; the tests; the build
+steps split into sessions, saying which can run in parallel. Then build a
+clickable mock-up with made-up names only in the cloud's Playwright Chromium
+and publish it as a private artifact for Jason. Log new decisions from P63.
+Commit with [skip ci], push, update pilot/HANDOFF.md, report in plain English.
+```
+
 ## Pilot 0.2 merge (2026-09-29; one pull request, titled "Pilot 0.2")
 
 Jason: "fold it into a new merge. this one will be called 0.2. close #9, 10.
