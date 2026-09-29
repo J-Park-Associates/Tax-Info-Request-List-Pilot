@@ -3,7 +3,7 @@
   "generated": "2026-09-29",
   "generator": "tools/repo_map.py",
   "generator_sha256": "22c7b60a1d198289",
-  "module_table_sha256": "98e5907a447ae88b",
+  "module_table_sha256": "806b108567a94dbc",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 195,
-    "edges": 1135,
-    "reused": 152
+    "nodes": 197,
+    "edges": 1136,
+    "reused": 0
   },
   "node_types": [
     "artifact",
@@ -3982,8 +3982,8 @@
       "id": "app/renderer/index.html",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "af23b4a071cdbf8e",
-      "lines": 682,
+      "sha256": "47340eedd1515ee6",
+      "lines": 683,
       "role": "Desktop app shell markup: empty placeholders the renderer fills from the API's vocabulary, under a Content-Security-Policy that allows nothing but the app's own files. Since decision 104 it holds the request-list editor's modal (#editor), every label of which the renderer fills, and the Edit Request List button (#btn-edit) that opens it; the min of a number input is never typed here."
     },
     {
@@ -4006,6 +4006,15 @@
       "layer": "desktop-app",
       "sha256": "23343fa8d22281ff",
       "lines": 291
+    },
+    {
+      "id": "app/renderer/pilot-ui.css",
+      "type": "ui",
+      "layer": "desktop-app",
+      "sha256": "23b61cd8f1b66b40",
+      "lines": 174,
+      "role": "Pilot Build E, the structure pass (P51-P54): one file that overrides style.css to give the app one button shape in four importances and two sizes, a four-step type ramp of two weights and a 4px spacing grid, loaded after style.css and before pilot-style.css so the original's files stay unedited.",
+      "notes": "Its own tokens (:root) are the only place a colour, size or step is written; outside them tests/test_pilot_ui.py fails on a hex, a literal font size, weight or line height, or a padding, margin or gap off the grid. It never names .rem-preview: the reminder letter mirrors the emailed letter and keeps its own fonts and inks. It ends with a forced-colors block of system colours only. No url(), no @import, no @font-face, no bundled font."
     },
     {
       "id": "app/renderer/pilot.js",
@@ -4068,8 +4077,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "7c1fcf46afc32d52",
-      "lines": 1083,
+      "sha256": "dcd4a3630cf3459e",
+      "lines": 1092,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -6744,6 +6753,35 @@
       }
     },
     {
+      "id": "tests/test_pilot_ui.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "dd79646020210220",
+      "lines": 146,
+      "exports": [
+        "COLOUR",
+        "CSS_NAME",
+        "GRID_TOKEN",
+        "RENDERER",
+        "REPO",
+        "blocks",
+        "declarations",
+        "outside_root",
+        "read",
+        "stripped",
+        "test_the_structure_pass_adds_no_remote_or_forbidden_thing",
+        "test_the_structure_pass_honours_contrast_themes_last",
+        "test_the_structure_pass_leaves_the_letter_alone",
+        "test_the_structure_pass_loads_between_the_app_and_the_pilot",
+        "test_the_structure_pass_uses_only_the_spacing_grid",
+        "test_the_structure_pass_uses_only_the_type_ramp",
+        "test_the_structure_pass_writes_no_literal_colour_outside_its_tokens"
+      ],
+      "constants": {
+        "CSS_NAME": "'pilot-ui.css'"
+      }
+    },
+    {
       "id": "tests/test_progress.py",
       "type": "test",
       "layer": "tests",
@@ -9017,6 +9055,12 @@
     {
       "from": "app/renderer/index.html",
       "to": "app/renderer/app.js",
+      "type": "loads",
+      "source": "curated"
+    },
+    {
+      "from": "app/renderer/index.html",
+      "to": "app/renderer/pilot-ui.css",
       "type": "loads",
       "source": "curated"
     },

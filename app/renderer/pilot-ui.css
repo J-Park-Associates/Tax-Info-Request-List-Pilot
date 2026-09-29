@@ -1,0 +1,174 @@
+/* Build E, the structure pass (pilot SPEC-ui.md, decisions P51-P54).
+
+   One file redefines the look by overriding style.css selectors, loaded after
+   style.css and before pilot-style.css, so style.css, app.js, main.js and
+   preload.js stay exactly as the original has them and every merge from the
+   original stays clean (README rule 1). Colour identity is P50's navy design;
+   this file changes structure: one button shape, four importances, two sizes,
+   one type ramp, one 4px spacing grid.
+
+   The rule that keeps it honest: outside :root nothing here writes a hex or
+   rgb() colour, a literal font size, weight or line height, or a padding,
+   margin or gap that is not 0, auto, a --sp-* step or a calc() of them.
+   tests/test_pilot_ui.py reads this file and fails on the first one. The
+   reminder letter (.rem-preview) mirrors the emailed letter and is never
+   named here. No !important outside a prefers-reduced-motion block, no url(),
+   no @import, no @font-face, no bundled font: the face is the one Windows
+   already has. */
+
+/* ── Tokens ──────────────────────────────────────────────────────────────
+   Redefined names (--radius, --shadow, --subtle) make every var() already in
+   style.css pick the new value up. --bg is not repeated: main.js reads the
+   window colour from style.css by regex and the two must agree. */
+
+:root {
+  /* type */
+  --font-ui: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --fs-caption: 12px;  --lh-caption: 16px;
+  --fs-body: 14px;     --lh-body: 20px;
+  --fs-subtitle: 16px; --lh-subtitle: 22px;
+  --fs-title: 20px;    --lh-title: 28px;
+  --fw-regular: 400;   --fw-strong: 600;
+
+  /* space: a 4px grid */
+  --sp-half: 2px; --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px;  --sp-6: 24px; --sp-8: 32px;
+
+  /* shape */
+  --radius-control: 4px;   /* buttons, inputs, selects, small pills that are not status chips */
+  --radius: 8px;           /* surfaces: cards, banners, notices, dialogs, toast, tour and terms cards */
+  --radius-pill: 999px;    /* status chips only */
+  --ctl-h: 32px; --ctl-h-sm: 24px;
+
+  /* colour: the P50 palette, named once */
+  --navy: #14335c; --navy-deep: #0e2544;
+  --blue: #2563eb; --blue-dark: #1d4ed8;            /* focus ring and links only */
+  --card: #ffffff;
+  --text: #0f172a; --muted: #475569;
+  --subtle: #5a6a80;                                /* was #64748b: 4.43:1 on --bg, now 5.14:1 */
+  --border: #e2e8f0; --border-strong: #cbd5e1;
+  --border-input: #7d8ea5;                          /* input bottom edge: 3.34:1 on white (WCAG 1.4.11) */
+  --surface-hover: #f1f5f9; --surface-pressed: #e2e8f0;
+  --surface-selected: #e8eef7; --surface-sunken: #f8fafc;
+  --text-disabled: #94a3b8; --surface-disabled: #f1f5f9;
+  --danger: #b42318; --danger-hover-bg: #fef3f2; --danger-border: #fda29b;
+  --ok-bg: #ecfdf5;   --ok-border: #a7f3d0;   --ok-fg: #065f46;
+  --warn-bg: #fffbeb; --warn-border: #fde68a; --warn-fg: #92400e;
+  --err-bg: #fef2f2;  --err-border: #fecaca;  --err-fg: #991b1b;
+  --info-bg: #eff6ff; --info-border: #bfdbfe; --info-fg: #1e3a8a;
+  --amber: #f59e0b; --amber-deep: #d97706; --amber-soft: #fcd34d;   /* the pilot badge and tour spot */
+  --shadow: none;                                   /* flat controls and cards */
+  --shadow-overlay: 0 8px 32px rgba(15, 23, 42, 0.24), 0 2px 8px rgba(15, 23, 42, 0.12);
+  --ease: cubic-bezier(0.2, 0, 0, 1); --dur: 150ms;
+}
+
+/* ── Type (P53) ──────────────────────────────────────────────────────────
+   One family, a four-step ramp (12/14/16/20 on 16/20/22/28), two weights
+   (400 and 600). Windows 11's own Segoe UI Variable is already installed;
+   Segoe UI comes before the system face on older Windows. */
+
+body {
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-weight: var(--fw-regular);
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+}
+
+/* Titles that name a card or a dialog use the display cut. */
+.card-head h3 {
+  font-family: var(--font-display);
+  font-size: var(--fs-subtitle);
+  line-height: var(--lh-subtitle);
+  font-weight: var(--fw-strong);
+  color: var(--navy);
+}
+.modal h3 {
+  font-family: var(--font-display);
+  font-size: var(--fs-title);
+  line-height: var(--lh-title);
+  font-weight: var(--fw-strong);
+  color: var(--text);
+  margin-bottom: var(--sp-4);
+}
+.form-num {
+  font-size: var(--fs-subtitle);
+  line-height: var(--lh-subtitle);
+  font-weight: var(--fw-strong);
+}
+
+/* Body size: every 13, 13.5, 14 and 15px of style.css. */
+.brand-product, .pass-progress, .rem-hold, .rem-hold-rows li, .rem-subject,
+.requests, .editor-table, .assure strong, .eng-picker select,
+.field input, .field select, .tmpl-item, .form-who, .wiz-sub, .wiz-note,
+.wiz-check, .toast, .prior-item, .review li, .review select, .review input,
+.deck-card, .deck-card .r-keyword, .deck-card .r-issuer input,
+.editor-table input, .editor-table select, .ed-paste textarea, .ed-readonly,
+.sc-radio, .setup-row input, .household-facts, .household-feeds li,
+.household-checklist ol, .banner, .notice, .btn {
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+}
+
+/* Caption size: every 11, 11.5, 12 and 12.5px of style.css. */
+.btn-small, .summary, .rem-status, .rem-hint, .rem-edited, .rem-stage,
+.rem-quiet, .rem-hold-rows .rem-hold-why, .req-period, .req-notes,
+.req-recv, .req-side, .req-reason, .chip, .assure span, .eng-form,
+.field span, .tmpl-head, .tmpl-rules, .requests th, .editor-table th,
+.editor-table .ed-learned, .editor-table .ed-unlearn,
+.ed-set-aside > summary, .rows-set-aside > summary, .ed-paste summary,
+.ed-engagement legend, .form-blurb, .chosen-badge, .wiz-back, .prior-meta,
+.roll-return .roll-form span, .review .r-why, .review .r-reasons,
+.deck-card .r-why, .deck-card .r-reasons, .deck-suggested, .deck-position,
+.dismissed > summary, .sc-choice legend {
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+
+/* Two weights only: every 700 of style.css is 600, and so is the
+   user-agent bold of th, legend and strong. */
+th, legend, strong,
+.rem-hold-rows .rem-hold-id, .rem-stage[aria-pressed="true"], .requests th,
+.req-id, .chip, .tmpl-head, .tmpl-id, .editor-table th, .side,
+.ed-engagement legend, .chosen-badge {
+  font-weight: var(--fw-strong);
+}
+
+/* Headers are sentence case, caption size, 600, subtle: the words do not
+   change, only how loud they are. */
+.requests th, .tmpl-head, .editor-table th, .ed-engagement legend {
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--subtle);
+}
+
+/* Figures line up. */
+table.requests, .editor-table, .summary, .chip, .rem-stage-n,
+.deck-position, .prior-meta, .pass-progress, .household-facts {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Windows contrast themes (last, so it wins) ──────────────────────────
+   System colours only. Section 9 of the SPEC; the button and selected-control
+   rules are added with the buttons. */
+
+@media (forced-colors: active) {
+  .btn, .btn-small, .rem-quiet, .wiz-back {
+    border: 1px solid ButtonText;
+  }
+
+  .btn:disabled {
+    color: GrayText;
+    border-color: GrayText;
+  }
+
+  .btn:focus-visible {
+    outline: 2px solid Highlight;
+  }
+}
