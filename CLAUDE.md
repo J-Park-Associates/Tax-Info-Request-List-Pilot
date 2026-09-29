@@ -307,3 +307,23 @@ it binds every session and every agent, not only work in this repo.
   211). Release tags are built and smoke-checked by `build.yml`.
 
 Set by Jason on 2026-09-22; revised to decision 207, then 211, on 2026-09-26.
+
+### Test minimally: only what the change touched (Jason, 2026-09-29)
+
+Jason's standing preference for this repository, for cloud gates and Windows
+checks alike:
+
+- **Test only the components a change touched.** Run each changed module's own
+  test file, the test files of the modules that import it, and the guard files
+  (`test_layers`, `test_single_source`, `test_repo_map`, plus `test_tripwire`
+  and `test_errors` when tests or error wording change). Do not rerun the sorting
+  engine's (logic engine's) tests - router, filer, scanner, manifest and the rest -
+  for a change that does not touch them.
+- **Run the test files in parallel.** Start each named file as its own process.
+  On Windows, `pilot\wintest\run_checks.ps1 -Tests <file>,<file>` does this, and
+  runs the files alongside the installer build. The whole suite (no `-Tests`)
+  runs only when a change reaches the engine, or when Jason asks.
+- **Repeat hands-on Windows steps only where the change could affect them.**
+  Steps that already passed on an unchanged component are not repeated.
+- **Name the test files in the prompt.** A Windows check prompt lists the exact
+  test files and hands-on steps it runs, and why each was chosen.

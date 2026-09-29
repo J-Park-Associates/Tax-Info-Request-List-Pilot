@@ -164,6 +164,26 @@ Commit with "[skip ci]", push to your session branch, and report in plain
 English. Do not fix anything yourself.
 ```
 
+## Tester feedback for 0.2 (Jason, Windows re-run, 2026-09-29)
+
+Raised while clicking through 0.1. Each needs a SPEC before any build; the
+glass theme (Build D, P30) is the natural place to fold in 2 and 3.
+
+1. **Firm-wide client list.** There is no single screen listing every
+   household across the firm, only one clients folder at a time. The API's
+   `list` command already returns every household under the root; no screen
+   shows it.
+2. **Too many buttons.** The main screen feels crowded. Which buttons go (or
+   move into a menu) is Jason's call - ask him in the SPEC session.
+3. **No tooltips.** Hovering a button or icon shows no description. Every
+   control should say what it does, with the words coming from the API's
+   vocabulary like the rest of the page.
+4. **Status inside the app, as the landing page.** The Status page opens
+   outside the app (a file in the browser). Jason wants it shown inside the
+   app, and as the page the app opens on.
+5. **Terms wording.** The terms screen does not clearly say that it is an
+   agreement. Wording is Jason's to approve (P20 was his text).
+
 ## Environment notes for cloud sessions
 
 `pip install -r requirements.lock` fails in the cloud container (a wheel will

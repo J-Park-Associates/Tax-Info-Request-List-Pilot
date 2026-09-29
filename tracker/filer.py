@@ -4629,6 +4629,12 @@ def _opened_folder(home: _ReturnRun, original: Path, runs: list[_ReturnRun]) -> 
     counter = 1
     while True:
         folder = base / _named(stem, counter, "")
+        # A Windows with long paths off will not make the folder, or write
+        # into it, past its limit: the stem is cut until it fits (pilot
+        # decision P29, the review's finding 3). Elsewhere folder_need is 0.
+        while folder_need(folder) > path_limit() and len(stem) > 1:
+            stem = stem[:-1].rstrip(". ") or _OPENED_FALLBACK[:1]
+            folder = base / _named(stem, counter, "")
         if folder not in elsewhere:
             return folder
         counter += 1

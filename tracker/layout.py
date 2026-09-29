@@ -1009,7 +1009,7 @@ def _long_paths_on() -> bool:
         ask.argtypes = []
         ask.restype = ctypes.c_ubyte          # a BOOLEAN: the low byte only
         return bool(ask())
-    except (OSError, AttributeError):
+    except (ImportError, OSError, AttributeError):
         return False
 
 

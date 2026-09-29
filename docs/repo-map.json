@@ -999,8 +999,8 @@
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "ba7bc1a6ed2f6f10",
-      "lines": 7980,
+      "sha256": "f1761e976104d496",
+      "lines": 7986,
       "cli": "python -m tracker.filer",
       "exports": [
         "ALREADY_SPELLED",
@@ -1342,7 +1342,7 @@
       "id": "tracker/layout.py",
       "type": "module",
       "layer": "core",
-      "sha256": "139eadeaa692802e",
+      "sha256": "09efa627d6ba78c8",
       "lines": 1101,
       "exports": [
         "CLIENTS",
@@ -4018,8 +4018,8 @@
       "id": "CLAUDE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "e131b283a5068c7d",
-      "lines": 309,
+      "sha256": "ef1239701d68c2a8",
+      "lines": 329,
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
     },
@@ -4119,8 +4119,8 @@
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "c86531f4514138e4",
-      "lines": 175
+      "sha256": "12ebc2a6e36df3d9",
+      "lines": 195
     },
     {
       "id": "pilot/PROMPTS.md",
@@ -4182,8 +4182,8 @@
       "id": "pilot/wintest/PROMPT.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "57d0f592c73fed03",
-      "lines": 87
+      "sha256": "10067f86b97a3a2d",
+      "lines": 86
     },
     {
       "id": "pilot/wintest/RESULTS-TEMPLATE.md",
@@ -5619,8 +5619,8 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "82a5ef2621663fb0",
-      "lines": 9971,
+      "sha256": "987da21901f44732",
+      "lines": 9992,
       "exports": [
         "A_CLIENT_PATH",
         "A_PASS_KILLED_MID_COPY",
@@ -5902,6 +5902,7 @@
         "test_an_interrupted_decision_65_intent_finishes_with_a_proved_copy",
         "test_an_old_return_with_request_folders_is_named_and_left_alone",
         "test_an_open_copy_with_no_digest_is_refused_where_it_is_carried_out",
+        "test_an_opened_folder_is_cut_to_fit_where_long_paths_are_off",
         "test_an_original_back_beside_a_different_file_of_its_name_goes_home_in_either_order",
         "test_an_original_deleted_from_pbc_is_said_every_pass",
         "test_an_original_dragged_back_into_the_inbox_returns_to_its_place",
@@ -7995,8 +7996,8 @@
       "id": "tests/test_store.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "462404a65d762adc",
-      "lines": 4375,
+      "sha256": "7338caca4f371589",
+      "lines": 4376,
       "exports": [
         "AS_AT_16",
         "AS_AT_17",

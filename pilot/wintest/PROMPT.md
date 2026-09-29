@@ -40,10 +40,9 @@ SAFETY - never break these:
    Jason the winget command it printed, ask once, run it if he agrees, then run the script again.
    A failing test suite is recorded, not fixed; carry on if the installer still built.
 
-3. HANDS-ON PART, with computer use, on the installed app. If you have no computer use, do not
-   skip this part: tell Jason exactly what to click and what to look for, one step at a time, and
-   record his answers (Start menu: "Tax Document Tracker
-   Pilot"). Take a screenshot at each step into %USERPROFILE%\PilotTest\results\screens. If
+3. HANDS-ON PART on the installed app (Start menu: "Tax Document Tracker Pilot"), with computer
+   use. If you have no computer use, do not skip this part: tell Jason exactly what to click and
+   what to look for, one step at a time, and record his answers. Take a screenshot at each step into %USERPROFILE%\PilotTest\results\screens. If
    Windows SmartScreen appears, choose "More info" then "Run anyway". Check, in order:
    a. The header shows the badge "Pilot edition 0.1".
    b. The terms screen appears. Press Escape: it must stay. "I agree. Continue." must be greyed
