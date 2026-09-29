@@ -1,5 +1,30 @@
 # Pilot handoff
 
+## Pilot 0.2 merge (2026-09-29; one pull request, titled "Pilot 0.2")
+
+Jason: "fold it into a new merge. this one will be called 0.2. close #9, 10.
+Let's check windows once I am satisfied with the UI." Done: #9 (Mica) and #10
+(glass) closed unmerged. Folded together on top of `main` (which already had
+the removal of glass/Mica, P50, and the structure pass, Build E, P51-P55):
+
+- the design skills `frontend-design` and Impeccable in `.claude/skills/`
+  (P56, Jason approved installing both; branch `claude/keen-keller-vx7xxj`);
+- the plan for a simpler app screen, `pilot/PLAN-ui.md` (sidebar of clients
+  with an All clients landing page, tabs for one return, three top-bar buttons
+  and a More menu, custom tooltips, plain English), Jason-approved, **not built**
+  (branch `claude/stoic-curie-1azsk7`); its next job is a SPEC session;
+- the version is **0.2** everywhere (badge, installer name, release steps, tag
+  `pilot-0.2`).
+
+Contrast themes (Microsoft Learn, "Contrast themes - Windows apps") are covered
+twice over: `style.css` and `pilot-style.css` from P50, and Build E's own block
+at the end of `pilot-ui.css`. Nothing in the pilot uses glass, Mica, refraction
+or backdrop blur.
+
+**Waiting on Jason:** his sign-off on the UI. Only then the Windows check
+(`RELEASE.md`, or the `pilot/wintest/` kit), including the contrast-theme step
+(Settings, Accessibility, Contrast themes). Tag and sending stay his.
+
 ## Build E, the structure pass (2026-09-29, built, reviewed E1-E3 with no findings left; pull request #13, branch `claude/keen-keller-vx7xxj`)
 
 Built exactly [`SPEC-ui.md`](SPEC-ui.md) (P51-P55): one new file,
@@ -247,6 +272,10 @@ from the section below.
   in `app/renderer/pilot-ui.css` layered over `style.css`; plus the fix for
   cards collapsing when notices fill the window (P55). See the Build E section
   above.
+- **Design skills (P56, pull request #14, draft, not merged):** Anthropic's
+  `frontend-design` and Impeccable committed to `.claude/skills/` with Jason's
+  approval; merge when Jason says so. Once merged, every session on this
+  repository can call them. Impeccable's hooks are not registered.
 - **Old pull requests:** #9 (Mica) and #10 (glass) are superseded and can be
   closed; #5 is the coordination board and is never merged.
 - **Local gate at the merge:** ruff, `repo_map.py check`, `test_pilot`, `test_tour`,
@@ -272,6 +301,16 @@ Nothing is built without a SPEC. The next job is a SPEC session (opus, high
 effort) for the tester feedback below. Two things a SPEC must respect:
 `app.js`, `preload.js` and `tracker/` change only where the SPEC names the lines,
 and every new control takes its words from the API's vocabulary.
+
+**Planned (2026-09-29, branch `claude/stoic-curie-1azsk7`):** Jason approved
+[`PLAN-ui.md`](PLAN-ui.md), a simpler screen that answers feedback 1-5 below:
+a sidebar tree of clients, tabs for one return, three top-bar buttons and a
+More menu, a custom tooltip, a start-up safety badge, and every sentence in
+plain English. His answers are in its Context table. The SPEC session reads
+that file and this one; it writes `pilot/SPEC-ui.md`, decision P51 (build in
+the pilot now, port to the main tracker later; supersedes P10 for this work)
+and the other P-rows the plan names, then shows Jason a mock-up with made-up
+names and the wording table before any build.
 
 ## Tester feedback for 0.2 (Jason, Windows re-run, 2026-09-29)
 
