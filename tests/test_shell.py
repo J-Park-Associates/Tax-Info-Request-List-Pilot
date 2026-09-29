@@ -338,7 +338,7 @@ def test_the_loading_order_is_the_specs_and_the_csp_is_unchanged():
     scripts = [html.index(f'src="{name}"') for name in (*FLOATING_UI_SCRIPTS, "app.js", "tooltip.js", "shell.js", "pilot-content.js", "pilot.js", "tour.js")]
     assert scripts == sorted(scripts)
     # Every script is a file of the app itself: no scheme, no host, no CDN.
-    sources = re.findall(r"""<script[^>]*\bsrc=[\"']?([^\"'\s>]+)""", html)
+    sources = re.findall(r"""<script[^>]*\bsrc=[\"']?([^\"'\s>]+)""", html, re.I)
     assert len(sources) == len(scripts)
     for source in sources:
         assert not re.match(r"^([a-z][a-z0-9+.-]*:|//|/)", source, re.I), source

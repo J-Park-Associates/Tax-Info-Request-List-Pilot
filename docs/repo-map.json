@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 289,
+    "nodes": 290,
     "edges": 1142,
-    "reused": 246
+    "reused": 247
   },
   "node_types": [
     "artifact",
@@ -4679,6 +4679,13 @@
       "lines": 84
     },
     {
+      "id": "pilot/handoffs/shell-S7-rebuild-2.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "a42971973353ac06",
+      "lines": 30
+    },
+    {
       "id": "pilot/handoffs/shell-S7-review-1.md",
       "type": "doc",
       "layer": "docs",
@@ -4696,8 +4703,8 @@
       "id": "pilot/handoffs/shell-S7.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "18afd46ac13fd6de",
-      "lines": 142
+      "sha256": "73d6316945e78155",
+      "lines": 144
     },
     {
       "id": "pilot/harness/README.md",
@@ -8550,7 +8557,7 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7cb6a255546111b2",
+      "sha256": "78de2180ed16dc2f",
       "lines": 785,
       "exports": [
         "CONTRAST",

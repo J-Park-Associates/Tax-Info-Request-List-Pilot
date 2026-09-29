@@ -111,8 +111,10 @@ The repository map was refreshed last (`repo_map.py update`, then `check` and
   where S4 extends `SHELL_FILES` and the loading-order test (that test's script
   list now starts `*FLOATING_UI_SCRIPTS, app.js, tooltip.js`).
 - Update SPEC 8.5 (on `claude/admiring-lamport-bp1sse`, not touched here): the
-  hover delay stays 500 ms, focus shows the tip on every control except the
-  search box, and placement is Floating UI's. SPEC 14's tooltip claims that
+  hover delay is 300 ms (ruling 7, replacing SPEC 8.5's 500), focus shows the tip on every control except the
+  search box, and placement is Floating UI's. Add that a tip hidden because
+  its control scrolled out of view does not come back when the control
+  scrolls back into view; it returns only on the next hover or focus. SPEC 14's tooltip claims that
   named the old placement code are now the tests above.
 - Log the decision row below and `pilot/DECISIONS.md`'s next number. Ruling 5's
   wording "vendored as one file" became two files, for the reason above.
@@ -128,15 +130,15 @@ The repository map was refreshed last (`repo_map.py update`, then `check` and
 > `app/renderer/vendor/floating-ui/`, SHA-256 pinned by `tests/test_shell.py`,
 > loaded by plain script tags (CSP unchanged, no CDN, no runtime install).
 > `tooltip.js` keeps its timing, focus, Esc and `role=tooltip` logic and uses
-> the library only to place the tip (offset 4, flip, shift with 8 padding).
+> the library only to place the tip (offset 4, flip, shift with 8 padding, and hide() to drop the tip when its element scrolls out of view).
 > Keyboard focus shows the tip on every control except the search box; hover
 > shows it everywhere. Tippy.js rejected: built on Popper.js, about 2 MB, last
 > released 2021. Jason, ruling 2 and 5, 2026-09-29.
 
 ## For Jason
 
-- Hover delay: the brief said about 300 ms; SPEC 8.5 and the code say 500 ms,
-  so it is unchanged at 500. Say so if you want 300.
+- Hover delay: 300 ms (ruling 7), replacing SPEC 8.5's 500.
 - A scroll used to hide the tip; it now moves the tip with its element (the
-  brief asked for placing on scroll). If the element scrolls out of view the
-  tip follows it out and is clipped by the window, not hidden.
+  brief asked for placing on scroll). When the element scrolls out of view the
+  tip is now HIDDEN (Floating UI hide()) and does not return until it is shown
+  again by hover or focus.
