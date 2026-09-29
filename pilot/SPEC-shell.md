@@ -551,9 +551,12 @@ every existing check in place.
 
 - **Open error log:** `main.js` opens the error log the API named
   (`vocab.shell.error_log`) with `shell.openPath` when it is a regular file
-  and no symbolic link (the same test `openPath` makes); otherwise it sends
+  and no symbolic link (the same test `openPath` makes), or, when the API
+  named none, the shell's fallback log (11.2) if it exists; otherwise it sends
   `{id: "error_log", missing: true}` and the page shows the toast
   "No error log yet".
+- **Menu bar:** it stays hidden until Alt (`autoHideMenuBar`; Jason,
+  2026-09-29, no change).
 - **Exit:** role `quit`.
 
 ### 5.6 Light and dark at first paint (P59, P73)
@@ -1173,8 +1176,10 @@ Verdicts: **reword** 67, **cut** 113 (not shown in the app any more),
   gains "Only if {host} is retired" (`schedule.move_warning`), and the
   editor's Active field keeps "No: sorting skips this return".
 - **No error log yet:** when the tracker fails before it has a data folder
-  (first start only), there is nowhere to keep its details, and they are no
-  longer printed on screen; the notice says "Tracker failed; no error log".
+  (first start only), the API names no error log; the details are no longer
+  printed on screen, they are saved in the shell's fallback log
+  (`error.log` in Electron's `userData` folder, capped at 256 KB with one
+  `.1` copy), and the notice says just "Tracker failed" (Jason, 2026-09-29).
 
 ### 11.3 New words: the menu (`vocab.menu`, `api.MENU`)
 

@@ -2123,7 +2123,8 @@ def test_the_shell_lstats_before_it_opens_and_refuses_a_link_or_a_changed_kind()
     import tracker.api as api
 
     main = read("app/main.js")
-    opener = main[main.index("async function openPath("):]
+    assert "openChecked(p, openable.get(p))" in main       # openPath refuses first, then checks
+    opener = main[main.index("async function openChecked("):]
     opener = opener[:opener.index("\n}\n")]
     assert opener.index("fs.promises.lstat(") < opener.index("shell.openPath(")
     assert "isSymbolicLink()" in opener and "isDirectory()" in opener and "isFile()" in opener
@@ -2473,6 +2474,7 @@ const sent = [];
 const appHandlers = {};
 const electron = {
   app: { isPackaged: false, requestSingleInstanceLock: () => true, quit() {},
+         getPath: () => process.env.FAKE_USERDATA,
          on(name, fn) { appHandlers[name] = fn; },
          whenReady: () => new Promise(() => {}) },
   BrowserWindow: class {},
@@ -2581,7 +2583,8 @@ def _run_the_shell(tmp_path, calls, **env):
     done = subprocess.run([node, str(harness), str(REPO / "app" / "main.js"), str(fake),
                            json.dumps(calls)],
                           capture_output=True, text=True, encoding="utf-8", timeout=120, check=False,
-                          env=child_env(**{"FAKE_LOG": str(tmp_path / "tracker-errors.log"), **env}))
+                          env=child_env(**{"FAKE_LOG": str(tmp_path / "tracker-errors.log"),
+                                           "FAKE_USERDATA": str(tmp_path / "userdata"), **env}))
     assert done.returncode == 0, done.stderr
     return json.loads(done.stdout)
 
@@ -2744,23 +2747,65 @@ def test_the_shell_never_puts_stderr_on_screen_and_appends_it_to_the_error_log(t
     assert "a fabricated message naming Sample Client's folder" in logged
 
 
-def test_with_no_error_log_the_shell_says_so_and_shows_no_stderr_and_writes_no_file(tmp_path):
-    """The rebase review of 186 (MF2): with no data home the API names no
-    error log, and the shell never builds one beside the program or in the
-    settings folder - a failed command's reply says there is no error log
-    (SPEC-shell 11.2), its stderr is neither kept nor shown, and no file is
-    written anywhere."""
+#: What the fake tracker's ``templates`` writes to stderr (it names a client).
+_STDERR_TEXT = "a fabricated message naming Sample Client's folder"
+
+
+def test_with_no_error_log_named_the_failure_is_saved_in_the_fallback_log_and_the_reply_says_two_words(tmp_path):
+    """Jason, 2026-09-29 (after the rebase review of 186, MF2): with no data
+    home the API names no error log. The failure is still SAVED - in the
+    shell's fallback log in the per-user app folder, never beside the
+    program - and the screen says just "Tracker failed", with nothing of
+    stderr in the reply."""
     import tracker.api as api
     from tracker.settings import ERROR_LOG_FILENAME
 
+    assert api.SHELL_NO_LOG == "Tracker failed"
     ran = _run_the_shell(tmp_path, [["list"], ["templates"]], FAKE_LOG="")
     reply = ran["out"][1]["reply"]
     sentence = api.SHELL_NO_REPLY.format(code=1) + "\n\n" + api.SHELL_NO_LOG
     assert reply["error"] == sentence and reply["failure"]["sentence"] == sentence
-    assert "fabricated" not in json.dumps(reply)
+    assert reply["error"].endswith("\n\nTracker failed")
+    assert "fabricated" not in json.dumps(reply) and "Sample Client" not in json.dumps(reply)
     assert reply["failure"]["kind"] == "failed"
-    assert not (REPO / ERROR_LOG_FILENAME).exists()
+    saved = (tmp_path / "userdata" / "error.log").read_text(encoding="utf-8")
+    assert _STDERR_TEXT in saved and "shell stderr of a failed command" in saved
+    assert not (REPO / ERROR_LOG_FILENAME).exists() and not (REPO / "error.log").exists()
     assert not list(tmp_path.rglob(ERROR_LOG_FILENAME))
+
+
+def test_with_an_error_log_named_the_failure_goes_there_and_not_to_the_fallback_or_the_screen(tmp_path):
+    import tracker.api as api
+
+    ran = _run_the_shell(tmp_path, [["list"], ["templates"]])
+    reply = ran["out"][1]["reply"]
+    assert reply["error"] == api.SHELL_NO_REPLY.format(code=1) and "Tracker failed" not in reply["error"]
+    assert _STDERR_TEXT in (tmp_path / "tracker-errors.log").read_text(encoding="utf-8")
+    assert not (tmp_path / "userdata").exists()
+
+
+def test_the_fallback_log_is_capped_and_a_write_that_fails_never_throws(tmp_path):
+    import tracker.api as api
+
+    # Past the cap the file becomes error.log.1 and a fresh one is begun.
+    userdata = tmp_path / "userdata"
+    userdata.mkdir()
+    (userdata / "error.log").write_text("aged\n" * 100_000, encoding="utf-8")     # 400 KB
+    _run_the_shell(tmp_path, [["list"], ["templates"]], FAKE_LOG="")
+    assert (userdata / "error.log.1").read_text(encoding="utf-8").startswith("aged")
+    fresh = (userdata / "error.log").read_text(encoding="utf-8")
+    assert _STDERR_TEXT in fresh and "aged" not in fresh
+    # A folder where the log should be: the write fails, the reply is unchanged.
+    broken = tmp_path / "broken"
+    (broken / "userdata" / "error.log").mkdir(parents=True)
+    ran = _run_the_shell(broken, [["list"], ["templates"]], FAKE_LOG="")
+    assert ran["out"][1]["reply"]["error"].endswith(api.SHELL_NO_LOG)
+    # A per-user folder that cannot be made (a file is in its way): same.
+    blocked = tmp_path / "blocked"
+    blocked.mkdir()
+    (blocked / "userdata").write_text("a file", encoding="utf-8")
+    ran = _run_the_shell(blocked, [["list"], ["templates"]], FAKE_LOG="")
+    assert ran["out"][1]["reply"]["error"].endswith(api.SHELL_NO_LOG)
 
 
 def test_a_failed_spawn_is_said_by_its_code(tmp_path):

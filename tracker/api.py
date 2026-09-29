@@ -436,10 +436,12 @@ SHELL_KILLED_AT = "It was on {household}: {name}."
 SHELL_NO_REPLY = "No reply from the tracker"
 SHELL_COULD_NOT_START = "The tracker could not start"
 SHELL_COULD_NOT_SEND = "Could not send; nothing changed"
-#: With no error log (no data folder yet) the details are not kept and are
-#: not shown: the shell never writes a log beside the program (decision 186's
-#: rebase review, MF2; SPEC-shell 11.2).
-SHELL_NO_LOG = "Tracker failed; no error log"
+#: With no error log named (no data folder yet) the reply says just this, two
+#: words, and the details are saved only in the shell's fallback log in
+#: Electron's per-user app folder, never shown: the shell never writes a log
+#: beside the program (decision 186's rebase review, MF2; Jason, 2026-09-29;
+#: SPEC-shell 11.2).
+SHELL_NO_LOG = "Tracker failed"
 #: An error of the page's own, said by its class; its message goes to the
 #: error log through the shell (the review's S5).
 PAGE_ERROR = "The app hit an error"
@@ -2896,8 +2898,8 @@ def _error_log_said() -> str:
     be had (decision 186): the log sits beside the store, in the data home,
     and ``list`` must still answer so the first screen can say why. The
     shell keeps no path it is given empty, and then writes no log at all:
-    the details of a failed command are not kept (:data:`SHELL_NO_LOG`,
-    SPEC-shell 11.2)."""
+    the details of a failed command go to the shell's fallback log and the
+    reply says only :data:`SHELL_NO_LOG` (SPEC-shell 11.2)."""
     try:
         return str(error_log_path())
     except SettingsError:

@@ -567,8 +567,10 @@ changes nothing:
   to `.3`, a `passes` folder (decision 193), an `ocr-scratch` folder, and
   the old `runs.log` in the clients folder, which names clients. Nothing
   deletes them for you: delete them. The app never writes an error log
-  beside itself: with no data folder, a failed command's message says
-  there is no error log, and its details are not kept or shown.
+  beside itself: with no data folder, a failed command's message says just
+  "Tracker failed", and its details are saved only in a small error.log
+  file in the app's own per-user folder (Electron's `userData`, under
+  `%APPDATA%` on Windows), never shown. Help, Open error log opens it.
 
 There used to be a second one, a comparison flag on the ledger's own
 statuses against the request list's. There is nothing left for it to

@@ -153,6 +153,7 @@ class BrowserWindow {
 }
 const electron = {
   app: { isPackaged: !!sc.packaged, requestSingleInstanceLock: () => true, quit() {}, on() {},
+         getPath: () => { if (!sc.userData) throw new Error("no such path"); return sc.userData; },
          whenReady: () => Promise.resolve() },
   BrowserWindow,
   Menu: {
@@ -410,6 +411,37 @@ def test_open_error_log_opens_the_named_file_and_says_so_when_there_is_none(tmp_
     # Named, and a folder is not a file.
     steps, scenario = _learn(tmp_path)
     ran = _run(tmp_path, steps, **scenario)
+    assert ran["opened"] == [] and ran["sends"][0]["message"]["missing"] is True
+
+
+def test_open_error_log_falls_back_to_the_shells_own_log_when_the_api_named_none(tmp_path):
+    """Jason, 2026-09-29: with no data folder the failure is saved in the
+    fallback log (error.log in userData), and Open error log opens it
+    through the same lstat check; the named log wins when there is one."""
+    userdata = tmp_path / "userdata"
+    userdata.mkdir()
+    fallback = userdata / "error.log"
+    steps = [{"clickBar": _word("error_log")}]
+    # Nothing named, nothing saved yet: the page is told.
+    ran = _run(tmp_path, steps, userData=str(userdata))
+    assert ran["opened"] == [] and ran["sends"][0]["message"] == {"id": "error_log", "missing": True}
+    # Saved: it opens.
+    fallback.write_text("kept\n", encoding="utf-8")
+    ran = _run(tmp_path, steps, userData=str(userdata))
+    assert ran["opened"] == [str(fallback)] and ran["sends"] == []
+    # A named log is the one opened, never the fallback.
+    named = tmp_path / "tracker-errors.log"
+    named.write_text("named\n", encoding="utf-8")
+    learn_steps, scenario = _learn(named, userData=str(userdata))
+    ran = _run(tmp_path, learn_steps, **scenario)
+    assert ran["opened"] == [str(named)]
+
+
+def test_open_error_log_refuses_a_fallback_that_is_a_link_or_a_folder(tmp_path):
+    userdata = tmp_path / "userdata"
+    (userdata / "error.log").mkdir(parents=True)          # a folder is not a file
+    steps = [{"clickBar": _word("error_log")}]
+    ran = _run(tmp_path, steps, userData=str(userdata))
     assert ran["opened"] == [] and ran["sends"][0]["message"]["missing"] is True
 
 

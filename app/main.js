@@ -94,15 +94,23 @@ let killedAt = "It was on {household}: {name}.";
 let noReply = "No reply from the tracker";
 let couldNotStart = "The tracker could not start";
 let couldNotSend = "Could not send; nothing changed";
-let noLog = "Tracker failed; no error log";
+let noLog = "Tracker failed";
 // The error log beside the tracker's database, as the API reports it
 // (vocab.shell.error_log): the shell never builds that path, and never
 // writes a log beside the program or in the settings folder (decision
 // 186's rebase review, MF2). Until the API has named one - a failed first
-// start, or no data folder - there is none: a failed command's reply says
-// so (noLog), its stderr is not kept and not shown, and anything else is
-// not kept either.
+// start, or no data folder - the details go to the fallback log below
+// instead, and a failed command's reply says only noLog.
 let errorLog = null;
+// The fallback (Jason, 2026-09-29): with no log named, a failure is still
+// SAVED, in this one file in Electron's own per-user app folder - not the
+// data home (nothing here creates a folder the data-home rules deny to a
+// package), not beside the program, not in the settings folder. Its text may
+// name a client: it stays on this PC in that file, never on screen, never
+// sent. Capped: past FALLBACK_CAP it becomes error.log.1 (one copy), so it
+// never holds more than twice that.
+const FALLBACK_LOG_NAME = "error.log";
+const FALLBACK_CAP = 256 * 1024;
 
 function fill(pattern, values) {
   return pattern.replace(/\{(\w+)\}/g, (_, key) => values[key] ?? "");
@@ -114,21 +122,58 @@ function shellFailure(sentence, kind, extra = {}) {
   return { error: sentence, failure: { sentence, kind, seq: null, identifier: null }, warnings: [], ...extra };
 }
 
+// The fallback log's path, or null where Electron gives no per-user folder.
+function fallbackLogPath() {
+  try {
+    return path.join(app.getPath("userData"), FALLBACK_LOG_NAME);
+  } catch {
+    return null;
+  }
+}
+
+// One append, fail-safe: a write that cannot be made is dropped, never
+// thrown - a broken log must not break the command whose failure it holds.
+// A path that is a link or not a plain file is left alone. Only the fallback
+// is capped (the API's log rotates itself).
+function appendToLog(file, text, capped) {
+  try {
+    let info = null;
+    try {
+      info = fs.lstatSync(file);
+    } catch {
+      info = null;
+    }
+    if (info && (info.isSymbolicLink() || !info.isFile())) return;
+    if (capped) {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      if (info && info.size > FALLBACK_CAP) {
+        fs.rmSync(`${file}.1`, { force: true });
+        fs.renameSync(file, `${file}.1`);
+      }
+    }
+    fs.appendFileSync(file, text, "utf8");
+  } catch {
+    // dropped, by design
+  }
+}
+
 // What only the error log may hold (decision 193, principle 7): a failed
-// command's stderr, and an error of the shell's or the page's own.
-// Whether there is a log to keep it in: false when the API has named none.
+// command's stderr, and an error of the shell's or the page's own. It goes
+// to the log the API named, else to the fallback log; never on screen.
+// Whether there is a log to keep it in.
 function keepInLog(heading, text) {
-  if (!errorLog) return false;
+  const named = Boolean(errorLog);
+  const file = named ? errorLog : fallbackLogPath();
+  if (!file) return false;
   if (!text) return true;
   const stamp = new Date().toISOString();
-  fs.promises.appendFile(errorLog, `${stamp} ${heading}\n${String(text).slice(0, STDERR_CAP)}\n`, "utf8")
-    .catch(() => {});
+  appendToLog(file, `${stamp} ${heading}\n${String(text).slice(0, STDERR_CAP)}\n`, !named);
   return true;
 }
 
-// A failed reply with no log to keep its stderr in (MF2): it says so, in one
-// short line, and the stderr - which may name a client's folder - is neither
-// kept nor shown (SPEC-shell 11.2).
+// A failed reply whose log is not the API's (no data folder yet): it says so,
+// in two words, and the stderr - which may name a client's folder - is kept
+// only in the fallback log, never shown (SPEC-shell 11.2).
 function withNoLog(reply) {
   const sentence = `${reply.error}\n\n${noLog}`;
   return { ...reply, error: sentence, failure: { ...(reply.failure || {}), sentence } };
@@ -310,16 +355,16 @@ function spawnTracker(args, payload, onProgress, onEnded) {
       pending = "";
       clearTimeout(timer);
       passes.delete(proc.pid);
-      // Nothing of stderr goes on screen while there is an error log: a
+      // Nothing of stderr goes on screen: a
       // failed command's goes to the log beside the tracker's database, for
       // a developer at this machine (decision 193, security principle 7).
-      // With none - no data folder yet - the reply says there is none and
-      // the stderr is dropped, never written beside the program (decision
-      // 186's rebase review, MF2).
+      // With none named - no data folder yet - the stderr goes to the
+      // fallback log and the reply says just noLog (Jason, 2026-09-29),
+      // never a log beside the program (decision 186's rebase review, MF2).
       const out = killedReply || reply || shellFailure(fill(noReply, { code }), "failed", { progress: last });
       const failed = !reply || reply.error;
-      const ending = failed && !keepInLog("shell stderr of a failed command", stderr) && stderr
-        ? withNoLog(out) : out;
+      if (failed) keepInLog("shell stderr of a failed command", stderr);
+      const ending = failed && stderr && !errorLog ? withNoLog(out) : out;
       if (!running) settle(ending);
       else if (onEnded) onEnded({ reply: ending, code });
     });
@@ -336,7 +381,12 @@ async function openPath(p) {
   if (typeof p !== "string" || !openable.has(p)) {
     return "That path is not one the tracker reported; nothing was opened.";
   }
-  const kind = openable.get(p);
+  return openChecked(p, openable.get(p));
+}
+
+// The check itself, shared with Open error log's fallback, which is the
+// shell's own file and so not among the paths the API reported.
+async function openChecked(p, kind) {
   let info;
   try {
     info = await fs.promises.lstat(p);
@@ -467,11 +517,12 @@ function sendMenu(message) {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(MENU_CHANNEL, message);
 }
 
-// Open error log (5.5) is the shell's alone: the log the API named, opened
-// through openPath (lstat first: a regular file and no link), else the page is
-// told there is none and says so.
+// Open error log (5.5) is the shell's alone: the log the API named, else the
+// fallback log, opened through the same lstat check as openPath (a regular
+// file and no link); if neither is there the page is told and says so.
 async function openErrorLog() {
-  const problem = errorLog ? await openPath(errorLog) : "none";
+  const target = errorLog || fallbackLogPath();
+  const problem = target ? await openChecked(target, "file") : "none";
   if (problem) sendMenu({ id: "error_log", missing: true });
 }
 

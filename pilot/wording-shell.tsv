@@ -139,7 +139,7 @@ api._vocab	settings.phone_help	named in the final-notice reminder; blank drops t
 api._vocab	shell.could_not_send	The app could not send that to the tracker ({kind}); nothing was changed.	error-log	Could not send; nothing changed	5	Notice area	Error kind to error log
 api._vocab	shell.could_not_start	The tracker could not start ({code}).	error-log	The tracker could not start	5	Notice area	Exit code to error log
 api._vocab	shell.killed	The pass ran past its limit of {minutes} minutes and was stopped. What it finished is on the record, and the next pass does the rest.	reword	Sort stopped: ran too long	5	Notice area	Next sort does the rest
-api._vocab	shell.no_log	There is no error log to hold the details - the tracker has no data folder yet - so they are here instead: {stderr}	reword	Tracker failed; no error log	5	Notice area	Without a data folder the details are not kept (first start only); section 11.4
+api._vocab	shell.no_log	There is no error log to hold the details - the tracker has no data folder yet - so they are here instead: {stderr}	reword	Tracker failed	5	Notice area	Without a data folder the details go to the shell's fallback log, not on screen (first start only); section 11.4
 api._vocab	shell.no_reply	The tracker ended without a reply (exit code {code}); the details are in the error log.	error-log	No reply from the tracker	5	Notice area	Exit code to error log
 api._vocab	shell.not_opened	That is no longer the folder or file the tracker reported; nothing was opened.	reword	Not opened; it has changed	5	Notice area	
 api._vocab	shell.page_error	The app met an error of its own ({kind}); the details are in the error log.	error-log	The app hit an error	5	Notice area	Error kind to error log
