@@ -1,9 +1,14 @@
 # Shell S3 - renderer foundation (built)
 
-Session: S3 builder (sonnet), 2026-09-29. Branch `claude/admiring-lamport-bp1sse`
-(the branch S1 and S3 both start from; S4 starts from S3's branch, named here,
-after S3's latest review says "No findings"). Last code commit: see the
-last line of this file. Nothing here is reviewed yet.
+Session: S3 builder (sonnet), 2026-09-29. **Branch: `claude/friendly-archimedes-33y9uk`**
+(built on `claude/admiring-lamport-bp1sse`, the SPEC branch S1 and S3 both start
+from). S4 starts from this branch, after S3's latest review says "No findings".
+Last code commit: see the last line of this file. Nothing here is reviewed yet.
+
+**A slip to undo:** this session's two commits were also pushed to
+`claude/admiring-lamport-bp1sse` by mistake (that branch should stay at the
+SPEC's last commit, `0776ea6`, for S1 to start from). They are identical to
+the ones on the S3 branch; Jason decides whether to reset that branch to `0776ea6`.
 
 ## Done, in plain English
 
@@ -144,4 +149,4 @@ command above).
 comment lists the seams), `shell.css`, `pilot/harness/` (README, `pages-stub.js`,
 `app-stub.js`), `tests/test_shell.py`.
 
-Last code commit: `f8065ce` on `claude/admiring-lamport-bp1sse` (the handoff-only commit after it adds this line).
+Last code commit: `f8065ce` on `claude/friendly-archimedes-33y9uk` (the handoff-only commit after it adds this line).
