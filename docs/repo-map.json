@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 259,
+    "nodes": 261,
     "edges": 1136,
-    "reused": 213
+    "reused": 218
   },
   "node_types": [
     "artifact",
@@ -4398,6 +4398,13 @@
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
     },
     {
+      "id": "PRODUCT.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "205b4b797b77c1be",
+      "lines": 74
+    },
+    {
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
@@ -4481,6 +4488,13 @@
       "sha256": "eedf2ceb95c95378",
       "lines": 301,
       "role": "How the day-to-day workflow runs."
+    },
+    {
+      "id": "pilot/BRIEF-shell.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "fec42a7da4ce2755",
+      "lines": 172
     },
     {
       "id": "pilot/DECISIONS.md",
