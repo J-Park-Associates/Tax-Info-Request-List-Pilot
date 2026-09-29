@@ -284,7 +284,7 @@ def bright(rgb, b):
 
 
 def over(top, alpha, bottom):
-    return tuple(t * alpha + u * (1 - alpha) for t, u in zip(top, bottom))
+    return tuple(t * alpha + u * (1 - alpha) for t, u in zip(top, bottom, strict=True))
 
 
 def luminance(rgb):
@@ -313,7 +313,7 @@ def test_every_text_on_glass_meets_aa_contrast():
         r"\.pilot-terms-overlay\s*\{[^}]*background:\s*(rgba\([^)]*\))", pilot_css)[1])
     assert dim_alpha == 0.6
 
-    mid = tuple((a + b) / 2 for a, b in zip(stops[0], stops[1]))
+    mid = tuple((a + b) / 2 for a, b in zip(stops[0], stops[1], strict=True))
     # Why each set: the header sits over the top of the fixed backdrop only,
     # since nothing scrolls under it; the cards never overlap each other or the
     # header, so only the fixed backdrop is behind them; the toolbar also has
@@ -466,7 +466,7 @@ def test_the_backdrop_drifts_only_at_the_full_level():
 
 def test_the_pointer_light_is_drawn_only_at_the_full_level():
     for rule in glass_rules():
-        for name, value in rule.decls:
+        for _name, value in rule.decls:
             if "var(--glass-sheen)" in value:
                 assert all(s.startswith(":root.glass-full") for s in rule.selectors), rule.selectors
     assert "glass-full" in read(GLASS_JS)

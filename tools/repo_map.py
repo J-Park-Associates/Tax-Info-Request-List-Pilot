@@ -126,6 +126,8 @@ REQUIREMENTS_FILES = ("requirements.txt", "requirements-build.txt")
 #: prevent - so it is refused.
 DERIVED_EDGE_TYPES = frozenset({"imports", "imports_at_call", "tests", "exercises",
                                 "depends_on"})
+#: The node types a ``tests/test_<stem>.py`` can own (the owner edge).
+OWNED_TYPES = frozenset({"module", "tool", "workflow", "script"})
 CURATED_EDGE_TYPES = frozenset({"writes", "reads", "precedes", "runs", "documents",
                                 "spawns", "loads", "schedules", "calls", "freezes",
                                 "launches", "enforces", "deliberate_cycle"})
@@ -724,9 +726,13 @@ def _owner_edges(nodes: list[Node], edges: list[dict]) -> list[dict]:
     tests/test_build.py runs build.yml through a subprocess; neither has an
     import statement, and both used to render as "no dedicated test file".
     The owner edge is a fact about the file names, so it is derived from them.
+
+    Only the kinds of file a test can own compete for a stem. The glass
+    theme's glass.js and glass.css share one: counting the stylesheet left
+    the script with no owner although tests/test_glass.py is its test file.
     """
     by_id = {node.id for node in nodes}
-    owned = _unambiguous_stems([n.id for n in nodes if n.sha256 and n.type != "test"])
+    owned = _unambiguous_stems([n.id for n in nodes if n.sha256 and n.type in OWNED_TYPES])
     for stem, target in owned.items():
         test_path = f"tests/test_{stem}.py"
         if test_path not in by_id or test_path == target:
