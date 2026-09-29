@@ -451,8 +451,8 @@ def test_the_harness_is_never_loaded_by_the_app():
 #: Rules of style.css that write a literal colour and whose elements the
 #: shell removes; each needs no dark value because nothing draws it. S4 took
 #: the toolbar, the chips, the request table, the household card and the
-#: setup card away; S5 deletes the deck and the review list and ends this list.
-RETIRED = (".mode-toggle", ".deck-card", ".review", ":root")
+#: setup card away; S5 deletes the review list and ends this list.
+RETIRED = (".review", ":root")
 
 
 def family(prop: str) -> str:

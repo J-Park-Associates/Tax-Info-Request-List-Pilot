@@ -129,8 +129,11 @@ function pagesRow(spec) {
   pagesUid += 1;
   const id = `row-${pagesUid}`;
   pagesTokens.set(id, spec);
-  const words = spec.step ? pagesStepWords(spec.step) : "";
-  const step = spec.step ? h("span", { className: "row-step", "aria-hidden": "true" }, words, icon("chev", true)) : null;
+  // The request list is a write: while a live lock holds the return its Edit
+  // step is not offered (the menu's Edit request list is grey for the same reason).
+  const stepOf = spec.step && !(spec.step.kind === "edit" && locked) ? spec.step : null;
+  const words = stepOf ? pagesStepWords(stepOf) : "";
+  const step = stepOf ? h("span", { className: "row-step", "aria-hidden": "true" }, words, icon("chev", true)) : null;
   const node = h("div", {
     className: `row${step ? " has-step" : ""}`, role: "option", id, "aria-selected": "false",
     "aria-description": words || undefined, dataset: { menu: spec.menu || "", token: id },
@@ -140,6 +143,8 @@ function pagesRow(spec) {
   h("span", { className: `row-status ${PAGES_TONES[spec.tone] || ""}` }, spec.status || ""),
   h("span", { className: "row-end" }, h("span", { className: "row-date" }, spec.date || ""), step));
   setTipIfCut(node.querySelector(".row-name"), spec.name);
+  setTipIfCut(node.querySelector(".row-detail"), spec.detail);
+  setTipIfCut(node.querySelector(".row-status"), spec.status);
   return node;
 }
 
@@ -266,9 +271,12 @@ function pagesCaption(text) {
 // ── Overview (SPEC 6.1) ───────────────────────────────────────────────
 function pagesWorkRows(returns) {
   const name = (one) => pagesReturnName(one.path);
-  const need = returns.filter((one) => one.counts.needs_you > 0)
-    .sort((a, b) => (a.oldest || PAGES_LATE).localeCompare(b.oldest || PAGES_LATE) || pagesByName(name(a), name(b)));
-  const wait = returns.filter((one) => !one.counts.needs_you && one.counts.waiting > 0)
+  // A return whose record could not be read has no counts, and is the first
+  // thing a person must see: it leads the first bucket, saying its problem.
+  const soonest = (one) => (one.problem ? "" : one.oldest || PAGES_LATE);
+  const need = returns.filter((one) => one.counts.needs_you > 0 || one.problem)
+    .sort((a, b) => soonest(a).localeCompare(soonest(b)) || pagesByName(name(a), name(b)));
+  const wait = returns.filter((one) => !one.problem && !one.counts.needs_you && one.counts.waiting > 0)
     .sort((a, b) => (a.due || PAGES_LATE).localeCompare(b.due || PAGES_LATE) || pagesByName(name(a), name(b)));
   const steps = { kind: "open" };
   const specOf = (one, date) => {

@@ -62,6 +62,10 @@
   // real vocabulary still holds today's long sentences.
   vocab.household = Object.assign({}, vocab.household, { two_open_years: "Two years open", accept_folder_name: "Accept" });
   vocab.room = Object.assign({}, vocab.room, { heading: "Names shortened to fit" });
+  // SPEC 2.5 E68: the bucket headings are the words alone (S1 cuts the descriptions).
+  vocab.review_labels = Object.assign({}, vocab.review_labels, {
+    buckets: { document: "Documents", container: "Emails and zips", not_a_document: "Not documents" },
+  });
   vocab.after_install = Object.assign({}, vocab.after_install, { heading: "Setup needs attention" });
   vocab.lock = Object.assign({}, vocab.lock, {
     running: "In use on {host}", running_other: "In use on {host}", on: "", greyed: "", left_behind: "Stuck lock from {host}",

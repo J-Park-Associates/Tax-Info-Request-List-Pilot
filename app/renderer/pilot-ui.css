@@ -225,7 +225,6 @@ button, input, select, textarea {
 .editor-table,
 .field input, .field select, .tmpl-item, .form-who, .wiz-sub, .wiz-note,
 .wiz-check, .toast, .prior-item, .review li, .review select, .review input,
-.deck-card, .deck-card .r-keyword, .deck-card .r-issuer input,
 .editor-table input, .editor-table select, .ed-paste textarea, .ed-readonly,
 .sc-radio, .household-feeds li,
 .banner, .notice, .btn {
@@ -242,7 +241,6 @@ button, input, select, textarea {
 .ed-set-aside > summary, .ed-paste summary,
 .ed-engagement legend, .form-blurb, .chosen-badge, .wiz-back, .prior-meta,
 .roll-return .roll-form span, .review .r-why, .review .r-reasons,
-.deck-card .r-why, .deck-card .r-reasons, .deck-suggested, .deck-position,
 .dismissed > summary, .sc-choice legend {
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
@@ -267,7 +265,7 @@ th, legend, strong,
 
 /* Figures line up. */
 .editor-table, .summary, .rem-stage-n,
-.deck-position, .prior-meta {
+.prior-meta {
   font-variant-numeric: tabular-nums;
 }
 
@@ -428,11 +426,11 @@ th, legend, strong,
 }
 
 /* Card bodies inset 16px on both sides (style.css's 18px), 16px at the foot. */
-.reminder-body, .review, .deck {
+.reminder-body, .review {
   padding-left: var(--sp-4);
   padding-right: var(--sp-4);
 }
-.reminder-body, .review, .deck { padding-bottom: var(--sp-4); }
+.reminder-body, .review { padding-bottom: var(--sp-4); }
 .dismissed { padding: 0 var(--sp-4) var(--sp-4); }
 .dismissed .review { padding: 0; }
 .editor-actions { gap: var(--sp-2); }
@@ -457,11 +455,6 @@ ul.review > li {
 }
 ul.review > li:first-child { border-top: none; }
 ul.review > li.r-bucket { padding-top: var(--sp-4); }
-.deck-card {
-  padding: var(--sp-2) var(--sp-4);
-  column-gap: var(--sp-2);
-  row-gap: var(--sp-2);
-}
 /* Two answers in two blocks: this one is set apart so its primary leads it
    (SPEC 5.7). Across the whole row, under the reasons. */
 .where-it-waits {
@@ -473,9 +466,6 @@ ul.review > li.r-bucket { padding-top: var(--sp-4); }
   border-radius: var(--radius);
 }
 .where-it-waits .r-reasons { margin-bottom: var(--sp-2); }
-/* The card's Open button is a grid item with no area of its own: keep it its
-   own width instead of stretching across the card. */
-.deck-card .c-open-copy { justify-self: start; }
 
 .editor-table th {
   padding: var(--sp-2);
@@ -611,7 +601,7 @@ input[type="checkbox"], input[type="radio"],
 .prior-item:hover { background: var(--bg-hover); }
 .chosen-badge { background: var(--info-bg); border: 1px solid var(--info-border); }
 .wiz-back:hover { background: var(--bg-hover); }
-.review .r-name, .deck-card .r-name { color: var(--st-attention); }
+.review .r-name { color: var(--st-attention); }
 .review li { border-top: 1px solid var(--border); }
 
 /* ── Motion (SPEC-shell 8.6): 150ms for hover, press, the sheet and a

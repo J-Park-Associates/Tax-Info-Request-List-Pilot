@@ -669,7 +669,7 @@ function renderMoved(state) {
 }
 
 // The keyword box, one builder for its three places - a moved copy's
-// keep-it-here, the list's row and the deck's card (decision 201, D11): a
+// keep-it-here and the review row (decision 201, D11): a
 // visible label that stays while the person types, and the sentence
 // saying what the word does as its title. Every word is the API's.
 function keywordBox() {
@@ -800,10 +800,6 @@ function renderReview(state) {
          here.map((e) => reviewRow(e, choices, ids, true, triaged.get(e.handle), people))]
       : [];
   }));
-  // The same queue drawn the other way (decision 114), from the same state:
-  // both renderings are always drawn and the mode shows one of them.
-  renderDeck(state);
-  applyReviewMode();
   $("dismissed-card").classList.toggle("hidden", dismissed.length === 0);
   $("dismissed-heading").textContent =
     fill(vocab.review_labels.dismissed_heading, { n: dismissed.length });
@@ -1030,8 +1026,8 @@ function issuerBox(triage) {
 }
 
 // The one place the issuer is added and the document filed. The list's
-// row and the deck's card both reach it; a refusal is said the way a
-// filing's is, and the card is drawn again from the record.
+// row reaches it; a refusal is said the way a filing's is, and the row is
+// drawn again from the record.
 async function addIssuerAndFile(node, btn) {
   const box = btn.closest(".r-issuer");
   const view = viewGeneration;   // drawn only if this return is still the one shown (D6)
@@ -1163,92 +1159,6 @@ async function refused(err, btn) {
   await showReturn(active);
 }
 
-// ── The same queue, one card at a time (decision 114) ────────────────────
-
-// In March one client can hold a dozen parked rows, and the list makes a
-// person read every row's whole picker to take the easy calls. The cards are
-// a second rendering of state.review - never a second state: the deck is the
-// API's order, and the only thing the page holds of its own is which rows a
-// person sent to the back and which rendering they are on. After every
-// action the deck is rebuilt from the state the API just returned, so a row
-// filed or set aside anywhere else simply leaves it and the count is always
-// the queue's.
-
-// Which rendering the person is on, remembered on this machine alone. It is
-// a preference and not a fact about the engagement, so nothing about it is
-// recorded (decision 83), and the key is a key - no one reads it - so the
-// renderer may type it where it may type no word. A store that refuses to
-// answer (a locked profile, a private window) leaves the app on the list.
-const REVIEW_MODE_STORAGE_KEY = "jpa.tracker.review-mode";
-const MODE_LIST = "list";
-const MODE_CARDS = "cards";
-
-let reviewMode = storedReviewMode();
-let skipped = [];          // row handles sent to the back of the deck
-let deckState = null;      // the state the deck was last drawn from
-
-function storedReviewMode() {
-  try {
-    return localStorage.getItem(REVIEW_MODE_STORAGE_KEY) === MODE_CARDS ? MODE_CARDS : MODE_LIST;
-  } catch (err) {
-    return MODE_LIST;
-  }
-}
-
-function setReviewMode(mode) {
-  reviewMode = mode === MODE_CARDS ? MODE_CARDS : MODE_LIST;
-  try {
-    localStorage.setItem(REVIEW_MODE_STORAGE_KEY, reviewMode);
-  } catch (err) {
-    // A machine that will not remember it still shows what was asked for.
-  }
-  applyReviewMode();
-}
-
-// Both renderings are drawn; this shows one of them and says which button
-// is the one in force.
-function applyReviewMode() {
-  const cards = reviewMode === MODE_CARDS;
-  $("review-list").classList.toggle("hidden", cards);
-  $("review-deck").classList.toggle("hidden", !cards);
-  $("review-mode-cards").classList.toggle("on", cards);
-  $("review-mode-list").classList.toggle("on", !cards);
-  $("review-mode-cards").setAttribute("aria-pressed", String(cards));
-  $("review-mode-list").setAttribute("aria-pressed", String(!cards));
-}
-
-// The deck: the API's order with the sent-back rows after it, in the order
-// they were sent back. A row that has left the queue leaves the skip list
-// with it, so nothing here outlives the row it was about.
-function deckOrder(queue) {
-  const here = new Set(queue.map((t) => t.handle));
-  skipped = skipped.filter((location) => here.has(location));
-  const back = new Set(skipped);
-  return [
-    ...queue.filter((t) => !back.has(t.handle)),
-    ...skipped.map((location) => queue.find((t) => t.handle === location)),
-  ];
-}
-
-function renderDeck(state) {
-  deckState = state;
-  const rows = new Map((state.index || []).map((e) => [e.handle, e]));
-  const queue = (state.review || []).filter((t) => rows.has(t.handle));
-  const deck = deckOrder(queue);
-  // The card on top is the one that gets answered; the position says how far
-  // into the deck the person has walked, and the total is the queue's own -
-  // sending a card to the back never changes it.
-  const place = deck.length ? (skipped.length % deck.length) + 1 : 0;
-  show("review-deck", deck.length
-    ? [deckCard(deck[0], rows.get(deck[0].handle), place, deck.length,
-                (state.engagement || {}).people || [])]
-    : []);
-}
-
-// One card: the document, why it parked, the top suggestion with the
-// sentence behind it, the rows the evidence points at that are set aside,
-// and the three answers. A card with nothing suggested has no Accept -
-// there is nothing to accept - and says so in the API's words.
 // The client's own subfolder a parked file came out of, read from the row's
 // column and said in the API's words (decision 190) - never a clause of its
 // reason - or nothing for a file dropped at the inbox's top.
@@ -1259,92 +1169,12 @@ function cameFrom(row) {
     : null;
 }
 
-function deckCard(t, row, place, total, people = []) {
-  if (notADocument(t)) {
-    // Nothing to open and nothing to file (decision 190): the card says
-    // what the file really is, why, and lets the person move on.
-    return el("div", { className: "deck-card card", dataset: { original: t.handle, row: t.handle, seq: t.seq } },
-      el("span", { className: "r-name" }, t.original_name),
-      trueType(t),
-      el("span", { className: "r-why" }, row ? row.reason : "", row && cameFrom(row)),
-      el("span", { className: "deck-position" },
-        fill(vocab.review_labels.card_position, { n: place, total })),
-      el("button", { className: "btn c-skip" }, vocab.review_labels.skip),
-    );
-  }
-  const best = (t.shortlist || [])[0];
-  // The suggestion Accept files to travels on the card, as the row's record
-  // version does: what comes back with the click is what was on the screen.
-  const identified = best ? { identifier: best.identifier } : {};
-  return el("div", { className: "deck-card card",
-                     dataset: { original: t.handle, row: t.handle, seq: t.seq, ...identified } },
-    el("span", { className: "r-name" }, t.original_name),
-    el("span", { className: "r-why" }, row ? row.reason : "", row && cameFrom(row)),
-    best && el("span", { className: "deck-suggested" }, vocab.review_labels.suggested),
-    el("ul", { className: "r-reasons" },
-      best
-        ? el("li", {}, best.reason)
-        : el("li", { className: "r-nothing" }, vocab.triage.nothing_suggested),
-      (t.set_aside || []).map((s) =>
-        el("li", { className: "r-set-aside" }, fill(vocab.triage.set_aside_note, s)))),
-    issuerBox(t),
-    teachSpelling(t, people),
-    keywordBox(),
-    el("span", { className: "deck-position" },
-      fill(vocab.review_labels.card_position, { n: place, total })),
-    best && el("button", { className: "btn btn-primary c-accept" }, vocab.review_labels.accept),
-    openCopy(t, "c-open-copy"),
-    el("button", { className: "btn c-open" }, vocab.review_labels.open_in_list),
-    // The deck offers what the list offers: a request of another return
-    // this drop folder feeds (decision 129).
-    fedReturns().length
-      && el("button", { className: "btn c-hand-over" }, vocab.review_labels.hand_over),
-    waitsFor(t, "c-where-it-waits"),
-    el("button", { className: "btn c-skip" }, vocab.review_labels.skip),
-  );
-}
-
-// Accept is File it: the same call, made with the suggestion the card is
-// showing and the keyword the person typed on it.
-async function acceptCard(card) {
-  const identifier = card.dataset.identifier;
-  const btn = card.querySelector(".c-accept");
-  btn.disabled = true;
-  try {
-    await fileRow(card.dataset.original, identifier, Number(card.dataset.seq),
-                  typed(card, ".r-keyword"), spellingFrom(card));
-  } catch (err) {
-    await refused(err, btn);
-  }
-}
-
-// The hard calls belong to the full picker, where every request is offered
-// (decision 84): the card hands the row over rather than growing a picker of
-// its own.
-function openCardInList(card) {
-  setReviewMode(MODE_LIST);
-  const wanted = card.dataset.original;
-  for (const li of $("review-list").children) {
-    const hit = li.dataset.original === wanted;
-    li.classList.toggle("focused", hit);
-    if (hit) li.scrollIntoView({ block: "center" });
-  }
-}
-
 // Open is the review copy the API named under this key in state.paths
 // (decision 190): the shell opens only the paths the API reported, so a
 // key the state does not hold opens nothing.
 function openReviewCopy(btn) {
   const target = paths && paths[btn.dataset.key];
   if (target) window.tracker.open(target);
-}
-
-// Skip is a reorder and nothing else: the card goes to the back, the queue
-// is the same length, and nothing is sent anywhere.
-function skipCard(card) {
-  const location = card.dataset.original;
-  skipped = [...skipped.filter((one) => one !== location), location];
-  if (deckState) renderDeck(deckState);
 }
 
 // ── The way back, so nobody corrects a filing in Explorer ────────────────
@@ -3799,32 +3629,6 @@ $("review-list").addEventListener("click", (e) => {
   }
   const copy = e.target.closest(".r-open-copy");
   if (copy) openReviewCopy(copy);
-});
-$("review-mode").addEventListener("click", (e) => {
-  if (e.target.closest("#review-mode-cards")) setReviewMode(MODE_CARDS);
-  if (e.target.closest("#review-mode-list")) setReviewMode(MODE_LIST);
-});
-$("review-deck").addEventListener("click", (e) => {
-  const issuer = e.target.closest(".r-add-issuer");
-  if (issuer) addIssuerAndFile(issuer.closest(".deck-card"), issuer);
-  const accept = e.target.closest(".c-accept");
-  if (accept) acceptCard(accept.closest(".deck-card"));
-  const open = e.target.closest(".c-open");
-  if (open) openCardInList(open.closest(".deck-card"));
-  const skip = e.target.closest(".c-skip");
-  if (skip) skipCard(skip.closest(".deck-card"));
-  const copy = e.target.closest(".c-open-copy");
-  if (copy) openReviewCopy(copy);
-  const over = e.target.closest(".c-hand-over");
-  if (over) {
-    const card = over.closest(".deck-card");
-    openHandOver(card.dataset.original, Number(card.dataset.seq));
-  }
-  const waits = e.target.closest(".c-where-it-waits");
-  if (waits) {
-    const card = waits.closest(".deck-card");
-    fileWhereItWaits(card.dataset.original, Number(card.dataset.seq), waits);
-  }
 });
 $("dismissed-list").addEventListener("click", (e) => {
   const btn = e.target.closest(".r-file");

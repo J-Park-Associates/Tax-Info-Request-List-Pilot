@@ -215,15 +215,17 @@ function shellGo(next) {
 }
 
 // A return's page needs its state, and a household or year page needs the
-// active return to be one of its own (Sort now sorts the active return's
-// household). Both are app.js's showReturn.
+// state on screen to be one of its own returns' (Sort now sorts the active
+// return's household, and the household's notices come with that state).
+// Both are app.js's showReturn.
 function shellOpenState() {
   const route = shellRoute;
   let path = null;
   if (route.level === "return") path = route.ret;
   else if (route.level === "household" || route.level === "year") {
     const own = shellOwnReturns(route.household);
-    if (own.length && !own.some((one) => one.path === active)) path = own[0].path;
+    const shown = lastState && lastState.paths ? lastState.paths.engagement : "";
+    if (own.length && !own.some((one) => one.path === shown)) path = (own.find((one) => one.path === active) || own[0]).path;
   }
   if (!path) return;
   showReturn(path).then((drawn) => {

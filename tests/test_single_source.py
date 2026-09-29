@@ -118,25 +118,11 @@ def test_accept_and_file_it_are_one_call_site():
     """
     js = read("app/renderer/app.js")
     assert js.count('withEng("assign")') == 2
-    assert len(re.findall(r"\bfileRow\(", js)) == 4      # the one definition and its three callers
+    assert len(re.findall(r"\bfileRow\(", js)) == 3      # the one definition and its two callers
     # The hand-over's own call site is the only one that names a target,
     # and the two buttons that offer it both reach it.
     assert js.count("target: $(\"ho-return\").value") == 1
-    assert len(re.findall(r"\bopenHandOver\(", js)) == 3
-
-
-def test_the_review_mode_key_is_a_key_and_not_a_word():
-    """Decision 114: which rendering a person is on is remembered on the
-    machine, under a ``localStorage`` key - nothing about the queue is
-    recorded (decision 83). A key is not a word anybody reads, which is why
-    the renderer may type it at all, so it must be no word the API says and
-    must carry no space."""
-    import tracker.api as api
-
-    js = read("app/renderer/app.js")
-    key = re.search(r'const REVIEW_MODE_STORAGE_KEY = "([^"]+)";', js).group(1)
-    assert key and not re.search(r"\s", key)
-    assert key not in {str(word) for word in api._vocab()["review_labels"].values()}
+    assert len(re.findall(r"\bopenHandOver\(", js)) == 2
 
 
 def test_the_shell_runs_only_commands_the_api_has():
@@ -1829,7 +1815,7 @@ def test_every_review_action_the_renderer_sends_carries_the_rows_seq():
     # it was drawn on and hands it to that one function.
     sent = re.search(r'call\(withEng\("assign"\), \{(.*?)\}\)', js, re.S)
     assert sent and "seq" in sent.group(1)
-    for handler in ("assignParked", "keepMoved", "acceptCard"):
+    for handler in ("assignParked", "keepMoved"):
         body = re.search(rf"async function {handler}\(.*?\n\}}", js, re.S)
         assert body, handler
         assert "fileRow(" in body.group(0) and "dataset.seq" in body.group(0), handler
@@ -3783,7 +3769,7 @@ def test_no_text_box_is_named_only_by_its_placeholder():
         body = _js_function(js, builder)
         label = body.split('el("label", { className: "field', 1)[1]
         assert f'className: "{cls}"' in label, cls
-    assert len(re.findall(r"\bkeywordBox\(\)", js)) == 4        # the builder and its three places
+    assert len(re.findall(r"\bkeywordBox\(\)", js)) == 3        # the builder and its two places
     # The setup page (shell.js) builds its two boxes inside labels; the three
     # inputs index.html keeps are hidden, for saveRoot(), and carry no name.
     shell = read("app/renderer/shell.js")
@@ -3803,7 +3789,7 @@ def test_the_issuer_action_has_one_call_site():
     identifier or row of its own."""
     js = read("app/renderer/app.js")
     assert js.count('withEng("add-issuer-and-file")') == 1
-    assert len(re.findall(r"\baddIssuerAndFile\(", js)) == 3     # the definition and its two callers
+    assert len(re.findall(r"\baddIssuerAndFile\(", js)) == 2     # the definition and its one caller
     sent = re.search(r'call\(withEng\("add-issuer-and-file"\), \{(.*?)\}\)', js, re.S).group(1)
     assert set(re.findall(r"(\w+):", sent)) == {"original", "seq", "head", "issuer"}
 
