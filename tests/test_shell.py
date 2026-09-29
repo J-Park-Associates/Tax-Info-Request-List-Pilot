@@ -316,6 +316,7 @@ def test_the_page_enables_the_items_whose_rule_holds_and_the_menu_follows(tmp_pa
 def test_the_menu_channel_drops_what_it_does_not_know(tmp_path):
     steps = [
         {"menu": {"enable": ["overview", 7, None, "constructor", "__proto__", "check"]}},   # ids not in the bar
+        {"menu": {"enable": ["overview"]}},   # the same list once the strays are dropped: no rebuild
         {"menu": {"enable": "overview"}},                    # not an array
         {"menu": "overview"}, {"menu": None}, {"menu": [["enable"]]},
         {"menu": {"popup": "nowhere", "enable": [], "token": "row"}},          # not one of the six
@@ -327,7 +328,8 @@ def test_the_menu_channel_drops_what_it_does_not_know(tmp_path):
     ]
     ran = _run(tmp_path, steps)
     assert ran["popups"] == [] and ran["sends"] == []
-    # Only the one known bar id was taken, from the first message.
+    # Only the one known bar id was taken, from the first message; the unknown ids were dropped,
+    # or the second message, naming the same one id, would have rebuilt the menu.
     assert len(ran["menus"]) == 2
     now = _flat(ran["menus"][-1])
     assert now[_word("overview")]["enabled"] and not now[_word("clients")]["enabled"]

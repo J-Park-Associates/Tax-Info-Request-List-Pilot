@@ -567,8 +567,8 @@ changes nothing:
   to `.3`, a `passes` folder (decision 193), an `ocr-scratch` folder, and
   the old `runs.log` in the clients folder, which names clients. Nothing
   deletes them for you: delete them. The app never writes an error log
-  beside itself: with no data folder, what a failed command said is shown
-  in its message instead.
+  beside itself: with no data folder, a failed command's message says
+  there is no error log, and its details are not kept or shown.
 
 There used to be a second one, a comparison flag on the ledger's own
 statuses against the request list's. There is nothing left for it to
