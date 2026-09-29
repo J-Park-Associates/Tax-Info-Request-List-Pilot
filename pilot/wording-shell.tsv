@@ -15,7 +15,7 @@ api._vocab	columns[6].help	Every one of these must appear in the document (a key
 api._vocab	columns[7].help	At least one of these must appear; a keyword reads the same way	cut		0	Nowhere; was column tooltip	Audit §7: every column help tooltip is cut
 api._vocab	columns[8].help	Blank with a year in Period checks for that year; * turns the year check off; a typed regex wins	cut		0	Nowhere; was column tooltip	Audit §7: every column help tooltip is cut
 api._vocab	columns[9].help	Accepted counts as Received; Not Applicable takes the request out of every count for the year	cut		0	Nowhere; was column tooltip	Audit §7: every column help tooltip is cut
-api._vocab	dialogs.unsaved	You have changes here that are not saved.	reword	Unsaved changes	2	Unsaved changes bar	Audit §7: long sentence cut
+api._vocab	dialogs.unsaved	You have changes here that are not saved.	reword	Unsaved Changes	2	Unsaved changes bar	Audit §7: long sentence cut
 api._vocab	editor.engagement_fields[10].help	which catalog the request list was cut from; blank if it was never recorded	cut		0	Nowhere; was editor help	Audit §7: Form, read-only field cut; breadcrumb shows it
 api._vocab	editor.engagement_fields[11].help	the household this return belongs to; the folder above the year	cut		0	Nowhere; was editor help	Audit §7: Household, read-only field cut; breadcrumb shows it
 api._vocab	editor.engagement_fields[12].help	the year the return is for; the year folder's name	cut		0	Nowhere; was editor help	Audit §7: Tax year, read-only field cut; breadcrumb shows it
@@ -26,9 +26,9 @@ api._vocab	editor.engagement_fields[3].help	the date the reminder asks the clien
 api._vocab	editor.engagement_fields[4].help	the statutory filing date; named in the reminder from the third stage on; blank = not mentioned (defaults from the form, weekends shifted; holidays are yours to edit)	cut		0	Nowhere; was editor help	Audit §7: Filing deadline help; help lines cut
 api._vocab	editor.engagement_fields[6].help	the sign-off line and the client README's contact (typed once at setup)	cut		0	Nowhere; was editor help	Audit §7: Firm help; help lines cut
 api._vocab	editor.engagement_fields[7].help	no = this client is not chased by email	cut		0	Nowhere; was editor help	Audit §7: Reminders help; help lines cut
-api._vocab	editor.engagement_fields[8].help	no = the scheduled run skips this folder	reword	No: sorting skips this return	5	Editor, under Active	Warns before a risky act, so kept short
+api._vocab	editor.engagement_fields[8].help	no = the scheduled run skips this folder	reword	No: Sorting Skips This Return	5	Editor, under Active	Warns before a risky act, so kept short
 api._vocab	editor.engagement_fields[9].help	written by the rollover; the engagement it names is no longer chased	cut		0	Nowhere; was editor help	Audit §7: Rolled from, read-only field cut; breadcrumb shows it
-api._vocab	editor.not_this_return	The request list could not be opened: what is on screen is still another return's. Pick the return again, then open its request list.	reword	Request list did not open	5	Notice area	The return changed while it opened
+api._vocab	editor.not_this_return	The request list could not be opened: what is on screen is still another return's. Pick the return again, then open its request list.	reword	Request List Did Not Open	5	Notice area	The return changed while it opened
 api._vocab	editor.paste_hint	Paste rows copied from a spreadsheet: one request per line, cells separated by tabs or as CSV, in the column order above; a first line that repeats the headings is skipped. Nothing is recorded until you save.	cut		0	Nowhere; was editor hint	Audit §7: paste hint cut
 api._vocab	editor.rename_hint	Gives a request another identifier and moves its filed documents with it, at once. Changing an identifier in the list and saving is refused while the request holds documents; a change of case alone is saved in the list.	cut		0	Nowhere; was editor hint	Audit §7: rename hint cut
 api._vocab	editor.rename_left_note	left in the old folder because no row names them: {left}	error-log	Some copies stayed behind	4	Request list editor note	Audit §9: file names to error log
@@ -38,34 +38,34 @@ api._vocab	editor.saved	Request list saved: {changed} row(s) changed, {removed} 
 api._vocab	editor.unlearned_note	{keyword} unlearned from {identifier}; the request was re-scanned	cut		0	Nowhere; keyword leaves the row	Rule 6: the result is visible
 api._vocab	extension_default_note	blank means pdf, xlsx, csv; a photo or an image counts as a PDF	cut		0	Nowhere; was custom row help	Audit §7: custom rows' extension column cut; no renderer use
 api._vocab	household.accept_folder_name_help	records that this household (or this return) is now called by its folder's name; nothing is moved or renamed	cut		0	Nowhere; was button tooltip	Audit §4: notice with one action, Accept
-api._vocab	household.add_feed	Add a return this drop folder feeds	reword	Feed another return	3	Edit household dialog	Says inbox role, not drop folder
+api._vocab	household.add_feed	Add a return this drop folder feeds	reword	Feed Another Return	3	Edit household dialog	Says inbox role, not drop folder
 api._vocab	household.contact_help	the greeting name in every return's letter, filled into each return when it is made	cut		0	Nowhere; was dialog help	Audit §7: Edit household help lines cut
-api._vocab	household.empty_root	No households under {root} yet — click {new} to create the first.	reword	No households yet	3	Clients page empty state	Path and button name dropped; File > New household
-api._vocab	household.fed_by_line	Also fed by the drop folder of: {listed}	reword	Also fed by: {listed}	4	Edit household dialog	Audit §4: feeds lines move to Edit household
-api._vocab	household.feed_warning	Anyone with access to this drop folder may drop for this return. Its documents will rest under the folder it lives in, shared with: {members}.	reword	Its members can drop here	5	Edit household dialog	Audit §7: kept feed warning
+api._vocab	household.empty_root	No households under {root} yet — click {new} to create the first.	reword	No Households Yet	3	Clients page empty state	Path and button name dropped; File > New household
+api._vocab	household.fed_by_line	Also fed by the drop folder of: {listed}	reword	Also Fed by: {listed}	4	Edit household dialog	Audit §4: feeds lines move to Edit household
+api._vocab	household.feed_warning	Anyone with access to this drop folder may drop for this return. Its documents will rest under the folder it lives in, shared with: {members}.	reword	Its Members Can Drop Here	5	Edit household dialog	Audit §7: kept feed warning
 api._vocab	household.feeds_help	returns in other households this drop folder feeds, by return line; most households feed only their own	cut		0	Nowhere; was dialog help	Audit §7: Edit household help lines cut
-api._vocab	household.feeds_line	This drop folder also feeds: {listed}	merge	Also feeds	2	Edit household dialog	Merged into household.feeds_label, the Also feeds field
+api._vocab	household.feeds_line	This drop folder also feeds: {listed}	merge	Also Feeds	2	Edit household dialog	Merged into household.feeds_label, the Also feeds field
 api._vocab	household.form_step_note	The request list is tailored to the form you pick.	cut		0	Nowhere; was New household	Audit §7: step 2 note cut
 api._vocab	household.link_help	pasted into every return's letter; paste it once the inbox is shared	cut		0	Nowhere; was dialog help	Audit §7: Edit household help lines cut
 api._vocab	household.members_help	who this household's folder is meant to be shared with - the tracker cannot read Drive's sharing, so this is the firm's own note	cut		0	Nowhere; was dialog help	Audit §7: Edit household help lines cut
-api._vocab	household.members_label	Shared with (as typed by the firm)	reword	Shared with	2	Edit and New household	Audit §7 label
+api._vocab	household.members_label	Shared with (as typed by the firm)	reword	Shared With	2	Edit and New household	Audit §7 label
 api._vocab	household.misfits_note	Each is listed with the one reason it does not fit the layout; nothing in it is ever read, moved or renamed.	cut		0	Nowhere; was misfits fold	Audit §2: count notice and two-word reasons replace it
 api._vocab	household.new_intro	A client folder is a household: one folder per tax year inside it, one folder per return inside that, and one inbox the client drops everything into.	cut		0	Nowhere; was New household	Audit §7: the intro is cut
 api._vocab	household.queue_line	{n} document(s) waiting for a person across this household	cut		0	Nowhere; count badges say it	Audit §4
 api._vocab	household.return_created	"Return ""{label}"" created with {n} request(s) asked for, client README generated. Open the Client Folder to show it."	cut		0	Nowhere; new return shows	Rule 6: the result is visible
 api._vocab	household.return_name_help	the return's folder name, form first; the same name every year	cut		0	Nowhere; was dialog help	Audit §7: help lines cut
-api._vocab	household.return_warning	Everyone with access to this folder will see this return's documents. Add it here only if every member may.	reword	Shared members see documents	4	New household dialog	Audit §7: kept warning, step 1
+api._vocab	household.return_warning	Everyone with access to this folder will see this return's documents. Add it here only if every member may.	reword	Shared Members See Documents	4	New household dialog	Audit §7: kept warning, step 1
 api._vocab	household.roll_done	{rolled} return(s) rolled into {year}; {retired} retired	cut		0	Nowhere; new year opens	Rule 6: the rolled year is on screen
 api._vocab	household.roll_forms_unloaded	The return types could not be loaded, so each return keeps the form it recorded: {reason}	error-log	Return types did not load	5	Roll forward dialog	Reason to error log; each return keeps its form
 api._vocab	household.roll_intro	Last year's list is the starting point. Everything the client actually sent, set aside or under-delivered carries forward - what was set aside as not applicable under its own heading, for a fresh decision; the form template only fills blanks.	cut		0	Nowhere; was roll fold	Dialog help lines cut
-api._vocab	household.roll_no_template	No template — carry last year's list as it is	reword	Keep last year's list	4	Roll forward dialog	Template drop-down option
-api._vocab	household.roll_ticked	Roll the ticked returns forward to {year}	reword	Roll forward	2	Roll forward dialog	Button; the dialog title names the year
-api._vocab	household.roll_unfiled	{n} file(s) sent last year were never filed	reword	{n} last-year files never filed	5	Notice area after roll	
-api._vocab	household.rollover_unticked	A return left unticked is retired for {year}: it is set inactive and stops being chased. Tick it later and roll it on its own if that changes.	reword	Unticked returns go inactive	4	Roll forward dialog	Kept as a warning before a risky act
+api._vocab	household.roll_no_template	No template — carry last year's list as it is	reword	Keep Last Year's List	4	Roll forward dialog	Template drop-down option
+api._vocab	household.roll_ticked	Roll the ticked returns forward to {year}	reword	Roll Forward	2	Roll forward dialog	Button; the dialog title names the year
+api._vocab	household.roll_unfiled	{n} file(s) sent last year were never filed	reword	{n} Last-Year Files Never Filed	5	Notice area after roll	
+api._vocab	household.rollover_unticked	A return left unticked is retired for {year}: it is set inactive and stops being chased. Tick it later and roll it on its own if that changes.	reword	Unticked Returns Go Inactive	4	Roll forward dialog	Kept as a warning before a risky act
 api._vocab	household.shared_on_line	Marked as shared on {day} by the firm	reword	Shared {day}	2	Household page caption	Audit §4 caption Shared; keeps the date
 api._vocab	household.sharing_heading	Before the client can drop anything	cut		0	Nowhere; was sharing checklist	Audit §4: checklist cut; Tester Guide
 api._vocab	household.sharing_note	The tracker cannot see Drive's sharing. The two grants are the firm's to make, once; the year folders are view-only through the household folder, and nothing is ever re-shared.	cut		0	Nowhere; was sharing checklist	Audit §4: checklist cut; Tester Guide
-api._vocab	household.two_open_years	Two years are open in this household ({years}); nothing is sorted from its inbox until one is retired in the editor	reword	Two years open; sorting paused	5	Notice area	Audit §4; nothing sorts from the inbox until one retires
+api._vocab	household.two_open_years	Two years are open in this household ({years}); nothing is sorted from its inbox until one is retired in the editor	reword	Two Years Open; Sorting Paused	5	Notice area	Audit §4; nothing sorts from the inbox until one retires
 api._vocab	labels.Accepted.sentence	A person accepted it with a reason; the rules stop here.	cut		0	Nowhere; was status tooltip	Audit §5: status word only; view.py still uses it
 api._vocab	labels.Failed Validation.sentence	Something arrived that the rules could not use.	cut		0	Nowhere; was status tooltip	Audit §5: status word only; view.py still uses it
 api._vocab	labels.Missing.sentence	Asked for; nothing usable has arrived yet.	cut		0	Nowhere; was status tooltip	Audit §5: status word only; view.py still uses it
@@ -78,74 +78,74 @@ api._vocab	labels.Requested.sentence	Asked for; no pass has looked at it yet.	cu
 api._vocab	lock.buttons_back	The pass let go of this return; its buttons are back.	cut		0	Nowhere; controls re-enable	Rule 6: the result is visible
 api._vocab	lock.cleared	The lock left behind was cleared ({minutes} min old).	cut		0	Nowhere; lock notice goes	Rule 6: the notice disappears
 api._vocab	lock.greyed	This return's buttons are greyed while it runs and come back by themselves the moment it lets go.	cut		0	Nowhere; greyed shows it	Audit §2
-api._vocab	lock.left_behind	A pass that started at {started} on {host} left its lock behind ({minutes} min old); it has most likely ended. The next pass replaces it, or clear it here.	reword	Stuck lock from {host}	4	Notice area	Tools > Clear stuck lock; time dropped
-api._vocab	lock.running	A pass that started at {started} on {host} is holding this return.	reword	In use on {host}	4	Notice area	Audit §2
-api._vocab	lock.running_other	A pass that started at {started} on {host} is holding {label}.	reword	{label} in use on {host}	5	Notice area	Audit §2, naming the other return
-api._vocab	new_not_asked_carried	{n} catalog row(s) this client never had added as not asked - a document for one files there; set Asked in the editor to ask for it	reword	{n} requests added, not asked	5	Notice area after roll	
-api._vocab	not_applicable_carried	{n} request(s) not applicable last year - review them in the editor	reword	Review {n} set-aside requests	4	Notice area after roll	
-api._vocab	nothing_asked	Select at least one request item	reword	Tick at least one request	5	Toast, New household	
-api._vocab	override_reasons[0]	Client confirmed this is the final version	reword	Client confirmed final version	4	Editor Reason drop-down	Label only: the record keeps today's words as the stored value (P78)
-api._vocab	override_reasons[1]	Correct document, validation flagged formatting only	reword	Correct; only formatting flagged	4	Editor Reason drop-down	Label only: the record keeps today's words as the stored value (P78)
-api._vocab	override_reasons[2]	Received outside the system (in person, fax, confirmed in a meeting)	reword	Received outside the tracker	4	Editor Reason drop-down	Label only: the record keeps today's words as the stored value (P78)
+api._vocab	lock.left_behind	A pass that started at {started} on {host} left its lock behind ({minutes} min old); it has most likely ended. The next pass replaces it, or clear it here.	reword	Stuck Lock From {host}	4	Notice area	Tools > Clear stuck lock; time dropped
+api._vocab	lock.running	A pass that started at {started} on {host} is holding this return.	reword	In Use on {host}	4	Notice area	Audit §2
+api._vocab	lock.running_other	A pass that started at {started} on {host} is holding {label}.	reword	{label} in Use on {host}	5	Notice area	Audit §2, naming the other return
+api._vocab	new_not_asked_carried	{n} catalog row(s) this client never had added as not asked - a document for one files there; set Asked in the editor to ask for it	reword	{n} Requests Added, Not Asked	5	Notice area after roll	
+api._vocab	not_applicable_carried	{n} request(s) not applicable last year - review them in the editor	reword	Review {n} Set-Aside Requests	4	Notice area after roll	
+api._vocab	nothing_asked	Select at least one request item	reword	Tick at Least One Request	5	Toast, New household	
+api._vocab	override_reasons[0]	Client confirmed this is the final version	reword	Client Confirmed Final Version	4	Editor Reason drop-down	Label only: the record keeps today's words as the stored value (P78)
+api._vocab	override_reasons[1]	Correct document, validation flagged formatting only	reword	Correct; Only Formatting Flagged	4	Editor Reason drop-down	Label only: the record keeps today's words as the stored value (P78)
+api._vocab	override_reasons[2]	Received outside the system (in person, fax, confirmed in a meeting)	reword	Received Outside the Tracker	4	Editor Reason drop-down	Label only: the record keeps today's words as the stored value (P78)
 api._vocab	people.help	who this return is for, with the spellings documents use; a named request files only where one of these is on the page	cut		0	Nowhere; was People help	Dialog help lines cut
-api._vocab	people.none_yet	add at least one person to the return; a named request files only where a name confirms	reword	Add at least one person	5	People field error	
-api._vocab	people.one_word	a spelling needs at least two words, so a family name alone never confirms a document	reword	Spelling needs two words	4	People field error	
-api._vocab	people.rolled_note	{n} return(s) rolled; review each return's people once	reword	Check each return's people	4	Notice area after roll	
+api._vocab	people.none_yet	add at least one person to the return; a named request files only where a name confirms	reword	Add at Least One Person	5	People field error	
+api._vocab	people.one_word	a spelling needs at least two words, so a family name alone never confirms a document	reword	Spelling Needs Two Words	4	People field error	
+api._vocab	people.rolled_note	{n} return(s) rolled; review each return's people once	reword	Check Each Return's People	4	Notice area after roll	
 api._vocab	people.spellings_help	ticked spellings are what a page is matched against; untick one a document never prints, and add any the app did not propose	cut		0	Nowhere; was People help	Dialog help lines cut
 api._vocab	people.teach_hint	the name as this page prints it	reword	Spelling	1	Side sheet, More fold	Audit §5
 api._vocab	reminder.copied	the letter is on the clipboard - paste it into Outlook as the body; the subject line is on the card above it	reword	Copied	1	Toast after Copy	Audit §2
-api._vocab	reminder.edited_by_hand	edited by hand - approve it as it stands, or delete it to regenerate at a stage	reword	Edited by hand	3	Reminder side sheet	Audit §5
-api._vocab	reminder.held_line	Reminder held: {n} request(s) need a decision	reword	Held: {n} need a decision	5	Reminder side sheet	
-api._vocab	reminder.inbox_held_line	Reminder held: {n} file(s) still waiting to be sorted	reword	Held: {n} files not sorted	5	Reminder side sheet	
-api._vocab	reminder.last_drafted_line	last drafted {date} at stage {n}	reword	Drafted {date}, stage {n}	4	Reminders page row	
+api._vocab	reminder.edited_by_hand	edited by hand - approve it as it stands, or delete it to regenerate at a stage	reword	Edited by Hand	3	Reminder side sheet	Audit §5
+api._vocab	reminder.held_line	Reminder held: {n} request(s) need a decision	reword	Held: {n} Need a Decision	5	Reminder side sheet	
+api._vocab	reminder.inbox_held_line	Reminder held: {n} file(s) still waiting to be sorted	reword	Held: {n} Files Not Sorted	5	Reminder side sheet	
+api._vocab	reminder.last_drafted_line	last drafted {date} at stage {n}	reword	Drafted {date}, Stage {n}	4	Reminders page row	
 api._vocab	reminder.line_unreadable	{label}: its reminder could not be read ({kind})	error-log	Reminder could not be read	5	Reminders page row	Error kind to error log
-api._vocab	reminder.not_yet	No reminder yet: this return has not been scanned.	reword	No reminder until first sort	5	Reminder side sheet	
-api._vocab	reminder.set_aside_line	the other draft was set aside as {name}	reword	Other draft moved aside	4	Toast after Approve	Draft file name dropped (rule 2)
+api._vocab	reminder.not_yet	No reminder yet: this return has not been scanned.	reword	No Reminder Until First Sort	5	Reminder side sheet	
+api._vocab	reminder.set_aside_line	the other draft was set aside as {name}	reword	Other Draft Moved Aside	4	Toast after Approve	Draft file name dropped (rule 2)
 api._vocab	reminder.sides[0].sentence	The letter asks the client for it.	cut		0	Nowhere; the group says who	Audit §5
 api._vocab	reminder.sides[1].sentence	Waiting on us, not the client; the letter does not ask for it.	cut		0	Nowhere; the group says who	Audit §5
 api._vocab	reminder.sides[2].sentence	A person decides whether the client resends it or we fix it here; the letter is held until then.	cut		0	Nowhere; the group says who	Audit §5
 api._vocab	reminder.stage_toggle_hint	the pass pre-selects the stage from the Due Date; move it up or down before you send	cut		0	Nowhere; was stage hint	Audit §5: hint cut
-api._vocab	reminder.unreadable	This return's reminder could not be read just now; the notice above says why.	merge	Reminder could not be read	5	Reminder side sheet	Merged into reminder.line_unreadable
-api._vocab	review_labels.buckets.container	Emails and zips - opened, if at all, on a machine with no Drive sign-in and no client folder, never this one	reword	Emails and zips	3	Needs you group heading	Audit §5
-api._vocab	review_labels.buckets.not_a_document	Not documents - do not open; ask the client what they meant to send	reword	Not documents	2	Needs you group heading	Audit §5
+api._vocab	reminder.unreadable	This return's reminder could not be read just now; the notice above says why.	merge	Reminder Could Not Be Read	5	Reminder side sheet	Merged into reminder.line_unreadable
+api._vocab	review_labels.buckets.container	Emails and zips - opened, if at all, on a machine with no Drive sign-in and no client folder, never this one	reword	Emails and Zips	3	Needs you group heading	Audit §5
+api._vocab	review_labels.buckets.not_a_document	Not documents - do not open; ask the client what they meant to send	reword	Not Documents	2	Needs you group heading	Audit §5
 api._vocab	review_labels.came_from	came from the client's subfolder '{folder}'	cut		0	Nowhere; names a folder	Audit §5, rule 4
-api._vocab	review_labels.dismiss_note	why nothing asks for it (optional)	reword	Reason (optional)	2	Side sheet, More fold	Audit §5
-api._vocab	review_labels.handed_over	Filed under {label} ({identifier}); nothing about it stays here	reword	Filed under {label}	3	Toast after filing	The other return is off screen; code dropped
-api._vocab	review_labels.issuer_add	Add the issuer and file it	reword	Add issuer	2	Side sheet	Audit §5
+api._vocab	review_labels.dismiss_note	why nothing asks for it (optional)	reword	Reason (Optional)	2	Side sheet, More fold	Audit §5
+api._vocab	review_labels.handed_over	Filed under {label} ({identifier}); nothing about it stays here	reword	Filed Under {label}	3	Toast after filing	The other return is off screen; code dropped
+api._vocab	review_labels.issuer_add	Add the issuer and file it	reword	Add Issuer	2	Side sheet	Audit §5
 api._vocab	review_labels.issuer_help	Adds {identifier}, a K-1 row for this issuer, to the request list and files this document under it. Type the distinctive words and leave off the suffix (L.P., LLC).	cut		0	Nowhere; was issuer help	Audit §5: label and button only
-api._vocab	review_labels.issuer_label	Issuer's name, as the K-1 prints it	reword	Issuer name	2	Side sheet	Audit §5
+api._vocab	review_labels.issuer_label	Issuer's name, as the K-1 prints it	reword	Issuer Name	2	Side sheet	Audit §5
 api._vocab	review_labels.issuer_not_rescanned	not re-scanned ({kind}); the next pass re-scans it	error-log	Next sort rechecks it	4	Side sheet note	Error kind to error log
 api._vocab	review_labels.keyword_help	A word this document contains that others like it will too. Taught to the request so the next one files itself; the editor shows it beside the row.	cut		0	Nowhere; was keyword tooltip	Audit §5: help cut
 api._vocab	review_labels.moved_summary	these working copies are not where the record put them; choose for each - nothing is guessed	cut		0	Nowhere; rows say it	Audit §5: rows read Moved by hand
-api._vocab	review_labels.unfile_note	why it is coming back (optional)	merge	Reason (optional)	2	Unfile reason box	Merged into review_labels.dismiss_note
-api._vocab	roll_template_label	Form template (fills blanks, adds the rows this client never had as not asked)	reword	Form template	2	Roll forward dialog	
-api._vocab	room.heading	Returns short of room under this root	reword	Names shortened to fit	4	Notice area	Audit §2
-api._vocab	room.parks	{count} request(s) have no room for a working copy under this root; a document for them parks for a person until the clients root is shorter	reword	{count} requests can't be filed	5	Notice area	Their documents wait for a person
-api._vocab	room.short	{short} characters short of the room its working copies need, so their names are cut to fit; a shorter clients root, a request's Short name shortened in the editor, or a shorter return name at the next rollover gives it back	merge	Names shortened to fit	4	Return page row	Merged into room.heading
+api._vocab	review_labels.unfile_note	why it is coming back (optional)	merge	Reason (Optional)	2	Unfile reason box	Merged into review_labels.dismiss_note
+api._vocab	roll_template_label	Form template (fills blanks, adds the rows this client never had as not asked)	reword	Form Template	2	Roll forward dialog	
+api._vocab	room.heading	Returns short of room under this root	reword	Names Shortened to Fit	4	Notice area	Audit §2
+api._vocab	room.parks	{count} request(s) have no room for a working copy under this root; a document for them parks for a person until the clients root is shorter	reword	{count} Requests Can't Be Filed	5	Notice area	Their documents wait for a person
+api._vocab	room.short	{short} characters short of the room its working copies need, so their names are cut to fit; a shorter clients root, a request's Short name shortened in the editor, or a shorter return name at the next rollover gives it back	merge	Names Shortened to Fit	4	Return page row	Merged into room.heading
 api._vocab	rules[0].detail	Every routing and status decision comes from deterministic rules in the manifest.	cut		0	Nowhere; code and docs keep it	Audit §6, P64: Safeguards shows headlines only
-api._vocab	rules[0].headline	No generative AI ever reads a client financial document.	reword	No AI reads documents	4	Help > Safeguards	Audit §6
+api._vocab	rules[0].headline	No generative AI ever reads a client financial document.	reword	No AI Reads Documents	4	Help > Safeguards	Audit §6
 api._vocab	rules[1].detail	Files are moved byte for byte under their own names out of Drop files here into the client's folder for the year; all work happens on copies, and every move is recorded in the record.	cut		0	Nowhere; code and docs keep it	Audit §6, P64
 api._vocab	rules[2].detail	A document is filed only when exactly one request accepts it - or, when one document names several forms as itself, when each of those forms is accepted by exactly one request, or, when a broker's consolidated statement is accepted by several requests, when exactly one of them accepts it for its 1099-B, which then holds the whole statement. Ambiguous, contested and unrecognized files go to 00 - Needs Review for a person - misfiling a tax document is worse than not filing it.	cut		0	Nowhere; code and docs keep it	Audit §6, P64
 api._vocab	rules[3].detail	The system drafts client emails and stops. There is no SMTP, no mail client and no network call in the reminder or scheduling path.	cut		0	Nowhere; code and docs keep it	Audit §6, P64
 api._vocab	scan.not_in_pass	The pass ended, but its final line does not name this return, so its counts are not shown; the page is drawn from the record.	cut		0	Nowhere; page shows the list	Audit §2: result banner cut
-api._vocab	scan.not_sorted	{n} file(s) could not be sorted	reword	{n} files not sorted	4	Notice area	
+api._vocab	scan.not_sorted	{n} file(s) could not be sorted	reword	{n} Files Not Sorted	4	Notice area	
 api._vocab	scan.problem	The pass reported a problem: {error}	error-log	Sort failed	2	Notice area	Audit §2; the error to error log
-api._vocab	schedule.move_confirm	{host} runs the schedule for this clients folder, so this computer registered none.  Move the schedule to this computer? Do this only when {host} has stopped running it for good (it removes its own task at its next start). Nothing is ever sent.	reword	Move schedule here from {host}?	5	Repair schedule confirm	Plus new key schedule.move_warning 'Only if {host} is retired' (a risky act keeps its warning)
+api._vocab	schedule.move_confirm	{host} runs the schedule for this clients folder, so this computer registered none.  Move the schedule to this computer? Do this only when {host} has stopped running it for good (it removes its own task at its next start). Nothing is ever sent.	reword	Move Schedule Here From {host}?	5	Repair schedule confirm	Plus new key schedule.move_warning 'Only if {host} is retired' (a risky act keeps its warning)
 api._vocab	schedule.note	Scan works either way. Nothing is ever sent.	cut		0	Nowhere; was Schedule dialog	Audit §7
-api._vocab	schedule.repair_confirm	Register the daily job with Task Scheduler again, on this computer, for this clients folder?  It files, scans and (on saturdays) drafts reminders. Nothing is ever sent.	reword	Repair the schedule here?	4	Repair schedule confirm	
+api._vocab	schedule.repair_confirm	Register the daily job with Task Scheduler again, on this computer, for this clients folder?  It files, scans and (on saturdays) drafts reminders. Nothing is ever sent.	reword	Repair the Schedule Here?	4	Repair schedule confirm	
 api._vocab	schedule.repair_help	Register the daily job again on this computer - only needed if the schedule was deleted or broken	cut		0	Nowhere; menu item has none	Now Tools > Repair schedule
 api._vocab	settings.firm_help	as it should sign the reminders	cut		0	Nowhere; was setup help	Audit §3: help cut
 api._vocab	settings.phone_help	named in the final-notice reminder; blank drops that sentence	cut		0	Nowhere; was setup help	Audit §3: help cut
 api._vocab	shell.could_not_send	The app could not send that to the tracker ({kind}); nothing was changed.	error-log	Could not send; nothing changed	5	Notice area	Error kind to error log
 api._vocab	shell.could_not_start	The tracker could not start ({code}).	error-log	The tracker could not start	5	Notice area	Exit code to error log
-api._vocab	shell.killed	The pass ran past its limit of {minutes} minutes and was stopped. What it finished is on the record, and the next pass does the rest.	reword	Sort stopped: ran too long	5	Notice area	Next sort does the rest
-api._vocab	shell.no_log	There is no error log to hold the details - the tracker has no data folder yet - so they are here instead: {stderr}	reword	Tracker failed	5	Notice area	Without a data folder the details go to the shell's fallback log, not on screen (first start only); section 11.4
+api._vocab	shell.killed	The pass ran past its limit of {minutes} minutes and was stopped. What it finished is on the record, and the next pass does the rest.	reword	Sort Stopped: Ran Too Long	5	Notice area	Next sort does the rest
+api._vocab	shell.no_log	There is no error log to hold the details - the tracker has no data folder yet - so they are here instead: {stderr}	reword	Tracker Failed	5	Notice area	Without a data folder the details go to the shell's fallback log, not on screen (first start only); section 11.4
 api._vocab	shell.no_reply	The tracker ended without a reply (exit code {code}); the details are in the error log.	error-log	No reply from the tracker	5	Notice area	Exit code to error log
-api._vocab	shell.not_opened	That is no longer the folder or file the tracker reported; nothing was opened.	reword	Not opened; it has changed	5	Notice area	
+api._vocab	shell.not_opened	That is no longer the folder or file the tracker reported; nothing was opened.	reword	Not Opened; It Has Changed	5	Notice area	
 api._vocab	shell.page_error	The app met an error of its own ({kind}); the details are in the error log.	error-log	The app hit an error	5	Notice area	Error kind to error log
-api._vocab	triage.nothing_suggested	nothing to suggest - the evidence says nothing about which request this is	reword	No suggestion	2	Side sheet	
-api._vocab	triage.places.footer	in the footer of page {page}	reword	in the page {page} footer	5	Side sheet reason line	A clause inside the reason line
-api._vocab	triage.set_aside_note	{identifier} is {label} - clear it in the editor to file here	reword	Set aside in request list	5	Side sheet, Other list	Request code dropped (rule 3)
+api._vocab	triage.nothing_suggested	nothing to suggest - the evidence says nothing about which request this is	reword	No Suggestion	2	Side sheet	
+api._vocab	triage.places.footer	in the footer of page {page}	reword	In the Page {page} Footer	5	Side sheet reason line	A clause inside the reason line
+api._vocab	triage.set_aside_note	{identifier} is {label} - clear it in the editor to file here	reword	Set Aside in Request List	5	Side sheet, Other list	Request code dropped (rule 3)
 api._vocab	year_note	Defaults to the most recently ended year; the checklist's periods follow it	cut		0	Nowhere; was Tax year tooltip	Dialog help cut
 pilot-content.js	terms.checkbox	I have read this and will keep my own backups.	exception	I have read this and will keep my own backups.	10	Pilot terms screen	P63: agreement kept whole
 pilot-content.js	terms.sections[0].bullets[0]	A test edition of Tax Document Tracker, built by J Park & Associates.	exception	A test edition of Tax Document Tracker, built by J Park & Associates.	13	Pilot terms screen	P63: agreement kept whole
@@ -164,50 +164,50 @@ pilot-content.js	terms.sections[5].bullets[0]	The Pilot is provided as is, witho
 pilot-content.js	terms.sections[5].bullets[1]	You remain responsible for your clients' records and for checking what the program files.	exception	You remain responsible for your clients' records and for checking what the program files.	14	Pilot terms screen	P63: agreement kept whole
 pilot-content.js	terms.sections[6].bullets[1]	Please do not send client documents. Describe what happened, or send a screenshot with client names covered.	exception	Please do not send client documents. Describe what happened, or send a screenshot with client names covered.	17	Pilot terms screen	P63: agreement kept whole
 pilot-content.js	terms.title	Before you start: this is a Pilot	exception	Before you start: this is a Pilot	7	Pilot terms screen	P63: agreement kept whole
-pilot-content.js	tour.steps[0].does[0]	A client drops documents in one folder.	reword	Sorts what your clients send	5	Tour step 0 line	Audit §8: one line per step
-pilot-content.js	tour.steps[0].does[1]	The program sorts and renames them.	merge	Sorts what your clients send	5	Tour step 0 line	Merged into tour.steps[0].does[0]
+pilot-content.js	tour.steps[0].does[0]	A client drops documents in one folder.	reword	Sorts What Your Clients Send	5	Tour step 0 line	Audit §8: one line per step
+pilot-content.js	tour.steps[0].does[1]	The program sorts and renames them.	merge	Sorts What Your Clients Send	5	Tour step 0 line	Merged into tour.steps[0].does[0]
 pilot-content.js	tour.steps[0].does[2]	You see what arrived, what's missing, and what needs you.	cut		0	Nowhere; one line per step	Audit §8
 pilot-content.js	tour.steps[0].limit	6 return types (1040, 1120, 1120-S, 1065, 1041, 990), about 74 document kinds.	cut		0	Nowhere; limits cut	Audit §8
 pilot-content.js	tour.steps[0].strength	Runs on this computer with fixed rules. No AI reads documents. Nothing is sent.	cut		0	Nowhere; strengths cut	Audit §8
-pilot-content.js	tour.steps[10].does	Replay this tour any time with the Tour button.	reword	Replay this tour from Help	5	Tour step 10 line	Tour button moves to Help
+pilot-content.js	tour.steps[10].does	Replay this tour any time with the Tour button.	reword	Replay This Tour From Help	5	Tour step 10 line	Tour button moves to Help
 pilot-content.js	tour.steps[10].limit[1]	About 74 document kinds, 6 return types	cut		0	Nowhere; limits cut	Audit §8
 pilot-content.js	tour.steps[10].limit[2]	Scans slow without the optional graphics pack	cut		0	Nowhere; limits cut	Audit §8
 pilot-content.js	tour.steps[10].limit[3]	Schedule on/off and run time: the Schedule button	cut		0	Nowhere; limits cut	Audit §8
 pilot-content.js	tour.steps[10].limit[4]	Installer unsigned: Windows shows a warning	cut		0	Nowhere; limits cut	Audit §8
 pilot-content.js	tour.steps[10].strength[0]	Runs offline on your own Windows PC	cut		0	Nowhere; strengths cut	Audit §8
-pilot-content.js	tour.steps[1].does	Choose one clients folder. Each household gets a shared inbox and a private working folder.	reword	Choose one clients folder	4	Tour step 1 line	
+pilot-content.js	tour.steps[1].does	Choose one clients folder. Each household gets a shared inbox and a private working folder.	reword	Choose One Clients Folder	4	Tour step 1 line	
 pilot-content.js	tour.steps[1].fallback	Clients folder already chosen. Switch returns from the list at top left.	cut		0	Nowhere; fallbacks cut	Audit §8
 pilot-content.js	tour.steps[1].limit	Use a folder your firm backs up. One computer runs the automatic schedule.	cut		0	Nowhere; limits cut	Audit §8
 pilot-content.js	tour.steps[1].strength	Clients see only their own shared folder. Your working files stay private.	cut		0	Nowhere; strengths cut	Audit §8
-pilot-content.js	tour.steps[2].does	Create a household, pick the return type, tick the documents you expect.	reword	Tick the documents you expect	5	Tour step 2 line	Title names the household
+pilot-content.js	tour.steps[2].does	Create a household, pick the return type, tick the documents you expect.	reword	Tick the Documents You Expect	5	Tour step 2 line	Title names the household
 pilot-content.js	tour.steps[2].fallback	New household is at the top of the window.	cut		0	Nowhere; fallbacks cut	Audit §8
 pilot-content.js	tour.steps[2].limit	Unknown document types go to Needs Review, never guessed.	cut		0	Nowhere; limits cut	Audit §8
 pilot-content.js	tour.steps[2].strength	Files are matched to your own request list, in your order.	cut		0	Nowhere; strengths cut	Audit §8
-pilot-content.js	tour.steps[3].does	Inbox opens 'Drop files here'. PDFs, scans, photos, spreadsheets, zips and emails all go in.	reword	Everything goes in the inbox	5	Tour step 3 line	Folder name 'Drop files here' dropped
+pilot-content.js	tour.steps[3].does	Inbox opens 'Drop files here'. PDFs, scans, photos, spreadsheets, zips and emails all go in.	reword	Everything Goes in the Inbox	5	Tour step 3 line	Folder name 'Drop files here' dropped
 pilot-content.js	tour.steps[3].fallback	Inbox opens once a household is chosen at the top left.	cut		0	Nowhere; fallbacks cut	Audit §8
 pilot-content.js	tour.steps[3].limit	Photos and faint scans read slowly and may go to Needs Review.	cut		0	Nowhere; limits cut	Audit §8
 pilot-content.js	tour.steps[3].strength	The client never names or sorts anything.	cut		0	Nowhere; strengths cut	Audit §8
-pilot-content.js	tour.steps[4].does	Reads each new file, matches it to a request, moves the original, makes a named copy.	reword	Matches files to your requests	5	Tour step 4 line	
+pilot-content.js	tour.steps[4].does	Reads each new file, matches it to a request, moves the original, makes a named copy.	reword	Matches Files to Your Requests	5	Tour step 4 line	
 pilot-content.js	tour.steps[4].fallback	Scan works once a household is chosen at the top left.	cut		0	Nowhere; fallbacks cut	Audit §8
 pilot-content.js	tour.steps[4].limit	First scans with many images take longer. The schedule also runs it automatically.	cut		0	Nowhere; limits cut	Audit §8
 pilot-content.js	tour.steps[4].strength	Filed only when exactly one request fits. Doubt goes to a person.	cut		0	Nowhere; strengths cut	Audit §8
-pilot-content.js	tour.steps[5].does	Lists the originals moved from the inbox into the client's year folder.	reword	Originals are moved, never changed	5	Tour step 5 line	
+pilot-content.js	tour.steps[5].does	Lists the originals moved from the inbox into the client's year folder.	reword	Originals Are Moved, Never Changed	5	Tour step 5 line	
 pilot-content.js	tour.steps[5].fallback	Appears after a scan moves something.	cut		0	Nowhere; fallbacks cut	Audit §8
 pilot-content.js	tour.steps[5].limit	Moved files leave the client's inbox.	cut		0	Nowhere; limits cut	Audit §8
 pilot-content.js	tour.steps[5].strength	Moved byte for byte, never altered. Every move is recorded and can be undone.	cut		0	Nowhere; strengths cut	Audit §8
-pilot-content.js	tour.steps[6].does	Accepted documents are copied into Prepared with organized names, e.g. 'A01 - W-2 - TY2025.pdf'.	reword	Copies get tidy names	4	Tour step 6 line	Audit §8: no folder or file names
+pilot-content.js	tour.steps[6].does	Accepted documents are copied into Prepared with organized names, e.g. 'A01 - W-2 - TY2025.pdf'.	reword	Copies Get Tidy Names	4	Tour step 6 line	Audit §8: no folder or file names
 pilot-content.js	tour.steps[6].fallback	Appears after the first document is filed.	cut		0	Nowhere; fallbacks cut	Audit §8
 pilot-content.js	tour.steps[6].limit	Fixed naming pattern; custom schemes aren't offered yet.	cut		0	Nowhere; limits cut	Audit §8
 pilot-content.js	tour.steps[6].strength	Every return's folder reads the same way. Copies can be re-made from the originals.	cut		0	Nowhere; strengths cut	Audit §8
-pilot-content.js	tour.steps[7].does	Unknown, ambiguous or unreadable files wait here with likely matches. File with one click, or dismiss.	reword	Unsure files wait for you	5	Tour step 7 line	
+pilot-content.js	tour.steps[7].does	Unknown, ambiguous or unreadable files wait here with likely matches. File with one click, or dismiss.	reword	Unsure Files Wait for You	5	Tour step 7 line	
 pilot-content.js	tour.steps[7].fallback	Appears when a pass sets a document aside.	cut		0	Nowhere; fallbacks cut	Audit §8
 pilot-content.js	tour.steps[7].limit	Expect more items in the first weeks. The rules don't change on their own.	cut		0	Nowhere; limits cut	Audit §8
 pilot-content.js	tour.steps[7].strength	Nothing is guessed. You see why it stopped.	cut		0	Nowhere; strengths cut	Audit §8
-pilot-content.js	tour.steps[8].does	Opens the status page: every requested document, received or missing, with validation notes.	reword	See every request's status	4	Tour step 8 line	The return page replaces the status page
+pilot-content.js	tour.steps[8].does	Opens the status page: every requested document, received or missing, with validation notes.	reword	See Every Request's Status	4	Tour step 8 line	The return page replaces the status page
 pilot-content.js	tour.steps[8].fallback	Status opens once a household is chosen at the top left.	cut		0	Nowhere; fallbacks cut	Audit §8
 pilot-content.js	tour.steps[8].limit	A file on this computer, not a client portal.	cut		0	Nowhere; limits cut	Audit §8
 pilot-content.js	tour.steps[8].strength	One page answers 'what are we still waiting for?'	cut		0	Nowhere; strengths cut	Audit §8
-pilot-content.js	tour.steps[9].does	Weekly, drafts a reminder listing what's missing. You copy and send it.	reword	Drafts reminders; you send them	5	Tour step 9 line	
+pilot-content.js	tour.steps[9].does	Weekly, drafts a reminder listing what's missing. You copy and send it.	reword	Drafts Reminders; You Send Them	5	Tour step 9 line	
 pilot-content.js	tour.steps[9].fallback	Appears when a reminder is drafted.	cut		0	Nowhere; fallbacks cut	Audit §8
 pilot-content.js	tour.steps[9].limit	Send from your own email; no Outlook or Gmail link.	cut		0	Nowhere; limits cut	Audit §8
 pilot-content.js	tour.steps[9].strength	Nothing is ever sent. No client is contacted without you.	cut		0	Nowhere; strengths cut	Audit §8

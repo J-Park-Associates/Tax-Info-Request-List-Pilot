@@ -1216,8 +1216,8 @@ SCREEN: dict = {
     },
     "side_label": "Sections",
     "path_label": "Path",
-    # The tooltip of every file and return name that is a live link, and the
-    # word of the right-click item that does the same (four words).
+    # The tooltip of a file name, the only live link that opens File Explorer
+    # (ruling 12), and the word of a right-click item that does the same.
     "show_in_explorer": "Show in File Explorer",
     # The tooltip of a household name, which navigates to the household's page
     # in the app (no path, no engine call).
