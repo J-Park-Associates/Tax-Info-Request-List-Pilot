@@ -5267,7 +5267,8 @@ def _firm_row(one, household: str, today: dt.date) -> tuple[dict, list[dict]]:
     own row with ``problem`` set and zero counts, said in :data:`FIRM_UNREADABLE`
     with the detail in the error log (decision 189): it never fails the reply,
     and the total counts it as needing a person, never as complete."""
-    row = {"path": str(one.path), "household": household,
+    year = one.tax_year if one.tax_year is not None else year_of(one.path)
+    row = {"path": str(one.path), "household": household, "label": one.label, "year": year,
            "counts": dict.fromkeys(GROUPS, 0), "files": 0, "oldest": None, "due": None,
            "draft": {"ready": False, "stage": 0, "held": 0, "drafted": None}, "problem": ""}
     if one.problem:
@@ -5291,11 +5292,11 @@ def _firm_row(one, household: str, today: dt.date) -> tuple[dict, list[dict]]:
     for item in items:
         row["counts"][item_group(item, placed)] += 1
     by_name = {item.identifier: item for item in items}
-    files = [{"return": one.label, "path": str(one.path), "name": t.entry.original_name,
+    files = [{"return": one.label, "year": year, "path": str(one.path), "name": t.entry.original_name,
               "code": t.entry.code, "received": t.entry.received,
               "suggestion": by_name[t.shortlist[0].identifier].label if t.shortlist else ""}
              for t in parked]
-    files.extend({"return": one.label, "path": str(one.path), "name": entry.original_name,
+    files.extend({"return": one.label, "year": year, "path": str(one.path), "name": entry.original_name,
                   "code": reasons.FILE_MOVED.code, "received": entry.received, "suggestion": ""}
                  for entry in entries
                  if file_group(entry) == GROUP_NEEDS_YOU and entry.decision == FILE_MOVED)

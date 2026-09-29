@@ -8147,6 +8147,25 @@ def test_firm_counts_match_the_return_pages_groups(capsys, demo_root):
         firm["returns"])
 
 
+def test_every_return_row_the_pages_link_carries_its_year_beside_its_label(capsys, demo_root):
+    """Return links read "{Return Name} ({Year})" and the renderer types no
+    year (Jason, 2026-09-29): the firm's rows, the files under them, the
+    list's returns and the state's household returns each carry it."""
+    mixed, _quiet, _retired = _a_practice_for_the_firm_view(capsys, demo_root)
+    _code, firm = run(capsys, "firm")
+    assert firm["returns"] and firm["files"]
+    for one in firm["returns"]:
+        assert one["label"] and isinstance(one["year"], int), one
+    for one in firm["files"]:
+        assert one["return"] and isinstance(one["year"], int), one
+    _code, listed = run(capsys, "list")
+    for household in listed["households"]:
+        assert all(isinstance(one["year"], int) and one["label"] for one in household["returns"])
+    assert all(isinstance(one["year"], int) for one in listed["engagements"])
+    state = payload_of_state(capsys, mixed)
+    assert all(isinstance(one["year"], int) for one in state["household"]["returns"])
+
+
 def test_firm_lists_every_file_it_counts_and_buckets_a_return_with_only_a_file(capsys, demo_root):
     """A file moved by hand is listed with its code and its return's path, so
     the rows under the count agree with it; a return whose only work for a
