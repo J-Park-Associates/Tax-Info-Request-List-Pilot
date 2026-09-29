@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "generated": "2026-09-28",
+  "generated": "2026-09-29",
   "generator": "tools/repo_map.py",
   "generator_sha256": "78ed6f39661035ec",
   "module_table_sha256": "37515d192b8b4b41",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 187,
+    "nodes": 189,
     "edges": 1132,
-    "reused": 144
+    "reused": 146
   },
   "node_types": [
     "artifact",
@@ -4164,6 +4164,20 @@
       "layer": "docs",
       "sha256": "6f4e1530c056c1b1",
       "lines": 38
+    },
+    {
+      "id": "pilot/reviews/security-review.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "23ab66cc6ec37ff7",
+      "lines": 334
+    },
+    {
+      "id": "pilot/reviews/ux-review.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "bba61b69239c22d1",
+      "lines": 439
     },
     {
       "id": "requirements-build.txt",
