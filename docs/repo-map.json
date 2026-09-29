@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 278,
+    "nodes": 279,
     "edges": 1141,
-    "reused": 236
+    "reused": 235
   },
   "node_types": [
     "artifact",
@@ -4028,8 +4028,8 @@
       "id": "app/renderer/shell.css",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "425435c4c3298c61",
-      "lines": 588,
+      "sha256": "b09a8cb9b4b161d2",
+      "lines": 591,
       "role": "Layout and components of the shell's markup: side panel, path row, notices, page, the row and group every page is made of, the setup page, the sheet's frame and the tooltip.",
       "notes": "Tokens only, as pilot-ui.css: no colour, size or step is written here, and tests/test_shell.py fails on the first one. Every display other than none sits under :not(.hidden) (or [hidden], or :empty), because style.css's .hidden and the hidden attribute both lose to a later display. It ends with its own forced-colors block. The columns of a row are 240/200/160/144 so a row fits the 860px main area at the 1100px window; the date and the next step share the last column."
     },
@@ -4621,6 +4621,13 @@
       "layer": "docs",
       "sha256": "05f0d99681f9e2c2",
       "lines": 234
+    },
+    {
+      "id": "pilot/handoffs/shell-S3-review-2.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "e98c47b3efa45c56",
+      "lines": 179
     },
     {
       "id": "pilot/handoffs/shell-S3.md",
@@ -8475,8 +8482,8 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "fdf00594433dc69c",
-      "lines": 702,
+      "sha256": "74c1b257dc411bc6",
+      "lines": 705,
       "exports": [
         "CONTRAST",
         "NODE",

@@ -660,6 +660,9 @@ def test_the_contrast_theme_fills_and_rings_follow_spec_10_4():
         line = next(one for one in forced.splitlines() if selector in one and "Highlight" in one)
         assert "forced-color-adjust: none" in line, "Chromium's backplate would hide HighlightText"
     assert ":focus-visible { outline: 2px solid CanvasText; }" in forced
+    ring = next(one for one in forced.splitlines() if "#find:focus-visible" in one)
+    assert all(part in ring for part in ("#bar #find", "#main #notices", "#main #page .setup", "CanvasText")), \
+        "style.css and pilot-ui.css ring inputs and .btn in Highlight; the shell's controls must outrank them"
     assert "padding-inline: var(--sp-2);" in css[css.index(".side-section:not(.hidden)"):][:400]
 
 

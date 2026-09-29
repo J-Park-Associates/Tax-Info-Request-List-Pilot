@@ -585,4 +585,7 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   .last-sort-bar > span { background: Highlight; }
   #sheet-scrim { background: transparent; }
   :focus-visible { outline: 2px solid CanvasText; }
+  /* style.css and pilot-ui.css ring inputs and .btn in Highlight, with more
+     specific selectors; the shell's own controls outrank them by id. */
+  #bar #find:focus-visible, #main #notices :focus-visible, #main #page .setup :focus-visible { outline: 2px solid CanvasText; }
 }
