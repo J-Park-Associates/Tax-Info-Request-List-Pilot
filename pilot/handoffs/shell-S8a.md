@@ -48,8 +48,8 @@ Years and labels for return links:
 - `list.households[h].returns[i]`: `label`, `year` (existing, confirmed).
 - `list.engagements[i]`: `name` (label), `year`, `return_name` (existing).
 - `firm.returns[i]`: **new** `label` and `year` (beside `path`, `household`).
-- `firm.files[i]`: **new** `year`, beside `return` (the label), for the Needs
-  Review group headings.
+- `firm.files[i]`: **new** `year`, beside `return`, for the Needs Review group
+  headings. (Superseded by the merge below: `return` is the return's path.)
 - No household or return row has an `open_key`; there is none to add.
 
 Words (`vocab.screen`): `show_in_explorer` = "Show in File Explorer"
@@ -160,3 +160,48 @@ Mutation checks on a scratch copy (not in the repo):
    refuses an unreported path, two locks on one door.)
 3. `_moved_copy_key` returning `""`: `test_a_moved_by_hand_copy_has_a_key...`
    fails.
+
+## Merge with S1 rebuild 3
+
+Merged origin/claude/sharp-goldberg-jmfynk (S1 rebuild 3) into this branch with
+a merge commit. Conflicts and how each was resolved:
+
+1. `tracker/api.py` `AFTER_INSTALL_HEADING`: S2's old words vs S1's "Setup
+   needs attention". Title Case rules (Jason's ruling 10): it is now
+   **"Setup Needs Attention"**. S1's wording test, `pilot/wording-shell.tsv`
+   and `docs/runbook.md` were changed to match; SPEC-shell.md and AUDIT-shell.md
+   still quote S1's lower-case spelling as history and were left alone.
+2. `tracker/api.py` `_firm_row` row: kept S8a's `label`, and S1's `year`
+   computed inline (same value).
+3. `tracker/api.py` `firm.files[]`: S1's shape wins. `return` is the return's
+   **path** (same string as `returns[].path`), plus `year`, `handle`, `name`,
+   `code`, `received`, `suggestion`. S8a's `files[].return` (label) and
+   `files[].path` are gone. files[] carries no label: pages join to
+   `returns[]` by path to draw "{Return Name} ({Year})". The renderer
+   (`app/renderer/app.js`) does not read the firm reply yet, so nothing there
+   changed.
+4. `tests/test_api.py`: kept both sides' tests. S8a's year/label test now
+   checks that each file's `return` is one of the firm's return paths; S1's
+   exact-keys test now expects `label` in the returns rows; the heading test
+   expects "Setup Needs Attention".
+5. `docs/repo-map.json` / `.md`: regenerated with `repo_map.py update`.
+
+Final field names the renderer/pages use:
+
+- `firm.returns[i]`: `path`, `household`, `label`, `year`, `counts`
+  (`needs_you`, `waiting`, `received`, `set_aside`; parked, moved-by-hand and
+  set-aside files counted), `files`, `oldest`, `due`, `draft`, `problem`.
+- `firm.files[i]`: `return` (path), `year`, `name`, `handle`, `code`,
+  `received`, `suggestion`.
+- `firm.totals`: `need`, `waiting`, `complete`, `files`, `drafts`.
+- `state.index[i]`: `handle`, `group`, `open_keys` (unchanged);
+  `state.moved[i].open_key`; `state.paths`; `state.household.returns[i]`:
+  `label`, `year`; `state.engagement.tax_year`.
+
+Real check (scratch root, made-up names "Test Household 2025 Mixed"): the firm
+row counts `{needs_you 1, waiting 1, received 1, set_aside 0}` equal the same
+return's state tally; `year` 2025 in firm row, firm file and
+`state.engagement.tax_year`; the parked file's `handle` `pbc/setup.exe` is the
+same in `firm.files[0]` and `state.index[0]`; `open_keys` is `[]` for that
+file because it has no copy on disk in the seed (the open-key tests cover the
+present case); `state.paths` carries its keys.

@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 283,
+    "nodes": 284,
     "edges": 1138,
-    "reused": 241
+    "reused": 0
   },
   "node_types": [
     "artifact",
@@ -262,8 +262,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "739dde7b5687d896",
-      "lines": 5492,
+      "sha256": "a8b6ca482adbe0ba",
+      "lines": 5502,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_FOLDER_NAME_HELP",
@@ -759,7 +759,7 @@
         "SCHEDULE_LOADING": "'Reading the Schedule Setting...'",
         "SCHEDULE_SAVE": "'Save'",
         "SCHEDULE_CANCEL": "'Cancel'",
-        "AFTER_INSTALL_HEADING": "'After Installing: Needs a Person'",
+        "AFTER_INSTALL_HEADING": "'Setup Needs Attention'",
         "PILOT_RECORD_FILENAME": "'pilot-record.json'",
         "PILOT_RECORD_REFUSED": "'pilot-record takes {{}} to read, or \"terms\" as the version of the terms accepted, or \"tour_seen\": true; not {asked}.'",
         "FIRM_UNREADABLE": "'Could not be read'"
@@ -4470,7 +4470,7 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "c181bec1b0ece232",
+      "sha256": "f9da3e76c29acc67",
       "lines": 2580,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
@@ -4622,6 +4622,13 @@
       "lines": 20
     },
     {
+      "id": "pilot/handoffs/shell-S1-rebuild-3.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "18571942de42d4ec",
+      "lines": 68
+    },
+    {
       "id": "pilot/handoffs/shell-S1-review-1.md",
       "type": "doc",
       "layer": "docs",
@@ -4723,8 +4730,8 @@
       "id": "pilot/handoffs/shell-S8a.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "214c48e003963191",
-      "lines": 162
+      "sha256": "3ee344ee758b997d",
+      "lines": 207
     },
     {
       "id": "pilot/reviews/review-1.md",
@@ -5462,8 +5469,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "3f4e93aeb737cc32",
-      "lines": 8550,
+      "sha256": "8c335d1f622a7d8c",
+      "lines": 8614,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -5644,9 +5651,11 @@
         "test_fed_by_names_no_household_whose_record_is_gone",
         "test_filing_a_parked_card_moves_it_from_under_review_to_received_at_once",
         "test_firm_counts_match_the_return_pages_groups",
+        "test_firm_counts_parked_moved_and_set_aside_files_as_the_return_page_does",
         "test_firm_is_read_only",
         "test_firm_leaves_out_inactive_returns",
         "test_firm_lists_every_file_it_counts_and_buckets_a_return_with_only_a_file",
+        "test_firm_reply_names_its_fields_as_the_spec_does_and_carries_year_and_handle",
         "test_firm_says_a_reminder_draft_ready_only_until_it_is_approved_and_counts_the_inbox_as_a_hold",
         "test_firm_says_a_root_it_cannot_walk_and_answers_an_empty_root_as_nothing",
         "test_firm_says_an_unreadable_record_as_its_own_row",
@@ -5658,6 +5667,7 @@
         "test_item_group_follows_its_table",
         "test_keep_it_here_is_offered_by_the_copys_name",
         "test_list_reports_the_clients_root_and_the_firm_report_as_openable",
+        "test_list_state_and_firm_agree_on_a_returns_year",
         "test_look_alike_spellings_of_one_name_are_refused_as_one_name",
         "test_mark_missing_takes_one_request_off_a_consolidated_statement",
         "test_mark_shared_refuses_without_a_link_records_one_event_and_the_state_says_the_day",
@@ -5715,6 +5725,7 @@
         "test_templates_carries_the_calendars_default_year",
         "test_templates_lists_every_form_with_its_checklist",
         "test_the_added_row_reads_back_in_the_editor_as_issuer_row_builds_it",
+        "test_the_after_install_heading_is_the_specs_words",
         "test_the_app_is_told_at_once_when_it_sits_too_deep_for_its_reader",
         "test_the_app_lists_misfits_and_households_from_the_same_walk_the_pass_uses",
         "test_the_app_names_what_an_earlier_version_left_on_its_first_screen",

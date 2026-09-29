@@ -100,7 +100,7 @@ every return's record by today's rule, so a line an earlier version
 accepted that the rule now refuses - a Date Pattern that could run away, a
 step outside its return's folders, a value of the wrong kind - is named on
 the day of the upgrade: at the end of Setup, and in a notice at the top of
-the app's first screen headed *After installing: needs a person*. The
+the app's first screen headed *Setup Needs Attention*. The
 notice stays until a later run finds nothing; it cannot be dismissed,
 because the finding is true until the record is repaired. A return it
 names as "malformed", or as "changed behind the tracker's back", is shown
