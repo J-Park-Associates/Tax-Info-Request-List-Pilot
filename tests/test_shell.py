@@ -342,7 +342,8 @@ def test_the_skeleton_is_the_specs_and_only_what_the_sheet_takes_over_is_kept_hi
     for gone in ("topbar", "brand-logo", 'id="eng-select"', "btn-scan", "btn-inbox", 'id="toolbar"', 'class="toolbar"', "eng-form", "view-state",
                  'id="banner"', 'id="reader-warning"', 'id="last-pass"', 'id="machine-warnings"', 'id="after-install"',
                  'id="lock-notice"', 'id="misfits-card"', 'id="room-card"', 'id="setup-card"', 'id="household-card"',
-                 'id="rows"', 'id="summary"', 'id="pass-progress"', "btn-unlock", "btn-stop-pass", "household-returns"):
+                 'id="rows"', 'id="summary"', 'id="pass-progress"', "btn-unlock", "btn-stop-pass", "household-returns",
+                 "review-deck", "review-mode", "mode-toggle", "deck"):
         assert gone not in outside and gone not in legacy, gone
     for kept in ('id="reminder-card"', 'id="moved-card"', 'id="review-card"', 'id="filed-card"', 'id="assurances"',
                  'id="household-roll"', 'id="root-input"', 'id="firm-input"', 'id="phone-input"'):
@@ -784,7 +785,7 @@ class Element extends Node {
   byClass(name) { return this.find((one) => one.className.split(" ").includes(name)); }
   get textContent() { return this.kids.map((one) => (one instanceof Text ? one.data : one.textContent)).join(""); }
 }
-const document = { activeElement: null, createElement: (tag) => new Element(tag), createElementNS: (_ns, tag) => new Element(tag) };
+const document = { activeElement: null, createDocumentFragment: () => new Element("fragment"), createElement: (tag) => new Element(tag), createElementNS: (_ns, tag) => new Element(tag) };
 const page = (nodes) => { const box = new Element("div"); box.append(...nodes.filter(Boolean)); return box; };
 """
 
@@ -797,7 +798,6 @@ let lastState = null;
 const tips = [];
 const setTipIfCut = (node, words) => tips.push([node.className, words]);
 let shellReturn = (path) => ({ return_name: "1040 - John & Jane Smith", household: "h1", year: 2025 });
-const folderName = (path) => path;
 const PAGES_GROUPS = ["needs_you", "waiting", "received", "set_aside"];
 const PAGES_TONES = { needs: "is-attention", waiting: "is-waiting", done: "is-done", plain: "is-plain" };
 const PAGES_LATE = "9999-99-99";
@@ -842,7 +842,7 @@ def run_pages_dom(probe: str, tmp_path: Path, setup: str = "", functions=None):
         "pagesHouseholdNotices", "pagesRoute", "pagesFiles", "h", "icon", "screenWords", "pagesSafe", "pagesEach", "pagesLabel",
         "pagesSafeName", "pagesTitleFor", "pagesReportBroken", "pagesRouteKey", "pagesDraw", "pagesBuild", "pagesYear", "pagesReturnSpecs",
         "pagesClientSpecs", "pagesRemember", "pagesRestore", "pagesFirmReturn", "pagesActivate", "pagesOverview", "pagesNeedsReview",
-        "pagesReminders", "pagesClients", "pagesHousehold",
+        "pagesReminders", "pagesClients", "pagesHousehold", "folderName",
     ]
     shell = read("shell.js")
     consts = "\n".join(shell[shell.index(head):shell.index(");\n", shell.index(head)) + 3] if head.endswith("[") else shell[shell.index(head):shell.index("\n", shell.index(head))]
@@ -1266,3 +1266,113 @@ def test_a_household_with_an_unreadable_return_is_never_complete_on_the_clients_
     """, tmp_path)
     assert ran["work"] == [["Alpha Family", "Could not be read", "needs"], ["Bravo Family", "2 need you", "needs"]]
     assert ran["all"][2] == ["Charlie Family", "Complete", "done"], "only a household with nothing wrong says Complete"
+
+
+def test_the_renderer_defines_none_of_the_names_section_13_removes():
+    """SPEC 13 and 14.3: the review deck (Cards/List, its stored key and its
+    markup) and the old screen's helpers are gone from every renderer file;
+    putting one back must fail here, not pass the whole affected set."""
+    removed = ("chip", "sideLine", "requestTableRow", "ruleTooltip", "renderEngagements", "returnReminderLine", "renderSharing", "banner",
+               "REVIEW_MODE_KEY", "REVIEW_MODE", "storedReviewMode", "setReviewMode", "applyReviewMode", "deckOrder", "renderDeck",
+               "deckCard", "acceptCard", "openCardInList", "skipCard", "SCAN_LABEL", "LOCKED_BUTTONS")
+    for name in [*SHELL_FILES, "app.js", "tooltip.js"]:
+        text = stripped_js(name)
+        for one in removed:
+            assert not re.search(rf"\b(?:function|const|let|var|class)\s+{one}\b", text), f"{name} defines {one}"
+        for one in ("review-deck", "review-mode", "mode-toggle", "reviewMode", "review_mode"):
+            assert one not in text, f"{name} mentions {one}"
+    for name in ("style.css", "pilot-ui.css", "shell.css"):
+        css = read(name)
+        assert ".mode-toggle" not in css and ".deck" not in css and "--radius-pill" not in css, name
+    assert ".chip" not in read("shell.css")
+
+
+def test_every_loud_failure_of_the_old_screen_reaches_a_notice():
+    """SPEC 2.2: each failure the old screen kept in a banner or a card is a
+    notice now, and the call that draws it is still made: the reader's warning
+    and the machine warnings, the after-install failure, folders skipped,
+    names shortened to fit, the lock, two years open / folder renamed / feeds.
+    Dropping the call (which the drawing tests cannot see) fails here."""
+    app = stripped_js("app.js")
+
+    def body(text, name):
+        start = text.index(f"function {name}(")
+        return text[start:text.index("\n}\n", start)]
+
+    assert "renderMachineNotices(listed);" in body(app, "loadEngagements")
+    assert "renderAfterInstall(listed.after_install);" in body(app, "loadEngagements")
+    assert "renderMisfits();" in body(app, "adoptList")
+    assert "renderShortOfRoom(result.short_of_room || []);" in body(app, "saveRoot")
+    assert "renderAfterInstall(noticeOf(result.after_install));" in body(app, "saveRoot")
+    assert "showLock(state.lock);" in body(app, "renderLock") and "renderLock(state);" in body(app, "render")
+    assert 'keyedNotice("reader"' in body(app, "renderMachineNotices") and 'syncNotices("machine"' in body(app, "renderMachineNotices")
+    assert 'keyedNotice("after-install"' in body(app, "renderAfterInstall")
+    assert 'keyedNotice("misfits"' in body(app, "renderMisfits")
+    assert 'keyedNotice("room"' in body(app, "renderShortOfRoom")
+    assert 'keyedNotice("lock"' in body(app, "showLock")
+    pages = stripped_js("pages.js")
+    assert "pagesHouseholdNotices(route);" in body(pages, "pagesDraw") and 'syncNotices("household"' in body(pages, "pagesHouseholdNotices")
+    shell = stripped_js("shell.js")
+    assert "firm_failed" in shell
+
+
+def test_no_page_draws_a_path_as_text_or_as_a_tooltip(tmp_path):
+    """SPEC 11.1 (no path of any kind) and P63. Every page is drawn from data
+    whose paths hold backslashes and slashes - a household's folder, a
+    return's folder, one the list does not know - and nothing drawn holds
+    either: not a row, a heading, a caption, an attribute or a tooltip."""
+    pages_text = read("pages.js")
+    functions = re.findall(r"^function (\w+)\(", pages_text, flags=re.M) + ["h", "icon", "screenWords", "folderName"]
+    ran = run_pages_dom(r"""
+      const clients = "C:\\Clients\\J Park & Associates\\Smith Family";
+      const known = clients + "\\2025\\1040 - John & Jane Smith";
+      const gone = "/srv/clients/J Park & Associates/Gone Family/2025/1040 - Gone Trust";
+      shellReturn = (path) => (path === known ? { return_name: "1040 - John & Jane Smith", household: "Smith Family", year: 2025 } : null);
+      const hh = { name: "Smith Family", path: clients, contact: "Jane Smith", returns: [{ path: known, return_name: "1040 - John & Jane Smith", label: "x", year: 2025, active: true }] };
+      shellHousehold = (path) => (path === clients ? hh : null);
+      households = [{ name: "Smith Family", path: clients }, { name: "Gone Family", path: "/srv/clients/Gone Family" }];
+      const counts = (n, w) => ({ needs_you: n, waiting: w, received: 1, set_aside: 0 });
+      shellFirmData = { returns: [
+        { path: known, household: "Smith Family", counts: counts(2, 1), files: 1, oldest: "2026-03-03", due: "2026-04-15", draft: { ready: true, stage: 1, held: 0, drafted: "2026-03-03" }, problem: "" },
+        { path: gone, household: "Gone Family", counts: counts(0, 0), files: 0, oldest: null, due: null, draft: { ready: true, stage: 1, held: 2, drafted: null }, problem: "Could not be read" } ],
+        files: [{ return: known, name: "scan0012.pdf", code: "unmatched", received: "2026-03-03", suggestion: "W-2 - Acme" },
+                { return: gone, name: "IMG_1.jpg", code: "unmatched", received: "2026-03-04", suggestion: "" }],
+        totals: { need: 2, waiting: 0, complete: 0, files: 2, drafts: 2 }, next_sort: "18:00" };
+      lastState = stateOf([item("A", "needs_you"), item("C", "waiting")], [parked("p1")]);
+      lastState.paths.engagement = known;
+      lastState.household = { path: clients, shared_on: "2026-02-01", open_years: [2025], pause: {}, feeds: [] };
+      const routes = [{ level: "overview" }, { level: "needs-review" }, { level: "reminders" }, { level: "clients" },
+                      { level: "household", household: clients }, { level: "year", household: clients, year: 2025 },
+                      { level: "return", household: clients, year: 2025, ret: known }];
+      const seen = []; const drawnBy = {};
+      const walk = (node, out) => {
+        for (const [key, value] of Object.entries(node.attrs || {})) out.push(`${key}=${value}`);
+        for (const [key, value] of Object.entries(node.dataset || {})) out.push(`${key}=${value}`);
+        for (const kid of node.kids || []) { if (kid.data !== undefined) out.push(kid.data); else walk(kid, out); }
+      };
+      for (const route of routes) {
+        pagesBroken = []; pagesUid = 0; pagesTokens.clear(); globalThis.shellRoute = route;
+        const box = new Element("div");
+        box.append(...pagesBuild(route).filter(Boolean));
+        const out = []; walk(box, out);
+        drawnBy[route.level] = { strings: out.length, broken: pagesBroken.map((one) => one.name) };
+        seen.push(...out.map((text) => [route.level, text]));
+      }
+      for (const [cls, words] of tips) if (words) seen.push(["tip", words]);
+      return { drawnBy, hits: seen.filter(([, text]) => /[\\/]/.test(text)), all: seen.map(([, text]) => text) };
+    """, tmp_path, setup="""
+      let shellFirmData = null; const shellFirm = () => ({ data: shellFirmData }); const openNewHousehold = () => {}; const openAddReturn = () => {};
+      Object.assign(vocab.screen, {
+        figures: { need: "Need a person", waiting: "Waiting on clients", complete: "Complete" }, work: "Work waiting",
+        sections: { reminders: "Reminders", clients: "Clients" }, filters: { work: "Work waiting", all: "All" }, held: "Held",
+        inactive: "Inactive", rolled: "Rolled forward", contact: "Contact {name}", shared: "Shared", not_shared: "Not shared",
+        empty: { overview: "Nothing is waiting", next_sort: "Next sort {time}", needs_review: "Nothing needs review", reminders: "No drafts ready",
+                 clients: "No clients yet", work: "No work waiting", returns: "No returns yet", received: "Nothing received yet" },
+      });
+      vocab.menu = { new_household: "New household", add_return: "Add a return" };
+      vocab.reminder = { stages: [{ number: 1, short: "Heads up" }] };
+    """, functions=functions)
+    assert ran["hits"] == [], "a path (or a slash) was drawn"
+    assert all(one["broken"] == [] and one["strings"] > 3 for one in ran["drawnBy"].values()), json.dumps(ran["drawnBy"])
+    for name in ("1040 - John & Jane Smith", "1040 - Gone Trust", "Smith Family", "scan0012.pdf"):
+        assert name in ran["all"], f"{name} was not drawn, so the check saw nothing"
