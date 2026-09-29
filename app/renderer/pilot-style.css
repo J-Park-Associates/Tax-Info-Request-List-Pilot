@@ -1,5 +1,8 @@
 /* Pilot edition styles (pilot SPEC section 9). Only pilot names, plus .brand
-   for the badge's spacing, so nothing here can change how the app looks. */
+   for the badge's spacing, so nothing here can change how the app looks.
+   Build E (P51-P53): every colour, size, weight and step below is a token of
+   pilot-ui.css, which loads before this file; no literal of its own remains
+   except the overlays' dimming, which is not a text colour. */
 
 .brand .pilot-badge {
   align-self: center;
@@ -7,15 +10,14 @@
 
 .pilot-badge {
   display: inline-block;
-  margin-left: 10px;
-  padding: 2px 8px;
-  border-radius: 10px;
-  background: #f59e0b;
-  color: #1f2937;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  margin-left: var(--sp-3);
+  padding: var(--sp-half) var(--sp-2);
+  border-radius: var(--radius);
+  background: var(--amber);
+  color: var(--text);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  font-weight: var(--fw-strong);
   vertical-align: middle;
 }
 
@@ -36,7 +38,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: var(--sp-4);
   background: rgba(15, 23, 42, 0.6);
 }
 
@@ -46,57 +48,63 @@
   width: 100%;
   max-width: 640px;
   max-height: 85vh;
-  padding: 20px 24px;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #1f2937;
-  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.35);
+  padding: var(--sp-6);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--text);
+  box-shadow: var(--shadow-overlay);
 }
 
 .pilot-terms-card h2 {
-  margin: 0 0 12px;
-  font-size: 18px;
+  margin: 0 0 var(--sp-3);
+  font-family: var(--font-display);
+  font-size: var(--fs-title);
+  line-height: var(--lh-title);
+  font-weight: var(--fw-strong);
 }
 
 .pilot-terms-body {
   flex: 1 1 auto;
   overflow-y: auto;
-  padding-right: 6px;
+  padding-right: var(--sp-2);
 }
 
 .pilot-terms-section {
-  margin-bottom: 12px;
-  padding-left: 10px;
-  border-left: 3px solid #f59e0b;
+  margin-bottom: var(--sp-3);
+  padding-left: var(--sp-3);
+  border-left: 3px solid var(--amber);
 }
 
 .pilot-terms-section h3 {
-  margin: 0 0 4px;
-  font-size: 14px;
-  font-weight: 700;
+  margin: 0 0 var(--sp-1);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-weight: var(--fw-strong);
 }
 
 .pilot-terms-section ul {
   margin: 0;
-  padding-left: 18px;
-  font-size: 14px;
+  padding-left: var(--sp-5);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
 }
 
 .pilot-terms-section li {
-  margin-bottom: 2px;
+  margin-bottom: var(--sp-half);
 }
 
 .pilot-terms-check {
   display: block;
-  margin: 12px 0;
-  font-size: 14px;
-  font-weight: 600;
+  margin: var(--sp-3) 0;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-weight: var(--fw-strong);
 }
 
 .pilot-terms-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 /* ── Tour ──────────────────────────────────────────────────────────────── */
@@ -114,9 +122,9 @@
 
 .pilot-tour-spot {
   position: fixed;
-  border-radius: var(--pilot-spot-radius, 8px);
+  border-radius: var(--pilot-spot-radius, var(--radius));
   box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.55);
-  outline: 3px solid #f59e0b;
+  outline: 3px solid var(--amber);
   transition: all 0.2s;
   pointer-events: none;
 }
@@ -132,11 +140,11 @@
   max-height: 90vh;
   overflow-y: auto;
   box-sizing: border-box;
-  padding: 16px 18px;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #1f2937;
-  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.35);
+  padding: var(--sp-6);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--text);
+  box-shadow: var(--shadow-overlay);
 }
 
 .pilot-tour-card.is-wide {
@@ -144,22 +152,25 @@
 }
 
 .pilot-tour-card h2 {
-  margin: 4px 0 10px;
-  font-size: 17px;
+  margin: var(--sp-1) 0 var(--sp-3);
+  font-family: var(--font-display);
+  font-size: var(--fs-title);
+  line-height: var(--lh-title);
+  font-weight: var(--fw-strong);
 }
 
 .pilot-tour-card h3 {
-  margin: 0 0 4px;
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #6b7280;
+  margin: 0 0 var(--sp-1);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  font-weight: var(--fw-strong);
+  color: var(--subtle);
 }
 
 .pilot-tour-card p,
 .pilot-tour-card li {
-  font-size: 14px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
 }
 
 .pilot-tour-card p {
@@ -168,20 +179,21 @@
 
 .pilot-tour-card ul {
   margin: 0;
-  padding-left: 18px;
+  padding-left: var(--sp-5);
 }
 
 .pilot-tour-card li {
-  margin-bottom: 4px;
+  margin-bottom: var(--sp-1);
 }
 
 .pilot-tour-card section {
-  margin-bottom: 10px;
+  margin-bottom: var(--sp-3);
 }
 
 .pilot-tour-count {
-  font-size: 12px;
-  color: #6b7280;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  color: var(--subtle);
 }
 
 .pilot-tour-stages {
@@ -189,7 +201,7 @@
   align-items: center;
   flex-wrap: nowrap;
   gap: 0;
-  margin: 0 0 8px;
+  margin: 0 0 var(--sp-2);
   padding: 0;
   list-style: none;
 }
@@ -197,16 +209,17 @@
 .pilot-tour-stages .pilot-tour-stage {
   display: inline-block;
   margin-bottom: 0;
-  padding: 1px 5px;
-  border: 1px solid #d1d5db;
-  border-radius: 10px;
-  font-size: 11px;
+  padding: 0 var(--sp-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   white-space: nowrap;
-  color: #4b5563;
+  color: var(--muted);
 }
 
 .pilot-tour-stages .pilot-tour-stage + .pilot-tour-stage {
-  margin-left: 8px;
+  margin-left: var(--sp-2);
   position: relative;
 }
 
@@ -216,19 +229,19 @@
   right: 100%;
   top: 50%;
   width: 8px;
-  border-top: 1px solid #d1d5db;
+  border-top: 1px solid var(--border-strong);
 }
 
 .pilot-tour-stages .pilot-tour-stage.is-current {
-  background: #f59e0b;
-  border-color: #f59e0b;
-  color: #1f2937;
-  font-weight: 700;
+  background: var(--amber);
+  border-color: var(--amber);
+  color: var(--text);
+  font-weight: var(--fw-strong);
 }
 
 .pilot-tour-stages .pilot-tour-stage.is-done {
   border-color: transparent;
-  color: #6b7280;
+  color: var(--subtle);
 }
 
 .pilot-tour-stages .pilot-tour-stage.is-done::before {
@@ -237,35 +250,45 @@
 
 .pilot-tour-ok h3::before {
   content: "\2713\00a0";
-  color: #16a34a;
+  color: var(--ok-fg);
 }
 
 .pilot-tour-warn {
-  padding-left: 8px;
-  border-left: 3px solid #fcd34d;
+  padding-left: var(--sp-2);
+  border-left: 3px solid var(--amber-soft);
 }
 
 .pilot-tour-warn h3::before {
   content: "!\00a0";
-  color: #d97706;
+  color: var(--amber-deep);
 }
 
 .pilot-tour-compare {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  gap: var(--sp-4);
 }
 
 .pilot-tour-fallback {
-  margin-bottom: 10px;
+  margin-bottom: var(--sp-3);
   font-style: italic;
-  color: #6b7280;
+  color: var(--subtle);
 }
 
 .pilot-tour-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--sp-2);
+}
+
+/* Back and Close are subtle; Next is the tour's one primary. The importance
+   is set through the button properties pilot-ui.css defines. */
+.pilot-tour-actions .btn:not(.btn-primary) {
+  --b-bg: transparent;
+  --b-bd: transparent;
+  --b-hover-bd: transparent;
+  --b-dis-bg: transparent;
+  --b-dis-bd: transparent;
 }
 
 @media (max-width: 520px) {

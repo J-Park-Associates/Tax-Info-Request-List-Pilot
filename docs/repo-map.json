@@ -4004,8 +4004,8 @@
       "id": "app/renderer/pilot-style.css",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "23343fa8d22281ff",
-      "lines": 291
+      "sha256": "9f31aac478dd7686",
+      "lines": 314
     },
     {
       "id": "app/renderer/pilot-ui.css",
