@@ -141,7 +141,17 @@ Re-run after the fixes: the sweep is 0 findings in 11 scenarios; only
 Open the draft file). `test_pilot_ui` is now 10 tests. The Add a return flow
 is not in the harness's shoot scenarios; it was run by the reviewer's script.
 
-**Left.** Review by a separate Opus session that did not build it. Jason's look
+**Review E2** ([`reviews/review-e2.md`](reviews/review-e2.md)): all six E1
+findings fixed; three new nits, fixed by the SPEC author (Opus): the stale
+`after-review-cards.png` is re-rendered (Open the draft file drawn disabled);
+the run-gap comment in `pilot-ui.css` now says 16px and names the one accepted
+limit - a first toolbar row that ends on Repair the schedule or Schedule stops
+12px short of the right edge (at 1440, 1536 and 1920 in the fallback font),
+because CSS cannot make both edges of a wrapping row flush.
+
+**Open for Jason.** SPEC 5.7 (which of two primaries leads a review row); the
+setup screen's empty picker is a 260px empty box; the tour's primary (Next)
+sits between Back and Close. **Left.** Jason's look
 on Windows 11 at Segoe UI Variable's real rendering (widths differ from the
 fallback used here, so re-check the wizard's Change-form row, the tour's stage
 chips and the reminder stage labels), and the hands-on contrast-theme check

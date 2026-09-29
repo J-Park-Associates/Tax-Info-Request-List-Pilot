@@ -353,8 +353,10 @@ table.requests, .editor-table, .summary, .chip, .rem-stage-n,
 
 /* Four runs by DOM order: places and upkeep (Tour, inbox, client folder,
    repair), the list (edit, schedule), pages (report, status), the run (Sort
-   & Scan, Stop). 4px inside a run, 12px between runs, set as a right margin on
-   the last button of the run before, so a row that wraps starts flush. */
+   & Scan, Stop). 4px inside a run, 16px between runs (the 4px gap plus a 12px
+   right margin on the last button of the run before), so a row that wraps
+   starts flush. A first row that ends on one of these buttons stops 12px short
+   of the right edge; CSS cannot make both edges flush (review E2, accepted). */
 #btn-repair-schedule, #btn-schedule, #btn-status { margin-right: var(--sp-3); }
 
 #eng-select {
