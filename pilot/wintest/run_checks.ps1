@@ -114,6 +114,11 @@ Push-Location app; $e3 = Run npm.cmd @("ci"); Pop-Location
 Record "environment" (Verdict (($e1 -eq 0) -and ($e2 -eq 0) -and ($e3 -eq 0))) "pip=$e1 pip-nodeps=$e2 npm-ci=$e3"
 if ($e1 -or $e2 -or $e3) { Stop-Here "the environment did not install; see $Log" }
 
+# The limit the app will hold file paths to on this PC (P29): 259 with
+# Windows long paths off, 260 with them on.
+$limits = (& $vpy -c "from tracker import layout; print('long paths off:', layout.short_paths(), '- path limit:', layout.path_limit())" 2>&1 | Out-String).Trim()
+Record "path_limit" "INFO" $limits
+
 # 4. Checks: the whole suite, ruff, the map
 $suite = Join-Path $Results "pytest.txt"
 $env:PYTHONUTF8 = "1"

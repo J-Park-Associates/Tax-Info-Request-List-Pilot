@@ -3640,10 +3640,10 @@ def test_create_adds_a_return_to_an_existing_household_and_leaves_its_record_alo
 
 
 def test_create_refuses_a_return_whose_deepest_path_would_pass_the_limit_and_says_the_length(
-        capsys, demo_root):
+        capsys, demo_root, path_setting):
     """A folder made today that cannot hold a filed document in February is
     a failure at a filing deadline, so it is refused now, with the length."""
-    from tracker.layout import MAX_PATH_LENGTH
+    from tracker.layout import path_limit
 
     # Two names of the longest a name may be (decision 188) pass what
     # Windows will open under a root that grew.
@@ -3653,7 +3653,7 @@ def test_create_refuses_a_return_whose_deepest_path_would_pass_the_limit_and_say
         "items": [{"identifier": "A01", "document": "y" * 90}]})
 
     assert code == 1
-    assert str(MAX_PATH_LENGTH) in payload["error"]
+    assert f"past the {path_limit()} Windows allows" in payload["error"]
     assert "shorten the household or the return name" in payload["error"]
     assert "characters" in payload["error"]
     assert not any(demo_root.rglob(ledger.LEDGER_FILENAME))   # nothing was made
@@ -4900,9 +4900,16 @@ def test_unfiling_moves_it_back_to_under_review_at_once(capsys, demo_root, tmp_p
 
 
 #: How far past the limit ``_a_long_row_return``'s second row's canonical
-#: copy is: less than the thirty-six characters a two-character document
-#: gives back, so shortening the other row's label is a save that fits.
+#: copy is: less than the eighteen characters a two-character document
+#: gives back from a twenty-character short name, so shortening the other
+#: row's label is a save that fits.
 LONG_ROW_OVER = 10
+#: The period both of ``_a_long_row_return``'s rows ask for: long enough
+#: that a row is past the limit in a return whose review folder has room
+#: under either setting - with long paths off a return of 206 characters
+#: at most, where a copy named by a short name and a TY2025 never is
+#: (pilot decision P29).
+LONG_ROW_PERIOD = "Jan 2025 to Dec 2025"
 
 
 #: How long :func:`_a_deeper_root` makes the clients root, in characters,
@@ -4946,14 +4953,14 @@ def _a_long_row_return(root, household=HOUSEHOLD):
     most - so the depth is the folder's, as it is when a root grows, not a
     hundred-character label's. Since decision 168 the copy sits in
     Prepared itself, so the depth below the return is one name, not a
-    folder and a name."""
+    folder and a name. Both rows ask for :data:`LONG_ROW_PERIOD`."""
     from tests.conftest import TEST_YEAR
-    from tracker.layout import MAX_PATH_LENGTH, NAME_MAX_CHARS
+    from tracker.layout import NAME_MAX_CHARS, path_limit
     from tracker.manifest import RequestItem
 
-    below = len("/Prepared/B01 - " + "y" * 20 + ".pdf")
+    below = len("/Prepared/B01 - " + "y" * 20 + f" - {LONG_ROW_PERIOD}.pdf")
     above = len(str(return_dir_for(Path(root), household, TEST_YEAR, "x"))) - len("x")
-    pad = MAX_PATH_LENGTH + LONG_ROW_OVER - below - above - len("1040 - Long ")
+    pad = path_limit() + LONG_ROW_OVER - below - above - len("1040 - Long ")
     if pad < 1:
         pytest.skip(f"{root} is too long to make the long-row return under it")
     # A name is at most NAME_MAX_CHARS (decision 188): what the return's
@@ -4965,15 +4972,17 @@ def _a_long_row_return(root, household=HOUSEHOLD):
             pytest.skip(f"{root} is too short to make the long-row return under it")
     return_name = "1040 - Long " + "g" * in_return
     engagement = make_engagement(root, [
-        RequestItem(identifier="A01", document="W-2", allowed_extensions=("pdf",)),
-        RequestItem(identifier="B01", document="y" * 100, allowed_extensions=("pdf",)),
+        RequestItem(identifier="A01", document="W-2", period=LONG_ROW_PERIOD,
+                    allowed_extensions=("pdf",)),
+        RequestItem(identifier="B01", document="y" * 100, period=LONG_ROW_PERIOD,
+                    allowed_extensions=("pdf",)),
     ], household=household, return_name=return_name)
-    assert len(str(engagement)) + below == MAX_PATH_LENGTH + LONG_ROW_OVER
+    assert len(str(engagement)) + below == path_limit() + LONG_ROW_OVER
     return engagement
 
 
 def test_set_root_answers_with_every_return_short_of_room_under_the_new_root(
-    capsys, tmp_path, monkeypatch,
+    capsys, tmp_path, monkeypatch, path_setting,
 ):
     """Setting the root is the one moment every move passes through, so its
     reply names every return short of room under the new root, with its
@@ -5002,7 +5011,7 @@ def test_set_root_answers_with_every_return_short_of_room_under_the_new_root(
 
 
 def test_state_carries_the_returns_room_as_information_and_warns_only_what_cannot_receive(
-    capsys, demo_root,
+    capsys, demo_root, path_setting,
 ):
     """A person opening a return sees its room without waiting for a pass:
     the six numbers, and the figure it is short by as a note on the
@@ -5010,6 +5019,7 @@ def test_state_carries_the_returns_room_as_information_and_warns_only_what_canno
     are cut to fit and everything files). Only requests that cannot
     receive at all are a warning."""
     from tracker.filer import ROOM_PARKS, ROOM_SHORT, room_for
+    from tracker.layout import path_limit
     from tracker.manifest import RequestItem
 
     root = _a_deeper_root(demo_root)
@@ -5019,7 +5029,7 @@ def test_state_carries_the_returns_room_as_information_and_warns_only_what_canno
     state = payload_of_state(capsys, engagement)
 
     assert state["room"] == {"need": room.need, "least": room.least, "floor": room.floor,
-                             "short": room.short, "parks": room.parks, "limit": 260}
+                             "short": room.short, "parks": room.parks, "limit": path_limit()}
     assert room.short > 0
     assert state["room_note"] == ROOM_SHORT.format(short=room.short)
     assert ROOM_SHORT.format(short=room.short) not in state["warnings"]
@@ -5042,7 +5052,7 @@ def test_state_carries_the_returns_room_as_information_and_warns_only_what_canno
 
 
 def test_saving_a_list_refuses_a_changed_row_whose_path_would_pass_the_limit_and_leaves_an_unchanged_one_alone(
-    capsys, demo_root,
+    capsys, demo_root, path_setting,
 ):
     """The editor's save keeps creation's standard for the rows it changes:
     a hundred-character label typed into one row - named in the path by its
@@ -5073,23 +5083,25 @@ def test_saving_a_list_refuses_a_changed_row_whose_path_would_pass_the_limit_and
 
 
 def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_below_the_floor(
-    capsys, tmp_path, monkeypatch,
+    capsys, tmp_path, monkeypatch, path_setting,
 ):
     """The API half: a person's filing into a request with no room for even
     its shortest name comes back as the one error sentence, PATH_NO_ROOM,
     and nothing has moved. Since decision 168 Prepared is the only folder
     a copy is in, and it is shallower than the review folder, so a request
-    is left no room only by a period as long as ``Jan 2025 - Dec 2025``."""
+    is left no room only by a period as long as test_filer's LONG_PERIOD."""
     from tests.conftest import named_page, root_for_a_return_of, sort
+    from tests.test_filer import LONG_PERIOD, no_room_prepared, no_room_return
     from tests.test_scanner import text_pdf
     from tracker.filer import PATH_NO_ROOM
+    from tracker.layout import path_limit
     from tracker.manifest import RequestItem
     from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
 
     monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
-    root = root_for_a_return_of(tmp_path, 222)             # Prepared: 231, 28 left for a name
+    root = root_for_a_return_of(tmp_path, no_room_return())      # 43 left in Prepared for a name
     engagement = make_engagement(root, [RequestItem(
-        identifier="A01", document="W-2 Wage Statements", period="Jan 2025 - Dec 2025",
+        identifier="A01", document="W-2 Wage Statements", period=LONG_PERIOD,
         date_pattern=r"(?i)\b2025\b", allowed_extensions=("pdf",), required_keywords=("W-2",))])
     set_clients_root(root)
     text_pdf(inbox_of(engagement) / "note.pdf", named_page("A letter the list does not ask for"))
@@ -5104,7 +5116,7 @@ def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_bel
 
     assert code == 1
     assert payload["error"] == PATH_NO_ROOM.format(
-        length=231 + 1 + len("A01 - Jan 2025 - Dec 2025.pdf"), limit=260, ext=".pdf")
+        length=no_room_prepared() + 1 + len(f"A01 - {LONG_PERIOD}.pdf"), limit=path_limit(), ext=".pdf")
     assert sorted(str(p) for p in root.rglob("*")) == before
 
 
@@ -5390,28 +5402,34 @@ def test_the_wizard_sends_every_catalog_row_and_the_tick_is_asked(capsys, demo_r
     assert not where(demo_root, "Nothing Asked").exists()
 
 
-def test_creation_measures_the_room_of_asked_rows_only(capsys, tmp_path, monkeypatch):
+def test_creation_measures_the_room_of_asked_rows_only(capsys, tmp_path, monkeypatch, path_setting):
     """A return whose longest *unasked* label would not fit is created: the
     catalog's longest label must not refuse a return the preparer never
     asked it of. The same row asked is refused, as ever. A document for the
     unasked row is measured where it is written - cut to fit, or parked
     with decision 131's sentence. Since decision 144 a label in the path is
     a short name of twenty characters at most, and since decision 168 it is
-    in the path once, so the room is the return folder's: 212 characters
-    here (205 while each request had a folder)."""
+    in the path once, so the room is the return folder's: 198 characters
+    here, and 197 with long paths off, where the long row asks for a long
+    period so that it is past the limit in a return whose review folder has
+    room (pilot decision P29; 212 with TY2025 before it, 205 while each
+    request had a folder)."""
     from tests.conftest import named_page, root_for_a_return_of, sort
     from tests.test_scanner import text_pdf
-    from tracker.layout import PATH_TOO_LONG
+    from tracker.layout import PATH_TOO_LONG, path_limit
     from tracker.scaffold import PREPARED_DIR_NAME
     from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
 
     monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
-    root = root_for_a_return_of(tmp_path, 212, return_name="Tight")
+    period = "Jan 2025 to Dec 2025"
+    length = path_limit() - len(f"/{PREPARED_DIR_NAME}/Z99 - Zebra Ledger Details - {period}.pdf") + 1
+    root = root_for_a_return_of(tmp_path, length, return_name="Tight")
     root.mkdir(parents=True)
     set_clients_root(root)
     w2 = {"identifier": "A01", "document": "W-2", "period": "TY2025",
           "extensions": "pdf", "required_keywords": "W-2", "min_size_kb": 0}
-    long_row = {"identifier": "Z99", "document": "Zebra Ledger " + "x" * 90, "period": "TY2025",
+    long_row = {"identifier": "Z99", "document": "Zebra Ledger " + "x" * 90, "period": period,
+                "date_pattern": r"(?i)\b2025\b",
                 "short_title": "Zebra Ledger Details", "extensions": "pdf",
                 "required_keywords": "zebra ledger", "min_size_kb": 0}
 
@@ -5423,17 +5441,17 @@ def test_creation_measures_the_room_of_asked_rows_only(capsys, tmp_path, monkeyp
                                                  "items": [w2, {**long_row, "asked": False}]})
     assert code == 0, payload
     engagement = where(root, "Tight", year=2025)
-    assert len(str(engagement)) == 212
+    assert len(str(engagement)) == length
 
     text_pdf(inbox_of(engagement) / "zebra.pdf", named_page("Zebra ledger for 2025"))
     report = sort(engagement)
-    # Prepared leaves the name thirty-eight characters: the short name is
+    # Prepared leaves the name fifty-two characters: the short name is
     # cut from its end, and the copy keeps its identifier, its period and
     # its extension (test_filer's decision-131 claims). Until decision 168
     # the row's own folder took the room and the short name went whole.
     [filed] = report.filed
-    assert filed.prepared_location == f"{PREPARED_DIR_NAME}/Z99 - Zebra Ledger Detail - TY2025.pdf"
-    assert len(str(engagement)) + 1 + len(filed.prepared_location) <= 260
+    assert filed.prepared_location == f"{PREPARED_DIR_NAME}/Z99 - Zebra Ledger Detail - {period}.pdf"
+    assert len(str(engagement)) + 1 + len(filed.prepared_location) == path_limit()
 
 
 def test_the_editor_round_trips_asked_and_named(capsys, demo_root):

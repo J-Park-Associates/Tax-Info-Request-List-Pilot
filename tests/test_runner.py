@@ -1992,42 +1992,42 @@ def _a_pass_over(engagement, **kwargs):
                          reminders=REMINDERS_NEVER, registry=registry, **kwargs)
 
 
-def test_a_return_short_of_room_files_everything_and_is_not_warned(tmp_path):
-    """Ten characters short: the W-2 files all the same, under a name cut
+def test_a_return_short_of_room_files_everything_and_is_not_warned(tmp_path, path_setting):
+    """Nine characters short: the W-2 files all the same, under a name cut
     to fit - and the pass does **not** warn (the lead's L-1 on decision
     131): nothing in the run's warnings, the run log's lines or the
     practice page's Warnings column. With a reader's 218 for spreadsheets
     every 1040 at the firm's root would warn every pass, and a warning that
     is always on is a warning nobody reads."""
-    from tests.test_filer import drop, tight_return
+    from tests.test_filer import OVER, TIGHT_PERIOD, drop, tight_return
     from tracker.filer import ROOM_SHORT
 
-    engagement = tight_return(tmp_path, 10)
+    engagement = tight_return(tmp_path, OVER)
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
 
     [run] = _a_pass_over(engagement)
 
-    said = ROOM_SHORT.format(short=10)
+    said = ROOM_SHORT.format(short=OVER)
     assert run.warnings == [] and not run.skipped and not run.error
     assert run.filed == 1
     [entry] = read_index(engagement)
-    assert entry.prepared_location.endswith("/A01 - W-2 Wage - TY2025.pdf")
+    assert entry.prepared_location.endswith(f"/A01 - W-2 Wage S - {TIGHT_PERIOD}.pdf")
     report = RunReport(today=FRIDAY, runs=[run])
     assert said not in format_report(report)
     page = write_status_page(tmp_path, report).read_text(encoding="utf-8")
     assert "characters short of the room" not in page
 
 
-def test_a_return_with_requests_that_cannot_receive_says_how_many(tmp_path):
+def test_a_return_with_requests_that_cannot_receive_says_how_many(tmp_path, path_setting):
     """A request that Prepared leaves no room for even its shortest name is
     counted and said: a document for it parks until the root is shorter."""
     from tests.conftest import root_for_a_return_of
-    from tests.test_filer import NO_ROOM_RETURN, ROOM_ITEMS, with_the_long_period
+    from tests.test_filer import ROOM_ITEMS, no_room_return, with_the_long_period
     from tracker.filer import ROOM_PARKS, ROOM_SHORT, room_for
     from tracker.manifest import load_manifest
 
-    engagement = make_engagement(root_for_a_return_of(tmp_path, NO_ROOM_RETURN),
-                                 [with_the_long_period(ROOM_ITEMS[0])])   # Prepared: 231
+    engagement = make_engagement(root_for_a_return_of(tmp_path, no_room_return()),
+                                 [with_the_long_period(ROOM_ITEMS[0])])   # Prepared: 216
     room = room_for(engagement, load_manifest(engagement))
     assert room.parks == 1 and room.short > 0
 
@@ -2039,21 +2039,23 @@ def test_a_return_with_requests_that_cannot_receive_says_how_many(tmp_path):
 
 
 def test_a_household_with_no_room_for_a_review_copy_is_skipped_whole_before_anything_is_read(
-    tmp_path, monkeypatch,
+    tmp_path, monkeypatch, path_setting,
 ):
     """A return whose review folder leaves no room for even ``x (99).pdf``
     stops its household: every working return carries HOUSEHOLD_NO_ROOM,
     the inbox is untouched, no lock is taken, and nothing is scaffolded,
     scanned, drafted or drawn - the held-lock shape."""
-    from tests.conftest import root_for_a_return_of
+    from tests.conftest import floor_return, root_for_a_return_of
     from tests.test_filer import ROOM_ITEMS, drop
     from tracker.filer import HOUSEHOLD_NO_ROOM
-    from tracker.layout import README_NAME
+    from tracker.layout import README_NAME, path_limit
     from tracker.locking import LOCK_FILENAME
     from tracker.page import esc
     from tracker.view import VIEW_FILENAME
 
-    root = root_for_a_return_of(tmp_path, 223)          # its floor: 223 + 38 = 261
+    # Its floor: 223 + 38 = 261; with long paths off 207 + 27 + 26 = 260,
+    # the review folder measured with the temp names written into it (P29).
+    root = root_for_a_return_of(tmp_path, floor_return() + 1)
     engagement = make_engagement(root, ROOM_ITEMS, scaffold=False)
     inbox = inbox_of(engagement)
     inbox.mkdir(parents=True)
@@ -2066,7 +2068,8 @@ def test_a_household_with_no_room_for_a_review_copy_is_skipped_whole_before_anyt
 
     [run] = _a_pass_over(engagement)
 
-    said = HOUSEHOLD_NO_ROOM.format(label=run.engagement.label, length=261, limit=260)
+    said = HOUSEHOLD_NO_ROOM.format(label=run.engagement.label, length=path_limit() + 1,
+                                    limit=path_limit())
     assert run.skipped == said and not run.error
     assert locks == []
     assert dropped.is_file() and [p.name for p in inbox.iterdir()] == ["w2.pdf"]

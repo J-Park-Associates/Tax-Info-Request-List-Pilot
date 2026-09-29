@@ -2,7 +2,8 @@
 
 Before you start, on the Windows test PC:
 
-1. Get the code into an empty folder. A git clone is best; if this PC has no
+1. Get the code into an empty folder with a short path, such as `C:\pt` (not under
+   `C:\Users\...\Documents`; Windows limits how long a path may be). A git clone is best; if this PC has no
    GitHub sign-in, download it from GitHub (Code -> Download ZIP) and unzip it.
 2. Open the **Claude desktop app** and turn on **computer use** (it lets
    Claude click through the installed program). Without it, Claude walks you

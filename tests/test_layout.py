@@ -30,6 +30,7 @@ from tracker.layout import (
     STEP_PROBLEMS,
     client_household_dir,
     deepest_path_length,
+    folder_need,
     household_name_of,
     household_of,
     inbox_dir_for,
@@ -40,6 +41,7 @@ from tracker.layout import (
     location_of,
     originals_dir_for,
     originals_of,
+    path_limit,
     place_problem,
     private_household_dir,
     return_dir_for,
@@ -134,7 +136,7 @@ def test_the_deepest_path_is_measured_from_the_return_folder():
     copy = f"{PREPARED_DIR_NAME}/A01 - W-2 Wage Statements/A01 - W-2 Wage Statements - TY2026.pdf"
     assert len(copy) + 1 == 74
     assert deepest_path_length(engagement, [copy]) == 164
-    assert deepest_path_length(engagement, [copy]) <= MAX_PATH_LENGTH
+    assert deepest_path_length(engagement, [copy]) <= path_limit()
 
     # The same return with a request named by a hundred characters was
     # past it while the name was in the path twice, once as the request's
@@ -147,7 +149,7 @@ def test_the_deepest_path_is_measured_from_the_return_folder():
 
     long_row = replace(long_row, document="x" * 100, short_title="x" * 100)
     deepest = f"{PREPARED_DIR_NAME}/{prepared_name_for(long_row, 'xlsx', set())}"
-    assert deepest_path_length(engagement, [deepest]) <= MAX_PATH_LENGTH
+    assert deepest_path_length(engagement, [deepest]) <= path_limit()
     assert deepest_path_length(engagement, [deepest]) == 215
 
     assert deepest_path_length(engagement, []) == 0       # a return with no request
@@ -167,9 +169,9 @@ def test_the_suites_own_short_root_leaves_room_for_the_whole_1040_core_list(shor
     subpaths = [f"{PREPARED_DIR_NAME}/{prepared_name_for(item, 'xlsx', set())}"
                 for item in template_items("1040", core_only=True)]
     deepest = deepest_path_length(engagement, subpaths)
-    assert deepest <= MAX_PATH_LENGTH, (
+    assert deepest <= path_limit(), (
         f"the suite's short root is {len(str(short_root))} characters and leaves "
-        f"{deepest - MAX_PATH_LENGTH} too few for a whole 1040: {short_root}")
+        f"{deepest - path_limit()} too few for a whole 1040: {short_root}")
 
 
 def test_the_whole_1040_core_list_fits_under_the_firms_own_root():
@@ -182,7 +184,7 @@ def test_the_whole_1040_core_list_fits_under_the_firms_own_root():
     subpaths = [f"{PREPARED_DIR_NAME}/{prepared_name_for(item, 'xlsx', set())}"
                 for item in template_items("1040", core_only=True)]
     assert deepest_path_length(engagement, subpaths) == 138
-    assert deepest_path_length(engagement, subpaths) <= MAX_PATH_LENGTH
+    assert deepest_path_length(engagement, subpaths) <= path_limit()
 
 
 # ------------------------------------------- decision 131: a moved root ----
@@ -214,22 +216,108 @@ def test_a_rolled_from_path_names_the_same_return_after_the_clients_root_moves()
         assert same_return(str(here).upper(), here)
 
 
-def test_the_limit_for_an_extension_is_the_shortest_that_applies(monkeypatch):
-    """Windows's 260 for everything no reader limits further; a reader's
-    shorter figure for its own extensions, whatever their case or dot.
-    The owner's ruling (decision 131, Q-A) sets spreadsheets at 218."""
+def test_the_limit_for_an_extension_is_the_shortest_that_applies(monkeypatch, path_setting):
+    """Windows's 260 (259 with long paths off) for everything no reader
+    limits further; a reader's shorter figure for its own extensions,
+    whatever their case or dot. The owner's ruling (decision 131, Q-A) sets
+    spreadsheets at 218."""
     import tracker.layout as layout
     from tracker.layout import OPEN_LIMITS, limit_for
 
     assert OPEN_LIMITS == {"xlsx": 218, "xlsm": 218, "xls": 218, "csv": 218}
     monkeypatch.setattr(layout, "OPEN_LIMITS", {})
-    assert limit_for("xlsx") == limit_for("pdf") == MAX_PATH_LENGTH == 260
+    assert limit_for("xlsx") == limit_for("pdf") == path_limit()
     monkeypatch.setattr(layout, "OPEN_LIMITS", {"xlsx": 218})
     assert limit_for("xlsx") == limit_for(".XLSX") == 218
-    assert limit_for("pdf") == 260
+    assert limit_for("pdf") == path_limit()
     # Never above Windows's own, whatever a table says.
     monkeypatch.setattr(layout, "OPEN_LIMITS", {"pdf": 400})
-    assert limit_for("pdf") == 260
+    assert limit_for("pdf") == path_limit()
+
+
+# ---------------------------- pilot decision P29: Windows with long paths off ----
+
+
+def test_the_limit_is_260_unless_windows_holds_the_process_to_max_path(monkeypatch):
+    """Linux, macOS and a long-path Windows write a path of 260 characters
+    and a folder costs nothing of its own. A Windows with long paths off
+    counts the null that ends a path, so 259 is the longest file it opens,
+    and a folder the tracker makes and writes into must leave room for
+    the temp name every write passes through - twenty-six characters, more
+    than the twelve Windows keeps back for an 8.3 name."""
+    import tracker.layout as layout
+    from tracker.layout import SHORT_NAME_RESERVE, TEMP_NAME_RESERVE
+
+    folder = "C:/" + "f" * 230
+    monkeypatch.setattr(layout, "short_paths", lambda: False)
+    assert path_limit() == MAX_PATH_LENGTH == 260 and folder_need(folder) == 0
+    monkeypatch.setattr(layout, "short_paths", lambda: True)
+    assert path_limit() == 259
+    assert SHORT_NAME_RESERVE == 12 and TEMP_NAME_RESERVE == 26
+    assert folder_need(folder) == len(folder) + 26
+    # A folder fits exactly when Windows makes it (under 248) and the
+    # longest temp in it is under 260.
+    widest = "/" + "x" + "." + "9" * 10 + "." + "f" * 8 + ".tmp"
+    assert len(widest) == TEMP_NAME_RESERVE
+    deepest = "C:/" + "f" * (path_limit() - TEMP_NAME_RESERVE - len("C:/"))
+    assert folder_need(deepest) == path_limit() and len(deepest) < 248
+    assert len(deepest + widest) == path_limit()
+
+
+def test_the_temp_reserve_is_the_longest_temp_name_the_writes_make():
+    """The reserve is written out in the layout, which imports nothing of
+    the package; it must be the longest name of ``fsio.TEMP_NAME``'s shape
+    with one character of its target, or a folder measured to fit could
+    still refuse a temp."""
+    from tracker.fsio import TEMP_NAME, TEMP_SUFFIX, temp_owner
+    from tracker.layout import TEMP_NAME_RESERVE
+
+    widest = "x." + "9" * 10 + "." + "f" * 8 + TEMP_SUFFIX
+    assert TEMP_NAME.fullmatch(widest) and temp_owner(widest) == 9_999_999_999
+    assert not TEMP_NAME.fullmatch("x." + "9" * 11 + "." + "f" * 8 + TEMP_SUFFIX)
+    assert len("/" + widest) == TEMP_NAME_RESERVE
+
+
+def test_long_paths_are_off_wherever_windows_cannot_be_asked(monkeypatch):
+    """Off Windows the question is never asked. On Windows it is asked of
+    ntdll once per process, and anything that goes wrong asking reads as
+    off - the stricter answer, a name cut a character early rather than a
+    ``WinError 206``."""
+    import tracker.layout as layout
+
+    if os.name != "nt":
+        assert layout.short_paths() is False
+        # Asked here anyway, where there is no ntdll: off.
+        assert layout._long_paths_on.__wrapped__() is False
+    monkeypatch.setattr(layout.os, "name", "nt")
+    monkeypatch.setattr(layout, "_long_paths_on", lambda: False)
+    assert layout.short_paths() is True
+    monkeypatch.setattr(layout, "_long_paths_on", lambda: True)
+    assert layout.short_paths() is False
+
+
+def test_the_suites_long_paths_off_refuses_what_windows_refuses(tmp_path, monkeypatch):
+    """The stand-in the room claims run under on every machine: a folder of
+    248 characters or more and a file path of 260 or more are refused, as
+    ``WinError 206`` is on Windows - and one character shorter is not."""
+    from tests.conftest import refuse_what_windows_refuses
+
+    base = tmp_path.resolve()
+    refuse_what_windows_refuses(monkeypatch)
+    ok_folder = base / ("d" * (247 - len(str(base)) - 1))
+    assert len(str(ok_folder)) == 247
+    ok_folder.mkdir()
+    with pytest.raises(FileNotFoundError):
+        (base / ("d" * (248 - len(str(base)) - 1))).mkdir()
+    ok_file = ok_folder / ("f" * (259 - 247 - 1))
+    assert len(str(ok_file)) == 259
+    ok_file.write_text("fits", encoding="utf-8")
+    too_long = ok_folder / ("f" * (260 - 247 - 1))
+    with pytest.raises(FileNotFoundError):
+        too_long.write_text("does not", encoding="utf-8")
+    with pytest.raises(FileNotFoundError):
+        os.replace(ok_file, too_long)
+    assert ok_file.read_text(encoding="utf-8") == "fits" and not too_long.exists()
 
 
 # Decision 187: where a step of a return may act is the layout's rule, worded once.

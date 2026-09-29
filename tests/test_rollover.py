@@ -1238,7 +1238,7 @@ def test_a_ticked_return_past_the_path_limit_rolls_nothing(park, monkeypatch):
     leo = _a_fourth_return(root)
     household = _household(root)
     before = _lines_of(john, sofia, llc, leo, household)
-    monkeypatch.setattr(filer, "MAX_PATH_LENGTH", 10)
+    monkeypatch.setattr(filer, "path_limit", lambda: 10)
 
     with pytest.raises(ManifestError) as refused:
         roll_household(household, target_year=2027,
