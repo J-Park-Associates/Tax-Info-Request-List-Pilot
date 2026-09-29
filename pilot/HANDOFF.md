@@ -164,6 +164,79 @@ Commit with "[skip ci]", push to your session branch, and report in plain
 English. Do not fix anything yourself.
 ```
 
+## Build D checkpoint (2026-09-29, branch `build-d`, pushed, NO pull request yet)
+
+Status: **steps 1-5 of SPEC-glass section 11 are done and committed; steps 6-9
+are not.** Gate not run. Not ready to merge.
+
+**Done**
+- Step 1: `pilot/make_glass_lens.py` and `app/renderer/glass-lens.png`.
+- Step 2: the three `index.html` additions. **Deviation:** the lens image does
+  not load from a file inside a backdrop filter in the cloud Chromium (rim
+  identical with and without the filter). The same bytes inlined as a
+  `data:image/png;base64,` `href` do (rim differs in 1200 of 2500 pixels, centre
+  in 0). SPEC section 3 allows this fallback; the test accepts either form and
+  checks the inline bytes equal the file.
+- Step 3: `glass.css`. **Deviations from SPEC 7.2:** (a) dialogs' and terms'
+  dim fades in through `background-color` on the overlay, not `opacity`,
+  because an overlay with opacity below 1 becomes a backdrop root and the
+  glass card would draw with no blur until the fade ended; (b) `display` is
+  not in any `transition`, because with `allow-discrete` it would delay
+  closing a dialog by the transition time, and the SPEC says closing is
+  instant. Entry motion works from `@starting-style` alone. **Known
+  limits:** `.modal` scrolls (`overflow-y: auto`), so its lit rim scrolls with
+  the content on a tall dialog (the editor); `.rem-stages` gets the inner
+  radius but nothing visible (it is a bare grid).
+- Step 4: `glass.js`, the `glass` block and version 0.2 in `pilot-content.js`,
+  `tour.js` and `pilot-style.css` (spot radius).
+- Step 5: `tests/test_glass.py` (24 tests) plus the `test_pilot.py` and
+  `test_tour.py` changes. 43 tests pass under Python 3.11 in the cloud venv.
+  Not run under 3.13. The contrast test passes on the tokens as the SPEC gives
+  them.
+
+**Left**
+- Step 6: the rendered sweep (every text colour on a glass surface, the four
+  reduced-preference emulations, no running animation under reduced motion),
+  and the speed probe against SPEC 7.3 at Glass, Solid and Full.
+- Step 7: Tester Guide "Screen effects" section (8.2); `docs/repo-map.curated.json`
+  roles for `glass.css`, `glass.js`, `glass-lens.png`, `make_glass_lens.py`,
+  `test_glass.py`.
+- Step 8: screenshots for SPEC section 12 and the motion clip (Playwright
+  `recordVideo`, under 20 s), into `pilot/reviews/glass-screens/`. Jason asked
+  for a video of the theme in action: this is it.
+- Step 9: dead-code check, `ruff check .`, `repo_map.py update` then `check`,
+  the six named test files under 3.11 and 3.13, the draft PR titled
+  "Build D: glass theme", then Review 3.
+
+**Scratch tooling (in the session's scratchpad, not committed; rebuild if the
+session is gone):** a Playwright harness that opens the real
+`app/renderer/index.html` over `file://` and replaces Electron's preload with a
+bridge to the real `python -m tracker.api`, using a made-up root built by
+`tests.samples.build_scratch_root` (Smith Family) and one `run-now` pass, so
+the review card has five items. No client file was opened. Terms and tour are
+skipped by setting `pilot.terms.accepted` and `pilot.tour.seen` in local storage.
+
+**Requests received mid-build and NOT done (need Jason's decision)**
+1. *Fluent 2 as the default UI language.* Not set up. The safety check blocked
+   registering the third-party `mcp-fluent-ui` server (`.mcp.json`; npm
+   package version 1.0.2, individual maintainer, last updated Sept 2025) and
+   blocked writing a `fluent-2-design` skill and a CLAUDE.md default. Nothing
+   about it is in the repo. Also open: Fluent UI v9 is React and the app is
+   plain JavaScript (Jason's no-new-framework rule), and Fluent's 4/8/12px
+   corners differ from SPEC-glass's 20-28px concentric ones.
+2. *Native window materials (`pykeio/vibe`, `GregVido/mica-electron`).* Not
+   added and not verified: neither repository has been read. They would (a)
+   need `app/main.js` changes (a transparent frameless window and a native
+   call), which SPEC-glass section 1 and P32 forbid for Build D; (b) add
+   native Windows binaries that cannot be built or run in the cloud, so the
+   Windows check kit would have to prove them; (c) require the page to have no
+   solid background, which contradicts `glass.css`'s backdrop gradient (the
+   theme's whole look is painted in the page). This is a design change, not an
+   add-on. It needs its own SPEC and a decision on which of the two, if either,
+   and whether it replaces Build D's in-page glass or sits beside it.
+3. Neither third-party integration should be added by a builder without
+   Jason's explicit approval of the exact package and version.
+
 ## Tester feedback for 0.2 (Jason, Windows re-run, 2026-09-29)
 
 Raised while clicking through 0.1. Each needs a SPEC before any build; the
