@@ -299,7 +299,7 @@ spot; a card (20) gets 26; a dialog button (8) gets 14. `tour.js` reads
 | Element (selector) | Treatment | Tint | Filter token | Radius | Padding |
 |---|---|---|---|---|---|
 | Header `.topbar` | glass, dark | `--glass-tint-bar` | `--glass-filter` | 0 | as today |
-| Toolbar `.toolbar` | glass, **sticky** (P37) | `--glass-tint` | `--glass-filter-refract` | `--r-toolbar` | `--pad-toolbar` |
+| Toolbar `.toolbar` | glass, **sticky** at `top: -20px` (P37, 6.2) | `--glass-tint` | `--glass-filter-refract` | `--r-toolbar` | `--pad-toolbar` |
 | Toolbar controls `.toolbar .btn`, `.toolbar #eng-select` | glass control | `--glass-control` | none (sits on glass) | `--r-toolbar-control` | height `--h-toolbar-control` |
 | Action cards `#review-card`, `#reminder-card`, `#moved-card` | glass | `--glass-tint` | `--glass-filter` | `--r-card` | `--pad-card` |
 | Their inner lists (5.3) | **solid** `--card` | - | - | `--r-card-inner` | as today |
@@ -322,9 +322,20 @@ text re-pointing of 4.3:
 
 ### 6.2 The sticky toolbar (P37)
 
-`.toolbar { position: sticky; top: 0; z-index: 5; }` inside `.main`, which is
-the scroll container. The cards then scroll under the toolbar, which is where
+`.toolbar { position: sticky; top: -20px; z-index: 5; }` inside `.main`, which
+is the scroll container. The cards then scroll under the toolbar, which is where
 glass reads as glass; over the static gradient alone a blur shows nothing.
+`-20px` equals `.main`'s top padding: Chromium stops a sticky element at the
+scroll container's padding edge, so `top: 0` leaves a 20px strip above the bar
+where the cards show through untidily (seen in the 2026-09-29 preview). At
+`-20px` the bar rests flush under the header.
+
+`.main > * { flex-shrink: 0; }`: `.main` is a fixed-height flex column and a
+`.card` has `overflow: hidden`, so when the content is taller than the window
+the cards shrink and clip their own rows instead of the page scrolling (also
+seen in the preview's mock page). The builder confirms on the real page whether
+this happens today; the rule is added either way, since the sticky toolbar
+needs the page to scroll.
 `z-index: 5` is below the tour (55), the modals (40) and the terms (60). The
 toolbar keeps `flex-wrap: wrap`. The tour's spot finds the toolbar buttons in
 the same place, so no tour anchor changes.
@@ -485,7 +496,7 @@ own, closed rule, held in `tests/test_glass.py`:
   - the theme's own names: `:root`, `body`, `.glass-`, `#glass-`;
   - the pilot's names: `.pilot-`, `#pilot-`;
   - `GLASS_TARGETS`, a tuple in the test:
-    `.topbar`, `.brand-product`, `.toolbar`, `#eng-select`, `.btn`,
+    `.topbar`, `.brand-product`, `.main`, `.toolbar`, `#eng-select`, `.btn`,
     `#review-card`, `#reminder-card`, `#moved-card`, `#review-list`,
     `#moved-list`, `#review-deck`, `#dismissed-card`, `.rem-preview`,
     `.rem-stages`, `.card`, `.modal`, `.chip`.

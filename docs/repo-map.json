@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 192,
     "edges": 1134,
-    "reused": 148
+    "reused": 149
   },
   "node_types": [
     "artifact",
@@ -4112,7 +4112,7 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "dc497aa629a22646",
+      "sha256": "c5b3407796246fa8",
       "lines": 46
     },
     {
@@ -4147,8 +4147,8 @@
       "id": "pilot/SPEC-glass.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "c8c5a3fa94d571a2",
-      "lines": 701
+      "sha256": "083c494b670f1d39",
+      "lines": 712
     },
     {
       "id": "pilot/SPEC.md",
