@@ -1,7 +1,7 @@
 # Audit: every element of today's screen, kept only if it earns its place
 
 Status: **for Jason's review** (2026-09-29). Companion to
-[`BRIEF-shell.md`](BRIEF-shell.md); input to the SPEC. Decision rows P63-P64.
+[`BRIEF-shell.md`](BRIEF-shell.md); input to the SPEC. Decision rows P63-P66.
 Source: a full inventory of `index.html`, `app.js`, `pilot.js`, `tour.js` and
 `pilot-content.js`, and a word count of all 687 strings the app shows
 ([`wording-inventory.tsv`](wording-inventory.tsv) lists the 212 over five words).
@@ -11,10 +11,11 @@ Source: a full inventory of `index.html`, `app.js`, `pilot.js`, `tour.js` and
 1. **Keep it only if the task breaks without it.** Otherwise cut it, or move it
    one level back: the right-click menu, the menu bar, or Help.
 2. **No text over five words** on screen: labels, headings, notices, errors,
-   tooltips, dialog text. Two exceptions are proposed below (the pilot terms and
-   the client's reminder letter), both Jason's to confirm.
-3. **An icon that explains itself carries no words**: no label, no tooltip, no
-   message. It keeps an invisible name for screen readers only.
+   tooltips, dialog text. Two exceptions, confirmed by Jason: the pilot terms
+   and the client's reminder letter (P63).
+3. **An icon carries no visible label or message beside it.** Every icon has
+   a tooltip of five words or fewer, on hover and keyboard focus, and a name
+   for screen readers (P65).
 4. **No paths in the UI.** Never a drive, folder path, settings path or working
    copy name. Places are named by role ("client folder", "inbox") and opened in
    File Explorer from a menu, never printed.
@@ -57,11 +58,11 @@ Source: a full inventory of `index.html`, `app.js`, `pilot.js`, `tour.js` and
 | Repair the schedule (clock icon) | **Menu**: Tools, beside Schedule | "Repair schedule" |
 | Open Status Report (this return) | **Cut**: the return's page shows the same, live | - |
 | Open Status (whole practice) | **Menu**: Tools, for printing only; Overview replaces it on screen | "Firm report" |
-| Sort & Scan (primary, refresh icon) | **Icon**, beside the search bar; F9 | (sort icon) |
-| Stop (while sorting) | **Merge** into the sort icon, which turns into a stop icon | (stop icon) |
+| Sort & Scan (primary, refresh icon) | **Icon**, beside the search bar; F9 | (sort icon), tooltip "Sort now" |
+| Stop (while sorting) | **Merge** into the sort icon, which turns into a stop icon | (stop icon), tooltip "Stop sorting" |
 | Progress "Smith Family (3 of 40)", "Sorting scan0012.pdf" | Keep as the side panel's last line; file name cut | "Sorting 3 of 40" |
 | Side panel section icons | **None**: the four words carry it | Overview, Needs review, Reminders, Clients |
-| Search bar | Keep; the magnifier is the only label | (magnifier) |
+| Search bar | Keep; the magnifier is the only label | (magnifier), tooltip "Find a client" |
 
 ## 2. Notices and messages
 
@@ -186,23 +187,33 @@ One list in groups: **Needs you**, **Waiting on client**, **Received**, and
 | Editor "left in the old folder…: {left}" | Cut; error log |
 | API refusals and after-install lines naming a {file} or {location} | Short sentence on screen; the path to the error log |
 
-## 10. Two proposed exceptions and one open question
+## 10. Exceptions and icon tooltips (Jason, 2026-09-29)
 
-1. **Pilot terms** stay as written: an agreement cannot be five words.
+1. **Pilot terms** stay as written: an agreement cannot be five words (P63).
 2. **The reminder letter** stays as written: it is the client's email, shown as
-   a preview.
-3. **The sort icon's tooltip.** A sort icon is not self-explanatory to a new
-   user. Proposed: a two-word tooltip ("Sort now") on this one icon, and none
-   anywhere else.
+   a preview (P63).
+3. **Every icon gets a tooltip** of five words or fewer (P65):
+
+| Icon | Tooltip |
+|---|---|
+| sort | "Sort now" |
+| stop (while sorting) | "Stop sorting" |
+| search | "Find a client" |
+| close × | "Dismiss" |
+| open › | "Open" |
+| next | "Next" |
+| done ✓ | the state it marks, e.g. "Sorted", "Shared" |
+| more ⋯ | "More" |
 
 ## Consequences for the build (for the SPEC)
 
 - The words are the API's (`tracker/api.py` `_vocab()` and the constants it
   reads), so the rewrite is a Python change and `tests/test_single_source.py`
-  follows it. That reaches `tracker/`, which the brief left untouched: it needs
-  the engine SPEC rule's sign-off (wording only, no behaviour).
+  follows it. That reaches `tracker/`, for wording only, no behaviour: Jason
+  approved it (P66). The SPEC's wording table (every string, today and
+  proposed) is approved by Jason before the build.
 - A new test: every vocab string is five words or fewer, has no path pattern
-  (a drive letter, a backslash, `/`-joined folders), except the listed
-  exceptions.
+  (a drive letter, a backslash, `/`-joined folders), except the terms and the
+  letter; and every icon has a tooltip.
 - `STANDING_RULES` keep their full wording in the code and docs; the app shows
   the four short lines, a change to the single-source test (P64).

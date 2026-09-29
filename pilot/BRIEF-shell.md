@@ -139,8 +139,8 @@ E-7 reason for hiding Electron's default menu still holds.
 9. **Motion:** 150ms for hover, press and menus; a short fade for notices; no
    motion on page change. Windows "reduce motion" turns it all off.
 10. **Five words at most (P63):** no label, heading, notice, error, tooltip
-    or dialog line over five words; no path of any kind on screen; an icon that
-    explains itself carries no words. Every element's verdict is in
+    or dialog line over five words; no path of any kind on screen; no label
+    beside an icon, and every icon has a five-word tooltip (P65). Every element's verdict is in
     [`AUDIT-shell.md`](AUDIT-shell.md).
 11. **Real content:** household names up to 60 characters, return names up to
     80, counts up to 4 digits, 500 households; long names end in "…" with the

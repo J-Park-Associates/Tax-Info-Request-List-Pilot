@@ -4493,28 +4493,28 @@
       "id": "pilot/AUDIT-shell.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "b926849502fce113",
-      "lines": 208
+      "sha256": "1775bf96512e78d6",
+      "lines": 219
     },
     {
       "id": "pilot/BRIEF-shell.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "be1ae5336fe1f72c",
+      "sha256": "007c01c2ae746448",
       "lines": 182
     },
     {
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "2d30309e7caa1145",
-      "lines": 70
+      "sha256": "b26a59902eaeef88",
+      "lines": 72
     },
     {
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "918ecdaab2f9765a",
+      "sha256": "2a8971cfc0ef959c",
       "lines": 380
     },
     {
