@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 276,
     "edges": 1138,
-    "reused": 233
+    "reused": 234
   },
   "node_types": [
     "artifact",
@@ -3994,7 +3994,7 @@
       "layer": "desktop-app",
       "sha256": "33b4f4b5f1833d6a",
       "lines": 20,
-      "role": "Context bridge exposing only the calls tests/test_single_source.py checks against main.js.call(args, payload), tracker.open(path), tracker.pickFolder() and tracker.onAfterInstallDone(listener), which hears the shell's 'after-install-done' and passes nothing across, and tracker.menu (onCommand hears {id, token} on 'menu'; send posts the page's {enable} or {popup, enable, token, x, y} on it). Nothing else crosses."
+      "role": "Context bridge exposing only the calls tests/test_single_source.py checks against main.js.call(args, payload), tracker.open(path), tracker.pickFolder(), tracker.logError(text) on 'log-error' (kept only in the error log the API named) and tracker.onProgress(listener), which hears 'tracker-progress', and tracker.onAfterInstallDone(listener), which hears the shell's 'after-install-done' and passes nothing across, and tracker.menu (onCommand hears {id, token} on 'menu'; send posts the page's {enable} or {popup, enable, token, x, y} on it). Nothing else crosses."
     },
     {
       "id": "app/renderer/app.js",
@@ -4461,7 +4461,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "572f982832dae8ba",
+      "sha256": "ce33b1e19a6dbe76",
       "lines": 1092,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."

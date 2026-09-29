@@ -465,7 +465,7 @@ tracker.api / create → tracker.scaffold → client drops into the household in
 - **`app/package-lock.json`**
 - **`app/package.json`**
   - used by: `app/main.js`
-- **`app/preload.js`** — Context bridge exposing only the calls tests/test_single_source.py checks against main.js.call(args, payload), tracker.open(path), tracker.pickFolder() and tracker.onAfterInstallDone(listener), which hears the shell's 'after-install-done' and passes nothing across, and tracker.menu (onCommand hears {id, token} on 'menu'; send posts the page's {enable} or {popup, enable, token, x, y} on it). Nothing else crosses.
+- **`app/preload.js`** — Context bridge exposing only the calls tests/test_single_source.py checks against main.js.call(args, payload), tracker.open(path), tracker.pickFolder(), tracker.logError(text) on 'log-error' (kept only in the error log the API named) and tracker.onProgress(listener), which hears 'tracker-progress', and tracker.onAfterInstallDone(listener), which hears the shell's 'after-install-done' and passes nothing across, and tracker.menu (onCommand hears {id, token} on 'menu'; send posts the page's {enable} or {popup, enable, token, x, y} on it). Nothing else crosses.
   - called by: `app/renderer/app.js`
   - tested by: **no dedicated test file**
 - **`app/renderer/app.js`** — The desktop UI: the household card's Roll forward and Add a return, the New household dialog (form type, then request list), the request list and the scan results, and (decision 104) the request-list editor - the only place a rule is entered. Talks only to window.tracker from the preload bridge.
