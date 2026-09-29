@@ -232,7 +232,6 @@ const PILOT =
     "label": "Screen effects",
     "levels": [
       { "key": "standard", "name": "Glass" },
-      { "key": "full", "name": "Glass with refraction" },
       { "key": "solid", "name": "Solid" }
     ],
     "default": "standard",

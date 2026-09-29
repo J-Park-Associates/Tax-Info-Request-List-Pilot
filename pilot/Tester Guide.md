@@ -65,9 +65,8 @@ Pressing **Scan** by hand works whether the schedule is on or off.
 
 The top right corner of the window has a **Screen effects** choice. It changes only how the program looks, never what it does.
 
-- **Glass** (the starting choice) - the header, toolbar, the action cards and dialogs are see-through, over a soft navy background. Nothing on the screen moves unless you move the mouse, scroll or click.
+- **Glass** (the starting choice) - the header, toolbar, the action cards and dialogs are see-through, over a soft navy background. Buttons press and dialogs fade in briefly; nothing else moves.
 - **Solid** - plain, non-see-through panels. Choose it on remote desktop, on a slow computer, or if scrolling stutters.
-- **Glass with refraction** - adds a light that follows the mouse, a slowly drifting background, and a slight bend at the edges of the toolbar and dialogs. Only on a computer with a proper graphics card; elsewhere it can feel slow.
 
 If Windows' **Transparency effects** or **Animation effects** is turned off (Settings, Accessibility, Visual effects), the program turns solid and still on its own, and the choice is greyed out with a line saying why.
 

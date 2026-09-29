@@ -1,55 +1,16 @@
-"""The glass theme (pilot SPEC-glass): its lens map, page hooks, style and script.
+"""The glass theme (pilot SPEC-glass): its page hooks, style and script.
 
 Everything is read as text; nothing here needs a browser. The rendered checks
 (contrast sweep, reduced-preference emulation, speed) run in scratch scripts
 and their results are recorded in the handoff.
 """
 
-import base64
 import importlib
-import importlib.util
 import re
-import struct
-import zlib
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 RENDERER = REPO / "app" / "renderer"
-
-
-def _load_lens_generator():
-    spec = importlib.util.spec_from_file_location("make_glass_lens", REPO / "pilot" / "make_glass_lens.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def _decode_png(data: bytes):
-    assert data[:8] == b"\x89PNG\r\n\x1a\n"
-    pos, idat, header = 8, b"", None
-    while pos < len(data):
-        (length,) = struct.unpack(">I", data[pos : pos + 4])
-        kind = data[pos + 4 : pos + 8]
-        body = data[pos + 8 : pos + 8 + length]
-        if kind == b"IHDR":
-            header = struct.unpack(">IIBBBBB", body)
-        elif kind == b"IDAT":
-            idat += body
-        pos += 12 + length
-    return header, zlib.decompress(idat)
-
-
-def test_the_lens_map_is_what_its_generator_draws():
-    lens = _load_lens_generator()
-    header, raw = _decode_png((RENDERER / "glass-lens.png").read_bytes())
-    assert header == (lens.SIZE, lens.SIZE, 8, 2, 0, 0, 0)
-    stride = 1 + lens.SIZE * 3
-    assert len(raw) == stride * lens.SIZE
-    for y in range(lens.SIZE):
-        row = raw[y * stride : (y + 1) * stride]
-        assert row[0] == 0, y
-        for x in range(lens.SIZE):
-            assert tuple(row[1 + x * 3 : 4 + x * 3]) == lens.pixel(x, y), (x, y)
 
 
 # ── Reading the theme's files ────────────────────────────────────────────
@@ -68,8 +29,7 @@ GLASS_TARGETS = (
 )
 OWN_NAMES = (":root", "body", ".glass-", "#glass-")
 PILOT_NAMES = (".pilot-", "#pilot-")
-SCOPES = (":root.glass-standard ", ":root.glass-full ", ":root.glass-solid ",
-          ":root.glass-scrolled ", ":root.glass-paused ")
+SCOPES = (":root.glass-standard ", ":root.glass-solid ", ":root.glass-scrolled ")
 REDUCED = ("prefers-reduced-transparency", "prefers-reduced-motion",
            "prefers-contrast", "forced-colors")
 COLOUR = re.compile(r"#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(")
@@ -179,30 +139,10 @@ def test_the_page_loads_the_glass_last():
     assert html.index('src="glass.js"') > html.index('src="tour.js"')
 
 
-def test_the_refraction_filter_is_markup_the_policy_allows():
-    html = read(HTML)
-    block = re.search(r'<svg class="glass-defs".*?</svg>', html, flags=re.S)
-    assert block, "the refraction <svg> is missing"
-    svg = block.group(0)
-    assert svg.count('<filter id="glass-refract"') == 1
-    assert svg.count("<feImage") == 1 and svg.count("<feDisplacementMap") == 1
-    assert "style=" not in svg and "<script" not in svg
-    assert not re.search(r"\son\w+=", svg)
-    href = re.search(r'<feImage[^>]*\shref="([^"]+)"', svg).group(1)
-    lens = (RENDERER / "glass-lens.png").read_bytes()
-    if href.startswith("data:image/png;base64,"):
-        assert base64.b64decode(href.split(",", 1)[1]) == lens
-    else:
-        assert href == "glass-lens.png" and (RENDERER / href).is_file()
-    assert ("default-src 'none'; script-src 'self'; style-src 'self'; "
-            "img-src 'self' data:; font-src 'self'") in html
-
-
 def test_the_page_changes_only_by_the_glass_lines():
     """index.html's glass additions are the three of SPEC-glass section 3."""
     html = read(HTML)
-    assert html.count("glass") == html.count("glass.css") + html.count("glass-defs") \
-        + html.count("glass-refract") + html.count("glass.js") + html.count("glass-lens")
+    assert html.count("glass") == html.count("glass.css") + html.count("glass.js")
 
 
 # ── What glass.css may touch ─────────────────────────────────────────────
@@ -369,14 +309,6 @@ def test_every_text_on_glass_meets_aa_contrast():
 
 # ── Levels and fallbacks ─────────────────────────────────────────────────
 
-def test_refraction_is_used_only_at_the_full_level():
-    for rule in glass_rules():
-        for name, value in rule.decls:
-            if "url(#" in value:
-                assert "url(#glass-refract)" in value
-                assert all(s.startswith(":root.glass-full") for s in rule.selectors), (rule.selectors, name)
-
-
 def test_every_glass_rule_reads_its_filter_from_a_token():
     found = 0
     for rule in glass_rules():
@@ -389,17 +321,16 @@ def test_every_glass_rule_reads_its_filter_from_a_token():
 
 def test_the_system_asking_for_less_makes_the_screen_solid_and_still():
     rules = glass_rules()
-    levels = [r for r in rules if not r.at and r.selectors and r.selectors[0] in (":root", ":root.glass-full", ":root.glass-solid")]
+    levels = [r for r in rules if not r.at and r.selectors and r.selectors[0] in (":root", ":root.glass-solid")]
     last_level = max(r.order for r in levels)
     solid = next(r for r in rules if r.selectors == [":root.glass-solid"])
-    every = [":root", ":root.glass-standard", ":root.glass-full", ":root.glass-solid"]
+    every = [":root", ":root.glass-standard", ":root.glass-solid"]
 
     media = [r for r in rules if r.at and r.at[0].startswith("@media")
              and all(f in r.at[0] for f in REDUCED)]
     assert media, "the reduced-preference @media block is missing"
     block = [r for r in media if r.selectors == every]
     assert len(block) == 1 and block[0].decls == solid.decls
-    assert any(r.selectors == [":root.glass-full body::before"] and r.value("animation") == "none" for r in media)
 
     supports = [r for r in rules if r.at and r.at[0] == "@supports not (backdrop-filter: blur(1px))"]
     assert len(supports) == 1 and supports[0].selectors == every and supports[0].decls == solid.decls
@@ -410,7 +341,6 @@ def test_the_system_asking_for_less_makes_the_screen_solid_and_still():
             assert value == "none", name
         if name.startswith(("--glass-tint", "--glass-control")) and name != "--glass-control-gloss":
             assert re.fullmatch(r"#[0-9a-fA-F]{6}", value), (name, value)
-    assert solid.value("--glass-sheen") == "transparent"
 
 
 # ── Motion ───────────────────────────────────────────────────────────────
@@ -454,24 +384,6 @@ def test_motion_moves_only_what_the_compositor_can():
     assert not [r for r in glass_rules() if r.value("transition-property")]
 
 
-def test_the_backdrop_drifts_only_at_the_full_level():
-    rules = glass_rules()
-    animated = [r for r in rules if r.value("animation") is not None]
-    assert animated
-    for rule in animated:
-        assert rule.selectors == [":root.glass-full body::before"], rule.selectors
-    assert any(r.selectors == [":root.glass-paused body::before"]
-               and r.value("animation-play-state") == "paused" for r in rules)
-
-
-def test_the_pointer_light_is_drawn_only_at_the_full_level():
-    for rule in glass_rules():
-        for _name, value in rule.decls:
-            if "var(--glass-sheen)" in value:
-                assert all(s.startswith(":root.glass-full") for s in rule.selectors), rule.selectors
-    assert "glass-full" in read(GLASS_JS)
-
-
 def test_reduced_motion_still_stops_every_animation():
     style = read(RENDERER / "style.css")
     rule = re.search(r"@media \(prefers-reduced-motion: reduce\)\s*\{(.*?)\n\}", style, flags=re.S)
@@ -484,29 +396,11 @@ def test_no_animation_runs_longer_than_its_limit():
     checked = 0
     for rule in rules:
         for name, value in rule.decls:
-            if name == "--glass-drift":
-                continue
             if name.startswith("--glass-t-") or (not name.startswith("--") and name.startswith(("transition", "animation"))):
                 for literal in re.findall(r"(?<![\w.-])(\d+(?:\.\d+)?m?s)\b", value):
                     checked += 1
                     assert ms(literal) <= 200, (name, value)
     assert checked
-    assert ms(token("--glass-drift", rules)) > 200
-
-
-def test_the_pointer_light_sets_only_its_two_numbers():
-    js = read(GLASS_JS)
-    calls = re.findall(r"\.setProperty\(", js)
-    named = re.findall(r'\.style\.setProperty\(\s*"(--glass-[xy])"', js)
-    assert calls and len(calls) == len(named) == 2 and set(named) == {"--glass-x", "--glass-y"}
-    assert "requestAnimationFrame" in js
-    for event in ("pointerover", "pointermove", "scroll", "resize"):
-        m = re.search(rf'addEventListener\("{event}",.*?\}}, \{{ passive: true \}}\);', js, flags=re.S)
-        assert m, event
-    assert js.count("getBoundingClientRect") == 1
-    assert re.search(r"if \(!rect\) rect = \w+\.getBoundingClientRect\(\)", js)
-    assert "if (now === scrolled) return;" in js
-    assert "setInterval" not in js and "setTimeout" not in js
 
 
 # ── Corners ──────────────────────────────────────────────────────────────
@@ -542,7 +436,7 @@ def test_the_glass_wording_lives_in_the_pilot_content():
     pilot = importlib.import_module("tests.test_pilot")
     glass = pilot.content()["glass"]
     keys = [level["key"] for level in glass["levels"]]
-    assert keys == ["standard", "full", "solid"]
+    assert keys == ["standard", "solid"]
     assert glass["default"] in keys and glass["label"].strip() and glass["system_note"].strip()
     js = read(GLASS_JS)
     for text in (glass["label"], glass["system_note"], *(level["name"] for level in glass["levels"])):
@@ -570,3 +464,12 @@ def test_the_theme_never_names_its_inspiration():
     banned = re.compile(r"\bapple\b|liquid\s+glass|\bios\b|\bmacos\b|swiftui", re.IGNORECASE)
     for path in (GLASS_CSS, GLASS_JS, RENDERER / "pilot-content.js", REPO / "pilot" / "Tester Guide.md"):
         assert not banned.search(read(path)), path.name
+
+
+def test_refraction_mica_and_the_pointer_light_are_gone():
+    """Jason removed them (2026-09-29): no filter map, no drift, no light, no Mica."""
+    text = "".join(read(p) for p in (GLASS_CSS, GLASS_JS, HTML, RENDERER / "pilot-content.js", REPO / "app" / "main.js"))
+    for gone in ("glass-refract", "glass-full", "glass-lens", "glass-drift", "backgroundMaterial", "?material"):
+        assert gone not in text, gone
+    assert not (RENDERER / "glass-lens.png").exists()
+    assert "url(#" not in read(GLASS_CSS)

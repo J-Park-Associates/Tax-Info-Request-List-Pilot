@@ -1,21 +1,16 @@
-// The glass theme's script (pilot 0.2, SPEC-glass section 7.1, decisions P34, P44, P45).
+// The glass theme's script (pilot 0.2, SPEC-glass section 7.1, decisions P34, P44).
 //
-// Everything visible is CSS in glass.css; this file only does the four things
+// Everything visible is CSS in glass.css; this file only does the three things
 // CSS cannot: it puts the chosen quality level on <html>, builds the picker for
-// it in the header, moves two numbers so the pointer light can follow the
-// pointer, and marks when the page has scrolled so the toolbar can deepen.
+// it in the header, and marks when the page has scrolled so the toolbar can
+// deepen.
 //
 // Why it is built this way: like the other pilot files it adds to the page and
 // changes nothing the app already does (P7, P10) - it calls no app.js function,
 // opens no channel, builds every element from text, and keeps its wording in
-// pilot-content.js (P8). It sets exactly two custom properties, --glass-x and
-// --glass-y, and nothing else on any element (P44). It has no timer and no loop
-// of its own: the pointer light is redrawn at most once per animation frame,
-// only at the refraction level, only while the pointer is over a light glass
-// surface, and it reads that surface's rectangle once and keeps it until the
-// page scrolls or resizes, because reading it every frame would force a layout
-// every frame (P45). If this file fails to run the CSS default still applies,
-// and the only things lost are the pointer light and the scrolled shadow.
+// pilot-content.js (P8). It has no timer and no loop of its own. If this file
+// fails to run the CSS default still applies, and the only thing lost is the
+// scrolled shadow.
 
 (function glassTheme() {
   if (typeof PILOT === "undefined" || !PILOT.glass) return;
@@ -23,10 +18,6 @@
   const CONFIG = PILOT.glass;
   const STORAGE_KEY = "pilot.glass.level";
   const CLASS_PREFIX = "glass-";
-  const FULL_CLASS = "glass-full";
-  // The light glass surfaces of SPEC-glass 6.1 (the header is dark glass and
-  // takes no pointer light).
-  const SURFACES = ".toolbar, #review-card, #reminder-card, #moved-card, .modal, .pilot-terms-card, .pilot-tour-card";
   const QUIET = "(prefers-reduced-transparency: reduce), (prefers-reduced-motion: reduce), (prefers-contrast: more), (forced-colors: active)";
 
   const root = document.documentElement;
@@ -103,57 +94,16 @@
   syncQuiet();
   quiet.addEventListener("change", syncQuiet);
 
-  // ── The pointer light (refraction level only) ──────────────────────────
-
-  let surface = null;
-  let rect = null;
-  let frame = 0;
-  let pointerX = 0;
-  let pointerY = 0;
-
-  document.addEventListener("pointerover", (event) => {
-    const next = event.target instanceof Element ? event.target.closest(SURFACES) : null;
-    if (next !== surface) {
-      surface = next;
-      rect = null;
-    }
-  }, { passive: true });
-
-  function paintLight() {
-    frame = 0;
-    if (!surface) return;
-    if (!rect) rect = surface.getBoundingClientRect();
-    surface.style.setProperty("--glass-x", (pointerX - rect.left) + "px");
-    surface.style.setProperty("--glass-y", (pointerY - rect.top) + "px");
-  }
-
-  document.addEventListener("pointermove", (event) => {
-    if (!surface || quiet.matches || !root.classList.contains(FULL_CLASS)) return;
-    pointerX = event.clientX;
-    pointerY = event.clientY;
-    if (!frame) frame = window.requestAnimationFrame(paintLight);
-  }, { passive: true });
-
-  window.addEventListener("resize", () => {
-    rect = null;
-  }, { passive: true });
-
   // ── The scrolled toolbar ───────────────────────────────────────────────
 
   const main = document.querySelector(".main");
   if (main) {
     let scrolled = false;
     main.addEventListener("scroll", () => {
-      rect = null;
       const now = main.scrollTop > 4;
       if (now === scrolled) return;
       scrolled = now;
       root.classList.toggle("glass-scrolled", now);
     }, { passive: true });
   }
-
-  // ── Pause the drift while another program is in front ──────────────────
-
-  window.addEventListener("blur", () => root.classList.add("glass-paused"));
-  window.addEventListener("focus", () => root.classList.remove("glass-paused"));
 })();

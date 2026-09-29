@@ -3,7 +3,7 @@
   "generated": "2026-09-29",
   "generator": "tools/repo_map.py",
   "generator_sha256": "b0b1f0dd238e2961",
-  "module_table_sha256": "f33a18ff158b1422",
+  "module_table_sha256": "9958b0f29bdb9268",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,7 +15,7 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 198,
+    "nodes": 197,
     "edges": 1136,
     "reused": 0
   },
@@ -3982,26 +3982,26 @@
       "id": "app/renderer/glass.css",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "8af37468e95ed6a4",
-      "lines": 602,
-      "role": "The pilot 0.2 glass theme (SPEC-glass, P30-P45): a soft navy backdrop, see-through lit surfaces on the header, toolbar, the review/reminder/moved cards, dialogs, terms and tour card, the quality levels (Glass default, Glass with refraction, Solid) and the motion. Loaded last, after pilot-style.css.",
-      "notes": "Restyles app selectors only from the closed GLASS_TARGETS list in tests/test_glass.py (P33); types colours only in its token blocks, so every other declaration is var(...). It re-points the app's own --muted/--subtle/--blue inside glass rather than overriding --card/--shadow/--radius globally (P32), because those also paint the solid lists and inputs. Every text-on-glass pair clears 4.5:1 against its surface's worst case (P42, the 10.2 model in test_glass). Refraction reads app/renderer/glass-lens.png (drawn by pilot/make_glass_lens.py), inlined into index.html's SVG filter as a data: URI because the file form did not render inside a backdrop filter in Chromium. The fallback block comes last: any Windows request for less (reduced transparency or motion, more contrast, forced colours) or no backdrop-filter support makes the screen Solid, and it never uses !important on animation or transition so style.css's reduced-motion rule always wins. Leaves the status chips and the reminder's --stage-ink/--rem-ink/--rem-paper alone; the one exception is the held-reminder line on the glass reminder card, set to --glass-warn because the stage ink read at 2.35:1 there (Build D's rendered sweep)."
+      "sha256": "1cd3785fbf0145c4",
+      "lines": 536,
+      "role": "The pilot 0.2 glass theme (SPEC-glass, P30-P45; refraction, pointer light and drift removed, P49): a soft navy backdrop, see-through lit surfaces on the header, toolbar, the review/reminder/moved cards, dialogs, terms and tour card, the quality levels (Glass default, Solid) and the motion. Loaded last, after pilot-style.css.",
+      "notes": "Restyles app selectors only from the closed GLASS_TARGETS list in tests/test_glass.py (P33); types colours only in its token blocks, so every other declaration is var(...). It re-points the app's own --muted/--subtle/--blue inside glass rather than overriding --card/--shadow/--radius globally (P32), because those also paint the solid lists and inputs. Every text-on-glass pair clears 4.5:1 against its surface's worst case (P42, the 10.2 model in test_glass). There is no refraction, pointer light or backdrop drift (P49): the blur is the only backdrop filter. The fallback block comes last: any Windows request for less (reduced transparency or motion, more contrast, forced colours) or no backdrop-filter support makes the screen Solid, and it never uses !important on animation or transition so style.css's reduced-motion rule always wins. Leaves the status chips and the reminder's --stage-ink/--rem-ink/--rem-paper alone; the one exception is the held-reminder line on the glass reminder card, set to --glass-warn because the stage ink read at 2.35:1 there (Build D's rendered sweep)."
     },
     {
       "id": "app/renderer/glass.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "64044476ec4f05a2",
-      "lines": 159,
-      "role": "The glass theme's script (SPEC-glass 7.1): puts the chosen quality level on <html>, builds the Screen effects picker in the header, moves the pointer light at the refraction level, marks the scrolled toolbar and pauses the backdrop drift while the window is in the background.",
-      "notes": "Same rules as the other pilot scripts (SPEC section 2): no network, no HTML strings, DOM by createElement/textContent, localStorage in try/catch, every word from PILOT.glass in pilot-content.js. P44: it sets exactly two custom properties, --glass-x and --glass-y, and nothing else. No timers and no loop of its own: the pointer light is redrawn at most once per animation frame, only at the Full level, and reads the surface's rectangle once until .main scrolls or the window resizes (P45), because reading it every frame forces a layout. If the file fails, glass.css's default still applies and only the pointer light and the scrolled shadow are lost. Owned by tests/test_glass.py."
+      "sha256": "64d36f6e01a1e0c5",
+      "lines": 109,
+      "role": "The glass theme's script (SPEC-glass 7.1): puts the chosen quality level on <html>, builds the Screen effects picker in the header, and marks the scrolled toolbar.",
+      "notes": "Same rules as the other pilot scripts (SPEC section 2): no network, no HTML strings, DOM by createElement/textContent, localStorage in try/catch, every word from PILOT.glass in pilot-content.js. No timers and no loop of its own. The pointer light and drift pause were removed with the refraction level (P49). If the file fails, glass.css's default still applies and only the scrolled shadow is lost. Owned by tests/test_glass.py."
     },
     {
       "id": "app/renderer/index.html",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "71dfb2607e234445",
-      "lines": 690,
+      "sha256": "6573eb3279d9b452",
+      "lines": 684,
       "role": "Desktop app shell markup: empty placeholders the renderer fills from the API's vocabulary, under a Content-Security-Policy that allows nothing but the app's own files. Since decision 104 it holds the request-list editor's modal (#editor), every label of which the renderer fills, and the Edit Request List button (#btn-edit) that opens it; the min of a number input is never typed here."
     },
     {
@@ -4015,8 +4015,8 @@
       "id": "app/renderer/pilot-content.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "42f59d690b1d757d",
-      "lines": 244
+      "sha256": "a69e9407c66c2848",
+      "lines": 243
     },
     {
       "id": "app/renderer/pilot-style.css",
@@ -4086,8 +4086,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "fa6f81b89d078eb2",
-      "lines": 1099,
+      "sha256": "af8235bfbc00534f",
+      "lines": 1095,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -4145,15 +4145,15 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "361cbad3604a273e",
-      "lines": 54
+      "sha256": "2792ee1f61fb092e",
+      "lines": 55
     },
     {
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "51c790d972f019bb",
-      "lines": 392
+      "sha256": "49f7718343e3d25b",
+      "lines": 406
     },
     {
       "id": "pilot/PROMPTS.md",
@@ -4180,8 +4180,8 @@
       "id": "pilot/SPEC-glass.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "a6be619795a904aa",
-      "lines": 981
+      "sha256": "c67467c81c3800e6",
+      "lines": 988
     },
     {
       "id": "pilot/SPEC.md",
@@ -4194,8 +4194,8 @@
       "id": "pilot/Tester Guide.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "e3ca647a6d350a11",
-      "lines": 92
+      "sha256": "d2dfc44757906016",
+      "lines": 91
     },
     {
       "id": "pilot/reviews/review-1.md",
@@ -4430,32 +4430,6 @@
       "layer": "root",
       "sha256": "da95b01870d87178",
       "lines": 82
-    },
-    {
-      "id": "pilot/make_glass_lens.py",
-      "type": "module",
-      "layer": "root",
-      "sha256": "96e05b62cf48a831",
-      "lines": 82,
-      "cli": "python -m pilot.make_glass_lens",
-      "exports": [
-        "BAND",
-        "DEFAULT_OUT",
-        "NEUTRAL",
-        "REACH",
-        "SIZE",
-        "main",
-        "pixel",
-        "png_bytes"
-      ],
-      "constants": {
-        "SIZE": "256",
-        "BAND": "20",
-        "NEUTRAL": "128",
-        "REACH": "127"
-      },
-      "role": "Draws app/renderer/glass-lens.png, the displacement map the refraction filter uses (SPEC-glass 6.3, P35): neutral in the centre, bending only toward the rim.",
-      "notes": "Standard library only (zlib and struct), so the PNG is reproducible byte for byte; tests/test_glass.py::test_the_lens_map_is_what_its_generator_draws redraws it through pixel(x, y) and compares, and checks index.html's inlined data: URI carries the same bytes. Re-run it and commit the PNG (and the data: URI in index.html) together whenever pixel() changes."
     },
     {
       "id": "pilot/wintest/make_samples.py",
@@ -6163,8 +6137,8 @@
       "id": "tests/test_glass.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7dd957a60f6d8fef",
-      "lines": 572,
+      "sha256": "d05f9f95dbda906c",
+      "lines": 475,
       "exports": [
         "COLOUR",
         "GLASS_CSS",
@@ -6202,19 +6176,14 @@
         "test_nested_corners_are_concentric",
         "test_no_animation_runs_longer_than_its_limit",
         "test_reduced_motion_still_stops_every_animation",
-        "test_refraction_is_used_only_at_the_full_level",
-        "test_the_backdrop_drifts_only_at_the_full_level",
+        "test_refraction_mica_and_the_pointer_light_are_gone",
         "test_the_glass_leaves_the_status_chips_and_the_reminder_colours_alone",
         "test_the_glass_level_is_kept_in_storage_safely",
         "test_the_glass_style_targets_only_what_it_is_allowed",
         "test_the_glass_style_types_colour_only_in_its_tokens",
         "test_the_glass_wording_lives_in_the_pilot_content",
-        "test_the_lens_map_is_what_its_generator_draws",
         "test_the_page_changes_only_by_the_glass_lines",
         "test_the_page_loads_the_glass_last",
-        "test_the_pointer_light_is_drawn_only_at_the_full_level",
-        "test_the_pointer_light_sets_only_its_two_numbers",
-        "test_the_refraction_filter_is_markup_the_policy_allows",
         "test_the_system_asking_for_less_makes_the_screen_solid_and_still",
         "test_the_theme_never_names_its_inspiration",
         "test_the_theme_touches_no_app_file",
@@ -6225,7 +6194,7 @@
         "GLASS_TARGETS": "('.topbar', '.brand-product', '.main', '.toolbar', '#eng-select', '.btn', '#review-card', '#reminder-card', '#moved-card', '#review-list', '#moved-list', '#review-deck', '#dismissed-card', '.rem-preview', '.rem-stages', '.card', '.modal', '.modal-overlay', '.chip')",
         "OWN_NAMES": "(':root', 'body', '.glass-', '#glass-')",
         "PILOT_NAMES": "('.pilot-', '#pilot-')",
-        "SCOPES": "(':root.glass-standard ', ':root.glass-full ', ':root.glass-solid ', ':root.glass-scrolled ', ':root.glass-paused ')",
+        "SCOPES": "(':root.glass-standard ', ':root.glass-solid ', ':root.glass-scrolled ')",
         "REDUCED": "('prefers-reduced-transparency', 'prefers-reduced-motion', 'prefers-contrast', 'forced-colors')"
       },
       "role": "Owns app/renderer/glass.js and guards glass.css and the three index.html glass lines (SPEC-glass 10).",

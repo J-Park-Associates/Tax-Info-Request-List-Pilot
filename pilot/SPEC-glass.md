@@ -1,5 +1,12 @@
 # Pilot 0.2 - Build D: the glass theme - SPEC
 
+> **Amended by P49 (2026-09-29): refraction is removed.** Wherever this SPEC
+> describes the "Glass with refraction" / Full level, the lens map
+> (`glass-lens.png`, `make_glass_lens.py`, section 6.3), the SVG filter, the
+> pointer light or the backdrop drift, that part is **withdrawn and not built**.
+> There are two levels, Glass and Solid. Mica is also out (P48). Where the text
+> below disagrees with `DECISIONS.md`, `DECISIONS.md` wins.
+
 Status: **revised 2026-09-29 for Jason's approval.** Decisions P30-P45
 (`DECISIONS.md`). Jason's answers: the backdrop is a **soft navy gradient**;
 **light mode only** for 0.2, dark mode later (P31). After seeing the first

@@ -6,8 +6,8 @@
    terms and the tour card) with translucent tint, blur, a lit rim and depth,
    and leaves lists, tables, chips, banners and inputs solid.
 
-   Three levels, set on <html> by glass.js: Glass (no class, the default),
-   Glass with refraction (.glass-full) and Solid (.glass-solid). Windows asking
+   Two levels, set on <html> by glass.js: Glass (the default) and Solid
+   (.glass-solid). Windows asking
    for less transparency, less motion or more contrast forces Solid (the block
    at the end). A colour literal is typed only in a custom-property declaration
    (the tokens below); every other declaration reads a token. */
@@ -50,7 +50,6 @@
   --glass-depth-bar: inset 0 -1px 0 rgba(255, 255, 255, 0.10), 0 6px 20px rgba(15, 23, 42, 0.18);
   --glass-depth-inner: 0 1px 0 rgba(255, 255, 255, 0.60), inset 0 1px 3px rgba(15, 23, 42, 0.08);
   --glass-depth-control: inset 0 1px 0 rgba(255, 255, 255, 0.90), inset 0 -1px 2px rgba(15, 23, 42, 0.10), 0 1px 3px rgba(15, 23, 42, 0.12);
-  --glass-sheen: rgba(255, 255, 255, 0.45);
   --glass-halo: 0 0 10px rgba(255, 255, 255, 0.55);
 
   --glass-picker-fill: rgba(255, 255, 255, 0.06);
@@ -72,8 +71,6 @@
   --glass-brightness: 1.04;
   --glass-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate)) brightness(var(--glass-brightness));
   --glass-filter-strong: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate)) brightness(var(--glass-brightness));
-  --glass-filter-refract: var(--glass-filter);
-  --glass-filter-refract-strong: var(--glass-filter-strong);
 
   /* Concentric corners (P36): inner = max(--r-min, outer - gap). */
   --glass-corner: superellipse(1.5);
@@ -93,7 +90,7 @@
   --r-tour-inner: 8px;
   --r-capsule: 999px;
 
-  /* Motion (P43, P45): nothing but the drift lasts over 200ms. */
+  /* Motion (P43, P45): every transition is 200ms or less. */
   --glass-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --glass-settle: cubic-bezier(0.2, 0.9, 0.3, 1.05);
   --glass-t-press: 50ms;
@@ -104,14 +101,6 @@
   --glass-t-settle: 200ms;
   --glass-t-card: 180ms;
   --glass-t-spot: 160ms;
-  --glass-drift: 40s;
-}
-
-/* Glass with refraction: the bend is added on the toolbar, dialogs, terms
-   and tour card only (P34); the header and cards keep the plain blur. */
-:root.glass-full {
-  --glass-filter-refract: url(#glass-refract) blur(var(--glass-blur)) saturate(var(--glass-saturate)) brightness(var(--glass-brightness));
-  --glass-filter-refract-strong: url(#glass-refract) blur(var(--glass-blur-strong)) saturate(var(--glass-saturate)) brightness(var(--glass-brightness));
 }
 
 /* Solid: every tint opaque, no blur, flat shadows. Radii and corner shape
@@ -131,49 +120,15 @@
   --glass-depth-bar: none;
   --glass-depth-inner: none;
   --glass-depth-control: 0 1px 2px rgba(15, 23, 42, 0.12);
-  --glass-sheen: transparent;
   --glass-halo: none;
   --glass-filter: none;
   --glass-filter-strong: none;
-  --glass-filter-refract: none;
-  --glass-filter-refract-strong: none;
 }
 
-/* ── The backdrop (P31) and the Full-level drift ─────────────────────── */
-
-.glass-defs {
-  position: absolute;
-  width: 0;
-  height: 0;
-  overflow: hidden;
-}
+/* ── The backdrop (P31) ──────────────────────────────────────────────── */
 
 body {
   background: var(--glass-backdrop) var(--glass-backdrop-base);
-}
-
-:root.glass-full body {
-  background: var(--glass-backdrop-linear) var(--glass-backdrop-base);
-}
-
-:root.glass-full body::before {
-  content: "";
-  position: fixed;
-  inset: -8%;
-  z-index: -1;
-  pointer-events: none;
-  will-change: transform;
-  background: var(--glass-backdrop-glows);
-  animation: glass-drift var(--glass-drift) ease-in-out infinite alternate;
-}
-
-:root.glass-paused body::before {
-  animation-play-state: paused;
-}
-
-@keyframes glass-drift {
-  from { transform: translate(-3%, -2%); }
-  to { transform: translate(3%, 3%); }
 }
 
 /* ── Text on glass: the app's own variables, re-pointed (P42) ────────── */
@@ -278,7 +233,7 @@ body {
   border: 0;
   border-radius: var(--r-toolbar);
   background: var(--glass-tint-toolbar);
-  backdrop-filter: var(--glass-filter-refract);
+  backdrop-filter: var(--glass-filter);
   box-shadow: var(--glass-depth);
   transition: box-shadow var(--glass-t-hover) ease;
 }
@@ -432,7 +387,7 @@ body {
   border: 0;
   border-radius: var(--r-dialog);
   background: var(--glass-tint-strong);
-  backdrop-filter: var(--glass-filter-refract-strong);
+  backdrop-filter: var(--glass-filter-strong);
   box-shadow: var(--glass-depth-strong);
   transition: opacity var(--glass-t-fade) ease, transform var(--glass-t-settle) var(--glass-settle);
 }
@@ -475,7 +430,7 @@ body {
   padding: var(--pad-dialog);
   border-radius: var(--r-dialog);
   background: var(--glass-tint-strong);
-  backdrop-filter: var(--glass-filter-refract-strong);
+  backdrop-filter: var(--glass-filter-strong);
   box-shadow: var(--glass-depth-strong);
   color: var(--text);
   transition: opacity var(--glass-t-fade) ease, transform var(--glass-t-settle) var(--glass-settle);
@@ -497,7 +452,7 @@ body {
   padding: var(--pad-tour);
   border-radius: var(--r-tour);
   background: var(--glass-tint-strong);
-  backdrop-filter: var(--glass-filter-refract-strong);
+  backdrop-filter: var(--glass-filter-strong);
   box-shadow: var(--glass-depth-strong);
   color: var(--text);
 }
@@ -533,23 +488,11 @@ body {
   transition: top var(--glass-t-spot) var(--glass-settle), left var(--glass-t-spot) var(--glass-settle), width var(--glass-t-spot) var(--glass-settle), height var(--glass-t-spot) var(--glass-settle), border-radius var(--glass-t-spot) var(--glass-settle);
 }
 
-/* ── The pointer light (Full level only, P45) ────────────────────────── */
-
-:root.glass-full #reminder-card,
-:root.glass-full #moved-card,
-:root.glass-full #review-card,
-:root.glass-full .toolbar,
-:root.glass-full .modal,
-:root.glass-full .pilot-terms-card,
-:root.glass-full .pilot-tour-card {
-  background-image: radial-gradient(260px circle at var(--glass-x, 25%) var(--glass-y, -40px), var(--glass-sheen), transparent 70%);
-}
-
 /* ── When the system asks for less, the screen is Solid and still ────── */
 
 @media (prefers-reduced-transparency: reduce), (prefers-reduced-motion: reduce),
        (prefers-contrast: more), (forced-colors: active) {
-  :root, :root.glass-standard, :root.glass-full, :root.glass-solid {
+  :root, :root.glass-standard, :root.glass-solid {
   --glass-tint-bar: #14335c;
   --glass-tint: #ffffff;
   --glass-tint-toolbar: #ffffff;
@@ -564,20 +507,14 @@ body {
   --glass-depth-bar: none;
   --glass-depth-inner: none;
   --glass-depth-control: 0 1px 2px rgba(15, 23, 42, 0.12);
-  --glass-sheen: transparent;
   --glass-halo: none;
   --glass-filter: none;
   --glass-filter-strong: none;
-  --glass-filter-refract: none;
-  --glass-filter-refract-strong: none;
-  }
-  :root.glass-full body::before {
-    animation: none;
   }
 }
 
 @supports not (backdrop-filter: blur(1px)) {
-  :root, :root.glass-standard, :root.glass-full, :root.glass-solid {
+  :root, :root.glass-standard, :root.glass-solid {
   --glass-tint-bar: #14335c;
   --glass-tint: #ffffff;
   --glass-tint-toolbar: #ffffff;
@@ -592,11 +529,8 @@ body {
   --glass-depth-bar: none;
   --glass-depth-inner: none;
   --glass-depth-control: 0 1px 2px rgba(15, 23, 42, 0.12);
-  --glass-sheen: transparent;
   --glass-halo: none;
   --glass-filter: none;
   --glass-filter-strong: none;
-  --glass-filter-refract: none;
-  --glass-filter-refract-strong: none;
   }
 }
