@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 286,
     "edges": 1138,
-    "reused": 241
+    "reused": 242
   },
   "node_types": [
     "artifact",
@@ -262,7 +262,7 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "a704e0fee150121a",
+      "sha256": "1805f98726414799",
       "lines": 5531,
       "cli": "python -m tracker.api",
       "exports": [
@@ -4730,7 +4730,7 @@
       "id": "pilot/handoffs/shell-S8a-rebuild-1.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "a80d133defe27a51",
+      "sha256": "476edd4bcd8fa114",
       "lines": 96
     },
     {
@@ -5483,7 +5483,7 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "40b41009f85ea2fd",
+      "sha256": "af27e5623e8838d8",
       "lines": 8722,
       "exports": [
         "COUNTS",

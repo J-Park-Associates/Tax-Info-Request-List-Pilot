@@ -89,7 +89,7 @@ Rows added to `pilot/wording-shell.tsv` (`screen.notices.*`).
 | `machine` | Machine Needs Attention | **PROPOSED for Jason** (E30 names only `drive`; S1 sends machine warnings as sentences, so one short line covers a warning with no word of its own; no code map was needed) |
 | `renamed` | Folder Renamed | SPEC E47 |
 | `paused` | Two Years Open; Sorting Paused | **PROPOSED for Jason** (no words in the SPEC) |
-| `feed` | Feed Return Not Found | **PROPOSED for Jason** (no words in the SPEC) |
+| `feed` | Prior Year Data Not Found (Jason, ruling 14) | **PROPOSED for Jason** (no words in the SPEC) |
 | `drive` | Drive Not Signed In | existing |
 
 Test: `test_the_notices_carry_a_short_word_for_every_kind_the_pages_show`; the

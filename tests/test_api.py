@@ -8700,7 +8700,7 @@ def test_the_notices_carry_a_short_word_for_every_kind_the_pages_show():
     assert {k: notices[k] for k in ("reader", "machine", "renamed", "paused", "feed", "drive")} == {
         "reader": "Install Folder Name Too Long", "machine": "Machine Needs Attention",
         "renamed": "Folder Renamed", "paused": "Two Years Open; Sorting Paused",
-        "feed": "Feed Return Not Found", "drive": "Drive Not Signed In"}
+        "feed": "Prior Year Data Not Found", "drive": "Drive Not Signed In"}
     for key, text in notices.items():
         assert len(text.replace(";", "").split()) <= 5 and title_case(text) == text, (key, text)
         assert "/" not in text and "\\" not in text and ":" not in text[1:3], (key, text)
