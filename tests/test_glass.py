@@ -64,7 +64,7 @@ GLASS_TARGETS = (
     ".topbar", ".brand-product", ".main", ".toolbar", "#eng-select", ".btn",
     "#review-card", "#reminder-card", "#moved-card", "#review-list",
     "#moved-list", "#review-deck", "#dismissed-card", ".rem-preview",
-    ".rem-stages", ".card", ".modal", ".modal-overlay", ".chip",
+    ".rem-stages", ".rem-hold", ".card", ".modal", ".modal-overlay", ".chip",
 )
 OWN_NAMES = (":root", "body", ".glass-", "#glass-")
 PILOT_NAMES = (".pilot-", "#pilot-")

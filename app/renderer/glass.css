@@ -361,6 +361,19 @@ body {
   overflow: hidden;
 }
 
+/* The reminder's hold line is drawn in one of the engine's stage colours (P33:
+   this sheet never restyles those), and no translucent tint is light enough
+   under a dark amber over the navy end of the backdrop. So it sits on a solid
+   pill, which keeps its colour and gives it 5.9:1. */
+
+.rem-hold {
+  padding: 6px 12px;
+  border-radius: var(--r-card-inner);
+  corner-shape: var(--glass-corner);
+  background: var(--card);
+  text-shadow: none;
+}
+
 /* ── The lit rim (P41): a 1px ring on the outermost pixel ────────────── */
 
 .toolbar::before,
