@@ -22,6 +22,7 @@
   --glass-backdrop-linear: linear-gradient(180deg, #14335c 0px, #2c4d78 160px, #b7c6d9 420px, #e6ecf3 640px, #f3f6fa 100%);
   --glass-backdrop: var(--glass-backdrop-glows), var(--glass-backdrop-linear);
   --glass-backdrop-base: #f3f6fa;
+  --glass-mica-wash: rgba(243, 246, 250, 0.88);
 
   --glass-tint-bar: rgba(14, 37, 68, 0.50);
   --glass-tint: rgba(255, 255, 255, 0.55);
@@ -114,6 +115,14 @@
   --glass-filter-refract-strong: url(#glass-refract) blur(var(--glass-blur-strong)) saturate(var(--glass-saturate)) brightness(var(--glass-brightness));
 }
 
+/* Mica (P46): the shell put the window on Windows 11's own material and said
+   so in the page's address, glass.js added .glass-mica. The header takes a
+   denser tint, since Mica's colour is the wallpaper's and unknown. Placed
+   before the Solid block so Solid and the fallbacks still win. */
+:root.glass-mica {
+  --glass-tint-bar: rgba(14, 37, 68, 0.85);
+}
+
 /* Solid: every tint opaque, no blur, flat shadows. Radii and corner shape
    are kept (P36). The two fallback blocks at the end repeat this set. */
 :root.glass-solid {
@@ -154,6 +163,20 @@ body {
 
 :root.glass-full body {
   background: var(--glass-backdrop-linear) var(--glass-backdrop-base);
+}
+
+/* Under Mica the page lays a pale wash over the material, so it shows as a
+   quiet tint; Solid paints the opaque backdrop over it instead. */
+:root.glass-mica body {
+  background: var(--glass-backdrop-glows), var(--glass-mica-wash);
+}
+
+:root.glass-mica.glass-full body {
+  background: var(--glass-mica-wash);
+}
+
+:root.glass-mica.glass-solid body {
+  background: var(--glass-backdrop) var(--glass-backdrop-base);
 }
 
 :root.glass-full body::before {
@@ -580,6 +603,12 @@ body {
   :root.glass-full body::before {
     animation: none;
   }
+  :root.glass-mica body,
+  :root.glass-mica.glass-standard body,
+  :root.glass-mica.glass-full body,
+  :root.glass-mica.glass-solid body {
+    background: var(--glass-backdrop) var(--glass-backdrop-base);
+  }
 }
 
 @supports not (backdrop-filter: blur(1px)) {
@@ -604,5 +633,11 @@ body {
   --glass-filter-strong: none;
   --glass-filter-refract: none;
   --glass-filter-refract-strong: none;
+  }
+  :root.glass-mica body,
+  :root.glass-mica.glass-standard body,
+  :root.glass-mica.glass-full body,
+  :root.glass-mica.glass-solid body {
+    background: var(--glass-backdrop) var(--glass-backdrop-base);
   }
 }

@@ -62,6 +62,13 @@
   let level = storedLevel();
   applyLevel(level);
 
+  // The shell asks Windows 11 for its window material and says so in the
+  // page's own address (P46); the CSS then lays a wash over it. Without the
+  // word the class is absent and the page paints its opaque backdrop.
+  if (new URLSearchParams(window.location.search).get("material") === "mica") {
+    root.classList.add("glass-mica");
+  }
+
   // ── The picker in the header ───────────────────────────────────────────
 
   const topbar = document.querySelector(".topbar");

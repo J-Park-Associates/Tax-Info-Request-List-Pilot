@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 197,
-    "edges": 1135,
-    "reused": 155
+    "nodes": 198,
+    "edges": 1136,
+    "reused": 156
   },
   "node_types": [
     "artifact",
@@ -3927,10 +3927,10 @@
       "id": "app/main.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "06629d2b4a20b2cf",
-      "lines": 434,
+      "sha256": "2a4471a2f9fa29ff",
+      "lines": 450,
       "role": "Electron main process. Spawns the Python API (`-m tracker.api` under the checkout's .venv interpreter, by its full path, or the frozen executable package.json's config.apiName names in the portable build) and relays its JSON to the renderer over IPC. Since decision 193 it passes each progress line a pass prints (tracker.progress's format) to the window on the tracker-progress channel, keeps the last non-progress line as the reply, follows the kill to the limit_seconds the pass reports and says where it was, answers every failure of its own in the API's envelope, and puts no stderr on screen - a failed command's goes to the error log the API names.",
-      "notes": "This is the cross-language boundary: everything the UI can do is a tracker.api command. The renderer is untrusted here: a command must be in vocab.commands (before the vocabulary arrives, only BOOTSTRAP_COMMAND, pinned to tracker.api.COMMANDS by a guard) with the one argument shape the renderer uses; open-path opens only a path the API reported in state.paths; the tracker's exit code is read, not discarded, and a plain command that outlives TRACKER_TIMEOUT_MS is killed and reported, and a pass at the limit its own first line states (decision 203). The window is sandboxed, cannot navigate and cannot open windows. Decision 160: the shell takes app.requestSingleInstanceLock(); a second launch quits before any window is made, and the running one restores and focuses its window on second-instance - two windows were two editors, and the earlier one's save took the later one's back. Decision 176: devTools is off when packaged, and runTracker() serialises the payload before the tracker starts and writes it as UTF-8, which is how tracker.api._read_spec() reads it. Decision 191: from source it runs .venv/Scripts/python.exe (or .venv/bin/python), never a bare python, and answers with the lock tool's NOT_SET_UP sentence when that is missing; in the packaged app Menu.setApplicationMenu(null) runs before the window is made, so no reload, zoom or developer-tools accelerator exists there (E-7). Decision 188 (E-14): learn() keeps each reported path with its kind from vocab.path_kinds, and openPath lstat()s it and opens it only when it is no symbolic link (Node reports a junction as one) and still a directory for 'folder' or a regular file for 'file'; otherwise vocab.shell.not_opened. No path.relative( and no startsWith( (tests/test_layers.py). Decision 186's rebase review (MF2): keepInLog() writes only to the error log the API named and never builds a path - no ERROR_LOG_FILENAME in the shell; with none, a failed command's stderr (its last STDERR_ON_SCREEN_CAP) is said in its reply after vocab.shell.no_log (api.SHELL_NO_LOG), and a renderer error is not kept. Decision 203: the command named by vocab.pass_command (learned, never typed) is a pass: runTracker resolves the click at its 'started' progress line, streams its later lines on tracker-progress and sends {reply, code} - its final line, or the shell's own failure when it gave none or was killed - on the same channel when it closes; a pass is killed only at the limit its own first line states (limit_seconds, locking.RUN_TIME_LIMIT_SECONDS), while every other command keeps TRACKER_TIMEOUT_MS; each running pass is kept in 'passes' and will-quit destroys its stdout, which the runner takes as Stop. Decision 209: at whenReady the shell runs the API's after-install command itself (LAUNCH_COMMAND, through spawnTracker, outside the renderer's allowlist) in the background: no tracker-cmd waits for it (the review's S7), and when its reply says ran the shell sends LAUNCH_DONE_CHANNEL ('after-install-done', the one main-to-renderer channel) so the page asks list again for the notice."
+      "notes": "This is the cross-language boundary: everything the UI can do is a tracker.api command. The renderer is untrusted here: a command must be in vocab.commands (before the vocabulary arrives, only BOOTSTRAP_COMMAND, pinned to tracker.api.COMMANDS by a guard) with the one argument shape the renderer uses; open-path opens only a path the API reported in state.paths; the tracker's exit code is read, not discarded, and a plain command that outlives TRACKER_TIMEOUT_MS is killed and reported, and a pass at the limit its own first line states (decision 203). The window is sandboxed, cannot navigate and cannot open windows. Decision 160: the shell takes app.requestSingleInstanceLock(); a second launch quits before any window is made, and the running one restores and focuses its window on second-instance - two windows were two editors, and the earlier one's save took the later one's back. Decision 176: devTools is off when packaged, and runTracker() serialises the payload before the tracker starts and writes it as UTF-8, which is how tracker.api._read_spec() reads it. Decision 191: from source it runs .venv/Scripts/python.exe (or .venv/bin/python), never a bare python, and answers with the lock tool's NOT_SET_UP sentence when that is missing; in the packaged app Menu.setApplicationMenu(null) runs before the window is made, so no reload, zoom or developer-tools accelerator exists there (E-7). Decision 188 (E-14): learn() keeps each reported path with its kind from vocab.path_kinds, and openPath lstat()s it and opens it only when it is no symbolic link (Node reports a junction as one) and still a directory for 'folder' or a regular file for 'file'; otherwise vocab.shell.not_opened. No path.relative( and no startsWith( (tests/test_layers.py). Decision 186's rebase review (MF2): keepInLog() writes only to the error log the API named and never builds a path - no ERROR_LOG_FILENAME in the shell; with none, a failed command's stderr (its last STDERR_ON_SCREEN_CAP) is said in its reply after vocab.shell.no_log (api.SHELL_NO_LOG), and a renderer error is not kept. Decision 203: the command named by vocab.pass_command (learned, never typed) is a pass: runTracker resolves the click at its 'started' progress line, streams its later lines on tracker-progress and sends {reply, code} - its final line, or the shell's own failure when it gave none or was killed - on the same channel when it closes; a pass is killed only at the limit its own first line states (limit_seconds, locking.RUN_TIME_LIMIT_SECONDS), while every other command keeps TRACKER_TIMEOUT_MS; each running pass is kept in 'passes' and will-quit destroys its stdout, which the runner takes as Stop. Decision 209: at whenReady the shell runs the API's after-install command itself (LAUNCH_COMMAND, through spawnTracker, outside the renderer's allowlist) in the background: no tracker-cmd waits for it (the review's S7), and when its reply says ran the shell sends LAUNCH_DONE_CHANNEL ('after-install-done', the one main-to-renderer channel) so the page asks list again for the notice. Pilot decision P46: on Windows 11 22H2 or later (build 22621, read once at launch by micaAvailable) the window is created on Electron's own Mica material with a clear background colour, and the page is told by a ?material=mica query on loadFile, never by a channel; elsewhere the window is unchanged."
     },
     {
       "id": "app/package-lock.json",
@@ -3967,17 +3967,17 @@
       "id": "app/renderer/glass.css",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "a2b47a18d28ad6c4",
-      "lines": 608,
+      "sha256": "04d1f6824c7a8d91",
+      "lines": 643,
       "role": "The pilot's glass theme (0.2, P30-P45): translucent header, toolbar, action cards, dialogs, terms and tour card over a navy backdrop, with a lit rim, depth, concentric corners and short motion. Loaded last; every colour is a token; nothing in style.css or app.js changes.",
-      "notes": "Three levels on <html> (Glass, refraction, Solid); Windows asking for less transparency, motion or contrast forces Solid. The reminder's hold line sits on a solid pill because its engine-owned colour cannot pass on thin glass. tests/test_glass.py holds the closed list of app selectors it may target."
+      "notes": "Three levels on <html> (Glass, refraction, Solid); Windows asking for less transparency, motion or contrast forces Solid. The reminder's hold line sits on a solid pill because its engine-owned colour cannot pass on thin glass. tests/test_glass.py holds the closed list of app selectors it may target. Under Mica (P46, .glass-mica) the page paints a pale wash over the window material and the header tint is denser; Solid and every system-asks-for-less state paint the opaque backdrop instead."
     },
     {
       "id": "app/renderer/glass.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "64044476ec4f05a2",
-      "lines": 159,
+      "sha256": "fab77fe68d31d187",
+      "lines": 166,
       "role": "Sets the glass level on <html>, builds the Screen effects picker in the header, moves the pointer light (--glass-x, --glass-y) at the refraction level and marks the scrolled toolbar. No timers, no network, wording from pilot-content.js.",
       "notes": "If it fails to run the CSS default still applies."
     },
@@ -4071,7 +4071,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "0710ff78de0b2ce3",
+      "sha256": "07ce534e066add1b",
       "lines": 1099,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -4130,15 +4130,15 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "5dbd71be86d10377",
-      "lines": 51
+      "sha256": "6f94288fe6b5cfc1",
+      "lines": 52
     },
     {
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "fb99c7971c4fa6c6",
-      "lines": 393
+      "sha256": "9748b81dbff67061",
+      "lines": 427
     },
     {
       "id": "pilot/PROMPTS.md",
@@ -4167,6 +4167,13 @@
       "layer": "docs",
       "sha256": "a6be619795a904aa",
       "lines": 981
+    },
+    {
+      "id": "pilot/SPEC-mica.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "1063e20bb51e751b",
+      "lines": 126
     },
     {
       "id": "pilot/SPEC.md",
@@ -6131,14 +6138,15 @@
       "id": "tests/test_glass.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "3acfeef258b1b6f1",
-      "lines": 572,
+      "sha256": "181d83ecce14ca49",
+      "lines": 697,
       "exports": [
         "COLOUR",
         "GLASS_CSS",
         "GLASS_JS",
         "GLASS_TARGETS",
         "HTML",
+        "MAIN_JS",
         "MOTION_OK",
         "OWN_NAMES",
         "PILOT_NAMES",
@@ -6149,6 +6157,8 @@
         "SCOPES",
         "SPOT_OK",
         "bright",
+        "check_glass_surfaces",
+        "contrast_setup",
         "glass_rules",
         "hex_rgb",
         "keyframes",
@@ -6166,6 +6176,7 @@
         "test_every_glass_target_is_on_the_page",
         "test_every_rounded_glass_shape_has_continuous_corners",
         "test_every_text_on_glass_meets_aa_contrast",
+        "test_every_text_on_glass_meets_aa_contrast_over_mica",
         "test_motion_moves_only_what_the_compositor_can",
         "test_nested_corners_are_concentric",
         "test_no_animation_runs_longer_than_its_limit",
@@ -6178,14 +6189,17 @@
         "test_the_glass_style_types_colour_only_in_its_tokens",
         "test_the_glass_wording_lives_in_the_pilot_content",
         "test_the_lens_map_is_what_its_generator_draws",
+        "test_the_mica_rules_come_in_the_order_that_lets_solid_and_the_fallbacks_win",
         "test_the_page_changes_only_by_the_glass_lines",
         "test_the_page_loads_the_glass_last",
         "test_the_pointer_light_is_drawn_only_at_the_full_level",
         "test_the_pointer_light_sets_only_its_two_numbers",
         "test_the_refraction_filter_is_markup_the_policy_allows",
+        "test_the_shell_and_the_page_agree_about_mica",
         "test_the_system_asking_for_less_makes_the_screen_solid_and_still",
         "test_the_theme_never_names_its_inspiration",
         "test_the_theme_touches_no_app_file",
+        "test_the_window_asks_for_mica_only_on_windows_11_22h2_or_later",
         "token",
         "transition_items"
       ],
@@ -7926,8 +7940,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "b8725d2c92bb3774",
-      "lines": 3825,
+      "sha256": "e5bb6b6f3205bfcc",
+      "lines": 3827,
       "exports": [
         "AFTER_WHAT",
         "CONSOLE_EXEMPT",
@@ -10644,6 +10658,12 @@
       "from": "tests/test_fsio.py",
       "to": "tracker/fsio.py",
       "type": "tests",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_glass.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
       "source": "derived"
     },
     {

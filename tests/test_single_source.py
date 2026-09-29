@@ -281,7 +281,9 @@ def test_the_renderer_builds_the_page_from_data_not_html():
 def test_the_window_colour_is_read_from_the_stylesheet():
     assert re.search(r"--bg:\s*#", read("app/renderer/style.css"))
     main_js = read("app/main.js")
-    assert "backgroundColor: pageBackground()" in main_js
+    # Read from the stylesheet, except where the shell has put the window on
+    # Windows 11's own material (pilot decision P46), which needs it clear.
+    assert "backgroundColor: mica ? MICA_CLEAR : pageBackground()" in main_js
     assert not re.search(r'backgroundColor:\s*"#', main_js)
 
 

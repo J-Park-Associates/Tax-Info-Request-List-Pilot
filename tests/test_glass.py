@@ -300,11 +300,10 @@ def ratio(a, b):
     return (hi + 0.05) / (lo + 0.05)
 
 
-def test_every_text_on_glass_meets_aa_contrast():
+def contrast_setup():
     rules = glass_rules()
     style = read(RENDERER / "style.css")
     sat, brt = float(token("--glass-saturate", rules)), float(token("--glass-brightness", rules))
-
     stops = [hex_rgb(h) for h in re.findall(r"#[0-9a-fA-F]{6}", token("--glass-backdrop-linear", rules))]
     glows = [rgba(c + ")")[0] for c in re.findall(r"(rgba\([^)]*)\)", token("--glass-backdrop-glows", rules))]
     navy_deep = hex_rgb(re.search(r"--navy-deep:\s*(#[0-9a-fA-F]{6})", style)[1])
@@ -312,15 +311,11 @@ def test_every_text_on_glass_meets_aa_contrast():
     dim_rgb, dim_alpha = rgba(re.search(
         r"\.pilot-terms-overlay\s*\{[^}]*background:\s*(rgba\([^)]*\))", pilot_css)[1])
     assert dim_alpha == 0.6
+    return rules, style, sat, brt, stops, glows, navy_deep, dim_rgb, dim_alpha
 
-    mid = tuple((a + b) / 2 for a, b in zip(stops[0], stops[1], strict=True))
-    # Why each set: the header sits over the top of the fixed backdrop only,
-    # since nothing scrolls under it; the cards never overlap each other or the
-    # header, so only the fixed backdrop is behind them; the toolbar also has
-    # the solid lists (white) and the darkest navy scrolling under it; a dialog
-    # sits over the whole page, dimmed by the strongest overlay the page uses.
-    header_set = [stops[0], stops[1], glows[0], mid]
-    card_set = stops + glows
+
+def check_glass_surfaces(rules, style, sat, brt, header_set, card_set, navy_deep, dim_rgb, dim_alpha, bar_tint, label):
+    """Every text colour on every glass surface, over what can be behind it."""
     toolbar_set = card_set + [(255, 255, 255), navy_deep]
     strong_set = toolbar_set + [over(dim_rgb, dim_alpha, c) for c in toolbar_set]
 
@@ -329,13 +324,12 @@ def test_every_text_on_glass_meets_aa_contrast():
         return [tuple(min(c[i] for c in seen) for i in range(3)),
                 tuple(max(c[i] for c in seen) for i in range(3))]
 
-    def surface(name, candidates):
-        tint, alpha = rgba(token(name, rules))
+    def surface(tint_value, candidates):
+        tint, alpha = rgba(tint_value)
         return [over(tint, alpha, c) for c in corners(candidates)]
 
     def text(name):
-        value = token(name, rules)
-        return hex_rgb(value)
+        return hex_rgb(token(name, rules))
 
     body_text = [hex_rgb(re.search(r"--text:\s*(#[0-9a-fA-F]{6})", style)[1]),
                  hex_rgb(re.search(r"--navy:\s*(#[0-9a-fA-F]{6})", style)[1]),
@@ -343,20 +337,34 @@ def test_every_text_on_glass_meets_aa_contrast():
                  text("--glass-ok"), text("--glass-warn")]
     bar_text = [text("--glass-on-bar"), text("--glass-on-bar-soft")]
 
-    toolbar = surface("--glass-tint-toolbar", toolbar_set)
+    toolbar = surface(token("--glass-tint-toolbar", rules), toolbar_set)
     control_tint, control_alpha = rgba(token("--glass-control", rules))
     surfaces = {
-        "header": (surface("--glass-tint-bar", header_set), bar_text),
-        "card": (surface("--glass-tint", card_set), body_text),
+        "header": (surface(bar_tint, header_set), bar_text),
+        "card": (surface(token("--glass-tint", rules), card_set), body_text),
         "toolbar": (toolbar, body_text),
-        "dialog": (surface("--glass-tint-strong", strong_set), body_text),
+        "dialog": (surface(token("--glass-tint-strong", rules), strong_set), body_text),
         "toolbar control": ([over(control_tint, control_alpha, c) for c in toolbar], body_text),
     }
     for name, (backs, texts) in surfaces.items():
         for back in backs:
             for fore in texts:
                 got = ratio(fore, back)
-                assert got >= 4.5, f"{name}: text {fore} on {tuple(round(c) for c in back)} is {got:.2f}:1"
+                assert got >= 4.5, f"{label} {name}: text {fore} on {tuple(round(c) for c in back)} is {got:.2f}:1"
+    return body_text, bar_text
+
+
+def test_every_text_on_glass_meets_aa_contrast():
+    rules, style, sat, brt, stops, glows, navy_deep, dim_rgb, dim_alpha = contrast_setup()
+    mid = tuple((a + b) / 2 for a, b in zip(stops[0], stops[1], strict=True))
+    # Why each set: the header sits over the top of the fixed backdrop only,
+    # since nothing scrolls under it; the cards never overlap each other or the
+    # header, so only the fixed backdrop is behind them; the toolbar also has
+    # the solid lists (white) and the darkest navy scrolling under it; a dialog
+    # sits over the whole page, dimmed by the strongest overlay the page uses.
+    body_text, bar_text = check_glass_surfaces(
+        rules, style, sat, brt, [stops[0], stops[1], glows[0], mid], stops + glows,
+        navy_deep, dim_rgb, dim_alpha, token("--glass-tint-bar", rules), "backdrop")
 
     solid = next(r for r in rules if r.selectors == [":root.glass-solid"])
     for name, texts in (("--glass-tint-bar", bar_text), ("--glass-tint", body_text),
@@ -365,6 +373,18 @@ def test_every_text_on_glass_meets_aa_contrast():
         back = hex_rgb(solid.value(name))
         for fore in texts:
             assert ratio(fore, back) >= 4.5, (name, fore)
+
+
+def test_every_text_on_glass_meets_aa_contrast_over_mica():
+    """Mica's colour is the wallpaper's, so any colour from black to white can
+    be under the wash (SPEC-mica section 6); the glows and the solid lists
+    still show over it, and the header tint is the denser Mica one."""
+    rules, style, sat, brt, _stops, glows, navy_deep, dim_rgb, dim_alpha = contrast_setup()
+    wash, alpha = rgba(token("--glass-mica-wash", rules))
+    extremes = [over(wash, alpha, (0, 0, 0)), over(wash, alpha, (255, 255, 255))]
+    block = next(r for r in rules if r.selectors == [":root.glass-mica"] and not r.at)
+    check_glass_surfaces(rules, style, sat, brt, extremes + [glows[0]], extremes + glows,
+                         navy_deep, dim_rgb, dim_alpha, block.value("--glass-tint-bar"), "mica")
 
 
 # ── Levels and fallbacks ─────────────────────────────────────────────────
@@ -401,9 +421,16 @@ def test_the_system_asking_for_less_makes_the_screen_solid_and_still():
     assert len(block) == 1 and block[0].decls == solid.decls
     assert any(r.selectors == [":root.glass-full body::before"] and r.value("animation") == "none" for r in media)
 
-    supports = [r for r in rules if r.at and r.at[0] == "@supports not (backdrop-filter: blur(1px))"]
-    assert len(supports) == 1 and supports[0].selectors == every and supports[0].decls == solid.decls
+    in_supports = [r for r in rules if r.at and r.at[0] == "@supports not (backdrop-filter: blur(1px))"]
+    supports = [r for r in in_supports if r.selectors == every]
+    assert len(supports) == 1 and supports[0].decls == solid.decls
     assert min(r.order for r in media) > last_level and supports[0].order > max(r.order for r in media)
+    # Under Mica too, the system asking for less paints the opaque backdrop.
+    mica_reset = [":root.glass-mica body", ":root.glass-mica.glass-standard body",
+                  ":root.glass-mica.glass-full body", ":root.glass-mica.glass-solid body"]
+    for where in (media, in_supports):
+        resets = [r for r in where if r.selectors == mica_reset]
+        assert len(resets) == 1 and resets[0].value("background") == "var(--glass-backdrop) var(--glass-backdrop-base)"
 
     for name, value in solid.decls:
         if name.startswith("--glass-filter"):
@@ -570,3 +597,101 @@ def test_the_theme_never_names_its_inspiration():
     banned = re.compile(r"\bapple\b|liquid\s+glass|\bios\b|\bmacos\b|swiftui", re.IGNORECASE)
     for path in (GLASS_CSS, GLASS_JS, RENDERER / "pilot-content.js", REPO / "pilot" / "Tester Guide.md"):
         assert not banned.search(read(path)), path.name
+
+
+# ── Mica (SPEC-mica, P46) ────────────────────────────────────────────────
+
+MAIN_JS = REPO / "app" / "main.js"
+
+
+def test_the_shell_and_the_page_agree_about_mica():
+    main, js, css = read(MAIN_JS), read(GLASS_JS), read(GLASS_CSS)
+    assert "const MICA_MIN_BUILD = 22621;" in main
+    assert 'process.platform !== "win32"' in main
+    assert "...(mica ? { backgroundMaterial: \"mica\" } : {})" in main
+    assert "backgroundColor: mica ? MICA_CLEAR : pageBackground()," in main
+    assert 'mica ? { query: { material: "mica" } } : undefined' in main
+    assert 'get("material") === "mica"' in js and '"glass-mica"' in js
+    assert "glass-mica" in css
+    # The page is told by its address: no channel, no preload change.
+    assert "ipcMain.handle" not in main.split("function micaAvailable")[1].split("function createWindow")[0]
+    assert "glass" not in main.lower()
+
+
+def test_the_mica_rules_come_in_the_order_that_lets_solid_and_the_fallbacks_win():
+    rules = glass_rules()
+
+    def order(selectors, at=False):
+        found = [r.order for r in rules if r.selectors == selectors and bool(r.at) == at]
+        assert found, selectors
+        return found[0]
+
+    tokens = order([":root.glass-mica"])
+    assert tokens < order([":root.glass-solid"])
+    plain = order([":root.glass-mica body"])
+    assert order([":root.glass-full body"]) < plain < order([":root.glass-mica.glass-full body"])
+    assert order([":root.glass-mica.glass-solid body"]) > plain
+    solid = next(r for r in rules if r.selectors == [":root.glass-mica.glass-solid body"])
+    assert solid.value("background") == "var(--glass-backdrop) var(--glass-backdrop-base)"
+    full = next(r for r in rules if r.selectors == [":root.glass-mica.glass-full body"])
+    assert full.value("background") == "var(--glass-mica-wash)"
+
+
+_MICA_HARNESS = r"""
+const Module = require("module");
+const os = require("os");
+Object.defineProperty(process, "platform", { value: process.argv[3] });
+os.release = () => process.argv[4];
+const seen = { options: null, load: null };
+const win = {
+  isMinimized: () => false, restore() {}, focus() {},
+  loadFile(file, options) { seen.load = { file: String(file).split(/[\\/]/).pop(), options: options === undefined ? null : options }; },
+  isDestroyed: () => false,
+  webContents: { setWindowOpenHandler() {}, on() {}, send() {} },
+};
+class BrowserWindow {
+  constructor(options) { seen.options = options; return win; }
+  static getAllWindows() { return []; }
+}
+const electron = {
+  app: { isPackaged: false, requestSingleInstanceLock: () => true, quit() {}, on() {}, whenReady: () => Promise.resolve() },
+  BrowserWindow, Menu: { setApplicationMenu() {} }, ipcMain: { handle() {} }, shell: {}, dialog: {},
+};
+const load = Module._load;
+Module._load = function (request, ...rest) { return request === "electron" ? electron : load.call(this, request, ...rest); };
+require(process.argv[2]);
+setImmediate(() => process.stdout.write(JSON.stringify(seen)));
+"""
+
+
+def test_the_window_asks_for_mica_only_on_windows_11_22h2_or_later(tmp_path):
+    """The real main.js against a stand-in Electron on three pretend machines."""
+    import json
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not on PATH (CI installs it)")
+    harness = tmp_path / "mica.js"
+    harness.write_text(_MICA_HARNESS, encoding="utf-8", newline="\n")
+
+    def launch(platform: str, release: str) -> dict:
+        done = subprocess.run([node, str(harness), str(MAIN_JS), platform, release],
+                              capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+        assert done.returncode == 0, done.stderr
+        return json.loads(done.stdout)
+
+    for release in ("10.0.22621", "10.0.26100"):
+        seen = launch("win32", release)
+        assert seen["options"]["backgroundMaterial"] == "mica", release
+        assert seen["options"]["backgroundColor"] == "#00000000", release
+        assert seen["load"] == {"file": "index.html", "options": {"query": {"material": "mica"}}}, release
+    for platform, release in (("win32", "10.0.19045"), ("win32", "10.0.22000"),
+                              ("win32", "garbage"), ("linux", "6.1.0"), ("darwin", "23.0.0")):
+        seen = launch(platform, release)
+        assert "backgroundMaterial" not in seen["options"], (platform, release)
+        assert seen["options"]["backgroundColor"] == "#f5f7fa", (platform, release)
+        assert seen["load"] == {"file": "index.html", "options": None}, (platform, release)

@@ -11,6 +11,7 @@
 const { app, BrowserWindow, Menu, ipcMain, shell, dialog } = require("electron");
 const { spawn } = require("child_process");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 
 const REPO_ROOT = path.resolve(__dirname, "..");
@@ -364,19 +365,33 @@ function pageBackground() {
   return match ? match[1] : undefined;
 }
 
+// Windows 11 22H2 (build 22621) is the first Windows that draws a window's
+// material, and Electron's own backgroundMaterial asks it to (pilot decision
+// P46). Anywhere else the window is what it always was. The page is told
+// through its own address, never a channel, and the choice is made once here.
+const MICA_MIN_BUILD = 22621;
+const MICA_CLEAR = "#00000000";
+function micaAvailable() {
+  if (process.platform !== "win32") return false;
+  const build = Number(String(os.release()).split(".")[2]);
+  return Number.isInteger(build) && build >= MICA_MIN_BUILD;
+}
+
 function createWindow() {
   // No menu in the packaged app (the council's E-7): Electron's default one
   // carries reload, zoom and developer-tools accelerators, and the last
   // would open the console devTools below keeps closed. From source the
   // menu stays, for the person working on the shell.
   if (app.isPackaged) Menu.setApplicationMenu(null);
+  const mica = micaAvailable();
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 1100,
     minHeight: 700,
     title: PRODUCT_NAME,
-    backgroundColor: pageBackground(),
+    backgroundColor: mica ? MICA_CLEAR : pageBackground(),
+    ...(mica ? { backgroundMaterial: "mica" } : {}),
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -393,7 +408,8 @@ function createWindow() {
   // One page, no navigation, no pop-ups: the renderer has nowhere else to go.
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.webContents.on("will-navigate", (event) => event.preventDefault());
-  win.loadFile(path.join(__dirname, "renderer", "index.html"));
+  win.loadFile(path.join(__dirname, "renderer", "index.html"),
+    mica ? { query: { material: "mica" } } : undefined);
   return win;
 }
 

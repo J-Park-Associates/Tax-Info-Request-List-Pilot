@@ -330,7 +330,41 @@ skipped by setting `pilot.terms.accepted` and `pilot.tour.seen` in local storage
 3. Neither third-party integration should be added by a builder without
    Jason's explicit approval of the exact package and version.
 
-## Next job after Build D: try Mica (Jason: "Lets try mica", 2026-09-29)
+## Mica (2026-09-29, same branch and PR #9; P46, `SPEC-mica.md`): BUILT, not yet run on Windows
+
+Jason chose to ship Mica in 0.2 and made a one-time exception to the
+one-job-per-session rule, so the same session wrote `SPEC-mica.md` and built it.
+**Review 3 must therefore also review that SPEC**, not only the code. Choices
+taken as recommended: page paint A (pale wash over Mica, denser header),
+level mapping A (Mica under everything, set once at launch, Solid paints an
+opaque page over it).
+
+**What changed:** `app/main.js` (the one exception to "no main.js": a
+`micaAvailable()` check for Windows build 22621+, a clear window colour and
+`backgroundMaterial: "mica"` only then, and a `?material=mica` query on
+`loadFile`); `glass.js` (adds `glass-mica` from that query); `glass.css`
+(`--glass-mica-wash`, a denser header tint, the mica body rules, and the
+opaque reset inside both fallback blocks); tests; `test_single_source`'s window
+colour claim now accepts `mica ? MICA_CLEAR : pageBackground()`. No new
+channel, no preload change, no package.
+
+**Checked here:** ruff clean; map current; `test_glass` (28, including a
+contrast proof over Mica from black to white and a run of the real `main.js`
+against a stand-in Electron on pretend Windows 11, Windows 10, Linux and Mac),
+`test_pilot`, `test_tour`, `test_layers`, `test_single_source`,
+`test_repo_map` and `test_api` (357) pass under Python 3.11 and 3.13. In the
+cloud Chromium, with a dark and a light colour standing in for the material:
+the class is set, the wash and the denser header tint apply, Solid paints the
+opaque page, and the text sweep is clean at all three levels
+(`7-mica-*.png` in `pilot/reviews/glass-screens/`).
+
+**Not checked (cannot be, in the cloud):** real Mica on a real Windows 11 PC,
+the title bar, and Windows' Transparency effects switch. Jason's steps are in
+`SPEC-mica.md` section 8. If real Mica shows white or nothing, the likely
+causes are the window colour not being clear or the build number test; the
+rollback is `SPEC-mica.md` section 9.
+
+## Earlier brief for the Mica job (now built, kept for its facts)
 
 A new job, not part of Build D (SPEC-glass forbids `main.js` edits, P32). It
 needs its own SPEC (opus, high effort), then a sonnet build, then an opus
