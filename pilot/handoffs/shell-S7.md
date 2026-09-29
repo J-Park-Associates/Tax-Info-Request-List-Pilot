@@ -107,9 +107,9 @@ The repository map was refreshed last (`repo_map.py update`, then `check` and
 - S6 merges this branch. `app/renderer/index.html` will conflict with S4's
   edits at the script block at the bottom (this branch adds two `<script>`
   lines before `tooltip.js`); keep both sides' lines, with the two vendor lines
-  after `app.js` and before `tooltip.js`. `tests/test_shell.py` may conflict
+  before `app.js` (see rebuild 1, F1). `tests/test_shell.py` may conflict
   where S4 extends `SHELL_FILES` and the loading-order test (that test's script
-  list now starts `app.js, *FLOATING_UI_SCRIPTS, tooltip.js`).
+  list now starts `*FLOATING_UI_SCRIPTS, app.js, tooltip.js`).
 - Update SPEC 8.5 (on `claude/admiring-lamport-bp1sse`, not touched here): the
   hover delay stays 500 ms, focus shows the tip on every control except the
   search box, and placement is Floating UI's. SPEC 14's tooltip claims that

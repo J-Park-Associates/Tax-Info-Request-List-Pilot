@@ -158,6 +158,13 @@ const crumbs = (page) => page.evaluate(() => [...document.querySelectorAll("#cru
   await page.waitForTimeout(150);
   check("the focused search box shows no tip", !(await tipShown()), null);
   await page.mouse.move(0, 0);
+  await page.hover("#sort");
+  await page.waitForTimeout(200);
+  check("hover shows no tip at 200 ms", !(await tipShown()), null);
+  await page.waitForTimeout(250);
+  check("hover shows the tip by 450 ms", await tipShown(), null);
+  await page.mouse.move(0, 0);
+  await page.waitForTimeout(100);
   const icon = await page.evaluate(() => { const r = document.querySelector("#find-wrap .icon").getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
   await page.mouse.move(icon.x, icon.y);
   await page.waitForTimeout(700);
@@ -182,6 +189,32 @@ const crumbs = (page) => page.evaluate(() => [...document.querySelectorAll("#cru
     check(`the tip stays inside the window at the ${where} edge`, box.left >= 7.5 && box.top >= 7.5 && box.right <= box.w - 7.5 && box.bottom <= box.h - 7.5, box);
     await page.mouse.move(0, 0);
   }
+  // A focused control inside a scrolling box: the tip follows it, then goes when it is scrolled away.
+  await page.evaluate(() => {
+    const box = document.createElement("div");
+    box.id = "scroll-box";
+    for (const [prop, value] of [["position", "fixed"], ["left", "300px"], ["top", "200px"], ["width", "200px"], ["height", "100px"], ["overflow", "auto"]]) box.style.setProperty(prop, value);
+    const b = document.createElement("button");
+    b.id = "scroll-anchor";
+    b.style.setProperty("margin-top", "40px");
+    b.textContent = "x";
+    const pad = document.createElement("div");
+    pad.style.setProperty("height", "600px");
+    box.append(b, pad);
+    document.body.append(box);
+    setTip(b, "Follows its button");
+  });
+  await page.focus("#scroll-anchor");
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Tab");
+  await page.waitForTimeout(150);
+  check("a tip shows on a control inside a scrolling box", await tipShown(), null);
+  await page.evaluate(() => { document.getElementById("scroll-box").scrollTop = 10; });
+  await page.waitForTimeout(150);
+  check("the tip stays while its element is in view", await tipShown(), null);
+  await page.evaluate(() => { document.getElementById("scroll-box").scrollTop = 300; });
+  await page.waitForTimeout(150);
+  check("the tip is hidden once its element is scrolled out of view", !(await tipShown()), null);
   await context.close();
 }
 

@@ -1,6 +1,6 @@
 // The custom tooltip (pilot SPEC-shell.md section 8.5, decisions P63, P65).
 //
-// Any element with a data-tip attribute gets one: after 500 ms of hover, or
+// Any element with a data-tip attribute gets one: after 300 ms of hover, or
 // at once when the keyboard reaches it (any control but the search box). Esc
 // and moving away hide it. There is one #tip element, role="tooltip", tied to
 // its element with aria-describedby while it shows. Floating UI places it and
@@ -13,7 +13,7 @@
 // the code that draws the element. A tip that is a name which may fit on the
 // screen is set with setTipIfCut() and shows only when the name is cut.
 
-const TIP_DELAY_MS = 500;
+const TIP_DELAY_MS = 300;
 const TIP_GAP = 4;
 const TIP_MARGIN = 8;
 
@@ -52,7 +52,8 @@ function setTipIfCut(node, words) {
 
 // Placement is Floating UI's (vendor/floating-ui, loaded before this file):
 // below the element, 4 off it, flipped above when there is no room and
-// shifted to stay 8 inside the window. Timing, focus, Esc and the words stay
+// shifted to stay 8 inside the window, and hidden once its element is
+// scrolled out of view (hide). Timing, focus, Esc and the words stay
 // ours. computePosition answers later, so a hide that came first wins.
 function placeTip(node, tip) {
   tip.style.setProperty("left", "0");
@@ -64,9 +65,14 @@ function placeTip(node, tip) {
       FloatingUIDOM.offset(TIP_GAP),
       FloatingUIDOM.flip({ padding: TIP_MARGIN }),
       FloatingUIDOM.shift({ padding: TIP_MARGIN }),
+      FloatingUIDOM.hide(),
     ],
-  }).then(({ x, y }) => {
+  }).then(({ x, y, middlewareData }) => {
     if (tipFor !== node) return;
+    if (middlewareData.hide && middlewareData.hide.referenceHidden) {
+      hideTip();
+      return;
+    }
     tip.style.setProperty("left", `${x}px`);
     tip.style.setProperty("top", `${y}px`);
   });

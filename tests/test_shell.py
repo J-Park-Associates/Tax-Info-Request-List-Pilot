@@ -45,8 +45,8 @@ SHELL_FILES = ("shell.js", "tooltip.js")
 #: Files that hold no ``title`` attribute (SPEC 13). S4 adds app.js and
 #: index.html when it deletes the last ones.
 TITLE_FREE = ("shell.js", "tooltip.js", "shell.css", "pilot.js", "tour.js")
-#: Floating UI, vendored (decision P86), in the order index.html loads it: the
-#: DOM build asks for the core build's global, so core comes first.
+#: Floating UI, vendored (Jason's ruling 5, 2026-09-29), loaded before app.js, core
+#: first: the DOM build asks for the core build's global.
 FLOATING_UI = RENDERER / "vendor" / "floating-ui"
 FLOATING_UI_SCRIPTS = ("vendor/floating-ui/floating-ui.core.umd.min.js", "vendor/floating-ui/floating-ui.dom.umd.min.js")
 #: SHA-256 of each vendored file, the bytes of the published packages
@@ -335,10 +335,10 @@ def test_the_loading_order_is_the_specs_and_the_csp_is_unchanged():
     html = read("index.html")
     styles = [html.index(f'href="{name}"') for name in ("style.css", "pilot-ui.css", "shell.css", "pilot-style.css")]
     assert styles == sorted(styles)
-    scripts = [html.index(f'src="{name}"') for name in ("app.js", *FLOATING_UI_SCRIPTS, "tooltip.js", "shell.js", "pilot-content.js", "pilot.js", "tour.js")]
+    scripts = [html.index(f'src="{name}"') for name in (*FLOATING_UI_SCRIPTS, "app.js", "tooltip.js", "shell.js", "pilot-content.js", "pilot.js", "tour.js")]
     assert scripts == sorted(scripts)
     # Every script is a file of the app itself: no scheme, no host, no CDN.
-    sources = re.findall(r"<script[^>]*\bsrc=\"([^\"]+)\"", html)
+    sources = re.findall(r"""<script[^>]*\bsrc=[\"']?([^\"'\s>]+)""", html)
     assert len(sources) == len(scripts)
     for source in sources:
         assert not re.match(r"^([a-z][a-z0-9+.-]*:|//|/)", source, re.I), source
@@ -348,7 +348,7 @@ def test_the_loading_order_is_the_specs_and_the_csp_is_unchanged():
 
 
 def test_the_vendored_floating_ui_is_the_pinned_bytes_and_nothing_else():
-    """Decision P86: placement is Floating UI's, copied unedited. The hashes
+    """Jason's ruling 5: placement is Floating UI's, copied unedited. The hashes
     are the published packages' files; an edit, an upgrade or an extra file
     fails here until the README and this table are changed on purpose."""
     found = {path.name for path in FLOATING_UI.iterdir()}
@@ -371,6 +371,26 @@ def test_the_tooltip_reaches_floating_ui_only_through_its_one_global():
     assert not re.search(r"\b(import|require)\b|getBoundingClientRect|innerWidth|innerHeight", js)
     assert not re.search(r"#[0-9a-fA-F]{3,8}\b|\brgba?\(|\d\s*(px|rem|em)\b", js)
     assert "style.setProperty(" in js and ".style." not in js.replace("style.setProperty(", "")
+
+
+def test_a_tip_goes_when_its_element_is_scrolled_out_of_view():
+    """Floating UI's hide() marks a reference clipped away; the tip follows
+    its element while it is visible and is hidden once it is not."""
+    js = stripped_js("tooltip.js")
+    assert "FloatingUIDOM.hide(" in js
+    then = js[js.index(".then("):js.index("function showTip")]
+    assert "middlewareData.hide" in then and "referenceHidden" in then and "hideTip()" in then
+
+
+def test_the_hover_delay_is_300_ms_and_keyboard_focus_waits_for_nothing():
+    """Jason's ruling 7 (2026-09-29): hover shows the tip after 300 ms; focus
+    shows it at once."""
+    js = stripped_js("tooltip.js")
+    assert re.search(r"const TIP_DELAY_MS = 300;", js)
+    assert js.count("TIP_DELAY_MS") == 2 and "setTimeout(() => showTip(node), TIP_DELAY_MS)" in js
+    focus = js[js.index('addEventListener("focusin"'):]
+    focus = focus[:focus.index("});")]
+    assert "showTip(node)" in focus and "TIP_DELAY_MS" not in focus
 
 
 def test_the_search_box_alone_shows_no_tooltip_on_keyboard_focus():
