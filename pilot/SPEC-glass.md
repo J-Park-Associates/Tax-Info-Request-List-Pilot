@@ -1,5 +1,10 @@
 # Pilot 0.2 - Build D: the glass theme - SPEC
 
+> **WITHDRAWN (P50, 2026-09-29). Nothing in this file is built.** Jason removed
+> the glass theme entirely (refraction P49, then glass itself); the pilot keeps
+> its original navy design. Kept only as the record of what was tried and why.
+
+
 Status: **revised 2026-09-29 for Jason's approval.** Decisions P30-P45
 (`DECISIONS.md`). Jason's answers: the backdrop is a **soft navy gradient**;
 **light mode only** for 0.2, dark mode later (P31). After seeing the first

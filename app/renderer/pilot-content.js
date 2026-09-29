@@ -6,7 +6,7 @@ const PILOT =
 {
   "edition": {
     "label": "Pilot edition",
-    "version": "0.1"
+    "version": "0.2"
   },
   "contact": {
     "email": "admin@jparkassociates.com"

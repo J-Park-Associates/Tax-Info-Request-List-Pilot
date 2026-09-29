@@ -2,7 +2,7 @@
   "schema": 2,
   "generated": "2026-09-29",
   "generator": "tools/repo_map.py",
-  "generator_sha256": "78ed6f39661035ec",
+  "generator_sha256": "22c7b60a1d198289",
   "module_table_sha256": "98e5907a447ae88b",
   "pipeline": [
     "tracker.api / create",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 193,
+    "nodes": 194,
     "edges": 1135,
-    "reused": 151
+    "reused": 150
   },
   "node_types": [
     "artifact",
@@ -3997,15 +3997,15 @@
       "id": "app/renderer/pilot-content.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "c15ad3e98a9cc524",
+      "sha256": "008f888083ce9a17",
       "lines": 234
     },
     {
       "id": "app/renderer/pilot-style.css",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "8f25d161e7e63e20",
-      "lines": 275
+      "sha256": "23343fa8d22281ff",
+      "lines": 291
     },
     {
       "id": "app/renderer/pilot.js",
@@ -4018,16 +4018,16 @@
       "id": "app/renderer/style.css",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "39dc0db27c668ae2",
-      "lines": 1002,
+      "sha256": "fb22f7283f769cb8",
+      "lines": 1029,
       "role": "Desktop app styling."
     },
     {
       "id": "app/renderer/tour.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "1f0f8fb7537a564f",
-      "lines": 258
+      "sha256": "48174dfd101b5d08",
+      "lines": 261
     },
     {
       "id": "CLAUDE.md",
@@ -4127,15 +4127,15 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "7054ae67d6482b4f",
-      "lines": 53
+      "sha256": "87bf74ff82cffa6d",
+      "lines": 56
     },
     {
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "12ebc2a6e36df3d9",
-      "lines": 195
+      "sha256": "5bcbef02433462f6",
+      "lines": 406
     },
     {
       "id": "pilot/PROMPTS.md",
@@ -4162,8 +4162,8 @@
       "id": "pilot/SPEC-glass.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "a6be619795a904aa",
-      "lines": 981
+      "sha256": "c46669188ca523c8",
+      "lines": 986
     },
     {
       "id": "pilot/SPEC.md",
@@ -4341,6 +4341,13 @@
       "layer": "root",
       "sha256": "1c46e4e8b142b055",
       "lines": 70
+    },
+    {
+      "id": ".mcp.json",
+      "type": "file",
+      "layer": "root",
+      "sha256": "e38a124368a21b1b",
+      "lines": 8
     },
     {
       "id": "Build App.bat",
@@ -6672,8 +6679,8 @@
       "id": "tests/test_pilot.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a1b66bc38625fbaf",
-      "lines": 147,
+      "sha256": "7cc9b86db030c9ac",
+      "lines": 159,
       "exports": [
         "PILOT_JS",
         "RENDERER",
@@ -6694,6 +6701,7 @@
         "test_the_terms_cannot_be_escaped",
         "test_the_terms_have_every_field_and_a_positive_version",
         "test_the_tour_is_remembered_through_the_pilot_record",
+        "test_windows_contrast_themes_are_honoured_without_touching_the_normal_look",
         "tour_lines"
       ],
       "constants": {
@@ -8290,8 +8298,8 @@
       "id": "tests/test_tour.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "528441c7b67dcdbc",
-      "lines": 82,
+      "sha256": "c9903af73fd0a294",
+      "lines": 89,
       "exports": [
         "REPO",
         "test_a_step_that_points_says_what_to_expect_when_it_cannot",
@@ -8299,6 +8307,7 @@
         "test_every_step_sits_on_the_strip",
         "test_every_tour_anchor_is_an_element_the_page_has",
         "test_step_ids_are_unique_and_the_tour_opens_and_closes_centred",
+        "test_the_spot_follows_its_anchors_corner",
         "test_the_tour_only_points",
         "test_the_tour_text_carries_no_placeholder_but_the_email",
         "tour"
@@ -8719,8 +8728,8 @@
       "id": "tools/repo_map.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "78ed6f39661035ec",
-      "lines": 1234,
+      "sha256": "22c7b60a1d198289",
+      "lines": 1239,
       "cli": "python -m tools.repo_map",
       "exports": [
         "CRLF_CHECKOUT_SUFFIXES",
@@ -8743,6 +8752,7 @@
         "NODE_PREFIXES",
         "NO_TEST_FILE",
         "Node",
+        "OWNED_TYPES",
         "REQUIREMENTS_FILES",
         "ROOT",
         "SCHEMA_VERSION",

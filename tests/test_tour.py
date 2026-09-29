@@ -80,3 +80,10 @@ def test_the_tour_text_carries_no_placeholder_but_the_email():
 
     tokens = {t for s in strings(content()) for t in re.findall(r"\{[^}]*\}", s)}
     assert tokens <= {"{email}"}, tokens
+
+
+def test_the_spot_follows_its_anchors_corner():
+    js = (REPO / "app" / "renderer" / "tour.js").read_text(encoding="utf-8")
+    assert "borderTopLeftRadius" in js and '"--pilot-spot-radius"' in js
+    css = (REPO / "app" / "renderer" / "pilot-style.css").read_text(encoding="utf-8")
+    assert "var(--pilot-spot-radius" in css

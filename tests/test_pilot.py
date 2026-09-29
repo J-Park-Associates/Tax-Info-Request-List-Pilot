@@ -145,3 +145,15 @@ def test_the_shell_writes_the_pages_storage_as_the_window_closes():
     main = (REPO / "app" / "main.js").read_text(encoding="utf-8")
     assert 'win.on("close", () => win.webContents.session.flushStorageData());' in main
     assert "app.requestSingleInstanceLock()" in main
+
+
+def test_windows_contrast_themes_are_honoured_without_touching_the_normal_look():
+    """Microsoft's contrast-theme guidance: a forced-colors block keeps edges and focus."""
+    for name in ("style.css", "pilot-style.css"):
+        css = read(name)
+        block = re.search(r"@media \(forced-colors: active\) \{(.*)\n\}\n?$", css, flags=re.S)
+        assert block, f"the forced-colors block must be the last rule of {name}"
+        inner = block.group(1)
+        assert "CanvasText" in inner or "Highlight" in inner
+        assert not re.search(r"#[0-9a-fA-F]{3,8}\b|rgba?\(", inner), "system colours only"
+        assert "glass" not in css and "backdrop-filter" not in css

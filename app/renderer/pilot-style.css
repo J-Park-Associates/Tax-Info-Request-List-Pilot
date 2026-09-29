@@ -114,7 +114,7 @@
 
 .pilot-tour-spot {
   position: fixed;
-  border-radius: 8px;
+  border-radius: var(--pilot-spot-radius, 8px);
   box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.55);
   outline: 3px solid #f59e0b;
   transition: all 0.2s;
@@ -271,5 +271,21 @@
 @media (max-width: 520px) {
   .pilot-tour-compare {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Windows contrast themes (Microsoft Learn: "Contrast themes - Windows apps").
+   Chromium applies the user's system colours itself; these keep the edges that
+   background colour alone was drawing on the pilot's own surfaces. The rest of
+   the app is covered by the matching block at the end of style.css. */
+@media (forced-colors: active) {
+  .pilot-terms-card,
+  .pilot-tour-card,
+  .pilot-badge {
+    border: 1px solid CanvasText;
+  }
+
+  .pilot-tour-spot {
+    outline-color: Highlight;
   }
 }
