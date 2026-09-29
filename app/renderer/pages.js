@@ -45,6 +45,8 @@ let pagesLastLevel = "";       // the level drawn last, for the Clients switch
 let pagesClientsAll = false;   // the Clients switch: false is Work waiting
 let pagesSetAsideFor = "";     // the return whose Set aside fold a person opened
 let pagesSetAsideOpen = false;
+let pagesBroken = [];          // the rows of the page being drawn that could not be built: {name, err}
+let pagesDrawn = "";           // which route the page holds, so a failed draw keeps only its own
 
 // ── small helpers ─────────────────────────────────────────────────────
 function pagesDay(iso) {
@@ -116,6 +118,23 @@ function pagesCounts(counts, problem) {
   if (counts.needs_you) return { text: fill(words.need, { n: counts.needs_you }), tone: "needs" };
   if (counts.waiting) return { text: fill(words.waiting, { n: counts.waiting }), tone: "waiting" };
   return { text: words.complete, tone: "done" };
+}
+
+// One row (or group) that cannot be built is set aside and named at the end
+// of the draw (pagesReportBroken); every other row is still drawn. A page
+// never blanks for one bad row, and nothing is guessed to fill its place.
+function pagesSafe(name, make) {
+  try {
+    return make();
+  } catch (err) {
+    pagesBroken.push({ name: String(name || ""), err });
+    return null;
+  }
+}
+
+// The specs (or rows) `make` builds from a list, the failed ones left out.
+function pagesEach(list, nameOf, make) {
+  return list.map((one) => pagesSafe(nameOf(one), () => make(one))).filter((one) => one !== null);
 }
 
 function pagesByName(a, b) {
@@ -284,7 +303,7 @@ function pagesWorkRows(returns) {
     return { name: name(one), detail: one.household, status: said.text, tone: said.tone, date, menu: "return",
              step: { ...steps, route: pagesRoute(one.path) } };
   };
-  return [...need.map((one) => specOf(one, pagesDay(one.oldest))), ...wait.map((one) => specOf(one, pagesDue(one.due)))];
+  return [...pagesEach(need, name, (one) => specOf(one, pagesDay(one.oldest))), ...pagesEach(wait, name, (one) => specOf(one, pagesDue(one.due)))];
 }
 
 function pagesOverview() {
@@ -293,7 +312,7 @@ function pagesOverview() {
   const totals = firm.totals;
   const figures = h("div", { className: "figures" }, ...[[totals.need, words.figures.need], [totals.waiting, words.figures.waiting], [totals.complete, words.figures.complete]]
     .map(([n, label]) => h("div", { className: "figure" }, h("b", { className: "figure-number" }, String(n)), h("span", { className: "figure-label" }, label))));
-  const rows = pagesWorkRows(firm.returns).map(pagesRow);
+  const rows = pagesEach(pagesWorkRows(firm.returns), (spec) => spec.name, pagesRow);
   if (!rows.length) return [figures, pagesEmpty(words.empty.overview, pagesNextSort(firm))];
   return [figures, ...pagesGroup({ heading: words.work, first: true, blocks: [{ rows }] })];
 }
@@ -318,7 +337,7 @@ function pagesNeedsReview() {
   if (!groups.length) return [pagesEmpty(words.empty.needs_review, pagesNextSort(firm))];
   return groups.flatMap((group, i) => {
     const owner = pagesFirmReturn(group.path);
-    const rows = group.files.map((file) => pagesRow({
+    const rows = pagesEach(group.files, (file) => file.name, (file) => pagesRow({
       name: file.name, detail: file.suggestion || "", status: pagesReason(file.code), tone: "needs", date: pagesDay(file.received),
       menu: "file", step: { kind: "check", ret: group.path, name: file.name, handle: file.handle },
     }));
