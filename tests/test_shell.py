@@ -128,6 +128,9 @@ const EventEmitter = require("events");
 const realFs = require("fs");
 const [mainJs, scenarioJson] = process.argv.slice(2);
 const sc = JSON.parse(scenarioJson);
+// Off Windows the fallback is Electron's userData; "win32" is %LOCALAPPDATA%.
+Object.defineProperty(process, "platform", { value: sc.platform || "linux" });
+if (sc.localAppData !== undefined) process.env.LOCALAPPDATA = sc.localAppData;
 process.resourcesPath = process.resourcesPath || "/resources";
 const log = { menus: [], popups: [], sends: [], opened: [], backgrounds: [], windowOptions: null };
 let menuHandler = null;
@@ -416,7 +419,7 @@ def test_open_error_log_opens_the_named_file_and_says_so_when_there_is_none(tmp_
 
 def test_open_error_log_falls_back_to_the_shells_own_log_when_the_api_named_none(tmp_path):
     """Jason, 2026-09-29: with no data folder the failure is saved in the
-    fallback log (error.log in userData), and Open error log opens it
+    fallback log (error.log in the per-user folder), and Open error log opens it
     through the same lstat check; the named log wins when there is one."""
     userdata = tmp_path / "userdata"
     userdata.mkdir()
@@ -437,11 +440,38 @@ def test_open_error_log_falls_back_to_the_shells_own_log_when_the_api_named_none
     assert ran["opened"] == [str(named)]
 
 
+def test_open_error_log_opens_the_local_non_roaming_fallback_on_windows(tmp_path):
+    """Jason's ruling (2026-09-29): on Windows the fallback is
+    %LOCALAPPDATA%\\Tax Document Tracker Pilot\\error.log, never userData
+    (which is under the roaming %APPDATA%)."""
+    local = tmp_path / "local"
+    fallback = local / "Tax Document Tracker Pilot" / "error.log"
+    fallback.parent.mkdir(parents=True)
+    fallback.write_text("kept\n", encoding="utf-8")
+    roaming = tmp_path / "roaming"
+    roaming.mkdir()
+    (roaming / "error.log").write_text("wrong place\n", encoding="utf-8")
+    steps = [{"clickBar": _word("error_log")}]
+    ran = _run(tmp_path, steps, platform="win32", localAppData=str(local), userData=str(roaming))
+    assert ran["opened"] == [str(fallback)] and ran["sends"] == []
+
+
 def test_open_error_log_refuses_a_fallback_that_is_a_link_or_a_folder(tmp_path):
     userdata = tmp_path / "userdata"
     (userdata / "error.log").mkdir(parents=True)          # a folder is not a file
     steps = [{"clickBar": _word("error_log")}]
     ran = _run(tmp_path, steps, userData=str(userdata))
+    assert ran["opened"] == [] and ran["sends"][0]["message"]["missing"] is True
+    # A link is not a file either: the fallback is never opened through one.
+    linked = tmp_path / "linked"
+    linked.mkdir()
+    real = tmp_path / "real.log"
+    real.write_text("x\n", encoding="utf-8")
+    try:
+        (linked / "error.log").symlink_to(real)
+    except (OSError, NotImplementedError):
+        pytest.skip("this machine cannot make a symbolic link")
+    ran = _run(tmp_path, steps, userData=str(linked))
     assert ran["opened"] == [] and ran["sends"][0]["message"]["missing"] is True
 
 

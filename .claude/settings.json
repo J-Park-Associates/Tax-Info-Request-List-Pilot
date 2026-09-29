@@ -64,7 +64,15 @@
       "Read(//c/Users/*/AppData/Local/tax-document-tracker/**)",
       "Edit(//c/Users/*/AppData/Local/tax-document-tracker/**)",
       "Read(~/.local/state/tax-document-tracker/**)",
-      "Edit(~/.local/state/tax-document-tracker/**)"
+      "Edit(~/.local/state/tax-document-tracker/**)",
+      "Read(//c/Users/*/AppData/Local/Tax Document Tracker Pilot/error.log)",
+      "Edit(//c/Users/*/AppData/Local/Tax Document Tracker Pilot/error.log)",
+      "Read(//c/Users/*/AppData/Local/Tax Document Tracker Pilot/error.log.*)",
+      "Edit(//c/Users/*/AppData/Local/Tax Document Tracker Pilot/error.log.*)",
+      "Read(~/.config/Tax Document Tracker Pilot/error.log)",
+      "Edit(~/.config/Tax Document Tracker Pilot/error.log)",
+      "Read(~/.config/Tax Document Tracker Pilot/error.log.*)",
+      "Edit(~/.config/Tax Document Tracker Pilot/error.log.*)"
     ]
   }
 }

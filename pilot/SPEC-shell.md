@@ -552,7 +552,7 @@ every existing check in place.
 - **Open error log:** `main.js` opens the error log the API named
   (`vocab.shell.error_log`) with `shell.openPath` when it is a regular file
   and no symbolic link (the same test `openPath` makes), or, when the API
-  named none, the shell's fallback log (11.2) if it exists; otherwise it sends
+  named none, the shell's fallback log (11.2, in `%LOCALAPPDATA%\Tax Document Tracker Pilot`) if it exists; otherwise it sends
   `{id: "error_log", missing: true}` and the page shows the toast
   "No error log yet".
 - **Menu bar:** it stays hidden until Alt (`autoHideMenuBar`; Jason,
@@ -1178,8 +1178,9 @@ Verdicts: **reword** 67, **cut** 113 (not shown in the app any more),
 - **No error log yet:** when the tracker fails before it has a data folder
   (first start only), the API names no error log; the details are no longer
   printed on screen, they are saved in the shell's fallback log
-  (`error.log` in Electron's `userData` folder, capped at 256 KB with one
-  `.1` copy), and the notice says just "Tracker failed" (Jason, 2026-09-29).
+  (`error.log` in `%LOCALAPPDATA%\Tax Document Tracker Pilot`, a local folder
+  that does not roam, never the data home; capped at 256 KB with one `.1`
+  copy), and the notice says just "Tracker failed" (Jason, 2026-09-29).
 
 ### 11.3 New words: the menu (`vocab.menu`, `api.MENU`)
 

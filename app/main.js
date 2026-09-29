@@ -11,6 +11,7 @@
 const { app, BrowserWindow, Menu, ipcMain, nativeTheme, shell, dialog } = require("electron");
 const { spawn } = require("child_process");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 
 const REPO_ROOT = path.resolve(__dirname, "..");
@@ -103,12 +104,15 @@ let noLog = "Tracker failed";
 // instead, and a failed command's reply says only noLog.
 let errorLog = null;
 // The fallback (Jason, 2026-09-29): with no log named, a failure is still
-// SAVED, in this one file in Electron's own per-user app folder - not the
-// data home (nothing here creates a folder the data-home rules deny to a
-// package), not beside the program, not in the settings folder. Its text may
-// name a client: it stays on this PC in that file, never on screen, never
-// sent. Capped: past FALLBACK_CAP it becomes error.log.1 (one copy), so it
-// never holds more than twice that.
+// SAVED, in this one file in a LOCAL, NON-ROAMING per-user folder -
+// %LOCALAPPDATA%\Tax Document Tracker Pilot\error.log on Windows (Jason's
+// ruling: not %APPDATA%, which roams with a domain profile) - not the data
+// home (nothing here creates a folder the data-home rules deny to a package;
+// that one is tax-document-tracker-pilot, with hyphens), not beside the
+// program, not in the settings folder. Its text may name a client: it stays
+// on this PC in that file, never on screen, never sent. Capped: past
+// FALLBACK_CAP it becomes error.log.1 (one copy), so it never holds more
+// than twice that.
 const FALLBACK_LOG_NAME = "error.log";
 const FALLBACK_CAP = 256 * 1024;
 
@@ -122,9 +126,16 @@ function shellFailure(sentence, kind, extra = {}) {
   return { error: sentence, failure: { sentence, kind, seq: null, identifier: null }, warnings: [], ...extra };
 }
 
-// The fallback log's path, or null where Electron gives no per-user folder.
+// The fallback log's path, or null where there is no per-user folder. Electron
+// has no getPath name for LocalAppData, so on Windows it is read from the
+// environment (else the profile's AppData\Local); off Windows (the tests, a
+// dev run) it is Electron's own userData folder.
 function fallbackLogPath() {
   try {
+    if (process.platform === "win32") {
+      const local = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
+      return path.join(local, PRODUCT_NAME, FALLBACK_LOG_NAME);
+    }
     return path.join(app.getPath("userData"), FALLBACK_LOG_NAME);
   } catch {
     return null;
@@ -147,8 +158,15 @@ function appendToLog(file, text, capped) {
     if (capped) {
       fs.mkdirSync(path.dirname(file), { recursive: true });
       if (info && info.size > FALLBACK_CAP) {
-        fs.rmSync(`${file}.1`, { force: true });
-        fs.renameSync(file, `${file}.1`);
+        // A folder (or anything else) that will not give way at error.log.1
+        // must not stop later writes: the old log is dropped instead, so the
+        // cap still holds.
+        try {
+          fs.rmSync(`${file}.1`, { force: true });
+          fs.renameSync(file, `${file}.1`);
+        } catch {
+          fs.rmSync(file, { force: true });
+        }
       }
     }
     fs.appendFileSync(file, text, "utf8");
@@ -160,15 +178,12 @@ function appendToLog(file, text, capped) {
 // What only the error log may hold (decision 193, principle 7): a failed
 // command's stderr, and an error of the shell's or the page's own. It goes
 // to the log the API named, else to the fallback log; never on screen.
-// Whether there is a log to keep it in.
 function keepInLog(heading, text) {
   const named = Boolean(errorLog);
   const file = named ? errorLog : fallbackLogPath();
-  if (!file) return false;
-  if (!text) return true;
+  if (!file || !text) return;
   const stamp = new Date().toISOString();
   appendToLog(file, `${stamp} ${heading}\n${String(text).slice(0, STDERR_CAP)}\n`, !named);
-  return true;
 }
 
 // A failed reply whose log is not the API's (no data folder yet): it says so,

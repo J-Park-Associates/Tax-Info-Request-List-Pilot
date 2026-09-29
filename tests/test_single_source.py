@@ -412,6 +412,17 @@ def _deny_list_from_the_constants() -> list[str]:
     return [f"{tool}({path})" for path in paths for tool in ("Read", "Edit")]
 
 
+def _fallback_log_rules() -> list[str]:
+    """The shell's fallback error log and its one rotated copy (Jason,
+    2026-09-29: the log can name a client, so the agent's file tools are
+    denied it, in the two path styles the data-home rules use: Windows'
+    %LOCALAPPDATA% folder and, off Windows, Electron's userData)."""
+    product = json.loads(read("app/package.json"))["productName"]
+    folders = (f"//c/Users/*/AppData/Local/{product}", f"~/.config/{product}")
+    return [f"{tool}({folder}/error.log{suffix})"
+            for folder in folders for suffix in ("", ".*") for tool in ("Read", "Edit")]
+
+
 def _denied(deny: list[str], path: str) -> bool:
     """Whether a Read rule of ``deny`` matches the absolute ``path`` (``/c/...``),
     read the way the rules are written - gitignore's: ``**/`` any folders,
@@ -458,7 +469,7 @@ def test_the_agent_deny_list_names_the_data_home_and_every_file_that_names_a_cli
                 for path in (f"//c/Users/*/AppData/Local/{UPSTREAM_DATA_HOME_NAME}/**",
                              f"~/.local/state/{UPSTREAM_DATA_HOME_NAME}/**")
                 for tool in ("Read", "Edit")]
-    assert deny == _deny_list_from_the_constants() + upstream    # pilot P19: both data folders
+    assert deny == _deny_list_from_the_constants() + upstream + _fallback_log_rules()    # P19; Jason 2026-09-29
     owners = [line.split()[0] for line in read(".github/CODEOWNERS").splitlines()
               if line.strip() and not line.startswith("#")]
     assert "/.claude/" in owners, owners      # the list is the owner's to review
@@ -2469,6 +2480,9 @@ const Module = require("module");
 const realSpawn = require("child_process").spawn;
 const realFs = require("fs");
 const [mainJs, fake, calls] = process.argv.slice(2);
+// Off Windows the fallback log is in Electron's userData; FAKE_PLATFORM=win32
+// makes it %LOCALAPPDATA%\\Tax Document Tracker Pilot (Jason, 2026-09-29).
+Object.defineProperty(process, "platform", { value: process.env.FAKE_PLATFORM || "linux" });
 let handler = null;
 const sent = [];
 const appHandlers = {};
@@ -2507,9 +2521,8 @@ const event = { sender: { isDestroyed: () => false,
   }
   // The app closing (decision 203): what the shell does on will-quit.
   if (process.env.HARNESS_QUIT && appHandlers["will-quit"]) appHandlers["will-quit"]();
-  // The shell appends a failed child's stderr without waiting on it, and a
-  // pass ends after its click was answered; give both their moment before
-  // the harness ends.
+  // A failed child's stderr is appended before its reply is settled; a pass
+  // ends after its click was answered. Give that moment before the harness ends.
   setTimeout(() => {
     const pipeBroke = realFs.existsSync(`${process.env.FAKE_LOG}.pipe-broke`);
     process.stdout.write(JSON.stringify({ out, sent, pipeBroke }));
@@ -2795,6 +2808,32 @@ def test_the_fallback_log_is_capped_and_a_write_that_fails_never_throws(tmp_path
     assert (userdata / "error.log.1").read_text(encoding="utf-8").startswith("aged")
     fresh = (userdata / "error.log").read_text(encoding="utf-8")
     assert _STDERR_TEXT in fresh and "aged" not in fresh
+    # A folder named error.log.1 cannot be rotated into: the old log is
+    # dropped, the new failure is still written, the folder is left alone.
+    stuck = tmp_path / "stuck"
+    (stuck / "userdata" / "error.log.1").mkdir(parents=True)
+    (stuck / "userdata" / "error.log").write_text("aged\n" * 100_000, encoding="utf-8")
+    _run_the_shell(stuck, [["list"], ["templates"]], FAKE_LOG="")
+    assert (stuck / "userdata" / "error.log.1").is_dir()
+    stuck_now = (stuck / "userdata" / "error.log").read_text(encoding="utf-8")
+    assert _STDERR_TEXT in stuck_now and "aged" not in stuck_now
+    _run_the_shell(stuck, [["list"], ["templates"]], FAKE_LOG="")            # and the next write too
+    stuck_later = (stuck / "userdata" / "error.log").read_text(encoding="utf-8")
+    assert stuck_later.count(_STDERR_TEXT) > stuck_now.count(_STDERR_TEXT)
+    # A link where the log should be is never written through: its target
+    # is unchanged and the reply is too.
+    linked = tmp_path / "linked"
+    (linked / "userdata").mkdir(parents=True)
+    target = linked / "target.txt"
+    target.write_text("untouched\n", encoding="utf-8")
+    try:
+        (linked / "userdata" / "error.log").symlink_to(target)
+    except (OSError, NotImplementedError):
+        pass                                        # this machine cannot make a link
+    else:
+        ran = _run_the_shell(linked, [["list"], ["templates"]], FAKE_LOG="")
+        assert ran["out"][1]["reply"]["error"].endswith(api.SHELL_NO_LOG)
+        assert target.read_text(encoding="utf-8") == "untouched\n"
     # A folder where the log should be: the write fails, the reply is unchanged.
     broken = tmp_path / "broken"
     (broken / "userdata" / "error.log").mkdir(parents=True)
@@ -2806,6 +2845,30 @@ def test_the_fallback_log_is_capped_and_a_write_that_fails_never_throws(tmp_path
     (blocked / "userdata").write_text("a file", encoding="utf-8")
     ran = _run_the_shell(blocked, [["list"], ["templates"]], FAKE_LOG="")
     assert ran["out"][1]["reply"]["error"].endswith(api.SHELL_NO_LOG)
+
+
+def test_on_windows_the_fallback_log_is_local_and_never_the_roaming_or_data_folder(tmp_path):
+    """Jason, 2026-09-29: %LOCALAPPDATA%\\Tax Document Tracker Pilot\\error.log
+    (Electron has no getPath name for it), else the profile's AppData\\Local;
+    never userData (roaming %APPDATA%), never the data home nor the upstream
+    product's folder."""
+    from tracker.settings import DATA_HOME_NAME
+
+    product = json.loads(read("app/package.json"))["productName"]
+    assert product == "Tax Document Tracker Pilot" and product not in (DATA_HOME_NAME, UPSTREAM_DATA_HOME_NAME)
+    local = tmp_path / "local"
+    _run_the_shell(tmp_path, [["list"], ["templates"]], FAKE_LOG="", FAKE_PLATFORM="win32",
+                   LOCALAPPDATA=str(local))
+    assert _STDERR_TEXT in (local / product / "error.log").read_text(encoding="utf-8")
+    assert not (tmp_path / "userdata").exists()
+    assert not (local / DATA_HOME_NAME).exists() and not (local / UPSTREAM_DATA_HOME_NAME).exists()
+    # No LOCALAPPDATA: the profile's AppData\\Local.
+    home = tmp_path / "home"
+    other = tmp_path / "other"
+    other.mkdir()
+    _run_the_shell(other, [["list"], ["templates"]], FAKE_LOG="", FAKE_PLATFORM="win32",
+                   LOCALAPPDATA="", HOME=str(home), USERPROFILE=str(home))
+    assert _STDERR_TEXT in (home / "AppData" / "Local" / product / "error.log").read_text(encoding="utf-8")
 
 
 def test_a_failed_spawn_is_said_by_its_code(tmp_path):

@@ -569,8 +569,9 @@ changes nothing:
   deletes them for you: delete them. The app never writes an error log
   beside itself: with no data folder, a failed command's message says just
   "Tracker failed", and its details are saved only in a small error.log
-  file in the app's own per-user folder (Electron's `userData`, under
-  `%APPDATA%` on Windows), never shown. Help, Open error log opens it.
+  file in the app's own local folder, `%LOCALAPPDATA%\Tax Document Tracker
+  Pilot` (it does not roam with a profile, and it is not the data folder),
+  never shown. Help, Open error log opens it.
 
 There used to be a second one, a comparison flag on the ledger's own
 statuses against the request list's. There is nothing left for it to
