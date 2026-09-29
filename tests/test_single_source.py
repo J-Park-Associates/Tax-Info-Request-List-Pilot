@@ -3578,7 +3578,9 @@ def test_the_side_sentence_is_shown_nowhere_on_a_return_page(tmp_path):
               "status_key": "Missing", "side": side.key, "manual_override": "", "period": "", "year": 2025,
               "side_sentence": f"{side.sentence} (fabricated row)", "file_count": 0, "expected_count": 1, "received_date": None}
              for i, side in enumerate(reminder.SIDES)]
-    ran = run_pages(["pagesReturnGroups", "pagesItemName", "pagesItemStatus", "pagesItemDetail", "pagesDay", "pagesByName", "pagesReason"], f"""
+    ran = run_pages(["pagesReturnGroups", "pagesItemName", "pagesItemStatus", "pagesItemDetail", "pagesDay", "pagesByName", "pagesReason",
+                      "pagesSafe", "pagesEach", "pagesLabel", "pagesSafeName"], f"""
+let pagesBroken = [];
 const vocab = {{ decisions: {{ needs_review: "Needs Review", dismissed: "Not Requested", filed: "Filed" }},
   labels: {{ Missing: {{ key: "missing", label: "Outstanding" }} }}, overrides: {{ not_applicable: "Not Applicable" }},
   review_labels: {{ bucket_order: ["document"], buckets: {{}}, dismiss: "Not requested" }} }};
@@ -3601,7 +3603,9 @@ def test_an_accepted_rows_status_word_is_the_label_tables_not_the_records(tmp_pa
 
     item = {"identifier": "A01", "document": "W-2 - Acme", "short_name": "W-2 - Acme", "group": "received", "status_key": "Accepted",
             "manual_override": "Accepted", "period": "", "year": 2025, "file_count": 1, "expected_count": 1, "received_date": "2026-03-01"}
-    ran = run_pages(["pagesReturnGroups", "pagesItemName", "pagesItemStatus", "pagesItemDetail", "pagesDay", "pagesByName", "pagesReason"], f"""
+    ran = run_pages(["pagesReturnGroups", "pagesItemName", "pagesItemStatus", "pagesItemDetail", "pagesDay", "pagesByName", "pagesReason",
+                      "pagesSafe", "pagesEach", "pagesLabel", "pagesSafeName"], f"""
+let pagesBroken = [];
 const vocab = {{ decisions: {{ needs_review: "Needs Review", dismissed: "Not Requested", filed: "Filed" }},
   labels: {{ Accepted: {{ key: "Accepted", label: "Signed off (fabricated)", sentence: "A fabricated sentence." }} }},
   overrides: {{ not_applicable: "Not Applicable" }}, review_labels: {{ bucket_order: ["document"], buckets: {{}}, dismiss: "Not requested" }} }};

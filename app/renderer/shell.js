@@ -64,6 +64,18 @@ function screenWords() {
   return vocab.screen;
 }
 
+// The short line a notice shows for a failure the API words as a long
+// sentence (SPEC 11.1: five words, no path): the vocabulary's word for `key`
+// in vocab.screen.notices. Where the vocabulary has not been given that word
+// yet, the approved short line of the setup notice stands in - never a word of
+// the page's own - and the long sentence goes to the error log, whatever is
+// shown. The keys asked for and still missing are listed in the S4 rebuild
+// handoff for S6.
+function shortNotice(key) {
+  const said = vocab && vocab.screen && vocab.screen.notices ? vocab.screen.notices[key] : "";
+  return said || vocab.after_install.wait;
+}
+
 // A dotted key ("screen.sort.now") to its words, for data-tip-key.
 function shellWords(key) {
   let at = vocab;

@@ -31,3 +31,48 @@ Status: F1 done; F2-F8 follow in this file as they land.
   `test_a_row_that_cannot_be_built_is_left_out_and_named_on_every_page`,
   `test_a_page_that_cannot_be_built_whole_keeps_what_it_held_or_draws_its_frame`,
   `test_an_error_after_the_state_arrives_never_reaches_the_write_that_brought_it`.
+
+### F2 - the lock notice says one short line (fixed)
+
+`showLock` (`app.js`) draws only the API's `running` / `running_other` words ("In use on
+{host}"); the `on` and `greyed` sentences are no longer drawn. The harness stub no longer
+blanks them: it carries S1's real `LOCK_ON` and `LOCK_GREYED` (and a `pass` on the locked
+scenario, so `on` would be filled if it were drawn).
+
+### F3 - reader, machine, pause and feed notices are short words, the sentences go to the error log (fixed)
+
+- New `shortNotice(key)` (`shell.js`): the vocabulary's word `vocab.screen.notices[key]`; where
+  it is missing, the approved setup line `vocab.after_install.wait` ("Setup needs attention",
+  S1's `AFTER_INSTALL_WAIT`). No word is invented.
+- `renderMachineNotices` (new, `app.js`): the reader warning and the machine warnings are one
+  notice each (`reader`, `machine`), the API's sentences to `window.tracker.logError` when
+  the notice first shows. `syncNotices` now takes an optional `detail` per notice and logs it.
+- `pagesHouseholdNotices` (`pages.js`): a pause with a scope is `renamed` (with Accept), a year's
+  pause (no scope) is `paused`, the feeds are one notice `feed`; the sentences go to the log.
+  The two-years notice reads `vocab.household.two_open_years` as before (S1's is already five words).
+- A keyed notice is now its own line even when another says the same words (`notice()` matches
+  on the key too), so the fallback word on two different failures never merges into "(2 times)".
+- The stub (`pilot/harness/stub.js`) carries S1's real long sentences constant for constant:
+  `READER_PATH_WARNING` (with `C:\JPA Tracker`), `LEFT_BEHIND` and `PROGRAM_ON_REMOVABLE` as
+  the two machine warnings (made-up paths), `HOUSEHOLD_PAUSED`, `FEED_UNRESOLVED`,
+  `FINDINGS_WAIT`, `LOCK_ON`, `LOCK_GREYED`, and S1's `after_install.heading` ("After installing:
+  needs a person") and `wait`. `app-stub.js` mirrors the two `notice` changes.
+- Tests: `test_no_notice_draws_more_than_five_words_or_a_path_even_over_the_apis_long_sentences`
+  (runs the stub in a vm and the app's own notice functions; every drawn notice five words at
+  most, no drive letter or backslash or slash, each long sentence in the log and never drawn),
+  `test_a_notice_shows_the_vocabularys_short_word_when_it_has_one`,
+  `test_a_notice_falls_back_to_the_setup_line_for_a_word_the_vocabulary_lacks`,
+  the two household-notice tests, and `interact.mjs` (the same rule over four scenarios in the
+  real `app.js`). `test_api`'s machine-warning test now pins the short-line form.
+
+### Missing vocabulary keys (for S6 / S1; the app reads them, and falls back until they exist)
+
+All under `vocab.screen.notices` (SPEC 11.4 lists only `drive` there):
+
+| Key | Read by | Words SPEC names |
+|---|---|---|
+| `reader` | the reader warning | "Install folder name too long" (E28) |
+| `machine` | machine warnings (S1 sends sentences only; a code per warning, as `left_behind_warnings` already yields, would let each have its own line, e.g. `drive` = "Drive not signed in") | E30 |
+| `renamed` | a pause with a scope (with Accept) | "Folder renamed" (E47) |
+| `paused` | a year's pause (no Accept) | none named |
+| `feed` | a feed that resolves to nothing | none named (6.5) |

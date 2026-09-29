@@ -2474,14 +2474,18 @@ def test_without_a_data_home_the_pages_error_never_points_at_an_error_log_that_i
     assert "error log" in PAGE_ERROR_NO_LOG and "no error log" in PAGE_ERROR_NO_LOG
 
 def test_the_first_screen_says_every_machine_warning_in_a_notice_of_its_own():
-    """The app adds no word of its own: each sentence is the API's, drawn as
-    text into a notice that stays until a person dismisses it (decisions 186
-    and 193; SPEC 2.2 E30)."""
+    """SPEC 2.2 E30 and 11.1: each machine warning is a notice that stays until
+    a person dismisses it (decisions 186 and 193), in its short line; the API's
+    sentence, which can name a folder, goes to the error log and is never drawn
+    (the drawing is pinned in test_shell)."""
     renderer = Path(__file__).resolve().parent.parent / "app" / "renderer"
     js = (renderer / "app.js").read_text(encoding="utf-8")
     html_text = (renderer / "index.html").read_text(encoding="utf-8")
     assert 'id="machine-warnings"' not in html_text
-    assert 'syncNotices("machine", (listed.machine_warnings || []).map((sentence) => ({ key: sentence, failure: { sentence, kind: "warning" } })));' in js
+    body = js[js.index("function renderMachineNotices("):]
+    body = body[:body.index("\n}\n")]
+    assert 'syncNotices("machine"' in body and 'shortNotice("machine")' in body and "detail: machine.join" in body
+    assert "renderMachineNotices(listed);" in js
 
 
 def test_move_schedule_here_moves_the_schedule_from_the_packaged_app(capsys, demo_root, monkeypatch):

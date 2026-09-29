@@ -58,18 +58,38 @@
   vocab.reasons = Object.fromEntries(Object.entries(SHORT).map(([code, short]) => [code, { short }]));
   const STAGE_SHORT = ["Heads up", "Checking in", "Deadline near", "Final notice"];
   vocab.reminder = Object.assign({}, vocab.reminder, { stages: vocab.reminder.stages.map((one, i) => Object.assign({}, one, { short: STAGE_SHORT[i] })) });
-  // The words the notices will have once S1 has worded them (SPEC 11.2): the
-  // real vocabulary still holds today's long sentences.
-  vocab.household = Object.assign({}, vocab.household, { two_open_years: "Two years open", accept_folder_name: "Accept" });
+  // The words S1's API sends for the notices (claude/sharp-goldberg-jmfynk:
+  // tracker/api.py), constant for constant - including the LONG sentences the
+  // app must not draw (the lock's `on` and `greyed`, the reader's warning, the
+  // pause, a feed). The vocabulary this branch dumps still holds older words.
+  vocab.household = Object.assign({}, vocab.household, { two_open_years: "Two years open; sorting paused", accept_folder_name: "Accept the folder's name" });
   vocab.room = Object.assign({}, vocab.room, { heading: "Names shortened to fit" });
   // SPEC 2.5 E68: the bucket headings are the words alone (S1 cuts the descriptions).
   vocab.review_labels = Object.assign({}, vocab.review_labels, {
     buckets: { document: "Documents", container: "Emails and zips", not_a_document: "Not documents" },
   });
-  vocab.after_install = Object.assign({}, vocab.after_install, { heading: "Setup needs attention" });
+  vocab.after_install = Object.assign({}, vocab.after_install, { heading: "After installing: needs a person", wait: "Setup needs attention" });
   vocab.lock = Object.assign({}, vocab.lock, {
-    running: "In use on {host}", running_other: "In use on {host}", on: "", greyed: "", left_behind: "Stuck lock from {host}",
+    running: "In use on {host}", running_other: "{label} in use on {host}", on: "It is on {household}: {name}.",
+    greyed: "This return's buttons are greyed while it runs and come back by themselves the moment it lets go.",
+    left_behind: "Stuck lock from {host}",
   });
+  // The long sentences of the API's other sources, as sent (tracker/ocr.py,
+  // households.py, runner.py, settings.py at S1's tip); paths made up.
+  const LONG = {
+    reader: "Move the app to a shorter folder, for example C:\\JPA Tracker; scans can't be read from here",
+    machine: [
+      "Left over from an earlier version and no longer used: C:\\Made Up\\Tracker\\old-run.log. They hold client names, and nothing deletes them for you - delete them. "
+        + "The tracker keeps its database and its run log in C:\\Users\\Someone\\AppData\\Local\\Tracker now.",
+      "The app is running from a removable drive (E:\\Tracker). The schedule runs whatever program sits there, every pass, so it is not installed from here: "
+        + "copy the app's folder to this computer's own disk (a short path, such as C:\\Tools), start it from there and press Install Schedule.",
+    ],
+    paused: "Paused: this folder's name and its record's name disagree. Nothing is sorted, laid out or drafted for the household until a person opens it in the app and "
+      + "accepts the folder's name, or gives the folder back the name its record holds.",
+    feed: "this drop folder is set to feed Lopez Household / 1040 - Ana Lopez, which has no active return for 2025",
+    findingsWait: "A household named above as malformed or as changed behind the tracker's back waits in the app until a person repairs it (runbook \u00a79); "
+      + "any other line above is for a person to look at. The rest of the practice runs as normal.",
+  };
 
   // ── made-up people ────────────────────────────────────────────────────
   // A body is the authoring format of one return: the four groups of rows a
@@ -224,7 +244,8 @@
     const owner = households.find((one) => path.indexOf(one.path) === 0);
     const hh = owner ? owner.name : "";
     const noticing = scenario === "household-notices" && hh === "Smith Family";
-    const lock = scenario === "locked" ? { started: "2026-03-03T06:00:00", host: "OFFICE-PC", age_minutes: 3, stale: false, engagement: path, label: "" }
+    const lock = scenario === "locked" ? { started: "2026-03-03T06:00:00", host: "OFFICE-PC", age_minutes: 3, stale: false, engagement: path, label: "",
+      pass: { household: "Smith Family", name: "1040 - John & Jane Smith" } }
       : scenario === "stale-lock" ? { started: "2026-03-02T06:00:00", host: "OFFICE-PC", age_minutes: 900, stale: true, engagement: path, label: "" } : null;
     return {
       paths: { engagement: path, inbox: owner ? owner.inbox : "", client_folder: owner ? owner.client_folder : "", status: `${ROOT}/status.html` },
@@ -232,8 +253,8 @@
       household: {
         path: owner ? owner.path : "", name: hh, members: [], contact: owner ? owner.contact : "", link: "",
         open_years: noticing ? [2025, 2024] : [2025],
-        pause: noticing ? { sentence: "Folder renamed", scope: "household", engagement: path, seq: 3 } : {},
-        feeds: noticing ? [{ label: "", warning: "Feeds a return that is not there" }] : [],
+        pause: noticing ? { sentence: LONG.paused, scope: "household", engagement: path, seq: 3 } : {},
+        feeds: noticing ? [{ label: "", warning: LONG.feed }] : [],
         returns: [], queue: 0, roll_year: null, shared_on: hh === "Lopez Household" ? "" : "2026-02-01",
       },
     };
@@ -277,9 +298,9 @@
 
   // The loud failures the old screen kept in banners, now notices (SPEC 2.2).
   const loud = scenario === "notices" ? {
-    reader_warning: "Install folder name too long",
-    machine_warnings: ["Drive not signed in"],
-    after_install: { failed: ["The daily job could not be registered."], findings: ["A household is malformed."], wait: "Waits for a person." },
+    reader_warning: LONG.reader,
+    machine_warnings: LONG.machine,
+    after_install: { failed: ["The daily job could not be registered."], findings: ["A household is malformed."], wait: LONG.findingsWait },
     misfits: [{ path: "x", where: "Clients/Old Files", sentence: "Not a household." }, { path: "y", where: "Clients/Scans", sentence: "Not a household." }, { path: "z", where: "Clients/Misc", sentence: "Not a household." }],
   } : {};
 

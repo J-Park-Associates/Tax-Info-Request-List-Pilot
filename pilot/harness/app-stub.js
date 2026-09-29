@@ -62,9 +62,9 @@ function drawNotice(entry) {
 }
 function notice(failure, { retry, action } = {}) {
   const kind = failure.kind || "failed";
-  let entry = notices.find((one) => one.sentence === failure.sentence && one.kind === kind);
+  let entry = notices.find((one) => one.sentence === failure.sentence && one.kind === kind && one.key === (failure.key || null));
   if (!entry) {
-    entry = { sentence: failure.sentence, kind, retry, action };
+    entry = { sentence: failure.sentence, kind, key: failure.key || null, retry, action };
     entry.node = Object.assign(document.createElement("div"), { className: `notice notice-${entry.kind}` });
     notices.push(entry);
     $("notices").append(entry.node);
@@ -83,7 +83,7 @@ function keyedNotice(key, failure, opts) {
   const had = keyedNotices.get(key);
   if (had && had.sentence === failure.sentence && had.kind === kind) return false;
   if (had && notices.indexOf(had.entry) !== -1) dismissNotice(had.entry);
-  keyedNotices.set(key, { sentence: failure.sentence, kind, entry: notice(failure, opts) });
+  keyedNotices.set(key, { sentence: failure.sentence, kind, entry: notice({ ...failure, key }, opts) });
   return true;
 }
 function clearNotice(key) {
@@ -94,7 +94,9 @@ function clearNotice(key) {
 function syncNotices(prefix, wanted) {
   const keep = new Set(wanted.map((one) => `${prefix}:${one.key}`));
   for (const key of [...keyedNotices.keys()]) if (key.indexOf(`${prefix}:`) === 0 && !keep.has(key)) clearNotice(key);
-  for (const one of wanted) keyedNotice(`${prefix}:${one.key}`, one.failure, one.opts);
+  for (const one of wanted) {
+    if (keyedNotice(`${prefix}:${one.key}`, one.failure, one.opts) && one.detail) window.tracker.logError(one.detail);
+  }
 }
 function failureSentence(err) {
   window.tracker.logError(String(err.message));

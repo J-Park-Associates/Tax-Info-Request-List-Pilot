@@ -214,13 +214,14 @@ function drawNotice(entry) {
 function notice(failure, { retry, action } = {}) {
   if (!failure || !failure.sentence) return null;
   const kind = failure.kind || "failed";
-  let entry = notices.find((one) => one.sentence === failure.sentence && one.kind === kind);
+  // A keyed notice is its own line even when another says the same short words.
+  let entry = notices.find((one) => one.sentence === failure.sentence && one.kind === kind && one.key === (failure.key || null));
   if (entry) {
     entry.count += 1;
     entry.retry = retry || entry.retry;
     entry.action = action || entry.action;
   } else {
-    entry = { sentence: failure.sentence, kind, identifier: failure.identifier || null, count: 1, retry, action };
+    entry = { sentence: failure.sentence, kind, identifier: failure.identifier || null, key: failure.key || null, count: 1, retry, action };
     entry.node = el("div", { className: `notice notice-${kind}` });
     notices.push(entry);
     $("notices").append(entry.node);
@@ -243,7 +244,7 @@ function keyedNotice(key, failure, opts) {
   const had = keyedNotices.get(key);
   if (had && had.sentence === failure.sentence && had.kind === kind) return false;
   if (had && notices.indexOf(had.entry) !== -1) dismissNotice(had.entry);
-  keyedNotices.set(key, { sentence: failure.sentence, kind, entry: notice(failure, opts) });
+  keyedNotices.set(key, { sentence: failure.sentence, kind, entry: notice({ ...failure, key }, opts) });
   return true;
 }
 
@@ -1666,12 +1667,12 @@ function showLock(lock) {
   }
   // The lock it was given, named by the API's label; the sentence for the
   // shown return only when it is the shown return (the review's S1).
-  const said = [lock.engagement && lock.engagement !== active
+  // One short line (SPEC 2.2 E31): the API's running / running_other words and
+  // nothing else; its `on` and `greyed` sentences are not shown.
+  const said = lock.engagement && lock.engagement !== active
     ? fill(words.running_other, { started, host: lock.host, label: lock.label })
-    : fill(words.running, { started, host: lock.host })];
-  if (lock.pass && lock.pass.name) said.push(fill(words.on, lock.pass));
-  said.push(words.greyed);
-  keyedNotice("lock", { sentence: said.join(" "), kind: "locked" });
+    : fill(words.running, { started, host: lock.host });
+  keyedNotice("lock", { sentence: said, kind: "locked" });
   setLocked(true);
   watchLock(lock);
 }
@@ -1858,14 +1859,7 @@ async function loadEngagements(preferPath, asked) {
   vocab = listed.vocab;
   applyVocabulary();
   adoptList(listed);
-  // Sticky notices: nothing dismisses them but a person, and they return only
-  // when the sentence changes. The reader's (the app sits too deep for its
-  // reader, decision 169, until it is moved), and the machine's own problems,
-  // each said until it is fixed (decision 186). The last pass is not a
-  // notice: the last-sort line says "Sort failed" (SPEC 8.3).
-  if (listed.reader_warning) keyedNotice("reader", { sentence: listed.reader_warning, kind: "warning" });
-  else clearNotice("reader");
-  syncNotices("machine", (listed.machine_warnings || []).map((sentence) => ({ key: sentence, failure: { sentence, kind: "warning" } })));
+  renderMachineNotices(listed);
   renderAfterInstall(listed.after_install);
   if (listed.needs_root) {
     $("root-input").value = clientsRoot;
@@ -1882,6 +1876,22 @@ async function loadEngagements(preferPath, asked) {
     engagements[0].path;
   if (chosen !== active) select(chosen);
   return true;
+}
+
+// Sticky notices: nothing dismisses them but a person, and they return only
+// when the sentence changes. The reader's (the app sits too deep for its
+// reader, decision 169, until it is moved), and the machine's own problems,
+// each said until it is fixed (decision 186). The last pass is not a
+// notice: the last-sort line says "Sort failed" (SPEC 8.3). Each is shown as
+// its short line; the API's sentence (which can name a folder) goes to the
+// error log when the notice first shows (SPEC 2.2 E28, E30; 11.1).
+function renderMachineNotices(listed) {
+  if (listed.reader_warning) {
+    if (keyedNotice("reader", { sentence: shortNotice("reader"), kind: "warning" })) window.tracker.logError(listed.reader_warning);
+  } else clearNotice("reader");
+  const machine = listed.machine_warnings || [];
+  syncNotices("machine", machine.length
+    ? [{ key: machine.join("\n"), failure: { sentence: shortNotice("machine"), kind: "warning" }, detail: machine.join("\n") }] : []);
 }
 
 // The list half of a `list` reply, without the vocabulary (decision 194):

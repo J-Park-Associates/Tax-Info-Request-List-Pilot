@@ -182,7 +182,9 @@ const crumbs = (page) => page.evaluate(() => [...document.querySelectorAll("#cru
   await page.evaluate(() => shellGo({ level: "household", household: "/clients/J Park & Associates/Smith Family" }));
   await page.waitForFunction(() => document.querySelectorAll("#notices .notice").length >= 3, null, { timeout: 5000 });
   const text = await page.textContent("#notices");
-  check("two years, folder renamed with Accept", text.includes("Two years open") && text.includes("Folder renamed") && text.includes("Accept"), text);
+  check("two years, folder renamed with Accept", text.includes("Two years open") && text.includes("Accept"), text);
+  const logged = await page.evaluate(() => window.HARNESS.logged.join("\n"));
+  check("the pause and the feed are short lines on screen and long sentences in the error log", !text.includes("Paused:") && !text.includes("drop folder") && logged.includes("Paused: this folder's name") && logged.includes("this drop folder is set to feed"), [text, logged]);
   await page.evaluate(() => shellGo({ level: "clients" }));
   check("they go when the household's pages do", await page.evaluate(() => !document.querySelector("#notices .notice")), null);
   await context.close();
@@ -202,6 +204,21 @@ const crumbs = (page) => page.evaluate(() => [...document.querySelectorAll("#cru
   const after = await page.evaluate(() => document.querySelectorAll("#notices .notice").length);
   check("a step nothing answers yet is one loud notice, never silence", after === before + 1, [before, after]);
   await context.close();
+}
+
+{ // every loud failure, over the API's long sentences: five words at most, no path (SPEC 11.1)
+  for (const scenario of ["notices", "household-notices", "locked", "stale-lock"]) {
+    const { context, page } = await open(`?mode=real&scenario=${scenario}`);
+    if (scenario !== "notices") {
+      await page.evaluate(() => shellGo({ level: "return", household: "/clients/J Park & Associates/Smith Family", year: 2025, ret: "/clients/J Park & Associates/Smith Family/2025/1040 - John & Jane Smith" }));
+      await page.waitForFunction(() => document.querySelector("#notices .notice"), null, { timeout: 5000 });
+    }
+    await page.waitForTimeout(300);
+    const texts = await page.evaluate(() => [...document.querySelectorAll("#notices .notice-text")].map((n) => n.textContent.trim()));
+    check(`${scenario}: notices are drawn`, texts.length > 0, texts);
+    check(`${scenario}: no notice is over five words or holds a path`, texts.every((t) => t.split(/\s+/).length <= 5 && !/[A-Za-z]:\\|\\|\//.test(t)), texts);
+    await context.close();
+  }
 }
 
 { // a count failure is one notice with Retry

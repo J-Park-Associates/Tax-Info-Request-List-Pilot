@@ -970,28 +970,162 @@ def test_only_the_household_year_and_return_pages_draw_an_h1():
 
 
 def test_the_household_pages_notices_are_two_years_folder_renamed_and_feeds(tmp_path):
-    """SPEC 6.5: while a household's pages are open its notices show: two
-    years open, folder renamed with Accept (only when the pause names a
-    scope), and every feed warning; they go with the household's pages."""
+    """SPEC 6.5 and 11.1: while a household's pages are open its notices show:
+    two years open, folder renamed with Accept (only when the pause names a
+    scope), a year's pause without it, and the feeds that do not resolve; each
+    in its short line, the API's long sentence in the error log; they go with
+    the household's pages."""
     ran = run_pages_dom("""
       const seen = [];
-      syncNotices = (prefix, wanted) => seen.push([prefix, wanted.map((one) => [one.key, one.failure.sentence, (one.opts && one.opts.action) ? one.opts.action.label : ""])]);
-      const home = { path: "h1", open_years: [2025, 2024], pause: { sentence: "Folder renamed", scope: "household" }, feeds: [{ warning: "Feeds nothing" }, {}] };
+      syncNotices = (prefix, wanted) => seen.push([prefix, wanted.map((one) => [one.key.split(":")[0], one.failure.sentence, (one.opts && one.opts.action) ? one.opts.action.label : "", one.detail || ""])]);
+      const home = { path: "h1", open_years: [2025, 2024], pause: { sentence: "PAUSED LONG", scope: "household" }, feeds: [{ warning: "FEED LONG" }, {}] };
       lastState = { household: home };
       pagesHouseholdNotices({ level: "household", household: "h1" });
-      lastState = { household: { ...home, pause: { sentence: "Folder renamed" }, open_years: [2025], feeds: [] } };
+      lastState = { household: { ...home, pause: { sentence: "PAUSED YEAR LONG" }, open_years: [2025], feeds: [] } };
       pagesHouseholdNotices({ level: "return", household: "h1" });
       pagesHouseholdNotices({ level: "clients" });
       lastState = { household: { ...home, path: "h2" } };
       pagesHouseholdNotices({ level: "year", household: "h1" });
       return seen;
     """, tmp_path, setup="""
-      vocab.household = { two_open_years: "Two years open", accept_folder_name: "Accept" };
+      vocab.household = { two_open_years: "Two years open; sorting paused", accept_folder_name: "Accept the folder's name" };
+      vocab.after_install = { wait: "Setup needs attention" };
+      vocab.screen.notices = { renamed: "Folder renamed", paused: "Year folder mismatch", feed: "Feed not resolved" };
       const acceptFolderName = () => {};
-    """)
-    assert ran[0] == ["household", [["two-years", "Two years open", ""], ["renamed", "Folder renamed", "Accept"], ["feed-0", "Feeds nothing", ""]]]
-    assert ran[1] == ["household", [["renamed", "Folder renamed", ""]]], "no Accept when the pause names no scope"
+    """, functions=["pagesHouseholdNotices", "shortNotice"])
+    assert ran[0] == ["household", [["two-years", "Two years open; sorting paused", "", ""],
+                                    ["renamed", "Folder renamed", "Accept the folder's name", "PAUSED LONG"],
+                                    ["feeds", "Feed not resolved", "", "FEED LONG"]]]
+    assert ran[1] == ["household", [["renamed", "Year folder mismatch", "", "PAUSED YEAR LONG"]]], "no Accept when the pause names no scope"
     assert ran[2] == ["household", []] and ran[3] == ["household", []], "another household's state, or a firm page, has none"
+
+
+def test_a_notice_whose_short_word_the_vocabulary_lacks_falls_back_to_the_setup_line_and_logs_the_sentence(tmp_path):
+    """No word is invented: with no `vocab.screen.notices.renamed` (and the
+    others) the approved setup line stands in, and the long sentence still
+    reaches the error log. The keys asked of S6 are listed in the handoff."""
+    ran = run_pages_dom("""
+      const seen = [];
+      syncNotices = (prefix, wanted) => seen.push(wanted.map((one) => [one.failure.sentence, one.detail || ""]));
+      lastState = { household: { path: "h1", open_years: [2025], pause: { sentence: "PAUSED LONG", scope: "household" }, feeds: [{ warning: "FEED LONG" }] } };
+      pagesHouseholdNotices({ level: "household", household: "h1" });
+      return seen;
+    """, tmp_path, setup="""
+      vocab.household = { two_open_years: "Two years open; sorting paused", accept_folder_name: "Accept the folder's name" };
+      vocab.after_install = { wait: "Setup needs attention" };
+      const acceptFolderName = () => {};
+    """, functions=["pagesHouseholdNotices", "shortNotice"])
+    assert ran == [[["Setup needs attention", "PAUSED LONG"], ["Setup needs attention", "FEED LONG"]]]
+
+
+#: The scenarios of the harness's stub that draw notices, and the pages' own functions that draw them.
+NOTICE_FUNCTIONS = ["renderMachineNotices", "renderAfterInstall", "renderShortOfRoom", "showLock", "lockStarted", "noticeOf"]
+
+
+def run_notices(probe: str, tmp_path: Path, vocab_notices: str = "{}"):
+    """Run the harness's own stub (pilot/harness/stub.js, with the API's long
+    sentences in it) in a vm, get the replies it gives, and hand them to the
+    functions of app.js, shell.js and pages.js that draw notices, as written.
+    Every notice they draw, and every line they send to the error log, is
+    recorded."""
+    if NODE is None:
+        pytest.skip("node is not on PATH (CI installs it)")
+    lifted = "\n".join([js_function(name, "app.js") for name in NOTICE_FUNCTIONS] + [js_function("shortNotice", "shell.js"),
+                                                                                       js_function("pagesHouseholdNotices", "pages.js")])
+    harness = (REPO / "pilot" / "harness" / "stub.js").read_text(encoding="utf-8")
+    script = tmp_path / "notices_probe.js"
+    script.write_text(f"""
+const vm = require("vm");
+const fill = (p, v) => p.replace(/\\{{(\\w+)\\}}/g, (_, k) => v[k] ?? "");
+const stubSource = {json.dumps(harness)};
+async function replies(scenario) {{
+  const window = {{ __VOCAB__: {{ commands: [], reminder: {{ stages: [{{}}, {{}}, {{}}, {{}}] }} }} }};
+  vm.runInContext(stubSource, vm.createContext({{ window, location: {{ search: `?scenario=${{scenario}}` }}, URLSearchParams, setTimeout, console, Date, Intl }}));
+  const list = await window.tracker.call(["list"]);
+  const state = await window.tracker.call(["state", "--engagement", list.engagements[0].path]);
+  return {{ list, state }};
+}}
+let vocab = null; let active = ""; let locked = false; let lockStale = false;
+const drawn = []; const logged = [];
+window = {{ tracker: {{ logError: (text) => logged.push(text) }} }};
+const keyedNotice = (key, failure) => {{ drawn.push([key, failure.sentence]); return true; }};
+const clearNotice = () => {{}};
+let syncNotices = (prefix, wanted) => {{ for (const one of wanted) {{ drawn.push([`${{prefix}}:${{one.key.slice(0, 8)}}`, one.failure.sentence]); if (one.detail) logged.push(one.detail); }} }};
+const stopLockWatch = () => {{}}; const setLocked = () => {{}}; const watchLock = () => {{}};
+const acceptFolderName = () => {{}};
+{lifted}
+(async () => {{
+  const out = await (async () => {{ {probe} }})();
+  process.stdout.write(JSON.stringify(out));
+}})();
+""", encoding="utf-8", newline="\n")
+    done = subprocess.run([NODE, str(script)], capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+#: Every notice the shell draws for a loud failure, over the API's real long sentences.
+PROBE_EVERY_NOTICE = """
+      const seen = [];
+      for (const scenario of ["notices", "household-notices", "locked", "stale-lock"]) {
+        const { list, state } = await replies(scenario);
+        vocab = list.vocab;
+        vocab.screen.notices = Object.assign({}, vocab.screen.notices, %s);
+        drawn.length = 0; logged.length = 0;
+        renderMachineNotices(list);
+        renderAfterInstall(noticeOf(list.after_install));
+        renderShortOfRoom([{ engagement: "r1", sentences: ["A LONG ROOM SENTENCE"] }]);
+        active = state.paths.engagement;
+        showLock(state.lock);
+        lastState = state;
+        pagesHouseholdNotices({ level: "household", household: state.household.path });
+        seen.push({ scenario, drawn: drawn.slice(), logged: logged.slice(), reader: list.reader_warning, machine: list.machine_warnings,
+                    pause: state.household.pause.sentence || "", lock: state.lock });
+      }
+      return seen;
+"""
+
+
+def _every_notice(tmp_path, short_words="{}"):
+    return run_notices(PROBE_EVERY_NOTICE % short_words, tmp_path)
+
+
+def test_no_notice_draws_more_than_five_words_or_a_path_even_over_the_apis_long_sentences(tmp_path):
+    """SPEC 11.1 (five words, no path of any kind) and 2.2 E28-E31: the reader's
+    warning (it names C:\\JPA Tracker), each machine warning, the pause, the
+    feed, the lock's `on` and `greyed` sentences are all long in the API, and
+    the harness's stub sends them long. The notices show a short line whatever
+    the vocabulary holds; the long sentences go to the error log."""
+    ran = _every_notice(tmp_path)
+    seen_long = set()
+    for one in ran:
+        for _key, sentence in one["drawn"]:
+            assert len(sentence.split()) <= 5, (one["scenario"], sentence)
+            assert not re.search(r"[A-Za-z]:\\|\\|/", sentence), (one["scenario"], sentence)
+        drawn = " ".join(sentence for _key, sentence in one["drawn"])
+        for long in [one["reader"], *(one["machine"] or []), one["pause"]]:
+            if long:
+                seen_long.add(long)
+                assert long[:30] not in drawn, "the API's long sentence is never drawn"
+                assert long in "\n".join(one["logged"]), "and it is in the error log"
+    assert len(seen_long) == 4, "the stub sent the reader's, both machine warnings and the pause"
+    locked = next(one for one in ran if one["scenario"] == "locked")
+    assert [sentence for key, sentence in locked["drawn"] if key == "lock"] == ["In use on OFFICE-PC"], "only the running line, not `on` or `greyed`"
+
+
+def test_a_notice_shows_the_vocabularys_short_word_when_it_has_one(tmp_path):
+    words = '{ reader: "Install folder name too long", machine: "Drive not signed in", renamed: "Folder renamed", paused: "Year mismatch", feed: "Feed not resolved" }'
+    ran = {one["scenario"]: one for one in _every_notice(tmp_path, words)}
+    shown = lambda name: [sentence for _key, sentence in ran[name]["drawn"]]  # noqa: E731
+    assert "Install folder name too long" in shown("notices") and "Drive not signed in" in shown("notices")
+    assert "Folder renamed" in shown("household-notices") and "Feed not resolved" in shown("household-notices")
+    assert "Setup needs attention" not in shown("notices")[:2], "the fallback is only for a word the vocabulary lacks"
+
+
+def test_a_notice_falls_back_to_the_setup_line_for_a_word_the_vocabulary_lacks(tmp_path):
+    ran = {one["scenario"]: one for one in _every_notice(tmp_path)}
+    shown = [sentence for _key, sentence in ran["notices"]["drawn"]]
+    assert shown[0] == "Setup needs attention" and shown[1] == "Setup needs attention"
 
 
 def test_one_item_without_a_group_is_named_in_a_notice_and_every_other_row_is_drawn(tmp_path):
