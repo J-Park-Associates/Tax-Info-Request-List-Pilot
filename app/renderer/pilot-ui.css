@@ -154,6 +154,160 @@ table.requests, .editor-table, .summary, .chip, .rem-stage-n,
   font-variant-numeric: tabular-nums;
 }
 
+/* ── Buttons (P52): one shape, four importances, two sizes ───────────────
+   An importance is a set of six custom properties; the shape reads them. A
+   context selector (the command bar, a dialog's danger button) only has to
+   set the properties, so no rule has to out-shout another and a disabled
+   button, which sets its own colours, can never be beaten by a hover. The
+   .btn display is style.css's own (inline-flex): this file does not redeclare
+   it, or it would out-rank .hidden. */
+
+.btn {
+  --b-fg: var(--navy);
+  --b-bg: var(--card);
+  --b-bd: var(--border-strong);
+  --b-hover: var(--surface-hover);
+  --b-hover-bd: var(--border-strong);
+  --b-active: var(--surface-pressed);
+  --b-dis-bg: var(--surface-disabled);
+  --b-dis-bd: var(--border);
+  min-height: var(--ctl-h);
+  padding: 0 var(--sp-3);
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  white-space: nowrap;
+  font-weight: var(--fw-strong);
+  color: var(--b-fg);
+  background: var(--b-bg);
+  border: 1px solid var(--b-bd);
+  border-radius: var(--radius-control);
+  box-shadow: none;
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.btn:hover { background: var(--b-hover); border-color: var(--b-hover-bd); }
+.btn:active { background: var(--b-active); border-color: var(--b-hover-bd); }
+.btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.btn svg { width: 16px; height: 16px; flex-shrink: 0; stroke: currentColor; }
+
+.btn-small {
+  min-height: var(--ctl-h-sm);
+  padding: 0 var(--sp-2);
+  gap: var(--sp-1);
+}
+.btn-small svg { width: 12px; height: 12px; }
+.editor-table .ed-unlearn { padding: 0 var(--sp-2); }
+
+/* Primary: the one main action of a region. */
+.btn-primary {
+  --b-fg: var(--card);
+  --b-bg: var(--navy);
+  --b-bd: var(--navy);
+  --b-hover: var(--navy-deep);
+  --b-hover-bd: var(--navy-deep);
+  --b-active: var(--navy-deep);
+}
+
+/* Subtle: commands in a bar, exits, links to other places. The contexts are
+   the ones index.html and app.js already give a class or a place, so no
+   markup is edited (README rule 1). */
+.btn-subtle,
+.toolbar > .btn:not(.btn-primary),
+.notice-act[data-act="dismiss"] {
+  --b-bg: transparent;
+  --b-bd: transparent;
+  --b-hover-bd: transparent;
+  --b-dis-bg: transparent;
+  --b-dis-bd: transparent;
+}
+
+/* Danger: removes, undoes or discards something. */
+.btn-danger,
+.dlg-discard,
+.r-unfile,
+.r-withdraw,
+.hh-feed-remove,
+.ed-unlearn,
+.ed-remove .btn,
+.person .editor-actions .btn,
+#btn-unlock,
+#btn-stop-pass {
+  --b-fg: var(--danger);
+  --b-bg: var(--card);
+  --b-bd: var(--border-strong);
+  --b-hover: var(--danger-hover-bg);
+  --b-hover-bd: var(--danger-border);
+  --b-active: var(--danger-hover-bg);
+  --b-dis-bg: var(--surface-disabled);
+  --b-dis-bd: var(--border);
+}
+
+/* Disabled is drawn, not faded: its own fill, text and border, and hover and
+   press change nothing. */
+.btn:disabled,
+.btn:disabled:hover,
+.btn:disabled:active {
+  opacity: 1;
+  color: var(--text-disabled);
+  background: var(--b-dis-bg);
+  border-color: var(--b-dis-bd);
+  cursor: default;
+}
+
+/* Quiet links that are not .btn: the same subtle look at .btn-small metrics.
+   Every property is set, because none of it comes from .btn. */
+.rem-quiet, .wiz-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+  min-height: var(--ctl-h-sm);
+  padding: 0 var(--sp-2);
+  font-weight: var(--fw-strong);
+  color: var(--navy);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  box-shadow: none;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.rem-quiet:hover, .wiz-back:hover {
+  color: var(--navy);
+  background: var(--surface-hover);
+  border-color: transparent;
+}
+.rem-quiet:active, .wiz-back:active { background: var(--surface-pressed); }
+.rem-quiet:focus-visible, .wiz-back:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+/* Selected is not primary: the accent means "the main action", so a chosen
+   control gets its own look. The review Cards/List switch is a segmented
+   control; the active return in the household card is marked with btn-primary
+   by app.js (not edited), and reads as selected here. */
+.mode-toggle {
+  display: inline-flex;
+  gap: var(--sp-half);
+  padding: var(--sp-half);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+}
+.mode-toggle .btn {
+  --b-bg: transparent;
+  --b-bd: transparent;
+  --b-hover-bd: transparent;
+}
+.mode-toggle .btn.on,
+.household-return .btn.btn-primary {
+  color: var(--navy);
+  background: var(--surface-selected);
+  border-color: var(--navy);
+  font-weight: var(--fw-strong);
+}
+.household-return .btn.btn-primary:disabled {
+  color: var(--text-disabled);
+  cursor: default;
+}
+
 /* ── Windows contrast themes (last, so it wins) ──────────────────────────
    System colours only. Section 9 of the SPEC; the button and selected-control
    rules are added with the buttons. */
@@ -163,12 +317,20 @@ table.requests, .editor-table, .summary, .chip, .rem-stage-n,
     border: 1px solid ButtonText;
   }
 
-  .btn:disabled {
+  .mode-toggle .btn.on,
+  .household-return .btn.btn-primary {
+    border: 2px solid Highlight;
+  }
+
+  .btn:disabled,
+  .btn:disabled:hover {
     color: GrayText;
     border-color: GrayText;
   }
 
-  .btn:focus-visible {
+  .btn:focus-visible,
+  .rem-quiet:focus-visible,
+  .wiz-back:focus-visible {
     outline: 2px solid Highlight;
   }
 }

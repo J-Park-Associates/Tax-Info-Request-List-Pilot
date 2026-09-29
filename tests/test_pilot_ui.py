@@ -142,3 +142,8 @@ def test_the_structure_pass_adds_no_remote_or_forbidden_thing():
     for media, selector, body in outside_root():
         if "!important" in body:
             assert any("prefers-reduced-motion" in m for m in media), selector.strip()
+
+
+def test_the_tour_leads_with_next():
+    js = read("tour.js")
+    assert re.search(r'next\.classList\.add\("btn-primary"\)', js)

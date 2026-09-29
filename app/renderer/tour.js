@@ -120,6 +120,7 @@ const PilotTour = (() => {
     const back = button("Back", previous);
     if (index === 0) back.setAttribute("disabled", "");
     const next = button(last ? "Finish" : "Next", forward);
+    next.classList.add("btn-primary");
     actions.appendChild(back);
     actions.appendChild(next);
     actions.appendChild(button("Close", stop));

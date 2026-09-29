@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 197,
     "edges": 1136,
-    "reused": 0
+    "reused": 153
   },
   "node_types": [
     "artifact",
@@ -4011,8 +4011,8 @@
       "id": "app/renderer/pilot-ui.css",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "23b61cd8f1b66b40",
-      "lines": 174,
+      "sha256": "2f6fef2eb48c59a2",
+      "lines": 336,
       "role": "Pilot Build E, the structure pass (P51-P54): one file that overrides style.css to give the app one button shape in four importances and two sizes, a four-step type ramp of two weights and a 4px spacing grid, loaded after style.css and before pilot-style.css so the original's files stay unedited.",
       "notes": "Its own tokens (:root) are the only place a colour, size or step is written; outside them tests/test_pilot_ui.py fails on a hex, a literal font size, weight or line height, or a padding, margin or gap off the grid. It never names .rem-preview: the reminder letter mirrors the emailed letter and keeps its own fonts and inks. It ends with a forced-colors block of system colours only. No url(), no @import, no @font-face, no bundled font."
     },
@@ -4035,8 +4035,8 @@
       "id": "app/renderer/tour.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "48174dfd101b5d08",
-      "lines": 261
+      "sha256": "0b539ac59dbc728d",
+      "lines": 262
     },
     {
       "id": "CLAUDE.md",
@@ -6756,8 +6756,8 @@
       "id": "tests/test_pilot_ui.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "dd79646020210220",
-      "lines": 146,
+      "sha256": "c7017b575cb5622a",
+      "lines": 149,
       "exports": [
         "COLOUR",
         "CSS_NAME",
@@ -6775,7 +6775,8 @@
         "test_the_structure_pass_loads_between_the_app_and_the_pilot",
         "test_the_structure_pass_uses_only_the_spacing_grid",
         "test_the_structure_pass_uses_only_the_type_ramp",
-        "test_the_structure_pass_writes_no_literal_colour_outside_its_tokens"
+        "test_the_structure_pass_writes_no_literal_colour_outside_its_tokens",
+        "test_the_tour_leads_with_next"
       ],
       "constants": {
         "CSS_NAME": "'pilot-ui.css'"
