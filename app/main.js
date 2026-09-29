@@ -87,15 +87,15 @@ const passes = new Map();
 // The renderer never names a path of its own, so anything else is refused.
 const openable = new Map();
 let pathKinds = {};           // vocab.path_kinds, once seen
-let notOpened = "Not opened; it has changed";
+let notOpened = "Not Opened; It Has Changed";
 // The shell's own sentences (decision 193): learned from vocab.shell, with
 // these defaults - word for word tracker.api's SHELL_* - for a first start.
-let killed = "Sort stopped: ran too long";
-let killedAt = "It was on {household}: {name}.";
-let noReply = "No reply from the tracker";
-let couldNotStart = "The tracker could not start";
-let couldNotSend = "Could not send; nothing changed";
-let noLog = "Tracker failed";
+let killed = "Sort Stopped: Ran Too Long";
+let killedAt = "It Was on {household}: {name}.";
+let noReply = "No Reply From the Tracker";
+let couldNotStart = "The Tracker Could Not Start";
+let couldNotSend = "Could Not Send; Nothing Changed";
+let noLog = "Tracker Failed";
 // The error log beside the tracker's database, as the API reports it
 // (vocab.shell.error_log): the shell never builds that path, and never
 // writes a log beside the program or in the settings folder (decision
@@ -227,14 +227,13 @@ function learn(result) {
     errorLog = said.error_log;
     openable.set(errorLog, "file");   // Help > Open error log, through openPath (5.5)
   }
-  // Every map the API named paths in: the reply's own, the state's, and the
-  // list a write carries. A row's key is "word row" and its kind is the word's.
-  for (const paths of [result && result.paths, result && result.state && result.state.paths,
-                       result && result.list && result.list.paths]) {
-    if (!paths || typeof paths !== "object") continue;
+  // A row's key is "word row" (a file name on the page), and its kind is the word's.
+  const paths = (result && result.paths) || (result && result.state && result.state.paths);
+  if (paths && typeof paths === "object") {
     for (const [key, value] of Object.entries(paths)) {
-      if (typeof value !== "string" || !value) continue;
-      openable.set(value, pathKinds[key] || pathKinds[key.split(" ", 1)[0]] || null);
+      if (typeof value === "string" && value) {
+        openable.set(value, pathKinds[key] || pathKinds[key.split(" ", 1)[0]] || null);
+      }
     }
   }
 }
@@ -398,7 +397,7 @@ function spawnTracker(args, payload, onProgress, onEnded) {
 // and a folder is opened only as a folder and a file only as a file.
 // With `reveal` the item is shown in File Explorer instead (a file selected in
 // its folder, a folder opened): the same allow-list, the same lstat, the same
-// refusal - a link on a file or a return name on the page, never a new path.
+// refusal - a file name on the page, never a new path.
 async function openPath(p, reveal) {
   if (typeof p !== "string" || !openable.has(p)) {
     return "That path is not one the tracker reported; nothing was opened.";

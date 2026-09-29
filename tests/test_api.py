@@ -10,6 +10,7 @@ the app records it, so no test touches a real one.
 import datetime as dt
 import json
 import os
+import re
 import shutil
 from pathlib import Path
 
@@ -2490,7 +2491,7 @@ def test_without_a_data_home_the_pages_error_never_points_at_an_error_log_that_i
     monkeypatch.setenv(ENV_DATA_HOME, "relative-data")
     shell = _vocab()["shell"]
     assert shell["error_log"] == ""
-    assert shell["page_error"] == PAGE_ERROR == "The app hit an error"
+    assert shell["page_error"] == PAGE_ERROR == "The App Hit an Error"
     assert not hasattr(api, "PAGE_ERROR_NO_LOG")
 
 def test_the_first_screen_says_every_machine_warning_in_a_banner_of_its_own():
@@ -2694,16 +2695,16 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
                                      draft_day=WEEKDAY_NAMES[DRAFT_WEEKDAY]),
                                  "move_confirm": api.SCHEDULE_MOVE_CONFIRM,
                                  "move_warning": api.SCHEDULE_MOVE_WARNING,
-                                 "button": "Schedule", "title": "Schedule on this computer",
-                                 "enabled_label": "Run the schedule", "on": "On", "off": "Off",
-                                 "start_label": "First run at", "every_label": "How often",
+                                 "button": "Schedule", "title": "Schedule on This Computer",
+                                 "enabled_label": "Run the Schedule", "on": "On", "off": "Off",
+                                 "start_label": "First Run At", "every_label": "How Often",
                                  "every_choices": [
-                                     {"minutes": 0, "label": "Once a day"},
-                                     {"minutes": 30, "label": "Every 30 minutes"},
-                                     {"minutes": 60, "label": "Every hour"},
-                                     {"minutes": 120, "label": "Every 2 hours"},
-                                     {"minutes": 240, "label": "Every 4 hours"},
-                                     {"minutes": 480, "label": "Every 8 hours"}],
+                                     {"minutes": 0, "label": "Once a Day"},
+                                     {"minutes": 30, "label": "Every 30 Minutes"},
+                                     {"minutes": 60, "label": "Every Hour"},
+                                     {"minutes": 120, "label": "Every 2 Hours"},
+                                     {"minutes": 240, "label": "Every 4 Hours"},
+                                     {"minutes": 480, "label": "Every 8 Hours"}],
                                  "note": "Scan works either way. Nothing is ever sent.",
                                  "loading": api.SCHEDULE_LOADING, "save": "Save", "cancel": "Cancel"}
     # The settings page's phone box: its label, its sentence and the
@@ -4431,7 +4432,7 @@ def test_edit_household_saves_feeds_and_the_state_carries_feeds_and_fed_by_with_
     words = api._vocab()["household"]
     assert words["feed_warning"] == api.FEED_WARNING
     assert words["return_warning"] == api.RETURN_WARNING
-    assert words["feed_warning"] == "Its members can drop here"   # P84: no placeholder left
+    assert words["feed_warning"] == "Its Members Can Drop Here"   # P84: no placeholder left
 
     # A feed the other household has no active return for this year is
     # said rather than resolved to nothing in silence.
@@ -5478,7 +5479,7 @@ def test_the_wizard_sends_every_catalog_row_and_the_tick_is_asked(capsys, demo_r
     nothing = {"household": HOUSEHOLD, "return_name": "Nothing Asked", "form": "1040",
                "items": [{**t, "asked": False} for t in api.FORM_TEMPLATES["1040"]]}
     code, payload = run(capsys, "create", stdin=nothing)
-    assert code == 1 and payload["error"] == "Tick at least one request"
+    assert code == 1 and payload["error"] == "Tick at Least One Request"
     assert not where(demo_root, "Nothing Asked").exists()
 
 
@@ -8057,32 +8058,32 @@ def test_an_edit_of_a_list_already_holding_one_issuer_name_twice_saves_and_warns
 
 def test_the_vocabulary_carries_every_word_201_shows():
     words = api._vocab()
-    assert words["dialogs"] == {"unsaved": "Unsaved changes",
-                                "keep_editing": "Keep editing", "discard": "Discard my changes"}
+    assert words["dialogs"] == {"unsaved": "Unsaved Changes",
+                                "keep_editing": "Keep Editing", "discard": "Discard My Changes"}
     editor = words["editor"]
     assert editor["plain_columns"] == ["expected_count", "asked", "manual_override", "override_reason",
                                        "short_title"]
     assert editor["routing_columns"] == ["identifier", "document", "period", "allowed_extensions",
                                          "min_size_kb", "required_keywords", "any_keywords",
                                          "date_pattern", "named"]
-    assert editor["routing"] == "Routing rules"
+    assert editor["routing"] == "Routing Rules"
     assert editor["not_this_return"] == api.EDITOR_NOT_THIS_RETURN
-    assert editor["routing_all"] == "Show every row's routing rules"
+    assert editor["routing_all"] == "Show Every Row's Routing Rules"
     assert editor["routing_help"] == ("How the tracker recognises this document when it arrives. A save "
                                       "checks these the same way whether the fold is open or not.")
     labels = words["review_labels"]
-    assert labels["keyword"] == "Keyword to learn (optional)"
+    assert labels["keyword"] == "Keyword to Learn (Optional)"
     assert labels["keyword_help"] == ("A word this document contains that others like it will too. "
                                       "Taught to the request so the next one files itself; the editor "
                                       "shows it beside the row.")
-    assert labels["issuer_label"] == "Issuer name"
+    assert labels["issuer_label"] == "Issuer Name"
     assert labels["issuer_help"] == ("Adds {identifier}, a K-1 row for this issuer, to the request list "
                                      "and files this document under it. Type the distinctive words and "
                                      "leave off the suffix (L.P., LLC).")
-    assert labels["issuer_add"] == "Add issuer"
+    assert labels["issuer_add"] == "Add Issuer"
     settings = words["settings"]
     assert (settings["firm_label"], settings["firm_help"], settings["root_label"]) == (
-        "Firm name", "as it should sign the reminders", "Clients folder")
+        "Firm Name", "as it should sign the reminders", "Clients Folder")
     assert "add-issuer-and-file" in words["commands"]
     # None of them is typed in the renderer.
     here = Path(__file__).resolve().parents[1]
@@ -8318,17 +8319,17 @@ def test_the_vocabulary_carries_the_menu_the_screen_and_the_short_words(capsys):
     assert words["menu"] == api.MENU and words["screen"] == api.SCREEN
     # The key shape of SPEC-shell 11.4, flat: the harness and the renderer read these.
     assert set(words["screen"]["sort"]) == {"now", "stop", "firm", "locked", "stopping"}
-    assert words["screen"]["sort"]["stop"] == "Stop sorting"
-    assert words["screen"]["filters"] == {"work": "Work waiting", "all": "All"}
+    assert words["screen"]["sort"]["stop"] == "Stop Sorting"
+    assert words["screen"]["filters"] == {"work": "Work Waiting", "all": "All"}
     assert words["reasons"] == reasons.SHORT_REASONS
     assert [stage["short"] for stage in words["reminder"]["stages"]] == [
-        "Heads up", "Checking in", "Deadline near", "Final notice"]
+        "Heads Up", "Checking In", "Deadline Near", "Final Notice"]
     assert [rule["short"] for rule in words["rules"]] == list(api.SAFEGUARDS)
     assert [rule["headline"] for rule in words["rules"]] == [h for h, _ in api.STANDING_RULES]
     assert len(words["override_labels"]) == len(words["override_reasons"])
     # The stored words do not change (P77): only the label does.
     assert "Client confirmed this is the final version" in words["override_reasons"]
-    assert words["schedule"]["move_warning"] == "Only if {host} is retired"
+    assert words["schedule"]["move_warning"] == "Only If {host} Is Retired"
     assert words["editor"]["engagement_fields"][8]["help"] == "No: sorting skips this return"
 
 
@@ -8346,3 +8347,185 @@ def test_every_short_word_the_engine_adds_is_five_words_or_fewer():
                        *walk(reasons.SHORT_REASONS, "reasons")]:
         counted = re.sub(r"\{[a-z_]+\}", "x", text.replace("&", "")).split()
         assert 1 <= len(counted) <= 5, (path, text)
+
+
+# ------------------------------------ every file name on the page is a live link (S8a) ----
+
+
+def _walk_strings(value):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for inner in value.values():
+            yield from _walk_strings(inner)
+    elif isinstance(value, (list, tuple)):
+        for inner in value:
+            yield from _walk_strings(inner)
+
+
+def test_a_filed_documents_working_copy_has_a_key_the_shell_can_open_and_the_row_carries_no_path(
+        capsys, demo_root, tmp_path):
+    """A filed row names each working copy by a key in ``open_keys`` (one per
+    request a page was filed under, in ``filed_names`` order); the path is
+    only in ``paths``, which is the map the shell opens from (P63)."""
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "Form 1098 Mortgage Interest.pdf")
+    code, payload = scan(capsys, engagement)
+    assert code == 0, payload
+    state = payload["state"]
+    [filed] = [e for e in state["index"] if e["decision"] == FILED]
+
+    assert len(filed["open_keys"]) == len(filed["filed_names"]) == 1
+    [key] = filed["open_keys"]
+    copy = Path(state["paths"][key])
+    assert copy == engagement / filed["prepared_location"] and copy.is_file()
+    assert copy.name == filed["filed_as"], "the name that is drawn is the name of the file that opens"
+    assert api.PATH_KINDS[key.split(" ", 1)[0]] == "file"
+    # The reply puts no absolute path on a row the page draws; a key is a word and a row's handle.
+    for field in ("open_keys", "filed_names", "filed_as"):
+        assert not [s for s in _walk_strings(filed[field]) if str(engagement) in s or s.startswith("/")], field
+    # A row that is not filed carries no filed-copy key.
+    assert all(e["open_keys"] == [] for e in state["index"] if e["decision"] != FILED)
+
+
+def test_a_moved_by_hand_copy_has_a_key_to_where_it_is_now_and_no_path_on_the_row(
+        capsys, demo_root, tmp_path):
+    engagement, filed, target, state = a_moved_row(
+        capsys, demo_root, tmp_path, lambda eng, home: home.with_name("A01 - the 1098 I renamed.pdf"))
+    [moved] = state["moved"]
+
+    assert Path(state["paths"][moved["open_key"]]) == target and target.is_file()
+    assert api.PATH_KINDS[moved["open_key"].split(" ", 1)[0]] == "file"
+    assert not [s for s in _walk_strings(moved["open_key"]) if str(engagement) in s]
+    # The moved row's index entry is not a filed one, so it offers no second key for the same file.
+    [index_row] = [e for e in state["index"] if e["decision"] == "File Moved"]
+    assert index_row["open_keys"] == []
+
+
+def test_a_moved_copy_whose_bytes_are_nowhere_has_no_key(capsys, demo_root, tmp_path):
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "Form 1098 Mortgage Interest.pdf")
+    code, payload = scan(capsys, engagement)
+    [filed] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
+    (engagement / filed["prepared_location"]).unlink()
+    code, payload = scan(capsys, engagement)
+    assert code == 0, payload
+    for moved in payload["state"]["moved"]:
+        assert moved["open_key"] == "" and moved["now"] is None
+
+
+def test_no_return_or_household_row_carries_an_open_key_and_their_words_navigate(
+        capsys, demo_root, tmp_path):
+    """Household and return names navigate inside the app (S8a ruling), so
+    neither their rows nor the list carry a key for opening a folder."""
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "Form 1098 Mortgage Interest.pdf")
+    code, listed = run(capsys, "list")
+    assert code == 0, listed
+    assert listed["households"]
+    for household in listed["households"]:
+        assert "open_key" not in household
+        assert all("open_key" not in one for one in household["returns"])
+    assert all("open_key" not in one for one in listed["engagements"])
+    assert not [key for key in listed["paths"] if " " in key]
+    code, state = run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, state
+    assert all("open_key" not in one for one in state["household"]["returns"])
+    screen = api._vocab()["screen"]
+    assert screen["navigate_client"] == "Navigate to Client"
+    assert screen["navigate_return"] == "Navigate to Return"
+    assert screen["show_in_explorer"] == "Show in File Explorer"
+
+
+def test_the_short_reason_and_the_section_words_are_capitalised_as_jason_asked():
+    assert reasons.SHORT_REASONS["unmatched"] == "Could Not Sort"
+    assert api.MENU["needs_review"] == "Needs Review"
+    assert api._vocab()["screen"]["sections"]["needs_review"] == "Needs Review"
+    assert api._vocab()["screen"]["empty"]["needs_review"] == "Nothing Needs Review"
+
+
+# ----------------------------------------- Title Case for every drawn word (Jason, 2026-09-29) ----
+
+_SMALL = frozenset("a an the and but or nor for of on in to by at as up vs".split())
+
+
+def title_case(text: str) -> str:
+    """The one rule, stdlib only: every word capital except a, an, the, and,
+    but, or, nor, for, of, on, in, to, by, at, as, up, vs when neither first
+    nor last; each part of a hyphenated word; the first word after a colon or
+    semicolon. Placeholders, numbers and ALL-CAPS tokens are left alone."""
+    words = text.split(" ")
+    out, after_stop = [], True
+    for i, word in enumerate(words):
+        core = re.sub(r"^\W+|\W+$", "", word)
+        forced = i == 0 or i == len(words) - 1 or after_stop
+        after_stop = word.endswith((":", ";"))
+        if not core or re.search(r"[{}0-9]", word) or (core.isupper() and len(core) > 1):
+            out.append(word)
+        elif not forced and core.lower() in _SMALL:
+            out.append(word)
+        else:
+            out.append("-".join(re.sub(r"[A-Za-z]", lambda m: m.group().upper(), part, count=1)
+                                for part in word.split("-")))
+    return " ".join(out)
+
+
+def test_the_title_case_rule_does_what_jason_wrote():
+    assert title_case("Could not Sort") == "Could Not Sort"
+    assert title_case("Fits two requests") == "Fits Two Requests"
+    assert title_case("Moved by hand") == "Moved by Hand"
+    assert title_case("Nothing is waiting") == "Nothing Is Waiting"
+    assert title_case("Take the tour") == "Take the Tour"
+    assert title_case("Show in File Explorer") == "Show in File Explorer"
+    assert title_case("Prior-year or substitute document accepted") == \
+        "Prior-Year or Substitute Document Accepted"
+    assert title_case("Correct; only formatting flagged") == "Correct; Only Formatting Flagged"
+    assert title_case("{n} need you") == "{n} Need You"
+    assert title_case("W-2 to review") == "W-2 to Review"
+    assert title_case("Sort stopped: ran too long") == "Sort Stopped: Ran Too Long"
+    assert title_case("Set aside") == "Set Aside" and title_case("Log in") == "Log In"
+
+
+#: Drawn words that are cased on purpose, each with the reason. Machine
+#: values, keys, commands, folder names, the record's own words and the
+#: fragments a sentence is built from are not on the screen as headings.
+_TITLE_EXEMPT_BRANCHES = (
+    "commands", "path_kinds", "statuses", "evidence", "columns", "layout", "example_root",
+    "engagement_flag", "pass_command", "view.states", "schedule.draft_day", "reminder.letter_ink",
+    "editor.engagement_fields", "editor.date_fields", "editor.plain_columns", "editor.routing_columns",
+    "editor.yes", "editor.no", "people.kinds", "people.outcomes", "default_extensions",
+    "review_labels.bucket_order", "review_labels.not_a_document", "household.editable", "unscanned_key",
+    "not_asked_key", "shell.error_log",
+    # the standing rules' headlines are quoted exactly in the docs (STANDING_RULES)
+    "rules",
+    # sentences over the limit, and the fragments a sentence splices in
+    "scan.complete", "triage.places", "origin_", "unknown_year_label", "expected_pattern",
+    "labels.Not asked", "not_asked_label", "override_reasons",
+)
+
+
+def _drawn_words(vocab):
+    def walk(value, path):
+        if isinstance(value, str):
+            yield path, value
+        elif isinstance(value, dict):
+            for key, inner in value.items():
+                yield from walk(inner, f"{path}.{key}" if path else str(key))
+        elif isinstance(value, (list, tuple)):
+            for n, inner in enumerate(value):
+                yield from walk(inner, f"{path}[{n}]")
+    yield from walk(vocab, "")
+
+
+def test_every_drawn_word_the_vocabulary_carries_is_in_title_case(capsys, demo_root):
+    bad = []
+    for path, text in _drawn_words(api._vocab()):
+        if len(text.split()) > 5 or " " not in text.strip():
+            continue        # one word is a name or a key; over five words is a sentence
+        if path.endswith((".key", ".value")) or any(part in path for part in _TITLE_EXEMPT_BRANCHES):
+            continue
+        if title_case(text) != text:
+            bad.append((path, text, title_case(text)))
+    assert not bad, bad
+
+
+def test_the_title_case_test_can_fail(monkeypatch):
+    monkeypatch.setitem(reasons.SHORT_REASONS, "unmatched", "Could not Sort")
+    assert title_case(reasons.SHORT_REASONS["unmatched"]) != reasons.SHORT_REASONS["unmatched"]

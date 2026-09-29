@@ -665,7 +665,7 @@ TWO_OPEN_YEARS_NOTE = "Two Years Open; Sorting Paused"
 SHARING_CHECKLIST = (
     "Share the household folder, {client_folder}, with the client as Viewer.",
     "Share {inbox} with the client as Contributor.",
-    "Paste the inbox's link into the household's Inbox link, then press Mark as shared.",
+    "Paste the inbox's link into the household's Inbox link, then press Mark as Shared.",
 )
 SHARING_HEADING = "Before the client can drop anything"
 MARK_SHARED_LABEL = "Mark as Shared"
@@ -690,12 +690,12 @@ DISMISS_LABEL = "Not Requested"
 #: (decision 190): a folder the client called "not allowed" was read as
 #: the file type being refused.
 CAME_FROM_SUBFOLDER = "came from the client's subfolder '{folder}'"
-DISMISS_NOTE_HINT = "Reason (optional)"
+DISMISS_NOTE_HINT = "Reason (Optional)"
 DISMISSED_HEADING = "Not Requested ({n})"
 FILE_LABEL = "File It"
 FILE_ANYWAY_LABEL = "File It Anyway"
 UNFILE_LABEL = "Unfile"
-UNFILE_NOTE_HINT = "Reason (optional)"
+UNFILE_NOTE_HINT = "Reason (Optional)"
 #: Decision 146: the button beside each request a filed consolidated
 #: statement answers without a copy, and the words that introduce them.
 MARK_MISSING_LABEL = "Mark {identifier} Missing"
@@ -932,7 +932,7 @@ ROUTING_HELP = ("How the tracker recognises this document when it arrives. A sav
 EDITOR_NOT_THIS_RETURN = "Request List Did Not Open"
 #: The keyword box on a parked or moved document's card (decision 201,
 #: D11): its label, and what the word does, as its title.
-KEYWORD_LABEL = "Keyword to Learn (optional)"
+KEYWORD_LABEL = "Keyword to Learn (Optional)"
 KEYWORD_HELP = ("A word this document contains that others like it will too. Taught to the "
                 "request so the next one files itself; the editor shows it beside the row.")
 #: The card of a K-1 parked for an unnamed issuer (decision 201): its one
@@ -1141,9 +1141,8 @@ PATH_KINDS: dict[str, str] = {
     "household": "folder", "prepared": "folder", "view": "file", "draft": "file", "status": "file",
     "clients_root": "folder",
     # A row's key is a word, a space and the row (``review_copy <row>``);
-    # the shell reads the word, so a file name or a return name on the page
-    # opens as what it is (a file, or a folder) and nothing else.
-    "review_copy": "file", "filed_copy": "file", "moved_copy": "file", "return_folder": "folder",
+    # the shell reads the word, so a file name on the page opens as a file.
+    "review_copy": "file", "filed_copy": "file", "moved_copy": "file",
 }
 #: What the request-list editor shows for each stored override reason
 #: (:data:`tracker.manifest.OVERRIDE_REASONS`), in its order (P77, P84): the
@@ -1223,6 +1222,8 @@ SCREEN: dict = {
     # The tooltip of a household name, which navigates to the household's page
     # in the app (no path, no engine call).
     "navigate_client": "Navigate to Client",
+    # The tooltip of a return name, which navigates to the return's page.
+    "navigate_return": "Navigate to Return",
     "find": "Find a Client",
     "find_none": "No Match",
     "sort": {
@@ -2071,14 +2072,6 @@ def _moved_copy_key(entry: IndexEntry) -> str:
     return f"moved_copy {ledger_key(entry)}" if moved_to(entry) else ""
 
 
-def _return_folder_key(root: Path, folder: Path) -> str:
-    """The key of a return's working folder: the return's place below the
-    clients root, in the record's own names and never an absolute path, so
-    a return's name on the page can show it in File Explorer."""
-    below = layout.parts_below(root, folder)
-    return "return_folder " + "/".join(below if below else (folder.name,))
-
-
 def _review_payload(entry: IndexEntry) -> dict:
     """What a parked row carries for the card beside its record: its
     bucket, its true type and the key of the copy it opens. A set-aside
@@ -2619,7 +2612,6 @@ def _household_payload(engagement: Path) -> dict:
         "roll_year": roll_year,
         "returns": [
             {"label": one.label, "path": str(one.path),
-             "open_key": _return_folder_key(_root_of(engagement), one.path),
              "year": one.tax_year if one.tax_year is not None else year_of(one.path),
              "return_name": one.info.return_name or one.path.name,
              "active": one.active, "superseded_by": one.superseded_by,
@@ -2887,11 +2879,9 @@ def _state(engagement: Path) -> dict:
             # links that show that exact copy in File Explorer. Only paths
             # the record already holds; the shell lstats before it acts.
             **{key: str(locate(engagement, where)) for e in entries
-               for key, where in zip(_filed_copy_keys(e), e.filed_locations, strict=True)},
+               if e.decision == FILED for key, where in zip(_filed_copy_keys(e), e.filed_locations, strict=True)},
             **{key: str(locate(engagement, moved_to(e))) for e in entries
                if (key := _moved_copy_key(e))},
-            # Each return of the household, by its place below the root.
-            **{one["open_key"]: one["path"] for one in household["returns"]},
         },
     }
 
@@ -3390,9 +3380,8 @@ def _cmd_list(argv: list[str]) -> dict:
         return {**empty, "needs_root": False, "root": str(root),
                 "root_problem": PRACTICE_NOT_WALKED, "vocab": _vocab(),
                 "paths": _list_paths(root), "machine_warnings": _machine_warnings(root)}
-    listed = _list_payload(root, registry)
-    return {**listed, "needs_root": False, "vocab": _vocab(),
-            "paths": _list_paths(root) | listed["paths"],
+    return {**_list_payload(root, registry), "needs_root": False, "vocab": _vocab(),
+            "paths": _list_paths(root),
             "reader_warning": empty["reader_warning"], "last_pass": empty["last_pass"],
             "after_install": empty["after_install"],
             "machine_warnings": _machine_warnings(root)}
@@ -3419,7 +3408,6 @@ def _list_payload(root: Path, registry: Registry) -> dict:
             "open_years": open_years(returns),
             "returns": [
                 {"label": one.label, "path": str(one.path),
-                 "open_key": _return_folder_key(root, one.path),
                  "year": one.tax_year if one.tax_year is not None else year_of(one.path),
                  "return_name": one.info.return_name or one.path.name,
                  "active": one.active, "superseded_by": one.superseded_by}
@@ -3427,7 +3415,7 @@ def _list_payload(root: Path, registry: Registry) -> dict:
             ],
         })
     engagements = [
-        {"name": one.label, "path": str(one.path), "open_key": _return_folder_key(root, one.path),
+        {"name": one.label, "path": str(one.path),
          "household": str(one.household_path),
          "year": one.tax_year if one.tax_year is not None else year_of(one.path),
          "return_name": one.info.return_name or one.path.name}
@@ -3443,9 +3431,6 @@ def _list_payload(root: Path, registry: Registry) -> dict:
                      else str(misfit.path)}
                     for misfit in registry.misfits],
         "root": str(root),
-        # Each return's working folder by its key, for the return names on
-        # the page: the shell opens only what the API named here.
-        "paths": {_return_folder_key(root, one.path): str(one.path) for one in registry.engagements},
     }
 
 
@@ -5039,7 +5024,7 @@ SCHEDULE_REPAIR_LABEL = "Repair the Schedule"
 SCHEDULE_REPAIR_HELP = ("Register the daily job again on this computer - only needed if the schedule "
                         "was deleted or broken")
 SCHEDULE_REPAIR_CONFIRM = "Repair the Schedule Here?"
-#: Asked when **Repair the schedule** finds that another computer runs it
+#: Asked when **Repair the Schedule** finds that another computer runs it
 #: (decision 209, the review's S5): the packaged app's way to move the
 #: schedule, as ``--move-schedule-here`` is from source. ``{host}`` is the
 #: computer the designation names; the page fills it in and types nothing
@@ -5142,7 +5127,7 @@ def _cmd_move_schedule_here(argv: list[str]) -> dict:
     review's S5): the same function as ``python -m tracker.after_install
     --move-schedule-here``, so the packaged app, which has no command line,
     can move it too. The page asks first (``vocab.schedule.move_confirm``)
-    and only after **Repair the schedule** found another computer named.
+    and only after **Repair the Schedule** found another computer named.
     ``moved`` says whether the designation now names this computer; when it
     does, the step ran as a repair and its reply is here as the repair's is.
     """

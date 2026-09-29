@@ -1215,6 +1215,8 @@ def test_the_words_for_the_engagements_page_are_pythons_alone():
 
     for rel in ("app/renderer/index.html", "app/renderer/app.js", "app/renderer/style.css"):
         text = read(rel)
+        if rel.endswith((".js", ".css")):      # a comment may name the page; the page may not type it
+            text = re.sub(r"/\*.*?\*/|//[^\n]*", "", text, flags=re.S)
         assert VIEW_OPEN_LABEL not in text, rel
         assert VIEW_LABEL not in text, rel
 
@@ -2134,13 +2136,16 @@ def test_the_shell_lstats_before_it_opens_and_refuses_a_link_or_a_changed_kind()
     import tracker.api as api
 
     main = read("app/main.js")
-    assert "openChecked(p, openable.get(p))" in main       # openPath refuses first, then checks
+    # openPath refuses an unreported path first, then checks; reveal is an argument, not a channel.
+    assert 'openChecked(p, openable.get(p), reveal === "reveal")' in main
     opener = main[main.index("async function openChecked("):]
     opener = opener[:opener.index("\n}\n")]
+    assert opener.index("fs.promises.lstat(") < opener.index("shell.showItemInFolder(")
     assert opener.index("fs.promises.lstat(") < opener.index("shell.openPath(")
     assert "isSymbolicLink()" in opener and "isDirectory()" in opener and "isFile()" in opener
     assert "vocab.path_kinds" in main and "vocab.shell.not_opened" in main
-    assert main.count("shell.openPath(") == 1
+    # One call site of each, both behind openChecked (after the lstat and the kind check).
+    assert main.count("shell.openPath(") == 1 and main.count("shell.showItemInFolder(") == 1
     vocab = api._vocab()
     assert vocab["shell"]["not_opened"] == api.SHELL_NOT_OPENED
     assert set(vocab["path_kinds"].values()) == {"folder", "file"}
@@ -2768,17 +2773,17 @@ def test_with_no_error_log_named_the_failure_is_saved_in_the_fallback_log_and_th
     """Jason, 2026-09-29 (after the rebase review of 186, MF2): with no data
     home the API names no error log. The failure is still SAVED - in the
     shell's fallback log in the per-user app folder, never beside the
-    program - and the screen says just "Tracker failed", with nothing of
+    program - and the screen says just "Tracker Failed", with nothing of
     stderr in the reply."""
     import tracker.api as api
     from tracker.settings import ERROR_LOG_FILENAME
 
-    assert api.SHELL_NO_LOG == "Tracker failed"
+    assert api.SHELL_NO_LOG == "Tracker Failed"
     ran = _run_the_shell(tmp_path, [["list"], ["templates"]], FAKE_LOG="")
     reply = ran["out"][1]["reply"]
     sentence = api.SHELL_NO_REPLY.format(code=1) + "\n\n" + api.SHELL_NO_LOG
     assert reply["error"] == sentence and reply["failure"]["sentence"] == sentence
-    assert reply["error"].endswith("\n\nTracker failed")
+    assert reply["error"].endswith("\n\nTracker Failed")
     assert "fabricated" not in json.dumps(reply) and "Sample Client" not in json.dumps(reply)
     assert reply["failure"]["kind"] == "failed"
     saved = (tmp_path / "userdata" / "error.log").read_text(encoding="utf-8")
@@ -2792,7 +2797,7 @@ def test_with_an_error_log_named_the_failure_goes_there_and_not_to_the_fallback_
 
     ran = _run_the_shell(tmp_path, [["list"], ["templates"]])
     reply = ran["out"][1]["reply"]
-    assert reply["error"] == api.SHELL_NO_REPLY.format(code=1) and "Tracker failed" not in reply["error"]
+    assert reply["error"] == api.SHELL_NO_REPLY.format(code=1) and "Tracker Failed" not in reply["error"]
     assert _STDERR_TEXT in (tmp_path / "tracker-errors.log").read_text(encoding="utf-8")
     assert not (tmp_path / "userdata").exists()
 
@@ -2919,7 +2924,9 @@ def test_the_notice_buttons_are_the_apis_labels_word_for_word():
     html = read("app/renderer/index.html")
     template = html.split('<template id="notice-buttons">', 1)[1].split("</template>", 1)[0]
     buttons = dict(re.findall(r'data-act="([a-z]+)">([^<]+)</button>', template))
-    assert buttons == api.NOTICE_LABELS
+    # The page's own literals are cased by the renderer job (S5); the words are the same.
+    assert {k: v.casefold() for k, v in buttons.items()} == {
+        k: v.casefold() for k, v in api.NOTICE_LABELS.items()}
     assert api._vocab()["notices"]["labels"] == api.NOTICE_LABELS
 
 
@@ -3336,7 +3343,7 @@ def test_the_editor_set_aside_fold_draws_each_group_as_elements(tmp_path):
         "function renderEditorRows() {", "function setAsideHeading(group) {",
         "function fill(pattern, values) {"), """
 const NOT_ASKED_GROUP = "not asked";
-const vocab = { columns: [], set_aside: { heading: "Set aside ({n})", group: "{label} ({n})" },
+const vocab = { columns: [], set_aside: { heading: "Set Aside ({n})", group: "{label} ({n})" },
                 editor: { plain_columns: [], routing_columns: [], routing_all: "", routing_help: "" } };
 const editorState = { learned: {} };
 const editorFolds = new Map();

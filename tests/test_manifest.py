@@ -730,7 +730,7 @@ def test_check_rules_warns_about_rows_the_rules_cannot_act_on():
         RequestItem(identifier="A01", document="Anything goes"),              # no rule, "*"
         RequestItem(identifier="A02", document="W-2", required_keywords=("W-2",),
                     allowed_extensions=("pdf",)),
-        RequestItem(identifier="A03", document="Set aside", manual_override=Override.NOT_APPLICABLE),
+        RequestItem(identifier="A03", document="Set Aside", manual_override=Override.NOT_APPLICABLE),
     ])
     warnings = check_rules(rows)
     assert [w[:14] for w in warnings] == ["Row 1 (A01): n", "Row 1 (A01): A"]
@@ -1258,7 +1258,7 @@ def test_status_key_is_the_record_word_and_status_label_is_the_preparers():
     ]
     assert [status_key(row) for row in rows] == ["Not asked", "Requested", "Missing", "Received"]
     assert [status_label(row) for row in rows] == [
-        "Not asked", "Not yet checked", "Outstanding", "Received"]
+        "Not Asked", "Not Yet Checked", "Outstanding", "Received"]
 
 
 def test_the_run_log_line_keeps_the_record_words_and_the_shown_line_the_labels():

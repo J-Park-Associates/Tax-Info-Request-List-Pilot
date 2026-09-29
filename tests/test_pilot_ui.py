@@ -216,7 +216,7 @@ NEVER_HIDDEN = {
 def test_the_structure_pass_never_unhides_a_hidden_element():
     """A `display` in a later stylesheet out-ranks style.css's `.hidden`
     (same specificity, later source), so an element app.js hides comes back:
-    Build E did this to #wi-household ("Change household details" in Add a
+    Build E did this to #wi-household ("Change Household Details" in Add a
     return). Every display other than none is declared under :not(.hidden)."""
     seen = 0
     for name in (CSS_NAME, "pilot-style.css"):

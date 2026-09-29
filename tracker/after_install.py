@@ -96,7 +96,7 @@ task at its next start rather than at its next upgrade (two computers
 running the pass is the hazard this decision closes);
 and saving the clients root runs it, so the first root saved on the
 office computer registers the schedule with no button. The app's
-**Repair the schedule** runs it deliberately.
+**Repair the Schedule** runs it deliberately.
 
 **It records what it did** beside the store, in :data:`RECORD_FILENAME`,
 as the scheduled pass records its own note beside the store: the program
@@ -203,7 +203,7 @@ PREFERENCE_UNUSABLE = ("The schedule setting in the app's settings file cannot b
 #: The schedule key the record holds when the saved choice was refused.
 PREFERENCE_KEY = "preference_unusable"
 SCHEDULE_FAILED = ("The schedule could not be registered on this computer ({problem}). Start the app: "
-                   "it tries again at launch, and Repair the schedule tries at once.")
+                   "it tries again at launch, and Repair the Schedule tries at once.")
 DESIGNATION_UNWRITABLE = ("The file naming the computer that runs the schedule ({file}) could not be "
                           "written; no schedule was changed. Start the app: it tries again at launch.")
 #: What :data:`SCHEDULE_FAILED` says when the job file could not be written
@@ -214,7 +214,7 @@ SCHEDULE_UNREACHABLE = "the job file could not be written, or Task Scheduler cou
 #: does not name (the review's N1), so the notice says it rather than the
 #: launch dropping it.
 LAUNCH_FAILED = ("The after-install step stopped before it finished; the app tries again at its next "
-                 "start, and Repair the schedule tries at once.")
+                 "start, and Repair the Schedule tries at once.")
 CHECK_FAILED = ("The record check could not run: {problem} Nothing was changed; runbook §6 says what "
                 "to do with a store that will not open, and the app tries again at its next start.")
 RECORD_UNWRITABLE = ("What the after-install step did could not be recorded in {file}; the app runs it "
@@ -261,7 +261,7 @@ LOCK_POLL_SECONDS = 0.25
 BUSY_KEY = "busy"
 STEP_BUSY = ("Another run of the after-install step on this computer was still going after {minutes} "
              "minutes, so this one changed nothing on the schedule. A choice just saved stays saved and "
-             "takes effect at the next start, or press Repair the schedule.")
+             "takes effect at the next start, or press Repair the Schedule.")
 #: The same, when the lock itself could not be made in the data home.
 LOCK_UNAVAILABLE = ("The after-install step could not take its lock ({file}), so it changed nothing. "
                     "Start the app: it tries again at launch.")

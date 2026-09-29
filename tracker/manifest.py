@@ -298,7 +298,7 @@ UNSCANNED_LABEL = "Requested"
 #: (decision 142): never "Requested", because it was not, and never
 #: "Missing", because nobody is owed it. Once a document arrives the row
 #: shows its real status, as any row does.
-NOT_ASKED_LABEL = "Not Asked"
+NOT_ASKED_LABEL = "Not asked"
 #: How the count of not-asked rows that did receive a document is said
 #: beside the asked rows' figures, so a letter never reads "7 of 5".
 ALSO_RECEIVED_LABEL = "Also received"

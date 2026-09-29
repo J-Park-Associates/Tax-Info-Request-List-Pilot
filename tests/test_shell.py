@@ -132,7 +132,8 @@ const sc = JSON.parse(scenarioJson);
 Object.defineProperty(process, "platform", { value: sc.platform || "linux" });
 if (sc.localAppData !== undefined) process.env.LOCALAPPDATA = sc.localAppData;
 process.resourcesPath = process.resourcesPath || "/resources";
-const log = { menus: [], popups: [], sends: [], opened: [], backgrounds: [], windowOptions: null };
+const log = { menus: [], popups: [], sends: [], opened: [], revealed: [], answers: [], backgrounds: [], windowOptions: null };
+let openHandler = null;
 let menuHandler = null;
 let trackerHandler = null;
 let updated = null;
@@ -169,14 +170,19 @@ const electron = {
       log.menus.push(snapshot(menu.template));
     },
   },
-  ipcMain: { handle(name, fn) { if (name === "tracker-cmd") trackerHandler = fn; },
+  ipcMain: { handle(name, fn) {
+               if (name === "tracker-cmd") trackerHandler = fn;
+               if (name === "open-path") openHandler = fn;
+             },
              on(name, fn) { if (name === "menu") menuHandler = fn; } },
   nativeTheme: theme,
-  shell: { openPath: async (p) => { log.opened.push(p); return ""; } },
+  shell: { openPath: async (p) => { log.opened.push(p); return ""; },
+           showItemInFolder: (p) => { log.revealed.push(p); } },
   dialog: {},
 };
 const listReply = () => ({ vocab: { commands: ["list", "after-install"], menu: sc.vocabMenu,
-                                    shell: { error_log: sc.errorLog } } });
+                                    path_kinds: sc.pathKinds,
+                                    shell: { error_log: sc.errorLog } }, paths: sc.paths });
 const fakeSpawn = (cmd, args) => {
   const proc = new EventEmitter();
   proc.stdout = new EventEmitter();
@@ -225,6 +231,8 @@ const items = (list, label) => {
       menuHandler({ sender: step.stranger ? {} : win.webContents }, step.menu);
     } else if (step.tracker) {
       await trackerHandler({ sender: { isDestroyed: () => false, send() {} } }, step.tracker, undefined);
+    } else if (step.open) {
+      log.answers.push(await openHandler({}, ...step.open));
     } else if (step.clickBar) {
       const item = items(live.bar, step.clickBar);
       if (item && item.click) item.click();
@@ -526,3 +534,76 @@ def test_a_switch_between_light_and_dark_sets_the_window_colour_again(tmp_path):
                           {"theme": {"shouldUseDarkColors": False}},
                           {"theme": {"shouldUseHighContrastColors": True}}], css=css)
     assert ran["backgrounds"] == ["#1b1e24", "#ffffff"]      # a contrast theme paints its own
+
+
+# ------------------------------- a file name on the page is a live link (S8a) ----
+
+_KINDS = {"engagement": "folder", "review_copy": "file", "filed_copy": "file", "moved_copy": "file"}
+
+
+def _reveal_scenario(tmp_path):
+    working = tmp_path / "Prepared"
+    working.mkdir()
+    copy = working / "A01 - W-2 - TY2025.pdf"
+    copy.write_bytes(b"%PDF-1.4\n")
+    moved = working / "wandered.pdf"
+    moved.write_bytes(b"%PDF-1.4\n")
+    paths = {"engagement": str(tmp_path), "filed_copy K1 0": str(copy), "moved_copy K2": str(moved)}
+    return copy, moved, {"pathKinds": _KINDS, "paths": paths}
+
+
+def test_reveal_shows_a_reported_file_in_file_explorer_and_a_plain_open_still_opens_it(tmp_path):
+    copy, moved, scenario = _reveal_scenario(tmp_path)
+    ran = _run(tmp_path, [{"tracker": ["list"]}, {"open": [str(copy), "reveal"]},
+                          {"open": [str(moved), "reveal"]}, {"open": [str(copy)]}], **scenario)
+    assert ran["revealed"] == [str(copy), str(moved)], "the row's kind came from the word before the space"
+    assert ran["opened"] == [str(copy)]
+    assert ran["answers"] == ["", "", ""]
+
+
+def test_reveal_of_a_path_the_api_did_not_report_is_refused(tmp_path):
+    copy, _moved, scenario = _reveal_scenario(tmp_path)
+    stranger = tmp_path / "not-reported.pdf"
+    stranger.write_bytes(b"x")
+    steps = [{"tracker": ["list"]}]
+    steps += [{"open": [p, "reveal"]} for p in (str(stranger), str(tmp_path / ".." / "x"), "", None, 7)]
+    ran = _run(tmp_path, steps, **scenario)
+    assert ran["revealed"] == [] and ran["opened"] == []
+    assert len(ran["answers"]) == 5 and all(a for a in ran["answers"])
+    # Before the API has reported anything, even the file that would be reported is refused.
+    early = _run(tmp_path, [{"open": [str(copy), "reveal"]}], **scenario)
+    assert early["revealed"] == [] and early["answers"][0]
+
+
+def test_reveal_is_refused_when_the_file_is_no_longer_a_file_or_is_a_link(tmp_path):
+    copy, moved, scenario = _reveal_scenario(tmp_path)
+    copy.unlink()
+    copy.mkdir()                                   # a folder where the file was
+    moved.unlink()
+    moved.symlink_to(tmp_path / "Prepared" / "elsewhere.pdf")
+    ran = _run(tmp_path, [{"tracker": ["list"]}, {"open": [str(copy), "reveal"]},
+                          {"open": [str(moved), "reveal"]}], **scenario)
+    assert ran["revealed"] == [] and ran["opened"] == []
+    assert all(ran["answers"])
+
+
+def test_a_word_that_is_not_reveal_opens_the_default_way_and_a_folder_is_never_revealed(tmp_path):
+    copy, _moved, scenario = _reveal_scenario(tmp_path)
+    ran = _run(tmp_path, [{"tracker": ["list"]}, {"open": [str(copy), "anything"]},
+                          {"open": [str(tmp_path), "reveal"]}], **scenario)
+    assert ran["opened"] == [str(copy), str(tmp_path)] and ran["revealed"] == []
+
+
+def test_the_preload_passes_the_optional_second_argument_on_the_same_open_and_adds_no_channel():
+    preload = read("app/preload.js")
+    assert 'open: (p, how) => ipcRenderer.invoke("open-path", p, how),' in preload
+    assert re.findall(r'ipcRenderer\.(?:invoke|send|on)\("([a-z-]+)"', preload) == [
+        "tracker-cmd", "open-path", "pick-folder", "log-error", "tracker-progress", "after-install-done",
+        "menu", "menu"]
+    main_js = read("app/main.js")
+    assert main_js.count('ipcMain.handle("open-path"') == 1
+    assert main_js.count("shell.showItemInFolder(") == 1 and main_js.count("shell.openPath(") == 1
+
+
+def test_the_menus_default_words_carry_the_capital_the_section_is_written_with():
+    assert _menu_words_in_main()["needs_review"] == "Needs Review"

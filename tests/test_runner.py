@@ -1274,7 +1274,7 @@ def test_a_draft_edited_after_its_approval_is_left_alone_and_said_as_approved_th
         tmp_path, samples, stamped_on):
     """An edit after the approval lapses it (decision 190): the pass leaves
     the file as it leaves any edited one, and the run log and the practice
-    page say "approved, then edited" rather than "approved"."""
+    page say "Approved, Then Edited" rather than "approved"."""
     from tracker.reminder import APPROVED_THEN_EDITED
     from tracker.runner import _drafted_cell
 

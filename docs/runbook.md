@@ -426,12 +426,12 @@ from one table in the tracker (`tracker.manifest.STATUS_LABELS`).
 | The record says | The app shows |
 |---|---|
 | **Missing** | Outstanding - Asked for; nothing usable has arrived yet. |
-| **Partial** | Partly in - Some of the expected files are in; the rest are still to come. |
-| **Failed Validation** | Could not use - Something arrived that the rules could not use. |
+| **Partial** | Partly In - Some of the expected files are in; the rest are still to come. |
+| **Failed Validation** | Could Not Use - Something arrived that the rules could not use. |
 | **Pending Sync** | Syncing - It is in; the cloud is still copying it down. |
 | **Received** | Received - In, and every check passed or a person accepted it. |
-| **Requested** | Not yet checked - Asked for; no pass has looked at it yet. |
-| **Not asked** | Not asked - On the list, not requested; filed if it arrives. |
+| **Requested** | Not Yet Checked - Asked for; no pass has looked at it yet. |
+| **Not asked** | Not Asked - On the list, not requested; filed if it arrives. |
 | **Accepted** | Accepted - A person accepted it with a reason; the rules stop here. |
 | **Not Applicable** | Not Applicable in TY<year> - Does not apply this year; not counted, not chased. |
 
@@ -816,7 +816,7 @@ a person in Google Drive, on the firm's Shared Drive:
    the pass moves each original out of the inbox into the year's folder, and
    only the firm can move it again.
 3. Paste the inbox's link into the household's *Inbox link* in the app and
-   press **Mark as shared**. The date is recorded as the firm's word; the
+   press **Mark as Shared**. The date is recorded as the firm's word; the
    letters carry the link.
 
 The app asks for all three in those words — once, when a household's first

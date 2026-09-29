@@ -1536,7 +1536,7 @@ def test_an_approval_lapses_when_the_letter_is_edited(tmp_path):
 
 def test_an_approval_from_before_190_still_protects_its_letter_in_the_deploy_week(tmp_path):
     """An approval recorded before decision 190 has no letter fingerprint,
-    so it no longer counts: the card reads "approved, then edited" and the
+    so it no longer counts: the card reads "Approved, Then Edited" and the
     person approves again. It still protects the file it names - the pass
     in the week of the deploy writes its draft beside the approved letter,
     never over it, though nobody has edited it (nothing vanishes)."""
@@ -2382,7 +2382,7 @@ def test_the_staff_footer_names_the_us_side_and_each_rows_label(tmp_path):
     assert footer and "B01" not in email
     [flag] = draft.needs_attention
     assert f"  {flag.item.label} ({status_label(flag.item)}): {flag.reason}" in footer
-    assert status_label(flag.item) == "Could not use" != flag.item.status
+    assert status_label(flag.item) == "Could Not Use" != flag.item.status
 
 
 #: The letter a fabricated draft pastes, as written at d900768 before any
@@ -2457,8 +2457,8 @@ def test_every_stage_has_a_short_name_the_app_shows_and_the_letter_never_does():
     """SPEC-shell 11.6: the rungs gain a short name of five words or fewer
     for the app's rows; the letter's subject and body keep the full one."""
     assert [stage.short for stage in STAGES] == [
-        "Heads up", "Checking in", "Deadline near", "Final notice"]
+        "Heads Up", "Checking In", "Deadline Near", "Final Notice"]
     for stage in STAGES:
         assert 1 <= len(stage.short.split()) <= 5
-        assert stage.short not in (stage.name, stage.subject, stage.intro, stage.deadline,
-                                   stage.close)
+        # The stage's own name may be the same two words (it is never in the letter).
+        assert stage.short not in (stage.subject, stage.intro, stage.deadline, stage.close)

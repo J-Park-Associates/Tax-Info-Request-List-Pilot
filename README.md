@@ -322,7 +322,7 @@ job only on the computer that runs the schedule: the one named in
 `J Park & Associates\_Scheduling computer.txt` under the clients root,
 which the first Windows computer to set the root claims; any other
 computer registers none and removes its own. The app's
-**Repair the schedule** runs the step again, for a job that was deleted or broken; when
+**Repair the Schedule** runs the step again, for a job that was deleted or broken; when
 another computer runs the schedule it offers to move it to this one, which
 is what `python -m tracker.after_install --move-schedule-here` does from
 source (docs/runbook.md §6), and the old computer removes its own task at
@@ -363,7 +363,7 @@ letter on screen without touching the file, the letter itself in the firm's
 own colours, **Copy for Outlook** (the body as HTML beside the same words as
 plain text), **Approve** — which makes what is on screen this week's draft,
 records it, and has the pass leave it alone for the rest of the week the way
-it leaves one you edited — and **Open the draft file**. There is no send
+it leaves one you edited — and **Open the Draft File**. There is no send
 button on it, and a held reminder shows the hold and nothing else.
 
 How a season is actually run on the firm's one machine — the morning pass,

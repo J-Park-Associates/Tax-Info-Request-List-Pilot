@@ -437,7 +437,7 @@ NO_HOUSEHOLD_NAMED = f"{HOUSEHOLD_FLAG} names no household; Run now runs one, na
 #: until the job is registered again (decision 131's review, F3) - which the
 #: app does itself at its first start after the upgrade (decision 209).
 OLD_JOB_ROOT = ("the scheduled job still names an old clients root ({root}); start the app on this "
-                "computer - it registers the job again - or press Repair the schedule")
+                "computer - it registers the job again - or press Repair the Schedule")
 
 #: The scheduled pass says when it ran and how it ended (decision 159, E4):
 #: a job that stops - settings unreadable, the root gone, the task deleted -
