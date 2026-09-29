@@ -78,7 +78,29 @@ CSP and the classic-script order the app uses call for UMD).
 
 ## Gate results
 
-(filled in at the end of the session; see the bottom of this file)
+Each file its own process, on Python 3.11 and 3.13, same result on both:
+`test_shell` 35, `test_pilot_ui` 11, `test_tour` 8, `test_pilot` 18,
+`test_single_source` 167, `test_layers` 29, `test_api` 368,
+`test_pilot_installer` 12, `test_row_columns` 26 (it scans renderer files) all
+pass; `test_build` 30 pass and 1 fails, `test_the_scratch_roots_scan_is_filed_by_the_reader_and_by_nothing_else`
+(OCR, `onnxruntime` missing), the failure the brief said is on the base, so
+ignored. `ruff check .` clean. `interact.mjs` passes (all interactions).
+`shoot.mjs tooltip-mouse tooltip-keyboard` looked at in light and dark at
+1100 x 700: the "Sort now" tip sits 4 px under the sort icon, shifted left to
+stay 8 px inside the window edge, caption type on the raised background with
+its hairline and shadow, contrast unchanged (no colour touched).
+
+**Mutation proof** (a scratch copy under /tmp, never the repo): changing the
+focus rule back to skip every input, deleting `flip` and `shift`, and adding a
+byte to the vendored dom file made three `test_shell` tests fail
+(`..._is_the_pinned_bytes_and_nothing_else`, `..._only_through_its_one_global`,
+`..._search_box_alone_shows_no_tooltip_on_keyboard_focus`); the same copy with
+`flip` and `shift` removed made the three edge checks in `interact.mjs` fail
+(the tip ran to x 1100 against a limit of 1092 at the right edge, and sat at
+top 704 in a 700-high window at the bottom). The repo copy was never mutated.
+
+The repository map was refreshed last (`repo_map.py update`, then `check` and
+`test_repo_map`).
 
 ## Left for S6
 

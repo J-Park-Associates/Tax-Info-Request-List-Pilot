@@ -3,7 +3,7 @@
   "generated": "2026-09-29",
   "generator": "tools/repo_map.py",
   "generator_sha256": "22c7b60a1d198289",
-  "module_table_sha256": "7a5ef0770532a015",
+  "module_table_sha256": "251095c76605556f",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 281,
-    "edges": 1141,
-    "reused": 239
+    "nodes": 286,
+    "edges": 1142,
+    "reused": 243
   },
   "node_types": [
     "artifact",
@@ -3982,8 +3982,8 @@
       "id": "app/renderer/index.html",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "01426f482b22917a",
-      "lines": 760,
+      "sha256": "4a31c4d7d6165897",
+      "lines": 762,
       "role": "The desktop app's markup under a Content-Security-Policy that allows nothing but the app's own files: the shell skeleton (side panel, path row, notices, page, the side sheet, the tooltip and the drawn icons), the dialogs, and the old screen kept in #legacy, hidden, until the pages and the sheet take over what each card showed.",
       "notes": "Nothing here types a word: shell.js fills each name and tooltip from the vocabulary (data-tip-key names the key). The script order is app.js, tooltip.js, shell.js, then the pilot's (pages.js and sheet.js join it in their turn). app.js still finds its elements by id inside #legacy; each build that takes a card over deletes that card's markup and its rules."
     },
@@ -4054,8 +4054,8 @@
       "id": "app/renderer/tooltip.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "bc6c78f1856f57fe",
-      "lines": 119,
+      "sha256": "6ff83cbc2922cb83",
+      "lines": 137,
       "role": "The custom tooltip (SPEC-shell 8.5): any element with data-tip gets one after 500 ms of hover or at once on keyboard focus; one #tip element, role=tooltip, tied by aria-describedby while it shows.",
       "notes": "setTip(node, words) replaces every title attribute of the old screen; setTipIfCut() shows a name only when the screen cut it. A box being typed into never shows one on focus (it would cover what the typing opens). Its words are the API's vocabulary or a person's own name, never typed here."
     },
@@ -4065,6 +4065,27 @@
       "layer": "desktop-app",
       "sha256": "35d8f79f78fee80b",
       "lines": 219
+    },
+    {
+      "id": "app/renderer/vendor/floating-ui/README.md",
+      "type": "doc",
+      "layer": "desktop-app",
+      "sha256": "a9f7ddb98dfbb85f",
+      "lines": 36
+    },
+    {
+      "id": "app/renderer/vendor/floating-ui/floating-ui.core.umd.min.js",
+      "type": "module",
+      "layer": "desktop-app",
+      "sha256": "65940d866a6b6d83",
+      "lines": 1
+    },
+    {
+      "id": "app/renderer/vendor/floating-ui/floating-ui.dom.umd.min.js",
+      "type": "module",
+      "layer": "desktop-app",
+      "sha256": "61a46f943c4e9937",
+      "lines": 1
     },
     {
       "id": ".claude/skills/frontend-design/LICENSE.txt",
@@ -4647,8 +4668,15 @@
       "id": "pilot/handoffs/shell-S3.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "df239c4730923b20",
+      "sha256": "ce8116808c56e87a",
       "lines": 158
+    },
+    {
+      "id": "pilot/handoffs/shell-S7.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "60de8105f92ba6bf",
+      "lines": 142
     },
     {
       "id": "pilot/harness/README.md",
@@ -4757,6 +4785,11 @@
       "lines": 56,
       "role": "Runtime and dev dependencies, pinned exactly (a guard refuses a range), including the reader's runtime closure (decision 169) - rapidocr itself is in requirements-nodeps.txt. The human-edited list of direct pins: nothing installs it directly; every install reads requirements.lock, the whole tree by version and by SHA-256 (decision 191).",
       "notes": "requirements-build.txt adds the pinned freezer on top for Build App.bat; api_entry.spec is the committed freeze and app/package-lock.json the committed Electron install, so a build is made from the commit rather than from whatever was current that day (decision 46). olefile (decision 143) reads an Outlook .msg; pinned here and in requirements.lock, and frozen by the portable build. Decision 169 (R-11): rapidocr's metadata asks for the GUI opencv-python, so its real runtime dependencies are listed here with opencv-python-headless, and rapidocr is installed afterwards with --no-deps from requirements-nodeps.lock - by Setup.bat, Build App.bat, gate.yml, build.yml and the README's setup alike (tests/test_build.py pins both steps everywhere). Two pins carry markers: onnxruntime-gpu on Windows and the plain onnxruntime elsewhere (R-11b, CI has no card), numpy 2.5.3 from Python 3.12 and 2.4.6 for the 3.11 floor (R-11a). pytesseract is gone. Decision 191: constraints.txt is gone; four lock files (requirements.lock, requirements-build.lock, requirements-nodeps.lock, requirements-gpu.lock - not mapped, the map takes no .lock files) carry each pin with the hash of every file PyPI publishes for it, and tools/lockfiles.py check (run by tests/test_lockfiles.py) fails when a pin here and its lock disagree. A pin moves here and in its lock together, then `python tools/lockfiles.py hash`."
+    },
+    {
+      "id": "pkg:@floating-ui/core",
+      "type": "package",
+      "layer": "external"
     },
     {
       "id": "pkg:PIL",
@@ -8496,10 +8529,13 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e3f98e9c6795bc30",
-      "lines": 707,
+      "sha256": "50bb2d5fbc889e30",
+      "lines": 765,
       "exports": [
         "CONTRAST",
+        "FLOATING_UI",
+        "FLOATING_UI_SCRIPTS",
+        "FLOATING_UI_SHA256",
         "NODE",
         "OK_DARK",
         "OK_LIGHT",
@@ -8542,17 +8578,21 @@
         "test_the_new_renderer_files_type_no_words_of_their_own",
         "test_the_path_names_every_level_and_the_year_always_shows",
         "test_the_renderer_has_no_title_attribute",
+        "test_the_search_box_alone_shows_no_tooltip_on_keyboard_focus",
         "test_the_search_list_shows_at_most_eight_options",
         "test_the_shell_sends_only_the_menu_channels_messages_and_no_path",
         "test_the_shells_stylesheet_ends_with_its_own_forced_colors_block",
         "test_the_shells_stylesheet_follows_the_structure_passes_rules",
         "test_the_skeleton_is_the_specs_and_the_old_screen_is_kept_hidden_not_drawn",
         "test_the_sort_icon_is_stop_while_a_sort_runs_and_grey_on_a_firm_page",
+        "test_the_tooltip_reaches_floating_ui_only_through_its_one_global",
+        "test_the_vendored_floating_ui_is_the_pinned_bytes_and_nothing_else",
         "test_the_window_colours_are_the_pages"
       ],
       "constants": {
         "SHELL_FILES": "('shell.js', 'tooltip.js')",
         "TITLE_FREE": "('shell.js', 'tooltip.js', 'shell.css', 'pilot.js', 'tour.js')",
+        "FLOATING_UI_SCRIPTS": "('vendor/floating-ui/floating-ui.core.umd.min.js', 'vendor/floating-ui/floating-ui.dom.umd.min.js')",
         "RETIRED": "('.topbar', '.brand', '.chip', '.view-', '.eng-picker', '.mode-toggle', '.deck-card', '.review', '.requests', '.setup-row', ':root')",
         "PEOPLE": "'\\nconst fill = (p, v) => p.replace(/\\\\{(\\\\w+)\\\\}/g, (_, k) => v[k] ?? \"\");\\nconst vocab = { screen: { counts: { one_return: \"1 return\", returns: \"{n} returns\" },\\n  sections: { overview: \"Overview\", needs_review: \"Needs review\", reminders: \"Reminders\", clients: \"Clients\" },\\n  sort: { now: \"Sort now\", stop: \"Stop sorting\", firm: \"Open a client to sort\", locked: \"In use elsewhere\", stopping: \"Stopping\" } } };\\nconst households = [\\n  { name: \"Smith Family\", path: \"h1\", returns: [{ rollable: true }] }, { name: \"Rivera Design\", path: \"h2\", returns: [] },\\n  { name: \"Ren\\\\u00e9e Okafor\", path: \"h3\", returns: [] }, { name: \"Lopez Household\", path: \"h4\", returns: [] },\\n];\\nconst engagements = [\\n  { name: \"a\", path: \"r1\", household: \"h1\", year: 2025, return_name: \"1040 - John & Jane Smith\" },\\n  { name: \"b\", path: \"r2\", household: \"h1\", year: 2024, return_name: \"1040 - John & Jane Smith\" },\\n  { name: \"c\", path: \"r3\", household: \"h2\", year: 2025, return_name: \"1120-S - Rivera Design LLC\" },\\n];\\nlet calls = 0; const call = () => { calls += 1; };\\n'"
       },
@@ -9741,6 +9781,12 @@
       "to": "app/renderer/style.css",
       "type": "loads",
       "source": "curated"
+    },
+    {
+      "from": "app/renderer/vendor/floating-ui/floating-ui.dom.umd.min.js",
+      "to": "pkg:@floating-ui/core",
+      "type": "depends_on",
+      "source": "derived"
     },
     {
       "from": "docs/ROADMAP.md",
