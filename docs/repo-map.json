@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 284,
+    "nodes": 285,
     "edges": 1142,
-    "reused": 242
+    "reused": 233
   },
   "node_types": [
     "artifact",
@@ -3973,8 +3973,8 @@
       "id": "app/renderer/app.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "37a8a25ef6fa805b",
-      "lines": 3653,
+      "sha256": "50c894d03c5b8de2",
+      "lines": 3667,
       "role": "The desktop UI's data and writes: the New household dialog (form type, then request list), the request-list editor - the only place a rule is entered - every write, the notices, the lock and the pass. It draws no page: the shell (shell.js) and the pages (pages.js) do. Talks only to window.tracker from the preload bridge.",
       "notes": "Every node is built with el() and placed with replaceChildren; there is no innerHTML and no escaper, so a client's file name, a keyword somebody typed into the request list or a folder name is text whatever characters it carries (a guard checks the sinks are absent). Every word it shows or compares comes from the API's vocabulary (applyVocabulary); it owns no label. Decision 76: the Needs Review card asks one question of a parked and a set-aside document alike - which request does this belong to - so reviewRow() builds both, and only an open question carries the note box and the button that sets one aside; what a person has set aside is folded under its own count, never removed from the page, because the list is the only way back. Decision 77: renderUnfileList() is the same list for what is already filed - folded away, there for the one row that is wrong - and the function cannot be called after the decision it shows, because the guard on the renderer's vocabulary forbids that word anywhere in the file. Decision 84: the Needs Review card shows the shortlist. renderReview() maps state.review by pbc_location and hands each parked row its triage; reviewRow() puts the shortlist at the head of the picker under the 'suggested' heading, every other request under 'other_requests', and lists the sentence behind each suggestion beneath the row - an <option> carries no second line, and the reason is what is read before anything is picked. The picker starts on the best suggestion, falling back to the router's own first candidate. A parked file the evidence says nothing about shows the vocabulary's nothing_suggested rather than a guess, and a set-aside row is not triaged at all, so it gets no shortlist. Every word of it - the two headings and the File it label as well - comes from vocab; the renderer still types none. Decision 89: a chip beside the engagement's name says whether its own page still describes it. The word and the label are the API's (vocab.view), the chip's class is derived from the word the same way a status chip's is, and the button opens state.paths.view through the same whitelisted opener the Open Status button uses. Decision 91: that button's label is the API's too - applyVocabulary() fills #view-label from vocab.view.open, exactly as it fills the scan button - so the page carries no word for it, and the path it opens is now an .html file the shell hands to the default browser. Decision 104: requestRows() is the one row component - a table of inputs built from vocab.columns (each column's key, header and help; the two numbers as number inputs whose minimum comes from vocab.editor.minimums, the override a pick of vocab.overrides), used by the custom-request section of Add a return / New household (three columns, identifiers assigned as rows are added) and by the editor (all ten). openEditor() opens on state.rules - the person's rows as stored, a derived date pattern shown blank, the file types shown as '*' when any - with the engagement's details laid out from vocab.editor.engagement_fields (a text box, a date or a yes/no box for the editable ones, plain text for the rest) and the keywords filings taught shown beside each row as taught (vocab.editor.learned_note), never as typed. pasteRows() appends rows pasted from a spreadsheet by position - tab-separated if any line holds a tab, otherwise CSV through a small RFC 4180 reader, a first line that repeats the headings skipped - and records nothing. saveEditor() is one edit call: a refusal is shown inside the editor with its row and column and the modal stays open; a save renders the state the API returns, closes, and says what changed or that nothing did, with the warnings under vocab.editor.warnings_heading. Every heading, label, hint and button of the editor is vocab.editor's or vocab.columns'; the Check Manifest button and the button that opened the workbook are gone with the workbook. Decision 112: both row builders put the row's sequence number on the <li> (dataset.seq, from state.index[].seq and state.review[].seq) and assignParked(), dismissParked() and unfileDocument() send it back as seq; assignParked's banner shows the API's overrode_shortlist sentence as a warn note beside left_in_review. A refusal goes through refused(): the API's sentence is toasted, the button re-enabled and showReturn(active) re-reads the state (one `state` since decision 194), so the card shows the row as the record now holds it. The renderer types no sentence of its own here either. Decision 113: the learned cell is a list rather than a line - learnedCell() draws the API's learned_note and then one span.ed-learned-word per taught keyword, each with its own button.ed-unlearn carrying the identifier and the word - and a click calls the unlearn command, then re-draws only the learned column from the state that comes back (renderLearnedCells), because unlearning is its own event and lands at once while the rows may hold edits the person has not saved. The note area says the API's unlearned_note, and its scan_note under it when the re-scan could not run; the renderer types no word of it. Decision 110: renderMoved() draws #moved-card above the review card from state.moved - one row per moved working copy, its home and where its bytes are now, with restoreMoved (the restore command), keepMoved (assign, with the request the picker was left on and the keyword typed) and reviewMoved (unfile) behind the three buttons, delegated on #moved-list. The picker and the keyword box are shown only where the API said which request the copy's name belongs to (in_request, decision 168), and the picker starts on it; every word is vocab.review_labels', including the word for a copy that is nowhere. Decision 114 (the deck, Cards/List) is gone with the shell (SPEC-shell 13): renderReview() draws the one list into the hidden #review-card until the side sheet (S5) takes reviewRow() over. fileRow() is the one place the assign call is made - assignParked() and keepMoved() reach it, and a guard in tests/test_single_source.py keeps it the only one, so the review rows and a moved copy cannot drift apart. Decision 118: renderReminder()/loadReminder()/drawReminder() are the Reminder card - the record's last word on the draft, the four stages as a toggle coloured from the API's palette, the letter drawn from its own shape with el() (never from the clipboard's markup, which would be an HTML string), Copy for Outlook putting text/html and text/plain on the clipboard with the same words, Approve sending back the fingerprint of the text on screen, and Open the draft file on the path state.paths names. The stage a person picked is the only thing the page holds of its own and is dropped when the engagement changes. It types no colour: every hex it draws with is looked up in vocab.reminder.palette by the key a stage carries, and a guard reads the file for one. Decision 129 added the household card's two feed lines, the editor's feed list with its picker and its warning, and File under another return on both renderings of the queue - every word of it from the API's vocabulary, as always. Decision 160: the editor sends state's list_head with every save, and a Rename fold (renameChoices(), renameRequest()) calls the rename command, renames the row in place, adopts the version the rename returns and keeps what the person typed and not saved. Decision 157: movedRow() draws a gone row (its copy and its original both gone) with the one answer left, Mark <identifier> missing (vocab.review_labels.mark_missing on the .r-withdraw button the filed list uses), and the moved list's click handler sends it to withdrawAnswer(). Decision 189: runScan() shows the reply's pass_warnings and each other return's error, skip and warnings under its own label, in the same banner and the same way as the asked return's warnings, on the skipped and failed paths too. Decision 188: the household card shows the API's pause sentence and, where there is something to accept, the one 'Accept the folder's name' button, which sends accept-folder-name with the seq and scope the card was drawn from; misfits are drawn from the API's 'where' (the path below the root), never worked out here. Decision 194: one process per click. A switch is showReturn -> one `state` (193's generation drops a late reply). The Reminder card is drawn from state.reminder_card (drawReminderReply draws either source); `reminder` is called only for the stage toggle, a refused approve, or to keep a toggled rung after a write. The list and vocab arrive once from `list` (bootstrap: start and set-root) and are replaced by the `list` a list-changing write carries (adoptList). The editor opens on lastState (D13); its save is judged by list_head. The review's fixes: call(args, payload, { ofAnother }) says the warnings of another return's state (the hand-over picker's) under its label (vocab.notices.about, labelOfState); unlearnKeyword redraws through renderFor, so D13's lastState is never behind an unlearn. Decision 196: there is no wizard and no household choice outside the card. renderHousehold() draws Roll forward to <year> as a fold only when state.household.roll_year is set, and Add a return; rollFromCard() gathers the ticks and form picks (rollChoice, kept for the household on screen across a redraw) and rollHouseholdCall(hh, choice) - a pure function a test runs under node - builds the one roll-household call from the household on screen. openAddReturn(hh) sets addingTo, the only household a create sends by path; openNewHousehold() clears it. A refused create stays in #ne-note. On decision 194's model the create and the roll adopt the list their reply carries (adoptList) and draw its state through renderFor; the roll fold's people button is reviewPeople() - showReturn, which says whether its read drew the page, then openEditor only when it did and the clicked return is still active, so a failed read is one notice and a switch during the read opens no editor; bootstrap loads the catalog once for the roll fold's form pick; openEditor reads state only when lastState is another return's and says vocab.editor.not_this_return when a switch landed during that read. Decision 200: a row's status is vocab.labels[item.status_key].label in pages.js (pagesItemStatus), one word in its colour with no sentence (SPEC-shell 2.5 E58); setAsideGroups() builds the one Set aside fold (not asked first, then each Not Applicable year) that renderEditorRows() draws, each group headed by setAsideHeading(). Not Applicable rows leave the working table; no 'override:' is typed. Decision 201: every dialog is in DIALOGS and goes through openDialog (remembers the opener, focuses a control, Tab trapped by trapTab) and requestClose (Cancel, Escape and an overlay click alike) to closeDialog (focus back to the opener); a dialog with a model is compared with its snapshot and, when dirty, raises its unsaved bar - Keep editing focused, Discard the only way out, Escape keeping; rename and a form picked move the snapshot. keywordBox() and noteBox() build the labelled review boxes. requestRows takes a fold option: the editor's plain part (vocab.editor.plain_columns, and a custom row's Document per state.items[].catalog_row) and a per-row Routing rules fold (routing_columns), hidden never dropped; a refused save opens every fold. addIssuerAndFile() is the one call site of add-issuer-and-file. DECISION 190: the Reminder card's status and each return's household line say vocab.reminder.approved_then_edited when the state's `lapsed` is set, after approved and before last drafted. tests/test_layers.py scans this file, main.js and preload.js for any network call. The review list groups parked rows by the API's bucket under review_labels.buckets (decision 190); a not-a-document row and card offer no Open and no File it and say the true type; Open is offered only where the API named row.open_key (never a container or a refused reading - decision 190 following 184) and opens state.paths[row.open_key], never a path of its own. Since the review of 190 every row is keyed on the API's handle, never pbc_location: data-original, the triaged map, the triaged map, so two programs from one zip (no location) are two rows. Decision 203: runScan() sends withEng(vocab.pass_command) and is answered once the pass has begun; onPassMessage() takes that pass's progress lines (drawProgress) and its ending (passEnded): the final line's pass_warnings become notices, the asked return's run and the household's other runs draw the banner through scanSummary(run, others, summary) - a notice under its label when that return is no longer shown - and the page is redrawn with one `list`, then one `state`, behind renderFor. The household's returns are greyed by the lock the pass holds, which state reports (193); scanDone() gives the button back through applyLock()'s mark (the review's M2), and a final line that does not name the asked return is vocab.scan.not_in_pass (S2). Decision 209: Install Schedule is gone; Tools > Repair schedule (repairSchedule) runs install-schedule after confirm(vocab.schedule.repair_confirm) and says the reply's sentence (outcome). When the repair's reply names another computer (host), it asks confirm(vocab.schedule.move_confirm with {host} filled in) and on yes calls move-schedule-here. saveRoot's banner is warn when after_install.failed is non-empty. window.tracker.onAfterInstallDone re-asks list and redraws only the notice. renderAfterInstall() shows list's after_install notice at the top of the first screen, headed vocab.after_install.heading, until a run finds nothing. Pilot P21: the Schedule dialog (openSchedule/saveSchedule, registered in DIALOGS as schedule-modal) reads settings, saves through set-schedule, shows a refusal inside the dialog and types none of its words. Pilot 0.2 (SPEC-shell, S3): the shell around the page is shell.js's. app.js calls it at six one-line seams - shellVocabulary at the end of applyVocabulary, shellAdopt in adoptList, shellNeedsRoot in loadEngagements, shellChanged where the sort, the lock or the pass changes, shellProgress in drawProgress, and shellKey first in the document's one keydown listener - and draws no card any differently yet: the old screen's markup is kept hidden in #legacy until the pages (S4) and the sheet (S5) take over its cards."
     },
@@ -3998,10 +3998,10 @@
       "id": "app/renderer/pages.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "083d38231fbd61e6",
-      "lines": 705,
+      "sha256": "d703b186428ef99e",
+      "lines": 829,
       "role": "The pages (pilot SPEC-shell 3.6 and 6): Overview, Needs review, Reminders, Clients, household, year and return, drawn into #page from the `list`, `firm` and `state` replies, with the one row and group every page is made of and the keys on a row list.",
-      "notes": "A classic script loaded after app.js and tooltip.js and before shell.js. It types no word: every word is vocab.screen, vocab.menu or a word the vocabulary already holds (a request's label, a stage's short name, a reason's short label), and a word the vocabulary lacks is a loud failure that pagesDraw says as a notice. A return's groups are the API's `group` on each state item (an item without one throws: nothing is guessed); pagesTally counts the same way so shell.js can tell when the firm's counts moved. The four firm pages draw no H1. A household's notices (two years open, folder renamed with Accept, feeds) are syncNotices('household', ...) while any of its pages is open. It offers S5 pagesRowFor(token) and pagesFiles() and calls openCheck, openReminder and openMisfits when they exist, else one loud notice."
+      "notes": "A classic script loaded after app.js and tooltip.js and before shell.js. It types no word: every word is vocab.screen, vocab.menu or a word the vocabulary already holds (a request's label, a stage's short name, a reason's short label), and a word the vocabulary lacks is a loud failure that pagesDraw says as a notice. A return's groups are the API's `group` on each state item and on each index file (a moved file a person marked missing is Set aside): nothing is guessed from a decision, so an item or file without a known group is left out of every group and named in its own notice, while every other row is drawn (pagesSafe / pagesEach: one bad row never blanks a page, a page that cannot be built whole keeps what it held or draws its H1); pagesTally counts the same way, and never throws, so shell.js can tell when the firm's counts moved. A long API sentence (a pause, a feed) is shown as its short vocabulary word (shortNotice, shell.js) and goes to the error log. The four firm pages draw no H1. A household's notices (two years open, folder renamed with Accept, feeds) are syncNotices('household', ...) while any of its pages is open. It offers S5 pagesRowFor(token) and pagesFiles() and calls openCheck, openReminder and openMisfits when they exist, else one loud notice."
     },
     {
       "id": "app/renderer/pilot-content.js",
@@ -4037,8 +4037,8 @@
       "id": "app/renderer/shell.css",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "2adbf25f283fb94f",
-      "lines": 665,
+      "sha256": "b6eabb40c8a8ef07",
+      "lines": 671,
       "role": "Layout and components of the shell's markup: side panel, path row, notices, page, the row and group every page is made of, the setup page, the sheet's frame and the tooltip.",
       "notes": "Tokens only, as pilot-ui.css: no colour, size or step is written here, and tests/test_shell.py fails on the first one. Every display other than none sits under :not(.hidden) (or [hidden], or :empty), because style.css's .hidden and the hidden attribute both lose to a later display. It ends with its own forced-colors block. The columns of a row are 240/200/160/144 so a row fits the 860px main area at the 1100px window; the date and the next step share the last column."
     },
@@ -4046,8 +4046,8 @@
       "id": "app/renderer/shell.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "9bf7555a050d6144",
-      "lines": 853,
+      "sha256": "17567734f3c97404",
+      "lines": 873,
       "role": "The app shell (pilot SPEC-shell, P58-P77): the side panel, the path row, the search, the sort icon, the one route, the setup page and the page's side of the `menu` channel. A classic script that shares app.js's globals and draws nothing of a return itself; it hands the page to pages.js.",
       "notes": "It types no word of its own: every name, tooltip and line is vocab.screen, and a key the vocabulary lacks throws, which app.js's bootstrap says as a notice - a loud failure, never a guess. Its own builder h() sets only the attributes it names (the pattern of app.js's el(), decision 137). app.js calls it at seams of one line each: shellVocabulary, shellAdopt, shellNeedsRoot, shellChanged, shellProgress, shellKey and shellStateArrived (and shell.js calls appRouteChanged); app.js's one document keydown listener hands every key to shellKey first, so the new files add no listener of their own (a test holds it). The route is {level, household, year, ret} of paths the API reported; a return's page waits for showReturn's state, and Sort now sorts the active return's household, so a household or year page first reads the state of one of its own returns when the state on screen is not (its notices come with it). The menu's enable list (shellEnabled) follows SPEC 5.1 rule for rule and is sent on every change; a menu id the page cannot answer is a notice and an error-log line, never silence. The firm command's counts (shellLoadFirm) are asked after every list; while they load the firm pages show outline rows, and a failure is one notice with Retry."
     },
@@ -4471,7 +4471,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "914783b462dea763",
+      "sha256": "f0d81592f122b2f1",
       "lines": 1117,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -4658,6 +4658,13 @@
       "layer": "docs",
       "sha256": "df239c4730923b20",
       "lines": 158
+    },
+    {
+      "id": "pilot/handoffs/shell-S4-rebuild-1.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "282980d45675f0a8",
+      "lines": 218
     },
     {
       "id": "pilot/handoffs/shell-S4-review-1.md",
@@ -5002,8 +5009,8 @@
       "id": "pilot/harness/app-stub.js",
       "type": "module",
       "layer": "root",
-      "sha256": "924a1b15c3a60897",
-      "lines": 220
+      "sha256": "00f678acb6f3844d",
+      "lines": 222
     },
     {
       "id": "pilot/harness/boot.js",
@@ -5032,8 +5039,8 @@
       "id": "pilot/harness/stub.js",
       "type": "module",
       "layer": "root",
-      "sha256": "46e8d544d42a0d1b",
-      "lines": 319
+      "sha256": "1752862fe7cb646e",
+      "lines": 346
     },
     {
       "id": "pilot/mockup-shell.html",
@@ -5453,8 +5460,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "88a2d7cd86880a0d",
-      "lines": 8065,
+      "sha256": "d3cc8700aa934d4b",
+      "lines": 8069,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -8519,16 +8526,18 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "69f174915cf72246",
-      "lines": 987,
+      "sha256": "145b8b04f2091c66",
+      "lines": 1417,
       "exports": [
         "CONTRAST",
         "FAKE_DOM",
         "NODE",
+        "NOTICE_FUNCTIONS",
         "OK_DARK",
         "OK_LIGHT",
         "PAGE_WORDS",
         "PEOPLE",
+        "PROBE_EVERY_NOTICE",
         "REPO",
         "RETIRED",
         "RETURN_STATE",
@@ -8541,15 +8550,25 @@
         "ratio",
         "resolve",
         "root_blocks",
+        "run_notices",
         "run_pages",
         "run_pages_dom",
         "run_shell",
         "stripped_js",
+        "test_a_file_without_a_group_is_named_and_not_counted",
         "test_a_household_or_return_not_in_the_list_never_shows_its_path_as_a_name",
+        "test_a_household_with_an_unreadable_return_is_never_complete_on_the_clients_page",
         "test_a_menu_id_the_page_cannot_answer_is_said_and_logged",
+        "test_a_moved_file_marked_missing_is_set_aside_and_the_tally_equals_the_firms_counts",
+        "test_a_notice_falls_back_to_the_setup_line_for_a_word_the_vocabulary_lacks",
+        "test_a_notice_shows_the_vocabularys_short_word_when_it_has_one",
+        "test_a_notice_whose_short_word_the_vocabulary_lacks_falls_back_to_the_setup_line_and_logs_the_sentence",
+        "test_a_page_that_cannot_be_built_whole_keeps_what_it_held_or_draws_its_frame",
         "test_a_return_page_draws_its_groups_in_order_and_leaves_out_empty_ones_but_received",
         "test_a_returns_needs_you_group_holds_parked_files_then_moved_then_requests_then_the_buckets",
         "test_a_row_carries_one_step_and_its_status_word_and_no_sentence",
+        "test_a_row_that_cannot_be_built_is_left_out_and_named_on_every_page",
+        "test_an_error_after_the_state_arrives_never_reaches_the_write_that_brought_it",
         "test_changing_the_clients_folder_keeps_the_firms_name_and_phone",
         "test_every_attribute_the_shell_builds_a_node_with_is_on_its_list",
         "test_every_colour_pair_meets_its_contrast_in_both_themes",
@@ -8558,12 +8577,16 @@
         "test_every_light_token_has_a_dark_value_and_no_other",
         "test_every_line_height_lands_on_the_grid",
         "test_every_literal_colour_still_in_use_has_a_dark_value",
+        "test_every_loud_failure_of_the_old_screen_reaches_a_notice",
         "test_every_menu_id_the_page_answers_is_in_the_template_and_the_rest_are_the_rows",
         "test_every_size_is_a_multiple_of_four",
         "test_every_space_is_a_step_of_the_grid",
         "test_every_token_has_the_value_the_spec_lists_in_both_themes",
         "test_folder_names_are_the_last_part_of_the_path_on_either_kind_of_slash",
         "test_long_names_are_cut_and_carry_their_full_name_as_the_tooltip",
+        "test_no_notice_draws_more_than_five_words_or_a_path_even_over_the_apis_long_sentences",
+        "test_no_page_draws_a_path_as_text_or_as_a_tooltip",
+        "test_one_item_without_a_group_is_named_in_a_notice_and_every_other_row_is_drawn",
         "test_one_keydown_listener_owns_the_keyboard",
         "test_only_the_household_year_and_return_pages_draw_an_h1",
         "test_search_finds_a_household_by_any_part_of_its_name_without_calling_the_api",
@@ -8578,23 +8601,27 @@
         "test_the_overview_puts_each_return_in_one_bucket",
         "test_the_pages_groups_and_the_firms_tally_of_them_cannot_disagree",
         "test_the_path_names_every_level_and_the_year_always_shows",
+        "test_the_renderer_defines_none_of_the_names_section_13_removes",
         "test_the_renderer_has_no_title_attribute",
         "test_the_search_list_shows_at_most_eight_options",
+        "test_the_set_aside_fold_is_shut_each_time_the_page_opens",
         "test_the_shell_sends_only_the_menu_channels_messages_and_no_path",
         "test_the_shells_stylesheet_ends_with_its_own_forced_colors_block",
         "test_the_shells_stylesheet_follows_the_structure_passes_rules",
         "test_the_skeleton_is_the_specs_and_only_what_the_sheet_takes_over_is_kept_hidden",
         "test_the_sort_icon_is_stop_while_a_sort_runs_and_grey_on_a_firm_page",
-        "test_the_window_colours_are_the_pages"
+        "test_the_window_colours_are_the_pages",
+        "test_the_year_page_leaves_a_gap_under_its_h1_before_its_rows"
       ],
       "constants": {
         "SHELL_FILES": "('shell.js', 'tooltip.js', 'pages.js')",
         "TITLE_FREE": "('shell.js', 'tooltip.js', 'pages.js', 'shell.css', 'pilot.js', 'tour.js', 'app.js', 'index.html')",
         "RETIRED": "('.review', ':root')",
         "PEOPLE": "'\\nconst fill = (p, v) => p.replace(/\\\\{(\\\\w+)\\\\}/g, (_, k) => v[k] ?? \"\");\\nconst vocab = { screen: { counts: { one_return: \"1 return\", returns: \"{n} returns\" },\\n  sections: { overview: \"Overview\", needs_review: \"Needs review\", reminders: \"Reminders\", clients: \"Clients\" },\\n  sort: { now: \"Sort now\", stop: \"Stop sorting\", firm: \"Open a client to sort\", locked: \"In use elsewhere\", stopping: \"Stopping\" } } };\\nconst households = [\\n  { name: \"Smith Family\", path: \"h1\", returns: [{ rollable: true }] }, { name: \"Rivera Design\", path: \"h2\", returns: [] },\\n  { name: \"Ren\\\\u00e9e Okafor\", path: \"h3\", returns: [] }, { name: \"Lopez Household\", path: \"h4\", returns: [] },\\n];\\nconst engagements = [\\n  { name: \"a\", path: \"r1\", household: \"h1\", year: 2025, return_name: \"1040 - John & Jane Smith\" },\\n  { name: \"b\", path: \"r2\", household: \"h1\", year: 2024, return_name: \"1040 - John & Jane Smith\" },\\n  { name: \"c\", path: \"r3\", household: \"h2\", year: 2025, return_name: \"1120-S - Rivera Design LLC\" },\\n];\\nlet calls = 0; const call = () => { calls += 1; };\\n'",
-        "FAKE_DOM": "'\\nclass Node {}\\nclass Text extends Node { constructor(data) { super(); this.data = data; } }\\nclass Element extends Node {\\n  constructor(tag) { super(); this.tag = tag; this.className = \"\"; this.dataset = {}; this.attrs = {}; this.kids = []; this.open = false; }\\n  get classList() {\\n    const self = this;\\n    return { add(one) { if (!self.className.split(\" \").includes(one)) self.className = `${self.className} ${one}`.trim(); },\\n             contains(one) { return self.className.split(\" \").includes(one); } };\\n  }\\n  setAttribute(key, value) { this.attrs[key] = String(value); }\\n  getAttribute(key) { return this.attrs[key]; }\\n  append(...nodes) { for (const one of nodes) this.kids.push(one instanceof Node ? one : new Text(String(one))); }\\n  replaceChildren(...nodes) { this.kids = []; this.append(...nodes); }\\n  addEventListener() {}\\n  find(test, out = []) { for (const one of this.kids) if (one instanceof Element) { if (test(one)) out.push(one); one.find(test, out); } return out; }\\n  querySelector(selector) { return this.byClass(selector.slice(1))[0] || null; }\\n  byClass(name) { return this.find((one) => one.className.split(\" \").includes(name)); }\\n  get textContent() { return this.kids.map((one) => (one instanceof Text ? one.data : one.textContent)).join(\"\"); }\\n}\\nconst document = { createElement: (tag) => new Element(tag), createElementNS: (_ns, tag) => new Element(tag) };\\nconst page = (nodes) => { const box = new Element(\"div\"); box.append(...nodes.filter(Boolean)); return box; };\\n'",
-        "PAGE_WORDS": "'\\nconst fill = (p, v) => p.replace(/\\\\{(\\\\w+)\\\\}/g, (_, k) => v[k] ?? \"\");\\nconst isSetAside = (o) => o === \"Not Applicable\";\\nconst overrideLabel = (o, year) => `Not applicable ${year}`;\\nlet locked = false;\\nlet lastState = null;\\nconst tips = [];\\nconst setTipIfCut = (node, words) => tips.push([node.className, words]);\\nlet shellReturn = (path) => ({ return_name: \"1040 - John & Jane Smith\", household: \"h1\", year: 2025 });\\nconst folderName = (path) => path;\\nconst PAGES_GROUPS = [\"needs_you\", \"waiting\", \"received\", \"set_aside\"];\\nconst PAGES_TONES = { needs: \"is-attention\", waiting: \"is-waiting\", done: \"is-done\", plain: \"is-plain\" };\\nconst PAGES_LATE = \"9999-99-99\";\\nlet pagesUid = 0; const pagesTokens = new Map(); let pagesSetAsideFor = \"\"; let pagesSetAsideOpen = false;\\nconst vocab = {\\n  decisions: { needs_review: \"Needs Review\", dismissed: \"Not Requested\", filed: \"Filed\" },\\n  labels: { Missing: { label: \"Outstanding\" }, Received: { label: \"Received\" }, Partial: { label: \"Partly in\" }, Rejected: { label: \"Could not use\" }, NotAsked: { label: \"Not asked\" } },\\n  overrides: { not_applicable: \"Not Applicable\" },\\n  review_labels: { bucket_order: [\"document\", \"container\", \"not_a_document\"], dismiss: \"Not requested\",\\n                   buckets: { document: \"Documents\", container: \"Emails and zips\", not_a_document: \"Not documents\" } },\\n  reasons: { unmatched: { short: \"Could not tell\" }, \"opened-not-across\": { short: \"Came in email or zip\" } },\\n  screen: {\\n    groups: { needs_you: \"Needs you\", waiting: \"Waiting on client\", received: \"Received\", set_aside: \"Set aside\" },\\n    steps: { check: \"Check\", open: \"Open\", draft: \"Draft reminder\", edit: \"Edit\" },\\n    empty: { received: \"Nothing received yet\" }, moved: \"Moved by hand\", due: \"Due {date}\", partly: \"{n} of {total}\",\\n    counts: { need: \"{n} need you\", waiting: \"{n} waiting\", complete: \"Complete\", files: \"{n} files\" },\\n  },\\n};\\n'",
-        "RETURN_STATE": "'\\nconst item = (id, group, extra = {}) => ({ identifier: id, document: `Doc ${id}`, short_name: `Doc ${id}`, group, status_key: \"Missing\", manual_override: \"\",\\n  period: \"\", year: 2025, file_count: 0, expected_count: 1, received_date: null, ...extra });\\nconst parked = (handle, extra = {}) => ({ handle, original_name: `${handle}.pdf`, decision: \"Needs Review\", code: \"unmatched\", received: \"2026-03-03\", bucket: \"document\", ...extra });\\nconst stateOf = (items, index = [], moved = []) => ({ paths: { engagement: \"r1\" }, engagement: { due: \"2026-04-15\" }, items, index, review: [], moved });\\n'"
+        "FAKE_DOM": "'\\nclass Node {}\\nclass Text extends Node { constructor(data) { super(); this.data = data; } }\\nclass Element extends Node {\\n  constructor(tag) { super(); this.tag = tag; this.className = \"\"; this.dataset = {}; this.attrs = {}; this.kids = []; this.open = false; this.handlers = {}; }\\n  get classList() {\\n    const self = this;\\n    return { add(one) { if (!self.className.split(\" \").includes(one)) self.className = `${self.className} ${one}`.trim(); },\\n             contains(one) { return self.className.split(\" \").includes(one); } };\\n  }\\n  setAttribute(key, value) { this.attrs[key] = String(value); }\\n  getAttribute(key) { return this.attrs[key]; }\\n  append(...nodes) { for (const one of nodes) this.kids.push(one instanceof Node ? one : new Text(String(one))); }\\n  replaceChildren(...nodes) { this.kids = []; this.append(...nodes); }\\n  addEventListener(type, fn) { (this.handlers[type] = this.handlers[type] || []).push(fn); }\\n  get childNodes() { return this.kids; }\\n  find(test, out = []) { for (const one of this.kids) if (one instanceof Element) { if (test(one)) out.push(one); one.find(test, out); } return out; }\\n  querySelector(selector) { return this.byClass(selector.slice(1))[0] || null; }\\n  byClass(name) { return this.find((one) => one.className.split(\" \").includes(name)); }\\n  get textContent() { return this.kids.map((one) => (one instanceof Text ? one.data : one.textContent)).join(\"\"); }\\n}\\nconst document = { activeElement: null, createDocumentFragment: () => new Element(\"fragment\"), createElement: (tag) => new Element(tag), createElementNS: (_ns, tag) => new Element(tag) };\\nconst page = (nodes) => { const box = new Element(\"div\"); box.append(...nodes.filter(Boolean)); return box; };\\n'",
+        "PAGE_WORDS": "'\\nconst fill = (p, v) => p.replace(/\\\\{(\\\\w+)\\\\}/g, (_, k) => v[k] ?? \"\");\\nconst isSetAside = (o) => o === \"Not Applicable\";\\nconst overrideLabel = (o, year) => `Not applicable ${year}`;\\nlet locked = false;\\nlet lastState = null;\\nconst tips = [];\\nconst setTipIfCut = (node, words) => tips.push([node.className, words]);\\nlet shellReturn = (path) => ({ return_name: \"1040 - John & Jane Smith\", household: \"h1\", year: 2025 });\\nconst PAGES_GROUPS = [\"needs_you\", \"waiting\", \"received\", \"set_aside\"];\\nconst PAGES_TONES = { needs: \"is-attention\", waiting: \"is-waiting\", done: \"is-done\", plain: \"is-plain\" };\\nconst PAGES_LATE = \"9999-99-99\";\\nlet pagesUid = 0; const pagesTokens = new Map(); let pagesSetAsideOpen = false; let pagesBroken = []; let pagesDrawn = \"\";\\nlet pagesFocus = null; let pagesLastLevel = \"\"; let pagesClientsAll = false;\\nconst notices = []; const failures = [];\\nlet syncNotices = (prefix, wanted) => notices.push([prefix, wanted.map((one) => [one.key, one.failure.sentence, one.detail || \"\"])]);\\nconst failed = (err) => failures.push(String(err.message));\\nlet shellHousehold = () => null; let households = [];\\nconst vocab = {\\n  shell: { page_error: \"The app hit an error\" }, notices: { about: \"{label}: {sentence}\" },\\n  decisions: { needs_review: \"Needs Review\", dismissed: \"Not Requested\", filed: \"Filed\", file_moved: \"File Moved\" },\\n  labels: { Missing: { label: \"Outstanding\" }, Received: { label: \"Received\" }, Partial: { label: \"Partly in\" }, Rejected: { label: \"Could not use\" }, NotAsked: { label: \"Not asked\" } },\\n  overrides: { not_applicable: \"Not Applicable\" },\\n  review_labels: { bucket_order: [\"document\", \"container\", \"not_a_document\"], dismiss: \"Not requested\",\\n                   buckets: { document: \"Documents\", container: \"Emails and zips\", not_a_document: \"Not documents\" } },\\n  reasons: { unmatched: { short: \"Could not tell\" }, \"opened-not-across\": { short: \"Came in email or zip\" } },\\n  screen: {\\n    groups: { needs_you: \"Needs you\", waiting: \"Waiting on client\", received: \"Received\", set_aside: \"Set aside\" },\\n    steps: { check: \"Check\", open: \"Open\", draft: \"Draft reminder\", edit: \"Edit\" },\\n    empty: { received: \"Nothing received yet\" }, moved: \"Moved by hand\", due: \"Due {date}\", partly: \"{n} of {total}\",\\n    counts: { need: \"{n} need you\", waiting: \"{n} waiting\", complete: \"Complete\", files: \"{n} files\", one_return: \"1 return\", returns: \"{n} returns\" },\\n  },\\n};\\n'",
+        "RETURN_STATE": "'\\nconst item = (id, group, extra = {}) => ({ identifier: id, document: `Doc ${id}`, short_name: `Doc ${id}`, group, status_key: \"Missing\", manual_override: \"\",\\n  period: \"\", year: 2025, file_count: 0, expected_count: 1, received_date: null, ...extra });\\nconst parked = (handle, extra = {}) => ({ handle, original_name: `${handle}.pdf`, decision: \"Needs Review\", group: \"needs_you\", code: \"unmatched\", received: \"2026-03-03\", bucket: \"document\", ...extra });\\nconst movedRow = (handle, extra = {}) => ({ handle, original_name: `${handle}.pdf`, decision: \"File Moved\", group: \"needs_you\", code: \"file-moved\", received: \"2026-03-02\", ...extra });\\nconst setAsideRow = (handle, extra = {}) => ({ handle, original_name: `${handle}.pdf`, decision: \"Not Requested\", group: \"set_aside\", code: \"not-requested\", received: \"2026-03-01\", ...extra });\\nconst stateOf = (items, index = [], moved = []) => ({ paths: { engagement: \"r1\" }, engagement: { due: \"2026-04-15\" }, items, index, review: [], moved });\\n'",
+        "PROBE_EVERY_NOTICE": "'\\n      const seen = [];\\n      for (const scenario of [\"notices\", \"household-notices\", \"locked\", \"stale-lock\"]) {\\n        const { list, state } = await replies(scenario);\\n        vocab = list.vocab;\\n        vocab.screen.notices = Object.assign({}, vocab.screen.notices, %s);\\n        drawn.length = 0; logged.length = 0;\\n        renderMachineNotices(list);\\n        renderAfterInstall(noticeOf(list.after_install));\\n        renderShortOfRoom([{ engagement: \"r1\", sentences: [\"A LONG ROOM SENTENCE\"] }]);\\n        active = state.paths.engagement;\\n        showLock(state.lock);\\n        lastState = state;\\n        pagesHouseholdNotices({ level: \"household\", household: state.household.path });\\n        seen.push({ scenario, drawn: drawn.slice(), logged: logged.slice(), reader: list.reader_warning, machine: list.machine_warnings,\\n                    pause: state.household.pause.sentence || \"\", lock: state.lock });\\n      }\\n      return seen;\\n'"
       },
       "role": "The shell's renderer half: the tokens and their contrast in both themes, the shell stylesheet's discipline, the guards every renderer file keeps, the words the new files may not type, and the route, search, sort icon and menu enable list run in node against shell.js's own functions.",
       "notes": "SHELL_FILES and TITLE_FREE name the files a claim covers; S2 adds the menu half, S4 the pages' node tests and S5 the sheet's. The contrast table and the token values are the SPEC's section 10, copied as data."
@@ -8603,8 +8630,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "5422ccef82a8be50",
-      "lines": 3827,
+      "sha256": "8973cff1b5770c09",
+      "lines": 3831,
       "exports": [
         "AFTER_WHAT",
         "CONSOLE_EXEMPT",

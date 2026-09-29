@@ -7,7 +7,7 @@ Fixes review 1's F1-F8 and nothing more. The last commit is named on the last li
 
 ## Findings, each with how it was fixed
 
-Status: F1 done; F2-F8 follow in this file as they land.
+Status: F1-F8 and the coordinator's index-group item are all fixed; each has its own section below.
 
 ### F1 - one bad row no longer blanks the return page (fixed)
 
@@ -168,3 +168,51 @@ return opened.
 - Fields: `files[].return` is read as the return's **path** (the same string as `returns[].path`); the pages join to
   the return name through `list` by path (`shellReturn`); `files[].handle` is read for the Check step (`year` is not
   read).
+
+## Mutation checks
+
+On a scratch copy of the tree with its own `git init`, each run over `test_shell`,
+`test_single_source` and `test_pilot_ui` (the unmutated copy passes all three). All 26 mutations were caught;
+the first test that caught each is named.
+
+| Mutation | Caught by |
+|---|---|
+| deck markup back in #legacy | `test_the_skeleton_is_the_specs_and_only_what_the_sheet_takes_over_is_kept_hidden` |
+| renderDeck back in app.js | `test_the_renderer_defines_none_of_the_names_section_13_removes` |
+| REVIEW_MODE_KEY back in app.js | `test_the_renderer_defines_none_of_the_names_section_13_removes` |
+| return name falls back to the raw path | `test_no_page_draws_a_path_as_text_or_as_a_tooltip` |
+| household caption carries route.household | `test_no_page_draws_a_path_as_text_or_as_a_tooltip` |
+| a path appended to the lock notice | `test_no_notice_draws_more_than_five_words_or_a_path_even_over_the_apis_long_sentences` |
+| lock notice appends `greyed` again (F2) | `test_no_notice_draws_more_than_five_words_or_a_path_even_over_the_apis_long_sentences` |
+| reader-warning notice dropped | `test_every_loud_failure_of_the_old_screen_reaches_a_notice` |
+| reader notice draws the API's sentence (F3) | `test_no_notice_draws_more_than_five_words_or_a_path_even_over_the_apis_long_sentences` |
+| machine warnings drawn verbatim (F3) | `test_no_notice_draws_more_than_five_words_or_a_path_even_over_the_apis_long_sentences` |
+| pause drawn verbatim (F3) | `test_the_household_pages_notices_are_two_years_folder_renamed_and_feeds` |
+| misfits notice dropped | `test_every_loud_failure_of_the_old_screen_reaches_a_notice` |
+| names-shortened notice dropped | `test_every_loud_failure_of_the_old_screen_reaches_a_notice` |
+| after-install notice dropped | `test_every_loud_failure_of_the_old_screen_reaches_a_notice` |
+| F1: pagesSafe rethrows (one bad row blanks the page) | `test_one_item_without_a_group_is_named_in_a_notice_and_every_other_row_is_drawn` |
+| F1: pagesTally throws on a group-less item | `test_one_item_without_a_group_is_named_in_a_notice_and_every_other_row_is_drawn` |
+| F1: a failed draw empties the page | `test_a_page_that_cannot_be_built_whole_keeps_what_it_held_or_draws_its_frame` |
+| F1: the broken-row notice dropped | `test_one_item_without_a_group_is_named_in_a_notice_and_every_other_row_is_drawn` |
+| F1: an error in shellStateArrived escapes | `test_an_error_after_the_state_arrives_never_reaches_the_write_that_brought_it` |
+| F4: an unreadable household is Complete | `test_a_household_with_an_unreadable_return_is_never_complete_on_the_clients_page` |
+| F5: the fold stays open across a visit | `test_the_set_aside_fold_is_shut_each_time_the_page_opens` |
+| F6: the focused step keeps the link colour | `test_the_contrast_theme_fills_and_rings_follow_spec_10_4` |
+| index group: the tally counts files by decision, not by group | `test_the_pages_groups_and_the_firms_tally_of_them_cannot_disagree` |
+| index group: Set aside draws only dismissed files | `test_a_moved_file_marked_missing_is_set_aside_and_the_tally_equals_the_firms_counts` |
+| index group: a file without a group is not named | `test_a_file_without_a_group_is_named_and_not_counted` |
+| F7: the year page has no gap | `test_the_year_page_leaves_a_gap_under_its_h1_before_its_rows` |
+
+## Gate
+
+Python 3.11 (`/tmp/v`) then 3.13 (`/tmp/v313`), one after the other, each file its own process:
+`test_shell` 57, `test_pilot_ui` 11, `test_tour` 8, `test_pilot` 18, `test_single_source` 165, `test_layers` 29,
+`test_api` 368, `test_pilot_installer` 12, `test_row_columns` 26 - all pass on both. `ruff check .` clean. Dead
+code: `pagesSetAsideFor` deleted, no unused helper left. `interact.mjs`: "all interactions pass" (with the new
+checks). `shoot.mjs`: 125 shots, real `app.js`, 0 page errors, 0 logged, no visible error; looked at the year
+page (24px under its H1), the locked page ("In use on OFFICE-PC", one line), the return with Set aside open, and
+the contrast theme, light and dark (focused row and its Check step, 19.04:1 and 13.76:1). `repo_map.py update`,
+`check` and `test_repo_map` are the last step.
+
+Branch `claude/shell-s4-pages`. Last code commit: `50940f6` (the commits after it are this file, the repository map).
