@@ -436,17 +436,13 @@ SHELL_KILLED_AT = "It was on {household}: {name}."
 SHELL_NO_REPLY = "No reply from the tracker"
 SHELL_COULD_NOT_START = "The tracker could not start"
 SHELL_COULD_NOT_SEND = "Could not send; nothing changed"
-#: With no error log (no data folder yet), a failed command's stderr is said
-#: in its own reply instead - the shell never writes a log beside the
-#: program (decision 186's rebase review, MF2).
+#: With no error log (no data folder yet) the details are not kept and are
+#: not shown: the shell never writes a log beside the program (decision 186's
+#: rebase review, MF2; SPEC-shell 11.2).
 SHELL_NO_LOG = "Tracker failed; no error log"
 #: An error of the page's own, said by its class; its message goes to the
 #: error log through the shell (the review's S5).
 PAGE_ERROR = "The app hit an error"
-#: The same, when no data home can be had and so there is no error log to
-#: point at (decision 186): never a sentence naming a file that is not there.
-PAGE_ERROR_NO_LOG = ("The app met an error of its own ({kind}); there is no error log to hold "
-                     "the details, because the tracker has no data folder - the first screen says why.")
 #: What a Sort & Scan reply is said as (the review's S4, decision 42).
 SCAN_SCANNING = "Scanning\u2026"
 SCAN_NOTHING_DONE = "Nothing done: {why}."
@@ -1219,12 +1215,10 @@ SCREEN: dict = {
     "find_none": "No match",
     "sort": {
         "now": "Sort now",
-        "sort": {
-            "stop": "Stop sorting",
-            "firm": "Open a client to sort",
-            "locked": "In use elsewhere",
-            "stopping": "Stopping",
-        },
+        "stop": "Stop sorting",
+        "firm": "Open a client to sort",
+        "locked": "In use elsewhere",
+        "stopping": "Stopping",
     },
     "last_sort": {
         "today": "Sorted {time}",
@@ -1252,9 +1246,7 @@ SCREEN: dict = {
     },
     "filters": {
         "work": "Work waiting",
-        "filters": {
-            "all": "All",
-        },
+        "all": "All",
     },
     "counts": {
         "need": "{n} need you",
@@ -1633,7 +1625,7 @@ def _vocab() -> dict:
                   "killed_at": SHELL_KILLED_AT, "no_reply": SHELL_NO_REPLY,
                   "could_not_start": SHELL_COULD_NOT_START,
                   "could_not_send": SHELL_COULD_NOT_SEND, "no_log": SHELL_NO_LOG,
-                  "page_error": PAGE_ERROR if error_log else PAGE_ERROR_NO_LOG,
+                  "page_error": PAGE_ERROR,
                   "error_log": error_log},
         # The lock notice (decision 193, D4): when, where, and - on this
         # machine - which file; nothing waits and nothing needs clearing.
@@ -2904,7 +2896,8 @@ def _error_log_said() -> str:
     be had (decision 186): the log sits beside the store, in the data home,
     and ``list`` must still answer so the first screen can say why. The
     shell keeps no path it is given empty, and then writes no log at all:
-    a failed command's stderr is said in its reply (:data:`SHELL_NO_LOG`)."""
+    the details of a failed command are not kept (:data:`SHELL_NO_LOG`,
+    SPEC-shell 11.2)."""
     try:
         return str(error_log_path())
     except SettingsError:
@@ -4454,7 +4447,8 @@ def _cmd_add_issuer_and_file(argv: list[str]) -> dict:
     try:
         scan_engagement(engagement)
     except ScanLockedError as exc:
-        scan_note = ISSUER_NOT_RESCANNED.format(kind=errors.error_class(exc))
+        errors.keep("api: add issuer", exc)
+        scan_note = ISSUER_NOT_RESCANNED
     _refresh_readmes(engagement)
     return {
         "added_and_filed": {
@@ -5196,20 +5190,27 @@ def _cmd_acknowledge_foreign(argv: list[str]) -> dict:
     return {"acknowledged": acknowledged, "state": _state(engagement)}
 
 
-#: The commands that write a record, a file or the store. Each holds the
-#: settings' root to this machine's record checkpoint first (decision 159,
-#: E5): a checkpoint that belongs to another root is refused by name
-#: before anything is written.
-def _firm_draft(engagement: Path, due: dt.date | None, held: int, today: dt.date) -> dict:
+def _firm_draft(engagement: Path, due: dt.date | None, held_rows: int, today: dt.date) -> dict:
     """The reminder facts one return's row on the Reminders page needs, read
-    the way :func:`_reminder_payload` reads them and never composing the
-    letter: the stage the day gives, how many requests hold it, and the day
-    it was last drafted. ``ready`` is a draft written this draft-week that
-    nothing holds; a hold, or none yet, is not ready."""
+    the way :func:`_return_reminder` reads them and never composing the
+    letter: the stage the day gives, what holds it (the requests that hold
+    it plus the files still in the inbox, a directory listing and no
+    document read) and the day it was last drafted. ``ready`` is a draft
+    written this draft-week that is not yet approved; a hold does not
+    unmake it - the page shows Held beside it (SPEC-shell 6.3)."""
     drafted = last_drafted(engagement)
-    this_week = drafted is not None and drafted >= last_draft_day(today, DRAFT_WEEKDAY)
-    return {"ready": bool(this_week and not held), "stage": reminder.stage_for(due, today),
-            "held": held, "drafted": drafted.isoformat() if drafted else None}
+    week = last_draft_day(today, DRAFT_WEEKDAY)
+    this_week = drafted is not None and drafted >= week
+    approval = reminder.approval_state(engagement, engagement / reminder.DRAFT_FILENAME, since=week)
+    held = held_rows + reminder.unsorted_in_inbox(engagement)
+    return {"ready": bool(this_week and approval != reminder.APPROVED_NOTE),
+            "stage": reminder.stage_for(due, today), "held": held,
+            "drafted": drafted.isoformat() if drafted else None}
+
+
+#: A return the firm view could not read: a short line of the shell's, the
+#: detail going to the error log (SPEC-shell 9.2, 11.1).
+FIRM_UNREADABLE = "Could not be read"
 
 
 def _firm_row(one, household: str, today: dt.date) -> tuple[dict, list[dict]]:
@@ -5218,13 +5219,15 @@ def _firm_row(one, household: str, today: dt.date) -> tuple[dict, list[dict]]:
     due date and the draft's state. The readers are the ones ``state`` uses,
     with ``follow=False`` as the status page reads (nothing is written, no
     lock is taken, no document is read). A record that cannot be read is its
-    own row with ``problem`` set and zero counts, said by class (decision 189):
-    it never fails the reply."""
+    own row with ``problem`` set and zero counts, said in :data:`FIRM_UNREADABLE`
+    with the detail in the error log (decision 189): it never fails the reply,
+    and the total counts it as needing a person, never as complete."""
     row = {"path": str(one.path), "household": household,
            "counts": dict.fromkeys(GROUPS, 0), "files": 0, "oldest": None, "due": None,
            "draft": {"ready": False, "stage": 0, "held": 0, "drafted": None}, "problem": ""}
     if one.problem:
-        row["problem"] = runner.RECORD_UNREADABLE.format(problem=one.problem)
+        errors.keep("api: firm", one.problem, name=one.path.name)
+        row["problem"] = FIRM_UNREADABLE
         return row, []
     try:
         items = load_manifest(one.path, follow=False)
@@ -5238,19 +5241,21 @@ def _firm_row(one, household: str, today: dt.date) -> tuple[dict, list[dict]]:
     except Exception as exc:                 # one bad record costs its own row
         errors.keep("api: firm", exc, name=one.path.name)
         log.warning("A return could not be read for the firm view (%s)", errors.error_class(exc))
-        row["problem"] = runner.RECORD_UNREADABLE.format(problem=errors.error_class(exc))
+        row["problem"] = FIRM_UNREADABLE
         return row, []
     for item in items:
         row["counts"][item_group(item, placed)] += 1
     by_name = {item.identifier: item for item in items}
-    files = [{"return": one.label, "name": t.entry.original_name, "code": t.entry.code,
-              "received": t.entry.received,
+    files = [{"return": one.label, "path": str(one.path), "name": t.entry.original_name,
+              "code": t.entry.code, "received": t.entry.received,
               "suggestion": by_name[t.shortlist[0].identifier].label if t.shortlist else ""}
              for t in parked]
-    moved = [entry for entry in entries if file_group(entry) == GROUP_NEEDS_YOU
-             and entry.decision == FILE_MOVED]
-    waiting_days = sorted([f["received"] for f in files] + [entry.received for entry in moved])
-    row["files"] = len(files) + len(moved)
+    files.extend({"return": one.label, "path": str(one.path), "name": entry.original_name,
+                  "code": reasons.FILE_MOVED.code, "received": entry.received, "suggestion": ""}
+                 for entry in entries
+                 if file_group(entry) == GROUP_NEEDS_YOU and entry.decision == FILE_MOVED)
+    waiting_days = sorted(f["received"] for f in files)
+    row["files"] = len(files)
     row["oldest"] = waiting_days[0] if waiting_days else None
     row["due"] = info.due.isoformat() if info.due else None
     row["draft"] = draft
@@ -5293,7 +5298,7 @@ def _cmd_firm(argv: list[str]) -> dict:
         reply["returns"].append(row)
         reply["files"].extend(files)
         counts = row["counts"]
-        if counts[GROUP_NEEDS_YOU]:
+        if counts[GROUP_NEEDS_YOU] or row["files"] or row["problem"]:
             totals["need"] += 1
         elif counts[GROUP_WAITING]:
             totals["waiting"] += 1
@@ -5315,6 +5320,10 @@ def _next_sort() -> str | None:
     return said[-5:] if said else None
 
 
+#: The commands that write a record, a file or the store. Each holds the
+#: settings' root to this machine's record checkpoint first (decision 159,
+#: E5): a checkpoint that belongs to another root is refused by name
+#: before anything is written.
 WRITING_COMMANDS = frozenset({
     "rollover", "roll-household", "mark-shared", "approve", "create", "assign",
     "dismiss", "unfile", "restore", "edit", "edit-household", "unlearn", "rename",

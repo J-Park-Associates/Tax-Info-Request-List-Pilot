@@ -65,7 +65,7 @@ Verdicts: **KEEP** = still true after the shell change as described. **CHANGE** 
 | `test_the_renderer_gets_its_vocabulary_from_the_api` | 2593 | `schedule.note` "Scan works either way. Nothing is ever sent." | 8 |
 | `test_the_wizard_sends_every_catalog_row_and_the_tick_is_asked` | 5433 (assert at 5455) | `nothing_asked` "Select at least one request item" | 6 |
 | `test_rule_two_names_the_inbox_and_the_years_folder_and_is_quoted_everywhere` | 734 | `rules[1].detail` "Files are moved byte for byte under their own names out of {INBOX_DIR_NAME} into the client's folder for the year; all work happens on copies, and every move is recorded in {THE_RECORD}." | 35 |
-| `test_without_a_data_home_the_pages_error_never_points_at_an_error_log_that_is_not_there` | 2457 | substrings `error log` and `no error log` of `PAGE_ERROR_NO_LOG` (what `shell.page_error` becomes with no data home: "The app met an error of its own ({kind}); there is no error log to hold the details, ...") | 26 |
+| `test_without_a_data_home_the_pages_error_never_points_at_an_error_log_that_is_not_there` | 2457 | `shell.page_error` is `PAGE_ERROR` ("The app hit an error") on both branches; `PAGE_ERROR_NO_LOG` is gone (rebuild 1, F6) | 26 |
 
 Negative-only literals that mirror over-five-word vocabulary text (they assert the text is ABSENT from app.js/index.html/main.js, so they survive a rewrite): `test_single_source.py` 921 (`typed` tuple: `No template — carry`, `return(s) rolled into`, `request(s) carried`, `file(s) sent last year were never filed`), 2993 (`` `The app could not send`` not in main.js), `test_api.py` 4288 (People block words).
 

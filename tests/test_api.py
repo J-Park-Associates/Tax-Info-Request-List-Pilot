@@ -2476,11 +2476,11 @@ def test_a_data_home_that_cannot_be_had_is_a_banner_on_the_first_screen_never_an
 
 
 def test_without_a_data_home_the_pages_error_never_points_at_an_error_log_that_is_not_there(monkeypatch):
-    """Decision 186: with no data home there is no error log, so the page's
-    own-error sentence says so rather than sending a person to a file that
-    does not exist; with one, it names the log as before."""
+    """Decision 186: with no data home there is no error log, so none is
+    named to the shell; the page's own-error line is the same short line
+    either way (SPEC-shell 11.2), and the details are not kept."""
     from tracker import store
-    from tracker.api import PAGE_ERROR, PAGE_ERROR_NO_LOG, _vocab
+    from tracker.api import PAGE_ERROR, _vocab
     from tracker.settings import ENV_DATA_HOME
 
     shell = _vocab()["shell"]
@@ -2490,8 +2490,8 @@ def test_without_a_data_home_the_pages_error_never_points_at_an_error_log_that_i
     monkeypatch.setenv(ENV_DATA_HOME, "relative-data")
     shell = _vocab()["shell"]
     assert shell["error_log"] == ""
-    assert shell["page_error"] == PAGE_ERROR_NO_LOG
-    assert "error log" in PAGE_ERROR_NO_LOG and "no error log" in PAGE_ERROR_NO_LOG
+    assert shell["page_error"] == PAGE_ERROR == "The app hit an error"
+    assert not hasattr(api, "PAGE_ERROR_NO_LOG")
 
 def test_the_first_screen_says_every_machine_warning_in_a_banner_of_its_own():
     """The app adds no word of its own: each sentence is the API's, drawn as
@@ -7820,7 +7820,7 @@ def test_a_locked_rescan_after_adding_the_issuer_is_said_by_its_class_never_its_
     code, payload = _add_issuer(capsys, engagement, row)
     assert code == 0, payload
     note = payload["added_and_filed"]["assigned"]["scan_note"]
-    assert note == api.ISSUER_NOT_RESCANNED.format(kind="EngagementLockedError")
+    assert note == api.ISSUER_NOT_RESCANNED
     assert "private" not in note
     assert api._vocab()["review_labels"]["issuer_not_rescanned"] == api.ISSUER_NOT_RESCANNED
 
@@ -8140,19 +8140,81 @@ def test_firm_counts_match_the_return_pages_groups(capsys, demo_root):
     assert row["files"] == 1 and row["oldest"] == "2026-02-01"
     assert [f["name"] for f in firm["files"]] == ["setup.exe"]
     assert firm["files"][0]["code"] == reasons.NOT_A_DOCUMENT.code
-    assert firm["totals"]["files"] == 1
+    assert firm["files"][0]["path"] == str(mixed)
+    assert firm["totals"]["files"] == len(firm["files"]) == 1
     assert firm["totals"]["need"] + firm["totals"]["waiting"] + firm["totals"]["complete"] == len(
         firm["returns"])
 
 
+def test_firm_lists_every_file_it_counts_and_buckets_a_return_with_only_a_file(capsys, demo_root):
+    """A file moved by hand is listed with its code and its return's path, so
+    the rows under the count agree with it; a return whose only work for a
+    person is a parked file (every request received) needs a person."""
+    from tests.conftest import seed_index, seed_statuses
+    from tracker.filer import FILE_MOVED, IndexEntry
+    from tracker.manifest import StatusUpdate
+
+    only_file = chased_engagement(capsys, demo_root, name="Only file")
+    seed_statuses(only_file, {"A01": StatusUpdate(status=Status.RECEIVED, file_count=1),
+                              "B01": StatusUpdate(status=Status.RECEIVED, file_count=1)})
+    seed_index(only_file, [
+        IndexEntry(received="2026-02-01", original_name="setup.exe", size_kb=0.1, digest="5" * 64,
+                   identifier="", prepared_location="", pbc_location="pbc/setup.exe",
+                   decision=NEEDS_REVIEW, reason=reasons.NOT_A_DOCUMENT.format(),
+                   code=reasons.NOT_A_DOCUMENT.code),
+        IndexEntry(received="2026-02-02", original_name="w2.pdf", size_kb=1.0, digest="6" * 64,
+                   identifier="A01", prepared_location="A01/w2.pdf", pbc_location="pbc/w2.pdf",
+                   decision=FILE_MOVED, reason="")])
+    _code, firm = run(capsys, "firm")
+    [row] = firm["returns"]
+    assert row["files"] == 2 and row["oldest"] == "2026-02-01"
+    assert [(f["name"], f["code"], f["path"]) for f in firm["files"]] == [
+        ("setup.exe", reasons.NOT_A_DOCUMENT.code, str(only_file)),
+        ("w2.pdf", reasons.FILE_MOVED.code, str(only_file))]
+    assert firm["totals"]["files"] == 2
+    assert firm["totals"]["need"] == 1 and firm["totals"]["complete"] == 0
+
+
+def test_firm_says_a_reminder_draft_ready_only_until_it_is_approved_and_counts_the_inbox_as_a_hold(
+        capsys, demo_root, monkeypatch):
+    import datetime as dt
+
+    from tracker import reminder
+
+    folder = chased_engagement(capsys, demo_root, name="Drafted")
+    monkeypatch.setattr(api, "last_drafted", lambda _path: dt.date.today())
+    monkeypatch.setattr(api, "last_draft_day", lambda today, _weekday: today - dt.timedelta(days=1))
+    monkeypatch.setattr(reminder, "unsorted_in_inbox", lambda _path: 2)
+    monkeypatch.setattr(reminder, "approval_state", lambda *_a, **_k: "")
+
+    def draft():
+        [row] = run(capsys, "firm")[1]["returns"]
+        return row["draft"]
+
+    ready = draft()
+    assert ready["ready"] is True and ready["held"] >= 2, "a hold does not unmake a ready draft"
+    monkeypatch.setattr(reminder, "approval_state", lambda *_a, **_k: reminder.APPROVED_NOTE)
+    assert draft()["ready"] is False
+    assert run(capsys, "firm")[1]["totals"]["drafts"] == 0
+    assert folder.is_dir()
+
+
 def test_firm_is_read_only(capsys, demo_root):
+    from tracker import store
     from tracker.locking import LOCK_FILENAME
+    from tracker.settings import data_home
 
     _a_practice_for_the_firm_view(capsys, demo_root)
+    store_file = store.store_path()
 
     def snapshot():
-        return {str(path.relative_to(demo_root)): path.read_bytes() if path.is_file() else None
-                for path in sorted(demo_root.rglob("*"))}
+        found = {str(path.relative_to(demo_root)): path.read_bytes() if path.is_file() else None
+                 for path in sorted(demo_root.rglob("*"))}
+        # The store and its side files, and the data home beside it.
+        for path in sorted({*data_home().rglob("*"), store_file,
+                            *store_file.parent.glob(store_file.name + "-*")}):
+            found[f"store:{path}"] = path.read_bytes() if path.is_file() else None
+        return found
 
     before = snapshot()
     assert run(capsys, "firm")[0] == 0
@@ -8174,8 +8236,12 @@ def test_firm_says_an_unreadable_record_as_its_own_row(capsys, demo_root, monkey
     code, firm = run(capsys, "firm")
     assert code == 0, firm
     rows = {one["path"]: one for one in firm["returns"]}
-    assert rows[str(mixed)]["problem"] and set(rows[str(mixed)]["counts"].values()) == {0}
+    assert rows[str(mixed)]["problem"] == api.FIRM_UNREADABLE == "Could not be read"
+    assert "record" not in api.FIRM_UNREADABLE.lower() and len(api.FIRM_UNREADABLE.split()) <= 5
+    assert set(rows[str(mixed)]["counts"].values()) == {0}
     assert rows[str(quiet)]["problem"] == ""
+    # A return nobody can read needs a person; it is never counted as complete.
+    assert firm["totals"]["need"] == 1 and firm["totals"]["complete"] == 1
 
 
 def test_firm_leaves_out_inactive_returns(capsys, demo_root):
@@ -8250,6 +8316,10 @@ def test_list_reports_the_clients_root_and_the_firm_report_as_openable(capsys, d
 def test_the_vocabulary_carries_the_menu_the_screen_and_the_short_words(capsys):
     words = api._vocab()
     assert words["menu"] == api.MENU and words["screen"] == api.SCREEN
+    # The key shape of SPEC-shell 11.4, flat: the harness and the renderer read these.
+    assert set(words["screen"]["sort"]) == {"now", "stop", "firm", "locked", "stopping"}
+    assert words["screen"]["sort"]["stop"] == "Stop sorting"
+    assert words["screen"]["filters"] == {"work": "Work waiting", "all": "All"}
     assert words["reasons"] == reasons.SHORT_REASONS
     assert [stage["short"] for stage in words["reminder"]["stages"]] == [
         "Heads up", "Checking in", "Deadline near", "Final notice"]
