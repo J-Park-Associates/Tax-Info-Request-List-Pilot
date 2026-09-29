@@ -124,6 +124,7 @@
         request("1099-G - State refund", "", "Not asked"),
         request("1098-T - Tuition", "", "Not applicable 2025"),
         file("old-scan.pdf", "", "Not requested", "Jan 30"),
+        item("missing", "lost-in-move.pdf", "", "Moved by hand", "Jan 28"),
       ],
       due: "Due Apr 15", draft: { ready: true, stage: 1, held: 3, drafted: "2026-03-03" },
     };
@@ -220,7 +221,7 @@
         const names = many ? Array.from({ length: Number(many[1]) }, (_, i) => `${one.name.toLowerCase().replace(/\W+/g, "-")}-${i + 1}.pdf`) : filedAs ? [filedAs] : [];
         for (const original of names) {
           handleSeq += 1;
-          index.push({ handle: `h${handleSeq}`, original_name: original, received: dayOf(one.date), decision: "Filed", identifier, code: "matched", answered: [], filed_names: [original], seq: handleSeq });
+          index.push({ handle: `h${handleSeq}`, original_name: original, received: dayOf(one.date), decision: "Filed", group: "received", identifier, code: "matched", answered: [], filed_names: [original], seq: handleSeq });
         }
         return;
       }
@@ -228,12 +229,17 @@
       const handle = `h${handleSeq}`;
       if (one.kind === "moved") {
         movedList.push({ original_name: one.name, handle, seq: handleSeq, home: "", now: "", in_request: "", gone: false, identifier: "" });
-        index.push({ handle, original_name: one.name, received: dayOf(one.date), decision: "File Moved", identifier: "", code: "file-moved", answered: [], seq: handleSeq });
+        index.push({ handle, original_name: one.name, received: dayOf(one.date), decision: "File Moved", group: "needs_you", identifier: "", code: "file-moved", answered: [], seq: handleSeq });
+        return;
+      }
+      if (one.kind === "missing") {
+        // A moved file a person marked missing: on the record only, set aside by the engine (index[].group).
+        index.push({ handle, original_name: one.name, received: dayOf(one.date), decision: "File Moved", group: "set_aside", identifier: "", code: "file-moved", answered: [], seq: handleSeq });
         return;
       }
       const dismissed = group === "set_aside";
       index.push({
-        handle, original_name: one.name, received: dayOf(one.date), decision: dismissed ? "Not Requested" : "Needs Review", identifier: "",
+        handle, original_name: one.name, received: dayOf(one.date), decision: dismissed ? "Not Requested" : "Needs Review", group: dismissed ? "set_aside" : "needs_you", identifier: "",
         code: dismissed ? "not-requested" : CODE[one.status], bucket: one.bucket || "document", answered: [], seq: handleSeq,
       });
       if (!dismissed) {

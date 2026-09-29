@@ -146,3 +146,25 @@ H1 bottom 100, first row top 124 (24px), the same as Reminders under its page to
 
 Link kinds and the year on return names (rulings 8-13) are S5's. The real `firm` reply mismatches
 (review 1's list for S6) are another job's.
+
+## Added by the coordinator (from S1 review 4): files count and draw by the engine's group
+
+The engine puts a moved file a person marked missing into Set aside (`file_group`, `state.index[].group` and the
+firm's counts agree). `pagesTally` and the return page used the file's *decision*, so on such a return the tally
+was one lower than the firm's, the row was never drawn, and the whole firm reply was read again every time the
+return opened.
+
+- `pagesReturnGroups` and `pagesTally` now take a file's group from `index[].group`: parked files (group Needs you,
+  decision Needs Review) and moved-by-hand files (from `state.moved`) are Needs you; every `set_aside` file is drawn
+  under Set aside - a file set aside by a person ("Not requested") and a moved file marked missing (status "Moved by
+  hand", the approved word, and no step, because it has no copy to check). Filed files count in no group of their own
+  (their request does), as the firm counts them. An index row with no known `group` is set aside and named in a
+  notice, like an item is (nothing is guessed from its decision).
+- Harness stub: index rows carry `group`; the Smith return has one moved file marked missing
+  (`lost-in-move.pdf`), so the firm's counts and the page agree on it.
+- Tests: `test_a_moved_file_marked_missing_is_set_aside_and_the_tally_equals_the_firms_counts`,
+  `test_a_file_without_a_group_is_named_and_not_counted`; `interact.mjs`: opening that return does not read the
+  firm again, and the file is under Set aside.
+- Fields: `files[].return` is read as the return's **path** (the same string as `returns[].path`); the pages join to
+  the return name through `list` by path (`shellReturn`); `files[].handle` is read for the Check step (`year` is not
+  read).

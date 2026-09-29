@@ -809,7 +809,7 @@ const failed = (err) => failures.push(String(err.message));
 let shellHousehold = () => null; let households = [];
 const vocab = {
   shell: { page_error: "The app hit an error" }, notices: { about: "{label}: {sentence}" },
-  decisions: { needs_review: "Needs Review", dismissed: "Not Requested", filed: "Filed" },
+  decisions: { needs_review: "Needs Review", dismissed: "Not Requested", filed: "Filed", file_moved: "File Moved" },
   labels: { Missing: { label: "Outstanding" }, Received: { label: "Received" }, Partial: { label: "Partly in" }, Rejected: { label: "Could not use" }, NotAsked: { label: "Not asked" } },
   overrides: { not_applicable: "Not Applicable" },
   review_labels: { bucket_order: ["document", "container", "not_a_document"], dismiss: "Not requested",
@@ -827,7 +827,9 @@ const vocab = {
 RETURN_STATE = r"""
 const item = (id, group, extra = {}) => ({ identifier: id, document: `Doc ${id}`, short_name: `Doc ${id}`, group, status_key: "Missing", manual_override: "",
   period: "", year: 2025, file_count: 0, expected_count: 1, received_date: null, ...extra });
-const parked = (handle, extra = {}) => ({ handle, original_name: `${handle}.pdf`, decision: "Needs Review", code: "unmatched", received: "2026-03-03", bucket: "document", ...extra });
+const parked = (handle, extra = {}) => ({ handle, original_name: `${handle}.pdf`, decision: "Needs Review", group: "needs_you", code: "unmatched", received: "2026-03-03", bucket: "document", ...extra });
+const movedRow = (handle, extra = {}) => ({ handle, original_name: `${handle}.pdf`, decision: "File Moved", group: "needs_you", code: "file-moved", received: "2026-03-02", ...extra });
+const setAsideRow = (handle, extra = {}) => ({ handle, original_name: `${handle}.pdf`, decision: "Not Requested", group: "set_aside", code: "not-requested", received: "2026-03-01", ...extra });
 const stateOf = (items, index = [], moved = []) => ({ paths: { engagement: "r1" }, engagement: { due: "2026-04-15" }, items, index, review: [], moved });
 """
 
@@ -894,8 +896,8 @@ def test_the_pages_groups_and_the_firms_tally_of_them_cannot_disagree(tmp_path):
     ran = run_pages_dom("""
       const state = stateOf([item("A", "needs_you"), item("B", "waiting"), item("C", "waiting"), item("D", "received", { status_key: "Received" }),
                              item("E", "set_aside", { status_key: "NotAsked" })],
-        [parked("p1"), parked("p2"), { handle: "d1", original_name: "d.pdf", decision: "Not Requested", received: "2026-03-01" }],
-        [{ handle: "m1", original_name: "m.pdf", identifier: "A" }]);
+        [parked("p1"), parked("p2"), setAsideRow("d1"), movedRow("m1")],
+        [{ handle: "m1", original_name: "m1.pdf", identifier: "A" }]);
       const groups = pagesReturnGroups(state, 2025);
       return { tally: pagesTally(state), drawn: Object.fromEntries(Object.entries(groups).map(([key, rows]) => [key, rows.length])) };
     """, tmp_path)
@@ -1376,3 +1378,40 @@ def test_no_page_draws_a_path_as_text_or_as_a_tooltip(tmp_path):
     assert all(one["broken"] == [] and one["strings"] > 3 for one in ran["drawnBy"].values()), json.dumps(ran["drawnBy"])
     for name in ("1040 - John & Jane Smith", "1040 - Gone Trust", "Smith Family", "scan0012.pdf"):
         assert name in ran["all"], f"{name} was not drawn, so the check saw nothing"
+
+
+def test_a_moved_file_marked_missing_is_set_aside_and_the_tally_equals_the_firms_counts(tmp_path):
+    """The engine's `index[].group` decides where a file counts (SPEC 9.1): a
+    moved file a person marked missing is Set aside, so the return page draws
+    it under Set aside, and the page's tally equals the firm's counts (which
+    the engine makes from the same groups) - otherwise the tally is one lower
+    and the whole firm reply is read again each time the return opens."""
+    ran = run_pages_dom("""
+      const state = stateOf([item("A", "needs_you"), item("B", "waiting"), item("E", "set_aside", { status_key: "NotAsked" })],
+        [parked("p1"), movedRow("m1"), setAsideRow("d1"), movedRow("lost", { group: "set_aside", received: "2026-02-20" }),
+         { handle: "f1", original_name: "filed.pdf", decision: "Filed", group: "received", identifier: "B", answered: [], received: "2026-03-01" }],
+        [{ handle: "m1", original_name: "m1.pdf", identifier: "A" }]);
+      // what the engine's firm counts hold for this return: items by group, parked and moved-by-hand files in
+      // Needs you, files set aside or marked missing in Set aside, filed files in no group of their own.
+      const firmCounts = { needs_you: 1 + 1 + 1, waiting: 1, received: 0, set_aside: 1 + 1 + 1 };
+      lastState = state;
+      const groups = pagesReturnGroups(state, 2025);
+      const box = page(pagesReturn({ level: "return", ret: "r1", year: 2025 }));
+      return { tally: pagesTally(state), firmCounts, setAside: groups.set_aside.map((one) => [one.name, one.status, one.step ? one.step.kind : null]),
+               drawn: Object.fromEntries(Object.entries(groups).map(([key, rows]) => [key, rows.length])), titles: box.byClass("group-title").map((one) => one.textContent),
+               broken: pagesBroken.length };
+    """, tmp_path)
+    assert ran["tally"] == ran["firmCounts"], "one lower than the firm's would re-read the firm each time the return opens"
+    assert ran["drawn"] == ran["tally"], "what is drawn and what is counted cannot disagree"
+    assert ["lost.pdf", "Moved by hand", None] in ran["setAside"], "a moved file marked missing sits in Set aside, with no step (it has no copy to check)"
+    assert ["d1.pdf", "Not requested", "check"] in ran["setAside"] and "Set aside" in ran["titles"] and ran["broken"] == 0
+
+
+def test_a_file_without_a_group_is_named_and_not_counted(tmp_path):
+    ran = run_pages_dom("""
+      const bare = { ...parked("p2"), group: undefined };
+      const state = stateOf([item("A", "needs_you")], [parked("p1"), bare]);
+      const groups = pagesReturnGroups(state, 2025);
+      return { names: groups.needs_you.map((one) => one.name), broken: pagesBroken.map((one) => one.name), tally: pagesTally(state) };
+    """, tmp_path)
+    assert ran["names"] == ["p1.pdf", "Doc A"] and ran["broken"] == ["p2.pdf"] and ran["tally"]["needs_you"] == 2

@@ -190,6 +190,20 @@ const crumbs = (page) => page.evaluate(() => [...document.querySelectorAll("#cru
   await context.close();
 }
 
+{ // the page's tally of a return equals the firm's counts, so opening it does not read the firm again
+  const { context, page } = await open("?mode=real");
+  const before = await page.evaluate(() => window.HARNESS.calls.filter((c) => c === "firm").length);
+  await page.evaluate(() => shellGo({ level: "return", household: "/clients/J Park & Associates/Smith Family", year: 2025, ret: "/clients/J Park & Associates/Smith Family/2025/1040 - John & Jane Smith" }));
+  await page.waitForFunction(() => document.querySelector("#page h1") && document.querySelectorAll("#page .group-title").length >= 3, null, { timeout: 5000 });
+  await page.waitForTimeout(500);
+  const after = await page.evaluate(() => window.HARNESS.calls.filter((c) => c === "firm").length);
+  check("opening a return with a moved file marked missing does not re-read the firm", after === before, [before, after]);
+  await page.click(".group-fold summary");
+  const rows = await page.evaluate(() => [...document.querySelectorAll(".group-fold .row-name")].map((n) => n.textContent));
+  check("the marked-missing moved file is under Set aside", rows.includes("lost-in-move.pdf"), rows);
+  await context.close();
+}
+
 { // a live lock: one notice, and the request list is not offered
   const { context, page } = await open("?mode=real&scenario=locked");
   await page.evaluate(() => shellGo({ level: "return", household: "/clients/J Park & Associates/Smith Family", year: 2025, ret: "/clients/J Park & Associates/Smith Family/2025/1040 - John & Jane Smith" }));

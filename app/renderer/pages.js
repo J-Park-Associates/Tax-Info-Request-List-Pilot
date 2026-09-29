@@ -531,7 +531,15 @@ function pagesReturnGroups(state, year) {
 
   const bucketOrder = vocab.review_labels.bucket_order;
   const plain = bucketOrder[0];
-  const parked = index.filter((one) => one.decision === decisions.needs_review).sort(oldestFirst);
+  // A file's group is the engine's (`index[].group`, SPEC 9.1: the same the firm's counts use), never
+  // worked out here from its decision; a file with none is set aside and named, as an item is.
+  for (const entry of index) {
+    pagesSafe(entry, () => {
+      if (PAGES_GROUPS.indexOf(entry.group) === -1) throw new Error("group");
+    });
+  }
+  const filesIn = (group) => index.filter((one) => one.group === group);
+  const parked = filesIn("needs_you").filter((one) => one.decision === decisions.needs_review).sort(oldestFirst);
   const parkedSpec = (entry) => {
     const first = ((triage.get(entry.handle) || {}).shortlist || [])[0];
     return { name: entry.original_name, detail: first ? nameOf(first.identifier) : "", status: pagesReason(entry.code), tone: "needs",
@@ -570,11 +578,15 @@ function pagesReturnGroups(state, year) {
       groups[item.group].push(spec);
     });
   }
-  const dismissed = index.filter((one) => one.decision === decisions.dismissed).sort(oldestFirst);
-  groups.set_aside.push(...pagesEach(dismissed, (one) => one.original_name, (entry) => ({
-    name: entry.original_name, detail: "", status: vocab.review_labels.dismiss, tone: "plain", date: pagesDay(entry.received),
-    menu: "file", step: fileStep(entry),
-  })));
+  // Set aside: files a person set aside (Not requested) and moved files a person marked missing. The
+  // second has no copy to check, so it has no step.
+  groups.set_aside.push(...pagesEach(filesIn("set_aside").sort(oldestFirst), (one) => one.original_name, (entry) => {
+    const missing = entry.decision === decisions.file_moved;
+    return {
+      name: entry.original_name, detail: "", status: missing ? words.moved : vocab.review_labels.dismiss, tone: "plain",
+      date: pagesDay(entry.received), menu: "file", step: missing ? null : fileStep(entry),
+    };
+  }));
   for (const bucket of bucketOrder.slice(1)) {
     groups.needs_you.push(...parkedIn(parked.filter((one) => one.bucket === bucket), { sub: vocab.review_labels.buckets[bucket] }));
   }
@@ -637,9 +649,12 @@ function pagesTally(state) {
     // An item with no known group is counted in none (the draw names it).
     if (PAGES_GROUPS.indexOf(item.group) !== -1) tally[item.group] += 1;
   }
-  const index = state.index || [];
-  tally.needs_you += index.filter((one) => one.decision === vocab.decisions.needs_review).length + (state.moved || []).length;
-  tally.set_aside += index.filter((one) => one.decision === vocab.decisions.dismissed).length;
+  // Files count where the engine put them (`index[].group`): parked and moved-by-hand files are Needs you,
+  // files set aside and moved files marked missing are Set aside; filed files count in no group (their
+  // request does).
+  for (const entry of state.index || []) {
+    if (entry.group === "needs_you" || entry.group === "set_aside") tally[entry.group] += 1;
+  }
   return tally;
 }
 
