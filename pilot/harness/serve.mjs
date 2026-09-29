@@ -35,8 +35,8 @@ export function serve(vocabJson, port = 0) {
     if (url.pathname === "/" || url.pathname === "/index.html") return send(page(url.searchParams.get("mode") || "double"), TYPES[".html"]);
     if (url.pathname === "/harness/vocab.js") return send(`window.__VOCAB__ = ${vocabJson};`, TYPES[".js"]);
     const file = url.pathname.startsWith("/harness/")
-      ? path.join(here, path.basename(url.pathname)) : path.join(renderer, path.basename(url.pathname));
-    if (!fs.existsSync(file)) return send("not found", "text/plain", 404);
+      ? path.join(here, path.basename(url.pathname)) : path.join(renderer, ...url.pathname.split("/").filter((part) => part && part !== ".." && part !== "."));
+    if (!fs.existsSync(file) || !fs.statSync(file).isFile()) return send("not found", "text/plain", 404);
     return send(fs.readFileSync(file), TYPES[path.extname(file)] || "application/octet-stream");
   });
   return new Promise((resolve) => server.listen(port, "127.0.0.1", () => resolve({ server, port: server.address().port })));

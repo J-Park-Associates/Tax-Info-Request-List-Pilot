@@ -17,6 +17,7 @@ S5 the sheet's; the lists below that name the files a claim covers
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
@@ -44,6 +45,20 @@ SHELL_FILES = ("shell.js", "tooltip.js")
 #: Files that hold no ``title`` attribute (SPEC 13). S4 adds app.js and
 #: index.html when it deletes the last ones.
 TITLE_FREE = ("shell.js", "tooltip.js", "shell.css", "pilot.js", "tour.js")
+#: Floating UI, vendored (decision P86), in the order index.html loads it: the
+#: DOM build asks for the core build's global, so core comes first.
+FLOATING_UI = RENDERER / "vendor" / "floating-ui"
+FLOATING_UI_SCRIPTS = ("vendor/floating-ui/floating-ui.core.umd.min.js", "vendor/floating-ui/floating-ui.dom.umd.min.js")
+#: SHA-256 of each vendored file, the bytes of the published packages
+#: @floating-ui/dom 1.8.0, @floating-ui/core 1.8.0 and @floating-ui/utils
+#: 0.2.12 (the tarballs' integrity is in the folder's README).
+FLOATING_UI_SHA256 = {
+    "floating-ui.core.umd.min.js": "65940d866a6b6d831394a4bbed99ed0a39330bac98b643386d9a2f87a1a1d5da",
+    "floating-ui.dom.umd.min.js": "61a46f943c4e99379eaf073447811aec7e8b8f120d2f646316e01b7694bc90a3",
+    "LICENSE-dom": "0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce",
+    "LICENSE-core": "0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce",
+    "LICENSE-utils": "0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce",
+}
 
 
 
@@ -320,10 +335,53 @@ def test_the_loading_order_is_the_specs_and_the_csp_is_unchanged():
     html = read("index.html")
     styles = [html.index(f'href="{name}"') for name in ("style.css", "pilot-ui.css", "shell.css", "pilot-style.css")]
     assert styles == sorted(styles)
-    scripts = [html.index(f'src="{name}"') for name in ("app.js", "tooltip.js", "shell.js", "pilot-content.js", "pilot.js", "tour.js")]
+    scripts = [html.index(f'src="{name}"') for name in ("app.js", *FLOATING_UI_SCRIPTS, "tooltip.js", "shell.js", "pilot-content.js", "pilot.js", "tour.js")]
     assert scripts == sorted(scripts)
+    # Every script is a file of the app itself: no scheme, no host, no CDN.
+    sources = re.findall(r"<script[^>]*\bsrc=\"([^\"]+)\"", html)
+    assert len(sources) == len(scripts)
+    for source in sources:
+        assert not re.match(r"^([a-z][a-z0-9+.-]*:|//|/)", source, re.I), source
+        assert (RENDERER / source).is_file(), source
     assert ("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'") in html
     assert "<style" not in html and not re.search(r"<script(?![^>]*\bsrc=)", html)
+
+
+def test_the_vendored_floating_ui_is_the_pinned_bytes_and_nothing_else():
+    """Decision P86: placement is Floating UI's, copied unedited. The hashes
+    are the published packages' files; an edit, an upgrade or an extra file
+    fails here until the README and this table are changed on purpose."""
+    found = {path.name for path in FLOATING_UI.iterdir()}
+    assert found == {*FLOATING_UI_SHA256, "README.md"}, found
+    for name, digest in FLOATING_UI_SHA256.items():
+        assert hashlib.sha256((FLOATING_UI / name).read_bytes()).hexdigest() == digest, name
+    readme = (FLOATING_UI / "README.md").read_text(encoding="utf-8")
+    for digest in FLOATING_UI_SHA256.values():
+        assert digest in readme
+    for pinned in ("@floating-ui/dom` | 1.8.0", "@floating-ui/core` | 1.8.0", "@floating-ui/utils` | 0.2.12"):
+        assert pinned in readme, pinned
+
+
+def test_the_tooltip_reaches_floating_ui_only_through_its_one_global():
+    """Placement is the library's, the rest is ours: one global, no import, no
+    hand-rolled edge arithmetic left, and no colour or size typed in the script."""
+    js = stripped_js("tooltip.js")
+    assert set(re.findall(r"\bFloating[A-Za-z]*", js)) == {"FloatingUIDOM"}
+    assert {"computePosition", "offset", "flip", "shift"} <= set(re.findall(r"FloatingUIDOM\.(\w+)", js))
+    assert not re.search(r"\b(import|require)\b|getBoundingClientRect|innerWidth|innerHeight", js)
+    assert not re.search(r"#[0-9a-fA-F]{3,8}\b|\brgba?\(|\d\s*(px|rem|em)\b", js)
+    assert "style.setProperty(" in js and ".style." not in js.replace("style.setProperty(", "")
+
+
+def test_the_search_box_alone_shows_no_tooltip_on_keyboard_focus():
+    """Jason's ruling 2 (SPEC 8.5): every other control shows its tip when the
+    keyboard reaches it; the search box does not (hover still does)."""
+    js = stripped_js("tooltip.js")
+    focus = js[js.index('addEventListener("focusin"'):]
+    focus = focus[:focus.index("});")]
+    assert ':focus-visible' in focus and 'matches("#find")' in focus
+    assert 'matches("input")' not in focus and "textarea" not in focus
+    assert '<input id="find"' in read("index.html")
 
 
 def test_the_skeleton_is_the_specs_and_the_old_screen_is_kept_hidden_not_drawn():

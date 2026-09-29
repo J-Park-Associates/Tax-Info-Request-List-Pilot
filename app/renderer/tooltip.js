@@ -1,10 +1,10 @@
 // The custom tooltip (pilot SPEC-shell.md section 8.5, decisions P63, P65).
 //
 // Any element with a data-tip attribute gets one: after 500 ms of hover, or
-// at once when the keyboard reaches it. Esc and moving away hide it. There is
-// one #tip element, role="tooltip", tied to its element with
-// aria-describedby while it shows. It is kept inside the window and is never
-// wider than 320px (the stylesheet's).
+// at once when the keyboard reaches it (any control but the search box). Esc
+// and moving away hide it. There is one #tip element, role="tooltip", tied to
+// its element with aria-describedby while it shows. Floating UI places it and
+// keeps it inside the window; it is never wider than 320px (the stylesheet's).
 //
 // Why a tooltip of our own and no title attribute: a title shows after a
 // second or more, cannot be styled for dark, is not shown on keyboard focus
@@ -14,7 +14,7 @@
 // screen is set with setTipIfCut() and shows only when the name is cut.
 
 const TIP_DELAY_MS = 500;
-const TIP_GAP = 8;
+const TIP_GAP = 4;
 const TIP_MARGIN = 8;
 
 let tipFor = null;      // the element whose tip shows, or null
@@ -50,15 +50,26 @@ function setTipIfCut(node, words) {
   if (words) node.dataset.tipCut = "";
 }
 
+// Placement is Floating UI's (vendor/floating-ui, loaded before this file):
+// below the element, 4 off it, flipped above when there is no room and
+// shifted to stay 8 inside the window. Timing, focus, Esc and the words stay
+// ours. computePosition answers later, so a hide that came first wins.
 function placeTip(node, tip) {
-  const box = node.getBoundingClientRect();
-  const size = tip.getBoundingClientRect();
-  let left = box.left + (box.width - size.width) / 2;
-  left = Math.min(Math.max(TIP_MARGIN, left), Math.max(TIP_MARGIN, window.innerWidth - size.width - TIP_MARGIN));
-  let top = box.bottom + TIP_GAP;
-  if (top + size.height > window.innerHeight - TIP_MARGIN) top = Math.max(TIP_MARGIN, box.top - TIP_GAP - size.height);
-  tip.style.setProperty("left", `${left}px`);
-  tip.style.setProperty("top", `${top}px`);
+  tip.style.setProperty("left", "0");
+  tip.style.setProperty("top", "0");
+  FloatingUIDOM.computePosition(node, tip, {
+    strategy: "fixed",
+    placement: "bottom",
+    middleware: [
+      FloatingUIDOM.offset(TIP_GAP),
+      FloatingUIDOM.flip({ padding: TIP_MARGIN }),
+      FloatingUIDOM.shift({ padding: TIP_MARGIN }),
+    ],
+  }).then(({ x, y }) => {
+    if (tipFor !== node) return;
+    tip.style.setProperty("left", `${x}px`);
+    tip.style.setProperty("top", `${y}px`);
+  });
 }
 
 function showTip(node) {
@@ -104,16 +115,23 @@ document.addEventListener("mouseout", (e) => {
   if (!node || node.contains(e.relatedTarget)) return;
   hideTip();
 });
-// The keyboard: at once, but only for a focus the keyboard made, and never
-// on a box being typed into (its tip would cover what the typing opens).
+// The keyboard: at once, for a focus the keyboard made, on every control but
+// the search box (its tip would cover the list its typing opens; hover still
+// shows it).
 document.addEventListener("focusin", (e) => {
   const node = tipTarget(e);
-  if (node && node.matches(":focus-visible") && !node.matches("input") && !node.matches("textarea")) {
+  if (node && node.matches(":focus-visible") && !node.matches("#find")) {
     hideTip();
     showTip(node);
   }
 });
 document.addEventListener("focusout", hideTip);
 document.addEventListener("pointerdown", hideTip, true);
-document.addEventListener("scroll", hideTip, true);
+// Scrolling or resizing while a tip shows moves it with its element.
+function replaceTip() {
+  if (tipFor && tipFor.isConnected) placeTip(tipFor, tipNode());
+  else hideTip();
+}
+document.addEventListener("scroll", replaceTip, true);
+window.addEventListener("resize", replaceTip);
 window.addEventListener("blur", hideTip);

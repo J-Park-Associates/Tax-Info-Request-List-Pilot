@@ -78,7 +78,7 @@ S6 supplies no word for that case). `harness/app-stub.js` is the list of what `s
 **Proposed decision rows (S6 logs them from P85):**
 1. The old screen stays in `#legacy` (hidden) between S3 and S4/S5 so `app.js` keeps finding its elements; each later build deletes what it takes over.
 2. "One keydown listener" is held as: `app.js` owns the document's one listener and hands keys to `shellKey(e)`; the new files add none (row-list keys and the search box's keys reach `pagesKey`/`findKey` through it). The existing listeners in `tour.js`, `pilot.js` and the editor's table are untouched.
-3. A box being typed into never shows its tooltip on focus (it covered the search list); hover still does.
+3. (Changed by S7, Jason's ruling 2.) Keyboard focus shows the tooltip on every control except the search box; hover shows it everywhere. S3 had left out every text box; S7 narrowed that to the search box alone, because only its tip would cover the list its typing opens.
 4. Test scoping: `test_the_renderer_has_no_title_attribute` covers the new and pilot files now (`TITLE_FREE`); `app.js` and `index.html` still hold `title` attributes until S4/S5 delete them.
 5. Tour step titles: rebuild 1 set the two that broke SPEC 11.1 to SPEC 12's words ("Sort", "Needs review"); the rest were left as they are.
 

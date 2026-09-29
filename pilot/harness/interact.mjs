@@ -23,8 +23,8 @@ const browser = await chromium.launch({ args: ["--no-sandbox"] });
 const failures = [];
 const check = (name, ok, got) => { if (!ok) failures.push(`${name}: ${JSON.stringify(got)}`); };
 
-async function open(query = "", { firm = true } = {}) {
-  const context = await browser.newContext({ viewport: { width: 1100, height: 700 } });
+async function open(query = "", { firm = true, forcedColors } = {}) {
+  const context = await browser.newContext({ viewport: { width: 1100, height: 700 }, ...(forcedColors ? { forcedColors } : {}) });
   await context.addInitScript(() => { localStorage.setItem("pilot.terms.accepted", "1"); localStorage.setItem("pilot.tour.seen", "1"); });
   const page = await context.newPage();
   page.on("pageerror", (e) => failures.push(`page error: ${e.message}`));
@@ -138,6 +138,60 @@ const crumbs = (page) => page.evaluate(() => [...document.querySelectorAll("#cru
   const { context, page } = await open("?scenario=firm-fails");
   const text = await page.textContent("#notices");
   check("counts failure is one notice", text.includes("Counts not available") && text.includes("Retry"), text);
+  await context.close();
+}
+
+{ // the tooltip: keyboard focus, hover, Esc, the window's edges (SPEC-shell 8.5, ruling 2)
+  const { context, page } = await open();
+  const tipShown = () => page.evaluate(() => !document.getElementById("tip").hidden);
+  const tipBox = () => page.evaluate(() => { const r = document.getElementById("tip").getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, w: innerWidth, h: innerHeight }; });
+  await page.evaluate(() => shellGo({ level: "household", household: "/clients/J Park & Associates/Smith Family" }));
+  await page.waitForFunction(() => !document.getElementById("sort").disabled);
+  await page.keyboard.press("Tab");
+  await page.focus("#sort");
+  await page.waitForTimeout(150);
+  check("a focused button shows its tip at once", await tipShown(), null);
+  check("the tip is described-by on its button", await page.evaluate(() => document.getElementById("sort").getAttribute("aria-describedby") === "tip" && document.getElementById("tip").getAttribute("role") === "tooltip"), null);
+  await page.keyboard.press("Escape");
+  check("Esc hides a focus tip", !(await tipShown()), null);
+  await page.keyboard.press("Control+f");
+  await page.waitForTimeout(150);
+  check("the focused search box shows no tip", !(await tipShown()), null);
+  await page.mouse.move(0, 0);
+  const icon = await page.evaluate(() => { const r = document.querySelector("#find-wrap .icon").getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+  await page.mouse.move(icon.x, icon.y);
+  await page.waitForTimeout(700);
+  check("hover on the search icon shows the tip", (await tipShown()) && (await page.textContent("#tip")) === "Find a client", await page.textContent("#tip"));
+  await page.mouse.move(0, 0);
+  await page.waitForTimeout(100);
+  check("moving away hides it", !(await tipShown()), null);
+  // A control in each corner of the window, with a tip wider than the button.
+  for (const [where, css] of [["right", "right:0;top:100px"], ["bottom", "left:500px;bottom:0"], ["bottom-right", "right:0;bottom:0"]]) {
+    await page.evaluate(([place, rule]) => {
+      const b = document.createElement("button");
+      b.id = `edge-${place}`;
+      b.style.setProperty("position", "fixed");
+      for (const part of rule.split(";")) { const [prop, value] = part.split(":"); b.style.setProperty(prop, value); }
+      b.textContent = "x";
+      document.body.append(b);
+      setTip(b, "A tip wider than its button");
+    }, [where, css]);
+    await page.hover(`#edge-${where}`);
+    await page.waitForTimeout(700);
+    const box = await tipBox();
+    check(`the tip stays inside the window at the ${where} edge`, box.left >= 7.5 && box.top >= 7.5 && box.right <= box.w - 7.5 && box.bottom <= box.h - 7.5, box);
+    await page.mouse.move(0, 0);
+  }
+  await context.close();
+}
+
+{ // the tooltip in a contrast theme
+  const { context, page } = await open("", { forcedColors: "active" });
+  check("the contrast theme is on", await page.evaluate(() => matchMedia("(forced-colors: active)").matches), null);
+  await page.hover("#sort");
+  await page.waitForTimeout(700);
+  const box = await page.evaluate(() => { const t = document.getElementById("tip"); const r = t.getBoundingClientRect(); return { shown: !t.hidden, w: r.width, h: r.height, right: r.right, bottom: r.bottom, iw: innerWidth, ih: innerHeight, color: getComputedStyle(t).color }; });
+  check("the tip shows, sized and inside the window", box.shown && box.w > 0 && box.h > 0 && box.right <= box.iw && box.bottom <= box.ih, box);
   await context.close();
 }
 
