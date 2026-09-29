@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 280,
+    "nodes": 281,
     "edges": 1138,
-    "reused": 238
+    "reused": 232
   },
   "node_types": [
     "artifact",
@@ -3969,10 +3969,10 @@
       "id": "app/main.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "9e75e5158107c212",
-      "lines": 716,
-      "role": "Electron main process. Spawns the Python API (`-m tracker.api` under the checkout's .venv interpreter, by its full path, or the frozen executable package.json's config.apiName names in the portable build) and relays its JSON to the renderer over IPC. Since decision 193 it passes each progress line a pass prints (tracker.progress's format) to the window on the tracker-progress channel, keeps the last non-progress line as the reply, follows the kill to the limit_seconds the pass reports and says where it was, answers every failure of its own in the API's envelope, and puts no stderr on screen - a failed command's goes to the error log the API names, else to the shell's fallback error.log in Electron's userData folder.",
-      "notes": "This is the cross-language boundary: everything the UI can do is a tracker.api command. The renderer is untrusted here: a command must be in vocab.commands (before the vocabulary arrives, only BOOTSTRAP_COMMAND, pinned to tracker.api.COMMANDS by a guard) with the one argument shape the renderer uses; open-path opens only a path the API reported in state.paths, and the error log vocab.shell.error_log names, as a file; the tracker's exit code is read, not discarded, and a plain command that outlives TRACKER_TIMEOUT_MS is killed and reported, and a pass at the limit its own first line states (decision 203). The window is sandboxed, cannot navigate and cannot open windows. Decision 160: the shell takes app.requestSingleInstanceLock(); a second launch quits before any window is made, and the running one restores and focuses its window on second-instance - two windows were two editors, and the earlier one's save took the later one's back. Decision 176: devTools is off when packaged, and runTracker() serialises the payload before the tracker starts and writes it as UTF-8, which is how tracker.api._read_spec() reads it. Decision 191: from source it runs .venv/Scripts/python.exe (or .venv/bin/python), never a bare python, and answers with the lock tool's NOT_SET_UP sentence when that is missing; buildMenu() runs before the window is made in both builds, and the app's own menu (SPEC-shell 5.1) has no reload, zoom or developer-tools item or accelerator (E-7). Decision 188 (E-14): learn() keeps each reported path with its kind from vocab.path_kinds, and openPath lstat()s it and opens it only when it is no symbolic link (Node reports a junction as one) and still a directory for 'folder' or a regular file for 'file'; otherwise vocab.shell.not_opened. No path.relative( and no startsWith( (tests/test_layers.py). Decision 186's rebase review (MF2): keepInLog() appends (appendToLog, fail-safe: a failed write is dropped, never thrown) to the error log the API named and builds no such path - no ERROR_LOG_FILENAME in the shell. Jason's ruling of 2026-09-29: with none named (no data folder yet) it appends to a fallback error.log in app.getPath('userData') (FALLBACK_LOG_NAME; not the data home, which the P19 deny list and the package check keep out of a package; capped at FALLBACK_CAP 256 KB, one .1 copy, never a link or a folder), a failed command's reply adds just vocab.shell.no_log (api.SHELL_NO_LOG, 'Tracker failed'; SPEC-shell 11.2), the stderr is never on screen, and a renderer error is kept there too. The menu bar stays hidden until Alt (autoHideMenuBar, Jason 2026-09-29). Decision 203: the command named by vocab.pass_command (learned, never typed) is a pass: runTracker resolves the click at its 'started' progress line, streams its later lines on tracker-progress and sends {reply, code} - its final line, or the shell's own failure when it gave none or was killed - on the same channel when it closes; a pass is killed only at the limit its own first line states (limit_seconds, locking.RUN_TIME_LIMIT_SECONDS), while every other command keeps TRACKER_TIMEOUT_MS; each running pass is kept in 'passes' and will-quit destroys its stdout, which the runner takes as Stop. Decision 209: at whenReady the shell runs the API's after-install command itself (LAUNCH_COMMAND, through spawnTracker, outside the renderer's allowlist) in the background: no tracker-cmd waits for it (the review's S7), and when its reply says ran the shell sends LAUNCH_DONE_CHANNEL ('after-install-done', one of three main-to-renderer channels, with tracker-progress and MENU_CHANNEL) so the page asks list again for the notice. SPEC-shell 5: the menu bar is built from BAR with the API's words (DEFAULT_MENU_WORDS, word for word tracker.api.MENU, replaced by vocab.menu when a word differs), items are enabled from the page's {enable} list (ALWAYS need nothing), and a chosen item goes to the page on MENU_CHANNEL as {id, token}; onMenuMessage() treats the one 'menu' channel as untrusted (unknown ids, popups and long tokens are dropped) and pops the six native right-click menus of POPUPS; Open error log is the shell's alone (openErrorLog: the named log, else the fallback if it exists, through openChecked's lstat test, the one openPath uses). pageBackground() reads --window-light / --window-dark from pilot-ui.css for the system theme (none under a contrast theme) and nativeTheme 'updated' repaints the window. Pilot P46: flushes the page's storage to disk as the window closes, since Electron lets go of the single-instance lock before it closes that storage."
+      "sha256": "eeff69fa5bd777b8",
+      "lines": 731,
+      "role": "Electron main process. Spawns the Python API (`-m tracker.api` under the checkout's .venv interpreter, by its full path, or the frozen executable package.json's config.apiName names in the portable build) and relays its JSON to the renderer over IPC. Since decision 193 it passes each progress line a pass prints (tracker.progress's format) to the window on the tracker-progress channel, keeps the last non-progress line as the reply, follows the kill to the limit_seconds the pass reports and says where it was, answers every failure of its own in the API's envelope, and puts no stderr on screen - a failed command's goes to the error log the API names, else to the shell's fallback error.log in %LOCALAPPDATA%\\Tax Document Tracker Pilot (local, non-roaming; Electron's userData off Windows).",
+      "notes": "This is the cross-language boundary: everything the UI can do is a tracker.api command. The renderer is untrusted here: a command must be in vocab.commands (before the vocabulary arrives, only BOOTSTRAP_COMMAND, pinned to tracker.api.COMMANDS by a guard) with the one argument shape the renderer uses; open-path opens only a path the API reported in state.paths, and the error log vocab.shell.error_log names, as a file; the tracker's exit code is read, not discarded, and a plain command that outlives TRACKER_TIMEOUT_MS is killed and reported, and a pass at the limit its own first line states (decision 203). The window is sandboxed, cannot navigate and cannot open windows. Decision 160: the shell takes app.requestSingleInstanceLock(); a second launch quits before any window is made, and the running one restores and focuses its window on second-instance - two windows were two editors, and the earlier one's save took the later one's back. Decision 176: devTools is off when packaged, and runTracker() serialises the payload before the tracker starts and writes it as UTF-8, which is how tracker.api._read_spec() reads it. Decision 191: from source it runs .venv/Scripts/python.exe (or .venv/bin/python), never a bare python, and answers with the lock tool's NOT_SET_UP sentence when that is missing; buildMenu() runs before the window is made in both builds, and the app's own menu (SPEC-shell 5.1) has no reload, zoom or developer-tools item or accelerator (E-7). Decision 188 (E-14): learn() keeps each reported path with its kind from vocab.path_kinds, and openPath lstat()s it and opens it only when it is no symbolic link (Node reports a junction as one) and still a directory for 'folder' or a regular file for 'file'; otherwise vocab.shell.not_opened. No path.relative( and no startsWith( (tests/test_layers.py). Decision 186's rebase review (MF2): keepInLog() appends (appendToLog, fail-safe: a failed write is dropped, never thrown) to the error log the API named and builds no such path - no ERROR_LOG_FILENAME in the shell. Jason's ruling of 2026-09-29: with none named (no data folder yet) it appends to a fallback error.log in %LOCALAPPDATA%\\Tax Document Tracker Pilot (process.env.LOCALAPPDATA, else the profile's AppData\\Local; off Windows app.getPath('userData'); FALLBACK_LOG_NAME; not the data home, which the P19 deny list and the package check keep out of a package, and not the roaming %APPDATA%; capped at FALLBACK_CAP 256 KB, one .1 copy, never written through a link or a folder, a folder at error.log.1 drops the old log instead of stopping writes), a failed command's reply adds just vocab.shell.no_log (api.SHELL_NO_LOG, 'Tracker failed'; SPEC-shell 11.2), the stderr is never on screen, and a renderer error is kept there too. The menu bar stays hidden until Alt (autoHideMenuBar, Jason 2026-09-29). Decision 203: the command named by vocab.pass_command (learned, never typed) is a pass: runTracker resolves the click at its 'started' progress line, streams its later lines on tracker-progress and sends {reply, code} - its final line, or the shell's own failure when it gave none or was killed - on the same channel when it closes; a pass is killed only at the limit its own first line states (limit_seconds, locking.RUN_TIME_LIMIT_SECONDS), while every other command keeps TRACKER_TIMEOUT_MS; each running pass is kept in 'passes' and will-quit destroys its stdout, which the runner takes as Stop. Decision 209: at whenReady the shell runs the API's after-install command itself (LAUNCH_COMMAND, through spawnTracker, outside the renderer's allowlist) in the background: no tracker-cmd waits for it (the review's S7), and when its reply says ran the shell sends LAUNCH_DONE_CHANNEL ('after-install-done', one of three main-to-renderer channels, with tracker-progress and MENU_CHANNEL) so the page asks list again for the notice. SPEC-shell 5: the menu bar is built from BAR with the API's words (DEFAULT_MENU_WORDS, word for word tracker.api.MENU, replaced by vocab.menu when a word differs), items are enabled from the page's {enable} list (ALWAYS need nothing), and a chosen item goes to the page on MENU_CHANNEL as {id, token}; onMenuMessage() treats the one 'menu' channel as untrusted (unknown ids, popups and long tokens are dropped) and pops the six native right-click menus of POPUPS; Open error log is the shell's alone (openErrorLog: the named log, else the fallback if it exists, through openChecked's lstat test, the one openPath uses). pageBackground() reads --window-light / --window-dark from pilot-ui.css for the system theme (none under a contrast theme) and nativeTheme 'updated' repaints the window. Pilot P46: flushes the page's storage to disk as the window closes, since Electron lets go of the single-instance lock before it closes that storage."
     },
     {
       "id": "app/package-lock.json",
@@ -4461,7 +4461,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "19e7c74a60ffd712",
+      "sha256": "879c860812e9d82d",
       "lines": 1092,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -4470,8 +4470,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "0c6736753dfc2600",
-      "lines": 2579,
+      "sha256": "7961d03a0bf73217",
+      "lines": 2580,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -4583,8 +4583,8 @@
       "id": "pilot/SPEC-shell.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "e02861bf4f6fc169",
-      "lines": 1560
+      "sha256": "741966c3284b8673",
+      "lines": 1561
     },
     {
       "id": "pilot/SPEC-ui.md",
@@ -4669,6 +4669,13 @@
       "layer": "docs",
       "sha256": "3ce571e7e85b7013",
       "lines": 80
+    },
+    {
+      "id": "pilot/handoffs/shell-S2-rebuild-4.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "2530b695cd305802",
+      "lines": 98
     },
     {
       "id": "pilot/handoffs/shell-S2-review-1.md",
@@ -4893,8 +4900,8 @@
       "id": ".claude/settings.json",
       "type": "file",
       "layer": "root",
-      "sha256": "1c46e4e8b142b055",
-      "lines": 70
+      "sha256": "b8d4d7817e7c6924",
+      "lines": 78
     },
     {
       "id": ".claude/skills/impeccable/scripts/command-metadata.json",
@@ -5171,7 +5178,7 @@
       "id": "artifact:tracker-errors.log",
       "type": "artifact",
       "layer": "runtime",
-      "role": "The rotated local debug log beside the tracker's database (decision 193, security principle 7; ERROR_LOG_FILENAME and error_log() in tracker/settings.py, 1 MB x 3, never synced per line): an unexpected error's full text and traceback and every warning the package logs, and a failed child's stderr the shell appends when there is a log - never on screen, in the record, on the page or in runs.log. It can name a client's folder; it stays on this machine and is gitignored. At a path the API names (vocab.shell.error_log). With no data home there is none, and the shell writes no log beside the program or in the settings folder (decision 186's rebase review, MF2): a failed command's reply says just 'Tracker failed' (api.SHELL_NO_LOG; SPEC-shell 11.2) and its stderr is saved in the shell's fallback error.log in Electron's userData folder (256 KB cap, one .1 copy; Jason, 2026-09-29), which can name a client, stays on this PC and is never shown or sent. Help > Open error log opens the API's log, else the fallback.",
+      "role": "The rotated local debug log beside the tracker's database (decision 193, security principle 7; ERROR_LOG_FILENAME and error_log() in tracker/settings.py, 1 MB x 3, never synced per line): an unexpected error's full text and traceback and every warning the package logs, and a failed child's stderr the shell appends when there is a log - never on screen, in the record, on the page or in runs.log. It can name a client's folder; it stays on this machine and is gitignored. At a path the API names (vocab.shell.error_log). With no data home there is none, and the shell writes no log beside the program or in the settings folder (decision 186's rebase review, MF2): a failed command's reply says just 'Tracker failed' (api.SHELL_NO_LOG; SPEC-shell 11.2) and its stderr is saved in the shell's fallback error.log in %LOCALAPPDATA%\\Tax Document Tracker Pilot (local, non-roaming; Electron's userData off Windows) (256 KB cap, one .1 copy; Jason, 2026-09-29), which can name a client, stays on this PC and is never shown or sent. Help > Open error log opens the API's log, else the fallback.",
       "write_only": true
     },
     {
@@ -8516,8 +8523,8 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "dafe6c6da7c0472e",
-      "lines": 498,
+      "sha256": "d6f67a9b08a0e19f",
+      "lines": 528,
       "exports": [
         "REPO",
         "read",
@@ -8529,6 +8536,7 @@
         "test_every_menu_id_is_in_the_apis_words_and_every_word_is_placed",
         "test_only_the_items_that_need_nothing_are_enabled_until_the_page_speaks",
         "test_open_error_log_falls_back_to_the_shells_own_log_when_the_api_named_none",
+        "test_open_error_log_opens_the_local_non_roaming_fallback_on_windows",
         "test_open_error_log_opens_the_named_file_and_says_so_when_there_is_none",
         "test_open_error_log_refuses_a_fallback_that_is_a_link_or_a_folder",
         "test_open_error_log_refuses_a_symbolic_link",
@@ -8549,8 +8557,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "b742d4203ab71bc3",
-      "lines": 3900,
+      "sha256": "792a37bab83f257f",
+      "lines": 3963,
       "exports": [
         "AFTER_WHAT",
         "CONSOLE_EXEMPT",
@@ -8628,6 +8636,7 @@
         "test_no_failure_is_toasted",
         "test_no_module_compares_a_name_with_this_host_by_hand",
         "test_no_text_box_is_named_only_by_its_placeholder",
+        "test_on_windows_the_fallback_log_is_local_and_never_the_roaming_or_data_folder",
         "test_only_the_lock_asks_the_platform_for_this_computers_name",
         "test_openpyxl_is_imported_only_to_read_a_clients_spreadsheet",
         "test_picking_a_form_is_not_unsaved_work_but_typing_after_it_is",
