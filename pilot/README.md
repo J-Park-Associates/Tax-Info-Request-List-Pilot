@@ -20,7 +20,9 @@ original. The original's improvements come in only when Jason asks for a merge.
    `pilot.js`, `pilot-content.js`, `pilot-style.css`, `pilot-ui.css`). Existing
    files change only where `SPEC.md` or `SPEC-ui.md` names the lines: the five
    added lines in `index.html` (four in `SPEC.md`, the `pilot-ui.css` link in
-   `SPEC-ui.md`) and the pilot's own names on the PC (SPEC section 3a). Engine fixes are
+   `SPEC-ui.md`), the pilot's own names on the PC (SPEC section 3a), and the
+   `forced-colors` block at the end of `style.css` (P50, Windows contrast
+   themes). Engine fixes are
    made in the original repository and merged in here. Keeping the differences
    small is what keeps each merge from the original clean.
 2. **Pilot decisions are logged in [`DECISIONS.md`](DECISIONS.md)** as P1, P2,
@@ -48,3 +50,7 @@ original. The original's improvements come in only when Jason asks for a merge.
 - [`SPEC.md`](SPEC.md) - what the pilot builds.
 - [`HANDOFF.md`](HANDOFF.md) - what is done, what is next, what to read.
 - [`DECISIONS.md`](DECISIONS.md) - the pilot's decision log.
+- [`RELEASE.md`](RELEASE.md) - the Windows steps to build, check, tag and send.
+- [`Tester Guide.md`](<Tester Guide.md>) - what a tester is given.
+- `wintest/` - the Windows test kit (P28).
+- [`SPEC-glass.md`](SPEC-glass.md) - **withdrawn** (P50); kept as the record of the glass theme and Mica.

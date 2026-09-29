@@ -4143,29 +4143,29 @@
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "4bc27fe0e90af083",
-      "lines": 563
+      "sha256": "a6ef55f5a6d61d27",
+      "lines": 304
     },
     {
       "id": "pilot/PROMPTS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "434497cb70763d81",
+      "sha256": "eb53ccc23948c364",
       "lines": 153
     },
     {
       "id": "pilot/README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "364f121d10a3f55d",
-      "lines": 50
+      "sha256": "a350892dce4dce86",
+      "lines": 56
     },
     {
       "id": "pilot/RELEASE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "0a00b2b58759ec6c",
-      "lines": 79
+      "sha256": "513cee704d16cae0",
+      "lines": 87
     },
     {
       "id": "pilot/SPEC-glass.md",
@@ -4185,8 +4185,8 @@
       "id": "pilot/SPEC.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "9f1a5cb72d6fb251",
-      "lines": 996
+      "sha256": "15c45578a030bff3",
+      "lines": 1001
     },
     {
       "id": "pilot/Tester Guide.md",
@@ -4234,21 +4234,21 @@
       "id": "pilot/wintest/PROMPT-RERUN-3.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "5242a20345d4b271",
+      "sha256": "2997d274d9686c8b",
       "lines": 56
     },
     {
       "id": "pilot/wintest/PROMPT.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "418a0762c6454334",
+      "sha256": "b839fae296263ba4",
       "lines": 88
     },
     {
       "id": "pilot/wintest/RESULTS-TEMPLATE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "da7fe3b80aee6a5d",
+      "sha256": "d82d4ab68a5704a1",
       "lines": 57
     },
     {

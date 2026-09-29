@@ -1,5 +1,10 @@
 # Pilot edition 0.1 - SPEC
 
+> Note (2026-09-29): this SPEC built the first edition. The shipped version
+> label is now 0.2 (`pilot-content.js`), and `style.css` also carries a
+> `forced-colors` block for Windows contrast themes (P50). Everything else
+> below still describes what was built.
+
 Status: **draft for Jason's approval** (2026-09-28). Wording in sections 7 and 8
 is proposed copy; builders use it exactly as approved.
 
