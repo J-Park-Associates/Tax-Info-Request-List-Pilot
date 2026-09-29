@@ -352,6 +352,25 @@ def test_the_skeleton_is_the_specs_and_only_what_the_sheet_takes_over_is_kept_hi
     assert 'role="alert" aria-live="polite"' in html[html.index('id="notices"'):html.index('id="notices"') + 120]
 
 
+def test_every_element_the_renderer_looks_up_by_id_is_in_the_page_or_built_by_it():
+    """A card's markup deleted from index.html while a line of app.js still
+    sets its text is a page that fails at start-up, before anything is drawn.
+    Every literal id the renderer asks for exists in index.html, or is one a
+    renderer file builds itself (the pilot layer's cards, the pages' own)."""
+    html = read("index.html")
+    present = set(re.findall(r'\bid="([^"]+)"', html))
+    built = set()
+    for name in ("app.js", "pages.js", "shell.js", "tooltip.js", "pilot.js", "tour.js", "pilot-content.js"):
+        built |= set(re.findall(r'\bid:\s*"([^"]+)"', stripped_js(name)))
+    missing = {}
+    for name in ("app.js", "pages.js", "shell.js", "tooltip.js", "pilot.js", "tour.js"):
+        for found in re.finditer(r'\$\("([^"]+)"\)|getElementById\("([^"]+)"\)|querySelector\("#([\w-]+)', stripped_js(name)):
+            ident = found.group(1) or found.group(2) or found.group(3)
+            if ident not in present and ident not in built and not ident.startswith("pilot-"):
+                missing.setdefault(name, set()).add(ident)
+    assert not missing, missing
+
+
 def test_every_icon_has_a_name_and_a_tooltip():
     """SPEC 8.5, 14.1: each icon-only button carries data-tip-key, naming a
     vocabulary key; shell.js sets both its accessible name and its tooltip from it."""

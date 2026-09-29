@@ -39,7 +39,7 @@ const crumbs = (page) => page.evaluate(() => [...document.querySelectorAll("#cru
   const { context, page } = await open();
   check("opens on Overview", (await current(page)) === "Overview", await current(page));
   const counts = await page.evaluate(() => [...document.querySelectorAll(".side-count")].map((n) => n.textContent));
-  check("counts on the two that hold work", counts.join("|") === "|25|3|", counts);
+  check("counts on the two that hold work", counts.join("|") === "|27|3|", counts);
   await page.evaluate(() => shellMenu({ id: "needs_review" }));
   check("Ctrl+2 goes to Needs review", (await current(page)) === "Needs review", await current(page));
   await page.keyboard.press("Control+4");
@@ -131,6 +131,76 @@ const crumbs = (page) => page.evaluate(() => [...document.querySelectorAll("#cru
   check("a tooltip shows after hover", await page.evaluate(() => !document.getElementById("tip").hidden), null);
   await page.keyboard.press("Escape");
   check("Esc hides it", await page.evaluate(() => document.getElementById("tip").hidden), null);
+  await context.close();
+}
+
+{ // the pages: a row list by keyboard and mouse
+  const { context, page } = await open();
+  const active = () => page.evaluate(() => { const list = document.querySelector("#page .rows"); return list && list.getAttribute("aria-activedescendant"); });
+  await page.focus("#page .rows");
+  const first = await active();
+  check("focus lands on the first row", Boolean(first), first);
+  await page.keyboard.press("ArrowDown");
+  const second = await active();
+  check("Down moves to the next row", second && second !== first, [first, second]);
+  await page.keyboard.press("End");
+  await page.keyboard.press("Home");
+  check("Home goes back to the first row", (await active()) === first, await active());
+  const named = await page.evaluate(() => { const row = document.querySelector("#page .row"); return [row.getAttribute("role"), row.querySelector(".row-step").getAttribute("aria-hidden"), row.getAttribute("aria-description")]; });
+  check("a row is an option, its step hidden and named", named.join("|") === "option|true|Open", named);
+  await page.hover("#page .row");
+  const shown = await page.evaluate(() => getComputedStyle(document.querySelector("#page .row .row-step")).visibility);
+  check("hover shows the step", shown === "visible", shown);
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() => document.querySelector("#crumb-list li:last-child")?.textContent.startsWith("1"));
+  check("Enter runs the step and opens the return", (await crumbs(page)).length === 4, await crumbs(page));
+  await page.evaluate(() => shellGo({ level: "return", household: "/clients/J Park & Associates/Smith Family", year: 2025, ret: "/clients/J Park & Associates/Smith Family/2025/1040 - John & Jane Smith" }));
+  await page.waitForFunction(() => document.querySelector("#page details") && !document.querySelector("#page[aria-busy=true]"), null, { timeout: 5000 });
+  const titles = await page.evaluate(() => [...document.querySelectorAll("#page .group-title")].map((n) => n.textContent));
+  check("the return draws its groups in order", titles.join("|") === "Needs you|Waiting on client|Received|Set aside", titles);
+  check("Set aside is shut", await page.evaluate(() => !document.querySelector("#page details").open), null);
+  await page.focus("#page .rows");
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(300);
+  check("Enter on a Check row asks the sheet to open", await page.evaluate(() => !document.getElementById("sheet").hidden), null);
+  await context.close();
+}
+
+{ // Clients: the switch, and no H1 on a firm page
+  const { context, page } = await open();
+  await page.click('.side-section[data-section="clients"]');
+  const work = await page.evaluate(() => document.querySelectorAll("#page .row").length);
+  await page.click(".switch-option:nth-child(2)");
+  const all = await page.evaluate(() => document.querySelectorAll("#page .row").length);
+  check("All lists more households than Work waiting", all > work && all >= 500, [work, all]);
+  check("a firm page draws no H1", await page.evaluate(() => document.querySelectorAll("#page h1").length) === 0, null);
+  await context.close();
+}
+
+{ // a household's notices come with its state
+  const { context, page } = await open("?mode=real&scenario=household-notices");
+  await page.evaluate(() => shellGo({ level: "household", household: "/clients/J Park & Associates/Smith Family" }));
+  await page.waitForFunction(() => document.querySelectorAll("#notices .notice").length >= 3, null, { timeout: 5000 });
+  const text = await page.textContent("#notices");
+  check("two years, folder renamed with Accept", text.includes("Two years open") && text.includes("Folder renamed") && text.includes("Accept"), text);
+  await page.evaluate(() => shellGo({ level: "clients" }));
+  check("they go when the household's pages do", await page.evaluate(() => !document.querySelector("#notices .notice")), null);
+  await context.close();
+}
+
+{ // a live lock: one notice, and the request list is not offered
+  const { context, page } = await open("?mode=real&scenario=locked");
+  await page.evaluate(() => shellGo({ level: "return", household: "/clients/J Park & Associates/Smith Family", year: 2025, ret: "/clients/J Park & Associates/Smith Family/2025/1040 - John & Jane Smith" }));
+  await page.waitForFunction(() => document.querySelector("#notices .notice"), null, { timeout: 5000 });
+  const steps = await page.evaluate(() => [...document.querySelectorAll("#page .row-step")].map((n) => n.textContent));
+  check("the lock is one notice", (await page.textContent("#notices")).includes("In use on"), await page.textContent("#notices"));
+  check("no row offers Edit while locked", !steps.includes("Edit") && steps.includes("Check"), steps);
+  const before = await page.evaluate(() => document.querySelectorAll("#notices .notice").length);
+  await page.focus("#page .rows");
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(300);
+  const after = await page.evaluate(() => document.querySelectorAll("#notices .notice").length);
+  check("a step nothing answers yet is one loud notice, never silence", after === before + 1, [before, after]);
   await context.close();
 }
 

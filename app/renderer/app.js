@@ -1808,10 +1808,6 @@ function applyVocabulary() {
   // pages that add one (decision 129).
   $("hh-return-warning").textContent = vocab.household.return_warning;
   $("ne-return-warning").textContent = vocab.household.return_warning;
-  // The two renderings of the review queue are named by the API too
-  // (decision 114); the page carries no word for either of them.
-  $("review-mode-cards").textContent = vocab.review_labels.card_mode;
-  $("review-mode-list").textContent = vocab.review_labels.list_mode;
   // The Reminder card's heading and its three buttons (decision 118).
   // Nothing here sends, and none of these words is the page's.
   $("reminder-heading").textContent = vocab.reminder.heading;
