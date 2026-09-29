@@ -6,7 +6,7 @@ const PILOT =
 {
   "edition": {
     "label": "Pilot edition",
-    "version": "0.1"
+    "version": "0.2"
   },
   "contact": {
     "email": "admin@jparkassociates.com"
@@ -227,6 +227,16 @@ const PILOT =
         "fallback": ""
       }
     ]
+  },
+  "glass": {
+    "label": "Screen effects",
+    "levels": [
+      { "key": "standard", "name": "Glass" },
+      { "key": "full", "name": "Glass with refraction" },
+      { "key": "solid", "name": "Solid" }
+    ],
+    "default": "standard",
+    "system_note": "Solid, because Windows is set to reduce transparency or motion."
   }
 }
 // PILOT-CONTENT-END

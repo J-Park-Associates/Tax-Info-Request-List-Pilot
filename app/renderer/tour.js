@@ -153,6 +153,9 @@ const PilotTour = (() => {
     spot.style.setProperty("top", `${top}px`);
     spot.style.setProperty("width", `${r.width + 2 * PAD}px`);
     spot.style.setProperty("height", `${r.height + 2 * PAD}px`);
+    // The spot is its anchor's container: its corner is the anchor's plus the gap (P36).
+    const corner = parseFloat(window.getComputedStyle(anchor).borderTopLeftRadius) || 0;
+    spot.style.setProperty("--pilot-spot-radius", `${corner + PAD}px`);
 
     let cardTop = bottom + GAP;
     if (cardTop + box.height > height - MARGIN && top - GAP - box.height >= MARGIN) {
