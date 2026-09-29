@@ -66,7 +66,7 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   width: calc(100% - var(--sp-4));
   height: var(--size-row);
   margin-inline: var(--sp-2);
-  padding-inline: var(--sp-4) var(--sp-2);
+  padding-inline: var(--sp-2);
   border: 0;
   border-radius: var(--radius-control);
   background: transparent;
@@ -178,7 +178,7 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   color: var(--link);
   cursor: pointer;
 }
-.crumb-button:hover { background: var(--bg-hover); text-decoration: underline; text-underline-offset: 3px; }
+.crumb-button:hover { background: var(--bg-hover); text-decoration: underline; text-underline-offset: var(--sp-1); }
 .crumb-here {
   max-width: var(--size-crumb-current);
   padding: var(--sp-1);
@@ -571,12 +571,12 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   #side-brand { border-bottom: 1px solid CanvasText; }
   #bar { border-bottom: 1px solid CanvasText; }
   .side-section { color: CanvasText; }
-  .side-section[aria-current="page"] { background: Highlight; color: HighlightText; }
+  .side-section[aria-current="page"] { background: Highlight; color: HighlightText; forced-color-adjust: none; }
   .side-section[aria-current="page"]::before { background: CanvasText; }
   .side-section:disabled, .icon-button:disabled, #find:disabled { color: GrayText; border-color: GrayText; }
   .crumb-button { color: LinkText; }
   #find, #find-list, #sheet, #tip { border: 1px solid CanvasText; background: Canvas; color: CanvasText; }
-  .find-option[aria-selected="true"], .rows:focus-visible .row.is-active { background: Highlight; color: HighlightText; }
+  .find-option[aria-selected="true"], .rows:focus-visible .row.is-active { background: Highlight; color: HighlightText; forced-color-adjust: none; }
   .rows:focus-visible .row.is-active { outline: 2px solid CanvasText; }
   .row { border-bottom: 1px solid CanvasText; }
   .row-name, .row-detail, .row-status, .row-date, .row-step { color: inherit; }
@@ -584,5 +584,5 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   .last-sort-bar { background: Canvas; border: 1px solid CanvasText; }
   .last-sort-bar > span { background: Highlight; }
   #sheet-scrim { background: transparent; }
-  :focus-visible { outline: 2px solid Highlight; }
+  :focus-visible { outline: 2px solid CanvasText; }
 }

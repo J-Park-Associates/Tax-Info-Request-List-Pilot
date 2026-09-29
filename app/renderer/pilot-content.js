@@ -109,7 +109,7 @@ const PILOT =
         "anchors": [
           "sort"
         ],
-        "title": "Scan",
+        "title": "Sort",
         "does": "Matches files to your requests"
       },
       {
@@ -133,7 +133,7 @@ const PILOT =
         "anchors": [
           "side-sections"
         ],
-        "title": "Needs Review",
+        "title": "Needs review",
         "does": "Unsure files wait for you"
       },
       {

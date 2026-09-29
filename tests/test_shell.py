@@ -625,6 +625,44 @@ def test_the_menus_enable_list_follows_the_rules_of_the_template(tmp_path):
     assert ran["noRoot"] == [] and ran["alwaysOn"]
 
 
+def test_changing_the_clients_folder_keeps_the_firms_name_and_phone(tmp_path):
+    setup = """
+      const vocab = { firm: "Harbor Tax Partners", settings: { phone: "555-0100" } };
+      const fields = { "firm-input": { value: "" }, "phone-input": { value: "" } };
+      const $ = (id) => fields[id];
+      let went = null; const shellGo = (route) => { went = route; };
+    """
+    probe = 'shellChangeRoot(); return [fields["firm-input"].value, fields["phone-input"].value, went.level];'
+    assert run_shell(["shellChangeRoot"], setup, probe, tmp_path) == ["Harbor Tax Partners", "555-0100", "setup"]
+
+
+def test_a_household_or_return_not_in_the_list_never_shows_its_path_as_a_name(tmp_path):
+    setup = PEOPLE + """
+      const shellHousehold = () => null; const shellReturn = () => null;
+      const FIRM_LEVELS = ["overview", "needs-review", "reminders", "clients"];
+      const SCREEN_KEYS = { "needs-review": "needs_review" };
+      let shellRoute = null; const screenWords = () => vocab.screen;
+    """
+    probe = """
+      shellRoute = { level: "return", household: "/srv/clients/J Park/Gone Family", year: 2025, ret: "/srv/clients/J Park/Gone Family/2025/1040 - X" };
+      const names = crumbList().map((s) => s.name);
+      shellRoute = { level: "overview" };
+      return [names, routeTitle()];
+    """
+    ran = run_shell(["crumbList", "routeTitle"], setup, probe, tmp_path)
+    assert ran == [["Clients", "", "2025", ""], ""], "no path as a name, and no H1 on a firm page"
+
+
+def test_the_contrast_theme_fills_and_rings_follow_spec_10_4():
+    css = read("shell.css")
+    forced = css[css.index("@media (forced-colors: active)"):]
+    for selector in ('.side-section[aria-current="page"]', '.find-option[aria-selected="true"]'):
+        line = next(one for one in forced.splitlines() if selector in one and "Highlight" in one)
+        assert "forced-color-adjust: none" in line, "Chromium's backplate would hide HighlightText"
+    assert ":focus-visible { outline: 2px solid CanvasText; }" in forced
+    assert "padding-inline: var(--sp-2);" in css[css.index(".side-section:not(.hidden)"):][:400]
+
+
 def test_folder_names_are_the_last_part_of_the_path_on_either_kind_of_slash(tmp_path):
     probe = 'return [folderName("C:\\\\Clients\\\\Client Files"), folderName("/srv/clients/Client Files/"), folderName("")];'
     assert run_shell(["folderName"], "", probe, tmp_path) == ["Client Files", "Client Files", ""]

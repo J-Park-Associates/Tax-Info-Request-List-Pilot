@@ -80,14 +80,20 @@ missing). `harness/app-stub.js` is the list of what `shell.js` needs of
 2. "One keydown listener" is held as: `app.js` owns the document's one listener and hands keys to `shellKey(e)`; the new files add none (row-list keys and the search box's keys reach `pagesKey`/`findKey` through it). The existing listeners in `tour.js`, `pilot.js` and the editor's table are untouched.
 3. A box being typed into never shows its tooltip on focus (it covered the search list); hover still does.
 4. Test scoping: `test_the_renderer_has_no_title_attribute` covers the new and pilot files now (`TITLE_FREE`); `app.js` and `index.html` still hold `title` attributes until S4/S5 delete them.
-5. Tour step titles were left as they are (the approved table has no row for them); only the lines changed.
+5. Tour step titles: rebuild 1 set the two that broke SPEC 11.1 to SPEC 12's words ("Sort", "Needs review"); the rest were left as they are.
 
 ## Loud failures - read this
 
 Until S4 turns them into notices, the old banners live in `#legacy` and **are not
 drawn**: the reader warning, the machine warnings, the last-pass line, the
-after-install banner, the lock notice, the result banner and the "clients folder
-set" line. Notices from `notice()`/`failed()` (in `#notices`), toasts, the counts
+after-install banner, the lock notice, the result banner, the "clients folder
+set" line, and four more: `#misfits-card` ("{n} folders skipped", with Show),
+`#room-card` ("Names shortened to fit"), `#household-two-years` ("Two years
+open") and `#household-paused` with `#btn-accept-folder-name` ("Folder renamed",
+with Accept - the household's sorting stays paused until someone accepts, so
+this one is a real silent failure). The harness's "locked" shot shows only what
+the real app draws (the sort icon and menus go grey); the real `#lock-notice`
+is hidden until S4 moves `showLock` to a notice. Notices from `notice()`/`failed()` (in `#notices`), toasts, the counts
 failure and menu-id failures all show. This branch must not ship on its own;
 S4 has to move those banners before the stack lands.
 
@@ -114,7 +120,7 @@ and pinned by `test_every_attribute_the_shell_builds_a_node_with_is_on_its_list`
 Looked at (light and dark, both sizes where they differ): Overview, empty
 Overview, Needs review, Reminders, Clients, household, household with no returns,
 year, return (four groups), return with nothing received, setup, loading, sort
-running, sort failed, locked (with its notice), counts failed, search open,
+running, sort failed, locked (no notice: the real one is hidden until S4), counts failed, search open,
 tooltip by mouse and by keyboard, the sheet's empty frame, a contrast theme.
 Rows fit at 1100 (name cut with "…", date and step sharing one end column).
 Nothing scrolls sideways. Screenshots are not committed (regenerate with the

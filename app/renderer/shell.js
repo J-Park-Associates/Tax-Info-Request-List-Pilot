@@ -272,12 +272,12 @@ function drawLastSort() {
     const p = shellProgressNow;
     const known = p && Number.isInteger(p.n) && Number.isInteger(p.total) && p.total > 0;
     const text = scanning.stopping ? screenWords().sort.stopping
-      : known ? fill(words.running, { n: p.n, total: p.total }) : vocab.scan.scanning;
+      : known ? fill(words.running, { n: p.n, total: p.total }) : "";
     const attrs = { className: "last-sort-bar", role: "progressbar", "aria-valuemin": "0" };
     if (known) Object.assign(attrs, { "aria-valuemax": String(p.total), "aria-valuenow": String(p.n) });
     const fillBar = h("span");
     if (known) fillBar.style.setProperty("width", `${Math.round((p.n / p.total) * 100)}%`);
-    box.replaceChildren(line(text), h("div", attrs, fillBar));
+    box.replaceChildren(...(text ? [line(text)] : []), h("div", attrs, fillBar));
     return;
   }
   const last = shellLastPass;
@@ -320,7 +320,7 @@ function crumbList() {
   const listed = [{ name: words.sections.clients, go: route.level === "clients" ? null : { level: "clients" } }];
   if (route.level === "clients") return listed;
   listed.push({
-    name: household ? household.name : route.household,
+    name: household ? household.name : "",
     go: route.level === "household" ? null : { level: "household", household: route.household },
     shrink: "household",
     popup: "household",
@@ -332,7 +332,7 @@ function crumbList() {
   });
   if (route.level === "year") return listed;
   const ret = shellReturn(route.ret);
-  listed.push({ name: ret ? ret.return_name : route.ret, shrink: "current", popup: "return" });
+  listed.push({ name: ret ? ret.return_name : "", shrink: "current", popup: "return" });
   return listed;
 }
 
@@ -495,7 +495,7 @@ function chosenFound() {
 function routeTitle() {
   const route = shellRoute;
   const words = screenWords();
-  if (FIRM_LEVELS.indexOf(route.level) !== -1) return words.sections[SCREEN_KEYS[route.level] || route.level];
+  if (FIRM_LEVELS.indexOf(route.level) !== -1) return "";   // firm pages have no H1 (SPEC 6, P75)
   const household = shellHousehold(route.household);
   if (route.level === "household") return household ? household.name : "";
   if (route.level === "year") return String(route.year);
@@ -509,10 +509,16 @@ function shellLoading(title) {
   const words = screenWords();
   const rows = Array.from({ length: 6 }, () => h("div", { className: "row-skeleton", "aria-hidden": "true" }, h("i"), h("i")));
   return [
-    title ? h("h1", { className: "page-title" }, title) : null,
+    ...(title ? [h("h1", { className: "page-title" }, title)] : []),
     h("div", { className: "group-head is-first" }, h("span", { className: "visually-hidden" }, words.loading)),
     ...rows,
   ];
+}
+
+// The page's title alone; a firm page has none, so it draws only its frame.
+function drawTitleOnly(page) {
+  const title = routeTitle();
+  page.replaceChildren(...(title ? [h("h1", { className: "page-title" }, title)] : []));
 }
 
 function drawPage() {
@@ -534,14 +540,14 @@ function drawPage() {
     return;
   }
   if ((firmPage && !shellFirmNow.data) || shellPageFailed) {
-    page.replaceChildren(h("h1", { className: "page-title" }, routeTitle()));
+    drawTitleOnly(page);
     return;
   }
   if (typeof pagesDraw === "function") {
     pagesDraw(route, page);
     return;
   }
-  page.replaceChildren(h("h1", { className: "page-title" }, routeTitle()));
+  drawTitleOnly(page);
 }
 
 // ── the setup page (SPEC 6.8) ─────────────────────────────────────────
@@ -606,6 +612,9 @@ function shellNeedsRoot(on, listed) {
 
 // File › Change clients folder…
 function shellChangeRoot() {
+  // app.js fills these two only at first run; saveRoot() sends them, so keep the saved values.
+  $("firm-input").value = vocab.firm || "";
+  $("phone-input").value = vocab.settings.phone || "";
   shellGo({ level: "setup" });
 }
 

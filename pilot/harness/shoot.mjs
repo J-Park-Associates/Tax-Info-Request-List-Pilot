@@ -49,7 +49,7 @@ const SCENARIOS = [
   { name: "loading", query: "?scenario=slow" },
   { name: "sort-running", query: "", run: `${go({ level: "household", household: smith })}; scanning = { pass: "p1", stopping: false }; shellProgress({ n: 3, of: 12, household: "Smith Family" }); shellChanged()` },
   { name: "sort-failed", query: "?scenario=failed", run: "" },
-  { name: "locked", query: "", run: `${go({ level: "return", household: smith, year: 2025, ret: smithReturn })}; setTimeout(() => { locked = true; shellChanged(); notice({ sentence: "In use on FRONT-DESK", kind: "locked" }); }, 200)` },
+  { name: "locked", query: "", run: `${go({ level: "return", household: smith, year: 2025, ret: smithReturn })}; setTimeout(() => { locked = true; shellChanged(); }, 200)` },
   { name: "counts-fail", query: "?scenario=firm-fails" },
   { name: "search", query: "", search: "smith" },
   { name: "tooltip-mouse", query: "", run: go({ level: "household", household: smith }), hover: "#sort" },
