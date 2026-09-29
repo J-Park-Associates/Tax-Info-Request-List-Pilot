@@ -6,6 +6,15 @@
 # beside it. It installs no tool on its own: a missing one is reported with
 # the exact winget command, and the script stops.
 
+#
+# -Tests runs only the named test files (the components a change touched),
+# each in its own process, at the same time as the installer build - the
+# sorting engine's own tests are not rerun (Jason, 2026-09-29). Without
+# -Tests the whole suite runs, as before.
+#   powershell -ExecutionPolicy Bypass -File pilot\wintest\run_checks.ps1 -Tests tests\test_pilot.py,tests\test_after_install.py
+
+param([string[]]$Tests = @())
+
 # PowerShell 5.1 turns any line a tool writes to its error output into a
 # fatal error under "Stop" (the first Windows check died on pip's routine
 # notice). Tools are judged by their exit codes instead.
@@ -121,17 +130,30 @@ if ($e1 -or $e2 -or $e3) { Stop-Here "the environment did not install; see $Log"
 $limits = (& $vpy -c "from tracker import layout; print('source install - long paths off:', layout.short_paths(), '- path limit:', layout.path_limit())" 2>&1 | Out-String).Trim()
 Record "path_limit" "INFO" $limits
 
-# 4. Checks: the whole suite, ruff, the map
-$suite = Join-Path $Results "pytest.txt"
-$env:PYTHONIOENCODING = "utf-8"
-& $vpy -m pytest -q -p no:cacheprovider 2>&1 | Out-File -FilePath $suite -Encoding UTF8
-$suiteExit = $LASTEXITCODE
-Remove-Item Env:PYTHONIOENCODING
-$summary = (Get-Content $suite | Select-String -Pattern "passed|failed" | Select-Object -Last 1).Line
-Record "test_suite" (Verdict ($suiteExit -eq 0)) "$summary (full output: $suite)"
+# 4. Checks: ruff, the map, and the tests - either the named files (started
+# now, in parallel, and collected after the build) or the whole suite.
 $ruff = Run $vpy @("-m", "ruff", "check", ".")
 $map  = Run $vpy @("tools\repo_map.py", "check")
 Record "ruff_and_map" (Verdict (($ruff -eq 0) -and ($map -eq 0))) "ruff=$ruff map=$map"
+$env:PYTHONIOENCODING = "utf-8"
+$running = @()
+if ($Tests.Count) {
+    foreach ($t in $Tests) {
+        if (-not (Test-Path $t)) { Record "tests" "FAIL" "no such test file: $t"; Stop-Here "check the -Tests list" }
+        $out = Join-Path $Results ("pytest-" + [IO.Path]::GetFileNameWithoutExtension($t) + ".txt")
+        $running += [pscustomobject]@{ File = $t; Out = $out
+            Proc = Start-Process -FilePath $vpy -ArgumentList "-m", "pytest", "-q", "-p", "no:cacheprovider", "`"$t`"" `
+                   -RedirectStandardOutput $out -RedirectStandardError "$out.err" -NoNewWindow -PassThru }
+    }
+    Say "Started $($Tests.Count) test file(s) in parallel; building meanwhile"
+} else {
+    $suite = Join-Path $Results "pytest.txt"
+    & $vpy -m pytest -q -p no:cacheprovider 2>&1 | Out-File -FilePath $suite -Encoding UTF8
+    $suiteExit = $LASTEXITCODE
+    $summary = (Get-Content $suite | Select-String -Pattern "passed|failed" | Select-Object -Last 1).Line
+    Record "test_suite" (Verdict ($suiteExit -eq 0)) "$summary (full output: $suite)"
+}
+Remove-Item Env:PYTHONIOENCODING
 
 # 5. Build the installer
 $env:TRACKER_BUILD_NONINTERACTIVE = "1"
@@ -139,6 +161,13 @@ $build = Run "cmd.exe" @("/c", "pilot\Build Pilot Installer.bat")
 Remove-Item Env:TRACKER_BUILD_NONINTERACTIVE
 $setup = Get-ChildItem "build-portable\installer\Tax-Document-Tracker-Pilot-Setup-*.exe" -ErrorAction SilentlyContinue |
          Sort-Object LastWriteTime -Descending | Select-Object -First 1
+# The named test files, collected now that the build is done
+foreach ($r in $running) {
+    $r.Proc.WaitForExit()
+    $summary = (Get-Content $r.Out -ErrorAction SilentlyContinue | Select-String -Pattern "passed|failed|error" | Select-Object -Last 1).Line
+    Record ("tests " + $r.File) (Verdict ($r.Proc.ExitCode -eq 0)) "$summary (output: $($r.Out))"
+}
+
 if ($build -ne 0 -or -not $setup) {
     Record "build" "FAIL" "Build Pilot Installer.bat exit $build; installer found: $([bool]$setup) (log: $Log)"
     Stop-Here "the installer did not build"
