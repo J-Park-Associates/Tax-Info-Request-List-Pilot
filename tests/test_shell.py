@@ -500,7 +500,7 @@ def run_shell(functions: list[str], setup: str, probe: str, tmp_path: Path, sour
     probe prints."""
     if NODE is None:
         pytest.skip("node is not on PATH (CI installs it)")
-    lifted = "\n".join(js_function(name, source) for name in functions)
+    lifted = "\n".join(js_function(name, source if f"function {name}(" in read(source) else "shell.js") for name in functions)
     script = tmp_path / "probe.js"
     script.write_text(f"{setup}\n{lifted}\nprocess.stdout.write(JSON.stringify((() => {{ {probe} }})()));\n",
                       encoding="utf-8", newline="\n")
@@ -730,3 +730,239 @@ def test_the_shell_sends_only_the_menu_channels_messages_and_no_path():
     assert sorted(sends) == sorted(["{ enable: shellEnabled() }", "{ popup: name, enable: shellEnabled(), token, x, y }"])
     assert 'shellPopup(one.popup, `crumb-${one.popup}`' in text, "a segment's token is its own name"
     assert "window.tracker.menu.onCommand(shellMenu)" in text
+
+
+# ── node: the pages (SPEC 6, 3.6, 14.1) ────────────────────────────────────
+
+#: A small DOM, enough for h(), icon() and the pages' own builders: elements
+#: with a class list, a dataset, attributes, children and a search by class
+#: or role. Its point is to run pages.js's functions as written.
+FAKE_DOM = r"""
+class Node {}
+class Text extends Node { constructor(data) { super(); this.data = data; } }
+class Element extends Node {
+  constructor(tag) { super(); this.tag = tag; this.className = ""; this.dataset = {}; this.attrs = {}; this.kids = []; this.open = false; }
+  get classList() {
+    const self = this;
+    return { add(one) { if (!self.className.split(" ").includes(one)) self.className = `${self.className} ${one}`.trim(); },
+             contains(one) { return self.className.split(" ").includes(one); } };
+  }
+  setAttribute(key, value) { this.attrs[key] = String(value); }
+  getAttribute(key) { return this.attrs[key]; }
+  append(...nodes) { for (const one of nodes) this.kids.push(one instanceof Node ? one : new Text(String(one))); }
+  replaceChildren(...nodes) { this.kids = []; this.append(...nodes); }
+  addEventListener() {}
+  find(test, out = []) { for (const one of this.kids) if (one instanceof Element) { if (test(one)) out.push(one); one.find(test, out); } return out; }
+  querySelector(selector) { return this.byClass(selector.slice(1))[0] || null; }
+  byClass(name) { return this.find((one) => one.className.split(" ").includes(name)); }
+  get textContent() { return this.kids.map((one) => (one instanceof Text ? one.data : one.textContent)).join(""); }
+}
+const document = { createElement: (tag) => new Element(tag), createElementNS: (_ns, tag) => new Element(tag) };
+const page = (nodes) => { const box = new Element("div"); box.append(...nodes.filter(Boolean)); return box; };
+"""
+
+PAGE_WORDS = r"""
+const fill = (p, v) => p.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? "");
+const isSetAside = (o) => o === "Not Applicable";
+const overrideLabel = (o, year) => `Not applicable ${year}`;
+let locked = false;
+let lastState = null;
+const tips = [];
+const setTipIfCut = (node, words) => tips.push([node.className, words]);
+let shellReturn = (path) => ({ return_name: "1040 - John & Jane Smith", household: "h1", year: 2025 });
+const folderName = (path) => path;
+const PAGES_GROUPS = ["needs_you", "waiting", "received", "set_aside"];
+const PAGES_TONES = { needs: "is-attention", waiting: "is-waiting", done: "is-done", plain: "is-plain" };
+const PAGES_LATE = "9999-99-99";
+let pagesUid = 0; const pagesTokens = new Map(); let pagesSetAsideFor = ""; let pagesSetAsideOpen = false;
+const vocab = {
+  decisions: { needs_review: "Needs Review", dismissed: "Not Requested", filed: "Filed" },
+  labels: { Missing: { label: "Outstanding" }, Received: { label: "Received" }, Partial: { label: "Partly in" }, Rejected: { label: "Could not use" }, NotAsked: { label: "Not asked" } },
+  overrides: { not_applicable: "Not Applicable" },
+  review_labels: { bucket_order: ["document", "container", "not_a_document"], dismiss: "Not requested",
+                   buckets: { document: "Documents", container: "Emails and zips", not_a_document: "Not documents" } },
+  reasons: { unmatched: { short: "Could not tell" }, "opened-not-across": { short: "Came in email or zip" } },
+  screen: {
+    groups: { needs_you: "Needs you", waiting: "Waiting on client", received: "Received", set_aside: "Set aside" },
+    steps: { check: "Check", open: "Open", draft: "Draft reminder", edit: "Edit" },
+    empty: { received: "Nothing received yet" }, moved: "Moved by hand", due: "Due {date}", partly: "{n} of {total}",
+    counts: { need: "{n} need you", waiting: "{n} waiting", complete: "Complete", files: "{n} files" },
+  },
+};
+"""
+
+RETURN_STATE = r"""
+const item = (id, group, extra = {}) => ({ identifier: id, document: `Doc ${id}`, short_name: `Doc ${id}`, group, status_key: "Missing", manual_override: "",
+  period: "", year: 2025, file_count: 0, expected_count: 1, received_date: null, ...extra });
+const parked = (handle, extra = {}) => ({ handle, original_name: `${handle}.pdf`, decision: "Needs Review", code: "unmatched", received: "2026-03-03", bucket: "document", ...extra });
+const stateOf = (items, index = [], moved = []) => ({ paths: { engagement: "r1" }, engagement: { due: "2026-04-15" }, items, index, review: [], moved });
+"""
+
+
+def run_pages_dom(probe: str, tmp_path: Path, setup: str = "", functions=None):
+    if NODE is None:
+        pytest.skip("node is not on PATH (CI installs it)")
+    wanted = functions or [
+        "pagesReturn", "pagesReturnName", "pagesTitle", "pagesCaption", "pagesDue", "pagesDay", "pagesReturnGroups", "pagesItemName",
+        "pagesItemStatus", "pagesItemDetail", "pagesByName", "pagesReason", "pagesBlocks", "pagesRow", "pagesStepWords",
+        "pagesReturnPlan", "pagesGroup", "pagesGroupStep", "pagesList", "pagesWorkRows", "pagesCounts", "pagesTally",
+        "pagesHouseholdNotices", "pagesRoute", "pagesFiles", "h", "icon", "screenWords",
+    ]
+    shell = read("shell.js")
+    consts = "\n".join(shell[shell.index(head):shell.index(");\n", shell.index(head)) + 3] if head.endswith("[") else shell[shell.index(head):shell.index("\n", shell.index(head))]
+                       for head in ("const H_ATTRIBUTES = new Set([", 'const SVG_NS = '))
+    lifted = consts + "\n" + "\n".join(js_function(name, "pages.js" if f"function {name}(" in read("pages.js") else "shell.js") for name in wanted)
+    script = tmp_path / "pages_probe.js"
+    script.write_text(f"{FAKE_DOM}\n{PAGE_WORDS}\n{RETURN_STATE}\n{setup}\n{lifted}\nprocess.stdout.write(JSON.stringify((() => {{ {probe} }})()));\n",
+                      encoding="utf-8", newline="\n")
+    done = subprocess.run([NODE, str(script)], capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+
+def test_a_return_page_draws_its_groups_in_order_and_leaves_out_empty_ones_but_received(tmp_path):
+    """SPEC 6.7: Needs you, Waiting on client, Received, Set aside, each
+    from the API's `group`; a group with no rows is left out, but Received,
+    which says "Nothing received yet"; Set aside is a closed `details`."""
+    ran = run_pages_dom("""
+      const full = stateOf([item("A", "set_aside", { status_key: "NotAsked" }), item("B", "received", { status_key: "Received", received_date: "2026-03-01" }),
+                            item("C", "waiting"), item("D", "needs_you", { status_key: "Rejected" })], [parked("p1")]);
+      const headings = (state) => { lastState = state; const box = page(pagesReturn({ level: "return", ret: "r1", year: 2025 }));
+        return { titles: box.byClass("group-title").map((one) => one.textContent), none: box.byClass("group-none").map((one) => one.textContent),
+                 folds: box.find((one) => one.tag === "details").map((one) => one.open), h1: box.find((one) => one.tag === "h1").length }; };
+      let missing = null;
+      try { pagesReturnGroups(stateOf([{ ...item("X", "waiting"), group: undefined }]), 2025); } catch (err) { missing = err.message; }
+      return { full: headings(full), bare: headings(stateOf([item("D", "needs_you")])), quiet: headings(stateOf([])), missing };
+    """, tmp_path)
+    assert ran["full"]["titles"] == ["Needs you", "Waiting on client", "Received", "Set aside"]
+    assert ran["full"]["folds"] == [False], "Set aside is shut each time the page opens"
+    assert ran["bare"]["titles"] == ["Needs you", "Received"] and ran["bare"]["none"] == ["Nothing received yet"]
+    assert ran["quiet"]["titles"] == ["Received"] and ran["quiet"]["h1"] == 1
+    assert ran["missing"] == "group", "an item with no group is not guessed at"
+
+
+def test_a_returns_needs_you_group_holds_parked_files_then_moved_then_requests_then_the_buckets(tmp_path):
+    ran = run_pages_dom("""
+      const state = stateOf([item("A", "needs_you", { status_key: "Rejected" })],
+        [parked("b-old", { received: "2026-03-01" }), parked("a-new", { received: "2026-03-05" }),
+         parked("zip", { bucket: "container", code: "opened-not-across" })],
+        [{ handle: "m1", original_name: "moved.pdf", identifier: "A" }]);
+      const groups = pagesReturnGroups(state, 2025);
+      return groups.needs_you.map((one) => [one.name, one.status, one.sub || ""]);
+    """, tmp_path)
+    assert ran == [["b-old.pdf", "Could not tell", ""], ["a-new.pdf", "Could not tell", ""], ["moved.pdf", "Moved by hand", ""],
+                   ["Doc A", "Could not use", ""], ["zip.pdf", "Came in email or zip", "Emails and zips"]]
+
+
+def test_the_pages_groups_and_the_firms_tally_of_them_cannot_disagree(tmp_path):
+    """SPEC 9.1: the Overview's counts and the return page's groups come from
+    the same `group`. pagesTally is what shell.js compares with the firm."""
+    ran = run_pages_dom("""
+      const state = stateOf([item("A", "needs_you"), item("B", "waiting"), item("C", "waiting"), item("D", "received", { status_key: "Received" }),
+                             item("E", "set_aside", { status_key: "NotAsked" })],
+        [parked("p1"), parked("p2"), { handle: "d1", original_name: "d.pdf", decision: "Not Requested", received: "2026-03-01" }],
+        [{ handle: "m1", original_name: "m.pdf", identifier: "A" }]);
+      const groups = pagesReturnGroups(state, 2025);
+      return { tally: pagesTally(state), drawn: Object.fromEntries(Object.entries(groups).map(([key, rows]) => [key, rows.length])) };
+    """, tmp_path)
+    assert ran["tally"] == ran["drawn"] == {"needs_you": 4, "waiting": 2, "received": 1, "set_aside": 2}
+
+
+def test_the_overview_puts_each_return_in_one_bucket(tmp_path):
+    """SPEC 6.1: a return with anything for a person is Need a person, else
+    Waiting on clients, else Complete; the rows are the first two, need-you
+    by oldest file and waiting by due date; a return whose record could not
+    be read leads, saying so, and is never left out."""
+    ran = run_pages_dom("""
+      const names = { a: "Alpha", b: "Bravo", c: "Charlie", d: "Delta", e: "Echo", f: "Foxtrot" };
+      shellReturn = (path) => ({ return_name: names[path], household: "h", year: 2025 });
+      const make = (path, counts, extra = {}) => ({ path, household: "h", counts: { needs_you: 0, waiting: 0, received: 0, set_aside: 0, ...counts }, oldest: null, due: null, problem: "", ...extra });
+      const rows = pagesWorkRows([
+        make("a", { needs_you: 2, waiting: 1 }, { oldest: "2026-03-04" }), make("b", { waiting: 2 }, { due: "2026-04-15" }),
+        make("c", { received: 5 }), make("d", { needs_you: 1 }, { oldest: "2026-03-02" }),
+        make("e", {}, { problem: "Record unreadable" }), make("f", { waiting: 1 }, { due: "2026-04-01" }) ]);
+      return rows.map((one) => [one.name, one.status, one.tone, one.date, one.step.kind]);
+    """, tmp_path)
+    assert [one[0] for one in ran] == ["Echo", "Delta", "Alpha", "Foxtrot", "Bravo"], "Charlie is complete and is not listed"
+    assert ran[0][1:3] == ["Record unreadable", "needs"]
+    assert ran[2][1:3] == ["2 need you", "needs"], "a return with both counts is in the first bucket only"
+    assert ran[3][2] == "waiting" and all(one[4] == "open" for one in ran)
+
+
+def test_a_row_carries_one_step_and_its_status_word_and_no_sentence(tmp_path):
+    """SPEC 3.6 and P63: name, detail, status, and an end column holding the
+    date and at most one step; the step is aria-hidden and named by
+    aria-description; no title attribute; no sentence anywhere. A live lock
+    takes the Edit step away, as the menu's Edit request list goes grey."""
+    ran = run_pages_dom("""
+      const spec = { name: "scan0012.pdf", detail: "W-2", status: "Could not tell", tone: "needs", date: "Mar 3", menu: "file", step: { kind: "check" } };
+      const shape = (node) => ({ cols: node.kids.map((one) => one.className.split(" ")[0]), end: node.kids[3].kids.map((one) => one.className.split(" ")[0]),
+        status: node.kids[2].textContent, role: node.attrs.role, hidden: node.byClass("row-step").map((one) => one.attrs["aria-hidden"]),
+        described: node.attrs["aria-description"] || "", menu: node.dataset.menu, titles: node.find((one) => "title" in one.attrs).length });
+      const edit = { ...spec, step: { kind: "edit", identifier: "A" } };
+      const before = shape(pagesRow(edit)); locked = true; const during = shape(pagesRow(edit)); locked = false;
+      return { check: shape(pagesRow(spec)), before, during, plain: shape(pagesRow({ ...spec, step: null })) };
+    """, tmp_path)
+    assert ran["check"]["cols"] == ["row-name", "row-detail", "row-status", "row-end"]
+    assert ran["check"]["end"] == ["row-date", "row-step"] and ran["check"]["hidden"] == ["true"]
+    assert ran["check"]["status"] == "Could not tell" and ran["check"]["role"] == "option"
+    assert ran["check"]["described"] == "Check" and ran["check"]["menu"] == "file" and ran["check"]["titles"] == 0
+    assert ran["before"]["end"] == ["row-date", "row-step"] and ran["during"]["end"] == ["row-date"]
+    assert ran["plain"]["end"] == ["row-date"] and ran["plain"]["described"] == ""
+
+
+def test_long_names_are_cut_and_carry_their_full_name_as_the_tooltip(tmp_path):
+    """SPEC 6: a household name of 60 characters and a return name of 80 end
+    in an ellipsis at their column; the full name is the row's tooltip. The
+    ellipsis is CSS on the name column; an H1 wraps, and is never cut."""
+    ran = run_pages_dom("""
+      const household = "Alexandria Montgomery-Whitfield and Christopher Delacroix".padEnd(60, "x").slice(0, 60);
+      const ret = "1040 - Alexandria Montgomery-Whitfield & Christopher Delacroix Family Trust".padEnd(80, "y").slice(0, 80);
+      for (const name of [household, ret]) pagesRow({ name, detail: "", status: "", tone: "plain", date: "", menu: "return" });
+      return { tips: tips.filter(([cls]) => cls === "row-name").map(([, words]) => words.length), same: tips.filter(([cls]) => cls === "row-name").map(([, words]) => words) };
+    """, tmp_path)
+    assert ran["tips"] == [60, 80]
+    css = read("shell.css")
+    name_rule = next(body for _m, selector, body in blocks(css) if selector.strip() == ".row-name" or ".row-name" in selector.split(","))
+    assert "text-overflow: ellipsis" in name_rule and "white-space: nowrap" in name_rule
+    title_rule = next(body for _m, selector, body in blocks(css) if selector.strip().startswith(".page-title"))
+    assert "ellipsis" not in title_rule and "nowrap" not in title_rule, "an H1 wraps to two lines, not one cut line"
+    assert "-webkit-line-clamp: 2" in title_rule
+
+
+def test_only_the_household_year_and_return_pages_draw_an_h1():
+    """SPEC 6 and P75: the four firm pages have no H1 (the path and the
+    selected section name them); the levels below do."""
+    text = stripped_js("pages.js")
+    body = lambda name: text[text.index(f"function {name}("):text.index("\n}\n", text.index(f"function {name}("))]  # noqa: E731
+    for firm in ("pagesOverview", "pagesNeedsReview", "pagesReminders", "pagesClients"):
+        assert "pagesTitle(" not in body(firm) and '"h1"' not in body(firm), firm
+    for client in ("pagesHousehold", "pagesYear", "pagesReturn"):
+        assert "pagesTitle(" in body(client), client
+    assert text.count('"h1"') == 1
+
+
+def test_the_household_pages_notices_are_two_years_folder_renamed_and_feeds(tmp_path):
+    """SPEC 6.5: while a household's pages are open its notices show: two
+    years open, folder renamed with Accept (only when the pause names a
+    scope), and every feed warning; they go with the household's pages."""
+    ran = run_pages_dom("""
+      const seen = [];
+      globalThis.syncNotices = (prefix, wanted) => seen.push([prefix, wanted.map((one) => [one.key, one.failure.sentence, (one.opts && one.opts.action) ? one.opts.action.label : ""])]);
+      const home = { path: "h1", open_years: [2025, 2024], pause: { sentence: "Folder renamed", scope: "household" }, feeds: [{ warning: "Feeds nothing" }, {}] };
+      lastState = { household: home };
+      pagesHouseholdNotices({ level: "household", household: "h1" });
+      lastState = { household: { ...home, pause: { sentence: "Folder renamed" }, open_years: [2025], feeds: [] } };
+      pagesHouseholdNotices({ level: "return", household: "h1" });
+      pagesHouseholdNotices({ level: "clients" });
+      lastState = { household: { ...home, path: "h2" } };
+      pagesHouseholdNotices({ level: "year", household: "h1" });
+      return seen;
+    """, tmp_path, setup="""
+      vocab.household = { two_open_years: "Two years open", accept_folder_name: "Accept" };
+      const acceptFolderName = () => {};
+    """)
+    assert ran[0] == ["household", [["two-years", "Two years open", ""], ["renamed", "Folder renamed", "Accept"], ["feed-0", "Feeds nothing", ""]]]
+    assert ran[1] == ["household", [["renamed", "Folder renamed", ""]]], "no Accept when the pause names no scope"
+    assert ran[2] == ["household", []] and ran[3] == ["household", []], "another household's state, or a firm page, has none"
