@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 287,
+    "nodes": 288,
     "edges": 1142,
-    "reused": 244
+    "reused": 241
   },
   "node_types": [
     "artifact",
@@ -3982,7 +3982,7 @@
       "id": "app/renderer/index.html",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "4a31c4d7d6165897",
+      "sha256": "95c74062e5250846",
       "lines": 762,
       "role": "The desktop app's markup under a Content-Security-Policy that allows nothing but the app's own files: the shell skeleton (side panel, path row, notices, page, the side sheet, the tooltip and the drawn icons), the dialogs, and the old screen kept in #legacy, hidden, until the pages and the sheet take over what each card showed.",
       "notes": "Nothing here types a word: shell.js fills each name and tooltip from the vocabulary (data-tip-key names the key). The script order is app.js, tooltip.js, shell.js, then the pilot's (pages.js and sheet.js join it in their turn). app.js still finds its elements by id inside #legacy; each build that takes a card over deletes that card's markup and its rules."
@@ -4054,8 +4054,8 @@
       "id": "app/renderer/tooltip.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "6ff83cbc2922cb83",
-      "lines": 137,
+      "sha256": "056ff932b22f42a2",
+      "lines": 143,
       "role": "The custom tooltip (SPEC-shell 8.5): any element with data-tip gets one after 500 ms of hover or at once on keyboard focus; one #tip element, role=tooltip, tied by aria-describedby while it shows.",
       "notes": "setTip(node, words) replaces every title attribute of the old screen; setTipIfCut() shows a name only when the screen cut it. A box being typed into never shows one on focus (it would cover what the typing opens). Its words are the API's vocabulary or a person's own name, never typed here."
     },
@@ -4672,6 +4672,13 @@
       "lines": 158
     },
     {
+      "id": "pilot/handoffs/shell-S7-rebuild-1.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "efd34ed88db374e8",
+      "lines": 84
+    },
+    {
       "id": "pilot/handoffs/shell-S7-review-1.md",
       "type": "doc",
       "layer": "docs",
@@ -4682,7 +4689,7 @@
       "id": "pilot/handoffs/shell-S7.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "60de8105f92ba6bf",
+      "sha256": "18afd46ac13fd6de",
       "lines": 142
     },
     {
@@ -8536,8 +8543,8 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "50bb2d5fbc889e30",
-      "lines": 765,
+      "sha256": "7cb6a255546111b2",
+      "lines": 785,
       "exports": [
         "CONTRAST",
         "FLOATING_UI",
@@ -8562,6 +8569,7 @@
         "stripped_js",
         "test_a_household_or_return_not_in_the_list_never_shows_its_path_as_a_name",
         "test_a_menu_id_the_page_cannot_answer_is_said_and_logged",
+        "test_a_tip_goes_when_its_element_is_scrolled_out_of_view",
         "test_changing_the_clients_folder_keeps_the_firms_name_and_phone",
         "test_every_attribute_the_shell_builds_a_node_with_is_on_its_list",
         "test_every_colour_pair_meets_its_contrast_in_both_themes",
@@ -8578,6 +8586,7 @@
         "test_search_finds_a_household_by_any_part_of_its_name_without_calling_the_api",
         "test_the_contrast_theme_fills_and_rings_follow_spec_10_4",
         "test_the_harness_is_never_loaded_by_the_app",
+        "test_the_hover_delay_is_300_ms_and_keyboard_focus_waits_for_nothing",
         "test_the_kept_names_are_aliases_of_the_purpose_names",
         "test_the_loading_order_is_the_specs_and_the_csp_is_unchanged",
         "test_the_menus_enable_list_follows_the_rules_of_the_template",
