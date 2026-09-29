@@ -89,7 +89,7 @@ office's Python, build the installer, install and try it, uninstall, then tag
 It does not block 0.1.
 
 - **SPEC (2026-09-29, branch `build-d-spec`, draft PR to `main`):**
-  [`SPEC-glass.md`](SPEC-glass.md) written; decisions P31-P40. Jason chose a
+  [`SPEC-glass.md`](SPEC-glass.md) written; decisions P31-P44. Jason chose a
   soft navy gradient backdrop and light mode only for 0.2 (P31). Verified:
   Electron 43 = Chromium 150, which has `backdrop-filter` with `url(#svg)`,
   `corner-shape: superellipse()` (139+) and `prefers-reduced-transparency`
@@ -99,6 +99,13 @@ It does not block 0.1.
   too, and most radii are literals - so it uses its own tokens by selector.
   The token values in SPEC section 4 were checked with the section 10.2
   contrast model before writing: every pair is 4.5:1 or better.
+- **Revised (2026-09-29, same branch):** a preview mock-up (scratch only,
+  made-up names) showed a sticky-toolbar gap and squashed cards (fixed in SPEC
+  6.2, P37). Jason then asked for thinner glass, a 3D effect and movement; the
+  SPEC now carries them (P41-P44): 55-65% glass, a lit rim and depth shadows,
+  a pointer light, button spring, arrival motion, a scrolled toolbar and a
+  Full-level backdrop drift, with a per-surface contrast proof (P42) whose
+  figures were computed before writing.
 - **Waiting on Jason:** approve `SPEC-glass.md` (the picker wording in 7.2 is
   proposed copy), then merge the SPEC PR.
 - **Next: Build D** (sonnet), then **Review 3** (opus, high effort, a session
@@ -112,7 +119,7 @@ It does not block 0.1.
 You are the Build D builder for the Tax Document Tracker Pilot: the glass
 theme, pilot 0.2. Build exactly pilot/SPEC-glass.md and nothing more.
 Read first, and nothing else to start: pilot/README.md, pilot/DECISIONS.md
-(P30-P40), pilot/SPEC.md section 2 (the page rules you still obey),
+(P30-P44), pilot/SPEC.md section 2 (the page rules you still obey),
 pilot/SPEC-glass.md (all of it), pilot/HANDOFF.md. Use
 `python tools/repo_map.py show <file>` for the renderer files and read only
 the line ranges the SPEC names; never read docs/repo-map.md whole.
@@ -136,7 +143,7 @@ is left. Report in plain English.
 ```
 You are Review 3 for the Tax Document Tracker Pilot: an independent review of
 Build D, the glass theme, in a session that built nothing. Read first:
-pilot/DECISIONS.md (P30-P40), pilot/SPEC-glass.md, pilot/HANDOFF.md (the
+pilot/DECISIONS.md (P30-P44), pilot/SPEC-glass.md, pilot/HANDOFF.md (the
 Build D entry), then the Build D pull request's diff. Use
 `python tools/repo_map.py show <file>`; never read docs/repo-map.md whole.
 Check the build against SPEC-glass section 13, item by item. Re-run the
