@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 192,
+    "nodes": 193,
     "edges": 1135,
-    "reused": 139
+    "reused": 151
   },
   "node_types": [
     "artifact",
@@ -4192,6 +4192,13 @@
       "layer": "docs",
       "sha256": "6f4e1530c056c1b1",
       "lines": 38
+    },
+    {
+      "id": "pilot/wintest/PROMPT-RERUN-3.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "5242a20345d4b271",
+      "lines": 56
     },
     {
       "id": "pilot/wintest/PROMPT.md",
