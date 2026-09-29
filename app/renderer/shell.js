@@ -19,8 +19,14 @@
 //   shellChanged()      the sort, the lock or the pass's progress changed
 //   shellProgress(said) one progress line of the running pass
 //   shellKey(e)         one keydown, before app.js's own (true = handled)
-// What this file calls, if it exists (the pages are S4's, the sheet S5's):
+//   shellStateArrived(state)  one return's state arrived: draw its page, and
+//                       ask the firm's counts again if the state moved them
+// What this file calls in app.js: appRouteChanged(route), so the lock (a
+// notice) follows the return on screen.
+// What this file calls, if it exists (the pages are pages.js, the sheet S5's):
 //   pagesDraw(route, page)   draw the route's page into #page
+//   pagesLeave()             the setup page took the screen: the pages' notices go
+//   pagesTally(state)        how many of each group a state holds
 //   pagesKey(e)              a key on a row list (the one keydown listener
 //                            stays in app.js and hands keys here)
 //   pagesMenu(id, token)     a right-click menu item on a row
@@ -73,7 +79,7 @@ const H_ATTRIBUTES = new Set([
   "className", "id", "type", "disabled", "hidden", "tabindex", "role", "value", "dataset",
   "aria-label", "aria-current", "aria-selected", "aria-expanded", "aria-busy", "aria-hidden",
   "aria-labelledby", "aria-valuemin", "aria-valuemax", "aria-valuenow", "aria-live",
-  "aria-controls", "aria-description", "aria-keyshortcuts", "aria-disabled",
+  "aria-controls", "aria-description", "aria-keyshortcuts", "aria-disabled", "aria-pressed",
 ]);
 
 function h(tag, attrs = {}, ...children) {
@@ -198,6 +204,7 @@ function shellGo(next) {
   hideFound();
   if (next.level === "setup") shellBack = shellRoute.level === "setup" ? shellBack : shellRoute;
   shellRoute = next;
+  appRouteChanged(next);   // app.js: the lock belongs to the return on screen
   shellPageBusy = next.level === "return";
   shellPageFailed = false;
   shellDraw();
@@ -225,6 +232,19 @@ function shellOpenState() {
     shellPageFailed = route.level === "return" && !drawn;
     shellDraw();
   });
+}
+
+// app.js: one return's `state` has arrived (a read, or a write's reply). The
+// page is drawn from it; if what it holds no longer matches the firm's
+// counts for that return, the counts are asked again (SPEC 4.2: after any
+// write that changes a count) - never on a plain read, which changes none.
+function shellStateArrived(state) {
+  shellDraw();
+  const firm = shellFirmNow.data;
+  const mine = firm && state.paths ? firm.returns.find((one) => one.path === state.paths.engagement) : null;
+  if (!mine || typeof pagesTally !== "function") return;
+  const tally = pagesTally(state);
+  if (Object.keys(tally).some((key) => tally[key] !== mine.counts[key])) shellLoadFirm();
 }
 
 function shellDraw() {
@@ -529,6 +549,7 @@ function drawPage() {
   const page = $("page");
   const route = shellRoute;
   if (route.level === "setup") {
+    if (typeof pagesLeave === "function") pagesLeave();
     page.setAttribute("aria-busy", "false");
     page.replaceChildren(...setupPage());
     return;
@@ -632,13 +653,16 @@ function shellEnabled() {
   const writable = !locked;
   const household = shellHousehold(route.household);
   const rollable = Boolean(household && (household.returns || []).some((one) => one.rollable));
-  const shared = Boolean(lastState && lastState.household && lastState.household.shared_on);
+  const own = lastState && lastState.household && lastState.household.path === route.household ? lastState.household : null;
+  const shared = Boolean(own && own.shared_on);
+  const paused = Boolean(own && own.pause && own.pause.sentence);   // while paused the pause is the work
   const ids = ["change_root", "refresh", "tour", "safeguards", "terms", "error_log", "about"];
   if (shellRootSet) {
     ids.push("new_household", "open_root", "overview", "needs_review", "reminders", "clients", "find", "schedule", "repair_schedule");
   }
   if (client && writable) {
-    ids.push("edit_household", "add_return");
+    ids.push("edit_household");
+    if (!paused) ids.push("add_return");
     if (rollable) ids.push("roll_forward");
     if (!shared) ids.push("mark_shared");
   }
@@ -648,7 +672,7 @@ function shellEnabled() {
   if (client && !scanning && writable) ids.push("sort_now");
   if (scanning) ids.push("stop_sorting");
   if (shellPaths.status) ids.push("firm_report");
-  if (client && !$("btn-unlock").classList.contains("hidden")) ids.push("clear_lock");
+  if (client && lockStale) ids.push("clear_lock");
   return ids;
 }
 
@@ -698,7 +722,7 @@ const MENU_ANSWERS = {
   change_root: () => shellChangeRoot(),
   open_root: () => openPath(shellPaths.clients_root),
   edit_household: () => openHouseholdEditor(),
-  add_return: () => openAddReturn(lastState && lastState.household),
+  add_return: () => openAddReturn(shellHousehold(shellRoute.household) || (lastState && lastState.household)),
   mark_shared: () => markShared(),
   edit_list: () => openEditor(),
   open_client_folder: () => openPath(clientFolder()),

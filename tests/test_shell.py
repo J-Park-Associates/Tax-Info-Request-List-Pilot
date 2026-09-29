@@ -39,11 +39,10 @@ from tests.test_pilot_ui import (
 
 REPO = Path(__file__).resolve().parent.parent
 
-#: The new renderer scripts. S4 adds pages.js and S5 sheet.js.
-SHELL_FILES = ("shell.js", "tooltip.js")
-#: Files that hold no ``title`` attribute (SPEC 13). S4 adds app.js and
-#: index.html when it deletes the last ones.
-TITLE_FREE = ("shell.js", "tooltip.js", "shell.css", "pilot.js", "tour.js")
+#: The new renderer scripts. S5 adds sheet.js.
+SHELL_FILES = ("shell.js", "tooltip.js", "pages.js")
+#: Files that hold no ``title`` attribute (SPEC 13): every tooltip is setTip().
+TITLE_FREE = ("shell.js", "tooltip.js", "pages.js", "shell.css", "pilot.js", "tour.js", "app.js", "index.html")
 
 
 
@@ -320,16 +319,17 @@ def test_the_loading_order_is_the_specs_and_the_csp_is_unchanged():
     html = read("index.html")
     styles = [html.index(f'href="{name}"') for name in ("style.css", "pilot-ui.css", "shell.css", "pilot-style.css")]
     assert styles == sorted(styles)
-    scripts = [html.index(f'src="{name}"') for name in ("app.js", "tooltip.js", "shell.js", "pilot-content.js", "pilot.js", "tour.js")]
+    scripts = [html.index(f'src="{name}"') for name in ("app.js", "tooltip.js", "pages.js", "shell.js", "pilot-content.js", "pilot.js", "tour.js")]
     assert scripts == sorted(scripts)
     assert ("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'") in html
     assert "<style" not in html and not re.search(r"<script(?![^>]*\bsrc=)", html)
 
 
-def test_the_skeleton_is_the_specs_and_the_old_screen_is_kept_hidden_not_drawn():
-    """SPEC 3.1. Until S4 and S5 take over what each old card showed, its
-    markup stays in #legacy, which is never drawn, so app.js still finds its
-    elements by id."""
+def test_the_skeleton_is_the_specs_and_only_what_the_sheet_takes_over_is_kept_hidden():
+    """SPEC 3.1 and 13. The pages took the toolbar, the banners, the request
+    table, the household card and the setup card; what #legacy still holds
+    is the reminder, moved, review and filed cards, the standing-rules
+    footer, the roll fold and the three boxes saveRoot() reads: all S5's."""
     html = read("index.html")
     for wanted in ('id="shell"', 'id="side"', 'id="side-brand"', 'id="side-sections"', 'id="side-foot"', 'id="last-sort"',
                    'id="main"', 'id="bar"', 'id="crumbs"', 'id="find-wrap"', 'id="find"', 'id="find-list"', 'id="sort"',
@@ -338,8 +338,15 @@ def test_the_skeleton_is_the_specs_and_the_old_screen_is_kept_hidden_not_drawn()
     assert html.count('data-section="') == 4
     assert re.search(r'<div id="legacy" class="hidden">', html)
     outside = html[:html.index('<div id="legacy"')]
-    for gone in ("topbar", "brand-logo", 'id="eng-select"', "btn-scan", "btn-inbox", "toolbar"):
-        assert gone not in outside, gone
+    legacy = html[html.index('<div id="legacy"'):html.index('<div id="household-modal"')]
+    for gone in ("topbar", "brand-logo", 'id="eng-select"', "btn-scan", "btn-inbox", "toolbar", "eng-form", "view-state",
+                 'id="banner"', 'id="reader-warning"', 'id="last-pass"', 'id="machine-warnings"', 'id="after-install"',
+                 'id="lock-notice"', 'id="misfits-card"', 'id="room-card"', 'id="setup-card"', 'id="household-card"',
+                 'id="rows"', 'id="summary"', 'id="pass-progress"', "btn-unlock", "btn-stop-pass", "household-returns"):
+        assert gone not in outside and gone not in legacy, gone
+    for kept in ('id="reminder-card"', 'id="moved-card"', 'id="review-card"', 'id="filed-card"', 'id="assurances"',
+                 'id="household-roll"', 'id="root-input"', 'id="firm-input"', 'id="phone-input"'):
+        assert kept in legacy, kept
     for symbol in ("search", "sort", "stop", "dismiss", "chev", "next", "done", "more", "open"):
         assert f'<symbol id="i-{symbol}"' in html, symbol
     assert 'role="alert" aria-live="polite"' in html[html.index('id="notices"'):html.index('id="notices"') + 120]
@@ -358,6 +365,11 @@ def test_every_icon_has_a_name_and_a_tooltip():
     named = shell[shell.index("function shellNameIcons() {"):]
     named = named[:named.index("\n}\n")]
     assert 'setAttribute("aria-label", words)' in named and "setTip(node, words)" in named
+    # The notice's close icon is cloned from a template, so app.js names it when it draws one.
+    template = html.split('<template id="notice-buttons">', 1)[1].split("</template>", 1)[0]
+    assert re.search(r'<button[^>]*data-act="dismiss"[^>]*data-tip-key="screen\.icons\.dismiss"', template)
+    drawing = _fn(read("app.js"), "function drawNotice(entry) {")
+    assert "setAttribute(\"aria-label\", vocab.screen.icons.dismiss)" in drawing and "setTip(dismiss, vocab.screen.icons.dismiss)" in drawing
 
 
 # ── the guards every renderer file keeps ──────────────────────────────────
@@ -435,10 +447,10 @@ def test_the_harness_is_never_loaded_by_the_app():
 # ── the style.css literals that still draw ────────────────────────────────
 
 #: Rules of style.css that write a literal colour and whose elements the
-#: shell removes; each needs no dark value because nothing draws it. S4 and
-#: S5 delete more of the old screen and shorten this list.
-RETIRED = (".topbar", ".brand", ".chip", ".view-", ".eng-picker", ".mode-toggle", ".deck-card", ".review", ".requests",
-           ".setup-row", ":root")
+#: shell removes; each needs no dark value because nothing draws it. S4 took
+#: the toolbar, the chips, the request table, the household card and the
+#: setup card away; S5 deletes the deck and the review list and ends this list.
+RETIRED = (".mode-toggle", ".deck-card", ".review", ":root")
 
 
 def family(prop: str) -> str:
@@ -591,12 +603,13 @@ def test_the_sort_icon_is_stop_while_a_sort_runs_and_grey_on_a_firm_page(tmp_pat
 def test_the_menus_enable_list_follows_the_rules_of_the_template(tmp_path):
     setup = PEOPLE + """
       let shellRoute = null; let shellRootSet = true; let shellPaths = { status: "s" }; let scanning = null; let locked = false;
-      let lastState = { household: { shared_on: "" } };
-      const $ = () => ({ classList: { contains: () => true } });
+      let lockStale = false; let lastState = null;
     """
     probe = """
       const ids = (route, o = {}) => { shellRoute = route; shellRootSet = o.root ?? true; scanning = o.scan ?? null; locked = o.locked ?? false;
-        lastState = { household: { shared_on: o.shared ? "d" : "" } }; return shellEnabled(); };
+        lockStale = o.stale ?? false;
+        lastState = { household: { path: "h1", shared_on: o.shared ? "d" : "", pause: o.paused ? { sentence: "Folder renamed" } : {} } };
+        return shellEnabled(); };
       const has = (list, ...want) => want.every((id) => list.includes(id));
       const firm = ids({ level: "overview" });
       const home = ids({ level: "household", household: "h1" });
@@ -608,6 +621,8 @@ def test_the_menus_enable_list_follows_the_rules_of_the_template(tmp_path):
         homeNot: ["edit_list", "draft_reminder", "open_working"].filter((id) => home.includes(id)),
         retHas: has(ret, "edit_list", "draft_reminder", "open_working", "edit_household"),
         shared: ids({ level: "household", household: "h1" }, { shared: true }).includes("mark_shared"),
+        paused: ids({ level: "household", household: "h1" }, { paused: true }).filter((id) => ["add_return", "edit_household"].includes(id)),
+        stale: [ids({ level: "return", household: "h1", ret: "r1" }).includes("clear_lock"), ids({ level: "return", household: "h1", ret: "r1" }, { stale: true }).includes("clear_lock")],
         locked: ["edit_household", "add_return", "edit_list", "sort_now"].filter((id) => ids({ level: "return", household: "h1", ret: "r1" }, { locked: true }).includes(id)),
         lockedKeepsRead: has(ids({ level: "return", household: "h1", ret: "r1" }, { locked: true }), "draft_reminder", "open_inbox"),
         sorting: [ids({ level: "household", household: "h1" }, { scan: {} }).includes("sort_now"), ids({ level: "household", household: "h1" }, { scan: {} }).includes("stop_sorting")],
@@ -620,6 +635,8 @@ def test_the_menus_enable_list_follows_the_rules_of_the_template(tmp_path):
     assert ran["homeHas"] and ran["homeNot"] == []
     assert ran["retHas"]
     assert ran["shared"] is False, "Mark as shared is offered until it is shared"
+    assert ran["paused"] == ["edit_household"], "while a household is paused the pause is the work: no Add a return"
+    assert ran["stale"] == [False, True], "Clear stuck lock is offered for a lock left behind only"
     assert ran["locked"] == [] and ran["lockedKeepsRead"], "a locked return greys the writing items and no others"
     assert ran["sorting"] == [False, True]
     assert ran["noRoot"] == [] and ran["alwaysOn"]

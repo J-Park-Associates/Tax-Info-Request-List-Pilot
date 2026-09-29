@@ -48,7 +48,29 @@
   const vocab = Object.assign({}, window.__VOCAB__, { screen, menu });
   vocab.commands = [...vocab.commands, "firm"];
 
+  // SPEC 11.5 and 11.6: a short label for each reason code and a short name
+  // for each reminder stage (S1 adds them to the real vocabulary). Only the
+  // codes the made-up files use.
+  const SHORT = {
+    unmatched: "Could not tell", ambiguous: "Fits two requests", "no-text-layer": "Scan not readable", "name-other": "Names another return",
+    "wrong-period": "Wrong period", "opened-not-across": "Came in email or zip", "not-a-document": "Not a document",
+  };
+  vocab.reasons = Object.fromEntries(Object.entries(SHORT).map(([code, short]) => [code, { short }]));
+  const STAGE_SHORT = ["Heads up", "Checking in", "Deadline near", "Final notice"];
+  vocab.reminder = Object.assign({}, vocab.reminder, { stages: vocab.reminder.stages.map((one, i) => Object.assign({}, one, { short: STAGE_SHORT[i] })) });
+  // The words the notices will have once S1 has worded them (SPEC 11.2): the
+  // real vocabulary still holds today's long sentences.
+  vocab.household = Object.assign({}, vocab.household, { two_open_years: "Two years open", accept_folder_name: "Accept" });
+  vocab.room = Object.assign({}, vocab.room, { heading: "Names shortened to fit" });
+  vocab.after_install = Object.assign({}, vocab.after_install, { heading: "Setup needs attention" });
+  vocab.lock = Object.assign({}, vocab.lock, {
+    running: "In use on {host}", running_other: "In use on {host}", on: "", greyed: "", left_behind: "Stuck lock from {host}",
+  });
+
   // ── made-up people ────────────────────────────────────────────────────
+  // A body is the authoring format of one return: the four groups of rows a
+  // page will show. `stateOf` turns it into the shape of the API's `state`
+  // reply (items with `group`, the index, the triage, the moved list).
   let seq = 0;
   const item = (kind, name, detail, status, date, extra) => Object.assign({ id: `i${++seq}`, kind, name, detail, status, date }, extra || {});
   const file = (name, detail, status, date, extra) => item("file", name, detail, status, date, extra);
@@ -61,6 +83,8 @@
         file("scan0012.pdf", "W-2 - Acme Corp", "Could not tell", "Mar 3", { suggest: ["W-2 - Acme Corp", "1099-R - Evergreen Funds"] }),
         file("IMG_2231.jpg", "1099-INT", "Fits two requests", "Mar 4", { suggest: ["1099-INT - Bluebird Credit Union", "1099-INT - Harbor Bank"] }),
         moved("northwind-2025.pdf", "1099-B - Northwind", "Mar 5"),
+        file("statement-march.eml", "", "Came in email or zip", "Mar 6", { bucket: "container" }),
+        file("scan-of-a-postcard.heic", "", "Not a document", "Mar 6", { bucket: "not_a_document" }),
         request("1098 - Harbor Bank", "", "Could not use", "Mar 2"),
       ],
       waiting: [request("1099-B - Northwind Brokerage", "Dec 2025", "Outstanding"), request("K-1 - Hillside Partners LP", "1 of 2", "Partly in")],
@@ -103,17 +127,21 @@
       const rpath = `${path}/${year}/${returnName}`;
       bodies[rpath] = body;
       engagements.push({ name: `${name} ${year} ${returnName}`, path: rpath, household: path, year, return_name: returnName });
-      return { label: returnName, path: rpath, year, return_name: returnName, active: true, superseded_by: null, rollable: year === 2025 };
+      return { label: returnName, path: rpath, year, return_name: returnName, active: year === 2025, superseded_by: year === 2025 ? null : "next", rollable: year === 2025 };
     });
     households.push({
       name, path, client_folder: `/clients/Clients/${name}`, inbox: `/clients/Clients/${name}/Drop files here`,
       members: [contact], contact, link: "", problem: "", open_years: rows.length ? [Math.max(...rows.map((r) => r.year))] : [], returns: rows,
     });
   }
-  if (scenario !== "empty-clients") {
+  if (scenario === "quiet") {
+    // Nothing waits anywhere: the empty Overview, Needs review and Reminders.
+    household("Okafor Family", "Ada Okafor", [["1040 - Chidi & Ada Okafor", 2025, generic(0, 0, 12, "")]]);
+    household("Patel Family", "Nina Patel", [["1040 - Nina Patel", 2025, generic(0, 0, 9, "")]]);
+  } else if (scenario !== "empty-clients") {
     household("Smith Family", "John Smith", [["1040 - John & Jane Smith", 2025, smith()], ["1040 - John & Jane Smith", 2024, generic(0, 0, 11, "")]]);
-    household("Rivera Design", "Marco Rivera", [["1120-S - Rivera Design LLC", 2025, generic(1, 3, 6, "Due Mar 16")], ["1040 - Marco Rivera", 2025, Object.assign(generic(0, 2, 7, "Due Apr 15"), { draft: { ready: true, stage: 0, held: 0, drafted: "2026-03-03" } })]]);
-    household("Lopez Household", "Ana Lopez", [["1040 - Ana Lopez", 2025, Object.assign(generic(0, 2, 5, "Due Apr 15"), { draft: { ready: true, stage: 1, held: 0, drafted: "2026-03-03" } })]]);
+    household("Rivera Design", "Marco Rivera", [["1120-S - Rivera Design LLC", 2025, generic(1, 3, 6, "Due Mar 16")], ["1040 - Marco Rivera", 2025, Object.assign(generic(0, 2, 7, "Due Apr 15"), { draft: { ready: true, stage: 2, held: 0, drafted: "2026-03-03" } })]]);
+    household("Lopez Household", "Ana Lopez", [["1040 - Ana Lopez", 2025, Object.assign(generic(0, 2, 5, "Due Apr 15"), { draft: { ready: true, stage: 3, held: 0, drafted: "2026-03-03" } })]]);
     household("Chen Family", "Wei Chen", [["1040 - Wei & Lin Chen", 2025, generic(2, 1, 8, "Due Apr 15")]]);
     household("Okafor Family", "Ada Okafor", [["1040 - Chidi & Ada Okafor", 2025, generic(0, 0, 12, "")]]);
     household("Alexandria Montgomery-Whitfield & Christopher Delacroix Family", "Alexandria Whitfield", [["1040 - Alexandria Montgomery-Whitfield & Christopher Delacroix (married filing jointly)", 2025, generic(0, 3, 2, "Due Apr 15")]]);
@@ -132,17 +160,97 @@
     }
   }
 
+  // ── the API's shapes, from a body ─────────────────────────────────────
+  const MONTH = { Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06" };
+  const dayOf = (text) => {
+    const parts = /^([A-Z][a-z]{2}) (\d{1,2})$/.exec(text || "");
+    return parts ? `2026-${MONTH[parts[1]]}-${parts[2].padStart(2, "0")}` : "";
+  };
+  const dueOf = (text) => dayOf((text || "").replace("Due ", ""));
+  const CODE = Object.fromEntries(Object.entries(SHORT).map(([code, short]) => [short, code]));
+  const LABEL = { "Could not use": "Failed Validation", Outstanding: "Missing", "Partly in": "Partial", "Not yet checked": "Requested", Received: "Received", Accepted: "Accepted", "Not asked": "Not asked", "Not applicable 2025": "Not Applicable" };
+  const GROUP_OF = { needs: "needs_you", waiting: "waiting", received: "received", setAside: "set_aside" };
+  let handleSeq = 0;
+
+  function stateOf(path) {
+    const body = bodies[path] || generic(0, 0, 0, "");
+    const items = [];
+    const index = [];
+    const review = [];
+    const movedList = [];
+    const year = 2025;
+    const push = (key, one) => {
+      const group = GROUP_OF[key];
+      if (one.kind === "request") {
+        const partly = /^(\d+) of (\d+)$/.exec(one.detail);
+        const period = /^[A-Z][a-z]{2} \d{4}$/.test(one.detail) ? one.detail : "";
+        const filedAs = group === "received" ? one.detail : "";
+        const identifier = `R${String(items.length + 1).padStart(2, "0")}`;
+        items.push({
+          identifier, document: one.name, short_name: one.name, period, year: period ? Number(period.slice(-4)) : null, group,
+          status_key: LABEL[one.status], manual_override: one.status === "Not applicable 2025" ? "Not Applicable" : one.status === "Accepted" ? "Accepted" : "",
+          side: null, side_sentence: "", file_count: partly ? Number(partly[1]) : group === "received" ? 1 : 0, expected_count: partly ? Number(partly[2]) : 1,
+          received_date: dayOf(one.date) || null, asked: one.status !== "Not asked", not_asked_idle: one.status === "Not asked", has_document: group === "received",
+        });
+        const many = /^(\d+) files$/.exec(filedAs);
+        const names = many ? Array.from({ length: Number(many[1]) }, (_, i) => `${one.name.toLowerCase().replace(/\W+/g, "-")}-${i + 1}.pdf`) : filedAs ? [filedAs] : [];
+        for (const original of names) {
+          handleSeq += 1;
+          index.push({ handle: `h${handleSeq}`, original_name: original, received: dayOf(one.date), decision: "Filed", identifier, code: "matched", answered: [], filed_names: [original], seq: handleSeq });
+        }
+        return;
+      }
+      handleSeq += 1;
+      const handle = `h${handleSeq}`;
+      if (one.kind === "moved") {
+        movedList.push({ original_name: one.name, handle, seq: handleSeq, home: "", now: "", in_request: "", gone: false, identifier: "" });
+        index.push({ handle, original_name: one.name, received: dayOf(one.date), decision: "File Moved", identifier: "", code: "file-moved", answered: [], seq: handleSeq });
+        return;
+      }
+      const dismissed = group === "set_aside";
+      index.push({
+        handle, original_name: one.name, received: dayOf(one.date), decision: dismissed ? "Not Requested" : "Needs Review", identifier: "",
+        code: dismissed ? "not-requested" : CODE[one.status], bucket: one.bucket || "document", answered: [], seq: handleSeq,
+      });
+      if (!dismissed) {
+        review.push({ handle, seq: handleSeq, shortlist: (one.suggest || []).map((name) => ({ identifier: name, reason: name })), set_aside: [], genre: "", group: one.bucket || "document" });
+      }
+    };
+    for (const key of Object.keys(GROUP_OF)) for (const one of body[key]) push(key, one);
+    const owner = households.find((one) => path.indexOf(one.path) === 0);
+    const hh = owner ? owner.name : "";
+    const noticing = scenario === "household-notices" && hh === "Smith Family";
+    const lock = scenario === "locked" ? { started: "2026-03-03T06:00:00", host: "OFFICE-PC", age_minutes: 3, stale: false, engagement: path, label: "" }
+      : scenario === "stale-lock" ? { started: "2026-03-02T06:00:00", host: "OFFICE-PC", age_minutes: 900, stale: true, engagement: path, label: "" } : null;
+    return {
+      paths: { engagement: path, inbox: owner ? owner.inbox : "", client_folder: owner ? owner.client_folder : "", status: `${ROOT}/status.html` },
+      items, index, review, moved: movedList, lock, engagement: { due: dueOf(body.due) || "", form: "", people: [] },
+      household: {
+        path: owner ? owner.path : "", name: hh, members: [], contact: owner ? owner.contact : "", link: "",
+        open_years: noticing ? [2025, 2024] : [2025],
+        pause: noticing ? { sentence: "Folder renamed", scope: "household", engagement: path, seq: 3 } : {},
+        feeds: noticing ? [{ label: "", warning: "Feeds a return that is not there" }] : [],
+        returns: [], queue: 0, roll_year: null, shared_on: hh === "Lopez Household" ? "" : "2026-02-01",
+      },
+    };
+  }
+
   const groupCounts = (body) => ({ needs_you: body.needs.length, waiting: body.waiting.length, received: body.received.length, set_aside: body.setAside.length });
+  const filesOf = (body) => body.needs.filter((x) => x.kind !== "request");
   function firm() {
     const returns = engagements.filter((e) => e.year === 2025).map((e) => {
       const body = bodies[e.path];
       const owner = households.find((one) => one.path === e.household);
+      const days = filesOf(body).map((x) => dayOf(x.date)).sort();
       return {
-        path: e.path, household: owner.name, counts: groupCounts(body), files: body.needs.filter((x) => x.kind !== "request").length,
-        oldest: body.needs.length ? "2026-03-02" : null, due: body.due ? "2026-04-15" : null,
+        path: e.path, household: owner.name, counts: groupCounts(body), files: filesOf(body).length,
+        oldest: days[0] || null, due: dueOf(body.due) || null,
         draft: body.draft || { ready: false, stage: 0, held: 0, drafted: null }, problem: "",
       };
     });
+    const files = engagements.filter((e) => e.year === 2025).flatMap((e) => filesOf(bodies[e.path]).map((x) => ({
+      return: e.path, name: x.name, code: CODE[x.status], received: dayOf(x.date), suggestion: (x.suggest || [])[0] || "",
+    })));
     const totals = {
       need: returns.filter((r) => r.counts.needs_you).length,
       waiting: returns.filter((r) => !r.counts.needs_you && r.counts.waiting).length,
@@ -150,7 +258,7 @@
       files: returns.reduce((n, r) => n + r.files, 0),
       drafts: returns.filter((r) => r.draft.ready).length,
     };
-    return { returns, files: [], totals, next_sort: "6:00 PM" };
+    return { returns, files, totals, next_sort: "18:00" };
   }
 
   const lastWhen = new Date();
@@ -163,14 +271,22 @@
   const wait = (ms, value) => new Promise((resolve) => setTimeout(() => resolve(value), ms));
   const calls = [];
 
+  // The loud failures the old screen kept in banners, now notices (SPEC 2.2).
+  const loud = scenario === "notices" ? {
+    reader_warning: "Install folder name too long",
+    machine_warnings: ["Drive not signed in"],
+    after_install: { failed: ["The daily job could not be registered."], findings: ["A household is malformed."], wait: "Waits for a person." },
+    misfits: [{ path: "x", where: "Clients/Old Files", sentence: "Not a household." }, { path: "y", where: "Clients/Scans", sentence: "Not a household." }, { path: "z", where: "Clients/Misc", sentence: "Not a household." }],
+  } : {};
+
   window.HARNESS = { scenario, bodies, households, engagements, calls, menuLog: [], opened: [], logged: [] };
   window.tracker = {
     call: async (args, payload) => {
       calls.push(args[0]);
       const command = args[0];
       if (command === "list") {
-        const base = { engagements: rootSet ? engagements : [], households: rootSet ? households : [], misfits: [], root: rootSet ? ROOT : "", needs_root: !rootSet, vocab,
-          reader_warning: "", last_pass: lastPass, after_install: null, machine_warnings: [] };
+        const base = { engagements: rootSet ? engagements : [], households: rootSet ? households : [], misfits: loud.misfits || [], root: rootSet ? ROOT : "", needs_root: !rootSet, vocab,
+          reader_warning: loud.reader_warning || "", last_pass: lastPass, after_install: loud.after_install || null, machine_warnings: loud.machine_warnings || [] };
         if (rootSet) base.paths = { clients_root: ROOT, status: `${ROOT}/status.html` };
         return wait(20, base);
       }
@@ -178,16 +294,11 @@
         if (scenario === "firm-fails") return wait(20, { error: "The counts could not be read.", failure: { sentence: "The counts could not be read.", kind: "failed" } });
         return wait(scenario === "slow" ? 1500 : 30, firm());
       }
-      if (command === "state") {
-        const path = args[args.length - 1];
-        const owner = households.find((one) => path.indexOf(one.path) === 0);
-        return wait(20, { paths: { engagement: path, inbox: owner ? owner.inbox : "", client_folder: owner ? owner.client_folder : "", status: `${ROOT}/status.html` },
-          items: [], household: { path: owner ? owner.path : "", name: owner ? owner.name : "", members: [], contact: owner ? owner.contact : "", link: "", open_years: [2025], pause: {}, returns: [], queue: 0, roll_year: null, shared_on: owner && owner.name === "Lopez Household" ? "" : "2026-02-01" }, harness: bodies[path] || generic(0, 0, 0, "") });
-      }
+      if (command === "state") return wait(20, stateOf(args[args.length - 1]));
       if (command === "pilot-record") return wait(10, { terms: "1", tour_seen: true });
       if (command === "set-root") {
         rootSet = true;
-        return wait(50, { root: ROOT, settings_path: "", after_install: { schedule_sentence: "", failed: [] }, short_of_room: [] });
+        return wait(50, { root: ROOT, settings_path: "", after_install: { schedule_sentence: "", failed: [], findings: [] }, short_of_room: [] });
       }
       return wait(10, { error: "The harness does not answer this.", failure: { sentence: "The harness does not answer this.", kind: "failed" } });
     },

@@ -33,23 +33,35 @@ const THEMES = ["light", "dark"];
 const go = (route) => `shellGo(${JSON.stringify(route)})`;
 const smith = "/clients/J Park & Associates/Smith Family";
 const smithReturn = `${smith}/2025/1040 - John & Jane Smith`;
+const ret = { level: "return", household: smith, year: 2025, ret: smithReturn };
 const SCENARIOS = [
   { name: "overview", query: "" },
-  { name: "overview-empty", query: "?scenario=empty-clients" },
+  { name: "overview-empty", query: "?scenario=quiet" },
+  { name: "overview-no-clients", query: "?scenario=empty-clients" },
   { name: "needs-review", query: "", run: go({ level: "needs-review" }) },
+  { name: "needs-review-empty", query: "?scenario=quiet", run: go({ level: "needs-review" }) },
   { name: "reminders", query: "", run: go({ level: "reminders" }) },
+  { name: "reminders-empty", query: "?scenario=quiet", run: go({ level: "reminders" }) },
   { name: "clients", query: "", run: go({ level: "clients" }) },
+  { name: "clients-all", query: "", run: `${go({ level: "clients" })}; setTimeout(() => document.querySelectorAll(".switch-option")[1].click(), 100)` },
+  { name: "clients-none-waiting", query: "?scenario=quiet", run: go({ level: "clients" }) },
+  { name: "clients-empty", query: "?scenario=empty-clients", run: go({ level: "clients" }) },
   { name: "household", query: "", run: go({ level: "household", household: smith }) },
+  { name: "household-notices", query: "?mode=real&scenario=household-notices", run: go({ level: "household", household: smith }) },
   { name: "household-no-returns", query: "", run: go({ level: "household", household: "/clients/J Park & Associates/Patel Family" }) },
   { name: "year", query: "", run: go({ level: "year", household: smith, year: 2025 }) },
-  { name: "return", query: "", run: go({ level: "return", household: smith, year: 2025, ret: smithReturn }) },
+  { name: "return", query: "", run: go(ret) },
+  { name: "return-set-aside-open", query: "", run: `${go(ret)}; setTimeout(() => { document.querySelector(".group-fold").open = true; }, 150)` },
+  { name: "return-active-row", query: "", run: `${go(ret)}; setTimeout(() => { const list = document.querySelector(".rows"); list.focus(); }, 150)` },
   { name: "return-empty", query: "", run: go({ level: "return", household: "/clients/J Park & Associates/Novak Household", year: 2025, ret: "/clients/J Park & Associates/Novak Household/2025/1040 - Petra Novak" }) },
-  { name: "sheet-frame", query: "", run: `${go({ level: "return", household: smith, year: 2025, ret: smithReturn })}; setTimeout(() => openSheetFrame("scan0012.pdf"), 200)` },
+  { name: "return-locked", query: "?mode=real&scenario=locked", run: go(ret) },
+  { name: "return-stale-lock", query: "?mode=real&scenario=stale-lock", run: go(ret) },
+  { name: "sheet-frame", query: "", run: `${go(ret)}; setTimeout(() => openSheetFrame("scan0012.pdf"), 200)` },
+  { name: "notices", query: "?mode=real&scenario=notices" },
   { name: "setup", query: "?scenario=setup" },
   { name: "loading", query: "?scenario=slow" },
   { name: "sort-running", query: "", run: `${go({ level: "household", household: smith })}; scanning = { pass: "p1", stopping: false }; shellProgress({ n: 3, of: 12, household: "Smith Family" }); shellChanged()` },
   { name: "sort-failed", query: "?scenario=failed", run: "" },
-  { name: "locked", query: "", run: `${go({ level: "return", household: smith, year: 2025, ret: smithReturn })}; setTimeout(() => { locked = true; shellChanged(); }, 200)` },
   { name: "counts-fail", query: "?scenario=firm-fails" },
   { name: "search", query: "", search: "smith" },
   { name: "tooltip-mouse", query: "", run: go({ level: "household", household: smith }), hover: "#sort" },
@@ -109,7 +121,7 @@ if (!only.length || only.includes("real-app")) {
   await page.goto(`${base}?mode=real`);
   await page.waitForTimeout(1500);
   const side = await page.evaluate(() => [...document.querySelectorAll(".side-name")].map((n) => n.textContent).join("|"));
-  const title = await page.evaluate(() => document.querySelector("#page h1")?.textContent);
+  const title = await page.evaluate(() => document.querySelector("#page .group-title")?.textContent);
   // app.js catches its own errors, draws a notice and logs them, so an uncaught
   // "page error" count alone hides them: read the log and the visible notice too.
   const logged = await page.evaluate(() => window.HARNESS.logged.slice());
@@ -119,7 +131,7 @@ if (!only.length || only.includes("real-app")) {
   if (notice) problems.push(`real app.js shows an error: ${notice}`);
   if (side !== "Overview|Needs review|Reminders|Clients") problems.push(`real app.js: side panel is "${side}"`);
   await page.screenshot({ path: path.join(out, "real-app-1100x700.png") });
-  console.log(`real app.js: side panel "${side}", page title "${title}", ${errors.length} page errors, ${logged.length} logged, ${notice ? `shows "${notice}"` : "no visible error"}`);
+  console.log(`real app.js: side panel "${side}", first group "${title}", ${errors.length} page errors, ${logged.length} logged, ${notice ? `shows "${notice}"` : "no visible error"}`);
   await context.close();
 }
 

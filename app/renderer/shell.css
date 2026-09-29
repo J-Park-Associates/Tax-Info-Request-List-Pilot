@@ -428,6 +428,8 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
 .rows:focus-visible .row.is-active .row-step { visibility: visible; }
 .row.has-step:hover .row-date,
 .rows:focus-visible .row.has-step.is-active .row-date { visibility: hidden; }
+.row.is-active { background: var(--bg-selected); }
+.row.is-active:hover { background: var(--bg-hover); }
 .is-attention { color: var(--st-attention); }
 .is-waiting { color: var(--st-waiting); }
 .is-done { color: var(--st-done); }
@@ -451,6 +453,74 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
 }
 .row-skeleton > i:first-child { width: 60%; }
 .row-skeleton > i:last-child { grid-column: 3; width: 70%; }
+
+/* A group's own step at its heading's end (SPEC 6.7), and the Set aside fold. */
+.group-step:not(.hidden) {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin-left: auto;
+  padding: var(--sp-1);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--link);
+  font-family: inherit;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-weight: var(--fw-strong);
+  white-space: nowrap;
+  cursor: pointer;
+  visibility: hidden;
+}
+.group-head:hover .group-step { visibility: visible; }
+.group-step:hover { background: var(--bg-pressed); }
+.group-fold > summary.group-head { cursor: pointer; list-style: none; }
+.group-fold > summary.group-head::-webkit-details-marker { display: none; }
+.group-fold > summary.group-head::before {
+  content: "";
+  align-self: center;
+  width: var(--sp-2);
+  height: var(--sp-2);
+  border-right: 2px solid var(--text-caption);
+  border-bottom: 2px solid var(--text-caption);
+  transform: rotate(-45deg);
+  transition: transform var(--dur) var(--ease);
+}
+.group-fold[open] > summary.group-head::before { transform: rotate(45deg); }
+.page-gap { height: var(--sp-6); }
+
+/* The Clients page's two-option switch (SPEC 6.4), in P52's selected look. */
+.switch:not(.hidden) {
+  display: inline-flex;
+  gap: var(--sp-1);
+  margin: var(--sp-6) var(--sp-8) var(--sp-4);
+  padding: var(--sp-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+}
+.switch-option {
+  min-height: var(--size-control-sm);
+  padding: 0 var(--sp-4);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-weight: var(--fw-strong);
+  cursor: pointer;
+}
+.switch-option:hover { background: var(--bg-hover); }
+.switch-option[aria-pressed="true"] { background: var(--bg-selected); color: var(--text); }
+.page-empty-line { margin: 0; font-size: var(--fs-body); line-height: var(--lh-body); color: var(--text); }
+.page-empty-note {
+  margin: 0;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  color: var(--text-caption);
+}
 
 /* The Overview's three figures. */
 .figures:not(.hidden) { display: flex; gap: var(--sp-12); margin: var(--sp-6) var(--sp-8) 0; }
@@ -580,6 +650,9 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   .rows:focus-visible .row.is-active { outline: 2px solid CanvasText; }
   .side-section[aria-current="page"] .side-count, .find-option[aria-selected="true"] .find-note { color: HighlightText; }
   .row { border-bottom: 1px solid CanvasText; }
+  .switch { border-color: CanvasText; }
+  .switch-option[aria-pressed="true"] { background: Highlight; color: HighlightText; forced-color-adjust: none; }
+  .group-step { color: LinkText; }
   .row-name, .row-detail, .row-status, .row-date, .row-step { color: inherit; }
   #notices .notice { border: 1px solid CanvasText; background: Canvas; color: CanvasText; }
   .last-sort-bar { background: Canvas; border: 1px solid CanvasText; }
