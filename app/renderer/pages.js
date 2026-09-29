@@ -210,7 +210,7 @@ function pagesGroup(spec) {
   const headId = `group-${pagesUid}`;
   const total = spec.blocks.reduce((n, block) => n + block.rows.length, 0);
   const meta = h("span", { className: "group-count" }, spec.caption !== undefined ? spec.caption : String(total));
-  const title = h("h2", { className: "group-title", id: headId }, spec.title);
+  const title = h("h2", { className: "group-title", id: headId }, spec.heading);
   const start = spec.step ? pagesGroupStep(spec.step) : null;
   const headClass = `group-head${spec.first ? " is-first" : ""}`;
   let body = null;
@@ -287,7 +287,7 @@ function pagesOverview() {
     .map(([n, label]) => h("div", { className: "figure" }, h("b", { className: "figure-number" }, String(n)), h("span", { className: "figure-label" }, label))));
   const rows = pagesWorkRows(firm.returns).map(pagesRow);
   if (!rows.length) return [figures, pagesEmpty(words.empty.overview, pagesNextSort(firm))];
-  return [figures, ...pagesGroup({ title: words.work, first: true, blocks: [{ rows }] })];
+  return [figures, ...pagesGroup({ heading: words.work, first: true, blocks: [{ rows }] })];
 }
 
 // ── Needs review (SPEC 6.2) ───────────────────────────────────────────
@@ -315,7 +315,7 @@ function pagesNeedsReview() {
       menu: "file", step: { kind: "check", ret: group.path, name: file.name, handle: file.handle },
     }));
     const household = owner ? owner.household : "";
-    return pagesGroup({ title: pagesReturnName(group.path), caption: household ? `${household} · ${rows.length}` : String(rows.length), first: i === 0, blocks: [{ rows }] });
+    return pagesGroup({ heading: pagesReturnName(group.path), caption: household ? `${household} · ${rows.length}` : String(rows.length), first: i === 0, blocks: [{ rows }] });
   });
 }
 
@@ -420,7 +420,7 @@ function pagesHousehold(route) {
   }
   const years = [...new Set(hh.returns.map((one) => one.year))].sort((a, b) => b - a);
   return [...head, ...years.flatMap((year, i) => pagesGroup({
-    title: String(year), first: i === 0, blocks: [{ rows: pagesReturnSpecs(hh.returns.filter((one) => one.year === year)).map(pagesRow) }],
+    heading: String(year), first: i === 0, blocks: [{ rows: pagesReturnSpecs(hh.returns.filter((one) => one.year === year)).map(pagesRow) }],
   }))];
 }
 
@@ -531,15 +531,15 @@ function pagesBlocks(specs) {
 
 // Which groups a return's page draws, in order (SPEC 6.7): Needs you, Waiting
 // on client (with the group's own step), Received (always, so a return with
-// nothing received says so) and Set aside (a closed fold). A group with no
+// nothing received says so) and the closed fold of set-aside rows. A group with no
 // rows is left out but Received.
 function pagesReturnPlan(groups, route) {
   const words = screenWords();
   const plan = [];
-  if (groups.needs_you.length) plan.push({ key: "needs_you", title: words.groups.needs_you });
-  if (groups.waiting.length) plan.push({ key: "waiting", title: words.groups.waiting, step: { kind: "draft", ret: route.ret } });
-  plan.push({ key: "received", title: words.groups.received, none: words.empty.received });
-  if (groups.set_aside.length) plan.push({ key: "set_aside", title: words.groups.set_aside, fold: true });
+  if (groups.needs_you.length) plan.push({ key: "needs_you", heading: words.groups.needs_you });
+  if (groups.waiting.length) plan.push({ key: "waiting", heading: words.groups.waiting, step: { kind: "draft", ret: route.ret } });
+  plan.push({ key: "received", heading: words.groups.received, none: words.empty.received });
+  if (groups.set_aside.length) plan.push({ key: "set_aside", heading: words.groups.set_aside, fold: true });
   return plan;
 }
 

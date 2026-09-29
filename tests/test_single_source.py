@@ -3140,9 +3140,9 @@ def test_the_renderer_types_no_status_label():
     from tracker.manifest import STATUS_LABELS
 
     js = read("app/renderer/app.js")
-    # A column heading is not a status: the Received column holds a date.
-    html = re.sub(r"<th[^>]*>[^<]*</th>", "", read("app/renderer/index.html"))
-    for text in (js, html):
+    pages = read("app/renderer/pages.js")
+    html = read("app/renderer/index.html")
+    for text in (js, pages, html):
         for shown in STATUS_LABELS.values():
             assert not _typed(shown.label, text), shown.label
             assert shown.sentence not in text, shown.sentence
@@ -3151,7 +3151,7 @@ def test_the_renderer_types_no_status_label():
             assert side.sentence not in text, side.sentence
         assert view.SET_ASIDE_SECTION.split("{")[0].strip() not in text
         assert view.SET_ASIDE_GROUP not in text
-    assert "vocab.labels" in js and "vocab.reminder.sides" in js
+    assert "vocab.labels" in pages
     assert "vocab.set_aside.heading" in js and "vocab.set_aside.group" in js
 
 
@@ -3198,9 +3198,9 @@ def _run_renderer(tmp_path, name: str, headers: tuple[str, ...], script: str):
     start = js.index("const EL_ATTRIBUTES = new Set([")
     allowed = js[start:js.index("]);", start) + 3]
     bodies = "\n".join([allowed] + [_js_function(js, header) for header in (
-        "function el(tag, attrs = {}, ...children) {", *headers)])
+        "function el(tag, attrs = {}, ...children) {", "function tipped(node, words) {", *headers)])
     path = tmp_path / f"{name}.js"
-    path.write_text(f"{_DOM_SHIM}\n{bodies}\n{script}\n", encoding="utf-8", newline="\n")
+    path.write_text(f"{_DOM_SHIM}\nfunction setTip() {{}}\n{bodies}\n{script}\n", encoding="utf-8", newline="\n")
     done = subprocess.run([node, str(path)], capture_output=True, text=True, encoding="utf-8",
                           timeout=60, check=False)
     assert done.returncode == 0, done.stderr

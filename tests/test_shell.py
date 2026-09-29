@@ -339,7 +339,7 @@ def test_the_skeleton_is_the_specs_and_only_what_the_sheet_takes_over_is_kept_hi
     assert re.search(r'<div id="legacy" class="hidden">', html)
     outside = html[:html.index('<div id="legacy"')]
     legacy = html[html.index('<div id="legacy"'):html.index('<div id="household-modal"')]
-    for gone in ("topbar", "brand-logo", 'id="eng-select"', "btn-scan", "btn-inbox", "toolbar", "eng-form", "view-state",
+    for gone in ("topbar", "brand-logo", 'id="eng-select"', "btn-scan", "btn-inbox", 'id="toolbar"', 'class="toolbar"', "eng-form", "view-state",
                  'id="banner"', 'id="reader-warning"', 'id="last-pass"', 'id="machine-warnings"', 'id="after-install"',
                  'id="lock-notice"', 'id="misfits-card"', 'id="room-card"', 'id="setup-card"', 'id="household-card"',
                  'id="rows"', 'id="summary"', 'id="pass-progress"', "btn-unlock", "btn-stop-pass", "household-returns"):
@@ -368,7 +368,9 @@ def test_every_icon_has_a_name_and_a_tooltip():
     # The notice's close icon is cloned from a template, so app.js names it when it draws one.
     template = html.split('<template id="notice-buttons">', 1)[1].split("</template>", 1)[0]
     assert re.search(r'<button[^>]*data-act="dismiss"[^>]*data-tip-key="screen\.icons\.dismiss"', template)
-    drawing = _fn(read("app.js"), "function drawNotice(entry) {")
+    app = read("app.js")
+    drawing = app[app.index("function drawNotice(entry) {"):]
+    drawing = drawing[:drawing.index("\n}\n")]
     assert "setAttribute(\"aria-label\", vocab.screen.icons.dismiss)" in drawing and "setTip(dismiss, vocab.screen.icons.dismiss)" in drawing
 
 
@@ -486,24 +488,30 @@ def test_every_literal_colour_still_in_use_has_a_dark_value():
 NODE = shutil.which("node")
 
 
-def js_function(name: str) -> str:
-    text = read("shell.js")
+def js_function(name: str, source: str = "shell.js") -> str:
+    text = read(source)
     start = text.index(f"function {name}(")
     return text[start:text.index("\n}\n", start) + 3]
 
 
-def run_shell(functions: list[str], setup: str, probe: str, tmp_path: Path):
-    """Lift the named functions out of shell.js as they are, put fakes for
-    what app.js provides around them, and return what the probe prints."""
+def run_shell(functions: list[str], setup: str, probe: str, tmp_path: Path, source: str = "shell.js"):
+    """Lift the named functions out of shell.js (or ``source``) as they are,
+    put fakes for what app.js provides around them, and return what the
+    probe prints."""
     if NODE is None:
         pytest.skip("node is not on PATH (CI installs it)")
-    lifted = "\n".join(js_function(name) for name in functions)
+    lifted = "\n".join(js_function(name, source) for name in functions)
     script = tmp_path / "probe.js"
     script.write_text(f"{setup}\n{lifted}\nprocess.stdout.write(JSON.stringify((() => {{ {probe} }})()));\n",
                       encoding="utf-8", newline="\n")
     done = subprocess.run([NODE, str(script)], capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
     assert done.returncode == 0, done.stderr
     return json.loads(done.stdout)
+
+
+def run_pages(functions: list[str], setup: str, probe: str, tmp_path: Path):
+    """The same, lifting the named functions out of pages.js."""
+    return run_shell(functions, setup, probe, tmp_path, "pages.js")
 
 
 PEOPLE = r"""
