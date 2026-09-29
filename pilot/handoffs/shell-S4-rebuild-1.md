@@ -76,3 +76,31 @@ All under `vocab.screen.notices` (SPEC 11.4 lists only `drive` there):
 | `renamed` | a pause with a scope (with Accept) | "Folder renamed" (E47) |
 | `paused` | a year's pause (no Accept) | none named |
 | `feed` | a feed that resolves to nothing | none named (6.5) |
+
+### F4 - Clients never says Complete for a household with an unreadable return (fixed)
+
+`pagesClientSpecs`: when no return needs a person and one has `problem`, the household's status
+is that return's `problem`, in the needs tone, before Waiting and Complete (as `pagesCounts`
+does for a return). Test: `test_a_household_with_an_unreadable_return_is_never_complete_on_the_clients_page`.
+
+### F5 - Set aside is shut each time the page opens (fixed)
+
+`pagesDraw` keeps the key of the page it drew last (`pagesDrawn`); when the route drawn is not
+that page, `pagesSetAsideOpen` is reset. It is kept across redraws of the same page. The old
+`pagesSetAsideFor` (reset only by another return) is gone. Test:
+`test_the_set_aside_fold_is_shut_each_time_the_page_opens` (open, redraw, go to the year page, come back).
+
+### F6 - contrast theme: a focused row's text is HighlightText (fixed)
+
+`shell.css`, forced-colors block: `.rows:focus-visible .row.is-active` name, detail, status, date
+and step take `HighlightText` (the step's link colour and the status tones outranked the
+`inherit` rule; status had the same fault). Measured with Playwright's forced-colors emulation on
+the return page, focused row with its "Check" step: light contrast theme, all parts white on the
+Highlight navy, 19.04:1; dark contrast theme, black on the Highlight cyan, 13.76:1 (step text
+included). Looked at the shot in both. Pinned in `test_the_contrast_theme_fills_and_rings_follow_spec_10_4`.
+
+### F7 - the year page's rows start 24px below the H1 (fixed)
+
+`pagesYear` puts a `page-gap` (`--sp-6`) between the H1 and the list, as Reminders does. Measured:
+H1 bottom 100, first row top 124 (24px), the same as Reminders under its page top. Test:
+`test_the_year_page_leaves_a_gap_under_its_h1_before_its_rows`.

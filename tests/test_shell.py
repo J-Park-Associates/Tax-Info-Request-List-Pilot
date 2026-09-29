@@ -710,6 +710,13 @@ def test_the_contrast_theme_fills_and_rings_follow_spec_10_4():
     counts = next(one for one in forced.splitlines() if ".side-count" in one and ".find-note" in one)
     assert "HighlightText" in counts, "the count and the caption keep their own grey on Highlight otherwise"
     assert "padding-inline: var(--sp-2);" in css[css.index(".side-section:not(.hidden)"):][:400]
+    # The focused row keeps its own colours (forced-color-adjust: none), and the step's link colour
+    # (.row-step:not(.hidden), 0,2,0) outranks the inherit above: every part must say HighlightText itself.
+    step = next(one for one in forced.splitlines() if ".rows:focus-visible .row.is-active .row-step" in one and "HighlightText" in one)
+    assert step.count(".rows:focus-visible .row.is-active") >= 1
+    focused = forced[forced.index(".rows:focus-visible .row.is-active .row-name"):]
+    focused = focused[:focused.index("}")]
+    assert all(part in focused for part in (".row-detail", ".row-status", ".row-date", ".row-step")) and "color: HighlightText" in focused
 
 
 def test_folder_names_are_the_last_part_of_the_path_on_either_kind_of_slash(tmp_path):

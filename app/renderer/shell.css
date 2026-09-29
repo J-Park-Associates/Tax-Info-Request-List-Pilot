@@ -654,6 +654,12 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   .switch-option[aria-pressed="true"] { background: Highlight; color: HighlightText; forced-color-adjust: none; }
   .group-step { color: LinkText; }
   .row-name, .row-detail, .row-status, .row-date, .row-step { color: inherit; }
+  /* The focused row has forced-color-adjust: none, so its own colours would
+     show on Highlight: the step's link colour (.row-step:not(.hidden)) and the
+     status tones outrank the inherit above. Every part takes HighlightText. */
+  .rows:focus-visible .row.is-active .row-name, .rows:focus-visible .row.is-active .row-detail,
+  .rows:focus-visible .row.is-active .row-status, .rows:focus-visible .row.is-active .row-date,
+  .rows:focus-visible .row.is-active .row-step { color: HighlightText; }
   #notices .notice { border: 1px solid CanvasText; background: Canvas; color: CanvasText; }
   .last-sort-bar { background: Canvas; border: 1px solid CanvasText; }
   .last-sort-bar > span { background: Highlight; }
