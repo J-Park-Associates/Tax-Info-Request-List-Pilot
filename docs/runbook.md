@@ -54,7 +54,7 @@ what Windows *reports* as removable, network or unknown: an external hard disk,
 a `subst` letter and a mounted VHD all report a fixed disk and pass, and a
 job installed from a stick before 186 keeps running from it until the
 schedule is registered again from the copy on the disk - `Setup.bat` there,
-or **Repair the schedule** in that copy's app (decision 209) - and the app's
+or **Repair the Schedule** in that copy's app (decision 209) - and the app's
 first screen says so every time it opens from the stick. A data folder set with
 `TRACKER_DATA_HOME` is trusted to be where it says, within the two checks,
 and one junctioned elsewhere is judged by the drive its own spelling names.
@@ -601,7 +601,7 @@ start its app once before any other desk's**: every desk that once pressed
 Install Schedule has a root set, and whichever starts the new version first
 claims the schedule - if that is not the office computer, the office
 computer then removes its own task. If another desk claimed first, press
-**Repair the schedule** on the office computer and answer yes when it
+**Repair the Schedule** on the office computer and answer yes when it
 offers to move the schedule there (§6). Any other machine may open a
 return's Status Report and read it; it does not run the app against the
 clients folder. This is the rule for now, while the owner decides how
@@ -617,7 +617,7 @@ setting it is on, from `tracker.scheduling.DEFAULT_START`, repeating every
 `tracker.scheduling.DEFAULT_REPEAT_MINUTES`. The choice is kept in
 `settings.json` beside the app, per computer, and **every** way the task
 is registered - `Setup.bat`, the app's first start after an upgrade,
-saving the clients root, **Repair the schedule**, the move to another computer (§6) -
+saving the clients root, **Repair the Schedule**, the move to another computer (§6) -
 registers the saved choice, never the defaults. **Off** removes this
 computer's own task and leaves the designation file alone: turn it off on
 the designated computer and no computer runs the schedule, which the app
@@ -635,7 +635,7 @@ that file; any other computer registers none, and removes a task of its
 own if it had one. The job names the app's settings folder, never the
 clients root, and reads the root from `settings.json` there at every run
 (decision 131), so changing the root in the app is all it takes for the
-schedule to follow. **Repair the schedule** in the app runs the step again
+schedule to follow. **Repair the Schedule** in the app runs the step again
 on purpose, for a task that was deleted or broken, registering the saved
 choice; its banner says what it did in one sentence. The file is detection, not a lock: two desks that
 set the root before the sync client carries the first claim can both
@@ -1045,8 +1045,8 @@ deleted `Prepared` comes back whole, the review folder included.
   `lost_and_found` folder. If you find the original, put it back in the
   client's folder for the year under its own name: the next pass makes the
   copy. If it is really gone, press **Mark … missing** on that row in the
-  app's moved list (the only answer it offers; **Put it back**,
-  **Keep it here** and **Send to review** have nothing to work with and say
+  app's moved list (the only answer it offers; **Put It Back**,
+  **Keep It Here** and **Send to Review** have nothing to work with and say
   so). The row stays on the record with your sentence, stops counting, and
   leaves the client's received list; the request reads Missing and the
   next letter asks the client for it. What they send is filed as a new
@@ -1065,7 +1065,7 @@ deleted `Prepared` comes back whole, the review folder included.
   is made again in the same step. Where two rows could be its row, nothing
   is guessed: it is a duplicate with a name and a row of its own, and no
   row is ever replaced.
-- **You can make it again yourself**: **Put it back** (the `restore`
+- **You can make it again yourself**: **Put It Back** (the `restore`
   command) on a row whose copy was deleted makes it from the original
   exactly as the pass would, and says so in the same words.
 
@@ -1194,7 +1194,7 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    A scheduled run that ends red with *the scheduled job still names an
    old clients root* is a job installed before decision 131: the app
    registers it again at its next start on the designated machine, and
-   **Repair the schedule** does it at once.
+   **Repair the Schedule** does it at once.
 
    **Every logged pass says it started** (decision 189): the run log has
    a `[time] pass started` line before each pass's summary. When the next
@@ -1248,7 +1248,7 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
      schedule set to once a day (pilot P21); the sentence states the N it
      used. With the schedule switched off the line says so and stays
      plain: no pass is due. On the designated machine, open Task Scheduler and
-     check the task is there and enabled, or press **Repair the schedule** in
+     check the task is there and enabled, or press **Repair the Schedule** in
      the app. Amber also shows before the first scheduled pass on a new
      machine (*No scheduled pass has run on this machine yet*). *Started <time>, not finished*
      that turns amber means a pass was stopped part-way (the machine
@@ -1375,10 +1375,10 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    practice page the same morning: the request reads Missing until it is
    back, and the client is never asked for it. The app lists every such
    copy above the review queue with its home, where its bytes are now, and
-   three answers — **Put it back**, **Keep it here** (only when the copy
+   three answers — **Put It Back**, **Keep It Here** (only when the copy
    sits in `Prepared` itself under a name that begins with a request's
    identifier: it is filed there, under that request, which you can
-   change) and **Send to review** — because which one
+   change) and **Send to Review** — because which one
    you meant is never guessed (decision 110). Answer them before Saturday:
    the draft holds nothing up for a mislaid copy, and a request that reads
    Missing all week is one nobody is chasing. Nothing you press there
@@ -1691,7 +1691,7 @@ copy that is not where the record put it:
 | The index says | In plain words | What you do |
 |---|---|---|
 | `filer.FILE_MOVED` | Every pass proves each working copy against the fingerprint its own row carries. This row's copy is not in the folder the record filed it into, and its bytes turned up somewhere else under `Prepared/` — somebody dragged it. The Reason names where it belongs and where it is now; the Prepared Location column still says where it *belongs*. Nothing was moved to find that out and nothing is moved because of it. | Open the app: put it back where it belongs, keep it where it is, or send it to review (decision 110's three buttons, coming). Until then, drag it back yourself and the next pass files it again. The request it left reads Missing meanwhile, and the client is never asked for it. |
-| `filer.REMADE_SENTENCE` | Said at the end of a row whose working copy was gone - deleted, trashed, lost from Drive's cache - with its bytes nowhere else under `Prepared/`, and was made again from the client's original, proved against the row's fingerprint (decision 157). By the pass, or by you with **Put it back**. The request's status did not move. | Nothing. |
+| `filer.REMADE_SENTENCE` | Said at the end of a row whose working copy was gone - deleted, trashed, lost from Drive's cache - with its bytes nowhere else under `Prepared/`, and was made again from the client's original, proved against the row's fingerprint (decision 157). By the pass, or by you with **Put It Back**. The request's status did not move. | Nothing. |
 | `filer.BOTH_GONE_SENTENCE` | The row is File Moved: its working copy is gone and so is the client's original, or the original holds a different file now (decision 157). Nothing could be made again; the request is held for you and the client is not asked. Said once. | Look for the original (the Shared Drive's trash, Drive's `lost_and_found`). Put it back in the client's folder for the year and the next pass makes the copy; if it is really gone, press **Mark … missing** on the row in the app, and the letter asks the client. Once marked, the row names no working copy and ends with `filer.MARKED_MISSING`. |
 | `filer.RETURNED_SENTENCE` | The row's own original came back into `Drop files here` - Drive undoing a move, or somebody dragging it back - and the pass moved it back to the place the row names, with no new row (decision 157). | Nothing. |
 
@@ -1980,7 +1980,7 @@ exactly as it came.
    return that leaves short of room (§1, *If the clients root moves*).
 4. **Move the schedule to this machine** (decision 209). The designation
    file still names the old machine, so this one registers nothing until
-   it is told to. In the app press **Repair the schedule**: it says which
+   it is told to. In the app press **Repair the Schedule**: it says which
    machine runs the schedule and offers to move it here; answer yes (the
    packaged app's way, and the same move as
    `python -m tracker.after_install --move-schedule-here` run in the app's
@@ -2318,7 +2318,7 @@ with nothing added and nothing filed, if the card is out of date, if the list ch
 the card was drawn, or if the name is inside - or the same as - another issuer row's name.
 
 To add a row **before** a K-1 arrives, or on a return whose K-1 row is not the catalog's
-`F01`, use **Edit Request List**, **Add a request**, and fill the cells below; then **Save**.
+`F01`, use **Edit Request List**, **Add a Request**, and fill the cells below; then **Save**.
 The routing cells are in each row's **Routing rules** fold.
 
 | Column | What to put |

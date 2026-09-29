@@ -3947,7 +3947,7 @@ def test_the_runbook_describes_the_saved_schedule_and_the_interval_aware_amber_r
 
     runbook = read("docs/runbook.md")
     assert "**Schedule** button" in runbook and "`settings.json`" in runbook
-    for door in ("`Setup.bat`", "saving the clients root", "**Repair the schedule**", "the move to another computer"):
+    for door in ("`Setup.bat`", "saving the clients root", "**Repair the Schedule**", "the move to another computer"):
         assert door in runbook.split("**Off** removes", 1)[0].split("setting on each computer", 1)[1], door
     assert "every two hours" not in runbook.replace("every-two-hours", "").replace("every two hours by default", "")
     amber = runbook.split("**Amber**, *Nothing newer for over N hours*", 1)[1].split("**Red**", 1)[0]

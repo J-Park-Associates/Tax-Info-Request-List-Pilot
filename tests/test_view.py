@@ -752,7 +752,7 @@ def test_not_asked_rows_fold_away_until_a_document_arrives_and_then_sit_in_the_t
     folded = not_applicable_tables(engagement)[0]
     by_id = {row[0]: dict(zip(view.REQUEST_COLUMNS, row, strict=True)) for row in folded[1:]}
     assert set(by_id) == {"C01", "G01"}
-    assert {one[COL_STATUS] for one in by_id.values()} == {NOT_ASKED_LABEL}
+    assert {one[COL_STATUS] for one in by_id.values()} == {STATUS_LABELS[NOT_ASKED_LABEL].label}
     assert {one[COL_ASKED] for one in by_id.values()} == {"no"}
 
     drop(engagement, "1098.pdf", "Form 1098 Mortgage Interest Statement 2025")

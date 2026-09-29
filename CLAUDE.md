@@ -174,7 +174,7 @@ first run never depends on a person remembering it.*
 The one place such a step is added is `tracker/after_install.py`, as a
 further job in its `run()`: `Setup.bat` runs it last, the app runs it at
 its first launch after the program changed, and saving the clients root
-runs it. The app's **Repair the schedule** is the deliberate re-run. Never
+runs it. The app's **Repair the Schedule** is the deliberate re-run. Never
 add a runbook line, a README line or a button that a person must remember
 to press once after installing; `tests/test_single_source.py` fails on
 that wording.
