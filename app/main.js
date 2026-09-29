@@ -227,10 +227,14 @@ function learn(result) {
     errorLog = said.error_log;
     openable.set(errorLog, "file");   // Help > Open error log, through openPath (5.5)
   }
-  const paths = (result && result.paths) || (result && result.state && result.state.paths);
-  if (paths && typeof paths === "object") {
+  // Every map the API named paths in: the reply's own, the state's, and the
+  // list a write carries. A row's key is "word row" and its kind is the word's.
+  for (const paths of [result && result.paths, result && result.state && result.state.paths,
+                       result && result.list && result.list.paths]) {
+    if (!paths || typeof paths !== "object") continue;
     for (const [key, value] of Object.entries(paths)) {
-      if (typeof value === "string" && value) openable.set(value, pathKinds[key] || null);
+      if (typeof value !== "string" || !value) continue;
+      openable.set(value, pathKinds[key] || pathKinds[key.split(" ", 1)[0]] || null);
     }
   }
 }
@@ -392,16 +396,19 @@ function spawnTracker(args, payload, onProgress, onEnded) {
 // E-14): lstat, never stat, so a link swapped in for a folder or a file -
 // Node reports a junction as a symbolic link too - is seen for what it is,
 // and a folder is opened only as a folder and a file only as a file.
-async function openPath(p) {
+// With `reveal` the item is shown in File Explorer instead (a file selected in
+// its folder, a folder opened): the same allow-list, the same lstat, the same
+// refusal - a link on a file or a return name on the page, never a new path.
+async function openPath(p, reveal) {
   if (typeof p !== "string" || !openable.has(p)) {
     return "That path is not one the tracker reported; nothing was opened.";
   }
-  return openChecked(p, openable.get(p));
+  return openChecked(p, openable.get(p), reveal === "reveal");
 }
 
 // The check itself, shared with Open error log's fallback, which is the
 // shell's own file and so not among the paths the API reported.
-async function openChecked(p, kind) {
+async function openChecked(p, kind, reveal) {
   let info;
   try {
     info = await fs.promises.lstat(p);
@@ -410,6 +417,10 @@ async function openChecked(p, kind) {
   }
   const same = kind === "folder" ? info.isDirectory() : kind === "file" ? info.isFile() : false;
   if (info.isSymbolicLink() || !same) return notOpened;
+  if (reveal && kind === "file") {
+    shell.showItemInFolder(p);
+    return "";
+  }
   return shell.openPath(p);
 }
 
@@ -422,7 +433,7 @@ ipcMain.handle("tracker-cmd", (event, args, payload) => {
   };
   return runTracker(args, payload, (progress) => send({ progress }), (ended) => send(ended));
 });
-ipcMain.handle("open-path", (_event, p) => openPath(p));
+ipcMain.handle("open-path", (_event, p, how) => openPath(p, how));
 // An error of the page's own: its text goes to the error log, never on screen.
 ipcMain.handle("log-error", (_event, text) => {
   keepInLog("renderer error", typeof text === "string" ? text : "");
@@ -441,49 +452,49 @@ ipcMain.handle("pick-folder", async (_event, title) => {
 // test keeps the two equal. `&` marks an access key.
 const DEFAULT_MENU_WORDS = {
   file: "&File",
-  new_household: "New household…",
-  change_root: "Change clients folder…",
-  open_root: "Open clients folder",
+  new_household: "New Household…",
+  change_root: "Change Clients Folder…",
+  open_root: "Open Clients Folder",
   exit: "Exit",
   edit: "&Edit",
   client: "&Client",
-  edit_household: "Edit household…",
-  add_return: "Add a return…",
-  roll_forward: "Roll forward…",
-  mark_shared: "Mark as shared",
-  edit_list: "Edit request list…",
-  draft_reminder: "Draft reminder…",
-  open_client_folder: "Open client folder",
-  open_inbox: "Open inbox",
-  open_working: "Open working folder",
+  edit_household: "Edit Household…",
+  add_return: "Add a Return…",
+  roll_forward: "Roll Forward…",
+  mark_shared: "Mark as Shared",
+  edit_list: "Edit Request List…",
+  draft_reminder: "Draft Reminder…",
+  open_client_folder: "Open Client Folder",
+  open_inbox: "Open Inbox",
+  open_working: "Open Working Folder",
   view: "&View",
   overview: "Overview",
-  needs_review: "Needs review",
+  needs_review: "Needs Review",
   reminders: "Reminders",
   clients: "Clients",
   find: "Find",
   refresh: "Refresh",
   tools: "&Tools",
-  sort_now: "Sort now",
-  stop_sorting: "Stop sorting",
+  sort_now: "Sort Now",
+  stop_sorting: "Stop Sorting",
   schedule: "Schedule…",
-  repair_schedule: "Repair schedule",
-  firm_report: "Firm report",
-  clear_lock: "Clear stuck lock",
+  repair_schedule: "Repair Schedule",
+  firm_report: "Firm Report",
+  clear_lock: "Clear Stuck Lock",
   help: "&Help",
-  tour: "Take the tour",
+  tour: "Take the Tour",
   safeguards: "Safeguards",
   terms: "Terms",
-  error_log: "Open error log",
+  error_log: "Open Error Log",
   about: "About",
   check: "Check…",
-  not_requested: "Not requested",
-  another_return: "Another return…",
-  put_back: "Put back",
-  keep_here: "Keep here",
-  edit_request: "Edit request…",
+  not_requested: "Not Requested",
+  another_return: "Another Return…",
+  put_back: "Put Back",
+  keep_here: "Keep Here",
+  edit_request: "Edit Request…",
   unfile: "Unfile",
-  mark_missing: "Mark missing",
+  mark_missing: "Mark Missing",
 };
 let menuWords = { ...DEFAULT_MENU_WORDS };
 // The one channel the shell sends the page a chosen item on: {id, token}.

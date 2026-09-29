@@ -76,8 +76,8 @@ STANDING_RULES: tuple[tuple[str, str], ...] = (
 #: dialog (SPEC-shell 11.6, P64): the same order and meaning as
 #: :data:`STANDING_RULES`, which keeps the full wording. Five words or fewer.
 SAFEGUARDS: tuple[str, ...] = (
-    "No AI reads documents",
-    "Originals never changed",
-    "Nothing is guessed",
-    "Nothing is ever sent",
+    "No AI Reads Documents",
+    "Originals Never Changed",
+    "Nothing Is Guessed",
+    "Nothing Is Ever Sent",
 )

@@ -712,9 +712,9 @@ PERSON_KINDS: tuple[str, ...] = (
     "taxpayer", "spouse", "dependent", "entity", "dba", "owner", "decedent", "trust", "fiduciary",
 )
 PERSON_KIND_LABELS = {"taxpayer": "Taxpayer", "spouse": "Spouse", "dependent": "Dependent",
-                      "entity": "Entity (legal name)", "dba": "DBA or abbreviation",
-                      "owner": "Owner (accounts held so)", "decedent": "Decedent",
-                      "trust": "Trust or estate", "fiduciary": "Fiduciary"}
+                      "entity": "Entity (Legal Name)", "dba": "DBA or Abbreviation",
+                      "owner": "Owner (Accounts Held So)", "decedent": "Decedent",
+                      "trust": "Trust or Estate", "fiduciary": "Fiduciary"}
 assert set(PERSON_KIND_LABELS) == set(PERSON_KINDS)
 
 #: How few words a spelling may have, and the one way a name is cut into

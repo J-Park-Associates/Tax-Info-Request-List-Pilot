@@ -64,9 +64,9 @@ from tracker.records import (
 )
 
 #: What the app refuses a one-word spelling with, wherever one is typed.
-ONE_WORD_SPELLING = "Spelling needs two words"
+ONE_WORD_SPELLING = "Spelling Needs Two Words"
 #: What creation refuses a return with nobody on it with.
-NO_PEOPLE = "Add at least one person"
+NO_PEOPLE = "Add at Least One Person"
 
 #: The three answers the check can give. ``NAME_VETOED``'s value is the
 #: phrase a sentence reads it as, the way a decision's words are their own

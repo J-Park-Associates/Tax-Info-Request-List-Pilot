@@ -162,10 +162,10 @@ NAME_ABSENT_NOTE = "the page names none of this return's people"
 #: imports this; it does not restate it). ``{page}`` is filled from the
 #: evidence, and dropped when the evidence has no page to give.
 PLACE_WORDS: dict[str, str] = {
-    WHERE_TITLE: "in the title",
+    WHERE_TITLE: "In the Title",
     WHERE_FOOTER: "in the footer of page {page}",
-    WHERE_FIRST_PAGE: "on page {page}",
-    WHERE_DEEP: "on page {page}",
+    WHERE_FIRST_PAGE: "On Page {page}",
+    WHERE_DEEP: "On Page {page}",
 }
 #: Said of a term whose place the evidence does not name.
 NOWHERE_WORDS = "somewhere in the document"
