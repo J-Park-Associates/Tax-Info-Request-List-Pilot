@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "generated": "2026-09-28",
+  "generated": "2026-09-29",
   "generator": "tools/repo_map.py",
   "generator_sha256": "78ed6f39661035ec",
   "module_table_sha256": "98e5907a447ae88b",
@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 191,
     "edges": 1133,
-    "reused": 149
+    "reused": 145
   },
   "node_types": [
     "artifact",
@@ -4169,8 +4169,8 @@
       "id": "pilot/wintest/PROMPT.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "2044c8bab96432cb",
-      "lines": 75
+      "sha256": "ae4e86e289aec38a",
+      "lines": 86
     },
     {
       "id": "pilot/wintest/RESULTS-TEMPLATE.md",
@@ -4368,7 +4368,7 @@
       "id": "pilot/Build Pilot Installer.bat",
       "type": "script",
       "layer": "root",
-      "sha256": "9d57f75bdd14b9b8",
+      "sha256": "da95b01870d87178",
       "lines": 82
     },
     {
@@ -6640,13 +6640,14 @@
       "id": "tests/test_pilot_installer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "19fb1faabef8cc03",
-      "lines": 147,
+      "sha256": "e5ea7b23f99a2c7e",
+      "lines": 157,
       "exports": [
         "BUILD",
         "REPO",
         "SETUP",
         "UPSTREAM_DATA_HOME_NAME",
+        "test_every_batch_file_the_pilot_build_calls_is_named_by_its_path",
         "test_the_desktop_icon_is_offered_but_not_ticked",
         "test_the_installer_installs_for_one_user_without_admin",
         "test_the_installer_is_named_and_placed_as_the_spec_says",
@@ -7725,8 +7726,8 @@
       "id": "tests/test_settings.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "885e4ea2349d6c32",
-      "lines": 653,
+      "sha256": "3ff42cf7458ad1ef",
+      "lines": 658,
       "exports": [
         "beside_the_app",
         "test_a_bad_choice_is_refused_and_nothing_is_written",
@@ -7966,7 +7967,7 @@
       "id": "tests/test_store.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ee4b5a64c4fcaca8",
+      "sha256": "462404a65d762adc",
       "lines": 4375,
       "exports": [
         "AS_AT_16",

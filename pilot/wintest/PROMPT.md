@@ -1,7 +1,14 @@
 # Pilot 0.1 Windows check - prompt for Claude Code on the test PC
 
-Paste everything in the box below into Claude Code (the desktop app, so it
-can use computer use) on the Windows test PC, opened in an empty folder.
+Before you start, on the Windows test PC:
+
+1. Get the code into an empty folder. A git clone is best; if this PC has no
+   GitHub sign-in, download it from GitHub (Code -> Download ZIP) and unzip it.
+2. Open the **Claude desktop app** and turn on **computer use** (it lets
+   Claude click through the installed program). Without it, Claude walks you
+   through the clicks and records your answers.
+3. Open Claude Code in the folder that holds the code, and paste everything
+   in the box below.
 
 ```
 You are running the Windows check for Tax Document Tracker Pilot 0.1 on this computer, for Jason
@@ -19,9 +26,10 @@ SAFETY - never break these:
 - Stop and ask Jason if: an install asks for administrator rights, a Windows dialog cannot be
   handled, or any step would touch a folder outside %USERPROFILE%\PilotTest and the pilot checkout.
 
-1. GET THE CODE. Clone https://github.com/J-Park-Associates/Tax-Info-Request-List-Pilot into
-   this folder (or git pull if it is already here) and check out main. Read pilot/RELEASE.md and
-   pilot/wintest/RESULTS-TEMPLATE.md.
+1. GET THE CODE. If the pilot code is not already in this folder, clone
+   https://github.com/J-Park-Associates/Tax-Info-Request-List-Pilot (main). If it came as a
+   downloaded ZIP, use it as it is: the script makes a local snapshot commit and marks the tree
+   check NOT VERIFIED. Read pilot/RELEASE.md and pilot/wintest/RESULTS-TEMPLATE.md.
 
 2. AUTOMATED PART. Run:
      powershell -ExecutionPolicy Bypass -File pilot\wintest\run_checks.ps1
@@ -31,7 +39,9 @@ SAFETY - never break these:
    Jason the winget command it printed, ask once, run it if he agrees, then run the script again.
    A failing test suite is recorded, not fixed; carry on if the installer still built.
 
-3. HANDS-ON PART, with computer use, on the installed app (Start menu: "Tax Document Tracker
+3. HANDS-ON PART, with computer use, on the installed app. If you have no computer use, do not
+   skip this part: tell Jason exactly what to click and what to look for, one step at a time, and
+   record his answers (Start menu: "Tax Document Tracker
    Pilot"). Take a screenshot at each step into %USERPROFILE%\PilotTest\results\screens. If
    Windows SmartScreen appears, choose "More info" then "Run anyway". Check, in order:
    a. The header shows the badge "Pilot edition 0.1".
@@ -66,10 +76,11 @@ SAFETY - never break these:
    English: PASS or FAIL overall, the test-suite counts, the installer's SHA-256, and each failure
    with what was expected and what happened.
 
-6. DELIVER. In the pilot checkout: create branch wintest-results from main, copy RESULT.md to
-   pilot/wintest/results/RESULT-<today's date>.md (no screenshots, no other files), commit with a
-   message that includes "[skip ci]", push the branch, and post one short comment on pull
-   request #5 of J-Park-Associates/Tax-Info-Request-List-Pilot starting "[WINTEST] PASS" or
-   "[WINTEST] FAIL" with the one-line summary and the branch name. If pushing or commenting is
-   not possible, leave RESULT.md where it is and tell Jason its path. Then stop.
+6. DELIVER. If this PC can push to GitHub: in the pilot checkout create branch wintest-results,
+   copy RESULT.md to pilot/wintest/results/RESULT-<today's date>.md (no screenshots, no other
+   files), commit with a message that includes "[skip ci]", push the branch, and post one short
+   comment on pull request #5 of J-Park-Associates/Tax-Info-Request-List-Pilot starting
+   "[WINTEST] PASS" or "[WINTEST] FAIL" with the one-line summary. If it cannot, leave RESULT.md
+   at %USERPROFILE%\PilotTest\results\RESULT.md, tell Jason its path so he can hand it to the
+   orchestrator, and stop.
 ```

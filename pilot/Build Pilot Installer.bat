@@ -42,7 +42,7 @@ if not defined VER (echo Could not read the version from app\renderer\pilot-cont
 
 echo [3/5] Building the app package (Build App.bat)...
 set TRACKER_BUILD_NONINTERACTIVE=1
-call "Build App.bat"
+call ".\Build App.bat"
 set BUILD_RESULT=%errorlevel%
 set "TRACKER_BUILD_NONINTERACTIVE=%CALLER_NONINTERACTIVE%"
 if not "%BUILD_RESULT%"=="0" (echo Build App.bat failed & call :wait & exit /b 1)

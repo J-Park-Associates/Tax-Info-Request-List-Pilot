@@ -121,7 +121,7 @@ def test_the_pilot_build_follows_the_root_scripts_rules():
     commands = [line for line in text.splitlines() if line.strip() and not line.lower().startswith("rem")]
     assert commands[0] == "@echo off"
     assert commands[1] == 'set "NoDefaultCurrentDirectoryInExePath=1"'
-    assert 'call "Build App.bat"' in text
+    assert 'call ".\\Build App.bat"' in text
     assert "require('./app/renderer/pilot-content.js').edition.version" in text
     assert "%SystemRoot%\\System32\\certutil.exe" in text
     mentions = re.findall(r"[^\n]*\bv\d[^\n]*|[^\n]*never v[^\n]*", text)
@@ -145,3 +145,13 @@ def test_the_version_the_build_reads_is_the_one_the_badge_shows():
     expr = re.search(r"node -p \"(require\('\./app/renderer/pilot-content\.js'\)[^\"]*)\"", _build()).group(1)
     out = subprocess.run(["node", "-p", expr], cwd=REPO, capture_output=True, text=True, check=True)
     assert re.fullmatch(r"\d+\.\d+(\.\d+)?", out.stdout.strip())
+
+
+def test_every_batch_file_the_pilot_build_calls_is_named_by_its_path():
+    """With NoDefaultCurrentDirectoryInExePath set, cmd will not find a batch
+    file named bare, even in its own folder: the pilot's Windows check found
+    ``call "Build App.bat"`` failing on every PC (P29). Every call of a
+    batch file names its folder."""
+    calls = re.findall(r'^\s*call\s+"([^"]+\.bat)"', _build(), re.M | re.I)
+    assert calls, "the build calls Build App.bat"
+    assert all(c.startswith((".\\", "%~dp0")) for c in calls), calls

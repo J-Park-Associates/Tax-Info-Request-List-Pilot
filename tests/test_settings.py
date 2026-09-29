@@ -185,8 +185,13 @@ def test_the_system_drive_root_is_refused_and_another_drive_root_is_kept(beside_
     if os.name == "nt":
         with pytest.raises(SettingsError, match=marker):
             set_clients_root(system.drive)                   # "C:" is the same root
+        # A second local drive only: a letter mapped to a share (the firm's
+        # S:) resolves to its \\server\share path, which is the network
+        # rule's case, not this one (the pilot's Windows check, P29).
+        from tracker.settings import DRIVE_FIXED, drive_type
         others = [f"{letter}:" for letter in string.ascii_uppercase
-                  if f"{letter}:" != system.drive and Path(f"{letter}:\\").is_dir()]
+                  if f"{letter}:" != system.drive and Path(f"{letter}:\\").is_dir()
+                  and drive_type(Path(f"{letter}:\\")) == DRIVE_FIXED]
         for drive in others:                                  # a machine with a second drive
             root = Path(drive + os.sep)
             if root_refusal(root, settings=settings_dir().resolve(), app=app_dir(),
