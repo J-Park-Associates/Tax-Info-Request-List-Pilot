@@ -13,7 +13,9 @@ $DataDir  = Join-Path $env:LOCALAPPDATA "tax-document-tracker-pilot"
 New-Item -ItemType Directory -Force -Path $Results | Out-Null
 $checks = [ordered]@{}
 function Record($name, $ok, $evidence) {
-    $checks[$name] = [ordered]@{ result = $(if ($ok) { "PASS" } else { "FAIL" }); evidence = "$evidence" }
+    # $ok is $true (PASS), $false (FAIL), or a verdict string such as "NOT VERIFIED".
+    $verdict = if ($ok -is [string]) { $ok } elseif ($ok) { "PASS" } else { "FAIL" }
+    $checks[$name] = [ordered]@{ result = $verdict; evidence = "$evidence" }
     $checks | ConvertTo-Json -Depth 4 | Set-Content -Path $Json -Encoding UTF8
     Write-Host ("{0}: {1} - {2}" -f $name, $checks[$name].result, $evidence)
 }
@@ -31,7 +33,13 @@ $p = Start-Process -FilePath $unins.FullName -ArgumentList "/VERYSILENT", "/SUPP
 Start-Sleep -Seconds 5
 Record "uninstall_ran" ($p.ExitCode -eq 0) "exit $($p.ExitCode)"
 Record "program_removed" (-not (Test-Path (Join-Path $AppDir "Tax Document Tracker Pilot.exe"))) $AppDir
-Record "scheduled_task_removed" (-not (Task-Exists)) "task existed before uninstall: $taskBefore"
+# With no task before the uninstall, its removal was never exercised: that is
+# not a PASS (the pilot 0.1 Windows check reported one it had not tested).
+if ($taskBefore) {
+    Record "scheduled_task_removed" (-not (Task-Exists)) "task existed before uninstall: True"
+} else {
+    Record "scheduled_task_removed" "NOT VERIFIED" "no task existed before the uninstall, so its removal was not exercised; still none after: $(-not (Task-Exists))"
+}
 Record "data_folder_kept" (Test-Path $DataDir) $DataDir
 Record "clients_folder_kept" (Test-Path (Join-Path $Test "Clients")) (Join-Path $Test "Clients")
 Record "settings_kept" ((Test-Path (Join-Path $AppDir "settings.json")) -or -not $settingsBefore) "settings.json existed before uninstall: $settingsBefore; still there: $(Test-Path (Join-Path $AppDir 'settings.json'))"

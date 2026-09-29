@@ -353,7 +353,7 @@ was opened.
 3. Neither third-party integration should be added by a builder without
    Jason's explicit approval of the exact package and version.
 
-## Mica: dropped (Jason, 2026-09-29, P46)
+## Mica: dropped (Jason, 2026-09-29, P48)
 
 Jason first asked to try Mica, then to ship it in 0.2, then, after seeing what
 it needs (a `main.js` change, a transparent page, a new contrast proof over the

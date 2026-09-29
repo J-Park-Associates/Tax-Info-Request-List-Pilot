@@ -197,22 +197,50 @@ div#pilot-terms.pilot-terms-overlay        (role="dialog", aria-modal="true",
       button#pilot-terms-accept.btn.btn-primary (disabled until the box is ticked) terms.accept
 ```
 
-- Shown when `localStorage["pilot.terms.accepted"]` is not the string of
-  `terms.version`. Every `localStorage` access is in `try/catch`; if storage
-  throws or is empty, the terms show (fail safe, P9).
+- **Where acceptance lives (P46, superseding P9).** The durable record is
+  the tracker's own: `pilot-record.json` in the data folder, per Windows
+  account, read and written by the API command `pilot-record` over the
+  existing `tracker-cmd` channel (`{}` reads it; `{"terms": "<version>"}`
+  and `{"tour_seen": true}` record; the reply is `{terms, tour_seen}`). The
+  window's `localStorage` (`pilot.terms.accepted`, `pilot.tour.seen`) is only
+  its cache. Every `localStorage` access is in `try/catch`, and both live in
+  one place, `PilotRecord` at the top of `pilot.js`, the one name `tour.js`
+  uses from it.
+- The shell runs a command only after the page's first call (`list`) has
+  named the commands, so `PilotRecord` waits until `vocab.commands` lists
+  `pilot-record` (it looks every 200 ms, for up to 2 minutes) before it asks.
+  A reply with an error is sent to `window.tracker.logError` and counts as
+  no answer.
+- **Cache says this version is accepted:** no terms. In the background the
+  record is read, and if it lacks this version it is written (a 0.1 tester
+  accepted before the record existed).
+- **Cache says nothing** (empty, blocked, or storage that could not be
+  opened): the terms show at once (fail safe), and the record is asked.
+  If it holds this version's acceptance, the overlay is removed without a
+  word, the cache is refilled, and the tour is **not** started. If it cannot
+  answer or holds another version, the terms stay. A storage failure never
+  shows the terms again without the record having been asked.
 - Overlay `z-index: 60` (the app's modals use 40), covers the whole window,
   dims it, and swallows clicks. **Escape does nothing** and clicking outside does
   nothing: a `keydown` listener on `document` in the capture phase stops
   Escape and keeps Tab focus inside the card while the terms are open.
 - Focus goes to the checkbox when shown.
-- **Accept**: write `pilot.terms.accepted` = `String(terms.version)`, remove the
-  overlay, then if `localStorage["pilot.tour.seen"]` is not `"1"`, start the
-  tour.
+- **Accept**: record the acceptance (`PilotRecord.acceptTerms`: the cache
+  and `pilot-record` with `{"terms": String(terms.version)}`), remove the
+  overlay, then start the tour unless the cache (or the record, once read)
+  says it was seen.
 - **Quit**: `window.close()`.
 
-**Exposes** nothing but what `tour.js` needs: `tour.js` defines `PilotTour`;
-`pilot.js` only calls `PilotTour.start()` (it is loaded after, so resolve it at
-click/accept time, not load time).
+**Exposes** nothing but what `tour.js` needs, `PilotRecord.tourSeen()`.
+`tour.js` defines `PilotTour`; `pilot.js` only calls `PilotTour.start()` (it
+is loaded after, so resolve it at click/accept time, not load time).
+
+**The shell's part (P46).** `main.js` keeps the single-instance lock, and it
+writes the page's storage to disk as the window closes
+(`session.flushStorageData()` on the window's `close`). Electron lets go of
+the single-instance lock as it starts quitting, before it closes that
+storage. A restart made in that gap gets a window whose storage cannot be
+opened, and that is why the durable record, not the cache, is the answer.
 
 ## 6. `app/renderer/tour.js` - the guided tour
 
@@ -260,8 +288,9 @@ not copy Jason edits).
   (The terms screen, when open, takes precedence: the tour never starts while
   `#pilot-terms` exists.)
 - Back is disabled on step 1. Next on the last step reads "Finish".
-- Close or Finish -> `stop()`, and writes `localStorage["pilot.tour.seen"] = "1"`
-  (in `try/catch`).
+- Close or Finish -> `stop()`, and calls `PilotRecord.tourSeen()` (the cache
+  and `pilot-record` with `{"tour_seen": true}`, P46). `tour.js` itself
+  never touches `window.tracker` or `localStorage`.
 - `{email}` in any string is replaced with `PILOT.contact.email`.
 - Text only via `textContent`. No `window.tracker`, no click simulation, no
   `.click()`, no `dispatchEvent`.
@@ -802,6 +831,15 @@ dataclass in `scheduling.py` so `after_install` and `api` share one type.
   (`{"enabled", "start", "every"}`); `launch()` runs the step again when the
   saved preference differs from the recorded one, and stays a no-op (no
   `schtasks` call) when program, designation and preference are unchanged.
+- **One run at a time (P47).** Every door is its own process and two can
+  overlap (the launch step runs in the background and outlives its window).
+  `run()` and `launch()` hold `after_install.LOCK_FILENAME` beside the record
+  from before the choice is read until the record is written, so the run
+  that acts last acts on the choice saved last. A run that cannot have the
+  lock within `LOCK_WAIT_SECONDS` (10 minutes) changes nothing and records
+  nothing; its one failure sentence is `STEP_BUSY`. A lock whose process has
+  ended is taken over. Every task the step removes is noted on the local
+  debug log with why.
 - **Wording:** `SCHEDULE_CLAIMED` / `SCHEDULE_REGISTERED` gain once-a-day
   forms ("every day at {start}"), chosen by `every == 0`.
 - **Last pass:** the amber threshold becomes two missed runs of the saved

@@ -2212,6 +2212,60 @@ def test_repair_registers_the_saved_choice_when_the_page_sends_nothing(capsys, d
     assert payload["sentence"] == scheduling.SCHEDULE_REGISTERED.format(start="05:15", every=240)
 
 
+def test_the_pilot_record_keeps_terms_and_tour_in_the_data_home(capsys):
+    """Pilot P46: acceptance and "tour seen" are the tracker's own record,
+    per Windows account in the data home, so a restart that cannot reach
+    the window's storage still finds them. Read with ``{}``; each write
+    answers with the record as it now stands."""
+    from tracker.settings import data_home
+
+    code, empty = run(capsys, "pilot-record", stdin={})
+    assert code == 0 and (empty["terms"], empty["tour_seen"]) == ("", False)
+    assert not (data_home() / api.PILOT_RECORD_FILENAME).exists()      # a read writes nothing
+
+    code, accepted = run(capsys, "pilot-record", stdin={"terms": "1"})
+    assert code == 0 and (accepted["terms"], accepted["tour_seen"]) == ("1", False)
+    code, seen = run(capsys, "pilot-record", stdin={"tour_seen": True})
+    assert code == 0 and (seen["terms"], seen["tour_seen"]) == ("1", True)
+
+    kept = json.loads((data_home() / api.PILOT_RECORD_FILENAME).read_text(encoding="utf-8"))
+    assert kept["terms"] == "1" and kept["tour_seen"] is True
+    assert kept["terms_accepted_at"] and kept["tour_seen_at"]
+    code, again = run(capsys, "pilot-record", stdin={})
+    assert (again["terms"], again["tour_seen"]) == ("1", True)
+
+
+@pytest.mark.parametrize("stdin", [
+    {"terms": "0"}, {"terms": "one"}, {"terms": True}, {"terms": ""}, {"terms": "1234567"},
+    {"tour_seen": False}, {"tour_seen": "yes"}, {"terms": "1", "name": "x"},
+])
+def test_the_pilot_record_refuses_anything_but_a_version_or_tour_seen(capsys, stdin):
+    from tracker.settings import data_home
+
+    code, payload = run(capsys, "pilot-record", stdin=stdin)
+    assert code != 0 and payload["error"].startswith("pilot-record takes {} to read")
+    assert not (data_home() / api.PILOT_RECORD_FILENAME).exists()
+
+
+def test_an_unreadable_pilot_record_reads_as_not_accepted_and_is_replaced(capsys):
+    """Anything wrong with the record is the safe direction: the terms show."""
+    from tracker.settings import data_home
+
+    data_home().mkdir(parents=True, exist_ok=True)
+    (data_home() / api.PILOT_RECORD_FILENAME).write_text("{not json", encoding="utf-8")
+    code, payload = run(capsys, "pilot-record", stdin={})
+    assert code == 0 and payload["terms"] == "" and payload["tour_seen"] is False
+    code, payload = run(capsys, "pilot-record", stdin={"terms": 2})
+    assert code == 0 and payload["terms"] == "2"
+
+
+def test_the_pilot_record_is_no_client_record(capsys):
+    """Not held to the record checkpoint's root: it is this account's own
+    app state, and a root the checkpoint refuses must not re-show the terms."""
+    assert "pilot-record" in api.COMMANDS and "pilot-record" not in api.WRITING_COMMANDS
+    assert "pilot-record" in api.__doc__
+
+
 def test_the_schedule_dialog_uses_only_the_apis_words(capsys):
     """The page types none of the dialog's words: they come from
     ``vocab.schedule``, and the button sits right after the edit button."""
