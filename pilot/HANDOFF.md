@@ -353,37 +353,13 @@ was opened.
 3. Neither third-party integration should be added by a builder without
    Jason's explicit approval of the exact package and version.
 
-## Next job after Build D: try Mica (Jason: "Lets try mica", 2026-09-29)
+## Mica: dropped (Jason, 2026-09-29, P46)
 
-A new job, not part of Build D (SPEC-glass forbids `main.js` edits, P32). It
-needs its own SPEC (opus, high effort), then a sonnet build, then an opus
-review, each in a fresh session, and a Windows check by Jason: the cloud cannot
-draw Mica.
-
-Facts for the SPEC session (checked, not yet tried):
-- Electron 43 (`app/package.json`) has `BrowserWindow.backgroundMaterial`
-  (`mica`, `acrylic`, `tabbed`, `auto`, `none`); Windows 11 22H2+ only, since
-  Electron 26. No third-party module (`vibe`, `mica-electron`) is needed.
-- `app/main.js` `createWindow()` (~line 367) builds the window with
-  `backgroundColor: pageBackground()`, which reads `--bg` from `style.css`.
-  Mica needs that colour transparent and the window's material set, so this is
-  a `main.js` edit and must be tested by `tests/test_single_source.py` and the
-  main.js tests, which pin its text.
-- The page must not paint an opaque background over the material. Build D's
-  `glass.css` paints the gradient on `body`; under Mica the header and toolbar
-  glass would sit over the real desktop material instead. The SPEC must decide
-  what the body paints on Windows 11 (transparent, with the in-page gradient
-  as the fallback when the material is unavailable) and how the picker's
-  levels map (Solid must still work).
-- Windows 10 and remote desktop: the material is absent or slow; the fallback
-  is Build D's page-painted look. `prefers-reduced-transparency` still forces
-  Solid.
-- Decide whether it ships in 0.2 or later, and log it as P46.
-
-Prompt for the SPEC session (opus, high effort): read `pilot/DECISIONS.md`
-(P30-P45), `pilot/SPEC-glass.md`, this section, `python tools/repo_map.py show
-app/main.js` and the `createWindow` lines only; write `pilot/SPEC-mica.md` with
-exact lines, tests, the Windows check steps and a rollback; do not build.
+Jason first asked to try Mica, then to ship it in 0.2, then, after seeing what
+it needs (a `main.js` change, a transparent page, a new contrast proof over the
+user's wallpaper colour, a Windows-only check): "lets just forget mica". There
+is no Mica job. Do not write `SPEC-mica.md` or change `createWindow()` for a
+window material; the glass theme stays painted in the page (Build D).
 
 ## Tester feedback for 0.2 (Jason, Windows re-run, 2026-09-29)
 
