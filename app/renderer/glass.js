@@ -94,7 +94,7 @@
     });
   }
 
-  // While Windows asks for less, the CSS makes the screen Solid whatever the
+  // While Windows asks for less, the CSS makes the screen plain whatever the
   // picker says; the picker is greyed and says why, live.
   function syncQuiet() {
     if (select) select.disabled = quiet.matches;

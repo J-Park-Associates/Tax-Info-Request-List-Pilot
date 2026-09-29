@@ -13,7 +13,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 RENDERER = REPO / "app" / "renderer"
-PILOT_JS = ("pilot-content.js", "pilot.js", "tour.js")
+PILOT_JS = ("pilot-content.js", "pilot.js", "tour.js", "glass.js")
 
 
 def read(name: str) -> str:
@@ -36,7 +36,7 @@ def tour_lines(content_: dict):
 
 def test_the_pilot_content_is_json_between_its_markers():
     data = content()
-    assert set(data) == {"edition", "contact", "terms", "tour"}
+    assert set(data) == {"edition", "contact", "terms", "tour", "glass"}
 
 
 def test_the_edition_version_is_a_plain_version_number():
