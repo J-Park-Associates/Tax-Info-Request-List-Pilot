@@ -3572,7 +3572,6 @@ def test_the_side_sentence_is_shown_nowhere_on_a_return_page(tmp_path):
     row's own sentence, are not shown on the row - not as text and not as a
     tooltip. The group says whose move it is; the row keeps one status word."""
     from tests.test_shell import run_pages
-
     from tracker import reminder
 
     items = [{"identifier": f"R{i}", "document": f"Request {i}", "short_name": f"Request {i}", "group": "waiting",
