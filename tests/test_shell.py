@@ -538,7 +538,12 @@ def test_a_switch_between_light_and_dark_sets_the_window_colour_again(tmp_path):
 
 # ------------------------------- a file name on the page is a live link (S8a) ----
 
-_KINDS = {"engagement": "folder", "review_copy": "file", "filed_copy": "file", "moved_copy": "file"}
+# The kinds as the API reports them: only a marked review copy is "file" (it
+# opens, decision 190); a filed, moved or shown working copy is "reveal".
+_KINDS = {"engagement": "folder", "review_copy": "file", "filed_copy": "reveal",
+          "moved_copy": "reveal", "shown_copy": "reveal"}
+NOT_REPORTED = "That path is not one the tracker reported; nothing was opened."
+NOT_OPENED = "Not Opened; It Has Changed"
 
 
 def _reveal_scenario(tmp_path):
@@ -552,13 +557,42 @@ def _reveal_scenario(tmp_path):
     return copy, moved, {"pathKinds": _KINDS, "paths": paths}
 
 
+def test_a_moved_workbook_is_shown_with_reveal_and_refused_without_it(tmp_path):
+    """F1: a moved-by-hand .xlsm carries no Protected View mark, so a plain
+    open (the default program) is refused; only reveal shows it."""
+    _copy, _moved, scenario = _reveal_scenario(tmp_path)
+    macro = tmp_path / "Prepared" / "budget.xlsm"
+    macro.write_bytes(b"PK\x03\x04")
+    scenario["paths"]["moved_copy K3"] = str(macro)
+    plain = _run(tmp_path, [{"tracker": ["list"]}, {"open": [str(macro)]}], **scenario)
+    assert plain["opened"] == [] and plain["revealed"] == []
+    assert plain["answers"] == [NOT_OPENED]
+    shown = _run(tmp_path, [{"tracker": ["list"]}, {"open": [str(macro), "reveal"]}], **scenario)
+    assert shown["revealed"] == [str(macro)] and shown["opened"] == [] and shown["answers"] == [""]
+
+
+def test_a_filed_copy_and_a_shown_copy_are_reveal_only_and_a_review_copy_still_opens(tmp_path):
+    copy, _moved, scenario = _reveal_scenario(tmp_path)
+    parked = tmp_path / "Prepared" / "parked.docx"
+    parked.write_bytes(b"PK")
+    review = tmp_path / "Prepared" / "review.pdf"
+    review.write_bytes(b"%PDF-1.4\n")
+    scenario["paths"]["shown_copy K4"] = str(parked)
+    scenario["paths"]["review_copy K5"] = str(review)
+    ran = _run(tmp_path, [{"tracker": ["list"]}, {"open": [str(copy)]}, {"open": [str(parked)]},
+                          {"open": [str(parked), "reveal"]}, {"open": [str(review)]}], **scenario)
+    assert ran["opened"] == [str(review)], "only a marked review copy opens (decision 190)"
+    assert ran["revealed"] == [str(parked)]
+    assert ran["answers"] == [NOT_OPENED, NOT_OPENED, "", ""]
+
+
 def test_reveal_shows_a_reported_file_in_file_explorer_and_a_plain_open_still_opens_it(tmp_path):
     copy, moved, scenario = _reveal_scenario(tmp_path)
     ran = _run(tmp_path, [{"tracker": ["list"]}, {"open": [str(copy), "reveal"]},
                           {"open": [str(moved), "reveal"]}, {"open": [str(copy)]}], **scenario)
     assert ran["revealed"] == [str(copy), str(moved)], "the row's kind came from the word before the space"
-    assert ran["opened"] == [str(copy)]
-    assert ran["answers"] == ["", "", ""]
+    assert ran["opened"] == [], "a filed copy is reveal-only: the plain open is refused"
+    assert ran["answers"] == ["", "", NOT_OPENED]
 
 
 def test_reveal_of_a_path_the_api_did_not_report_is_refused(tmp_path):
@@ -569,10 +603,25 @@ def test_reveal_of_a_path_the_api_did_not_report_is_refused(tmp_path):
     steps += [{"open": [p, "reveal"]} for p in (str(stranger), str(tmp_path / ".." / "x"), "", None, 7)]
     ran = _run(tmp_path, steps, **scenario)
     assert ran["revealed"] == [] and ran["opened"] == []
-    assert len(ran["answers"]) == 5 and all(a for a in ran["answers"])
+    # The exact sentence: it is the allow-list's own (the kind check says something else).
+    assert ran["answers"] == [NOT_REPORTED] * 5
     # Before the API has reported anything, even the file that would be reported is refused.
     early = _run(tmp_path, [{"open": [str(copy), "reveal"]}], **scenario)
-    assert early["revealed"] == [] and early["answers"][0]
+    assert early["revealed"] == [] and early["answers"] == [NOT_REPORTED]
+
+
+def test_a_reported_key_whose_word_has_no_kind_is_refused_by_the_kind_check_alone(tmp_path):
+    """The second lock, pinned separately: the path is on the allow-list (the
+    API reported it) but its word names no kind, so it fails closed - with the
+    kind check's sentence, not the allow-list's."""
+    _copy, _moved, scenario = _reveal_scenario(tmp_path)
+    odd = tmp_path / "Prepared" / "odd.pdf"
+    odd.write_bytes(b"x")
+    scenario["paths"]["mystery K9"] = str(odd)
+    ran = _run(tmp_path, [{"tracker": ["list"]}, {"open": [str(odd), "reveal"]}, {"open": [str(odd)]}],
+               **scenario)
+    assert ran["opened"] == [] and ran["revealed"] == []
+    assert ran["answers"] == [NOT_OPENED, NOT_OPENED] and NOT_OPENED != NOT_REPORTED
 
 
 def test_reveal_is_refused_when_the_file_is_no_longer_a_file_or_is_a_link(tmp_path):
@@ -591,7 +640,8 @@ def test_a_word_that_is_not_reveal_opens_the_default_way_and_a_folder_is_never_r
     copy, _moved, scenario = _reveal_scenario(tmp_path)
     ran = _run(tmp_path, [{"tracker": ["list"]}, {"open": [str(copy), "anything"]},
                           {"open": [str(tmp_path), "reveal"]}], **scenario)
-    assert ran["opened"] == [str(copy), str(tmp_path)] and ran["revealed"] == []
+    assert ran["opened"] == [str(tmp_path)] and ran["revealed"] == []
+    assert ran["answers"] == [NOT_OPENED, ""], "a reveal-only copy is not opened by any other word"
 
 
 def test_the_preload_passes_the_optional_second_argument_on_the_same_open_and_adds_no_channel():

@@ -1142,7 +1142,12 @@ PATH_KINDS: dict[str, str] = {
     "clients_root": "folder",
     # A row's key is a word, a space and the row (``review_copy <row>``);
     # the shell reads the word, so a file name on the page opens as a file.
-    "review_copy": "file", "filed_copy": "file", "moved_copy": "file",
+    # ``review_copy`` opens (decision 190: only a marked review copy opens in
+    # the default program). The rest are REVEAL-ONLY (``"reveal"``): a filed
+    # or moved-by-hand working copy, or a set-aside or parked one, is shown
+    # in File Explorer and never opened, because none of them carries the
+    # Protected View mark (review 1, F1/F2). The shell refuses a plain open.
+    "review_copy": "file", "filed_copy": "reveal", "moved_copy": "reveal", "shown_copy": "reveal",
 }
 #: What the request-list editor shows for each stored override reason
 #: (:data:`tracker.manifest.OVERRIDE_REASONS`), in its order (P77, P84): the
@@ -1343,14 +1348,14 @@ AFTER_INSTALL_WAIT = "Setup Needs Attention"
 #: app's card, its ``warnings`` and its ``room_note`` say these.
 NOTHING_SUGGESTED_WORDS = "No Suggestion"
 SET_ASIDE_NOTE_WORDS = "Set Aside in Request List"
-FOOTER_PLACE_WORDS = "In the Page {page} Footer"
+FOOTER_PLACE_WORDS = "in the page {page} footer"
 ROOM_SHORT_WORDS = "Names Shortened to Fit"
 ROOM_PARKS_WORDS = "{count} Requests Can't Be Filed"
 
 #: What the app's request-list editor says under Active (P77): a warning
 #: before a risky act, short. The record's own sentence
 #: (:data:`tracker.records.ENGAGEMENT_NOTES`) stays in the README.
-ACTIVE_HELP = "No: sorting skips this return"
+ACTIVE_HELP = "No: Sorting Skips This Return"
 
 #: What the shell says when a reported path is no longer what it was.
 SHELL_NOT_OPENED = "Not Opened; It Has Changed"
@@ -2072,15 +2077,26 @@ def _moved_copy_key(entry: IndexEntry) -> str:
     return f"moved_copy {ledger_key(entry)}" if moved_to(entry) else ""
 
 
+def _shown_copy_key(entry: IndexEntry) -> str:
+    """The key of a parked or set-aside row's working copy for *showing* it
+    in File Explorer, or ``""`` where the row has no copy. Reveal only,
+    never Open (review 1, F2): it is what makes every file name a link,
+    including the ones :func:`_review_copy_key` must not open (a set-aside
+    file, an email, a zip). A program has no working copy, so no key."""
+    if entry.decision not in (NEEDS_REVIEW, NOT_REQUESTED) or not entry.prepared_location:
+        return ""
+    return f"shown_copy {ledger_key(entry)}"
+
+
 def _review_payload(entry: IndexEntry) -> dict:
     """What a parked row carries for the card beside its record: its
-    bucket, its true type and the key of the copy it opens. A set-aside
-    row carries its bucket too, so a program set aside is never offered
-    *File anyway*."""
+    bucket, its true type, the key of the copy it opens and the key of the
+    copy it shows. A set-aside row carries its bucket too, so a program
+    set aside is never offered *File anyway*."""
     if entry.decision not in (NEEDS_REVIEW, NOT_REQUESTED):
         return {}
     return {"bucket": review_bucket(entry), "extension": true_extension(entry),
-            "open_key": _review_copy_key(entry)}
+            "open_key": _review_copy_key(entry), "shown_key": _shown_copy_key(entry)}
 
 
 def _catalog_keys(form: str) -> frozenset[str]:
@@ -2874,6 +2890,9 @@ def _state(engagement: Path) -> dict:
             # paths this map holds, and never for a not-a-document row.
             **{key: str(locate(engagement, e.prepared_location)) for e in entries
                if (key := _review_copy_key(e))},
+            # The same copy, to be shown and never opened (F2).
+            **{key: str(locate(engagement, e.prepared_location)) for e in entries
+               if (key := _shown_copy_key(e))},
             # The working copy of each filed document, and where each
             # moved-by-hand copy is now: the file names on the page are
             # links that show that exact copy in File Explorer. Only paths

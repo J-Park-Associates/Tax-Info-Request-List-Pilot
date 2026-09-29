@@ -144,7 +144,7 @@ api._vocab	shell.no_reply	The tracker ended without a reply (exit code {code}); 
 api._vocab	shell.not_opened	That is no longer the folder or file the tracker reported; nothing was opened.	reword	Not Opened; It Has Changed	5	Notice area	
 api._vocab	shell.page_error	The app met an error of its own ({kind}); the details are in the error log.	error-log	The app hit an error	5	Notice area	Error kind to error log
 api._vocab	triage.nothing_suggested	nothing to suggest - the evidence says nothing about which request this is	reword	No Suggestion	2	Side sheet	
-api._vocab	triage.places.footer	in the footer of page {page}	reword	In the Page {page} Footer	5	Side sheet reason line	A clause inside the reason line
+api._vocab	triage.places.footer	in the footer of page {page}	reword	in the page {page} footer	5	Side sheet reason line	A clause inside the reason line
 api._vocab	triage.set_aside_note	{identifier} is {label} - clear it in the editor to file here	reword	Set Aside in Request List	5	Side sheet, Other list	Request code dropped (rule 3)
 api._vocab	year_note	Defaults to the most recently ended year; the checklist's periods follow it	cut		0	Nowhere; was Tax year tooltip	Dialog help cut
 pilot-content.js	terms.checkbox	I have read this and will keep my own backups.	exception	I have read this and will keep my own backups.	10	Pilot terms screen	P63: agreement kept whole

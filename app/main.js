@@ -414,9 +414,14 @@ async function openChecked(p, kind, reveal) {
   } catch {
     return notOpened;
   }
-  const same = kind === "folder" ? info.isDirectory() : kind === "file" ? info.isFile() : false;
+  const same = kind === "folder" ? info.isDirectory()
+    : kind === "file" || kind === "reveal" ? info.isFile() : false;
   if (info.isSymbolicLink() || !same) return notOpened;
-  if (reveal && kind === "file") {
+  // A reveal-only kind (a filed, moved or set-aside working copy) is shown,
+  // never opened: only a marked review copy opens in the default program
+  // (decision 190). A plain open of one is refused, as any other unreported path.
+  if (kind === "reveal" && !reveal) return notOpened;
+  if (reveal && (kind === "file" || kind === "reveal")) {
     shell.showItemInFolder(p);
     return "";
   }

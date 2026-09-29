@@ -3,7 +3,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("tracker", {
   call: (args, payload) => ipcRenderer.invoke("tracker-cmd", args, payload),
   // open(path) opens in the default program; open(path, "reveal") shows the
-  // file selected in File Explorer, or opens a return's folder. The path is
+  // file selected in File Explorer, or, for a reported folder, opens it. The path is
   // one the API reported; anything else is refused by the shell.
   open: (p, how) => ipcRenderer.invoke("open-path", p, how),
   pickFolder: (title) => ipcRenderer.invoke("pick-folder", title),
