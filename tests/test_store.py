@@ -811,7 +811,8 @@ def test_a_failed_create_is_forgotten_and_a_retired_event_is_refused(conn, root,
 
 def cli(*argv):
     return subprocess.run([sys.executable, "-m", "tracker.store", *[str(a) for a in argv]],
-                          cwd=REPO, capture_output=True, text=True, encoding="utf-8")
+                          cwd=REPO, capture_output=True, text=True, encoding="utf-8",
+                          env={**os.environ, "PYTHONIOENCODING": "utf-8"})
 
 
 def test_the_command_line_builds_every_engagement_under_a_root(root, tmp_path):

@@ -1,7 +1,7 @@
 # Pilot 0.1 Windows check - the automated part (pilot decisions P28, P29).
 # Run from anywhere:  powershell -ExecutionPolicy Bypass -File pilot\wintest\run_checks.ps1
 # Works in Windows PowerShell 5.1 and PowerShell 7, from a git clone or from
-# GitHub's "Download ZIP". Every step writes PASS / FAIL / NOT VERIFIED with
+# GitHub's "Download ZIP". Every step writes PASS / FAIL / NOT VERIFIED / INFO with
 # its evidence to %USERPROFILE%\PilotTest\results\checks.json, and a full log
 # beside it. It installs no tool on its own: a missing one is reported with
 # the exact winget command, and the script stops.
@@ -73,10 +73,12 @@ $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\I
           "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
 $iv = ""
 if ($iscc) { $iv = Inno-Version $iscc }
-if (-not $iscc -or (As-Version $iv) -lt [version]"6.3") { $missing += "Inno Setup 6.3 or later :  winget install -e --id JRSoftware.InnoSetup" }
+if (-not $iscc -or ($iv -and (As-Version $iv) -lt [version]"6.3")) { $missing += "Inno Setup 6.3 or later :  winget install -e --id JRSoftware.InnoSetup" }
+if ($iscc -and -not $iv) { $iv = "(version unreadable; the build will show whether it works)" }
 $longPaths = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -ErrorAction SilentlyContinue).LongPathsEnabled
 $toolsText = if ($missing.Count) { "missing: " + ($missing -join " | ") } else { "Python $pv, Node, git, Inno Setup $iv; Windows long paths enabled: $([bool]$longPaths)" }
-Record "tools" (Verdict ($missing.Count -eq 0)) $toolsText
+$toolsResult = if ($missing.Count) { "FAIL" } elseif ($iv -like "(version unreadable*") { "NOT VERIFIED" } else { "PASS" }
+Record "tools" $toolsResult $toolsText
 if ($missing.Count) { Stop-Here "install the missing tools (commands above), open a new terminal, run again" }
 
 # 2. Where the code came from: a clone, or GitHub's "Download ZIP"
@@ -116,15 +118,15 @@ if ($e1 -or $e2 -or $e3) { Stop-Here "the environment did not install; see $Log"
 
 # The limit the app will hold file paths to on this PC (P29): 259 with
 # Windows long paths off, 260 with them on.
-$limits = (& $vpy -c "from tracker import layout; print('long paths off:', layout.short_paths(), '- path limit:', layout.path_limit())" 2>&1 | Out-String).Trim()
+$limits = (& $vpy -c "from tracker import layout; print('source install - long paths off:', layout.short_paths(), '- path limit:', layout.path_limit())" 2>&1 | Out-String).Trim()
 Record "path_limit" "INFO" $limits
 
 # 4. Checks: the whole suite, ruff, the map
 $suite = Join-Path $Results "pytest.txt"
-$env:PYTHONUTF8 = "1"
+$env:PYTHONIOENCODING = "utf-8"
 & $vpy -m pytest -q -p no:cacheprovider 2>&1 | Out-File -FilePath $suite -Encoding UTF8
 $suiteExit = $LASTEXITCODE
-Remove-Item Env:PYTHONUTF8
+Remove-Item Env:PYTHONIOENCODING
 $summary = (Get-Content $suite | Select-String -Pattern "passed|failed" | Select-Object -Last 1).Line
 Record "test_suite" (Verdict ($suiteExit -eq 0)) "$summary (full output: $suite)"
 $ruff = Run $vpy @("-m", "ruff", "check", ".")

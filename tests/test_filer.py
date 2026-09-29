@@ -9969,3 +9969,24 @@ def re_escape(text):
     import re
 
     return re.escape(text)
+
+
+def test_an_opened_folder_is_cut_to_fit_where_long_paths_are_off(monkeypatch):
+    """The folder a container's documents are written into is cut until a
+    Windows with long paths off will make it and write into it, so a long
+    clients root ends in the room sentence, never "could not be filed"
+    (pilot decision P29, the review's finding 3). Elsewhere it is not cut."""
+    from types import SimpleNamespace
+
+    from tracker import filer, layout
+
+    engagement = Path("/r/" + "x" * 150 + "/J Park & Associates/Smith Family/2025/1040 - John A. Smith")
+    home = SimpleNamespace(engagement_dir=engagement, entries=[])
+    original = Path("Very long container name for an email attachment bundle 2025.msg")
+    monkeypatch.setattr(layout, "short_paths", lambda: False)
+    whole = filer._opened_folder(home, original, [home])
+    monkeypatch.setattr(layout, "short_paths", lambda: True)
+    cut = filer._opened_folder(home, original, [home])
+    assert layout.folder_need(cut) <= layout.path_limit()
+    assert cut.parent == whole.parent and len(cut.name) < len(whole.name)
+    assert whole.name.startswith(cut.name)
