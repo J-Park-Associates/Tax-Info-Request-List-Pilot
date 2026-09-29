@@ -11,7 +11,9 @@ Last commit: see `git log -1` on that branch. Built exactly S1's row of SPEC-she
   note: each `returns[]` row carries no return name (the spec has none); the
   page joins to `list` by `path`. `files[].suggestion` is the first
   suggestion's request label. `draft.ready` = drafted this draft-week and
-  nothing holds it. `next_sort` is the `HH:MM` at the end of
+  not yet approved (an approval the letter was edited after does not count);
+  `held` = the holding rows plus the unsorted inbox files; a hold does not
+  unmake ready (SPEC 6.3). `next_sort` is the `HH:MM` at the end of
   `scheduling.next_run`'s sentence, or null.
 - `api.item_group(item, placed)` (the 9.1 table) and `api.file_group(entry)`.
   `state.items[]`, `state.index[]` and `state.moved[]` carry `group`.
@@ -101,7 +103,14 @@ changed" (`api.SHELL_*`). These tests then pass unchanged.
 ## Proposed decision rows for S6 (from P85)
 
 - `firm` counts groups with `item_group`, the same rule `state` uses, and a
-  return's draft is `ready` only when written this draft-week and unheld.
+  return's draft is `ready` when written this draft-week and not yet approved
+  (an approval the letter was edited after does not count); `held` = the
+  holding rows plus the unsorted inbox files; a hold does not unmake ready
+  (SPEC 6.3).
+- A return the firm view cannot read says "Could not be read"
+  (`api.FIRM_UNREADABLE`), the detail goes to the error log, and it counts as
+  needing a person. The words are not in the approved `wording-shell.tsv`;
+  they need Jason's approval.
 - Where another reader (status report, console) still reads a sentence, the
   app's short word is an api-owned constant beside it, not a change to that
   reader's sentence (P84 with the "cut removes from the screen" rule).
