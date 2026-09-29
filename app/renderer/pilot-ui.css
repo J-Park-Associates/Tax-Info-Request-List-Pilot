@@ -105,7 +105,7 @@ button, input, select, textarea {
 
 /* Body size: every 13, 13.5, 14 and 15px of style.css. */
 .brand-product, .pass-progress, .rem-hold, .rem-hold-rows li, .rem-subject,
-.requests, .editor-table, .assure strong, .eng-picker select,
+.requests, .editor-table, .eng-picker select,
 .field input, .field select, .tmpl-item, .form-who, .wiz-sub, .wiz-note,
 .wiz-check, .toast, .prior-item, .review li, .review select, .review input,
 .deck-card, .deck-card .r-keyword, .deck-card .r-issuer input,
@@ -119,7 +119,7 @@ button, input, select, textarea {
 /* Caption size: every 11, 11.5, 12 and 12.5px of style.css. */
 .btn-small, .summary, .rem-status, .rem-hint, .rem-edited, .rem-stage,
 .rem-quiet, .rem-hold-rows .rem-hold-why, .req-period, .req-notes,
-.req-recv, .req-side, .req-reason, .chip, .assure span, .eng-form,
+.req-recv, .req-side, .req-reason, .chip, .assure, .assure strong, .assure span, .eng-form,
 .field span, .tmpl-head, .tmpl-rules, .requests th, .editor-table th,
 .editor-table .ed-learned, .editor-table .ed-unlearn,
 .ed-set-aside > summary, .rows-set-aside > summary, .ed-paste summary,
@@ -365,6 +365,176 @@ table.requests, .editor-table, .summary, .chip, .rem-stage-n,
   padding: 0 var(--sp-2);
   border-radius: var(--radius-control);
 }
+
+/* ── Surfaces: page, cards, rows, tables (P52, section 7) ────────────────── */
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: none;
+}
+.card-head {
+  align-items: center;
+  padding: var(--sp-3) var(--sp-4);
+}
+
+/* Card bodies inset 16px on both sides (style.css's 18px), 16px at the foot. */
+.reminder-body, .review, .deck, .household-body, .setup-row, #setup-note {
+  padding-left: var(--sp-4);
+  padding-right: var(--sp-4);
+}
+.reminder-body, .review, .deck, .household-body, #setup-note { padding-bottom: var(--sp-4); }
+.setup-row { padding-bottom: var(--sp-3); }
+.dismissed { padding: 0 var(--sp-4) var(--sp-4); }
+.dismissed .review { padding: 0; }
+.household-returns { gap: var(--sp-2); }
+
+table.requests th {
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface-sunken);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+table.requests td {
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--border);
+}
+.requests tbody tr:last-child td { border-bottom: none; }
+.requests tbody tr:hover { background: var(--surface-sunken); }
+.chip {
+  min-height: 20px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--radius-pill);
+}
+
+/* The queue: the direct rows only (a reasons list holds li of its own). */
+ul.review > li {
+  padding: var(--sp-3) 0;
+  column-gap: var(--sp-2);
+  row-gap: var(--sp-half);
+  border-top: 1px solid var(--border);
+}
+ul.review > li:first-child { border-top: none; }
+ul.review > li.r-bucket { padding-top: var(--sp-4); }
+.deck-card {
+  padding: var(--sp-3) var(--sp-4);
+  column-gap: var(--sp-2);
+  row-gap: var(--sp-2);
+}
+/* Two answers in two blocks: this one is set apart so its primary leads it
+   (SPEC 5.7). Across the whole row, under the reasons. */
+.where-it-waits {
+  grid-column: 1 / -1;
+  margin-top: var(--sp-3);
+  padding: var(--sp-3);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.where-it-waits .r-reasons { margin-bottom: var(--sp-2); }
+
+.editor-table th {
+  padding: var(--sp-2);
+  border-bottom: 1px solid var(--border);
+}
+.editor-table td { padding: var(--sp-1) var(--sp-2); }
+
+/* ── Inputs, selects, textareas (section 7.3) ────────────────────────────
+   Every field in the page or a dialog: 32px, 4px corners, the input edge
+   darker underneath (WCAG 1.4.11), white. Rows of a table or the queue are
+   28px. Checkboxes and radios take the navy accent at 16px. */
+
+:is(.main, .modal-overlay) :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+  min-height: var(--ctl-h);
+  padding: 0 var(--sp-3);
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--border-strong);
+  border-bottom-color: var(--border-input);
+  border-radius: var(--radius-control);
+}
+:is(.main, .modal-overlay) textarea {
+  min-height: 0;
+  padding: var(--sp-2) var(--sp-3);
+}
+:is(.editor-table, .review) :is(input:not([type="checkbox"]):not([type="radio"]), select) {
+  min-height: 28px;
+  padding: 0 var(--sp-2);
+}
+:is(.main, .modal-overlay) :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea):focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 0;
+}
+input[type="checkbox"], input[type="radio"],
+.roll-return input[type="checkbox"] {
+  accent-color: var(--navy);
+  width: 16px;
+  height: 16px;
+}
+
+/* ── Banners, notices, toast (section 7.5) ──────────────────────────────── */
+
+.banner, .notice {
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius);
+  font-weight: var(--fw-regular);
+}
+.notice { gap: var(--sp-2); }
+.banner.ok { background: var(--ok-bg); border-color: var(--ok-border); color: var(--ok-fg); }
+.banner.warn, .notice-locked, .notice-warning {
+  background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-fg);
+}
+.banner.err, .notice-failed, .notice-refused {
+  background: var(--err-bg); border-color: var(--err-border); color: var(--err-fg);
+}
+.notice-stale { background: var(--info-bg); border-color: var(--info-border); color: var(--info-fg); }
+.toast {
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-overlay);
+}
+
+/* ── Dialogs (section 7.6) ───────────────────────────────────────────────
+   Every dialog ends the same way: Cancel, then the primary, at the right. */
+
+.modal {
+  padding: var(--sp-6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-overlay);
+}
+.modal-actions {
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  margin-top: var(--sp-6);
+}
+.modal-actions > .toolbar-spacer { display: none; }
+.dlg-unsaved { margin-top: var(--sp-3); gap: var(--sp-2); }
+.form-card {
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: none;
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.form-card:hover { background: var(--surface-hover); border-color: var(--border-strong); box-shadow: none; }
+.form-card:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+/* ── The reminder card's own controls (section 7.4) ─────────────────────
+   The letter itself (.rem-preview) is not named here: it mirrors the email. */
+
+.rem-stage {
+  min-height: var(--ctl-h);
+  padding: 0 var(--sp-3);
+  border-radius: var(--radius-control);
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.rem-edited { padding: var(--sp-2) var(--sp-3); }
+
+/* ── Assurances footer (section 7.7) ────────────────────────────────────── */
+
+.assure { gap: var(--sp-4); }
 
 /* ── Windows contrast themes (last, so it wins) ──────────────────────────
    System colours only. Section 9 of the SPEC; the button and selected-control
