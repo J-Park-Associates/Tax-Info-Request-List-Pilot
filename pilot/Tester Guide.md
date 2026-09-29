@@ -61,6 +61,16 @@ Press **Schedule** to:
 
 Pressing **Scan** by hand works whether the schedule is on or off.
 
+## Screen effects
+
+The header has a **Screen effects** picker with three choices:
+
+- **Glass** (the default): see-through bars, cards and dialogs. Nothing runs continuously.
+- **Glass with refraction**: adds a soft light that follows the pointer and a slowly drifting backdrop. Use it only on a PC with a graphics card.
+- **Solid**: plain surfaces. Choose it over Remote Desktop, on a slow PC, or if scrolling stutters.
+
+If Windows Transparency effects or Animation effects are switched off, the screen turns solid and still on its own, and the picker greys out and says why. Your choice is kept on this computer.
+
 ## 8. What it will not do yet
 
 - Windows only.

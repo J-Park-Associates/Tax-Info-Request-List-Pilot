@@ -461,6 +461,22 @@
       "type": "artifact",
       "layer": "runtime",
       "role": "What the last after-install run did (decision 209): {program, ran_at, reason, schedule, designated, findings, failed}, written atomically by tracker.after_install beside the store (the checkpoint's rule, as last-pass.json is), so it moves into the data home with the store. program is the program identity, written only when nothing failed, so the launch door runs the step again after a failed run; designated is the computer the designation named after the run, and a launch runs the step again when the file names another. api list reads it for the first screen's notice. Ignored by git: it can name a client's folder. runner.left_behind names an old copy beside the program (runner.AFTER_INSTALL_FILENAME), in 186's delete group."
+    },
+    "app/renderer/glass.css": {
+      "role": "The pilot's glass theme (0.2, P30-P45): translucent header, toolbar, action cards, dialogs, terms and tour card over a navy backdrop, with a lit rim, depth, concentric corners and short motion. Loaded last; every colour is a token; nothing in style.css or app.js changes.",
+      "notes": "Three levels on <html> (Glass, refraction, Solid); Windows asking for less transparency, motion or contrast forces Solid. The reminder's hold line sits on a solid pill because its engine-owned colour cannot pass on thin glass. tests/test_glass.py holds the closed list of app selectors it may target."
+    },
+    "app/renderer/glass.js": {
+      "role": "Sets the glass level on <html>, builds the Screen effects picker in the header, moves the pointer light (--glass-x, --glass-y) at the refraction level and marks the scrolled toolbar. No timers, no network, wording from pilot-content.js.",
+      "notes": "If it fails to run the CSS default still applies."
+    },
+    "pilot/make_glass_lens.py": {
+      "role": "Writes app/renderer/glass-lens.png with the standard library only.",
+      "notes": "Run once; the output (app/renderer/glass-lens.png, also inlined in index.html as a data: URI because a file feImage does not load inside a backdrop filter) is committed and tests/test_glass.py compares every pixel with this drawing rule."
+    },
+    "tests/test_glass.py": {
+      "role": "Pins the glass theme: page hooks, the closed selector list, colour only in tokens, the contrast proof, level fallbacks, motion limits, concentric corners and the lens map.",
+      "notes": "The rendered sweep and speed probe are scratch scripts; their results are in pilot/HANDOFF.md."
     }
   },
   "edges": [
