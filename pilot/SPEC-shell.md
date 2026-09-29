@@ -10,7 +10,8 @@ the SPEC session (opus, high effort) from the confirmed brief
 is a private artifact; its link is in [`HANDOFF.md`](HANDOFF.md) and its
 source is [`mockup-shell.html`](mockup-shell.html) (open it in a browser).
 
-Two things need Jason before any build starts (section 15):
+Two things needed Jason before any build (section 15); the engine part is
+now approved (P79), and the wording is under his review:
 
 1. **The wording table** (section 11 and [`wording-shell.tsv`](wording-shell.tsv)),
    as P66 requires.
@@ -486,8 +487,8 @@ E-7 reason for hiding Electron's default menu still holds (P58), and
 `devTools: !app.isPackaged` stays.
 
 **Tester guide** is not in Help: the app has no copy of it (it is emailed
-with the installer, `RELEASE.md`), so the item would open nothing. Question
-Q3 in section 15.
+with the installer, `RELEASE.md`), so the item would open nothing; Jason
+left it out of 0.2 (P81).
 
 ### 5.2 Right-click menus (native, P68)
 
@@ -812,7 +813,7 @@ sheet unchanged, so `loadReminder()`, `copyReminder()` and
 | State | Icon | Colour | Tooltip and name | Does |
 |---|---|---|---|---|
 | Ready (a household, year or return open) | sort | `--link` | "Sort now" | runs the pass for the open household (`runScan()`) |
-| Firm page | sort, disabled | `--text-disabled` | "Open a client to sort" | nothing (Q2) |
+| Firm page | sort, disabled | `--text-disabled` | "Open a client to sort" | nothing (P80) |
 | Return locked elsewhere | sort, disabled | `--text-disabled` | "In use elsewhere" | nothing |
 | Sorting | stop | `--danger` | "Stop sorting" | `stopPass()` |
 | Stopping | stop, disabled | `--text-disabled` | "Stopping" | nothing |
@@ -1471,6 +1472,11 @@ emulated). It is never loaded by the app, and pytest does not run it.
 
 ## 15. Questions for Jason (before the build)
 
+Answers so far (2026-09-29): **Q1 yes** (P79), **Q2 grey it for 0.2**
+(P80), **Q3 leave it out** (P81), **Q6 confirmed** (P82). **Q4** is being
+explained further and **Q5** (the wording) is under review; both are still
+open.
+
 | # | Question | Recommendation |
 |---|---|---|
 | Q1 | May the build add the read-only `firm` command and the three small fields of section 9 (files under `tracker/` beyond wording)? | **Yes.** Without it the Overview, Needs review, Reminders and Clients pages have no counts. Nothing is written; no filing or status logic changes. |
@@ -1540,7 +1546,7 @@ this work does not reach them.
 
 - Anything that files, routes, reads or validates a document; the
   schedule; the installer; the reminder letter's words.
-- A firm-wide Sort now (Q2), a shipped Tester Guide (Q3).
+- A firm-wide Sort now (P80), a shipped Tester Guide (P81).
 - Porting the shell to the main tracker (a later job in that repository).
 - Charts, a dashboard, tabs, a second button row, glass or blur (the
   brief's anti-goals).

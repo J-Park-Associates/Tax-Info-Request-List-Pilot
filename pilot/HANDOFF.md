@@ -33,20 +33,20 @@ ground or read the logo's drawn text as black (SPEC 10.2 computes each theme
 on its own), the brand band's padding, and a hairline with a soft shadow on
 menus and the sheet (Windows 11's own flyout recipe, kept).
 
-**Waiting on Jason before any build (SPEC section 15):**
+**Jason's answers (2026-09-29):** Q1 yes, the `firm` command is approved
+(P79); Q2 grey the sort icon on firm pages for 0.2 (P80); Q3 no Tester guide
+in Help (P81); Q6 confirmed (P82).
 
-| # | Question | Recommendation |
+**Still waiting on Jason before any build (SPEC section 15):**
+
+| # | Question | Status |
 |---|---|---|
-| Q1 | Allow the read-only `firm` command and three small payload fields (SPEC section 9) - files under `tracker/` beyond wording | Yes: without it the firm pages have no counts; nothing is written |
-| Q2 | Sort now on a firm page: grey it, or add a firm-wide sort (its own engine SPEC) | Grey it in 0.2 |
-| Q3 | Help > Tester guide: leave it out (the app has no copy), or ship the guide in the app | Leave it out |
-| Q4 | A row's second column shows the detail the record has, since it keeps no sender ("from whom") | Yes |
-| Q5 | Approve the wording (`wording-shell.tsv` and SPEC 11.3-11.6) | - |
-| Q6 | Confirm the audit over the brief: no status dot, no summary line under a return's name, one Stop | Confirm |
+| Q4 | A row's second column: the record keeps no separate sender, so show the detail it has | Jason asked for more explanation (given in the session, 2026-09-29) |
+| Q5 | Approve the wording (`wording-shell.tsv` and SPEC 11.3-11.6) | Presented in full in the session for his review |
 
-**Next jobs, once Jason answers:** S1 and S3 run side by side, each a fresh
-session in its own worktree (SPEC section 16). S1 needs Q1 and Q5; S3 needs
-only the SPEC.
+**Next jobs, once Jason answers Q4 and Q5:** S1 and S3 run side by side,
+each a fresh session in its own worktree (SPEC section 16). S1 needs Q5
+(Q1 is approved); S3 needs only the SPEC and Q4.
 
 S1 (sonnet):
 ```
