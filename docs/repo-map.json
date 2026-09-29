@@ -15,7 +15,7 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 255,
+    "nodes": 259,
     "edges": 1136,
     "reused": 213
   },
@@ -4361,6 +4361,34 @@
       "lines": 46
     },
     {
+      "id": ".claude/skills/winui-design/SKILL.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "dea0912e3e58bc88",
+      "lines": 175
+    },
+    {
+      "id": ".claude/skills/winui-design/references/brushes-and-icons.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "6ad5799cf4e6fcdd",
+      "lines": 207
+    },
+    {
+      "id": ".claude/skills/winui-design/references/layout-review.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "12210e16f1562687",
+      "lines": 41
+    },
+    {
+      "id": ".claude/skills/winui-design/references/theme-accessibility.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "79179212801c3edc",
+      "lines": 57
+    },
+    {
       "id": "CLAUDE.md",
       "type": "doc",
       "layer": "docs",
@@ -4458,8 +4486,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "3dafe8716d7a5b7e",
-      "lines": 62
+      "sha256": "8e110e69e433a9dc",
+      "lines": 63
     },
     {
       "id": "pilot/HANDOFF.md",
