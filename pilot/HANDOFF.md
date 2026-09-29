@@ -247,6 +247,10 @@ from the section below.
   in `app/renderer/pilot-ui.css` layered over `style.css`; plus the fix for
   cards collapsing when notices fill the window (P55). See the Build E section
   above.
+- **Design skills (P56, pull request #14, draft, not merged):** Anthropic's
+  `frontend-design` and Impeccable committed to `.claude/skills/` with Jason's
+  approval; merge when Jason says so. Once merged, every session on this
+  repository can call them. Impeccable's hooks are not registered.
 - **Old pull requests:** #9 (Mica) and #10 (glass) are superseded and can be
   closed; #5 is the coordination board and is never merged.
 - **Local gate at the merge:** ruff, `repo_map.py check`, `test_pilot`, `test_tour`,
