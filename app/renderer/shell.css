@@ -578,6 +578,7 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   #find, #find-list, #sheet, #tip { border: 1px solid CanvasText; background: Canvas; color: CanvasText; }
   .find-option[aria-selected="true"], .rows:focus-visible .row.is-active { background: Highlight; color: HighlightText; forced-color-adjust: none; }
   .rows:focus-visible .row.is-active { outline: 2px solid CanvasText; }
+  .side-section[aria-current="page"] .side-count, .find-option[aria-selected="true"] .find-note { color: HighlightText; }
   .row { border-bottom: 1px solid CanvasText; }
   .row-name, .row-detail, .row-status, .row-date, .row-step { color: inherit; }
   #notices .notice { border: 1px solid CanvasText; background: Canvas; color: CanvasText; }

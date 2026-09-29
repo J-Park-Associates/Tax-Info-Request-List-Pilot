@@ -650,7 +650,7 @@ def test_a_household_or_return_not_in_the_list_never_shows_its_path_as_a_name(tm
       return [names, routeTitle()];
     """
     ran = run_shell(["crumbList", "routeTitle"], setup, probe, tmp_path)
-    assert ran == [["Clients", "", "2025", ""], ""], "no path as a name, and no H1 on a firm page"
+    assert ran == [["Clients", "2025"], ""], "no path as a name, no nameless button, and no H1 on a firm page"
 
 
 def test_the_contrast_theme_fills_and_rings_follow_spec_10_4():
@@ -663,6 +663,8 @@ def test_the_contrast_theme_fills_and_rings_follow_spec_10_4():
     ring = next(one for one in forced.splitlines() if "#find:focus-visible" in one)
     assert all(part in ring for part in ("#bar #find", "#main #notices", "#main #page .setup", "CanvasText")), \
         "style.css and pilot-ui.css ring inputs and .btn in Highlight; the shell's controls must outrank them"
+    counts = next(one for one in forced.splitlines() if ".side-count" in one and ".find-note" in one)
+    assert "HighlightText" in counts, "the count and the caption keep their own grey on Highlight otherwise"
     assert "padding-inline: var(--sp-2);" in css[css.index(".side-section:not(.hidden)"):][:400]
 
 

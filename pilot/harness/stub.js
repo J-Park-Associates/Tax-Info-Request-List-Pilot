@@ -182,7 +182,7 @@
         const path = args[args.length - 1];
         const owner = households.find((one) => path.indexOf(one.path) === 0);
         return wait(20, { paths: { engagement: path, inbox: owner ? owner.inbox : "", client_folder: owner ? owner.client_folder : "", status: `${ROOT}/status.html` },
-          household: { shared_on: owner && owner.name === "Lopez Household" ? "" : "2026-02-01" }, harness: bodies[path] || generic(0, 0, 0, "") });
+          items: [], household: { path: owner ? owner.path : "", name: owner ? owner.name : "", members: [], contact: owner ? owner.contact : "", link: "", open_years: [2025], pause: {}, returns: [], queue: 0, roll_year: null, shared_on: owner && owner.name === "Lopez Household" ? "" : "2026-02-01" }, harness: bodies[path] || generic(0, 0, 0, "") });
       }
       if (command === "pilot-record") return wait(10, { terms: "1", tour_seen: true });
       if (command === "set-root") {

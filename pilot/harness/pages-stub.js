@@ -50,23 +50,19 @@
     const out = [];
     if (route.level === "overview") {
       const t = firm.totals;
-      out.push(node("h1", "page-title", w.sections.overview));
       out.push(node("div", "figures", ...[[t.need, w.figures.need], [t.waiting, w.figures.waiting], [t.complete, w.figures.complete]]
         .map(([n, label]) => node("div", "figure", node("b", "figure-number", String(n)), node("span", "figure-label", label)))));
       const work = thisYear().filter((e) => { const b = window.HARNESS.bodies[e.path]; return b.needs.length || b.waiting.length; }).slice(0, 12);
       out.push(...group(w.work, returnRows(work), true, w.empty.work));
     } else if (route.level === "needs-review") {
-      out.push(node("h1", "page-title", w.sections.needs_review));
       const rows = [];
       for (const e of thisYear()) for (const f of window.HARNESS.bodies[e.path].needs.filter((x) => x.kind !== "request")) rows.push(row({ name: f.name, detail: e.return_name, status: f.status, date: f.date }, "needs", w.steps.check));
       out.push(node("div", "page-caption", fill(w.counts.files, { n: rows.length })));
       out.push(...group(w.groups.needs_you, rows.slice(0, 14), true, w.empty.needs_review));
     } else if (route.level === "reminders") {
-      out.push(node("h1", "page-title", w.sections.reminders));
       const rows = thisYear().filter((e) => window.HARNESS.bodies[e.path].draft).map((e) => row({ name: e.return_name, detail: households.find((h) => h.path === e.household).name, status: w.held, date: "Mar 3" }, "waiting", w.steps.draft));
       out.push(...group(w.sections.reminders, rows, true, w.empty.reminders));
     } else if (route.level === "clients") {
-      out.push(node("h1", "page-title", w.sections.clients));
       const rows = households.slice(0, 30).map((h) => row({ name: h.name, detail: fill(h.returns.length === 1 ? w.counts.one_return : w.counts.returns, { n: h.returns.length }), status: h.returns.length ? w.counts.complete : "", date: "" }, "received", w.steps.open));
       out.push(...group(w.filters.all, rows, true, w.empty.clients));
     } else if (route.level === "household") {

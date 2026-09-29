@@ -29,7 +29,7 @@ async function open(query = "", { firm = true } = {}) {
   const page = await context.newPage();
   page.on("pageerror", (e) => failures.push(`page error: ${e.message}`));
   await page.goto(`${base}${query}`);
-  await page.waitForFunction((needsFirm) => window.HARNESS && window.HARNESS.calls.includes(needsFirm ? "firm" : "list") && !document.querySelector("#page[aria-busy=true]") && document.querySelector("#page h1"), firm, { timeout: 8000 });
+  await page.waitForFunction((needsFirm) => window.HARNESS && window.HARNESS.calls.includes(needsFirm ? "firm" : "list") && !document.querySelector("#page[aria-busy=true]") && document.querySelector("#page > *, #notices > *"), firm, { timeout: 8000 });
   return { context, page };
 }
 const current = (page) => page.evaluate(() => document.querySelector('.side-section[aria-current="page"] .side-name')?.textContent ?? null);

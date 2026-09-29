@@ -110,10 +110,16 @@ if (!only.length || only.includes("real-app")) {
   await page.waitForTimeout(1500);
   const side = await page.evaluate(() => [...document.querySelectorAll(".side-name")].map((n) => n.textContent).join("|"));
   const title = await page.evaluate(() => document.querySelector("#page h1")?.textContent);
+  // app.js catches its own errors, draws a notice and logs them, so an uncaught
+  // "page error" count alone hides them: read the log and the visible notice too.
+  const logged = await page.evaluate(() => window.HARNESS.logged.slice());
+  const notice = await page.evaluate(() => [...document.querySelectorAll("#notices .notice, #error, .error")].map((n) => n.textContent.trim()).filter(Boolean).join("; "));
   if (errors.length) problems.push(`real app.js: ${errors.join("; ")}`);
+  if (logged.length) problems.push(`real app.js logged: ${logged.join("; ")}`);
+  if (notice) problems.push(`real app.js shows an error: ${notice}`);
   if (side !== "Overview|Needs review|Reminders|Clients") problems.push(`real app.js: side panel is "${side}"`);
   await page.screenshot({ path: path.join(out, "real-app-1100x700.png") });
-  console.log(`real app.js: side panel "${side}", page title "${title}", ${errors.length} page errors`);
+  console.log(`real app.js: side panel "${side}", page title "${title}", ${errors.length} page errors, ${logged.length} logged, ${notice ? `shows "${notice}"` : "no visible error"}`);
   await context.close();
 }
 

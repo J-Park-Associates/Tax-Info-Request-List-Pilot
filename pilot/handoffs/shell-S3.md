@@ -71,8 +71,8 @@ every key the harness's `stub.js` lists), `vocab.menu`, the `firm` command in
 `vocab.commands`, `list.paths.clients_root` and `.status`, `list.last_pass.ok`
 and `.when`, and `n`/`of` on the progress line (it already carries them:
 `progress.household` is `{household} ({n} of {of})`; the last-sort line uses
-those two numbers, and shows the API's `scan.scanning` word when they are
-missing). `harness/app-stub.js` is the list of what `shell.js` needs of
+those two numbers, and shows the bar alone when they are missing, so
+S6 supplies no word for that case). `harness/app-stub.js` is the list of what `shell.js` needs of
 `app.js` - if S4 renames one, the double changes with it.
 
 **Proposed decision rows (S6 logs them from P85):**

@@ -319,12 +319,16 @@ function crumbList() {
   const household = shellHousehold(route.household);
   const listed = [{ name: words.sections.clients, go: route.level === "clients" ? null : { level: "clients" } }];
   if (route.level === "clients") return listed;
-  listed.push({
-    name: household ? household.name : "",
-    go: route.level === "household" ? null : { level: "household", household: route.household },
-    shrink: "household",
-    popup: "household",
-  });
+  // A household missing from the latest list has no name to show: leave the
+  // segment out rather than draw a button with no accessible name.
+  if (household) {
+    listed.push({
+      name: household.name,
+      go: route.level === "household" ? null : { level: "household", household: route.household },
+      shrink: "household",
+      popup: "household",
+    });
+  }
   if (route.level === "household") return listed;
   listed.push({
     name: String(route.year),
@@ -332,7 +336,7 @@ function crumbList() {
   });
   if (route.level === "year") return listed;
   const ret = shellReturn(route.ret);
-  listed.push({ name: ret ? ret.return_name : "", shrink: "current", popup: "return" });
+  if (ret) listed.push({ name: ret.return_name, shrink: "current", popup: "return" });
   return listed;
 }
 
