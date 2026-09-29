@@ -164,19 +164,19 @@ Commit with "[skip ci]", push to your session branch, and report in plain
 English. Do not fix anything yourself.
 ```
 
-## Refraction removed (2026-09-29, P49; branch `claude/amazing-maxwell-b4hdzo`)
+## Glass removed entirely (2026-09-29, P49, P50; branch `claude/amazing-maxwell-b4hdzo`)
 
-Jason: "remove Mica and refraction completely". Mica was already out (P48; PR #9
-is abandoned). Removed: the Glass with refraction level, the SVG bend filter in
-`index.html`, `glass-lens.png`, `make_glass_lens.py`, the pointer light, the
-drifting backdrop and its pause-on-blur, the `--glass-sheen`/`--glass-drift`/
-`--glass-filter-refract*` tokens, the refraction motion clip, and the tests that
-proved them (one guard test now proves they are gone). A saved "full" choice
-falls back to Glass. The Review 3 findings that concerned Mica no longer apply;
-its finding 1 (a Mica-only test) is gone with the test.
-Left: SPEC-glass.md carries an amendment note at the top but its body still
-describes the withdrawn parts; the Review 3 rendered sweep was never run on the
-two-level build; Jason's hands-on Windows check.
+Jason: "remove Mica and refraction completely", then "remove glass entirely,
+align with MSFT docs but keep our design theme". Mica was already out (P48; PR
+#9 is abandoned). Now gone too: `glass.css`, `glass.js`, the Screen effects
+picker and its `glass` block in `pilot-content.js`, `test_glass.py`, the
+screenshots and clips, and Tester Guide section 8 (later sections renumbered).
+`SPEC-glass.md` stays, marked withdrawn. The look is `style.css` as it was.
+Added: a `forced-colors` block at the end of `pilot-style.css` (Windows contrast
+themes) and one test for it in `test_pilot.py`. PR #10 is superseded by this
+branch; nothing from it that is not in this branch should be merged.
+Left: Jason's hands-on check of the contrast-theme block on Windows (Settings,
+Accessibility, Contrast themes); the version label still reads 0.2.
 
 ## Build D (2026-09-29, done; branch `claude/build-d-pilot-handoff-w5w7mx`, draft PR #10 to `main`)
 

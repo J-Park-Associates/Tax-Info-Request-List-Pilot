@@ -273,3 +273,19 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Windows contrast themes (Microsoft Learn: "Contrast themes - Windows apps").
+   Chromium applies the user's system colours itself; these keep the edges that
+   background colour alone was drawing on the pilot's own surfaces. The rest of
+   the app is covered by the matching block at the end of style.css. */
+@media (forced-colors: active) {
+  .pilot-terms-card,
+  .pilot-tour-card,
+  .pilot-badge {
+    border: 1px solid CanvasText;
+  }
+
+  .pilot-tour-spot {
+    outline-color: Highlight;
+  }
+}

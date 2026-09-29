@@ -1000,3 +1000,30 @@ body {
 .sc-choice legend { font-size: 12.5px; font-weight: 600; color: var(--muted); padding: 0; margin-bottom: 5px; }
 .sc-radio { display: inline-flex; align-items: center; gap: 6px; margin-right: 18px; font-size: 14px; }
 .field input:disabled, .field select:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* Windows contrast themes (Microsoft Learn: "Contrast themes - Windows apps").
+   Chromium applies the user's system colours itself; this keeps what
+   background colour or a shadow alone was drawing: an edge on buttons, cards,
+   dialogs and status chips, and the system Highlight colour on every focus
+   outline. Nothing here changes the normal appearance. */
+@media (forced-colors: active) {
+  .btn,
+  .card,
+  .modal,
+  .toolbar,
+  .chip {
+    border: 1px solid CanvasText;
+  }
+
+  .btn:focus-visible,
+  .rem-stage:focus-visible,
+  .rem-quiet:focus-visible,
+  .form-card:focus-visible,
+  .wiz-back:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  summary:focus-visible {
+    outline: 2px solid Highlight;
+  }
+}

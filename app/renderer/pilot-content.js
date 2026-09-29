@@ -227,15 +227,6 @@ const PILOT =
         "fallback": ""
       }
     ]
-  },
-  "glass": {
-    "label": "Screen effects",
-    "levels": [
-      { "key": "standard", "name": "Glass" },
-      { "key": "solid", "name": "Solid" }
-    ],
-    "default": "standard",
-    "system_note": "Solid, because Windows is set to reduce transparency or motion."
   }
 }
 // PILOT-CONTENT-END

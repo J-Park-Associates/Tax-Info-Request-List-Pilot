@@ -727,9 +727,8 @@ def _owner_edges(nodes: list[Node], edges: list[dict]) -> list[dict]:
     import statement, and both used to render as "no dedicated test file".
     The owner edge is a fact about the file names, so it is derived from them.
 
-    Only the kinds of file a test can own compete for a stem. The glass
-    theme's glass.js and glass.css share one: counting the stylesheet left
-    the script with no owner although tests/test_glass.py is its test file.
+    Only the kinds of file a test can own compete for a stem, so a stylesheet
+    and a script that share one stem do not hide each other's owner test.
     """
     by_id = {node.id for node in nodes}
     owned = _unambiguous_stems([n.id for n in nodes if n.sha256 and n.type in OWNED_TYPES])
