@@ -260,7 +260,11 @@ function syncNotices(prefix, wanted) {
   for (const key of [...keyedNotices.keys()]) {
     if (key.indexOf(`${prefix}:`) === 0 && !keep.has(key)) clearNotice(key);
   }
-  for (const one of wanted) keyedNotice(`${prefix}:${one.key}`, one.failure, one.opts);
+  for (const one of wanted) {
+    // Its detail (the long sentence, the error's own message) goes to the
+    // error log when the notice first shows, never on screen (SPEC 11.1).
+    if (keyedNotice(`${prefix}:${one.key}`, one.failure, one.opts) && one.detail) window.tracker.logError(one.detail);
+  }
 }
 
 // What a write said (SPEC 2.2, P63 rule 6): what went well shows in the

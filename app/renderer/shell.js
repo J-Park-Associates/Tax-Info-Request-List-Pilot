@@ -241,12 +241,20 @@ function shellOpenState() {
 // counts for that return, the counts are asked again (SPEC 4.2: after any
 // write that changes a count) - never on a plain read, which changes none.
 function shellStateArrived(state) {
-  shellDraw();
-  const firm = shellFirmNow.data;
-  const mine = firm && state.paths ? firm.returns.find((one) => one.path === state.paths.engagement) : null;
-  if (!mine || typeof pagesTally !== "function") return;
-  const tally = pagesTally(state);
-  if (Object.keys(tally).some((key) => tally[key] !== mine.counts[key])) shellLoadFirm();
+  // The state has arrived and a write's reply is a success: an error of the
+  // page's own from here on is said as an error of the page (a notice, the
+  // details in the error log) and never escapes to the write's caller, which
+  // would say a write that worked had failed.
+  try {
+    shellDraw();
+    const firm = shellFirmNow.data;
+    const mine = firm && state.paths ? firm.returns.find((one) => one.path === state.paths.engagement) : null;
+    if (!mine || typeof pagesTally !== "function") return;
+    const tally = pagesTally(state);
+    if (Object.keys(tally).some((key) => tally[key] !== mine.counts[key])) shellLoadFirm();
+  } catch (err) {
+    failed(err);
+  }
 }
 
 function shellDraw() {

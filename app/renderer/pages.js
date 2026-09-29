@@ -22,7 +22,9 @@
 // The grouping of a return's page is the API's `group` on each item of
 // `state` (SPEC 9.1). A file's group follows the list it is in: parked and
 // moved files are Needs you, files a person set aside are Set aside. An item
-// with no `group` is not guessed at: it throws, and the page says so.
+// with no `group` is not guessed at: it is set aside from the page (drawn in
+// no group, counted in none) and named in a notice of its own, while every
+// other row and group is drawn (pagesSafe; SPEC 6, "loud and safe").
 //
 // What this file offers the sheet (S5) and the right-click menus (S5):
 //   pagesRowFor(token)  what a row is about ({menu, step, ...}), by the row's id
@@ -43,7 +45,6 @@ const pagesTokens = new Map(); // a row's id -> what it is about (rebuilt with e
 let pagesFocus = null;         // where focus sat in a listbox before a redraw
 let pagesLastLevel = "";       // the level drawn last, for the Clients switch
 let pagesClientsAll = false;   // the Clients switch: false is Work waiting
-let pagesSetAsideFor = "";     // the return whose Set aside fold a person opened
 let pagesSetAsideOpen = false;
 let pagesBroken = [];          // the rows of the page being drawn that could not be built: {name, err}
 let pagesDrawn = "";           // which route the page holds, so a failed draw keeps only its own
@@ -123,18 +124,35 @@ function pagesCounts(counts, problem) {
 // One row (or group) that cannot be built is set aside and named at the end
 // of the draw (pagesReportBroken); every other row is still drawn. A page
 // never blanks for one bad row, and nothing is guessed to fill its place.
+function pagesLabel(one) {
+  try {
+    const name = typeof one === "string" ? one : one && (one.short_name || one.document || one.original_name || one.name || one.identifier || one.path);
+    return String(name || "");
+  } catch (err) {
+    return "";
+  }
+}
+
 function pagesSafe(name, make) {
   try {
     return make();
   } catch (err) {
-    pagesBroken.push({ name: String(name || ""), err });
+    pagesBroken.push({ name: pagesLabel(name), err });
     return null;
   }
 }
 
 // The specs (or rows) `make` builds from a list, the failed ones left out.
 function pagesEach(list, nameOf, make) {
-  return list.map((one) => pagesSafe(nameOf(one), () => make(one))).filter((one) => one !== null);
+  return list.map((one, i) => pagesSafe(pagesSafeName(nameOf, one), () => make(one, i))).filter((one) => one !== null);
+}
+
+function pagesSafeName(nameOf, one) {
+  try {
+    return nameOf(one);
+  } catch (err) {
+    return pagesLabel(one);
+  }
 }
 
 function pagesByName(a, b) {
@@ -283,6 +301,15 @@ function pagesTitle(text, menu, token) {
   return h("h1", attrs, text);
 }
 
+// The H1 of a household, year or return page (the frame that stays when the
+// rest of the page cannot be built), or null on a page that has none.
+function pagesTitleFor(route) {
+  if (route.level === "return") return pagesTitle(pagesReturnName(route.ret), "return", "crumb-return");
+  if (route.level === "year") return pagesTitle(String(route.year));
+  const hh = route.level === "household" ? shellHousehold(route.household) : null;
+  return hh ? pagesTitle(hh.name, "household", "crumb-household") : null;
+}
+
 function pagesCaption(text) {
   return text ? h("div", { className: "page-caption" }, text) : null;
 }
@@ -335,7 +362,7 @@ function pagesNeedsReview() {
   const firm = pagesFirm();
   const groups = pagesReviewGroups(firm);
   if (!groups.length) return [pagesEmpty(words.empty.needs_review, pagesNextSort(firm))];
-  return groups.flatMap((group, i) => {
+  return groups.flatMap((group, i) => pagesSafe(group.path, () => {
     const owner = pagesFirmReturn(group.path);
     const rows = pagesEach(group.files, (file) => file.name, (file) => pagesRow({
       name: file.name, detail: file.suggestion || "", status: pagesReason(file.code), tone: "needs", date: pagesDay(file.received),
@@ -343,41 +370,43 @@ function pagesNeedsReview() {
     }));
     const household = owner ? owner.household : "";
     return pagesGroup({ heading: pagesReturnName(group.path), caption: household ? `${household} · ${rows.length}` : String(rows.length), first: i === 0, blocks: [{ rows }] });
-  });
+  }) || []);
 }
 
 // ── Reminders (SPEC 6.3) ──────────────────────────────────────────────
 function pagesReminderSpecs(firm) {
-  return firm.returns.filter((one) => one.draft && one.draft.ready)
-    .sort((a, b) => pagesByName(pagesReturnName(a.path), pagesReturnName(b.path)))
-    .map((one) => ({
-      name: pagesReturnName(one.path), detail: one.household,
-      status: one.draft.held > 0 ? screenWords().held : pagesStage(one.draft.stage),
-      tone: one.draft.held > 0 ? "needs" : "waiting", date: pagesDay(one.draft.drafted), menu: "return",
-      step: { kind: "draft", ret: one.path },
-    }));
+  const ready = firm.returns.filter((one) => one.draft && one.draft.ready);
+  return pagesEach(ready.sort((a, b) => pagesByName(pagesReturnName(a.path), pagesReturnName(b.path))), (one) => pagesReturnName(one.path), (one) => ({
+    name: pagesReturnName(one.path), detail: one.household,
+    status: one.draft.held > 0 ? screenWords().held : pagesStage(one.draft.stage),
+    tone: one.draft.held > 0 ? "needs" : "waiting", date: pagesDay(one.draft.drafted), menu: "return",
+    step: { kind: "draft", ret: one.path },
+  }));
 }
 
 function pagesReminders() {
   const words = screenWords();
   const specs = pagesReminderSpecs(pagesFirm());
   if (!specs.length) return [pagesEmpty(words.empty.reminders)];
-  return [h("div", { className: "page-gap" }), pagesList({ label: words.sections.reminders }, specs.map(pagesRow))];
+  return [h("div", { className: "page-gap" }), pagesList({ label: words.sections.reminders }, pagesEach(specs, (spec) => spec.name, pagesRow))];
 }
 
 // ── Clients (SPEC 6.4) ────────────────────────────────────────────────
 function pagesClientSpecs(firm, all) {
   const words = screenWords().counts;
   const own = (name) => firm.returns.filter((one) => one.household === name);
-  return households.slice().sort((a, b) => pagesByName(a.name, b.name)).map((one) => {
+  return pagesEach(households.slice().sort((a, b) => pagesByName(a.name, b.name)), (one) => one.name, (one) => {
     const returns = own(one.name);
     const need = returns.reduce((n, r) => n + r.counts.needs_you, 0);
     const wait = returns.reduce((n, r) => n + r.counts.waiting, 0);
-    const problem = returns.some((r) => r.problem);
+    const problem = returns.find((r) => r.problem);
+    // A household with a return whose record cannot be read is never
+    // Complete: that return's problem is its status (as pagesCounts says it).
     const said = need ? { text: fill(words.need, { n: need }), tone: "needs" }
-      : wait ? { text: fill(words.waiting, { n: wait }), tone: "waiting" }
-        : returns.length ? { text: words.complete, tone: "done" } : { text: "", tone: "plain" };
-    return { work: need + wait > 0 || problem, spec: {
+      : problem ? { text: problem.problem, tone: "needs" }
+        : wait ? { text: fill(words.waiting, { n: wait }), tone: "waiting" }
+          : returns.length ? { text: words.complete, tone: "done" } : { text: "", tone: "plain" };
+    return { work: need + wait > 0 || Boolean(problem), spec: {
       name: one.name, detail: returns.length ? fill(returns.length === 1 ? words.one_return : words.returns, { n: returns.length }) : "",
       status: said.text, tone: said.tone, date: "", menu: "household",
       step: { kind: "open", route: { level: "household", household: one.path } },
@@ -408,7 +437,7 @@ function pagesClients() {
   }
   const specs = pagesClientSpecs(firm, pagesClientsAll);
   const rows = document.createDocumentFragment();
-  for (const spec of specs) rows.append(pagesRow(spec));
+  for (const row of pagesEach(specs, (spec) => spec.name, pagesRow)) rows.append(row);
   return [pagesSwitch(), specs.length ? pagesList({ label: words.sections.clients }, [rows]) : pagesEmpty(words.empty.work)];
 }
 
@@ -425,7 +454,7 @@ function pagesHouseholdCaption(route) {
 
 function pagesReturnSpecs(returns) {
   const words = screenWords();
-  return returns.slice().sort((a, b) => pagesByName(a.return_name || a.label, b.return_name || b.label)).map((one) => {
+  return pagesEach(returns.slice().sort((a, b) => pagesByName(a.return_name || a.label, b.return_name || b.label)), (one) => one.return_name || one.label, (one) => {
     const firm = pagesFirmReturn(one.path);
     const said = firm ? pagesCounts(firm.counts, firm.problem) : { text: "", tone: "plain" };
     const detail = one.superseded_by ? words.rolled : one.active === false ? words.inactive : "";
@@ -438,25 +467,25 @@ function pagesHousehold(route) {
   const words = screenWords();
   const hh = shellHousehold(route.household);
   if (!hh) return [];
-  const title = pagesTitle(hh.name, "household", "crumb-household");
-  const head = [title, pagesCaption(pagesHouseholdCaption(route))];
+  const head = [pagesTitleFor(route), pagesCaption(pagesHouseholdCaption(route))];
   if (!hh.returns.length) {
     const add = h("button", { type: "button", className: "btn" }, vocab.menu.add_return);
     add.addEventListener("click", () => openAddReturn(hh));
     return [...head, pagesEmpty(words.empty.returns, "", add)];
   }
   const years = [...new Set(hh.returns.map((one) => one.year))].sort((a, b) => b - a);
-  return [...head, ...years.flatMap((year, i) => pagesGroup({
-    heading: String(year), first: i === 0, blocks: [{ rows: pagesReturnSpecs(hh.returns.filter((one) => one.year === year)).map(pagesRow) }],
-  }))];
+  return [...head, ...years.flatMap((year, i) => pagesSafe(String(year), () => pagesGroup({
+    heading: String(year), first: i === 0,
+    blocks: [{ rows: pagesEach(pagesReturnSpecs(hh.returns.filter((one) => one.year === year)), (spec) => spec.name, pagesRow) }],
+  })) || [])];
 }
 
 function pagesYear(route) {
   const hh = shellHousehold(route.household);
   if (!hh) return [];
-  const title = pagesTitle(String(route.year));
+  const title = pagesTitleFor(route);
   const specs = pagesReturnSpecs(hh.returns.filter((one) => one.year === route.year));
-  return [title, pagesList({ labelledby: title.id }, specs.map(pagesRow))];
+  return [title, h("div", { className: "page-gap" }), pagesList({ labelledby: title.id }, pagesEach(specs, (spec) => spec.name, pagesRow))];
 }
 
 // ── Return (SPEC 6.7) ─────────────────────────────────────────────────
@@ -508,9 +537,10 @@ function pagesReturnGroups(state, year) {
     return { name: entry.original_name, detail: first ? nameOf(first.identifier) : "", status: pagesReason(entry.code), tone: "needs",
              date: pagesDay(entry.received), menu: "file", step: fileStep(entry) };
   };
-  groups.needs_you.push(...parked.filter((one) => (one.bucket || plain) === plain).map(parkedSpec));
+  const parkedIn = (list, extra) => pagesEach(list, (one) => one.original_name, (one) => ({ ...parkedSpec(one), ...extra }));
+  groups.needs_you.push(...parkedIn(parked.filter((one) => (one.bucket || plain) === plain), {}));
   const receivedOf = new Map(index.map((one) => [one.handle, one.received]));
-  groups.needs_you.push(...(state.moved || []).map((one) => ({
+  groups.needs_you.push(...pagesEach(state.moved || [], (one) => one.original_name, (one) => ({
     name: one.original_name, detail: nameOf(one.identifier || one.in_request), status: words.moved, tone: "needs",
     date: pagesDay(receivedOf.get(one.handle)), menu: "moved",
     step: { kind: "check", ret: state.paths.engagement, name: one.original_name, handle: one.handle },
@@ -518,29 +548,35 @@ function pagesReturnGroups(state, year) {
 
   const filedBy = (identifier) => index.filter((one) => one.decision === decisions.filed
     && (one.identifier === identifier || (one.answered || []).indexOf(identifier) !== -1));
+  // An item with no known group is not guessed at and not drawn: it is set
+  // aside (pagesSafe) and named in a notice at the end of the draw, while
+  // every other row is drawn (SPEC 6, loud and safe).
   for (const item of items) {
-    if (PAGES_GROUPS.indexOf(item.group) === -1) throw new Error("group");
-    const filed = filedBy(item.identifier);
-    const detail = item.group === "received"
-      ? (filed.length > 1 ? fill(words.counts.files, { n: filed.length }) : filed.length ? filed[0].original_name : "")
-      : pagesItemDetail(item, year);
-    const tone = { needs_you: "needs", waiting: "waiting", received: "done", set_aside: "plain" }[item.group];
-    groups[item.group].push({
-      name: pagesItemName(item), detail, status: pagesItemStatus(item), tone,
-      date: item.group === "waiting" ? "" : pagesDay(item.received_date),
-      menu: item.group === "received" ? "received" : "request",
-      step: item.group === "needs_you" ? { kind: "edit", identifier: item.identifier }
-        : item.group === "waiting" ? { kind: "draft", ret: state.paths.engagement } : null,
-      identifier: item.identifier,
+    pagesSafe(item, () => {
+      if (PAGES_GROUPS.indexOf(item.group) === -1) throw new Error("group");
+      const filed = filedBy(item.identifier);
+      const detail = item.group === "received"
+        ? (filed.length > 1 ? fill(words.counts.files, { n: filed.length }) : filed.length ? filed[0].original_name : "")
+        : pagesItemDetail(item, year);
+      const tone = { needs_you: "needs", waiting: "waiting", received: "done", set_aside: "plain" }[item.group];
+      const spec = {
+        name: pagesItemName(item), detail, status: pagesItemStatus(item), tone,
+        date: item.group === "waiting" ? "" : pagesDay(item.received_date),
+        menu: item.group === "received" ? "received" : "request",
+        step: item.group === "needs_you" ? { kind: "edit", identifier: item.identifier }
+          : item.group === "waiting" ? { kind: "draft", ret: state.paths.engagement } : null,
+        identifier: item.identifier,
+      };
+      groups[item.group].push(spec);
     });
   }
   const dismissed = index.filter((one) => one.decision === decisions.dismissed).sort(oldestFirst);
-  groups.set_aside.push(...dismissed.map((entry) => ({
+  groups.set_aside.push(...pagesEach(dismissed, (one) => one.original_name, (entry) => ({
     name: entry.original_name, detail: "", status: vocab.review_labels.dismiss, tone: "plain", date: pagesDay(entry.received),
     menu: "file", step: fileStep(entry),
   })));
   for (const bucket of bucketOrder.slice(1)) {
-    groups.needs_you.push(...parked.filter((one) => one.bucket === bucket).map((one) => ({ ...parkedSpec(one), sub: vocab.review_labels.buckets[bucket] })));
+    groups.needs_you.push(...parkedIn(parked.filter((one) => one.bucket === bucket), { sub: vocab.review_labels.buckets[bucket] }));
   }
   return groups;
 }
@@ -549,9 +585,11 @@ function pagesReturnGroups(state, year) {
 function pagesBlocks(specs) {
   const blocks = [];
   for (const spec of specs) {
+    const row = pagesSafe(spec.name, () => pagesRow(spec));
+    if (row === null) continue;
     const last = blocks[blocks.length - 1];
-    if (last && (last.sub || "") === (spec.sub || "")) last.rows.push(pagesRow(spec));
-    else blocks.push({ sub: spec.sub || "", rows: [pagesRow(spec)] });
+    if (last && (last.sub || "") === (spec.sub || "")) last.rows.push(row);
+    else blocks.push({ sub: spec.sub || "", rows: [row] });
   }
   return blocks;
 }
@@ -573,21 +611,20 @@ function pagesReturnPlan(groups, route) {
 function pagesReturn(route) {
   if (!lastState || !lastState.paths || lastState.paths.engagement !== route.ret) return [];
   const state = lastState;
-  const title = pagesTitle(pagesReturnName(route.ret), "return", "crumb-return");
+  const title = pagesTitleFor(route);
   const due = state.engagement && state.engagement.due ? pagesDue(state.engagement.due) : "";
   const groups = pagesReturnGroups(state, route.year);
   const out = [title, pagesCaption(due)];
   pagesReturnPlan(groups, route).forEach((one, i) => {
-    const spec = { ...one, first: i === 0, blocks: pagesBlocks(groups[one.key]) };
-    if (one.fold) {
-      if (pagesSetAsideFor !== route.ret) {
-        pagesSetAsideFor = route.ret;
-        pagesSetAsideOpen = false;
+    pagesSafe(one.heading, () => {
+      const spec = { ...one, first: i === 0, blocks: pagesBlocks(groups[one.key]) };
+      if (one.fold) {
+        // Shut each time the page opens (pagesDraw resets it); kept across redraws of this page.
+        spec.open = pagesSetAsideOpen;
+        spec.onToggle = (open) => { pagesSetAsideOpen = open; };
       }
-      spec.open = pagesSetAsideOpen;
-      spec.onToggle = (open) => { pagesSetAsideOpen = open; };
-    }
-    out.push(...pagesGroup(spec));
+      out.push(...pagesGroup(spec));
+    });
   });
   return out.filter(Boolean);
 }
@@ -597,8 +634,8 @@ function pagesReturn(route) {
 function pagesTally(state) {
   const tally = { needs_you: 0, waiting: 0, received: 0, set_aside: 0 };
   for (const item of state.items || []) {
-    if (PAGES_GROUPS.indexOf(item.group) === -1) throw new Error("group");
-    tally[item.group] += 1;
+    // An item with no known group is counted in none (the draw names it).
+    if (PAGES_GROUPS.indexOf(item.group) !== -1) tally[item.group] += 1;
   }
   const index = state.index || [];
   tally.needs_you += index.filter((one) => one.decision === vocab.decisions.needs_review).length + (state.moved || []).length;
@@ -631,6 +668,8 @@ function pagesHouseholdNotices(route) {
 // The shell left the household's pages (the setup page): its notices go.
 function pagesLeave() {
   syncNotices("household", []);
+  syncNotices("rows", []);
+  pagesDrawn = "";
 }
 
 // ── the page ──────────────────────────────────────────────────────────
@@ -664,21 +703,68 @@ function pagesRestore(page) {
   pagesFocus = null;
 }
 
-// shell.js: draw the route's page into #page.
+// The notices for rows and groups that could not be built: one each, naming
+// the row (user data) in the app's own error sentence; the detail, with the
+// error's own message, goes to the error log (SPEC 11.1, 2.2 E30).
+function pagesReportBroken() {
+  const wanted = pagesBroken.map((one, i) => {
+    const kind = (one.err && one.err.name) || "Error";
+    const said = fill(vocab.shell.page_error, { kind });
+    return {
+      key: `${i}:${one.name}`,
+      failure: { sentence: one.name ? fill(vocab.notices.about, { label: one.name, sentence: said }) : said, kind: "failed" },
+      detail: `${one.name}: ${kind}: ${String((one.err && one.err.message) || one.err)}\n${(one.err && one.err.stack) || ""}`,
+    };
+  });
+  syncNotices("rows", wanted);
+}
+
+function pagesRouteKey(route) {
+  return [route.level, route.household || "", route.year || "", route.ret || ""].join("|");
+}
+
+// shell.js: draw the route's page into #page. A page that cannot be built
+// whole keeps what it held (the same page) or draws its frame, its H1, and
+// says so; it is never emptied for one bad row (SPEC 6, failed read).
 function pagesDraw(route, page) {
   if (route.level === "clients" && pagesLastLevel !== "clients") pagesClientsAll = false;
   pagesLastLevel = route.level;
+  const key = pagesRouteKey(route);
+  if (pagesDrawn !== key) pagesSetAsideOpen = false;   // Set aside is shut each time the page opens
   pagesRemember(page);
+  const before = new Map(pagesTokens);
   pagesUid = 0;
   pagesTokens.clear();
-  let nodes = [];
+  pagesBroken = [];
+  let nodes = null;
   try {
     pagesHouseholdNotices(route);
+  } catch (err) {
+    failed(err);
+  }
+  try {
     nodes = pagesBuild(route);
   } catch (err) {
     failed(err);
   }
+  try {
+    pagesReportBroken();
+  } catch (err) {
+    failed(err);
+  }
+  if (nodes === null && pagesDrawn === key && page.childNodes && page.childNodes.length) {
+    for (const [id, spec] of before) pagesTokens.set(id, spec);
+    return;
+  }
+  if (nodes === null) {
+    try {
+      nodes = [pagesTitleFor(route)].filter(Boolean);
+    } catch (err) {
+      nodes = [];
+    }
+  }
   page.replaceChildren(...nodes);
+  pagesDrawn = key;
   pagesRestore(page);
 }
 
