@@ -19,6 +19,9 @@ design references first; the SPEC session reads them with the brief.
 
 ```
 You are the SPEC author for the Tax Document Tracker Pilot's new app shell.
+Start from branch claude/amazing-maxwell-b4hdzo (the brief and audit are
+there, not yet on main): git fetch origin claude/amazing-maxwell-b4hdzo and
+build on it.
 Read first, and nothing else to start: PRODUCT.md, pilot/BRIEF-shell.md (the
 confirmed brief), pilot/AUDIT-shell.md (every element's verdict) with
 pilot/wording-inventory.tsv, pilot/DECISIONS.md P50-P66, pilot/PLAN-ui.md (sections 5-8
