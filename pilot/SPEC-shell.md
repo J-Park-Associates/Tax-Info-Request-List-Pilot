@@ -1508,9 +1508,12 @@ and docs, S3 is renderer files drawn from the stub, and they meet only in
 the vocabulary's key names, which section 11 fixes. **S2 and S4** run at the
 same time after them: S2 is `main.js` and `preload.js`, S4 is `pages.js` and
 `app.js`. S5 follows S4 (both edit `app.js` and `index.html`), and S6
-follows all. Each parallel pair works in its own worktree on its own branch
-stacked on this one; the second to finish merges the first before its
-review.
+follows all. S1 and S3 each start from this branch; S2 builds on S1's
+branch and S4 on S3's; S5 on S4's; S6 merges S2's branch into S5's with a
+merge commit. Side-by-side sessions write separate handoff files
+(`pilot/handoffs/shell-<name>.md`) and only S6 edits `HANDOFF.md` and
+`DECISIONS.md`, so no two sessions edit one file. The prompts for every
+session, review and rebuild are in [`HANDOFF.md`](HANDOFF.md).
 
 ### The Windows check (after S6)
 

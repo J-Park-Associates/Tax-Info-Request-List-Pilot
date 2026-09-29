@@ -39,42 +39,256 @@ Tester guide in Help (P81); Q4 option A, a row's second column shows only
 the detail the record has (P83); Q5 the wording is approved as presented
 (P84); Q6 confirmed (P82). Nothing is waiting on Jason.
 
-**Next jobs: S1 and S3, side by side**, each a fresh session in its own
-worktree (SPEC section 16). Then S2 and S4 side by side, then S5, then S6
-and the Windows check.
+**Next jobs: the build.** The order (SPEC section 16), each step a fresh
+session; a review is always a session that did not build:
 
-S1 (sonnet):
+1. **S1** (engine and wording) and **S3** (renderer foundation), side by side.
+2. Each reviewed (opus), rebuilt (sonnet) until a review has no findings.
+3. **S2** (window and menus, from S1's branch) and **S4** (pages, from S3's
+   branch), side by side; each reviewed until clean.
+4. **S5** (sheet and dialogs, from S4's branch); reviewed until clean.
+5. **S6** (join: merges S2 into S5's branch, runs on the real API); reviewed
+   until clean.
+6. **The Windows check** on the office PC.
+
+### How the shell sessions work (every prompt below points here)
+
+- **Models:** builds, rebuilds and the join are sonnet at default effort;
+  reviews are opus at high effort. The model is set when the session is
+  started, never left to inherit.
+- **Branches:** S1 and S3 start from `claude/admiring-lamport-bp1sse`. S2
+  starts from S1's branch, S4 from S3's, S5 from S4's, each only after the
+  earlier one's latest review says "No findings". S6 starts from S5's branch
+  and merges S2's (a merge commit, never a rebase). A session pushes only to
+  the branch it was given; reviews and rebuilds push to the branch they
+  review. Every handoff names its branch and last commit.
+- **Handoff files, not `HANDOFF.md`:** each session writes
+  `pilot/handoffs/shell-<name>.md` (for example `shell-S1.md`,
+  `shell-S1-review-1.md`, `shell-S1-rebuild-1.md`): what was done, the branch
+  and last commit, the tests run and their results, what is left, the files
+  the next session needs. Only S6 edits `pilot/HANDOFF.md` and
+  `pilot/DECISIONS.md`: side-by-side sessions editing one file would
+  conflict. A session that needs a new decision writes it in its handoff
+  file as a proposed row; S6 logs them from P85.
+- **The gate before every push** (CLAUDE.md): delete dead code in the
+  changed files first; run only the affected tests, each file as its own
+  process, under Python 3.11 and 3.13; `python -m ruff check .`;
+  `python tools/repo_map.py update` then `check` (after a merge, regenerate
+  the map, never hand-resolve it). Commit messages end with `[skip ci]`.
+  Never the whole suite, never a push to let CI test, no pull request unless
+  Jason asks.
+- **Cloud Python:** `pip install -r requirements.lock` fails here; use the
+  virtual environment recipe in "Environment notes for cloud sessions" at
+  the end of this file.
+- **The loop's stop rule:** a finding that survives one rebuild has failed
+  its check: the next review (opus) fixes it itself. If a later review finds
+  that fix wanting, stop and tell Jason.
+- **Made-up names only** in the harness, screenshots and tests.
+
+### S1 - engine and wording (sonnet)
+
 ```
 You are the S1 builder (engine and wording) for the Tax Document Tracker
-Pilot's app shell. Branch from claude/admiring-lamport-bp1sse.
-Read pilot/HANDOFF.md (top section: Jason's answers, P79-P84), then
-pilot/SPEC-shell.md sections 9, 11 and 14, and pilot/wording-shell.tsv.
-Use `python tools/repo_map.py show <file>` for tracker/api.py, reasons.py,
-reminder.py, __init__.py; read only the line ranges you need.
-The wording is approved (P84): use wording-shell.tsv exactly.
-Build exactly SPEC section 9 (approved, P79) and section 11: the
-vocabulary blocks menu and screen, api.MENU, short reasons, stage shorts,
-SAFEGUARDS, the approved rewording, and the docs that quote changed words.
-No renderer file. Run the gate in CLAUDE.md (dead code, the affected tests
-under both Pythons, ruff, repo_map update and check). Commit with [skip ci],
-push, write the handoff (what was built, what is left, the files S2 needs).
+Pilot's app shell. Model: sonnet. Start from branch
+claude/admiring-lamport-bp1sse.
+Read pilot/HANDOFF.md: the top section and "How the shell sessions work".
+Then pilot/SPEC-shell.md sections 9, 11, 14 and 16, and
+pilot/wording-shell.tsv (approved, P84: use it exactly). Use
+`python tools/repo_map.py show <file>` for tracker/api.py, reasons.py,
+reminder.py, __init__.py and manifest.py; read only the line ranges you need.
+Build exactly S1's row of SPEC section 16: section 9 (the read-only firm
+command, item_group and group on state, paths on list, last_pass ok/when;
+approved, P79) and section 11 (vocab.menu and api.MENU, vocab.screen, a short
+label per reason code, stage shorts, SAFEGUARDS, the approved rewording, and
+the docs that quote changed words). Update the tests SPEC 14.2 assigns to the
+Python side and add 9.4's. No renderer file, no main.js or preload.js.
+Run the gate, write pilot/handoffs/shell-S1.md, commit with [skip ci], push.
 ```
 
-S3 (sonnet), at the same time:
+### S3 - renderer foundation (sonnet), at the same time as S1
+
 ```
 You are the S3 builder (renderer foundation) for the Tax Document Tracker
-Pilot's app shell. Branch from claude/admiring-lamport-bp1sse.
-Read pilot/HANDOFF.md (top section), then pilot/SPEC-shell.md sections 1-4,
-8, 10, 12, 14 and 16, and open pilot/mockup-shell.html in the cloud's
-Chromium to see the target. Use `python tools/repo_map.py show <file>` for
-app/renderer/index.html, app.js, pilot-ui.css, pilot.js, tour.js; read only
-the line ranges you need.
-Build exactly S3's row of SPEC section 16: tokens light and dark in
-pilot-ui.css, shell.css, tooltip.js, the index.html skeleton, shell.js, the
-setup page, the pilot layer, and the harness in pilot/harness/ (made-up
-names only). Draw from the harness stub; do not wait for S1. Run the gate in
-CLAUDE.md, shoot the harness scenarios in light and dark, commit with
-[skip ci], push, write the handoff.
+Pilot's app shell. Model: sonnet. Start from branch
+claude/admiring-lamport-bp1sse.
+Read pilot/HANDOFF.md: the top section and "How the shell sessions work".
+Then pilot/SPEC-shell.md sections 1-4, 8, 10, 11.3-11.4, 12, 14 and 16, and
+open pilot/mockup-shell.html in the cloud's Playwright Chromium to see the
+target. Use `python tools/repo_map.py show <file>` for
+app/renderer/index.html, app.js, pilot-ui.css, pilot.js, tour.js and
+pilot-content.js; read only the line ranges you need.
+Build exactly S3's row of SPEC section 16: the light and dark tokens in
+pilot-ui.css (section 10, values exactly as listed), shell.css, tooltip.js,
+the index.html skeleton (3.1), shell.js (routing, side panel, path, search,
+sort icon, notices' place, keyboard via shellKey, the page side of the menu
+channel), the setup page, the pilot layer (12), and the harness in
+pilot/harness/ (14.4; made-up names only, the vocabulary in SPEC 11's key
+shape). Draw from the harness stub; do not wait for S1. Leave app.js's card
+code for S4. Add S3's tests of 14.1 and update test_pilot_ui, test_tour and
+test_pilot as 14.2 says.
+Run the gate, shoot the harness scenarios in light and dark at 1100x700 and
+1400x900 and look at them, write pilot/handoffs/shell-S3.md, commit with
+[skip ci], push.
+```
+
+### S2 - the window and its menus (sonnet), after S1 is clean
+
+```
+You are the S2 builder (the window and its menus) for the Tax Document
+Tracker Pilot's app shell. Model: sonnet. Start from S1's branch, named in
+pilot/handoffs/shell-S1.md; its latest review file must say "No findings".
+Read pilot/HANDOFF.md "How the shell sessions work", the S1 handoff, then
+pilot/SPEC-shell.md sections 5, 11.3, 14 and 16. Use
+`python tools/repo_map.py show <file>` for app/main.js and app/preload.js;
+read only the line ranges you need.
+Build exactly S2's row of SPEC section 16: buildMenu from vocab.menu, with
+main.js's defaults word for word api.MENU; the template, accelerators and
+enable rules of 5.1 (no Reload, Zoom or Developer tools); the native
+right-click popups of 5.2; the one `menu` channel of 5.4 in preload.js and
+main.js, dropping unknown ids, popups and long tokens; Open error log and
+Exit (5.5); the first paint of 5.6 (main.js reads --window-light and
+--window-dark from pilot-ui.css by name; S3 adds them, S6 joins the two).
+Update the main.js and preload.js pins SPEC 14.2 lists (the IPC-channel
+tests, the menu test, the Electron stub) and add S2's menu tests of 14.1.
+No renderer file.
+Run the gate, write pilot/handoffs/shell-S2.md, commit with [skip ci], push.
+```
+
+### S4 - the pages (sonnet), after S3 is clean, at the same time as S2
+
+```
+You are the S4 builder (the pages) for the Tax Document Tracker Pilot's app
+shell. Model: sonnet. Start from S3's branch, named in
+pilot/handoffs/shell-S3.md; its latest review file must say "No findings".
+Read pilot/HANDOFF.md "How the shell sessions work", the S3 handoff, then
+pilot/SPEC-shell.md sections 2.4-2.5, 3.6, 6, 9.2 (the data shape), 13, 14
+and 16. Open pilot/mockup-shell.html in the cloud's Chromium for the target.
+Use `python tools/repo_map.py show <file>` for app/renderer/app.js and
+index.html; read only the line ranges you need.
+Build exactly S4's row of SPEC section 16: pages.js with every page and state
+of section 6 (Overview, Needs review, Reminders, Clients, household, year,
+return, setup's page frame), the one row and group of 3.6 (listboxes, the
+shared date-or-step end column), the grouping of state by `group`, and the
+removal of the card renderers from app.js and their markup from index.html
+(section 13's table). Draw from the harness stub (S1's firm command may not
+be merged yet). Update the tests 14.2 lists that follow the cards and add
+S4's tests of 14.1.
+Run the gate, shoot the page scenarios in light and dark at both sizes and
+look at them, write pilot/handoffs/shell-S4.md, commit with [skip ci], push.
+```
+
+### S5 - the sheet and the dialogs (sonnet), after S4 is clean
+
+```
+You are the S5 builder (side sheet and dialogs) for the Tax Document Tracker
+Pilot's app shell. Model: sonnet. Start from S4's branch, named in
+pilot/handoffs/shell-S4.md; its latest review file must say "No findings".
+Read pilot/HANDOFF.md "How the shell sessions work", the S4 handoff, then
+pilot/SPEC-shell.md sections 2.5, 2.7, 5.2, 7, 12, 13, 14 and 16, and the
+dialog rows of pilot/wording-shell.tsv. Use
+`python tools/repo_map.py show <file>` for app/renderer/app.js and
+index.html; read only the line ranges you need.
+Build exactly S5's row of SPEC section 16: sheet.js (7.1 Check a file, 7.2
+Draft reminder) placing the output of reviewRow, movedRow and drawReminder,
+with the next arrow and the More fold; the Cards deck removed; the page side
+of the right-click menus (popup requests with the page's own tokens, and the
+answers to each menu id); the four new dialogs (roll forward, safeguards,
+about, folders skipped); the kept dialogs' help lines cut (E84-E91); Help's
+Terms shown read-only. Update the tests 14.2 lists for the sheet, the roll
+and the dialog registry, delete 14.3's, add S5's tests of 14.1.
+Run the gate, shoot the sheet and dialog scenarios in light and dark and look
+at them, write pilot/handoffs/shell-S5.md, commit with [skip ci], push.
+```
+
+### S6 - the join (sonnet), after S2 and S5 are clean
+
+```
+You are the S6 builder (the join) for the Tax Document Tracker Pilot's app
+shell. Model: sonnet. Start from S5's branch (pilot/handoffs/shell-S5.md)
+and merge S2's branch (pilot/handoffs/shell-S2.md) with a merge commit;
+regenerate the repository map, never hand-resolve it.
+Read pilot/HANDOFF.md "How the shell sessions work", every file in
+pilot/handoffs/, then pilot/SPEC-shell.md sections 14, 16 and 17.
+Make the renderer run on the real API instead of the stub: compare the
+harness stub's vocabulary and reply shapes with tracker/api.py's _vocab(),
+list, firm and state, fix every mismatch on the renderer side (or the stub),
+and add test_the_harness_stub_speaks_the_apis_vocabulary to
+tests/test_shell.py. Run every test file the Windows check names (SPEC 16),
+each its own process, under 3.11 and 3.13, plus ruff and the map check.
+Fold the handoff files into a new top section of pilot/HANDOFF.md, log the
+proposed decision rows in pilot/DECISIONS.md from P85, and write the Windows
+check prompt into pilot/wintest/PROMPT-shell.md from the draft in HANDOFF.md.
+Commit with [skip ci], push, and write pilot/handoffs/shell-S6.md.
+```
+
+### Review - any session (opus, high effort)
+
+Fill in `<S#>` (S1 … S6) and `<n>` (1 for the first review, then 2, 3 …).
+
+```
+You review shell session <S#> of the Tax Document Tracker Pilot; you did not
+build it. Model: opus, high effort. Check out the branch named in
+pilot/handoffs/shell-<S#>.md.
+Read pilot/HANDOFF.md "How the shell sessions work", every
+pilot/handoffs/shell-<S#>*.md file so far, and the parts of
+pilot/SPEC-shell.md that <S#>'s row of section 16 names. Read the diff
+against the branch it started from (git diff <base>...HEAD), not the whole
+repository; use `python tools/repo_map.py show <file>` for context.
+Review against the SPEC: every requirement of the session's row is met;
+nothing is built that the SPEC does not ask for; the four standing rules;
+five words at most and no path on screen; the approved wording used
+exactly; tokens, contrast and the grid where touched; the session's tests of
+SPEC 14 present and named as the claim they make. Run the session's affected
+tests yourself under both Pythons, and for renderer work shoot the harness
+scenarios in light and dark and look at them.
+If a finding from the previous review survived its rebuild, fix it yourself
+now, rerun its tests, and say so. If a fix an earlier review made itself is
+still wrong, stop and tell Jason.
+Write pilot/handoffs/shell-<S#>-review-<n>.md: numbered findings (F1, F2 …),
+each with file:line, what the SPEC says, what the code does and the smallest
+fix; or "No findings". Change no other code. Commit with [skip ci], push to
+the same branch.
+```
+
+### Rebuild - any session (sonnet)
+
+```
+You rebuild shell session <S#> of the Tax Document Tracker Pilot after
+review <n>. Model: sonnet. Check out the branch named in
+pilot/handoffs/shell-<S#>.md.
+Read pilot/HANDOFF.md "How the shell sessions work", then
+pilot/handoffs/shell-<S#>-review-<n>.md and only the SPEC sections its
+findings cite. Fix each finding and nothing more.
+Delete dead code in the files you touched, rerun only the tests the fixes
+touch (each file its own process, under 3.11 and 3.13), ruff, and the map
+update and check. Write pilot/handoffs/shell-<S#>-rebuild-<n>.md: each
+finding, fixed how, or why not. Commit with [skip ci], push to the same
+branch.
+```
+
+### The Windows check (draft for S6 to finish; run on the office PC)
+
+```
+You run the Windows check of the Tax Document Tracker Pilot's app shell on
+the office PC. Branch: the one named in pilot/handoffs/shell-S6.md, after its
+latest review says "No findings". Read pilot/HANDOFF.md's top section and
+pilot/SPEC-shell.md section 16 ("The Windows check").
+Tests, in parallel, and why: pilot\wintest\run_checks.ps1 -Tests
+test_shell.py,test_api.py,test_single_source.py,test_pilot_ui.py,
+test_tour.py,test_pilot.py,test_reasons.py,test_reminder.py,test_layers.py,
+test_repo_map.py,test_tripwire.py,test_errors.py
+(the files the shell changed, the guards, and the error wording).
+Hands-on, each because the shell can reach it: the menu bar by mouse and by
+Alt; every accelerator (Ctrl+1-4, Ctrl+F, Ctrl+N, Ctrl+E, F5, F9); right-click
+on a row, a path segment and a heading, and Shift+F10; light and dark
+(Settings, Personalisation, Colours) with the app open, and a contrast theme;
+the first paint in dark (no white flash); Sort now and Stop on a real
+household; the firm pages on the office's clients folder, timing the counts
+(under 3 seconds, SPEC 9.2); a tooltip by mouse and by Tab; Remote Desktop at
+1100 x 700. Not repeated (the shell does not reach them): the installer, the
+schedule's registration, filing itself.
+Record the results in pilot/wintest/ as the kit's RESULTS template asks, and
+tell Jason what passed, what failed, and why.
 ```
 
 ## App shell brief confirmed (2026-09-29, P58-P62; branch `claude/amazing-maxwell-b4hdzo`)

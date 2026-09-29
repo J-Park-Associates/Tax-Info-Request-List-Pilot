@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 265,
     "edges": 1136,
-    "reused": 221
+    "reused": 222
   },
   "node_types": [
     "artifact",
@@ -4514,8 +4514,8 @@
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "e8a9b17e48f4669e",
-      "lines": 459
+      "sha256": "1139c5abf6693a35",
+      "lines": 673
     },
     {
       "id": "pilot/PLAN-ui.md",
@@ -4556,8 +4556,8 @@
       "id": "pilot/SPEC-shell.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "cc2887899e1ae46b",
-      "lines": 1552
+      "sha256": "338a4e376497656d",
+      "lines": 1555
     },
     {
       "id": "pilot/SPEC-ui.md",
