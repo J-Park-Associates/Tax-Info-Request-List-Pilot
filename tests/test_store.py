@@ -27,7 +27,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import make_engagement, named_page, seed_statuses, sort, written_elsewhere
+from tests.conftest import child_env, make_engagement, named_page, seed_statuses, sort, written_elsewhere
 from tests.test_scanner import text_pdf
 from tracker import checkpoint, ledger, store
 from tracker.filer import ensure, read_index
@@ -812,7 +812,7 @@ def test_a_failed_create_is_forgotten_and_a_retired_event_is_refused(conn, root,
 def cli(*argv):
     return subprocess.run([sys.executable, "-m", "tracker.store", *[str(a) for a in argv]],
                           cwd=REPO, capture_output=True, text=True, encoding="utf-8",
-                          env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+                          env=child_env(PYTHONIOENCODING="utf-8"))
 
 
 def test_the_command_line_builds_every_engagement_under_a_root(root, tmp_path):
