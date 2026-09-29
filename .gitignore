@@ -120,6 +120,9 @@ ocr-scratch/
 # tooling runs under.
 .claude/*
 !.claude/settings.json
+# Design skills for every session on this repo (P56): Anthropic's
+# frontend-design and Impeccable, both Apache 2.0.
+!.claude/skills/
 graphify-out/
 tax-tracker.xml
 reminder-draft.txt
