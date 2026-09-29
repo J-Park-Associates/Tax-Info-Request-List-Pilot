@@ -344,9 +344,7 @@ th, legend, strong,
 .hh-feed-remove,
 .ed-unlearn,
 .ed-remove .btn,
-.person .editor-actions .btn,
-#btn-unlock,
-#btn-stop-pass {
+.person .editor-actions .btn {
   --b-fg: var(--danger);
   --b-bg: var(--bg-raised);
   --b-bd: var(--border-strong);
