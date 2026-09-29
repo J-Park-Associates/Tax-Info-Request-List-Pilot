@@ -104,6 +104,11 @@ glass theme (Build D, P30) is the natural place to fold in 2 and 3.
 3. **No tooltips.** Hovering a button or icon shows no description. Every
    control should say what it does, with the words coming from the API's
    vocabulary like the rest of the page.
+4. **Status inside the app, as the landing page.** The Status page opens
+   outside the app (a file in the browser). Jason wants it shown inside the
+   app, and as the page the app opens on.
+5. **Terms wording.** The terms screen does not clearly say that it is an
+   agreement. Wording is Jason's to approve (P20 was his text).
 
 ## Environment notes for cloud sessions
 
