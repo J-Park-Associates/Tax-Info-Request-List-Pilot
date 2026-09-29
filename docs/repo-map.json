@@ -3,7 +3,7 @@
   "generated": "2026-09-29",
   "generator": "tools/repo_map.py",
   "generator_sha256": "22c7b60a1d198289",
-  "module_table_sha256": "c336637593f80939",
+  "module_table_sha256": "6eac48a9eb5ee554",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 271,
-    "edges": 1136,
-    "reused": 229
+    "nodes": 272,
+    "edges": 1138,
+    "reused": 230
   },
   "node_types": [
     "artifact",
@@ -3969,10 +3969,10 @@
       "id": "app/main.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "e8f34e5a38b9c528",
-      "lines": 439,
+      "sha256": "bbc8ecb76609195f",
+      "lines": 665,
       "role": "Electron main process. Spawns the Python API (`-m tracker.api` under the checkout's .venv interpreter, by its full path, or the frozen executable package.json's config.apiName names in the portable build) and relays its JSON to the renderer over IPC. Since decision 193 it passes each progress line a pass prints (tracker.progress's format) to the window on the tracker-progress channel, keeps the last non-progress line as the reply, follows the kill to the limit_seconds the pass reports and says where it was, answers every failure of its own in the API's envelope, and puts no stderr on screen - a failed command's goes to the error log the API names.",
-      "notes": "This is the cross-language boundary: everything the UI can do is a tracker.api command. The renderer is untrusted here: a command must be in vocab.commands (before the vocabulary arrives, only BOOTSTRAP_COMMAND, pinned to tracker.api.COMMANDS by a guard) with the one argument shape the renderer uses; open-path opens only a path the API reported in state.paths; the tracker's exit code is read, not discarded, and a plain command that outlives TRACKER_TIMEOUT_MS is killed and reported, and a pass at the limit its own first line states (decision 203). The window is sandboxed, cannot navigate and cannot open windows. Decision 160: the shell takes app.requestSingleInstanceLock(); a second launch quits before any window is made, and the running one restores and focuses its window on second-instance - two windows were two editors, and the earlier one's save took the later one's back. Decision 176: devTools is off when packaged, and runTracker() serialises the payload before the tracker starts and writes it as UTF-8, which is how tracker.api._read_spec() reads it. Decision 191: from source it runs .venv/Scripts/python.exe (or .venv/bin/python), never a bare python, and answers with the lock tool's NOT_SET_UP sentence when that is missing; in the packaged app Menu.setApplicationMenu(null) runs before the window is made, so no reload, zoom or developer-tools accelerator exists there (E-7). Decision 188 (E-14): learn() keeps each reported path with its kind from vocab.path_kinds, and openPath lstat()s it and opens it only when it is no symbolic link (Node reports a junction as one) and still a directory for 'folder' or a regular file for 'file'; otherwise vocab.shell.not_opened. No path.relative( and no startsWith( (tests/test_layers.py). Decision 186's rebase review (MF2): keepInLog() writes only to the error log the API named and never builds a path - no ERROR_LOG_FILENAME in the shell; with none, a failed command's stderr (its last STDERR_ON_SCREEN_CAP) is said in its reply after vocab.shell.no_log (api.SHELL_NO_LOG), and a renderer error is not kept. Decision 203: the command named by vocab.pass_command (learned, never typed) is a pass: runTracker resolves the click at its 'started' progress line, streams its later lines on tracker-progress and sends {reply, code} - its final line, or the shell's own failure when it gave none or was killed - on the same channel when it closes; a pass is killed only at the limit its own first line states (limit_seconds, locking.RUN_TIME_LIMIT_SECONDS), while every other command keeps TRACKER_TIMEOUT_MS; each running pass is kept in 'passes' and will-quit destroys its stdout, which the runner takes as Stop. Decision 209: at whenReady the shell runs the API's after-install command itself (LAUNCH_COMMAND, through spawnTracker, outside the renderer's allowlist) in the background: no tracker-cmd waits for it (the review's S7), and when its reply says ran the shell sends LAUNCH_DONE_CHANNEL ('after-install-done', the one main-to-renderer channel) so the page asks list again for the notice. Pilot P46: flushes the page's storage to disk as the window closes, since Electron lets go of the single-instance lock before it closes that storage."
+      "notes": "This is the cross-language boundary: everything the UI can do is a tracker.api command. The renderer is untrusted here: a command must be in vocab.commands (before the vocabulary arrives, only BOOTSTRAP_COMMAND, pinned to tracker.api.COMMANDS by a guard) with the one argument shape the renderer uses; open-path opens only a path the API reported in state.paths; the tracker's exit code is read, not discarded, and a plain command that outlives TRACKER_TIMEOUT_MS is killed and reported, and a pass at the limit its own first line states (decision 203). The window is sandboxed, cannot navigate and cannot open windows. Decision 160: the shell takes app.requestSingleInstanceLock(); a second launch quits before any window is made, and the running one restores and focuses its window on second-instance - two windows were two editors, and the earlier one's save took the later one's back. Decision 176: devTools is off when packaged, and runTracker() serialises the payload before the tracker starts and writes it as UTF-8, which is how tracker.api._read_spec() reads it. Decision 191: from source it runs .venv/Scripts/python.exe (or .venv/bin/python), never a bare python, and answers with the lock tool's NOT_SET_UP sentence when that is missing; buildMenu() runs before the window is made in both builds, and the app's own menu (SPEC-shell 5.1) has no reload, zoom or developer-tools item or accelerator (E-7). Decision 188 (E-14): learn() keeps each reported path with its kind from vocab.path_kinds, and openPath lstat()s it and opens it only when it is no symbolic link (Node reports a junction as one) and still a directory for 'folder' or a regular file for 'file'; otherwise vocab.shell.not_opened. No path.relative( and no startsWith( (tests/test_layers.py). Decision 186's rebase review (MF2): keepInLog() writes only to the error log the API named and never builds a path - no ERROR_LOG_FILENAME in the shell; with none, a failed command's stderr (its last STDERR_ON_SCREEN_CAP) is said in its reply after vocab.shell.no_log (api.SHELL_NO_LOG), and a renderer error is not kept. Decision 203: the command named by vocab.pass_command (learned, never typed) is a pass: runTracker resolves the click at its 'started' progress line, streams its later lines on tracker-progress and sends {reply, code} - its final line, or the shell's own failure when it gave none or was killed - on the same channel when it closes; a pass is killed only at the limit its own first line states (limit_seconds, locking.RUN_TIME_LIMIT_SECONDS), while every other command keeps TRACKER_TIMEOUT_MS; each running pass is kept in 'passes' and will-quit destroys its stdout, which the runner takes as Stop. Decision 209: at whenReady the shell runs the API's after-install command itself (LAUNCH_COMMAND, through spawnTracker, outside the renderer's allowlist) in the background: no tracker-cmd waits for it (the review's S7), and when its reply says ran the shell sends LAUNCH_DONE_CHANNEL ('after-install-done', the one main-to-renderer channel) so the page asks list again for the notice. SPEC-shell 5: the menu bar is built from BAR with the API's words (DEFAULT_MENU_WORDS, word for word tracker.api.MENU, replaced by vocab.menu when a word differs), items are enabled from the page's {enable} list (ALWAYS need nothing), and a chosen item goes to the page on MENU_CHANNEL as {id, token}; onMenuMessage() treats the one 'menu' channel as untrusted (unknown ids, popups and long tokens are dropped) and pops the six native right-click menus of POPUPS; Open error log is the shell's alone (openErrorLog, through openPath's lstat test). pageBackground() reads --window-light / --window-dark from pilot-ui.css for the system theme (none under a contrast theme) and nativeTheme 'updated' repaints the window. Pilot P46: flushes the page's storage to disk as the window closes, since Electron lets go of the single-instance lock before it closes that storage."
     },
     {
       "id": "app/package-lock.json",
@@ -3992,9 +3992,9 @@
       "id": "app/preload.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "10382e13701ed366",
-      "lines": 12,
-      "role": "Context bridge exposing only the calls tests/test_single_source.py checks against main.js.call(args, payload), tracker.open(path), tracker.pickFolder() and tracker.onAfterInstallDone(listener), which hears the shell's 'after-install-done' and passes nothing across. Nothing else crosses."
+      "sha256": "33b4f4b5f1833d6a",
+      "lines": 20,
+      "role": "Context bridge exposing only the calls tests/test_single_source.py checks against main.js.call(args, payload), tracker.open(path), tracker.pickFolder() and tracker.onAfterInstallDone(listener), which hears the shell's 'after-install-done' and passes nothing across, and tracker.menu (onCommand hears {id, token} on 'menu'; send posts the page's {enable} or {popup, enable, token, x, y} on it). Nothing else crosses."
     },
     {
       "id": "app/renderer/app.js",
@@ -4461,7 +4461,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "8f160c1eb25ee645",
+      "sha256": "37928eeb96018966",
       "lines": 1092,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -8457,11 +8457,42 @@
       ]
     },
     {
+      "id": "tests/test_shell.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "9cbf9ca51978881a",
+      "lines": 464,
+      "exports": [
+        "REPO",
+        "read",
+        "test_a_chosen_bar_item_is_sent_to_the_page_except_exit_and_the_error_log",
+        "test_a_right_click_menu_is_native_holds_only_its_templates_items_and_echoes_the_token",
+        "test_a_switch_between_light_and_dark_sets_the_window_colour_again",
+        "test_a_word_from_the_api_rebuilds_the_menu_only_when_it_differs",
+        "test_every_accelerator_is_named_once",
+        "test_every_menu_id_is_in_the_apis_words_and_every_word_is_placed",
+        "test_only_the_items_that_need_nothing_are_enabled_until_the_page_speaks",
+        "test_open_error_log_opens_the_named_file_and_says_so_when_there_is_none",
+        "test_open_error_log_refuses_a_symbolic_link",
+        "test_the_menu_channel_drops_what_it_does_not_know",
+        "test_the_menu_has_no_reload_zoom_or_developer_tools",
+        "test_the_menu_is_set_before_the_first_frame_from_the_apis_words_in_both_builds",
+        "test_the_menus_default_words_are_the_apis_word_for_word",
+        "test_the_page_enables_the_items_whose_rule_holds_and_the_menu_follows",
+        "test_the_preload_exposes_one_menu_channel",
+        "test_the_six_right_click_menus_hold_the_items_of_the_spec",
+        "test_the_template_carries_the_accelerators_of_the_spec_and_no_others",
+        "test_the_window_colour_is_read_defensively",
+        "test_the_window_colours_main_reads_are_the_pages",
+        "test_the_window_paints_the_pages_colour_for_the_systems_theme"
+      ]
+    },
+    {
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "98b9a763a959b375",
-      "lines": 3838,
+      "sha256": "e3b119496ddedb23",
+      "lines": 3855,
       "exports": [
         "AFTER_WHAT",
         "CONSOLE_EXEMPT",
@@ -8550,6 +8581,7 @@
         "test_the_api_docstring_lists_exactly_the_commands",
         "test_the_app_opens_one_window",
         "test_the_app_returns_before_the_pass_ends",
+        "test_the_apps_menu_is_the_template_in_both_builds_and_the_source_app_runs_its_private_python",
         "test_the_build_is_made_from_what_is_committed",
         "test_the_build_output_folder_is_the_one_gitignore_knows",
         "test_the_card_hands_the_roll_call_the_household_it_shows_and_no_other",
@@ -8577,7 +8609,6 @@
         "test_the_package_docstring_lists_every_module",
         "test_the_package_prose_names_constants_rather_than_their_values",
         "test_the_packaged_app_has_no_console_and_sends_the_api_utf8_it_serialised_first",
-        "test_the_packaged_app_has_no_menu_and_the_source_app_runs_its_private_python",
         "test_the_pass_and_the_hand_over_file_into_another_household_through_one_function",
         "test_the_plain_view_draws_one_box_per_column_and_a_custom_rows_document_in_the_plain_part",
         "test_the_product_name_has_one_home",
@@ -8637,7 +8668,7 @@
         "test_the_workflow_document_names_every_status_and_override",
         "test_tree_diagrams_name_only_runtime_files_the_code_owns",
         "test_tree_diagrams_show_catalog_copies_as_the_filer_names_them",
-        "test_with_no_error_log_the_shell_says_stderr_in_the_reply_and_writes_no_file"
+        "test_with_no_error_log_the_shell_says_so_and_shows_no_stderr_and_writes_no_file"
       ],
       "constants": {
         "UPSTREAM_DATA_HOME_NAME": "'tax-document-tracker'",
@@ -13136,6 +13167,18 @@
       "from": "tests/test_settings.py",
       "to": "tracker/settings.py",
       "type": "tests",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_shell.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_shell.py",
+      "to": "tracker/api.py",
+      "type": "exercises",
       "source": "derived"
     },
     {

@@ -74,15 +74,22 @@ def test_the_shell_and_the_preload_agree_on_every_ipc_channel():
     handled = set(re.findall(r'ipcMain\.handle\("([a-z-]+)"', read("app/main.js")))
     invoked = set(re.findall(r'ipcRenderer\.invoke\("([a-z-]+)"', read("app/preload.js")))
     assert handled == invoked and handled
-    # The one channel the shell sends on (decision 209, the review's S7):
-    # the launch step finished having run, and the page listens for it.
+    # The channels the shell sends on outside a reply (decision 209, the
+    # review's S7; SPEC-shell 5.4): the launch step finished having run, and
+    # a menu item chosen. The page listens for both.
     sent = set(re.findall(r'const [A-Z_]+_CHANNEL = "([a-z-]+)"', read("app/main.js")))
     heard = set(re.findall(r'ipcRenderer\.on\("([a-z-]+)"', read("app/preload.js")))
-    assert sent == {"after-install-done"} and sent <= heard
+    assert sent == {"after-install-done", "menu"} and sent <= heard
     # With the pass's progress channel (decision 193), those are all it hears.
     sent |= set(re.findall(r'event\.sender\.send\("([a-z-]+)"', read("app/main.js")))
-    assert sent == heard == {"after-install-done", "tracker-progress"}
+    assert sent == heard == {"after-install-done", "tracker-progress", "menu"}
     assert "webContents.send(LAUNCH_DONE_CHANNEL)" in read("app/main.js")
+    assert "webContents.send(MENU_CHANNEL, message)" in read("app/main.js")
+    # The menu channel goes both ways, once: the shell listens on it with
+    # ipcMain.on (a one-way message, not a call that has a reply), and the
+    # preload sends on it - the page's only way to the menu.
+    assert re.findall(r'ipcMain\.on\(([A-Za-z_"]+),', read("app/main.js")) == ["MENU_CHANNEL"]
+    assert re.findall(r'ipcRenderer\.send\("([a-z-]+)"', read("app/preload.js")) == ["menu"]
     assert "window.tracker.onAfterInstallDone(" in read("app/renderer/app.js")
 
 
@@ -169,18 +176,20 @@ def test_the_packaged_app_has_no_console_and_sends_the_api_utf8_it_serialised_fi
     assert 'proc.stdin.write(body, "utf8")' in run
 
 
-def test_the_packaged_app_has_no_menu_and_the_source_app_runs_its_private_python():
-    """Decision 191. The packaged app removes Electron's default menu (E-7)
-    before its window is made - the menu carries reload, zoom and the
-    developer-tools accelerator. From source, the shell runs the Python
-    Setup.bat made, by its full path, never a bare ``python`` from the
-    search path, and when that is missing it says so in the lock tool's
-    own sentence."""
+def test_the_apps_menu_is_the_template_in_both_builds_and_the_source_app_runs_its_private_python():
+    """Decision 191, SPEC-shell 5.1. Electron's default menu carries reload,
+    zoom and the developer-tools accelerator (E-7), so both builds set the
+    app's own menu (the template) before the window is made, and neither
+    removes it. From source, the shell runs the Python Setup.bat made, by
+    its full path, never a bare ``python`` from the search path, and when
+    that is missing it says so in the lock tool's own sentence."""
     from tools.lockfiles import NOT_SET_UP
 
     main_js = read("app/main.js")
     window = main_js[main_js.index("function createWindow"):]
-    assert window.index("if (app.isPackaged) Menu.setApplicationMenu(null);") < window.index("new BrowserWindow(")
+    assert window.index("buildMenu();") < window.index("new BrowserWindow(")
+    assert "Menu.setApplicationMenu(Menu.buildFromTemplate(buildTemplate()))" in main_js
+    assert "setApplicationMenu(null)" not in main_js and "app.isPackaged) Menu" not in main_js
     assert re.search(r"const \{ app, BrowserWindow, Menu,", main_js)
     assert 'spawn("python"' not in main_js
     assert 'path.join(REPO_ROOT, ".venv", "Scripts", "python.exe")' in main_js
@@ -202,7 +211,9 @@ const win = {
   focus() { seen.focused += 1; },
   loadFile() {},
   on() {},
-  webContents: { setWindowOpenHandler() {}, on() {} },
+  isDestroyed: () => false,
+  setBackgroundColor() {},
+  webContents: { setWindowOpenHandler() {}, on() {}, send() {} },
 };
 const opened = [];
 class BrowserWindow {
@@ -217,7 +228,9 @@ const electron = {
     on(name, fn) { seen.events.push(name); handlers[name] = fn; },
     whenReady: () => Promise.resolve(),
   },
-  BrowserWindow, ipcMain: { handle() {} }, shell: {}, dialog: {},
+  BrowserWindow, ipcMain: { handle() {}, on() {} }, shell: {}, dialog: {},
+  Menu: { buildFromTemplate: (template) => ({ template }), setApplicationMenu() {} },
+  nativeTheme: { shouldUseDarkColors: false, shouldUseHighContrastColors: false, themeSource: "", on() {} },
 };
 const load = Module._load;
 Module._load = function (request, ...rest) {
@@ -2462,8 +2475,10 @@ const electron = {
   app: { isPackaged: false, requestSingleInstanceLock: () => true, quit() {},
          on(name, fn) { appHandlers[name] = fn; },
          whenReady: () => new Promise(() => {}) },
-  BrowserWindow: class {}, Menu: { setApplicationMenu() {} },
-  ipcMain: { handle(name, fn) { if (name === "tracker-cmd") handler = fn; } },
+  BrowserWindow: class {},
+  Menu: { buildFromTemplate: (template) => ({ template }), setApplicationMenu() {} },
+  ipcMain: { handle(name, fn) { if (name === "tracker-cmd") handler = fn; }, on() {} },
+  nativeTheme: { shouldUseDarkColors: false, shouldUseHighContrastColors: false, themeSource: "", on() {} },
   shell: {}, dialog: {},
 };
 const load = Module._load;
@@ -2729,19 +2744,20 @@ def test_the_shell_never_puts_stderr_on_screen_and_appends_it_to_the_error_log(t
     assert "a fabricated message naming Sample Client's folder" in logged
 
 
-def test_with_no_error_log_the_shell_says_stderr_in_the_reply_and_writes_no_file(tmp_path):
+def test_with_no_error_log_the_shell_says_so_and_shows_no_stderr_and_writes_no_file(tmp_path):
     """The rebase review of 186 (MF2): with no data home the API names no
     error log, and the shell never builds one beside the program or in the
-    settings folder - a failed command's stderr is said in its own reply,
-    and no file is written anywhere."""
+    settings folder - a failed command's reply says there is no error log
+    (SPEC-shell 11.2), its stderr is neither kept nor shown, and no file is
+    written anywhere."""
     import tracker.api as api
     from tracker.settings import ERROR_LOG_FILENAME
 
     ran = _run_the_shell(tmp_path, [["list"], ["templates"]], FAKE_LOG="")
     reply = ran["out"][1]["reply"]
-    stderr = "Traceback: a fabricated message naming Sample Client's folder\n"
-    sentence = api.SHELL_NO_REPLY.format(code=1) + "\n\n" + api.SHELL_NO_LOG.format(stderr=stderr)
+    sentence = api.SHELL_NO_REPLY.format(code=1) + "\n\n" + api.SHELL_NO_LOG
     assert reply["error"] == sentence and reply["failure"]["sentence"] == sentence
+    assert "fabricated" not in json.dumps(reply)
     assert reply["failure"]["kind"] == "failed"
     assert not (REPO / ERROR_LOG_FILENAME).exists()
     assert not list(tmp_path.rglob(ERROR_LOG_FILENAME))
@@ -2876,8 +2892,9 @@ def test_the_lock_notice_types_no_sentence_and_polls_only_while_a_lock_shows():
 def test_the_shell_sends_on_only_the_channels_the_preload_listens_to():
     sent = set(re.findall(r'event\.sender\.send\("([a-z-]+)"', read("app/main.js")))
     heard = set(re.findall(r'ipcRenderer\.on\("([a-z-]+)"', read("app/preload.js")))
-    # Decision 209's launch channel is the one other the preload hears.
-    assert sent == {"tracker-progress"} and heard == sent | {"after-install-done"}
+    # Decision 209's launch channel and SPEC-shell 5.4's menu channel are the
+    # others the preload hears; both are sent with webContents.send.
+    assert sent == {"tracker-progress"} and heard == sent | {"after-install-done", "menu"}
 
 
 # ------------------------------------------ decision 193: the review's fixes ----

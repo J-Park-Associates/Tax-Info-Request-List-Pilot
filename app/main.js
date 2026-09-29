@@ -8,7 +8,7 @@
 // for ever. Python still validates everything it is given; this is the
 // second wall, not the first.
 
-const { app, BrowserWindow, Menu, ipcMain, shell, dialog } = require("electron");
+const { app, BrowserWindow, Menu, ipcMain, nativeTheme, shell, dialog } = require("electron");
 const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -54,12 +54,8 @@ const TRACKER_TIMEOUT_MS = 30 * 60 * 1000;
 // last, is the reply.
 const PROGRESS_KEY = "progress";
 // At most this much of a failed child's stderr is kept, in the error log -
-// never on screen while there is one (decision 193, security principle 7).
+// never on screen (decision 193, security principle 7).
 const STDERR_CAP = 64 * 1024;
-// With no error log (no data folder yet: decision 186's rebase review, MF2)
-// a failed command's stderr goes into its own reply instead, and at most
-// this much of its end, where the error is.
-const STDERR_ON_SCREEN_CAP = 4 * 1024;
 
 // The command the renderer runs first, and the only one allowed before the
 // API has said which commands exist: its reply carries vocab.commands (the
@@ -90,23 +86,22 @@ const passes = new Map();
 // The renderer never names a path of its own, so anything else is refused.
 const openable = new Map();
 let pathKinds = {};           // vocab.path_kinds, once seen
-let notOpened = "That is no longer the folder or file the tracker reported; nothing was opened.";
+let notOpened = "Not opened; it has changed";
 // The shell's own sentences (decision 193): learned from vocab.shell, with
 // these defaults - word for word tracker.api's SHELL_* - for a first start.
-let killed = "The pass ran past its limit of {minutes} minutes and was stopped. What it finished " +
-  "is on the record, and the next pass does the rest.";
+let killed = "Sort stopped: ran too long";
 let killedAt = "It was on {household}: {name}.";
-let noReply = "The tracker ended without a reply (exit code {code}); the details are in the error log.";
-let couldNotStart = "The tracker could not start ({code}).";
-let couldNotSend = "The app could not send that to the tracker ({kind}); nothing was changed.";
-let noLog = "There is no error log to hold the details - the tracker has no data folder yet - so " +
-  "they are here instead: {stderr}";
+let noReply = "No reply from the tracker";
+let couldNotStart = "The tracker could not start";
+let couldNotSend = "Could not send; nothing changed";
+let noLog = "Tracker failed; no error log";
 // The error log beside the tracker's database, as the API reports it
 // (vocab.shell.error_log): the shell never builds that path, and never
 // writes a log beside the program or in the settings folder (decision
 // 186's rebase review, MF2). Until the API has named one - a failed first
-// start, or no data folder - there is none: a failed command's stderr is
-// said in its own reply, and anything else is not kept.
+// start, or no data folder - there is none: a failed command's reply says
+// so (noLog), its stderr is not kept and not shown, and anything else is
+// not kept either.
 let errorLog = null;
 
 function fill(pattern, values) {
@@ -131,12 +126,26 @@ function keepInLog(heading, text) {
   return true;
 }
 
-// A failed reply with the stderr there was no log for (MF2): the only
-// place left to say it is the reply itself.
-function withStderr(reply, stderr) {
-  const said = fill(noLog, { stderr: String(stderr).slice(-STDERR_ON_SCREEN_CAP) });
-  const sentence = `${reply.error}\n\n${said}`;
+// A failed reply with no log to keep its stderr in (MF2): it says so, in one
+// short line, and the stderr - which may name a client's folder - is neither
+// kept nor shown (SPEC-shell 11.2).
+function withNoLog(reply) {
+  const sentence = `${reply.error}\n\n${noLog}`;
   return { ...reply, error: sentence, failure: { ...(reply.failure || {}), sentence } };
+}
+
+// The API's menu words, for the keys the menu has; the menu is rebuilt only
+// when a word differs from what it shows.
+function learnMenu(words) {
+  if (!words || typeof words !== "object") return;
+  let changed = false;
+  for (const key of Object.keys(DEFAULT_MENU_WORDS)) {
+    if (typeof words[key] === "string" && words[key] && words[key] !== menuWords[key]) {
+      menuWords[key] = words[key];
+      changed = true;
+    }
+  }
+  if (changed && menuBuilt) buildMenu();
 }
 
 function learn(result) {
@@ -153,7 +162,11 @@ function learn(result) {
   if (said && typeof said.could_not_start === "string") couldNotStart = said.could_not_start;
   if (said && typeof said.could_not_send === "string") couldNotSend = said.could_not_send;
   if (said && typeof said.no_log === "string") noLog = said.no_log;
-  if (said && typeof said.error_log === "string" && said.error_log) errorLog = said.error_log;
+  learnMenu(vocab && vocab.menu);
+  if (said && typeof said.error_log === "string" && said.error_log) {
+    errorLog = said.error_log;
+    openable.set(errorLog, "file");   // Help > Open error log, through openPath (5.5)
+  }
   const paths = (result && result.paths) || (result && result.state && result.state.paths);
   if (paths && typeof paths === "object") {
     for (const [key, value] of Object.entries(paths)) {
@@ -300,12 +313,13 @@ function spawnTracker(args, payload, onProgress, onEnded) {
       // Nothing of stderr goes on screen while there is an error log: a
       // failed command's goes to the log beside the tracker's database, for
       // a developer at this machine (decision 193, security principle 7).
-      // With none - no data folder yet - it is said in the reply, never
-      // written beside the program (decision 186's rebase review, MF2).
+      // With none - no data folder yet - the reply says there is none and
+      // the stderr is dropped, never written beside the program (decision
+      // 186's rebase review, MF2).
       const out = killedReply || reply || shellFailure(fill(noReply, { code }), "failed", { progress: last });
       const failed = !reply || reply.error;
       const ending = failed && !keepInLog("shell stderr of a failed command", stderr) && stderr
-        ? withStderr(out, stderr) : out;
+        ? withNoLog(out) : out;
       if (!running) settle(ending);
       else if (onEnded) onEnded({ reply: ending, code });
     });
@@ -356,20 +370,219 @@ ipcMain.handle("pick-folder", async (_event, title) => {
   return result.canceled ? null : result.filePaths[0];
 });
 
-// The window's colour before the page paints is the stylesheet's page
-// background, read from the one place it is defined.
-function pageBackground() {
-  const css = fs.readFileSync(path.join(__dirname, "renderer", "style.css"), "utf8");
-  const match = /--bg:\s*(#[0-9a-fA-F]{3,8})/.exec(css);
+// ---- The menu bar and the right-click menus (SPEC-shell 5) ----------------
+// Built here from the API's words (vocab.menu): these defaults are word for
+// word tracker.api's MENU, so the menu is there from the first frame, and a
+// test keeps the two equal. `&` marks an access key.
+const DEFAULT_MENU_WORDS = {
+  file: "&File",
+  new_household: "New household…",
+  change_root: "Change clients folder…",
+  open_root: "Open clients folder",
+  exit: "Exit",
+  edit: "&Edit",
+  client: "&Client",
+  edit_household: "Edit household…",
+  add_return: "Add a return…",
+  roll_forward: "Roll forward…",
+  mark_shared: "Mark as shared",
+  edit_list: "Edit request list…",
+  draft_reminder: "Draft reminder…",
+  open_client_folder: "Open client folder",
+  open_inbox: "Open inbox",
+  open_working: "Open working folder",
+  view: "&View",
+  overview: "Overview",
+  needs_review: "Needs review",
+  reminders: "Reminders",
+  clients: "Clients",
+  find: "Find",
+  refresh: "Refresh",
+  tools: "&Tools",
+  sort_now: "Sort now",
+  stop_sorting: "Stop sorting",
+  schedule: "Schedule…",
+  repair_schedule: "Repair schedule",
+  firm_report: "Firm report",
+  clear_lock: "Clear stuck lock",
+  help: "&Help",
+  tour: "Take the tour",
+  safeguards: "Safeguards",
+  terms: "Terms",
+  error_log: "Open error log",
+  about: "About",
+  check: "Check…",
+  not_requested: "Not requested",
+  another_return: "Another return…",
+  put_back: "Put back",
+  keep_here: "Keep here",
+  edit_request: "Edit request…",
+  unfile: "Unfile",
+  mark_missing: "Mark missing",
+};
+let menuWords = { ...DEFAULT_MENU_WORDS };
+// The one channel the shell sends the page a chosen item on: {id, token}.
+// The page answers it as it answers a click - through window.tracker.call,
+// with every check in place. Nothing here reaches the tracker.
+const MENU_CHANNEL = "menu";
+// The page's own token is a row key it made, never a path; at most this long.
+const MENU_TOKEN_MAX = 64;
+const SEPARATOR = "-";
+// [id, accelerator]: the menu bar, in order, under its top-level word. There
+// is no Reload, Zoom, Toggle full screen or Developer tools item and no
+// accelerator for one (P58): F5 is Refresh, and the page re-reads. Exit is
+// the quit role; Alt+F4 is Windows' own.
+const BAR = [
+  ["file", [["new_household", "CmdOrCtrl+N"], ["change_root"], ["open_root"], SEPARATOR, ["exit"]]],
+  ["edit", null],
+  ["client", [["edit_household"], ["add_return"], ["roll_forward"], ["mark_shared"], SEPARATOR,
+    ["edit_list", "CmdOrCtrl+E"], ["draft_reminder"], SEPARATOR,
+    ["open_client_folder"], ["open_inbox"], ["open_working"]]],
+  ["view", [["overview", "CmdOrCtrl+1"], ["needs_review", "CmdOrCtrl+2"], ["reminders", "CmdOrCtrl+3"],
+    ["clients", "CmdOrCtrl+4"], SEPARATOR, ["find", "CmdOrCtrl+F"], ["refresh", "F5"]]],
+  ["tools", [["sort_now", "F9"], ["stop_sorting"], SEPARATOR, ["schedule"], ["repair_schedule"],
+    ["firm_report"], SEPARATOR, ["clear_lock"]]],
+  ["help", [["tour"], ["safeguards"], ["terms"], ["error_log"], SEPARATOR, ["about"]]],
+];
+// The right-click menus, by the name the page asks for (5.2).
+const POPUPS = new Map([
+  ["household", ["edit_household", "add_return", "roll_forward", "mark_shared", SEPARATOR,
+    "open_client_folder", "open_inbox"]],
+  ["return", ["edit_list", "draft_reminder", SEPARATOR, "open_working", "open_client_folder", "open_inbox"]],
+  ["file", ["check", "not_requested", "another_return"]],
+  ["moved", ["check", "put_back", "keep_here"]],
+  ["request", ["edit_request"]],
+  ["received", ["unfile", "mark_missing"]],
+]);
+// What needs nothing of the page: enabled from the first frame.
+const ALWAYS = new Set(["change_root", "exit", "refresh", "tour", "safeguards", "terms", "error_log", "about"]);
+const BAR_IDS = new Set(BAR.flatMap(([, items]) => (items || []).filter((i) => i !== SEPARATOR).map((i) => i[0])));
+// What the page last said applies (5.3); until it speaks only ALWAYS does.
+let menuEnabled = new Set();
+let menuBuilt = false;
+let mainWindow = null;
+
+// The window a chosen item is sent to; a window gone hears nothing.
+function sendMenu(message) {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(MENU_CHANNEL, message);
+}
+
+// Open error log (5.5) is the shell's alone: the log the API named, opened
+// through openPath (lstat first: a regular file and no link), else the page is
+// told there is none and says so.
+async function openErrorLog() {
+  const problem = errorLog ? await openPath(errorLog) : "none";
+  if (problem) sendMenu({ id: "error_log", missing: true });
+}
+
+// One item, by id: the API's word for its label; a click is the page's to
+// answer, with the row's own token when there is one.
+function menuItem(id, enabled, token) {
+  return {
+    label: menuWords[id],
+    enabled,
+    click: () => {
+      if (id === "error_log") openErrorLog().catch(() => null);
+      else sendMenu({ id, token });
+    },
+  };
+}
+
+function buildTemplate() {
+  return BAR.map(([key, items]) => {
+    // Edit is Windows' own: Undo, Redo, Cut, Copy, Paste and Select all.
+    if (!items) return { label: menuWords[key], role: "editMenu" };
+    return {
+      label: menuWords[key],
+      submenu: items.map((item) => {
+        if (item === SEPARATOR) return { type: "separator" };
+        const [id, accelerator] = item;
+        if (id === "exit") return { label: menuWords.exit, role: "quit" };
+        const built = menuItem(id, ALWAYS.has(id) || menuEnabled.has(id), "");
+        if (accelerator) built.accelerator = accelerator;
+        return built;
+      }),
+    };
+  });
+}
+
+function buildMenu() {
+  Menu.setApplicationMenu(Menu.buildFromTemplate(buildTemplate()));
+  menuBuilt = true;
+}
+
+// A right-click menu at the pointer, or where the page says when that is
+// inside the window. `enable` is this popup's own list; the page leaves the
+// writing items out of it for a locked return (5.2).
+function popupMenu(win, name, enable, token, x, y) {
+  const enabled = new Set(enable);
+  const items = POPUPS.get(name).map((id) => (id === SEPARATOR
+    ? { type: "separator" } : menuItem(id, enabled.has(id), token)));
+  const at = { window: win };
+  const inside = (n, limit) => Number.isFinite(n) && n >= 0 && n <= limit;
+  const box = win.getContentBounds();
+  if (inside(x, box.width) && inside(y, box.height)) {
+    at.x = Math.round(x);
+    at.y = Math.round(y);
+  }
+  Menu.buildFromTemplate(items).popup(at);
+}
+
+// Every message on the menu channel is untrusted (5.4): ids not in the
+// template are dropped, a popup must be one of the six, a token must be a
+// short string. Nothing the page says adds, removes or renames an item.
+function onMenuMessage(event, message) {
+  if (!mainWindow || event.sender !== mainWindow.webContents) return;
+  if (!message || typeof message !== "object" || Array.isArray(message)) return;
+  const known = (list, allowed) => (Array.isArray(list)
+    ? list.filter((id) => typeof id === "string" && allowed.has(id)) : null);
+  if (message.popup !== undefined) {
+    if (typeof message.popup !== "string" || !POPUPS.has(message.popup)) return;
+    const token = message.token === undefined ? "" : message.token;
+    if (typeof token !== "string" || token.length > MENU_TOKEN_MAX) return;
+    const allowed = new Set(POPUPS.get(message.popup).filter((id) => id !== SEPARATOR));
+    popupMenu(mainWindow, message.popup, known(message.enable, allowed) || [], token, message.x, message.y);
+    return;
+  }
+  const enable = known(message.enable, BAR_IDS);
+  if (!enable) return;
+  const next = new Set(enable);
+  const same = next.size === menuEnabled.size && [...next].every((id) => menuEnabled.has(id));
+  menuEnabled = next;
+  if (!same && menuBuilt) buildMenu();
+}
+ipcMain.on(MENU_CHANNEL, onMenuMessage);
+
+// The window's colour before the page paints (5.6): the page's own
+// background for the theme the system is in, read from the one place it is
+// defined - pilot-ui.css's --window-light and --window-dark - and left to the
+// page when a Windows contrast theme is on (it paints its own). Read
+// defensively: a stylesheet without the names (or without the file) gives
+// the older page background, then nothing, never a thrown error at start.
+function tokenColour(css, name) {
+  const match = new RegExp(`${name}:\\s*(#[0-9a-fA-F]{3,8})`).exec(css);
   return match ? match[1] : undefined;
 }
 
+function pageBackground() {
+  if (nativeTheme.shouldUseHighContrastColors) return undefined;
+  const read = (file) => {
+    try {
+      return fs.readFileSync(path.join(__dirname, "renderer", file), "utf8");
+    } catch {
+      return "";
+    }
+  };
+  const name = nativeTheme.shouldUseDarkColors ? "--window-dark" : "--window-light";
+  return tokenColour(read("pilot-ui.css"), name) || tokenColour(read("style.css"), "--bg");
+}
+
 function createWindow() {
-  // No menu in the packaged app (the council's E-7): Electron's default one
-  // carries reload, zoom and developer-tools accelerators, and the last
-  // would open the console devTools below keeps closed. From source the
-  // menu stays, for the person working on the shell.
-  if (app.isPackaged) Menu.setApplicationMenu(null);
+  // The app's own menu, in both builds (5.1): Electron's default one carries
+  // reload, zoom and developer-tools accelerators (the council's E-7), and
+  // the last would open the console devTools below keeps closed. This one
+  // has none of them.
+  buildMenu();
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -398,6 +611,10 @@ function createWindow() {
   // overtake - Electron lets go of the one-instance lock before it closes
   // that storage, so the new window found it held and read nothing.
   win.on("close", () => win.webContents.session.flushStorageData());
+  mainWindow = win;
+  win.on("closed", () => {
+    if (mainWindow === win) mainWindow = null;
+  });
   win.loadFile(path.join(__dirname, "renderer", "index.html"));
   return win;
 }
@@ -428,6 +645,15 @@ if (!app.requestSingleInstanceLock()) {
       .catch(() => null);
   });
 }
+// A switch between light and dark while the app is open sets the window's
+// colour again, so a resize does not flash the old one behind the page. The
+// theme source stays the system's: the page follows it through
+// prefers-color-scheme and nothing in the renderer asks.
+nativeTheme.themeSource = "system";
+nativeTheme.on("updated", () => {
+  const colour = pageBackground();
+  if (mainWindow && !mainWindow.isDestroyed() && colour) mainWindow.setBackgroundColor(colour);
+});
 app.on("window-all-closed", () => app.quit());
 // Closing the app stops its pass after the file it is on (decision 203,
 // R6): its progress pipe breaks, which the runner takes as Stop - what it
