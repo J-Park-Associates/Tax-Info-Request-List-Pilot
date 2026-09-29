@@ -1,5 +1,86 @@
 # Pilot handoff
 
+## App shell SPEC written (2026-09-29, P67-P78; branch `claude/admiring-lamport-bp1sse`)
+
+Built on `claude/amazing-maxwell-b4hdzo` (the brief and audit). Nothing in the
+app is changed yet. Written:
+
+- [`SPEC-shell.md`](SPEC-shell.md): every element of today's screen and where
+  it goes (E1-E97); the shell's layout; the menu template, right-click menus
+  and the one `menu` channel; the pages per level and their states; the side
+  sheet; light and dark tokens with every contrast pair computed (all pass);
+  the new words; the tests (new, changed, gone); six build sessions and
+  which run side by side; the Windows check.
+- [`wording-shell.tsv`](wording-shell.tsv): the 212 strings over five words,
+  today and proposed (67 reworded, 113 cut from the screen, 10 to the error
+  log, 5 merged, 17 kept: the terms). New words are SPEC sections 11.3-11.6.
+- [`shell-test-pins.md`](shell-test-pins.md): the survey of the 162 tests that
+  read the renderer and shell files (the SPEC's section 14 settles its open
+  rows).
+- [`mockup-shell.html`](mockup-shell.html): the clickable mock-up's source,
+  published privately for Jason at
+  https://claude.ai/artifact/K56tG5DoSJ4aXwwWHwX9b3 (made-up names only;
+  light and dark; a State picker shows first run, loading, sort failed,
+  locked and nothing waiting).
+- Decisions P67-P78 in [`DECISIONS.md`](DECISIONS.md).
+
+The mock-up's one visual check found three things the SPEC now carries: a
+row's date and next step share one end column (five columns did not fit the
+1100px window), short path segments never shrink, and a page heading wraps
+instead of being cut. Impeccable's detector on the mock-up: 10 findings, none
+real - five contrast pairs that set one theme's text on the other theme's
+ground or read the logo's drawn text as black (SPEC 10.2 computes each theme
+on its own), the brand band's padding, and a hairline with a soft shadow on
+menus and the sheet (Windows 11's own flyout recipe, kept).
+
+**Waiting on Jason before any build (SPEC section 15):**
+
+| # | Question | Recommendation |
+|---|---|---|
+| Q1 | Allow the read-only `firm` command and three small payload fields (SPEC section 9) - files under `tracker/` beyond wording | Yes: without it the firm pages have no counts; nothing is written |
+| Q2 | Sort now on a firm page: grey it, or add a firm-wide sort (its own engine SPEC) | Grey it in 0.2 |
+| Q3 | Help > Tester guide: leave it out (the app has no copy), or ship the guide in the app | Leave it out |
+| Q4 | A row's second column shows the detail the record has, since it keeps no sender ("from whom") | Yes |
+| Q5 | Approve the wording (`wording-shell.tsv` and SPEC 11.3-11.6) | - |
+| Q6 | Confirm the audit over the brief: no status dot, no summary line under a return's name, one Stop | Confirm |
+
+**Next jobs, once Jason answers:** S1 and S3 run side by side, each a fresh
+session in its own worktree (SPEC section 16). S1 needs Q1 and Q5; S3 needs
+only the SPEC.
+
+S1 (sonnet):
+```
+You are the S1 builder (engine and wording) for the Tax Document Tracker
+Pilot's app shell. Branch from claude/admiring-lamport-bp1sse.
+Read pilot/HANDOFF.md (top section: Jason's answers to Q1-Q6), then
+pilot/SPEC-shell.md sections 9, 11 and 14, and pilot/wording-shell.tsv.
+Use `python tools/repo_map.py show <file>` for tracker/api.py, reasons.py,
+reminder.py, __init__.py; read only the line ranges you need.
+Build exactly SPEC section 9 (if Jason said yes to Q1) and section 11: the
+vocabulary blocks menu and screen, api.MENU, short reasons, stage shorts,
+SAFEGUARDS, the approved rewording, and the docs that quote changed words.
+No renderer file. Run the gate in CLAUDE.md (dead code, the affected tests
+under both Pythons, ruff, repo_map update and check). Commit with [skip ci],
+push, write the handoff (what was built, what is left, the files S2 needs).
+```
+
+S3 (sonnet), at the same time:
+```
+You are the S3 builder (renderer foundation) for the Tax Document Tracker
+Pilot's app shell. Branch from claude/admiring-lamport-bp1sse.
+Read pilot/HANDOFF.md (top section), then pilot/SPEC-shell.md sections 1-4,
+8, 10, 12, 14 and 16, and open pilot/mockup-shell.html in the cloud's
+Chromium to see the target. Use `python tools/repo_map.py show <file>` for
+app/renderer/index.html, app.js, pilot-ui.css, pilot.js, tour.js; read only
+the line ranges you need.
+Build exactly S3's row of SPEC section 16: tokens light and dark in
+pilot-ui.css, shell.css, tooltip.js, the index.html skeleton, shell.js, the
+setup page, the pilot layer, and the harness in pilot/harness/ (made-up
+names only). Draw from the harness stub; do not wait for S1. Run the gate in
+CLAUDE.md, shoot the harness scenarios in light and dark, commit with
+[skip ci], push, write the handoff.
+```
+
 ## App shell brief confirmed (2026-09-29, P58-P62; branch `claude/amazing-maxwell-b4hdzo`)
 
 Shaped with the Impeccable skill (Jason named `ui-ux-pro`, which is not
@@ -14,8 +95,7 @@ a real menu bar (`main.js`/`preload.js` edits approved); dark mode following
 Windows. Reference look: Dribbble "file manager UI" (fetched through Firecrawl;
 dribbble.com is blocked by the cloud proxy). Nothing in the app is changed yet.
 
-**Next job: the SPEC** (opus, high effort, a fresh session). Jason may add more
-design references first; the SPEC session reads them with the brief.
+**Done:** the SPEC session ran from the prompt below (see the section above).
 
 ```
 You are the SPEC author for the Tax Document Tracker Pilot's new app shell.

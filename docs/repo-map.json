@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 262,
+    "nodes": 265,
     "edges": 1136,
-    "reused": 217
+    "reused": 223
   },
   "node_types": [
     "artifact",
@@ -4507,15 +4507,15 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "b26a59902eaeef88",
-      "lines": 72
+      "sha256": "64c971e67946302e",
+      "lines": 84
     },
     {
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "2a8971cfc0ef959c",
-      "lines": 380
+      "sha256": "f0b1a4baef6ba945",
+      "lines": 463
     },
     {
       "id": "pilot/PLAN-ui.md",
@@ -4551,6 +4551,13 @@
       "layer": "docs",
       "sha256": "c46669188ca523c8",
       "lines": 986
+    },
+    {
+      "id": "pilot/SPEC-shell.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "fe62c28beecfd3ee",
+      "lines": 1546
     },
     {
       "id": "pilot/SPEC-ui.md",
@@ -4607,6 +4614,13 @@
       "layer": "docs",
       "sha256": "5fd51bf85e2fd261",
       "lines": 38
+    },
+    {
+      "id": "pilot/shell-test-pins.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "0dc9b88a45d89716",
+      "lines": 312
     },
     {
       "id": "pilot/wintest/PROMPT-RERUN-3.md",
@@ -4883,6 +4897,13 @@
       "layer": "root",
       "sha256": "da95b01870d87178",
       "lines": 82
+    },
+    {
+      "id": "pilot/mockup-shell.html",
+      "type": "ui",
+      "layer": "root",
+      "sha256": "5e947a2a66746ca6",
+      "lines": 1023
     },
     {
       "id": "pilot/wintest/make_samples.py",

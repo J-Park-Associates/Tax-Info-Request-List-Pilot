@@ -1,0 +1,1023 @@
+<title>Tracker Shell Mock-up</title>
+<style>
+/* Layout: a Windows window frame; inside it the shell - side panel 240px | path row 48px over notices over the page; a drawer sheet from the right.
+   Tokens are SPEC-shell.md section 10, word for word; --chrome-* and --titlebar/--menubar/--window-edge are the mock-up's own frame. */
+:root {
+  color-scheme: light;
+  --font-text: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --window-light: #ffffff; --window-dark: #1b1e24;
+  --bg-page: var(--window-light); --bg-nav: #f3f5f8; --bg-raised: #ffffff;
+  --bg-hover: #f1f5f9; --bg-nav-hover: #e7ecf2; --bg-pressed: #e2e8f0; --bg-selected: #e3eaf4;
+  --text: #0f172a; --text-secondary: #434f63; --text-caption: #566579; --text-disabled: #94a3b8;
+  --accent: #14335c; --accent-hover: #0e2544; --on-accent: #ffffff; --link: #14335c; --focus: #2563eb;
+  --border: #e2e8f0; --border-strong: #cbd5e1; --border-input: #7d8ea5;
+  --st-attention: #8a3a0c; --st-waiting: #1e3a8a; --st-done: #05603f; --st-error: #991b1b; --danger: #b42318;
+  --err-bg: #fef2f2; --err-border: #fecaca; --err-fg: #991b1b;
+  --warn-bg: #fffbeb; --warn-border: #fde68a; --warn-fg: #7c3a0a;
+  --info-bg: #eff6ff; --info-border: #bfdbfe; --info-fg: #1e3a8a;
+  --badge-bg: #fcd34d; --badge-fg: #0e2544; --brand: #14335c;
+  --scrim: rgba(15, 23, 42, 0.32); --scroll-thumb: #8593a6;
+  --shadow-overlay: 0 8px 32px rgba(15, 23, 42, 0.24), 0 2px 8px rgba(15, 23, 42, 0.12);
+  --paper: #ffffff; --paper-ink: #1f2937; --paper-edge: #d6dde6;
+  --chrome-bg: #e4e9ef; --titlebar: #eef1f5; --menubar: #ffffff; --window-edge: #c3ccd8; --chrome-ink: #0f172a;
+  --sp-1: 4px; --sp-2: 8px; --sp-4: 16px; --sp-6: 24px; --sp-8: 32px; --sp-12: 48px;
+  --radius-control: 4px; --radius: 8px;
+  --dur: 150ms; --ease: cubic-bezier(0.2, 0, 0, 1);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg-page: var(--window-dark); --bg-nav: #15171c; --bg-raised: #23272f;
+    --bg-hover: #252a32; --bg-nav-hover: #1f232a; --bg-pressed: #2d333c; --bg-selected: #26303f;
+    --text: #e8ecf2; --text-secondary: #b9c3cf; --text-caption: #9aa6b4; --text-disabled: #5f6b7a;
+    --accent: #a8c4ee; --accent-hover: #c3d6f4; --on-accent: #0e1a2e; --link: #a8c4ee; --focus: #7fb0ff;
+    --border: #2e343d; --border-strong: #434b57; --border-input: #7a8697;
+    --st-attention: #f2b872; --st-waiting: #a3bff0; --st-done: #7dd8b0; --st-error: #ffa29b; --danger: #ff9189;
+    --err-bg: #3a1d20; --err-border: #6e2f33; --err-fg: #ffb8b3;
+    --warn-bg: #35290f; --warn-border: #6b5420; --warn-fg: #f6d08a;
+    --info-bg: #1a2940; --info-border: #34507a; --info-fg: #bcd3f7;
+    --scrim: rgba(0, 0, 0, 0.56); --scroll-thumb: #737f8e;
+    --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.48), 0 2px 8px rgba(0, 0, 0, 0.32);
+    --chrome-bg: #0b0d10; --titlebar: #1d2026; --menubar: #1d2026; --window-edge: #3a404a; --chrome-ink: #e8ecf2;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg-page: var(--window-dark); --bg-nav: #15171c; --bg-raised: #23272f;
+  --bg-hover: #252a32; --bg-nav-hover: #1f232a; --bg-pressed: #2d333c; --bg-selected: #26303f;
+  --text: #e8ecf2; --text-secondary: #b9c3cf; --text-caption: #9aa6b4; --text-disabled: #5f6b7a;
+  --accent: #a8c4ee; --accent-hover: #c3d6f4; --on-accent: #0e1a2e; --link: #a8c4ee; --focus: #7fb0ff;
+  --border: #2e343d; --border-strong: #434b57; --border-input: #7a8697;
+  --st-attention: #f2b872; --st-waiting: #a3bff0; --st-done: #7dd8b0; --st-error: #ffa29b; --danger: #ff9189;
+  --err-bg: #3a1d20; --err-border: #6e2f33; --err-fg: #ffb8b3;
+  --warn-bg: #35290f; --warn-border: #6b5420; --warn-fg: #f6d08a;
+  --info-bg: #1a2940; --info-border: #34507a; --info-fg: #bcd3f7;
+  --scrim: rgba(0, 0, 0, 0.56); --scroll-thumb: #737f8e;
+  --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.48), 0 2px 8px rgba(0, 0, 0, 0.32);
+  --chrome-bg: #0b0d10; --titlebar: #1d2026; --menubar: #1d2026; --window-edge: #3a404a; --chrome-ink: #e8ecf2;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--chrome-bg); color: var(--text);
+  font: 400 14px/calc(20 / 14) var(--font-text);
+  padding-block: var(--sp-6); padding-inline: var(--sp-4);
+}
+::selection { background: var(--bg-selected); color: var(--text); }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+svg.i.sm { width: 12px; height: 12px; }
+.num { font-variant-numeric: tabular-nums; }
+.vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* ---------- the mock-up's own header (outside the app) ---------- */
+.mock-head { max-width: 1400px; margin: 0 auto var(--sp-4); display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-4) var(--sp-6); color: var(--chrome-ink); }
+.mock-head h1 { font: 600 20px/calc(28 / 20) var(--font-display); margin: 0; }
+.mock-head p { margin: 0; color: var(--text-secondary); flex: 1 1 320px; min-width: 0; }
+.mock-controls { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); align-items: center; }
+.mock-controls label { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--text-secondary); }
+.mock-controls select { height: 32px; padding: 0 var(--sp-2); border: 1px solid var(--border-strong); border-bottom-color: var(--border-input); border-radius: var(--radius-control); background: var(--bg-raised); }
+.stage { max-width: 1400px; margin: 0 auto; overflow-x: auto; padding-bottom: var(--sp-2); }
+
+/* ---------- the window ---------- */
+.window {
+  position: relative; min-width: 1100px; height: 760px; margin: 0 auto;
+  display: grid; grid-template-rows: 32px 28px minmax(0, 1fr);
+  background: var(--bg-page); border: 1px solid var(--window-edge); border-radius: var(--radius);
+  box-shadow: var(--shadow-overlay); overflow: hidden;
+}
+.titlebar { display: flex; align-items: center; background: var(--titlebar); color: var(--chrome-ink); font-size: 12px; padding-left: var(--sp-4); gap: var(--sp-2); user-select: none; }
+.titlebar .app-glyph { width: 16px; height: 16px; border-radius: var(--radius-control); background: var(--brand); }
+.titlebar .grow { flex: 1; }
+.caption-btn { width: 48px; height: 32px; display: grid; place-items: center; color: var(--chrome-ink); }
+.caption-btn svg { width: 10px; height: 10px; stroke: currentColor; stroke-width: 1; fill: none; }
+.menubar { display: flex; align-items: stretch; background: var(--menubar); color: var(--chrome-ink); border-bottom: 1px solid var(--border); padding-left: var(--sp-1); font-size: 12px; }
+.menubar button { background: none; border: 0; padding: 0 var(--sp-2); }
+.menubar button:hover, .menubar button[aria-expanded="true"] { background: var(--bg-hover); }
+
+/* ---------- the shell ---------- */
+.shell { position: relative; display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: 0; }
+.side { display: grid; grid-template-rows: 48px 1fr auto; background: var(--bg-nav); border-right: 1px solid var(--border); min-height: 0; }
+.side-brand { background: var(--brand); display: flex; align-items: center; padding-inline: var(--sp-4); }
+.side-brand svg { height: 32px; width: auto; }
+.sections { list-style: none; margin: 0; padding: var(--sp-2) 0; display: grid; gap: var(--sp-1); align-content: start; }
+.sections button {
+  position: relative; width: calc(100% - var(--sp-4)); margin-inline: var(--sp-2); height: 40px; display: flex; align-items: center; justify-content: space-between;
+  padding: 0 var(--sp-2) 0 var(--sp-4); border: 0; border-radius: var(--radius-control); background: transparent; color: var(--text); text-align: left;
+  transition: background-color var(--dur) var(--ease);
+}
+.sections button:hover { background: var(--bg-nav-hover); }
+.sections button:active { background: var(--bg-pressed); }
+.sections button[aria-current="page"] { background: var(--bg-selected); font-weight: 600; }
+.sections button[aria-current="page"]::before { content: ""; position: absolute; left: 0; top: 12px; width: 3px; height: 16px; border-radius: 2px; background: var(--accent); }
+.sections button:disabled { color: var(--text-disabled); background: transparent; cursor: default; }
+.side-count { font-size: 12px; line-height: calc(16 / 12); color: var(--text-caption); font-variant-numeric: tabular-nums; }
+.side-foot { padding: var(--sp-4); display: grid; gap: var(--sp-4); }
+.last-sort { margin: 0; font-size: 12px; line-height: calc(16 / 12); color: var(--text-caption); display: flex; align-items: center; gap: var(--sp-1); }
+.last-sort.failed { color: var(--st-error); font-weight: 600; }
+.last-sort .done { color: var(--st-done); display: inline-flex; }
+.progress { height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; margin-top: var(--sp-2); }
+.progress > span { display: block; height: 100%; background: var(--accent); transition: width var(--dur) var(--ease); }
+.badge { justify-self: start; height: 24px; display: inline-flex; align-items: center; padding: 0 var(--sp-2); border-radius: var(--radius-control); background: var(--badge-bg); color: var(--badge-fg); font-size: 12px; font-weight: 600; }
+
+.main { display: grid; grid-template-rows: 48px auto minmax(0, 1fr); min-height: 0; min-width: 0; }
+.bar { display: flex; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-8); border-bottom: 1px solid var(--border); min-width: 0; }
+.crumbs { flex: 1; min-width: 0; }
+.crumbs ol { list-style: none; margin: 0; padding: 0; display: flex; align-items: center; gap: var(--sp-1); min-width: 0; }
+.crumbs li { display: flex; align-items: center; gap: var(--sp-1); flex: none; }
+.crumbs li.shrink { flex: 0 1 auto; min-width: 96px; }
+.crumbs li.shrink > button, .crumbs li.shrink > .current { min-width: 0; }
+.crumbs button { border: 0; background: none; color: var(--link); padding: var(--sp-1) var(--sp-1); border-radius: var(--radius-control); max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crumbs button:hover { background: var(--bg-hover); text-decoration: underline; text-underline-offset: 3px; }
+.crumbs .sep { color: var(--text-caption); display: inline-flex; }
+.crumbs .current { color: var(--text); font-weight: 600; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: var(--sp-1); }
+.find-wrap { position: relative; width: 240px; flex: none; }
+.find-wrap svg { position: absolute; left: var(--sp-2); top: 8px; color: var(--text-caption); pointer-events: none; }
+#find { width: 100%; height: 32px; padding: 0 var(--sp-2) 0 var(--sp-8); border: 1px solid var(--border-strong); border-bottom-color: var(--border-input); border-radius: var(--radius-control); background: var(--bg-page); caret-color: var(--text); }
+#find:disabled { background: var(--bg-nav); border-color: var(--border); }
+.find-list { position: absolute; z-index: 30; top: 36px; left: 0; right: 0; margin: 0; padding: var(--sp-1); list-style: none; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-overlay); }
+.find-list li { padding: var(--sp-1) var(--sp-2); border-radius: var(--radius-control); cursor: pointer; }
+.find-list li .n { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.find-list li .c { display: block; font-size: 12px; line-height: calc(16 / 12); color: var(--text-caption); }
+.find-list li[aria-selected="true"], .find-list li:hover { background: var(--bg-hover); }
+.find-list li[aria-disabled="true"] { color: var(--text-caption); cursor: default; background: none; }
+.icon-btn { width: 32px; height: 32px; flex: none; display: grid; place-items: center; border: 1px solid transparent; border-radius: var(--radius-control); background: transparent; color: var(--link); transition: background-color var(--dur) var(--ease); }
+.icon-btn:hover { background: var(--bg-hover); }
+.icon-btn:active { background: var(--bg-pressed); }
+.icon-btn:disabled { color: var(--text-disabled); background: transparent; cursor: default; }
+.icon-btn.stop { color: var(--danger); }
+
+.notices { display: grid; gap: var(--sp-2); padding: 0 var(--sp-8); }
+.notices:not(:empty) { padding-block: var(--sp-2); }
+.notice { min-height: 40px; display: flex; align-items: center; gap: var(--sp-4); padding: 0 var(--sp-2) 0 var(--sp-4); border: 1px solid; border-radius: var(--radius-control); font-weight: 600; }
+.notice.err { background: var(--err-bg); border-color: var(--err-border); color: var(--err-fg); }
+.notice.warn { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-fg); }
+.notice.info { background: var(--info-bg); border-color: var(--info-border); color: var(--info-fg); }
+.notice .grow { flex: 1; }
+.notice .icon-btn { color: inherit; }
+.btn { height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2); padding: 0 var(--sp-4); border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--bg-raised); color: var(--link); font-weight: 600; white-space: nowrap; transition: background-color var(--dur) var(--ease); }
+.btn:hover { background: var(--bg-hover); }
+.btn:active { background: var(--bg-pressed); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn.subtle { border-color: transparent; background: transparent; }
+.btn.subtle:hover { background: var(--bg-hover); }
+.btn.small { height: 24px; padding: 0 var(--sp-2); font-size: 12px; }
+.btn:disabled { background: var(--bg-nav); border-color: var(--border); color: var(--text-disabled); cursor: default; }
+
+.page { overflow-y: auto; min-height: 0; padding-bottom: var(--sp-12); scrollbar-color: var(--scroll-thumb) transparent; }
+.page:focus { outline: none; }
+.h1 { font: 600 20px/calc(28 / 20) var(--font-display); margin: var(--sp-6) var(--sp-8) 0; text-wrap: balance; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.caption { font-size: 12px; line-height: calc(16 / 12); color: var(--text-caption); margin: var(--sp-1) var(--sp-8) 0; }
+.group-head { display: flex; align-items: baseline; gap: var(--sp-2); margin: var(--sp-8) 0 var(--sp-2); padding: 0 var(--sp-8); min-height: 24px; }
+.group-head.first { margin-top: var(--sp-6); }
+.h2 { font: 600 16px/calc(24 / 16) var(--font-display); margin: 0; }
+.group-count { font-size: 12px; line-height: calc(16 / 12); color: var(--text-caption); font-variant-numeric: tabular-nums; }
+.group-head .head-step { margin-left: auto; visibility: hidden; border: 0; background: none; color: var(--link); font-weight: 600; display: inline-flex; align-items: center; gap: var(--sp-1); padding: 0 var(--sp-1); border-radius: var(--radius-control); }
+.group-head:hover .head-step, .group-head:focus-within .head-step, .group-wrap:focus-within .head-step { visibility: visible; }
+.sub-head { font-size: 12px; line-height: calc(16 / 12); font-weight: 600; color: var(--text-caption); padding: var(--sp-2) var(--sp-8) var(--sp-1); }
+.lb:focus { outline: none; }
+.row {
+  display: grid; grid-template-columns: minmax(240px, 1fr) 200px 160px 144px; align-items: center; column-gap: var(--sp-4);
+  min-height: 40px; padding: 0 var(--sp-8); border-bottom: 1px solid var(--border); cursor: default;
+  transition: background-color var(--dur) var(--ease);
+}
+.row:last-child { border-bottom: 0; }
+.row:hover { background: var(--bg-hover); }
+.row:active { background: var(--bg-pressed); }
+.lb:focus-visible .row.active { outline: 2px solid var(--focus); outline-offset: -2px; }
+.row .c-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .c-detail { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .c-status { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .c-end { display: grid; justify-items: end; align-items: center; }
+.row .c-end > * { grid-area: 1 / 1; }
+.row .c-date { font-size: 12px; line-height: calc(16 / 12); color: var(--text-caption); text-align: right; font-variant-numeric: tabular-nums; }
+.row .c-step { white-space: nowrap; visibility: hidden; color: var(--link); font-weight: 600; display: inline-flex; align-items: center; gap: var(--sp-1); padding: var(--sp-1); border-radius: var(--radius-control); }
+.row .c-step:hover { background: var(--bg-pressed); }
+.row:hover .c-step, .lb:focus-visible .row.active .c-step { visibility: visible; }
+.row.has-step:hover .c-date, .lb:focus-visible .row.has-step.active .c-date { visibility: hidden; }
+.st-attention { color: var(--st-attention); }
+.st-waiting { color: var(--st-waiting); }
+.st-done { color: var(--st-done); }
+.st-plain { color: var(--text-secondary); font-weight: 400; }
+.empty { margin: var(--sp-6) var(--sp-8) 0; display: grid; gap: var(--sp-1); justify-items: start; }
+.empty .caption { margin: 0; }
+.empty .btn { margin-top: var(--sp-4); }
+.group-empty { padding: var(--sp-2) var(--sp-8); color: var(--text-caption); font-size: 12px; line-height: calc(16 / 12); }
+.figures { display: flex; gap: var(--sp-12); margin: var(--sp-6) var(--sp-8) 0; }
+.figure b { display: block; font: 600 28px/calc(36 / 28) var(--font-display); font-variant-numeric: tabular-nums; }
+.figure span { font-size: 12px; line-height: calc(16 / 12); color: var(--text-caption); }
+.switch { display: inline-flex; gap: var(--sp-1); padding: var(--sp-1); margin: var(--sp-6) var(--sp-8) 0; border: 1px solid var(--border-strong); border-radius: var(--radius-control); }
+.switch button { height: 24px; padding: 0 var(--sp-2); border: 1px solid transparent; border-radius: var(--radius-control); background: transparent; color: var(--link); font-weight: 600; font-size: 12px; }
+.switch button:hover { background: var(--bg-hover); }
+.switch button[aria-pressed="true"] { background: var(--bg-selected); border-color: var(--accent); color: var(--text); }
+details.fold > summary { list-style: none; cursor: pointer; }
+details.fold > summary::-webkit-details-marker { display: none; }
+details.fold > summary .chev { display: inline-flex; color: var(--text-caption); transition: transform var(--dur) var(--ease); }
+details.fold[open] > summary .chev { transform: rotate(90deg); }
+.skel { display: grid; grid-template-columns: minmax(240px, 1fr) 200px 160px 144px; column-gap: var(--sp-4); align-items: center; min-height: 40px; padding: 0 var(--sp-8); border-bottom: 1px solid var(--border); }
+.skel i { display: block; height: 12px; border-radius: 2px; background: var(--bg-hover); }
+.skel i:nth-child(1) { width: 60%; } .skel i:nth-child(2) { grid-column: 3; width: 70%; }
+.setup { margin: var(--sp-6) var(--sp-8) 0; display: grid; gap: var(--sp-4); justify-items: start; max-width: 480px; }
+.setup .pick { display: flex; align-items: center; gap: var(--sp-4); }
+.field { display: grid; gap: var(--sp-1); }
+.field span { font-size: 12px; line-height: calc(16 / 12); font-weight: 600; color: var(--text-secondary); }
+.field input, .field select { width: 320px; height: 32px; padding: 0 var(--sp-2); border: 1px solid var(--border-strong); border-bottom-color: var(--border-input); border-radius: var(--radius-control); background: var(--bg-page); }
+.sheet .field input, .sheet .field select { width: 100%; }
+
+/* ---------- sheet, dialogs, menus, tooltip, toast ---------- */
+.scrim { position: absolute; inset: 60px 0 0 0; background: var(--scrim); z-index: 40; }
+.sheet {
+  position: absolute; z-index: 41; top: 60px; right: 0; bottom: 0; width: 400px; display: grid; grid-template-rows: 48px minmax(0, 1fr) 64px;
+  background: var(--bg-raised); border-left: 1px solid var(--border); box-shadow: var(--shadow-overlay);
+  animation: slide var(--dur) var(--ease);
+}
+@keyframes slide { from { transform: translateX(24px); opacity: 0.6; } to { transform: none; opacity: 1; } }
+.sheet-head { display: flex; align-items: center; gap: var(--sp-1); padding: 0 var(--sp-2) 0 var(--sp-6); border-bottom: 1px solid var(--border); min-width: 0; }
+.sheet-head .h2:focus { outline: none; }
+.sheet-head .h2 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sheet-body { overflow-y: auto; padding: var(--sp-6); display: grid; gap: var(--sp-4); align-content: start; scrollbar-color: var(--scroll-thumb) transparent; }
+.sheet-foot { display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-2); padding: 0 var(--sp-6); border-top: 1px solid var(--border); }
+.sheet-foot .grow { flex: 1; }
+.status-line { display: flex; gap: var(--sp-2); align-items: baseline; }
+.status-line b { color: var(--st-attention); }
+.reasons { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--sp-1); font-size: 12px; line-height: calc(16 / 12); color: var(--text-caption); }
+.more-fold { display: grid; gap: var(--sp-4); padding-top: var(--sp-4); border-top: 1px solid var(--border); }
+.seg { display: inline-flex; gap: var(--sp-1); padding: var(--sp-1); border: 1px solid var(--border-strong); border-radius: var(--radius-control); flex-wrap: wrap; }
+.seg button { height: 24px; padding: 0 var(--sp-1); border: 1px solid transparent; border-radius: var(--radius-control); background: transparent; color: var(--link); font-size: 12px; font-weight: 600; }
+.seg button[aria-pressed="true"] { background: var(--bg-selected); border-color: var(--accent); color: var(--text); }
+.held { padding: var(--sp-2) var(--sp-4); border: 1px solid var(--warn-border); background: var(--warn-bg); color: var(--warn-fg); border-radius: var(--radius-control); font-weight: 600; }
+.held ul { margin: var(--sp-1) 0 0; padding-left: var(--sp-4); font-weight: 400; }
+.subject { font-weight: 600; }
+.letter { background: var(--paper); color: var(--paper-ink); border: 1px solid var(--paper-edge); border-radius: var(--radius-control); padding: var(--sp-4); font: 400 13px/1.5 Calibri, "Segoe UI", Arial, sans-serif; }
+.letter p { margin: 0 0 8px; }
+.letter ul { margin: 0 0 8px; padding-left: 20px; }
+.dialog-wrap { position: absolute; inset: 60px 0 0 0; z-index: 50; display: grid; place-items: center; background: var(--scrim); }
+.dialog { width: 400px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-overlay); padding: var(--sp-6); display: grid; gap: var(--sp-4); }
+.dialog ul { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--sp-2); }
+.dialog li { display: flex; gap: var(--sp-2); align-items: center; }
+.dialog li svg { color: var(--st-done); }
+.dialog .actions { display: flex; justify-content: flex-end; gap: var(--sp-2); }
+.menu {
+  position: fixed; z-index: 100; min-width: 240px; padding: var(--sp-1); background: var(--bg-raised); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-overlay); font-size: 12px; line-height: calc(16 / 12);
+}
+.menu button { width: 100%; height: 28px; display: flex; align-items: center; gap: var(--sp-4); padding: 0 var(--sp-2) 0 var(--sp-6); border: 0; border-radius: var(--radius-control); background: transparent; text-align: left; }
+.menu button:hover:not(:disabled), .menu button:focus-visible { background: var(--bg-hover); outline: none; }
+.menu button:disabled { color: var(--text-disabled); cursor: default; }
+.menu button .acc { margin-left: auto; color: var(--text-caption); }
+.menu button:disabled .acc { color: var(--text-disabled); }
+.menu hr { border: 0; border-top: 1px solid var(--border); margin: var(--sp-1) 0; }
+.tip { position: fixed; z-index: 200; max-width: 320px; padding: var(--sp-1) var(--sp-2); background: var(--bg-raised); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-control); box-shadow: var(--shadow-overlay); font-size: 12px; line-height: calc(16 / 12); pointer-events: none; }
+.toast { position: absolute; z-index: 60; left: 50%; bottom: var(--sp-6); transform: translateX(-50%); padding: var(--sp-2) var(--sp-4); background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-overlay); font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: 0ms !important; animation-duration: 0ms !important; } }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></symbol>
+  <symbol id="i-sort" viewBox="0 0 16 16"><path d="M13.2 6.2A5.5 5.5 0 0 0 3.4 4.4"/><path d="M3 2v3h3"/><path d="M2.8 9.8a5.5 5.5 0 0 0 9.8 1.8"/><path d="M13 14v-3h-3"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1.5"/></symbol>
+  <symbol id="i-dismiss" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="M6 3.5L10.5 8 6 12.5"/></symbol>
+  <symbol id="i-next" viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4"/></symbol>
+  <symbol id="i-done" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7"/></symbol>
+  <symbol id="i-more" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r="0.6"/><circle cx="8" cy="8" r="0.6"/><circle cx="12.5" cy="8" r="0.6"/></symbol>
+  <symbol id="i-open" viewBox="0 0 16 16"><path d="M9 3h4v4M13 3L7.5 8.5M11 9.5V13H3V5h3.5"/></symbol>
+</svg>
+
+<header class="mock-head">
+  <h1>App shell mock-up</h1>
+  <p>Made-up names only. Hover or arrow-key a row for its next step; right-click for its menu; try Ctrl+1 to Ctrl+4, Ctrl+F, F9 and the menu bar.</p>
+  <div class="mock-controls">
+    <label for="mock-theme">Theme <select id="mock-theme"><option value="system">Windows setting</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+    <label for="mock-state">State <select id="mock-state">
+      <option value="normal">Normal day</option>
+      <option value="loading">Loading</option>
+      <option value="failed">Sort failed</option>
+      <option value="locked">Return in use elsewhere</option>
+      <option value="empty">Nothing waiting</option>
+      <option value="setup">First run</option>
+    </select></label>
+  </div>
+</header>
+
+<div class="stage">
+  <div class="window" id="win">
+    <div class="titlebar"><span class="app-glyph" aria-hidden="true"></span><span>Tax Document Tracker</span><span class="grow"></span>
+      <span class="caption-btn" aria-hidden="true"><svg viewBox="0 0 10 10"><path d="M0 5h10"/></svg></span>
+      <span class="caption-btn" aria-hidden="true"><svg viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9"/></svg></span>
+      <span class="caption-btn" aria-hidden="true"><svg viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10"/></svg></span>
+    </div>
+    <nav class="menubar" id="menubar" aria-label="Menu bar"></nav>
+    <div class="shell" id="shell">
+      <nav class="side" aria-label="Sections">
+        <div class="side-brand" aria-hidden="true">
+          <svg viewBox="0 0 780 120"><circle cx="60" cy="60" r="52" fill="none" stroke="#C9A84C" stroke-width="3"/><text x="60" y="76" text-anchor="middle" font-family="Georgia, serif" font-size="46" font-weight="700" fill="#F5F0E8">ST</text><text x="136" y="62" font-family="Georgia, serif" font-size="40" font-weight="700" fill="#F5F0E8" letter-spacing="2">SAMPLE TAX OFFICE</text><text x="138" y="92" font-family="Arial, sans-serif" font-size="15" fill="#C9A84C" letter-spacing="4">YOUR LOGO SITS HERE</text></svg>
+        </div>
+        <ul class="sections" id="sections"></ul>
+        <div class="side-foot"><div id="last-sort-wrap"></div><span class="badge">Pilot 0.2</span></div>
+      </nav>
+      <div class="main">
+        <header class="bar">
+          <nav class="crumbs" aria-label="Path"><ol id="crumbs"></ol></nav>
+          <div class="find-wrap">
+            <svg class="i"><use href="#i-search"/></svg>
+            <input id="find" type="text" role="combobox" aria-label="Find a client" data-tip="Find a client" aria-expanded="false" aria-controls="find-list" autocomplete="off" spellcheck="false">
+            <ul class="find-list" id="find-list" role="listbox" hidden></ul>
+          </div>
+          <button class="icon-btn" id="sort" type="button"><svg class="i"><use href="#i-sort"/></svg></button>
+        </header>
+        <div class="notices" id="notices" role="alert" aria-live="polite"></div>
+        <main class="page" id="page" tabindex="-1"></main>
+      </div>
+    </div>
+    <div id="overlay"></div>
+    <div class="toast" id="toast" role="status" hidden></div>
+  </div>
+</div>
+<div class="tip" id="tip" role="tooltip" hidden></div>
+
+<script>
+"use strict";
+/* ---------------- made-up data ---------------- */
+const $ = (id) => document.getElementById(id);
+function h(tag, attrs, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v === false || v == null) continue;
+    if (k === "class") n.className = v;
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+    else if (k === "text") n.textContent = v;
+    else n.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of kids.flat()) if (c != null && c !== false) n.append(c.nodeType ? c : document.createTextNode(String(c)));
+  return n;
+}
+function icon(name, cls) { const s = document.createElementNS("http://www.w3.org/2000/svg", "svg"); s.setAttribute("class", "i" + (cls ? " " + cls : "")); s.setAttribute("aria-hidden", "true"); const u = document.createElementNS("http://www.w3.org/2000/svg", "use"); u.setAttribute("href", "#i-" + name); s.append(u); return s; }
+
+let seq = 0;
+const file = (name, detail, status, date, extra = {}) => ({ id: "f" + (++seq), kind: "file", name, detail, status, date, ...extra });
+const moved = (name, detail, date) => ({ id: "m" + (++seq), kind: "moved", name, detail, status: "Moved by hand", date });
+const req = (name, detail, status, date = "") => ({ id: "q" + (++seq), kind: "request", name, detail, status, date });
+
+function smithReturn() {
+  return {
+    needs: [
+      file("scan0012.pdf", "W-2 - Acme Corp", "Could not tell", "Mar 3", { suggest: ["W-2 - Acme Corp", "1099-R - Evergreen Funds"], reasons: ["Name and year match", "Form number on page"] }),
+      file("IMG_2231.jpg", "1099-INT", "Fits two requests", "Mar 4", { suggest: ["1099-INT - Bluebird Credit Union", "1099-INT - Harbor Bank"], reasons: ["Form number on page", "Form number on page"] }),
+      moved("northwind-2025.pdf", "1099-B - Northwind", "Mar 5"),
+      req("1098 - Harbor Bank", "", "Could not use", "Mar 2"),
+    ],
+    waiting: [
+      req("1099-B - Northwind Brokerage", "Dec 2025", "Outstanding"),
+      req("K-1 - Hillside Partners LP", "1 of 2", "Partly in"),
+    ],
+    received: [
+      req("W-2 - Brightline Health", "w2-jane.pdf", "Received", "Mar 1"),
+      req("1099-INT - Bluebird Credit Union", "bluebird-int.pdf", "Received", "Mar 1"),
+      req("1099-DIV - Evergreen Funds", "evergreen-div.pdf", "Accepted", "Feb 27"),
+      req("1095-C - Brightline Health", "1095c.pdf", "Received", "Feb 26"),
+      req("Property tax bill", "county-tax.pdf", "Received", "Feb 24"),
+      req("Childcare receipts", "3 files", "Received", "Feb 20"),
+      req("Charitable letters", "2 files", "Received", "Feb 19"),
+      req("Estimated payments", "est-payments.pdf", "Received", "Feb 18"),
+    ],
+    setAside: [
+      req("1099-G - State refund", "", "Not asked"),
+      req("1098-T - Tuition", "", "Not applicable 2025"),
+      file("old-scan.pdf", "", "Not requested", "Jan 30", { suggest: ["W-2 - Acme Corp"], reasons: [] }),
+    ],
+    due: "Due Apr 15", draft: { stage: 1, held: 3, drafted: "Mar 3" },
+  };
+}
+function genericReturn(counts, due) {
+  const r = { needs: [], waiting: [], received: [], setAside: [], due, draft: null };
+  const files = ["scan_0041.pdf", "IMG_4410.jpg", "statement.pdf", "k1-2025.pdf", "bank-mar.pdf"];
+  const reasons = ["Could not tell", "Fits two requests", "Scan not readable", "Names another return", "Wrong period"];
+  for (let i = 0; i < counts.need; i++) r.needs.push(file(files[i % 5], "", reasons[i % 5], "Mar " + (2 + i), { suggest: ["W-2", "1099-INT"], reasons: ["Name and year match"] }));
+  const w = ["1099-INT - Harbor Bank", "1099-DIV - Evergreen Funds", "W-2 - Acme Corp", "1098 - Harbor Bank", "K-1 - Hillside Partners LP"];
+  for (let i = 0; i < counts.waiting; i++) r.waiting.push(req(w[i % 5], "", i % 3 === 2 ? "Partly in" : "Outstanding"));
+  const g = ["W-2 - Acme Corp", "1099-INT - Bluebird Credit Union", "Property tax bill", "1098 - Harbor Bank", "Charitable letters", "1095-A - Marketplace"];
+  for (let i = 0; i < counts.received; i++) r.received.push(req(g[i % 6], "received.pdf", "Received", "Feb " + (10 + i)));
+  return r;
+}
+
+const households = [];
+function hh(name, contact, shared, returns) { const o = { id: "h" + households.length, name, contact, shared, returns }; returns.forEach((r) => { r.household = o; }); households.push(o); return o; }
+const ret = (name, year, body, extra = {}) => ({ id: "r" + (++seq), name, year, ...body, ...extra });
+
+hh("Smith Family", "John Smith", true, [
+  ret("1040 - John & Jane Smith", 2025, smithReturn()),
+  ret("1040 - John & Jane Smith", 2024, genericReturn({ need: 0, waiting: 0, received: 11 }, ""), { detail: "Rolled forward" }),
+]);
+hh("Rivera Design", "Marco Rivera", true, [
+  ret("1120-S - Rivera Design LLC", 2025, genericReturn({ need: 1, waiting: 3, received: 6 }, "Due Mar 16")),
+  ret("1040 - Marco Rivera", 2025, { ...genericReturn({ need: 0, waiting: 2, received: 7 }, "Due Apr 15"), draft: { stage: 0, held: 0, drafted: "Mar 3" } }),
+]);
+hh("Lopez Household", "Ana Lopez", false, [ret("1040 - Ana Lopez", 2025, { ...genericReturn({ need: 0, waiting: 2, received: 5 }, "Due Apr 15"), draft: { stage: 1, held: 0, drafted: "Mar 3" } })]);
+hh("Chen Family", "Wei Chen", true, [ret("1040 - Wei & Lin Chen", 2025, genericReturn({ need: 2, waiting: 1, received: 8 }, "Due Apr 15"))]);
+hh("Okafor Family", "Ada Okafor", true, [ret("1040 - Chidi & Ada Okafor", 2025, genericReturn({ need: 0, waiting: 0, received: 12 }, ""))]);
+hh("Novak Household", "Petra Novak", true, [
+  ret("1040 - Petra Novak", 2025, genericReturn({ need: 0, waiting: 1, received: 6 }, "Due Apr 15")),
+  ret("1041 - Novak Family Trust", 2025, genericReturn({ need: 1, waiting: 0, received: 4 }, "Due Apr 15")),
+]);
+hh("Brennan & Sons", "Liam Brennan", true, [ret("1120 - Brennan & Sons Inc", 2025, { ...genericReturn({ need: 0, waiting: 4, received: 9 }, "Due Apr 15"), draft: { stage: 2, held: 0, drafted: "Mar 3" } })]);
+hh("Harborview Foundation", "Grace Ito", true, [ret("990 - Harborview Foundation", 2025, genericReturn({ need: 0, waiting: 0, received: 7 }, ""))]);
+hh("Kim & Alvarez Partners", "Sora Kim", true, [ret("1065 - Kim & Alvarez Partners", 2025, genericReturn({ need: 3, waiting: 1, received: 5 }, "Due Mar 16"))]);
+hh("Alexandria Montgomery-Whitfield & Christopher Delacroix Family", "Alexandria Whitfield", false, [
+  ret("1040 - Alexandria Montgomery-Whitfield & Christopher Delacroix (married filing jointly)", 2025, genericReturn({ need: 0, waiting: 3, received: 2 }, "Due Apr 15")),
+]);
+hh("Patel Family", "Nina Patel", true, []);
+// Made-up surnames for scale: 200 more households.
+(function more() {
+  const last = ["Abbott", "Barros", "Castell", "Dunmore", "Ellery", "Farrow", "Garland", "Hale", "Ingram", "Jessop", "Kerrigan", "Lindqvist", "Marlow", "Nyberg", "Oakes", "Pembrook", "Quill", "Rowntree", "Sallow", "Thorne"];
+  const first = ["Avery", "Blake", "Casey", "Drew", "Emery", "Finley", "Harper", "Jordan", "Kendall", "Morgan"];
+  let s = 7;
+  const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 200; i++) {
+    const l = last[i % 20], f = first[Math.floor(i / 20)];
+    const roll = rnd();
+    const counts = roll < 0.035 ? { need: 1, waiting: 1, received: 6 } : roll < 0.16 ? { need: 0, waiting: 1 + (i % 3), received: 6 } : { need: 0, waiting: 0, received: 8 };
+    hh(`${l} Household (${f})`, `${f} ${l}`, true, [ret(`1040 - ${f} ${l}`, 2025, genericReturn(counts, counts.waiting ? "Due Apr 15" : ""))]);
+  }
+})();
+
+const allReturns = () => households.flatMap((x) => x.returns);
+const thisYear = (r) => r.year === 2025;
+const needOf = (r) => r.needs.length;
+const waitOf = (r) => r.waiting.length;
+const bucket = (r) => (needOf(r) ? "need" : waitOf(r) ? "waiting" : "complete");
+const filesOf = (r) => r.needs.filter((x) => x.kind !== "request");
+const draftReady = (r) => thisYear(r) && r.draft;
+
+/* ---------------- state ---------------- */
+const S = { route: { level: "overview" }, scenario: "normal", sorting: null, lastSort: { at: "6:00 AM", ok: true }, filter: "work", sheet: null, dialog: null, locked: false };
+
+/* ---------------- routing ---------------- */
+function go(route) {
+  if (S.scenario === "setup" && route.level !== "setup") return;
+  S.route = route; closeSheet(false); drawAll(); $("page").scrollTop = 0; $("page").focus({ preventScroll: true });
+}
+const sectionOf = (level) => ({ overview: "overview", "needs-review": "needs-review", reminders: "reminders" }[level] || "clients");
+const openHousehold = (x) => (x.household ? x.household : x);
+
+/* ---------------- side panel ---------------- */
+function drawSide() {
+  const files = allReturns().filter(thisYear).reduce((n, r) => n + filesOf(r).length, 0);
+  const drafts = allReturns().filter(draftReady).length;
+  const empty = S.scenario === "empty";
+  const items = [["overview", "Overview", 0], ["needs-review", "Needs review", empty ? 0 : files], ["reminders", "Reminders", empty ? 0 : drafts], ["clients", "Clients", 0]];
+  const cur = sectionOf(S.route.level);
+  $("sections").replaceChildren(...items.map(([key, name, n], i) => h("li", {},
+    h("button", { type: "button", "aria-current": S.scenario !== "setup" && cur === key ? "page" : null, disabled: S.scenario === "setup",
+      "aria-keyshortcuts": "Control+" + (i + 1), onclick: () => go({ level: key }) },
+      h("span", {}, name), n && S.scenario !== "setup" ? h("span", { class: "side-count" }, String(n)) : null))));
+  const wrap = $("last-sort-wrap");
+  if (S.sorting) {
+    const { n, total, stopping } = S.sorting;
+    wrap.replaceChildren(h("p", { class: "last-sort", role: "status" }, stopping ? "Stopping" : `Sorting ${n} of ${total}`),
+      h("div", { class: "progress", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": String(total), "aria-valuenow": String(n) }, h("span", { style: `width:${Math.round((n / total) * 100)}%` })));
+  } else if (S.scenario === "failed") {
+    wrap.replaceChildren(h("p", { class: "last-sort failed", role: "status" }, "Sort failed"));
+  } else if (S.scenario === "setup") {
+    wrap.replaceChildren(h("p", { class: "last-sort", role: "status" }, "Not sorted yet"));
+  } else {
+    const done = h("span", { class: "done", "data-tip": "Sorted", tabindex: "0", "aria-label": "Sorted" }, icon("done", "sm"));
+    wrap.replaceChildren(h("p", { class: "last-sort", role: "status" }, `Sorted ${S.lastSort.at}`, done));
+  }
+}
+
+/* ---------------- path row ---------------- */
+function drawPath() {
+  const r = S.route, ol = $("crumbs"), segs = [];
+  const sep = () => h("span", { class: "sep", "aria-hidden": "true" }, icon("chev", "sm"));
+  if (r.level === "setup") { ol.replaceChildren(); }
+  else if (["overview", "needs-review", "reminders"].includes(r.level)) {
+    segs.push([{ overview: "Overview", "needs-review": "Needs review", reminders: "Reminders" }[r.level], null]);
+  } else {
+    segs.push(["Clients", r.level === "clients" ? null : () => go({ level: "clients" })]);
+    if (r.hh) segs.push([r.hh.name, r.level === "household" ? null : () => go({ level: "household", hh: r.hh }), "household"]);
+    if (r.year) segs.push([String(r.year), r.level === "year" ? null : () => go({ level: "year", hh: r.hh, year: r.year })]);
+    if (r.ret) segs.push([r.ret.name, null, "return"]);
+  }
+  ol.replaceChildren(...segs.map(([name, act, menu], i) => {
+    const node = act ? h("button", { type: "button", onclick: act }, name) : h("span", { class: "current", "aria-current": "page" }, name);
+    if (menu) node.addEventListener("contextmenu", (e) => { e.preventDefault(); popup(menu === "return" ? returnMenu(r.ret) : householdMenu(r.hh), e.clientX, e.clientY); });
+    return h("li", { class: menu || !act ? "shrink" : null }, i ? sep() : null, node);
+  }));
+  const sort = $("sort"), sorting = S.sorting, firm = !r.hh;
+  sort.classList.toggle("stop", !!sorting && !sorting.stopping);
+  sort.replaceChildren(icon(sorting ? "stop" : "sort"));
+  let tip = "Sort now", dis = false;
+  if (sorting) { tip = sorting.stopping ? "Stopping" : "Stop sorting"; dis = !!sorting.stopping; }
+  else if (S.scenario === "setup") { dis = true; }
+  else if (firm) { tip = "Open a client to sort"; dis = true; }
+  else if (S.locked && r.ret && r.ret === lockedReturn()) { tip = "In use elsewhere"; dis = true; }
+  sort.dataset.tip = tip; sort.setAttribute("aria-label", tip); sort.disabled = dis;
+  sort.setAttribute("aria-keyshortcuts", sorting ? "" : "F9");
+  $("find").disabled = S.scenario === "setup";
+}
+
+/* ---------------- notices ---------------- */
+function drawNotices() {
+  const list = [];
+  if (S.scenario === "failed") list.push(["err", "Sort failed", "Retry", () => { S.scenario = "normal"; $("mock-state").value = "normal"; startSort(true); }]);
+  if (S.locked && S.route.ret === lockedReturn()) list.push(["info", "In use on FRONT-DESK", null]);
+  if (S.route.hh && S.route.hh.name === "Novak Household") list.push(["warn", "Two years open; sorting paused", null]);
+  if (S.scenario === "normal" && S.route.level === "overview") list.push(["warn", "3 folders skipped", "Show", () => showDialog("misfits")]);
+  $("notices").replaceChildren(...list.map(([kind, words, act, fn]) => {
+    const n = h("div", { class: "notice " + kind }, h("span", { class: "grow" }, words));
+    if (act) n.append(h("button", { class: "btn small", type: "button", onclick: fn }, act));
+    n.append(h("button", { class: "icon-btn", type: "button", "aria-label": "Dismiss", "data-tip": "Dismiss", onclick: () => n.remove() }, icon("dismiss")));
+    return n;
+  }));
+}
+
+/* ---------------- rows and groups ---------------- */
+let lbCount = 0;
+function group(title, count, rows, opts = {}) {
+  const hid = "g" + (++lbCount);
+  const head = h("div", { class: "group-head" + (opts.first ? " first" : "") }, h("h2", { class: "h2", id: hid }, title), count != null ? h("span", { class: "group-count" }, String(count)) : null);
+  if (opts.headStep) head.append(h("button", { class: "head-step", type: "button", onclick: opts.headStep.run }, opts.headStep.words, icon("chev", "sm")));
+  const wrap = h("section", { class: "group-wrap" }, head);
+  if (!rows.length && opts.empty) wrap.append(h("div", { class: "group-empty" }, opts.empty));
+  else wrap.append(listbox(rows, hid));
+  return wrap;
+}
+function listbox(rows, labelId) {
+  const lb = h("div", { class: "lb", role: "listbox", tabindex: "0", "aria-labelledby": labelId || null, "aria-label": labelId ? null : "Rows" });
+  let active = 0;
+  const nodes = rows.map((r, i) => {
+    if (r.sub) return h("div", { class: "sub-head", role: "presentation" }, r.sub);
+    const id = "o" + (++lbCount);
+    const step = r.step ? h("span", { class: "c-step", "aria-hidden": "true", onclick: (e) => { e.stopPropagation(); r.step.run(); } }, r.step.words, icon("chev", "sm")) : h("span", { class: "c-step" });
+    const node = h("div", { class: "row", role: "option", id, "aria-selected": "false", "aria-description": r.step ? r.step.words : null },
+      h("span", { class: "c-name", "data-full": r.name }, r.name),
+      h("span", { class: "c-detail", "data-full": r.detail || "" }, r.detail || ""),
+      h("span", { class: "c-status " + (r.tone || "") }, r.status || ""),
+      h("span", { class: "c-end" }, h("span", { class: "c-date" }, r.date || ""), step));
+    if (r.step) node.classList.add("has-step");
+    node.addEventListener("click", () => setActive(i));
+    node.addEventListener("dblclick", () => r.step && r.step.run());
+    node.addEventListener("contextmenu", (e) => { e.preventDefault(); setActive(i); if (r.menu) popup(r.menu(), e.clientX, e.clientY); });
+    node._row = r;
+    return node;
+  });
+  const opts = nodes.filter((n) => n.classList.contains("row"));
+  function setActive(i) {
+    const n = nodes[i]; if (!n || !n.classList.contains("row")) return;
+    opts.forEach((o) => { o.classList.remove("active"); o.setAttribute("aria-selected", "false"); });
+    n.classList.add("active"); n.setAttribute("aria-selected", "true"); lb.setAttribute("aria-activedescendant", n.id); active = i;
+    n.scrollIntoView({ block: "nearest" });
+  }
+  lb.addEventListener("focus", () => { if (!lb.getAttribute("aria-activedescendant")) setActive(nodes.indexOf(opts[0])); });
+  lb.addEventListener("keydown", (e) => {
+    const idx = opts.indexOf(nodes[active]);
+    const to = (k) => setActive(nodes.indexOf(opts[Math.max(0, Math.min(opts.length - 1, k))]));
+    if (e.key === "ArrowDown") { e.preventDefault(); to(idx + 1); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); to(idx - 1); }
+    else if (e.key === "Home") { e.preventDefault(); to(0); }
+    else if (e.key === "End") { e.preventDefault(); to(opts.length - 1); }
+    else if (e.key === "PageDown") { e.preventDefault(); to(idx + 10); }
+    else if (e.key === "PageUp") { e.preventDefault(); to(idx - 10); }
+    else if (e.key === "Enter") { e.preventDefault(); const r = nodes[active]._row; if (r && r.step) r.step.run(); }
+    else if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+      e.preventDefault(); const n = nodes[active], r = n && n._row;
+      if (r && r.menu) { const b = n.getBoundingClientRect(); popup(r.menu(), b.left + 32, b.bottom); }
+    }
+  });
+  lb.append(...nodes);
+  return lb;
+}
+
+/* ---------------- row makers ---------------- */
+const countWords = (r) => (needOf(r) ? [`${needOf(r)} need you`, "st-attention"] : waitOf(r) ? [`${waitOf(r)} waiting`, "st-waiting"] : ["Complete", "st-done"]);
+function returnRow(r, detail) {
+  const [status, tone] = countWords(r);
+  const oldest = r.needs.find((x) => x.kind !== "request");
+  return { name: r.name, detail: detail !== undefined ? detail : r.household.name, status, tone, date: needOf(r) ? (oldest ? oldest.date : "") : waitOf(r) ? r.due : "",
+    step: { words: "Open", run: () => openReturn(r) }, menu: () => returnMenu(r) };
+}
+function hhCounts(x) { const rs = x.returns.filter(thisYear); const need = rs.reduce((n, r) => n + needOf(r), 0), wait = rs.reduce((n, r) => n + waitOf(r), 0); return { rs, need, wait }; }
+function householdRow(x) {
+  const { rs, need, wait } = hhCounts(x);
+  const [status, tone] = need ? [`${need} need you`, "st-attention"] : wait ? [`${wait} waiting`, "st-waiting"] : rs.length ? ["Complete", "st-done"] : ["", ""];
+  return { name: x.name, detail: rs.length === 1 ? "1 return" : `${rs.length} returns`, status, tone, date: "",
+    step: { words: "Open", run: () => go({ level: "household", hh: x }) }, menu: () => householdMenu(x) };
+}
+function itemRow(r, it, groupName) {
+  if (it.kind === "file") return { name: it.name, detail: it.detail, status: it.status, tone: groupName === "set" ? "st-plain" : "st-attention", date: it.date,
+    step: { words: "Check", run: () => openCheck(r, it) }, menu: () => fileMenu(r, it) };
+  if (it.kind === "moved") return { name: it.name, detail: it.detail, status: it.status, tone: "st-attention", date: it.date,
+    step: { words: "Check", run: () => openCheck(r, it) }, menu: () => movedMenu(r, it) };
+  const tone = { needs: "st-attention", waiting: "st-waiting", received: "st-done", set: "st-plain" }[groupName];
+  const step = groupName === "needs" ? { words: "Edit", run: () => toast("Opens the request list editor") }
+    : groupName === "waiting" ? { words: "Draft reminder", run: () => openReminder(r) } : null;
+  const menu = groupName === "received" ? () => receivedMenu(r, it) : () => [{ id: "edit_request", words: "Edit request…", run: () => toast("Opens the request list editor") }];
+  return { name: it.name, detail: it.detail, status: it.status, tone, date: it.date, step, menu };
+}
+
+/* ---------------- pages ---------------- */
+function skeleton(n) { return Array.from({ length: n }, () => h("div", { class: "skel", "aria-hidden": "true" }, h("i"), h("i"))); }
+function empty(line, caption, button) { return h("div", { class: "empty" }, h("span", {}, line), caption ? h("p", { class: "caption" }, caption) : null, button || null); }
+
+function drawPage() {
+  const p = $("page"), r = S.route; lbCount = 0;
+  p.setAttribute("aria-busy", S.scenario === "loading" ? "true" : "false");
+  const out = [];
+  if (r.level === "setup") out.push(...setupPage());
+  else if (S.scenario === "loading") {
+    if (r.ret) out.push(h("h1", { class: "h1" }, r.ret.name));
+    else if (r.hh) out.push(h("h1", { class: "h1" }, r.hh.name));
+    if (r.level === "overview") out.push(h("div", { class: "figures", "aria-hidden": "true" }, ...[0, 1, 2].map(() => h("div", { class: "figure" }, h("b", {}, " "), h("span", {}, " ")))));
+    out.push(h("div", { class: "group-head first" }, h("span", { class: "vh" }, "Loading")), ...skeleton(6));
+  }
+  else if (r.level === "overview") out.push(...overviewPage());
+  else if (r.level === "needs-review") out.push(...needsReviewPage());
+  else if (r.level === "reminders") out.push(...remindersPage());
+  else if (r.level === "clients") out.push(...clientsPage());
+  else if (r.level === "household") out.push(...householdPage(r.hh));
+  else if (r.level === "year") out.push(...yearPage(r.hh, r.year));
+  else if (r.level === "return") out.push(...returnPage(r.ret));
+  p.replaceChildren(...out);
+}
+function overviewPage() {
+  const rs = allReturns().filter(thisYear);
+  if (S.scenario === "empty") return [h("div", { class: "figures" }, fig(0, "Need a person"), fig(0, "Waiting on clients"), fig(rs.length, "Complete")), empty("Nothing is waiting", "Next sort 6:00 PM")];
+  const need = rs.filter((r) => bucket(r) === "need"), wait = rs.filter((r) => bucket(r) === "waiting"), done = rs.filter((r) => bucket(r) === "complete");
+  const monthDay = (s) => (s ? new Date(s + " 2026").getTime() : Infinity);
+  const oldest = (r) => Math.min(...filesOf(r).map((f) => monthDay(f.date)), Infinity);
+  need.sort((a, b) => oldest(a) - oldest(b));
+  wait.sort((a, b) => monthDay((a.due || "").replace("Due ", "")) - monthDay((b.due || "").replace("Due ", "")) || a.name.localeCompare(b.name));
+  return [h("div", { class: "figures" }, fig(need.length, "Need a person"), fig(wait.length, "Waiting on clients"), fig(done.length, "Complete")),
+    group("Work waiting", need.length + wait.length, [...need, ...wait].map((r) => returnRow(r)))];
+}
+function fig(n, words) { return h("div", { class: "figure" }, h("b", {}, String(n)), h("span", {}, words)); }
+function needsReviewPage() {
+  const rs = allReturns().filter(thisYear).filter((r) => filesOf(r).length);
+  if (S.scenario === "empty" || !rs.length) return [empty("Nothing needs review", "Next sort 6:00 PM")];
+  return rs.map((r, i) => {
+    const g = group(r.name, null, filesOf(r).map((f) => itemRow(r, f, "needs")), { first: i === 0 });
+    g.querySelector(".group-head").append(h("span", { class: "group-count" }, `${r.household.name} · ${filesOf(r).length}`));
+    return g;
+  });
+}
+function remindersPage() {
+  const rs = allReturns().filter(draftReady);
+  if (S.scenario === "empty" || !rs.length) return [empty("No drafts ready")];
+  const stages = ["Heads up", "Checking in", "Deadline near", "Final notice"];
+  const rows = rs.map((r) => ({ name: r.name, detail: r.household.name, status: r.draft.held ? "Held" : stages[r.draft.stage], tone: r.draft.held ? "st-attention" : "st-waiting",
+    date: r.draft.drafted, step: { words: "Draft reminder", run: () => openReminder(r, rs) }, menu: () => returnMenu(r) }));
+  return [h("div", { class: "group-head first" }), listbox(rows)];
+}
+function clientsPage() {
+  const sw = h("div", { class: "switch", role: "group", "aria-label": "Show" },
+    h("button", { type: "button", "aria-pressed": String(S.filter === "work"), onclick: () => { S.filter = "work"; drawPage(); } }, "Work waiting"),
+    h("button", { type: "button", "aria-pressed": String(S.filter === "all"), onclick: () => { S.filter = "all"; drawPage(); } }, "All"));
+  let list = households.slice().sort((a, b) => a.name.localeCompare(b.name));
+  if (S.filter === "work") list = list.filter((x) => { const c = hhCounts(x); return S.scenario !== "empty" && (c.need || c.wait); });
+  if (!list.length) return [sw, empty(S.filter === "work" ? "No work waiting" : "No clients yet")];
+  return [sw, h("div", { class: "group-head first" }, h("span", { class: "group-count" }, `${list.length} households`)), listbox(list.map(householdRow))];
+}
+function householdPage(x) {
+  const bits = [x.contact ? `Contact ${x.contact}` : null, x.shared ? "Shared" : "Not shared"].filter(Boolean).join(" · ");
+  const out = [h("h1", { class: "h1", oncontextmenu: (e) => { e.preventDefault(); popup(householdMenu(x), e.clientX, e.clientY); } }, x.name), h("p", { class: "caption" }, bits)];
+  if (!x.returns.length) { out.push(empty("No returns yet", null, h("button", { class: "btn", type: "button", onclick: () => toast("Opens Add a return") }, "Add a return…"))); return out; }
+  const years = [...new Set(x.returns.map((r) => r.year))].sort((a, b) => b - a);
+  years.forEach((y, i) => out.push(group(String(y), null, x.returns.filter((r) => r.year === y).map((r) => returnRow(r, r.detail || "")), { first: i === 0 })));
+  return out;
+}
+function yearPage(x, y) { return [h("h1", { class: "h1" }, String(y)), h("div", { class: "group-head first" }), listbox(x.returns.filter((r) => r.year === y).map((r) => returnRow(r, r.detail || "")))]; }
+function returnPage(r) {
+  const out = [h("h1", { class: "h1", oncontextmenu: (e) => { e.preventDefault(); popup(returnMenu(r), e.clientX, e.clientY); } }, r.name)];
+  if (r.due) out.push(h("p", { class: "caption" }, r.due));
+  let first = true;
+  const add = (g) => { out.push(g); first = false; };
+  if (r.needs.length) {
+    const files = r.needs.filter((x) => x.kind === "file"), movedRows = r.needs.filter((x) => x.kind === "moved"), reqs = r.needs.filter((x) => x.kind === "request");
+    add(group("Needs you", r.needs.length, [...files, ...movedRows, ...reqs].map((it) => itemRow(r, it, "needs")), { first }));
+  }
+  if (r.waiting.length) add(group("Waiting on client", r.waiting.length, r.waiting.map((it) => itemRow(r, it, "waiting")), { first, headStep: { words: "Draft reminder", run: () => openReminder(r) } }));
+  add(group("Received", r.received.length, r.received.map((it) => itemRow(r, it, "received")), { first, empty: "Nothing received yet" }));
+  if (r.setAside.length) {
+    const d = h("details", { class: "fold group-wrap" });
+    const sid = "g" + (++lbCount);
+    d.append(h("summary", { class: "group-head" }, h("span", { class: "chev" }, icon("chev", "sm")), h("h2", { class: "h2", id: sid }, "Set aside"), h("span", { class: "group-count" }, String(r.setAside.length))),
+      listbox(r.setAside.map((it) => itemRow(r, it, "set")), sid));
+    out.push(d);
+  }
+  return out;
+}
+function setupPage() {
+  let chosen = "";
+  const nameOut = h("span", {}, "");
+  const start = h("button", { class: "btn primary", type: "button", disabled: true, onclick: () => { S.scenario = "normal"; $("mock-state").value = "normal"; S.route = { level: "overview" }; drawAll(); } }, "Start");
+  return [h("h1", { class: "h1" }, "Choose your clients folder"), h("div", { class: "setup" },
+    h("div", { class: "pick" }, h("button", { class: "btn", type: "button", onclick: () => { chosen = "Clients"; nameOut.textContent = chosen; start.disabled = false; } }, "Choose folder…"), nameOut),
+    h("label", { class: "field", for: "firm" }, h("span", {}, "Firm name"), h("input", { id: "firm", type: "text", value: "Sample Tax Office" })),
+    h("label", { class: "field", for: "phone" }, h("span", {}, "Firm phone"), h("input", { id: "phone", type: "text", value: "(555) 010-0199" })),
+    start)];
+}
+
+/* ---------------- navigation helpers ---------------- */
+function openReturn(r) { go({ level: "return", hh: r.household, year: r.year, ret: r }); }
+function lockedReturn() { return households[0].returns[0]; }
+
+/* ---------------- side sheet ---------------- */
+let sheetOpener = null;
+function closeSheet(redraw = true) {
+  if (!S.sheet) return; S.sheet = null; $("overlay").replaceChildren();
+  if (redraw) { drawAll(); if (sheetOpener && document.contains(sheetOpener)) sheetOpener.focus(); }
+}
+function sheetFrame(title, headIcons, body, foot) {
+  const titleEl = h("h2", { class: "h2", tabindex: "-1", "data-full": title }, title);
+  const sheet = h("aside", { class: "sheet", role: "dialog", "aria-modal": "true", "aria-label": title },
+    h("div", { class: "sheet-head" }, titleEl, ...headIcons, iconBtn("dismiss", "Dismiss", () => closeSheet())),
+    h("div", { class: "sheet-body" }, ...body), h("div", { class: "sheet-foot" }, ...foot));
+  $("overlay").replaceChildren(h("div", { class: "scrim", onclick: () => closeSheet() }), sheet);
+  titleEl.focus();
+}
+function iconBtn(name, words, run, extra = {}) { return h("button", { class: "icon-btn", type: "button", "aria-label": words, "data-tip": words, onclick: run, ...extra }, icon(name)); }
+function nextFiles(r) {
+  if (S.route.level === "needs-review") return allReturns().filter(thisYear).flatMap((x) => filesOf(x).map((f) => [x, f]));
+  return r.needs.filter((x) => x.kind !== "request").map((f) => [r, f]);
+}
+function openCheck(r, it) {
+  if (!S.sheet) sheetOpener = document.activeElement;
+  S.sheet = { kind: "check", r, it };
+  const locked = S.locked && r === lockedReturn();
+  const list = nextFiles(r), at = list.findIndex(([, f]) => f === it), next = list[at + 1];
+  let moreOpen = false;
+  const more = h("div", { class: "more-fold", hidden: true },
+    h("label", { class: "field", for: "kw" }, h("span", {}, "Keyword"), h("input", { id: "kw", type: "text" })),
+    h("label", { class: "field", for: "sp" }, h("span", {}, "Spelling"), h("input", { id: "sp", type: "text" })),
+    h("label", { class: "field", for: "rs" }, h("span", {}, "Reason (optional)"), h("input", { id: "rs", type: "text" })),
+    h("div", {}, h("button", { class: "btn subtle", type: "button", onclick: () => toast("Opens Another return") }, "Another return…")));
+  const moreBtn = iconBtn("more", "More", () => { moreOpen = !moreOpen; more.hidden = !moreOpen; moreBtn.setAttribute("aria-expanded", String(moreOpen)); }, { "aria-expanded": "false" });
+  const head = [iconBtn("open", "Open", () => toast("Opens the copy")), it.kind === "file" ? moreBtn : null,
+    iconBtn("next", "Next", () => (next ? openCheck(next[0], next[1]) : closeSheet()), { disabled: !next })];
+  let body, foot;
+  if (it.kind === "moved") {
+    body = [h("div", { class: "status-line" }, h("b", {}, "Moved by hand"), h("span", { class: "caption", style: "margin:0" }, it.date)),
+      h("div", { class: "field" }, h("span", {}, "Request"), h("span", {}, it.detail))];
+    foot = [h("button", { class: "btn", type: "button", disabled: locked, onclick: () => resolve(r, it, next, "keep") }, "Keep here"),
+      h("button", { class: "btn primary", type: "button", disabled: locked, onclick: () => resolve(r, it, next, "back") }, "Put back")];
+  } else {
+    const sel = h("select", { id: "belongs" },
+      h("optgroup", { label: "Suggested" }, ...(it.suggest || []).map((s) => h("option", {}, s))),
+      h("optgroup", { label: "Other" }, ...["W-2 - Brightline Health", "1098 - Harbor Bank", "Property tax bill"].map((s) => h("option", {}, s))));
+    body = [h("div", { class: "status-line" }, h("b", {}, it.status), h("span", { class: "caption", style: "margin:0" }, it.date)),
+      h("label", { class: "field", for: "belongs" }, h("span", {}, "Belongs to"), sel),
+      (it.reasons || []).length ? h("ul", { class: "reasons" }, ...it.reasons.map((x, i) => h("li", {}, `${(it.suggest || [])[i] || ""}: ${x}`))) : null, more];
+    foot = [h("button", { class: "btn", type: "button", disabled: locked, onclick: () => resolve(r, it, next, "dismiss") }, "Not requested"),
+      h("button", { class: "btn primary", type: "button", disabled: locked, onclick: () => resolve(r, it, next, "file", sel.value) }, "File it")];
+  }
+  sheetFrame(it.name, head, body, foot);
+}
+function resolve(r, it, next, how, to) {
+  const from = [r.needs, r.setAside].find((a) => a.includes(it));
+  from.splice(from.indexOf(it), 1);
+  if (how === "file") r.received.unshift(req(to, it.name, "Received", "Today"));
+  if (how === "dismiss") r.setAside.push({ ...it, status: "Not requested", detail: "" });
+  if (how === "back" || how === "keep") r.received.unshift(req(it.detail, it.name, "Received", it.date));
+  drawAll();
+  if (next) openCheck(next[0], next[1]); else closeSheet();
+}
+function openReminder(r, list) {
+  if (!S.sheet) sheetOpener = document.activeElement;
+  S.sheet = { kind: "reminder", r };
+  const stages = ["Heads up", "Checking in", "Deadline near", "Final notice"];
+  let stage = r.draft ? r.draft.stage : 0;
+  const seg = h("div", { class: "seg", role: "group", "aria-label": "Stage" });
+  const letter = h("div", { class: "letter", tabindex: "0", "aria-label": "Letter" });
+  const who = r.household.contact.split(" ")[0];
+  function drawLetter() {
+    seg.replaceChildren(...stages.map((s, i) => h("button", { type: "button", "aria-pressed": String(i === stage), onclick: () => { stage = i; drawLetter(); } }, s)));
+    const tone = ["Just a friendly note", "Checking in again", "The filing deadline is getting close", "This is our final reminder"][stage];
+    letter.replaceChildren(h("p", {}, `Dear ${who},`), h("p", {}, `${tone}: we are still waiting for these documents for your ${r.year} return.`),
+      h("ul", {}, ...r.waiting.map((w) => h("li", {}, w.name))), h("p", {}, "Please drop them in your shared folder. Thank you!"), h("p", {}, "Sample Tax Office"));
+  }
+  drawLetter();
+  const i = list ? list.indexOf(r) : -1, next = list && list[i + 1];
+  const held = r.draft && r.draft.held ? h("div", { class: "held" }, `Held: ${r.draft.held} need a decision`, h("ul", {}, ...r.needs.slice(0, 3).map((x) => h("li", {}, x.name)))) : null;
+  sheetFrame("Reminder", [list ? iconBtn("next", "Next", () => (next ? openReminder(next, list) : closeSheet()), { disabled: !next }) : null],
+    [h("p", { class: "caption", style: "margin:0" }, r.draft ? `Drafted ${r.draft.drafted}, stage ${stage + 1}` : "Drafted Mar 3, stage 1"), held, seg,
+      h("div", { class: "subject" }, `Documents still needed for your ${r.year} return`), letter],
+    [h("button", { class: "btn", type: "button", onclick: () => { toast("Approved"); } }, "Approve"),
+      h("button", { class: "btn primary", type: "button", onclick: () => { try { navigator.clipboard.writeText(letter.innerText).catch(() => {}); } catch (e) { /* copy is optional here */ } toast("Copied"); } }, "Copy")]);
+}
+
+/* ---------------- dialogs ---------------- */
+function showDialog(kind) {
+  const close = () => { $("overlay").replaceChildren(); S.dialog = null; };
+  S.dialog = kind;
+  let title, body;
+  if (kind === "safeguards") { title = "Safeguards"; body = h("ul", {}, ...["No AI reads documents", "Originals never changed", "Nothing is guessed", "Nothing is ever sent"].map((s) => h("li", {}, icon("done"), s))); }
+  else if (kind === "about") { title = "Tax Document Tracker"; body = h("p", { style: "margin:0" }, "Pilot 0.2"); }
+  else { title = "Folders skipped"; body = h("div", { class: "lb" }, ...[["Scans to sort", "Not a household"], ["Old - 2019", "Not a household"], ["Smith Family (2)", "Name taken"]].map(([n, why]) => h("div", { class: "row", style: "grid-template-columns: 1fr 160px; padding: 0" }, h("span", { class: "c-name" }, n), h("span", { class: "c-detail" }, why)))); }
+  const btn = h("button", { class: "btn primary", type: "button", onclick: close }, "Close");
+  $("overlay").replaceChildren(h("div", { class: "dialog-wrap", onclick: (e) => { if (e.target === e.currentTarget) close(); } },
+    h("div", { class: "dialog", role: "dialog", "aria-modal": "true", "aria-label": title }, h("h2", { class: "h2" }, title), body, h("div", { class: "actions" }, btn))));
+  btn.focus();
+}
+
+/* ---------------- menus (drawn like Windows' native ones) ---------------- */
+function householdMenu(x) {
+  const lock = S.scenario === "setup";
+  return [{ words: "Edit household…", run: () => toast("Opens Edit household"), off: lock }, { words: "Add a return…", run: () => toast("Opens Add a return"), off: lock },
+    { words: "Roll forward…", run: () => toast("Opens Roll forward"), off: lock }, { words: "Mark as shared", run: () => { x.shared = true; drawAll(); }, off: x.shared }, "-",
+    { words: "Open client folder", run: () => toast("Opens File Explorer") }, { words: "Open inbox", run: () => toast("Opens File Explorer") }];
+}
+function returnMenu(r) {
+  const locked = S.locked && r === lockedReturn();
+  return [{ words: "Edit request list…", acc: "Ctrl+E", run: () => toast("Opens the request list editor"), off: locked }, { words: "Draft reminder…", run: () => openReminder(r) }, "-",
+    { words: "Open working folder", run: () => toast("Opens File Explorer") }, { words: "Open client folder", run: () => toast("Opens File Explorer") }, { words: "Open inbox", run: () => toast("Opens File Explorer") }];
+}
+function fileMenu(r, it) { return [{ words: "Check…", run: () => openCheck(r, it) }, { words: "Not requested", run: () => resolve(r, it, null, "dismiss") }, { words: "Another return…", run: () => toast("Opens Another return") }]; }
+function movedMenu(r, it) { return [{ words: "Check…", run: () => openCheck(r, it) }, { words: "Put back", run: () => resolve(r, it, null, "back") }, { words: "Keep here", run: () => resolve(r, it, null, "keep") }]; }
+function receivedMenu(r, it) {
+  return [{ words: "Unfile", run: () => { r.received.splice(r.received.indexOf(it), 1); r.needs.push(file(it.detail, it.name, "Unfiled by a person", "Today", { suggest: [it.name], reasons: [] })); drawAll(); } },
+    { words: "Mark missing", run: () => { r.received.splice(r.received.indexOf(it), 1); r.waiting.push({ ...it, status: "Outstanding", detail: "", date: "" }); drawAll(); } }];
+}
+let menuState = null;
+function popup(items, x, y, fromBar) {
+  closeMenu();
+  const m = h("div", { class: "menu", role: "menu" });
+  for (const it of items) {
+    if (it === "-") { m.append(h("hr")); continue; }
+    m.append(h("button", { type: "button", role: "menuitem", disabled: !!it.off, onclick: () => { closeMenu(); it.run(); } }, h("span", {}, it.words), it.acc ? h("span", { class: "acc" }, it.acc) : null));
+  }
+  document.body.append(m);
+  const w = m.offsetWidth, hgt = m.offsetHeight;
+  m.style.left = Math.min(x, window.innerWidth - w - 8) + "px";
+  m.style.top = Math.min(y, window.innerHeight - hgt - 8) + "px";
+  menuState = { m, fromBar };
+  const first = m.querySelector("button:not(:disabled)"); if (first) first.focus();
+  m.addEventListener("keydown", (e) => {
+    const bs = [...m.querySelectorAll("button:not(:disabled)")], i = bs.indexOf(document.activeElement);
+    if (e.key === "ArrowDown") { e.preventDefault(); bs[(i + 1) % bs.length].focus(); }
+    if (e.key === "ArrowUp") { e.preventDefault(); bs[(i - 1 + bs.length) % bs.length].focus(); }
+    if (e.key === "Escape") { e.preventDefault(); closeMenu(true); }
+    if (fromBar && (e.key === "ArrowRight" || e.key === "ArrowLeft")) { e.preventDefault(); const k = barOrder.indexOf(fromBar); openBar(barOrder[(k + (e.key === "ArrowRight" ? 1 : barOrder.length - 1)) % barOrder.length]); }
+  });
+}
+function closeMenu(refocus) {
+  if (!menuState) return;
+  const { m, fromBar } = menuState; m.remove(); menuState = null;
+  document.querySelectorAll(".menubar button").forEach((b) => b.setAttribute("aria-expanded", "false"));
+  if (refocus && fromBar) document.querySelector(`.menubar button[data-menu="${fromBar}"]`).focus();
+}
+document.addEventListener("mousedown", (e) => { if (menuState && !menuState.m.contains(e.target) && !e.target.closest(".menubar")) closeMenu(); });
+
+const barOrder = ["File", "Edit", "Client", "View", "Tools", "Help"];
+function barItems(name) {
+  const r = S.route, setup = S.scenario === "setup", hasHH = !!r.hh, hasRet = !!r.ret, locked = S.locked && r.ret === lockedReturn(), sorting = !!S.sorting;
+  const nav = (level) => () => go({ level });
+  const na = () => toast("Not in this mock-up");
+  return {
+    File: [{ words: "New household…", acc: "Ctrl+N", run: na, off: setup }, { words: "Change clients folder…", run: () => { S.scenario = "setup"; $("mock-state").value = "setup"; S.route = { level: "setup" }; drawAll(); } },
+      { words: "Open clients folder", run: () => toast("Opens File Explorer"), off: setup }, "-", { words: "Exit", acc: "Alt+F4", run: na }],
+    Edit: [{ words: "Undo", acc: "Ctrl+Z", run: na }, { words: "Redo", acc: "Ctrl+Y", run: na }, "-", { words: "Cut", acc: "Ctrl+X", run: na }, { words: "Copy", acc: "Ctrl+C", run: na }, { words: "Paste", acc: "Ctrl+V", run: na }, "-", { words: "Select all", acc: "Ctrl+A", run: na }],
+    Client: [
+      ...householdMenu(r.hh || {}).map((x) => (x === "-" ? x : { ...x, off: x.off || !hasHH || locked })).slice(0, 4), "-",
+      { words: "Edit request list…", acc: "Ctrl+E", run: () => toast("Opens the request list editor"), off: !hasRet || locked },
+      { words: "Draft reminder…", run: () => openReminder(r.ret), off: !hasRet }, "-",
+      { words: "Open client folder", run: () => toast("Opens File Explorer"), off: !hasHH }, { words: "Open inbox", run: () => toast("Opens File Explorer"), off: !hasHH },
+      { words: "Open working folder", run: () => toast("Opens File Explorer"), off: !hasRet }],
+    View: [{ words: "Overview", acc: "Ctrl+1", run: nav("overview"), off: setup }, { words: "Needs review", acc: "Ctrl+2", run: nav("needs-review"), off: setup },
+      { words: "Reminders", acc: "Ctrl+3", run: nav("reminders"), off: setup }, { words: "Clients", acc: "Ctrl+4", run: nav("clients"), off: setup }, "-",
+      { words: "Find", acc: "Ctrl+F", run: () => $("find").focus(), off: setup }, { words: "Refresh", acc: "F5", run: refresh }],
+    Tools: [{ words: "Sort now", acc: "F9", run: () => startSort(), off: !hasHH || sorting || locked || setup }, { words: "Stop sorting", run: stopSort, off: !sorting }, "-",
+      { words: "Schedule…", run: na, off: setup }, { words: "Repair schedule", run: na, off: setup }, { words: "Firm report", run: na, off: setup }, "-",
+      { words: "Clear stuck lock", run: na, off: true }],
+    Help: [{ words: "Take the tour", run: na }, { words: "Safeguards", run: () => showDialog("safeguards") }, { words: "Terms", run: na }, { words: "Open error log", run: () => toast("No error log yet") }, "-",
+      { words: "About", run: () => showDialog("about") }],
+  }[name];
+}
+function openBar(name) {
+  const b = document.querySelector(`.menubar button[data-menu="${name}"]`), box = b.getBoundingClientRect();
+  popup(barItems(name), box.left, box.bottom, name); b.setAttribute("aria-expanded", "true");
+}
+function drawMenubar() {
+  $("menubar").replaceChildren(...barOrder.map((name) => h("button", { type: "button", "data-menu": name, "aria-haspopup": "menu", "aria-expanded": "false",
+    onclick: () => (menuState && menuState.fromBar === name ? closeMenu() : openBar(name)), onmouseenter: () => { if (menuState && menuState.fromBar && menuState.fromBar !== name) openBar(name); } }, name)));
+}
+
+/* ---------------- sort ---------------- */
+let sortTimer = null;
+function startSort(force) {
+  if (S.sorting || (!S.route.hh && !force)) return;
+  S.sorting = { n: 1, total: S.route.hh ? S.route.hh.returns.length + 2 : 3 };
+  S.scenario = S.scenario === "failed" ? "normal" : S.scenario;
+  drawSide(); drawPath(); drawNotices();
+  sortTimer = setInterval(() => {
+    if (!S.sorting) return clearInterval(sortTimer);
+    if (S.sorting.stopping || S.sorting.n >= S.sorting.total) { finishSort(); return; }
+    S.sorting.n += 1; drawSide();
+  }, 900);
+}
+function stopSort() { if (!S.sorting) return; S.sorting.stopping = true; drawSide(); drawPath(); }
+function finishSort() {
+  clearInterval(sortTimer); S.sorting = null;
+  const d = new Date(); S.lastSort = { at: d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }), ok: true };
+  drawAll();
+}
+$("sort").addEventListener("click", () => (S.sorting ? stopSort() : startSort()));
+function refresh() { const was = S.scenario; S.scenario = "loading"; drawPage(); setTimeout(() => { S.scenario = was === "loading" ? "normal" : was; drawPage(); }, 600); }
+
+/* ---------------- search ---------------- */
+const fold = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+let findActive = -1, findItems = [];
+function drawFind() {
+  const q = fold($("find").value.trim()), list = $("find-list");
+  if (!q) { list.hidden = true; $("find").setAttribute("aria-expanded", "false"); return; }
+  const hs = households.filter((x) => fold(x.name).includes(q)).map((x) => ({ name: x.name, cap: "Household", run: () => go({ level: "household", hh: x }) }));
+  const rs = allReturns().filter((r) => fold(r.name).includes(q)).map((r) => ({ name: r.name, cap: `${r.household.name} · ${r.year}`, run: () => openReturn(r) }));
+  findItems = [...hs, ...rs].slice(0, 8); findActive = findItems.length ? 0 : -1;
+  list.replaceChildren(...(findItems.length ? findItems.map((it, i) => h("li", { role: "option", id: "fo" + i, "aria-selected": String(i === findActive), onmousedown: (e) => { e.preventDefault(); pick(i); } },
+    h("span", { class: "n" }, it.name), h("span", { class: "c" }, it.cap))) : [h("li", { role: "option", "aria-disabled": "true" }, "No match")]));
+  list.hidden = false; $("find").setAttribute("aria-expanded", "true");
+  $("find").setAttribute("aria-activedescendant", findActive >= 0 ? "fo0" : "");
+}
+function pick(i) { const it = findItems[i]; if (!it) return; $("find").value = ""; drawFind(); it.run(); }
+$("find").addEventListener("input", drawFind);
+$("find").addEventListener("blur", () => setTimeout(() => { $("find-list").hidden = true; $("find").setAttribute("aria-expanded", "false"); }, 100));
+$("find").addEventListener("keydown", (e) => {
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault(); if (!findItems.length) return;
+    findActive = (findActive + (e.key === "ArrowDown" ? 1 : findItems.length - 1)) % findItems.length;
+    [...$("find-list").children].forEach((li, i) => li.setAttribute("aria-selected", String(i === findActive)));
+    $("find").setAttribute("aria-activedescendant", "fo" + findActive);
+  } else if (e.key === "Enter") { e.preventDefault(); pick(Math.max(0, findActive)); }
+  else if (e.key === "Escape") { $("find").value = ""; drawFind(); }
+});
+
+/* ---------------- tooltip ---------------- */
+let tipTimer = null;
+function tipText(el) {
+  if (el.dataset.tip) return el.dataset.tip;
+  if (el.dataset.full != null && el.scrollWidth > el.clientWidth + 1) return el.dataset.full;
+  return "";
+}
+function showTip(el) {
+  const text = tipText(el); if (!text) return;
+  const t = $("tip"); t.textContent = text; t.hidden = false;
+  const b = el.getBoundingClientRect(), w = t.offsetWidth;
+  t.style.left = Math.max(8, Math.min(b.left + b.width / 2 - w / 2, window.innerWidth - w - 8)) + "px";
+  t.style.top = (b.bottom + 8 + t.offsetHeight > window.innerHeight ? b.top - t.offsetHeight - 8 : b.bottom + 8) + "px";
+}
+function hideTip() { clearTimeout(tipTimer); $("tip").hidden = true; }
+document.addEventListener("mouseover", (e) => {
+  const el = e.target.closest("[data-tip], [data-full]"); hideTip();
+  if (el) tipTimer = setTimeout(() => showTip(el), 500);
+});
+document.addEventListener("focusin", (e) => { hideTip(); if (e.target.matches("[data-tip]")) showTip(e.target); });
+document.addEventListener("focusout", hideTip);
+
+/* ---------------- toast ---------------- */
+let toastTimer = null;
+function toast(words) { const t = $("toast"); t.textContent = words; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), 2000); }
+
+/* ---------------- the one keyboard owner ---------------- */
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    if (!$("tip").hidden) { hideTip(); return; }
+    if (menuState) { closeMenu(true); return; }
+    if (S.dialog) { $("overlay").replaceChildren(); S.dialog = null; return; }
+    if (S.sheet) { closeSheet(); return; }
+  }
+  if (S.scenario === "setup") return;
+  const ctrl = e.ctrlKey || e.metaKey;
+  if (ctrl && ["1", "2", "3", "4"].includes(e.key)) { e.preventDefault(); go({ level: ["overview", "needs-review", "reminders", "clients"][+e.key - 1] }); }
+  else if (ctrl && e.key.toLowerCase() === "f") { e.preventDefault(); $("find").focus(); $("find").select(); }
+  else if (e.key === "F9") { e.preventDefault(); if (!$("sort").disabled && !S.sorting) startSort(); }
+  else if (e.key === "F5") { e.preventDefault(); refresh(); }
+  else if (e.key === "F6") {
+    e.preventDefault();
+    const stops = [document.querySelector(".sections button[aria-current]") || document.querySelector(".sections button"), $("find"), $("page")];
+    const i = stops.findIndex((s) => s.contains(document.activeElement));
+    stops[(i + 1) % stops.length].focus();
+  }
+});
+
+/* ---------------- mock controls ---------------- */
+$("mock-theme").addEventListener("change", (e) => { const v = e.target.value; if (v === "system") document.documentElement.removeAttribute("data-theme"); else document.documentElement.setAttribute("data-theme", v); });
+$("mock-state").addEventListener("change", (e) => {
+  const v = e.target.value; clearInterval(sortTimer); S.sorting = null; S.locked = false; closeSheet(false);
+  S.scenario = v === "locked" ? "normal" : v;
+  if (v === "setup") S.route = { level: "setup" };
+  else if (v === "locked") { S.locked = true; S.route = { level: "return", hh: households[0], year: 2025, ret: lockedReturn() }; }
+  else if (S.route.level === "setup") S.route = { level: "overview" };
+  drawAll();
+});
+
+function drawAll() { drawMenubar(); drawSide(); drawPath(); drawNotices(); drawPage(); }
+(function start() {
+  const hash = location.hash.slice(1);
+  if (hash === "dark" || hash === "light") { document.documentElement.setAttribute("data-theme", hash); $("mock-theme").value = hash; }
+  drawAll();
+})();
+</script>
