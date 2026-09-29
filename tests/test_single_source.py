@@ -2642,6 +2642,7 @@ const nodes = {};
 const node = (id) => ({ id, classList: { add() {}, remove() {} }, textContent: "", disabled: false, dataset: {},
                         querySelectorAll: () => [] });
 const ctx = `let locked = false; let scanning = {}; const SCAN_LABEL = "Sort & Scan";
+const shellChanged = () => {}; const shellProgress = () => {};   // shell.js's, told of the change (SPEC-shell 14.2)
 const $ = (id) => (nodes[id] ||= node(id));
 ${parts.join("\n")}
 return { setLocked, scanDone };`;
@@ -2901,6 +2902,7 @@ const vocab = { engagement_flag: "--engagement",
   lock: { running: "r", running_other: "o", on: "o", greyed: "g", left_behind: "l", watch_seconds: 5,
           buttons_back: "back" } };
 const LOCKED_BUTTONS = []; const LOCKED_CARDS = [];
+const shellChanged = () => {};   // shell.js's, told of the change (SPEC-shell 14.2)
 const $ = (id) => (nodes[id] ||= node());
 const fill = (p) => p;
 async function call(args) { asked.push(args[2]); return { lock: held[args[2]] ? lockOf(args[2]) : null }; }

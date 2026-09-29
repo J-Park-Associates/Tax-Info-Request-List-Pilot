@@ -10,9 +10,91 @@
   <title></title>
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="pilot-ui.css" />
+  <link rel="stylesheet" href="shell.css" />
   <link rel="stylesheet" href="pilot-style.css" />
 </head>
 <body>
+  <!-- ═══════════════ The shell (SPEC-shell 3.1) ═══════════════
+       The side panel, the path row, the notice area and the page. Every word
+       is the API's: shell.js fills each name and tooltip from the
+       vocabulary, and this file types none. The page is drawn by shell.js
+       (the setup page) and pages.js (the rest). -->
+  <div id="shell">
+    <nav id="side">
+      <div id="side-brand"><img src="logo.svg" alt="" /></div>
+      <ul id="side-sections">
+        <li><button type="button" class="side-section" data-section="overview"><span class="side-name"></span><span class="side-count"></span></button></li>
+        <li><button type="button" class="side-section" data-section="needs-review"><span class="side-name"></span><span class="side-count"></span></button></li>
+        <li><button type="button" class="side-section" data-section="reminders"><span class="side-name"></span><span class="side-count"></span></button></li>
+        <li><button type="button" class="side-section" data-section="clients"><span class="side-name"></span><span class="side-count"></span></button></li>
+      </ul>
+      <div id="side-foot">
+        <div id="last-sort" role="status" aria-live="polite"></div>
+      </div>
+    </nav>
+    <div id="main">
+      <header id="bar">
+        <nav id="crumbs"><ol id="crumb-list"></ol></nav>
+        <div id="find-wrap">
+          <svg class="icon" aria-hidden="true"><use href="#i-search" /></svg>
+          <input id="find" type="text" role="combobox" data-tip-key="screen.find"
+                 aria-expanded="false" aria-controls="find-list" aria-autocomplete="list"
+                 autocomplete="off" spellcheck="false" />
+          <ul id="find-list" role="listbox" hidden></ul>
+        </div>
+        <button id="sort" class="icon-button" type="button" data-tip-key="screen.sort.now">
+          <svg class="icon" aria-hidden="true"><use href="#i-sort" /></svg>
+        </button>
+      </header>
+      <!-- Failures and warnings stay until a person dismisses them (decision 193). -->
+      <div id="notices" role="alert" aria-live="polite"></div>
+      <!-- The notices' buttons: static, because a notice must work before any
+           vocabulary has arrived. Word for word tracker.api.NOTICE_LABELS. -->
+      <template id="notice-buttons">
+        <button class="btn btn-small notice-act" data-act="retry">Retry</button>
+        <button class="btn btn-small notice-act" data-act="look">Look again</button>
+        <button class="btn btn-small notice-act" data-act="dismiss">Dismiss</button>
+      </template>
+      <main id="page" tabindex="-1"></main>
+    </div>
+  </div>
+
+  <!-- The side sheet (SPEC-shell 7): sheet.js draws Check a file and Draft
+       reminder into it. Hidden until one opens. -->
+  <div id="sheet-scrim" hidden></div>
+  <aside id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" hidden>
+    <div id="sheet-head">
+      <h2 id="sheet-title" tabindex="-1"></h2>
+      <button id="sheet-close" class="icon-button" type="button" data-tip-key="screen.icons.dismiss">
+        <svg class="icon" aria-hidden="true"><use href="#i-dismiss" /></svg>
+      </button>
+    </div>
+    <div id="sheet-body"></div>
+    <div id="sheet-foot"></div>
+  </aside>
+
+  <!-- One tooltip element, reused (SPEC-shell 8.5). -->
+  <div id="tip" role="tooltip" hidden></div>
+
+  <!-- The drawn icons (SPEC-shell 3.8): 16px on a 16 viewBox, 1.5px stroke,
+       round caps, currentColor. -->
+  <svg width="0" height="0" class="visually-hidden" aria-hidden="true" focusable="false">
+    <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5L14 14" /></symbol>
+    <symbol id="i-sort" viewBox="0 0 16 16"><path d="M13.2 6.2A5.5 5.5 0 0 0 3.4 4.4" /><path d="M3 2v3h3" /><path d="M2.8 9.8a5.5 5.5 0 0 0 9.8 1.8" /><path d="M13 14v-3h-3" /></symbol>
+    <symbol id="i-stop" viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1.5" /></symbol>
+    <symbol id="i-dismiss" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8" /></symbol>
+    <symbol id="i-chev" viewBox="0 0 16 16"><path d="M6 3.5L10.5 8 6 12.5" /></symbol>
+    <symbol id="i-next" viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4" /></symbol>
+    <symbol id="i-done" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7" /></symbol>
+    <symbol id="i-more" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r="0.6" /><circle cx="8" cy="8" r="0.6" /><circle cx="12.5" cy="8" r="0.6" /></symbol>
+    <symbol id="i-open" viewBox="0 0 16 16"><path d="M9 3h4v4M13 3L7.5 8.5M11 9.5V13H3V5h3.5" /></symbol>
+  </svg>
+
+  <!-- Everything below is the old screen, kept in place and hidden. app.js
+       still finds its elements by id here; the pages (S4) and the sheet
+       (S5) take over what each one showed, and delete it as they do. Nothing
+       in this block is drawn. -->
+  <div id="legacy" class="hidden">
   <header class="topbar">
     <div class="brand">
       <img src="logo.svg" alt="" class="brand-logo" />
@@ -112,15 +194,6 @@
         <p id="after-install-wait"></p>
         <ul id="after-install-list"></ul>
       </div>
-      <!-- Failures and warnings stay until a person dismisses them (decision 193). -->
-      <div id="notices" role="alert" aria-live="polite"></div>
-      <!-- The notices' buttons: static, because a notice must work before any
-           vocabulary has arrived. Word for word tracker.api.NOTICE_LABELS. -->
-      <template id="notice-buttons">
-        <button class="btn btn-small notice-act" data-act="retry">Retry</button>
-        <button class="btn btn-small notice-act" data-act="look">Look again</button>
-        <button class="btn btn-small notice-act" data-act="dismiss">Dismiss</button>
-      </template>
       <div id="banner" class="banner hidden" role="status"></div>
       <!-- The app sits too deep for its reader (decision 169): stays until it is moved. -->
       <div id="reader-warning" class="banner err hidden" role="alert"></div>
@@ -362,6 +435,8 @@
         </div>
       </footer>
     </main>
+  </div>
+
   </div>
 
   <!-- The household's own three fields (decision 125): the members a
@@ -676,6 +751,8 @@
 
   <div id="toast" class="toast hidden" role="alert"></div>
   <script src="app.js"></script>
+  <script src="tooltip.js"></script>
+  <script src="shell.js"></script>
   <script src="pilot-content.js"></script>
   <script src="pilot.js"></script>
   <script src="tour.js"></script>

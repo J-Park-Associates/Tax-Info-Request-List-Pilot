@@ -1,5 +1,7 @@
-// Pilot edition: the header badge, the Tour button and the one-time terms
-// screen (pilot SPEC section 5).
+// Pilot edition: the badge in the side panel's foot and the one-time terms
+// screen (pilot SPEC section 5; SPEC-shell section 12). The Tour button is
+// gone: Help > Take the tour starts the tour, and Help > Terms shows the
+// terms again, read only, with one Close.
 //
 // Why it is built this way: the pilot adds to the page and changes nothing
 // the app already does (P7, P10). So this file calls no app.js function,
@@ -99,7 +101,10 @@ const PilotRecord = (() => {
   };
 })();
 
-(function pilotEdition() {
+// The terms card. gate() is the one-time screen, which cannot be escaped;
+// show() is Help > Terms: the same card read only, its Accept and Quit
+// become one Close, and Escape closes it.
+const PilotTerms = (() => {
   function fill(text) {
     return String(text).split("{email}").join(PILOT.contact.email);
   }
@@ -113,137 +118,171 @@ const PilotRecord = (() => {
     return el;
   }
 
-  // ── Badge ──────────────────────────────────────────────────────────────
-  const badge = make("span", "pilot-badge", `${PILOT.edition.label} ${PILOT.edition.version}`);
+  // The overlay, its card and the controls; the caller wires them.
+  function build(readOnly) {
+    const terms = PILOT.terms;
+    const overlay = make("div", "pilot-terms-overlay");
+    overlay.id = "pilot-terms";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-labelledby", "pilot-terms-title");
+
+    const card = make("div", "pilot-terms-card");
+    const title = make("h2", "", terms.title);
+    title.id = "pilot-terms-title";
+    card.appendChild(title);
+
+    const body = make("div", "pilot-terms-body");
+    for (const section of terms.sections) {
+      const part = make("div", "pilot-terms-section");
+      part.appendChild(make("h3", "", section.heading));
+      const list = make("ul");
+      for (const bullet of section.bullets) list.appendChild(make("li", "", bullet));
+      part.appendChild(list);
+      body.appendChild(part);
+    }
+    card.appendChild(body);
+
+    const controls = { overlay };
+    const actions = make("div", "pilot-terms-actions");
+    if (readOnly) {
+      const close = make("button", "btn btn-primary", terms.close);
+      close.id = "pilot-terms-close";
+      close.setAttribute("type", "button");
+      actions.appendChild(close);
+      controls.close = close;
+    } else {
+      const check = make("label", "pilot-terms-check");
+      const agree = make("input");
+      agree.id = "pilot-terms-agree";
+      agree.setAttribute("type", "checkbox");
+      check.appendChild(agree);
+      check.appendChild(document.createTextNode(` ${terms.checkbox}`));
+      card.appendChild(check);
+      const quit = make("button", "btn", terms.quit);
+      quit.id = "pilot-terms-quit";
+      quit.setAttribute("type", "button");
+      const accept = make("button", "btn btn-primary", terms.accept);
+      accept.id = "pilot-terms-accept";
+      accept.setAttribute("type", "button");
+      accept.setAttribute("disabled", "");
+      actions.appendChild(quit);
+      actions.appendChild(accept);
+      Object.assign(controls, { agree, quit, accept });
+    }
+    card.appendChild(actions);
+    overlay.appendChild(card);
+    return controls;
+  }
+
+  // Captured before the app's own keyboard rule: Tab never leaves the card,
+  // and Escape closes it only when it is read only.
+  function holdKeys(stops, onEscape) {
+    return function hold(e) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        if (onEscape) onEscape();
+      } else if (e.key === "Tab") {
+        const live = stops().filter((el) => !el.disabled);
+        const at = live.indexOf(document.activeElement);
+        const next = e.shiftKey
+          ? (at <= 0 ? live.length - 1 : at - 1)
+          : (at === -1 || at === live.length - 1 ? 0 : at + 1);
+        e.preventDefault();
+        e.stopPropagation();
+        live[next].focus();
+      }
+    };
+  }
+
+  // Help > Terms.
+  function show() {
+    if (document.getElementById("pilot-terms") || document.getElementById("pilot-tour")) return;
+    const { overlay, close } = build(true);
+    const hold = holdKeys(() => [close], dismiss);
+    function dismiss() {
+      document.removeEventListener("keydown", hold, true);
+      overlay.remove();
+    }
+    close.addEventListener("click", dismiss);
+    overlay.addEventListener("mousedown", (e) => {
+      if (e.target === overlay) e.preventDefault();
+    });
+    document.addEventListener("keydown", hold, true);
+    document.body.appendChild(overlay);
+    close.focus();
+  }
+
+  // The one-time screen. Returns without a word when this version's
+  // acceptance is already kept.
+  function gate() {
+    const terms = PILOT.terms;
+    const version = String(terms.version);
+    if (PilotRecord.termsCached(version)) {
+      // The cache has it; the durable record is brought level in the
+      // background (a tester of 0.1 accepted before it existed).
+      PilotRecord.read().then((record) => {
+        if (record && record.terms !== version) PilotRecord.acceptTerms(version);
+      });
+      return;
+    }
+
+    const { overlay, agree, quit, accept } = build(false);
+    const hold = holdKeys(() => [agree, quit, accept], null);
+
+    // Clicks outside the card land on the overlay and go nowhere.
+    overlay.addEventListener("mousedown", (e) => {
+      if (e.target === overlay) e.preventDefault();
+    });
+    agree.addEventListener("change", () => {
+      accept.disabled = !agree.checked;
+    });
+    quit.addEventListener("click", () => window.close());
+    function close() {
+      document.removeEventListener("keydown", hold, true);
+      if (overlay.contains(document.activeElement)) document.activeElement.blur();
+      overlay.remove();
+    }
+    accept.addEventListener("click", () => {
+      if (!agree.checked) return;
+      PilotRecord.acceptTerms(version);
+      close();
+      if (!PilotRecord.tourCached()) PilotTour.start();
+    });
+
+    document.addEventListener("keydown", hold, true);
+    document.body.appendChild(overlay);
+    agree.focus();
+
+    // The cache said nothing, which is not an answer (P46): the durable
+    // record is asked, and when it holds this version's acceptance the terms
+    // go without a word - and the tour, seen or not, is not started. When it
+    // cannot say, the terms stay: the safe direction.
+    PilotRecord.read().then((record) => {
+      if (!record || record.terms !== version || !overlay.isConnected) return;
+      PilotRecord.cacheTerms(version);
+      close();
+    });
+  }
+
+  return { show, gate };
+})();
+
+(function pilotEdition() {
+  // ── Badge: the side panel's foot, or floating when there is none ────────
+  const badge = document.createElement("span");
+  badge.classList.add("pilot-badge");
   badge.id = "pilot-badge";
-  const brand = document.querySelector(".brand");
-  if (brand) {
-    brand.appendChild(badge);
+  badge.textContent = `${PILOT.edition.label} ${PILOT.edition.version}`;
+  const foot = document.getElementById("side-foot");
+  if (foot) {
+    foot.appendChild(badge);
   } else {
-    // The badge must always show, even if the header ever changes.
+    // The badge must always show, even if the panel ever changes.
     badge.classList.add("pilot-badge-float");
     document.body.appendChild(badge);
   }
 
-  // ── Tour button ────────────────────────────────────────────────────────
-  const tourButton = make("button", "btn", "Tour");
-  tourButton.id = "btn-tour";
-  tourButton.setAttribute("type", "button");
-  tourButton.addEventListener("click", () => PilotTour.start());
-  const inbox = document.getElementById("btn-inbox");
-  const toolbar = document.querySelector(".toolbar");
-  if (inbox && inbox.parentNode) {
-    inbox.parentNode.insertBefore(tourButton, inbox);
-  } else if (toolbar) {
-    toolbar.appendChild(tourButton);
-  } else {
-    badge.appendChild(tourButton);
-  }
-
-  // ── Terms ──────────────────────────────────────────────────────────────
-  const terms = PILOT.terms;
-  const version = String(terms.version);
-  if (PilotRecord.termsCached(version)) {
-    // The cache has it; the durable record is brought level in the
-    // background (a tester of 0.1 accepted before it existed).
-    PilotRecord.read().then((record) => {
-      if (record && record.terms !== version) PilotRecord.acceptTerms(version);
-    });
-    return;
-  }
-
-  const overlay = make("div", "pilot-terms-overlay");
-  overlay.id = "pilot-terms";
-  overlay.setAttribute("role", "dialog");
-  overlay.setAttribute("aria-modal", "true");
-  overlay.setAttribute("aria-labelledby", "pilot-terms-title");
-
-  const card = make("div", "pilot-terms-card");
-  const title = make("h2", "", terms.title);
-  title.id = "pilot-terms-title";
-  card.appendChild(title);
-
-  const body = make("div", "pilot-terms-body");
-  for (const section of terms.sections) {
-    const part = make("div", "pilot-terms-section");
-    part.appendChild(make("h3", "", section.heading));
-    const list = make("ul");
-    for (const bullet of section.bullets) list.appendChild(make("li", "", bullet));
-    part.appendChild(list);
-    body.appendChild(part);
-  }
-  card.appendChild(body);
-
-  const check = make("label", "pilot-terms-check");
-  const agree = make("input");
-  agree.id = "pilot-terms-agree";
-  agree.setAttribute("type", "checkbox");
-  check.appendChild(agree);
-  check.appendChild(document.createTextNode(` ${terms.checkbox}`));
-  card.appendChild(check);
-
-  const actions = make("div", "pilot-terms-actions");
-  const quit = make("button", "btn", terms.quit);
-  quit.id = "pilot-terms-quit";
-  quit.setAttribute("type", "button");
-  const accept = make("button", "btn btn-primary", terms.accept);
-  accept.id = "pilot-terms-accept";
-  accept.setAttribute("type", "button");
-  accept.setAttribute("disabled", "");
-  actions.appendChild(quit);
-  actions.appendChild(accept);
-  card.appendChild(actions);
-  overlay.appendChild(card);
-
-  // Captured before the app's own keyboard rule, so the terms cannot be
-  // closed with Escape and Tab never leaves the card.
-  function holdKeys(e) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-    } else if (e.key === "Tab") {
-      const stops = [agree, quit, accept].filter((el) => !el.disabled);
-      const at = stops.indexOf(document.activeElement);
-      const next = e.shiftKey
-        ? (at <= 0 ? stops.length - 1 : at - 1)
-        : (at === -1 || at === stops.length - 1 ? 0 : at + 1);
-      e.preventDefault();
-      e.stopPropagation();
-      stops[next].focus();
-    }
-  }
-
-  // Clicks outside the card land on the overlay and go nowhere.
-  overlay.addEventListener("mousedown", (e) => {
-    if (e.target === overlay) e.preventDefault();
-  });
-  agree.addEventListener("change", () => {
-    accept.disabled = !agree.checked;
-  });
-  quit.addEventListener("click", () => window.close());
-  function close() {
-    document.removeEventListener("keydown", holdKeys, true);
-    if (overlay.contains(document.activeElement)) document.activeElement.blur();
-    overlay.remove();
-  }
-  accept.addEventListener("click", () => {
-    if (!agree.checked) return;
-    PilotRecord.acceptTerms(version);
-    close();
-    if (!PilotRecord.tourCached()) PilotTour.start();
-  });
-
-  document.addEventListener("keydown", holdKeys, true);
-  document.body.appendChild(overlay);
-  agree.focus();
-
-  // The cache said nothing, which is not an answer (P46): the durable
-  // record is asked, and when it holds this version's acceptance the terms
-  // go without a word - and the tour, seen or not, is not started. When it
-  // cannot say, the terms stay: the safe direction.
-  PilotRecord.read().then((record) => {
-    if (!record || record.terms !== version || !overlay.isConnected) return;
-    PilotRecord.cacheTerms(version);
-    close();
-  });
+  PilotTerms.gate();
 })();
