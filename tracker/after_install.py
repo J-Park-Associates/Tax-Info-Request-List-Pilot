@@ -260,7 +260,8 @@ LOCK_POLL_SECONDS = 0.25
 #: for longer than a run waits: nothing was changed and nothing recorded.
 BUSY_KEY = "busy"
 STEP_BUSY = ("Another run of the after-install step on this computer was still going after {minutes} "
-             "minutes, so this one changed nothing. Start the app again, or press Repair the schedule.")
+             "minutes, so this one changed nothing on the schedule. A choice just saved stays saved and "
+             "takes effect at the next start, or press Repair the schedule.")
 #: The same, when the lock itself could not be made in the data home.
 LOCK_UNAVAILABLE = ("The after-install step could not take its lock ({file}), so it changed nothing. "
                     "Start the app: it tries again at launch.")

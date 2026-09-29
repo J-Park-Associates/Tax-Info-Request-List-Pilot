@@ -62,7 +62,15 @@ const PilotRecord = (() => {
   }
 
   // The durable record: {terms, tour_seen}, or null when it cannot be had.
+  // One call at a time: two writes sent together would each read, change and
+  // write the file, and one would lose the other's field (P31 review, 1).
+  let queue = Promise.resolve(null);
   function ask(payload) {
+    const next = queue.then(() => askNow(payload));
+    queue = next.catch(() => null);
+    return next;
+  }
+  function askNow(payload) {
     return ready()
       .then((ok) => (ok ? window.tracker.call([COMMAND], payload) : null))
       .then((reply) => {
@@ -215,6 +223,7 @@ const PilotRecord = (() => {
   quit.addEventListener("click", () => window.close());
   function close() {
     document.removeEventListener("keydown", holdKeys, true);
+    if (overlay.contains(document.activeElement)) document.activeElement.blur();
     overlay.remove();
   }
   accept.addEventListener("click", () => {

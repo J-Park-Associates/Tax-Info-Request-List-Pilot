@@ -4883,9 +4883,9 @@ def _cmd_pilot_record(argv: list[str]) -> dict:
     """The pilot's terms acceptance and "tour seen" (pilot P31): JSON on
     stdin, ``{}`` to read, ``{"terms": "<version>"}`` when the terms are
     accepted, ``{"tour_seen": true}`` when the tour is closed. Kept per
-    Windows account in the data home, which is where the app's own window
-    keeps its local storage too - so it asks no more of a person than the
-    cache did, and survives what the cache does not. Not a client record:
+    Windows account in the data home - per account, like the window's own
+    storage - so it asks no more of a person than the cache did, and
+    survives what the cache does not. Not a client record:
     nothing here is held to the record checkpoint's root. Replies with the
     record as it now stands: ``terms`` ("" when none) and ``tour_seen``."""
     spec = _read_spec()
