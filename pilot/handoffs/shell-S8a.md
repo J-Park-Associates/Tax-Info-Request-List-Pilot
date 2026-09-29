@@ -39,8 +39,9 @@ State (`state` reply):
 - `state.index[i].open_key` (existing, parked rows): `review_copy <ledger key>`.
 - `state.paths[key]` is the absolute path for each of those keys. The page
   passes the **path it looked up**, never draws it. Kinds: `vocab.path_kinds`
-  has `filed_copy`, `moved_copy`, `review_copy` = `"file"` (the shell reads the
-  word before the first space).
+  has `review_copy` = `"file"` and `filed_copy`, `moved_copy`, `shown_copy` =
+  `"reveal"` (the shell reads the word before the first space). Superseded
+  by review 1's rebuild: see `shell-S8a-rebuild-1.md`.
 
 Years and labels for return links:
 
@@ -140,6 +141,16 @@ Only", "Move Schedule Here From {host}?").
   "Nothing is guessed", "Nothing is ever sent" (the API's `SAFEGUARDS` are now
   "No AI Reads Documents", "Originals Never Changed", "Nothing Is Guessed",
   "Nothing Is Ever Sent"; pilot terms stay as they are by ruling).
+- Added after review 1 (F10), all drawn and not listed above:
+  `app/renderer/app.js:316` "No content rules", `:934` "Belongs to…";
+  `app/renderer/index.html:177` "Use this folder", `:190` "Clear lock", `:560`
+  "Tax year", `:587` "Add a custom request", read-out names `:29-30` "Active
+  engagement", `:250` "Document requests", `:645` "Rows to paste";
+  `app/renderer/tour.js:101-104` callout titles "What it does", "Why it's
+  safe", "Current limit" (the tour is S6's). "Add a return", "New household",
+  "File it", "Mark missing" and "File under another return" are, in `app.js`,
+  only in comments. Also `main.js`: "Malformed command." and "Malformed command
+  arguments." (refusals to a malformed call, not drawn in normal use).
 - `pages.js` does not exist on this branch (S5's): file links, the two
   navigating link kinds and "{Return Name} ({Year})" are S5's to draw.
 

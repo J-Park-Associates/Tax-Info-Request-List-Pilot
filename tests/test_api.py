@@ -8413,7 +8413,7 @@ def test_the_vocabulary_carries_the_menu_the_screen_and_the_short_words(capsys):
     # The stored words do not change (P77): only the label does.
     assert "Client confirmed this is the final version" in words["override_reasons"]
     assert words["schedule"]["move_warning"] == "Only If {host} Is Retired"
-    assert words["editor"]["engagement_fields"][8]["help"] == "No: sorting skips this return"
+    assert words["editor"]["engagement_fields"][8]["help"] == "No: Sorting Skips This Return"
 
 
 def test_every_short_word_the_engine_adds_is_five_words_or_fewer():
@@ -8462,12 +8462,34 @@ def test_a_filed_documents_working_copy_has_a_key_the_shell_can_open_and_the_row
     copy = Path(state["paths"][key])
     assert copy == engagement / filed["prepared_location"] and copy.is_file()
     assert copy.name == filed["filed_as"], "the name that is drawn is the name of the file that opens"
-    assert api.PATH_KINDS[key.split(" ", 1)[0]] == "file"
+    assert api.PATH_KINDS[key.split(" ", 1)[0]] == "reveal", "a filed copy is shown, never opened (F1)"
     # The reply puts no absolute path on a row the page draws; a key is a word and a row's handle.
     for field in ("open_keys", "filed_names", "filed_as"):
         assert not [s for s in _walk_strings(filed[field]) if str(engagement) in s or s.startswith("/")], field
     # A row that is not filed carries no filed-copy key.
     assert all(e["open_keys"] == [] for e in state["index"] if e["decision"] != FILED)
+
+
+def test_a_page_filed_under_two_requests_has_its_open_keys_in_filed_names_order(
+        capsys, demo_root, tmp_path):
+    """Decision 94: the n-th key shows the n-th name's copy."""
+    from tests.samples import scanned_1098_lines, scanned_w2_lines
+    from tests.test_scanner import text_pdf
+
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "no such sample")   # an empty inbox
+    text_pdf(inbox_of(engagement) / "scan0003.pdf",
+             "\n".join(scanned_w2_lines(2025) + scanned_1098_lines(2025) + [SAMPLE_PEOPLE[0]["name"]]
+                       + [f"Line {n:03d} of the statement's fine print" for n in range(400)]))
+    code, payload = scan(capsys, engagement)
+    assert code == 0, payload
+    [filed] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
+    assert len(filed["filed_names"]) == 2 and len(filed["open_keys"]) == 2
+    names = [Path(payload["state"]["paths"][k]).name for k in filed["open_keys"]]
+    assert names == filed["filed_names"]
+    assert names[0] != names[1]
+    assert [key.rsplit(" ", 1)[1] for key in filed["open_keys"]] == ["0", "1"], "copy n is key n"
+    assert [Path(payload["state"]["paths"][k]) for k in filed["open_keys"]] == [
+        engagement / where for where in filed["filed_locations"]]
 
 
 def test_a_moved_by_hand_copy_has_a_key_to_where_it_is_now_and_no_path_on_the_row(
@@ -8477,7 +8499,7 @@ def test_a_moved_by_hand_copy_has_a_key_to_where_it_is_now_and_no_path_on_the_ro
     [moved] = state["moved"]
 
     assert Path(state["paths"][moved["open_key"]]) == target and target.is_file()
-    assert api.PATH_KINDS[moved["open_key"].split(" ", 1)[0]] == "file"
+    assert api.PATH_KINDS[moved["open_key"].split(" ", 1)[0]] == "reveal"
     assert not [s for s in _walk_strings(moved["open_key"]) if str(engagement) in s]
     # The moved row's index entry is not a filed one, so it offers no second key for the same file.
     [index_row] = [e for e in state["index"] if e["decision"] == "File Moved"]
@@ -8485,14 +8507,49 @@ def test_a_moved_by_hand_copy_has_a_key_to_where_it_is_now_and_no_path_on_the_ro
 
 
 def test_a_moved_copy_whose_bytes_are_nowhere_has_no_key(capsys, demo_root, tmp_path):
-    engagement = sample_engagement(capsys, demo_root, tmp_path, "Form 1098 Mortgage Interest.pdf")
-    code, payload = scan(capsys, engagement)
-    [filed] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
-    (engagement / filed["prepared_location"]).unlink()
+    engagement, _filed, target, state = a_moved_row(
+        capsys, demo_root, tmp_path, lambda eng, home: home.with_name("A01 - the 1098 I renamed.pdf"))
+    [before] = state["moved"]
+    assert before["open_key"].startswith("moved_copy ") and before["now"]
+    target.unlink()                                  # now the bytes are nowhere
     code, payload = scan(capsys, engagement)
     assert code == 0, payload
-    for moved in payload["state"]["moved"]:
-        assert moved["open_key"] == "" and moved["now"] is None
+    [moved] = payload["state"]["moved"]
+    assert moved["now"] is None
+    assert moved["open_key"] == ""
+    assert not [key for key in payload["state"]["paths"] if key.startswith("moved_copy")]
+
+
+def test_a_set_aside_file_a_parked_zip_and_a_parked_document_are_shown_never_opened(
+        capsys, demo_root, tmp_path):
+    """F2: every file name is a link (SPEC 3.9), so a row that must not open
+    still carries a reveal-only ``shown_key``; a program has no copy and no key."""
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.bmp")
+    (inbox_of(engagement) / "letters.zip").write_bytes(b"PK\x03\x04 not really a zip")
+    (inbox_of(engagement) / "setup.exe").write_bytes(b"MZ")
+    code, payload = scan(capsys, engagement)
+    assert code == 0, payload
+    rows = {e["original_name"]: e for e in payload["state"]["index"]}
+    [photo] = [e for e in rows.values() if e["original_name"] == "vacation photo.bmp"]
+    code, payload = run(capsys, "dismiss", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": photo["pbc_location"], "note": "a holiday snap",
+                               "seq": photo.get("seq")})
+    assert code == 0, payload
+    state = payload["state"]
+    rows = {e["original_name"]: e for e in state["index"]}
+    assert rows["vacation photo.bmp"]["decision"] == api.NOT_REQUESTED
+    for name in ("vacation photo.bmp", "letters.zip"):
+        row = rows[name]
+        assert row["open_key"] == "", name
+        key = row["shown_key"]
+        assert key.startswith("shown_copy ") and api.PATH_KINDS["shown_copy"] == "reveal"
+        assert Path(state["paths"][key]) == engagement / row["prepared_location"]
+        assert Path(state["paths"][key]).is_file()
+        assert not [s for s in _walk_strings(key) if str(engagement) in s]
+    assert rows["setup.exe"]["shown_key"] == "" and not rows["setup.exe"]["prepared_location"]
+    assert not [k for k in state["paths"] if k.startswith("shown_copy") and "setup" in state["paths"][k]]
+    # A filed row carries no shown key (its copies are open_keys); a parked one keeps its open key too.
+    assert all("shown_key" not in e for e in state["index"] if e["decision"] == FILED)
 
 
 def test_no_return_or_household_row_carries_an_open_key_and_their_words_navigate(
@@ -8543,7 +8600,7 @@ def title_case(text: str) -> str:
         if not core or re.search(r"[{}0-9]", word) or (core.isupper() and len(core) > 1):
             out.append(word)
         elif not forced and core.lower() in _SMALL:
-            out.append(word)
+            out.append(word[:1].lower() + word[1:])
         else:
             out.append("-".join(re.sub(r"[A-Za-z]", lambda m: m.group().upper(), part, count=1)
                                 for part in word.split("-")))
@@ -8564,24 +8621,51 @@ def test_the_title_case_rule_does_what_jason_wrote():
     assert title_case("W-2 to review") == "W-2 to Review"
     assert title_case("Sort stopped: ran too long") == "Sort Stopped: Ran Too Long"
     assert title_case("Set aside") == "Set Aside" and title_case("Log in") == "Log In"
+    # A small word that is neither first nor last is lower-cased, not just left alone.
+    assert title_case("Waiting On Clients") == "Waiting on Clients"
+    assert title_case("Waiting on Clients") == "Waiting on Clients"
+    assert title_case("On Hold") == "On Hold" and title_case("Wait For") == "Wait For"
 
 
 #: Drawn words that are cased on purpose, each with the reason. Machine
 #: values, keys, commands, folder names, the record's own words and the
 #: fragments a sentence is built from are not on the screen as headings.
 _TITLE_EXEMPT_BRANCHES = (
-    "commands", "path_kinds", "statuses", "evidence", "columns", "layout", "example_root",
+    "commands", "path_kinds", "statuses", "evidence", "layout", "example_root",
     "engagement_flag", "pass_command", "view.states", "schedule.draft_day", "reminder.letter_ink",
-    "editor.engagement_fields", "editor.date_fields", "editor.plain_columns", "editor.routing_columns",
+    "editor.date_fields", "editor.plain_columns", "editor.routing_columns",
     "editor.yes", "editor.no", "people.kinds", "people.outcomes", "default_extensions",
     "review_labels.bucket_order", "review_labels.not_a_document", "household.editable", "unscanned_key",
     "not_asked_key", "shell.error_log",
     # the standing rules' headlines are quoted exactly in the docs (STANDING_RULES)
     "rules",
     # sentences over the limit, and the fragments a sentence splices in
-    "scan.complete", "triage.places", "origin_", "unknown_year_label", "expected_pattern",
+    "origin_", "unknown_year_label", "expected_pattern",
     "labels.Not asked", "not_asked_label", "override_reasons",
 )
+
+
+#: Exact drawn strings, by path, cased on purpose. Each is exempt alone, never
+#: its branch: anything else beside it must still be in Title Case.
+_TITLE_EXEMPT_STRINGS = {
+    ("columns[13].label", "Short name"):
+        "a record column's own name, shown as record data (manifest.COL_SHORT_TITLE)",
+    # Fragments spliced into a longer line (ledger default 5, pending Jason):
+    # they are never on the screen on their own.
+    ("triage.places.title", "in the title"): "fragment spliced into a longer reason line",
+    ("triage.places.footer", "in the page {page} footer"): "fragment spliced into a longer reason line",
+    ("triage.places.first_page", "on page {page}"): "fragment spliced into a longer reason line",
+    ("triage.places.deep", "on page {page}"): "fragment spliced into a longer reason line",
+    ("scan.complete", "Pass complete \u2014 {did}.   {summary}"):
+        "a sentence with a dash and two placeholders, over the five-word limit once filled",
+    ("scan.filed", "Filed {n}"): "piece spliced into the Pass complete line ({did})",
+    ("scan.review", "{n} to Review"): "piece spliced into the Pass complete line ({did})",
+    ("scan.syncing", "{n} Still Syncing"): "piece spliced into the Pass complete line ({did})",
+    # SPEC 7 cuts the editor's help lines from the screen; the Active warning is kept and is Title Case.
+    ("editor.engagement_fields[0].help", "greeting name in the reminder"): "help line SPEC 7 cuts from the screen",
+    ("editor.engagement_fields[2].help", "pasted into the reminder"): "help line SPEC 7 cuts from the screen",
+    ("editor.engagement_fields[5].help", "who the reminder is from"): "help line SPEC 7 cuts from the screen",
+}
 
 
 def _drawn_words(vocab):
@@ -8604,9 +8688,22 @@ def test_every_drawn_word_the_vocabulary_carries_is_in_title_case(capsys, demo_r
             continue        # one word is a name or a key; over five words is a sentence
         if path.endswith((".key", ".value")) or any(part in path for part in _TITLE_EXEMPT_BRANCHES):
             continue
+        if (path, text) in _TITLE_EXEMPT_STRINGS:
+            continue
         if title_case(text) != text:
             bad.append((path, text, title_case(text)))
     assert not bad, bad
+
+
+def test_every_title_exception_is_an_exact_string_that_is_really_drawn_with_a_reason():
+    drawn = set(_drawn_words(api._vocab()))
+    for (path, text), reason in _TITLE_EXEMPT_STRINGS.items():
+        assert (path, text) in drawn, (path, text)
+        assert len(reason) > 20, (path, text)
+    # The Active warning is drawn, so it is not exempt and is in Title Case.
+    assert ("editor.engagement_fields[8].help", "No: Sorting Skips This Return") in drawn
+    assert not [k for k in _TITLE_EXEMPT_STRINGS if k[0] == "editor.engagement_fields[8].help"]
+    assert title_case("No: Sorting Skips This Return") == "No: Sorting Skips This Return"
 
 
 def test_the_title_case_test_can_fail(monkeypatch):
