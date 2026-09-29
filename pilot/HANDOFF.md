@@ -149,9 +149,14 @@ is left. Report in plain English.
 
 ```
 You are Review 3 for the Tax Document Tracker Pilot: an independent review of
-Build D, the glass theme, in a session that built nothing. Read first:
-pilot/DECISIONS.md (P30-P45), pilot/SPEC-glass.md, pilot/HANDOFF.md (the
-Build D entry), then the Build D pull request's diff. Use
+Build D, the glass theme, and of the Mica window material built on top of it
+(pull request #9, branch build-d), in a session that built nothing. The same
+session that built Mica also wrote pilot/SPEC-mica.md, so review that SPEC
+itself as well as the code (is it complete, consistent with SPEC-glass, and
+were its checks the right ones?). Read first: pilot/DECISIONS.md (P30-P46),
+pilot/SPEC-glass.md, pilot/SPEC-mica.md, pilot/HANDOFF.md (the Build D and
+Mica entries), then the pull request's diff. app/main.js is edited for the
+Mica lines only (P46); everything else in SPEC-glass section 13 still holds. Use
 `python tools/repo_map.py show <file>`; never read docs/repo-map.md whole.
 Check the build against SPEC-glass section 13, item by item. Re-run the
 rendered contrast sweep and the four reduced-preference emulations yourself
