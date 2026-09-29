@@ -413,6 +413,107 @@ def root_for_a_return_of(base, length: int, *, household: str = TEST_HOUSEHOLD,
     return base / ("r" * pad)
 
 
+#: The two settings a claim about room is made under (pilot decision P29):
+#: whatever this machine allows, and a Windows with long paths off.
+PATH_SETTINGS = ("as this machine allows", "long paths off")
+#: What Windows with long paths off refuses: a file path of MAX_PATH (260)
+#: characters or more - the null that ends it is counted - and a folder of
+#: MAX_PATH less 12 (248) or more, to leave an 8.3 name room inside it.
+_SHORT_FILE, _SHORT_FOLDER = 260, 248
+
+
+def refuse_what_windows_refuses(monkeypatch) -> None:
+    """Make this machine refuse, as a Windows with long paths off does, a
+    folder of 248 characters or more and a file path of 260 or more - with
+    the ``FileNotFoundError`` Windows raises for either (``WinError 206``).
+
+    So "long paths off" is a claim on Linux too, not only on the office's
+    Windows: a room rule that lets a path through that Windows would refuse
+    fails here the way it failed there, and so does a test that builds a
+    folder deeper than Windows would make it. Only ``os.mkdir``, ``open``
+    (builtins and ``io``, which ``Path.open`` and ``shutil`` use),
+    ``os.open``, ``os.replace`` and ``os.rename`` are held to it: every
+    folder and file the tracker makes passes through one of them.
+    """
+    import builtins
+    import errno
+
+    def too_long(path, limit: int) -> bool:
+        if isinstance(path, int):
+            return False
+        return len(os.path.abspath(os.fsdecode(os.fspath(path)))) >= limit
+
+    def refused(path):
+        return FileNotFoundError(errno.ENOENT, "The filename or extension is too long", os.fspath(path))
+
+    real_mkdir, real_open, real_os_open = os.mkdir, builtins.open, os.open
+    real_replace, real_rename = os.replace, os.rename
+
+    def mkdir(path, *args, **kwargs):
+        if too_long(path, _SHORT_FOLDER):
+            raise refused(path)
+        return real_mkdir(path, *args, **kwargs)
+
+    def guarded_open(file, *args, **kwargs):
+        if too_long(file, _SHORT_FILE):
+            raise refused(file)
+        return real_open(file, *args, **kwargs)
+
+    def os_open(path, *args, **kwargs):
+        if too_long(path, _SHORT_FILE):
+            raise refused(path)
+        return real_os_open(path, *args, **kwargs)
+
+    def moved(real):
+        def move(src, dst, *args, **kwargs):
+            for path in (src, dst):
+                if too_long(path, _SHORT_FILE):
+                    raise refused(path)
+            return real(src, dst, *args, **kwargs)
+        return move
+
+    monkeypatch.setattr(os, "mkdir", mkdir)
+    monkeypatch.setattr(builtins, "open", guarded_open)
+    monkeypatch.setattr(io, "open", guarded_open)
+    monkeypatch.setattr(os, "open", os_open)
+    monkeypatch.setattr(os, "replace", moved(real_replace))
+    monkeypatch.setattr(os, "rename", moved(real_rename))
+
+
+@pytest.fixture(params=PATH_SETTINGS)
+def path_setting(request, monkeypatch) -> str:
+    """Run a claim about room under both settings (pilot decision P29).
+
+    *As this machine allows* changes nothing: Linux, macOS and a long-path
+    Windows measure against 260, a Windows with long paths off against 259
+    and its folders. *Long paths off* makes ``layout.short_paths`` say so
+    and holds this machine to what that Windows refuses
+    (:func:`refuse_what_windows_refuses`). Neither is ever skipped: a
+    machine with long paths off runs the stricter claim twice, because a
+    fixture cannot build there what only long paths allow. A claim reads
+    its numbers from ``layout.path_limit`` and :func:`floor_return`.
+    """
+    from tracker import layout
+
+    if request.param == "long paths off":
+        monkeypatch.setattr(layout, "short_paths", lambda: True)
+        refuse_what_windows_refuses(monkeypatch)
+    return request.param
+
+
+def floor_return() -> int:
+    """The longest return folder whose review folder still has room for a
+    review copy: its floor, ``Prepared/00 - Needs Review/x (99).pdf``, is
+    exactly the limit - 222 characters at 260. With long paths off it is
+    206: the review folder is measured as Windows measures a folder the
+    tracker makes and writes into, its temp names included
+    (``layout.folder_need``, pilot decision P29)."""
+    from tracker.layout import PREPARED_DIR_NAME, REVIEW_DIR_NAME, folder_need, path_limit
+
+    review = len(f"/{PREPARED_DIR_NAME}/{REVIEW_DIR_NAME}")
+    return path_limit() - review - max(len("/x (99).pdf"), folder_need(""))
+
+
 def sort_all(returns, *, home=None, today=None, dry_run: bool = False):
     """One pass of the household's sort over these returns, answering for
     every one of them: the mapping ``file_household_drops`` returns.
