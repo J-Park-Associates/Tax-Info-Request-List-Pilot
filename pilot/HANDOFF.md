@@ -86,9 +86,83 @@ office's Python, build the installer, install and try it, uninstall, then tag
 
 ## Next after 0.1: Build D, the glass theme (pilot 0.2, P30)
 
-A fresh session writes its SPEC first (`pilot/SPEC-glass.md`), then the usual
-build -> review loop. The starting analysis is recorded in P30. It does not
-block 0.1.
+It does not block 0.1.
+
+- **SPEC (2026-09-29, branch `build-d-spec`, draft PR to `main`):**
+  [`SPEC-glass.md`](SPEC-glass.md) written; decisions P31-P44. Jason chose a
+  soft navy gradient backdrop and light mode only for 0.2 (P31). Verified:
+  Electron 43 = Chromium 150, which has `backdrop-filter` with `url(#svg)`,
+  `corner-shape: superellipse()` (139+) and `prefers-reduced-transparency`
+  (118+); the cloud's Playwright Chromium is 141, enough for every check.
+  One correction to the starting analysis (P32): the theme must not override
+  `--card`/`--shadow`/`--radius` globally - they paint solid lists and inputs
+  too, and most radii are literals - so it uses its own tokens by selector.
+  The token values in SPEC section 4 were checked with the section 10.2
+  contrast model before writing: every pair is 4.5:1 or better.
+- **Revised (2026-09-29, same branch):** a preview mock-up (scratch only,
+  made-up names) showed a sticky-toolbar gap and squashed cards (fixed in SPEC
+  6.2, P37). Jason then asked for thinner glass, a 3D effect and movement; the
+  SPEC now carries them (P41-P44): 55-65% glass, a lit rim and depth shadows,
+  a pointer light, button spring, arrival motion, a scrolled toolbar and a
+  Full-level backdrop drift, with a per-surface contrast proof (P42) whose
+  figures were computed before writing.
+- **Speed pass (2026-09-29, P45):** every click and movement measured on
+  the mock-up in software rendering (the Remote Desktop case). The pointer
+  light moved to the Full level, all timings cut to 200ms or less, the drift
+  moved to its own layer and pauses in the background. Glass went from 28 to
+  45 frames a second with the pointer moving, 38 to 42 while scrolling, and a
+  dialog from ~200ms to ~120ms to readable. SPEC 7.3 carries the numbers and
+  the budget Build D must meet.
+- **Waiting on Jason:** approve `SPEC-glass.md` (the picker wording in 7.2 is
+  proposed copy), then merge the SPEC PR.
+- **Next: Build D** (sonnet), then **Review 3** (opus, high effort, a session
+  that did not build), then rebuild/review until no findings. The two prompts
+  are below; paste each into a fresh claude.ai/code session on this
+  repository.
+
+### Build D prompt (sonnet, default effort)
+
+```
+You are the Build D builder for the Tax Document Tracker Pilot: the glass
+theme, pilot 0.2. Build exactly pilot/SPEC-glass.md and nothing more.
+Read first, and nothing else to start: pilot/README.md, pilot/DECISIONS.md
+(P30-P45), pilot/SPEC.md section 2 (the page rules you still obey),
+pilot/SPEC-glass.md (all of it), pilot/HANDOFF.md. Use
+`python tools/repo_map.py show <file>` for the renderer files and read only
+the line ranges the SPEC names; never read docs/repo-map.md whole.
+Follow SPEC-glass section 11 in order, one commit per step, every commit
+message with "[skip ci]". Never edit app.js, main.js, preload.js, style.css
+or anything under tracker/. No Apple name or "Liquid Glass" in any product
+file. Use only made-up names in the stubbed page; never open a client file.
+The rendered checks use the cloud's Playwright Chromium
+(executablePath /opt/pw-browsers/chromium-1194/chrome-linux/chrome); their
+scripts stay in your scratchpad, their results go in the handoff.
+Run the gate from CLAUDE.md (dead code, ruff, repo_map update + check, the
+affected tests under Python 3.11 and 3.13; the cloud venv notes are in
+HANDOFF.md). Push your session branch, open a draft pull request to main
+titled "Build D: glass theme", and add a Build D entry to pilot/HANDOFF.md:
+what was done, any deviation from the SPEC and why, the sweep results, what
+is left. Report in plain English.
+```
+
+### Review 3 prompt (opus, high effort)
+
+```
+You are Review 3 for the Tax Document Tracker Pilot: an independent review of
+Build D, the glass theme, in a session that built nothing. Read first:
+pilot/DECISIONS.md (P30-P45), pilot/SPEC-glass.md, pilot/HANDOFF.md (the
+Build D entry), then the Build D pull request's diff. Use
+`python tools/repo_map.py show <file>`; never read docs/repo-map.md whole.
+Check the build against SPEC-glass section 13, item by item. Re-run the
+rendered contrast sweep and the four reduced-preference emulations yourself
+in the cloud's Playwright Chromium with a stubbed page and made-up names
+only, and look at every screenshot in pilot/reviews/glass-screens/. Run the
+gate's affected tests under 3.11 and 3.13, ruff, and repo_map check.
+Write numbered findings, each against a SPEC section, with the file and line
+and the fix, in pilot/reviews/review-3.md; say plainly if there are none.
+Commit with "[skip ci]", push to your session branch, and report in plain
+English. Do not fix anything yourself.
+```
 
 ## Tester feedback for 0.2 (Jason, Windows re-run, 2026-09-29)
 
