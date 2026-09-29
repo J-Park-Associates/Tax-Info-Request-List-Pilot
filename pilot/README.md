@@ -17,10 +17,12 @@ original. The original's improvements come in only when Jason asks for a merge.
 
 1. **Small, named differences from the original.** Pilot code lives in this
    `pilot/` folder and in new renderer files (`app/renderer/tour.js`,
-   `pilot.js`, `pilot-content.js`, `pilot-style.css`). Existing files change
-   only where `SPEC.md` names the lines: the four added lines in `index.html`,
-   the pilot's own names on the PC (SPEC section 3a), and the `forced-colors`
-   block at the end of `style.css` (P50, Windows contrast themes). Engine fixes are
+   `pilot.js`, `pilot-content.js`, `pilot-style.css`, `pilot-ui.css`). Existing
+   files change only where `SPEC.md` or `SPEC-ui.md` names the lines: the five
+   added lines in `index.html` (four in `SPEC.md`, the `pilot-ui.css` link in
+   `SPEC-ui.md`), the pilot's own names on the PC (SPEC section 3a), and the
+   `forced-colors` block at the end of `style.css` (P50, Windows contrast
+   themes). Engine fixes are
    made in the original repository and merged in here. Keeping the differences
    small is what keeps each merge from the original clean.
 2. **Pilot decisions are logged in [`DECISIONS.md`](DECISIONS.md)** as P1, P2,

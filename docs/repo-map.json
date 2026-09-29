@@ -3,7 +3,7 @@
   "generated": "2026-09-29",
   "generator": "tools/repo_map.py",
   "generator_sha256": "22c7b60a1d198289",
-  "module_table_sha256": "98e5907a447ae88b",
+  "module_table_sha256": "806b108567a94dbc",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 194,
-    "edges": 1135,
-    "reused": 145
+    "nodes": 200,
+    "edges": 1136,
+    "reused": 158
   },
   "node_types": [
     "artifact",
@@ -3982,8 +3982,8 @@
       "id": "app/renderer/index.html",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "af23b4a071cdbf8e",
-      "lines": 682,
+      "sha256": "47340eedd1515ee6",
+      "lines": 683,
       "role": "Desktop app shell markup: empty placeholders the renderer fills from the API's vocabulary, under a Content-Security-Policy that allows nothing but the app's own files. Since decision 104 it holds the request-list editor's modal (#editor), every label of which the renderer fills, and the Edit Request List button (#btn-edit) that opens it; the min of a number input is never typed here."
     },
     {
@@ -4004,8 +4004,17 @@
       "id": "app/renderer/pilot-style.css",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "23343fa8d22281ff",
-      "lines": 291
+      "sha256": "9f31aac478dd7686",
+      "lines": 314
+    },
+    {
+      "id": "app/renderer/pilot-ui.css",
+      "type": "ui",
+      "layer": "desktop-app",
+      "sha256": "0f8f96b36aa927a5",
+      "lines": 613,
+      "role": "Pilot Build E, the structure pass (P51-P54): one file that overrides style.css to give the app one button shape in four importances and two sizes, a four-step type ramp of two weights and a 4px spacing grid, loaded after style.css and before pilot-style.css so the original's files stay unedited.",
+      "notes": "Its own tokens (:root) are the only place a colour, size or step is written; outside them tests/test_pilot_ui.py fails on a hex, a literal font size, weight or line height, or a padding, margin or gap off the grid. It never names .rem-preview: the reminder letter mirrors the emailed letter and keeps its own fonts and inks. It ends with a forced-colors block of system colours only. No url(), no @import, no @font-face, no bundled font."
     },
     {
       "id": "app/renderer/pilot.js",
@@ -4026,8 +4035,8 @@
       "id": "app/renderer/tour.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "48174dfd101b5d08",
-      "lines": 261
+      "sha256": "0b539ac59dbc728d",
+      "lines": 262
     },
     {
       "id": "CLAUDE.md",
@@ -4068,8 +4077,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "7c1fcf46afc32d52",
-      "lines": 1083,
+      "sha256": "dcd4a3630cf3459e",
+      "lines": 1092,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -4127,15 +4136,15 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "87bf74ff82cffa6d",
-      "lines": 56
+      "sha256": "30402e9fc25b8a94",
+      "lines": 61
     },
     {
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "8cbcb43217d0e1d5",
-      "lines": 136
+      "sha256": "a6ef55f5a6d61d27",
+      "lines": 304
     },
     {
       "id": "pilot/PROMPTS.md",
@@ -4148,8 +4157,8 @@
       "id": "pilot/README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "707518139543427e",
-      "lines": 54
+      "sha256": "a350892dce4dce86",
+      "lines": 56
     },
     {
       "id": "pilot/RELEASE.md",
@@ -4166,11 +4175,18 @@
       "lines": 986
     },
     {
+      "id": "pilot/SPEC-ui.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "9d93bb2a6e8745a9",
+      "lines": 457
+    },
+    {
       "id": "pilot/SPEC.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "87796f0ba3885450",
-      "lines": 1000
+      "sha256": "15c45578a030bff3",
+      "lines": 1001
     },
     {
       "id": "pilot/Tester Guide.md",
@@ -4191,6 +4207,27 @@
       "type": "doc",
       "layer": "docs",
       "sha256": "6f4e1530c056c1b1",
+      "lines": 38
+    },
+    {
+      "id": "pilot/reviews/review-e1.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "134a9051a7b02405",
+      "lines": 303
+    },
+    {
+      "id": "pilot/reviews/review-e2.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "76bde552eda00d61",
+      "lines": 204
+    },
+    {
+      "id": "pilot/reviews/review-e3.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "5fd51bf85e2fd261",
       "lines": 38
     },
     {
@@ -6737,6 +6774,45 @@
       }
     },
     {
+      "id": "tests/test_pilot_ui.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "15e8e1fce827960e",
+      "lines": 249,
+      "exports": [
+        "COLOUR",
+        "COLOUR_PROPS",
+        "CSS_NAME",
+        "GRID_PROPS",
+        "GRID_TOKEN",
+        "NEVER_HIDDEN",
+        "NOT_A_COLOUR",
+        "RENDERER",
+        "REPO",
+        "SYSTEM_COLOURS",
+        "blocks",
+        "colour_faults",
+        "declarations",
+        "outside_root",
+        "read",
+        "stripped",
+        "test_cards_never_shrink_inside_the_scrolling_column",
+        "test_the_structure_pass_adds_no_remote_or_forbidden_thing",
+        "test_the_structure_pass_honours_contrast_themes_last",
+        "test_the_structure_pass_leaves_the_letter_alone",
+        "test_the_structure_pass_loads_between_the_app_and_the_pilot",
+        "test_the_structure_pass_never_unhides_a_hidden_element",
+        "test_the_structure_pass_uses_only_the_spacing_grid",
+        "test_the_structure_pass_uses_only_the_type_ramp",
+        "test_the_structure_pass_writes_no_literal_colour_outside_its_tokens",
+        "test_the_tour_leads_with_next",
+        "top_level"
+      ],
+      "constants": {
+        "CSS_NAME": "'pilot-ui.css'"
+      }
+    },
+    {
       "id": "tests/test_progress.py",
       "type": "test",
       "layer": "tests",
@@ -9010,6 +9086,12 @@
     {
       "from": "app/renderer/index.html",
       "to": "app/renderer/app.js",
+      "type": "loads",
+      "source": "curated"
+    },
+    {
+      "from": "app/renderer/index.html",
+      "to": "app/renderer/pilot-ui.css",
       "type": "loads",
       "source": "curated"
     },

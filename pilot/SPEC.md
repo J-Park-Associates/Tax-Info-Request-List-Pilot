@@ -969,7 +969,8 @@ schedules over the same clients folder.
   `pilot/Tester Guide.md`, `tests/test_pilot_installer.py`.
 - **Build B (sonnet):** `app/renderer/pilot-content.js` (sections 4, 7, 8 as
   approved), `pilot.js`, `tour.js`, `pilot-style.css`, the four `index.html`
-  lines, `tests/test_pilot.py`, `tests/test_tour.py`.
+  lines (Build E adds a fifth, the `pilot-ui.css` link, and the file itself:
+  `SPEC-ui.md`), `tests/test_pilot.py`, `tests/test_tour.py`.
 - **Build C (sonnet): the schedule setting** - section 12: `tracker/scheduling.py`,
   `settings.py`, `after_install.py`, `api.py`, `runner.py`, the Schedule
   button and dialog in `index.html` / `app.js`, `docs/runbook.md`, and the
