@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 197,
     "edges": 1136,
-    "reused": 153
+    "reused": 155
   },
   "node_types": [
     "artifact",
@@ -4011,8 +4011,8 @@
       "id": "app/renderer/pilot-ui.css",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "2f6fef2eb48c59a2",
-      "lines": 336,
+      "sha256": "39a75ac2f9f44d73",
+      "lines": 394,
       "role": "Pilot Build E, the structure pass (P51-P54): one file that overrides style.css to give the app one button shape in four importances and two sizes, a four-step type ramp of two weights and a 4px spacing grid, loaded after style.css and before pilot-style.css so the original's files stay unedited.",
       "notes": "Its own tokens (:root) are the only place a colour, size or step is written; outside them tests/test_pilot_ui.py fails on a hex, a literal font size, weight or line height, or a padding, margin or gap off the grid. It never names .rem-preview: the reminder letter mirrors the emailed letter and keeps its own fonts and inks. It ends with a forced-colors block of system colours only. No url(), no @import, no @font-face, no bundled font."
     },

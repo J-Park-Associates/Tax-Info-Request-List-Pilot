@@ -308,6 +308,64 @@ table.requests, .editor-table, .summary, .chip, .rem-stage-n,
   cursor: default;
 }
 
+/* ── Top bar and command bar (P52) ───────────────────────────────────────
+   The toolbar's DOM order is fixed by tests and is not changed. Nine equal
+   boxed buttons become one quiet row: every button but Sort & Scan is subtle
+   (see Buttons), Stop is danger, and the runs of the row are set apart by
+   space, not boxes. */
+
+.topbar {
+  min-height: 48px;
+  padding: 0 var(--sp-6);
+  background: var(--navy-deep);
+}
+.brand { gap: var(--sp-3); }
+.brand-logo { height: 28px; }
+.brand-divider { height: 20px; }
+.brand-product { font-weight: var(--fw-regular); }
+
+.main {
+  padding: var(--sp-4) var(--sp-6);
+  gap: var(--sp-4);
+}
+
+.toolbar {
+  gap: var(--sp-1);
+  min-height: 40px;
+  padding-bottom: var(--sp-3);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Four runs by DOM order: places and upkeep (Tour, inbox, client folder,
+   repair), the list (edit, schedule), pages (report, status), the run (Sort
+   & Scan, Stop). 4px inside a run, 16px between runs. */
+#btn-edit, #btn-view, #btn-scan { margin-left: var(--sp-3); }
+
+#eng-select {
+  min-height: var(--ctl-h);
+  min-width: 260px;
+  padding: 0 var(--sp-3);
+  font-weight: var(--fw-strong);
+  color: var(--navy);
+  background: var(--card);
+  border: 1px solid var(--border-strong);
+  border-bottom-color: var(--border-input);
+  border-radius: var(--radius-control);
+  box-shadow: none;
+}
+#eng-select:hover { background: var(--surface-hover); border-color: var(--border-strong); border-bottom-color: var(--border-input); }
+#eng-select:focus-visible { outline: 2px solid var(--blue); outline-offset: 0; }
+
+#eng-form:not(.hidden), #view-state:not(.hidden) {
+  display: inline-flex;
+  align-items: center;
+}
+#eng-form, #view-state {
+  min-height: var(--ctl-h-sm);
+  padding: 0 var(--sp-2);
+  border-radius: var(--radius-control);
+}
+
 /* ── Windows contrast themes (last, so it wins) ──────────────────────────
    System colours only. Section 9 of the SPEC; the button and selected-control
    rules are added with the buttons. */
