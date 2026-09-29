@@ -1177,15 +1177,18 @@ def test_assigning_a_shortlisted_request_files_it_and_the_queue_drops_it(capsys,
 
 
 def test_the_vocabulary_carries_every_word_the_review_card_shows(capsys, demo_root):
-    from tracker.review import (
-        IDENTIFIER_SEPARATOR,
-        MAX_SUGGESTIONS,
-        NOTHING_SUGGESTED,
-        PLACE_WORDS,
-        SET_ASIDE_NOTE,
+    from tracker.api import (
+        FOOTER_PLACE_WORDS,
+        NOTHING_SUGGESTED_WORDS,
+        SET_ASIDE_NOTE_WORDS,
     )
+    from tracker.records import WHERE_FOOTER
+    from tracker.review import IDENTIFIER_SEPARATOR, MAX_SUGGESTIONS, PLACE_WORDS
 
     vocab = run(capsys, "list")[1]["vocab"]
+    # The app says the short words; the status report and the console keep
+    # tracker.review's sentences, which they still read (P84).
+    places = {**PLACE_WORDS, WHERE_FOOTER: FOOTER_PLACE_WORDS}
 
     # The card's own buttons and headings...
     labels = vocab["review_labels"]
@@ -1200,20 +1203,21 @@ def test_the_vocabulary_carries_every_word_the_review_card_shows(capsys, demo_ro
     assert labels["card_mode"] == api.CARD_MODE_LABEL
     assert labels["list_mode"] == api.LIST_MODE_LABEL
     assert labels["card_position"] == api.CARD_POSITION
-    # ...and every word tracker.review owns, from tracker.review.
+    # ...and every word tracker.review owns, from tracker.review or, where
+    # the app says it shorter, from the API.
     assert vocab["triage"] == {
-        "nothing_suggested": NOTHING_SUGGESTED,
+        "nothing_suggested": NOTHING_SUGGESTED_WORDS,
         "identifier_separator": IDENTIFIER_SEPARATOR,
-        "places": dict(PLACE_WORDS),
+        "places": places,
         "max_suggestions": MAX_SUGGESTIONS,
-        "set_aside_note": SET_ASIDE_NOTE,
+        "set_aside_note": SET_ASIDE_NOTE_WORDS,
     }
     # Nothing the card shows is typed in the renderer: every one of these
     # reaches the screen through vocab, never as a literal of its own.
     renderer = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(
         encoding="utf-8"
     )
-    for word in (*labels.values(), NOTHING_SUGGESTED, SET_ASIDE_NOTE, *PLACE_WORDS.values()):
+    for word in (*labels.values(), NOTHING_SUGGESTED_WORDS, SET_ASIDE_NOTE_WORDS, *places.values()):
         assert f'"{word}"' not in renderer and f"'{word}'" not in renderer, word
 
 
@@ -1223,13 +1227,13 @@ def test_the_editor_saves_a_reason_and_the_vocabulary_carries_the_list_and_the_l
     label pattern, the set-aside sentence and the returning-client line -
     and the reason the editor saves travels in the one rules_changed event
     beside the override."""
+    from tracker.api import SET_ASIDE_NOTE_WORDS as SET_ASIDE_NOTE
     from tracker.manifest import (
         NOT_APPLICABLE_LABEL,
         OVERRIDE_REASON_OTHER,
         OVERRIDE_REASONS,
         Override,
     )
-    from tracker.review import SET_ASIDE_NOTE
     from tracker.rollover import ORIGIN_NOT_APPLICABLE
 
     vocab = run(capsys, "list")[1]["vocab"]
@@ -2002,6 +2006,15 @@ def test_the_app_is_told_at_once_when_it_sits_too_deep_for_its_reader(capsys, tm
     assert payload["reader_warning"] == ocr.READER_PATH_WARNING
 
 
+def _typed_as_a_string(source: str, word: str) -> bool:
+    """Is ``word`` typed in ``source`` as the start of a string literal? The
+    approved words are short (P84), and a short word is also a substring of
+    a comment or an identifier (``Held:`` in a comment, ``Spelling`` in
+    ``teachSpelling``); what the renderer must not do is show one, so it is
+    looked for where a string begins."""
+    return any(quote + word in source for quote in ('"', "'", "`"))
+
+
 def test_the_app_state_reports_the_last_pass(capsys, tmp_path, monkeypatch):
     """``list``, the call the main screen is drawn from, carries the one
     line about the scheduled pass (decision 159, E4) in the runner's words
@@ -2015,7 +2028,8 @@ def test_the_app_state_reports_the_last_pass(capsys, tmp_path, monkeypatch):
     monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
     code, payload = run(capsys, "list")
     assert code == 0 and payload["needs_root"] is True
-    assert payload["last_pass"] == {"text": runner.LAST_PASS_NEVER, "level": runner.LEVEL_WARN}
+    assert payload["last_pass"] == {"text": runner.LAST_PASS_NEVER, "level": runner.LEVEL_WARN,
+                                    "ok": False, "when": None}
 
     now = dt.datetime.now()
     runner.write_last_pass(runner.last_pass_path(), started=now, ended=now, root="",
@@ -2027,6 +2041,13 @@ def test_the_app_state_reports_the_last_pass(capsys, tmp_path, monkeypatch):
     assert code == 0 and payload["needs_root"] is False
     assert payload["last_pass"]["level"] == runner.LEVEL_ERR
     assert runner.PASS_REASONS[runner.PASS_ROOT_REFUSED] in payload["last_pass"]["text"]
+    # The last-sort line needs no parsing of the runner's words: a failed
+    # pass is not ok and says when it started (SPEC-shell 9.3).
+    assert payload["last_pass"]["ok"] is False
+    assert payload["last_pass"]["when"] == now.isoformat(timespec="seconds")
+    runner.write_last_pass(runner.last_pass_path(), started=now, ended=now, root="",
+                           result=runner.PASS_SUCCEEDED)
+    assert run(capsys, "list")[1]["last_pass"]["ok"] is True
 
 
 def test_the_short_path_warning_comes_with_the_returns_too(capsys, demo_root, monkeypatch):
@@ -2672,6 +2693,7 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
                                  "repair_confirm": api.SCHEDULE_REPAIR_CONFIRM.format(
                                      draft_day=WEEKDAY_NAMES[DRAFT_WEEKDAY]),
                                  "move_confirm": api.SCHEDULE_MOVE_CONFIRM,
+                                 "move_warning": api.SCHEDULE_MOVE_WARNING,
                                  "button": "Schedule", "title": "Schedule on this computer",
                                  "enabled_label": "Run the schedule", "on": "On", "off": "Off",
                                  "start_label": "First run at", "every_label": "How often",
@@ -2728,7 +2750,8 @@ def _the_reminder_card_words_are_all_pythons(words):
         "nothing_to_send": NOTHING_OUTSTANDING,
         "stages": [{"number": stage.number, "name": stage.name,
                     "colour": reminder.STAGE_COLOURS[stage.number],
-                    "emphasis": asdict(reminder.STAGE_EMPHASIS[stage.number])}
+                    "emphasis": asdict(reminder.STAGE_EMPHASIS[stage.number]),
+                    "short": stage.short}
                    for stage in reminder.STAGES],
         "palette": dict(PALETTE),
         "hold_colour": reminder.HOLD_COLOUR,
@@ -2838,7 +2861,7 @@ def test_state_carries_the_held_rows_and_every_word_is_the_vocabularys(capsys, d
         encoding="utf-8"
     )
     for word in (HELD_SUMMARY, HELD_SUMMARY.split("{")[0].strip(), AMBIGUOUS_HOLD):
-        assert word not in renderer, word
+        assert not _typed_as_a_string(renderer, word), word
     assert "vocab.reminder.held_line" in renderer
 
 
@@ -3403,7 +3426,7 @@ def test_the_card_shows_the_inbox_hold_in_the_apis_words_and_offers_no_approve(c
         encoding="utf-8")
     for word in (INBOX_HELD_SUMMARY, INBOX_HELD_SUMMARY.split("{")[0].strip(),
                  INBOX_HOLD.split("{")[0].strip()):
-        assert word not in renderer, word
+        assert not _typed_as_a_string(renderer, word), word
     assert "vocab.reminder.inbox_held_line" in renderer
 
 
@@ -4320,8 +4343,8 @@ def test_propose_spellings_is_a_read_and_the_renderer_types_no_kind_label_or_not
                     api.TEACH_SPELLING_HINT, words["one_word"], words["none_yet"],
                     review.NAME_CONFIRMED_NOTE, review.NAME_OTHER_NOTE,
                     review.NAME_ABSENT_NOTE):
-        assert literal not in js, literal
-        assert literal not in html, literal
+        assert not _typed_as_a_string(js, literal), literal
+        assert not _typed_as_a_string(html, literal), literal
 
 
 def test_the_household_card_shows_every_returns_reminder_state(capsys, demo_root):
@@ -4408,7 +4431,7 @@ def test_edit_household_saves_feeds_and_the_state_carries_feeds_and_fed_by_with_
     words = api._vocab()["household"]
     assert words["feed_warning"] == api.FEED_WARNING
     assert words["return_warning"] == api.RETURN_WARNING
-    assert "{members}" in words["feed_warning"]
+    assert words["feed_warning"] == "Its members can drop here"   # P84: no placeholder left
 
     # A feed the other household has no active return for this year is
     # said rather than resolved to nothing in silence.
@@ -5042,7 +5065,8 @@ def test_set_root_answers_with_every_return_short_of_room_under_the_new_root(
     reply names every return short of room under the new root, with its
     numbers, in label order - and records the root regardless."""
     from tests.conftest import TEST_YEAR
-    from tracker.filer import ROOM_SHORT, room_for
+    from tracker.api import ROOM_SHORT_WORDS as ROOM_SHORT
+    from tracker.filer import room_for
     from tracker.manifest import RequestItem
     from tracker.settings import ENV_SETTINGS_DIR, clients_root
 
@@ -5072,7 +5096,9 @@ def test_state_carries_the_returns_room_as_information_and_warns_only_what_canno
     return's page - **not** among the warnings (the lead's L-1: its names
     are cut to fit and everything files). Only requests that cannot
     receive at all are a warning."""
-    from tracker.filer import ROOM_PARKS, ROOM_SHORT, room_for
+    from tracker.api import ROOM_PARKS_WORDS as ROOM_PARKS
+    from tracker.api import ROOM_SHORT_WORDS as ROOM_SHORT
+    from tracker.filer import room_for
     from tracker.layout import path_limit
     from tracker.manifest import RequestItem
 
@@ -5452,7 +5478,7 @@ def test_the_wizard_sends_every_catalog_row_and_the_tick_is_asked(capsys, demo_r
     nothing = {"household": HOUSEHOLD, "return_name": "Nothing Asked", "form": "1040",
                "items": [{**t, "asked": False} for t in api.FORM_TEMPLATES["1040"]]}
     code, payload = run(capsys, "create", stdin=nothing)
-    assert code == 1 and payload["error"] == "Select at least one request item"
+    assert code == 1 and payload["error"] == "Tick at least one request"
     assert not where(demo_root, "Nothing Asked").exists()
 
 
@@ -8031,7 +8057,7 @@ def test_an_edit_of_a_list_already_holding_one_issuer_name_twice_saves_and_warns
 
 def test_the_vocabulary_carries_every_word_201_shows():
     words = api._vocab()
-    assert words["dialogs"] == {"unsaved": "You have changes here that are not saved.",
+    assert words["dialogs"] == {"unsaved": "Unsaved changes",
                                 "keep_editing": "Keep editing", "discard": "Discard my changes"}
     editor = words["editor"]
     assert editor["plain_columns"] == ["expected_count", "asked", "manual_override", "override_reason",
@@ -8049,11 +8075,11 @@ def test_the_vocabulary_carries_every_word_201_shows():
     assert labels["keyword_help"] == ("A word this document contains that others like it will too. "
                                       "Taught to the request so the next one files itself; the editor "
                                       "shows it beside the row.")
-    assert labels["issuer_label"] == "Issuer's name, as the K-1 prints it"
+    assert labels["issuer_label"] == "Issuer name"
     assert labels["issuer_help"] == ("Adds {identifier}, a K-1 row for this issuer, to the request list "
                                      "and files this document under it. Type the distinctive words and "
                                      "leave off the suffix (L.P., LLC).")
-    assert labels["issuer_add"] == "Add the issuer and file it"
+    assert labels["issuer_add"] == "Add issuer"
     settings = words["settings"]
     assert (settings["firm_label"], settings["firm_help"], settings["root_label"]) == (
         "Firm name", "as it should sign the reminders", "Clients folder")
@@ -8067,3 +8093,186 @@ def test_the_vocabulary_carries_every_word_201_shows():
                  settings["firm_help"]):
         assert word not in js and word not in html, word
     assert settings["root_label"] not in html
+
+
+# ---------------------------------------------------------------- firm (SPEC-shell 9) ----
+
+def _a_practice_for_the_firm_view(capsys, demo_root):
+    """Three returns: one with a request in, one out and one nobody asked for
+    plus a program parked for a person; one with everything in; one inactive.
+    Made-up names only."""
+    from tests.conftest import seed_index, seed_statuses
+    from tracker.filer import IndexEntry
+    from tracker.manifest import StatusUpdate
+
+    mixed = chased_engagement(capsys, demo_root, name="Mixed")
+    seed_statuses(mixed, {"A01": StatusUpdate(status=Status.RECEIVED, file_count=1)})
+    seed_index(mixed, [IndexEntry(
+        received="2026-02-01", original_name="setup.exe", size_kb=0.1, digest="5" * 64,
+        identifier="", prepared_location="", pbc_location="pbc/setup.exe",
+        decision=NEEDS_REVIEW, reason=reasons.NOT_A_DOCUMENT.format(),
+        code=reasons.NOT_A_DOCUMENT.code)])
+    quiet = chased_engagement(capsys, demo_root, name="Quiet")
+    seed_statuses(quiet, {"A01": StatusUpdate(status=Status.RECEIVED, file_count=1),
+                          "B01": StatusUpdate(status=Status.RECEIVED, file_count=1)})
+    retired = chased_engagement(capsys, demo_root, name="Retired")
+    rows = payload_of_state(capsys, retired)["rules"]
+    assert run(capsys, "edit", api.ENGAGEMENT_FLAG, str(retired),
+               stdin={"items": rows, "engagement": {"active": False}})[0] == 0
+    return mixed, quiet, retired
+
+
+def _tally(state: dict) -> dict:
+    return {group: sum(1 for item in state["items"] if item["group"] == group)
+            for group in api.GROUPS}
+
+
+def test_firm_counts_match_the_return_pages_groups(capsys, demo_root):
+    mixed, quiet, _retired = _a_practice_for_the_firm_view(capsys, demo_root)
+    code, firm = run(capsys, "firm")
+    assert code == 0, firm
+    counted = {one["path"]: one["counts"] for one in firm["returns"]}
+    for folder in (mixed, quiet):
+        assert counted[str(folder)] == _tally(payload_of_state(capsys, folder))
+    assert counted[str(quiet)][api.GROUP_RECEIVED] == 2
+    # A parked program is a file waiting for a person, with its reason's code.
+    [row] = [one for one in firm["returns"] if one["path"] == str(mixed)]
+    assert row["files"] == 1 and row["oldest"] == "2026-02-01"
+    assert [f["name"] for f in firm["files"]] == ["setup.exe"]
+    assert firm["files"][0]["code"] == reasons.NOT_A_DOCUMENT.code
+    assert firm["totals"]["files"] == 1
+    assert firm["totals"]["need"] + firm["totals"]["waiting"] + firm["totals"]["complete"] == len(
+        firm["returns"])
+
+
+def test_firm_is_read_only(capsys, demo_root):
+    from tracker.locking import LOCK_FILENAME
+
+    _a_practice_for_the_firm_view(capsys, demo_root)
+
+    def snapshot():
+        return {str(path.relative_to(demo_root)): path.read_bytes() if path.is_file() else None
+                for path in sorted(demo_root.rglob("*"))}
+
+    before = snapshot()
+    assert run(capsys, "firm")[0] == 0
+    assert snapshot() == before
+    assert not list(demo_root.rglob(LOCK_FILENAME))
+    assert "firm" not in api.WRITING_COMMANDS and "firm" in api.COMMANDS
+
+
+def test_firm_says_an_unreadable_record_as_its_own_row(capsys, demo_root, monkeypatch):
+    mixed, quiet, _retired = _a_practice_for_the_firm_view(capsys, demo_root)
+    real = api.load_manifest
+
+    def broken(path, **kwargs):
+        if Path(path) == mixed:
+            raise api.ManifestError("the record is not readable")
+        return real(path, **kwargs)
+
+    monkeypatch.setattr(api, "load_manifest", broken)
+    code, firm = run(capsys, "firm")
+    assert code == 0, firm
+    rows = {one["path"]: one for one in firm["returns"]}
+    assert rows[str(mixed)]["problem"] and set(rows[str(mixed)]["counts"].values()) == {0}
+    assert rows[str(quiet)]["problem"] == ""
+
+
+def test_firm_leaves_out_inactive_returns(capsys, demo_root):
+    _mixed, _quiet, retired = _a_practice_for_the_firm_view(capsys, demo_root)
+    _code, firm = run(capsys, "firm")
+    assert str(retired) not in {one["path"] for one in firm["returns"]}
+    assert len(firm["returns"]) == 2
+
+
+def test_firm_says_a_root_it_cannot_walk_and_answers_an_empty_root_as_nothing(capsys, demo_root,
+                                                                            monkeypatch):
+    code, firm = run(capsys, "firm")
+    assert code == 0 and firm["returns"] == [] and firm["totals"]["need"] == 0
+
+    def not_walked(root):
+        raise api.RegistryError("nope")
+
+    monkeypatch.setattr(api, "discover_engagements", not_walked)
+    code, payload = run(capsys, "firm")
+    assert code == 1 and payload["error"] == api.PRACTICE_NOT_WALKED
+
+
+def test_item_group_follows_its_table():
+    from types import SimpleNamespace
+
+    from tracker.manifest import Override
+    from tracker.reminder import SIDE_CLIENT, SIDE_DECIDE, SIDE_US
+
+    def row(status=Status.MISSING, asked=True, override="", identifier="A01"):
+        return SimpleNamespace(identifier=identifier, status=status, asked=asked,
+                               manual_override=override)
+
+    assert api.item_group(row(override=Override.NOT_APPLICABLE), {}) == "set_aside"
+    assert api.item_group(row(status="", asked=False), {}) == "set_aside"       # nothing in
+    assert api.item_group(row(), {"A01": (SIDE_CLIENT, "")}) == "waiting"
+    assert api.item_group(row(), {"A01": (SIDE_US, "")}) == "needs_you"
+    assert api.item_group(row(), {"A01": (SIDE_DECIDE, "")}) == "needs_you"
+    assert api.item_group(row(status=Status.RECEIVED), {}) == "received"
+    assert api.item_group(row(override=Override.ACCEPTED), {}) == "received"
+    assert api.item_group(row(), {}) == "waiting"                                # not yet checked
+    # The order of the table: an override beats a side; a side beats Received.
+    assert api.item_group(row(override=Override.NOT_APPLICABLE), {"A01": (SIDE_US, "")}) == "set_aside"
+    assert api.item_group(row(status=Status.RECEIVED), {"A01": (SIDE_US, "")}) == "needs_you"
+
+
+def test_a_file_falls_in_the_group_its_decision_says():
+    from tracker.filer import FILE_MOVED, NOT_REQUESTED
+
+    def entry(decision, home="A01/a.pdf"):
+        return IndexEntry(received="2026-02-01", original_name="a.pdf", size_kb=1.0, digest="1" * 64,
+                          identifier="A01", prepared_location=home, pbc_location="pbc/a.pdf",
+                          decision=decision, reason="")
+
+    assert api.file_group(entry(NEEDS_REVIEW)) == "needs_you"
+    assert api.file_group(entry(FILE_MOVED)) == "needs_you"
+    assert api.file_group(entry(FILE_MOVED, home="")) == "set_aside"      # marked missing
+    assert api.file_group(entry(NOT_REQUESTED)) == "set_aside"
+    assert api.file_group(entry(api.FILED)) == "received"
+
+
+def test_list_reports_the_clients_root_and_the_firm_report_as_openable(capsys, demo_root):
+    from tracker.runner import STATUS_PAGE_FILENAME
+
+    _code, payload = run(capsys, "list")
+    assert payload["paths"] == {"clients_root": str(demo_root),
+                                "status": str(demo_root / STATUS_PAGE_FILENAME)}
+    assert api.PATH_KINDS["clients_root"] == "folder"
+    assert set(payload["paths"]) <= set(api.PATH_KINDS)
+    assert payload["vocab"]["path_kinds"]["clients_root"] == "folder"
+
+
+def test_the_vocabulary_carries_the_menu_the_screen_and_the_short_words(capsys):
+    words = api._vocab()
+    assert words["menu"] == api.MENU and words["screen"] == api.SCREEN
+    assert words["reasons"] == reasons.SHORT_REASONS
+    assert [stage["short"] for stage in words["reminder"]["stages"]] == [
+        "Heads up", "Checking in", "Deadline near", "Final notice"]
+    assert [rule["short"] for rule in words["rules"]] == list(api.SAFEGUARDS)
+    assert [rule["headline"] for rule in words["rules"]] == [h for h, _ in api.STANDING_RULES]
+    assert len(words["override_labels"]) == len(words["override_reasons"])
+    # The stored words do not change (P77): only the label does.
+    assert "Client confirmed this is the final version" in words["override_reasons"]
+    assert words["schedule"]["move_warning"] == "Only if {host} is retired"
+    assert words["editor"]["engagement_fields"][8]["help"] == "No: sorting skips this return"
+
+
+def test_every_short_word_the_engine_adds_is_five_words_or_fewer():
+    import re
+
+    def walk(node, path=""):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                yield from walk(value, f"{path}.{key}")
+        else:
+            yield path, node
+
+    for path, text in [*walk(api.MENU, "menu"), *walk(api.SCREEN, "screen"),
+                       *walk(reasons.SHORT_REASONS, "reasons")]:
+        counted = re.sub(r"\{[a-z_]+\}", "x", text.replace("&", "")).split()
+        assert 1 <= len(counted) <= 5, (path, text)

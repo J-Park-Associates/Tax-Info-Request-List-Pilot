@@ -3824,3 +3824,15 @@ def test_the_runbook_describes_the_saved_schedule_and_the_interval_aware_amber_r
     assert LAST_PASS_AMBER_HOURS == 4
     assert "never resets them to the defaults" in runbook
     assert "the schedule is off on this computer" in runbook.lower() or "**Off** removes" in runbook
+
+
+def test_the_safeguards_are_the_standing_rules_in_one_short_line_each():
+    """P64: the Safeguards dialog shows one short line per standing rule, in
+    the rules' order; the full wording stays in STANDING_RULES and is what
+    the docs quote."""
+    from tracker import SAFEGUARDS, STANDING_RULES, api
+
+    assert len(SAFEGUARDS) == len(STANDING_RULES) == 4
+    for short, (headline, _detail) in zip(SAFEGUARDS, STANDING_RULES, strict=True):
+        assert 1 <= len(short.split()) <= 5 and short != headline
+    assert [rule["short"] for rule in api.standing_rules()] == list(SAFEGUARDS)

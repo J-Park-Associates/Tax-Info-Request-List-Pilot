@@ -71,3 +71,13 @@ STANDING_RULES: tuple[tuple[str, str], ...] = (
      "The system drafts client emails and stops. There is no SMTP, no mail client and no "
      "network call in the reminder or scheduling path."),
 )
+
+#: The four rules again, each in one short line for the app's Safeguards
+#: dialog (SPEC-shell 11.6, P64): the same order and meaning as
+#: :data:`STANDING_RULES`, which keeps the full wording. Five words or fewer.
+SAFEGUARDS: tuple[str, ...] = (
+    "No AI reads documents",
+    "Originals never changed",
+    "Nothing is guessed",
+    "Nothing is ever sent",
+)

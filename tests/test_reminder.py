@@ -2451,3 +2451,14 @@ def test_nothing_in_the_footer_or_the_cli_says_not_asked_for_the_firms_work(tmp_
                            cwd=repo, capture_output=True, text=True, env=env).stdout
     assert f"{SIDE_US.label}: " in shown and f"{SIDE_DECIDE.label}: " in shown
     assert NOT_ASKED_LABEL.lower() not in shown.lower()
+
+
+def test_every_stage_has_a_short_name_the_app_shows_and_the_letter_never_does():
+    """SPEC-shell 11.6: the rungs gain a short name of five words or fewer
+    for the app's rows; the letter's subject and body keep the full one."""
+    assert [stage.short for stage in STAGES] == [
+        "Heads up", "Checking in", "Deadline near", "Final notice"]
+    for stage in STAGES:
+        assert 1 <= len(stage.short.split()) <= 5
+        assert stage.short not in (stage.name, stage.subject, stage.intro, stage.deadline,
+                                   stage.close)

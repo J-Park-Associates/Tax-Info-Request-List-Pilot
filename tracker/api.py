@@ -18,6 +18,9 @@ Commands:
             to tick (a read: nothing is recorded)
   state     the request rows as the record holds them, the index, the
             triaged review queue, the one summary, useful paths
+  firm      the practice at a glance, read only: for every active return the
+            count of its rows in each group, the files waiting for a person,
+            the due date and whether its reminder draft is ready
   priors    list engagements a new year could be rolled forward from
   rollover  build next year's list from a returning client's prior year
   roll-household  roll every ticked return of a household's open year into
@@ -85,6 +88,7 @@ from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 
 from tracker import (
+    SAFEGUARDS,
     STANDING_RULES,
     after_install,
     checkpoint,
@@ -111,8 +115,6 @@ from tracker.filer import (
     NEEDS_REVIEW,
     NOT_REQUESTED,
     NOT_WAITING,
-    ROOM_PARKS,
-    ROOM_SHORT,
     FilingError,
     Spelling,
     StaleRowError,
@@ -207,6 +209,7 @@ from tracker.manifest import (
     check_rules,
     check_tax_year,
     create_engagement,
+    effective_status,
     has_a_document,
     is_idle_unasked,
     item_from_fields,
@@ -401,23 +404,22 @@ NOTICE_LABELS = {"retry": "Retry", "look": "Look again", "dismiss": "Dismiss"}
 PRACTICE_NOT_WALKED = ("The clients folder could not be walked just now, so what needs the whole "
                        f"practice is not shown; the details are in {ERROR_LOG_FILENAME}.")
 #: The Reminder card kept on screen when its reminder cannot be read (D7).
-REMINDER_UNREADABLE = "This return's reminder could not be read just now; the notice above says why."
+REMINDER_UNREADABLE = "Reminder could not be read"
 #: One return's reminder line on the household card that could not be read.
-REMINDER_LINE_UNREADABLE = "{label}: its reminder could not be read ({kind})"
+REMINDER_LINE_UNREADABLE = "Reminder could not be read"
 #: Stop asked of a pass this app is not running (ruling 7 and the lane's).
 NOTHING_TO_STOP = "There is no pass this app started running to stop; nothing was changed."
 #: How often the app asks whether a lock it shows has gone (ruling 10).
 LOCK_WATCH_SECONDS = 5
 #: The lock notice's words (D4): nothing waits, and nothing needs clearing.
-LOCK_RUNNING = "A pass that started at {started} on {host} is holding this return."
+LOCK_RUNNING = "In use on {host}"
 #: The same, about a lock that is not the shown return's - a sibling, a fed
 #: return or the household (the review's S1): named by its own label.
-LOCK_RUNNING_OTHER = "A pass that started at {started} on {host} is holding {label}."
+LOCK_RUNNING_OTHER = "{label} in use on {host}"
 LOCK_ON = "It is on {household}: {name}."
 LOCK_GREYED = ("This return's buttons are greyed while it runs and come back by themselves the "
                "moment it lets go.")
-LOCK_LEFT_BEHIND = ("A pass that started at {started} on {host} left its lock behind ({minutes} min "
-                    "old); it has most likely ended. The next pass replaces it, or clear it here.")
+LOCK_LEFT_BEHIND = "Stuck lock from {host}"
 LOCK_CLEARED = "The lock left behind was cleared ({minutes} min old)."
 LOCK_BUTTONS_BACK = "The pass let go of this return; its buttons are back."
 #: Sort & Scan, watched (decision 193).
@@ -429,20 +431,18 @@ PROGRESS_STOPPING = "Stopping after this file\u2026"
 #: What the shell says when a child is killed, ends with no reply, or
 #: cannot start - learned from here, with pinned defaults for a first
 #: start (``app/main.js``).
-SHELL_KILLED = ("The pass ran past its limit of {minutes} minutes and was stopped. What it finished "
-                "is on the record, and the next pass does the rest.")
+SHELL_KILLED = "Sort stopped: ran too long"
 SHELL_KILLED_AT = "It was on {household}: {name}."
-SHELL_NO_REPLY = "The tracker ended without a reply (exit code {code}); the details are in the error log."
-SHELL_COULD_NOT_START = "The tracker could not start ({code})."
-SHELL_COULD_NOT_SEND = "The app could not send that to the tracker ({kind}); nothing was changed."
+SHELL_NO_REPLY = "No reply from the tracker"
+SHELL_COULD_NOT_START = "The tracker could not start"
+SHELL_COULD_NOT_SEND = "Could not send; nothing changed"
 #: With no error log (no data folder yet), a failed command's stderr is said
 #: in its own reply instead - the shell never writes a log beside the
 #: program (decision 186's rebase review, MF2).
-SHELL_NO_LOG = ("There is no error log to hold the details - the tracker has no data folder yet - so "
-                "they are here instead: {stderr}")
+SHELL_NO_LOG = "Tracker failed; no error log"
 #: An error of the page's own, said by its class; its message goes to the
 #: error log through the shell (the review's S5).
-PAGE_ERROR = "The app met an error of its own ({kind}); the details are in the error log."
+PAGE_ERROR = "The app hit an error"
 #: The same, when no data home can be had and so there is no error log to
 #: point at (decision 186): never a sentence naming a file that is not there.
 PAGE_ERROR_NO_LOG = ("The app met an error of its own ({kind}); there is no error log to hold "
@@ -450,12 +450,12 @@ PAGE_ERROR_NO_LOG = ("The app met an error of its own ({kind}); there is no erro
 #: What a Sort & Scan reply is said as (the review's S4, decision 42).
 SCAN_SCANNING = "Scanning\u2026"
 SCAN_NOTHING_DONE = "Nothing done: {why}."
-SCAN_PROBLEM = "The pass reported a problem: {error}"
+SCAN_PROBLEM = "Sort failed"
 SCAN_COMPLETE = "Pass complete \u2014 {did}.   {summary}"
 SCAN_FILED = "filed {n}"
 SCAN_REVIEW = "{n} to review"
 SCAN_SYNCING = "{n} still syncing"
-SCAN_NOT_SORTED = "{n} file(s) could not be sorted"
+SCAN_NOT_SORTED = "{n} files not sorted"
 SCAN_BUT = "But {problems}."
 #: A pass whose final line does not name the return it was asked for
 #: (decision 203's review, S2): its counts are not guessed from another's.
@@ -572,7 +572,7 @@ ENGAGEMENT_FLAG = "--engagement"
 #: owns.
 HOUSEHOLD_HEADING = "Household"
 HOUSEHOLD_NAME_LABEL = "Household"
-MEMBERS_LABEL = "Shared with (as typed by the firm)"
+MEMBERS_LABEL = "Shared with"
 MEMBERS_HELP = ("who this household's folder is meant to be shared with - the tracker cannot "
                 "read Drive's sharing, so this is the firm's own note")
 CONTACT_LABEL = "Contact"
@@ -589,17 +589,16 @@ NEW_HOUSEHOLD_LABEL = "New household"
 #: no wizard and no household picked on one page for another to act on; every
 #: word of the three is here, and the page types none of them.
 ROLL_FORWARD_TO = "Roll forward to {year}"
-ROLL_TICKED_LABEL = "Roll the ticked returns forward to {year}"
+ROLL_TICKED_LABEL = "Roll forward"
 ROLL_INTRO = ("Last year's list is the starting point. Everything the client actually sent, set "
               "aside or under-delivered carries forward - what was set aside as not applicable "
               "under its own heading, for a fresh decision; the form template only fills blanks.")
-ROLL_NO_TEMPLATE = "No template — carry last year's list as it is"
+ROLL_NO_TEMPLATE = "Keep last year's list"
 ROLL_DONE_LINE = "{rolled} return(s) rolled into {year}; {retired} retired"
 ROLL_CARRIED = "{n} request(s) carried"
-ROLL_UNFILED = "{n} file(s) sent last year were never filed"
+ROLL_UNFILED = "{n} last-year files never filed"
 ROLL_RETIRED_LINE = "{label}: retired."
-ROLL_FORMS_UNLOADED = ("The return types could not be loaded, so each return keeps the form it "
-                       "recorded: {reason}")
+ROLL_FORMS_UNLOADED = "Return types did not load"
 ADD_RETURN_LABEL = "Add a return"
 ADD_RETURN_TITLE = "Add a return to {household}"
 NEW_HOUSEHOLD_INTRO = ("A client folder is a household: one folder per tax year inside it, one "
@@ -609,7 +608,7 @@ FORM_STEP_TITLE = "What type of return?"
 FORM_STEP_NOTE = "The request list is tailored to the form you pick."
 CHANGE_FORM_LABEL = "Change form type"
 CHANGE_HOUSEHOLD_LABEL = "Change household details"
-EMPTY_ROOT_LINE = "No households under {root} yet — click {new} to create the first."
+EMPTY_ROOT_LINE = "No households yet"
 ITEMS_TITLE = "New {form} return"
 CREATE_RETURN_LABEL = "Create return"
 RETURN_CREATED_LINE = ('Return "{label}" created with {n} request(s) asked for, client README '
@@ -623,13 +622,11 @@ HOUSEHOLD_QUEUE_LINE = "{n} document(s) waiting for a person across this househo
 FEEDS_LABEL = "Also feeds"
 FEEDS_HELP = ("returns in other households this drop folder feeds, by return line; most "
               "households feed only their own")
-FEEDS_LINE = "This drop folder also feeds: {listed}"
-FED_BY_LINE = "Also fed by the drop folder of: {listed}"
-ADD_FEED_LABEL = "Add a return this drop folder feeds"
-FEED_WARNING = ("Anyone with access to this drop folder may drop for this return. Its documents "
-                "will rest under the folder it lives in, shared with: {members}.")
-RETURN_WARNING = ("Everyone with access to this folder will see this return's documents. Add it "
-                  "here only if every member may.")
+FEEDS_LINE = "Also feeds"
+FED_BY_LINE = "Also fed by: {listed}"
+ADD_FEED_LABEL = "Feed another return"
+FEED_WARNING = "Its members can drop here"
+RETURN_WARNING = "Shared members see documents"
 HAND_OVER_LABEL = "File under another return"
 #: The two boxes that answer come with their own words rather than borrowing
 #: the household heading and the editor's title, which happened to read
@@ -641,7 +638,7 @@ HAND_OVER_REQUEST_LABEL = "Under which request"
 #: (decision 132): where it went, and that the row here is gone - released,
 #: nothing about it kept in this return. Filled by the page with the
 #: label and the request the reply carries.
-HANDED_OVER_LINE = "Filed under {label} ({identifier}); nothing about it stays here"
+HANDED_OVER_LINE = "Filed under {label}"
 #: The one click (decision 204): a document that names the person of a
 #: return in another household waits here, and this is the button that
 #: hands it over to that return - the requests its list accepted, shown
@@ -659,8 +656,7 @@ NOT_FED = "{label} is not a return this drop folder feeds; add it to the househo
 MISFITS_HEADING = "Folders the tracker leaves alone"
 MISFITS_NOTE = ("Each is listed with the one reason it does not fit the layout; nothing in it "
                 "is ever read, moved or renamed.")
-TWO_OPEN_YEARS_NOTE = ("Two years are open in this household ({years}); nothing is sorted from "
-                       "its inbox until one is retired in the editor")
+TWO_OPEN_YEARS_NOTE = "Two years open; sorting paused"
 #: The two grants a person makes in Drive, once per household, and the one
 #: thing the tracker can check was done (decision 126). **The tracker
 #: cannot see Drive's sharing** - Drive for desktop exposes no permission
@@ -675,7 +671,7 @@ SHARING_CHECKLIST = (
 )
 SHARING_HEADING = "Before the client can drop anything"
 MARK_SHARED_LABEL = "Mark as shared"
-SHARED_ON_LINE = "Marked as shared on {day} by the firm"
+SHARED_ON_LINE = "Shared {day}"
 NOT_YET_SHARED_LINE = "Not yet marked as shared"
 SHARING_NOTE = ("The tracker cannot see Drive's sharing. The two grants are the firm's to make, once; "
                 "the year folders are view-only through the household folder, and nothing is ever re-shared.")
@@ -684,8 +680,7 @@ SHARING_NOTE = ("The tracker cannot see Drive's sharing. The two grants are the 
 SHARE_LINK_FIRST = "paste the inbox's link into the household first"
 #: What the roll fold on the household's card says beside its ticks, so
 #: nobody unticks a return expecting it to sit still (decision 126).
-ROLLOVER_UNTICKED_NOTE = ("A return left unticked is retired for {year}: it is set inactive and "
-                          "stops being chased. Tick it later and roll it on its own if that changes.")
+ROLLOVER_UNTICKED_NOTE = "Unticked returns go inactive"
 #: What the Needs Review card calls the decisions a person makes there and
 #: on what is already filed, and what it asks them for. The renderer shows
 #: these; it types none of them.
@@ -697,12 +692,12 @@ DISMISS_LABEL = "Not requested"
 #: (decision 190): a folder the client called "not allowed" was read as
 #: the file type being refused.
 CAME_FROM_SUBFOLDER = "came from the client's subfolder '{folder}'"
-DISMISS_NOTE_HINT = "why nothing asks for it (optional)"
+DISMISS_NOTE_HINT = "Reason (optional)"
 DISMISSED_HEADING = "Not requested ({n})"
 FILE_LABEL = "File it"
 FILE_ANYWAY_LABEL = "File it anyway"
 UNFILE_LABEL = "Unfile"
-UNFILE_NOTE_HINT = "why it is coming back (optional)"
+UNFILE_NOTE_HINT = "Reason (optional)"
 #: Decision 146: the button beside each request a filed consolidated
 #: statement answers without a copy, and the words that introduce them.
 MARK_MISSING_LABEL = "Mark {identifier} missing"
@@ -755,9 +750,8 @@ BUCKET_CONTAINER = "container"
 BUCKET_NOT_A_DOCUMENT = "not_a_document"
 BUCKET_HEADINGS = {
     BUCKET_DOCUMENT: "Documents",
-    BUCKET_CONTAINER: ("Emails and zips - opened, if at all, "
-                       f"{reasons.OTHER_MACHINE}, never this one"),
-    BUCKET_NOT_A_DOCUMENT: "Not documents - do not open; ask the client what they meant to send",
+    BUCKET_CONTAINER: "Emails and zips",
+    BUCKET_NOT_A_DOCUMENT: "Not documents",
 }
 #: Open is an allow-list (decision 190, following 184): the codes of a
 #: document the tracker **read** and parked for a filing reason - no request
@@ -849,7 +843,7 @@ EDITOR_PASTE_HINT = (
     "Nothing is recorded until you save."
 )
 EDITOR_WARNINGS_HEADING = "Worth a look"
-RULES_SAVED = "Request list saved: {changed} row(s) changed, {removed} removed"
+RULES_SAVED = "Saved"
 NOTHING_CHANGED = "Nothing changed; nothing was recorded."
 LEARNED_NOTE = "taught by a filing: {keywords}"
 #: The button beside each keyword a filing taught, and what the editor says
@@ -883,15 +877,14 @@ RENAME_HINT = ("Gives a request another identifier and moves its filed documents
 RENAME_FROM_LABEL = "Request"
 RENAME_TO_LABEL = "New identifier"
 RENAME_LABEL = "Rename"
-RENAMED_NOTE = "{old} renamed {new}; {moved} working copy(ies) moved with it and the request was re-scanned"
-RENAME_LEFT_NOTE = "left in the old folder because no row names them: {left}"
+RENAMED_NOTE = "Renamed"
+RENAME_LEFT_NOTE = "Some copies stayed behind"
 #: What the roll's banner says of last year's set-aside rows, in
 #: one line beside the carried counts.
-NOT_APPLICABLE_CARRIED = "{n} request(s) not applicable last year - review them in the editor"
+NOT_APPLICABLE_CARRIED = "Review {n} set-aside requests"
 #: And of the catalog rows the client never had, added as not asked
 #: (decision 142, rewording decision 9: they used to be offered, not added).
-NEW_NOT_ASKED_CARRIED = ("{n} catalog row(s) this client never had added as not asked - "
-                         "a document for one files there; set Asked in the editor to ask for it")
+NEW_NOT_ASKED_CARRIED = "{n} requests added, not asked"
 #: The request list's heading over the catalog's checkboxes, and the sentence
 #: under it (decision 142): a tick is a request the client is asked for
 #: and reminded of; every row is on the return either way.
@@ -899,7 +892,7 @@ ASK_THE_CLIENT = "Ask the client"
 #: The name the app's folded table of not-asked rows is read out by, and
 #: the roll fold's label over the template pick (decision 142).
 NOT_ASKED_TABLE_LABEL = "Requests not asked for"
-ROLL_TEMPLATE_LABEL = "Form template (fills blanks, adds the rows this client never had as not asked)"
+ROLL_TEMPLATE_LABEL = "Form template"
 ASK_THE_CLIENT_NOTE = ("Every row is on the return. A ticked row is asked for and reminded; "
                        "an unticked one is never asked for, but a document that arrives for "
                        "it is filed there.")
@@ -918,7 +911,7 @@ CLIENTS_FOLDER_LABEL = "Clients folder"
 # ---- the dialogs and the editor's plain view (decision 201) -----------------
 #: What every dialog says when it is asked to close with changes not saved,
 #: and its two answers: Keep editing, focused, and the only way out.
-UNSAVED_CHANGES = "You have changes here that are not saved."
+UNSAVED_CHANGES = "Unsaved changes"
 KEEP_EDITING = "Keep editing"
 DISCARD_CHANGES = "Discard my changes"
 #: The editor's plain view (M13): the boxes a preparer changes, shown on
@@ -938,8 +931,7 @@ ROUTING_HELP = ("How the tracker recognises this document when it arrives. A sav
 #: Edit Request List pressed while the state on screen is still another
 #: return's, after reading it again (decision 201, the review's S4): said
 #: in the banner rather than a button that does nothing.
-EDITOR_NOT_THIS_RETURN = ("The request list could not be opened: what is on screen is still another "
-                          "return's. Pick the return again, then open its request list.")
+EDITOR_NOT_THIS_RETURN = "Request list did not open"
 #: The keyword box on a parked or moved document's card (decision 201,
 #: D11): its label, and what the word does, as its title.
 KEYWORD_LABEL = "Keyword to learn (optional)"
@@ -948,15 +940,15 @@ KEYWORD_HELP = ("A word this document contains that others like it will too. Tau
 #: The card of a K-1 parked for an unnamed issuer (decision 201): its one
 #: box, what it will add - the next free row, named before anything is
 #: pressed - and its one button; and what the banner says once it is done.
-ISSUER_LABEL = "Issuer's name, as the K-1 prints it"
+ISSUER_LABEL = "Issuer name"
 ISSUER_HELP = ("Adds {identifier}, a K-1 row for this issuer, to the request list and files this "
                "document under it. Type the distinctive words and leave off the suffix (L.P., LLC).")
-ISSUER_ADD_LABEL = "Add the issuer and file it"
+ISSUER_ADD_LABEL = "Add issuer"
 ISSUER_ADDED_AND_FILED = "{identifier} - {document} added to the request list, and {name} filed under it."
 #: The issuer added and filed, but the re-scan after it met the engagement
 #: lock: said by the error's class, never its text (principle 7; the
 #: restack review's N2). The next pass puts the row's status right.
-ISSUER_NOT_RESCANNED = "not re-scanned ({kind}); the next pass re-scans it"
+ISSUER_NOT_RESCANNED = "Next sort rechecks it"
 #: A card's issuer that is not a piece of text - only a hand-written
 #: stdin can send one - refused rather than turned into a name (the
 #: review's N4, as ``_seq_of`` refuses a missing version).
@@ -983,11 +975,11 @@ REVIEW_PEOPLE_LABEL = "Review people"
 #: Said once after a household rolls forward: the people carried unchanged
 #: and are worth one look (decision 128). Nothing blocks on it - strict
 #: parking is the safety net.
-PEOPLE_ROLLED_NOTE = "{n} return(s) rolled; review each return's people once"
+PEOPLE_ROLLED_NOTE = "Check each return's people"
 #: The card's offer beside a page that named nobody, and what the box asks
 #: for. Pre-filled with nothing: the person types what the page shows.
 TEACH_SPELLING_LABEL = "Teach this spelling"
-TEACH_SPELLING_HINT = "the name as this page prints it"
+TEACH_SPELLING_HINT = "Spelling"
 
 
 def _folder_name(value: object, what: str) -> str:
@@ -1126,20 +1118,21 @@ def _stages() -> list[dict]:
     the colour up and applies the flags; it decides neither."""
     return [{"number": stage.number, "name": stage.name,
              "colour": reminder.STAGE_COLOURS[stage.number],
-             "emphasis": asdict(reminder.STAGE_EMPHASIS[stage.number])}
+             "emphasis": asdict(reminder.STAGE_EMPHASIS[stage.number]),
+             "short": stage.short}
             for stage in reminder.STAGES]
 
 
 def standing_rules() -> list[dict]:
     """The package's standing rules with the folder names filled in."""
     names = {"inbox": INBOX_DIR_NAME, "review": REVIEW_DIR_NAME, "record": THE_RECORD}
-    return [{"headline": headline, "detail": detail.format(**names)}
-            for headline, detail in STANDING_RULES]
+    return [{"headline": headline, "detail": detail.format(**names), "short": short}
+            for (headline, detail), short in zip(STANDING_RULES, SAFEGUARDS, strict=True)]
 
 
 #: The heading the root dialog lists the returns short of room under, after
 #: a person sets the clients root (decision 131).
-ROOM_HEADING = "Returns short of room under this root"
+ROOM_HEADING = "Names shortened to fit"
 
 
 #: What each key of a return's ``paths`` names: a folder or a file
@@ -1148,9 +1141,214 @@ ROOM_HEADING = "Returns short of room under this root"
 PATH_KINDS: dict[str, str] = {
     "engagement": "folder", "inbox": "folder", "originals": "folder", "client_folder": "folder",
     "household": "folder", "prepared": "folder", "view": "file", "draft": "file", "status": "file",
+    "clients_root": "folder",
 }
+#: What the request-list editor shows for each stored override reason
+#: (:data:`tracker.manifest.OVERRIDE_REASONS`), in its order (P77, P84): the
+#: record keeps the stored words as values, so only the label changes.
+OVERRIDE_LABELS: tuple[str, ...] = (
+    "Client confirmed final version",
+    "Correct; only formatting flagged",
+    "Received outside the tracker",
+    "Prior-year or substitute document accepted",
+)
+
+#: The menu bar's words, keyed by item (SPEC-shell 11.3, P84). ``vocab.menu``
+#: carries this, and ``main.js`` holds the same words as its defaults so the
+#: menu is there from the first frame; a test keeps the two equal. ``&``
+#: marks an access key and is not counted in the five words.
+MENU: dict[str, str] = {
+    "file": "&File",
+    "new_household": "New household…",
+    "change_root": "Change clients folder…",
+    "open_root": "Open clients folder",
+    "exit": "Exit",
+    "edit": "&Edit",
+    "client": "&Client",
+    "edit_household": "Edit household…",
+    "add_return": "Add a return…",
+    "roll_forward": "Roll forward…",
+    "mark_shared": "Mark as shared",
+    "edit_list": "Edit request list…",
+    "draft_reminder": "Draft reminder…",
+    "open_client_folder": "Open client folder",
+    "open_inbox": "Open inbox",
+    "open_working": "Open working folder",
+    "view": "&View",
+    "overview": "Overview",
+    "needs_review": "Needs review",
+    "reminders": "Reminders",
+    "clients": "Clients",
+    "find": "Find",
+    "refresh": "Refresh",
+    "tools": "&Tools",
+    "sort_now": "Sort now",
+    "stop_sorting": "Stop sorting",
+    "schedule": "Schedule…",
+    "repair_schedule": "Repair schedule",
+    "firm_report": "Firm report",
+    "clear_lock": "Clear stuck lock",
+    "help": "&Help",
+    "tour": "Take the tour",
+    "safeguards": "Safeguards",
+    "terms": "Terms",
+    "error_log": "Open error log",
+    "about": "About",
+    "check": "Check…",
+    "not_requested": "Not requested",
+    "another_return": "Another return…",
+    "put_back": "Put back",
+    "keep_here": "Keep here",
+    "edit_request": "Edit request…",
+    "unfile": "Unfile",
+    "mark_missing": "Mark missing",
+}
+
+#: The words of the new screen that no existing key already says (SPEC-shell
+#: 11.4, P84), nested by where each is shown. ``vocab.screen`` carries it.
+SCREEN: dict = {
+    "sections": {
+        "overview": "Overview",
+        "needs_review": "Needs review",
+        "reminders": "Reminders",
+        "clients": "Clients",
+    },
+    "side_label": "Sections",
+    "path_label": "Path",
+    "find": "Find a client",
+    "find_none": "No match",
+    "sort": {
+        "now": "Sort now",
+        "sort": {
+            "stop": "Stop sorting",
+            "firm": "Open a client to sort",
+            "locked": "In use elsewhere",
+            "stopping": "Stopping",
+        },
+    },
+    "last_sort": {
+        "today": "Sorted {time}",
+        "other_day": "Sorted {date}",
+        "failed": "Sort failed",
+        "never": "Not sorted yet",
+        "running": "Sorting {n} of {total}",
+        "done": "Sorted",
+    },
+    "figures": {
+        "need": "Need a person",
+        "waiting": "Waiting on clients",
+        "complete": "Complete",
+    },
+    "work": "Work waiting",
+    "empty": {
+        "overview": "Nothing is waiting",
+        "next_sort": "Next sort {time}",
+        "needs_review": "Nothing needs review",
+        "reminders": "No drafts ready",
+        "clients": "No clients yet",
+        "work": "No work waiting",
+        "returns": "No returns yet",
+        "received": "Nothing received yet",
+    },
+    "filters": {
+        "work": "Work waiting",
+        "filters": {
+            "all": "All",
+        },
+    },
+    "counts": {
+        "need": "{n} need you",
+        "waiting": "{n} waiting",
+        "complete": "Complete",
+        "returns": "{n} returns",
+        "one_return": "1 return",
+        "files": "{n} files",
+    },
+    "due": "Due {date}",
+    "partly": "{n} of {total}",
+    "groups": {
+        "needs_you": "Needs you",
+        "waiting": "Waiting on client",
+        "received": "Received",
+        "set_aside": "Set aside",
+    },
+    "steps": {
+        "check": "Check",
+        "open": "Open",
+        "draft": "Draft reminder",
+        "edit": "Edit",
+    },
+    "moved": "Moved by hand",
+    "held": "Held",
+    "inactive": "Inactive",
+    "rolled": "Rolled forward",
+    "contact": "Contact {name}",
+    "shared": "Shared",
+    "not_shared": "Not shared",
+    "icons": {
+        "dismiss": "Dismiss",
+        "open": "Open",
+        "next": "Next",
+        "more": "More",
+    },
+    "sheet": {
+        "reminder": "Reminder",
+        "drafted": "Drafted {date}, stage {n}",
+    },
+    "loading": "Loading",
+    "setup": {
+        "title": "Choose your clients folder",
+        "choose": "Choose folder…",
+        "start": "Start",
+        "missing": "Folder not found",
+    },
+    "notices": {
+        "firm_failed": "Counts not available",
+        "skipped": "{n} folders skipped",
+        "show": "Show",
+        "no_log": "No error log yet",
+        "drive": "Drive not signed in",
+    },
+    "misfits": {
+        "title": "Folders skipped",
+    },
+    "safeguards": {
+        "title": "Safeguards",
+    },
+    "about": {
+        "edition": "Pilot {version}",
+    },
+    "retry": "Retry",
+    "copied": "Copied",
+    "saved": "Saved",
+}
+
+#: Said before the schedule is moved to this computer, beside the question
+#: (SPEC-shell 11.2): a risky act keeps its warning (P77).
+SCHEDULE_MOVE_WARNING = "Only if {host} is retired"
+
+#: The short line the Setup notice says; the long one stays in
+#: :data:`tracker.after_install.FINDINGS_WAIT` for the error log and the
+#: after-install reply (SPEC-shell 11.2).
+AFTER_INSTALL_WAIT = "Setup needs attention"
+
+#: The triage's and the room's words as the app says them (SPEC-shell 11.2,
+#: P84). The status report and the console keep the full sentences in
+#: :mod:`tracker.review` and :mod:`tracker.filer`, which they still read; the
+#: app's card, its ``warnings`` and its ``room_note`` say these.
+NOTHING_SUGGESTED_WORDS = "No suggestion"
+SET_ASIDE_NOTE_WORDS = "Set aside in request list"
+FOOTER_PLACE_WORDS = "in the page {page} footer"
+ROOM_SHORT_WORDS = "Names shortened to fit"
+ROOM_PARKS_WORDS = "{count} requests can't be filed"
+
+#: What the app's request-list editor says under Active (P77): a warning
+#: before a risky act, short. The record's own sentence
+#: (:data:`tracker.records.ENGAGEMENT_NOTES`) stays in the README.
+ACTIVE_HELP = "No: sorting skips this return"
+
 #: What the shell says when a reported path is no longer what it was.
-SHELL_NOT_OPENED = "That is no longer the folder or file the tracker reported; nothing was opened."
+SHELL_NOT_OPENED = "Not opened; it has changed"
 
 
 def _vocab() -> dict:
@@ -1199,6 +1397,9 @@ def _vocab() -> dict:
         # the row's year, which travels per item as ``year`` in the state
         # so the renderer computes nothing from the Period's text.
         "override_reasons": list(OVERRIDE_REASONS),
+        # What the editor's list shows for each stored reason, in the same
+        # order (P77): the record keeps the stored words, the list shows these.
+        "override_labels": list(OVERRIDE_LABELS),
         "override_reason_other": OVERRIDE_REASON_OTHER,
         # The one line the roll's banner adds for last year's
         # set-aside rows, and the origin value it groups them on.
@@ -1283,11 +1484,11 @@ def _vocab() -> dict:
         # evidence place is named by - the record travels raw in the index,
         # so anything labelling a place labels it from here - and the cap
         # the shortlist's length keeps.
-        "triage": {"nothing_suggested": review.NOTHING_SUGGESTED,
+        "triage": {"nothing_suggested": NOTHING_SUGGESTED_WORDS,
                    "identifier_separator": review.IDENTIFIER_SEPARATOR,
-                   "places": dict(review.PLACE_WORDS),
+                   "places": {**review.PLACE_WORDS, records.WHERE_FOOTER: FOOTER_PLACE_WORDS},
                    "max_suggestions": review.MAX_SUGGESTIONS,
-                   "set_aside_note": review.SET_ASIDE_NOTE},
+                   "set_aside_note": SET_ASIDE_NOTE_WORDS},
         # The name tier's words (decision 128), from the two modules that
         # own them: the three kinds of person, the labels each is shown
         # under, the two refusals, and what the card says and offers where
@@ -1412,6 +1613,12 @@ def _vocab() -> dict:
         "example_root": EXAMPLE_ROOT,
         "engagement_flag": ENGAGEMENT_FLAG,
         "commands": sorted(COMMANDS),
+        # The menu bar's words and the new screen's (SPEC-shell 11.3-11.4):
+        # every label, heading and tooltip of the shell, five words or fewer.
+        "menu": dict(MENU),
+        "screen": SCREEN,
+        # One short label per reason code, for a row's status (11.5).
+        "reasons": dict(reasons.SHORT_REASONS),
         # Sort & Scan's command (decision 203): the shell watches it as a
         # pass, and the renderer sends it; neither types it.
         "pass_command": PASS_COMMAND,
@@ -1462,6 +1669,7 @@ def _vocab() -> dict:
             # Asked when Repair finds another computer named (the review's
             # S5): {host} is that computer, filled in by the page.
             "move_confirm": SCHEDULE_MOVE_CONFIRM,
+            "move_warning": SCHEDULE_MOVE_WARNING,
             # The Schedule dialog (pilot P21): every word it shows.
             "button": SCHEDULE_BUTTON,
             "title": SCHEDULE_TITLE,
@@ -1479,13 +1687,13 @@ def _vocab() -> dict:
         },
         # The notice at the top of the first screen while the last
         # after-install run left findings or failures (decision 209).
-        "after_install": {"heading": AFTER_INSTALL_HEADING, "wait": after_install.FINDINGS_WAIT},
+        "after_install": {"heading": AFTER_INSTALL_HEADING, "wait": AFTER_INSTALL_WAIT},
         # The room a return has under the clients root (decision 131): the
         # two sentences the return's page, the warnings and the set-root
         # reply fill - ROOM_SHORT as information, ROOM_PARKS as a warning
         # (the lead's L-1) - and the heading the root dialog lists them
         # under. The renderer types none.
-        "room": {"short": ROOM_SHORT, "parks": ROOM_PARKS, "heading": ROOM_HEADING},
+        "room": {"short": ROOM_SHORT_WORDS, "parks": ROOM_PARKS_WORDS, "heading": ROOM_HEADING},
         "keyword_default_note": KEYWORD_DEFAULT_NOTE,
         # Every word and colour the Reminder card shows (decisions 115 and
         # 118), from the module that owns the draft. The card types none of
@@ -1563,7 +1771,8 @@ def _vocab() -> dict:
             "rename_from": RENAME_FROM_LABEL, "rename_to": RENAME_TO_LABEL,
             "rename": RENAME_LABEL, "renamed_note": RENAMED_NOTE, "rename_left_note": RENAME_LEFT_NOTE,
             "engagement_fields": [
-                {"key": f, "label": ENGAGEMENT_LABELS[f], "help": ENGAGEMENT_HELP.get(f, ""),
+                {"key": f, "label": ENGAGEMENT_LABELS[f],
+                 "help": ACTIVE_HELP if f == "active" else ENGAGEMENT_HELP.get(f, ""),
                  "editable": f in ENGAGEMENT_EDITABLE}
                 for _, f in ENGAGEMENT_FIELDS
             ],
@@ -2012,6 +2221,7 @@ def _moved_payload(engagement: Path, entries: list[IndexEntry], items,
             "in_request": in_request,
             "gone": both_gone(entry),
             "identifier": entry.identifier,
+            "group": GROUP_NEEDS_YOU,
         })
     return rows
 
@@ -2417,6 +2627,46 @@ def _rule_for_the_editor(row) -> dict:
     return rule
 
 
+#: The four groups a return's rows and files fall into, in the order the
+#: return's page draws them (SPEC-shell 9.1). One grouping rule, in Python:
+#: the Overview's counts and the return's page read the same one.
+GROUP_NEEDS_YOU = "needs_you"
+GROUP_WAITING = "waiting"
+GROUP_RECEIVED = "received"
+GROUP_SET_ASIDE = "set_aside"
+GROUPS = (GROUP_NEEDS_YOU, GROUP_WAITING, GROUP_RECEIVED, GROUP_SET_ASIDE)
+
+
+def item_group(item, placed: dict) -> str:
+    """The group a request row falls in, by the first line that holds
+    (SPEC-shell 9.1): set aside by a person or never asked and nothing in;
+    then whose move it is - the client's is Waiting, ours or a decision is
+    Needs you; then Received (or Accepted); then any other row, asked with
+    nothing usable in, is Waiting. ``placed`` is :func:`reminder.sides` of
+    the one triage the screen was drawn from, so a row's group and its side
+    cannot disagree."""
+    if item.manual_override == Override.NOT_APPLICABLE or is_idle_unasked(item):
+        return GROUP_SET_ASIDE
+    side = placed.get(item.identifier)
+    if side is not None:
+        return GROUP_WAITING if side[0].key == reminder.SIDE_CLIENT.key else GROUP_NEEDS_YOU
+    if effective_status(item) == Status.RECEIVED:
+        return GROUP_RECEIVED
+    return GROUP_WAITING
+
+
+def file_group(entry: IndexEntry) -> str:
+    """The group a file in the index falls in: parked for a person, or moved
+    by hand and not yet answered, is Needs you; set aside by a person (Not
+    requested) or marked missing is Set aside; every other file is filed,
+    so Received."""
+    if entry.decision == NEEDS_REVIEW or (entry.decision == FILE_MOVED and not marked_missing(entry)):
+        return GROUP_NEEDS_YOU
+    if entry.decision == NOT_REQUESTED or entry.decision == FILE_MOVED:
+        return GROUP_SET_ASIDE
+    return GROUP_RECEIVED
+
+
 def _state(engagement: Path) -> dict:
     root = _saved_root()
     # The store is brought up to the record before anything is read, and
@@ -2479,6 +2729,9 @@ def _state(engagement: Path) -> dict:
                          "year": i.year, "status_key": status_key(i),
                          "side": placed[i.identifier][0].key if i.identifier in placed else None,
                          "side_sentence": placed[i.identifier][1] if i.identifier in placed else "",
+                         # The group the return's page draws the row under
+                         # (SPEC-shell 9.1); ``firm`` counts with the same rule.
+                         "group": item_group(i, placed),
                          # Decision 142, the designer's ruling on the build:
                          # a row nobody asked for folds away in the request
                          # table only while no document at all is in it; the
@@ -2511,10 +2764,10 @@ def _state(engagement: Path) -> dict:
         # of room is not (the lead's L-1): its names are cut to fit and
         # everything files, so the figure is information on its page.
         "warnings": check_rules(items) + (
-            [ROOM_PARKS.format(count=room.parks)] if room.parks else []),
+            [ROOM_PARKS_WORDS.format(count=room.parks)] if room.parks else []),
         "room": {"need": room.need, "least": room.least, "floor": room.floor,
                  "short": room.short, "parks": room.parks, "limit": room.limit},
-        "room_note": ROOM_SHORT.format(short=room.short) if room.short else "",
+        "room_note": ROOM_SHORT_WORDS.format(short=room.short) if room.short else "",
         # The index's packed cells travel as data, not as text the app
         # would have to parse: the candidates as a list, the evidence as
         # the record it was written from keyed by candidate identifier,
@@ -2529,7 +2782,7 @@ def _state(engagement: Path) -> dict:
                                "candidates": e.candidate_list,
                                "answered": [identifier for identifier, _ in e.answered],
                                "evidence": _evidence_payload(e),
-                               "handle": handle_of(e),
+                               "handle": handle_of(e), "group": file_group(e),
                                "seq": seqs.get(ledger_key(e))} | _review_payload(e)
                   for e in entries],
         # The review queue, triaged: one entry per parked file, its
@@ -2600,8 +2853,8 @@ def _room_sentences(room) -> list[str]:
     """What the reply to setting the root says about one return's room
     (decision 131), filled: the figure it is short by, as information, and
     the requests that cannot receive, as the warning they are."""
-    said = [ROOM_SHORT.format(short=room.short)] if room.short else []
-    return said + ([ROOM_PARKS.format(count=room.parks)] if room.parks else [])
+    said = [ROOM_SHORT_WORDS.format(short=room.short)] if room.short else []
+    return said + ([ROOM_PARKS_WORDS.format(count=room.parks)] if room.parks else [])
 
 
 def _reminder_payload(engagement: Path, triaged) -> dict:
@@ -3049,7 +3302,8 @@ def _cmd_list(argv: list[str]) -> dict:
              # When the scheduled pass last ran and how it ended (decision
              # 159, E4): one line on the main screen, in the runner's words,
              # with or without a root - a missing root is one way it stops.
-             "last_pass": last_pass_line(),
+             "last_pass": _last_pass(),
+             "paths": _list_paths(None),
              "machine_warnings": _machine_warnings(None),
              # What the last after-install run left for a person (decision
              # 209), or None: a notice above everything, until a run finds
@@ -3078,7 +3332,7 @@ def _cmd_list(argv: list[str]) -> dict:
     except EmptyRoot:
         # An empty root is a practice nobody has set up yet, not a failure.
         return {**empty, "needs_root": False, "root": str(root), "vocab": _vocab(),
-                "machine_warnings": _machine_warnings(root)}
+                "paths": _list_paths(root), "machine_warnings": _machine_warnings(root)}
     except RegistryError as exc:
         # One that could not be walked is said, never answered as empty
         # (decision 193): the class to the log, the sentence to the page.
@@ -3087,8 +3341,9 @@ def _cmd_list(argv: list[str]) -> dict:
         _warn(PRACTICE_NOT_WALKED)
         return {**empty, "needs_root": False, "root": str(root),
                 "root_problem": PRACTICE_NOT_WALKED, "vocab": _vocab(),
-                "machine_warnings": _machine_warnings(root)}
+                "paths": _list_paths(root), "machine_warnings": _machine_warnings(root)}
     return {**_list_payload(root, registry), "needs_root": False, "vocab": _vocab(),
+            "paths": _list_paths(root),
             "reader_warning": empty["reader_warning"], "last_pass": empty["last_pass"],
             "after_install": empty["after_install"],
             "machine_warnings": _machine_warnings(root)}
@@ -3139,6 +3394,35 @@ def _list_payload(root: Path, registry: Registry) -> dict:
                     for misfit in registry.misfits],
         "root": str(root),
     }
+
+
+def _list_paths(root: Path | None) -> dict:
+    """The two paths the shell may open from the menu, named here because it
+    opens only what the API reported (decision 188): the clients folder and
+    the firm's report page in it. Empty with no root, and then opened never."""
+    if root is None:
+        return {"clients_root": "", "status": ""}
+    return {"clients_root": str(root), "status": str(root / STATUS_PAGE_FILENAME)}
+
+
+def _last_pass() -> dict:
+    """:func:`runner.last_pass_line` with the two facts the last-sort line
+    needs beside its sentence, so the page never parses the runner's words:
+    ``ok`` (the last pass ended well) and ``when`` (its start, ISO), or
+    ``False`` and ``None`` when there is none or the file cannot be read.
+    Never raises: it is part of the app's first call."""
+    line = last_pass_line()
+    ok, when = False, None
+    try:
+        with runner.last_pass_path().open("rb") as handle:
+            raw = handle.read(runner.PASS_ORDER_MAX_BYTES + 1)
+        if len(raw) <= runner.PASS_ORDER_MAX_BYTES:
+            data = json.loads(raw.decode("utf-8"))
+            when = dt.datetime.fromisoformat(data["started"]).isoformat(timespec="seconds")
+            ok = data["result"] == runner.PASS_SUCCEEDED
+    except Exception:            # the line above already says what could not be read
+        ok, when = False, None
+    return {**line, "ok": ok, "when": when}
 
 
 #: The commands whose reply carries the list, because they change it
@@ -3410,7 +3694,7 @@ def _undo_made(made: list[Path], owned: set[Path]) -> None:
 
 #: Creation's refusal of a list that asks the client for nothing, and the
 #: editor's (decision 142's review, R6): one refusal, one sentence.
-NOTHING_ASKED = "Select at least one request item"
+NOTHING_ASKED = "Tick at least one request"
 
 
 def _refuse_a_list_nobody_is_asked_for(items: list) -> None:
@@ -4700,18 +4984,13 @@ def _short_of_room(root: Path) -> list[dict]:
 SCHEDULE_REPAIR_LABEL = "Repair the schedule"
 SCHEDULE_REPAIR_HELP = ("Register the daily job again on this computer - only needed if the schedule "
                         "was deleted or broken")
-SCHEDULE_REPAIR_CONFIRM = ("Register the daily job with Task Scheduler again, on this computer, for this "
-                           "clients folder?\n\nIt files, scans and (on {draft_day}s) drafts reminders. "
-                           "Nothing is ever sent.")
+SCHEDULE_REPAIR_CONFIRM = "Repair the schedule here?"
 #: Asked when **Repair the schedule** finds that another computer runs it
 #: (decision 209, the review's S5): the packaged app's way to move the
 #: schedule, as ``--move-schedule-here`` is from source. ``{host}`` is the
 #: computer the designation names; the page fills it in and types nothing
 #: else.
-SCHEDULE_MOVE_CONFIRM = ("{host} runs the schedule for this clients folder, so this computer registered "
-                         "none.\n\nMove the schedule to this computer? Do this only when {host} has "
-                         "stopped running it for good (it removes its own task at its next start). "
-                         "Nothing is ever sent.")
+SCHEDULE_MOVE_CONFIRM = "Move schedule here from {host}?"
 #: The Schedule button and its dialog (pilot P21): the page types none of
 #: these words.
 SCHEDULE_BUTTON = "Schedule"
@@ -4921,6 +5200,121 @@ def _cmd_acknowledge_foreign(argv: list[str]) -> dict:
 #: settings' root to this machine's record checkpoint first (decision 159,
 #: E5): a checkpoint that belongs to another root is refused by name
 #: before anything is written.
+def _firm_draft(engagement: Path, due: dt.date | None, held: int, today: dt.date) -> dict:
+    """The reminder facts one return's row on the Reminders page needs, read
+    the way :func:`_reminder_payload` reads them and never composing the
+    letter: the stage the day gives, how many requests hold it, and the day
+    it was last drafted. ``ready`` is a draft written this draft-week that
+    nothing holds; a hold, or none yet, is not ready."""
+    drafted = last_drafted(engagement)
+    this_week = drafted is not None and drafted >= last_draft_day(today, DRAFT_WEEKDAY)
+    return {"ready": bool(this_week and not held), "stage": reminder.stage_for(due, today),
+            "held": held, "drafted": drafted.isoformat() if drafted else None}
+
+
+def _firm_row(one, household: str, today: dt.date) -> tuple[dict, list[dict]]:
+    """One return's line of the firm view and its parked files: the counts by
+    group (:func:`item_group`), the files a person must look at, the record's
+    due date and the draft's state. The readers are the ones ``state`` uses,
+    with ``follow=False`` as the status page reads (nothing is written, no
+    lock is taken, no document is read). A record that cannot be read is its
+    own row with ``problem`` set and zero counts, said by class (decision 189):
+    it never fails the reply."""
+    row = {"path": str(one.path), "household": household,
+           "counts": dict.fromkeys(GROUPS, 0), "files": 0, "oldest": None, "due": None,
+           "draft": {"ready": False, "stage": 0, "held": 0, "drafted": None}, "problem": ""}
+    if one.problem:
+        row["problem"] = runner.RECORD_UNREADABLE.format(problem=one.problem)
+        return row, []
+    try:
+        items = load_manifest(one.path, follow=False)
+        entries = read_index(one.path, follow=False)
+        info = load_engagement_info(one.path)
+        triaged = reminder.triage(items, entries)
+        placed = reminder.sides(*triaged)
+        parked = review.triage(one.path, entries, items=items)
+        held = len(triaged[2])
+        draft = _firm_draft(one.path, info.due, held, today)
+    except Exception as exc:                 # one bad record costs its own row
+        errors.keep("api: firm", exc, name=one.path.name)
+        log.warning("A return could not be read for the firm view (%s)", errors.error_class(exc))
+        row["problem"] = runner.RECORD_UNREADABLE.format(problem=errors.error_class(exc))
+        return row, []
+    for item in items:
+        row["counts"][item_group(item, placed)] += 1
+    by_name = {item.identifier: item for item in items}
+    files = [{"return": one.label, "name": t.entry.original_name, "code": t.entry.code,
+              "received": t.entry.received,
+              "suggestion": by_name[t.shortlist[0].identifier].label if t.shortlist else ""}
+             for t in parked]
+    moved = [entry for entry in entries if file_group(entry) == GROUP_NEEDS_YOU
+             and entry.decision == FILE_MOVED]
+    waiting_days = sorted([f["received"] for f in files] + [entry.received for entry in moved])
+    row["files"] = len(files) + len(moved)
+    row["oldest"] = waiting_days[0] if waiting_days else None
+    row["due"] = info.due.isoformat() if info.due else None
+    row["draft"] = draft
+    return row, files
+
+
+def _cmd_firm(argv: list[str]) -> dict:
+    """The firm view in one read-only reply (SPEC-shell 9.2): for every
+    active return the count of its rows in each group, the files waiting for
+    a person, the due date and whether its reminder draft is ready, and the
+    practice's totals. It walks the tree as ``list`` does and reads what
+    ``state`` reads for each return, so a count here and the group on the
+    return's own page cannot disagree. It writes nothing, takes no lock and
+    reads no document. Inactive and rolled-forward returns are left out.
+    A root that cannot be walked is said, never answered as empty."""
+    try:
+        root = _saved_root()
+    except (door.DoorError, SettingsError) as exc:
+        raise ManifestError(str(exc)) from None
+    reply = {"returns": [], "files": [], "totals": {"need": 0, "waiting": 0, "complete": 0,
+                                                     "files": 0, "drafts": 0},
+             "next_sort": _next_sort()}
+    if root is None or not root.is_dir():
+        return reply
+    try:
+        registry = discover_engagements(root)
+    except EmptyRoot:
+        return reply
+    except RegistryError as exc:
+        errors.keep("api: firm", exc)
+        log.warning("The clients root could not be walked (%s)", errors.error_class(exc))
+        raise ManifestError(PRACTICE_NOT_WALKED) from None
+    today = dt.date.today()
+    names = {household.path: household.name for household in registry.households}
+    totals = reply["totals"]
+    for one in registry.engagements:
+        if runner.why_skipped(one)[0]:
+            continue
+        row, files = _firm_row(one, names.get(one.household_path, ""), today)
+        reply["returns"].append(row)
+        reply["files"].extend(files)
+        counts = row["counts"]
+        if counts[GROUP_NEEDS_YOU]:
+            totals["need"] += 1
+        elif counts[GROUP_WAITING]:
+            totals["waiting"] += 1
+        else:
+            totals["complete"] += 1
+        totals["files"] += row["files"]
+        totals["drafts"] += row["draft"]["ready"]
+    return reply
+
+
+def _next_sort() -> str | None:
+    """The time of the schedule's next run, ``HH:MM``, as the Schedule dialog
+    reports it (:func:`next_run`), or ``None`` when the schedule is off or
+    cannot be read."""
+    try:
+        said = next_run(schedule_preference())
+    except (ScheduleChoiceError, SettingsError):
+        return None
+    return said[-5:] if said else None
+
+
 WRITING_COMMANDS = frozenset({
     "rollover", "roll-household", "mark-shared", "approve", "create", "assign",
     "dismiss", "unfile", "restore", "edit", "edit-household", "unlearn", "rename",
@@ -4961,6 +5355,7 @@ def _prove_the_root() -> None:
 
 COMMANDS = {
     "state": _cmd_state,
+    "firm": _cmd_firm,
     "priors": _cmd_priors,
     "rollover": _cmd_rollover,
     "roll-household": _cmd_roll_household,

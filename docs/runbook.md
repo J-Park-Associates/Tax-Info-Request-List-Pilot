@@ -767,7 +767,7 @@ the default rows and 185 with every row (from 209 and 210), none of the 39
 refused either way, and the whole 1040 core list under a 28-character root
 went from 163 characters to 138. The client never sees a short name: the README,
 the reminder letter and the received list keep the full title. So the reply to setting the root lists,
-under *Returns short of room under this root*, every return the new root
+under *Names shortened to fit*, every return the new root
 leaves short, with the number. Nothing is refused - the firm's data is
 where it is - and the pass copes: it cuts the document part of a working
 copy's name to fit, keeping the request's identifier, the period, the
@@ -1173,10 +1173,11 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    moves* in §1). A return merely **short of room** is not warned at all:
    it is sorted as usual and its copies' names are cut to fit, and the
    figure - *N characters short of the room its working copies need* - is
-   shown as information on the return's page in the app and in the reply
-   to setting the root, never in the Warnings column (a warning on every
-   pass would be a warning nobody reads). A **Warnings** line *N
-   request(s) have no room for a working copy* does need a person: a
+   shown as information on the return's page in the app (there it says only
+   *Names shortened to fit*) and in the reply to setting the root, never in
+   the Warnings column (a warning on every pass would be a warning nobody
+   reads). A **Warnings** line *N request(s) have no room for a working
+   copy* (in the app, *N requests can't be filed*) does need a person: a
    document for those requests parks in the review folder with the reason
    *the working copy's path would be N characters at its shortest, past
    the N characters a .pdf copy may have* (the sentence names the other
@@ -1552,8 +1553,8 @@ the machine cannot handle, and a file can land after the sort. While the
 household's own inbox holds any such file, every return of that household is
 held the same whole way, because the letter cannot know which request the
 file answers. The practice page's Drafted column says `held (N)`, `runs.log`
-counts it (`held=`), and the app's card says **"Reminder held: N
-file(s) still waiting to be sorted"**. On a Saturday that means: press **Sort &
+counts it (`held=`), and the app's card says **"Held: N files not
+sorted"**. On a Saturday that means: press **Sort &
 Scan** — Run now — (or wait for the next pass — the schedule runs on its saved interval, every two hours by default, and the
 pass that sorts the inbox drafts the reminder that same day), or deal with the
 file still waiting in the household's `Drop files here` — retire a year in the editor, rename a name the
@@ -1629,7 +1630,7 @@ card suggests, asked in the generic sentence, until you decide it.
 | `reasons.NO_READABLE_TEXT` | Nothing in the file could be read at all — a scan or a photo the reader could not run on, an image-only PDF, an empty sheet. Nothing was matched against anything, so this is not "matched no request". | It has no **Open** (the tracker read nothing in it). Ask the client to send it again, or open it, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184), and file it by hand. If many files say it at once, the reader itself is damaged: re-install the app (§6, step 5). The shortlist shows what its **file name** suggests; the document decides. |
 | `reasons.UNREADABLE_IMAGE` | A photo arrived that would not open — a half-finished upload, most often. | Ask the client for it again; the reminder does. |
 | `reasons.HEIC_NOT_SUPPORTED` | An iPhone photo arrived and this machine's HEIC reader is missing. Ours, never the client's: they sent an ordinary photo. | Run `Setup.bat` again (it installs `pillow-heif` from the locks); for the packaged app, rebuild it. Until then it has no **Open**, because the tracker never read it: open it, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184), and file it by hand. |
-| `reasons.ISSUER_NOT_NAMED` | The request list asks for this document one row per issuer (§8) and this one names none of them — a K-1 from a partnership nobody listed. | Type the issuer's name on the card and press **Add the issuer and file it** (§8), or file it to the right row. |
+| `reasons.ISSUER_NOT_NAMED` | The request list asks for this document one row per issuer (§8) and this one names none of them — a K-1 from a partnership nobody listed. | Type the issuer's name on the card and press **Add issuer** (§8), or file it to the right row. |
 | `reasons.NAME_NOT_ON_PAGE` | A request that asks for a **named** document accepted it, and the page names nobody on this return's people list (§10). | Open the page with **Open** on its card. If it does name them in a spelling the list has not got, file it and **teach the spelling** on the same card; if it is somebody else's, file it by hand on the return it belongs to. |
 | `reasons.NAMES_ANOTHER_RETURN` | The page names somebody who is on another return of this household, and nobody on this one. The sentence says who, and which return. | Switch to that return and file it there. Nothing was moved. |
 | `reasons.NO_PEOPLE_ON_FILE` | This return lists nobody yet, so nothing can confirm a named request. | Open **Edit Request List** and add the return's people (§10). Everything parked for this reason files itself on the next pass. |

@@ -4332,11 +4332,12 @@ def test_an_index_the_page_cannot_read_is_said_by_its_class_never_its_message(
 def test_only_the_practice_page_reads_the_store_without_following_the_journal():
     """R6: a writer or a card that read without following could act on
     rows behind the journal, so ``follow=False`` is passed in the runner's
-    page and nowhere else in the package."""
+    page and in the API's read-only ``firm`` command (SPEC-shell 9.2, which
+    counts what the page counts) and nowhere else in the package."""
     package = Path(runner_module.__file__).parent
     passing = sorted(one.name for one in package.glob("*.py")
                      if "follow=False" in one.read_text(encoding="utf-8"))
-    assert passing == ["runner.py"]
+    assert passing == ["api.py", "runner.py"]
 
 
 # ------------------------------------ watched, and stoppable (decision 193) ----

@@ -207,7 +207,7 @@ HELD_TOO_LONG = ("this return's reminder has been held for {days} days with no l
                  "the requests holding it are waiting for a person")
 #: What the Reminder card says for a return with no scan yet - a line,
 #: not an error (decision 193, D7).
-REMINDER_NOT_YET = "No reminder yet: this return has not been scanned."
+REMINDER_NOT_YET = "No reminder until first sort"
 
 
 def held_too_long(engagement_dir: Path | str, today: dt.date, *,
@@ -330,7 +330,7 @@ CONFIRM_REFUSAL = (
     "- {listed}; nothing was written"
 )
 #: The one line the app shows for a held reminder (through the API's vocabulary).
-HELD_SUMMARY = "Reminder held: {n} request(s) need a decision"
+HELD_SUMMARY = "Held: {n} need a decision"
 #: Why a reminder waits for the sort (decision 133): the household's own
 #: ``Drop files here`` still holds files the sort has not taken - one that
 #: failed to sort, a transfer still in flight, a name the machine cannot
@@ -342,7 +342,7 @@ HELD_SUMMARY = "Reminder held: {n} request(s) need a decision"
 INBOX_HOLD = ("held - {n} file(s) the client sent are still waiting in Drop files here "
               "and have not been sorted yet")
 #: The app's line for a reminder the inbox holds (through the API's vocabulary).
-INBOX_HELD_SUMMARY = "Reminder held: {n} file(s) still waiting to be sorted"
+INBOX_HELD_SUMMARY = "Held: {n} files not sorted"
 #: The what-changed block a regenerated draft opens with, above the line a
 #: person pastes: the earlier draft's day, then each request now asked that
 #: was not, and each no longer asked that was.
@@ -404,12 +404,12 @@ COPY_LABEL = "Copy for Outlook"
 APPROVE_LABEL = "Approve"
 OPEN_DRAFT_LABEL = "Open the draft file"
 #: What the card's status line says: the record's last word on the draft.
-LAST_DRAFTED_LINE = "last drafted {date} at stage {n}"
+LAST_DRAFTED_LINE = "Drafted {date}, stage {n}"
 NEVER_DRAFTED_LINE = "not drafted yet"
 APPROVED_LINE = "approved {date} at stage {n}"
 #: Why the toggle is dead on a draft somebody has already worked on, and
 #: what the practice page's Drafted column says about an approved one.
-EDITED_BY_HAND = "edited by hand - approve it as it stands, or delete it to regenerate at a stage"
+EDITED_BY_HAND = "Edited by hand"
 APPROVED_NOTE = "approved"
 #: An approval whose letter was edited since (decision 190): it no longer
 #: covers the file, so the card, the practice page and the run log say so in
@@ -422,10 +422,9 @@ STAGE_TOGGLE_HINT = ("the pass pre-selects the stage from the Due Date; move it 
 #: What is said after the letter goes on the clipboard. It names what was
 #: copied and what was not, because the subject belongs in Outlook's own
 #: box and a person who pasted the body would otherwise look for it.
-COPIED_NOTE = ("the letter is on the clipboard - paste it into Outlook as the body; "
-               "the subject line is on the card above it")
+COPIED_NOTE = "Copied"
 #: What is said about a draft an approval moved out of the way.
-SET_ASIDE_LINE = "the other draft was set aside as {name}"
+SET_ASIDE_LINE = "Other draft moved aside"
 
 
 # ----------------------------------------------------------------- stages ----
@@ -448,6 +447,9 @@ class Stage:
     #: {target}, {deadline_clause}, {phone_clause}
     deadline: str
     close: str          # the last sentence before the sign-off: {phone_clause}
+    #: What the app's rows and heading call the rung (SPEC-shell 11.6, P84):
+    #: at most five words. The letter's subject keeps the full name above.
+    short: str = ""
 
 
 #: How far from the Due Date each stage begins, in days. Constants and not
@@ -482,6 +484,7 @@ STAGES: tuple[Stage, ...] = (
         deadline="",
         close="Just wanted to keep it on your radar. Let us know if you have any questions "
               "or if something's already on its way.",
+        short="Heads up",
     ),
     Stage(
         number=2,
@@ -493,6 +496,7 @@ STAGES: tuple[Stage, ...] = (
                  "deadline, which gives us time to prepare and file your return properly. "
                  "For you that means we'd need these by {target}.",
         close="Let us know if you have any questions or if anything's already on its way.",
+        short="Checking in",
     ),
     Stage(
         number=3,
@@ -505,6 +509,7 @@ STAGES: tuple[Stage, ...] = (
                  "this point we do need these items promptly to stay on track.",
         close="Please send them as soon as you can, or reply to let us know when we can "
               "expect them.",
+        short="Deadline near",
     ),
     Stage(
         number=4,
@@ -516,6 +521,7 @@ STAGES: tuple[Stage, ...] = (
         deadline="Our firm's deadline to receive everything is {target}{deadline_clause}. We "
                  "need these items immediately to file your return on time. " + STAGE_4_CONSEQUENCES,
         close="Please send everything today{phone_clause}.",
+        short="Final notice",
     ),
 )
 

@@ -211,3 +211,15 @@ def test_no_reader_decides_a_rows_cause_from_its_text():
             found += [f"tracker/{path.name}:{node.lineno} in {function.name}" for node in hits]
     assert found == [], "a reader searches a row's text:\n" + "\n".join(found)
     assert seen == set(TAIL_READERS), f"no longer a tail reader: {sorted(set(TAIL_READERS) - seen)}"
+
+
+def test_every_code_has_one_short_label_of_five_words_or_fewer():
+    """SPEC-shell 11.5: a row on the app's pages says the short label, the
+    sentence stays where the index, the letter and the log use it. Keyed by
+    code, one for every code in ``BY_CODE`` and ``PLAIN_CODES`` and no other."""
+    from tracker.reasons import SHORT_REASONS
+
+    assert set(SHORT_REASONS) == set(BY_CODE) | set(PLAIN_CODES)
+    for code, short in SHORT_REASONS.items():
+        assert 1 <= len(short.split()) <= 5, (code, short)
+        assert short == short.strip() and not short.endswith("."), (code, short)
