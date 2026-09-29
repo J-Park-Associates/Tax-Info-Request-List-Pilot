@@ -53,7 +53,7 @@
   --glass-sheen: rgba(255, 255, 255, 0.45);
   --glass-halo: 0 0 10px rgba(255, 255, 255, 0.55);
 
-  --glass-picker-fill: rgba(255, 255, 255, 0.10);
+  --glass-picker-fill: rgba(255, 255, 255, 0.06);
   --glass-edge-on-bar: rgba(255, 255, 255, 0.35);
 
   /* Text on glass (P42): the app's own variables are re-pointed to these
@@ -191,6 +191,13 @@ body {
   --blue-dark: var(--glass-accent-dark);
   corner-shape: var(--glass-corner);
   text-shadow: var(--glass-halo);
+}
+
+/* The held-reminder line takes the reminder stage's ink, which is a solid-page
+   colour (2.35:1 on the card's worst case in the rendered sweep); on the glass
+   card it reads in the glass warning ink instead. The stage pills keep theirs. */
+#reminder-card .rem-hold {
+  color: var(--glass-warn);
 }
 
 /* ── The header ──────────────────────────────────────────────────────── */
