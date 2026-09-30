@@ -48,6 +48,20 @@ def test_every_step_has_a_title_and_one_line():
         assert isinstance(step["does"], str) and step["does"].strip(), step["id"]
 
 
+def test_every_tour_title_and_line_is_in_title_case_but_the_inbox_folders_own_name():
+    """Ruling 10: every drawn phrase is Title Case. The one step that names the
+    inbox folder keeps the folder's own name (record data, untouched)."""
+    from tests.test_api import title_case
+
+    steps = tour()["steps"]
+    assert [s["title"] for s in steps if s["id"] == "needs-review"] == ["Needs Review"]
+    for step in steps:
+        for said in (step["title"], step["does"]):
+            if said == "Drop files here":
+                continue
+            assert said == title_case(said), said
+
+
 def test_the_tour_has_no_stage_strip_and_no_callouts_left():
     """The strength, limit and fallback lines and the stage chips are gone
     (P63, SPEC-shell 12), from the content and from the script."""

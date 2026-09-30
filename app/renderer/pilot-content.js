@@ -78,23 +78,23 @@ const PILOT =
         "id": "welcome",
         "anchors": [],
         "title": "Welcome to the Pilot",
-        "does": "Sorts what your clients send"
+        "does": "Sorts What Your Clients Send"
       },
       {
         "id": "clients-folder",
         "anchors": [
           "page"
         ],
-        "title": "One clients folder",
-        "does": "Choose one clients folder"
+        "title": "One Clients Folder",
+        "does": "Choose One Clients Folder"
       },
       {
         "id": "new-household",
         "anchors": [
           "side-sections"
         ],
-        "title": "Household and request list",
-        "does": "Tick the documents you expect"
+        "title": "Household and Request List",
+        "does": "Tick the Documents You Expect"
       },
       {
         "id": "drop-files",
@@ -102,7 +102,7 @@ const PILOT =
           "crumbs"
         ],
         "title": "Drop files here",
-        "does": "Everything goes in the inbox"
+        "does": "Everything Goes in the Inbox"
       },
       {
         "id": "scan",
@@ -110,53 +110,53 @@ const PILOT =
           "sort"
         ],
         "title": "Sort",
-        "does": "Matches files to your requests"
+        "does": "Matches Files to Your Requests"
       },
       {
         "id": "originals",
         "anchors": [
           "page"
         ],
-        "title": "Originals, untouched",
-        "does": "Originals are moved, never changed"
+        "title": "Originals, Untouched",
+        "does": "Originals Are Moved, Never Changed"
       },
       {
         "id": "working-copies",
         "anchors": [
           "page"
         ],
-        "title": "Organized working copies",
-        "does": "Copies get tidy names"
+        "title": "Organized Working Copies",
+        "does": "Copies Get Tidy Names"
       },
       {
         "id": "needs-review",
         "anchors": [
           "side-sections"
         ],
-        "title": "Needs review",
-        "does": "Unsure files wait for you"
+        "title": "Needs Review",
+        "does": "Unsure Files Wait for You"
       },
       {
         "id": "status",
         "anchors": [
           "side-sections"
         ],
-        "title": "Status page",
-        "does": "See every request's status"
+        "title": "Status Page",
+        "does": "See Every Request's Status"
       },
       {
         "id": "reminder",
         "anchors": [
           "side-sections"
         ],
-        "title": "Drafted reminder",
-        "does": "Drafts reminders; you send them"
+        "title": "Drafted Reminder",
+        "does": "Drafts Reminders; You Send Them"
       },
       {
         "id": "wrap-up",
         "anchors": [],
-        "title": "What to expect",
-        "does": "Replay this tour from Help"
+        "title": "What to Expect",
+        "does": "Replay This Tour From Help"
       }
     ]
   }
