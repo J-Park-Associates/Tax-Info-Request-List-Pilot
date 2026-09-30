@@ -31,25 +31,56 @@ const base = `http://127.0.0.1:${port}/`;
 const SIZES = [[1100, 700], [1400, 900]];
 const THEMES = ["light", "dark"];
 const go = (route) => `shellGo(${JSON.stringify(route)})`;
+const later = (ms, code) => `setTimeout(() => { ${code} }, ${ms})`;
+const check = (k) => `const s = pagesFiles()[${k}]; openCheck(s.ret, s.name, s.handle);`;
 const smith = "/clients/J Park & Associates/Smith Family";
 const smithReturn = `${smith}/2025/1040 - John & Jane Smith`;
+const ret = { level: "return", household: smith, year: 2025, ret: smithReturn };
+const chen = "/clients/J Park & Associates/Chen Family";
 const SCENARIOS = [
   { name: "overview", query: "" },
-  { name: "overview-empty", query: "?scenario=empty-clients" },
+  { name: "overview-empty", query: "?scenario=quiet" },
+  { name: "overview-no-clients", query: "?scenario=empty-clients" },
   { name: "needs-review", query: "", run: go({ level: "needs-review" }) },
+  { name: "needs-review-empty", query: "?scenario=quiet", run: go({ level: "needs-review" }) },
   { name: "reminders", query: "", run: go({ level: "reminders" }) },
+  { name: "reminders-empty", query: "?scenario=quiet", run: go({ level: "reminders" }) },
   { name: "clients", query: "", run: go({ level: "clients" }) },
+  { name: "clients-all", query: "", run: `${go({ level: "clients" })}; setTimeout(() => document.querySelectorAll(".switch-option")[1].click(), 400)` },
+  { name: "clients-none-waiting", query: "?scenario=quiet", run: go({ level: "clients" }) },
+  { name: "clients-empty", query: "?scenario=empty-clients", run: go({ level: "clients" }) },
   { name: "household", query: "", run: go({ level: "household", household: smith }) },
+  { name: "household-notices", query: "?mode=real&scenario=household-notices", run: go({ level: "household", household: smith }) },
   { name: "household-no-returns", query: "", run: go({ level: "household", household: "/clients/J Park & Associates/Patel Family" }) },
   { name: "year", query: "", run: go({ level: "year", household: smith, year: 2025 }) },
-  { name: "return", query: "", run: go({ level: "return", household: smith, year: 2025, ret: smithReturn }) },
+  { name: "return", query: "", run: go(ret) },
+  { name: "return-set-aside-open", query: "", run: `${go(ret)}; setTimeout(() => { document.querySelector(".group-fold").open = true; }, 150)` },
+  { name: "return-active-row", query: "", run: `${go(ret)}; setTimeout(() => { const list = document.querySelector(".rows"); list.focus(); }, 150)` },
   { name: "return-empty", query: "", run: go({ level: "return", household: "/clients/J Park & Associates/Novak Household", year: 2025, ret: "/clients/J Park & Associates/Novak Household/2025/1040 - Petra Novak" }) },
-  { name: "sheet-frame", query: "", run: `${go({ level: "return", household: smith, year: 2025, ret: smithReturn })}; setTimeout(() => openSheetFrame("scan0012.pdf"), 200)` },
+  { name: "return-locked", query: "?mode=real&scenario=locked", run: go(ret) },
+  { name: "return-stale-lock", query: "?mode=real&scenario=stale-lock", run: go(ret) },
+  // The side sheet (S5), on the real app.js: Check a file on a parked document, with More open, on a moved-by-hand
+  // copy, an email and a photo with no copy; the reminder held and ready; a read in progress; the four dialogs.
+  { name: "sheet-check", query: "", run: `${go(ret)}; ${later(400, check(0))}`, wait: 1500 },
+  { name: "sheet-check-more", query: "", run: `${go(ret)}; ${later(400, check(0))}; ${later(900, "document.getElementById('sheet-more').click()")}`, wait: 2200 },
+  { name: "sheet-check-moved", query: "", run: `${go(ret)}; ${later(400, check(2))}`, wait: 1500 },
+  { name: "sheet-check-email", query: "", run: `${go(ret)}; ${later(400, check(3))}`, wait: 1500 },
+  { name: "sheet-check-photo", query: "", run: `${go(ret)}; ${later(400, check(4))}`, wait: 1500 },
+  { name: "sheet-check-from-firm", query: "", run: `${go({ level: "needs-review" })}; ${later(500, check(0))}`, wait: 1500 },
+  { name: "sheet-reminder-held", query: "", run: `${go(ret)}; ${later(400, `openReminder(${JSON.stringify(smithReturn)})`)}`, wait: 1500 },
+  { name: "sheet-reminder", query: "", run: `${go({ level: "reminders" })}; ${later(500, "const s = pagesDrafts()[0]; openReminder(s.ret)")}`, wait: 1500 },
+  { name: "sheet-loading", query: "?scenario=slow-state", run: `${go({ level: "needs-review" })}; ${later(500, check(0))}`, wait: 900 },
+  { name: "dialog-roll", query: "", run: `${go({ level: "household", household: chen })}; ${later(600, "openRoll()")}`, wait: 1500 },
+  { name: "dialog-safeguards", query: "", run: "openSafeguards()", wait: 1500 },
+  { name: "dialog-about", query: "", run: "openAbout()", wait: 1500 },
+  { name: "dialog-misfits", query: "?scenario=notices", run: `${later(300, "openMisfits()")}`, wait: 1500 },
+  { name: "link-file-tooltip", query: "", run: go(ret), hover: "#page .row-link" },
+  { name: "link-household-tooltip", query: "", hover: "#page .row:nth-child(1) .row-detail .row-link" },
+  { name: "notices", query: "?mode=real&scenario=notices" },
   { name: "setup", query: "?scenario=setup" },
   { name: "loading", query: "?scenario=slow" },
   { name: "sort-running", query: "", run: `${go({ level: "household", household: smith })}; scanning = { pass: "p1", stopping: false }; shellProgress({ n: 3, of: 12, household: "Smith Family" }); shellChanged()` },
   { name: "sort-failed", query: "?scenario=failed", run: "" },
-  { name: "locked", query: "", run: `${go({ level: "return", household: smith, year: 2025, ret: smithReturn })}; setTimeout(() => { locked = true; shellChanged(); }, 200)` },
   { name: "counts-fail", query: "?scenario=firm-fails" },
   { name: "search", query: "", search: "smith" },
   { name: "tooltip-mouse", query: "", run: go({ level: "household", household: smith }), hover: "#sort" },
@@ -74,7 +105,7 @@ for (const scenario of SCENARIOS) {
       if (scenario.search) { await page.focus("#find"); await page.keyboard.type(scenario.search); }
       if (scenario.hover) { await page.hover(scenario.hover); await page.waitForTimeout(700); }
       if (scenario.focusKey) { await page.keyboard.press("F6"); await page.keyboard.press("F6"); await page.focus(scenario.focusKey); await page.keyboard.press("Shift+Tab"); await page.keyboard.press("Tab"); await page.waitForTimeout(200); }
-      await page.waitForTimeout(scenario.name === "loading" ? 300 : 350);
+      await page.waitForTimeout(scenario.name === "loading" ? 300 : scenario.wait || 350);
       await page.screenshot({ path: path.join(out, `${scenario.name}-${theme}-${width}x${height}.png`) });
       shots += 1;
       await context.close();
@@ -109,7 +140,7 @@ if (!only.length || only.includes("real-app")) {
   await page.goto(`${base}?mode=real`);
   await page.waitForTimeout(1500);
   const side = await page.evaluate(() => [...document.querySelectorAll(".side-name")].map((n) => n.textContent).join("|"));
-  const title = await page.evaluate(() => document.querySelector("#page h1")?.textContent);
+  const title = await page.evaluate(() => document.querySelector("#page .group-title")?.textContent);
   // app.js catches its own errors, draws a notice and logs them, so an uncaught
   // "page error" count alone hides them: read the log and the visible notice too.
   const logged = await page.evaluate(() => window.HARNESS.logged.slice());
@@ -117,9 +148,9 @@ if (!only.length || only.includes("real-app")) {
   if (errors.length) problems.push(`real app.js: ${errors.join("; ")}`);
   if (logged.length) problems.push(`real app.js logged: ${logged.join("; ")}`);
   if (notice) problems.push(`real app.js shows an error: ${notice}`);
-  if (side !== "Overview|Needs review|Reminders|Clients") problems.push(`real app.js: side panel is "${side}"`);
+  if (side !== "Overview|Needs Review|Reminders|Clients") problems.push(`real app.js: side panel is "${side}"`);
   await page.screenshot({ path: path.join(out, "real-app-1100x700.png") });
-  console.log(`real app.js: side panel "${side}", page title "${title}", ${errors.length} page errors, ${logged.length} logged, ${notice ? `shows "${notice}"` : "no visible error"}`);
+  console.log(`real app.js: side panel "${side}", first group "${title}", ${errors.length} page errors, ${logged.length} logged, ${notice ? `shows "${notice}"` : "no visible error"}`);
   await context.close();
 }
 

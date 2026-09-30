@@ -49,7 +49,6 @@
   /* shape */
   --radius-control: 4px;   /* buttons, inputs, section rows, notices */
   --radius: 8px;           /* dialogs, toast, tooltip */
-  --radius-pill: 999px;    /* the old status chips, until the pages replace them */
   --ctl-h: var(--size-control); --ctl-h-sm: var(--size-control-sm);
 
   /* surfaces */
@@ -222,29 +221,25 @@ button, input, select, textarea {
 }
 
 /* Body size: every 13, 13.5, 14 and 15px of style.css. */
-.pass-progress, .rem-hold, .rem-hold-rows li, .rem-subject,
-.requests, .editor-table,
+.rem-hold, .rem-hold-rows li, .rem-subject,
+.editor-table,
 .field input, .field select, .tmpl-item, .form-who, .wiz-sub, .wiz-note,
-.wiz-check, .toast, .prior-item, .review li, .review select, .review input,
-.deck-card, .deck-card .r-keyword, .deck-card .r-issuer input,
-.editor-table input, .editor-table select, .ed-paste textarea, .ed-readonly,
-.sc-radio, .setup-row input, .household-facts, .household-feeds li,
-.household-checklist ol, .banner, .notice, .btn {
+.wiz-check, .toast, .prior-item,
+.editor-table input, .editor-table select, .ed-paste textarea,
+.sc-radio, .household-feeds li,
+.banner, .notice, .btn {
   font-size: var(--fs-body);
   line-height: var(--lh-body);
 }
 
 /* Caption size: every 11, 11.5, 12 and 12.5px of style.css. */
-.btn-small, .summary, .rem-status, .rem-hint, .rem-edited, .rem-stage,
-.rem-quiet, .rem-hold-rows .rem-hold-why, .req-period, .req-notes,
-.req-recv, .req-side, .req-reason, .chip, .assure, .assure strong, .assure span,
-.field span, .tmpl-head, .tmpl-rules, .requests th, .editor-table th,
+.btn-small, .summary, .rem-status, .rem-edited, .rem-stage,
+.req-side,
+.field span, .tmpl-head, .tmpl-rules, .editor-table th,
 .editor-table .ed-learned, .editor-table .ed-unlearn,
-.ed-set-aside > summary, .rows-set-aside > summary, .ed-paste summary,
+.ed-set-aside > summary, .ed-paste summary,
 .ed-engagement legend, .form-blurb, .chosen-badge, .wiz-back, .prior-meta,
-.roll-return .roll-form span, .review .r-why, .review .r-reasons,
-.deck-card .r-why, .deck-card .r-reasons, .deck-suggested, .deck-position,
-.dismissed > summary, .sc-choice legend {
+.roll-return .roll-form span, .sc-choice legend {
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
 }
@@ -252,23 +247,23 @@ button, input, select, textarea {
 /* Two weights only: every 700 of style.css is 600, and so is the
    user-agent bold of th, legend and strong. */
 th, legend, strong,
-.rem-hold-rows .rem-hold-id, .rem-stage[aria-pressed="true"], .requests th,
-.req-id, .chip, .tmpl-head, .tmpl-id, .editor-table th, .side,
+.rem-stage[aria-pressed="true"],
+.req-id, .tmpl-head, .tmpl-id, .editor-table th, .side,
 .ed-engagement legend, .chosen-badge {
   font-weight: var(--fw-strong);
 }
 
 /* Headers are sentence case, caption size, 600, subtle: the words do not
    change, only how loud they are. */
-.requests th, .tmpl-head, .editor-table th, .ed-engagement legend {
+.tmpl-head, .editor-table th, .ed-engagement legend {
   text-transform: none;
   letter-spacing: normal;
   color: var(--text-caption);
 }
 
 /* Figures line up. */
-table.requests, .editor-table, .summary, .chip, .rem-stage-n,
-.deck-position, .prior-meta, .pass-progress, .household-facts {
+.editor-table, .summary, .rem-stage-n,
+.prior-meta {
   font-variant-numeric: tabular-nums;
 }
 
@@ -331,8 +326,7 @@ table.requests, .editor-table, .summary, .chip, .rem-stage-n,
 }
 
 /* Subtle: commands in a bar, exits, links to other places. */
-.btn-subtle,
-.notice-act[data-act="dismiss"] {
+.btn-subtle {
   --b-bg: transparent;
   --b-bd: transparent;
   --b-hover-bd: transparent;
@@ -343,14 +337,10 @@ table.requests, .editor-table, .summary, .chip, .rem-stage-n,
 /* Danger: removes, undoes or discards something. */
 .btn-danger,
 .dlg-discard,
-.r-unfile,
-.r-withdraw,
 .hh-feed-remove,
 .ed-unlearn,
 .ed-remove .btn,
-.person .editor-actions .btn,
-#btn-unlock,
-#btn-stop-pass {
+.person .editor-actions .btn {
   --b-fg: var(--danger);
   --b-bg: var(--bg-raised);
   --b-bd: var(--border-strong);
@@ -375,10 +365,10 @@ table.requests, .editor-table, .summary, .chip, .rem-stage-n,
 
 /* Quiet links that are not .btn: the same subtle look at .btn-small metrics.
    Every property is set, because none of it comes from .btn. */
-.rem-quiet:not(.hidden), .wiz-back:not(.hidden) {
+.wiz-back:not(.hidden) {
   display: inline-flex;
 }
-.rem-quiet, .wiz-back {
+.wiz-back {
   align-items: center;
   justify-content: center;
   gap: var(--sp-1);
@@ -393,37 +383,22 @@ table.requests, .editor-table, .summary, .chip, .rem-stage-n,
   cursor: pointer;
   transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-.rem-quiet:hover, .wiz-back:hover {
+.wiz-back:hover {
   color: var(--accent);
   background: var(--bg-hover);
   border-color: transparent;
 }
-.rem-quiet:active, .wiz-back:active { background: var(--bg-pressed); }
+.wiz-back:active { background: var(--bg-pressed); }
 /* Disabled is drawn, not faded (SPEC 5.2, the subtle variant): transparent
    fill, the disabled text colour, the default cursor, and hover and press
-   change nothing. app.js disables #btn-open-draft until a draft file exists. */
-.rem-quiet:disabled, .rem-quiet:disabled:hover, .rem-quiet:disabled:active,
+   change nothing. */
 .wiz-back:disabled, .wiz-back:disabled:hover, .wiz-back:disabled:active {
   color: var(--text-disabled);
   background: transparent;
   border-color: transparent;
   cursor: default;
 }
-.rem-quiet:focus-visible, .wiz-back:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-
-/* Selected is not primary: the accent means "the main action", so the active
-   return in the household card (marked with btn-primary by app.js) reads as
-   selected here. The card goes with the pages; the rule goes with it. */
-.household-return .btn.btn-primary {
-  color: var(--text);
-  background: var(--bg-selected);
-  border-color: var(--accent);
-  font-weight: var(--fw-strong);
-}
-.household-return .btn.btn-primary:disabled {
-  color: var(--text-disabled);
-  cursor: default;
-}
+.wiz-back:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 /* ── Surfaces: page, cards, rows, tables (P52, section 7) ────────────────── */
 
@@ -443,18 +418,6 @@ table.requests, .editor-table, .summary, .chip, .rem-stage-n,
   padding: var(--sp-2) var(--sp-4);
 }
 
-/* Card bodies inset 16px on both sides (style.css's 18px), 16px at the foot. */
-.reminder-body, .review, .deck, .household-body, .setup-row, #setup-note {
-  padding-left: var(--sp-4);
-  padding-right: var(--sp-4);
-}
-.reminder-body, .review, .deck, .household-body, #setup-note { padding-bottom: var(--sp-4); }
-.setup-row { padding-bottom: var(--sp-2); }
-.dismissed { padding: 0 var(--sp-4) var(--sp-4); }
-.dismissed .review { padding: 0; }
-.household-returns { gap: var(--sp-2); }
-.household-return:not(.hidden) { display: flex; }
-.household-return { align-items: center; gap: var(--sp-2); }
 .editor-actions { gap: var(--sp-2); }
 
 /* The chosen form's header row: labels never wrap inside a pill or a link;
@@ -468,38 +431,6 @@ table.requests, .editor-table, .summary, .chip, .rem-stage-n,
   padding: 0 var(--sp-4);
 }
 
-table.requests th {
-  padding: var(--sp-2) var(--sp-2);
-  background: var(--bg-nav);
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-}
-table.requests td {
-  padding: var(--sp-2) var(--sp-2);
-  border-bottom: 1px solid var(--border);
-}
-.requests tbody tr:last-child td { border-bottom: none; }
-.requests tbody tr:hover { background: var(--bg-nav); }
-.chip {
-  min-height: 20px;
-  padding: 0 var(--sp-2);
-  border-radius: var(--radius-pill);
-}
-
-/* The queue: the direct rows only (a reasons list holds li of its own). */
-ul.review > li {
-  padding: var(--sp-2) 0;
-  column-gap: var(--sp-2);
-  row-gap: var(--sp-1);
-  border-top: 1px solid var(--border);
-}
-ul.review > li:first-child { border-top: none; }
-ul.review > li.r-bucket { padding-top: var(--sp-4); }
-.deck-card {
-  padding: var(--sp-2) var(--sp-4);
-  column-gap: var(--sp-2);
-  row-gap: var(--sp-2);
-}
 /* Two answers in two blocks: this one is set apart so its primary leads it
    (SPEC 5.7). Across the whole row, under the reasons. */
 .where-it-waits {
@@ -511,9 +442,6 @@ ul.review > li.r-bucket { padding-top: var(--sp-4); }
   border-radius: var(--radius);
 }
 .where-it-waits .r-reasons { margin-bottom: var(--sp-2); }
-/* The card's Open button is a grid item with no area of its own: keep it its
-   own width instead of stretching across the card. */
-.deck-card .c-open-copy { justify-self: start; }
 
 .editor-table th {
   padding: var(--sp-2);
@@ -541,7 +469,7 @@ ul.review > li.r-bucket { padding-top: var(--sp-4); }
   min-height: 0;
   padding: var(--sp-2) var(--sp-2);
 }
-:is(.editor-table, .review) :is(input:not([type="checkbox"]):not([type="radio"]), select) {
+.editor-table :is(input:not([type="checkbox"]):not([type="radio"]), select) {
   min-height: 28px;
   padding: 0 var(--sp-2);
 }
@@ -625,10 +553,6 @@ input[type="checkbox"], input[type="radio"],
 /* The stage's count was drawn at 75% opacity, which puts it under 4.5:1. */
 .rem-stage .rem-stage-n { opacity: 1; }
 
-/* ── Assurances footer (section 7.7) ────────────────────────────────────── */
-
-.assure { gap: var(--sp-4); }
-
 /* ── Colours the original wrote as literals (SPEC-shell 10.4) ────────────
    style.css writes some colours outside its tokens. Each rule that still
    draws something after this work is restated here, selector for selector,
@@ -638,7 +562,6 @@ input[type="checkbox"], input[type="radio"],
 
 .modal-overlay { background: var(--scrim); }
 .btn-primary { color: var(--b-fg); }
-.btn-ghost:hover { color: var(--danger); border-color: var(--err-border); background: var(--err-bg); }
 .refused { outline: 2px solid var(--danger); }
 .rem-stage:hover { border-color: var(--stage-ink, var(--border-strong)); background: var(--bg-nav); }
 .rem-edited { background: var(--bg-nav); }
@@ -650,8 +573,6 @@ input[type="checkbox"], input[type="radio"],
 .prior-item:hover { background: var(--bg-hover); }
 .chosen-badge { background: var(--info-bg); border: 1px solid var(--info-border); }
 .wiz-back:hover { background: var(--bg-hover); }
-.review .r-name, .deck-card .r-name { color: var(--st-attention); }
-.review li { border-top: 1px solid var(--border); }
 
 /* ── Motion (SPEC-shell 8.6): 150ms for hover, press, the sheet and a
    notice's fade; a person who asks for less gets none. ───────────────── */
@@ -668,18 +589,12 @@ input[type="checkbox"], input[type="radio"],
    shell.css; this one covers the buttons and the dialogs. */
 
 @media (forced-colors: active) {
-  .btn, .btn-small, .rem-quiet, .wiz-back {
+  .btn, .btn-small, .wiz-back {
     border: 1px solid ButtonText;
-  }
-
-  .household-return .btn.btn-primary {
-    border: 2px solid Highlight;
   }
 
   .btn:disabled,
   .btn:disabled:hover,
-  .rem-quiet:disabled,
-  .rem-quiet:disabled:hover,
   .wiz-back:disabled,
   .wiz-back:disabled:hover {
     color: GrayText;
@@ -687,7 +602,6 @@ input[type="checkbox"], input[type="radio"],
   }
 
   .btn:focus-visible,
-  .rem-quiet:focus-visible,
   .wiz-back:focus-visible {
     outline: 2px solid Highlight;
   }

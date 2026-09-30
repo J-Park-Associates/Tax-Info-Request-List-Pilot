@@ -52,25 +52,64 @@
            vocabulary has arrived. Word for word tracker.api.NOTICE_LABELS. -->
       <template id="notice-buttons">
         <button class="btn btn-small notice-act" data-act="retry">Retry</button>
-        <button class="btn btn-small notice-act" data-act="look">Look again</button>
-        <button class="btn btn-small notice-act" data-act="dismiss">Dismiss</button>
+        <button class="icon-button notice-act" type="button" data-act="dismiss" data-tip-key="screen.icons.dismiss" aria-label="Dismiss">
+          <svg class="icon" aria-hidden="true"><use href="#i-dismiss" /></svg>
+        </button>
       </template>
       <main id="page" tabindex="-1"></main>
     </div>
   </div>
 
-  <!-- The side sheet (SPEC-shell 7): sheet.js draws Check a file and Draft
-       reminder into it. Hidden until one opens. -->
+  <!-- The side sheet (SPEC-shell 7): sheet.js draws Check a file into
+       #sheet-check and #check-actions; the reminder's parts are here from the
+       start, with the ids drawReminder() looks up, so the letter can be drawn
+       whenever a return's state arrives. Every word is the API's. -->
   <div id="sheet-scrim" hidden></div>
   <aside id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" hidden>
     <div id="sheet-head">
       <h2 id="sheet-title" tabindex="-1"></h2>
+      <button id="sheet-open" class="icon-button" type="button" data-tip-key="screen.icons.open" hidden>
+        <svg class="icon" aria-hidden="true"><use href="#i-open" /></svg>
+      </button>
+      <button id="sheet-more" class="icon-button" type="button" data-tip-key="screen.icons.more" aria-expanded="false" aria-controls="sheet-more-body" hidden>
+        <svg class="icon" aria-hidden="true"><use href="#i-more" /></svg>
+      </button>
+      <button id="sheet-next" class="icon-button" type="button" data-tip-key="screen.icons.next" hidden>
+        <svg class="icon" aria-hidden="true"><use href="#i-next" /></svg>
+      </button>
       <button id="sheet-close" class="icon-button" type="button" data-tip-key="screen.icons.dismiss">
         <svg class="icon" aria-hidden="true"><use href="#i-dismiss" /></svg>
       </button>
     </div>
-    <div id="sheet-body"></div>
-    <div id="sheet-foot"></div>
+    <div id="sheet-body">
+      <div id="sheet-check" hidden></div>
+      <!-- The week's reminder (decision 118): what the record says about it,
+           the four stages as a toggle, the letter as it will read, and the
+           two things a person does with it - copy it, or approve it.
+           Nothing sends: there is no send button here and no mail link
+           anywhere in the app. Every word and every colour is the API's
+           (vocab.reminder); the page types neither, and the preview is built
+           from the letter's own shape with DOM nodes, never from markup. -->
+      <div id="sheet-reminder" hidden>
+        <p id="reminder-status" class="rem-status"></p>
+        <div id="reminder-hold" class="hidden">
+          <p id="reminder-held" class="rem-hold" role="status"></p>
+          <ul id="reminder-held-rows" class="rem-hold-rows"></ul>
+        </div>
+        <div id="reminder-stages" class="rem-stages" role="group"></div>
+        <p id="reminder-edited" class="rem-edited hidden"></p>
+        <p id="reminder-link-dropped" class="rem-edited hidden" role="status"></p>
+        <p id="reminder-subject" class="rem-subject"></p>
+        <div id="reminder-preview" class="rem-preview" tabindex="0"></div>
+      </div>
+    </div>
+    <div id="sheet-foot">
+      <div id="check-actions" class="sheet-actions" hidden></div>
+      <div id="reminder-actions" class="sheet-actions" hidden>
+        <button type="button" id="btn-approve" class="btn"></button>
+        <button type="button" id="btn-copy" class="btn btn-primary"></button>
+      </div>
+    </div>
   </aside>
 
   <!-- One tooltip element, reused (SPEC-shell 8.5). -->
@@ -90,353 +129,13 @@
     <symbol id="i-open" viewBox="0 0 16 16"><path d="M9 3h4v4M13 3L7.5 8.5M11 9.5V13H3V5h3.5" /></symbol>
   </svg>
 
-  <!-- Everything below is the old screen, kept in place and hidden. app.js
-       still finds its elements by id here; the pages (S4) and the sheet
-       (S5) take over what each one showed, and delete it as they do. Nothing
-       in this block is drawn. -->
+  <!-- The three boxes the setup page fills and saveRoot() reads; hidden and
+       never drawn. Everything else the old screen held is the pages', the
+       side sheet's or a dialog's. -->
   <div id="legacy" class="hidden">
-  <header class="topbar">
-    <div class="brand">
-      <img src="logo.svg" alt="" class="brand-logo" />
-      <span class="brand-divider"></span>
-      <span id="brand-product" class="brand-product"></span>
-    </div>
-  </header>
-
-  <div class="layout">
-    <!-- ═══════════════ Dashboard ═══════════════ -->
-    <main class="main">
-      <div class="toolbar">
-        <label class="eng-picker">
-          <span class="visually-hidden">Active engagement</span>
-          <select id="eng-select" aria-label="Active engagement"></select>
-        </label>
-        <!-- The catalog this engagement was cut from, as the Engagement
-             sheet records it. Blank on one made before it was recorded,
-             and then this says nothing at all rather than guessing. -->
-        <span id="eng-form" class="eng-form hidden"></span>
-        <!-- Whether the engagement's own page still describes it. The word
-             and the label are the API's; the class is derived from the
-             word, so the page names no state of its own. -->
-        <span id="view-state" class="eng-form hidden"></span>
-        <!-- A household the tracker has no record of, made with its first
-             return (decision 196). The label is the API's. -->
-        <button id="btn-new-household" class="btn">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
-          <span id="new-household-label"></span>
-        </button>
-        <span class="toolbar-spacer"></span>
-        <!-- The household's one inbox, and the household's folder in the
-             tree a client is shared (decision 125). Both labels are the
-             API's (vocab.household); the page types neither, and the shell
-             opens only the paths the API reported. -->
-        <button id="btn-inbox" class="btn">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
-          <span id="inbox-label"></span>
-        </button>
-        <button id="btn-client-folder" class="btn">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-          <span id="client-folder-label"></span>
-        </button>
-        <!-- The schedule registers itself at Setup, at the first launch after
-             an upgrade and when the clients root is saved (decision 209); this
-             is the deliberate re-run. Here rather than in the clients-folder
-             card, which is shown only until a root is set. The label and the
-             tooltip are the API's (vocab.schedule.repair, .repair_help). -->
-        <button id="btn-repair-schedule" class="btn">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-          <span id="repair-schedule-label"></span>
-        </button>
-        <!-- The request list and the engagement's details, edited here and
-             recorded (decision 104). The label is the API's
-             (vocab.editor.open); the page types none. -->
-        <button id="btn-edit" class="btn" title="The request list: the columns you edit, and the engagement's details. Saved into the record; each request's status is on the page every pass regenerates.">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
-          <span id="edit-label"></span>
-        </button>
-        <!-- The schedule setting (pilot P21): on or off, the first run's time
-             and how often, kept per computer. Placed after the request-list
-             button, outside the repair button's stretch. The label is the
-             API's (vocab.schedule.button); the page types none. -->
-        <button id="btn-schedule" class="btn">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
-          <span id="schedule-label"></span>
-        </button>
-        <!-- This engagement on one page, regenerated by every pass. The
-             label is the API's (vocab.view.open); the page types none.
-             There is no Open Index button any more: the index is not a
-             file to open, it is the record, and this page is how it is
-             read (decision 102). -->
-        <button id="btn-view" class="btn" title="This engagement on one page — requests, index and what needs a person — regenerated by every pass">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>
-          <span id="view-label"></span>
-        </button>
-        <button id="btn-status" class="btn" title="The whole practice on one page: what is outstanding and what is waiting for a person, as of the last pass">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg>
-          Open Status
-        </button>
-        <button id="btn-scan" class="btn btn-primary">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.22-8.56"/><path d="M22 4 12 14l-3-3"/></svg>
-          <span id="scan-label"></span>
-        </button>
-        <!-- Stop, offered only while this app's own pass runs (decision 193). -->
-        <button id="btn-stop-pass" class="btn hidden"></button>
-      </div>
-      <!-- Where the running pass is: the household, and the file under it. -->
-      <div id="pass-progress" class="pass-progress hidden" role="status" aria-live="polite"></div>
-
-      <!-- What the last after-install run left for a person (decision 209):
-           findings of the record check, or a step that could not run. Above
-           everything, and not dismissible - it stays until a later run finds
-           nothing. Every word of it is the API's. -->
-      <div id="after-install" class="banner err hidden" role="alert">
-        <strong id="after-install-heading"></strong>
-        <p id="after-install-wait"></p>
-        <ul id="after-install-list"></ul>
-      </div>
-      <div id="banner" class="banner hidden" role="status"></div>
-      <!-- The app sits too deep for its reader (decision 169): stays until it is moved. -->
-      <div id="reader-warning" class="banner err hidden" role="alert"></div>
-      <!-- When the scheduled pass last ran and how it ended (decision 159):
-           the words and the colour are the API's. -->
-      <div id="last-pass" class="banner hidden" role="status"></div>
-      <div id="machine-warnings" class="banner err hidden" role="alert"></div>
-
-      <!-- Every folder under the clients root that does not fit the layout,
-           each with the one sentence saying why it is left alone (decision
-           125, the owner's rule). Shown only when the walk found one; every
-           word of it is the API's. -->
-      <details id="misfits-card" class="dismissed hidden">
-        <summary id="misfits-heading"></summary>
-        <p id="misfits-note" class="wiz-note"></p>
-        <ul id="misfits-list" class="review"></ul>
-      </details>
-
-      <!-- First launch: where the clients live. Written once, read by the
-           app and the scheduled job alike. -->
-      <section id="setup-card" class="card hidden">
-        <div class="card-head">
-          <h3 id="setup-title">Where do you keep your clients?</h3>
-          <span class="summary">one folder; every household, and every return in it, is found under it</span>
-        </div>
-        <!-- Every box here is named by a label that stays while a person
-             types (decision 201, D11), each label and the sentence under it
-             the API's (vocab.settings). A placeholder that is an example
-             stays, but never as the box's only name. -->
-        <div class="setup-row">
-          <label class="field">
-            <span id="root-label"></span>
-            <input id="root-input" type="text" />
-          </label>
-          <button id="btn-browse" class="btn">Browse…</button>
-        </div>
-        <div class="setup-row">
-          <div class="setup-field">
-            <label class="field">
-              <span id="firm-label"></span>
-              <input id="firm-input" type="text" aria-describedby="firm-help" />
-            </label>
-            <p id="firm-help" class="wiz-note"></p>
-          </div>
-        </div>
-        <div class="setup-row">
-          <div class="setup-field">
-            <label class="field">
-              <span id="phone-label"></span>
-              <input id="phone-input" type="text" aria-describedby="phone-help" />
-            </label>
-            <p id="phone-help" class="wiz-note"></p>
-          </div>
-          <button id="btn-save-root" class="btn btn-primary">Use this folder</button>
-        </div>
-        <p id="setup-note" class="wiz-note"></p>
-      </section>
-      <!-- Decision 131: the returns short of room under the root a person
-           has just set, one line each. Shown only when there are some;
-           every word of it is the API's. -->
-      <details id="room-card" class="dismissed hidden" open>
-        <summary id="room-heading"></summary>
-        <ul id="room-list" class="review"></ul>
-      </details>
-      <div id="lock-notice" class="banner hidden" role="status">
-        <span id="lock-text"></span>
-        <button id="btn-unlock" class="btn btn-small hidden">Clear lock</button>
-      </div>
-
-      <!-- The household this return belongs to (decision 125): who the
-           firm says its folder is shared with, the contact and the link its
-           letters use, the year's returns, and the one queue a person works
-           across it. Every word is the API's (vocab.household). -->
-      <section id="household-card" class="card hidden">
-        <div class="card-head">
-          <h3 id="household-heading"></h3>
-          <span id="household-name" class="summary"></span>
-        </div>
-        <div class="household-body">
-          <dl class="household-facts">
-            <dt id="household-members-label"></dt><dd id="household-members"></dd>
-            <dt id="household-contact-label"></dt><dd id="household-contact"></dd>
-            <dt id="household-link-label"></dt><dd id="household-link"></dd>
-          </dl>
-          <p id="household-two-years" class="rem-hold hidden" role="status"></p>
-          <div id="household-paused" class="rem-hold hidden" role="status">
-            <p id="household-paused-note"></p>
-            <button id="btn-accept-folder-name" class="btn btn-small"></button>
-          </div>
-          <!-- The firm's own word that the two grants were made, and the
-               checklist until it is given (decision 126). The tracker
-               cannot see Drive's sharing; every word here is the API's. -->
-          <p id="household-shared" class="wiz-note"></p>
-          <div id="household-checklist" class="household-checklist hidden">
-            <div id="household-checklist-heading" class="tmpl-head"></div>
-            <ol id="household-checklist-lines"></ol>
-            <p id="household-checklist-note" class="wiz-note"></p>
-          </div>
-          <div id="household-returns-head" class="tmpl-head"></div>
-          <div id="household-returns" class="household-returns"></div>
-          <!-- The household rolls as a household, from its own card
-               (decisions 126 and 196): a folded tick list, drawn only when
-               the API names the year it rolls to. Every word is the API's. -->
-          <details id="household-roll" class="household-roll ed-paste hidden"></details>
-          <!-- What this drop folder also feeds, and whose drop folders
-               feed a return here (decision 129). Both lines are the
-               API's, filled with labels and household names - never with
-               who is shared on anybody's folder. -->
-          <p id="household-feeds" class="wiz-note hidden"></p>
-          <p id="household-fed-by" class="wiz-note hidden"></p>
-          <p id="household-feeds-unresolved" class="rem-hold hidden" role="status"></p>
-          <p id="household-queue" class="wiz-note"></p>
-          <div class="editor-actions">
-            <button type="button" id="btn-edit-household" class="btn btn-small"></button>
-            <button type="button" id="btn-add-return" class="btn btn-small"></button>
-            <button type="button" id="btn-mark-shared" class="btn btn-small"></button>
-          </div>
-        </div>
-      </section>
-
-      <section class="card">
-        <div class="card-head">
-          <h3>Document Requests</h3>
-          <span id="summary" class="summary"></span>
-        </div>
-        <p id="room-note" class="wiz-note hidden"></p>
-        <table class="requests" aria-label="Document requests">
-          <thead>
-            <tr>
-              <th class="col-id">ID</th>
-              <th>Document</th>
-              <th class="col-num">Files</th>
-              <th class="col-status">Status</th>
-              <th class="col-recv">Received</th>
-              <th>Notes</th>
-            </tr>
-          </thead>
-          <tbody id="rows"></tbody>
-        </table>
-        <!-- Decision 200: every row nobody waits on (not asked with nothing
-             in, decision 142; not applicable, decision 116), folded closed
-             under the table in one group per label; every word is the API's. -->
-        <details id="rows-set-aside-group" class="rows-set-aside hidden">
-          <summary id="rows-set-aside-summary"></summary>
-          <div id="rows-set-aside"></div>
-        </details>
-      </section>
-
-      <!-- The week's reminder (decision 118): what the record says about it,
-           the four stages as a toggle, the letter as it will read, and the
-           three things a person does with it — copy it, approve it, or open
-           the file. Nothing sends: there is no send button here and no mail
-           link anywhere in the app. Every word and every colour is the API's
-           (vocab.reminder); the page types neither, and the preview is built
-           from the letter's own shape with DOM nodes, never from markup. -->
-      <section id="reminder-card" class="card hidden">
-        <div class="card-head">
-          <h3 id="reminder-heading"></h3>
-          <span class="summary"></span>
-        </div>
-        <div class="reminder-body">
-          <p id="reminder-status" class="rem-status"></p>
-          <!-- One shape per state: held is the hold line, the rows and the
-               toggle, and nothing that reads like something to send. -->
-          <div id="reminder-hold" class="hidden">
-            <p id="reminder-held" class="rem-hold" role="status"></p>
-            <ul id="reminder-held-rows" class="rem-hold-rows"></ul>
-          </div>
-          <div id="reminder-stages" class="rem-stages" role="group"></div>
-          <p id="reminder-hint" class="rem-hint"></p>
-          <p id="reminder-edited" class="rem-edited hidden"></p>
-          <p id="reminder-link-dropped" class="rem-edited hidden" role="status"></p>
-          <p id="reminder-subject" class="rem-subject"></p>
-          <div id="reminder-preview" class="rem-preview" tabindex="0"></div>
-          <div id="reminder-actions" class="rem-actions">
-            <button type="button" id="btn-copy" class="btn btn-primary"></button>
-            <button type="button" id="btn-approve" class="btn"></button>
-            <span class="toolbar-spacer"></span>
-            <button type="button" id="btn-open-draft" class="rem-quiet"></button>
-          </div>
-        </div>
-      </section>
-
-      <!-- The copies that wandered (decision 110): above the review queue, because a
-           working copy that is not where the record put it is the first
-           question of the morning. Every word of it is the API's. -->
-      <section id="moved-card" class="card hidden">
-        <div class="card-head">
-          <h3 id="moved-heading"></h3>
-          <span class="summary" id="moved-summary"></span>
-        </div>
-        <ul id="moved-list" class="review"></ul>
-      </section>
-
-      <section id="review-card" class="card hidden">
-        <div class="card-head">
-          <h3>Needs review</h3>
-          <span class="summary">the client sent these; pick the request each belongs to — nothing is guessed</span>
-          <!-- Two renderings of the one queue (decision 114): the whole list,
-               or one card at a time. Both words are the API's, filled in at
-               runtime; the choice is the person's and is remembered on this
-               machine, never recorded. -->
-          <div id="review-mode" class="mode-toggle">
-            <button type="button" class="btn btn-small" id="review-mode-cards"></button>
-            <button type="button" class="btn btn-small" id="review-mode-list"></button>
-          </div>
-        </div>
-        <ul id="review-list" class="review"></ul>
-        <div id="review-deck" class="deck hidden"></div>
-        <details id="dismissed-card" class="dismissed hidden">
-          <summary id="dismissed-heading"></summary>
-          <ul id="dismissed-list" class="review"></ul>
-        </details>
-      </section>
-
-      <section id="filed-card" class="card hidden">
-        <details class="dismissed">
-          <summary id="filed-heading"></summary>
-          <ul id="filed-list" class="review"></ul>
-        </details>
-      </section>
-
-      <footer id="assurances" class="assurances">
-        <div class="assure">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-          <div><strong></strong><span></span></div>
-        </div>
-        <div class="assure">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-          <div><strong></strong><span></span></div>
-        </div>
-        <div class="assure">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
-          <div><strong></strong><span></span></div>
-        </div>
-        <div class="assure">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          <div><strong></strong><span></span></div>
-        </div>
-      </footer>
-    </main>
-  </div>
-
+    <input id="root-input" type="text" />
+    <input id="firm-input" type="text" />
+    <input id="phone-input" type="text" />
   </div>
 
   <!-- The household's own three fields (decision 125): the members a
@@ -469,10 +168,8 @@
           <select id="hh-edit-feed-pick"></select>
           <button type="button" id="hh-edit-feed-add" class="btn btn-small"></button>
         </div>
-        <p id="hh-edit-feeds-help" class="wiz-note"></p>
         <p id="hh-edit-feed-warning" class="rem-hold hidden" role="status"></p>
       </div>
-      <p id="hh-edit-note" class="wiz-note"></p>
       <div class="modal-actions">
         <button id="hh-edit-cancel" class="btn">Cancel</button>
         <span class="toolbar-spacer"></span>
@@ -513,13 +210,31 @@
     </div>
   </div>
 
+  <!-- Unfile from a row's right-click menu (ruling 16): a small confirm with the
+       optional reason the old list's Unfile carried. Every word is the API's. -->
+  <div id="unfile-modal" class="modal-overlay hidden">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="uf-title">
+      <h3 id="uf-title"></h3>
+      <p id="uf-name" class="wiz-note"></p>
+      <label class="field">
+        <span id="uf-note-label"></span>
+        <input id="uf-note" type="text" autocomplete="off">
+      </label>
+      <div class="modal-actions">
+        <button id="uf-cancel" class="btn" type="button"></button>
+        <span class="toolbar-spacer"></span>
+        <button id="uf-confirm" class="btn btn-primary" type="button"></button>
+      </div>
+    </div>
+  </div>
+
   <!-- The schedule setting (pilot P21): on or off, when the first run is and
        how often it repeats. Read from `settings`, saved by `set-schedule`;
        every word is the API's (vocab.schedule). -->
   <div id="schedule-modal" class="modal-overlay hidden">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="sc-title">
       <h3 id="sc-title"></h3>
-      <p id="sc-loading" class="wiz-note hidden" role="status"></p>
+      <div id="sc-loading" class="sc-loading hidden" role="status"></div>
       <div id="sc-form">
         <fieldset class="sc-choice">
           <legend id="sc-enabled-label"></legend>
@@ -535,7 +250,6 @@
           <select id="sc-every"></select>
         </label>
         <p id="sc-next" class="wiz-note" role="status"></p>
-        <p id="sc-note" class="wiz-note"></p>
         <div id="sc-error" class="banner err hidden" role="alert"></div>
       </div>
       <div class="modal-actions">
@@ -565,9 +279,7 @@
            API's (vocab.household). -->
       <div id="wiz-household" class="hidden">
         <h3 id="household-title"></h3>
-        <p id="household-new-intro" class="wiz-sub"></p>
 
-        <div class="tmpl-head" id="hh-new-head"></div>
         <div class="roll-grid">
           <label class="field">
             <span id="hh-name-label"></span>
@@ -602,19 +314,13 @@
            second step. The title names the household a return is added to. -->
       <div id="wiz-form" class="hidden">
         <h3 id="form-title"></h3>
-        <p id="form-note" class="wiz-sub"></p>
         <div id="form-grid" class="form-grid"></div>
-        <div class="modal-actions">
-          <span class="toolbar-spacer"></span>
-          <button id="wf-cancel" class="btn">Cancel</button>
-        </div>
       </div>
 
       <!-- Step 2: tailored request list for the chosen form -->
       <div id="wiz-items" class="hidden">
         <h3 id="items-title"></h3>
         <div class="form-chosen">
-          <span id="chosen-form" class="chosen-badge"></span>
           <button id="wi-back" class="wiz-back"></button>
           <button id="wi-household" class="wiz-back hidden"></button>
         </div>
@@ -628,15 +334,15 @@
         <p id="ne-return-warning" class="rem-hold" role="status"></p>
         <div class="roll-grid three">
           <label class="field">
-            <span>Client (greeting name)</span>
-            <input id="ne-client" type="text" placeholder="e.g. John Smith" />
+            <span>Client (Greeting Name)</span>
+            <input id="ne-client" type="text" placeholder="E.g. John Smith" />
           </label>
           <label class="field">
-            <span>Tax year</span>
+            <span>Tax Year</span>
             <input id="ne-year" type="number" />
           </label>
           <label class="field">
-            <span>Due date (optional)</span>
+            <span>Due Date (Optional)</span>
             <input id="ne-due" type="date" />
           </label>
         </div>
@@ -646,7 +352,6 @@
              types none of them, and no spelling is ever inferred from a
              document - the app proposes and a person ticks. -->
         <div class="tmpl-head" id="wp-head"></div>
-        <p id="wp-help" class="wiz-note"></p>
         <div id="wp-people" class="people-block"></div>
         <div class="editor-actions">
           <button type="button" id="wp-add" class="btn btn-small"></button>
@@ -656,10 +361,9 @@
              the return, and only the ticked ones are asked for and chased.
              The heading's last words and the note are the API's. -->
         <div class="tmpl-head" id="tmpl-head-label"></div>
-        <p id="tmpl-note" class="wiz-note"></p>
         <div id="tmpl-list" class="tmpl-list"></div>
 
-        <div class="tmpl-head">Add a custom request</div>
+        <div class="tmpl-head">Add a Custom Request</div>
         <!-- Drawn by the one row component (requestRows in app.js), which
              the request-list editor shares: the headings are the API's
              column labels, the identifiers are assigned as the rows are
@@ -673,7 +377,6 @@
              is edited or the dialog is closed (decision 196). -->
         <p id="ne-note" class="rem-hold hidden" role="alert"></p>
         <div class="modal-actions">
-          <button id="ne-cancel" class="btn">Cancel</button>
           <button id="ne-create" class="btn btn-primary"></button>
         </div>
       </div>
@@ -703,21 +406,20 @@
              (decision 128): the return's own list, edited here and
              nowhere else. -->
         <div class="tmpl-head" id="ep-head"></div>
-        <p id="ep-help" class="wiz-note"></p>
         <div id="ep-people" class="people-block"></div>
         <div class="editor-actions">
           <button type="button" id="ep-add" class="btn btn-small"></button>
         </div>
       </fieldset>
-      <div id="ed-list-title" class="tmpl-head"></div>
       <div id="ed-rows" class="editor-rows"></div>
       <div class="editor-actions">
         <button id="ed-add" class="btn btn-small"></button>
       </div>
+      <!-- Behind the one Advanced switch (SPEC 2.7, E91): paste and rename. -->
+      <div id="ed-advanced-body" class="hidden">
       <details class="ed-paste">
         <summary id="ed-paste-title"></summary>
-        <p id="ed-paste-hint" class="wiz-note"></p>
-        <textarea id="ed-paste" rows="4" aria-label="Rows to paste"></textarea>
+        <textarea id="ed-paste" rows="4" aria-label="Rows to Paste"></textarea>
         <div class="editor-actions">
           <button id="ed-paste-btn" class="btn btn-small"></button>
         </div>
@@ -726,13 +428,13 @@
            gives a request another identifier and moves its documents. -->
       <details class="ed-paste">
         <summary id="ed-rename-title"></summary>
-        <p id="ed-rename-hint" class="wiz-note"></p>
         <div class="editor-actions">
           <select id="ed-rename-from"></select>
           <input id="ed-rename-to" type="text">
           <button id="ed-rename-btn" class="btn btn-small"></button>
         </div>
       </details>
+      </div>
       <div id="ed-note" class="banner hidden" role="status"></div>
       <div class="modal-actions">
         <button id="ed-cancel" class="btn"></button>
@@ -749,11 +451,62 @@
     </div>
   </div>
 
+  <!-- ═══════════════ The four dialogs the menu and the notices open ═══════════════
+       Roll forward (Client menu), Safeguards and About (Help menu), and the
+       folders the walk left alone (a notice's Show). Every word is the API's;
+       shell.js and app.js fill them. -->
+  <div id="roll-modal" class="modal-overlay hidden">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="roll-title">
+      <h3 id="roll-title"></h3>
+      <div id="roll-body" class="tmpl-list"></div>
+      <div class="modal-actions">
+        <button id="roll-cancel" class="btn" type="button"></button>
+        <span class="toolbar-spacer"></span>
+        <button id="btn-roll" class="btn btn-primary" type="button"></button>
+      </div>
+    </div>
+  </div>
+
+  <div id="safeguards-modal" class="modal-overlay hidden">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="safeguards-title">
+      <h3 id="safeguards-title"></h3>
+      <ul id="safeguards-list" class="safeguards"></ul>
+      <div class="modal-actions">
+        <span class="toolbar-spacer"></span>
+        <button id="safeguards-close" class="btn btn-primary" type="button"></button>
+      </div>
+    </div>
+  </div>
+
+  <div id="about-modal" class="modal-overlay hidden">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="about-title">
+      <h3 id="about-title"></h3>
+      <p id="about-edition" class="about-edition"></p>
+      <div class="modal-actions">
+        <span class="toolbar-spacer"></span>
+        <button id="about-close" class="btn btn-primary" type="button"></button>
+      </div>
+    </div>
+  </div>
+
+  <div id="misfits-modal" class="modal-overlay hidden">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="misfits-title">
+      <h3 id="misfits-title"></h3>
+      <ul id="misfits-list" class="misfits"></ul>
+      <div class="modal-actions">
+        <span class="toolbar-spacer"></span>
+        <button id="misfits-close" class="btn btn-primary" type="button"></button>
+      </div>
+    </div>
+  </div>
+
   <div id="toast" class="toast hidden" role="alert"></div>
   <script src="vendor/floating-ui/floating-ui.core.umd.min.js"></script>
   <script src="vendor/floating-ui/floating-ui.dom.umd.min.js"></script>
   <script src="app.js"></script>
   <script src="tooltip.js"></script>
+  <script src="pages.js"></script>
+  <script src="sheet.js"></script>
   <script src="shell.js"></script>
   <script src="pilot-content.js"></script>
   <script src="pilot.js"></script>

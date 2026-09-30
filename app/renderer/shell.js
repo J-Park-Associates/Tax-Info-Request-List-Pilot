@@ -19,13 +19,21 @@
 //   shellChanged()      the sort, the lock or the pass's progress changed
 //   shellProgress(said) one progress line of the running pass
 //   shellKey(e)         one keydown, before app.js's own (true = handled)
-// What this file calls, if it exists (the pages are S4's, the sheet S5's):
+//   shellStateArrived(state)  one return's state arrived: draw its page, and
+//                       ask the firm's counts again if the state moved them
+// What this file calls in app.js: appRouteChanged(route), so the lock (a
+// notice) follows the return on screen.
+// What this file calls, if it exists (the pages are pages.js, the sheet sheet.js):
 //   pagesDraw(route, page)   draw the route's page into #page
+//   pagesLeave()             the setup page took the screen: the pages' notices go
+//   pagesTally(state)        how many of each group a state holds
 //   pagesKey(e)              a key on a row list (the one keydown listener
 //                            stays in app.js and hands keys here)
 //   pagesMenu(id, token)     a right-click menu item on a row
-//   closeSheet(), openRoll(), openSafeguards(), openAbout(), openReminder()
-// A menu id the page cannot answer yet is said as a notice and logged.
+//   sheetStateArrived(state) the file on the sheet may have left the list
+//   closeSheet()             navigating shuts the sheet
+//   openRoll(), openSafeguards(), openAbout(), openReminder()  (app.js, sheet.js)
+// A menu id the page cannot answer is said as a notice and logged.
 
 "use strict";
 
@@ -58,6 +66,25 @@ function screenWords() {
   return vocab.screen;
 }
 
+// The short line a notice shows for a failure the API words as a long
+// sentence (SPEC 11.1: five words, no path): the vocabulary's word for `key`
+// in vocab.screen.notices. Where the vocabulary has not been given that word
+// yet, the approved short line of the setup notice stands in - never a word of
+// the page's own - and the long sentence goes to the error log, whatever is
+// shown. The keys asked for and still missing are listed in the S4 rebuild
+// handoff for S6. A missing word is loud, not silent: the key the vocabulary
+// lacks goes to the error log, once per key while the app runs (review 2, F1).
+function shortNotice(key) {
+  const said = vocab && vocab.screen && vocab.screen.notices ? vocab.screen.notices[key] : "";
+  if (said) return said;
+  shortNotice.missing = shortNotice.missing || new Set();
+  if (!shortNotice.missing.has(key)) {
+    shortNotice.missing.add(key);
+    window.tracker.logError(`vocab.screen.notices.${key}`);   // the key it lacks, as pagesReason throws `reasons.${code}`
+  }
+  return vocab.after_install.wait;
+}
+
 // A dotted key ("screen.sort.now") to its words, for data-tip-key.
 function shellWords(key) {
   let at = vocab;
@@ -73,7 +100,7 @@ const H_ATTRIBUTES = new Set([
   "className", "id", "type", "disabled", "hidden", "tabindex", "role", "value", "dataset",
   "aria-label", "aria-current", "aria-selected", "aria-expanded", "aria-busy", "aria-hidden",
   "aria-labelledby", "aria-valuemin", "aria-valuemax", "aria-valuenow", "aria-live",
-  "aria-controls", "aria-description", "aria-keyshortcuts", "aria-disabled",
+  "aria-controls", "aria-description", "aria-keyshortcuts", "aria-disabled", "aria-pressed",
 ]);
 
 function h(tag, attrs = {}, ...children) {
@@ -191,40 +218,73 @@ function shellHasClient() {
 }
 
 // ── go (SPEC 4.1) ─────────────────────────────────────────────────────
+// Resolves when the return the page needs has been read (or at once when it
+// needs none), for a caller that goes on from there (a row's menu).
 function shellGo(next) {
   if (LEVELS.indexOf(next.level) === -1) throw new Error(next.level);
-  if (shellRoute.level === "setup" && next.level !== "setup" && !shellRootSet) return;   // the folder comes first
+  if (shellRoute.level === "setup" && next.level !== "setup" && !shellRootSet) return Promise.resolve();   // the folder comes first
   if (typeof closeSheet === "function") closeSheet();
   hideFound();
   if (next.level === "setup") shellBack = shellRoute.level === "setup" ? shellBack : shellRoute;
   shellRoute = next;
+  // Nothing the window's other side does may stop the page from going where
+  // the person asked: a lock or a menu channel that throws is a notice.
+  try {
+    appRouteChanged(next);   // app.js: the lock belongs to the return on screen
+  } catch (err) {
+    failed(err);
+  }
   shellPageBusy = next.level === "return";
   shellPageFailed = false;
   shellDraw();
   const page = $("page");
   page.scrollTop = 0;
   page.focus({ preventScroll: true });
-  shellOpenState();
+  return shellOpenState();
 }
 
 // A return's page needs its state, and a household or year page needs the
-// active return to be one of its own (Sort now sorts the active return's
-// household). Both are app.js's showReturn.
+// state on screen to be one of its own returns' (Sort now sorts the active
+// return's household, and the household's notices come with that state).
+// Both are app.js's showReturn.
 function shellOpenState() {
   const route = shellRoute;
   let path = null;
   if (route.level === "return") path = route.ret;
   else if (route.level === "household" || route.level === "year") {
     const own = shellOwnReturns(route.household);
-    if (own.length && !own.some((one) => one.path === active)) path = own[0].path;
+    const shown = lastState && lastState.paths ? lastState.paths.engagement : "";
+    if (own.length && !own.some((one) => one.path === shown)) path = (own.find((one) => one.path === active) || own[0]).path;
   }
-  if (!path) return;
-  showReturn(path).then((drawn) => {
+  if (!path) return Promise.resolve();
+  return showReturn(path).then((drawn) => {
     if (shellRoute !== route) return;
     shellPageBusy = false;
     shellPageFailed = route.level === "return" && !drawn;
     shellDraw();
   });
+}
+
+// app.js: one return's `state` has arrived (a read, or a write's reply). The
+// page is drawn from it; if what it holds no longer matches the firm's
+// counts for that return, the counts are asked again (SPEC 4.2: after any
+// write that changes a count) - never on a plain read, which changes none.
+function shellStateArrived(state) {
+  // The state has arrived and a write's reply is a success: an error of the
+  // page's own from here on is said as an error of the page (a notice, the
+  // details in the error log) and never escapes to the write's caller, which
+  // would say a write that worked had failed.
+  try {
+    shellDraw();
+    if (typeof sheetStateArrived === "function") sheetStateArrived(state);   // sheet.js: the file answered leaves, the next comes
+    const firm = shellFirmNow.data;
+    const mine = firm && state.paths ? firm.returns.find((one) => one.path === state.paths.engagement) : null;
+    if (!mine || typeof pagesTally !== "function") return;
+    const tally = pagesTally(state);
+    if (Object.keys(tally).some((key) => tally[key] !== mine.counts[key])) shellLoadFirm();
+  } catch (err) {
+    failed(err);
+  }
 }
 
 function shellDraw() {
@@ -400,9 +460,24 @@ function sortClicked() {
 function shellChanged() {
   if (!vocab || !vocab.screen) return;
   drawLastSort();
+  syncSortNotice();
   drawSort();
   drawCounts();
   shellEnable();
+}
+
+// A failed sort is also a notice at the top of the main area, on every page,
+// with Retry (ruling 20); the side panel's "Sort Failed" line stays. It is the
+// record's word, not an event's: it stays while the last sort failed, is left
+// as it is while one runs, and goes when a sort works.
+function syncSortNotice() {
+  if (scanning) return;
+  const last = shellLastPass;
+  if (last && last.when && last.ok === false) {
+    keyedNotice("last-sort", { sentence: screenWords().last_sort.failed, kind: "failed" }, { retry: runScan });
+  } else {
+    clearNotice("last-sort");
+  }
 }
 
 function drawCounts() {
@@ -509,13 +584,16 @@ function routeTitle() {
 
 // The loading state every page shares: the title, then outline rows in the
 // row grid; the word for a screen reader only (SPEC 6, states).
+function shellSkeleton(count) {
+  return Array.from({ length: count }, () => h("div", { className: "row-skeleton", "aria-hidden": "true" }, h("i"), h("i")));
+}
+
 function shellLoading(title) {
   const words = screenWords();
-  const rows = Array.from({ length: 6 }, () => h("div", { className: "row-skeleton", "aria-hidden": "true" }, h("i"), h("i")));
   return [
     ...(title ? [h("h1", { className: "page-title" }, title)] : []),
     h("div", { className: "group-head is-first" }, h("span", { className: "visually-hidden" }, words.loading)),
-    ...rows,
+    ...shellSkeleton(6),
   ];
 }
 
@@ -529,6 +607,7 @@ function drawPage() {
   const page = $("page");
   const route = shellRoute;
   if (route.level === "setup") {
+    if (typeof pagesLeave === "function") pagesLeave();
     page.setAttribute("aria-busy", "false");
     page.replaceChildren(...setupPage());
     return;
@@ -625,20 +704,25 @@ function shellChangeRoot() {
 // ── the menu channel, the page's side (SPEC 5.3, 5.4) ─────────────────
 // The ids whose rule in 5.1 holds now. main.js sets `enabled` on the items
 // whose ids it knows and ignores anything else.
-function shellEnabled() {
-  const route = shellRoute;
-  const client = shellHasClient();
+// `at`: the route a row's menu stands for (a household or return row on a page
+// that is not its own); the rules are the same, read for that route.
+function shellEnabled(at) {
+  const route = at || shellRoute;
+  const client = ["household", "year", "return"].indexOf(route.level) !== -1;
   const isReturn = route.level === "return";
   const writable = !locked;
   const household = shellHousehold(route.household);
   const rollable = Boolean(household && (household.returns || []).some((one) => one.rollable));
-  const shared = Boolean(lastState && lastState.household && lastState.household.shared_on);
+  const own = lastState && lastState.household && lastState.household.path === route.household ? lastState.household : null;
+  const shared = Boolean(own && own.shared_on);
+  const paused = Boolean(own && own.pause && own.pause.sentence);   // while paused the pause is the work
   const ids = ["change_root", "refresh", "tour", "safeguards", "terms", "error_log", "about"];
   if (shellRootSet) {
     ids.push("new_household", "open_root", "overview", "needs_review", "reminders", "clients", "find", "schedule", "repair_schedule");
   }
   if (client && writable) {
-    ids.push("edit_household", "add_return");
+    ids.push("edit_household");
+    if (!paused) ids.push("add_return");
     if (rollable) ids.push("roll_forward");
     if (!shared) ids.push("mark_shared");
   }
@@ -648,18 +732,29 @@ function shellEnabled() {
   if (client && !scanning && writable) ids.push("sort_now");
   if (scanning) ids.push("stop_sorting");
   if (shellPaths.status) ids.push("firm_report");
-  if (client && !$("btn-unlock").classList.contains("hidden")) ids.push("clear_lock");
+  if (client && lockStale) ids.push("clear_lock");
   return ids;
 }
 
+// The menu channel is the window's other side: one that throws is said as a
+// notice and the page goes on (a route change must not depend on it).
 function shellEnable() {
-  if (window.tracker.menu) window.tracker.menu.send({ enable: shellEnabled() });
+  try {
+    if (window.tracker.menu) window.tracker.menu.send({ enable: shellEnabled() });
+  } catch (err) {
+    failed(err);
+  }
 }
 
 // Ask main.js for a native right-click menu: one of the six templates, at
-// the pointer. The token is the page's own row key, echoed back (never a path).
-function shellPopup(name, token, x, y) {
-  if (window.tracker.menu) window.tracker.menu.send({ popup: name, enable: shellEnabled(), token, x, y });
+// the pointer, with the ids that apply (the page's, or a row's own). The token
+// is the page's own row key, echoed back (never a path).
+function shellPopup(name, token, x, y, enable) {
+  try {
+    if (window.tracker.menu) window.tracker.menu.send({ popup: name, enable: enable || shellEnabled(), token, x, y });
+  } catch (err) {
+    failed(err);
+  }
 }
 
 function unanswered(id) {
@@ -667,8 +762,21 @@ function unanswered(id) {
   window.tracker.logError(`menu.${id}`);
 }
 
-function openPath(path) {
-  if (path) window.tracker.open(path);
+// Open a path the API reported, or (`how` "reveal") show that file in File
+// Explorer. The shell answers "" or the sentence for a path that is no longer
+// what it was; that is a notice in the API's words, and what the operating
+// system said goes to the error log.
+async function openPath(path, how) {
+  if (!path) return;
+  try {
+    const said = await window.tracker.open(path, how);
+    if (said) {
+      window.tracker.logError(String(said));
+      notice({ sentence: vocab.shell.not_opened, kind: "warning" });
+    }
+  } catch (err) {
+    failed(err);
+  }
 }
 
 function clientFolder() {
@@ -698,7 +806,7 @@ const MENU_ANSWERS = {
   change_root: () => shellChangeRoot(),
   open_root: () => openPath(shellPaths.clients_root),
   edit_household: () => openHouseholdEditor(),
-  add_return: () => openAddReturn(lastState && lastState.household),
+  add_return: () => openAddReturn(shellHousehold(shellRoute.household) || (lastState && lastState.household)),
   mark_shared: () => markShared(),
   edit_list: () => openEditor(),
   open_client_folder: () => openPath(clientFolder()),
@@ -724,6 +832,12 @@ const MENU_ANSWERS = {
   about: () => (typeof openAbout === "function" ? openAbout() : unanswered("about")),
 };
 
+function shellAnswer(id) {
+  const answer = MENU_ANSWERS[id];
+  if (answer) answer();
+  else unanswered(id);
+}
+
 function shellMenu(message) {
   if (message.missing) {
     toast(screenWords().notices.no_log);
@@ -731,9 +845,7 @@ function shellMenu(message) {
   }
   const id = String(message.id);
   if (message.token && typeof pagesMenu === "function" && pagesMenu(id, message.token) !== false) return;
-  const answer = MENU_ANSWERS[id];
-  if (answer) answer();
-  else unanswered(id);
+  shellAnswer(id);
 }
 
 // ── keyboard (SPEC 4.3): app.js's one keydown listener hands keys here ──

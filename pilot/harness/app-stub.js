@@ -45,23 +45,58 @@ async function call(args, payload) {
 const notices = [];
 function drawNotice(entry) {
   const buttons = $("notice-buttons").content;
+  const clone = (act) => buttons.querySelector(`[data-act="${act}"]`).cloneNode(true);
   const acts = [];
-  if (entry.kind === "failed" && entry.retry) acts.push("retry");
-  acts.push("dismiss");
+  if (entry.action) {
+    const one = clone("retry");
+    one.dataset.act = "action";
+    one.textContent = entry.action.label;
+    acts.push(one);
+  } else if (entry.kind === "failed" && entry.retry) acts.push(clone("retry"));
+  const dismiss = clone("dismiss");
+  dismiss.setAttribute("aria-label", vocab.screen.icons.dismiss);
+  setTip(dismiss, vocab.screen.icons.dismiss);
   entry.node.replaceChildren(
     Object.assign(document.createElement("span"), { className: "notice-text", textContent: entry.sentence }),
-    ...acts.map((act) => buttons.querySelector(`[data-act="${act}"]`).cloneNode(true)));
+    ...acts, dismiss);
 }
-function notice(failure, { retry } = {}) {
-  let entry = notices.find((one) => one.sentence === failure.sentence && one.kind === failure.kind);
+function notice(failure, { retry, action } = {}) {
+  const kind = failure.kind || "failed";
+  let entry = notices.find((one) => one.sentence === failure.sentence && one.kind === kind && one.key === (failure.key || null));
   if (!entry) {
-    entry = { sentence: failure.sentence, kind: failure.kind || "failed", retry };
+    entry = { sentence: failure.sentence, kind, key: failure.key || null, retry, action };
     entry.node = Object.assign(document.createElement("div"), { className: `notice notice-${entry.kind}` });
     notices.push(entry);
     $("notices").append(entry.node);
   }
   drawNotice(entry);
   return entry;
+}
+function dismissNotice(entry) {
+  const at = notices.indexOf(entry);
+  if (at >= 0) notices.splice(at, 1);
+  entry.node.remove();
+}
+const keyedNotices = new Map();
+function keyedNotice(key, failure, opts) {
+  const kind = failure.kind || "failed";
+  const had = keyedNotices.get(key);
+  if (had && had.sentence === failure.sentence && had.kind === kind) return false;
+  if (had && notices.indexOf(had.entry) !== -1) dismissNotice(had.entry);
+  keyedNotices.set(key, { sentence: failure.sentence, kind, entry: notice({ ...failure, key }, opts) });
+  return true;
+}
+function clearNotice(key) {
+  const had = keyedNotices.get(key);
+  if (had && notices.indexOf(had.entry) !== -1) dismissNotice(had.entry);
+  keyedNotices.delete(key);
+}
+function syncNotices(prefix, wanted) {
+  const keep = new Set(wanted.map((one) => `${prefix}:${one.key}`));
+  for (const key of [...keyedNotices.keys()]) if (key.indexOf(`${prefix}:`) === 0 && !keep.has(key)) clearNotice(key);
+  for (const one of wanted) {
+    if (keyedNotice(`${prefix}:${one.key}`, one.failure, one.opts) && one.detail) window.tracker.logError(one.detail);
+  }
 }
 function failureSentence(err) {
   window.tracker.logError(String(err.message));
@@ -74,10 +109,17 @@ $("notices").addEventListener("click", (e) => {
   const button = e.target.closest("button[data-act]");
   const entry = button && notices.find((one) => one.node.contains(button));
   if (!entry) return;
-  notices.splice(notices.indexOf(entry), 1);
-  entry.node.remove();
+  if (button.dataset.act === "action") {
+    entry.action.run();
+    return;
+  }
+  dismissNotice(entry);
   if (button.dataset.act === "retry" && entry.retry) entry.retry();
 });
+
+// The lock, as app.js keeps it: the shell reads `locked` and `lockStale`.
+let lockStale = false;
+function appRouteChanged() {}
 
 async function showReturn(path) {
   active = path;
@@ -85,6 +127,16 @@ async function showReturn(path) {
   try {
     lastState = await call(["state", "--engagement", path]);
     paths = lastState.paths;
+    if (lastState.lock) {
+      lockStale = Boolean(lastState.lock.stale);
+      locked = !lastState.lock.stale;
+      keyedNotice("lock", { sentence: fill(lastState.lock.stale ? vocab.lock.left_behind : vocab.lock.running, { host: lastState.lock.host }).trim(), kind: lastState.lock.stale ? "warning" : "locked" });
+    } else {
+      clearNotice("lock");
+      lockStale = false;
+      locked = false;
+    }
+    shellStateArrived(lastState);
     return true;
   } catch (err) {
     failed(err, () => showReturn(path));
@@ -156,5 +208,15 @@ const openEditor = asked("openEditor");
 const openSchedule = asked("openSchedule");
 const repairSchedule = asked("repairSchedule");
 const clearLock = asked("clearLock");
+const acceptFolderName = asked("acceptFolderName");
 
-// shell.js reads the old screen's stale-lock button and the setup inputs.
+// pages.js reads a request's set-aside label the way app.js words it.
+function isSetAside(override) {
+  return override === vocab.overrides.not_applicable;
+}
+function overrideLabel(override, year) {
+  return isSetAside(override) && year ? fill(vocab.labels[vocab.overrides.not_applicable].label, { year }) : override || "";
+}
+
+// shell.js reads the setup inputs (#root-input, #firm-input, #phone-input)
+// that index.html keeps hidden for saveRoot().

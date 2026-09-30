@@ -258,6 +258,7 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   cursor: pointer;
   transition: background-color var(--dur) var(--ease);
 }
+.icon-button[hidden] { display: none; }
 .icon-button:hover { background: var(--bg-hover); }
 .icon-button:active { background: var(--bg-pressed); }
 .icon-button:disabled,
@@ -392,6 +393,13 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* The three kinds of link (SPEC 3.9): a name that acts, in the link colour. */
+.row-link { color: var(--link); cursor: pointer; }
+/* Beside a household's name: the marker for two open years (ruling 21). */
+.row-mark { margin-left: var(--sp-2); font-weight: var(--fw-regular); }
+/* One of several files that answer a request: its own row, set in from the request's (ruling 17). */
+.row-child .row-name { padding-left: var(--sp-4); font-weight: var(--fw-regular); }
+.row-link:hover { text-decoration: underline; }
 .row-detail {
   color: var(--text-secondary);
   overflow: hidden;
@@ -428,6 +436,8 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
 .rows:focus-visible .row.is-active .row-step { visibility: visible; }
 .row.has-step:hover .row-date,
 .rows:focus-visible .row.has-step.is-active .row-date { visibility: hidden; }
+.row.is-active { background: var(--bg-selected); }
+.row.is-active:hover { background: var(--bg-hover); }
 .is-attention { color: var(--st-attention); }
 .is-waiting { color: var(--st-waiting); }
 .is-done { color: var(--st-done); }
@@ -451,6 +461,74 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
 }
 .row-skeleton > i:first-child { width: 60%; }
 .row-skeleton > i:last-child { grid-column: 3; width: 70%; }
+
+/* A group's own step at its heading's end (SPEC 6.7), and the Set aside fold. */
+.group-step:not(.hidden) {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin-left: auto;
+  padding: var(--sp-1);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--link);
+  font-family: inherit;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-weight: var(--fw-strong);
+  white-space: nowrap;
+  cursor: pointer;
+  visibility: hidden;
+}
+.group-head:hover .group-step { visibility: visible; }
+.group-step:hover { background: var(--bg-pressed); }
+.group-fold > summary.group-head { cursor: pointer; list-style: none; }
+.group-fold > summary.group-head::-webkit-details-marker { display: none; }
+.group-fold > summary.group-head::before {
+  content: "";
+  align-self: center;
+  width: var(--sp-2);
+  height: var(--sp-2);
+  border-right: 2px solid var(--text-caption);
+  border-bottom: 2px solid var(--text-caption);
+  transform: rotate(-45deg);
+  transition: transform var(--dur) var(--ease);
+}
+.group-fold[open] > summary.group-head::before { transform: rotate(45deg); }
+.page-gap { height: var(--sp-6); }
+
+/* The Clients page's two-option switch (SPEC 6.4), in P52's selected look. */
+.switch:not(.hidden) {
+  display: inline-flex;
+  gap: var(--sp-1);
+  margin: var(--sp-6) var(--sp-8) var(--sp-4);
+  padding: var(--sp-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+}
+.switch-option {
+  min-height: var(--size-control-sm);
+  padding: 0 var(--sp-4);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-weight: var(--fw-strong);
+  cursor: pointer;
+}
+.switch-option:hover { background: var(--bg-hover); }
+.switch-option[aria-pressed="true"] { background: var(--bg-selected); color: var(--text); }
+.page-empty-line { margin: 0; font-size: var(--fs-body); line-height: var(--lh-body); color: var(--text); }
+.page-empty-note {
+  margin: 0;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  color: var(--text-caption);
+}
 
 /* The Overview's three figures. */
 .figures:not(.hidden) { display: flex; gap: var(--sp-12); margin: var(--sp-6) var(--sp-8) 0; }
@@ -542,6 +620,42 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   border-top: 1px solid var(--border);
 }
 
+/* ── What the sheet holds: one file, or one letter (SPEC 7.1, 7.2) ───── */
+
+#sheet-check:not([hidden]),
+#sheet-reminder:not([hidden]) { display: grid; gap: var(--sp-4); align-content: start; }
+:is(#sheet, .modal) .row-skeleton:not(.hidden) { grid-template-columns: 1fr 1fr; padding: 0; }
+.sheet-status:not(.hidden) { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-4); }
+.sheet-reason { font-weight: var(--fw-strong); color: var(--st-attention); }
+.sheet-received { font-size: var(--fs-caption); line-height: var(--lh-caption); color: var(--text-caption); }
+.sheet-row:not(.hidden) { display: grid; gap: var(--sp-4); list-style: none; padding: 0; }
+.sheet-row select { width: 100%; }
+.sheet-row .r-type { font-weight: var(--fw-strong); }
+.sheet-row .r-reasons { list-style: none; margin: 0; padding: 0; font-size: var(--fs-caption); line-height: var(--lh-caption); color: var(--text-caption); }
+.sheet-row .r-nothing { font-style: italic; }
+.sheet-row .field:not(.hidden),
+.sheet-row .r-teach:not(.hidden),
+.sheet-row .r-issuer:not(.hidden) { display: grid; gap: var(--sp-1); }
+.sheet-row .field input,
+.sheet-row .r-issuer input { width: 100%; }
+.sheet-row .wiz-note { color: var(--text-caption); font-size: var(--fs-caption); line-height: var(--lh-caption); }
+.sheet-more:not(.hidden) { display: grid; gap: var(--sp-4); padding-top: var(--sp-4); border-top: 1px solid var(--border); }
+.sheet-more .btn { justify-self: start; }
+.sheet-actions:not([hidden]):not(.hidden) { display: flex; gap: var(--sp-2); justify-content: flex-end; width: 100%; }
+#sheet-reminder.line-only > :not(#reminder-status) { display: none; }
+#sheet .rem-stages { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#sheet .rem-preview { max-height: none; }
+
+/* ── The four dialogs the menu and the notices open (SPEC 2.7) ────────── */
+
+.safeguards:not(.hidden) { display: grid; gap: var(--sp-2); list-style: none; padding: 0; }
+.safeguards li { font-weight: var(--fw-strong); }
+.about-edition { color: var(--text-secondary); }
+.misfits:not(.hidden) { display: grid; gap: var(--sp-2); list-style: none; padding: 0; }
+.misfits li:not(.hidden) { display: flex; justify-content: space-between; gap: var(--sp-4); }
+.misfit-name { font-weight: var(--fw-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.misfit-why { color: var(--text-secondary); white-space: nowrap; }
+
 /* ── Tooltip (SPEC 8.5) ──────────────────────────────────────────────── */
 
 #tip:not([hidden]) {
@@ -580,7 +694,17 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   .rows:focus-visible .row.is-active { outline: 2px solid CanvasText; }
   .side-section[aria-current="page"] .side-count, .find-option[aria-selected="true"] .find-note { color: HighlightText; }
   .row { border-bottom: 1px solid CanvasText; }
+  .switch { border-color: CanvasText; }
+  .switch-option[aria-pressed="true"] { background: Highlight; color: HighlightText; forced-color-adjust: none; }
+  .group-step { color: LinkText; }
   .row-name, .row-detail, .row-status, .row-date, .row-step { color: inherit; }
+  .row-link { color: LinkText; }
+  /* The focused row has forced-color-adjust: none, so its own colours would
+     show on Highlight: the step's link colour (.row-step:not(.hidden)) and the
+     status tones outrank the inherit above. Every part takes HighlightText. */
+  .rows:focus-visible .row.is-active .row-name, .rows:focus-visible .row.is-active .row-detail,
+  .rows:focus-visible .row.is-active .row-status, .rows:focus-visible .row.is-active .row-date,
+  .rows:focus-visible .row.is-active .row-step, .rows:focus-visible .row.is-active .row-link { color: HighlightText; }
   #notices .notice { border: 1px solid CanvasText; background: Canvas; color: CanvasText; }
   .last-sort-bar { background: Canvas; border: 1px solid CanvasText; }
   .last-sort-bar > span { background: Highlight; }

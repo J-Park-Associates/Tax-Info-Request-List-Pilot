@@ -2294,13 +2294,17 @@ def test_the_schedule_dialog_uses_only_the_apis_words(capsys):
     here = Path(__file__).resolve().parent.parent / "app" / "renderer"
     js = (here / "app.js").read_text(encoding="utf-8")
     html = (here / "index.html").read_text(encoding="utf-8")
-    edit_at = html.index('id="btn-edit"')
-    assert edit_at < html.index('id="btn-schedule"') < html.index('id="btn-view"')
+    shell = (here / "shell.js").read_text(encoding="utf-8")
+    assert 'id="btn-schedule"' not in html, "the button is Tools > Schedule now (SPEC 5.1)"
+    assert "schedule: () => openSchedule()," in shell
     assert 'call(["set-schedule"]' in js and 'call(["settings"]' in js
-    for word in ("words.button", "words.title", "words.enabled_label", "words.on", "words.off",
-                 "words.start_label", "words.every_label", "words.every_choices", "words.note",
-                 "words.loading", "words.save", "words.cancel"):
+    # The dialog's help lines are cut (SPEC 2.7, E87): no "Scan works either
+    # way" note and no loading sentence (outline rows and one word instead).
+    for word in ("words.title", "words.enabled_label", "words.on", "words.off",
+                 "words.start_label", "words.every_label", "words.every_choices",
+                 "words.save", "words.cancel"):
         assert word in js, word
+    assert "words.note" not in js and "words.loading" not in js and "shellSkeleton(3)" in js
     for literal in (api.SCHEDULE_BUTTON, api.SCHEDULE_TITLE, api.SCHEDULE_ENABLED_LABEL,
                     api.SCHEDULE_START_LABEL, api.SCHEDULE_EVERY_LABEL, api.SCHEDULE_NOTE,
                     api.SCHEDULE_LOADING, *api.SCHEDULE_EVERY_LABELS.values()):
@@ -2494,15 +2498,19 @@ def test_without_a_data_home_the_pages_error_never_points_at_an_error_log_that_i
     assert shell["page_error"] == PAGE_ERROR == "The App Hit an Error"
     assert not hasattr(api, "PAGE_ERROR_NO_LOG")
 
-def test_the_first_screen_says_every_machine_warning_in_a_banner_of_its_own():
-    """The app adds no word of its own: each sentence is the API's, drawn as
-    text into a banner that stays (decision 186)."""
+def test_the_first_screen_says_every_machine_warning_in_a_notice_of_its_own():
+    """SPEC 2.2 E30 and 11.1: each machine warning is a notice that stays until
+    a person dismisses it (decisions 186 and 193), in its short line; the API's
+    sentence, which can name a folder, goes to the error log and is never drawn
+    (the drawing is pinned in test_shell)."""
     renderer = Path(__file__).resolve().parent.parent / "app" / "renderer"
     js = (renderer / "app.js").read_text(encoding="utf-8")
     html_text = (renderer / "index.html").read_text(encoding="utf-8")
-    assert '<div id="machine-warnings" class="banner err hidden" role="alert"></div>' in html_text
-    assert "listed.machine_warnings || []" in js
-    assert 'machine.map((sentence) => el("p", {}, sentence))' in js
+    assert 'id="machine-warnings"' not in html_text
+    body = js[js.index("function renderMachineNotices("):]
+    body = body[:body.index("\n}\n")]
+    assert 'syncNotices("machine"' in body and 'shortNotice("machine")' in body and "detail: machine.join" in body
+    assert "renderMachineNotices(listed);" in js
 
 
 def test_move_schedule_here_moves_the_schedule_from_the_packaged_app(capsys, demo_root, monkeypatch):
@@ -2586,27 +2594,22 @@ def test_state_carries_the_after_install_findings_until_a_clean_run(capsys, tmp_
     assert run(capsys, "after-install", stdin={"reason": "launch"})[1] == {"ran": False, "warnings": []}   # the envelope (decision 193)
 
 
-def test_the_schedule_is_repaired_from_the_toolbar_in_the_apis_words():
+def test_the_schedule_is_repaired_from_the_tools_menu_in_the_apis_words():
     """Decision 209, R4: the Install Schedule button is gone; the repair
-    path's button takes its label and tooltip from ``vocab.schedule``, its
-    confirm dialog too, and the banner shows the API's sentence - the page
-    types none of it. It sits beside the client-folder button, because the
-    clients-folder card is shown only until a root is set."""
+    path is Tools > Repair schedule (SPEC 5.1), its confirm dialog is the
+    API's word, and the outcome is the API's sentence - the page types none
+    of it. What the step left for a person is one notice."""
     here = Path(__file__).resolve().parent.parent / "app" / "renderer"
     js = (here / "app.js").read_text(encoding="utf-8")
     html = (here / "index.html").read_text(encoding="utf-8")
-    assert "Install Schedule" not in html
-    toolbar = html[html.index('id="btn-client-folder"'):html.index('id="btn-edit"')]
-    assert 'id="btn-repair-schedule" class="btn"' in toolbar
-    assert 'id="btn-schedule"' not in toolbar          # the Schedule button is after the edit button (P21)
-    assert "vocab.schedule.repair;" in js and "vocab.schedule.repair_help;" in js
+    shell = (here / "shell.js").read_text(encoding="utf-8")
+    assert "Install Schedule" not in html and 'id="btn-repair-schedule"' not in html
+    assert "repair_schedule: () => repairSchedule()," in shell
     assert "confirm(vocab.schedule.repair_confirm)" in js
-    assert "banner(result.sentence," in js
+    assert "outcome(result.sentence," in js
     for literal in (api.SCHEDULE_REPAIR_LABEL, api.SCHEDULE_REPAIR_HELP, api.AFTER_INSTALL_HEADING):
         assert literal not in js and literal not in html, literal
-    assert "vocab.after_install.heading" in js and 'id="after-install"' in html
-    # Above everything on the first screen, before any banner or count.
-    assert html.index('id="after-install"') < html.index('id="banner"')
+    assert "vocab.after_install.heading" in js and 'id="after-install"' not in html
 
 
 # ------------------------------------------------------------- vocabulary ----
@@ -2797,7 +2800,8 @@ def test_the_settings_carry_the_firm_phone_and_the_vocabulary_names_its_box(caps
     )
     for word in (api.FIRM_PHONE_LABEL, api.FIRM_PHONE_HELP):
         assert word not in renderer and word not in html, word
-    assert "vocab.settings.phone_label" in renderer and "vocab.settings.phone_help" in renderer
+    setup = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "shell.js").read_text(encoding="utf-8")
+    assert "vocab.settings.phone_label" in setup, "the setup page's box is named by the API"
 
 
 def test_the_reminder_payload_holds_on_a_parked_client_side_file(capsys, demo_root, tmp_path):
@@ -2866,11 +2870,16 @@ def test_state_carries_the_held_rows_and_every_word_is_the_vocabularys(capsys, d
     assert "vocab.reminder.held_line" in renderer
 
 
-def test_every_chip_class_the_vocabulary_implies_exists_in_the_stylesheet(capsys, demo_root):
-    css = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "style.css").read_text(encoding="utf-8")
+def test_every_status_the_vocabulary_names_has_the_label_a_row_says(capsys, demo_root):
+    """The chips are gone (SPEC 2.5 E58): a row says its status as one word
+    from the label table, so each status must have one, keyed as the state's
+    `status_key` is."""
     vocab = run(capsys, "list")[1]["vocab"]
     for status in vocab["statuses"]:
-        assert f".chip-{status['key']} " in css or f".chip-{status['key']}{{" in css.replace(" ", ""), status
+        assert vocab["labels"][status["value"]]["label"], status
+        assert status["key"] == api._slug(status["value"])
+    css = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "style.css").read_text(encoding="utf-8")
+    assert ".chip" not in css
 
 
 def test_the_new_client_name_rule_lives_in_python_and_uses_the_form_label(capsys, demo_root):
@@ -3250,9 +3259,9 @@ def test_the_moved_card_offers_mark_missing_on_a_row_whose_copy_and_original_are
     moved_row = js[js.index("function movedRow("):js.index("async function restoreMoved(")]
     gone_branch = moved_row[moved_row.index("if (m.gone)"):moved_row.index("\n  }\n")]
     assert "vocab.review_labels.mark_missing" in gone_branch and "r-withdraw" in gone_branch
-    assert "r-restore" not in gone_branch and "r-review" not in gone_branch
-    listener = js[js.index('$("moved-list").addEventListener'):]
-    assert "withdrawAnswer(" in listener[:listener.index("});")]
+    assert "r-restore" not in gone_branch and "r-review" not in gone_branch and "r-keep" not in gone_branch
+    listener = js[js.index('$("sheet").addEventListener("click"'):]
+    assert "withdrawAnswer(" in listener[:listener.index("\n});")]
 
 
 # ------------------------------------------------- the reminder card (d118) ----
@@ -5618,18 +5627,12 @@ def test_the_apps_request_table_folds_not_asked_rows_with_no_document_into_a_clo
     assert {i: (one["has_document"], one["not_asked_idle"]) for i, one in items.items()} == {
         "A01": (False, False), "B01": (True, False), "B02": (True, False), "B03": (False, True)}
 
-    here = Path(__file__).resolve().parent.parent / "app" / "renderer"
-    js = (here / "app.js").read_text(encoding="utf-8")
-    html = (here / "index.html").read_text(encoding="utf-8")
-    assert "const setAside = (item) => item.not_asked_idle || isSetAside(item.manual_override);" in js
-    assert 'show("rows", state.items.filter((item) => !setAside(item)).map(requestTableRow));' in js
-    assert "setAsideGroups(folded, (item) => item.not_asked_idle, (item) => item.year)" in js
-    assert "fill(vocab.set_aside.heading, { n: folded.length })" in js
-    assert "known && known.has_document" in js
-    group = html[html.index('<details id="rows-set-aside-group"'):]
-    group = group[:group.index(">") + 1]
-    assert " open" not in group                                  # closed until a person opens it
-
+    # The page does not decide which rows fold: the API's `group` does (SPEC
+    # 9.1), and the set-aside group is a closed `details` (SPEC 6.7).
+    pages = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "pages.js").read_text(encoding="utf-8")
+    assert "not_asked_idle" not in pages and "item.group" in pages
+    assert 'h("details", { className: "group-fold" }' in pages and "fold.open = Boolean(spec.open)" in pages
+    assert "let pagesSetAsideOpen = false;" in pages, "shut each time the page opens"
 
 
 def test_the_editor_refuses_a_list_nobody_is_asked_for_in_creations_words(capsys, demo_root):

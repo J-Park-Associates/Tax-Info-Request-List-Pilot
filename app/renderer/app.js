@@ -37,7 +37,7 @@ let vocab = null;
 // if a later caller passes attributes built from data. A name not on the
 // list is a programming error and throws.
 const EL_ATTRIBUTES = new Set([
-  "className", "dataset", "id", "type", "value", "title", "placeholder",
+  "className", "dataset", "id", "type", "value", "placeholder",
   "label", "rows", "checked", "selected", "disabled",
   "aria-label", "aria-pressed", "aria-expanded",
 ]);
@@ -56,6 +56,13 @@ function el(tag, attrs = {}, ...children) {
     if (child === null || child === undefined || child === false) continue;
     node.append(child instanceof Node ? child : String(child));
   }
+  return node;
+}
+
+// A node with its tooltip (tooltip.js): the replacement for every title
+// attribute (SPEC 13). A blank word sets none.
+function tipped(node, words) {
+  setTip(node, words || "");
   return node;
 }
 
@@ -82,37 +89,6 @@ function overrideLabel(override, year) {
     return fill(vocab.labels[vocab.overrides.not_applicable].label, { year });
   }
   return override || "";
-}
-
-// Decision 200: a row's chip says the preparer's word for the record's
-// word the API names (state.items[].status_key), classed by that word, so
-// no colour moves with a label. A row nobody asked for with nothing in is
-// said by the same table (decision 142); a row a person accepted reads as
-// in, as every count has it, with its override on the side line.
-function chip(item) {
-  if (isSetAside(item.manual_override)) {
-    return el("span", { className: `chip chip-${vocab.unscanned_key}` },
-      overrideLabel(item.manual_override, item.year));
-  }
-  const shown = vocab.labels[item.status_key];
-  return el("span", { className: `chip chip-${shown.key}` }, shown.label);
-}
-
-// The line under a row's chip (decision 200): whose move an outstanding
-// row is - the reminder's own side, bold - and the row's own sentence, as
-// text and never a tooltip; or, for a row a person accepted, which has no side,
-// the override and its sentence. A row set aside says its sentence once,
-// on its group's heading in the set-aside fold.
-function sideLine(item) {
-  if (item.manual_override && !isSetAside(item.manual_override)) {
-    return el("div", { className: "req-side" },
-      el("span", { className: "side" }, vocab.labels[item.manual_override].label), " ",
-      vocab.labels[item.manual_override].sentence);
-  }
-  const side = vocab.reminder.sides.find((one) => one.key === item.side);
-  if (!side) return null;
-  return el("div", { className: "req-side" },
-    el("span", { className: "side" }, side.label), " ", item.side_sentence);
 }
 
 // The rows nobody waits on, grouped for the one set-aside fold (decision
@@ -153,8 +129,16 @@ function fill(pattern, values) {
   return pattern.replace(/\{(\w+)\}/g, (_, key) => values[key] ?? "");
 }
 
-// The one button label the app owns; the docs that name it are pinned to it.
-const SCAN_LABEL = "Sort & Scan";
+// A toast is the API's word (vocab.screen.notices), never a sentence typed
+// here. A word the vocabulary lacks is a failure said loudly, not a blank.
+function toastWord(key) {
+  const said = vocab && vocab.screen && vocab.screen.notices ? vocab.screen.notices[key] : "";
+  if (!said) {
+    failed(new Error(`vocab.screen.notices.${key}`));
+    return;
+  }
+  toast(said);
+}
 
 function toast(msg) {
   const el = $("toast");
@@ -191,37 +175,64 @@ async function call(args, payload, { ofAnother = false } = {}) {
 }
 
 // ── notices: a failure or a warning stays until a person dismisses it ────
-// (decision 193). Retry on a failure, Look again on a stale one, Dismiss on
-// every one; the row a notice names is outlined on every redraw until it
-// is dismissed. The buttons come from index.html's template, so a notice
-// works before any vocabulary has arrived (a failed first start).
+// (decision 193). A failure offers Retry (a stale one too: the same read
+// again), a notice may carry one action of its own (Show, Accept), and every
+// one ends in the dismiss icon; the row a notice names is outlined on every
+// redraw until it is dismissed. The buttons come from index.html's template,
+// so a notice works before any vocabulary has arrived (a failed first start).
 
-const notices = [];   // [{sentence, kind, identifier, count, retry, node}]
+const notices = [];   // [{sentence, kind, identifier, count, retry, action, node}]
 
 function noticeButton(act) {
   return $("notice-buttons").content.querySelector(`[data-act="${act}"]`).cloneNode(true);
+}
+
+// What Retry does for a notice: the call that failed, or - for a stale one,
+// whose row moved - the read of the return again.
+function retryOf(entry) {
+  if (entry.kind === "stale") return entry.retry || (() => showReturn(active));
+  return entry.kind === "failed" ? entry.retry : null;
 }
 
 function drawNotice(entry) {
   const text = entry.count > 1 && vocab
     ? `${entry.sentence} ${fill(vocab.notices.repeated, { n: entry.count })}`
     : entry.sentence;
-  const acts = [];
-  if (entry.kind === "failed" && entry.retry) acts.push("retry");
-  if (entry.kind === "stale") acts.push("look");
-  acts.push("dismiss");
-  entry.node.replaceChildren(el("span", { className: "notice-text" }, text), ...acts.map(noticeButton));
+  const buttons = [];
+  if (entry.action) {
+    const act = noticeButton("retry");
+    act.dataset.act = "action";
+    act.textContent = entry.action.label;
+    if (entry.action.write) {
+      act.dataset.write = "1";
+      if (locked) {
+        act.disabled = true;
+        act.dataset.lockGreyed = "1";
+      }
+    }
+    buttons.push(act);
+  } else if (retryOf(entry)) {
+    buttons.push(noticeButton("retry"));
+  }
+  const dismiss = noticeButton("dismiss");
+  if (vocab && vocab.screen) {
+    dismiss.setAttribute("aria-label", vocab.screen.icons.dismiss);
+    setTip(dismiss, vocab.screen.icons.dismiss);
+  }
+  entry.node.replaceChildren(el("span", { className: "notice-text" }, text), ...buttons, dismiss);
 }
 
-function notice(failure, { retry } = {}) {
+function notice(failure, { retry, action } = {}) {
   if (!failure || !failure.sentence) return null;
   const kind = failure.kind || "failed";
-  let entry = notices.find((one) => one.sentence === failure.sentence && one.kind === kind);
+  // A keyed notice is its own line even when another says the same short words.
+  let entry = notices.find((one) => one.sentence === failure.sentence && one.kind === kind && one.key === (failure.key || null));
   if (entry) {
     entry.count += 1;
     entry.retry = retry || entry.retry;
+    entry.action = action || entry.action;
   } else {
-    entry = { sentence: failure.sentence, kind, identifier: failure.identifier || null, count: 1, retry };
+    entry = { sentence: failure.sentence, kind, identifier: failure.identifier || null, key: failure.key || null, count: 1, retry, action };
     entry.node = el("div", { className: `notice notice-${kind}` });
     notices.push(entry);
     $("notices").append(entry.node);
@@ -230,6 +241,56 @@ function notice(failure, { retry } = {}) {
   outlineRefused();
   if (kind === "locked" && failure.lock) showLock(failure.lock);
   return entry;
+}
+
+// A notice that belongs to a state of the page, not to an event: the lock,
+// the reader's warning, a household's two open years. One per key. It is
+// said once for a sentence: dismissed, it does not come back on the next
+// draw; it goes when the state does (clearNotice) and returns if the state
+// does (a different sentence, or the same one after it cleared).
+const keyedNotices = new Map();   // key -> {sentence, kind, entry}
+
+function keyedNotice(key, failure, opts) {
+  const kind = failure.kind || "failed";
+  const had = keyedNotices.get(key);
+  if (had && had.sentence === failure.sentence && had.kind === kind) return false;
+  if (had && notices.indexOf(had.entry) !== -1) dismissNotice(had.entry);
+  keyedNotices.set(key, { sentence: failure.sentence, kind, entry: notice({ ...failure, key }, opts) });
+  return true;
+}
+
+function clearNotice(key) {
+  const had = keyedNotices.get(key);
+  if (had && notices.indexOf(had.entry) !== -1) dismissNotice(had.entry);
+  keyedNotices.delete(key);
+}
+
+// A set of keyed notices under one prefix: those wanted are shown, the rest
+// are cleared. `wanted` is [{key, failure, opts}].
+function syncNotices(prefix, wanted) {
+  const keep = new Set(wanted.map((one) => `${prefix}:${one.key}`));
+  for (const key of [...keyedNotices.keys()]) {
+    if (key.indexOf(`${prefix}:`) === 0 && !keep.has(key)) clearNotice(key);
+  }
+  for (const one of wanted) {
+    // Its detail (the long sentence, the error's own message) goes to the
+    // error log when the notice first shows, never on screen (SPEC 11.1).
+    if (keyedNotice(`${prefix}:${one.key}`, one.failure, one.opts) && one.detail) window.tracker.logError(one.detail);
+  }
+}
+
+// What a write said (SPEC 2.2, P63 rule 6): what went well shows in the
+// rows themselves, so it says nothing - or, where its effect is off screen,
+// a toast; what did not go well is a notice per line, and stays.
+function outcome(text, cls, { toasted = false } = {}) {
+  if (cls === "ok") {
+    if (toasted && text) toast(text);
+    return;
+  }
+  for (const line of String(text).split("\n")) {
+    const said = line.replace(/^•\s*/, "").trim();
+    if (said) notice({ sentence: said, kind: cls === "err" ? "failed" : "warning" });
+  }
 }
 
 // The label a state reply gives its own return, from its household's list.
@@ -307,92 +368,23 @@ const withEng = (cmd) => (active ? [cmd, vocab.engagement_flag, active] : [cmd])
 
 // ── rendering ───────────────────────────────────────────────────────────
 
-function ruleTooltip(item) {
-  const rules = [];
-  if (item.allowed_extensions.length) rules.push(`Types: ${item.allowed_extensions.join(", ")}`);
-  if (item.required_keywords.length) rules.push(`Must contain: ${item.required_keywords.join(", ")}`);
-  if (item.any_keywords.length) rules.push(`Any of: ${item.any_keywords.join(", ")}`);
-  if (item.expected_count > 1) rules.push(fill(vocab.expected_pattern, { n: item.expected_count }));
-  return rules.join("  ·  ") || "No content rules";
-}
-
-function requestTableRow(item) {
-  return el("tr", { title: ruleTooltip(item), className: item.asked === false ? vocab.not_asked_key : "",
-                    dataset: { row: item.identifier } },
-    el("td", { className: "col-id" }, el("span", { className: "req-id" }, item.identifier)),
-    el("td", {},
-      el("div", { className: "req-doc" }, item.document),
-      el("div", { className: "req-period" }, item.period),
-    ),
-    el("td", { className: "col-num" },
-      `${item.file_count ?? "–"}${item.expected_count > 1 ? ` / ${item.expected_count}` : ""}`),
-    el("td", { className: "col-status" }, chip(item), sideLine(item),
-      // The reason the person gave beside the override - the judgment,
-      // not only the fact that the rules were overridden.
-      item.override_reason ? el("div", { className: "req-reason", title: item.override_reason }, item.override_reason) : null),
-    el("td", { className: "col-recv" }, el("span", { className: "req-recv" }, item.received_date || "—")),
-    el("td", {}, el("div", { className: "req-notes", title: item.validation_notes || "" },
-      item.validation_notes || "—")),
-  );
-}
-
+// The state of one return has arrived (a read or a write's reply): the
+// reminder's letter is drawn into the side sheet, and the shell draws the
+// page (pages.js groups it by the API's `group`) and moves the sheet on
+// (sheet.js). Nothing after the assignment can throw into the write that
+// brought the state: an error of the page's own is a notice, and the write
+// stands (review 2 of S4, note 1).
 function render(state) {
   paths = state.paths;
   lastState = state;
-
-  // Decision 200: every row nobody waits on folds into one closed
-  // set-aside group under the table, as the Status Report folds it - a row
-  // nobody asked for with no document at all (decision 142; one with any
-  // document is work and stays in the table), and a row set aside as not
-  // applicable (decision 116), which leaves the working table. Which rows
-  // are idle is the API's answer (state.items[].not_asked_idle).
-  const setAside = (item) => item.not_asked_idle || isSetAside(item.manual_override);
-  const folded = state.items.filter(setAside);
-  show("rows", state.items.filter((item) => !setAside(item)).map(requestTableRow));
-  show("rows-set-aside", setAsideGroups(folded, (item) => item.not_asked_idle, (item) => item.year)
-    .map((group) => [
-      setAsideHeading(group),
-      el("table", { className: "requests", "aria-label": group.name },
-        el("tbody", {}, group.rows.map(requestTableRow))),
-    ]));
-  $("rows-set-aside-summary").textContent = fill(vocab.set_aside.heading, { n: folded.length });
-  $("rows-set-aside-group").classList.toggle("hidden", folded.length === 0);
-
-  // The one count, from the same summarize() the run log and the reminder use.
-  // Nothing waits for anything: the statuses and the request list are both
-  // in the record (decisions 103 and 104).
-  $("summary").textContent = state.summary ? state.summary.line : "";
-  // Decision 131: how far this return's working copies are short of room
-  // under the clients root - information, not a warning (their names are
-  // cut to fit and everything files). The API's sentence, or nothing.
-  $("room-note").textContent = state.room_note || "";
-  $("room-note").classList.toggle("hidden", !state.room_note);
-
-  // The catalog the engagement was cut from, beside its name in the
-  // toolbar. It is shown exactly as the record holds it — the catalog's
-  // own key is how a person names the return — so the app carries no word
-  // of its own for it, and an engagement made before it was recorded shows
-  // nothing rather than a guess.
-  const engForm = state.engagement ? state.engagement.form : "";
-  $("eng-form").textContent = engForm;
-  $("eng-form").classList.toggle("hidden", !engForm);
-
-  // The engagement's own page beside it: current, behind, or unknown.
-  // Both the label and the word are the API's — the page compares nothing
-  // and names no state — and the class is derived from the word, the same
-  // way a status chip's is.
-  const viewState = state.view ? state.view.state : "";
-  const chipEl = $("view-state");
-  chipEl.textContent = viewState ? `${vocab.view.label}: ${viewState}` : "";
-  chipEl.className = `eng-form view-${viewState}`;
-  chipEl.classList.toggle("hidden", !viewState);
-
-  renderHousehold(state);
-  renderMoved(state);
-  renderReview(state);
-  renderUnfileList(state);
-  renderLock(state);
-  renderReminder(state);
+  if (state.household && rollChoice && rollChoice.household !== state.household.path) rollChoice = null;
+  try {
+    renderLock(state);
+    renderReminder(state);
+  } catch (err) {
+    failed(err);
+  }
+  shellStateArrived(state);   // shell.js: the page, the sheet, and the firm's counts if they moved
 }
 
 // ── The week's reminder (decision 118) ──────────────────────────────────
@@ -456,10 +448,7 @@ function drawReminderReply(reply) {
 }
 
 async function loadReminder() {
-  if (!active) {
-    $("reminder-card").classList.add("hidden");
-    return;
-  }
+  if (!active) return;
   const view = viewGeneration;
   try {
     const result = await call(withEng("reminder"), { stage: reminderStage });
@@ -474,27 +463,25 @@ async function loadReminder() {
   }
 }
 
-// The card with one line and nothing to copy or approve (decision 193).
+// The sheet's reminder with one line and nothing to copy or approve
+// (decision 193): the sheet stays, whatever the read said.
 function drawReminderLine(line) {
-  $("reminder-heading").textContent = vocab.reminder.heading;
-  $("reminder-card").classList.remove("hidden");
-  $("reminder-card").classList.add("line-only");
+  $("sheet-reminder").classList.add("line-only");
+  $("reminder-actions").classList.add("hidden");
   $("reminder-status").textContent = line;
   $("reminder-status").classList.remove("hidden");
 }
 
 function drawReminder(card) {
   reminderCard = card;
-  $("reminder-card").classList.remove("line-only");
+  $("sheet-reminder").classList.remove("line-only");
   const words = vocab.reminder;
   const rows = (card.held || []).length;
   const unsorted = card.unsorted || 0;
   // Held by a row (decision 115), or by files still waiting in the
   // household's inbox (decision 133): the same card either way.
   const held = rows > 0 || unsorted > 0;
-  const quiet = !held && (card.asked || []).length === 0;
-  $("reminder-card").classList.remove("hidden");
-  // Held, the card is the hold, the rows holding it and the toggle, and
+  // Held, the sheet is the hold, the rows holding it and the toggle, and
   // nothing else at all — not even what the record last drafted.
   $("reminder-status").textContent = held ? "" : reminderStatus(card);
   $("reminder-status").classList.toggle("hidden", held);
@@ -507,11 +494,10 @@ function drawReminder(card) {
   $("reminder-held").textContent = card.held_too_long
     ? `${holdLine(rows, unsorted)}\n${card.held_too_long}`
     : holdLine(rows, unsorted);
-  show("reminder-held-rows", (card.held || []).map((row) =>
-    el("li", {},
-      el("span", { className: "rem-hold-id" }, row.identifier),
-      ` ${row.document}`,
-      el("span", { className: "rem-hold-why" }, row.reason))));
+  // A held row is named by its document alone: never its request code, and
+  // the engine's long hold sentence (row.reason) is the status page's, not
+  // the sheet's (SPEC 7.2, 11.1).
+  show("reminder-held-rows", (card.held || []).map((row) => el("li", {}, row.document)));
 
   // The four rungs, each in its own colour, the one in force pressed. Live
   // only when there is a generated letter to re-stage: a held reminder and
@@ -524,13 +510,11 @@ function drawReminder(card) {
       "aria-pressed": String(card.stage === stage.number),
       disabled: !card.editable,
       dataset: { stage: stage.number },
-    }, el("span", { className: "rem-stage-n" }, stage.number), ` ${stage.name}`);
+    }, el("span", { className: "rem-stage-n" }, stage.number), ` ${pagesStage(stage.number)}`);
     button.style.setProperty("--stage-ink", vocab.reminder.palette[stage.colour]);
     return button;
   }));
 
-  $("reminder-hint").textContent = quiet ? words.nothing_to_send : words.stage_toggle_hint;
-  $("reminder-hint").classList.toggle("hidden", held || (!card.editable && !quiet));
   $("reminder-edited").textContent = words.edited_by_hand;
   $("reminder-edited").classList.toggle("hidden", held || !card.file.edited);
   // Why the letter has no link (decision 137, L5): the API's sentence.
@@ -557,9 +541,8 @@ function drawReminder(card) {
   show("reminder-preview", held ? [] : letterNodes(card));
 
   // Held: the hold line, the rows and the toggle, and nothing that reads
-  // like something to send. There is no file to open either.
+  // like something to send. There is no file to open at all (SPEC 7.2).
   $("reminder-actions").classList.toggle("hidden", held);
-  $("btn-open-draft").disabled = !card.file.exists;
 }
 
 // The hold, in the API's words: the rows' line, the inbox's line, or both.
@@ -570,13 +553,16 @@ function holdLine(rows, unsorted) {
   ].filter(Boolean).join(" · ");
 }
 
+// The sheet's caption (SPEC 7.2): the approval the record holds, or when the
+// letter was drafted and at which stage - all the API's words, the dates as
+// the pages say them.
 function reminderStatus(card) {
   const words = vocab.reminder;
   if (card.approved) {
     return fill(words.approved_line, { date: card.approved.date, n: card.approved.stage });
   }
   if (card.lapsed) return words.approved_then_edited;
-  if (card.last) return fill(words.last_drafted_line, { date: card.last.date, n: card.last.stage });
+  if (card.last) return fill(screenWords().sheet.drafted, { date: pagesDay(card.last.date), n: card.last.stage });
   return words.never_drafted_line;
 }
 
@@ -643,7 +629,7 @@ async function copyReminder() {
       "text/html": new Blob([reminderCard.html], { type: "text/html" }),
       "text/plain": new Blob([reminderCard.text], { type: "text/plain" }),
     })]);
-    banner(vocab.reminder.copied, "ok");
+    outcome(vocab.reminder.copied, "ok", { toasted: true });
   } catch (err) {
     failed(err, copyReminder);
   } finally {
@@ -668,7 +654,7 @@ async function approveReminder() {
     const said = approved
       ? fill(vocab.reminder.approved_line, { date: approved.date, n: approved.stage })
       : vocab.reminder.approve;
-    banner(result.set_aside
+    outcome(result.set_aside
       ? `${said}. ${fill(vocab.reminder.set_aside_line, { name: result.set_aside })}.`
       : said, "ok");
   } catch (err) {
@@ -679,32 +665,23 @@ async function approveReminder() {
   }
 }
 
-// ── A copy that wandered: the three answers, all of them a person's ─────
-
-// A working copy that is not where the record put it (decision 109) gets
-// its own card above the review queue, because it is the first question of
-// the morning: nothing is guessed, and the person chooses one of three.
-// The middle answer is offered only when the copy sits in some request's
-// folder — the API says which — because keeping a file where it is means
-// nothing in the review folder or loose under Prepared.
-function renderMoved(state) {
-  const moved = state.moved || [];
-  $("moved-card").classList.toggle("hidden", moved.length === 0);
-  $("moved-heading").textContent = fill(vocab.review_labels.moved_heading, { n: moved.length });
-  $("moved-summary").textContent = vocab.review_labels.moved_summary;
-  const choices = state.items.filter((i) => !isSetAside(i.manual_override));
-  show("moved-list", moved.map((m) => movedRow(m, choices)));
-}
+// ── A copy that wandered: the answers, all of them a person's ───────────
+//
+// A working copy that is not where the record put it (decision 109) is the
+// first question of the morning: nothing is guessed, and the person chooses.
+// The sheet (sheet.js) draws one such row (movedRow) beside the file's name
+// and its request: Put back, or - offered only when the copy sits in some
+// request's folder, which the API says - Keep here.
 
 // The keyword box, one builder for its three places - a moved copy's
-// keep-it-here, the list's row and the deck's card (decision 201, D11): a
+// keep-it-here and the review row (decision 201, D11): a
 // visible label that stays while the person types, and the sentence
 // saying what the word does as its title. Every word is the API's.
 function keywordBox() {
   const words = vocab.review_labels;
   return el("label", { className: "field r-keyword-box" },
     el("span", {}, words.keyword),
-    el("input", { type: "text", className: "r-keyword", title: words.keyword_help }));
+    el("input", { type: "text", className: "r-keyword" }));
 }
 
 // A note a person may leave when setting a document aside or unfiling it, labelled with the
@@ -716,38 +693,34 @@ function noteBox(words) {
     el("input", { type: "text", className: "r-note" }));
 }
 
-function movedRow(m, choices) {
-  const where = m.now || vocab.review_labels.moved_nowhere;
+function movedRow(m, choices, items = choices) {
   // Decision 157: a copy whose original is gone too has nothing to put
-  // back, keep or send to review - each would refuse - so the one answer
-  // offered is the person's Mark missing on the row's own request, which
-  // puts the document back on the client's letter.
+  // back or keep - each would refuse - so the one answer offered is the
+  // person's Mark missing on the row's own request, which puts the document
+  // back on the client's letter.
+  // The button names the request by its name, never its code (SPEC 11.1).
   if (m.gone) {
-    return el("li", { dataset: { original: m.handle, row: m.handle, seq: m.seq } },
-      el("span", { className: "r-name" }, m.original_name),
-      el("span", { className: "r-why" }, `${m.home} → ${where}`),
-      m.identifier && el("button", { className: "btn r-withdraw", dataset: { identifier: m.identifier } },
-        fill(vocab.review_labels.mark_missing, { identifier: m.identifier })),
+    const asked = m.identifier ? items.find((i) => i.identifier === m.identifier) : null;
+    if (m.identifier && !asked) throw new Error(`items.${m.identifier}`);
+    return el("li", { className: "sheet-row", dataset: { original: m.handle, row: m.handle, seq: m.seq } },
+      asked && el("button", { className: "btn btn-primary r-withdraw", dataset: { identifier: m.identifier } },
+        fill(vocab.review_labels.mark_missing, { identifier: pagesItemName(asked) })),
     );
   }
-  return el("li", { dataset: { original: m.handle, row: m.handle, seq: m.seq } },
-    el("span", { className: "r-name" }, m.original_name),
-    el("span", { className: "r-why" }, `${m.home} → ${where}`),
+  return el("li", { className: "sheet-row", dataset: { original: m.handle, row: m.handle, seq: m.seq } },
     // The picker is the same picker: a person may keep the copy where it
     // is and correct the request in one click, so it starts on the request
     // whose folder holds it.
-    m.in_request && el("select", { "aria-label": `Request for ${m.original_name}` },
+    m.in_request && el("select", { "aria-label": vocab.review_labels.hand_over_request },
       choices.map((i) => requestOption(i, m.in_request))),
     m.in_request && keywordBox(),
     el("button", { className: "btn btn-primary r-restore" }, vocab.review_labels.restore),
     m.in_request && el("button", { className: "btn r-keep" }, vocab.review_labels.keep),
-    el("button", { className: "btn r-review" }, vocab.review_labels.send_to_review),
   );
 }
 
-async function restoreMoved(li) {
+async function restoreMoved(li, btn) {
   const view = viewGeneration;   // drawn only if this return is still the one shown (D6)
-  const btn = li.querySelector(".r-restore");
   btn.disabled = true;
   try {
     const result = await call(withEng("restore"), {
@@ -758,7 +731,7 @@ async function restoreMoved(li) {
     const r = result.restored;
     const notes = [`${r.original_name}: ${r.decision}`, r.reason];
     if (r.scan_note) notes.push(r.scan_note);
-    banner(notes.join(". ") + ".", r.parked_as || r.scan_note ? "warn" : "ok");
+    outcome(notes.join(". ") + ".", r.parked_as || r.scan_note ? "warn" : "ok");
   } catch (err) {
     await refused(err, btn);
   }
@@ -766,13 +739,12 @@ async function restoreMoved(li) {
 
 // Keeping the copy where it is, is a filing, so it is the filing command,
 // with the request the person left the picker on and the keyword they typed.
-async function keepMoved(li) {
+async function keepMoved(li, btn) {
   const identifier = li.querySelector("select").value;
   if (!identifier) {
-    toast("Pick the request this document belongs to first.");
+    toastWord("pick_request");
     return;
   }
-  const btn = li.querySelector(".r-keep");
   btn.disabled = true;
   try {
     await fileRow(li.dataset.original, identifier, Number(li.dataset.seq), typed(li, ".r-keyword"));
@@ -781,62 +753,7 @@ async function keepMoved(li) {
   }
 }
 
-// And send to review is an unfiling: the copy goes back under the client's
-// own name and the row parks.
-async function reviewMoved(li) {
-  const view = viewGeneration;   // drawn only if this return is still the one shown (D6)
-  const btn = li.querySelector(".r-review");
-  btn.disabled = true;
-  try {
-    const result = await call(withEng("unfile"), {
-      original: li.dataset.original,
-      seq: Number(li.dataset.seq),
-    });
-    renderFor(view, result.state);
-    const u = result.unfiled;
-    const notes = [`${u.original_name}: ${u.decision}`];
-    if (u.left_filed) notes.push(u.left_filed);
-    if (u.scan_note) notes.push(u.scan_note);
-    banner(notes.join(". ") + ".", u.left_filed || u.scan_note ? "warn" : "ok");
-  } catch (err) {
-    await refused(err, btn);
-  }
-}
-
 // ── Needs review: a person's decision, carried out by the filer ──────────
-
-function renderReview(state) {
-  const rows = state.index || [];
-  const parked = rows.filter((e) => e.decision === vocab.decisions.needs_review);
-  // A document a person said nothing asks for keeps its copy and its row;
-  // it is out of the way, not gone, and filing it undoes the decision.
-  const dismissed = rows.filter((e) => e.decision === vocab.decisions.dismissed);
-  $("review-card").classList.toggle("hidden", parked.length === 0 && dismissed.length === 0);
-  const choices = state.items.filter((i) => !isSetAside(i.manual_override));
-  const ids = new Set(state.items.map((i) => i.identifier));
-  // The triage the API computed, by the same handle every review command
-  // takes. Only a parked row has one; a set-aside row is not triaged.
-  const triaged = new Map((state.review || []).map((t) => [t.handle, t]));
-  const people = (state.engagement || {}).people || [];
-  // Three buckets (decision 190), each under the API's heading and in the
-  // API's order; which bucket a row is in is the API's answer, never ours.
-  const words = vocab.review_labels;
-  show("review-list", words.bucket_order.map((bucket) => {
-    const here = parked.filter((e) => e.bucket === bucket);
-    return here.length
-      ? [el("li", { className: "r-bucket" }, words.buckets[bucket]),
-         here.map((e) => reviewRow(e, choices, ids, true, triaged.get(e.handle), people))]
-      : [];
-  }));
-  // The same queue drawn the other way (decision 114), from the same state:
-  // both renderings are always drawn and the mode shows one of them.
-  renderDeck(state);
-  applyReviewMode();
-  $("dismissed-card").classList.toggle("hidden", dismissed.length === 0);
-  $("dismissed-heading").textContent =
-    fill(vocab.review_labels.dismissed_heading, { n: dismissed.length });
-  show("dismissed-list", dismissed.map((e) => reviewRow(e, choices, ids, false, null, people)));
-}
 
 // The card's offer beside a page that named nobody on this return
 // (decision 128): the person it belongs to, and the spelling this page
@@ -868,26 +785,30 @@ function spellingFrom(node) {
 // One entry of the picker: the identifier and the document, joined by the
 // one separator a reason sentence uses between the same two things.
 function requestOption(item, picked) {
-  return el("option", { value: item.identifier, selected: item.identifier === picked },
-    `${item.identifier}${vocab.triage.identifier_separator}${item.document}`);
+  // The request is named by its document; the code is only the value.
+  return el("option", { value: item.identifier, selected: item.identifier === picked }, item.document);
 }
 
-// One row of the card. The question is the same whether the document is
-// waiting or has been set aside - which request does this belong to - so it
-// is asked the same way; only an open question offers the two boxes, the
-// button that sets a document aside, and the shortlist.
+// One file's answers, as the side sheet draws them (sheet.js places the parts
+// of this row in the sheet's body, its More fold and its footer). The
+// question is the same whether the document is waiting or has been set aside
+// - which request does this belong to - so it is asked the same way; only an
+// open question offers the reasons, the two boxes, the button that sets a
+// document aside, and the shortlist.
 //
 // The shortlist is the picker's first entries, in the order the API ranked
-// them, and the sentence behind each is listed beneath the row: an <option>
+// them, and the sentence behind each is listed beneath the picker: an <option>
 // can carry no second line, and the reason is the whole point - a person
 // reads why before they pick. Everything below the divider is every other
 // request, because a suggestion is a suggestion and nothing is taken away.
-// A row that is not a document (decision 190) is never opened and never
-// filed: it says its true type, and offers only the answer that sets it
-// aside. A row offers Open only where the API named a key for it
-// (decision 190, following 184: a document the tracker read and parked, never
-// an email or a zip, nor a file whose reading was refused), and Open opens
-// its review copy by that key in state.paths - never a path of ours.
+// A row that is not a document (decision 190) is never filed: it says its
+// true type, and offers only the answer that sets it aside. The open icon
+// offers the review copy only where the API named a key for it (decision
+// 190, following 184: a document the tracker read and parked, never an email
+// or a zip, nor a file whose reading was refused), and opens it by that key
+// in state.paths - never a path of ours.
+const BELONGS_TO = "Belongs To…";
+
 function notADocument(row) {
   return Boolean(row) && row.bucket === vocab.review_labels.not_a_document;
 }
@@ -899,20 +820,12 @@ function trueType(row) {
     : null;
 }
 
-function openCopy(row, className) {
-  return row && row.open_key && !notADocument(row)
-    ? el("button", { className: `btn ${className}`, dataset: { key: row.open_key } },
-        vocab.review_labels.open_copy)
-    : null;
-}
-
 function reviewRow(e, choices, ids, open, triage, people = []) {
+  const attrs = { className: "sheet-row", dataset: { original: e.handle, row: e.handle, seq: e.seq } };
   if (notADocument(e)) {
-    return el("li", { dataset: { original: e.handle, row: e.handle, seq: e.seq } },
-      el("span", { className: "r-name" }, e.original_name),
+    return el("li", attrs,
       trueType(e),
-      el("span", { className: "r-why" }, e.reason, cameFrom(e)),
-      open && noteBox(vocab.review_labels.dismiss_note),
+      open && el("div", { className: "sheet-more hidden" }, noteBox(vocab.review_labels.dismiss_note)),
       open && el("button", { className: "btn r-dismiss" }, vocab.review_labels.dismiss),
     );
   }
@@ -925,13 +838,11 @@ function reviewRow(e, choices, ids, open, triage, people = []) {
   // own first candidate, which is what it started on before there was one.
   const guess = suggested[0] || (e.candidates || [])[0] || "";
   const picked = guess && ids.has(guess) ? guess : "";
-  // The row's record version travels with the card and comes back with the
+  // The row's record version travels with the sheet and comes back with the
   // click, so the filer judges the decision against the row it was made on.
-  return el("li", { dataset: { original: e.handle, row: e.handle, seq: e.seq } },
-    el("span", { className: "r-name" }, e.original_name),
-    el("span", { className: "r-why" }, e.reason, cameFrom(e)),
-    el("select", { "aria-label": `Request for ${e.original_name}` },
-      el("option", { value: "" }, "Belongs to…"),
+  return el("li", attrs,
+    el("select", { "aria-label": BELONGS_TO },
+      el("option", { value: "" }, BELONGS_TO),
       best.length
         ? [el("optgroup", { label: vocab.review_labels.suggested },
             best.map((i) => requestOption(i, picked))),
@@ -948,20 +859,22 @@ function reviewRow(e, choices, ids, open, triage, people = []) {
       ((triage && triage.set_aside) || []).map((s) =>
         el("li", { className: "r-set-aside" }, fill(vocab.triage.set_aside_note, s)))),
     open && issuerBox(triage),
-    open && teachSpelling(triage, people),
-    open && keywordBox(),
-    open && noteBox(vocab.review_labels.dismiss_note),
-    open && openCopy(e, "r-open-copy"),
-    el("button", { className: "btn btn-primary r-file" },
-      open ? vocab.review_labels.file : vocab.review_labels.file_anyway),
-    open && el("button", { className: "btn r-dismiss" }, vocab.review_labels.dismiss),
-    // And the answer that files it under a request of another return this
-    // drop folder feeds (decision 129), offered only where there is one.
-    fedReturns().length
-      && el("button", { className: "btn r-hand-over" }, vocab.review_labels.hand_over),
     // And the one click (decision 204), on a row that names another
     // household's person: what it will file, then the button.
     waitsFor(triage, "r-where-it-waits"),
+    // The rarely used answers fold under More (SPEC 7.1): the keyword, the
+    // spelling to teach, the reason, and the answer that files it under a
+    // request of another return this drop folder feeds (decision 129),
+    // offered only where there is one.
+    open && el("div", { className: "sheet-more hidden" },
+      keywordBox(),
+      teachSpelling(triage, people),
+      noteBox(vocab.review_labels.dismiss_note),
+      fedReturns().length
+        ? el("button", { className: "btn btn-subtle r-hand-over" }, vocab.review_labels.hand_over) : null),
+    el("button", { className: "btn btn-primary r-file" },
+      open ? vocab.review_labels.file : vocab.review_labels.file_anyway),
+    open && el("button", { className: "btn r-dismiss" }, vocab.review_labels.dismiss),
   );
 }
 
@@ -980,8 +893,7 @@ function waitsFor(triage, className) {
   if (!w) return null;
   return el("div", { className: "where-it-waits" },
     el("ul", { className: "r-reasons" },
-      w.requests.map((r) => el("li", {},
-        `${r.identifier}${vocab.triage.identifier_separator}${r.document}`)),
+      w.requests.map((r) => el("li", {}, r.document)),
       w.answers.length
         ? el("li", {}, `${vocab.review_labels.also_answers} ${w.answers.join(", ")}`) : null),
     el("button", { className: `btn btn-primary ${className}` },
@@ -1032,7 +944,7 @@ async function fileRow(original, identifier, seq, keyword, spelling) {
   // the API's sentence, shown as it stands.
   if (a.overrode_shortlist) notes.push(a.overrode_shortlist);
   if (a.scan_note) notes.push(a.scan_note);
-  banner(notes.join(". ") + ".",
+  outcome(notes.join(". ") + ".",
     a.keyword_note || a.spelling_note || a.left_in_review || a.overrode_shortlist || a.scan_note
       ? "warn" : "ok");
 }
@@ -1058,8 +970,8 @@ function issuerBox(triage) {
 }
 
 // The one place the issuer is added and the document filed. The list's
-// row and the deck's card both reach it; a refusal is said the way a
-// filing's is, and the card is drawn again from the record.
+// row reaches it; a refusal is said the way a filing's is, and the row is
+// drawn again from the record.
 async function addIssuerAndFile(node, btn) {
   const box = btn.closest(".r-issuer");
   const view = viewGeneration;   // drawn only if this return is still the one shown (D6)
@@ -1073,7 +985,7 @@ async function addIssuerAndFile(node, btn) {
     const done = result.added_and_filed;
     const notes = [done.said];
     if (done.assigned.scan_note) notes.push(done.assigned.scan_note);
-    banner(notes.join("\n"), done.assigned.scan_note ? "warn" : "ok");
+    outcome(notes.join("\n"), done.assigned.scan_note ? "warn" : "ok");
   } catch (err) {
     await refused(err, btn);
   }
@@ -1122,7 +1034,7 @@ async function fileHandOver() {
   const btn = $("ho-file");
   const identifier = $("ho-request").value;
   if (!handingOver || !identifier) {
-    toast("Pick the request this document belongs to first.");
+    toastWord("pick_request");
     return;
   }
   btn.disabled = true;
@@ -1152,7 +1064,7 @@ async function handOver(spec) {
     { label: a.label, identifier: a.identifier })}`];
   if (a.left_in_review) notes.push(a.left_in_review);
   if (a.scan_note) notes.push(a.scan_note);
-  banner(notes.join(". ") + ".", a.left_in_review || a.scan_note ? "warn" : "ok");
+  outcome(notes.join(". ") + ".", a.left_in_review || a.scan_note ? "warn" : "ok");
 }
 
 // The one click (decision 204): the row and its version, and nothing
@@ -1166,13 +1078,12 @@ async function fileWhereItWaits(original, seq, btn) {
   }
 }
 
-async function assignParked(li) {
+async function assignParked(li, btn) {
   const identifier = li.querySelector("select").value;
   if (!identifier) {
-    toast("Pick the request this document belongs to first.");
+    toastWord("pick_request");
     return;
   }
-  const btn = li.querySelector(".r-file");
   btn.disabled = true;
   try {
     await fileRow(li.dataset.original, identifier, Number(li.dataset.seq),
@@ -1183,253 +1094,85 @@ async function assignParked(li) {
 }
 
 // A refusal a person has to look at again: the sentence is the API's, and
-// the card is redrawn from the record so what they see next is what the
+// the page is drawn again from the record so what they see next is what the
 // record now holds rather than the row they acted on.
 async function refused(err, btn) {
   failed(err);
-  btn.disabled = false;
+  if (btn) btn.disabled = false;
   await showReturn(active);
-}
-
-// ── The same queue, one card at a time (decision 114) ────────────────────
-
-// In March one client can hold a dozen parked rows, and the list makes a
-// person read every row's whole picker to take the easy calls. The cards are
-// a second rendering of state.review - never a second state: the deck is the
-// API's order, and the only thing the page holds of its own is which rows a
-// person sent to the back and which rendering they are on. After every
-// action the deck is rebuilt from the state the API just returned, so a row
-// filed or set aside anywhere else simply leaves it and the count is always
-// the queue's.
-
-// Which rendering the person is on, remembered on this machine alone. It is
-// a preference and not a fact about the engagement, so nothing about it is
-// recorded (decision 83), and the key is a key - no one reads it - so the
-// renderer may type it where it may type no word. A store that refuses to
-// answer (a locked profile, a private window) leaves the app on the list.
-const REVIEW_MODE_STORAGE_KEY = "jpa.tracker.review-mode";
-const MODE_LIST = "list";
-const MODE_CARDS = "cards";
-
-let reviewMode = storedReviewMode();
-let skipped = [];          // row handles sent to the back of the deck
-let deckState = null;      // the state the deck was last drawn from
-
-function storedReviewMode() {
-  try {
-    return localStorage.getItem(REVIEW_MODE_STORAGE_KEY) === MODE_CARDS ? MODE_CARDS : MODE_LIST;
-  } catch (err) {
-    return MODE_LIST;
-  }
-}
-
-function setReviewMode(mode) {
-  reviewMode = mode === MODE_CARDS ? MODE_CARDS : MODE_LIST;
-  try {
-    localStorage.setItem(REVIEW_MODE_STORAGE_KEY, reviewMode);
-  } catch (err) {
-    // A machine that will not remember it still shows what was asked for.
-  }
-  applyReviewMode();
-}
-
-// Both renderings are drawn; this shows one of them and says which button
-// is the one in force.
-function applyReviewMode() {
-  const cards = reviewMode === MODE_CARDS;
-  $("review-list").classList.toggle("hidden", cards);
-  $("review-deck").classList.toggle("hidden", !cards);
-  $("review-mode-cards").classList.toggle("on", cards);
-  $("review-mode-list").classList.toggle("on", !cards);
-  $("review-mode-cards").setAttribute("aria-pressed", String(cards));
-  $("review-mode-list").setAttribute("aria-pressed", String(!cards));
-}
-
-// The deck: the API's order with the sent-back rows after it, in the order
-// they were sent back. A row that has left the queue leaves the skip list
-// with it, so nothing here outlives the row it was about.
-function deckOrder(queue) {
-  const here = new Set(queue.map((t) => t.handle));
-  skipped = skipped.filter((location) => here.has(location));
-  const back = new Set(skipped);
-  return [
-    ...queue.filter((t) => !back.has(t.handle)),
-    ...skipped.map((location) => queue.find((t) => t.handle === location)),
-  ];
-}
-
-function renderDeck(state) {
-  deckState = state;
-  const rows = new Map((state.index || []).map((e) => [e.handle, e]));
-  const queue = (state.review || []).filter((t) => rows.has(t.handle));
-  const deck = deckOrder(queue);
-  // The card on top is the one that gets answered; the position says how far
-  // into the deck the person has walked, and the total is the queue's own -
-  // sending a card to the back never changes it.
-  const place = deck.length ? (skipped.length % deck.length) + 1 : 0;
-  show("review-deck", deck.length
-    ? [deckCard(deck[0], rows.get(deck[0].handle), place, deck.length,
-                (state.engagement || {}).people || [])]
-    : []);
-}
-
-// One card: the document, why it parked, the top suggestion with the
-// sentence behind it, the rows the evidence points at that are set aside,
-// and the three answers. A card with nothing suggested has no Accept -
-// there is nothing to accept - and says so in the API's words.
-// The client's own subfolder a parked file came out of, read from the row's
-// column and said in the API's words (decision 190) - never a clause of its
-// reason - or nothing for a file dropped at the inbox's top.
-function cameFrom(row) {
-  return row.subfolder
-    ? el("span", { className: "r-subfolder" },
-        fill(vocab.review_labels.came_from, { folder: row.subfolder }))
-    : null;
-}
-
-function deckCard(t, row, place, total, people = []) {
-  if (notADocument(t)) {
-    // Nothing to open and nothing to file (decision 190): the card says
-    // what the file really is, why, and lets the person move on.
-    return el("div", { className: "deck-card card", dataset: { original: t.handle, row: t.handle, seq: t.seq } },
-      el("span", { className: "r-name" }, t.original_name),
-      trueType(t),
-      el("span", { className: "r-why" }, row ? row.reason : "", row && cameFrom(row)),
-      el("span", { className: "deck-position" },
-        fill(vocab.review_labels.card_position, { n: place, total })),
-      el("button", { className: "btn c-skip" }, vocab.review_labels.skip),
-    );
-  }
-  const best = (t.shortlist || [])[0];
-  // The suggestion Accept files to travels on the card, as the row's record
-  // version does: what comes back with the click is what was on the screen.
-  const identified = best ? { identifier: best.identifier } : {};
-  return el("div", { className: "deck-card card",
-                     dataset: { original: t.handle, row: t.handle, seq: t.seq, ...identified } },
-    el("span", { className: "r-name" }, t.original_name),
-    el("span", { className: "r-why" }, row ? row.reason : "", row && cameFrom(row)),
-    best && el("span", { className: "deck-suggested" }, vocab.review_labels.suggested),
-    el("ul", { className: "r-reasons" },
-      best
-        ? el("li", {}, best.reason)
-        : el("li", { className: "r-nothing" }, vocab.triage.nothing_suggested),
-      (t.set_aside || []).map((s) =>
-        el("li", { className: "r-set-aside" }, fill(vocab.triage.set_aside_note, s)))),
-    issuerBox(t),
-    teachSpelling(t, people),
-    keywordBox(),
-    el("span", { className: "deck-position" },
-      fill(vocab.review_labels.card_position, { n: place, total })),
-    best && el("button", { className: "btn btn-primary c-accept" }, vocab.review_labels.accept),
-    openCopy(t, "c-open-copy"),
-    el("button", { className: "btn c-open" }, vocab.review_labels.open_in_list),
-    // The deck offers what the list offers: a request of another return
-    // this drop folder feeds (decision 129).
-    fedReturns().length
-      && el("button", { className: "btn c-hand-over" }, vocab.review_labels.hand_over),
-    waitsFor(t, "c-where-it-waits"),
-    el("button", { className: "btn c-skip" }, vocab.review_labels.skip),
-  );
-}
-
-// Accept is File it: the same call, made with the suggestion the card is
-// showing and the keyword the person typed on it.
-async function acceptCard(card) {
-  const identifier = card.dataset.identifier;
-  const btn = card.querySelector(".c-accept");
-  btn.disabled = true;
-  try {
-    await fileRow(card.dataset.original, identifier, Number(card.dataset.seq),
-                  typed(card, ".r-keyword"), spellingFrom(card));
-  } catch (err) {
-    await refused(err, btn);
-  }
-}
-
-// The hard calls belong to the full picker, where every request is offered
-// (decision 84): the card hands the row over rather than growing a picker of
-// its own.
-function openCardInList(card) {
-  setReviewMode(MODE_LIST);
-  const wanted = card.dataset.original;
-  for (const li of $("review-list").children) {
-    const hit = li.dataset.original === wanted;
-    li.classList.toggle("focused", hit);
-    if (hit) li.scrollIntoView({ block: "center" });
-  }
 }
 
 // Open is the review copy the API named under this key in state.paths
 // (decision 190): the shell opens only the paths the API reported, so a
-// key the state does not hold opens nothing.
+// key the state does not hold opens nothing. The sheet's open icon calls it.
 function openReviewCopy(btn) {
   const target = paths && paths[btn.dataset.key];
-  if (target) window.tracker.open(target);
-}
-
-// Skip is a reorder and nothing else: the card goes to the back, the queue
-// is the same length, and nothing is sent anywhere.
-function skipCard(card) {
-  const location = card.dataset.original;
-  skipped = [...skipped.filter((one) => one !== location), location];
-  if (deckState) renderDeck(deckState);
+  if (target) openPath(target);
 }
 
 // ── The way back, so nobody corrects a filing in Explorer ────────────────
 
-// Folded away by default. It is a list of what is already right, there for
-// the one row that is not, and the index is the only thing that knows where
-// a working copy went: a correction made in Explorer is one it never learns.
-// One original can have a copy under more than one request (a page that
-// carried two forms), so each destination is named; Unfile still takes the
-// one original, because the row is one row and every copy goes back with it.
-function renderUnfileList(state) {
-  const filed = (state.index || []).filter((e) => e.decision === vocab.decisions.filed);
-  $("filed-card").classList.toggle("hidden", filed.length === 0);
-  $("filed-heading").textContent = fill(vocab.review_labels.filed_heading, { n: filed.length });
-  show("filed-list", filed.map((e) =>
-    el("li", { dataset: { original: e.handle, row: e.handle, seq: e.seq } },
-      el("span", { className: "r-name" }, e.original_name),
-      el("span", { className: "r-why" }, `${e.identifier} — ${e.filed_names.join(", ")}`),
-      noteBox(vocab.review_labels.unfile_note),
-      el("button", { className: "btn r-unfile" }, vocab.review_labels.unfile),
-      // Decision 146: a consolidated statement answers other requests
-      // without a copy; each can be marked missing again from here.
-      e.answered.length ? el("span", { className: "r-why" }, vocab.review_labels.also_answers) : null,
-      ...e.answered.map((identifier) =>
-        el("button", { className: "btn btn-small r-withdraw", dataset: { identifier } },
-          fill(vocab.review_labels.mark_missing, { identifier }))),
-    )));
+// A filed original is unfiled, or one request it answered is marked missing,
+// from the right-click menu of a request already answered (SPEC 5.2, the
+// `received` template); the index is the only thing that knows where a working copy
+// went, and a correction made in Explorer is one it never learns. One
+// original can have a copy under more than one request (a page that carried
+// two forms); Unfile still takes the one original, because the row is one row
+// and every copy goes back with it. Each takes the row's handle and its
+// record version (`seq`) and no button: the menu has none.
+
+// A menu item has no button to grey, so the write in flight is remembered by
+// what it writes: a second Unfile of the same original before the reply would
+// carry the same `seq`, be refused, and be reported as a failure although the
+// first worked. writeBusy() lets the row's menu grey the item meanwhile.
+const writesInFlight = new Set();
+function writeKey(command, original, identifier) {
+  return `${command} ${original} ${identifier || ""}`;
+}
+function writeBusy(command, original, identifier) {
+  return writesInFlight.has(writeKey(command, original, identifier));
+}
+function writeStart(key) {
+  if (writesInFlight.has(key)) return false;
+  writesInFlight.add(key);
+  return true;
+}
+function writeDone(key) {
+  writesInFlight.delete(key);
 }
 
 // The statement stays filed; only the one request comes off what it
 // answers, and the re-scan puts that request back to what its folder holds.
-async function withdrawAnswer(btn) {
+async function withdrawAnswer(spec, btn) {
   const view = viewGeneration;   // drawn only if this return is still the one shown (D6)
-  const li = btn.closest("li");
-  btn.disabled = true;
+  const busy = writeKey("mark-missing", spec.original, spec.identifier);
+  if (!writeStart(busy)) return;
+  if (btn) btn.disabled = true;
   try {
     const result = await call(withEng("mark-missing"), {
-      original: li.dataset.original,
-      identifier: btn.dataset.identifier,
-      note: typed(li, ".r-note"),
-      seq: Number(li.dataset.seq),
+      original: spec.original,
+      identifier: spec.identifier,
+      note: spec.note || "",
+      seq: Number(spec.seq),
     });
     renderFor(view, result.state);
     const m = result.marked_missing;
     const notes = [`${m.original_name}: ${m.reason}`];
     if (m.scan_note) notes.push(m.scan_note);
-    banner(notes.join(". ") + ".", m.scan_note ? "warn" : "ok");
+    outcome(notes.join(". ") + ".", m.scan_note ? "warn" : "ok");
   } catch (err) {
     await refused(err, btn);
+  } finally {
+    writeDone(busy);
   }
 }
 
 // Nothing is deleted and nothing is moved: the row is rewritten, so the
 // banner says what the row now reads and the file is still where it was.
-async function dismissParked(li) {
+// From the sheet's set-aside button, or the row's right-click menu (the
+// sheet presses it), with the note the person left in More.
+async function dismissParked(li, btn) {
   const view = viewGeneration;   // drawn only if this return is still the one shown (D6)
-  const btn = li.querySelector(".r-dismiss");
   btn.disabled = true;
   try {
     const result = await call(withEng("dismiss"), {
@@ -1440,154 +1183,113 @@ async function dismissParked(li) {
     renderFor(view, result.state);
     const d = result.dismissed;
     const notes = [`${d.original_name}: ${d.decision}`, d.reason];
-    banner(notes.join(". ") + ".", "ok");
+    outcome(notes.join(". ") + ".", "ok");
   } catch (err) {
     await refused(err, btn);
+  }
+}
+
+// A right-click Unfile asks first, in a small box (ruling 16): the file's
+// name, the optional reason the old list's Unfile carried, Cancel and the
+// confirm. The reason goes to the write as `note`; it is never required.
+let unfiling = null;
+function openUnfile(spec) {
+  const words = vocab.review_labels;
+  unfiling = spec;
+  $("uf-title").textContent = words.unfile;
+  $("uf-name").textContent = spec.name || "";
+  $("uf-note-label").textContent = words.unfile_note;
+  $("uf-note").value = "";
+  $("uf-cancel").textContent = vocab.editor.cancel;
+  $("uf-confirm").textContent = words.unfile;
+  $("uf-confirm").disabled = false;
+  openDialog("unfile-modal");
+}
+
+async function confirmUnfile() {
+  if (!unfiling) return;
+  const btn = $("uf-confirm");
+  btn.disabled = true;   // the write is in flight: one press, one write
+  try {
+    await unfileDocument({ ...unfiling, note: $("uf-note").value.trim() });
+  } finally {
+    btn.disabled = false;
+    closeDialog("unfile-modal");
   }
 }
 
 // The copy goes back under the client's own name and the request reverts in
 // the same breath, so the banner says where the document is now, not what
 // it stopped being.
-async function unfileDocument(li) {
+async function unfileDocument(spec) {
   const view = viewGeneration;   // drawn only if this return is still the one shown (D6)
-  const btn = li.querySelector(".r-unfile");
-  btn.disabled = true;
+  const busy = writeKey("unfile", spec.original);
+  if (!writeStart(busy)) return;
   try {
     const result = await call(withEng("unfile"), {
-      original: li.dataset.original,
-      note: typed(li, ".r-note"),
-      seq: Number(li.dataset.seq),
+      original: spec.original,
+      note: spec.note || "",
+      seq: Number(spec.seq),
     });
     renderFor(view, result.state);
     const u = result.unfiled;
     const notes = [`${u.original_name}: ${u.decision}`];
     if (u.left_filed) notes.push(u.left_filed);
     if (u.scan_note) notes.push(u.scan_note);
-    banner(notes.join(". ") + ".", u.left_filed || u.scan_note ? "warn" : "ok");
+    outcome(notes.join(". ") + ".", u.left_filed || u.scan_note ? "warn" : "ok");
   } catch (err) {
-    await refused(err, btn);
+    await refused(err, null);
+  } finally {
+    writeDone(busy);
   }
 }
 
-// The picker is grouped by household (decision 125): a return is named by
-// its household, its year and its own name, and two households may each
-// hold a return of the same name. The names are the API's; the page
-// only groups them.
-function renderEngagements() {
-  const byHousehold = new Map(households.map((h) => [h.path, []]));
-  for (const e of engagements) {
-    if (!byHousehold.has(e.household)) byHousehold.set(e.household, []);
-    byHousehold.get(e.household).push(e);
-  }
-  const named = new Map(households.map((h) => [h.path, h.name]));
-  show("eng-select", [...byHousehold]
-    .filter(([, list]) => list.length)
-    .map(([path, list]) =>
-      el("optgroup", { label: named.get(path) || path },
-        list.map((e) => el("option", { value: e.path, selected: e.path === active }, e.name)))));
-}
-
-// Every folder the walk left alone, with the one sentence saying why. The
-// card is there only when there is one; nothing in a misfit is ever read,
-// moved or renamed, and the app says so in the API's own words.
+// Every folder the walk left alone, with the one sentence saying why: a
+// notice with the count and Show, which opens the dialog of names (S5's
+// #misfits-modal). Nothing in a misfit is ever read, moved or renamed. The
+// list itself goes to the dialog; the notice carries no path.
 function renderMisfits() {
-  const words = vocab.household;
-  $("misfits-card").classList.toggle("hidden", misfits.length === 0);
-  $("misfits-heading").textContent = `${words.misfits_heading} (${misfits.length})`;
-  $("misfits-note").textContent = words.misfits_note;
-  show("misfits-list", misfits.map((m) =>
-    el("li", { className: "r-item" },
-      el("div", { className: "r-name" }, m.where || m.path),
-      el("div", { className: "r-why" }, m.sentence))));
+  if (!misfits.length) {
+    clearNotice("misfits");
+    return;
+  }
+  const words = vocab.screen.notices;
+  keyedNotice("misfits", { sentence: fill(words.skipped, { n: misfits.length }), kind: "warning" },
+    { action: { label: words.show, run: () => (typeof openMisfits === "function" ? openMisfits() : unanswered("misfits")) } });
 }
 
-// The household this return belongs to: what the firm typed about it, the
-// year's returns as buttons that switch the picker, and the one queue a
-// person works across it. Every word is the API's.
-function renderHousehold(state) {
-  const words = vocab.household;
-  const hh = state.household;
-  $("household-card").classList.toggle("hidden", !hh);
-  if (!hh) return;
-  // The roll fold's choices belong to the household they were made on
-  // (decision 196): a redraw of it keeps them, another household's drops them.
-  if (rollChoice && rollChoice.household !== hh.path) rollChoice = null;
-  $("household-heading").textContent = words.heading;
-  $("household-name").textContent = hh.name;
-  $("household-members-label").textContent = words.members_label;
-  $("household-members-label").title = words.members_help;
-  $("household-members").textContent = hh.members.length ? hh.members.join(", ") : "—";
-  $("household-contact-label").textContent = words.contact_label;
-  $("household-contact-label").title = words.contact_help;
-  $("household-contact").textContent = hh.contact || "—";
-  $("household-link-label").textContent = words.link_label;
-  $("household-link-label").title = words.link_help;
-  $("household-link").textContent = hh.link || "—";
-  const twoYears = hh.open_years.length > 1;
-  $("household-two-years").classList.toggle("hidden", !twoYears);
-  $("household-two-years").textContent = twoYears
-    ? fill(words.two_open_years, { years: hh.open_years.join(", ") }) : "";
-  // Paused (decision 188): the folder is the name, and the record claims
-  // another. The API's sentence and the one action; nothing else is typed.
-  const pause = hh.pause || {};
-  shownPause = pause;
-  $("household-paused").classList.toggle("hidden", !pause.sentence);
-  $("household-paused-note").textContent = pause.sentence || "";
-  $("btn-accept-folder-name").textContent = words.accept_folder_name;
-  $("btn-accept-folder-name").title = words.accept_folder_name_help;
-  $("btn-accept-folder-name").classList.toggle("hidden", !pause.scope);
-  $("household-returns-head").textContent = words.returns_heading;
-  const open = hh.open_years.length === 1 ? hh.open_years[0] : null;
-  // Each return of the open year, with its own reminder's state beside it
-  // (decision 128), so the household's letters stand side by side. There
-  // is still one letter per return and the Reminder card is still where a
-  // person approves one: this is a line, never a send.
-  show("household-returns", hh.returns
-    .filter((r) => open === null || r.year === open)
-    .map((r) => el("div", { className: "household-return" },
-      el("button", {
-        className: `btn btn-small${r.path === active ? " btn-primary" : ""}`,
-        dataset: { path: r.path },
-      }, r.label),
-      r.reminder && el("span", { className: "wiz-note" }, returnReminderLine(r.reminder, r.label)))));
-  renderRollFold(hh);
-  $("household-queue").textContent = fill(words.queue_line, { n: hh.queue });
-  $("btn-edit-household").textContent = words.edit;
-  // A return is added to the household on screen, never to one picked on
-  // another page (decision 196); while it is paused the pause is the work.
-  $("btn-add-return").textContent = words.add_return;
-  $("btn-add-return").classList.toggle("hidden", Boolean(pause.sentence));
-  renderFeeds(hh);
-  renderSharing(hh);
-}
-
-// ── the household's roll fold (decisions 126 and 196) ─────────────────────
-// A household rolls as a household, from its own card, and only when the
-// API names the year (state.household.roll_year: one open year, not paused,
-// and that year has ended). Every return the roll carries is
+// ── the household's roll dialog (decisions 126 and 196) ────────────────────
+// A household rolls as a household, from the Client menu's Roll forward…, and
+// only when the API names the year (state.household.roll_year: one open year,
+// not paused, and that year has ended). Every return the roll carries is
 // ticked; an unticked one is retired, which the API's sentence says before
 // anything is unticked. The year is named, never typed, and which returns
-// the roll carries is the API's word too (each return's rollable).
+// the roll carries is the API's word too (each return's rollable). The
+// ticks and picks belong to the household they were made on (decision 196):
+// another household's leftover choice is dropped when its state arrives.
+
+// The dialog (SPEC 2.7, E92): the menu opens it on the household whose state
+// is on screen; a household with nothing to roll never gets here (the menu
+// item is grey) and is said if it does.
+function openRoll() {
+  const hh = lastState && lastState.household;
+  if (!hh || !hh.roll_year) {
+    unanswered("roll_forward");
+    return;
+  }
+  renderRollFold(hh);
+  openDialog("roll-modal");
+}
 
 function renderRollFold(hh) {
   const words = vocab.household;
-  const fold = $("household-roll");
-  if (fold.dataset.household !== hh.path) {
-    fold.open = false;
-    fold.dataset.household = hh.path;
-  }
-  fold.classList.toggle("hidden", !hh.roll_year);
-  if (!hh.roll_year) {
-    show("household-roll", []);
-    return;
-  }
   const year = hh.roll_year;
   const choice = rollChoice && rollChoice.household === hh.path ? rollChoice : null;
-  show("household-roll", [
-    el("summary", {}, fill(words.roll_forward_to, { year })),
-    el("p", { className: "wiz-sub" }, words.roll_intro),
-    el("div", { className: "tmpl-list" }, hh.returns.filter((r) => r.rollable).map((r) => {
+  $("roll-title").textContent = fill(words.roll_forward_to, { year });
+  $("roll-cancel").textContent = vocab.editor.cancel;
+  $("btn-roll").textContent = fill(words.roll_ticked, { year });
+  show("roll-body", [
+    hh.returns.filter((r) => r.rollable).map((r) => {
       const picked = choice && choice.forms.has(r.path) ? choice.forms.get(r.path) : r.form;
       const known = forms.some((f) => f.id === picked);
       return el("div", { className: "prior-item roll-return" },
@@ -1625,11 +1327,8 @@ function renderRollFold(hh) {
             ),
         ),
       );
-    })),
+    }),
     el("p", { className: "wiz-note" }, fill(words.rollover_unticked, { year })),
-    el("div", { className: "editor-actions" },
-      el("button", { type: "button", id: "btn-roll", className: "btn btn-primary btn-small" },
-        fill(words.roll_ticked, { year }))),
   ]);
 }
 
@@ -1668,11 +1367,11 @@ function rollChoiceFor(path) {
 
 function gatherRollChoice(hh) {
   const choice = rollChoiceFor(hh.path);
-  for (const box of $("household-roll").querySelectorAll(".roll-tick")) {
+  for (const box of $("roll-body").querySelectorAll(".roll-tick")) {
     if (box.checked) choice.unticked.delete(box.dataset.path);
     else choice.unticked.add(box.dataset.path);
   }
-  for (const pick of $("household-roll").querySelectorAll(".roll-form-pick")) {
+  for (const pick of $("roll-body").querySelectorAll(".roll-form-pick")) {
     choice.forms.set(pick.dataset.path, pick.value);
   }
   return choice;
@@ -1689,11 +1388,10 @@ async function rollFromCard() {
   try {
     const result = await call(...built);
     rollChoice = null;
-    $("household-roll").open = false;
+    closeDialog("roll-modal");
     // The list this write changed arrives with it (decision 194).
     if (result.list) adoptList(result.list);
     renderFor(select(result.state.paths.engagement), result.state);
-    renderEngagements();
     // The banner: how many returns rolled into the year and how many were
     // retired, then each return's rows added as not asked (decision 142)
     // and last year's unfiled files - said here, once, because there is no
@@ -1728,7 +1426,7 @@ async function rollFromCard() {
     // API's own sentence says what was rolled, retired and left open.
     if (result.warning) lines.push(result.warning);
     const dropped = result.rolled.some((one) => one.link_dropped || one.warnings.length);
-    banner(lines.join("\n"),
+    outcome(lines.join("\n"),
       result.skipped.length || result.warning || dropped ? "warn" : "ok");
   } catch (err) {
     // A refused roll lands in the notices area and stays until dismissed
@@ -1739,75 +1437,15 @@ async function rollFromCard() {
   }
 }
 
-// What this drop folder also feeds, and whose drop folders feed a return
-// here (decision 129). Labels and household names only: who is shared on
-// another household is on that household's own card, never here. A feed
-// that answers to no return this year says so in the API's sentence.
-function renderFeeds(hh) {
-  const words = vocab.household;
-  const feeds = hh.feeds || [];
-  const fed = hh.fed_by || [];
-  const listed = feeds.filter((f) => f.label).map((f) => f.label);
-  $("household-feeds").classList.toggle("hidden", !listed.length);
-  $("household-feeds").textContent = listed.length
-    ? fill(words.feeds_line, { listed: listed.join(", ") }) : "";
-  $("household-fed-by").classList.toggle("hidden", !fed.length);
-  $("household-fed-by").textContent = fed.length
-    ? fill(words.fed_by_line, { listed: fed.map((h) => h.name).join(", ") }) : "";
-  const said = feeds.map((f) => f.warning).filter(Boolean);
-  $("household-feeds-unresolved").classList.toggle("hidden", !said.length);
-  $("household-feeds-unresolved").textContent = said.join(" · ");
-}
-
-// One return's reminder, in the same words its own card uses: approved
-// beats approved-then-edited beats last-drafted beats never, and a hold is
-// said after it. Every pattern is the API's (vocab.reminder) and the page
-// types none of them.
-function returnReminderLine(state, label) {
-  const words = vocab.reminder;
-  if (state.unreadable) return fill(words.line_unreadable, { label, kind: state.kind });
-  let said = words.never_drafted_line;
-  if (state.approved) {
-    said = fill(words.approved_line, { date: state.approved.date, n: state.approved.stage });
-  } else if (state.lapsed) {
-    said = words.approved_then_edited;
-  } else if (state.last) {
-    said = fill(words.last_drafted_line, { date: state.last.date, n: state.last.stage });
-  }
-  const hold = holdLine(state.held || 0, state.unsorted || 0);
-  return hold ? `${said} · ${hold}` : said;
-}
-
-// Whether the firm has said it shared this household, and the checklist
-// until it does (decision 126). The tracker cannot see Drive's sharing:
-// every line here, including the two grants and the note saying why they
-// cannot be checked, arrives from the API already filled.
-function renderSharing(hh) {
-  const words = vocab.household;
-  $("household-shared").textContent = hh.shared_on
-    ? fill(words.shared_on_line, { day: hh.shared_on })
-    : words.not_yet_shared_line;
-  $("household-checklist").classList.toggle("hidden", !hh.checklist);
-  if (hh.checklist) {
-    $("household-checklist-heading").textContent = hh.checklist.heading;
-    show("household-checklist-lines", hh.checklist.lines.map((line) => el("li", {}, line)));
-    $("household-checklist-note").textContent = hh.checklist.note;
-  }
-  $("btn-mark-shared").textContent = words.mark_shared;
-  $("btn-mark-shared").classList.toggle("hidden", Boolean(hh.shared_on));
-}
-
 // A person's word that the folder's name is the name (decision 188): the
 // API writes one dated line per record that claimed another and moves
-// nothing. The seq is the household record's as this card was drawn, so
-// a card drawn before somebody else acted is refused, not applied.
-let shownPause = null;
+// nothing. The seq is the household record's as its page was drawn, so a
+// page drawn before somebody else acted is refused, not applied. The action
+// is the notice's (pages.js draws "Folder renamed" with Accept).
 async function acceptFolderName() {
   const view = viewGeneration;   // drawn only if this return is still the one shown (D6)
-  const pause = shownPause;
+  const pause = lastState && lastState.household && lastState.household.pause;
   if (!pause || !pause.engagement) return;
-  const btn = $("btn-accept-folder-name");
-  btn.disabled = true;
   try {
     const result = await call(["accept-folder-name", vocab.engagement_flag, pause.engagement],
                               { seq: pause.seq, scope: pause.scope });
@@ -1815,26 +1453,20 @@ async function acceptFolderName() {
     renderFor(view, result.state);
   } catch (err) {
     failed(err, acceptFolderName);
-  } finally {
-    btn.disabled = false;
   }
 }
 
 // The firm's word, recorded once: one dated event on the household's
 // record and nothing else. The API refuses it while the inbox link is
-// blank, and its sentence is what the person reads.
+// blank, and its sentence is what the person reads. The household's page
+// says "Shared" afterwards, so this says nothing.
 async function markShared() {
   const view = viewGeneration;   // drawn only if this return is still the one shown (D6)
-  const btn = $("btn-mark-shared");
-  btn.disabled = true;
   try {
     const result = await call(withEng("mark-shared"));
     renderFor(view, result.state);
-    banner(fill(vocab.household.shared_on_line, { day: result.shared_on }), "ok");
   } catch (err) {
     failed(err);
-  } finally {
-    btn.disabled = false;
   }
 }
 
@@ -1869,12 +1501,10 @@ function openHouseholdEditor() {
   $("hh-edit-members-label").textContent = words.members_label;
   $("hh-edit-contact-label").textContent = words.contact_label;
   $("hh-edit-link-label").textContent = words.link_label;
-  $("hh-edit-note").textContent = words.members_help;
   $("hh-edit-members").value = hh.members.join("\n");
   $("hh-edit-contact").value = hh.contact || "";
   $("hh-edit-link").value = hh.link || "";
   $("hh-edit-feeds-label").textContent = words.feeds_label;
-  $("hh-edit-feeds-help").textContent = words.feeds_help;
   $("hh-edit-feed-add").textContent = words.add_feed;
   $("hh-edit-feed-warning").classList.add("hidden");
   editorFeeds = (hh.feeds || []).map((f) => ({ household: f.household, return_name: f.return_name,
@@ -1946,18 +1576,12 @@ async function saveHousehold() {
     if (result.list) adoptList(result.list);   // the list this write changed (decision 194)
     renderFor(view, result.state);
     const moved = result.saved.household;
-    banner(moved.length ? `${vocab.household.heading}: ${moved.join(", ")}` : vocab.editor.nothing_changed, "ok");
+    outcome(moved.length ? `${vocab.household.heading}: ${moved.join(", ")}` : vocab.editor.nothing_changed, "ok");
   } catch (err) {
     failed(err);
   } finally {
     btn.disabled = false;
   }
-}
-
-function banner(text, cls) {
-  const el = $("banner");
-  el.textContent = text;
-  el.className = `banner ${cls}${text.includes("\n") ? " multi" : ""}`;
 }
 
 // ── the engagement lock, shown instead of left as a mystery file ─────────
@@ -1968,9 +1592,10 @@ function renderLock(state) {
 
 // Every word is the API's (vocab.lock, decision 193): when the pass started,
 // on which machine and - on this machine - the household and file it is on.
-// A live lock greys this return's buttons and is watched until it goes; a
-// lock left behind keeps Clear lock.
+// The lock is one notice. A live lock greys this return's writes and is
+// watched until it goes; a lock left behind is Tools > Clear stuck lock.
 let locked = false;
+let lockStale = false;    // the lock shown was left behind (the menu's Clear stuck lock)
 let lockWatch = null;
 let lockWatched = null;   // the folder the running watch asks about
 
@@ -1979,46 +1604,42 @@ function lockStarted(lock) {
 }
 
 function showLock(lock) {
-  const box = $("lock-notice");
-  box.classList.toggle("hidden", !lock);
+  lockStale = Boolean(lock && lock.stale);
   if (!lock || lock.stale) stopLockWatch();
   if (!lock) {
+    clearNotice("lock");
     setLocked(false);
     return;
   }
   const words = vocab.lock;
   const started = lockStarted(lock);
-  box.classList.toggle("warn", lock.stale);
-  box.classList.toggle("ok", !lock.stale);
-  $("btn-unlock").classList.toggle("hidden", !lock.stale);
   if (lock.stale) {
-    $("lock-text").textContent = fill(words.left_behind, { started, host: lock.host, minutes: lock.age_minutes });
+    keyedNotice("lock", { sentence: fill(words.left_behind, { started, host: lock.host, minutes: lock.age_minutes }), kind: "warning" });
     setLocked(false);
     return;
   }
   // The lock it was given, named by the API's label; the sentence for the
   // shown return only when it is the shown return (the review's S1).
-  const said = [lock.engagement && lock.engagement !== active
+  // One short line (SPEC 2.2 E31): the API's running / running_other words and
+  // nothing else; its `on` and `greyed` sentences are not shown.
+  const said = lock.engagement && lock.engagement !== active
     ? fill(words.running_other, { started, host: lock.host, label: lock.label })
-    : fill(words.running, { started, host: lock.host })];
-  if (lock.pass && lock.pass.name) said.push(fill(words.on, lock.pass));
-  said.push(words.greyed);
-  $("lock-text").textContent = said.join(" ");
+    : fill(words.running, { started, host: lock.host });
+  keyedNotice("lock", { sentence: said, kind: "locked" });
   setLocked(true);
   watchLock(lock);
 }
 
 // The controls that send a write for the shown return: greyed while a live
 // pass holds it, and again after every redraw draws them anew. Only what
-// this greyed is given back, so a control a card drew disabled stays so.
-const LOCKED_BUTTONS = ["btn-scan", "btn-edit", "btn-edit-household", "btn-mark-shared",
-                        "btn-accept-folder-name"];
-const LOCKED_CARDS = ["review-card", "moved-card", "reminder-actions", "filed-card", "dismissed-card"];
+// this greyed is given back, so a control the sheet drew disabled stays so.
+// (The menu and the sort icon follow `locked` through shellChanged.)
+const LOCKED_CARDS = ["sheet-body", "sheet-foot"];
 
 function applyLock() {
   const controls = [
-    ...LOCKED_BUTTONS.map((id) => $(id)).filter(Boolean),
     ...LOCKED_CARDS.flatMap((id) => ($(id) ? [...$(id).querySelectorAll("button, select, input")] : [])),
+    ...$("notices").querySelectorAll("button[data-write]"),
   ];
   for (const control of controls) {
     if (locked && !control.disabled) {
@@ -2041,6 +1662,24 @@ function stopLockWatch() {
   clearInterval(lockWatch);
   lockWatch = null;
   lockWatched = null;
+}
+
+// The shell moved to another page (shell.js): the lock belongs to the return
+// on screen, so a page that is not a return's, or is another return's, shows
+// none until that return's state says so.
+function appRouteChanged(route) {
+  const own = lastState && lastState.paths ? lastState.paths.engagement : "";
+  const here = route.level === "return" ? own === route.ret
+    : (route.level === "household" || route.level === "year")
+      && engagements.some((one) => one.household === route.household && one.path === own);
+  if (here) {
+    showLock(lastState.lock);
+    return;
+  }
+  stopLockWatch();
+  clearNotice("lock");
+  lockStale = false;
+  setLocked(false);
 }
 
 // Asks, every few seconds and only while a live lock shows, whether it has
@@ -2072,7 +1711,7 @@ function watchLock(lock) {
         return;
       }
       stopLockWatch();
-      $("lock-notice").classList.add("hidden");
+      clearNotice("lock");
       setLocked(false);
       notice({ sentence: vocab.lock.buttons_back, kind: "warning" });
       showReturn(active);
@@ -2087,16 +1726,12 @@ function watchLock(lock) {
 
 async function clearLock() {
   const view = viewGeneration;   // drawn only if this return is still the one shown (D6)
-  const btn = $("btn-unlock");
-  btn.disabled = true;
   try {
     const result = await call(withEng("unlock"));
     renderFor(view, result.state);
-    banner(fill(vocab.lock.cleared, { minutes: result.age_minutes }), "ok");
+    outcome(fill(vocab.lock.cleared, { minutes: result.age_minutes }), "ok");
   } catch (err) {
     failed(err);
-  } finally {
-    btn.disabled = false;
   }
 }
 
@@ -2106,91 +1741,46 @@ async function clearLock() {
 // here, once, from the vocabulary: the product, the rules, the folder the
 // originals go to, the year bounds, the example root, the button label.
 function applyVocabulary() {
-  document.title = vocab.firm ? `${vocab.product} — ${vocab.firm}` : vocab.product;
-  $("brand-product").textContent = vocab.product;
-  $("scan-label").textContent = SCAN_LABEL;
-  // The household's one inbox and its folder in the tree a client is
-  // shared (decision 125): the labels are the API's, the paths are too.
-  $("inbox-label").textContent = vocab.household.open_inbox;
-  $("client-folder-label").textContent = vocab.household.open_client_folder;
-  // The schedule's repair path (decision 209): label and tooltip are the API's.
-  $("repair-schedule-label").textContent = vocab.schedule.repair;
-  $("btn-repair-schedule").title = vocab.schedule.repair_help;
+  document.querySelector("title").textContent = vocab.firm ? `${vocab.product} — ${vocab.firm}` : vocab.product;
   applyScheduleVocabulary(vocab.schedule);
   $("household-title").textContent = vocab.household.new;
-  $("hh-new-head").textContent = vocab.household.new;
-  // Add a return and New household (decision 196): the toolbar's button,
-  // the household step's sentence, the form step and the request list.
-  $("new-household-label").textContent = vocab.household.new;
-  $("household-new-intro").textContent = vocab.household.new_intro;
-  $("form-note").textContent = vocab.household.form_step_note;
+  // Add a return and New household (decision 196): the household step, the
+  // form step and the request list, with no help line of their own (SPEC
+  // 2.7). The menu owns the words that open them (File > New household…).
   $("wi-back").textContent = `\u2190 ${vocab.household.change_form}`;
   $("wi-household").textContent = `\u2190 ${vocab.household.change_household}`;
   $("ne-create").textContent = vocab.household.create_return;
   $("hh-name-label").textContent = vocab.household.name_label;
   $("hh-contact-label").textContent = vocab.household.contact_label;
-  $("hh-contact").title = vocab.household.contact_help;
   $("hh-members-label").textContent = vocab.household.members_label;
-  $("hh-members").title = vocab.household.members_help;
   $("hh-link-label").textContent = vocab.household.link_label;
-  $("hh-link").title = vocab.household.link_help;
   $("ne-name-label").textContent = vocab.household.return_name_label;
-  $("ne-name").title = vocab.household.return_name_help;
   // What adding a return to a household shows, said every time on both
   // pages that add one (decision 129).
   $("hh-return-warning").textContent = vocab.household.return_warning;
   $("ne-return-warning").textContent = vocab.household.return_warning;
-  $("view-label").textContent = vocab.view.open;
-  $("edit-label").textContent = vocab.editor.open;
-  // The two renderings of the review queue are named by the API too
-  // (decision 114); the page carries no word for either of them.
-  $("review-mode-cards").textContent = vocab.review_labels.card_mode;
-  $("review-mode-list").textContent = vocab.review_labels.list_mode;
-  // The Reminder card's heading and its three buttons (decision 118).
-  // Nothing here sends, and none of these words is the page's.
-  $("reminder-heading").textContent = vocab.reminder.heading;
+  // The reminder's two buttons (decision 118; the draft file is not opened
+  // from here, SPEC 7.2). Nothing here sends, and none of these words is the page's.
   $("btn-copy").textContent = vocab.reminder.copy;
   $("btn-approve").textContent = vocab.reminder.approve;
-  $("btn-open-draft").textContent = vocab.reminder.open_draft;
-  // The setup card's three boxes, each under a label that stays while a
-  // person types (decision 201, D11); the example root stays as the
-  // folder box's placeholder, never its only name. The firm's own
-  // telephone number, beside its name: the label, the sentence under it
-  // and the number itself are all Python's.
-  $("root-label").textContent = vocab.settings.root_label;
-  $("root-input").placeholder = `e.g. ${vocab.example_root}`;
-  $("firm-label").textContent = vocab.settings.firm_label;
-  $("firm-help").textContent = vocab.settings.firm_help;
-  $("phone-label").textContent = vocab.settings.phone_label;
-  $("phone-help").textContent = vocab.settings.phone_help;
   for (const id of ["ne-year"]) {
     $(id).min = vocab.year_min;
     $(id).max = vocab.year_max;
-    $(id).title = vocab.year_note;
   }
   $("cu-add").textContent = vocab.editor.add_row;
   // The editor's every word: the two titles, the buttons, the paste hint.
   $("ed-title").textContent = vocab.editor.title;
   $("ed-engagement-title").textContent = vocab.editor.engagement_title;
-  $("ed-list-title").textContent = vocab.editor.title;
   $("ed-add").textContent = vocab.editor.add_row;
   $("ed-paste-title").textContent = vocab.editor.paste;
-  $("ed-paste-hint").textContent = vocab.editor.paste_hint;
   $("ed-paste-btn").textContent = vocab.editor.paste;
   $("ed-rename-title").textContent = vocab.editor.rename_title;
-  $("ed-rename-hint").textContent = vocab.editor.rename_hint;
   $("ed-rename-from").setAttribute("aria-label", vocab.editor.rename_from);
   $("ed-rename-to").setAttribute("aria-label", vocab.editor.rename_to);
   $("ed-rename-to").placeholder = vocab.editor.rename_to;
   $("ed-rename-btn").textContent = vocab.editor.rename;
   $("ed-cancel").textContent = vocab.editor.cancel;
   $("ed-save").textContent = vocab.editor.save;
-  const cards = document.querySelectorAll("#assurances .assure div");
-  vocab.rules.forEach((rule, i) => {
-    if (!cards[i]) return;
-    cards[i].querySelector("strong").textContent = rule.headline;
-    cards[i].querySelector("span").textContent = rule.detail;
-  });
   shellVocabulary();   // shell.js: the side panel's, path row's and sort icon's words
 }
 
@@ -2203,29 +1793,13 @@ async function loadEngagements(preferPath, asked) {
   vocab = listed.vocab;
   applyVocabulary();
   adoptList(listed);
-  // Sticky, unlike banner(): nothing else writes to it, so it stays until
-  // the app is moved to a shorter folder (decision 169).
-  $("reader-warning").textContent = listed.reader_warning || "";
-  $("reader-warning").classList.toggle("hidden", !listed.reader_warning);
-  // The schedule's one line (decision 159): the text and its level are
-  // the API's; the page only picks the banner colour it names.
-  const lastPass = listed.last_pass;
-  $("last-pass").textContent = lastPass ? lastPass.text : "";
-  $("last-pass").className = lastPass ? `banner ${lastPass.level}` : "banner hidden";
-  // Sticky, like the reader's: the machine's own problems, each said until it is fixed (decision 186).
-  const machine = listed.machine_warnings || [];
-  $("machine-warnings").replaceChildren(...machine.map((sentence) => el("p", {}, sentence)));
-  $("machine-warnings").classList.toggle("hidden", machine.length === 0);
+  renderMachineNotices(listed);
   renderAfterInstall(listed.after_install);
-  $("setup-card").classList.toggle("hidden", !listed.needs_root);
   if (listed.needs_root) {
     $("root-input").value = clientsRoot;
     $("firm-input").value = vocab.firm || "";
     $("phone-input").value = vocab.settings.phone || "";
-    $("setup-note").textContent = listed.root_problem ? listed.root_problem : clientsRoot
-      ? `${clientsRoot} is not a folder any more. Point the app at the right one.`
-      : "The scheduled job walks this same folder, so this is the only place it is set.";
-    shellNeedsRoot(true, listed);   // shell.js: the setup page
+    shellNeedsRoot(true, listed);   // shell.js: the setup page, and its "Folder not found" notice
     return false;
   }
   shellNeedsRoot(false, listed);
@@ -2235,8 +1809,23 @@ async function loadEngagements(preferPath, asked) {
     (active && engagements.find((e) => e.path === active)?.path) ||
     engagements[0].path;
   if (chosen !== active) select(chosen);
-  renderEngagements();
   return true;
+}
+
+// Sticky notices: nothing dismisses them but a person, and they return only
+// when the sentence changes. The reader's (the app sits too deep for its
+// reader, decision 169, until it is moved), and the machine's own problems,
+// each said until it is fixed (decision 186). The last pass is not a
+// notice: the last-sort line says "Sort failed" (SPEC 8.3). Each is shown as
+// its short line; the API's sentence (which can name a folder) goes to the
+// error log when the notice first shows (SPEC 2.2 E28, E30; 11.1).
+function renderMachineNotices(listed) {
+  if (listed.reader_warning) {
+    if (keyedNotice("reader", { sentence: shortNotice("reader"), kind: "warning" })) window.tracker.logError(listed.reader_warning);
+  } else clearNotice("reader");
+  const machine = listed.machine_warnings || [];
+  syncNotices("machine", machine.length
+    ? [{ key: machine.join("\n"), failure: { sentence: shortNotice("machine"), kind: "warning" }, detail: machine.join("\n") }] : []);
 }
 
 // The list half of a `list` reply, without the vocabulary (decision 194):
@@ -2244,26 +1833,24 @@ async function loadEngagements(preferPath, asked) {
 // `rollover`, `roll-household`, `edit-household`, `accept-folder-name`,
 // `edit` when it changed `active`), or the `list` asked once when a Sort &
 // Scan pass ends (decision 203). Showing
-// a return never reads the list again: the picker is as the app last
-// walked the root, which is display (UX 1); every write is still judged
-// under the lock.
+// a return never reads the list again: the path, the search and the pages
+// are as the app last walked the root, which is display (UX 1); every write
+// is still judged under the lock.
 function adoptList(listed) {
   engagements = listed.engagements || [];
   households = listed.households || [];
   misfits = listed.misfits || [];
   clientsRoot = listed.root || "";
-  renderEngagements();
   renderMisfits();
   shellAdopt(listed);   // shell.js: paths, the last sort, the firm's counts
 }
 
-// Show one return: one `state`, and nothing else (decision 194). The card,
-// the table and the household all arrive in that one reply, and a reply
-// that lands after another return was chosen is dropped (D6). True only
-// when this read drew the page.
+// Show one return: one `state`, and nothing else (decision 194). The page,
+// the hidden cards and the household all arrive in that one reply, and a
+// reply that lands after another return was chosen is dropped (D6). True
+// only when this read drew the page.
 async function showReturn(path) {
   const view = select(path);
-  renderEngagements();
   try {
     renderFor(view, await call(["state", vocab.engagement_flag, path]));
     return view === viewGeneration;
@@ -2273,22 +1860,15 @@ async function showReturn(path) {
   }
 }
 
-// Start-up: the list and the vocabulary, once, then the chosen return.
-// Run again only when the clients folder is set (decision 194, R8), since
-// the vocabulary depends on the settings that writes.
+// Start-up: the list and the vocabulary, once. The app opens on the
+// Overview and reads no return until a page asks for one (SPEC 4.2); at
+// first run the shell draws the setup page. Run again only when the clients
+// folder is set (decision 194, R8), since the vocabulary depends on the
+// settings that writes.
 async function bootstrap(preferPath) {
   try {
     const listed = await loadEngagements(preferPath, viewGeneration);
-    if (listed === null) return;   // a later choice owns the page now
-    if (!listed) {
-      if (!$("setup-card").classList.contains("hidden")) return;   // waiting for the folder
-      banner(fill(vocab.household.empty_root, { root: clientsRoot, new: vocab.household.new }), "ok");
-      show("rows", []);
-      show("rows-set-aside", []);
-      $("rows-set-aside-group").classList.add("hidden");
-      return;
-    }
-    const view = viewGeneration;
+    if (!listed) return;   // a later choice owns the page now, or no folder or return yet
     // The catalog is for the roll fold's form pick: a failure to load it
     // is said there, and the page is drawn all the same.
     try {
@@ -2296,56 +1876,55 @@ async function bootstrap(preferPath) {
     } catch (err) {
       formsUnloaded = failureSentence(err);   // never a page error's own text (principle 7)
     }
-    renderFor(view, await call(withEng("state")));
   } catch (err) {
     failed(err, () => bootstrap(preferPath));
   }
 }
 
 async function saveRoot() {
-  const btn = $("btn-save-root");
-  btn.disabled = true;
   try {
     const result = await call(["set-root"], {
       root: $("root-input").value.trim(),
       firm: $("firm-input").value.trim(),
       phone: $("phone-input").value.trim(),
     });
-    // What the after-install step did with the schedule (decision 209),
-    // in the API's sentence: registered here, or why not - in a warning
-    // colour when a job could not run (the review's S4).
-    banner(`Clients folder set to ${result.root} (written to ${result.settings_path}). ${result.after_install.schedule_sentence}`,
-           result.after_install.failed.length ? "warn" : "ok");
+    // What the after-install step did with the schedule (decision 209): a
+    // step that could not run is the setup notice, with its lines in the
+    // error log; a return short of room is one notice (decision 131).
+    renderAfterInstall(noticeOf(result.after_install));
+    if (result.after_install.failed.length) window.tracker.logError(`${result.after_install.schedule_sentence}\n${result.after_install.failed.join("\n")}`);
     renderShortOfRoom(result.short_of_room || []);
     await bootstrap();
   } catch (err) {
     failed(err, saveRoot);
-  } finally {
-    btn.disabled = false;
   }
 }
 
-// Decision 131: every return short of room under the root just set, one
-// line each - the return's label and the API's own sentences - or nothing.
+// Decision 131: the returns short of room under the root just set. One
+// notice, in the API's heading; each return's label and sentences go to the
+// error log, and every return's rows say it too.
 function renderShortOfRoom(shortOf) {
-  $("room-card").classList.toggle("hidden", shortOf.length === 0);
-  $("room-heading").textContent = `${vocab.room.heading} (${shortOf.length})`;
-  show("room-list", shortOf.map((one) =>
-    el("li", { className: "r-item" },
-      el("div", { className: "r-name" }, one.engagement),
-      el("div", { className: "r-why" }, one.sentences.join(" ")))));
+  if (!shortOf.length) {
+    clearNotice("room");
+    return;
+  }
+  window.tracker.logError(shortOf.map((one) => `${one.engagement}: ${one.sentences.join(" ")}`).join("\n"));
+  keyedNotice("room", { sentence: vocab.room.heading, kind: "warning" });
 }
 
 // Decision 209: what the last after-install run left for a person - the
-// record check's findings, or a step that could not run - at the top of the
-// first screen until a later run finds nothing. The words are the API's.
-function renderAfterInstall(notice) {
-  const box = $("after-install");
-  box.classList.toggle("hidden", !notice);
-  if (!notice) return;
-  $("after-install-heading").textContent = vocab.after_install.heading;
-  $("after-install-wait").textContent = notice.wait || "";
-  show("after-install-list", [...notice.failed, ...notice.findings].map((line) => el("li", {}, line)));
+// record check's findings, or a step that could not run - is one notice in
+// the API's heading until a later run finds nothing; its lines go to the
+// error log. Nothing is ever a person's to press once: the step runs itself.
+function renderAfterInstall(left) {
+  if (!left) {
+    clearNotice("after-install");
+    return;
+  }
+  const lines = [...left.failed, ...left.findings];
+  if (keyedNotice("after-install", { sentence: vocab.after_install.heading, kind: "failed" })) {
+    window.tracker.logError([left.wait, ...lines].filter(Boolean).join("\n"));
+  }
 }
 
 // What one run of the step left, as the notice shows it, or nothing.
@@ -2363,22 +1942,18 @@ function noticeOf(done) {
 // that computer's name filled in - and moves it only on yes.
 async function repairSchedule() {
   if (!confirm(vocab.schedule.repair_confirm)) return;
-  const btn = $("btn-repair-schedule");
-  btn.disabled = true;
   try {
     let result = await call(["install-schedule"], {});
-    banner(result.sentence, result.installed ? "ok" : "warn");
+    outcome(result.sentence, result.installed ? "ok" : "warn", { toasted: true });
     renderAfterInstall(noticeOf(result.after_install));
     if (result.host && confirm(vocab.schedule.move_confirm.split("{host}").join(result.host))) {
       result = await call(["move-schedule-here"], {});
-      banner(result.moved ? `${result.sentence} ${result.schedule_sentence}` : result.sentence,
-             result.installed ? "ok" : "warn");
+      outcome(result.moved ? `${result.sentence} ${result.schedule_sentence}` : result.sentence,
+             result.installed ? "ok" : "warn", { toasted: true });
       if (result.moved) renderAfterInstall(noticeOf(result.after_install));
     }
   } catch (err) {
     failed(err, repairSchedule);
-  } finally {
-    btn.disabled = false;
   }
 }
 
@@ -2388,15 +1963,12 @@ async function repairSchedule() {
 // (vocab.schedule), and the API's sentence is what the banner says.
 
 function applyScheduleVocabulary(words) {
-  $("schedule-label").textContent = words.button;
   $("sc-title").textContent = words.title;
-  $("sc-loading").textContent = words.loading;
   $("sc-enabled-label").textContent = words.enabled_label;
   $("sc-on-label").textContent = words.on;
   $("sc-off-label").textContent = words.off;
   $("sc-start-label").textContent = words.start_label;
   $("sc-every-label").textContent = words.every_label;
-  $("sc-note").textContent = words.note;
   $("sc-save").textContent = words.save;
   $("sc-cancel").textContent = words.cancel;
   $("sc-every").replaceChildren(
@@ -2419,6 +1991,8 @@ function scheduleError(text) {
 // answers; a failed read closes it and says why, as any failed read does.
 async function openSchedule() {
   scheduleError("");
+  // The read is on its way: outline rows, and the one word for a screen reader.
+  $("sc-loading").replaceChildren(h("span", { className: "visually-hidden" }, screenWords().loading), ...shellSkeleton(3));
   $("sc-loading").classList.remove("hidden");
   $("sc-form").classList.add("hidden");
   $("sc-save").disabled = true;
@@ -2461,7 +2035,7 @@ async function saveSchedule() {
     });
     closeDialog("schedule-modal");
     const worked = result.after_install.exit === 0 && (result.installed || !result.enabled);
-    banner(result.next_run ? `${result.sentence} ${result.next_run}` : result.sentence, worked ? "ok" : "warn");
+    outcome(result.next_run ? `${result.sentence} ${result.next_run}` : result.sentence, worked ? "ok" : "warn", { toasted: true });
     renderAfterInstall(noticeOf(result.after_install));
     try {
       await loadEngagements();     // the last-pass line follows the new choice
@@ -2537,31 +2111,22 @@ function onPassMessage(m) {
   drawProgress(m);
 }
 
-// Where the pass is (decision 193): the household, and the file or request
-// under it, in the API's words.
+// Where the pass is (decision 193): the household it is on, as `n` of `of`.
+// The last-sort line in the side panel says it (shell.js); the pass id is
+// what Stop names.
 function drawProgress(m) {
   const said = m.progress || {};
   shellProgress(said);
   if (said.pass) scanning.pass = said.pass;
-  if (scanning.pass && !scanning.stopping) $("btn-stop-pass").disabled = false;
-  const words = vocab.progress;
-  const lines = [];
-  if (said.household) lines.push(el("div", { className: "pp-household" }, fill(words.household, said)));
-  if (said.event === "file" && words[said.step]) {
-    lines.push(el("div", { className: "pp-file" }, fill(words[said.step], said)));
-  }
-  if (lines.length) show("pass-progress", lines);
-  $("pass-progress").classList.toggle("hidden", !lines.length);
+  shellChanged();
 }
 
 // Stop: only this app's own pass, at its next file (decision 193). What was
-// done is recorded and the rest waits; the pass's ending says so.
+// done is recorded and the rest waits; the pass's ending says so. The sort
+// icon is the button (it shows Stop while this runs).
 async function stopPass() {
   if (!scanning || !scanning.pass || scanning.stopping) return;
-  const btn = $("btn-stop-pass");
   scanning.stopping = true;
-  btn.disabled = true;
-  btn.textContent = vocab.progress.stopping;
   shellChanged();
   try {
     await call(["cancel-pass"], { pass: scanning.pass });
@@ -2570,39 +2135,24 @@ async function stopPass() {
   }
 }
 
-// The button back as Sort & Scan, and the pass's panel gone.
-// The button comes back through applyLock (decision 203's review, M2): a
-// lock the shown return met during the pass greys it with the lock's own
-// mark, which the lock going gives back - never an unmarked disable.
+// The sort icon back as Sort now. It follows `scanning` and `locked`
+// (decision 203's review, M2): a lock the shown return met during the pass
+// greys it through the lock's own mark, which the lock going gives back.
 function scanDone() {
   scanning = null;
-  const btn = $("btn-scan");
-  btn.disabled = false;
   applyLock();
-  btn.classList.remove("spinning");
-  $("scan-label").textContent = SCAN_LABEL;
-  $("btn-stop-pass").classList.add("hidden");
-  $("pass-progress").classList.add("hidden");
   shellProgress({});
   shellChanged();
 }
 
-// Sort & Scan starts the scheduled runner for this return's household and
+// Sort now starts the scheduled runner for this return's household and
 // is answered as soon as the pass has begun (decision 203). Every other
 // return and every read keep working while it runs; the household's own
 // returns show the lock the pass holds, as any lock shows (decision 193).
 async function runScan() {
-  const btn = $("btn-scan");
-  const stop = $("btn-stop-pass");
   const args = withEng(vocab.pass_command);
   const mine = { args, pass: null, stopping: false, asked: active };
   scanning = mine;
-  btn.disabled = true;
-  btn.classList.add("spinning");
-  $("scan-label").textContent = vocab.scan.scanning;
-  stop.textContent = vocab.progress.stop;
-  stop.disabled = true;
-  stop.classList.remove("hidden");
   shellChanged();
   try {
     const started = await call(args);
@@ -2660,7 +2210,7 @@ async function passEnded({ reply }) {
     notice({ sentence: `${run.label}: ${said.text}`, kind: "warning" });
     return;
   }
-  banner(said.text, said.cls);
+  outcome(said.text, said.cls);
 }
 
 // ── Add a return / New household (decision 196) ─────────────────────────
@@ -2798,7 +2348,6 @@ function renderFormGrid() {
     el("button", { className: "form-card", dataset: { form: f.id } },
       el("span", { className: "form-num" }, f.label),
       el("span", { className: "form-who" }, f.who),
-      el("span", { className: "form-blurb" }, f.blurb),
     )));
 }
 
@@ -2809,9 +2358,7 @@ function chooseForm(formId) {
   templates = templatesByForm[formId] || [];
   customItems = [];
   $("items-title").textContent = fill(vocab.household.items_title, { form: form.label });
-  $("chosen-form").textContent = `${form.label} · ${form.who}`;
   $("tmpl-head-label").textContent = `${form.label} request list — ${vocab.ask_the_client}`;
-  $("tmpl-note").textContent = vocab.ask_the_client_note;
   $("ne-name").value = "";
   nameIsAuto = true;
   $("ne-year").value = defaultYear || "";
@@ -2822,7 +2369,7 @@ function chooseForm(formId) {
   // name pre-fills from the household's contact, because that is who the
   // household said the return is for.
   wizardPeople = [{ ...blankPerson(), name: householdContact() }];
-  labelPeopleBlock("wp-head", "wp-help", "wp-add");
+  labelPeopleBlock("wp-head", "wp-add");
   renderPeople("wp-people", wizardPeople, () => {});
   if (wizardPeople[0].name) refreshProposals(wizardPeople[0], () => renderPeople("wp-people", wizardPeople, () => {}));
   renderTemplateList();
@@ -2848,22 +2395,11 @@ function syncNameDefault() {
     : "";
 }
 
-function templateSummary(t) {
-  const bits = [];
-  if (t.extensions) bits.push(t.extensions);
-  if (t.required_keywords) bits.push(`must contain "${t.required_keywords}"`);
-  if (t.any_keywords) bits.push(`any of: ${t.any_keywords}`);
-  if (t.expected_count > 1) bits.push(fill(vocab.expected_pattern, { n: t.expected_count }));
-  return bits.join(" · ");
-}
-
 function renderTemplateList() {
   show("tmpl-list", templates.map((t, i) =>
     el("label", { className: "tmpl-item" },
       el("input", { type: "checkbox", dataset: { index: String(i) }, checked: Boolean(t.core) }),
-      el("span", { className: "tmpl-id" }, t.identifier),
-      el("span", { className: "tmpl-doc" }, t.document, " ",
-        el("span", { className: "tmpl-rules" }, templateSummary(t))),
+      el("span", { className: "tmpl-doc" }, t.document),
     )));
 }
 
@@ -2962,17 +2498,16 @@ function renderPeople(id, people, onChange) {
       el("label", { className: "field" }, el("span", {}, words.kind_label), kind),
       el("label", { className: "field" }, el("span", {}, words.name_label), name),
       el("div", { className: "person-spellings" },
-        el("span", { className: "tmpl-rules", title: words.spellings_help }, words.spellings_label),
-        ticks.length ? ticks : el("span", { className: "wiz-note" }, words.help),
+        el("span", { className: "tmpl-rules" }, words.spellings_label),
+        ticks,
         own),
       el("div", { className: "editor-actions" }, remove));
   }));
 }
 
 // The block's headings and its Add button, wherever it is drawn.
-function labelPeopleBlock(headId, helpId, addId) {
+function labelPeopleBlock(headId, addId) {
   $(headId).textContent = vocab.people.label;
-  $(helpId).textContent = vocab.people.help;
   $(addId).textContent = vocab.people.add;
 }
 
@@ -3006,7 +2541,7 @@ function cellInput(row, column, onChange) {
   if (vocab.editor.yes_no_fields.includes(key)) {
     // Named and Asked: a pick of the two words, blank reading as yes.
     const current = row[key] === vocab.editor.no ? vocab.editor.no : vocab.editor.yes;
-    const select = el("select", { "aria-label": column.label, title: column.help },
+    const select = el("select", { "aria-label": column.label },
       [vocab.editor.yes, vocab.editor.no].map((value) =>
         el("option", { value, selected: current === value }, value)));
     select.addEventListener("change", () => { row[key] = select.value; onChange(); });
@@ -3019,7 +2554,7 @@ function cellInput(row, column, onChange) {
     const current = row[key] || "";
     const listed = vocab.override_reasons.includes(current);
     const ownWords = vocab.override_reason_other;
-    const select = el("select", { "aria-label": column.label, title: column.help },
+    const select = el("select", { "aria-label": column.label },
       el("option", { value: "", selected: !current }, ""),
       vocab.override_reasons.map((value) =>
         el("option", { value, selected: current === value }, value)),
@@ -3044,7 +2579,6 @@ function cellInput(row, column, onChange) {
     type: minimum === undefined ? "text" : "number",
     value: row[key] === undefined || row[key] === null ? "" : String(row[key]),
     "aria-label": column.label,
-    title: column.help,
     // A blank Short name is derived (decision 144): the box shows the name
     // the API derived for the row it opened on, never one typed here.
     placeholder: key === "short_title" ? editorRowShortName(row) : undefined,
@@ -3065,12 +2599,11 @@ function learnedCell(identifier, learned) {
   return [
     el("span", { className: "ed-learned-note" }, fill(vocab.editor.learned_note, { keywords: "" })),
     ...taught.map((word) => el("span", { className: "ed-learned-word" }, word,
-      el("button", {
+      tipped(el("button", {
         className: "btn btn-small ed-unlearn",
         dataset: { identifier, keyword: word },
         "aria-label": `${vocab.editor.unlearn_label} ${word}`,
-        title: `${vocab.editor.unlearn_label} ${word}`,
-      }, vocab.editor.unlearn_label))),
+      }, vocab.editor.unlearn_label), `${vocab.editor.unlearn_label} ${word}`))),
   ];
 }
 
@@ -3089,7 +2622,8 @@ function learnedCell(identifier, learned) {
 // table rows - the row's name as text and the boxes a preparer touches
 // (`fold.plain`, and a custom row's Document), then its routing
 // fold holding the rest (`fold.routing`) and the taught keywords, closed
-// unless `fold.isOpen(row)` says otherwise. Folding hides cells and never
+// unless `fold.isOpen(row)` says otherwise. There is no toggle per row: the
+// editor's one Advanced switch opens every fold at once (SPEC 2.7, E91). Folding hides cells and never
 // drops them: every box writes into the same row object through
 // cellInput, so a save carries every column whether a fold was opened or
 // not. Which column goes where is the API's answer, never the page's.
@@ -3110,9 +2644,8 @@ function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack,
     const nameOf = (row, custom) => (custom ? row.identifier || ""
       : `${row.identifier || ""}${vocab.triage.identifier_separator}${row.document || ""}`);
     head = el("tr", {},
-      el("th", { title: documentColumn.help }, documentColumn.label),
-      plain.map((c) => el("th", { title: c.help }, c.label)),
-      el("th", {}, ""),
+      el("th", {}, documentColumn.label),
+      plain.map((c) => el("th", {}, c.label)),
       el("th", {}, ""));
     body = rows.flatMap((row, index) => {
       const custom = fold.custom(row);
@@ -3122,32 +2655,22 @@ function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack,
       const inFold = routing.filter((c) => !(custom && c.key === "document"));
       const cell = el("td", {}, el("div", { className: "ed-fields" },
         inFold.map((c) => el("label", { className: "field" },
-          el("span", { title: c.help }, c.label), cellInput(row, c, changed))),
+          el("span", {}, c.label), cellInput(row, c, changed))),
         taught ? learnedBox("div", row) : null));
-      cell.colSpan = plain.length + 3;
+      cell.colSpan = plain.length + 2;
       const routingRow = el("tr", { className: open ? "ed-routing" : "ed-routing hidden",
                                     dataset: { index: String(index) } }, cell);
-      const toggle = el("button", {
-        type: "button", className: "btn btn-small ed-fold", title: vocab.editor.routing_help,
-        "aria-expanded": String(open),
-      }, vocab.editor.routing);
-      toggle.addEventListener("click", () => {
-        const now = routingRow.classList.toggle("hidden") === false;
-        toggle.setAttribute("aria-expanded", String(now));
-        fold.setOpen(row, now);
-      });
       const plainRow = el("tr", { dataset: { index: String(index) } },
         el("td", { className: "ed-name" }, name,
           custom ? cellInput(row, documentColumn, changed) : null),
         plain.map((c) => el("td", { className: `ed-${c.key}` }, cellInput(row, c, changed))),
-        el("td", { className: "ed-fold-cell" }, toggle),
         removeCell(row, index));
       return [plainRow, routingRow];
     });
   } else {
     head = el("tr", {},
       keyed ? el("th", { className: "ed-id" }, columnsByKey(["identifier"])[0].label) : null,
-      columns.map((c) => el("th", { title: c.help }, c.label)),
+      columns.map((c) => el("th", {}, c.label)),
       taught ? el("th", {}, "") : null,
       el("th", {}, ""));
     body = rows.map((row, index) => el("tr", { dataset: { index: String(index) } },
@@ -3185,7 +2708,7 @@ function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack,
 // Blank fields are sent blank: the catalog's item_from_spec() fills the
 // file types and the keyword (the document name) by the one rule, and the
 // editor shows the result afterwards.
-const CUSTOM_COLUMNS = ["document", "allowed_extensions", "required_keywords"];
+const CUSTOM_COLUMNS = ["document"];   // the rule columns are the editor's (SPEC 2.7, E90)
 
 function customIdentifier(position) {
   return `X${String(position).padStart(2, "0")}`;
@@ -3223,7 +2746,7 @@ async function createEngagement() {
   const catalog = [...$("tmpl-list").querySelectorAll("input[type=checkbox]")]
     .map((box) => ({ ...templates[Number(box.dataset.index)], asked: box.checked }));
   if (customItems.some((c) => !String(c.document || "").trim())) {
-    toast("Give each custom request a document name first.");
+    toastWord("name_requests");
     return;
   }
   const items = [...catalog, ...customItems.map((c) => ({ ...c, asked: true }))];
@@ -3249,23 +2772,17 @@ async function createEngagement() {
     // The list this write changed arrives with it (decision 194).
     if (result.list) adoptList(result.list);
     renderFor(select(result.state.paths.engagement), result.state);
-    renderEngagements();
     const lines = [
       fill(vocab.household.return_created, { label: result.created, n: asked }),
     ];
     // A household's first return comes back with the sharing checklist
-    // (decision 126): the two grants a person makes in Drive, once, in
-    // the API's own words. The household card carries the same lines
-    // until somebody gives the firm's word on the card.
-    if (result.checklist) {
-      lines.push(result.checklist.heading);
-      result.checklist.lines.forEach((line, n) => lines.push(`${n + 1}. ${line}`));
-      lines.push(result.checklist.note);
-    }
+    // (decision 126), whose lines name folders by their paths: it is not
+    // drawn (SPEC 2.4 E45; the Tester Guide carries it) - no path is ever on
+    // the screen.
     // Decision 137: a household link that was not a web address was left
     // out of the new return; the sentence is the API's.
     if (result.link_dropped) lines.push(result.link_dropped);
-    banner(lines.join("\n"), result.link_dropped ? "warn" : "ok");
+    outcome(lines.join("\n"), result.link_dropped ? "warn" : "ok");
   } catch (err) {
     // A refusal - 188's duplicate name among them - stays in the dialog, in
     // the API's words, until a field is edited or the dialog is closed:
@@ -3372,7 +2889,6 @@ function renderEditorRows() {
       routing: vocab.editor.routing_columns,
       custom: editorRowIsCustom,
       isOpen: editorRowFoldOpen,
-      setOpen: (row, open) => editorFolds.set(row, open),
     },
     learned: (editorState && editorState.learned) || {},
     onChange: () => { if (grouping() !== drawn) renderEditorRows(); },
@@ -3399,28 +2915,29 @@ function renderEditorRows() {
     ? el("details", { className: "ed-set-aside" },
       el("summary", {}, fill(vocab.set_aside.heading, { n: aside.length })), ...groups.flat())
     : null;
-  // The one toggle above the rows that opens every row's routing fold.
-  const all = editorRows.every(editorRowFoldOpen);
-  const every = el("button", { type: "button", className: "btn btn-small ed-fold-all",
-                               "aria-expanded": String(all) }, vocab.editor.routing_all);
-  every.addEventListener("click", showEveryFold);
-  const above = el("div", { className: "editor-actions" }, every,
-    el("span", { className: "wiz-note" }, vocab.editor.routing_help));
+  // The one Advanced switch above the rows (SPEC 2.7, E91): on, every row's
+  // routing rules and taught keywords, and the paste and rename blocks, are
+  // shown; off, the plain table alone. A word the vocabulary lacks is said.
+  const advanced = el("button", { type: "button", className: "btn btn-small ed-advanced",
+                                  "aria-pressed": String(editorAdvanced) }, shellWords("editor.advanced"));
+  advanced.addEventListener("click", () => setAdvanced(!editorAdvanced));
+  const above = el("div", { className: "editor-actions" }, advanced);
+  $("ed-advanced-body").classList.toggle("hidden", !editorAdvanced);
   $("ed-rows").replaceChildren(...[above, activeBox, folded].filter(Boolean));
 }
 
-// The plain view's folds (decision 201): open or shut per row object, so a
-// fold stays as the person left it when the rows are drawn again. A row
-// the editor did not open on - typed or pasted since - has no items entry
-// and opens unfolded, because the person is writing it now.
-const editorFolds = new Map();
+// The plain view's folds (decision 201) are open or shut together, by the one
+// Advanced switch, and stay so when the rows are drawn again. A row the
+// editor did not open on - typed or pasted since - has no items entry and
+// opens unfolded, because the person is writing it now.
+let editorAdvanced = false;
 
 function editorRowItem(row) {
   return ((editorState && editorState.items) || []).find((i) => i.identifier === row.identifier);
 }
 
 function editorRowFoldOpen(row) {
-  return editorFolds.has(row) ? editorFolds.get(row) : !editorRowItem(row);
+  return editorAdvanced || !editorRowItem(row);
 }
 
 // A custom row is one no catalog row of the return's form has; the API
@@ -3431,9 +2948,14 @@ function editorRowIsCustom(row) {
   return !known || !known.catalog_row;
 }
 
-function showEveryFold() {
-  for (const row of editorRows) editorFolds.set(row, true);
+function setAdvanced(on) {
+  editorAdvanced = on;
   renderEditorRows();
+}
+
+// A refused save names a column that must be on screen: Advanced goes on.
+function showEveryFold() {
+  setAdvanced(true);
 }
 
 // Only the learned column, drawn again from the state the API just sent.
@@ -3486,20 +3008,17 @@ function addEditorRow() {
 // box, so it is drawn where it can be edited rather than shown as one.
 function renderEngagementFields(info) {
   show("ed-fields", vocab.editor.engagement_fields
-    .filter((f) => f.key !== "name" && f.key !== "people")
+    .filter((f) => f.key !== "name" && f.key !== "people" && f.editable)   // the read-only fields are cut (SPEC 2.7, E91)
     .map((f) => {
       const value = info[f.key];
-      if (!f.editable) {
-        return el("label", { className: "field" }, el("span", {}, f.label),
-          el("span", { className: "ed-readonly", title: f.help }, value === true ? vocab.editor.yes : value === false ? vocab.editor.no : value || "—"));
-      }
       if (typeof value === "boolean") {
+        // The one help kept: the warning before a risky act (P77), on Active.
         return el("label", { className: "wiz-check" },
           el("input", { type: "checkbox", checked: value, dataset: { field: f.key } }),
           el("span", {}, `${f.label} — ${f.help}`));
       }
-      return el("label", { className: "field" }, el("span", { title: f.help }, f.label),
-        el("input", { type: vocab.editor.date_fields.includes(f.key) ? "date" : "text", value: value || "", dataset: { field: f.key }, title: f.help }));
+      return el("label", { className: "field" }, el("span", {}, f.label),
+        el("input", { type: vocab.editor.date_fields.includes(f.key) ? "date" : "text", value: value || "", dataset: { field: f.key } }));
     }));
 }
 
@@ -3530,8 +3049,10 @@ function editorNote(text, cls) {
 // screen costs a refusal, never a write. Only when the state on screen is
 // another return's (a switch that has not landed) is it read first; if it
 // is still another's after that, the banner says so - never a button that
-// does nothing (the review's S4).
-async function openEditor() {
+// does nothing (the review's S4). `focus` is the identifier of the request
+// a row's Edit step came from: the editor opens with that row's first cell
+// focused.
+async function openEditor(focus) {
   if (!active) return;
   try {
     // Opened on the state already drawn for this return (decision 194,
@@ -3548,22 +3069,39 @@ async function openEditor() {
   // A switch landed while the state was read: the editor opens on no
   // other return than the one on screen (the review's S4, decision 201).
   if (!editorState.paths || editorState.paths.engagement !== active) {
-    banner(vocab.editor.not_this_return, "err");
+    outcome(vocab.editor.not_this_return, "err");
     return;
   }
-  editorFolds.clear();
+  editorAdvanced = false;
   editorRows = (editorState.rules || []).map(editorRow);
   renderEngagementFields(editorState.engagement || {});
   // The return's people, as the record holds them (decision 128): edited
   // here and nowhere else, and saved with the rest of the details.
   editorPeople = ((editorState.engagement || {}).people || []).map(personFromRecord);
-  labelPeopleBlock("ep-head", "ep-help", "ep-add");
+  labelPeopleBlock("ep-head", "ep-add");
   renderPeople("ep-people", editorPeople, () => {});
   renderEditorRows();
   renameChoices();
   $("ed-paste").value = "";
   editorNote("", "ok");
   openDialog("editor");
+  if (typeof focus === "string") focusEditorRow(focus);
+}
+
+// The row of the request list a page row named: its first cell takes focus
+// and the row is scrolled into view. A row the editor does not list (or one
+// inside a closed fold) leaves focus where the dialog put it.
+function focusEditorRow(identifier) {
+  for (const row of $("ed-rows").querySelectorAll("tr[data-index]")) {
+    const named = row.querySelector(".req-id");
+    if (!named || named.textContent.split(vocab.triage.identifier_separator)[0] !== identifier) continue;
+    const cell = row.querySelector("input, select");
+    if (cell && cell.offsetParent !== null) {
+      row.scrollIntoView({ block: "center" });
+      cell.focus();
+    }
+    return;
+  }
 }
 
 // The requests the rename can act on: the list as the record holds it,
@@ -3681,7 +3219,7 @@ async function saveEditor() {
       lines.push(`${vocab.editor.warnings_heading}:`);
       for (const w of ruleWarnings) lines.push(`• ${w}`);
     }
-    banner(lines.join("\n"), ruleWarnings.length ? "warn" : "ok");
+    outcome(lines.join("\n"), ruleWarnings.length ? "warn" : "ok");
   } catch (err) {
     // A refusal names a row and a column, and the column it names must be
     // on screen: every fold opens (decision 201). The sentence is never
@@ -3725,6 +3263,8 @@ const DIALOGS = {
     first: () => $("ho-return"),
     closed: () => { handingOver = null; },
   },
+  // A small confirm: the reason is optional, so there is no work to lose.
+  "unfile-modal": { model: null, first: () => $("uf-note"), closed: () => { unfiling = null; } },
   modal: {
     model: () => wizardModel(),
     first: () => null,
@@ -3734,6 +3274,15 @@ const DIALOGS = {
     model: () => ({ enabled: $("sc-on").checked, start: $("sc-start").value, every: $("sc-every").value }),
     first: () => $("sc-cancel"),
   },
+  // The roll's ticks and picks are display state, not work to lose (decision 83).
+  "roll-modal": { model: null, first: () => $("roll-body").querySelector(".roll-tick") || $("roll-cancel") },
+  "safeguards-modal": { model: null, first: () => $("safeguards-close") },
+  "about-modal": { model: null, first: () => $("about-close") },
+  "misfits-modal": { model: null, first: () => $("misfits-close") },
+  // The side sheet (SPEC 7) is modal like the rest: it takes focus, Tab stays
+  // inside it and Escape closes it. It hides by its attribute, not a class,
+  // and sheet.js puts the scrim and the row focus back when it is shut.
+  sheet: { model: null, attr: true, first: () => $("sheet-title"), closed: () => sheetClosed() },
 };
 
 const dialogStack = [];      // the open dialogs, the topmost last
@@ -3773,13 +3322,14 @@ function unsavedBar(id) {
 
 function openDialog(id, first) {
   const overlay = $(id);
-  if (overlay.classList.contains("hidden")) {
+  if (overlay.classList.contains("hidden") || overlay.hidden) {
     dialogOpener[id] = document.activeElement;
     dialogStack.push(id);
   }
   const bar = unsavedBar(id);
   if (bar) bar.classList.add("hidden");
   overlay.classList.remove("hidden");
+  overlay.hidden = false;
   dialogSnapshot[id] = snapshotOf(id);
   const target = first || DIALOGS[id].first() || focusables(overlay)[0];
   if (target) target.focus();
@@ -3788,7 +3338,8 @@ function openDialog(id, first) {
 function closeDialog(id) {
   const bar = unsavedBar(id);
   if (bar) bar.classList.add("hidden");
-  $(id).classList.add("hidden");
+  if (DIALOGS[id].attr) $(id).hidden = true;
+  else $(id).classList.add("hidden");
   const at = dialogStack.indexOf(id);
   if (at >= 0) dialogStack.splice(at, 1);
   if (DIALOGS[id].closed) DIALOGS[id].closed();
@@ -3844,16 +3395,54 @@ function trapTab(e, id) {
   }
 }
 
+// ── the four dialogs the menu and the notices open (SPEC 2.7, E92-E95) ────
+// Safeguards and About are Help's; the folders the walk left alone is a
+// notice's Show. Every word is the API's, and no path is drawn: a folder is
+// its own name (the last part of where it is), never where it is.
+
+// The four standing rules, one short line each (P64): `vocab.rules[i].short`.
+// A rule without its short line is a word the vocabulary lacks: loud, never
+// the long sentence in its place.
+function openSafeguards() {
+  const words = screenWords();
+  $("safeguards-title").textContent = words.safeguards.title;
+  $("safeguards-close").textContent = words.icons.dismiss;
+  const lines = vocab.rules.map((rule) => {
+    if (!rule.short) throw new Error("rules.short");
+    return el("li", {}, rule.short);
+  });
+  show("safeguards-list", lines);
+  openDialog("safeguards-modal");
+}
+
+// The product's name and its edition (the pilot's, pilot-content.js).
+function openAbout() {
+  const words = screenWords();
+  $("about-title").textContent = vocab.product;
+  $("about-edition").textContent = fill(words.about.edition, { version: PILOT.edition.version });
+  $("about-close").textContent = words.icons.dismiss;
+  openDialog("about-modal");
+}
+
+// One row per folder left alone: its own name and, beside it, the API's
+// two-word reason for that kind of folder (`screen.misfits.reasons[code]`).
+// The one long sentence per folder goes to the error log, and no path is
+// drawn. A code the vocabulary has no word for (the year that is not a year,
+// until Jason gives it one) draws the name alone: not an error.
+function openMisfits() {
+  const words = screenWords();
+  $("misfits-title").textContent = words.misfits.title;
+  $("misfits-close").textContent = words.icons.dismiss;
+  const reasons = words.misfits.reasons || {};
+  window.tracker.logError(misfits.map((one) => `${one.where || one.path}: ${one.sentence}`).join("\n"));
+  show("misfits-list", misfits.map((one) => el("li", {},
+    el("span", { className: "misfit-name" }, folderName(one.where || one.path)),
+    reasons[one.code] && el("span", { className: "misfit-why" }, reasons[one.code]))));
+  openDialog("misfits-modal");
+}
+
 // ── wiring ──────────────────────────────────────────────────────────────
 
-$("btn-scan").addEventListener("click", runScan);
-$("btn-new-household").addEventListener("click", openNewHousehold);
-$("btn-add-return").addEventListener("click", () => openAddReturn(lastState && lastState.household));
-$("btn-inbox").addEventListener("click", () => paths && window.tracker.open(paths.inbox));
-$("btn-client-folder").addEventListener("click", () => paths && window.tracker.open(paths.client_folder));
-$("btn-edit-household").addEventListener("click", openHouseholdEditor);
-$("btn-mark-shared").addEventListener("click", markShared);
-$("btn-accept-folder-name").addEventListener("click", acceptFolderName);
 $("hh-edit-cancel").addEventListener("click", () => requestClose("household-modal"));
 $("hh-edit-save").addEventListener("click", saveHousehold);
 $("hh-edit-feed-add").addEventListener("click", addEditorFeed);
@@ -3866,25 +3455,15 @@ $("hh-edit-feeds").addEventListener("click", (e) => {
 $("ho-cancel").addEventListener("click", () => requestClose("handover-modal"));
 $("ho-return").addEventListener("change", loadHandOverRequests);
 $("ho-file").addEventListener("click", fileHandOver);
-$("household-returns").addEventListener("click", (e) => {
-  const button = e.target.closest("button[data-path]");
-  if (!button) return;
-  showReturn(button.dataset.path);
-});
-$("btn-edit").addEventListener("click", openEditor);
-$("btn-view").addEventListener("click", () => paths && window.tracker.open(paths.view));
-$("btn-status").addEventListener("click", () => paths && window.tracker.open(paths.status));
+$("uf-cancel").addEventListener("click", () => requestClose("unfile-modal"));
+$("uf-confirm").addEventListener("click", confirmUnfile);
 $("btn-copy").addEventListener("click", copyReminder);
 $("btn-approve").addEventListener("click", approveReminder);
-$("btn-open-draft").addEventListener("click", () => paths && window.tracker.open(paths.draft));
 $("reminder-stages").addEventListener("click", (e) => {
   const button = e.target.closest(".rem-stage");
   if (!button || button.disabled) return;
   reminderStage = Number(button.dataset.stage);
   loadReminder();
-});
-$("eng-select").addEventListener("change", (e) => {
-  showReturn(e.target.value);
 });
 $("form-grid").addEventListener("click", (e) => {
   const card = e.target.closest(".form-card");
@@ -3899,14 +3478,13 @@ $("wi-household").addEventListener("click", () => {
   showStep("household");
   $("hh-name").focus();
 });
-$("wf-cancel").addEventListener("click", () => requestClose("modal"));
 // A refusal in the dialog's note stands until the person edits a field.
 $("modal").addEventListener("input", hideCreateNote);
-// The household card's roll fold (decision 196): its ticks and form picks
-// are held for the household on screen, its one button rolls it, and
-// the people button opens the editor on that return - which redraws the card
-// of the same household, so the choices come back as they were left.
-// The roll fold's people button: one state call for the return (decision
+// The roll dialog (decision 196): its ticks and form picks are held for the
+// household on screen, its one button rolls it, and the people button opens
+// the editor on that return - which stacks over the dialog, so the choices
+// are there as they were left.
+// The roll dialog's people button: one state call for the return (decision
 // 194), then the editor on it - only when that read drew this return. A
 // failed read has said so once (failed()) and a switch during the read owns
 // the page (193's late-reply rule), so neither opens an editor or reads
@@ -3914,22 +3492,21 @@ $("modal").addEventListener("input", hideCreateNote);
 async function reviewPeople(path) {
   if (await showReturn(path) && active === path) openEditor();
 }
-$("household-roll").addEventListener("change", (e) => {
+$("roll-body").addEventListener("change", (e) => {
   if (!e.target.closest(".roll-tick, .roll-form-pick")) return;
   if (lastState && lastState.household) gatherRollChoice(lastState.household);
 });
-$("household-roll").addEventListener("click", async (e) => {
-  if (e.target.closest("#btn-roll")) {
-    rollFromCard();
-    return;
-  }
+$("roll-body").addEventListener("click", (e) => {
   const button = e.target.closest("button.roll-review-people");
   if (!button) return;
   if (lastState && lastState.household) gatherRollChoice(lastState.household);
   reviewPeople(button.dataset.path);
 });
-$("btn-repair-schedule").addEventListener("click", repairSchedule);
-$("btn-schedule").addEventListener("click", openSchedule);
+$("btn-roll").addEventListener("click", rollFromCard);
+$("roll-cancel").addEventListener("click", () => requestClose("roll-modal"));
+for (const id of ["safeguards", "about", "misfits"]) {
+  $(`${id}-close`).addEventListener("click", () => closeDialog(`${id}-modal`));
+}
 $("sc-on").addEventListener("change", greyScheduleFields);
 $("sc-off").addEventListener("change", greyScheduleFields);
 for (const kind of ["input", "change"]) {
@@ -3937,23 +3514,23 @@ for (const kind of ["input", "change"]) {
 }
 $("sc-save").addEventListener("click", saveSchedule);
 $("sc-cancel").addEventListener("click", () => requestClose("schedule-modal"));
-$("btn-save-root").addEventListener("click", saveRoot);
-$("root-input").addEventListener("keydown", (e) => e.key === "Enter" && saveRoot());
-$("btn-browse").addEventListener("click", async () => {
-  const picked = await window.tracker.pickFolder($("setup-title").textContent);
-  if (picked) $("root-input").value = picked;
-});
-$("btn-unlock").addEventListener("click", clearLock);
-$("btn-stop-pass").addEventListener("click", stopPass);
 window.tracker.onProgress(onPassMessage);
 $("notices").addEventListener("click", (e) => {
   const button = e.target.closest("button[data-act]");
   if (!button) return;
   const entry = notices.find((one) => one.node.contains(button));
   if (!entry) return;
+  // An action (Show, Accept) leaves the notice where it is: what it acts on
+  // takes it away when it is done. Retry and the close icon end it.
+  if (button.dataset.act === "action") {
+    entry.action.run();
+    return;
+  }
   dismissNotice(entry);
-  if (button.dataset.act === "retry" && entry.retry) entry.retry();
-  if (button.dataset.act === "look") showReturn(active);
+  if (button.dataset.act === "retry") {
+    const again = retryOf(entry);
+    if (again) again();
+  }
 });
 $("ne-client").addEventListener("input", syncNameDefault);
 $("ne-year").addEventListener("input", syncNameDefault);
@@ -3983,10 +3560,10 @@ $("ed-rename-btn").addEventListener("click", renameRequest);
 $("ed-save").addEventListener("click", saveEditor);
 $("ed-cancel").addEventListener("click", () => requestClose("editor"));
 $("ne-create").addEventListener("click", createEngagement);
-$("ne-cancel").addEventListener("click", () => requestClose("modal"));
 // Every dialog the same way (decision 201): a click on the dim behind it
 // is Escape, and the bar's two answers are the only way past it.
 for (const id of Object.keys(DIALOGS)) {
+  if (id === "sheet") continue;   // its scrim is the click behind it (sheet.js)
   $(id).addEventListener("click", (e) => {
     if (e.target === $(id)) requestClose(id);
   });
@@ -3995,71 +3572,30 @@ for (const id of Object.keys(DIALOGS)) {
   bar.querySelector(".dlg-keep").addEventListener("click", () => keepEditing(id));
   bar.querySelector(".dlg-discard").addEventListener("click", () => closeDialog(id));
 }
-$("moved-list").addEventListener("click", (e) => {
-  const restore = e.target.closest(".r-restore");
-  if (restore) restoreMoved(restore.closest("li"));
-  const keep = e.target.closest(".r-keep");
-  if (keep) keepMoved(keep.closest("li"));
-  const send = e.target.closest(".r-review");
-  if (send) reviewMoved(send.closest("li"));
-  const withdraw = e.target.closest(".r-withdraw");
-  if (withdraw) withdrawAnswer(withdraw);
-});
-$("review-list").addEventListener("click", (e) => {
-  const issuer = e.target.closest(".r-add-issuer");
-  if (issuer) addIssuerAndFile(issuer.closest("li"), issuer);
-  const file = e.target.closest(".r-file");
-  if (file) assignParked(file.closest("li"));
-  const dismiss = e.target.closest(".r-dismiss");
-  if (dismiss) dismissParked(dismiss.closest("li"));
-  const over = e.target.closest(".r-hand-over");
-  if (over) {
-    const li = over.closest("li");
-    openHandOver(li.dataset.original, Number(li.dataset.seq));
-  }
-  const waits = e.target.closest(".r-where-it-waits");
-  if (waits) {
-    const li = waits.closest("li[data-original]");
-    fileWhereItWaits(li.dataset.original, Number(li.dataset.seq), waits);
-  }
-  const copy = e.target.closest(".r-open-copy");
+// The side sheet's one delegate (SPEC 7): the buttons of the file on it, in
+// its body and its footer, act on the row sheet.js is showing.
+$("sheet").addEventListener("click", (e) => {
+  const li = sheetRow();
+  if (!li) return;
+  const on = (className) => e.target.closest(className);
+  const restore = on(".r-restore");
+  if (restore) restoreMoved(li, restore);
+  const keep = on(".r-keep");
+  if (keep) keepMoved(li, keep);
+  const withdraw = on(".r-withdraw");
+  if (withdraw) withdrawAnswer({ original: li.dataset.original, identifier: withdraw.dataset.identifier, seq: li.dataset.seq }, withdraw);
+  const issuer = on(".r-add-issuer");
+  if (issuer) addIssuerAndFile(li, issuer);
+  const file = on(".r-file");
+  if (file) assignParked(li, file);
+  const dismiss = on(".r-dismiss");
+  if (dismiss) dismissParked(li, dismiss);
+  const over = on(".r-hand-over");
+  if (over) openHandOver(li.dataset.original, Number(li.dataset.seq));
+  const waits = on(".r-where-it-waits");
+  if (waits) fileWhereItWaits(li.dataset.original, Number(li.dataset.seq), waits);
+  const copy = on("#sheet-open");
   if (copy) openReviewCopy(copy);
-});
-$("review-mode").addEventListener("click", (e) => {
-  if (e.target.closest("#review-mode-cards")) setReviewMode(MODE_CARDS);
-  if (e.target.closest("#review-mode-list")) setReviewMode(MODE_LIST);
-});
-$("review-deck").addEventListener("click", (e) => {
-  const issuer = e.target.closest(".r-add-issuer");
-  if (issuer) addIssuerAndFile(issuer.closest(".deck-card"), issuer);
-  const accept = e.target.closest(".c-accept");
-  if (accept) acceptCard(accept.closest(".deck-card"));
-  const open = e.target.closest(".c-open");
-  if (open) openCardInList(open.closest(".deck-card"));
-  const skip = e.target.closest(".c-skip");
-  if (skip) skipCard(skip.closest(".deck-card"));
-  const copy = e.target.closest(".c-open-copy");
-  if (copy) openReviewCopy(copy);
-  const over = e.target.closest(".c-hand-over");
-  if (over) {
-    const card = over.closest(".deck-card");
-    openHandOver(card.dataset.original, Number(card.dataset.seq));
-  }
-  const waits = e.target.closest(".c-where-it-waits");
-  if (waits) {
-    const card = waits.closest(".deck-card");
-    fileWhereItWaits(card.dataset.original, Number(card.dataset.seq), waits);
-  }
-});
-$("dismissed-list").addEventListener("click", (e) => {
-  const btn = e.target.closest(".r-file");
-  if (btn) assignParked(btn.closest("li"));
-});
-$("filed-list").addEventListener("click", (e) => {
-  const btn = e.target.closest(".r-unfile");
-  if (btn) unfileDocument(btn.closest("li"));
-  const withdraw = e.target.closest(".r-withdraw");
-  if (withdraw) withdrawAnswer(withdraw);
 });
 // The one keyboard rule for every dialog (decision 201): Escape asks the
 // topmost to close, and Tab stays inside it.

@@ -1,0 +1,1133 @@
+{
+ "after_install": {
+  "heading": "Setup Needs Attention",
+  "wait": "Setup Needs Attention"
+ },
+ "ask_the_client": "Ask the Client",
+ "ask_the_client_note": "Every row is on the return. A ticked row is asked for and reminded; an unticked one is never asked for, but a document that arrives for it is filed there.",
+ "candidate_separator": ", ",
+ "columns": [
+  {
+   "help": "Names the request and its working copies; matched by prefix, so A100 and BS01 both work",
+   "key": "identifier",
+   "label": "Identifier"
+  },
+  {
+   "help": "What the request is called to people",
+   "key": "document",
+   "label": "Document"
+  },
+  {
+   "help": "The period asked for, e.g. TY2025 or Dec 2025; a year in it is the year check",
+   "key": "period",
+   "label": "Period"
+  },
+  {
+   "help": "How many files are due; counted over distinct valid files",
+   "key": "expected_count",
+   "label": "Expected Count"
+  },
+  {
+   "help": "File types accepted, comma-separated; blank means the safe default, * means any type",
+   "key": "allowed_extensions",
+   "label": "Allowed Extensions"
+  },
+  {
+   "help": "Files smaller than this are rejected as placeholders",
+   "key": "min_size_kb",
+   "label": "Min Size KB"
+  },
+  {
+   "help": "Every one of these must appear in the document (a keyword may hold alternatives with | and phrases wanted together with +)",
+   "key": "required_keywords",
+   "label": "Required Keywords"
+  },
+  {
+   "help": "At least one of these must appear; a keyword reads the same way",
+   "key": "any_keywords",
+   "label": "Any Keywords"
+  },
+  {
+   "help": "Blank with a year in Period checks for that year; * turns the year check off; a typed regex wins",
+   "key": "date_pattern",
+   "label": "Date Pattern"
+  },
+  {
+   "help": "Accepted counts as Received; Not Applicable takes the request out of every count for the year",
+   "key": "manual_override",
+   "label": "Manual Override"
+  },
+  {
+   "help": "Why the rules were overridden; required when Manual Override is Accepted",
+   "key": "override_reason",
+   "label": "Override Reason"
+  },
+  {
+   "help": "yes: the document carries the taxpayer's or the entity's name and files only where that name is on the page; no: a receipt, a log or a headerless export, filed by its keywords alone when the name is absent",
+   "key": "named",
+   "label": "Named"
+  },
+  {
+   "help": "Yes: the client is asked for it and reminded. No: nobody asks, but a document that arrives for it is filed here",
+   "key": "asked",
+   "label": "Asked"
+  },
+  {
+   "help": "What the firm's working file names call it, 20 characters at most; blank takes the document's first words. The client always sees the full document name",
+   "key": "short_title",
+   "label": "Short name"
+  }
+ ],
+ "commands": [
+  "accept-folder-name",
+  "acknowledge-foreign",
+  "add-issuer-and-file",
+  "after-install",
+  "approve",
+  "assign",
+  "cancel-pass",
+  "create",
+  "dismiss",
+  "edit",
+  "edit-household",
+  "firm",
+  "install-schedule",
+  "list",
+  "mark-missing",
+  "mark-shared",
+  "move-schedule-here",
+  "pilot-record",
+  "priors",
+  "propose-spellings",
+  "reminder",
+  "rename",
+  "restore",
+  "roll-household",
+  "rollover",
+  "run-now",
+  "set-root",
+  "set-schedule",
+  "settings",
+  "state",
+  "templates",
+  "unfile",
+  "unlearn",
+  "unlock",
+  "watch"
+ ],
+ "decisions": {
+  "dismissed": "Not Requested",
+  "duplicate": "Duplicate",
+  "file_moved": "File Moved",
+  "filed": "Filed",
+  "needs_review": "Needs Review"
+ },
+ "default_extensions": "pdf, xlsx, csv",
+ "dialogs": {
+  "discard": "Discard My Changes",
+  "keep_editing": "Keep Editing",
+  "unsaved": "Unsaved Changes"
+ },
+ "editor": {
+  "add_row": "Add a Request",
+  "advanced": "Advanced",
+  "any_extension": "*",
+  "cancel": "Cancel",
+  "date_fields": [
+   "due",
+   "filing_deadline"
+  ],
+  "engagement_fields": [
+   {
+    "editable": true,
+    "help": "greeting name in the reminder",
+    "key": "client",
+    "label": "Client"
+   },
+   {
+    "editable": false,
+    "help": "label; the folder name if blank",
+    "key": "name",
+    "label": "Engagement Name"
+   },
+   {
+    "editable": true,
+    "help": "pasted into the reminder",
+    "key": "link",
+    "label": "Share Link"
+   },
+   {
+    "editable": true,
+    "help": "the date the reminder asks the client to send things by",
+    "key": "due",
+    "label": "Due Date"
+   },
+   {
+    "editable": true,
+    "help": "the statutory filing date; named in the reminder from the third stage on; blank = not mentioned (defaults from the form, weekends shifted; holidays are yours to edit)",
+    "key": "filing_deadline",
+    "label": "Filing Deadline"
+   },
+   {
+    "editable": true,
+    "help": "who the reminder is from",
+    "key": "sender",
+    "label": "Sender"
+   },
+   {
+    "editable": true,
+    "help": "the sign-off line and the client README's contact (typed once at setup)",
+    "key": "firm",
+    "label": "Firm"
+   },
+   {
+    "editable": true,
+    "help": "no = this client is not chased by email",
+    "key": "reminders",
+    "label": "Reminders"
+   },
+   {
+    "editable": true,
+    "help": "No: Sorting Skips This Return",
+    "key": "active",
+    "label": "Active"
+   },
+   {
+    "editable": false,
+    "help": "written by the rollover; the engagement it names is no longer chased",
+    "key": "rolled_from",
+    "label": "Rolled From"
+   },
+   {
+    "editable": false,
+    "help": "which catalog the request list was cut from; blank if it was never recorded",
+    "key": "form",
+    "label": "Form"
+   },
+   {
+    "editable": false,
+    "help": "the household this return belongs to; the folder above the year",
+    "key": "household",
+    "label": "Household"
+   },
+   {
+    "editable": false,
+    "help": "the year the return is for; the year folder's name",
+    "key": "tax_year",
+    "label": "Tax Year"
+   },
+   {
+    "editable": false,
+    "help": "the return's folder name, form first; the same name every year",
+    "key": "return_name",
+    "label": "Return"
+   },
+   {
+    "editable": true,
+    "help": "who this return is for, with the spellings documents use; a named request files only where one of these is on the page",
+    "key": "people",
+    "label": "People"
+   }
+  ],
+  "engagement_title": "Engagement Details",
+  "learned_note": "Taught by a Filing: {keywords}",
+  "maximums": {
+   "expected_count": 9999,
+   "min_size_kb": 1048576
+  },
+  "minimums": {
+   "expected_count": 1,
+   "min_size_kb": 0
+  },
+  "no": "no",
+  "no_date_check": "*",
+  "not_this_return": "Request List Did Not Open",
+  "nothing_changed": "Nothing Changed; Nothing Was Recorded.",
+  "open": "Edit Request List",
+  "paste": "Paste Rows",
+  "paste_hint": "Paste rows copied from a spreadsheet: one request per line, cells separated by tabs or as CSV, in the column order above; a first line that repeats the headings is skipped. Nothing is recorded until you save.",
+  "plain_columns": [
+   "expected_count",
+   "asked",
+   "manual_override",
+   "override_reason",
+   "short_title"
+  ],
+  "remove_row": "Remove",
+  "rename": "Rename",
+  "rename_from": "Request",
+  "rename_hint": "Gives a request another identifier and moves its filed documents with it, at once. Changing an identifier in the list and saving is refused while the request holds documents; a change of case alone is saved in the list.",
+  "rename_left_note": "Some Copies Stayed Behind",
+  "rename_title": "Rename a Request",
+  "rename_to": "New Identifier",
+  "renamed_note": "Renamed",
+  "routing": "Routing Rules",
+  "routing_all": "Show Every Row's Routing Rules",
+  "routing_columns": [
+   "identifier",
+   "document",
+   "period",
+   "allowed_extensions",
+   "min_size_kb",
+   "required_keywords",
+   "any_keywords",
+   "date_pattern",
+   "named"
+  ],
+  "routing_help": "How the tracker recognises this document when it arrives. A save checks these the same way whether the fold is open or not.",
+  "save": "Save",
+  "saved": "Saved",
+  "title": "Request List",
+  "unlearn_label": "Unlearn",
+  "unlearned_note": "{keyword} unlearned from {identifier}; the request was re-scanned",
+  "warnings_heading": "Worth a Look",
+  "yes": "yes",
+  "yes_no_fields": [
+   "named",
+   "asked"
+  ]
+ },
+ "engagement_flag": "--engagement",
+ "evidence": {
+  "places": [
+   "title",
+   "first_page",
+   "footer",
+   "deep"
+  ],
+  "rules": [
+   "required",
+   "any",
+   "date",
+   "filename",
+   "refused",
+   "name"
+  ]
+ },
+ "example_root": "G:\\Shared drives\\Clients",
+ "expected_pattern": "{n} files expected",
+ "extension_default_note": "blank means pdf, xlsx, csv; a photo or an image counts as a PDF",
+ "firm": "",
+ "household": {
+  "accept_folder_name": "Accept the Folder's Name",
+  "accept_folder_name_help": "records that this household (or this return) is now called by its folder's name; nothing is moved or renamed",
+  "add_feed": "Feed Another Return",
+  "add_return": "Add a Return",
+  "add_return_title": "Add a Return to {household}",
+  "change_form": "Change Form Type",
+  "change_household": "Change Household Details",
+  "contact_help": "the greeting name in every return's letter, filled into each return when it is made",
+  "contact_label": "Contact",
+  "create_return": "Create Return",
+  "edit": "Edit Household",
+  "editable": [
+   "members",
+   "contact",
+   "link",
+   "feeds"
+  ],
+  "empty_root": "No Households Yet",
+  "fed_by_line": "Also Fed by: {listed}",
+  "feed_warning": "Its Members Can Drop Here",
+  "feeds_help": "returns in other households this drop folder feeds, by return line; most households feed only their own",
+  "feeds_label": "Also Feeds",
+  "feeds_line": "Also Feeds",
+  "form_step_note": "The request list is tailored to the form you pick.",
+  "form_step_title": "What Type of Return?",
+  "heading": "Household",
+  "items_title": "New {form} Return",
+  "link_help": "pasted into every return's letter; paste it once the inbox is shared",
+  "link_label": "Inbox Link",
+  "mark_shared": "Mark as Shared",
+  "members_help": "who this household's folder is meant to be shared with - the tracker cannot read Drive's sharing, so this is the firm's own note",
+  "members_label": "Shared With",
+  "misfits_heading": "Folders the Tracker Leaves Alone",
+  "misfits_note": "Each is listed with the one reason it does not fit the layout; nothing in it is ever read, moved or renamed.",
+  "name_label": "Household",
+  "new": "New Household",
+  "new_intro": "A client folder is a household: one folder per tax year inside it, one folder per return inside that, and one inbox the client drops everything into.",
+  "nobody_typed": "Nobody Typed Yet",
+  "not_yet_shared_line": "Not Yet Marked as Shared",
+  "open_client_folder": "Open Client Folder",
+  "open_inbox": "Open Inbox",
+  "queue_line": "{n} document(s) waiting for a person across this household",
+  "return_created": "Return \"{label}\" created with {n} request(s) asked for, client README generated. Open the Client Folder to show it.",
+  "return_name_help": "the return's folder name, form first; the same name every year",
+  "return_name_label": "Return",
+  "return_warning": "Shared Members See Documents",
+  "returns_heading": "Returns This Year",
+  "roll_carried": "{n} Request(s) Carried",
+  "roll_done": "{rolled} return(s) rolled into {year}; {retired} retired",
+  "roll_forms_unloaded": "Return Types Did Not Load",
+  "roll_forward_to": "Roll Forward to {year}",
+  "roll_intro": "Last year's list is the starting point. Everything the client actually sent, set aside or under-delivered carries forward - what was set aside as not applicable under its own heading, for a fresh decision; the form template only fills blanks.",
+  "roll_no_template": "Keep Last Year's List",
+  "roll_retired_line": "{label}: Retired.",
+  "roll_ticked": "Roll Forward",
+  "roll_unfiled": "{n} Last-Year Files Never Filed",
+  "rollover_unticked": "Unticked Returns Go Inactive",
+  "shared_on_line": "Shared {day}",
+  "sharing_heading": "Before the client can drop anything",
+  "sharing_note": "The tracker cannot see Drive's sharing. The two grants are the firm's to make, once; the year folders are view-only through the household folder, and nothing is ever re-shared.",
+  "two_open_years": "Two Years Open; Sorting Paused"
+ },
+ "keyword_default_note": "Defaults to the Document Name",
+ "labels": {
+  "Accepted": {
+   "key": "accepted",
+   "label": "Accepted",
+   "sentence": "A person accepted it with a reason; the rules stop here."
+  },
+  "Failed Validation": {
+   "key": "failed-validation",
+   "label": "Could Not Use",
+   "sentence": "Something arrived that the rules could not use."
+  },
+  "Missing": {
+   "key": "missing",
+   "label": "Outstanding",
+   "sentence": "Asked for; nothing usable has arrived yet."
+  },
+  "Not Applicable": {
+   "key": "not-applicable",
+   "label": "Not Applicable in TY{year}",
+   "sentence": "Does not apply this year; not counted, not chased."
+  },
+  "Not asked": {
+   "key": "not-asked",
+   "label": "Not Asked",
+   "sentence": "On the list, not requested; filed if it arrives."
+  },
+  "Partial": {
+   "key": "partial",
+   "label": "Partly In",
+   "sentence": "Some of the expected files are in; the rest are still to come."
+  },
+  "Pending Sync": {
+   "key": "pending-sync",
+   "label": "Syncing",
+   "sentence": "It is in; the cloud is still copying it down."
+  },
+  "Received": {
+   "key": "received",
+   "label": "Received",
+   "sentence": "In, and every check passed or a person accepted it."
+  },
+  "Requested": {
+   "key": "requested",
+   "label": "Not Yet Checked",
+   "sentence": "Asked for; no pass has looked at it yet."
+  }
+ },
+ "layout": {
+  "clients_tree": "Clients",
+  "engagement_label_pattern": "{household} {year} {return_name}",
+  "inbox": "Drop files here",
+  "private_tree": "J Park & Associates",
+  "return_name_pattern": "{form} - {client}"
+ },
+ "lock": {
+  "buttons_back": "The pass let go of this return; its buttons are back.",
+  "cleared": "The lock left behind was cleared ({minutes} min old).",
+  "greyed": "This return's buttons are greyed while it runs and come back by themselves the moment it lets go.",
+  "left_behind": "Stuck Lock From {host}",
+  "on": "It Is on {household}: {name}.",
+  "running": "In Use on {host}",
+  "running_other": "{label} in Use on {host}",
+  "watch_seconds": 5
+ },
+ "menu": {
+  "about": "About",
+  "add_return": "Add a Return\u2026",
+  "another_return": "Another Return\u2026",
+  "change_root": "Change Clients Folder\u2026",
+  "check": "Check\u2026",
+  "clear_lock": "Clear Stuck Lock",
+  "client": "&Client",
+  "clients": "Clients",
+  "draft_reminder": "Draft Reminder\u2026",
+  "edit": "&Edit",
+  "edit_household": "Edit Household\u2026",
+  "edit_list": "Edit Request List\u2026",
+  "edit_request": "Edit Request\u2026",
+  "error_log": "Open Error Log",
+  "exit": "Exit",
+  "file": "&File",
+  "find": "Find",
+  "firm_report": "Firm Report",
+  "help": "&Help",
+  "keep_here": "Keep Here",
+  "mark_missing": "Mark Missing",
+  "mark_shared": "Mark as Shared",
+  "needs_review": "Needs Review",
+  "new_household": "New Household\u2026",
+  "not_requested": "Not Requested",
+  "open_client_folder": "Open Client Folder",
+  "open_inbox": "Open Inbox",
+  "open_root": "Open Clients Folder",
+  "open_working": "Open Working Folder",
+  "overview": "Overview",
+  "put_back": "Put Back",
+  "refresh": "Refresh",
+  "reminders": "Reminders",
+  "repair_schedule": "Repair Schedule",
+  "roll_forward": "Roll Forward\u2026",
+  "safeguards": "Safeguards",
+  "schedule": "Schedule\u2026",
+  "sort_now": "Sort Now",
+  "stop_sorting": "Stop Sorting",
+  "terms": "Terms",
+  "tools": "&Tools",
+  "tour": "Take the Tour",
+  "unfile": "Unfile",
+  "view": "&View"
+ },
+ "new_not_asked_carried": "{n} Requests Added, Not Asked",
+ "not_applicable_carried": "Review {n} Set-Aside Requests",
+ "not_asked_key": "not-asked",
+ "not_asked_label": "Not asked",
+ "not_asked_table_label": "Requests Not Asked For",
+ "nothing_asked": "Tick at Least One Request",
+ "notices": {
+  "about": "{label}: {sentence}",
+  "labels": {
+   "dismiss": "Dismiss",
+   "look": "Look Again",
+   "retry": "Retry"
+  },
+  "repeated": "({n} Times)"
+ },
+ "origin_new": "new this year",
+ "origin_not_applicable": "not applicable last year",
+ "origin_prior": "carried from last year",
+ "override_labels": [
+  "Client Confirmed Final Version",
+  "Correct; Only Formatting Flagged",
+  "Received Outside the Tracker",
+  "Prior-Year or Substitute Document Accepted"
+ ],
+ "override_reason_other": "Other",
+ "override_reasons": [
+  "Client confirmed this is the final version",
+  "Correct document, validation flagged formatting only",
+  "Received outside the system (in person, fax, confirmed in a meeting)",
+  "Prior-year or substitute document accepted"
+ ],
+ "overrides": {
+  "accepted": "Accepted",
+  "not_applicable": "Not Applicable"
+ },
+ "pass_command": "run-now",
+ "path_kinds": {
+  "client_folder": "folder",
+  "clients_root": "folder",
+  "draft": "file",
+  "engagement": "folder",
+  "filed_copy": "reveal",
+  "household": "folder",
+  "inbox": "folder",
+  "moved_copy": "reveal",
+  "originals": "folder",
+  "prepared": "folder",
+  "review_copy": "file",
+  "shown_copy": "reveal",
+  "status": "file",
+  "view": "file"
+ },
+ "people": {
+  "add": "Add a Person",
+  "help": "who this return is for, with the spellings documents use; a named request files only where one of these is on the page",
+  "kind_label": "Who",
+  "kinds": [
+   {
+    "label": "Taxpayer",
+    "value": "taxpayer"
+   },
+   {
+    "label": "Spouse",
+    "value": "spouse"
+   },
+   {
+    "label": "Dependent",
+    "value": "dependent"
+   },
+   {
+    "label": "Entity (Legal Name)",
+    "value": "entity"
+   },
+   {
+    "label": "DBA or Abbreviation",
+    "value": "dba"
+   },
+   {
+    "label": "Owner (Accounts Held So)",
+    "value": "owner"
+   },
+   {
+    "label": "Decedent",
+    "value": "decedent"
+   },
+   {
+    "label": "Trust or Estate",
+    "value": "trust"
+   },
+   {
+    "label": "Fiduciary",
+    "value": "fiduciary"
+   }
+  ],
+  "label": "People",
+  "name_label": "Name",
+  "none_yet": "Add at Least One Person",
+  "one_word": "Spelling Needs Two Words",
+  "outcomes": {
+   "absent": "absent",
+   "confirmed": "confirmed",
+   "other": "another return's"
+  },
+  "own_spelling": "Another Spelling, One Per Line",
+  "remove": "Remove",
+  "review_people": "Review People",
+  "rolled_note": "Check Each Return's People",
+  "spellings_help": "ticked spellings are what a page is matched against; untick one a document never prints, and add any the app did not propose",
+  "spellings_label": "Spellings Documents Use",
+  "teach": "Teach This Spelling",
+  "teach_hint": "Spelling"
+ },
+ "period_pattern": "TY{year}",
+ "product": "Tax Document Tracker Pilot",
+ "progress": {
+  "household": "{household} ({n} of {of})",
+  "scan": "Checking {name}",
+  "sort": "Sorting {name}",
+  "stop": "Stop",
+  "stopping": "Stopping After This File\u2026"
+ },
+ "reasons": {
+  "ambiguous": "Fits Two Requests",
+  "answer-not-counted": "Statement Not Counted",
+  "assigned": "Filed by a Person",
+  "between-returns": "Fits Two Returns",
+  "container-damaged": "Email or Zip Damaged",
+  "container-empty": "Nothing Attached",
+  "container-limit": "Email or Zip Too Big",
+  "container-locked": "Email or Zip Locked",
+  "contested": "Claimed by Two Requests",
+  "copy-and-original-gone": "Copy and Original Gone",
+  "copy-changed": "Copy Was Changed",
+  "copy-missing": "Copy Missing",
+  "could-not-file": "Could Not File",
+  "extension": "File Type Not Allowed",
+  "extraction-failed": "Text Could Not Be Read",
+  "file-moved": "Moved by Hand",
+  "filed-whole": "Filed Whole",
+  "google-stub": "Google Shortcut Only",
+  "heic-reader": "HEIC Photo, No Reader",
+  "interrupted-move": "Step Interrupted",
+  "interrupted-move-lost": "Move Interrupted",
+  "issuer-not-named": "Issuer Not Named",
+  "matched": "Filed",
+  "name-absent": "No Client Name Found",
+  "name-other": "Names Another Return",
+  "name-points-at": "Name Hints a Request",
+  "named-across": "Names Another Household",
+  "no-keyword": "Expected Words Missing",
+  "no-pages": "PDF Has No Pages",
+  "no-people": "Return Has No People",
+  "no-request-accepts": "File Type Not Asked",
+  "no-room": "No Room for Name",
+  "no-text-after-ocr": "No Readable Text",
+  "no-text-layer": "Scan Not Readable",
+  "not-a-document": "Not a Document",
+  "not-requested": "Not Requested",
+  "ocr-failed": "Scan Reading Failed",
+  "ocr-only": "Read From Scan Only",
+  "opened-not-across": "Came in Email or Zip",
+  "password": "Password Protected",
+  "pending-sync": "Syncing",
+  "put-back-refused": "Could Not Put Back",
+  "reader-unavailable": "Reader Did Not Start",
+  "reading-crashed": "Reader Stopped",
+  "reading-stopped": "Reading Timed Out",
+  "several-forms": "Filed as Several Forms",
+  "several-forms-unsorted": "Several Forms, Unsorted",
+  "shows-form-number": "Shows a Form Number",
+  "too-large": "Too Large to Read",
+  "too-small": "File Almost Empty",
+  "uncheckable-type": "Cannot Check This Type",
+  "unfiled": "Unfiled by a Person",
+  "unmatched": "Could Not Sort",
+  "unnamed-across": "No Name on It",
+  "unreadable": "Nothing Readable",
+  "unreadable-image": "Photo Will Not Open",
+  "unreadable-pdf": "PDF Will Not Open",
+  "vanished": "File Disappeared",
+  "wrong-document": "Looks Like Wrong Document",
+  "wrong-period": "Wrong Period"
+ },
+ "reminder": {
+  "approve": "Approve",
+  "approved_line": "Approved {date} at Stage {n}",
+  "approved_then_edited": "Approved, Then Edited",
+  "copied": "Copied",
+  "copy": "Copy for Outlook",
+  "edited_by_hand": "Edited by Hand",
+  "heading": "Reminder",
+  "held_line": "Held: {n} Need a Decision",
+  "hold_colour": "warning_600",
+  "inbox_held_line": "Held: {n} Files Not Sorted",
+  "last_drafted_line": "Drafted {date}, Stage {n}",
+  "letter_ink": {
+   "body": "slate_600",
+   "muted": "grey_500",
+   "paper": "white"
+  },
+  "line_unreadable": "Reminder Could Not Be Read",
+  "never_drafted_line": "Not Drafted Yet",
+  "not_yet": "No Reminder Until First Sort",
+  "nothing_to_send": "Nothing Outstanding; No Reminder Needed",
+  "open_draft": "Open the Draft File",
+  "palette": {
+   "cream_50": "#F5F0E8",
+   "danger_600": "#A8362F",
+   "gold_800": "#7A5F16",
+   "grey_500": "#5C6577",
+   "navy_900": "#1B2A4A",
+   "slate_600": "#3A4660",
+   "warning_600": "#8A5A10",
+   "white": "#FFFFFF"
+  },
+  "set_aside_line": "Other Draft Moved Aside",
+  "sides": [
+   {
+    "key": "client",
+    "label": "Client",
+    "sentence": "The letter asks the client for it."
+   },
+   {
+    "key": "us",
+    "label": "Us",
+    "sentence": "Waiting on us, not the client; the letter does not ask for it."
+   },
+   {
+    "key": "decide",
+    "label": "Decide",
+    "sentence": "A person decides whether the client resends it or we fix it here; the letter is held until then."
+   }
+  ],
+  "stage_group": "Stage",
+  "stage_toggle_hint": "the pass pre-selects the stage from the Due Date; move it up or down before you send",
+  "stages": [
+   {
+    "colour": "slate_600",
+    "emphasis": {
+     "consequences_bold": false,
+     "dates_bold": false,
+     "deadline_colour": false,
+     "list_bold": false,
+     "list_colour": false,
+     "subject_bold": false,
+     "subject_colour": false,
+     "target_colour": false
+    },
+    "name": "Just a Heads Up",
+    "number": 1,
+    "short": "Heads Up"
+   },
+   {
+    "colour": "gold_800",
+    "emphasis": {
+     "consequences_bold": false,
+     "dates_bold": false,
+     "deadline_colour": false,
+     "list_bold": false,
+     "list_colour": false,
+     "subject_bold": false,
+     "subject_colour": false,
+     "target_colour": true
+    },
+    "name": "Checking In",
+    "number": 2,
+    "short": "Checking In"
+   },
+   {
+    "colour": "warning_600",
+    "emphasis": {
+     "consequences_bold": false,
+     "dates_bold": true,
+     "deadline_colour": true,
+     "list_bold": true,
+     "list_colour": false,
+     "subject_bold": false,
+     "subject_colour": false,
+     "target_colour": false
+    },
+    "name": "Response Requested; Deadline Approaching",
+    "number": 3,
+    "short": "Deadline Near"
+   },
+   {
+    "colour": "danger_600",
+    "emphasis": {
+     "consequences_bold": true,
+     "dates_bold": true,
+     "deadline_colour": true,
+     "list_bold": true,
+     "list_colour": true,
+     "subject_bold": true,
+     "subject_colour": true,
+     "target_colour": false
+    },
+    "name": "URGENT! Final Notice",
+    "number": 4,
+    "short": "Final Notice"
+   }
+  ],
+  "subject_prefix": "Subject: ",
+  "unreadable": "Reminder Could Not Be Read"
+ },
+ "review_labels": {
+  "accept": "Accept the Suggestion",
+  "also_answers": "Also Answers",
+  "bucket_order": [
+   "document",
+   "container",
+   "not_a_document"
+  ],
+  "buckets": {
+   "container": "Emails and Zips",
+   "document": "Documents",
+   "not_a_document": "Not Documents"
+  },
+  "came_from": "came from the client's subfolder '{folder}'",
+  "card_mode": "One at a Time",
+  "card_position": "{n} of {total}",
+  "dismiss": "Not Requested",
+  "dismiss_note": "Reason (Optional)",
+  "dismissed_heading": "Not Requested ({n})",
+  "file": "File It",
+  "file_anyway": "File It Anyway",
+  "file_where_it_waits": "File It Under {label}",
+  "filed_heading": "Filed Documents ({n})",
+  "hand_over": "File Under Another Return",
+  "hand_over_request": "Under Which Request",
+  "hand_over_return": "The Return That Takes It",
+  "handed_over": "Filed Under {label}",
+  "issuer_add": "Add Issuer",
+  "issuer_help": "Adds {identifier}, a K-1 row for this issuer, to the request list and files this document under it. Type the distinctive words and leave off the suffix (L.P., LLC).",
+  "issuer_label": "Issuer Name",
+  "issuer_not_rescanned": "Next Sort Rechecks It",
+  "keep": "Keep It Here",
+  "keyword": "Keyword to Learn (Optional)",
+  "keyword_help": "A word this document contains that others like it will too. Taught to the request so the next one files itself; the editor shows it beside the row.",
+  "list_mode": "All at Once",
+  "mark_missing": "Mark {identifier} Missing",
+  "moved_heading": "Moved by Hand ({n})",
+  "moved_nowhere": "Nowhere Under the Firm's Folder",
+  "moved_summary": "these working copies are not where the record put them; choose for each - nothing is guessed",
+  "not_a_document": "not_a_document",
+  "open_copy": "Open",
+  "open_in_list": "Pick Another Request",
+  "other_requests": "Other Requests",
+  "restore": "Put It Back",
+  "send_to_review": "Send to Review",
+  "skip": "Skip for Now",
+  "suggested": "Suggested",
+  "true_type": "A .{extension} File",
+  "unfile": "Unfile",
+  "unfile_note": "Reason (Optional)"
+ },
+ "roll_template_label": "Form Template",
+ "room": {
+  "heading": "Names Shortened to Fit",
+  "parks": "{count} Requests Can't Be Filed",
+  "short": "Names Shortened to Fit"
+ },
+ "rules": [
+  {
+   "detail": "Every routing and status decision comes from deterministic rules in the manifest.",
+   "headline": "No generative AI ever reads a client financial document.",
+   "short": "No AI Reads Documents"
+  },
+  {
+   "detail": "Files are moved byte for byte under their own names out of Drop files here into the client's folder for the year; all work happens on copies, and every move is recorded in the record.",
+   "headline": "Originals are never altered.",
+   "short": "Originals Never Changed"
+  },
+  {
+   "detail": "A document is filed only when exactly one request accepts it - or, when one document names several forms as itself, when each of those forms is accepted by exactly one request, or, when a broker's consolidated statement is accepted by several requests, when exactly one of them accepts it for its 1099-B, which then holds the whole statement. Ambiguous, contested and unrecognized files go to 00 - Needs Review for a person - misfiling a tax document is worse than not filing it.",
+   "headline": "Nothing is guessed.",
+   "short": "Nothing Is Guessed"
+  },
+  {
+   "detail": "The system drafts client emails and stops. There is no SMTP, no mail client and no network call in the reminder or scheduling path.",
+   "headline": "Nothing is ever sent.",
+   "short": "Nothing Is Ever Sent"
+  }
+ ],
+ "scan": {
+  "but": "But {problems}.",
+  "complete": "Pass complete \u2014 {did}.   {summary}",
+  "filed": "Filed {n}",
+  "not_in_pass": "The pass ended, but its final line does not name this return, so its counts are not shown; the page is drawn from the record.",
+  "not_sorted": "{n} Files Not Sorted",
+  "nothing_done": "Nothing Done: {why}.",
+  "problem": "Sort Failed",
+  "review": "{n} to Review",
+  "scanning": "Scanning\u2026",
+  "syncing": "{n} Still Syncing"
+ },
+ "schedule": {
+  "button": "Schedule",
+  "cancel": "Cancel",
+  "draft_day": "saturday",
+  "enabled_label": "Run the Schedule",
+  "every": 120,
+  "every_choices": [
+   {
+    "label": "Once a Day",
+    "minutes": 0
+   },
+   {
+    "label": "Every 30 Minutes",
+    "minutes": 30
+   },
+   {
+    "label": "Every Hour",
+    "minutes": 60
+   },
+   {
+    "label": "Every 2 Hours",
+    "minutes": 120
+   },
+   {
+    "label": "Every 4 Hours",
+    "minutes": 240
+   },
+   {
+    "label": "Every 8 Hours",
+    "minutes": 480
+   }
+  ],
+  "every_label": "How Often",
+  "loading": "Reading the Schedule Setting...",
+  "move_confirm": "Move Schedule Here From {host}?",
+  "move_warning": "Only If {host} Is Retired",
+  "note": "Scan works either way. Nothing is ever sent.",
+  "off": "Off",
+  "on": "On",
+  "repair": "Repair the Schedule",
+  "repair_confirm": "Repair the Schedule Here?",
+  "repair_help": "Register the daily job again on this computer - only needed if the schedule was deleted or broken",
+  "save": "Save",
+  "start": "07:00",
+  "start_label": "First Run At",
+  "task_name": "Tax Document Tracker Pilot",
+  "title": "Schedule on This Computer"
+ },
+ "screen": {
+  "about": {
+   "edition": "Pilot {version}"
+  },
+  "contact": "Contact {name}",
+  "copied": "Copied",
+  "counts": {
+   "complete": "Complete",
+   "files": "{n} Files",
+   "need": "{n} Need You",
+   "one_return": "1 Return",
+   "returns": "{n} Returns",
+   "waiting": "{n} Waiting"
+  },
+  "due": "Due {date}",
+  "empty": {
+   "clients": "No Clients Yet",
+   "needs_review": "Nothing Needs Review",
+   "next_sort": "Next Sort {time}",
+   "overview": "Nothing Is Waiting",
+   "received": "Nothing Received Yet",
+   "reminders": "No Drafts Ready",
+   "returns": "No Returns Yet",
+   "work": "No Work Waiting"
+  },
+  "figures": {
+   "complete": "Complete",
+   "need": "Need a Person",
+   "waiting": "Waiting on Clients"
+  },
+  "filters": {
+   "all": "All",
+   "work": "Work Waiting"
+  },
+  "find": "Find a Client",
+  "find_none": "No Match",
+  "groups": {
+   "needs_you": "Needs You",
+   "received": "Received",
+   "set_aside": "Set Aside",
+   "waiting": "Waiting on Client"
+  },
+  "held": "Held",
+  "icons": {
+   "dismiss": "Dismiss",
+   "more": "More",
+   "next": "Next",
+   "open": "Open"
+  },
+  "inactive": "Inactive",
+  "last_sort": {
+   "done": "Sorted",
+   "failed": "Sort Failed",
+   "never": "Not Sorted Yet",
+   "other_day": "Sorted {date}",
+   "running": "Sorting {n} of {total}",
+   "today": "Sorted {time}"
+  },
+  "loading": "Loading",
+  "misfits": {
+   "reasons": {
+    "bad_name": "Name Refused",
+    "client_look_alike": "Look-Alike Folder",
+    "client_no_record": "Unowned Folder",
+    "legacy_folder": "Old Workbook",
+    "no_household_record": "No Household",
+    "no_return": "No Return",
+    "not_a_tree": "Unknown Folder",
+    "record_misplaced": "Old Layout",
+    "unlisted": "Cannot List"
+   },
+   "title": "Folders Skipped"
+  },
+  "moved": "Moved by Hand",
+  "navigate_client": "Navigate to Client",
+  "navigate_return": "Navigate to Return",
+  "not_shared": "Not Shared",
+  "notices": {
+   "drive": "Drive Not Signed In",
+   "feed": "Prior Year Data Not Found",
+   "firm_failed": "Counts Not Available",
+   "machine": "Machine Needs Attention",
+   "name_requests": "Name Each Custom Request",
+   "no_log": "No Error Log Yet",
+   "paused": "Two Years Open; Sorting Paused",
+   "pick_request": "Pick a Request First",
+   "reader": "Install Folder Name Too Long",
+   "renamed": "Folder Renamed",
+   "show": "Show",
+   "skipped": "{n} Folders Skipped"
+  },
+  "partly": "{n} of {total}",
+  "path_label": "Path",
+  "retry": "Retry",
+  "rolled": "Rolled Forward",
+  "safeguards": {
+   "title": "Safeguards"
+  },
+  "saved": "Saved",
+  "sections": {
+   "clients": "Clients",
+   "needs_review": "Needs Review",
+   "overview": "Overview",
+   "reminders": "Reminders"
+  },
+  "setup": {
+   "choose": "Choose Folder\u2026",
+   "missing": "Folder Not Found",
+   "start": "Start",
+   "title": "Choose Your Clients Folder"
+  },
+  "shared": "Shared",
+  "sheet": {
+   "drafted": "Drafted {date}, Stage {n}",
+   "reminder": "Reminder"
+  },
+  "show_in_explorer": "Show in File Explorer",
+  "side_label": "Sections",
+  "sort": {
+   "firm": "Open a Client to Sort",
+   "locked": "In Use Elsewhere",
+   "now": "Sort Now",
+   "stop": "Stop Sorting",
+   "stopping": "Stopping"
+  },
+  "steps": {
+   "check": "Check",
+   "draft": "Draft Reminder",
+   "edit": "Edit",
+   "open": "Open"
+  },
+  "work": "Work Waiting"
+ },
+ "set_aside": {
+  "group": "{label} ({n})",
+  "heading": "Set Aside ({n})"
+ },
+ "settings": {
+  "firm_help": "as it should sign the reminders",
+  "firm_label": "Firm Name",
+  "phone": "",
+  "phone_help": "named in the final-notice reminder; blank drops that sentence",
+  "phone_label": "Firm Phone",
+  "root_label": "Clients Folder"
+ },
+ "shell": {
+  "could_not_send": "Could Not Send; Nothing Changed",
+  "could_not_start": "The Tracker Could Not Start",
+  "error_log": "/root/.local/state/tax-document-tracker-pilot/tracker-errors.log",
+  "killed": "Sort Stopped: Ran Too Long",
+  "killed_at": "It Was on {household}: {name}.",
+  "no_log": "Tracker Failed",
+  "no_reply": "No Reply From the Tracker",
+  "not_opened": "Not Opened; It Has Changed",
+  "page_error": "The App Hit an Error"
+ },
+ "statuses": [
+  {
+   "key": "missing",
+   "value": "Missing"
+  },
+  {
+   "key": "partial",
+   "value": "Partial"
+  },
+  {
+   "key": "failed-validation",
+   "value": "Failed Validation"
+  },
+  {
+   "key": "received",
+   "value": "Received"
+  },
+  {
+   "key": "pending-sync",
+   "value": "Pending Sync"
+  }
+ ],
+ "triage": {
+  "identifier_separator": " \u2014 ",
+  "max_suggestions": 3,
+  "nothing_suggested": "No Suggestion",
+  "places": {
+   "deep": "on page {page}",
+   "first_page": "on page {page}",
+   "footer": "in the page {page} footer",
+   "title": "in the title"
+  },
+  "set_aside_note": "Set Aside in Request List"
+ },
+ "unknown_year_label": "next year",
+ "unscanned_key": "requested",
+ "unscanned_label": "Requested",
+ "view": {
+  "label": "Status Report",
+  "open": "Open Status Report",
+  "states": [
+   "current",
+   "behind",
+   "unknown"
+  ]
+ },
+ "year_max": 2099,
+ "year_min": 1900,
+ "year_note": "Defaults to the most recently ended year; the checklist's periods follow it"
+}
