@@ -2215,3 +2215,4 @@ def test_a_household_paused_for_two_open_years_is_marked_and_listed_from_the_fir
     assert ran["plainWork"] == [] and ran["plainAll"] == [["Alpha Family", ""], ["Bravo Family", ""]], "with the field absent nothing is drawn"
     assert ran["rows"] == [["Alpha Family", words, "household", "a"]] and ran["none"] == []
     assert ran["cell"][-1] == "row-mark is-attention" and ran["plainCell"] == 1
+    assert "[...pagesPausedRows(firm), ...pagesWorkRows(firm.returns)]" in js_function("pagesOverview", "pages.js"), "Overview leads with the paused households"

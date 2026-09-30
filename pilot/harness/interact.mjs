@@ -599,7 +599,7 @@ const settle = (page) => page.waitForTimeout(250);
   const names = await page.evaluate(() => [...document.querySelectorAll("#misfits-list .misfit-name")].map((n) => n.textContent));
   check("Show lists the folders skipped by their own names, never a path", names.join("|") === "Old Files|Scans|Misc", names);
   const whys = await page.evaluate(() => [...document.querySelectorAll("#misfits-list li")].map((n) => n.textContent));
-  check("each skipped folder has the vocabulary's reason beside its name; a code without a word draws the name alone", whys.join("|") === "Old FilesUnknown Folder|ScansNo Return|Misc", whys);
+  check("each skipped folder has the vocabulary's reason beside its name; a code without a word draws the name alone", whys.join("|") === "Old FilesUnknown Folder|ScansNo Return|Misc" && (await page.locator("#misfits-list .misfit-why").count()) === 2, whys);
   await page.keyboard.press("Escape");
   await context.close();
 }
