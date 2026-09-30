@@ -1101,8 +1101,8 @@ function openReviewCopy(btn) {
 // ── The way back, so nobody corrects a filing in Explorer ────────────────
 
 // A filed original is unfiled, or one request it answered is marked missing,
-// from the right-click menu of the Received row (SPEC 5.2, the `received`
-// template); the index is the only thing that knows where a working copy
+// from the right-click menu of a request already answered (SPEC 5.2, the
+// `received` template); the index is the only thing that knows where a working copy
 // went, and a correction made in Explorer is one it never learns. One
 // original can have a copy under more than one request (a page that carried
 // two forms); Unfile still takes the one original, because the row is one row
@@ -1133,8 +1133,8 @@ async function withdrawAnswer(spec, btn) {
 
 // Nothing is deleted and nothing is moved: the row is rewritten, so the
 // banner says what the row now reads and the file is still where it was.
-// From the sheet's Not requested button, or the row's right-click menu with
-// `note` empty.
+// From the sheet's set-aside button, or the row's right-click menu (the
+// sheet presses it), with the note the person left in More.
 async function dismissParked(li, btn) {
   const view = viewGeneration;   // drawn only if this return is still the one shown (D6)
   btn.disabled = true;

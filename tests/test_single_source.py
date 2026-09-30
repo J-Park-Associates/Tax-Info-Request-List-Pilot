@@ -683,7 +683,8 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
              api_module.SET_ASIDE_SECTION.split("{")[0].strip())
     for literal in added:
         assert literal and literal not in js and literal not in html, literal
-    for key in ("not_asked_label", "ask_the_client", "ask_the_client_note",
+    # The 31-word note under the ticks is cut with the dialogs' help lines (SPEC 2.7, E90).
+    for key in ("not_asked_label", "ask_the_client",
                 "not_asked_table_label", "roll_template_label", "nothing_asked",
                 "new_not_asked_carried", "origin_new"):
         assert f"vocab.{key}" in js, key
@@ -877,27 +878,30 @@ def test_the_card_hands_the_roll_call_the_household_it_shows_and_no_other(tmp_pa
 
 def test_the_roll_fold_says_what_unticking_does_and_a_paused_card_offers_neither_entry():
     """The retire-on-untick sentence (decision 126) is drawn inside the
-    fold, beside the ticks and before the button, naming the year; the
-    fold is hidden whenever the API offers no roll (a paused household
-    among them), and Add a return is hidden while the household is paused
-    (decision 188), because then the pause is the work."""
+    roll dialog, after the ticks, naming the year, with the roll button in
+    the dialog's footer; the dialog opens only when the API offers a roll
+    (a paused household has none), and Add a return is hidden while the
+    household is paused (decision 188), because then the pause is the work."""
     js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
     fold = _js_function(js, "function renderRollFold(hh) {")
-    assert 'fold.classList.toggle("hidden", !hh.roll_year);' in fold
     note = fold.index('fill(words.rollover_unticked, { year })')
-    assert fold.index('className: "roll-tick"') < note < fold.index('id: "btn-roll"')
-    card = _js_function(js, "function renderHousehold(state) {")
-    assert "renderRollFold(hh);" in card
+    assert fold.index('className: "roll-tick"') < note
+    assert 'show("roll-body"' in fold and "roll_intro" not in js, "the intro is cut (SPEC 2.7, E92)"
+    opening = _js_function(js, "function openRoll() {")
+    assert "!hh.roll_year" in opening and 'unanswered("roll_forward")' in opening and 'openDialog("roll-modal")' in opening
+    dialog = html[html.index('id="roll-modal"'):]
+    assert dialog.index('id="roll-body"') < dialog.index('id="roll-cancel"') < dialog.index('id="btn-roll"')
     # Add a return while paused is the menu's rule now (SPEC 5.1): shell.js
     # leaves the id off the enable list, and tests/test_shell.py pins it.
-    assert "paused" in _js_function(read("app/renderer/shell.js"), "function shellEnabled() {")
+    assert "paused" in _js_function(read("app/renderer/shell.js"), "function shellEnabled(at) {")
 
 
 #: The words decision 196 adds under ``vocab.household``.
-ROLL_AND_ADD_KEYS = ("roll_forward_to", "roll_ticked", "roll_intro", "roll_no_template",
+ROLL_AND_ADD_KEYS = ("roll_forward_to", "roll_ticked", "roll_no_template",
                      "roll_done", "roll_carried", "roll_unfiled", "roll_retired_line",
-                     "roll_forms_unloaded", "add_return_title", "new_intro",
-                     "form_step_title", "form_step_note", "change_form", "change_household",
+                     "roll_forms_unloaded", "add_return_title",
+                     "form_step_title", "change_form", "change_household",
                      "items_title", "create_return", "return_created")
 
 
@@ -1072,8 +1076,15 @@ def test_the_standing_rules_are_worded_once_and_quoted_everywhere():
             assert rule["headline"] in text, (rel, rule["headline"])
             assert plain(rule["detail"]) in text, (rel, rule["detail"])
         assert rule["headline"] in rule_nodes and plain(rule["detail"]) in rule_nodes, rule["headline"]
+    # The page half (SPEC 2.7, E93; P64): Help > Safeguards is a dialog that
+    # holds one short line per rule, read from the API's `rules[].short`, and
+    # the four cards of the old footer are gone.
     html = read("app/renderer/index.html")
-    assert html.count("<div><strong></strong><span></span></div>") == len(api.standing_rules())
+    js = read("app/renderer/app.js")
+    assert "<div><strong></strong><span></span></div>" not in html and 'id="assurances"' not in html
+    assert 'id="safeguards-list"' in html
+    opening = _js_function(js, "function openSafeguards() {")
+    assert "vocab.rules.map(" in opening and "rule.short" in opening and "rule.detail" not in opening
 
 
 def test_the_documents_list_the_forms_the_catalog_has():
@@ -1804,12 +1815,17 @@ def test_every_review_action_the_renderer_sends_carries_the_rows_seq():
     import tracker.api as api
 
     js = read("app/renderer/app.js")
-    # Two of the three read the row's version where they send it...
-    for command in ("dismiss", "unfile"):
+    # The sheet's dismissal reads the row's version off the row on the sheet...
+    sent = re.search(r'call\(withEng\("dismiss"\), \{(.*?)\}\)', js, re.S)
+    assert sent and "seq:" in sent.group(1) and "li.dataset.seq" in sent.group(1)
+    # ...and the right-click writes of a filed row (Unfile, Mark missing) read
+    # it from the spec the page built from the same index row (pages.js).
+    for command in ("unfile", "mark-missing"):
         sent = re.search(rf'call\(withEng\("{command}"\), \{{(.*?)\}}\)', js, re.S)
-        assert sent, command
-        assert "seq:" in sent.group(1), command
-        assert "li.dataset.seq" in sent.group(1), command
+        assert sent and "seq: Number(spec.seq)" in sent.group(1), command
+    pages = read("app/renderer/pages.js")
+    assert "{ original: direct[0].handle, seq: direct[0].seq }" in pages
+    assert "{ original: answering.handle, seq: answering.seq, identifier: item.identifier }" in pages
     # ...and since decision 114 the filing has one call site for the three
     # buttons that make it, so each of them reads the version off the element
     # it was drawn on and hands it to that one function.
@@ -1821,7 +1837,7 @@ def test_every_review_action_the_renderer_sends_carries_the_rows_seq():
         assert "fileRow(" in body.group(0) and "dataset.seq" in body.group(0), handler
     # Every row builder puts it on the element the handlers read it back
     # from - since decision 190 one more: the row that is not a document.
-    assert js.count("seq: e.seq") == 3
+    assert js.count("seq: e.seq") == 1 and js.count("seq: m.seq") == 2
     # And the sentence a refusal shows is the API's, never the renderer's.
     assert api.NO_SEQ not in js
 
@@ -2625,7 +2641,8 @@ const cards = src.slice(src.indexOf("const LOCKED_CARDS"), src.indexOf("function
 const parts = [cards, grab("function applyLock() {"), grab("function setLocked(on) {"), grab("function scanDone() {")];
 const control = { disabled: false, dataset: {} };
 const nodes = {
-  "review-card": { querySelectorAll: () => [control] },
+  "sheet-body": { querySelectorAll: () => [control] },
+  "sheet-foot": { querySelectorAll: () => [] },
   notices: { querySelectorAll: () => [] },
 };
 const ctx = `let locked = false; let scanning = {};
@@ -3029,7 +3046,7 @@ def test_switching_returns_is_one_state_call():
     js = read("app/renderer/app.js")
     show = _body(js, "async function showReturn(path) {")
     assert show.count("call(") == 1 and 'call(["state", ' in show
-    for head in ('$("household-roll").addEventListener("click", async (e) => {',):
+    for head in ('$("roll-body").addEventListener("click", (e) => {',):
         handler = _handler(js, head)
         if "reviewPeople(" in handler:       # the roll fold's people button (S4)
             handler += _body(js, "async function reviewPeople(path) {")
@@ -3552,6 +3569,7 @@ const done = {{ banners: [], failed: 0 }};
 const button = {{ disabled: false, open: true }};
 const $ = () => button;
 const gatherRollChoice = () => ({{}});
+const closeDialog = () => {{ button.open = false; }};
 const rollHouseholdCall = () => [["roll-household"], {{}}];
 const call = async () => ({{ target_year: 2027, state, rolled: [{{ label: "1040 - Pat Lee",
   carried: [], unfiled_last_year: [], warnings: [] }}], retired: [], skipped: [],
@@ -3661,8 +3679,10 @@ def test_every_dialog_is_in_the_one_registry_and_closes_through_one_guard():
     js = read("app/renderer/app.js")
     html = read("app/renderer/index.html")
     ids = set(_DIALOG_IDS.findall(html))
-    assert ids == {"editor", "household-modal", "handover-modal", "modal", "schedule-modal"}
-    assert _registry(js) == ids
+    assert ids == {"editor", "household-modal", "handover-modal", "modal", "schedule-modal",
+                   "roll-modal", "safeguards-modal", "about-modal", "misfits-modal"}
+    # The registry also holds the side sheet (SPEC 7): it hides by its attribute.
+    assert _registry(js) == ids | {"sheet"}
     for ident in ids:
         assert f'$("{ident}").classList.add("hidden")' not in js, ident
         assert f'$("{ident}").classList.remove("hidden")' not in js, ident
@@ -3690,7 +3710,7 @@ def test_escape_and_an_overlay_click_reach_every_dialog_the_same_way():
     assert not re.search(r"e\.target === \$\(\"[a-z-]+\"\)", js)
     for button, dialog in (("hh-edit-cancel", "household-modal"), ("ho-cancel", "handover-modal"),
                            ("ed-cancel", "editor"), ("wh-cancel", "modal"), ("wf-cancel", "modal"),
-                           ("ne-cancel", "modal"), ("sc-cancel", "schedule-modal")):
+                           ("ne-cancel", "modal"), ("sc-cancel", "schedule-modal"), ("roll-cancel", "roll-modal")):
         assert f'$("{button}").addEventListener("click", () => requestClose("{dialog}"));' in js, button
 
 
@@ -3709,10 +3729,15 @@ def test_every_dialog_opens_with_focus_inside_and_gives_it_back():
                           ("async function openHandOver(original, seq) {", "handover-modal"),
                           ("async function openAddReturn(hh) {", "modal"),
                           ("async function openNewHousehold() {", "modal"),
-                          ("async function openSchedule() {", "schedule-modal")):
+                          ("async function openSchedule() {", "schedule-modal"),
+                          ("function openRoll() {", "roll-modal"),
+                          ("function openSafeguards() {", "safeguards-modal"),
+                          ("function openAbout() {", "about-modal"),
+                          ("function openMisfits() {", "misfits-modal")):
         assert f'openDialog("{ident}")' in _js_function(js, opener), opener
+    assert 'openDialog("sheet");' in _js_function(read("app/renderer/sheet.js"), "function sheetFrame(now, title) {")
     registry = js.split("const DIALOGS = {", 1)[1].split("\n};\n", 1)[0]
-    assert registry.count("first: () =>") == 5
+    assert registry.count("first: () =>") == 10
     trap = _js_function(js, "function trapTab(e, id) {")
     assert "e.preventDefault();" in trap and "first.focus();" in trap and "last.focus();" in trap
 

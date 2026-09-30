@@ -2276,10 +2276,13 @@ def test_the_schedule_dialog_uses_only_the_apis_words(capsys):
     assert 'id="btn-schedule"' not in html, "the button is Tools > Schedule now (SPEC 5.1)"
     assert "schedule: () => openSchedule()," in shell
     assert 'call(["set-schedule"]' in js and 'call(["settings"]' in js
+    # The dialog's help lines are cut (SPEC 2.7, E87): no "Scan works either
+    # way" note and no loading sentence (outline rows and one word instead).
     for word in ("words.title", "words.enabled_label", "words.on", "words.off",
-                 "words.start_label", "words.every_label", "words.every_choices", "words.note",
-                 "words.loading", "words.save", "words.cancel"):
+                 "words.start_label", "words.every_label", "words.every_choices",
+                 "words.save", "words.cancel"):
         assert word in js, word
+    assert "words.note" not in js and "words.loading" not in js and "shellSkeleton(3)" in js
     for literal in (api.SCHEDULE_BUTTON, api.SCHEDULE_TITLE, api.SCHEDULE_ENABLED_LABEL,
                     api.SCHEDULE_START_LABEL, api.SCHEDULE_EVERY_LABEL, api.SCHEDULE_NOTE,
                     api.SCHEDULE_LOADING, *api.SCHEDULE_EVERY_LABELS.values()):
@@ -3232,9 +3235,9 @@ def test_the_moved_card_offers_mark_missing_on_a_row_whose_copy_and_original_are
     moved_row = js[js.index("function movedRow("):js.index("async function restoreMoved(")]
     gone_branch = moved_row[moved_row.index("if (m.gone)"):moved_row.index("\n  }\n")]
     assert "vocab.review_labels.mark_missing" in gone_branch and "r-withdraw" in gone_branch
-    assert "r-restore" not in gone_branch and "r-review" not in gone_branch
-    listener = js[js.index('$("moved-list").addEventListener'):]
-    assert "withdrawAnswer(" in listener[:listener.index("});")]
+    assert "r-restore" not in gone_branch and "r-review" not in gone_branch and "r-keep" not in gone_branch
+    listener = js[js.index('$("sheet").addEventListener("click"'):]
+    assert "withdrawAnswer(" in listener[:listener.index("\n});")]
 
 
 # ------------------------------------------------- the reminder card (d118) ----
