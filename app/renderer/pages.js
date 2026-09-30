@@ -298,7 +298,7 @@ function pagesNameCell(spec) {
   const box = h("span", { className: "row-name" }, first, spec.nameLink ? pagesLinkNode(spec.nameLink, spec.name, "name") : spec.name);
   if (!spec.nameLink) setTipIfCut(box, spec.name);
   if (spec.mark) box.append(h("span", { className: "row-mark is-attention" }, spec.mark));
-  if (spec.linksIn === "name") pagesLinkMarkIn(box, spec.links, true);
+  if (spec.linksIn === "name") pagesLinkMarkIn(box, spec.links, true, spec.name);
   return box;
 }
 
@@ -307,10 +307,14 @@ function pagesNameCell(spec) {
 // Inside a row list it is not a Tab stop (the list is one, SPEC-shell
 // 3.6): the list's own click and Space on the active row open its panel.
 // Outside a list it is an ordinary button.
-function pagesLinkMark(links, inList) {
+// `owner`: the household whose links these are, so a redraw can find the
+// same mark again and keep its panel open (the review's S2).
+function pagesLinkMark(links, inList, owner) {
   const words = screenWords().linked;
   if (!words || !words.tip) throw new Error("linked.tip");
-  const mark = h("button", { type: "button", className: "link-mark", "aria-label": words.tip, tabindex: inList ? "-1" : undefined }, icon("link", true));
+  const mark = h("button", { type: "button", className: "link-mark", "aria-label": words.tip, "aria-haspopup": "dialog",
+                             tabindex: inList ? "-1" : undefined, dataset: { owner: owner || "" } }, icon("link", true));
+  mark.linked = links;
   setTip(mark, words.tip);
   if (!inList) {
     mark.addEventListener("click", (e) => {
@@ -321,8 +325,8 @@ function pagesLinkMark(links, inList) {
   return mark;
 }
 
-function pagesLinkMarkIn(box, links, inList) {
-  if (links && links.length) box.append(pagesLinkMark(links, inList));
+function pagesLinkMarkIn(box, links, inList, owner) {
+  if (links && links.length) box.append(pagesLinkMark(links, inList, owner));
 }
 
 // The small panel naming each linked household and its kind, each name a
@@ -346,7 +350,7 @@ function pagesShowPanel(anchor, links, back) {
   });
   const node = h("div", { id: "link-panel", role: "dialog", "aria-label": words.linked.tip, tabindex: "-1" }, h("ul", { className: "link-list" }, ...lines));
   document.body.append(node);
-  pagesPanel = { node, back };
+  pagesPanel = { node, back, owner: anchor.dataset ? anchor.dataset.owner || "" : "" };
   node.addEventListener("focusout", (e) => {
     if (pagesPanel && pagesPanel.node === node && !node.contains(e.relatedTarget)) pagesClosePanel(false);
   });
@@ -437,7 +441,7 @@ function pagesDetailCell(spec) {
   } else {
     box = pagesCell("row-detail", "detail", spec.detail || "", spec.detailLink);
   }
-  if (spec.linksIn === "detail") pagesLinkMarkIn(box, spec.links, true);
+  if (spec.linksIn === "detail") pagesLinkMarkIn(box, spec.links, true, spec.detail);
   return box;
 }
 
@@ -1078,12 +1082,12 @@ function pagesReviewGroup(group, specs) {
   const household = owner ? owner.household : "";
   const house = pagesHouseholdPath(household);
   const caption = household ? [house ? pagesHeadLink({ kind: "household", path: house }, household) : household] : [];
-  if (owner && owner.links && owner.links.length) caption.push(pagesLinkMark(owner.links, false));
+  if (owner && owner.links && owner.links.length) caption.push(pagesLinkMark(owner.links, false, household));
   pagesUid += 1;
   const token = `row-${pagesUid}`;
   const route = pagesRoute(group.path);
   pagesTokens.set(token, { menu: "return", nameLink: { kind: "return", path: group.path }, step: { kind: "open", route } });
-  const more = h("button", { type: "button", className: "icon-button group-more", "aria-label": words.icons.more_actions }, icon("more"));
+  const more = h("button", { type: "button", className: "icon-button group-more", "aria-label": words.icons.more_actions, "aria-haspopup": "menu" }, icon("more"));
   setTip(more, words.icons.more_actions);
   const popup = (x, y) => shellPopup("return", token, x, y, pagesEnableFor(pagesTokens.get(token)));
   more.addEventListener("click", () => {
@@ -1595,6 +1599,10 @@ function pagesDraw(route, page) {
     pagesReasonPick = "";
     if (["overview", "needs-review", "reminders"].indexOf(route.level) !== -1) pagesClientType = "";
   }
+  // An open Linked Households panel outlives a redraw of the same page (the
+  // review's S2): it is opened again on the same household's mark, or, when
+  // that mark is gone, focus goes to the page's list rather than be lost.
+  const panel = pagesPanel && route.level === pagesLastLevel ? { owner: pagesPanel.owner } : null;
   if (typeof pagesClosePanel === "function") pagesClosePanel(false);
   pagesLastLevel = route.level;
   const key = pagesRouteKey(route);
@@ -1636,6 +1644,18 @@ function pagesDraw(route, page) {
   pagesApplyWidths(page, pagesListOf(route));
   pagesDrawn = key;
   pagesRestore(page);
+  if (panel) pagesReopenPanel(page, panel.owner);
+}
+
+// The panel again, on the redrawn mark of the household it was open for;
+// with no such mark, focus goes to the page's first list (or the page).
+function pagesReopenPanel(page, owner) {
+  const mark = [...page.querySelectorAll(".link-mark")].find((one) => one.dataset.owner === owner && one.linked);
+  if (mark) {
+    pagesShowPanel(mark, mark.linked, mark.closest('[role="listbox"]') || mark);
+    return;
+  }
+  (page.querySelector('[role="listbox"]') || page).focus();
 }
 
 // ── keys on a row list (SPEC 3.6, 4.3) ────────────────────────────────

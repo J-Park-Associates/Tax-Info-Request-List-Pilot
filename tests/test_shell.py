@@ -956,7 +956,7 @@ COLUMN_FUNCTIONS = ("pagesListOf", "pagesUrgent", "pagesIsBlank", "pagesCompareK
                     # The raised lists (pilot SPEC-lists 10-17).
                     "pagesDetailCell", "pagesStatusCell", "pagesLinkMark", "pagesLinkMarkIn", "pagesShowPanel", "pagesPanelOpen",
                     "pagesClosePanel", "pagesOpenRowLinks", "pagesPaged", "pagesFoot", "pagesTurn", "pagesPick", "pagesTabs",
-                    "pagesFileCount", "pagesReasonCards", "pagesReviewGroup", "pagesSwitch", "pagesTypeFilter")
+                    "pagesFileCount", "pagesReasonCards", "pagesReviewGroup", "pagesSwitch", "pagesTypeFilter", "pagesReopenPanel")
 
 
 def pages_consts() -> str:
@@ -3280,7 +3280,7 @@ def test_the_new_tokens_and_every_new_pair_meet_their_contrast_in_both_themes():
     for name, (light, dark) in {"--st-linked": ("#7c3aad", "#c4a0f0"), "--bg-band": ("#f8fafc", "#1f232a")}.items():
         assert resolve(name, "light") == light and resolve(name, "dark") == dark, name
     for fg, bg, needs in (("--st-linked", "--bg-page", 3), ("--st-linked", "--bg-hover", 3), ("--st-linked", "--bg-selected", 3),
-                          ("--st-linked", "--bg-band", 3), ("--st-linked", "--bg-raised", 3), ("--st-attention", "--warn-bg", 4.5),
+                          ("--st-linked", "--bg-band", 3), ("--st-linked", "--bg-raised", 3), ("--st-linked", "--bg-pressed", 3), ("--st-attention", "--warn-bg", 4.5),
                           ("--st-waiting", "--info-bg", 4.5), ("--st-done", "--ok-bg", 4.5), ("--st-attention", "--bg-raised", 3),
                           ("--st-waiting", "--bg-raised", 3), ("--st-done", "--bg-raised", 3), ("--text", "--bg-band", 4.5),
                           ("--text-secondary", "--bg-band", 4.5), ("--text-caption", "--bg-band", 4.5), ("--link", "--bg-band", 4.5),
@@ -3289,3 +3289,92 @@ def test_the_new_tokens_and_every_new_pair_meet_their_contrast_in_both_themes():
                           ("--window-light", "--brand", 4.5)):
         for theme in ("light", "dark"):
             assert ratio(fg, bg, theme) >= needs, (fg, bg, theme)
+
+
+# ── lane 4b review fold (pilot/reviews/lists-rulings.md: S2-S5, N3-N5) ──
+
+#: What the panel's probes need of a DOM beyond FAKE_DOM: focus, removal, a
+#: body, Floating UI's placement, and the two selectors the panel code asks.
+PANEL_DOM = r"""
+  const focused = [];
+  Element.prototype.focus = function () { focused.push(this.attrs.role === "listbox" ? "listbox" : this.className || this.attrs.id || this.tag); };
+  Element.prototype.remove = function () { this.removed = true; };
+  Element.prototype.contains = function () { return false; };
+  Element.prototype.closest = function () { return null; };
+  Element.prototype.querySelectorAll = function (sel) { return sel === ".link-mark" ? this.byClass("link-mark") : this.byClass(sel.slice(1)); };
+  const oldQuery = Element.prototype.querySelector;
+  Element.prototype.querySelector = function (sel) {
+    return sel === '[role="listbox"]' ? this.find((one) => one.attrs.role === "listbox")[0] || null : oldQuery.call(this, sel);
+  };
+  document.body = new Element("body");
+  globalThis.FloatingUIDOM = { computePosition: () => Promise.resolve({ x: 0, y: 0 }), offset: () => 0, flip: () => 0, shift: () => 0 };
+  globalThis.TIP_GAP = 4; globalThis.TIP_MARGIN = 8;
+"""
+
+
+def test_a_redraw_keeps_the_link_panel_open_on_the_same_household_or_moves_focus_to_the_list(tmp_path):
+    """The review's S2: a firm reply redraws the page while the panel is
+    open; the panel opens again on the same household's mark, and when that
+    household no longer has one, focus goes to the page's list, never lost."""
+    ran = run_lists("""
+      draw("overview");
+      const mark = box.byClass("link-mark").find((one) => one.dataset.owner === "Bravo");
+      pagesShowPanel(mark, mark.linked, box);
+      draw("overview");
+      const kept = [pagesPanelOpen(), pagesPanel && pagesPanel.owner, document.body.kids.filter((one) => !one.removed).length];
+      for (const one of shellFirmData.returns) one.links = [];
+      focused.length = 0;
+      draw("overview");
+      return { kept, gone: [pagesPanelOpen(), focused.slice(-1)[0]] };
+    """, tmp_path, LINKED + PANEL_DOM)
+    assert ran["kept"] == [True, "Bravo", 1]
+    assert ran["gone"] == [False, "listbox"]
+
+
+def test_escape_closes_the_link_panel_and_returns_focus_to_its_icon(tmp_path):
+    """The review's S5: Escape, through the shell's one key handler, closes
+    an open panel and puts focus back on the icon it was opened from."""
+    ran = run_pages_dom("""
+      const els = { find: new Element("input"), sheet: { hidden: true }, "find-list": { hidden: true } };
+      globalThis.$ = (id) => els[id]; globalThis.dialogStack = [];
+      const anchor = new Element("button"); anchor.className = "link-mark"; anchor.isConnected = true;
+      pagesShowPanel(anchor, [{ name: "Bravo", path: "c/Bravo", kind: "related" }], anchor);
+      let prevented = 0;
+      const handled = shellKey({ key: "Escape", target: new Element("button"), preventDefault: () => { prevented += 1; } });
+      return { handled, prevented, open: pagesPanelOpen(), focused: focused.slice(-1)[0] };
+    """, tmp_path, setup=PANEL_DOM, functions=[*re.findall(r"^function (\w+)\(", read("pages.js"), flags=re.M), "h", "icon", "screenWords",
+                                               "folderName", "shellKey"])
+    assert ran == {"handled": True, "prevented": 1, "open": False, "focused": "link-mark"}
+
+
+def test_the_link_panel_and_the_pickers_are_named_and_show_their_focus():
+    """The review's S3, S4 and N4: every control in the panel shows a focus
+    ring (forced colours give it CanvasText); both Edit Household pickers and
+    lists are named by their labels; the link icon and More Actions say they
+    open a dialog and a menu."""
+    css = read("shell.css")
+    assert "#link-panel:focus { outline: none; }" not in css
+    assert "#link-panel:focus-visible, .link-to:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }" in css
+    assert ":focus-visible { outline: 2px solid CanvasText; }" in css[css.index("@media (forced-colors: active)"):]
+    html = read("index.html")
+    for ident, label in (("hh-edit-related-pick", "hh-edit-related-label"), ("hh-edit-related", "hh-edit-related-label"),
+                         ("hh-edit-feed-pick", "hh-edit-feeds-label"), ("hh-edit-feeds", "hh-edit-feeds-label")):
+        assert re.search(rf'id="{ident}"[^>]*aria-labelledby="{label}"', html), ident
+    pages = stripped_js("pages.js")
+    assert '"aria-haspopup": "menu"' in pages and '"aria-haspopup": "dialog"' in pages
+
+
+def test_the_four_lists_and_a_needs_review_card_fit_1100px_beside_a_windows_scrollbar():
+    """The review's N5 (P179): at 1100px the main area is 860px less Windows'
+    classic 17px scrollbar, 843px; the columns' usual widths with their gaps
+    and the list's padding, and a Needs Review card with its margins, border
+    and padding, must fit it, or the page scrolls sideways again."""
+    light, _dark = root_blocks()
+
+    def px(name: str) -> int:
+        return int(light[name].strip().removesuffix("px"))
+
+    sp = {step: px(f"--sp-{step}") for step in (2, 4, 6, 8)}
+    columns = sum(px(f"--size-col-{cell}") for cell in ("name", "detail", "status", "end")) + 3 * sp[4]
+    assert columns + 2 * sp[8] <= 1100 - px("--size-side") - 17
+    assert columns + 2 * sp[6] + 2 + 2 * sp[2] <= 1100 - px("--size-side") - 17

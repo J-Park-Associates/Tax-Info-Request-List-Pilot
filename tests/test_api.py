@@ -9039,7 +9039,7 @@ def test_a_related_list_refuses_itself_a_blank_a_repeat_and_a_household_that_is_
     park_dir = private_household_dir(demo_root, "Park Family")
     for sent, said in ((["Park Family"], api.RELATED_REFUSED.format(household="Park Family")),
                        ([""], api.RELATED_REFUSED.format(household="(blank)")),
-                       ("Lee Family", api.RELATED_REFUSED.format(household="(blank)")),
+                       ("Lee Family", api.RELATED_NOT_A_LIST), ([1], api.RELATED_NOT_A_LIST),
                        (["Lee Family", "lee family"], api.RELATED_REFUSED.format(household="lee family")),
                        (["Nobody Here"], api.RELATED_UNKNOWN.format(household="Nobody Here"))):
         code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park), stdin={"related": sent})
@@ -9080,3 +9080,65 @@ def test_the_list_and_the_firm_carry_each_households_links_both_ways_and_each_re
     assert [(link["name"], link["kind"]) for link in by_return[llc]["links"]] == [("Park Family", "fed_by")]
     assert [(link["name"], link["kind"]) for link in by_return[lee]["links"]] == [("Park Family", "related")]
     assert {"path", "household", "label", "year", "counts", "files", "paused"} <= set(by_return[park])
+
+
+def test_a_one_sided_related_link_is_repaired_by_saving_either_side(capsys, demo_root):
+    """Pilot P170, the review's M1: a save that stopped after its first
+    write leaves Park naming Lee and Lee naming nobody. Saving Lee without
+    the link (what the editor sends once the person removes it) clears it
+    from Park too; saving Park with it completes it on Lee."""
+    from dataclasses import replace
+
+    from tracker.households import load_household_info, save_household
+    from tracker.layout import private_household_dir
+
+    park, _llc, lee = three_households(capsys, demo_root)
+    park_dir = private_household_dir(demo_root, "Park Family")
+    lee_dir = private_household_dir(demo_root, "Lee Family")
+    save_household(park_dir, replace(load_household_info(park_dir), related=("Lee Family",)))
+    assert load_household_info(lee_dir).related == ()
+
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(lee), stdin={"related": []})
+    assert code == 0, payload
+    assert load_household_info(park_dir).related == (), "removed on the side that lacked it: gone from both"
+    _code, listed = run(capsys, "list")
+    assert all(not one["links"] for one in listed["households"] if one["name"] in ("Park Family", "Lee Family"))
+
+    save_household(park_dir, replace(load_household_info(park_dir), related=("Lee Family",)))
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park), stdin={"related": ["Lee Family"]})
+    assert code == 0, payload
+    assert load_household_info(lee_dir).related == ("Park Family",), "re-saving the side that has it completes the other"
+
+
+def test_the_other_households_record_is_read_and_written_inside_its_own_lock(capsys, demo_root, monkeypatch):
+    """Pilot P170, the review's S1: the mirror reads the other household
+    under that household's lock, so another writer that tries to change it
+    between the read and the write is refused by the lock rather than
+    having its change silently reverted by the mirror's save."""
+    from dataclasses import replace
+
+    from tracker import households
+    from tracker.layout import private_household_dir
+    from tracker.locking import EngagementLockedError
+
+    park, _llc, _lee = three_households(capsys, demo_root)
+    lee_dir = private_household_dir(demo_root, "Lee Family")
+    real = api.load_household_info
+    said = []
+
+    def and_another_writer(folder):
+        info = real(folder)
+        if Path(folder) == lee_dir and not said:
+            try:
+                households.save_household(lee_dir, replace(households.load_household_info(lee_dir), contact="Changed Meanwhile"))
+                said.append("written")
+            except EngagementLockedError:
+                said.append("refused")
+        return info
+
+    monkeypatch.setattr(api, "load_household_info", and_another_writer)
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park), stdin={"related": ["Lee Family"]})
+    assert code == 0, payload
+    after = households.load_household_info(lee_dir)
+    assert after.related == ("Park Family",)
+    assert said == ["refused"] or after.contact == "Changed Meanwhile", (said, after.contact)

@@ -101,7 +101,7 @@ const H_ATTRIBUTES = new Set([
   "aria-label", "aria-current", "aria-selected", "aria-expanded", "aria-busy", "aria-hidden",
   "aria-labelledby", "aria-valuemin", "aria-valuemax", "aria-valuenow", "aria-live",
   "aria-controls", "aria-description", "aria-keyshortcuts", "aria-disabled", "aria-pressed",
-  "aria-sort",
+  "aria-sort", "aria-haspopup",
 ]);
 
 function h(tag, attrs = {}, ...children) {

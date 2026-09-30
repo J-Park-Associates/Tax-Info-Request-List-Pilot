@@ -679,6 +679,10 @@ NOT_FED = "{label} is not a return this drop folder feeds; add it to the househo
 #: The editor's label and button, and what a name that is not one is
 #: refused with.
 RELATED_LABEL = "Related Households"
+ADD_RELATED_LABEL = "Add Related Household"
+RELATED_REFUSED = "{household} is not a household this one can be related to"
+RELATED_UNKNOWN = "{household} is not a household under the clients folder"
+RELATED_NOT_A_LIST = "Related Households is not a list of household names"
 #: The catalog ids each side-panel Client Type stands for (pilot P153).
 CLIENT_TYPE_FORMS = {
     "individuals": ["1040"],
@@ -686,9 +690,6 @@ CLIENT_TYPE_FORMS = {
     "trusts": ["1041"],
     "nonprofits": ["990"],
 }
-ADD_RELATED_LABEL = "Add Related Household"
-RELATED_REFUSED = "{household} is not a household this one can be related to"
-RELATED_UNKNOWN = "{household} is not a household under the clients folder"
 
 MISFITS_HEADING = "Folders the Tracker Leaves Alone"
 MISFITS_NOTE = ("Each is listed with the one reason it does not fit the layout; nothing in it "
@@ -4084,11 +4085,11 @@ def _related_from_spec(sent: object, household_dir: Path) -> tuple[str, ...]:
     read fresh from the private tree (never inferred, never from the
     store), so a link always points at a household that exists.
     """
-    if not isinstance(sent, (list, tuple)):
-        raise ManifestError(RELATED_REFUSED.format(household="(blank)"))
+    if not isinstance(sent, (list, tuple)) or not all(isinstance(one, str) for one in sent):
+        raise ManifestError(RELATED_NOT_A_LIST)
     wanted: list[str] = []
     for one in sent:
-        name = layout.normalised_name(one if isinstance(one, str) else "")
+        name = layout.normalised_name(one)
         if not name:
             raise ManifestError(RELATED_REFUSED.format(household="(blank)"))
         _folder_name(name, "household")
@@ -4106,27 +4107,39 @@ def _related_from_spec(sent: object, household_dir: Path) -> tuple[str, ...]:
     return tuple(found[layout.name_key(name)] for name in wanted)
 
 
-def _mirror_related(household_dir: Path, before: tuple[str, ...], after: tuple[str, ...]) -> None:
-    """Write a changed related list into the other side's record too
-    (pilot P170): each household added now names this one, each removed
-    no longer does. One household at a time, each under its own lock
-    (``save_household`` takes it), never two at once, so no lock order is
-    needed; a failure is raised as it is, and the screen still shows the
-    link from the record that has it until a save completes it."""
-    keys_after = {layout.name_key(one) for one in after}
-    keys_before = {layout.name_key(one) for one in before}
-    changed = [one for one in after if layout.name_key(one) not in keys_before] + \
-              [one for one in before if layout.name_key(one) not in keys_after]
-    if not changed:
-        return
+def _mirror_related(household_dir: Path, after: tuple[str, ...]) -> None:
+    """Make every other household's record agree with the related list a
+    person just saved here (pilot P170): each household it names names this
+    one, and every other household no longer names this one. It reconciles
+    rather than diffs, so a save that stopped between its two writes - one
+    record naming the other, the other not - is repaired by saving either
+    side again, and a removal made on the side that lacked the link clears
+    the side that had it (the review's M1).
+
+    The candidates are the households this list names and every household
+    whose record names this one, found in one listing of the private tree
+    (``households_named``). Each is then read and written **inside its own
+    lock** (the review's S1): one lock at a time, never two, so no lock
+    order is needed, and a change another writer made to that household
+    before the lock is kept, since the record is read fresh under it. A
+    lock that is held elsewhere is refused by name
+    (``EngagementLockedError``), never waited on or skipped."""
     here = layout.name_key(household_dir.name)
-    for other in households_named(household_dir.parent, changed).households:
-        info = load_household_info(other.path)
-        kept = tuple(one for one in info.related if layout.name_key(one) != here)
-        if layout.name_key(other.name) in keys_after:
-            kept += (household_dir.name,)
-        if kept != info.related:
-            save_household(other.path, replace(info, related=kept))
+    wanted = {layout.name_key(one) for one in after}
+    private = household_dir.parent
+    names = [one.name for one in private.iterdir() if one.is_dir() and layout.name_key(one.name) != here]
+    practice = households_named(private, names).households if names else []
+    for other in practice:
+        named = any(layout.name_key(one) == here for one in other.info.related)
+        if not named and layout.name_key(other.name) not in wanted:
+            continue
+        with engagement_lock(other.path):
+            info = load_household_info(other.path)
+            kept = tuple(one for one in info.related if layout.name_key(one) != here)
+            if layout.name_key(other.name) in wanted:
+                kept += (household_dir.name,)
+            if kept != info.related:
+                save_household(other.path, replace(info, related=kept), lock_held=True)
 
 
 def _cmd_edit_household(argv: list[str]) -> dict:
@@ -4144,10 +4157,10 @@ def _cmd_edit_household(argv: list[str]) -> dict:
     holds is refused by name.
 
     ``related`` is the list of other households a person marked as
-    related (pilot P170): household names, each one that exists. The
-    change is written into this household's record and then into each
-    other household it added or removed (:func:`_mirror_related`), so the
-    link is on both records.
+    related (pilot P170): household names, each one that exists. The list
+    is written into this household's record, and then every other
+    household's record is made to agree with it (:func:`_mirror_related`),
+    so the link is on both records and a half-finished save is repaired.
     """
     engagement = _engagement_dir(argv)
     household_dir = household_of(engagement)
@@ -4173,7 +4186,7 @@ def _cmd_edit_household(argv: list[str]) -> dict:
     )
     saved = save_household(household_dir, info)
     if "related" in spec:
-        _mirror_related(household_dir, held.related, info.related)
+        _mirror_related(household_dir, info.related)
     # The household's members, contact and link are in the list (decision 194).
     return _with_list({"saved": {"household": list(saved.fields)}, "state": _state(engagement)})
 

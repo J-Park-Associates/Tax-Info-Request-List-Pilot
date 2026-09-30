@@ -393,6 +393,17 @@ color) have the linked to information appear when you click the tooltip."
   it from either side removes it from both. The screen reads **either**
   record (9.4), so a save that stopped between the two writes still shows
   the link on both ends, and saving either household again completes it.
+  **How a half-finished save is repaired** (review M1): a save does not
+  diff the household's old list against its new one; it rebuilds the link
+  on both sides from what the person saved - every household the saved
+  list names is made to name this one, and every household whose record
+  names this one but is no longer in the list stops naming it. So re-saving
+  the side that has the link writes it into the other, and removing it on
+  the side that lacked it (the editor shows it there, from the other
+  record) clears it from the side that had it. Each other household is
+  read and written **inside its own lock** (review S1), so a change another
+  writer makes there cannot be reverted; a lock held elsewhere is refused
+  by name.
 - **Only households that exist.** Edit Household offers the other
   households of the `list` reply; the command refuses a name that is not a
   household under the clients root (`RELATED_UNKNOWN`), the household
@@ -424,9 +435,11 @@ color) have the linked to information appear when you click the tooltip."
 
 `tracker/api.py` `_cmd_edit_household`: JSON `related` is a list of
 household names; `_related_from_spec` refuses what 9.1 refuses, then the
-household is saved, then `_mirror_related` writes the change into each
-other household it added or removed (read fresh with
-`registry.households_named`, never from the store). The state's household
+household is saved, then `_mirror_related` makes every other household's
+record agree with the saved list (candidates from one listing of the
+private tree with `registry.households_named`; each re-read and written
+under its own `engagement_lock`); a list that is not a list of names is
+refused with `RELATED_NOT_A_LIST`. The state's household
 gains `related` (its own record's list). Edit Household (`app.js`,
 `index.html`) gains a "Related Households" list with a picker of the other
 households and an "Add Related Household" button, shaped like Also Feeds.
@@ -463,7 +476,7 @@ to no Client Type (15.3).
 - **The icon:** `i-link` (two linked rings, drawn like the others, 16px,
   1.5px stroke, `currentColor`) in **`--st-linked`**, a violet from the
   firm's palette: not link blue, not one of the status colours (amber,
-  blue, green, red), 5.66:1 or more on every surface it sits on, light
+  blue, green, red), 5.56:1 or more on every surface it sits on, light
   and dark (16). In Windows High Contrast it is `ButtonText` on a button
   with a `CanvasText` edge: the shape carries it, never colour alone.
 - **Words:** tooltip and accessible name "Linked Households"
@@ -475,6 +488,12 @@ to no Client Type (15.3).
   underlined link (`navigate_client`'s tooltip) and its kind in caption
   grey. Choosing a name goes to that client's page. **Escape** or a
   click outside closes it and returns focus to where it was opened from.
+  A redraw of the page while it is open (a firm reply after a sort or a
+  refresh) opens it again on the same household's mark; when that mark is
+  gone, focus goes to the page's list, never lost (review S2). Every
+  control in it shows the focus ring, the panel itself too when every name
+  in it is retired (S3). The icon says `aria-haspopup="dialog"`, More
+  Actions `aria-haspopup="menu"` (N4).
   Motion: a 150ms fade (`--dur`); none under reduced motion.
 - **Inside a row list** (Overview, Reminders, Clients): a listbox is one
   Tab stop that moves by `aria-activedescendant` (SPEC-shell 3.6), so the
@@ -640,6 +659,7 @@ Every new pair, computed from the tokens (WCAG 2.2; text 4.5:1, non-text
 | `--st-linked` on `--bg-selected` | 3 | 5.66 | 6.11 |
 | `--st-linked` on `--bg-band` | 3 | 6.55 | 7.23 |
 | `--st-linked` on `--bg-raised` (Needs Review card) | 3 | 6.85 | 6.87 |
+| `--st-linked` on `--bg-pressed` (the icon's own hover) | 3 | 5.56 | 5.84 |
 | `--st-attention` on `--warn-bg` (Need You pill, reason pill, amber badge) | 4.5 | 7.52 | 8.05 |
 | `--st-waiting` on `--info-bg` (Waiting pill) | 4.5 | 9.52 | 7.85 |
 | `--st-done` on `--ok-bg` (Complete pill) | 4.5 | 7.25 | 9.07 |

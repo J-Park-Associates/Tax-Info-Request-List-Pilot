@@ -889,7 +889,9 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   animation: link-in var(--dur) var(--ease);
 }
 @keyframes link-in { from { opacity: 0; } to { opacity: 1; } }
-#link-panel:focus { outline: none; }
+/* The panel itself takes focus only when it has no name to link (every
+   one retired); it shows the ring then, as every control does (S3). */
+#link-panel:focus-visible, .link-to:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .link-list { list-style: none; margin: 0; padding: 0; }
 .link-line:not(.hidden) { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); min-height: var(--size-control); }
 .link-to {
