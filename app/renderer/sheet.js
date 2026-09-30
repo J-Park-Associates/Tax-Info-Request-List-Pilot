@@ -226,11 +226,18 @@ async function sheetAdvance() {
   const now = sheetNow;
   if (!now || now.kind !== "check") return;
   const gen = sheetGeneration;
-  for (const step of sheetAfter(now)) {
-    if (await sheetShow(now, step)) return;
-    if (gen !== sheetGeneration) return;
+  try {
+    for (const step of sheetAfter(now)) {
+      if (await sheetShow(now, step)) return;
+      if (gen !== sheetGeneration) return;
+    }
+    closeSheet();
+  } catch (err) {
+    // A file that cannot be drawn is said (a word the vocabulary lacks, a
+    // state read that failed) and the sheet is shut: never left half drawn.
+    if (gen === sheetGeneration) closeSheet();
+    failed(err);
   }
-  closeSheet();
 }
 
 // shell.js: one return's state has arrived. A file the sheet is showing that
@@ -282,14 +289,19 @@ async function sheetNextDraft() {
   const next = now ? sheetDraftsAfter(now)[0] : null;
   if (!next) return;
   const gen = sheetGeneration;
-  now.ret = next.ret;
-  if (!(await showReturn(next.ret))) {
+  try {
+    now.ret = next.ret;
+    if (!(await showReturn(next.ret))) {
+      if (gen === sheetGeneration) closeSheet();
+      return;
+    }
+    if (gen !== sheetGeneration) return;
+    sheetSet("sheet-next", sheetDraftsAfter(now).length > 0);
+    applyLock();
+  } catch (err) {
     if (gen === sheetGeneration) closeSheet();
-    return;
+    failed(err);
   }
-  if (gen !== sheetGeneration) return;
-  sheetSet("sheet-next", sheetDraftsAfter(now).length > 0);
-  applyLock();
 }
 
 // A button of the file on the sheet, pressed for a right-click item that stands
