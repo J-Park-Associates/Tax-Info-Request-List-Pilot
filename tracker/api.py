@@ -5604,10 +5604,17 @@ def _firm_cached(root: Path, today: dt.date) -> list[_FirmShown] | None:
 #: seen. Left out: the return's status page, which every pass rewrites
 #: from the record and no firm reader opens; ``tests/test_api.py`` pins
 #: both by watching every file a firm reply opens.
+#: Each at the one place the tracker writes it (the re-check's MUST-R1 and
+#: NIT-R1): the household's record in the household's folder; a return's
+#: record, drafts and status page in the return's folder, two levels down
+#: (year, return); the README at the top of the inbox.
 FIRM_JUDGED = firm_cache.Judged(
-    private_whole=frozenset({ledger.LEDGER_FILENAME, reminder.DRAFT_FILENAME, reminder.NEW_DRAFT_FILENAME}),
-    client_whole=frozenset({layout.README_NAME}),
-    left_out=frozenset({VIEW_FILENAME}))
+    private_whole=frozenset({
+        (ledger.LEDGER_FILENAME,),
+        *((firm_cache.ANY, firm_cache.ANY, name)
+          for name in (ledger.LEDGER_FILENAME, reminder.DRAFT_FILENAME, reminder.NEW_DRAFT_FILENAME))}),
+    client_whole=frozenset({(layout.INBOX_DIR_NAME, layout.README_NAME)}),
+    private_left_out=frozenset({(firm_cache.ANY, firm_cache.ANY, VIEW_FILENAME)}))
 
 
 class _FirmUnsure(Exception):

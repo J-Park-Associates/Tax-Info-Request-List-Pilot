@@ -9308,7 +9308,37 @@ def test_every_file_a_firm_reply_opens_is_judged_by_its_bytes_and_never_the_stat
     finally:
         root = "\0"                          # an audit hook cannot be removed; it stops matching
     assert whole["returns"] and opened
+    from tracker import firm_cache
+    from tracker.layout import CLIENTS_TREE
+
     judged = api.FIRM_JUDGED
     for where in opened:
         assert where.name != VIEW_FILENAME
-        assert where.name in judged.private_whole | judged.client_whole, where.name
+        # Its names below its household's folder, in the tree it is in: the
+        # place must be one the fingerprint reads whole, in that tree.
+        tree, _household, *below = where.relative_to(demo_root.resolve()).parts
+        places = judged.private_whole if tree == PRIVATE_TREE else judged.client_whole
+        assert tree in (PRIVATE_TREE, CLIENTS_TREE) and firm_cache._at(places, tuple(below)), where
+
+
+@pytest.mark.parametrize("dropped", ["a file", "a folder holding a file"])
+def test_a_client_drop_named_like_the_status_page_is_seen_by_the_cache(capsys, demo_root, monkeypatch, dropped):
+    """The re-check's MUST-R1: a client who forwards the firm's page back, as
+    a file or inside a folder of that name, has a file waiting in the inbox;
+    the cached reply holds the draft for it exactly as the whole walk does."""
+    from tracker.view import VIEW_FILENAME
+
+    mixed, _quiet, _retired = _a_practice_for_the_firm_view(capsys, demo_root)
+    _aged(demo_root)
+    assert _cached_firm(capsys) == _firm_whole(capsys, monkeypatch)
+    inbox = inbox_of(mixed)
+    if dropped == "a file":
+        (inbox / VIEW_FILENAME).write_text("<p>forwarded back</p>", encoding="utf-8")
+    else:
+        (inbox / VIEW_FILENAME).mkdir()
+        (inbox / VIEW_FILENAME / "w2.pdf").write_bytes(b"%PDF-1.4 made up")
+    _aged(demo_root)
+    whole = _firm_whole(capsys, monkeypatch)
+    assert {one["path"]: one["draft"]["held"] for one in whole["returns"]}[str(mixed)] >= 1
+    assert _cached_firm(capsys) == whole
+

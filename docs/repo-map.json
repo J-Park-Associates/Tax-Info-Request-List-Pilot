@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 351,
+    "nodes": 353,
     "edges": 1169,
-    "reused": 293
+    "reused": 301
   },
   "node_types": [
     "artifact",
@@ -262,8 +262,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "82c5811b720c1497",
-      "lines": 5890,
+      "sha256": "b58e3062c7f52d06",
+      "lines": 5897,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_FOLDER_NAME_HELP",
@@ -1322,9 +1322,10 @@
       "id": "tracker/firm_cache.py",
       "type": "module",
       "layer": "core",
-      "sha256": "6355441cf08cbf28",
-      "lines": 359,
+      "sha256": "af1de3d516b62f9d",
+      "lines": 382,
       "exports": [
+        "ANY",
         "CACHE_FILENAME",
         "FINGERPRINT_THREADS",
         "FORMAT",
@@ -1347,11 +1348,12 @@
         "CACHE_FILENAME": "'firm-view.json'",
         "FORMAT": "1",
         "RACY_SECONDS": "5",
+        "ANY": "'*'",
         "FINGERPRINT_THREADS": "8",
         "SAID_FILENAME": "'firm-view.said'"
       },
       "role": "The firm view's cache (P120, pilot/SPEC-firm-cache.md): the file firm-view.json in the data home (cache_path, from settings.data_home, never a hard-coded folder name), its head (FORMAT, program_stamp - every tracker/*.py file's name, size and time, or the packaged executable's, and the Python version - the clients root, the data home, the day and settings.json's size and time), each household's fingerprint (every entry under its private folder and its client folder: name, kind, size, modification time, one os.scandir listing per folder, nothing opened; fingerprints() takes eight households at a time with threading), and load/save (a digest over the kept households; a damaged, foreign, other-day or other-program file is set aside and said on the error log by its reason, never a client's words). No CLI.",
-      "notes": "Layer 0: the standard library, settings, fsio and errors. It decides nothing about rows: api._firm_from_cache reads, decides what is kept and recomputes the practice-wide facts (mark_superseded, why_skipped, open_years) every reply. fingerprint() returns None - read fresh, never kept - for a folder that cannot be listed, a link or junction, or any entry modified within RACY_SECONDS (5 s) of now or dated in the future: a file rewritten twice in one clock tick at one size would otherwise keep its fingerprint (git's racily-clean case). FORMAT rises only when this file's own shape changes; a field another lane adds to a firm row flows through as JSON, and any code change changes program_stamp, so the first reply after an upgrade rebuilds every row. Owned by tests/test_firm_cache.py; the cached reply is held to the whole walk's, field for field, in tests/test_api.py (the firm-cache tests). Review fold (2026-09-30): Judged names the files read by their whole bytes (api.FIRM_JUDGED: every _ledger.jsonl and the reminder drafts in the private folder, the inbox README in the client folder) and those left out (the status page); folders are taken by name and contents, never their own time; a household with no client folder to ask is fingerprinted by its own; first_time_said keeps firm-view.said so a surprise is logged once per change."
+      "notes": "Layer 0: the standard library, settings, fsio and errors. It decides nothing about rows: api._firm_from_cache reads, decides what is kept and recomputes the practice-wide facts (mark_superseded, why_skipped, open_years) every reply. fingerprint() returns None - read fresh, never kept - for a folder that cannot be listed, a link or junction, or any entry modified within RACY_SECONDS (5 s) of now or dated in the future: a file rewritten twice in one clock tick at one size would otherwise keep its fingerprint (git's racily-clean case). FORMAT rises only when this file's own shape changes; a field another lane adds to a firm row flows through as JSON, and any code change changes program_stamp, so the first reply after an upgrade rebuilds every row. Owned by tests/test_firm_cache.py; the cached reply is held to the whole walk's, field for field, in tests/test_api.py (the firm-cache tests). Review fold (2026-09-30): Judged names the files read by their whole bytes (api.FIRM_JUDGED: every _ledger.jsonl and the reminder drafts in the private folder, the inbox README in the client folder) and those left out (the status page); folders are taken by name and contents, never their own time; a household with no client folder to ask is fingerprinted by its own; first_time_said keeps firm-view.said so a surprise is logged once per change. Re-check fold: Judged holds places, not bare names - each file matched only as a file at exactly the place the tracker writes it (ANY stands for a year or a return folder); private_left_out applies in the private tree only, so nothing in a client folder is ever left out."
     },
     {
       "id": "tracker/fsio.py",
@@ -4583,7 +4585,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "e89459b1dfdd109a",
+      "sha256": "e579ae797c716923",
       "lines": 1140,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -4656,7 +4658,7 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ebc165c41ca0ac47",
+      "sha256": "2572495bb5beabf5",
       "lines": 126
     },
     {
@@ -4698,8 +4700,8 @@
       "id": "pilot/SPEC-firm-cache.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "f08e0d38090a7c11",
-      "lines": 457
+      "sha256": "886c593f5cf3de2a",
+      "lines": 463
     },
     {
       "id": "pilot/SPEC-glass.md",
@@ -5171,11 +5173,25 @@
       "lines": 123
     },
     {
+      "id": "pilot/reviews/firm-cache-recheck.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "f15c76a9148e5764",
+      "lines": 138
+    },
+    {
       "id": "pilot/reviews/firm-cache-review.md",
       "type": "doc",
       "layer": "docs",
       "sha256": "ebb632d1e9344648",
       "lines": 246
+    },
+    {
+      "id": "pilot/reviews/firm-cache-rulings-2.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "90a673edcce6d499",
+      "lines": 10
     },
     {
       "id": "pilot/reviews/firm-cache-rulings.md",
@@ -5985,8 +6001,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "152da06d44983aea",
-      "lines": 9314,
+      "sha256": "f86233dbca0bcea0",
+      "lines": 9344,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -6023,6 +6039,7 @@
         "test_a_case_only_change_reads_the_same_in_the_readme_and_the_letter",
         "test_a_claim_is_offered_only_on_the_row_the_click_would_take",
         "test_a_click_on_a_held_lock_is_kind_locked_with_the_passes_start_host_and_current_file",
+        "test_a_client_drop_named_like_the_status_page_is_seen_by_the_cache",
         "test_a_client_folder_no_household_owns_is_never_adopted",
         "test_a_client_of_only_illegal_characters_still_makes_one_folder_name",
         "test_a_code_nobody_has_placed_gets_no_open",
@@ -7307,12 +7324,15 @@
       "id": "tests/test_firm_cache.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "37ed72edc5bd93e7",
-      "lines": 285,
+      "sha256": "8f5dc7ff1aeadc21",
+      "lines": 333,
       "exports": [
+        "ANY",
         "JUDGED",
         "TODAY",
         "test_a_cache_that_cannot_be_written_is_logged_and_the_reply_goes_on",
+        "test_a_client_file_carrying_a_tracker_name_elsewhere_is_never_read_whole",
+        "test_a_client_file_or_folder_named_like_the_status_page_is_never_left_out",
         "test_a_damaged_file_is_never_used_and_is_said_by_its_reason",
         "test_a_household_holding_a_junction_is_never_fingerprinted",
         "test_a_household_holding_a_link_is_never_fingerprinted",

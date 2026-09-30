@@ -153,12 +153,18 @@ private tree it keeps:
   - every file's size and modification time (on Windows the listing
     carries both, so no `stat` per file);
   - **the whole bytes of the files the firm view opens** (`api.FIRM_JUDGED`,
-    the review's SHOULD-2): every `_ledger.jsonl` (each return's and the
-    household's record) and the reminder drafts in the private folder, and
-    the inbox's `_README.txt` in the client folder. A client's documents
-    are never opened;
+    the review's SHOULD-2), each only at the one place the tracker writes it
+    (the re-check's NIT-R1): the household's `_ledger.jsonl` in the
+    household's folder; each return's `_ledger.jsonl` and reminder drafts in
+    the return's folder (year, then return); the inbox's `_README.txt` at the
+    top of `Drop files here`. A client's file of one of these names anywhere
+    else is judged by its size and time like any other, and never opened;
   - never the return's status page (`view.VIEW_FILENAME`), which every pass
-    rewrites from the record and no firm reader opens (SHOULD-4).
+    rewrites from the record and no firm reader opens (SHOULD-4) - and only
+    that page: a regular file of that name directly in a return folder of
+    the private tree. Nothing in the client tree is ever left out, so a
+    client who forwards the page back, as a file or a folder of that name,
+    is seen (the re-check's MUST-R1).
   A folder at the household position whose name no household may have
   (`layout.segment_problem`; the walk makes it a misfit) is taken by its
   private folder alone, and the folders the walk passes over (`_`, `.`,

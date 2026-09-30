@@ -219,9 +219,10 @@ def test_an_error_in_any_thread_is_raised_to_the_caller(tmp_path, monkeypatch):
 
 # ------------------------------------------ the review's folds (P120) ----
 
-JUDGED = firm_cache.Judged(private_whole=frozenset({"record.jsonl"}),
-                           client_whole=frozenset({"_README.txt"}),
-                           left_out=frozenset({"Status Report.html"}))
+ANY = firm_cache.ANY
+JUDGED = firm_cache.Judged(private_whole=frozenset({(ANY, ANY, "record.jsonl")}),
+                           client_whole=frozenset({("Drop files here", "_README.txt")}),
+                           private_left_out=frozenset({(ANY, ANY, "Status Report.html")}))
 
 
 def test_a_record_rewritten_at_its_own_size_and_time_changes_the_fingerprint(tmp_path):
@@ -283,3 +284,50 @@ def test_a_surprise_is_said_once_until_it_changes(tmp_path):
     assert firm_cache.first_time_said(note, "OSError (EACCES)") is True
     assert firm_cache.first_time_said(note, None) is True and not note.exists()
     assert firm_cache.first_time_said(note, None) is False
+
+
+def test_a_client_file_or_folder_named_like_the_status_page_is_never_left_out(tmp_path):
+    """The re-check's MUST-R1: only the page the tracker writes, directly in
+    a return folder of the private tree, is left out - never a client's file
+    or folder of that name in the inbox, nor the name at another depth."""
+    private, client = _household(tmp_path)
+    before = firm_cache.fingerprint(private, client, JUDGED)
+    (client / "Drop files here" / "Status Report.html").write_text("forwarded back", encoding="utf-8")
+    _aged(private, client)
+    dropped = firm_cache.fingerprint(private, client, JUDGED)
+    assert dropped != before
+    held = client / "Drop files here" / "Status Report.html"
+    held.unlink()
+    held.mkdir()
+    (held / "w2.pdf").write_bytes(b"made up")
+    _aged(private, client)
+    assert firm_cache.fingerprint(private, client, JUDGED) not in (before, dropped)
+    (private / "2025" / "Status Report.html").write_text("not where the tracker writes it", encoding="utf-8")
+    _aged(private, client)
+    elsewhere = firm_cache.fingerprint(private, client, JUDGED)
+    (private / "2025" / "Status Report.html").write_text("changed", encoding="utf-8")
+    _aged(private, client, seconds=90)
+    assert firm_cache.fingerprint(private, client, JUDGED) != elsewhere
+
+
+def test_a_client_file_carrying_a_tracker_name_elsewhere_is_never_read_whole(tmp_path, monkeypatch):
+    """The re-check's NIT-R1: the README is read whole only at the top of the
+    inbox; a client's file of that name in an inbox subfolder is judged by
+    its size and time like any other file, and never opened."""
+    private, client = _household(tmp_path)
+    (client / "Drop files here" / "_README.txt").write_text("the firm's", encoding="utf-8")
+    (client / "Drop files here" / "from the bank").mkdir()
+    (client / "Drop files here" / "from the bank" / "_README.txt").write_text("a client's", encoding="utf-8")
+    _aged(private, client)
+    opened = []
+    real = Path.read_bytes
+
+    def watched(self):
+        opened.append(self)
+        return real(self)
+
+    monkeypatch.setattr(Path, "read_bytes", watched)
+    assert firm_cache.fingerprint(private, client, JUDGED) is not None
+    assert [one.relative_to(client).as_posix() for one in opened if one.is_relative_to(client)] == [
+        "Drop files here/_README.txt"]
+

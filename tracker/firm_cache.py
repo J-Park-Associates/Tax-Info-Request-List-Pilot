@@ -145,21 +145,41 @@ def head(root: Path | str, today: dt.date) -> dict:
 #: modules that own the names; this module only applies it.
 @dataclass(frozen=True)
 class Judged:
-    #: In the household's private folder, at any depth: the records the
-    #: firm view reads (every return's and the household's record, the
-    #: reminder drafts). A rewrite that keeps a record's size and time - a
-    #: backup restore, a copy that keeps times, a hand edit put back - still
-    #: changes its bytes.
-    private_whole: frozenset[str] = frozenset()
-    #: In the household's client folder, at any depth: the firm's own files
-    #: the inbox count opens (its README). A client's documents are never
-    #: among them and are never opened.
-    client_whole: frozenset[str] = frozenset()
-    #: Left out entirely: files the tracker writes from the record and the
-    #: firm view never opens (a return's status page, rewritten by every
-    #: pass). Leaving one out cannot hide a status: it holds nothing the
-    #: record does not.
-    left_out: frozenset[str] = frozenset()
+    """Each place is a file's path below the household's folder, one name
+    per level, with :data:`ANY` standing for one folder of any name (a year,
+    a return): ``(ANY, ANY, ledger.LEDGER_FILENAME)`` is a return's record. A file
+    matches only at exactly that place and only as a file - never a folder,
+    never at another depth - so a client's file that happens to carry one of
+    these names anywhere else is judged like every other file (the re-check
+    of the review, MUST-R1 and NIT-R1)."""
+
+    #: In the household's private folder: the records the firm view reads
+    #: (the household's and every return's) and the reminder drafts, where
+    #: the tracker writes them. A rewrite that keeps a record's size and
+    #: time - a backup restore, a copy that keeps times, a hand edit put
+    #: back - still changes its bytes.
+    private_whole: frozenset[tuple[str, ...]] = frozenset()
+    #: In the household's client folder: the firm's own README, at the top
+    #: of the inbox, where the inbox count opens it. A client's documents
+    #: are never among them and are never opened.
+    client_whole: frozenset[tuple[str, ...]] = frozenset()
+    #: In the household's private folder only, left out entirely: files the
+    #: tracker writes from the record and the firm view never opens (a
+    #: return's status page, rewritten by every pass). Leaving one out
+    #: cannot hide a status: it holds nothing the record does not. Nothing
+    #: in the client folder is ever left out.
+    private_left_out: frozenset[tuple[str, ...]] = frozenset()
+
+
+#: One folder of any name, in a :class:`Judged` place.
+ANY = "*"
+
+
+def _at(places: frozenset[tuple[str, ...]], where: tuple[str, ...]) -> bool:
+    """Whether the file at ``where`` (its names below the household's
+    folder) is at one of ``places``."""
+    return any(len(place) == len(where) and all(part in (ANY, name) for part, name in zip(place, where, strict=True))
+               for place in places)
 
 
 #: Every file judged by its size and time, none left out.
@@ -180,12 +200,13 @@ def fingerprint(private: Path, client: Path | None, judged: Judged = NOTHING_JUD
     and never kept."""
     digest = hashlib.blake2b(digest_size=16)
     settled = time.time_ns() - RACY_SECONDS * 1_000_000_000
-    for folder, whole in ((private, judged.private_whole), (client, judged.client_whole)):
+    for folder, whole, left_out in ((private, judged.private_whole, judged.private_left_out),
+                                    (client, judged.client_whole, frozenset())):
         if folder is None:
             digest.update(b"\3none\n")
             continue
         digest.update(f"\1{folder}\n".encode("utf-8", "surrogatepass"))
-        if not _listed(Path(folder), digest, settled, whole, judged.left_out):
+        if not _listed(Path(folder), digest, settled, whole, left_out, ()):
             return None
     return digest.hexdigest()
 
@@ -224,7 +245,8 @@ def fingerprints(pairs: list[tuple[Path, Path | None]], judged: Judged = NOTHING
     return found
 
 
-def _listed(folder: Path, digest, settled: int, whole: frozenset[str], left_out: frozenset[str]) -> bool:
+def _listed(folder: Path, digest, settled: int, whole: frozenset[tuple[str, ...]],
+            left_out: frozenset[tuple[str, ...]], below: tuple[str, ...]) -> bool:
     try:
         with os.scandir(folder) as found:
             entries = sorted(found, key=lambda entry: entry.name)
@@ -234,8 +256,7 @@ def _listed(folder: Path, digest, settled: int, whole: frozenset[str], left_out:
     except OSError:
         return False
     for entry in entries:
-        if entry.name in left_out:
-            continue
+        where = (*below, entry.name)
         try:
             about = entry.stat(follow_symlinks=False)
         except OSError:
@@ -244,14 +265,16 @@ def _listed(folder: Path, digest, settled: int, whole: frozenset[str], left_out:
             return False
         if stat.S_ISDIR(about.st_mode):
             digest.update(f"{entry.name}\0dir\n".encode("utf-8", "surrogatepass"))
-            if not _listed(Path(entry.path), digest, settled, whole, left_out):
+            if not _listed(Path(entry.path), digest, settled, whole, left_out, where):
                 return False
+            continue
+        if _at(left_out, where):
             continue
         if about.st_mtime_ns > settled:
             return False
         digest.update(f"{entry.name}\0{about.st_size}\0{about.st_mtime_ns}\n"
                       .encode("utf-8", "surrogatepass"))
-        if entry.name in whole:
+        if _at(whole, where):
             try:
                 digest.update(hashlib.blake2b(Path(entry.path).read_bytes(), digest_size=16).digest())
             except OSError:
