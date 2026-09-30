@@ -8547,8 +8547,54 @@ def test_a_set_aside_file_a_parked_zip_and_a_parked_document_are_shown_never_ope
         assert not [s for s in _walk_strings(key) if str(engagement) in s]
     assert rows["setup.exe"]["shown_key"] == "" and not rows["setup.exe"]["prepared_location"]
     assert not [k for k in state["paths"] if k.startswith("shown_copy") and "setup" in state["paths"][k]]
-    # A filed row carries no shown key (its copies are open_keys); a parked one keeps its open key too.
+    # A filed row carries no shown key (its copies are open_keys).
     assert all("shown_key" not in e for e in state["index"] if e["decision"] == FILED)
+
+
+def _parked_read_pdf_state(capsys, demo_root, tmp_path):
+    """A real scan whose pile parks a read PDF (last year's W-2): a row whose
+    copy opens, beside rows whose copies are only shown."""
+    engagement = sample_engagement(capsys, demo_root, tmp_path)
+    code, payload = scan(capsys, engagement)
+    assert code == 0, payload
+    state = payload["state"]
+    [parked] = [e for e in state["index"] if e["original_name"] == f"W-2 Jane Smith {PRIOR_YEAR} - old.pdf"]
+    assert parked["open_key"].startswith("review_copy "), parked
+    return state, parked
+
+
+def test_a_parked_pdfs_shown_key_is_its_open_key_so_no_path_is_named_twice(capsys, demo_root, tmp_path):
+    """Review 2, F1: the shell's allow-list is keyed by path, so a copy named
+    under both a ``review_copy`` and a ``shown_copy`` key would have the
+    reveal-only kind overwrite the one that opens."""
+    state, parked = _parked_read_pdf_state(capsys, demo_root, tmp_path)
+    assert parked["shown_key"] == parked["open_key"]
+    kinds_of = {}
+    for key, path in state["paths"].items():
+        kinds_of.setdefault(path, set()).add(api.PATH_KINDS.get(key.split(" ", 1)[0]))
+    assert all(len(kinds) == 1 for kinds in kinds_of.values()), kinds_of
+    paths = list(state["paths"].values())
+    assert len(paths) == len(set(paths)), "one key per path"
+
+
+def test_a_real_state_paths_still_opens_a_parked_pdfs_review_copy_through_the_shell(
+        capsys, demo_root, tmp_path):
+    """Review 2, F1 end to end: the real reply's ``paths`` (in its own order)
+    and the API's kinds through the real ``app/main.js`` - the card's plain
+    Open opens the review copy, and reveal still shows it."""
+    from tests.test_shell import _run
+
+    state, parked = _parked_read_pdf_state(capsys, demo_root, tmp_path)
+    review = state["paths"][parked["open_key"]]
+    [zip_like] = [e for e in state["index"] if e["original_name"] == "Mortgage Notes.docx"]
+    shown = state["paths"][zip_like["shown_key"]]
+    scenario = {"pathKinds": api.PATH_KINDS, "paths": state["paths"]}
+    steps = [{"tracker": ["list"]}, {"open": [review]}, {"open": [review, "reveal"]},
+             {"open": [shown]}, {"open": [shown, "reveal"]}]
+    ran = _run(tmp_path, steps, **scenario)
+    assert ran["opened"] == [review], "a plain open of the review copy opens it"
+    assert ran["revealed"] == [review, shown]
+    assert ran["answers"] == ["", "", "Not Opened; It Has Changed", ""]
 
 
 def test_no_return_or_household_row_carries_an_open_key_and_their_words_navigate(

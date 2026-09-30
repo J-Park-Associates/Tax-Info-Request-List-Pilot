@@ -1320,9 +1320,9 @@ SCREEN: dict = {
         "drive": "Drive Not Signed In",
         # The short words of the other notices (S4's missing keys). The long
         # sentences stay in the API for the error log only; a notice shows
-        # these. ``machine`` is the line for a machine warning with no word
-        # of its own (PROPOSED for Jason); ``paused`` and ``feed`` are
-        # PROPOSED for Jason too, the SPEC names no words for them.
+        # these. ``machine`` is the one line for a machine warning with no
+        # word of its own; ``machine``, ``paused`` and ``feed`` are approved
+        # by Jason, ruling 14 (the SPEC names no words for them).
         "reader": "Install Folder Name Too Long",
         "machine": "Machine Needs Attention",
         "renamed": "Folder Renamed",
@@ -2092,10 +2092,16 @@ def _shown_copy_key(entry: IndexEntry) -> str:
     in File Explorer, or ``""`` where the row has no copy. Reveal only,
     never Open (review 1, F2): it is what makes every file name a link,
     including the ones :func:`_review_copy_key` must not open (a set-aside
-    file, an email, a zip). A program has no working copy, so no key."""
+    file, an email, a zip). A program has no working copy, so no key.
+
+    A row whose copy opens (:func:`_review_copy_key`) is shown under that
+    same key: the shell's allow-list is keyed by path, so a path reported
+    under two kinds would have the reveal-only one overwrite the ``file``
+    one and refuse the card's Open (review 2, F1). ``open(path, "reveal")``
+    already shows a ``file``."""
     if entry.decision not in (NEEDS_REVIEW, NOT_REQUESTED) or not entry.prepared_location:
         return ""
-    return f"shown_copy {ledger_key(entry)}"
+    return _review_copy_key(entry) or f"shown_copy {ledger_key(entry)}"
 
 
 def _review_payload(entry: IndexEntry) -> dict:
