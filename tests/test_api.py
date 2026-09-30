@@ -8858,3 +8858,15 @@ def test_every_title_exception_is_an_exact_string_that_is_really_drawn_with_a_re
 def test_the_title_case_test_can_fail(monkeypatch):
     monkeypatch.setitem(reasons.SHORT_REASONS, "unmatched", "Could not Sort")
     assert title_case(reasons.SHORT_REASONS["unmatched"]) != reasons.SHORT_REASONS["unmatched"]
+
+
+def test_list_carries_each_misfits_code_and_the_vocabulary_words_it(capsys, demo_root):
+    from tracker.api import _vocab
+
+    (demo_root / "Archive").mkdir()
+    code, payload = run(capsys, "list")
+    assert code == 0
+    [misfit] = [m for m in payload["misfits"] if Path(m["path"]).name == "Archive"]
+    assert misfit["code"] == "not_a_tree"
+    assert misfit["sentence"] and misfit["where"]
+    assert _vocab()["screen"]["misfits"]["reasons"][misfit["code"]] == "Unknown Folder"
