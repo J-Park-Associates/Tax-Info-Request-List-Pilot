@@ -360,7 +360,7 @@ and sends it. Nothing in the scheduled path sends email — and
 `tests/test_layers.py` pins that no module under `tracker/` imports a mail
 or network module.
 
-The app's **Reminder** card is where that draft is read (decision 118): the
+The app's **Reminder** sheet is where that draft is read (decision 118): the
 record's last word on it, the four stages as a toggle that rewrites the
 letter on screen without touching the file, the letter itself in the firm's
 own colours, **Copy for Outlook** (the body as HTML beside the same words as
@@ -483,7 +483,7 @@ land together. What did need a rule is the K-1 whose issuer nobody listed:
 with issuer rows present it parks (`tracker.reasons.ISSUER_NOT_NAMED`) with
 those rows named, rather than joining everybody else's on the generic row or
 being guessed onto whichever row is left over. `docs/runbook.md` §8 is how a
-person adds one: from the parked K-1's card in one step, or in the editor.
+person adds one: from the parked K-1's row in one step, or in the editor.
 
 When a person files something out of `00 - Needs Review` they can type a
 keyword, and it is recorded against that one engagement's request and

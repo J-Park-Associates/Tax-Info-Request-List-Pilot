@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 341,
+    "nodes": 342,
     "edges": 1156,
-    "reused": 288
+    "reused": 296
   },
   "node_types": [
     "artifact",
@@ -4511,7 +4511,7 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "3a2f7a7c383a1eff",
+      "sha256": "cdf5743fa8939bb4",
       "lines": 587,
       "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
     },
@@ -4617,8 +4617,8 @@
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "9a01b8fb8dc41ca5",
-      "lines": 722
+      "sha256": "3cd8a0fe689e6b55",
+      "lines": 726
     },
     {
       "id": "pilot/PLAN-ui.md",
@@ -5034,6 +5034,13 @@
       "lines": 60
     },
     {
+      "id": "pilot/handoffs/shell-final-check2.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "5cfd801140bab436",
+      "lines": 200
+    },
+    {
       "id": "pilot/handoffs/shell-final-rereview.md",
       "type": "doc",
       "layer": "docs",
@@ -5149,8 +5156,8 @@
       "id": "pilot/wintest/PROMPT-shell.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "f3639f2616542448",
-      "lines": 145
+      "sha256": "eabcc8e71266b1f1",
+      "lines": 146
     },
     {
       "id": "pilot/wintest/PROMPT.md",

@@ -43,6 +43,10 @@ can do every step.
    29); nothing is waiting on them. Two are not mapped because the engine does
    not tell them apart in a return's pass: "Drive Not Signed In" (its own
    notice) and "Ran Too Long" (the shell's own sentence at the 30-minute cap).
+3a. **"Nothing Done"** (two words, my working word) is what a skipped run with no
+   short reason of its own says; change it if you prefer another. "Another PC
+   Sorting" also shows when the lock holder is this same PC's own scheduled sort
+   (ruling 29 as written).
 4. **Firm speed on Windows**: 6.7 s for 750 returns in the sandbox against a
    3 s budget; the Windows number decides whether the firm view needs a cache.
 5. **The status word "Came in Email or Zip"** is cut in the 160px status
