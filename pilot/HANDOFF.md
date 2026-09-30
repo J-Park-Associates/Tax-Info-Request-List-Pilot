@@ -1,5 +1,35 @@
 # Pilot handoff
 
+## App shell: where the build stands (2026-09-30; branch `claude/shell-join`, S6a)
+
+The shell is built in jobs (P78), each with a handoff in [`handoffs/`](handoffs/)
+and its reviews; this section is the index and what is left. Jason's rulings
+1-22 are rows P85-P107 in [`DECISIONS.md`](DECISIONS.md); the live ledger is
+[`handoffs/shell-ledger.md`](handoffs/shell-ledger.md).
+
+| Job | What | Handoff | State |
+|---|---|---|---|
+| S1 | engine and wording (`firm`, `group`, `paths`, words) | `shell-S1*.md` | joined (review 5, no findings) |
+| S2 | window, menus, one `menu` channel, fallback log | `shell-S2*.md` | joined (review 5) |
+| S3 | renderer foundation (tokens, shell.css, tooltip, side panel, path, search) | `shell-S3*.md` | joined via S7 (review 3) |
+| S7 | Floating UI tooltips, ruling 2 and 7 | `shell-S7*.md` | joined (review 3) |
+| S8a | link keys, reveal, Title Case engine words | `shell-S8a*.md` | joined (review 3) |
+| S8b | a code per misfit, two-word reasons | `shell-S8b.md` | joined |
+| SPEC sync | SPEC, wording table, test pins brought to the rulings | `shell-spec-sync.md` | joined |
+| S6a | this join, engine words, `paused`, Show in File Explorer, runbook, decisions, tour casing | `shell-S6a.md` | done |
+| S4 | the pages | `shell-S4*.md` | comes in with S5 (S5 is built on S4's tip) |
+| S5 | the sheet, links, dialogs, right-click menus | `shell-S5*.md` | **S6b: merge `claude/shell-s5-sheet` last** |
+
+**What is left.** (1) S6b: merge S5 (it carries S4); `shell-S6a.md` lists the
+expected conflicts. (2) Delete the harness mirror of the vocabulary once S5 is in
+(`HARNESS_LIVE_VOCAB=1`, the S5 checklist item 5). (3) The renderer's
+`index.html` still has one `Needs review` heading (S5's file). (4) Two words
+are proposed for Jason and not yet ruled on: `screen.notices.pick_request`
+("Pick a Request First") and `screen.notices.name_requests` ("Name Each Custom
+Request"). (5) The Windows check: [`wintest/PROMPT-shell.md`](wintest/PROMPT-shell.md).
+(6) The firm summary is 6.7 s for 750 returns in the sandbox against a 3 s
+budget: the Windows number decides whether it needs a cache.
+
 ## App shell SPEC written (2026-09-29, P67-P78; branch `claude/admiring-lamport-bp1sse`)
 
 Built on `claude/amazing-maxwell-b4hdzo` (the brief and audit). Nothing in the
@@ -266,7 +296,7 @@ finding, fixed how, or why not. Commit with [skip ci], push to the same
 branch.
 ```
 
-### The Windows check (draft for S6 to finish; run on the office PC)
+### The Windows check (draft; the finished one is `wintest/PROMPT-shell.md`)
 
 ```
 You run the Windows check of the Tax Document Tracker Pilot's app shell on
