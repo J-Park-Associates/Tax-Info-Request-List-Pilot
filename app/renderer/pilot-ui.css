@@ -1,72 +1,189 @@
-/* Build E, the structure pass (pilot SPEC-ui.md, decisions P51-P54).
+/* Build E, the structure pass (pilot SPEC-ui.md, decisions P51-P54), and the
+   app shell's tokens (pilot SPEC-shell.md section 10, decisions P72-P73).
 
    One file redefines the look by overriding style.css selectors, loaded after
-   style.css and before pilot-style.css, so style.css, app.js, main.js and
-   preload.js stay exactly as the original has them and every merge from the
-   original stays clean (README rule 1). Colour identity is P50's navy design;
-   this file changes structure: one button shape, four importances, two sizes,
-   one type ramp, one 4px spacing grid.
+   style.css and before shell.css and pilot-style.css. Colour identity is P50's
+   navy design; this file changes structure: one button shape, four
+   importances, two sizes, one type ramp, one 4px spacing grid, and now a light
+   and a dark value for every colour.
 
-   The rule that keeps it honest: outside :root nothing here writes a hex or
-   rgb() colour, a literal font size, weight or line height, or a padding,
-   margin or gap that is not 0, auto, a --sp-* step or a calc() of them.
-   tests/test_pilot_ui.py reads this file and fails on the first one. The
-   reminder letter (.rem-preview) mirrors the emailed letter and is never
-   named here. No !important outside a prefers-reduced-motion block, no url(),
-   no @import, no @font-face, no bundled font: the face is the one Windows
-   already has. */
+   The rule that keeps it honest: outside the two :root blocks nothing here
+   writes a hex or rgb() colour, a literal font size, weight or line height,
+   or a padding, margin or gap that is not 0, auto, a --sp-* step or a calc()
+   of them. tests/test_pilot_ui.py and tests/test_shell.py read this file and
+   fail on the first one. The reminder letter (.rem-preview) mirrors the
+   emailed letter and is never named here. No !important outside a
+   prefers-reduced-motion block, no url(), no @import, no @font-face, no
+   bundled font: the face is the one Windows already has. */
 
-/* ── Tokens ──────────────────────────────────────────────────────────────
-   Redefined names (--radius, --shadow, --subtle) make every var() already in
-   style.css pick the new value up. --bg is not repeated: main.js reads the
-   window colour from style.css by regex and the two must agree. */
+/* ── Tokens, light (P72) ─────────────────────────────────────────────────
+   Names say what a colour is for, never its hue, except the kept aliases at
+   the end of each block. --bg-page is --window-light here and --window-dark
+   in the dark block: main.js reads those two literals for the first paint.
+   Every name in this block is repeated, with a dark value, in the block
+   below. */
 
 :root {
   /* type */
   --font-ui: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   --font-display: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
-  --fs-caption: 12px;  --lh-caption: 16px;
-  --fs-body: 14px;     --lh-body: 20px;
-  --fs-subtitle: 16px; --lh-subtitle: 22px;
-  --fs-title: 20px;    --lh-title: 28px;
+  --fs-caption: 12px;  --lh-caption: calc(16 / 12);
+  --fs-body: 14px;     --lh-body: calc(20 / 14);
+  --fs-h2: 16px;       --lh-h2: calc(24 / 16);
+  --fs-h1: 20px;       --lh-h1: calc(28 / 20);
+  --fs-figure: 28px;   --lh-figure: calc(36 / 28);
   --fw-regular: 400;   --fw-strong: 600;
 
   /* space: a 4px grid */
-  --sp-half: 2px; --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
-  --sp-5: 20px;  --sp-6: 24px; --sp-8: 32px;
+  --sp-1: 4px; --sp-2: 8px; --sp-4: 16px; --sp-6: 24px; --sp-8: 32px; --sp-12: 48px;
+
+  /* size: multiples of 4, but the selection pill's 3 and the hairline's 1 */
+  --size-row: 40px; --size-control: 32px; --size-control-sm: 24px;
+  --size-bar: 48px; --size-sheet-foot: 64px;
+  --size-side: 240px; --size-sheet: 400px; --size-find: 240px; --size-icon: 16px;
+  --size-pill: 3px; --size-hair: 1px;
+  --size-col-name: 240px; --size-col-detail: 200px; --size-col-status: 160px; --size-col-end: 144px;
+  --size-crumb-min: 96px; --size-crumb-household: 240px; --size-crumb-current: 400px;
+  --size-tip-max: 320px; --size-form: 320px; --size-page-max: 480px; --size-progress: 4px;
 
   /* shape */
-  --radius-control: 4px;   /* buttons, inputs, selects, small pills that are not status chips */
-  --radius: 8px;           /* surfaces: cards, banners, notices, dialogs, toast, tour and terms cards */
-  --radius-pill: 999px;    /* status chips only */
-  --ctl-h: 32px; --ctl-h-sm: 24px;
+  --radius-control: 4px;   /* buttons, inputs, section rows, notices */
+  --radius: 8px;           /* dialogs, toast, tooltip */
+  --radius-pill: 999px;    /* the old status chips, until the pages replace them */
+  --ctl-h: var(--size-control); --ctl-h-sm: var(--size-control-sm);
 
-  /* colour: the P50 palette, named once */
-  --navy: #14335c; --navy-deep: #0e2544;
-  --blue: #2563eb; --blue-dark: #1d4ed8;            /* focus ring and links only */
-  --card: #ffffff;
-  --text: #0f172a; --muted: #475569;
-  --subtle: #5a6a80;                                /* was #64748b: 4.43:1 on --bg, now 5.14:1 */
-  --border: #e2e8f0; --border-strong: #cbd5e1;
-  --border-input: #7d8ea5;                          /* input bottom edge: 3.34:1 on white (WCAG 1.4.11) */
-  --surface-hover: #f1f5f9; --surface-pressed: #e2e8f0;
-  --surface-selected: #e8eef7; --surface-sunken: #f8fafc;
-  --text-disabled: #94a3b8; --surface-disabled: #f1f5f9;
-  --danger: #b42318; --danger-hover-bg: #fef3f2; --danger-border: #fda29b;
-  --ok-bg: #ecfdf5;   --ok-border: #a7f3d0;   --ok-fg: #065f46;
-  --warn-bg: #fffbeb; --warn-border: #fde68a; --warn-fg: #92400e;
+  /* surfaces */
+  --bg-page: var(--window-light);
+  --bg-nav: #f3f5f8;
+  --bg-raised: #ffffff;
+  --bg-hover: #f1f5f9;
+  --bg-nav-hover: #e7ecf2;
+  --bg-pressed: #e2e8f0;
+  --bg-selected: #e3eaf4;
+
+  /* ink */
+  --text: #0f172a;
+  --text-secondary: #434f63;
+  --text-caption: #566579;
+  --text-disabled: #94a3b8;
+
+  /* accent and links */
+  --accent: #14335c;
+  --accent-hover: #0e2544;
+  --on-accent: #ffffff;
+  --link: #14335c;
+  --focus: #2563eb;
+
+  /* edges */
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --border-input: #7d8ea5;
+
+  /* status words */
+  --st-attention: #8a3a0c;
+  --st-waiting: #1e3a8a;
+  --st-done: #05603f;
+  --st-error: #991b1b;
+  --danger: #b42318;
+
+  /* notices */
   --err-bg: #fef2f2;  --err-border: #fecaca;  --err-fg: #991b1b;
+  --warn-bg: #fffbeb; --warn-border: #fde68a; --warn-fg: #7c3a0a;
   --info-bg: #eff6ff; --info-border: #bfdbfe; --info-fg: #1e3a8a;
-  --amber: #f59e0b; --amber-deep: #d97706; --amber-soft: #fcd34d;   /* the pilot badge and tour spot */
+  --ok-bg: #ecfdf5;   --ok-border: #a7f3d0;   --ok-fg: #065f46;
+
+  /* the pilot's badge, the brand band, the first paint, overlays */
+  --badge-bg: #fcd34d;
+  --badge-fg: #0e2544;
+  --brand: #14335c;
+  --window-light: #ffffff;
+  --window-dark: #1b1e24;
+  --scrim: rgba(15, 23, 42, 0.32);
+  --scroll-thumb: #8593a6;
   --shadow: none;                                   /* flat controls and cards */
   --shadow-overlay: 0 8px 32px rgba(15, 23, 42, 0.24), 0 2px 8px rgba(15, 23, 42, 0.12);
   --ease: cubic-bezier(0.2, 0, 0, 1); --dur: 150ms;
+
+  /* the tour's spot ring: unchanged in both themes */
+  --amber: #f59e0b; --amber-deep: #d97706; --amber-soft: #fcd34d;
+
+  /* kept names, so every rule already written picks up the right value */
+  --bg: var(--bg-page);
+  --card: var(--bg-raised);
+  --muted: var(--text-secondary);
+  --subtle: var(--text-caption);
+  --navy: var(--accent);
+  --navy-deep: var(--accent-hover);
+  --blue: var(--focus);
+  --blue-dark: var(--focus);
+  --surface-hover: var(--bg-hover);
+  --surface-pressed: var(--bg-pressed);
+  --surface-selected: var(--bg-selected);
+  --surface-sunken: var(--bg-nav);
+  --surface-disabled: var(--bg-nav);
+  --danger-hover-bg: var(--err-bg);
+  --danger-border: var(--err-border);
 }
 
-/* ── Type (P53) ──────────────────────────────────────────────────────────
-   One family, a four-step ramp (12/14/16/20 on 16/20/22/28), two weights
-   (400 and 600). Windows 11's own Segoe UI Variable is already installed;
-   Segoe UI comes before the system face on older Windows. */
+/* ── Tokens, dark (P73) ──────────────────────────────────────────────────
+   The same names as above with dark values: the page follows Windows'
+   setting through prefers-color-scheme and nothing in the renderer asks.
+   The aliases are not repeated: they resolve through the names below. */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-page: var(--window-dark);
+    --bg-nav: #15171c;
+    --bg-raised: #23272f;
+    --bg-hover: #252a32;
+    --bg-nav-hover: #1f232a;
+    --bg-pressed: #2d333c;
+    --bg-selected: #26303f;
+
+    --text: #e8ecf2;
+    --text-secondary: #b9c3cf;
+    --text-caption: #9aa6b4;
+    --text-disabled: #5f6b7a;
+
+    --accent: #a8c4ee;
+    --accent-hover: #c3d6f4;
+    --on-accent: #0e1a2e;
+    --link: #a8c4ee;
+    --focus: #7fb0ff;
+
+    --border: #2e343d;
+    --border-strong: #434b57;
+    --border-input: #7a8697;
+
+    --st-attention: #f2b872;
+    --st-waiting: #a3bff0;
+    --st-done: #7dd8b0;
+    --st-error: #ffa29b;
+    --danger: #ff9189;
+
+    --err-bg: #3a1d20;  --err-border: #6e2f33;  --err-fg: #ffb8b3;
+    --warn-bg: #35290f; --warn-border: #6b5420; --warn-fg: #f6d08a;
+    --info-bg: #1a2940; --info-border: #34507a; --info-fg: #bcd3f7;
+    --ok-bg: #10291f;   --ok-border: #1f5a43;   --ok-fg: #9be3c3;
+
+    --badge-bg: #fcd34d;
+    --badge-fg: #0e2544;
+    --brand: #14335c;
+    --window-light: #ffffff;
+    --window-dark: #1b1e24;
+    --scrim: rgba(0, 0, 0, 0.56);
+    --scroll-thumb: #737f8e;
+    --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.48), 0 2px 8px rgba(0, 0, 0, 0.32);
+    --amber: #f59e0b; --amber-deep: #d97706; --amber-soft: #fcd34d;
+  }
+}
+
+/* ── Type (P53, P62) ─────────────────────────────────────────────────────
+   One family, five roles: H1 20/28, H2 16/24, body 14/20, caption 12/16 and
+   the Overview's figure 28/36 (H3 is body at 600). Two weights (400 and 600).
+   Every size times its line height lands on the 4px grid. Windows 11's own
+   Segoe UI Variable is already installed; Segoe UI comes before the system
+   face on older Windows. */
 
 body {
   font-family: var(--font-ui);
@@ -81,31 +198,32 @@ button, input, select, textarea {
   line-height: var(--lh-body);
 }
 
-/* Titles that name a card or a dialog use the display cut. */
+/* Titles that name a card or a dialog use the display cut. A dialog title is
+   H2, one step under the page's H1, so a dialog never out-shouts the page. */
 .card-head h3 {
   font-family: var(--font-display);
-  font-size: var(--fs-subtitle);
-  line-height: var(--lh-subtitle);
+  font-size: var(--fs-h2);
+  line-height: var(--lh-h2);
   font-weight: var(--fw-strong);
-  color: var(--navy);
+  color: var(--accent);
 }
 .modal h3 {
   font-family: var(--font-display);
-  font-size: var(--fs-title);
-  line-height: var(--lh-title);
+  font-size: var(--fs-h2);
+  line-height: var(--lh-h2);
   font-weight: var(--fw-strong);
   color: var(--text);
   margin-bottom: var(--sp-4);
 }
 .form-num {
-  font-size: var(--fs-subtitle);
-  line-height: var(--lh-subtitle);
+  font-size: var(--fs-h2);
+  line-height: var(--lh-h2);
   font-weight: var(--fw-strong);
 }
 
 /* Body size: every 13, 13.5, 14 and 15px of style.css. */
-.brand-product, .pass-progress, .rem-hold, .rem-hold-rows li, .rem-subject,
-.requests, .editor-table, .eng-picker select,
+.pass-progress, .rem-hold, .rem-hold-rows li, .rem-subject,
+.requests, .editor-table,
 .field input, .field select, .tmpl-item, .form-who, .wiz-sub, .wiz-note,
 .wiz-check, .toast, .prior-item, .review li, .review select, .review input,
 .deck-card, .deck-card .r-keyword, .deck-card .r-issuer input,
@@ -119,7 +237,7 @@ button, input, select, textarea {
 /* Caption size: every 11, 11.5, 12 and 12.5px of style.css. */
 .btn-small, .summary, .rem-status, .rem-hint, .rem-edited, .rem-stage,
 .rem-quiet, .rem-hold-rows .rem-hold-why, .req-period, .req-notes,
-.req-recv, .req-side, .req-reason, .chip, .assure, .assure strong, .assure span, .eng-form,
+.req-recv, .req-side, .req-reason, .chip, .assure, .assure strong, .assure span,
 .field span, .tmpl-head, .tmpl-rules, .requests th, .editor-table th,
 .editor-table .ed-learned, .editor-table .ed-unlearn,
 .ed-set-aside > summary, .rows-set-aside > summary, .ed-paste summary,
@@ -145,7 +263,7 @@ th, legend, strong,
 .requests th, .tmpl-head, .editor-table th, .ed-engagement legend {
   text-transform: none;
   letter-spacing: normal;
-  color: var(--subtle);
+  color: var(--text-caption);
 }
 
 /* Figures line up. */
@@ -163,16 +281,16 @@ table.requests, .editor-table, .summary, .chip, .rem-stage-n,
    it, or it would out-rank .hidden. */
 
 .btn {
-  --b-fg: var(--navy);
-  --b-bg: var(--card);
+  --b-fg: var(--link);
+  --b-bg: var(--bg-raised);
   --b-bd: var(--border-strong);
-  --b-hover: var(--surface-hover);
+  --b-hover: var(--bg-hover);
   --b-hover-bd: var(--border-strong);
-  --b-active: var(--surface-pressed);
-  --b-dis-bg: var(--surface-disabled);
+  --b-active: var(--bg-pressed);
+  --b-dis-bg: var(--bg-nav);
   --b-dis-bd: var(--border);
   min-height: var(--ctl-h);
-  padding: 0 var(--sp-3);
+  padding: 0 var(--sp-4);
   align-items: center;
   justify-content: center;
   gap: var(--sp-2);
@@ -187,7 +305,7 @@ table.requests, .editor-table, .summary, .chip, .rem-stage-n,
 }
 .btn:hover { background: var(--b-hover); border-color: var(--b-hover-bd); }
 .btn:active { background: var(--b-active); border-color: var(--b-hover-bd); }
-.btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .btn svg { width: 16px; height: 16px; flex-shrink: 0; stroke: currentColor; }
 
 .btn-small {
@@ -203,19 +321,17 @@ table.requests, .editor-table, .summary, .chip, .rem-stage-n,
 
 /* Primary: the one main action of a region. */
 .btn-primary {
-  --b-fg: var(--card);
-  --b-bg: var(--navy);
-  --b-bd: var(--navy);
-  --b-hover: var(--navy-deep);
-  --b-hover-bd: var(--navy-deep);
-  --b-active: var(--navy-deep);
+  --b-fg: var(--on-accent);
+  --b-bg: var(--accent);
+  --b-bd: var(--accent);
+  --b-hover: var(--accent-hover);
+  --b-hover-bd: var(--accent-hover);
+  --b-active: var(--accent-hover);
+  color: var(--b-fg);
 }
 
-/* Subtle: commands in a bar, exits, links to other places. The contexts are
-   the ones index.html and app.js already give a class or a place, so no
-   markup is edited (README rule 1). */
+/* Subtle: commands in a bar, exits, links to other places. */
 .btn-subtle,
-.toolbar > .btn:not(.btn-primary),
 .notice-act[data-act="dismiss"] {
   --b-bg: transparent;
   --b-bd: transparent;
@@ -236,12 +352,12 @@ table.requests, .editor-table, .summary, .chip, .rem-stage-n,
 #btn-unlock,
 #btn-stop-pass {
   --b-fg: var(--danger);
-  --b-bg: var(--card);
+  --b-bg: var(--bg-raised);
   --b-bd: var(--border-strong);
-  --b-hover: var(--danger-hover-bg);
-  --b-hover-bd: var(--danger-border);
-  --b-active: var(--danger-hover-bg);
-  --b-dis-bg: var(--surface-disabled);
+  --b-hover: var(--err-bg);
+  --b-hover-bd: var(--err-border);
+  --b-active: var(--err-bg);
+  --b-dis-bg: var(--bg-nav);
   --b-dis-bd: var(--border);
 }
 
@@ -269,7 +385,7 @@ table.requests, .editor-table, .summary, .chip, .rem-stage-n,
   min-height: var(--ctl-h-sm);
   padding: 0 var(--sp-2);
   font-weight: var(--fw-strong);
-  color: var(--navy);
+  color: var(--accent);
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-control);
@@ -278,11 +394,11 @@ table.requests, .editor-table, .summary, .chip, .rem-stage-n,
   transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
 }
 .rem-quiet:hover, .wiz-back:hover {
-  color: var(--navy);
-  background: var(--surface-hover);
+  color: var(--accent);
+  background: var(--bg-hover);
   border-color: transparent;
 }
-.rem-quiet:active, .wiz-back:active { background: var(--surface-pressed); }
+.rem-quiet:active, .wiz-back:active { background: var(--bg-pressed); }
 /* Disabled is drawn, not faded (SPEC 5.2, the subtle variant): transparent
    fill, the disabled text colour, the default cursor, and hover and press
    change nothing. app.js disables #btn-open-draft until a draft file exists. */
@@ -293,29 +409,15 @@ table.requests, .editor-table, .summary, .chip, .rem-stage-n,
   border-color: transparent;
   cursor: default;
 }
-.rem-quiet:focus-visible, .wiz-back:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.rem-quiet:focus-visible, .wiz-back:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
-/* Selected is not primary: the accent means "the main action", so a chosen
-   control gets its own look. The review Cards/List switch is a segmented
-   control; the active return in the household card is marked with btn-primary
-   by app.js (not edited), and reads as selected here. */
-.mode-toggle {
-  display: inline-flex;
-  gap: var(--sp-half);
-  padding: var(--sp-half);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-control);
-}
-.mode-toggle .btn {
-  --b-bg: transparent;
-  --b-bd: transparent;
-  --b-hover-bd: transparent;
-}
-.mode-toggle .btn.on,
+/* Selected is not primary: the accent means "the main action", so the active
+   return in the household card (marked with btn-primary by app.js) reads as
+   selected here. The card goes with the pages; the rule goes with it. */
 .household-return .btn.btn-primary {
-  color: var(--navy);
-  background: var(--surface-selected);
-  border-color: var(--navy);
+  color: var(--text);
+  background: var(--bg-selected);
+  border-color: var(--accent);
   font-weight: var(--fw-strong);
 }
 .household-return .btn.btn-primary:disabled {
@@ -323,74 +425,13 @@ table.requests, .editor-table, .summary, .chip, .rem-stage-n,
   cursor: default;
 }
 
-/* ── Top bar and command bar (P52) ───────────────────────────────────────
-   The toolbar's DOM order is fixed by tests and is not changed. Nine equal
-   boxed buttons become one quiet row: every button but Sort & Scan is subtle
-   (see Buttons), Stop is danger, and the runs of the row are set apart by
-   space, not boxes. */
-
-.topbar {
-  min-height: 48px;
-  padding: 0 var(--sp-6);
-  background: var(--navy-deep);
-}
-.brand { gap: var(--sp-3); }
-.brand-logo { height: 28px; }
-.brand-divider { height: 20px; }
-.brand-product { font-weight: var(--fw-regular); }
-
-.main {
-  padding: var(--sp-4) var(--sp-6);
-  gap: var(--sp-4);
-}
-
-.toolbar {
-  gap: var(--sp-1);
-  min-height: 40px;
-  padding-bottom: var(--sp-3);
-  border-bottom: 1px solid var(--border);
-}
-
-/* Four runs by DOM order: places and upkeep (Tour, inbox, client folder,
-   repair), the list (edit, schedule), pages (report, status), the run (Sort
-   & Scan, Stop). 4px inside a run, 16px between runs (the 4px gap plus a 12px
-   right margin on the last button of the run before), so a row that wraps
-   starts flush. A first row that ends on one of these buttons stops 12px short
-   of the right edge; CSS cannot make both edges flush (review E2, accepted). */
-#btn-repair-schedule, #btn-schedule, #btn-status { margin-right: var(--sp-3); }
-
-#eng-select {
-  min-height: var(--ctl-h);
-  min-width: 260px;
-  padding: 0 var(--sp-3);
-  font-weight: var(--fw-strong);
-  color: var(--navy);
-  background: var(--card);
-  border: 1px solid var(--border-strong);
-  border-bottom-color: var(--border-input);
-  border-radius: var(--radius-control);
-  box-shadow: none;
-}
-#eng-select:hover { background: var(--surface-hover); border-color: var(--border-strong); border-bottom-color: var(--border-input); }
-#eng-select:focus-visible { outline: 2px solid var(--blue); outline-offset: 0; }
-
-#eng-form:not(.hidden), #view-state:not(.hidden) {
-  display: inline-flex;
-  align-items: center;
-}
-#eng-form, #view-state {
-  min-height: var(--ctl-h-sm);
-  padding: 0 var(--sp-2);
-  border-radius: var(--radius-control);
-}
-
 /* ── Surfaces: page, cards, rows, tables (P52, section 7) ────────────────── */
 
 /* A card never shrinks inside the scrolling column (P55). style.css has
    .card { overflow: hidden } in a flex column, which lets every card, and the
    toolbar's second row, collapse to a sliver when notices fill the window
-   instead of .main scrolling. Present in 0.1; fixed here, not in style.css. */
-.main > * { flex-shrink: 0; }
+   instead of #page scrolling. Present in 0.1; fixed here, not in style.css. */
+#page > * { flex-shrink: 0; }
 
 .card {
   border: 1px solid var(--border);
@@ -399,7 +440,7 @@ table.requests, .editor-table, .summary, .chip, .rem-stage-n,
 }
 .card-head {
   align-items: center;
-  padding: var(--sp-3) var(--sp-4);
+  padding: var(--sp-2) var(--sp-4);
 }
 
 /* Card bodies inset 16px on both sides (style.css's 18px), 16px at the foot. */
@@ -408,7 +449,7 @@ table.requests, .editor-table, .summary, .chip, .rem-stage-n,
   padding-right: var(--sp-4);
 }
 .reminder-body, .review, .deck, .household-body, #setup-note { padding-bottom: var(--sp-4); }
-.setup-row { padding-bottom: var(--sp-3); }
+.setup-row { padding-bottom: var(--sp-2); }
 .dismissed { padding: 0 var(--sp-4) var(--sp-4); }
 .dismissed .review { padding: 0; }
 .household-returns { gap: var(--sp-2); }
@@ -424,21 +465,21 @@ table.requests, .editor-table, .summary, .chip, .rem-stage-n,
 .chosen-badge {
   align-items: center;
   min-height: var(--ctl-h-sm);
-  padding: 0 var(--sp-3);
+  padding: 0 var(--sp-4);
 }
 
 table.requests th {
-  padding: var(--sp-2) var(--sp-3);
-  background: var(--surface-sunken);
+  padding: var(--sp-2) var(--sp-2);
+  background: var(--bg-nav);
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
 }
 table.requests td {
-  padding: var(--sp-2) var(--sp-3);
+  padding: var(--sp-2) var(--sp-2);
   border-bottom: 1px solid var(--border);
 }
 .requests tbody tr:last-child td { border-bottom: none; }
-.requests tbody tr:hover { background: var(--surface-sunken); }
+.requests tbody tr:hover { background: var(--bg-nav); }
 .chip {
   min-height: 20px;
   padding: 0 var(--sp-2);
@@ -447,15 +488,15 @@ table.requests td {
 
 /* The queue: the direct rows only (a reasons list holds li of its own). */
 ul.review > li {
-  padding: var(--sp-3) 0;
+  padding: var(--sp-2) 0;
   column-gap: var(--sp-2);
-  row-gap: var(--sp-half);
+  row-gap: var(--sp-1);
   border-top: 1px solid var(--border);
 }
 ul.review > li:first-child { border-top: none; }
 ul.review > li.r-bucket { padding-top: var(--sp-4); }
 .deck-card {
-  padding: var(--sp-3) var(--sp-4);
+  padding: var(--sp-2) var(--sp-4);
   column-gap: var(--sp-2);
   row-gap: var(--sp-2);
 }
@@ -463,9 +504,9 @@ ul.review > li.r-bucket { padding-top: var(--sp-4); }
    (SPEC 5.7). Across the whole row, under the reasons. */
 .where-it-waits {
   grid-column: 1 / -1;
-  margin-top: var(--sp-3);
-  padding: var(--sp-3);
-  background: var(--surface-sunken);
+  margin-top: var(--sp-2);
+  padding: var(--sp-2);
+  background: var(--bg-nav);
   border: 1px solid var(--border);
   border-radius: var(--radius);
 }
@@ -487,39 +528,42 @@ ul.review > li.r-bucket { padding-top: var(--sp-4); }
    darker underneath (WCAG 1.4.11), white. Rows of a table or the queue are
    28px. Checkboxes and radios take the navy accent at 16px. */
 
-:is(.main, .modal-overlay) :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+:is(#page, #sheet, .modal-overlay) :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
   min-height: var(--ctl-h);
-  padding: 0 var(--sp-3);
+  padding: 0 var(--sp-4);
   color: var(--text);
-  background: var(--card);
+  background: var(--bg-raised);
   border: 1px solid var(--border-strong);
   border-bottom-color: var(--border-input);
   border-radius: var(--radius-control);
 }
-:is(.main, .modal-overlay) textarea {
+:is(#page, #sheet, .modal-overlay) textarea {
   min-height: 0;
-  padding: var(--sp-2) var(--sp-3);
+  padding: var(--sp-2) var(--sp-2);
 }
 :is(.editor-table, .review) :is(input:not([type="checkbox"]):not([type="radio"]), select) {
   min-height: 28px;
   padding: 0 var(--sp-2);
 }
-:is(.main, .modal-overlay) :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea):focus-visible {
-  outline: 2px solid var(--blue);
+:is(#page, #sheet, .modal-overlay) :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea):focus-visible {
+  outline: 2px solid var(--focus);
   outline-offset: 0;
 }
 input[type="checkbox"], input[type="radio"],
 .roll-return input[type="checkbox"] {
-  accent-color: var(--navy);
+  accent-color: var(--accent);
   width: 16px;
   height: 16px;
 }
 
-/* ── Banners, notices, toast (section 7.5) ──────────────────────────────── */
+/* ── Banners, notices, toast (section 7.5) ──────────────────────────────
+   A notice is one 40px line (shell.css, SPEC-shell 3.5); its fill and ink
+   are the kind's tokens, here and only here. The banner is what the old
+   cards and the dialogs still carry. */
 
 .banner, .notice {
-  padding: var(--sp-2) var(--sp-3);
-  border-radius: var(--radius);
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--radius-control);
   font-weight: var(--fw-regular);
 }
 .notice { gap: var(--sp-2); }
@@ -532,9 +576,13 @@ input[type="checkbox"], input[type="radio"],
 }
 .notice-stale { background: var(--info-bg); border-color: var(--info-border); color: var(--info-fg); }
 .toast {
-  padding: var(--sp-3) var(--sp-4);
+  padding: var(--sp-2) var(--sp-4);
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow-overlay);
+  font-weight: var(--fw-strong);
 }
 
 /* ── Dialogs (section 7.6) ───────────────────────────────────────────────
@@ -552,28 +600,28 @@ input[type="checkbox"], input[type="radio"],
   margin-top: var(--sp-6);
 }
 .modal-actions > .toolbar-spacer { display: none; }
-.dlg-unsaved { margin-top: var(--sp-3); gap: var(--sp-2); }
+.dlg-unsaved { margin-top: var(--sp-2); gap: var(--sp-2); }
 .form-card {
-  padding: var(--sp-3) var(--sp-4);
-  background: var(--card);
+  padding: var(--sp-2) var(--sp-4);
+  background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: none;
   transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
-.form-card:hover { background: var(--surface-hover); border-color: var(--border-strong); box-shadow: none; }
-.form-card:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.form-card:hover { background: var(--bg-hover); border-color: var(--border-strong); box-shadow: none; }
+.form-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 /* ── The reminder card's own controls (section 7.4) ─────────────────────
    The letter itself (.rem-preview) is not named here: it mirrors the email. */
 
 .rem-stage {
   min-height: var(--ctl-h);
-  padding: 0 var(--sp-3);
+  padding: 0 var(--sp-4);
   border-radius: var(--radius-control);
   transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-.rem-edited { padding: var(--sp-2) var(--sp-3); }
+.rem-edited { padding: var(--sp-2) var(--sp-2); }
 /* The stage's count was drawn at 75% opacity, which puts it under 4.5:1. */
 .rem-stage .rem-stage-n { opacity: 1; }
 
@@ -581,16 +629,49 @@ input[type="checkbox"], input[type="radio"],
 
 .assure { gap: var(--sp-4); }
 
+/* ── Colours the original wrote as literals (SPEC-shell 10.4) ────────────
+   style.css writes some colours outside its tokens. Each rule that still
+   draws something after this work is restated here, selector for selector,
+   through a token, so the dark values reach it. tests/test_shell.py lists
+   the rules in style.css and fails on one that has no restatement (or is
+   not in its list of retired ones). */
+
+.modal-overlay { background: var(--scrim); }
+.btn-primary { color: var(--b-fg); }
+.btn-ghost:hover { color: var(--danger); border-color: var(--err-border); background: var(--err-bg); }
+.refused { outline: 2px solid var(--danger); }
+.rem-stage:hover { border-color: var(--stage-ink, var(--border-strong)); background: var(--bg-nav); }
+.rem-edited { background: var(--bg-nav); }
+.field input, .field select, .editor-table input, .editor-table select,
+.ed-paste textarea, .form-card { background: var(--bg-raised); }
+.tmpl-item { border-bottom: 1px solid var(--border); }
+.tmpl-item:hover { background: var(--bg-hover); }
+.prior-item { border-bottom: 1px solid var(--border); }
+.prior-item:hover { background: var(--bg-hover); }
+.chosen-badge { background: var(--info-bg); border: 1px solid var(--info-border); }
+.wiz-back:hover { background: var(--bg-hover); }
+.review .r-name, .deck-card .r-name { color: var(--st-attention); }
+.review li { border-top: 1px solid var(--border); }
+
+/* ── Motion (SPEC-shell 8.6): 150ms for hover, press, the sheet and a
+   notice's fade; a person who asks for less gets none. ───────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+}
+
 /* ── Windows contrast themes (last, so it wins) ──────────────────────────
-   System colours only. Section 9 of the SPEC; the button and selected-control
-   rules are added with the buttons. */
+   System colours only. The new parts have their own block at the end of
+   shell.css; this one covers the buttons and the dialogs. */
 
 @media (forced-colors: active) {
   .btn, .btn-small, .rem-quiet, .wiz-back {
     border: 1px solid ButtonText;
   }
 
-  .mode-toggle .btn.on,
   .household-return .btn.btn-primary {
     border: 2px solid Highlight;
   }

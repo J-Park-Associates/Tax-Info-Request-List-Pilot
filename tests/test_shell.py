@@ -1,18 +1,23 @@
-"""The app shell's window and menus (SPEC-shell 5, 14.1).
+"""The app shell's renderer half (pilot SPEC-shell.md, decisions P58-P77).
 
-Two kinds of claim, as the repository's other shell tests make them: static
-ones that read ``app/main.js`` and ``app/preload.js``, and ones that run the
-real ``main.js`` under node against a stand-in for Electron whose menu,
-windows and tracker child process are recorded. Skipped where node is not on
-PATH (CI installs it).
+What can be pinned without a browser: the tokens and their contrast in both
+themes, the shell stylesheet's discipline (tokens only, the 4px grid), the
+guards every renderer file keeps, the words the new files may not type, and -
+run in node against the files' own functions, as the repository's other
+renderer tests do - the route, the search, the sort icon and the menu's
+enable list. The rendered claims (a screenshot of every scenario, light and
+dark, at both sizes) come from ``pilot/harness/shoot.mjs`` and are reported in
+``pilot/handoffs/shell-S3.md``.
 
-This is the menu part (session S2). The renderer part (colour tokens, spacing,
-the icons, the page's answers to the menu) is added on the renderer branch and
-joined by S6.
+This file is S3's part of SPEC section 14.1. S2 adds the menu half (the
+template, the ``menu`` channel, the first paint), S4 the pages' node tests and
+S5 the sheet's; the lists below that name the files a claim covers
+(``SHELL_FILES``, ``TITLE_FREE``) are the ones they extend.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
@@ -21,639 +26,760 @@ from pathlib import Path
 
 import pytest
 
-import tracker.api as api
+from tests.test_pilot_ui import (
+    GRID_PROPS,
+    GRID_TOKEN,
+    RENDERER,
+    blocks,
+    colour_faults,
+    declarations,
+    read,
+    stripped,
+    top_level,
+)
 
 REPO = Path(__file__).resolve().parent.parent
 
-
-def read(rel: str) -> str:
-    return (REPO / rel).read_text(encoding="utf-8")
-
-
-def _menu_words_in_main() -> dict[str, str]:
-    block = read("app/main.js").split("const DEFAULT_MENU_WORDS = {", 1)[1].split("\n};", 1)[0]
-    return dict(re.findall(r'^\s*(\w+): "([^"]*)",$', block, flags=re.M))
-
-
-def _bar_ids_and_accelerators() -> tuple[list[str], list[str]]:
-    """The menu bar's ids in order, and every accelerator, as main.js types them."""
-    block = read("app/main.js").split("const BAR = [", 1)[1].split("\n];", 1)[0]
-    ids = re.findall(r'\["([a-z_]+)"(?:, "[^"]+")?\]', block)
-    return ids, re.findall(r'"((?:CmdOrCtrl\+[A-Za-z0-9]|F\d+)[^"]*)"', block)
-
-
-def test_the_menus_default_words_are_the_apis_word_for_word():
-    """main.js holds the menu's words so it is there from the first frame
-    (SPEC-shell 5.1); the API's ``MENU`` is the source and they are equal."""
-    assert _menu_words_in_main() == api.MENU
-    assert api._vocab()["menu"] == api.MENU
-
-
-def test_the_menu_has_no_reload_zoom_or_developer_tools():
-    main_js = read("app/main.js")
-    for role in ("reload", "forceReload", "toggleDevTools", "zoomIn", "zoomOut", "resetZoom",
-                 "togglefullscreen", "viewMenu", "windowMenu", "appMenu"):
-        assert not re.search(rf'role:\s*"{role}"', main_js, flags=re.I), role
-    for accelerator in ("CmdOrCtrl+R", "CmdOrCtrl+Shift+R", "CmdOrCtrl+Shift+I", "F12", "Ctrl+R",
-                        "CmdOrCtrl+Plus", "CmdOrCtrl+-", "CmdOrCtrl+0", "F11"):
-        assert f'"{accelerator}"' not in main_js, accelerator
-    assert "devTools: !app.isPackaged" in main_js
-    # Edit is Windows' own by role; Exit is the quit role; nothing else is.
-    assert re.findall(r'role:\s*"(\w+)"', main_js) == ["editMenu", "quit"]
-
-
-def test_every_accelerator_is_named_once():
-    ids, accelerators = _bar_ids_and_accelerators()
-    assert sorted(accelerators) == sorted(
-        ["CmdOrCtrl+N", "CmdOrCtrl+E", "CmdOrCtrl+1", "CmdOrCtrl+2", "CmdOrCtrl+3", "CmdOrCtrl+4",
-         "CmdOrCtrl+F", "F5", "F9"])
-    assert len(set(accelerators)) == len(accelerators)
-    assert len(set(ids)) == len(ids)
-
-
-def test_every_menu_id_is_in_the_apis_words_and_every_word_is_placed():
-    """The template's ids are ``MENU`` keys, and each ``MENU`` key is a
-    top-level label or an item of the bar or a right-click menu. (The page's
-    half - it answers each id - is checked where ``shell.js`` is.)"""
-    main_js = read("app/main.js")
-    ids, _ = _bar_ids_and_accelerators()
-    popups = read("app/main.js").split("const POPUPS = new Map([", 1)[1].split("\n]);", 1)[0]
-    popup_ids = set(re.findall(r'"([a-z_]+)"', popups)) - {"household", "return", "file", "moved",
-                                                          "request", "received"}
-    labels = set(re.findall(r'\["(file|edit|client|view|tools|help)",', main_js))
-    assert labels == {"file", "edit", "client", "view", "tools", "help"}
-    placed = set(ids) | popup_ids | labels
-    assert placed <= set(api.MENU), placed - set(api.MENU)
-    assert set(api.MENU) <= placed, set(api.MENU) - placed
-    # The six right-click menus of 5.2, by name.
-    assert set(re.findall(r'^\s*\["([a-z]+)", \[', popups, flags=re.M)) == {
-        "household", "return", "file", "moved", "request", "received"}
-
-
-def test_the_preload_exposes_one_menu_channel():
-    preload = read("app/preload.js")
-    assert re.findall(r'ipcRenderer\.(\w+)\("menu"', preload) == ["on", "send"]
-    assert "menu: {" in preload and "onCommand:" in preload and "send:" in preload
-    # Nothing but the page's own message is passed across, and no command
-    # reaches the tracker through it: it does not touch the tracker channels.
-    menu = preload.split("menu: {", 1)[1].split("},", 1)[0]
-    assert "tracker-cmd" not in menu and "invoke" not in menu
-
-
-def test_the_window_colours_main_reads_are_the_pages():
-    main_js = read("app/main.js")
-    assert '"--window-dark" : "--window-light"' in main_js
-    assert 'read("pilot-ui.css")' in main_js
-    assert "backgroundColor: pageBackground()" in main_js
-    assert "nativeTheme.themeSource = \"system\"" in main_js
-    css = read("app/renderer/pilot-ui.css")
-    if "--window-light" in css:     # the tokens arrive on the renderer branch (S3)
-        light = re.search(r"--window-light:\s*(#[0-9a-fA-F]{3,8})", css)
-        dark = re.search(r"--window-dark:\s*(#[0-9a-fA-F]{3,8})", css)
-        assert light and dark
-        assert re.search(r"--bg-page:\s*var\(--window-light\)", css)
-        assert re.search(r"--bg-page:\s*var\(--window-dark\)", css)
-
-
-# ------------------------------------------------ main.js run against a stand-in ----
-
-#: The real main.js under node with Electron stood in for: the menu it sets and
-#: the pop-ups it opens are recorded as plain data (a label, whether it is
-#: enabled, its accelerator, its role), items are "clicked" by label, and the
-#: tracker child process is a fake that answers ``list`` with a vocabulary. A
-#: scenario is a list of steps; the harness prints what happened.
-_HARNESS = r"""
-const Module = require("module");
-const EventEmitter = require("events");
-const realFs = require("fs");
-const [mainJs, scenarioJson] = process.argv.slice(2);
-const sc = JSON.parse(scenarioJson);
-// Off Windows the fallback is Electron's userData; "win32" is %LOCALAPPDATA%.
-Object.defineProperty(process, "platform", { value: sc.platform || "linux" });
-if (sc.localAppData !== undefined) process.env.LOCALAPPDATA = sc.localAppData;
-process.resourcesPath = process.resourcesPath || "/resources";
-const log = { menus: [], popups: [], sends: [], opened: [], revealed: [], answers: [], backgrounds: [], windowOptions: null };
-let openHandler = null;
-let menuHandler = null;
-let trackerHandler = null;
-let updated = null;
-const theme = { shouldUseDarkColors: !!sc.dark, shouldUseHighContrastColors: !!sc.contrast,
-                themeSource: "", on(name, fn) { if (name === "updated") updated = fn; } };
-const snapshot = (items) => items.map((i) => ({
-  label: i.label, type: i.type, role: i.role, enabled: i.enabled, accelerator: i.accelerator,
-  submenu: i.submenu ? snapshot(i.submenu) : undefined }));
-let live = { bar: null, popup: null };
-const win = {
-  isDestroyed: () => false,
-  getContentBounds: () => ({ width: 1400, height: 900 }),
-  setBackgroundColor: (c) => log.backgrounds.push(c),
-  loadFile() {}, on() {}, isMinimized: () => false, focus() {},
-  webContents: { setWindowOpenHandler() {}, on() {}, session: { flushStorageData() {} },
-                 send: (channel, message) => log.sends.push({ channel, message }) },
-};
-class BrowserWindow {
-  constructor(options) { log.windowOptions = options; return win; }
-  static getAllWindows() { return [win]; }
+#: The new renderer scripts. S4 adds pages.js and S5 sheet.js.
+SHELL_FILES = ("shell.js", "tooltip.js")
+#: Files that hold no ``title`` attribute (SPEC 13). S4 adds app.js and
+#: index.html when it deletes the last ones.
+TITLE_FREE = ("shell.js", "tooltip.js", "shell.css", "pilot.js", "tour.js")
+#: Floating UI, vendored (Jason's ruling 5, 2026-09-29), loaded before app.js, core
+#: first: the DOM build asks for the core build's global.
+FLOATING_UI = RENDERER / "vendor" / "floating-ui"
+FLOATING_UI_SCRIPTS = ("vendor/floating-ui/floating-ui.core.umd.min.js", "vendor/floating-ui/floating-ui.dom.umd.min.js")
+#: SHA-256 of each vendored file, the bytes of the published packages
+#: @floating-ui/dom 1.8.0, @floating-ui/core 1.8.0 and @floating-ui/utils
+#: 0.2.12 (the tarballs' integrity is in the folder's README).
+FLOATING_UI_SHA256 = {
+    "floating-ui.core.umd.min.js": "65940d866a6b6d831394a4bbed99ed0a39330bac98b643386d9a2f87a1a1d5da",
+    "floating-ui.dom.umd.min.js": "61a46f943c4e99379eaf073447811aec7e8b8f120d2f646316e01b7694bc90a3",
+    "LICENSE-dom": "0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce",
+    "LICENSE-core": "0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce",
+    "LICENSE-utils": "0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce",
 }
-const electron = {
-  app: { isPackaged: !!sc.packaged, requestSingleInstanceLock: () => true, quit() {}, on() {},
-         getPath: () => { if (!sc.userData) throw new Error("no such path"); return sc.userData; },
-         whenReady: () => Promise.resolve() },
-  BrowserWindow,
-  Menu: {
-    buildFromTemplate: (template) => ({ template, popup(options) {
-      live.popup = template;
-      log.popups.push({ items: snapshot(template), options });
-    } }),
-    setApplicationMenu(menu) {
-      live.bar = menu.template;
-      log.menus.push(snapshot(menu.template));
-    },
-  },
-  ipcMain: { handle(name, fn) {
-               if (name === "tracker-cmd") trackerHandler = fn;
-               if (name === "open-path") openHandler = fn;
-             },
-             on(name, fn) { if (name === "menu") menuHandler = fn; } },
-  nativeTheme: theme,
-  shell: { openPath: async (p) => { log.opened.push(p); return ""; },
-           showItemInFolder: (p) => { log.revealed.push(p); } },
-  dialog: {},
-};
-const listReply = () => ({ vocab: { commands: ["list", "after-install"], menu: sc.vocabMenu,
-                                    path_kinds: sc.pathKinds,
-                                    shell: { error_log: sc.errorLog } }, paths: sc.paths });
-const fakeSpawn = (cmd, args) => {
-  const proc = new EventEmitter();
-  proc.stdout = new EventEmitter();
-  proc.stdout.setEncoding = () => {};
-  proc.stderr = new EventEmitter();
-  proc.stdin = { write() {}, end() {}, on() {} };
-  proc.pid = 1;
-  proc.kill = () => {};
-  setImmediate(() => {
-    if (args.includes("list")) proc.stdout.emit("data", JSON.stringify(listReply()) + "\n");
-    proc.emit("close", 0);
-  });
-  return proc;
-};
-const load = Module._load;
-Module._load = function (request, ...rest) {
-  if (request === "electron") return electron;
-  if (request === "child_process") return { spawn: fakeSpawn };
-  if (request === "fs") {
-    return { ...realFs, existsSync: () => true,
-      readFileSync(p, ...more) {
-        const base = String(p).split(/[\\/]/).pop();
-        if (base in (sc.css || {})) {
-          if (sc.css[base] === null) throw Object.assign(new Error("no such file"), { code: "ENOENT" });
-          return sc.css[base];
-        }
-        return realFs.readFileSync(p, ...more);
-      } };
-  }
-  return load.call(this, request, ...rest);
-};
-const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const items = (list, label) => {
-  for (const item of list) {
-    if (item.label === label) return item;
-    const inner = item.submenu && items(item.submenu, label);
-    if (inner) return inner;
-  }
-  return null;
-};
-(async () => {
-  require(mainJs);
-  await wait(100);
-  for (const step of sc.steps) {
-    if (step.menu !== undefined) {
-      menuHandler({ sender: step.stranger ? {} : win.webContents }, step.menu);
-    } else if (step.tracker) {
-      await trackerHandler({ sender: { isDestroyed: () => false, send() {} } }, step.tracker, undefined);
-    } else if (step.open) {
-      log.answers.push(await openHandler({}, ...step.open));
-    } else if (step.clickBar) {
-      const item = items(live.bar, step.clickBar);
-      if (item && item.click) item.click();
-    } else if (step.clickPopup) {
-      const item = items(live.popup, step.clickPopup);
-      if (item && item.click) item.click();
-    } else if (step.theme) {
-      Object.assign(theme, step.theme);
-      updated();
-    }
-    await wait(60);
-  }
-  process.stdout.write(JSON.stringify(log));
-})();
-"""
 
 
-def _node():
-    node = shutil.which("node")
-    if node is None:
+
+# ── tokens ────────────────────────────────────────────────────────────────
+
+TOKENS = {
+    # name: (light, dark): SPEC-shell 10.1, word for word.
+    "--bg-page": ("#ffffff", "#1b1e24"),
+    "--bg-nav": ("#f3f5f8", "#15171c"),
+    "--bg-raised": ("#ffffff", "#23272f"),
+    "--bg-hover": ("#f1f5f9", "#252a32"),
+    "--bg-nav-hover": ("#e7ecf2", "#1f232a"),
+    "--bg-pressed": ("#e2e8f0", "#2d333c"),
+    "--bg-selected": ("#e3eaf4", "#26303f"),
+    "--text": ("#0f172a", "#e8ecf2"),
+    "--text-secondary": ("#434f63", "#b9c3cf"),
+    "--text-caption": ("#566579", "#9aa6b4"),
+    "--text-disabled": ("#94a3b8", "#5f6b7a"),
+    "--accent": ("#14335c", "#a8c4ee"),
+    "--accent-hover": ("#0e2544", "#c3d6f4"),
+    "--on-accent": ("#ffffff", "#0e1a2e"),
+    "--link": ("#14335c", "#a8c4ee"),
+    "--focus": ("#2563eb", "#7fb0ff"),
+    "--border": ("#e2e8f0", "#2e343d"),
+    "--border-strong": ("#cbd5e1", "#434b57"),
+    "--border-input": ("#7d8ea5", "#7a8697"),
+    "--st-attention": ("#8a3a0c", "#f2b872"),
+    "--st-waiting": ("#1e3a8a", "#a3bff0"),
+    "--st-done": ("#05603f", "#7dd8b0"),
+    "--st-error": ("#991b1b", "#ffa29b"),
+    "--danger": ("#b42318", "#ff9189"),
+    "--err-bg": ("#fef2f2", "#3a1d20"),
+    "--err-border": ("#fecaca", "#6e2f33"),
+    "--err-fg": ("#991b1b", "#ffb8b3"),
+    "--warn-bg": ("#fffbeb", "#35290f"),
+    "--warn-border": ("#fde68a", "#6b5420"),
+    "--warn-fg": ("#7c3a0a", "#f6d08a"),
+    "--info-bg": ("#eff6ff", "#1a2940"),
+    "--info-border": ("#bfdbfe", "#34507a"),
+    "--info-fg": ("#1e3a8a", "#bcd3f7"),
+    "--badge-bg": ("#fcd34d", "#fcd34d"),
+    "--badge-fg": ("#0e2544", "#0e2544"),
+    "--brand": ("#14335c", "#14335c"),
+    "--window-light": ("#ffffff", "#ffffff"),
+    "--window-dark": ("#1b1e24", "#1b1e24"),
+    "--scrim": ("rgba(15, 23, 42, 0.32)", "rgba(0, 0, 0, 0.56)"),
+    "--scroll-thumb": ("#8593a6", "#737f8e"),
+    "--shadow-overlay": ("0 8px 32px rgba(15, 23, 42, 0.24), 0 2px 8px rgba(15, 23, 42, 0.12)", "0 8px 32px rgba(0, 0, 0, 0.48), 0 2px 8px rgba(0, 0, 0, 0.32)"),
+}
+
+#: The three kept "ok" colours the SPEC gives in prose (10.1), in both themes.
+OK_LIGHT = {"--ok-bg": "#ecfdf5", "--ok-border": "#a7f3d0", "--ok-fg": "#065f46"}
+OK_DARK = {"--ok-bg": "#10291f", "--ok-border": "#1f5a43", "--ok-fg": "#9be3c3"}
+
+CONTRAST = [
+    # foreground, background, needs, light, dark: the computed table of SPEC-shell 10.2.
+    ("--text", "--bg-page", 7, 17.85, 14.08),
+    ("--text", "--bg-nav", 7, 16.35, 15.12),
+    ("--text", "--bg-hover", 7, 16.3, 12.17),
+    ("--text", "--bg-nav-hover", 7, 15.03, 13.3),
+    ("--text", "--bg-selected", 7, 14.74, 11.23),
+    ("--text", "--bg-raised", 7, 17.85, 12.63),
+    ("--text", "--bg-pressed", 7, 14.48, 10.73),
+    ("--text-secondary", "--bg-page", 7, 8.28, 9.36),
+    ("--text-secondary", "--bg-hover", 7, 7.56, 8.08),
+    ("--text-secondary", "--bg-raised", 7, 8.28, 8.39),
+    ("--text-caption", "--bg-page", 4.5, 5.94, 6.75),
+    ("--text-caption", "--bg-nav", 4.5, 5.44, 7.25),
+    ("--text-caption", "--bg-hover", 4.5, 5.43, 5.83),
+    ("--text-caption", "--bg-selected", 4.5, 4.91, 5.38),
+    ("--text-caption", "--bg-raised", 4.5, 5.94, 6.05),
+    ("--link", "--bg-page", 7, 12.67, 9.38),
+    ("--link", "--bg-hover", 7, 11.56, 8.1),
+    ("--on-accent", "--accent", 7, 12.67, 9.78),
+    ("--on-accent", "--accent-hover", 7, 15.36, 11.81),
+    ("--st-attention", "--bg-page", 7, 7.8, 9.44),
+    ("--st-attention", "--bg-hover", 4.5, 7.12, 8.16),
+    ("--st-waiting", "--bg-page", 7, 10.36, 8.96),
+    ("--st-waiting", "--bg-hover", 4.5, 9.45, 7.74),
+    ("--st-done", "--bg-page", 7, 7.63, 9.8),
+    ("--st-done", "--bg-hover", 4.5, 6.97, 8.46),
+    ("--st-error", "--bg-page", 7, 8.31, 8.66),
+    ("--st-error", "--bg-nav", 4.5, 7.61, 9.3),
+    ("--danger", "--bg-raised", 4.5, 6.57, 6.89),
+    ("--danger", "--bg-hover", 4.5, 6.0, 6.64),
+    ("--err-fg", "--err-bg", 7, 7.6, 9.27),
+    ("--warn-fg", "--warn-bg", 7, 8.21, 9.7),
+    ("--info-fg", "--info-bg", 7, 9.52, 9.62),
+    ("--badge-fg", "--badge-bg", 7, 10.66, 10.66),
+    ("--focus", "--bg-page", 3, 5.17, 7.6),
+    ("--focus", "--bg-nav", 3, 4.73, 8.16),
+    ("--focus", "--bg-raised", 3, 5.17, 6.81),
+    ("--border-input", "--bg-page", 3, 3.34, 4.52),
+    ("--border-input", "--bg-raised", 3, 3.34, 4.05),
+    ("--accent", "--bg-page", 3, 12.67, 9.38),
+    ("--accent", "--bg-selected", 3, 10.46, 7.48),
+    ("--scroll-thumb", "--bg-page", 3, 3.12, 4.10),
+    ("--ok-fg", "--ok-bg", 7, 7.29, 10.43),
+]
+
+
+def root_blocks() -> tuple[dict[str, str], dict[str, str]]:
+    """(light, dark): the declarations of pilot-ui.css's two :root blocks."""
+    light = dark = None
+    for media, selector, body in blocks(read("pilot-ui.css")):
+        if selector.strip() != ":root":
+            continue
+        if any("prefers-color-scheme: dark" in one for one in media):
+            assert dark is None, "one dark block"
+            dark = dict(declarations(body))
+        else:
+            assert light is None, "one light block"
+            light = dict(declarations(body))
+    assert light is not None and dark is not None
+    return light, dark
+
+
+def resolve(name: str, theme: str) -> str:
+    light, dark = root_blocks()
+    value = (dark if theme == "dark" and name in dark else light)[name]
+    while (match := re.fullmatch(r"var\((--[\w-]+)\)", value.strip())):
+        value = (dark if theme == "dark" and match.group(1) in dark else light)[match.group(1)]
+    return " ".join(value.split())
+
+
+def luminance(hex_colour: str) -> float:
+    channels = [int(hex_colour[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    lin = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+
+
+def ratio(fg: str, bg: str, theme: str) -> float:
+    a, b = luminance(resolve(fg, theme)), luminance(resolve(bg, theme))
+    return (max(a, b) + 0.05) / (min(a, b) + 0.05)
+
+
+def test_every_colour_pair_meets_its_contrast_in_both_themes():
+    """SPEC 10.2: text the brief asks to be AAA is held to 7:1, captions and
+    states to 4.5:1, marks that are not text to 3:1. The table's own numbers
+    are pinned too, so a token that drifts from the SPEC shows here."""
+    assert len(CONTRAST) == 42
+    for fg, bg, needs, light, dark in CONTRAST:
+        for theme, said in (("light", light), ("dark", dark)):
+            got = ratio(fg, bg, theme)
+            assert got >= needs, f"{fg} on {bg} in {theme}: {got:.2f} < {needs}"
+            assert abs(got - said) <= 0.02, f"{fg} on {bg} in {theme}: {got:.2f}, the SPEC says {said}"
+
+
+def test_every_token_has_the_value_the_spec_lists_in_both_themes():
+    for name, (light, dark) in TOKENS.items():
+        assert resolve(name, "light") == " ".join(light.split()), name
+        assert resolve(name, "dark") == " ".join(dark.split()), name
+    for name, value in OK_LIGHT.items():
+        assert resolve(name, "light") == value, name
+    for name, value in OK_DARK.items():
+        assert resolve(name, "dark") == value, name
+
+
+def test_every_light_token_has_a_dark_value_and_no_other():
+    light, dark = root_blocks()
+    colours = set(TOKENS) | set(OK_LIGHT)
+    assert colours <= set(light) and colours <= set(dark), sorted(colours - set(dark))
+    assert set(dark) <= set(light), sorted(set(dark) - set(light))
+
+
+def test_the_kept_names_are_aliases_of_the_purpose_names():
+    """SPEC 10.1: every rule already written picks up the right value in both
+    themes because the old names resolve through the new ones."""
+    light, dark = root_blocks()
+    aliases = {"--bg": "--bg-page", "--card": "--bg-raised", "--muted": "--text-secondary", "--subtle": "--text-caption",
+               "--navy": "--accent", "--navy-deep": "--accent-hover", "--blue": "--focus", "--blue-dark": "--focus",
+               "--surface-hover": "--bg-hover", "--surface-pressed": "--bg-pressed", "--surface-selected": "--bg-selected",
+               "--surface-sunken": "--bg-nav", "--surface-disabled": "--bg-nav"}
+    for old, new in aliases.items():
+        assert light[old] == f"var({new})", old
+        assert old not in dark, f"{old} resolves through {new}; the dark block does not repeat it"
+
+
+def test_the_window_colours_are_the_pages():
+    """SPEC 5.6: main.js reads --window-light and --window-dark; the page
+    background is one of them in each theme. (S2 pins main.js's half.)"""
+    light, dark = root_blocks()
+    assert light["--window-light"] == "#ffffff" and light["--window-dark"] == "#1b1e24"
+    assert light["--bg-page"] == "var(--window-light)" and dark["--bg-page"] == "var(--window-dark)"
+
+
+# ── the grid ──────────────────────────────────────────────────────────────
+
+def test_every_space_is_a_step_of_the_grid():
+    seen = 0
+    for name in ("shell.css", "pilot-ui.css"):
+        for _media, selector, body in blocks(read(name)):
+            if selector.strip() == ":root":
+                continue
+            for prop, value in declarations(body):
+                if prop not in GRID_PROPS:
+                    continue
+                seen += 1
+                flat = re.sub(r"calc\(([^()]|\([^()]*\))*\)", "0", value)
+                for token in flat.split():
+                    assert GRID_TOKEN.match(token), f"{name}: {selector.strip()}: {prop}: {value}"
+                for inner in re.findall(r"calc\((.*)\)", value):
+                    assert not re.search(r"\d+(?:\.\d+)?px", inner), f"{name}: {selector.strip()}: {prop}: {value}"
+    assert seen > 50
+
+
+def test_every_size_is_a_multiple_of_four():
+    light, _dark = root_blocks()
+    sizes = {name: value for name, value in light.items() if name.startswith("--size-")}
+    assert sizes
+    for name, value in sizes.items():
+        pixels = int(re.fullmatch(r"(\d+)px", value.strip()).group(1))
+        if name == "--size-pill":
+            assert pixels == 3, "the selection pill: Fluent's one 3px value"
+        elif name == "--size-hair":
+            assert pixels == 1, "the hairline"
+        else:
+            assert pixels % 4 == 0, f"{name}: {value}"
+    assert sizes["--size-row"] == "40px" and sizes["--size-side"] == "240px" and sizes["--size-sheet"] == "400px"
+    assert sizes["--size-bar"] == "48px" and sizes["--size-sheet-foot"] == "64px" and sizes["--size-find"] == "240px"
+
+
+def test_every_line_height_lands_on_the_grid():
+    """SPEC 3.7: size times line height is a multiple of 4 in each of the five roles."""
+    light, _dark = root_blocks()
+    roles = re.findall(r"--fs-(\w+)", "\n".join(light))
+    assert sorted(roles) == ["body", "caption", "figure", "h1", "h2"]
+    for role in roles:
+        size = int(light[f"--fs-{role}"].removesuffix("px"))
+        top, bottom = re.fullmatch(r"calc\((\d+) / (\d+)\)", light[f"--lh-{role}"]).groups()
+        assert int(bottom) == size, role
+        assert int(top) % 4 == 0, f"{role}: {top}"
+
+
+# ── the shell stylesheet keeps the structure pass's rules ─────────────────
+
+def test_the_shells_stylesheet_follows_the_structure_passes_rules():
+    css = stripped(read("shell.css"))
+    for banned in ("url(", "@import", "@font-face", "blur(", "backdrop-filter", "glass"):
+        assert banned not in css.lower(), banned
+    seen = 0
+    for media, selector, body in blocks(read("shell.css")):
+        if "!important" in body:
+            assert any("prefers-reduced-motion" in one for one in media), selector.strip()
+        for prop, value in declarations(body):
+            assert prop != "font", f"{selector.strip()}: the font shorthand hides a size and a weight"
+            faults = list(colour_faults(prop, value))
+            assert not faults, f"literal colour {faults} in {selector.strip()}: {prop}: {value}"
+            for wanted, prefix in (("font-size", "var(--fs-"), ("line-height", "var(--lh-"), ("font-weight", "var(--fw-")):
+                if prop == wanted:
+                    seen += 1
+                    assert value.startswith(prefix), f"{selector.strip()}: {prop}: {value}"
+        if [v for p, v in declarations(body) if p == "display" and v != "none"]:
+            for one in (part.strip() for part in selector.split(",")):
+                assert re.search(r":not\((?:\.hidden|\[hidden\]|:empty)\)", one), f"display without :not(.hidden): {one}"
+    assert seen > 10
+
+
+def test_the_shells_stylesheet_ends_with_its_own_forced_colors_block():
+    rules = list(top_level(stripped(read("shell.css"))))
+    prelude, inner, end = rules[-1]
+    assert prelude == "@media (forced-colors: active)"
+    assert sum("forced-colors" in one for one, _b, _e in rules) == 1
+    assert not stripped(read("shell.css"))[end:].strip()
+    used = {word.lower() for word in re.findall(r"\b[A-Za-z]+\b", inner)}
+    assert {"canvas", "canvastext", "highlight", "highlighttext", "graytext"} <= used
+    for _media, selector, body in blocks(prelude + " {" + inner + "}"):
+        for prop, value in declarations(body):
+            for word in colour_faults(prop, value):
+                raise AssertionError(f"system colours only: {selector.strip()}: {prop}: {word}")
+
+
+def test_the_loading_order_is_the_specs_and_the_csp_is_unchanged():
+    html = read("index.html")
+    styles = [html.index(f'href="{name}"') for name in ("style.css", "pilot-ui.css", "shell.css", "pilot-style.css")]
+    assert styles == sorted(styles)
+    scripts = [html.index(f'src="{name}"') for name in (*FLOATING_UI_SCRIPTS, "app.js", "tooltip.js", "shell.js", "pilot-content.js", "pilot.js", "tour.js")]
+    assert scripts == sorted(scripts)
+    # Every script is a file of the app itself: no scheme, no host, no CDN.
+    sources = re.findall(r"""<script[^>]*\bsrc=[\"']?([^\"'\s>]+)""", html, re.I)
+    assert len(sources) == len(scripts)
+    for source in sources:
+        assert not re.match(r"^([a-z][a-z0-9+.-]*:|//|/)", source, re.I), source
+        assert (RENDERER / source).is_file(), source
+    assert ("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'") in html
+    assert "<style" not in html and not re.search(r"<script(?![^>]*\bsrc=)", html)
+
+
+def test_the_vendored_floating_ui_is_the_pinned_bytes_and_nothing_else():
+    """Jason's ruling 5: placement is Floating UI's, copied unedited. The hashes
+    are the published packages' files; an edit, an upgrade or an extra file
+    fails here until the README and this table are changed on purpose."""
+    found = {path.name for path in FLOATING_UI.iterdir()}
+    assert found == {*FLOATING_UI_SHA256, "README.md"}, found
+    for name, digest in FLOATING_UI_SHA256.items():
+        assert hashlib.sha256((FLOATING_UI / name).read_bytes()).hexdigest() == digest, name
+    readme = (FLOATING_UI / "README.md").read_text(encoding="utf-8")
+    for digest in FLOATING_UI_SHA256.values():
+        assert digest in readme
+    for pinned in ("@floating-ui/dom` | 1.8.0", "@floating-ui/core` | 1.8.0", "@floating-ui/utils` | 0.2.12"):
+        assert pinned in readme, pinned
+
+
+def test_the_tooltip_reaches_floating_ui_only_through_its_one_global():
+    """Placement is the library's, the rest is ours: one global, no import, no
+    hand-rolled edge arithmetic left, and no colour or size typed in the script."""
+    js = stripped_js("tooltip.js")
+    assert set(re.findall(r"\bFloating[A-Za-z]*", js)) == {"FloatingUIDOM"}
+    assert {"computePosition", "offset", "flip", "shift"} <= set(re.findall(r"FloatingUIDOM\.(\w+)", js))
+    assert not re.search(r"\b(import|require)\b|getBoundingClientRect|innerWidth|innerHeight", js)
+    assert not re.search(r"#[0-9a-fA-F]{3,8}\b|\brgba?\(|\d\s*(px|rem|em)\b", js)
+    assert "style.setProperty(" in js and ".style." not in js.replace("style.setProperty(", "")
+
+
+def test_a_tip_goes_when_its_element_is_scrolled_out_of_view():
+    """Floating UI's hide() marks a reference clipped away; the tip follows
+    its element while it is visible and is hidden once it is not."""
+    js = stripped_js("tooltip.js")
+    assert "FloatingUIDOM.hide(" in js
+    then = js[js.index(".then("):js.index("function showTip")]
+    assert "middlewareData.hide" in then and "referenceHidden" in then and "hideTip()" in then
+
+
+def test_the_hover_delay_is_300_ms_and_keyboard_focus_waits_for_nothing():
+    """Jason's ruling 7 (2026-09-29): hover shows the tip after 300 ms; focus
+    shows it at once."""
+    js = stripped_js("tooltip.js")
+    assert re.search(r"const TIP_DELAY_MS = 300;", js)
+    assert js.count("TIP_DELAY_MS") == 2 and "setTimeout(() => showTip(node), TIP_DELAY_MS)" in js
+    focus = js[js.index('addEventListener("focusin"'):]
+    focus = focus[:focus.index("});")]
+    assert "showTip(node)" in focus and "TIP_DELAY_MS" not in focus
+
+
+def test_the_search_box_alone_shows_no_tooltip_on_keyboard_focus():
+    """Jason's ruling 2 (SPEC 8.5): every other control shows its tip when the
+    keyboard reaches it; the search box does not (hover still does)."""
+    js = stripped_js("tooltip.js")
+    focus = js[js.index('addEventListener("focusin"'):]
+    focus = focus[:focus.index("});")]
+    assert ':focus-visible' in focus and 'matches("#find")' in focus
+    assert 'matches("input")' not in focus and "textarea" not in focus
+    assert '<input id="find"' in read("index.html")
+
+
+def test_the_skeleton_is_the_specs_and_the_old_screen_is_kept_hidden_not_drawn():
+    """SPEC 3.1. Until S4 and S5 take over what each old card showed, its
+    markup stays in #legacy, which is never drawn, so app.js still finds its
+    elements by id."""
+    html = read("index.html")
+    for wanted in ('id="shell"', 'id="side"', 'id="side-brand"', 'id="side-sections"', 'id="side-foot"', 'id="last-sort"',
+                   'id="main"', 'id="bar"', 'id="crumbs"', 'id="find-wrap"', 'id="find"', 'id="find-list"', 'id="sort"',
+                   'id="notices"', 'id="page"', 'id="sheet"', 'id="sheet-scrim"', 'id="tip"', 'id="toast"'):
+        assert wanted in html, wanted
+    assert html.count('data-section="') == 4
+    assert re.search(r'<div id="legacy" class="hidden">', html)
+    outside = html[:html.index('<div id="legacy"')]
+    for gone in ("topbar", "brand-logo", 'id="eng-select"', "btn-scan", "btn-inbox", "toolbar"):
+        assert gone not in outside, gone
+    for symbol in ("search", "sort", "stop", "dismiss", "chev", "next", "done", "more", "open"):
+        assert f'<symbol id="i-{symbol}"' in html, symbol
+    assert 'role="alert" aria-live="polite"' in html[html.index('id="notices"'):html.index('id="notices"') + 120]
+
+
+def test_every_icon_has_a_name_and_a_tooltip():
+    """SPEC 8.5, 14.1: each icon-only button carries data-tip-key, naming a
+    vocabulary key; shell.js sets both its accessible name and its tooltip from it."""
+    html = read("index.html")
+    shell = stripped_js("shell.js")
+    keys = re.findall(r'<button[^>]*\bid="(sort|sheet-close)"[^>]*data-tip-key="([\w.]+)"', html)
+    assert {name for name, _key in keys} == {"sort", "sheet-close"}
+    assert re.search(r'<input[^>]*\bid="find"[^>]*data-tip-key="screen\.find"', html)
+    for _name, key in keys:
+        assert key.startswith("screen.")
+    named = shell[shell.index("function shellNameIcons() {"):]
+    named = named[:named.index("\n}\n")]
+    assert 'setAttribute("aria-label", words)' in named and "setTip(node, words)" in named
+
+
+# ── the guards every renderer file keeps ──────────────────────────────────
+
+def stripped_js(name: str) -> str:
+    """The file without its comments (no string in these files holds //)."""
+    text = read(name)
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    return re.sub(r"(?m)^\s*//.*$|(?<=[;{}),])\s*//.*$", "", text)
+
+
+def test_the_renderer_has_no_title_attribute():
+    for name in TITLE_FREE:
+        text = stripped_js(name) if name.endswith(".js") else read(name)
+        assert not re.search(r"\btitle=|\.title\s*=|(?<![\w-])title\s*:\s*[\"'`\w]", text), name
+
+
+def test_the_new_renderer_files_keep_the_renderers_guards():
+    banned = ("innerHTML", "insertAdjacentHTML", "outerHTML", "document.write", "eval(", "new Function", "XMLHttpRequest",
+              "WebSocket", "window.open", "openExternal", "startsWith(")
+    for name in SHELL_FILES:
+        text = stripped_js(name)
+        assert not [one for one in banned if one in text], name
+        assert not re.search(r"\bfetch\(", text), name
+        assert not re.search(r"""\bstyle\s*=|\.style\.cssText|setAttribute\(\s*["']style["']""", text), name
+        assert not re.search(r"""\.on[a-z]+\s*=|["'\s]on[a-z]+=["']""", text), name
+        # The SVG namespace is an identifier, not an address; nothing else may look like one.
+        assert "http:" not in text.replace("http://www.w3.org/2000/svg", "") and "https:" not in text, name
+
+
+def test_the_new_renderer_files_type_no_words_of_their_own():
+    """P63: every word on screen is the API's. A string literal of two or
+    more plain words in these files would be one the page typed."""
+    # A plain word: letters only. A hyphenated token is a class name or an id, not a word.
+    word = re.compile(r"^[A-Za-z][A-Za-z'\u2019]*[.,;:!?\u2026]*$")
+    literals = re.compile(r'"(?:[^"\\\n]|\\.)*"|\'(?:[^\'\\\n]|\\.)*\'|`(?:[^`\\]|\\.)*`')
+    for name in SHELL_FILES:
+        text = re.sub(r"/[^/\n*][^/\n]*/[gimsuy]*(?=[.,;)])", "", stripped_js(name))   # regex literals
+        for literal in literals.findall(text):
+            inner = re.sub(r"\$\{[^}]*\}", " ", literal[1:-1])
+            plain = [t for t in inner.split() if word.match(t)]
+            assert len(plain) < 2 or inner == "use strict", f"{name}: {literal}"
+
+
+def test_every_attribute_the_shell_builds_a_node_with_is_on_its_list():
+    """h() throws on an attribute it does not name (the pattern of app.js's
+    el(), decision 137). A key used at a call site but missing from the list
+    would throw when that node is first drawn - the harness found one."""
+    text = stripped_js("shell.js")
+    listed = set(re.findall(r'"([\w-]+)"', text[text.index("const H_ATTRIBUTES = new Set(["):text.index("]);")]))
+    used = set(re.findall(r'"(aria-[\w-]+)":', text)) | set(re.findall(r"\b(role|tabindex|type|disabled|hidden|value|dataset|className)\s*:", text))
+    used |= set(re.findall(r'\{ id: "|, id: "|\bid: ', text)) and {"id"}
+    assert used <= listed, sorted(used - listed)
+
+
+def test_one_keydown_listener_owns_the_keyboard():
+    """SPEC 4.3: app.js keeps the document's one keydown listener and hands
+    the shell's keys to shellKey(e) first; the new files add none."""
+    for name in SHELL_FILES:
+        assert 'addEventListener("keydown"' not in read(name), name
+    app = read("app.js")
+    listener = app[app.index('document.addEventListener("keydown", (e) => {'):]
+    assert listener.index("if (shellKey(e)) return;") < listener.index("dialogStack[dialogStack.length - 1]")
+    assert app.count('document.addEventListener("keydown"') == 1
+
+
+def test_the_harness_is_never_loaded_by_the_app():
+    for path in (RENDERER / "index.html", REPO / "app" / "main.js", REPO / "app" / "preload.js", REPO / "app" / "package.json"):
+        assert "harness" not in path.read_text(encoding="utf-8"), path.name
+    for path in RENDERER.iterdir():
+        if path.suffix in (".js", ".css", ".html"):
+            assert "harness" not in path.read_text(encoding="utf-8"), path.name
+
+
+# ── the style.css literals that still draw ────────────────────────────────
+
+#: Rules of style.css that write a literal colour and whose elements the
+#: shell removes; each needs no dark value because nothing draws it. S4 and
+#: S5 delete more of the old screen and shorten this list.
+RETIRED = (".topbar", ".brand", ".chip", ".view-", ".eng-picker", ".mode-toggle", ".deck-card", ".review", ".requests",
+           ".setup-row", ":root")
+
+
+def family(prop: str) -> str:
+    return prop.split("-")[0]
+
+
+def test_every_literal_colour_still_in_use_has_a_dark_value():
+    """SPEC 10.4: a rule of style.css with a literal colour whose selector
+    still matches markup is restated in pilot-ui.css through a token, selector
+    for selector, so the dark values reach it."""
+    restated: dict[str, set[str]] = {}
+    for _media, selector, body in blocks(read("pilot-ui.css")):
+        if selector.strip() == ":root":
+            continue
+        for part in selector.split(","):
+            restated.setdefault(" ".join(part.split()), set()).update(family(p) for p, _v in declarations(body))
+    checked = 0
+    for _media, selector, body in blocks(read("style.css")):
+        literal = {family(p) for p, v in declarations(body) if re.search(r"#[0-9a-fA-F]{3,8}\b|\brgba?\(", v)}
+        if not literal:
+            continue
+        for part in selector.split(","):
+            part = " ".join(part.split())
+            if part.startswith(RETIRED):
+                continue
+            checked += 1
+            assert literal <= restated.get(part, set()), f"{part}: style.css writes a literal {sorted(literal)}; pilot-ui.css does not restate it"
+    assert checked > 20
+
+
+# ── node: the shell's own functions ───────────────────────────────────────
+
+NODE = shutil.which("node")
+
+
+def js_function(name: str) -> str:
+    text = read("shell.js")
+    start = text.index(f"function {name}(")
+    return text[start:text.index("\n}\n", start) + 3]
+
+
+def run_shell(functions: list[str], setup: str, probe: str, tmp_path: Path):
+    """Lift the named functions out of shell.js as they are, put fakes for
+    what app.js provides around them, and return what the probe prints."""
+    if NODE is None:
         pytest.skip("node is not on PATH (CI installs it)")
-    return node
-
-
-def _run(tmp_path, steps, **scenario) -> dict:
-    harness = tmp_path / "menu_harness.js"
-    harness.write_text(_HARNESS, encoding="utf-8", newline="\n")
-    done = subprocess.run(
-        [_node(), str(harness), str(REPO / "app" / "main.js"),
-         json.dumps({"steps": steps, **scenario})],
-        capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+    lifted = "\n".join(js_function(name) for name in functions)
+    script = tmp_path / "probe.js"
+    script.write_text(f"{setup}\n{lifted}\nprocess.stdout.write(JSON.stringify((() => {{ {probe} }})()));\n",
+                      encoding="utf-8", newline="\n")
+    done = subprocess.run([NODE, str(script)], capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
     assert done.returncode == 0, done.stderr
     return json.loads(done.stdout)
 
 
-def _word(key: str) -> str:
-    return api.MENU[key]
+PEOPLE = r"""
+const fill = (p, v) => p.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? "");
+const vocab = { screen: { counts: { one_return: "1 return", returns: "{n} returns" },
+  sections: { overview: "Overview", needs_review: "Needs review", reminders: "Reminders", clients: "Clients" },
+  sort: { now: "Sort now", stop: "Stop sorting", firm: "Open a client to sort", locked: "In use elsewhere", stopping: "Stopping" } } };
+const households = [
+  { name: "Smith Family", path: "h1", returns: [{ rollable: true }] }, { name: "Rivera Design", path: "h2", returns: [] },
+  { name: "Ren\u00e9e Okafor", path: "h3", returns: [] }, { name: "Lopez Household", path: "h4", returns: [] },
+];
+const engagements = [
+  { name: "a", path: "r1", household: "h1", year: 2025, return_name: "1040 - John & Jane Smith" },
+  { name: "b", path: "r2", household: "h1", year: 2024, return_name: "1040 - John & Jane Smith" },
+  { name: "c", path: "r3", household: "h2", year: 2025, return_name: "1120-S - Rivera Design LLC" },
+];
+let calls = 0; const call = () => { calls += 1; };
+"""
 
 
-def _flat(menu: list[dict]) -> dict[str, dict]:
-    found = {}
-    for top in menu:
-        for item in top.get("submenu") or []:
-            if item.get("label"):
-                found[item["label"]] = item
-    return found
+def test_search_finds_a_household_by_any_part_of_its_name_without_calling_the_api(tmp_path):
+    probe = """
+      const names = (q) => findOptions(q).map((o) => o.name);
+      return { smith: names("smith"), inner: names("ily"), accent: names("renee"), upper: names("RIVERA"), none: names("zzz"),
+               empty: names("  "), notes: findOptions("smith").map((o) => o.note), route: findOptions("rivera")[1].route, calls };
+    """
+    ran = run_shell(["screenWords", "fold", "shellHousehold", "shellOwnReturns", "findOptions"], PEOPLE, probe, tmp_path)
+    assert ran["smith"] == ["Smith Family", "1040 - John & Jane Smith", "1040 - John & Jane Smith"]
+    assert ran["inner"] == ["Smith Family"] and ran["accent"] == ["Ren\u00e9e Okafor"]
+    assert ran["upper"] == ["Rivera Design", "1120-S - Rivera Design LLC"]
+    assert ran["none"] == [] and ran["empty"] == []
+    assert ran["notes"] == ["2 returns", "Smith Family 2025", "Smith Family 2024"], "households first; a return says its household and year"
+    assert ran["route"] == {"level": "return", "household": "h2", "year": 2025, "ret": "r3"}
+    assert ran["calls"] == 0, "the search never calls the API"
 
 
-def test_the_menu_is_set_before_the_first_frame_from_the_apis_words_in_both_builds(tmp_path):
-    for packaged in (False, True):
-        ran = _run(tmp_path, [], packaged=packaged)
-        [menu] = ran["menus"]
-        assert [top["label"] for top in menu] == [
-            _word(k) for k in ("file", "edit", "client", "view", "tools", "help")]
-        assert menu[1]["role"] == "editMenu"
-        file_items = [i.get("label") or "-" for i in menu[0]["submenu"]]
-        assert file_items == [_word("new_household"), _word("change_root"), _word("open_root"), "-",
-                              _word("exit")]
-        exit_item = _flat(menu)[_word("exit")]
-        assert exit_item["role"] == "quit" and not exit_item.get("accelerator")
+def test_the_search_list_shows_at_most_eight_options(tmp_path):
+    setup = PEOPLE + "for (let i = 0; i < 30; i++) households.push({ name: `Client ${i}`, path: `x${i}`, returns: [] });"
+    probe = 'return findOptions("client").length;'
+    assert run_shell(["screenWords", "fold", "shellHousehold", "shellOwnReturns", "findOptions"], setup, probe, tmp_path) == 8
 
 
-def test_the_template_carries_the_accelerators_of_the_spec_and_no_others(tmp_path):
-    [menu] = _run(tmp_path, [])["menus"]
-    found = {label: item["accelerator"] for label, item in _flat(menu).items()
-             if item.get("accelerator")}
-    assert found == {
-        _word("new_household"): "CmdOrCtrl+N", _word("edit_list"): "CmdOrCtrl+E",
-        _word("overview"): "CmdOrCtrl+1", _word("needs_review"): "CmdOrCtrl+2",
-        _word("reminders"): "CmdOrCtrl+3", _word("clients"): "CmdOrCtrl+4",
-        _word("find"): "CmdOrCtrl+F", _word("refresh"): "F5", _word("sort_now"): "F9"}
+def test_the_path_names_every_level_and_the_year_always_shows(tmp_path):
+    setup = PEOPLE + """
+      let shellRoute = null;
+      const FIRM_LEVELS = ["overview", "needs-review", "reminders", "clients"];
+      const SCREEN_KEYS = { "needs-review": "needs_review" };
+    """
+    probe = """
+      const path = (route) => { shellRoute = route; return crumbList().map((s) => [s.name, Boolean(s.go)]); };
+      return {
+        overview: path({ level: "overview" }), review: path({ level: "needs-review" }), setup: path({ level: "setup" }),
+        clients: path({ level: "clients" }),
+        household: path({ level: "household", household: "h1" }),
+        year: path({ level: "year", household: "h1", year: 2025 }),
+        ret: path({ level: "return", household: "h1", year: 2025, ret: "r1" }),
+      };
+    """
+    ran = run_shell(["screenWords", "shellHousehold", "shellReturn", "crumbList"], setup, probe, tmp_path)
+    assert ran["overview"] == [["Overview", False]] and ran["review"] == [["Needs review", False]] and ran["setup"] == []
+    assert ran["clients"] == [["Clients", False]]
+    assert ran["household"] == [["Clients", True], ["Smith Family", False]]
+    assert ran["year"] == [["Clients", True], ["Smith Family", True], ["2025", False]]
+    assert ran["ret"] == [["Clients", True], ["Smith Family", True], ["2025", True], ["1040 - John & Jane Smith", False]], \
+        "the year always shows (P61); the last segment is the current level, not a button"
 
 
-def test_only_the_items_that_need_nothing_are_enabled_until_the_page_speaks(tmp_path):
-    [menu] = _run(tmp_path, [])["menus"]
-    enabled = {label for label, item in _flat(menu).items() if item.get("enabled")}
-    # Exit is a role: Electron enables it itself.
-    assert enabled == {_word(k) for k in ("change_root", "refresh", "tour", "safeguards", "terms",
-                                          "error_log", "about")}
+def test_the_sort_icon_is_stop_while_a_sort_runs_and_grey_on_a_firm_page(tmp_path):
+    setup = PEOPLE + """
+      let shellRoute = null; let scanning = null; let locked = false;
+    """
+    probe = """
+      const at = (route, run, lock) => { shellRoute = route; scanning = run; locked = lock; const s = sortState(); return [s.key, s.icon, s.off, s.words]; };
+      return {
+        ready: at({ level: "household", household: "h1" }, null, false),
+        year: at({ level: "year", household: "h1", year: 2025 }, null, false),
+        ret: at({ level: "return", household: "h1", ret: "r1" }, null, false),
+        firm: at({ level: "overview" }, null, false),
+        setup: at({ level: "setup" }, null, false),
+        locked: at({ level: "return", household: "h1", ret: "r1" }, null, true),
+        sorting: at({ level: "household", household: "h1" }, { stopping: false }, false),
+        stopping: at({ level: "household", household: "h1" }, { stopping: true }, false),
+        sortingOnAFirmPage: at({ level: "clients" }, { stopping: false }, false),
+      };
+    """
+    ran = run_shell(["screenWords", "shellHasClient", "sortState"], setup, probe, tmp_path)
+    assert ran["ready"] == ["now", "sort", False, "Sort now"]
+    assert ran["year"][0] == ran["ret"][0] == "now"
+    assert ran["firm"] == ["firm", "sort", True, "Open a client to sort"], "P80: grey on a firm page"
+    assert ran["setup"][0] == "firm" and ran["setup"][2] is True
+    assert ran["locked"] == ["locked", "sort", True, "In use elsewhere"]
+    assert ran["sorting"] == ["stop", "stop", False, "Stop sorting"], "the one Stop is this icon (P70)"
+    assert ran["stopping"] == ["stopping", "stop", True, "Stopping"]
+    assert ran["sortingOnAFirmPage"][0] == "stop", "a sort that runs can always be stopped"
 
 
-def test_the_page_enables_the_items_whose_rule_holds_and_the_menu_follows(tmp_path):
-    ran = _run(tmp_path, [{"menu": {"enable": ["new_household", "overview", "sort_now", "no_such_id"]}}])
-    now = _flat(ran["menus"][-1])
-    assert now[_word("new_household")]["enabled"] and now[_word("overview")]["enabled"]
-    assert now[_word("sort_now")]["enabled"]
-    assert not now[_word("edit_list")]["enabled"] and not now[_word("stop_sorting")]["enabled"]
-    # The same list again rebuilds nothing.
-    again = _run(tmp_path, [{"menu": {"enable": ["overview"]}}, {"menu": {"enable": ["overview"]}}])
-    assert len(again["menus"]) == 2
+def test_the_menus_enable_list_follows_the_rules_of_the_template(tmp_path):
+    setup = PEOPLE + """
+      let shellRoute = null; let shellRootSet = true; let shellPaths = { status: "s" }; let scanning = null; let locked = false;
+      let lastState = { household: { shared_on: "" } };
+      const $ = () => ({ classList: { contains: () => true } });
+    """
+    probe = """
+      const ids = (route, o = {}) => { shellRoute = route; shellRootSet = o.root ?? true; scanning = o.scan ?? null; locked = o.locked ?? false;
+        lastState = { household: { shared_on: o.shared ? "d" : "" } }; return shellEnabled(); };
+      const has = (list, ...want) => want.every((id) => list.includes(id));
+      const firm = ids({ level: "overview" });
+      const home = ids({ level: "household", household: "h1" });
+      const ret = ids({ level: "return", household: "h1", ret: "r1" });
+      return {
+        firmHas: has(firm, "new_household", "overview", "clients", "find", "schedule", "firm_report", "refresh", "about", "tour"),
+        firmNot: ["edit_household", "edit_list", "sort_now", "draft_reminder", "open_inbox"].filter((id) => firm.includes(id)),
+        homeHas: has(home, "edit_household", "add_return", "roll_forward", "mark_shared", "open_client_folder", "open_inbox", "sort_now"),
+        homeNot: ["edit_list", "draft_reminder", "open_working"].filter((id) => home.includes(id)),
+        retHas: has(ret, "edit_list", "draft_reminder", "open_working", "edit_household"),
+        shared: ids({ level: "household", household: "h1" }, { shared: true }).includes("mark_shared"),
+        locked: ["edit_household", "add_return", "edit_list", "sort_now"].filter((id) => ids({ level: "return", household: "h1", ret: "r1" }, { locked: true }).includes(id)),
+        lockedKeepsRead: has(ids({ level: "return", household: "h1", ret: "r1" }, { locked: true }), "draft_reminder", "open_inbox"),
+        sorting: [ids({ level: "household", household: "h1" }, { scan: {} }).includes("sort_now"), ids({ level: "household", household: "h1" }, { scan: {} }).includes("stop_sorting")],
+        noRoot: ids({ level: "setup" }, { root: false }).filter((id) => ["new_household", "open_root", "overview", "find", "schedule"].includes(id)),
+        alwaysOn: has(ids({ level: "setup" }, { root: false }), "change_root", "refresh", "tour", "safeguards", "terms", "error_log", "about"),
+      };
+    """
+    ran = run_shell(["shellHasClient", "shellHousehold", "shellEnabled"], setup, probe, tmp_path)
+    assert ran["firmHas"] and ran["firmNot"] == []
+    assert ran["homeHas"] and ran["homeNot"] == []
+    assert ran["retHas"]
+    assert ran["shared"] is False, "Mark as shared is offered until it is shared"
+    assert ran["locked"] == [] and ran["lockedKeepsRead"], "a locked return greys the writing items and no others"
+    assert ran["sorting"] == [False, True]
+    assert ran["noRoot"] == [] and ran["alwaysOn"]
 
 
-def test_the_menu_channel_drops_what_it_does_not_know(tmp_path):
-    steps = [
-        {"menu": {"enable": ["overview", 7, None, "constructor", "__proto__", "check"]}},   # ids not in the bar
-        {"menu": {"enable": ["overview"]}},   # the same list once the strays are dropped: no rebuild
-        {"menu": {"enable": "overview"}},                    # not an array
-        {"menu": "overview"}, {"menu": None}, {"menu": [["enable"]]},
-        {"menu": {"popup": "nowhere", "enable": [], "token": "row"}},          # not one of the six
-        {"menu": {"popup": "constructor", "enable": [], "token": "row"}},
-        {"menu": {"popup": ["household"], "token": "row"}},
-        {"menu": {"popup": "household", "enable": [], "token": "t" * 65}},     # a long token
-        {"menu": {"popup": "household", "enable": [], "token": 5}},
-        {"menu": {"popup": "household", "enable": ["overview"]}, "stranger": True},   # not our window
-    ]
-    ran = _run(tmp_path, steps)
-    assert ran["popups"] == [] and ran["sends"] == []
-    # Only the one known bar id was taken, from the first message; the unknown ids were dropped,
-    # or the second message, naming the same one id, would have rebuilt the menu.
-    assert len(ran["menus"]) == 2
-    now = _flat(ran["menus"][-1])
-    assert now[_word("overview")]["enabled"] and not now[_word("clients")]["enabled"]
-    assert _word("check") not in now
+def test_changing_the_clients_folder_keeps_the_firms_name_and_phone(tmp_path):
+    setup = """
+      const vocab = { firm: "Harbor Tax Partners", settings: { phone: "555-0100" } };
+      const fields = { "firm-input": { value: "" }, "phone-input": { value: "" } };
+      const $ = (id) => fields[id];
+      let went = null; const shellGo = (route) => { went = route; };
+    """
+    probe = 'shellChangeRoot(); return [fields["firm-input"].value, fields["phone-input"].value, went.level];'
+    assert run_shell(["shellChangeRoot"], setup, probe, tmp_path) == ["Harbor Tax Partners", "555-0100", "setup"]
 
 
-def test_a_right_click_menu_is_native_holds_only_its_templates_items_and_echoes_the_token(tmp_path):
-    steps = [
-        {"menu": {"popup": "household", "token": "row-7", "x": 10.4, "y": 20,
-                  "enable": ["edit_household", "open_inbox", "edit_list", "no_such_id"]}},
-        {"clickPopup": _word("edit_household")},
-        {"clickPopup": _word("add_return")},     # disabled by the page's list: still an item
-        {"menu": {"popup": "received", "enable": ["unfile"], "x": 5000, "y": 5}},
-        {"menu": {"popup": "return", "enable": [], "token": "r" * 64}},
-    ]
-    ran = _run(tmp_path, steps)
-    household, received, ret = ran["popups"]
-    assert [i.get("label") or "-" for i in household["items"]] == [
-        _word("edit_household"), _word("add_return"), _word("roll_forward"), _word("mark_shared"), "-",
-        _word("open_client_folder"), _word("open_inbox")]
-    assert {i["label"]: i["enabled"] for i in household["items"] if i.get("label")} == {
-        _word("edit_household"): True, _word("add_return"): False, _word("roll_forward"): False,
-        _word("mark_shared"): False, _word("open_client_folder"): False, _word("open_inbox"): True}
-    assert household["options"]["x"] == 10 and household["options"]["y"] == 20
-    # A click sends {id, token} to the window that asked; a click on a greyed item does the same
-    # in this stand-in (Electron itself never delivers one).
-    assert ran["sends"][0] == {"channel": "menu", "message": {"id": "edit_household", "token": "row-7"}}
-    # An x outside the window opens the menu at the pointer.
-    assert "x" not in received["options"] and "y" not in received["options"]
-    assert [i["label"] for i in received["items"]] == [_word("unfile"), _word("mark_missing")]
-    assert [i["label"] for i in ret["items"] if i.get("label")] == [
-        _word("edit_list"), _word("draft_reminder"), _word("open_working"),
-        _word("open_client_folder"), _word("open_inbox")]
+def test_a_household_or_return_not_in_the_list_never_shows_its_path_as_a_name(tmp_path):
+    setup = PEOPLE + """
+      const shellHousehold = () => null; const shellReturn = () => null;
+      const FIRM_LEVELS = ["overview", "needs-review", "reminders", "clients"];
+      const SCREEN_KEYS = { "needs-review": "needs_review" };
+      let shellRoute = null; const screenWords = () => vocab.screen;
+    """
+    probe = """
+      shellRoute = { level: "return", household: "/srv/clients/J Park/Gone Family", year: 2025, ret: "/srv/clients/J Park/Gone Family/2025/1040 - X" };
+      const names = crumbList().map((s) => s.name);
+      shellRoute = { level: "overview" };
+      return [names, routeTitle()];
+    """
+    ran = run_shell(["crumbList", "routeTitle"], setup, probe, tmp_path)
+    assert ran == [["Clients", "2025"], ""], "no path as a name, no nameless button, and no H1 on a firm page"
 
 
-def test_the_six_right_click_menus_hold_the_items_of_the_spec(tmp_path):
-    names = {
-        "household": ["edit_household", "add_return", "roll_forward", "mark_shared", "-",
-                      "open_client_folder", "open_inbox"],
-        "return": ["edit_list", "draft_reminder", "-", "open_working", "open_client_folder", "open_inbox"],
-        "file": ["check", "not_requested", "another_return"],
-        "moved": ["check", "put_back", "keep_here"],
-        "request": ["edit_request"],
-        "received": ["unfile", "mark_missing"],
-    }
-    ran = _run(tmp_path, [{"menu": {"popup": name, "enable": [], "token": name}} for name in names])
-    for popup, (name, ids) in zip(ran["popups"], names.items(), strict=True):
-        assert [i.get("label") or "-" for i in popup["items"]] == [
-            "-" if i == "-" else _word(i) for i in ids], name
+def test_the_contrast_theme_fills_and_rings_follow_spec_10_4():
+    css = read("shell.css")
+    forced = css[css.index("@media (forced-colors: active)"):]
+    for selector in ('.side-section[aria-current="page"]', '.find-option[aria-selected="true"]'):
+        line = next(one for one in forced.splitlines() if selector in one and "Highlight" in one)
+        assert "forced-color-adjust: none" in line, "Chromium's backplate would hide HighlightText"
+    assert ":focus-visible { outline: 2px solid CanvasText; }" in forced
+    ring = next(one for one in forced.splitlines() if "#find:focus-visible" in one)
+    assert all(part in ring for part in ("#bar #find", "#main #notices", "#main #page .setup", "CanvasText")), \
+        "style.css and pilot-ui.css ring inputs and .btn in Highlight; the shell's controls must outrank them"
+    counts = next(one for one in forced.splitlines() if ".side-count" in one and ".find-note" in one)
+    assert "HighlightText" in counts, "the count and the caption keep their own grey on Highlight otherwise"
+    assert "padding-inline: var(--sp-2);" in css[css.index(".side-section:not(.hidden)"):][:400]
 
 
-def test_a_chosen_bar_item_is_sent_to_the_page_except_exit_and_the_error_log(tmp_path):
-    ran = _run(tmp_path, [{"menu": {"enable": ["find"]}}, {"clickBar": _word("find")},
-                          {"clickBar": _word("tour")}, {"clickBar": _word("exit")}])
-    assert ran["sends"] == [{"channel": "menu", "message": {"id": "find", "token": ""}},
-                            {"channel": "menu", "message": {"id": "tour", "token": ""}}]
+def test_folder_names_are_the_last_part_of_the_path_on_either_kind_of_slash(tmp_path):
+    probe = 'return [folderName("C:\\\\Clients\\\\Client Files"), folderName("/srv/clients/Client Files/"), folderName("")];'
+    assert run_shell(["folderName"], "", probe, tmp_path) == ["Client Files", "Client Files", ""]
 
 
-def _learn(errorlog, **scenario):
-    return [{"tracker": ["list"]}, {"clickBar": _word("error_log")}], {"errorLog": str(errorlog), **scenario}
+def test_every_menu_id_the_page_answers_is_in_the_template_and_the_rest_are_the_rows():
+    """SPEC 5.1 and 5.2. The page answers every id but Exit and Open error
+    log (main.js's alone, 5.5); the row menus' ids go to pages.js first."""
+    template = {"new_household", "change_root", "open_root", "exit", "edit_household", "add_return", "roll_forward", "mark_shared",
+                "edit_list", "draft_reminder", "open_client_folder", "open_inbox", "open_working", "overview", "needs_review",
+                "reminders", "clients", "find", "refresh", "sort_now", "stop_sorting", "schedule", "repair_schedule", "firm_report",
+                "clear_lock", "tour", "safeguards", "terms", "error_log", "about"}
+    rows = {"check", "not_requested", "another_return", "put_back", "keep_here", "edit_request", "unfile", "mark_missing"}
+    text = read("shell.js")
+    table = text[text.index("const MENU_ANSWERS = {"):]
+    answered = set(re.findall(r"^  (\w+): ", table[:table.index("\n};\n")], flags=re.M))
+    assert answered <= template, sorted(answered - template)
+    assert template - answered == {"exit", "error_log"}, sorted(template - answered)
+    assert not answered & rows, "the row menus' ids are pages.js's (pagesMenu), asked first"
+    assert "pagesMenu(id, message.token)" in text
 
 
-def test_open_error_log_opens_the_named_file_and_says_so_when_there_is_none(tmp_path):
-    log = tmp_path / "tracker-errors.log"
-    log.write_text("kept\n", encoding="utf-8")
-    steps, scenario = _learn(log)
-    ran = _run(tmp_path, steps, **scenario)
-    assert ran["opened"] == [str(log)] and ran["sends"] == []
-    # Not yet named by the API: nothing is opened, the page is told.
-    ran = _run(tmp_path, [{"clickBar": _word("error_log")}])
-    assert ran["opened"] == []
-    assert ran["sends"] == [{"channel": "menu", "message": {"id": "error_log", "missing": True}}]
-    # Named, but not there.
-    steps, scenario = _learn(tmp_path / "gone.log")
-    ran = _run(tmp_path, steps, **scenario)
-    assert ran["opened"] == []
-    assert ran["sends"] == [{"channel": "menu", "message": {"id": "error_log", "missing": True}}]
-    # Named, and a folder is not a file.
-    steps, scenario = _learn(tmp_path)
-    ran = _run(tmp_path, steps, **scenario)
-    assert ran["opened"] == [] and ran["sends"][0]["message"]["missing"] is True
+def test_a_menu_id_the_page_cannot_answer_is_said_and_logged():
+    text = stripped_js("shell.js")
+    body = text[text.index("function unanswered(id) {"):]
+    body = body[:body.index("\n}\n")]
+    assert "notice(" in body and "vocab.shell.page_error" in body and "window.tracker.logError(" in body
 
 
-def test_open_error_log_falls_back_to_the_shells_own_log_when_the_api_named_none(tmp_path):
-    """Jason, 2026-09-29: with no data folder the failure is saved in the
-    fallback log (error.log in the per-user folder), and Open error log opens it
-    through the same lstat check; the named log wins when there is one."""
-    userdata = tmp_path / "userdata"
-    userdata.mkdir()
-    fallback = userdata / "error.log"
-    steps = [{"clickBar": _word("error_log")}]
-    # Nothing named, nothing saved yet: the page is told.
-    ran = _run(tmp_path, steps, userData=str(userdata))
-    assert ran["opened"] == [] and ran["sends"][0]["message"] == {"id": "error_log", "missing": True}
-    # Saved: it opens.
-    fallback.write_text("kept\n", encoding="utf-8")
-    ran = _run(tmp_path, steps, userData=str(userdata))
-    assert ran["opened"] == [str(fallback)] and ran["sends"] == []
-    # A named log is the one opened, never the fallback.
-    named = tmp_path / "tracker-errors.log"
-    named.write_text("named\n", encoding="utf-8")
-    learn_steps, scenario = _learn(named, userData=str(userdata))
-    ran = _run(tmp_path, learn_steps, **scenario)
-    assert ran["opened"] == [str(named)]
-
-
-def test_open_error_log_opens_the_local_non_roaming_fallback_on_windows(tmp_path):
-    """Jason's ruling (2026-09-29): on Windows the fallback is
-    %LOCALAPPDATA%\\Tax Document Tracker Pilot\\error.log, never userData
-    (which is under the roaming %APPDATA%)."""
-    local = tmp_path / "local"
-    fallback = local / "Tax Document Tracker Pilot" / "error.log"
-    fallback.parent.mkdir(parents=True)
-    fallback.write_text("kept\n", encoding="utf-8")
-    roaming = tmp_path / "roaming"
-    roaming.mkdir()
-    (roaming / "error.log").write_text("wrong place\n", encoding="utf-8")
-    steps = [{"clickBar": _word("error_log")}]
-    ran = _run(tmp_path, steps, platform="win32", localAppData=str(local), userData=str(roaming))
-    assert ran["opened"] == [str(fallback)] and ran["sends"] == []
-
-
-def test_open_error_log_refuses_a_fallback_that_is_a_link_or_a_folder(tmp_path):
-    userdata = tmp_path / "userdata"
-    (userdata / "error.log").mkdir(parents=True)          # a folder is not a file
-    steps = [{"clickBar": _word("error_log")}]
-    ran = _run(tmp_path, steps, userData=str(userdata))
-    assert ran["opened"] == [] and ran["sends"][0]["message"]["missing"] is True
-    # A link is not a file either: the fallback is never opened through one.
-    linked = tmp_path / "linked"
-    linked.mkdir()
-    real = tmp_path / "real.log"
-    real.write_text("x\n", encoding="utf-8")
-    try:
-        (linked / "error.log").symlink_to(real)
-    except (OSError, NotImplementedError):
-        pytest.skip("this machine cannot make a symbolic link")
-    ran = _run(tmp_path, steps, userData=str(linked))
-    assert ran["opened"] == [] and ran["sends"][0]["message"]["missing"] is True
-
-
-def test_open_error_log_refuses_a_symbolic_link(tmp_path):
-    real = tmp_path / "real.log"
-    real.write_text("x\n", encoding="utf-8")
-    link = tmp_path / "linked.log"
-    try:
-        link.symlink_to(real)
-    except (OSError, NotImplementedError):
-        pytest.skip("this machine cannot make a symbolic link")
-    steps, scenario = _learn(link)
-    ran = _run(tmp_path, steps, **scenario)
-    assert ran["opened"] == []
-    assert ran["sends"] == [{"channel": "menu", "message": {"id": "error_log", "missing": True}}]
-
-
-def test_a_word_from_the_api_rebuilds_the_menu_only_when_it_differs(tmp_path):
-    same = _run(tmp_path, [{"tracker": ["list"]}], vocabMenu=dict(api.MENU))
-    assert len(same["menus"]) == 1
-    changed = {**api.MENU, "sort_now": "Sort here", "file": "&Files", "not_a_key": "x", "find": 5}
-    ran = _run(tmp_path, [{"tracker": ["list"]}], vocabMenu=changed)
-    assert len(ran["menus"]) == 2
-    menu = ran["menus"][-1]
-    assert menu[0]["label"] == "&Files"
-    now = _flat(menu)
-    assert "Sort here" in now and _word("sort_now") not in now
-    assert _word("find") in now                       # a word that is not a string is ignored
-
-
-def test_the_window_paints_the_pages_colour_for_the_systems_theme(tmp_path):
-    css = {"pilot-ui.css": ":root { --window-light: #ffffff; }\n:root { --window-dark: #1b1e24; }\n",
-           "style.css": ":root { --bg: #f5f5f5; }"}
-    assert _run(tmp_path, [], css=css)["windowOptions"].get("backgroundColor") == "#ffffff"
-    assert _run(tmp_path, [], css=css, dark=True)["windowOptions"].get("backgroundColor") == "#1b1e24"
-    # A contrast theme paints its own.
-    assert _run(tmp_path, [], css=css, contrast=True)["windowOptions"].get("backgroundColor") is None
-
-
-def test_the_window_colour_is_read_defensively(tmp_path):
-    # Without the names (the stylesheet before they exist) or without the file: never a thrown error.
-    older = {"pilot-ui.css": ":root { --other: #123456; }", "style.css": ":root { --bg: #f5f5f5; }"}
-    assert _run(tmp_path, [], css=older)["windowOptions"].get("backgroundColor") == "#f5f5f5"
-    none = {"pilot-ui.css": None, "style.css": None}
-    ran = _run(tmp_path, [], css=none)
-    assert ran["windowOptions"].get("backgroundColor") is None and len(ran["menus"]) == 1
-
-
-def test_a_switch_between_light_and_dark_sets_the_window_colour_again(tmp_path):
-    css = {"pilot-ui.css": ":root { --window-light: #ffffff; --window-dark: #1b1e24; }"}
-    ran = _run(tmp_path, [{"theme": {"shouldUseDarkColors": True}},
-                          {"theme": {"shouldUseDarkColors": False}},
-                          {"theme": {"shouldUseHighContrastColors": True}}], css=css)
-    assert ran["backgrounds"] == ["#1b1e24", "#ffffff"]      # a contrast theme paints its own
-
-
-# ------------------------------- a file name on the page is a live link (S8a) ----
-
-# The kinds as the API reports them: only a marked review copy is "file" (it
-# opens, decision 190); a filed, moved or shown working copy is "reveal".
-_KINDS = {"engagement": "folder", "review_copy": "file", "filed_copy": "reveal",
-          "moved_copy": "reveal", "shown_copy": "reveal"}
-NOT_REPORTED = "That path is not one the tracker reported; nothing was opened."
-NOT_OPENED = "Not Opened; It Has Changed"
-
-
-def _reveal_scenario(tmp_path):
-    working = tmp_path / "Prepared"
-    working.mkdir()
-    copy = working / "A01 - W-2 - TY2025.pdf"
-    copy.write_bytes(b"%PDF-1.4\n")
-    moved = working / "wandered.pdf"
-    moved.write_bytes(b"%PDF-1.4\n")
-    paths = {"engagement": str(tmp_path), "filed_copy K1 0": str(copy), "moved_copy K2": str(moved)}
-    return copy, moved, {"pathKinds": _KINDS, "paths": paths}
-
-
-def test_a_moved_workbook_is_shown_with_reveal_and_refused_without_it(tmp_path):
-    """F1: a moved-by-hand .xlsm carries no Protected View mark, so a plain
-    open (the default program) is refused; only reveal shows it."""
-    _copy, _moved, scenario = _reveal_scenario(tmp_path)
-    macro = tmp_path / "Prepared" / "budget.xlsm"
-    macro.write_bytes(b"PK\x03\x04")
-    scenario["paths"]["moved_copy K3"] = str(macro)
-    plain = _run(tmp_path, [{"tracker": ["list"]}, {"open": [str(macro)]}], **scenario)
-    assert plain["opened"] == [] and plain["revealed"] == []
-    assert plain["answers"] == [NOT_OPENED]
-    shown = _run(tmp_path, [{"tracker": ["list"]}, {"open": [str(macro), "reveal"]}], **scenario)
-    assert shown["revealed"] == [str(macro)] and shown["opened"] == [] and shown["answers"] == [""]
-
-
-def test_a_filed_copy_and_a_shown_copy_are_reveal_only_and_a_review_copy_still_opens(tmp_path):
-    copy, _moved, scenario = _reveal_scenario(tmp_path)
-    parked = tmp_path / "Prepared" / "parked.docx"
-    parked.write_bytes(b"PK")
-    review = tmp_path / "Prepared" / "review.pdf"
-    review.write_bytes(b"%PDF-1.4\n")
-    scenario["paths"]["shown_copy K4"] = str(parked)
-    scenario["paths"]["review_copy K5"] = str(review)
-    ran = _run(tmp_path, [{"tracker": ["list"]}, {"open": [str(copy)]}, {"open": [str(parked)]},
-                          {"open": [str(parked), "reveal"]}, {"open": [str(review)]}], **scenario)
-    assert ran["opened"] == [str(review)], "only a marked review copy opens (decision 190)"
-    assert ran["revealed"] == [str(parked)]
-    assert ran["answers"] == [NOT_OPENED, NOT_OPENED, "", ""]
-
-
-def test_reveal_shows_a_reported_file_in_file_explorer_and_a_plain_open_still_opens_it(tmp_path):
-    copy, moved, scenario = _reveal_scenario(tmp_path)
-    ran = _run(tmp_path, [{"tracker": ["list"]}, {"open": [str(copy), "reveal"]},
-                          {"open": [str(moved), "reveal"]}, {"open": [str(copy)]}], **scenario)
-    assert ran["revealed"] == [str(copy), str(moved)], "the row's kind came from the word before the space"
-    assert ran["opened"] == [], "a filed copy is reveal-only: the plain open is refused"
-    assert ran["answers"] == ["", "", NOT_OPENED]
-
-
-def test_reveal_of_a_path_the_api_did_not_report_is_refused(tmp_path):
-    copy, _moved, scenario = _reveal_scenario(tmp_path)
-    stranger = tmp_path / "not-reported.pdf"
-    stranger.write_bytes(b"x")
-    steps = [{"tracker": ["list"]}]
-    steps += [{"open": [p, "reveal"]} for p in (str(stranger), str(tmp_path / ".." / "x"), "", None, 7)]
-    ran = _run(tmp_path, steps, **scenario)
-    assert ran["revealed"] == [] and ran["opened"] == []
-    # The exact sentence: it is the allow-list's own (the kind check says something else).
-    assert ran["answers"] == [NOT_REPORTED] * 5
-    # Before the API has reported anything, even the file that would be reported is refused.
-    early = _run(tmp_path, [{"open": [str(copy), "reveal"]}], **scenario)
-    assert early["revealed"] == [] and early["answers"] == [NOT_REPORTED]
-
-
-def test_a_reported_key_whose_word_has_no_kind_is_refused_by_the_kind_check_alone(tmp_path):
-    """The second lock, pinned separately: the path is on the allow-list (the
-    API reported it) but its word names no kind, so it fails closed - with the
-    kind check's sentence, not the allow-list's."""
-    _copy, _moved, scenario = _reveal_scenario(tmp_path)
-    odd = tmp_path / "Prepared" / "odd.pdf"
-    odd.write_bytes(b"x")
-    scenario["paths"]["mystery K9"] = str(odd)
-    ran = _run(tmp_path, [{"tracker": ["list"]}, {"open": [str(odd), "reveal"]}, {"open": [str(odd)]}],
-               **scenario)
-    assert ran["opened"] == [] and ran["revealed"] == []
-    assert ran["answers"] == [NOT_OPENED, NOT_OPENED] and NOT_OPENED != NOT_REPORTED
-
-
-def test_reveal_is_refused_when_the_file_is_no_longer_a_file_or_is_a_link(tmp_path):
-    copy, moved, scenario = _reveal_scenario(tmp_path)
-    copy.unlink()
-    copy.mkdir()                                   # a folder where the file was
-    moved.unlink()
-    moved.symlink_to(tmp_path / "Prepared" / "elsewhere.pdf")
-    ran = _run(tmp_path, [{"tracker": ["list"]}, {"open": [str(copy), "reveal"]},
-                          {"open": [str(moved), "reveal"]}], **scenario)
-    assert ran["revealed"] == [] and ran["opened"] == []
-    assert all(ran["answers"])
-
-
-def test_a_word_that_is_not_reveal_opens_the_default_way_and_a_folder_is_never_revealed(tmp_path):
-    copy, _moved, scenario = _reveal_scenario(tmp_path)
-    ran = _run(tmp_path, [{"tracker": ["list"]}, {"open": [str(copy), "anything"]},
-                          {"open": [str(tmp_path), "reveal"]}], **scenario)
-    assert ran["opened"] == [str(tmp_path)] and ran["revealed"] == []
-    assert ran["answers"] == [NOT_OPENED, ""], "a reveal-only copy is not opened by any other word"
-
-
-def test_the_preload_passes_the_optional_second_argument_on_the_same_open_and_adds_no_channel():
-    preload = read("app/preload.js")
-    assert 'open: (p, how) => ipcRenderer.invoke("open-path", p, how),' in preload
-    assert re.findall(r'ipcRenderer\.(?:invoke|send|on)\("([a-z-]+)"', preload) == [
-        "tracker-cmd", "open-path", "pick-folder", "log-error", "tracker-progress", "after-install-done",
-        "menu", "menu"]
-    main_js = read("app/main.js")
-    assert main_js.count('ipcMain.handle("open-path"') == 1
-    assert main_js.count("shell.showItemInFolder(") == 1 and main_js.count("shell.openPath(") == 1
-
-
-def test_the_menus_default_words_carry_the_capital_the_section_is_written_with():
-    assert _menu_words_in_main()["needs_review"] == "Needs Review"
+def test_the_shell_sends_only_the_menu_channels_messages_and_no_path():
+    """SPEC 5.4: {enable} and {popup, enable, token, x, y}; the token is a
+    key the page made, never a path."""
+    text = stripped_js("shell.js")
+    sends = re.findall(r"window\.tracker\.menu\.send\(([^;]*)\);", text)
+    assert sorted(sends) == sorted(["{ enable: shellEnabled() }", "{ popup: name, enable: shellEnabled(), token, x, y }"])
+    assert 'shellPopup(one.popup, `crumb-${one.popup}`' in text, "a segment's token is its own name"
+    assert "window.tracker.menu.onCommand(shellMenu)" in text

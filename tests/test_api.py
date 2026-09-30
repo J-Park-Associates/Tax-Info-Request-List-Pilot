@@ -8272,7 +8272,7 @@ def test_a_real_firm_replys_paths_reveal_a_firm_file_and_refuse_an_unreported_on
         capsys, demo_root, tmp_path):
     """Ruling 15 end to end: the firm reply's ``paths`` through the real
     ``app/main.js`` under node (which learns a reply's top-level ``paths``)."""
-    from tests.test_shell import _run
+    from tests.test_shell_menu import _run
 
     engagement, _state, firm = _firm_of_a_scanned_pile(capsys, demo_root, tmp_path)
     [one] = [f for f in firm["files"] if f["open_key"].startswith("shown_copy ")][:1]
@@ -8674,7 +8674,7 @@ def test_a_real_state_paths_still_opens_a_parked_pdfs_review_copy_through_the_sh
     """Review 2, F1 end to end: the real reply's ``paths`` (in its own order)
     and the API's kinds through the real ``app/main.js`` - the card's plain
     Open opens the review copy, and reveal still shows it."""
-    from tests.test_shell import _run
+    from tests.test_shell_menu import _run
 
     state, parked = _parked_read_pdf_state(capsys, demo_root, tmp_path)
     review = state["paths"][parked["open_key"]]

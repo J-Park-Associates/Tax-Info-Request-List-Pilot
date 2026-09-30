@@ -2034,6 +2034,7 @@ function applyLock() {
 function setLocked(on) {
   locked = on;
   applyLock();
+  shellChanged();   // shell.js: the sort icon and the menu's enable list
 }
 
 function stopLockWatch() {
@@ -2190,6 +2191,7 @@ function applyVocabulary() {
     cards[i].querySelector("strong").textContent = rule.headline;
     cards[i].querySelector("span").textContent = rule.detail;
   });
+  shellVocabulary();   // shell.js: the side panel's, path row's and sort icon's words
 }
 
 let clientsRoot = "";      // the one folder every engagement sits under
@@ -2223,8 +2225,10 @@ async function loadEngagements(preferPath, asked) {
     $("setup-note").textContent = listed.root_problem ? listed.root_problem : clientsRoot
       ? `${clientsRoot} is not a folder any more. Point the app at the right one.`
       : "The scheduled job walks this same folder, so this is the only place it is set.";
+    shellNeedsRoot(true, listed);   // shell.js: the setup page
     return false;
   }
+  shellNeedsRoot(false, listed);
   if (!engagements.length) return false;
   const chosen =
     (preferPath && engagements.find((e) => e.path === preferPath)?.path) ||
@@ -2250,6 +2254,7 @@ function adoptList(listed) {
   clientsRoot = listed.root || "";
   renderEngagements();
   renderMisfits();
+  shellAdopt(listed);   // shell.js: paths, the last sort, the firm's counts
 }
 
 // Show one return: one `state`, and nothing else (decision 194). The card,
@@ -2536,6 +2541,7 @@ function onPassMessage(m) {
 // under it, in the API's words.
 function drawProgress(m) {
   const said = m.progress || {};
+  shellProgress(said);
   if (said.pass) scanning.pass = said.pass;
   if (scanning.pass && !scanning.stopping) $("btn-stop-pass").disabled = false;
   const words = vocab.progress;
@@ -2556,6 +2562,7 @@ async function stopPass() {
   scanning.stopping = true;
   btn.disabled = true;
   btn.textContent = vocab.progress.stopping;
+  shellChanged();
   try {
     await call(["cancel-pass"], { pass: scanning.pass });
   } catch (err) {
@@ -2576,6 +2583,8 @@ function scanDone() {
   $("scan-label").textContent = SCAN_LABEL;
   $("btn-stop-pass").classList.add("hidden");
   $("pass-progress").classList.add("hidden");
+  shellProgress({});
+  shellChanged();
 }
 
 // Sort & Scan starts the scheduled runner for this return's household and
@@ -2594,6 +2603,7 @@ async function runScan() {
   stop.textContent = vocab.progress.stop;
   stop.disabled = true;
   stop.classList.remove("hidden");
+  shellChanged();
   try {
     const started = await call(args);
     if (scanning !== mine) return;   // it has already ended, and said so
@@ -4054,6 +4064,7 @@ $("filed-list").addEventListener("click", (e) => {
 // The one keyboard rule for every dialog (decision 201): Escape asks the
 // topmost to close, and Tab stays inside it.
 document.addEventListener("keydown", (e) => {
+  if (shellKey(e)) return;   // shell.js: F6, the search box, the sheet, the row lists
   const id = dialogStack[dialogStack.length - 1];
   if (!id) return;
   if (e.key === "Escape") {

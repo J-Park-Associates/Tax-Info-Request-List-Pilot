@@ -1,24 +1,22 @@
-/* Pilot edition styles (pilot SPEC section 9). Only pilot names, plus .brand
-   for the badge's spacing, so nothing here can change how the app looks.
-   Build E (P51-P53): every colour, size, weight and step below is a token of
-   pilot-ui.css, which loads before this file; no literal of its own remains
-   except the overlays' dimming, which is not a text colour. */
-
-.brand .pilot-badge {
-  align-self: center;
-}
+/* Pilot edition styles (pilot SPEC section 9, and SPEC-shell section 12).
+   Only pilot names. Build E (P51-P53): every colour, size, weight and step
+   below is a token of pilot-ui.css, which loads before this file; no literal
+   of its own remains except the overlays' dimming, which is not a text
+   colour. The badge sits in the side panel's foot (#side-foot); the tour is
+   one title and one line per step. */
 
 .pilot-badge {
-  display: inline-block;
-  margin-left: var(--sp-3);
-  padding: var(--sp-half) var(--sp-2);
-  border-radius: var(--radius);
-  background: var(--amber);
-  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  min-height: var(--size-control-sm);
+  padding: 0 var(--sp-2);
+  border-radius: var(--radius-control);
+  background: var(--badge-bg);
+  color: var(--badge-fg);
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
   font-weight: var(--fw-strong);
-  vertical-align: middle;
 }
 
 .pilot-badge-float {
@@ -26,7 +24,6 @@
   top: 8px;
   right: 8px;
   z-index: 70;
-  margin-left: 0;
 }
 
 /* ── Terms ─────────────────────────────────────────────────────────────── */
@@ -56,10 +53,10 @@
 }
 
 .pilot-terms-card h2 {
-  margin: 0 0 var(--sp-3);
+  margin: 0 0 var(--sp-2);
   font-family: var(--font-display);
-  font-size: var(--fs-title);
-  line-height: var(--lh-title);
+  font-size: var(--fs-h2);
+  line-height: var(--lh-h2);
   font-weight: var(--fw-strong);
 }
 
@@ -70,8 +67,8 @@
 }
 
 .pilot-terms-section {
-  margin-bottom: var(--sp-3);
-  padding-left: var(--sp-3);
+  margin-bottom: var(--sp-2);
+  padding-left: var(--sp-2);
   border-left: 3px solid var(--amber);
 }
 
@@ -84,18 +81,18 @@
 
 .pilot-terms-section ul {
   margin: 0;
-  padding-left: var(--sp-5);
+  padding-left: var(--sp-4);
   font-size: var(--fs-body);
   line-height: var(--lh-body);
 }
 
 .pilot-terms-section li {
-  margin-bottom: var(--sp-half);
+  margin-bottom: var(--sp-1);
 }
 
 .pilot-terms-check {
   display: block;
-  margin: var(--sp-3) 0;
+  margin: var(--sp-2) 0;
   font-size: var(--fs-body);
   line-height: var(--lh-body);
   font-weight: var(--fw-strong);
@@ -147,131 +144,23 @@
   box-shadow: var(--shadow-overlay);
 }
 
-.pilot-tour-card.is-wide {
-  width: 600px;
-}
-
 .pilot-tour-card h2 {
-  margin: var(--sp-1) 0 var(--sp-3);
+  margin: var(--sp-1) 0 var(--sp-2);
   font-family: var(--font-display);
-  font-size: var(--fs-title);
-  line-height: var(--lh-title);
+  font-size: var(--fs-h2);
+  line-height: var(--lh-h2);
   font-weight: var(--fw-strong);
-}
-
-.pilot-tour-card h3 {
-  margin: 0 0 var(--sp-1);
-  font-size: var(--fs-caption);
-  line-height: var(--lh-caption);
-  font-weight: var(--fw-strong);
-  color: var(--subtle);
-}
-
-.pilot-tour-card p,
-.pilot-tour-card li {
-  font-size: var(--fs-body);
-  line-height: var(--lh-body);
 }
 
 .pilot-tour-card p {
-  margin: 0;
-}
-
-.pilot-tour-card ul {
-  margin: 0;
-  padding-left: var(--sp-5);
-}
-
-.pilot-tour-card li {
-  margin-bottom: var(--sp-1);
-}
-
-.pilot-tour-card section {
-  margin-bottom: var(--sp-3);
+  margin: 0 0 var(--sp-4);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
 }
 
 .pilot-tour-count {
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
-  color: var(--subtle);
-}
-
-.pilot-tour-stages {
-  display: flex;
-  align-items: center;
-  flex-wrap: nowrap;
-  gap: 0;
-  margin: 0 0 var(--sp-2);
-  padding: 0;
-  list-style: none;
-}
-
-.pilot-tour-stages .pilot-tour-stage {
-  display: inline-block;
-  margin-bottom: 0;
-  padding: 0 var(--sp-1);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  font-size: var(--fs-caption);
-  line-height: var(--lh-caption);
-  white-space: nowrap;
-  color: var(--muted);
-}
-
-.pilot-tour-stages .pilot-tour-stage + .pilot-tour-stage {
-  margin-left: var(--sp-2);
-  position: relative;
-}
-
-.pilot-tour-stages .pilot-tour-stage + .pilot-tour-stage::after {
-  content: "";
-  position: absolute;
-  right: 100%;
-  top: 50%;
-  width: 8px;
-  border-top: 1px solid var(--border-strong);
-}
-
-.pilot-tour-stages .pilot-tour-stage.is-current {
-  background: var(--amber);
-  border-color: var(--amber);
-  color: var(--text);
-  font-weight: var(--fw-strong);
-}
-
-.pilot-tour-stages .pilot-tour-stage.is-done {
-  border-color: transparent;
-  color: var(--subtle);
-}
-
-.pilot-tour-stages .pilot-tour-stage.is-done::before {
-  content: "\2713\00a0";
-}
-
-.pilot-tour-ok h3::before {
-  content: "\2713\00a0";
-  color: var(--ok-fg);
-}
-
-.pilot-tour-warn {
-  padding-left: var(--sp-2);
-  border-left: 3px solid var(--amber-soft);
-}
-
-.pilot-tour-warn h3::before {
-  content: "!\00a0";
-  color: var(--amber-deep);
-}
-
-.pilot-tour-compare {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--sp-4);
-}
-
-.pilot-tour-fallback {
-  margin-bottom: var(--sp-3);
-  font-style: italic;
   color: var(--subtle);
 }
 
@@ -289,12 +178,6 @@
   --b-hover-bd: transparent;
   --b-dis-bg: transparent;
   --b-dis-bd: transparent;
-}
-
-@media (max-width: 520px) {
-  .pilot-tour-compare {
-    grid-template-columns: 1fr;
-  }
 }
 
 /* Windows contrast themes (Microsoft Learn: "Contrast themes - Windows apps").

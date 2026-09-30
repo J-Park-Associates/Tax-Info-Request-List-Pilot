@@ -1,0 +1,592 @@
+/* The app shell (pilot SPEC-shell.md sections 3, 6.8 and 8, decisions
+   P67-P77): the side panel, the path row, the notice area, the page area,
+   the rows and groups every page is made of, the side sheet's frame, the
+   tooltip and the setup page.
+
+   Tokens only. Every colour, size and step below is a name from
+   pilot-ui.css's two :root blocks; this file writes no hex, no rgb(), no
+   font size, weight or line height of its own and no padding, margin or gap
+   that is not 0, auto, a --sp-* step or a calc() of them. tests/test_shell.py
+   reads this file and fails on the first one. Loaded after pilot-ui.css and
+   before pilot-style.css, so the shell's rules read the tokens and the pilot
+   layer reads the shell's. Every display other than none is declared under
+   :not(.hidden) or :not([hidden]): style.css's .hidden and the hidden
+   attribute both lose to a later display otherwise. */
+
+/* ── Browser surfaces (SPEC 8.7) ─────────────────────────────────────── */
+
+::selection { background: var(--bg-selected); color: var(--text); }
+input, textarea, select { caret-color: var(--text); accent-color: var(--accent); }
+#page, #sheet-body, .modal { scrollbar-color: var(--scroll-thumb) transparent; }
+.tabular, .side-count, .group-count, .row-date, .figure-number, .last-sort-text {
+  font-variant-numeric: tabular-nums;
+}
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* ── The shell (SPEC 3.1) ────────────────────────────────────────────── */
+
+#shell:not(.hidden) {
+  display: grid;
+  grid-template-columns: var(--size-side) minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+  background: var(--bg-page);
+}
+
+#side:not(.hidden) {
+  display: grid;
+  grid-template-rows: var(--size-bar) minmax(0, 1fr) auto;
+  min-height: 0;
+  background: var(--bg-nav);
+  border-right: 1px solid var(--border);
+}
+
+/* The one navy surface: the logo sits on the ground it was drawn for. */
+#side-brand:not(.hidden) {
+  display: flex;
+  align-items: center;
+  padding-inline: var(--sp-4);
+  background: var(--brand);
+}
+#side-brand img { height: var(--size-control); width: auto; }
+
+#side-sections {
+  list-style: none;
+  padding: var(--sp-2) 0;
+  overflow-y: auto;
+}
+#side-sections li:not(.hidden) { display: block; margin-bottom: var(--sp-1); }
+
+.side-section:not(.hidden) {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  width: calc(100% - var(--sp-4));
+  height: var(--size-row);
+  margin-inline: var(--sp-2);
+  padding-inline: var(--sp-2);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-weight: var(--fw-regular);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+.side-section:hover { background: var(--bg-nav-hover); }
+.side-section:active { background: var(--bg-pressed); }
+.side-section[aria-current="page"] { background: var(--bg-selected); font-weight: var(--fw-strong); }
+/* Fluent's selection indicator: a pill at the row's inside edge, not a border. */
+.side-section[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: calc(50% - var(--size-icon) / 2);
+  width: var(--size-pill);
+  height: var(--size-icon);
+  border-radius: var(--radius-control);
+  background: var(--accent);
+}
+.side-section:disabled,
+.side-section:disabled:hover { background: transparent; color: var(--text-disabled); cursor: default; }
+.side-count {
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  font-weight: var(--fw-regular);
+  color: var(--text-caption);
+}
+
+#side-foot:not(.hidden) {
+  display: grid;
+  gap: var(--sp-4);
+  padding: var(--sp-4);
+}
+
+/* The last-sort line (SPEC 8.3). */
+#last-sort:not(.hidden) {
+  display: grid;
+  gap: var(--sp-2);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  color: var(--text-caption);
+}
+.last-sort-line:not(.hidden) { display: flex; align-items: center; gap: var(--sp-1); }
+#last-sort.is-failed .last-sort-line { color: var(--st-error); font-weight: var(--fw-strong); }
+.last-sort-done:not(.hidden) { display: inline-flex; color: var(--st-done); }
+.last-sort-bar:not(.hidden) {
+  display: block;
+  height: var(--size-progress);
+  border-radius: var(--radius-control);
+  background: var(--border);
+  overflow: hidden;
+}
+.last-sort-bar > span:not(.hidden) {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+/* ── The main area, the path row (SPEC 3.4) ──────────────────────────── */
+
+#main:not(.hidden) {
+  display: grid;
+  grid-template-rows: var(--size-bar) auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg-page);
+}
+
+#bar:not(.hidden) {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding-inline: var(--sp-8);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-page);
+}
+
+#crumbs { flex: 1; min-width: 0; }
+#crumb-list:not(.hidden) {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+#crumb-list li:not(.hidden) { display: flex; align-items: center; gap: var(--sp-1); flex: none; }
+#crumb-list li.crumb-shrink { flex: 0 1 auto; min-width: var(--size-crumb-min); }
+#crumb-list li.crumb-household { max-width: var(--size-crumb-household); }
+#crumb-list li.crumb-current { max-width: var(--size-crumb-current); }
+#crumb-list li.crumb-shrink > button,
+#crumb-list li.crumb-shrink > .crumb-here { min-width: 0; }
+.crumb-button {
+  max-width: var(--size-crumb-household);
+  padding: var(--sp-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: none;
+  color: var(--link);
+  cursor: pointer;
+}
+.crumb-button:hover { background: var(--bg-hover); text-decoration: underline; text-underline-offset: var(--sp-1); }
+.crumb-here {
+  max-width: var(--size-crumb-current);
+  padding: var(--sp-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-weight: var(--fw-strong);
+}
+/* The first segment's text starts on the page's keyline, not its padding. */
+#crumb-list > li:first-child > :is(.crumb-button, .crumb-here) { margin-left: calc(-1 * var(--sp-1)); }
+.crumb-sep:not(.hidden) { display: inline-flex; color: var(--text-caption); }
+
+/* Search (SPEC 8.2). */
+#find-wrap:not(.hidden) { position: relative; display: block; width: var(--size-find); flex: none; }
+#find-wrap .icon {
+  position: absolute;
+  left: var(--sp-2);
+  top: var(--sp-2);
+  color: var(--text-caption);
+  pointer-events: none;
+}
+#find {
+  width: 100%;
+  height: var(--size-control);
+  min-height: var(--size-control);
+  padding: 0 var(--sp-2) 0 var(--sp-8);
+  border: 1px solid var(--border-strong);
+  border-bottom-color: var(--border-input);
+  border-radius: var(--radius-control);
+  background: var(--bg-page);
+  color: var(--text);
+}
+#find:disabled { background: var(--bg-nav); border-color: var(--border); }
+#find-list:not([hidden]) {
+  position: absolute;
+  z-index: 30;
+  top: calc(var(--size-control) + var(--sp-1));
+  left: 0;
+  right: 0;
+  list-style: none;
+  padding: var(--sp-1);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-overlay);
+}
+.find-option { padding: var(--sp-1) var(--sp-2); border-radius: var(--radius-control); cursor: pointer; }
+.find-option:hover,
+.find-option[aria-selected="true"] { background: var(--bg-hover); }
+.find-option[aria-disabled="true"] { color: var(--text-caption); cursor: default; background: none; }
+.find-name:not(.hidden) {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--fw-strong);
+}
+.find-note:not(.hidden) {
+  display: block;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  color: var(--text-caption);
+}
+
+/* Icon buttons: the sort icon, the dismiss icon, the sheet's icons. */
+.icon-button:not(.hidden) {
+  display: inline-grid;
+  place-items: center;
+  width: var(--size-control);
+  height: var(--size-control);
+  flex: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--link);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+.icon-button:hover { background: var(--bg-hover); }
+.icon-button:active { background: var(--bg-pressed); }
+.icon-button:disabled,
+.icon-button:disabled:hover { background: transparent; color: var(--text-disabled); cursor: default; }
+#sort.is-stop { color: var(--danger); }
+#sort.is-stop:disabled { color: var(--text-disabled); }
+.icon {
+  width: var(--size-icon);
+  height: var(--size-icon);
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.icon-small { width: calc(var(--size-icon) - var(--sp-1)); height: calc(var(--size-icon) - var(--sp-1)); }
+.icon-fill { fill: currentColor; stroke: none; }
+
+/* ── Notices (SPEC 3.5): one line each, in the kind's tokens ─────────── */
+
+#notices { padding: 0 var(--sp-8); }
+#notices:not(:empty) {
+  display: grid;
+  gap: var(--sp-2);
+  padding-block: var(--sp-2);
+}
+#notices .notice:not(.hidden) {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  min-height: var(--size-row);
+  padding: 0 var(--sp-2) 0 var(--sp-4);
+  border: 1px solid;
+  border-radius: var(--radius-control);
+  font-weight: var(--fw-strong);
+}
+#notices .notice-text { flex: 1; white-space: normal; }
+
+/* ── The page (SPEC 3.2): one keyline, 32px in ───────────────────────── */
+
+#page {
+  overflow-y: auto;
+  min-height: 0;
+  padding-bottom: var(--sp-12);
+  background: var(--bg-page);
+}
+#page:focus { outline: none; }
+
+.page-title:not(.hidden) {
+  margin: var(--sp-6) var(--sp-8) 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-h1);
+  line-height: var(--lh-h1);
+  font-weight: var(--fw-strong);
+  color: var(--text);
+  text-wrap: balance;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.page-caption {
+  margin: var(--sp-1) var(--sp-8) 0;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  color: var(--text-caption);
+}
+.page-empty:not(.hidden) {
+  display: grid;
+  gap: var(--sp-1);
+  justify-items: start;
+  margin: var(--sp-6) var(--sp-8) 0;
+}
+.page-empty .btn { margin-top: var(--sp-4); }
+
+/* Groups and rows (SPEC 3.6, P71, P76). */
+.group-head:not(.hidden) {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-height: var(--size-control-sm);
+  margin: var(--sp-8) 0 var(--sp-2);
+  padding: 0 var(--sp-8);
+}
+.group-head.is-first { margin-top: var(--sp-6); }
+.group-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  line-height: var(--lh-h2);
+  font-weight: var(--fw-strong);
+  color: var(--text);
+}
+.group-count {
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  color: var(--text-caption);
+}
+.group-sub {
+  padding: var(--sp-2) var(--sp-8) var(--sp-1);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  font-weight: var(--fw-strong);
+  color: var(--text-caption);
+}
+.group-none {
+  padding: var(--sp-2) var(--sp-8);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  color: var(--text-caption);
+}
+.rows:focus { outline: none; }
+.row:not(.hidden) {
+  display: grid;
+  grid-template-columns: minmax(var(--size-col-name), 1fr) var(--size-col-detail) var(--size-col-status) var(--size-col-end);
+  align-items: center;
+  column-gap: var(--sp-4);
+  min-height: var(--size-row);
+  padding: 0 var(--sp-8);
+  border-bottom: 1px solid var(--border);
+  cursor: default;
+  transition: background-color var(--dur) var(--ease);
+}
+.row:last-child { border-bottom: 0; }
+.row:hover { background: var(--bg-hover); }
+.row:active { background: var(--bg-pressed); }
+.rows:focus-visible .row.is-active { outline: 2px solid var(--focus); outline-offset: -2px; }
+.row-name {
+  font-weight: var(--fw-strong);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row-detail {
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row-status {
+  font-weight: var(--fw-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row-end:not(.hidden) { display: grid; justify-items: end; align-items: center; }
+.row-end > * { grid-area: 1 / 1; }
+.row-date {
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  color: var(--text-caption);
+  text-align: right;
+}
+.row-step:not(.hidden) {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1);
+  border-radius: var(--radius-control);
+  color: var(--link);
+  font-weight: var(--fw-strong);
+  white-space: nowrap;
+  visibility: hidden;
+}
+.row-step:hover { background: var(--bg-pressed); }
+.row:hover .row-step,
+.rows:focus-visible .row.is-active .row-step { visibility: visible; }
+.row.has-step:hover .row-date,
+.rows:focus-visible .row.has-step.is-active .row-date { visibility: hidden; }
+.is-attention { color: var(--st-attention); }
+.is-waiting { color: var(--st-waiting); }
+.is-done { color: var(--st-done); }
+.is-plain { color: var(--text-secondary); font-weight: var(--fw-regular); }
+
+/* Loading: outline rows in the row grid (SPEC 6, states). */
+.row-skeleton:not(.hidden) {
+  display: grid;
+  grid-template-columns: minmax(var(--size-col-name), 1fr) var(--size-col-detail) var(--size-col-status) var(--size-col-end);
+  column-gap: var(--sp-4);
+  align-items: center;
+  min-height: var(--size-row);
+  padding: 0 var(--sp-8);
+  border-bottom: 1px solid var(--border);
+}
+.row-skeleton > i:not(.hidden) {
+  display: block;
+  height: var(--sp-2);
+  border-radius: var(--radius-control);
+  background: var(--bg-hover);
+}
+.row-skeleton > i:first-child { width: 60%; }
+.row-skeleton > i:last-child { grid-column: 3; width: 70%; }
+
+/* The Overview's three figures. */
+.figures:not(.hidden) { display: flex; gap: var(--sp-12); margin: var(--sp-6) var(--sp-8) 0; }
+.figure-number:not(.hidden) {
+  display: block;
+  font-family: var(--font-display);
+  font-size: var(--fs-figure);
+  line-height: var(--lh-figure);
+  font-weight: var(--fw-strong);
+  color: var(--text);
+}
+.figure-label {
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  color: var(--text-caption);
+}
+
+/* ── The setup page (SPEC 6.8) ───────────────────────────────────────── */
+
+.setup:not(.hidden) {
+  display: grid;
+  gap: var(--sp-4);
+  justify-items: start;
+  max-width: var(--size-page-max);
+  margin: var(--sp-6) var(--sp-8) 0;
+}
+.setup-pick:not(.hidden) { display: flex; align-items: center; gap: var(--sp-4); }
+.setup-field:not(.hidden) { display: grid; gap: var(--sp-1); }
+.setup-field > span {
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  font-weight: var(--fw-strong);
+  color: var(--text-secondary);
+}
+.setup-field input { width: var(--size-form); }
+.setup-actions:not(.hidden) { display: flex; gap: var(--sp-2); }
+
+/* ── The side sheet's frame (SPEC 7); sheet.js fills it ──────────────── */
+
+#sheet-scrim:not([hidden]) {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: var(--scrim);
+}
+#sheet:not([hidden]) {
+  position: fixed;
+  z-index: 41;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  grid-template-rows: var(--size-bar) minmax(0, 1fr) var(--size-sheet-foot);
+  width: var(--size-sheet);
+  max-width: 100%;
+  background: var(--bg-raised);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-overlay);
+  animation: sheet-in var(--dur) var(--ease);
+}
+@keyframes sheet-in { from { transform: translateX(var(--sp-6)); opacity: 0.6; } to { transform: none; opacity: 1; } }
+#sheet-head:not(.hidden) {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+  padding: 0 var(--sp-2) 0 var(--sp-6);
+  border-bottom: 1px solid var(--border);
+}
+#sheet-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  line-height: var(--lh-h2);
+  font-weight: var(--fw-strong);
+}
+#sheet-title:focus { outline: none; }
+#sheet-body:not(.hidden) { display: grid; gap: var(--sp-4); align-content: start; overflow-y: auto; padding: var(--sp-6); }
+#sheet-foot:not(.hidden) {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-6);
+  border-top: 1px solid var(--border);
+}
+
+/* ── Tooltip (SPEC 8.5) ──────────────────────────────────────────────── */
+
+#tip:not([hidden]) {
+  position: fixed;
+  z-index: 200;
+  max-width: var(--size-tip-max);
+  padding: var(--sp-1) var(--sp-2);
+  background: var(--bg-raised);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-overlay);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  pointer-events: none;
+}
+
+/* ── Windows contrast themes (last, so it wins) ──────────────────────────
+   System colours only (SPEC 10.4). The brand band gives way to Canvas with
+   an edge; the selected section and the focused row use Highlight; the
+   pill, the ring, the hairlines, the sheet's edge and the notices use
+   CanvasText; disabled is GrayText. Icons are currentColor. */
+
+@media (forced-colors: active) {
+  #shell, #side, #main, #bar, #page, #side-brand { background: Canvas; color: CanvasText; }
+  #side { border-right: 1px solid CanvasText; }
+  #side-brand { border-bottom: 1px solid CanvasText; }
+  #bar { border-bottom: 1px solid CanvasText; }
+  .side-section { color: CanvasText; }
+  .side-section[aria-current="page"] { background: Highlight; color: HighlightText; forced-color-adjust: none; }
+  .side-section[aria-current="page"]::before { background: CanvasText; }
+  .side-section:disabled, .icon-button:disabled, #find:disabled { color: GrayText; border-color: GrayText; }
+  .crumb-button { color: LinkText; }
+  #find, #find-list, #sheet, #tip { border: 1px solid CanvasText; background: Canvas; color: CanvasText; }
+  .find-option[aria-selected="true"], .rows:focus-visible .row.is-active { background: Highlight; color: HighlightText; forced-color-adjust: none; }
+  .rows:focus-visible .row.is-active { outline: 2px solid CanvasText; }
+  .side-section[aria-current="page"] .side-count, .find-option[aria-selected="true"] .find-note { color: HighlightText; }
+  .row { border-bottom: 1px solid CanvasText; }
+  .row-name, .row-detail, .row-status, .row-date, .row-step { color: inherit; }
+  #notices .notice { border: 1px solid CanvasText; background: Canvas; color: CanvasText; }
+  .last-sort-bar { background: Canvas; border: 1px solid CanvasText; }
+  .last-sort-bar > span { background: Highlight; }
+  #sheet-scrim { background: transparent; }
+  :focus-visible { outline: 2px solid CanvasText; }
+  /* style.css and pilot-ui.css ring inputs and .btn in Highlight, with more
+     specific selectors; the shell's own controls outrank them by id. */
+  #bar #find:focus-visible, #main #notices :focus-visible, #main #page .setup :focus-visible { outline: 2px solid CanvasText; }
+}

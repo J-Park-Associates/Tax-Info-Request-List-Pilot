@@ -24,34 +24,40 @@ def test_every_tour_anchor_is_an_element_the_page_has():
             assert f'id="{anchor}"' in html, (step["id"], anchor)
 
 
-def test_every_step_has_its_three_callouts():
+def test_every_tour_anchor_is_where_the_shell_put_it():
+    """SPEC-shell 12: the anchors move to the shell's ids."""
+    anchors = {step["id"]: step["anchors"] for step in tour()["steps"]}
+    assert anchors == {
+        "welcome": [],
+        "clients-folder": ["page"],
+        "new-household": ["side-sections"],
+        "drop-files": ["crumbs"],
+        "scan": ["sort"],
+        "originals": ["page"],
+        "working-copies": ["page"],
+        "needs-review": ["side-sections"],
+        "status": ["side-sections"],
+        "reminder": ["side-sections"],
+        "wrap-up": [],
+    }
+
+
+def test_every_step_has_a_title_and_one_line():
     for step in tour()["steps"]:
         assert step["title"].strip(), step["id"]
-        for key in ("does", "strength", "limit"):
-            value = step[key]
-            lines = [value] if isinstance(value, str) else value
-            assert lines and all(isinstance(x, str) and x.strip() for x in lines), (step["id"], key)
+        assert isinstance(step["does"], str) and step["does"].strip(), step["id"]
 
 
-def test_every_step_sits_on_the_strip():
-    stages, steps = tour()["stages"], tour()["steps"]
-    assert len(stages) == 6
-    positions = []
-    for i, step in enumerate(steps):
-        if step["stage"] == "":
-            assert i in (0, len(steps) - 1), step["id"]
-        else:
-            assert step["stage"] in stages, step["id"]
-            positions.append(stages.index(step["stage"]))
-    assert positions == sorted(positions)
-
-
-def test_a_step_that_points_says_what_to_expect_when_it_cannot():
-    for step in tour()["steps"]:
-        if step["anchors"]:
-            assert step["fallback"].strip(), step["id"]
-        else:
-            assert step["fallback"] == "", step["id"]
+def test_the_tour_has_no_stage_strip_and_no_callouts_left():
+    """The strength, limit and fallback lines and the stage chips are gone
+    (P63, SPEC-shell 12), from the content and from the script."""
+    assert set(tour()) == {"steps"}
+    js = read("tour.js")
+    for gone in ("stagesStrip", "callout(", "fallback", "PILOT.tour.stages", "step.strength", "step.limit"):
+        assert gone not in js, gone
+    css = read("pilot-style.css")
+    for gone in (".pilot-tour-stage", ".pilot-tour-compare", ".pilot-tour-fallback", ".pilot-tour-ok", ".pilot-tour-warn"):
+        assert gone not in css, gone
 
 
 def test_step_ids_are_unique_and_the_tour_opens_and_closes_centred():
