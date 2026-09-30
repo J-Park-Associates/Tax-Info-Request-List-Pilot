@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 346,
     "edges": 1156,
-    "reused": 303
+    "reused": 302
   },
   "node_types": [
     "artifact",
@@ -5100,8 +5100,8 @@
       "id": "pilot/handoffs/wincheck-shell.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "97b7fa97fc7deef4",
-      "lines": 44
+      "sha256": "c62f922644deac9f",
+      "lines": 52
     },
     {
       "id": "pilot/harness/README.md",
@@ -5505,8 +5505,8 @@
       "id": "pilot/mockup-shell.html",
       "type": "ui",
       "layer": "root",
-      "sha256": "2849db2cee578acc",
-      "lines": 1023
+      "sha256": "e962c9d2f39c06a8",
+      "lines": 1078
     },
     {
       "id": "pilot/wintest/make_samples.py",
