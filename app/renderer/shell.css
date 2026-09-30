@@ -837,7 +837,7 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
 .row-wrap .pill-word { white-space: normal; }
 
 /* The form chip before a return's name, and Needs Review's request chip. */
-.form-chip:not(.hidden), .request-chip:not(.hidden) {
+.form-tag:not(.hidden), .request-tag:not(.hidden) {
   display: inline-block;
   margin-right: var(--sp-2);
   padding: 0 var(--sp-1);
@@ -849,7 +849,7 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   font-weight: var(--fw-strong);
   vertical-align: middle;
 }
-.request-chip:not(.hidden) { max-width: 100%; margin-right: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--fw-regular); }
+.request-tag:not(.hidden) { max-width: 100%; margin-right: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--fw-regular); }
 
 /* The Linked Households mark (P141, P171): a link icon in its own violet. */
 .link-mark:not(.hidden) {
@@ -1016,7 +1016,7 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
 
 /* Clients: the switch and the Client Type chip on one line (P153). */
 .clients-bar:not(.hidden) { display: flex; align-items: center; gap: var(--sp-4); }
-.type-chip:not(.hidden) {
+.type-filter:not(.hidden) {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-1);
@@ -1087,7 +1087,7 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   /* The raised lists (SPEC-lists 16): pills, chips, cards and badges keep an
      edge; shadings go; the link mark is a button with an edge; a section's
      icon and words carry it. */
-  .pill, .form-chip, .request-chip, .group-count.is-badge, .group-docs, .side-count:not(:empty), .switch-count, .type-chip,
+  .pill, .form-tag, .request-tag, .group-count.is-badge, .group-docs, .side-count:not(:empty), .switch-count, .type-filter,
   .figure, .reason-card, .return-card, #link-panel { border: 1px solid CanvasText; background: Canvas; color: CanvasText; }
   .reason-card[aria-pressed="true"] { background: Highlight; color: HighlightText; forced-color-adjust: none; }
   .link-mark { color: ButtonText; border-color: CanvasText; }

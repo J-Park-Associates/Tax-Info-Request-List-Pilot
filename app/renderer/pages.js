@@ -291,9 +291,9 @@ function pagesByName(a, b) {
 // The name cell, and beside the name the row's marker when it has one (a
 // household paused for two open years, ruling 21): the vocabulary's words.
 function pagesNameCell(spec) {
-  // The form chip (P145) comes first; it repeats the form the name begins
+  // The form tag (P145) comes first; it repeats the form the name begins
   // with, so it is hidden from a screen reader, which reads the name.
-  const first = spec.form ? h("span", { className: "form-chip", "aria-hidden": "true" }, spec.form)
+  const first = spec.form ? h("span", { className: "form-tag", "aria-hidden": "true" }, spec.form)
     : spec.fileIcon ? h("span", { className: "row-icon" }, icon("file", true)) : null;
   const box = h("span", { className: "row-name" }, first, spec.nameLink ? pagesLinkNode(spec.nameLink, spec.name, "name") : spec.name);
   if (!spec.nameLink) setTipIfCut(box, spec.name);
@@ -426,12 +426,12 @@ function pagesRow(spec) {
 }
 
 // The detail cell: a link, plain words, or (Needs Review's suggestion) a
-// muted chip with its full title as the tooltip; and the link mark after a
+// muted tag with its full title as the tooltip; and the link mark after a
 // household's name (P141).
 function pagesDetailCell(spec) {
   let box;
-  if (spec.detailChip && spec.detail) {
-    const tag = h("span", { className: "request-chip" }, spec.detail);
+  if (spec.detailTag && spec.detail) {
+    const tag = h("span", { className: "request-tag" }, spec.detail);
     setTip(tag, spec.detailTip || spec.detail);
     box = h("span", { className: "row-detail" }, tag);
   } else {
@@ -1020,7 +1020,7 @@ function pagesReviewGroups(firm) {
 function pagesReviewSpec(firm, group, file) {
   const reason = pagesReason(file.code);
   return {
-    name: file.name, detail: file.suggestion_short || file.suggestion || "", detailTip: file.suggestion || "", detailChip: true,
+    name: file.name, detail: file.suggestion_short || file.suggestion || "", detailTip: file.suggestion || "", detailTag: true,
     status: reason, tone: "needs", date: pagesDay(file.received), pill: true, reasonIcon: PAGES_REASON_ICONS[file.code] || "alert", fileIcon: true,
     menu: "file", fileKind: "parked", nameLink: pagesFileLink(firm.paths, file.open_key),
     step: { kind: "check", ret: group.path, name: file.name, handle: file.handle },
@@ -1202,8 +1202,8 @@ function pagesSwitch(work) {
   return h("div", { className: "switch", role: "group", "aria-label": screenWords().sections.clients }, option(words.work, false, work), option(words.all, true));
 }
 
-// The Client Type chip on Clients, with its dismiss (P153; SPEC-lists 15.3).
-function pagesTypeChip() {
+// The Client Type filter on Clients, with its dismiss (P153; SPEC-lists 15.3).
+function pagesTypeFilter() {
   if (!pagesClientType) return null;
   const words = screenWords();
   const kind = (words.client_types || {})[pagesClientType];
@@ -1211,7 +1211,7 @@ function pagesTypeChip() {
   const dismiss = h("button", { type: "button", className: "icon-button type-dismiss", "aria-label": words.icons.remove_filter, dataset: { pick: "type" } }, icon("dismiss", true));
   setTip(dismiss, words.icons.remove_filter);
   dismiss.addEventListener("click", () => pagesPick("clients", () => { pagesClientType = ""; }, "all"));
-  return h("span", { className: "type-chip" }, h("span", { className: "type-chip-word" }, kind.label), dismiss);
+  return h("span", { className: "type-filter" }, h("span", { className: "type-filter-word" }, kind.label), dismiss);
 }
 
 function pagesClients() {
@@ -1226,7 +1226,7 @@ function pagesClients() {
   // tab narrow the whole list, then the order and the pages apply.
   const work = pagesClientSpecs(firm, false).length;
   const specs = pagesOrdered("clients", pagesClientSpecs(firm, pagesClientsAll));
-  const bar = h("div", { className: "clients-bar" }, pagesSwitch(work), pagesTypeChip());
+  const bar = h("div", { className: "clients-bar" }, pagesSwitch(work), pagesTypeFilter());
   if (!specs.length) return [bar, pagesEmpty(words.empty.work)];
   const { part, foot } = pagesPaged("clients", specs);
   const rows = document.createDocumentFragment();

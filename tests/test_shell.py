@@ -956,7 +956,7 @@ COLUMN_FUNCTIONS = ("pagesListOf", "pagesUrgent", "pagesIsBlank", "pagesCompareK
                     # The raised lists (pilot SPEC-lists 10-17).
                     "pagesDetailCell", "pagesStatusCell", "pagesLinkMark", "pagesLinkMarkIn", "pagesShowPanel", "pagesPanelOpen",
                     "pagesClosePanel", "pagesOpenRowLinks", "pagesPaged", "pagesFoot", "pagesTurn", "pagesPick", "pagesTabs",
-                    "pagesFileCount", "pagesReasonCards", "pagesReviewGroup", "pagesSwitch", "pagesTypeChip")
+                    "pagesFileCount", "pagesReasonCards", "pagesReviewGroup", "pagesSwitch", "pagesTypeFilter")
 
 
 def pages_consts() -> str:
@@ -2981,3 +2981,310 @@ def test_file_rows_are_ordinary_weight_and_the_household_beside_a_heading_is_sec
         assert ratio("--text-secondary", "--bg-page", theme) >= 4.5
         assert ratio("--text-secondary", "--bg-hover", theme) >= 4.5
         assert ratio("--border-input", "--bg-page", theme) >= 3, "the grip line is a control's edge"
+
+
+# ── lane 4b: the raised lists (pilot SPEC-lists 9-17; P141-P155, P170-P178) ──
+
+#: A practice for the lane 4b probes: linked households, forms, a paused one.
+LINKED = r"""
+  households = [
+    { name: "Alpha", path: "c/Alpha", links: [{ name: "Bravo", path: "c/Bravo", kind: "related" }], returns: [{ form: "1040" }] },
+    { name: "Bravo", path: "c/Bravo", links: [{ name: "Alpha", path: "c/Alpha", kind: "related" }, { name: "Gone", path: "", kind: "fed_by" }],
+      returns: [{ form: "1065" }] },
+    { name: "Charlie", path: "c/Charlie", links: [], returns: [{ form: "" }] },
+    { name: "Delta", path: "c/Delta", links: [], returns: [{ form: "1040" }] },
+    { name: "Echo", path: "c/Echo", links: [], returns: [{ form: "1041" }] },
+  ];
+  for (const one of shellFirmData.returns) one.links = (households.find((h) => h.name === one.household) || {}).links || [];
+  shellFirmData.returns[0].form = "1040";
+"""
+
+
+def test_a_linked_household_carries_the_violet_link_mark_on_the_four_firm_lists(tmp_path):
+    """P141, P171: beside the household's name on Overview (Client), Needs
+    Review (the household under each return), Reminders (Client) and Clients
+    (Client Name); in a row list it is no Tab stop and the row's description
+    says Linked Households; on Needs Review it is an ordinary button."""
+    ran = run_lists("""
+      const out = {};
+      for (const level of ["overview", "needs-review", "reminders", "clients"]) {
+        const page = draw(level);
+        const marks = page.byClass("link-mark");
+        out[level] = { marks: marks.length, tabindex: marks.map((m) => m.attrs.tabindex || ""), names: marks.map((m) => m.attrs["aria-label"]),
+                       described: page.byClass("row").filter((r) => r.byClass("link-mark").length).map((r) => r.attrs["aria-description"]) };
+      }
+      return out;
+    """, tmp_path, LINKED)
+    assert ran["overview"]["marks"] == 2 and set(ran["overview"]["tabindex"]) == {"-1"}
+    assert all(one.endswith("Linked Households") for one in ran["overview"]["described"])
+    assert ran["clients"]["marks"] == 2 and ran["reminders"]["marks"] == 2
+    assert ran["needs-review"]["marks"] == 2 and set(ran["needs-review"]["tabindex"]) == {""}, "a heading's mark is a Tab stop"
+    assert {name for one in ran.values() for name in one["names"]} == {"Linked Households"}
+    css = read("shell.css")
+    assert ".link-mark:not(.hidden) {" in css and "color: var(--st-linked);" in css[css.index(".link-mark:not(.hidden) {"):][:600]
+    forced = css[css.index("@media (forced-colors: active)"):]
+    assert ".link-mark { color: ButtonText; border-color: CanvasText; }" in forced
+
+
+def test_the_link_panel_names_each_household_and_its_kind_and_closes_back_to_where_it_opened(tmp_path):
+    """P171: the panel lists each linked household with its kind's word, a
+    household with a folder as a link to it and one without as text; a
+    choice goes to that client; closing returns focus to where it opened."""
+    ran = run_pages_dom("""
+      Element.prototype.focus = function () { focused.push(this.className || this.attrs.id || this.tag); };
+      Element.prototype.remove = function () { this.removed = true; };
+      Element.prototype.contains = function () { return false; };
+      const focused = []; document.body = new Element("body");
+      globalThis.FloatingUIDOM = { computePosition: () => Promise.resolve({ x: 10, y: 20 }), offset: () => 0, flip: () => 0, shift: () => 0 };
+      globalThis.TIP_GAP = 4; globalThis.TIP_MARGIN = 8;
+      const anchor = new Element("button"); anchor.className = "link-mark"; anchor.isConnected = true;
+      pagesShowPanel(anchor, [{ name: "Bravo", path: "c/Bravo", kind: "related" }, { name: "Gone", path: "", kind: "fed_by" },
+                              { name: "Delta", path: "c/Delta", kind: "feeds" }], anchor);
+      const panel = document.body.kids[0];
+      const lines = panel.byClass("link-line").map((l) => [l.kids[0].className, l.kids[0].textContent, l.kids[1].textContent]);
+      const open = pagesPanelOpen();
+      panel.byClass("link-to")[0].handlers.click[0]();
+      const afterChoice = [pagesPanelOpen(), went.slice(-1)[0]];
+      pagesShowPanel(anchor, [{ name: "Bravo", path: "c/Bravo", kind: "related" }], anchor);
+      pagesClosePanel(true);
+      return { role: panel.attrs.role, label: panel.attrs["aria-label"], lines, open, afterChoice, closed: pagesPanelOpen(), focused };
+    """, tmp_path)
+    assert ran["role"] == "dialog" and ran["label"] == "Linked Households" and ran["open"] is True
+    assert ran["lines"] == [["link-to", "Bravo", "Related"], ["link-name", "Gone", "Fed By"], ["link-to", "Delta", "Also Feeds"]]
+    assert ran["afterChoice"] == [False, {"level": "household", "household": "c/Bravo"}]
+    assert ran["closed"] is False and ran["focused"][-1] == "link-mark", "focus goes back to the icon"
+
+
+def test_the_firm_lists_divide_the_whole_ordered_list_into_pages_of_fifty(tmp_path):
+    """P152, P174: order and tabs act on the whole list, pages divide the
+    result; the footer counts in the list's noun; any change returns to
+    page 1, and leaving the page forgets it."""
+    ran = run_lists("""
+      const many = [];
+      for (let i = 0; i < 120; i += 1) many.push(line(`1040 - R${String(i).padStart(3, "0")}`, "Alpha", { counts: { ...zero, waiting: 1 }, due: "2026-04-15" }));
+      shellFirmData.returns = many;
+      const foot = (page) => page.byClass("page-count")[0].textContent;
+      const steps = (page) => page.byClass("page-step").map((b) => b.disabled === true);
+      const first = draw("overview"); const one = [foot(first), steps(first), names(first).length, names(first)[0]];
+      pagesPageAt.overview = 2; const third = draw("overview"); const three = [foot(third), steps(third), names(third).length];
+      pagesOrderBy("overview", "name"); pagesOrderBy("overview", "name");
+      const back = [foot(box), names(box)[0]];
+      pagesPageAt.overview = 1; draw("clients"); const again = foot(draw("overview"));
+      return { one, three, back, again, per: PAGES_PER_PAGE };
+    """, tmp_path)
+    assert ran["per"] == 50
+    assert ran["one"] == ["Showing 1-50 of 120 Returns", [True, False], 50, "1040 - R000 (2025)"]
+    assert ran["three"] == ["Showing 101-120 of 120 Returns", [False, True], 20]
+    assert ran["back"] == ["Showing 1-50 of 120 Returns", "1040 - R119 (2025)"], "a new order starts at page 1, over the whole list"
+    assert ran["again"] == "Showing 1-50 of 120 Returns", "the page is forgotten when the page is left"
+
+
+def test_needs_review_pages_by_whole_return_groups_and_counts_files(tmp_path):
+    """P174: a page takes return groups while their files stay within 50,
+    and never splits one; the footer counts files."""
+    ran = run_lists("""
+      const files = [];
+      for (const [ret, n] of [["r/1040 - Alpha", 30], ["r/1065 - Bravo", 30], ["r/1040 - Charlie", 60]]) {
+        for (let i = 0; i < n; i += 1) files.push({ return: ret, year: 2025, name: `${ret.slice(2)} ${i}.pdf`, handle: `${ret}${i}`, code: "unmatched",
+                                                    received: `2026-03-0${ret.length % 9 + 1}`, suggestion: "", open_key: "" });
+      }
+      shellFirmData.files = files;
+      const counts = (page) => [page.byClass("page-count")[0].textContent, page.byClass("return-card").length, page.byClass("row").length];
+      const one = counts(draw("needs-review"));
+      pagesPageAt.needs_review = 1; const two = counts(draw("needs-review"));
+      pagesPageAt.needs_review = 2; const three = counts(draw("needs-review"));
+      return { one, two, three };
+    """, tmp_path)
+    assert ran["one"][1:] == [1, 30] and ran["two"][1:] == [1, 30] and ran["three"][1:] == [1, 60]
+    assert ran["one"][0].endswith("of 120 Files") and ran["three"][0] == "Showing 61-120 of 120 Files"
+
+
+def test_overviews_tabs_narrow_the_whole_list_and_carry_their_counts(tmp_path):
+    """P145: All, Need You (n), Waiting (n) as pressed buttons; a tab narrows
+    the list before the order and the pages, and Work Waiting's count is the
+    rows it shows."""
+    ran = run_lists("""
+      const page = draw("overview");
+      const tabs = (p) => p.byClass("switch-option").map((b) => [b.textContent, b.attrs["aria-pressed"]]);
+      const all = [tabs(page), names(page).length, page.byClass("group-count")[0].textContent];
+      pagesTab = "waiting"; const waiting = draw("overview");
+      return { all, waiting: [tabs(waiting), names(waiting), waiting.byClass("group-count")[0].textContent] };
+    """, tmp_path)
+    assert ran["all"] == [[["All", "true"], ["Need You (3)", "false"], ["Waiting (2)", "false"]], 5, "5"]
+    assert ran["waiting"][0][2] == ["Waiting (2)", "true"]
+    assert ran["waiting"][1] == ["1040 - Charlie (2025)", "1040 - Delta (2025)"] and ran["waiting"][2] == "2"
+
+
+def test_needs_reviews_reason_cards_count_each_reason_and_filter_the_whole_page(tmp_path):
+    """P149: a card per reason with its count and icon, and All; a card is a
+    pressed filter; the page's count beside its title says the files shown;
+    every reason pill is the Need You amber with its reason's icon."""
+    ran = run_lists("""
+      const page = draw("needs-review");
+      const cards = (p) => p.byClass("reason-card").map((c) => [c.byClass("reason-card-word")[0].textContent, c.byClass("reason-card-number")[0].textContent, c.attrs["aria-pressed"]]);
+      const pills = page.byClass("row-status").map((s) => [s.className, s.byClass("pill").length, s.byClass("icon").length, s.textContent]);
+      const before = [cards(page), page.byClass("list-count")[0].textContent, pills];
+      pagesReasonPick = "opened-not-across"; const picked = draw("needs-review");
+      return { before, after: [cards(picked), picked.byClass("list-count")[0].textContent, picked.byClass("row").length] };
+    """, tmp_path)
+    cards, count, pills = ran["before"]
+    assert cards == [["All", "3", "true"], ["Could Not Tell", "2", "false"], ["Came in Email or Zip", "1", "false"]]
+    assert count == "3 files"
+    assert all(cls == "row-status is-attention" and pill == 1 and icons == 1 for cls, pill, icons, _words in pills)
+    assert ran["after"] == [[["All", "3", "false"], ["Could Not Tell", "2", "false"], ["Came in Email or Zip", "1", "true"]], "1 file", 1]
+
+
+def test_a_client_type_narrows_clients_by_the_recorded_form_and_shows_a_removable_chip(tmp_path):
+    """P153, SPEC-lists 15.3: a type keeps the households with a return whose
+    recorded form is one of its forms (a blank form belongs to none); the
+    chip names the type and its dismiss clears it; Work Waiting shows its count."""
+    ran = run_lists("""
+      pagesClientType = "individuals"; pagesClientsAll = true; pagesLastLevel = "clients";
+      const page = draw("clients");
+      const chip = page.byClass("type-filter")[0];
+      const kept = [names(page), chip.byClass("type-filter-word")[0].textContent, chip.byClass("type-dismiss")[0].attrs["aria-label"],
+                    page.byClass("switch-count").map((c) => c.textContent)];
+      chip.byClass("type-dismiss")[0].handlers.click[0]();
+      return { kept, cleared: [pagesClientType, names(box).length, box.byClass("type-filter").length] };
+    """, tmp_path, LINKED)
+    assert ran["kept"][0] == ["Alpha", "Delta"]
+    assert ran["kept"][1:3] == ["Individuals", "Remove Filter"]
+    assert ran["kept"][3] == ["2"], "Work Waiting's count: the individuals with work waiting"
+    assert ran["cleared"] == ["", 5, 0]
+
+
+def test_a_return_pages_three_sections_carry_their_colour_icon_badge_and_edge(tmp_path):
+    """P176 (Q8): Needs You amber, Waiting on Client blue, Received green -
+    the heading's tone, its icon, a tinted count badge and an edge down its
+    rows; Set Aside keeps its plain fold; the heading words stay plain."""
+    ran = run_pages_dom("""
+      lastState = stateOf([item("B", "received", { status_key: "Received", received_date: "2026-03-01" }), item("C", "waiting"),
+                           item("D", "needs_you", { status_key: "Rejected" }), item("A", "set_aside", { status_key: "NotAsked" })], [parked("p1")]);
+      const box = page(pagesReturn({ level: "return", ret: "r1", year: 2025 }));
+      const heads = box.byClass("group-head").map((h) => [h.className, h.byClass("group-icon").map((i) => i.className).join(),
+                                                          h.byClass("group-count")[0].className, h.byClass("group-title")[0].className]);
+      const lists = box.find((one) => one.attrs.role === "listbox").map((l) => l.className);
+      return { heads, lists };
+    """, tmp_path)
+    assert ran["heads"][:3] == [
+        ["group-head is-first is-section section-needs", "group-icon is-attention", "group-count is-badge is-attention", "group-title"],
+        ["group-head is-section section-waiting", "group-icon is-waiting", "group-count is-badge is-waiting", "group-title"],
+        ["group-head is-section section-done", "group-icon is-done", "group-count is-badge is-done", "group-title"]]
+    assert ran["heads"][3][0] == "group-head" and ran["heads"][3][1] == "", "Set Aside keeps its plain fold"
+    assert ran["lists"][:3] == ["rows edge-needs", "rows edge-waiting", "rows edge-done"]
+    css = read("shell.css")
+    for tone, token in (("needs", "--st-attention"), ("waiting", "--st-waiting"), ("done", "--st-done")):
+        assert f".section-{tone}::before {{ background: var({token}); }}" in css
+        assert f".rows.edge-{tone} .row::before {{ background: var({token}); }}" in css
+    assert ".group-title, .list-title {" in css, "the heading words keep the text colour"
+
+
+def test_a_firm_lists_status_is_a_pill_with_a_dot_and_a_form_chip_leads_a_returns_name(tmp_path):
+    """P145: on Overview the status is a pill with a dot that keeps its count
+    in the app's colours, and a return's recorded form is a chip before its
+    name, hidden from a screen reader (the name already begins with it)."""
+    ran = run_lists("""
+      const page = draw("overview");
+      const row = page.byClass("row").find((r) => r.textContent.indexOf("Alpha") !== -1);
+      return { dot: row.byClass("pill-dot").length, word: row.byClass("pill-word")[0].textContent, chip: row.byClass("form-tag").map((c) => [c.textContent, c.attrs["aria-hidden"]]),
+               plain: page.byClass("row").filter((r) => r.byClass("form-tag").length).length };
+    """, tmp_path, LINKED)
+    assert ran == {"dot": 1, "word": "3 need you", "chip": [["1040", "true"]], "plain": 1}
+    css = read("shell.css")
+    for tone, tint in (("attention", "--warn-bg"), ("waiting", "--info-bg"), ("done", "--ok-bg")):
+        assert f".is-{tone} > .pill {{ background: var({tint}); }}" in css
+    assert "monospace" not in css.lower() and "monospace" not in read("pilot-ui.css").lower()
+
+
+def test_the_search_finds_waiting_files_on_needs_review_and_its_placeholder_says_so(tmp_path):
+    """P173: the box searches the whole practice; given Needs Review's files
+    it finds them first, noted with their return and year, and choosing one
+    opens Check; its placeholder is the vocabulary's, per page."""
+    probe = """
+      const files = [{ return: "r1", year: 2025, name: "Smith W-2.pdf", handle: "h1" }];
+      const found = findOptions("smith", files);
+      return { names: found.map((o) => o.name), note: found[0].note, check: found[0].check, without: findOptions("smith").length };
+    """
+    ran = run_shell(["screenWords", "fold", "shellHousehold", "shellOwnReturns", "shellReturn", "findOptions"], PEOPLE, probe, tmp_path)
+    assert ran["names"][0] == "Smith W-2.pdf" and ran["note"] == "1040 - John & Jane Smith 2025"
+    assert ran["check"] == {"ret": "r1", "name": "Smith W-2.pdf", "handle": "h1"} and ran["without"] == 3
+    assert api.SCREEN["find_placeholder"] == "Search Clients and Returns"
+    assert api.SCREEN["find_placeholder_files"] == "Search Files, Clients and Returns"
+    shell = stripped_js("shell.js")
+    assert 'setAttribute("placeholder", shellRoute.level === "needs-review" ? words.find_placeholder_files : words.find_placeholder)' in shell
+
+
+def test_the_side_panel_is_the_mocks_with_the_firms_brand_and_nothing_behind_the_unbuilt_items(tmp_path):
+    """P153, P154, P155: the brand band names the firm and Tax Document
+    Console; the four pages keep Ctrl+1..4; five Under Construction items are
+    aria-disabled buttons whose click says so and calls nothing else; four
+    Client Types open Clients filtered; Settings is the settings the app has."""
+    html = read("index.html")
+    side = html[html.index('<nav id="side">'):html.index("</nav>", html.index('<nav id="side">'))]
+    assert side.count('data-section="') == 4 and side.count('data-type="') == 4
+    assert side.count('aria-disabled="true"') == 5 and side.count('class="side-section is-soon"') == 5
+    for ident in ("side-brand-name", "side-brand-product", "side-scroll", "side-types-heading", "side-workspace-heading", "side-settings", "last-sort"):
+        assert f'id="{ident}"' in side, ident
+    assert side.index('data-soon="family_entities"') < side.index('id="side-types-heading"') < side.index('data-soon="personal_trusts"')
+    words = api.SCREEN["side"]
+    assert words["brand"] == "J Park & Associates" and words["product"] == "Tax Document Console"
+    assert words["under_construction"] == "Under Construction" == api.SCREEN["notices"]["under_construction"]
+    assert all(said.endswith("(Under Construction)") for said in words["soon"].values()) and len(words["soon"]) == 5
+    assert {key: one["forms"] for key, one in api.SCREEN["client_types"].items()} == {
+        "individuals": ["1040"], "businesses": ["1120", "1120S", "1065"], "trusts": ["1041"], "nonprofits": ["990"]}
+    shell = stripped_js("shell.js")
+    soon = shell[shell.index('querySelectorAll(".side-section[data-soon]")) {\n  node.addEventListener'):]
+    soon = soon[:soon.index("\n}\n")]
+    assert 'toastWord("under_construction")' in soon and "call(" not in soon and "shellGo" not in soon
+    assert '$("side-settings").addEventListener("click", () => shellAnswer("change_root"));' in shell
+    css = read("shell.css")
+    assert "#side-scroll { min-height: 0; overflow-y: auto;" in css, "the panel scrolls rather than cut an item"
+    assert '.side-section[data-section="needs-review"] .side-count:not(:empty) { background: var(--warn-bg); color: var(--st-attention); }' in css
+
+
+def test_a_row_made_active_by_the_keyboard_shows_its_status_tooltip_at_once(tmp_path):
+    """P178: Up/Down move the active row by aria-activedescendant and show
+    the row's status words as its tooltip at once; a click shows none."""
+    ran = run_pages_dom("""
+      const shown = []; let hidden = 0;
+      globalThis.showTipNow = (node) => shown.push(node.textContent);
+      globalThis.hideTip = () => { hidden += 1; };
+      Element.prototype.querySelectorAll = function (sel) { return sel === ".is-active" ? this.byClass("is-active") : this.find((one) => one.attrs.role === "option"); };
+      const oldQuery = Element.prototype.querySelector;
+      Element.prototype.querySelector = function (sel) {
+        if (sel.indexOf("[data-tip]") !== -1) return this.byClass("pill-word")[0] || null;   // the tip's node (setTipIfCut is faked here)
+        return oldQuery.call(this, sel);
+      };
+      Object.defineProperty(Element.prototype, "classList", { get() {
+        const self = this;
+        return { add(one) { if (!self.className.split(" ").includes(one)) self.className = `${self.className} ${one}`.trim(); },
+                 contains(one) { return self.className.split(" ").includes(one); },
+                 remove(one) { self.className = self.className.split(" ").filter((c) => c !== one).join(" "); } };
+      } });
+      const rows = [pagesRow({ name: "a.pdf", status: "Came in Email or Zip", tone: "needs", pill: true, menu: "file" }),
+                    pagesRow({ name: "b.pdf", status: "Could Not Tell", tone: "needs", pill: true, menu: "file" })];
+      const list = new Element("div"); list.append(...rows);
+      pagesActivate(list, rows[1], true);
+      pagesActivate(list, rows[0]);
+      return { shown, hidden };
+    """, tmp_path)
+    assert ran["shown"] == ["Could Not Tell"] and ran["hidden"] == 2
+    tip = read("tooltip.js")
+    assert "function showTipNow(node) {" in tip and "delete node.dataset.tipCut;" in tip
+
+
+def test_the_new_tokens_and_every_new_pair_meet_their_contrast_in_both_themes():
+    """P177, SPEC-lists 16: the two new tokens have their values in both
+    themes, and every new pair meets its figure (text 4.5, non-text 3)."""
+    for name, (light, dark) in {"--st-linked": ("#7c3aad", "#c4a0f0"), "--bg-band": ("#f8fafc", "#1f232a")}.items():
+        assert resolve(name, "light") == light and resolve(name, "dark") == dark, name
+    for fg, bg, needs in (("--st-linked", "--bg-page", 3), ("--st-linked", "--bg-hover", 3), ("--st-linked", "--bg-selected", 3),
+                          ("--st-linked", "--bg-band", 3), ("--st-linked", "--bg-raised", 3), ("--st-attention", "--warn-bg", 4.5),
+                          ("--st-waiting", "--info-bg", 4.5), ("--st-done", "--ok-bg", 4.5), ("--st-attention", "--bg-raised", 3),
+                          ("--st-waiting", "--bg-raised", 3), ("--st-done", "--bg-raised", 3), ("--text", "--bg-band", 4.5),
+                          ("--text-secondary", "--bg-band", 4.5), ("--text-caption", "--bg-band", 4.5), ("--link", "--bg-band", 4.5),
+                          ("--link", "--bg-raised", 4.5), ("--focus", "--bg-band", 3), ("--text-secondary", "--bg-nav", 4.5),
+                          ("--text-secondary", "--bg-nav-hover", 4.5), ("--text-secondary", "--bg-pressed", 4.5),
+                          ("--window-light", "--brand", 4.5)):
+        for theme in ("light", "dark"):
+            assert ratio(fg, bg, theme) >= needs, (fg, bg, theme)
