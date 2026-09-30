@@ -7,6 +7,14 @@
 - Jason's two rulings after the check, logged in [`../DECISIONS.md`](../DECISIONS.md):
   - **P115** - build a cache for the firm view, and make the repository faster.
   - **P116** - "Came in Email or Zip" becomes short tag words that fit the 160px status column (working words "Email or Zip"); the full sentence stays in the hover tip.
+- `pilot/mockup-shell.html` updated (Jason, 2026-09-29):
+  - **Sample data:** the office PC's 20 made-up households replace the old named households and the 200 filler households. The long-name and no-return design cases are kept, and Smith Family stays first.
+  - **P116:** a Smith 1099-R row shows "Email or Zip" with the tip "Came in Email or Zip".
+  - **Ruling 28:** "Sort Failed" has no Retry, and the mock's own Sort no longer clears it.
+  - **Finding F3:** a new state "A return's sort failed" shows "Sort Failed: Folder Not Found" on that return only; the household's next Sort clears it.
+  - **Paused marker:** moved to Delgado Family, which now has a 2024 return open, in Title Case.
+  - **Hover delay:** tips wait 300 ms (SPEC-shell check 9), not 500.
+  - **Not changed:** the mock's other words are still in the older sentence case ("Need you", "Waiting on client"), and its brand is "Sample Tax Office".
 - Nothing was fixed. These files, and decisions P115-P117, are on branch `claude/wincheck-shell-results` (from `main` at `877c7a2`, which holds the same code the check tested). P117 accepts the shell's open defaults and keeps O4.
 
 ## Left (three jobs; each gets its own SPEC and session)
