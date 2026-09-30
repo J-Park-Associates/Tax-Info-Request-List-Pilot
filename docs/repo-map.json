@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 342,
+    "nodes": 344,
     "edges": 1156,
-    "reused": 296
+    "reused": 300
   },
   "node_types": [
     "artifact",
@@ -5104,6 +5104,13 @@
       "lines": 27
     },
     {
+      "id": "pilot/review/wording-table.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "6968d704ca55cea8",
+      "lines": 123
+    },
+    {
       "id": "pilot/reviews/review-1.md",
       "type": "doc",
       "layer": "docs",
@@ -5151,6 +5158,13 @@
       "layer": "docs",
       "sha256": "2997d274d9686c8b",
       "lines": 56
+    },
+    {
+      "id": "pilot/wintest/PROMPT-shell-local.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "26f4dd8246766306",
+      "lines": 49
     },
     {
       "id": "pilot/wintest/PROMPT-shell.md",
