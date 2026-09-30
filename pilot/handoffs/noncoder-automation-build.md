@@ -68,3 +68,27 @@ the lead fixed them directly:
 
 Four tests added (swap rollback, a rollback that cannot put a page back,
 the uncommitted-rename case, the hook's dry run when already active).
+
+## Review 3 of the lead's fix: open, stopped for Jason
+
+Per the process rule (an Opus fix that fails review stops for Jason), this
+session stopped here. Open findings, for the next session:
+
+1. **organize can still overwrite a page** (pre-existing in the build, not
+   in the lead's fix). A destination is let through when the file there is
+   itself due to move, even if that move was refused; phase 2 then renames
+   over it (Linux). Phase 1 also renames to `.organize-N` without checking
+   the name is free. Fix: drop refused moves from the "is moving" set and
+   iterate to a fixed point; check every rename target is free.
+2. **The dry-run hook message says "moved"** when a session that already
+   tried is only told what would move. Fix the wording; test it.
+3. **A committed `git mv` of a note retires its page** instead of asking
+   for the Original line to be fixed (low; matches SPEC wording). Consider
+   `git log --diff-filter=D` against a rename check.
+4. **Leftover-file advice** is wrong for rollback leftovers
+   (`.organize-undo-N`); the finding still catches them (low).
+5. **Empty folders** made by a failed phase 2 are not removed (low).
+
+Until finding 1 is fixed the risk is narrow: it needs a refused move and a
+second page aimed at the refused page's spot. Every page is committed, so
+an overwritten page can be recovered from Git.

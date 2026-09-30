@@ -36,12 +36,6 @@ Nothing is left to do. Places where the plan was read loosely:
 - The code map page no longer lists the generated map files as originals, because the map records this tool's fingerprints and the two could never both be current.
 - The `stamp` command reports a failure code when something is still wrong after it runs.
 
-- Still open after a third review (the session stopped here, as Jason's rules require when a fix made by the lead fails its review):
-  1. In a rare setup, the filing step could still write one page over another. It needs one page that cannot move plus a second page aimed at its spot. Every page is saved in Git, so a lost page can be recovered.
-  2. A message says pages "moved" when they were only listed as "would move".
-  3. If a handoff note is renamed and the rename is saved in Git, its page goes to History instead of asking for its "Original file" line to be fixed.
-  4. Two small ones: the advice for a leftover temporary file names the wrong ending, and a failed filing run can leave an empty folder behind.
-
 ## Decisions (made by Jason, or waiting for Jason)
 
 Jason's request is recorded as decision P116. Nothing in the note waits on Jason.

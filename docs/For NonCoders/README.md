@@ -350,8 +350,9 @@ They record what a page said then; they are not kept up to date.
 
 - none
 
-### Earlier Versions (1)
+### Earlier Versions (2)
 
+- [A tool that keeps these plain-English pages up to date](<7 - History/Earlier Versions/2026-09-30 Noncoder Automation Build - until 2026-09-30.md>)
 - [Code map](<7 - History/Earlier Versions/Code map (repo_map.py) - until 2026-09-30.md>)
 
 ---
