@@ -1759,7 +1759,6 @@ def test_a_row_menu_offers_only_what_applies_and_the_page_answers_only_its_own_t
     ran = run_pages_dom("""
       const spec = (menu, extra = {}) => ({ menu, step: { kind: "check", ret: "r", name: "n", handle: "h" }, ...extra });
       const out = {};
-      const on = (fn) => { fn(); };
       out.parked = pagesEnableFor(spec("file", { fileKind: "parked", nameLink: { kind: "file" } }));
       out.aside = pagesEnableFor(spec("file", { fileKind: "aside" }));
       out.missing = pagesEnableFor({ menu: "file", fileKind: "missing", step: null });
