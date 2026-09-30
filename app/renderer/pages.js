@@ -278,7 +278,14 @@ function pagesRow(spec) {
   pagesCell("row-detail", "detail", spec.detail || "", spec.detailLink),
   h("span", { className: `row-status ${PAGES_TONES[spec.tone] || ""}` }, spec.status || ""),
   h("span", { className: "row-end" }, h("span", { className: "row-date" }, spec.date || ""), step));
-  setTipIfCut(node.querySelector(".row-status"), spec.status);
+  // A status that is a tag for longer words (P116: `spec.reason` is its code,
+  // `vocab.reason_tips` the words) shows them as its tooltip every time; any
+  // other status shows its own words only when they are cut.
+  const tips = spec.reason ? vocab.reason_tips : null;
+  if (spec.reason && !tips) throw new Error("reason_tips");
+  const tip = tips ? tips[spec.reason] || "" : "";
+  if (tip) setTip(node.querySelector(".row-status"), tip);
+  else setTipIfCut(node.querySelector(".row-status"), spec.status);
   return node;
 }
 
@@ -514,7 +521,7 @@ function pagesNeedsReview() {
     // A file's name is a link to its working copy when the firm's reply names
     // one (`open_key` and the reply's `paths`, ruling 15); with none it is text.
     const rows = pagesEach(group.files, (file) => file.name, (file) => pagesRow({
-      name: file.name, detail: file.suggestion || "", status: pagesReason(file.code), tone: "needs", date: pagesDay(file.received),
+      name: file.name, detail: file.suggestion || "", status: pagesReason(file.code), reason: file.code, tone: "needs", date: pagesDay(file.received),
       menu: "file", fileKind: "parked", nameLink: pagesFileLink(firm.paths, file.open_key),
       step: { kind: "check", ret: group.path, name: file.name, handle: file.handle },
     }));
@@ -710,7 +717,7 @@ function pagesReturnGroups(state, year) {
   const linkOf = (key) => pagesFileLink(state.paths, key);
   const parkedSpec = (entry) => {
     const first = ((triage.get(entry.handle) || {}).shortlist || [])[0];
-    return { name: entry.original_name, detail: first ? nameOf(first.identifier) : "", status: pagesReason(entry.code), tone: "needs",
+    return { name: entry.original_name, detail: first ? nameOf(first.identifier) : "", status: pagesReason(entry.code), reason: entry.code, tone: "needs",
              date: pagesDay(entry.received), menu: "file", fileKind: "parked", nameLink: linkOf(entry.shown_key), step: fileStep(entry) };
   };
   const parkedIn = (list, extra) => pagesEach(list, (one) => one.original_name, (one) => ({ ...parkedSpec(one), ...extra }));

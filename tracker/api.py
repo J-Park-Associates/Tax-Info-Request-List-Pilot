@@ -1691,6 +1691,8 @@ def _vocab() -> dict:
         "screen": SCREEN,
         # One short label per reason code, for a row's status (11.5).
         "reasons": dict(reasons.SHORT_REASONS),
+        # The words a shortened label stands for, its tooltip every time (P116).
+        "reason_tips": dict(reasons.REASON_TIPS),
         # Sort & Scan's command (decision 203): the shell watches it as a
         # pass, and the renderer sends it; neither types it.
         "pass_command": PASS_COMMAND,

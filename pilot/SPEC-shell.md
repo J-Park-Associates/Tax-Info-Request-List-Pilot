@@ -1588,7 +1588,7 @@ where it is used today (the index, the letter, the log).
 | `several-forms-unsorted` | Several Forms, Unsorted | | `issuer-not-named` | Issuer Not Named |
 | `no-room` | No Room for Name | | `no-people` | Return Has No People |
 | `could-not-file` | Could Not File | | `answer-not-counted` | Statement Not Counted |
-| `put-back-refused` | Could Not Put Back | | `opened-not-across` | Came in Email or Zip |
+| `put-back-refused` | Could Not Put Back | | `opened-not-across` | Email or Zip (P116; tooltip "Came in Email or Zip") |
 | `unfiled` | Unfiled by a Person | | `container-damaged` | Email or Zip Damaged |
 | `not-requested` | Not Requested | | `container-empty` | Nothing Attached |
 | `assigned` | Filed by a Person | | `container-limit` | Email or Zip Too Big |
@@ -1961,5 +1961,6 @@ Title Case test's name are final with S8a's review; `year` and `handle` on
 
 Also open for Jason (the fix pass, 2026-09-30): "Bad Year" (ruling 18a) is a
 working word he may change; firm speed on Windows over a streamed Drive is
-unmeasured; the status word "Came in Email or Zip" is cut in the 160px status column (a file row keeps its ellipsis). The ruling
+unmeasured; the status word "Came in Email or Zip" is cut in the 160px status column (a file row keeps its ellipsis; answered by P116: the tag
+"Email or Zip", with those words as its tooltip, `pilot/SPEC-email-zip-tag.md`). The ruling
 25 reason words were approved as ruling 29.

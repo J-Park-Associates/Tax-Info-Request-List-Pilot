@@ -8591,6 +8591,7 @@ def test_the_vocabulary_carries_the_menu_the_screen_and_the_short_words(capsys):
     assert words["screen"]["sort"]["stop"] == "Stop Sorting"
     assert words["screen"]["filters"] == {"work": "Work Waiting", "all": "All"}
     assert words["reasons"] == reasons.SHORT_REASONS
+    assert words["reason_tips"] == reasons.REASON_TIPS
     assert [stage["short"] for stage in words["reminder"]["stages"]] == [
         "Heads Up", "Checking In", "Deadline Near", "Final Notice"]
     assert [rule["short"] for rule in words["rules"]] == list(api.SAFEGUARDS)
@@ -8613,7 +8614,7 @@ def test_every_short_word_the_engine_adds_is_five_words_or_fewer():
             yield path, node
 
     for path, text in [*walk(api.MENU, "menu"), *walk(api.SCREEN, "screen"),
-                       *walk(reasons.SHORT_REASONS, "reasons")]:
+                       *walk(reasons.SHORT_REASONS, "reasons"), *walk(reasons.REASON_TIPS, "reason_tips")]:
         counted = re.sub(r"\{[a-z_]+\}", "x", text.replace("&", "")).split()
         assert 1 <= len(counted) <= 5, (path, text)
 

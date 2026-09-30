@@ -38,7 +38,7 @@ Do this, one step at a time, telling me before anything that needs my hands:
    Record PASS, FAIL or SKIPPED with one sentence each.
 4. Report the numbers I care about: how long Overview took for the largest
    Clients folder tried (budget 3 s for 750 returns; the cloud measured 6.7 s),
-   and whether 'Came in Email or Zip' is cut at 1100 px.
+   and whether the status 'Email or Zip' shows whole (no ellipsis) at 1100 px.
 5. Write `pilot/wintest/RESULTS-shell.md` from `pilot/wintest/RESULTS-TEMPLATE.md`:
    what passed, what failed with the exact steps to reproduce, screenshots'
    file names, and the installer SHA-256. Do not fix any failure. Do not commit

@@ -889,8 +889,8 @@ const isSetAside = (o) => o === "Not Applicable";
 const overrideLabel = (o, year) => `Not applicable ${year}`;
 let locked = false;
 let lastState = null;
-const tips = [];
-const setTipIfCut = (node, words) => tips.push([node.className, words]);
+const tips = []; const cutTips = [];
+const setTipIfCut = (node, words) => { tips.push([node.className, words]); cutTips.push(node.className); };
 const setTip = (node, words) => tips.push([node.className, words]);
 const opened = []; const went = [];
 const openPath = (path, how) => opened.push([path, how]);
@@ -915,7 +915,8 @@ const vocab = {
   overrides: { not_applicable: "Not Applicable" },
   review_labels: { bucket_order: ["document", "container", "not_a_document"], dismiss: "Not requested",
                    buckets: { document: "Documents", container: "Emails and zips", not_a_document: "Not documents" } },
-  reasons: { unmatched: { short: "Could not tell" }, "opened-not-across": { short: "Came in email or zip" } },
+  reasons: { unmatched: { short: "Could not tell" }, "opened-not-across": { short: "Email or zip" } },
+  reason_tips: { "opened-not-across": "Came in email or zip" },
   screen: {
     groups: { needs_you: "Needs you", waiting: "Waiting on client", received: "Received", set_aside: "Set aside" },
     steps: { check: "Check", open: "Open", draft: "Draft reminder", edit: "Edit" },
@@ -992,7 +993,28 @@ def test_a_returns_needs_you_group_holds_parked_files_then_moved_then_requests_t
       return groups.needs_you.map((one) => [one.name, one.status, one.sub || ""]);
     """, tmp_path)
     assert ran == [["b-old.pdf", "Could not tell", ""], ["a-new.pdf", "Could not tell", ""], ["moved.pdf", "Moved by hand", ""],
-                   ["Doc A", "Could not use", ""], ["zip.pdf", "Came in email or zip", "Emails and zips"]]
+                   ["Doc A", "Could not use", ""], ["zip.pdf", "Email or zip", "Emails and zips"]]
+
+
+def test_a_status_that_is_a_tag_always_carries_the_words_it_stands_for_as_its_tooltip(tmp_path):
+    """Pilot P116: "Email or Zip" is a tag for "Came in Email or Zip", so its
+    tooltip says those words every time, cut or not. Any other status is its
+    own tooltip only when it is cut, and a vocabulary with no tip table is a
+    loud failure, not a row with no tip."""
+    ran = run_pages_dom("""
+      const row = (code) => { tips.length = 0; cutTips.length = 0;
+        pagesRow({ name: "x.pdf", detail: "", status: pagesReason(code), reason: code, tone: "needs", date: "", menu: "file" });
+        return { tip: tips.filter(([cls]) => cls.startsWith("row-status")).map(([, words]) => words),
+                 cut: cutTips.filter((cls) => cls.startsWith("row-status")).length }; };
+      const tagged = row("opened-not-across"); const plain = row("unmatched");
+      const saved = vocab.reason_tips; delete vocab.reason_tips;
+      let loud = ""; try { row("unmatched"); } catch (err) { loud = err.message; }
+      vocab.reason_tips = saved;
+      return { tagged, plain, loud };
+    """, tmp_path)
+    assert ran["tagged"] == {"tip": ["Came in email or zip"], "cut": 0}
+    assert ran["plain"] == {"tip": ["Could not tell"], "cut": 1}
+    assert ran["loud"] == "reason_tips"
 
 
 def test_the_pages_groups_and_the_firms_tally_of_them_cannot_disagree(tmp_path):
