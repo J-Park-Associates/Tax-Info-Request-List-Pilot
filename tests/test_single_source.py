@@ -2667,7 +2667,7 @@ def test_the_runbooks_189_sentence_is_rewritten():
     for text in (runbook, read("README.md")):
         assert "inside the app's thirty-minute limit" not in text
         assert "thirty-minute" not in text
-    assert runbook.count("**Run now** (Sort & Scan) is\nthe scheduled pass") == 1
+    assert runbook.count("The app's **Sort** icon (Run now) is\nthe scheduled pass") == 1
 
 
 #: The renderer's lock and pass-ending functions, lifted from app.js and run
@@ -4026,3 +4026,26 @@ def test_the_safeguards_are_the_standing_rules_in_one_short_line_each():
     for short, (headline, _detail) in zip(SAFEGUARDS, STANDING_RULES, strict=True):
         assert 1 <= len(short.split()) <= 5 and short != headline
     assert [rule["short"] for rule in api.standing_rules()] == list(SAFEGUARDS)
+
+
+def test_the_four_safeguard_words_are_pinned_word_for_word_and_reach_the_app():
+    """Final review C, C10: the Safeguards dialog says these four phrases (P63,
+    approved words). Changing one of them, or the order, used to pass every
+    test. They are the package's ``SAFEGUARDS`` and the vocabulary carries them
+    unchanged."""
+    import tracker
+    import tracker.api as api
+
+    assert tracker.SAFEGUARDS == ("No AI Reads Documents", "Originals Never Changed", "Nothing Is Guessed", "Nothing Is Ever Sent")
+    assert [rule["short"] for rule in api._vocab()["rules"]] == list(tracker.SAFEGUARDS)
+
+
+def test_the_runbook_says_where_the_fallback_error_log_is_and_to_delete_it_by_hand():
+    """Final review C, C10 (ruling 22): the runbook's note gives the fallback
+    log's place, the normal error log's place, that uninstalling leaves the
+    folder, and that it can hold client names so it is deleted by hand."""
+    runbook = " ".join(read("docs/runbook.md").split())
+    note = runbook.split("**The fallback error log's place (ruling 22):**", 1)[1].split("There used to be a second one", 1)[0]
+    for part in (r"%LOCALAPPDATA%\Tax Document Tracker Pilot\error.log", "error.log.1", "tracker-errors.log",
+                 "Uninstalling the app leaves that folder behind", "can contain client names", "delete the folder by hand"):
+        assert part in note, part

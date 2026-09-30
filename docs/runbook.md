@@ -244,13 +244,18 @@ client folder no household owns, a folder named in a way the tracker does
 not accept for a household or a return — is
 **listed with one sentence saying why, and left alone**. Nothing is renamed,
 nothing is moved, nothing is deleted. The list is at the bottom of the status
-page, in the app under the engagement picker, and at the end of every command
-line pass, under **Folders the tracker leaves alone**. The app's picker and
-this list are as the app last walked the root: when it started, at its last
-**Sort & Scan**, or when it last created, rolled forward or retired a
-return, accepted a folder's name, changed a household, or had its clients
-folder set. So a folder made by hand shows there after
-the next **Sort & Scan**, or when the app is started again. Of the client tree
+page, in the app as the **Folders Skipped** notice (a count, with **Show**,
+which opens the list of folders with a two-word reason beside each name:
+Unknown Folder, Old Layout, No Household, Unowned Folder, Name Refused, No
+Return, Cannot List, Look-Alike Folder, Old Workbook or Bad Year; the long
+sentence goes to the error log), and at the end of every command line pass,
+under **Folders the tracker leaves alone**. The app's list is as the app
+last walked the root: when it started, at its last sort (the **Sort** icon
+next to the search box, or Tools, Sort Now), or when it last created,
+rolled forward or retired a return, accepted a folder's name, changed a
+household, or had its clients folder set. So a folder made by hand shows
+there after the next sort, or after **View, Refresh** (F5), or when the app
+is started again. Of the client tree
 only the first level is looked at, by name: nothing inside a client folder
 no household owns is read. A household's client folder is the one named
 exactly as the household, case aside; a folder that only *looks* like it -
@@ -282,15 +287,17 @@ and every one of its returns shows red on every pass with this sentence
 until somebody acts - *"Paused: this folder's name and its record's name
 disagree. Nothing is sorted, laid out or drafted for the household until a
 person opens it in the app and accepts the folder's name, or gives the
-folder back the name its record holds."* **Roll forward** and **Add a return**
-are not offered on its card, and the app and the command line refuse both
-with the same sentence.
+folder back the name its record holds."* **Roll Forward…** and **Add a
+Return…** (the Client menu) are greyed for it, and the app and the command
+line refuse both with the same sentence. The household is marked on Clients
+and on Overview with *Two Years Open; Sorting Paused* when the cause is two
+open years.
 
 - **When the move was meant** - a return dragged into a household of its
   own when a family separates - open the household in the app and press
   **Accept the folder's name**. It writes one dated line saying so on each
   record that claimed the old name; nothing is moved or renamed.
-- **A return moved under another year** is never accepted, and the card
+- **A return moved under another year** is never accepted, and the household's page
   shows no button for it: its year is its record's. Move the folder back
   under the year its record says; a return in the wrong year is retired and
   made again.
@@ -303,7 +310,7 @@ with the same sentence.
   fails with *"`Clients\<name>` is missing. Was the household renamed or
   moved? Give its client folder back the name `<name>`."* and nothing is
   made again under the old name - not by the pass, not by a new return
-  into the household, and not by **Roll forward**, which all refuse with that
+  into the household, and not by **Roll Forward…**, which all refuse with that
   sentence.
 - **Never copy a household folder.** Two folders that claim one household -
   a copy, or two names that read as one - stop both: *"Two folders claim
@@ -328,7 +335,8 @@ Expected Count, Allowed Extensions, Min Size KB, Required Keywords, Any
 Keywords, Date Pattern, Manual Override, Override Reason, Named, Asked and Short name. Each row shows the
 columns a preparer changes, and the routing columns (Identifier, Period, Allowed Extensions, Min
 Size KB, Required Keywords, Any Keywords, Date Pattern, Named, and a catalog row's Document) sit in
-its **Routing rules** fold — hidden, never dropped: a save carries every column. Closing the
+the editor's one **Advanced** switch — hidden until switched on, never
+dropped: a save carries every column. Closing the
 editor with changes not saved asks first. **Each request's status,
 Received Date, File Count and Validation Notes are on the Status Report**,
 not in the editor. The engagement's details — client, share link, due
@@ -393,9 +401,9 @@ editor beside it.
 **A folder from before September 2026** may still hold a `_manifest.xlsx`.
 The tracker no longer reads it: it is one of the folders left alone, listed
 with its own sentence rather than treated as an engagement, and the return is
-set up again in the app (**Add a return** on the household's card, or **New
-household** on the toolbar for a household the tracker has no record of; then
-type or paste the rows). The workbook may be deleted once that is done.
+set up again in the app (Client, **Add a Return…** with the household open,
+or File, **New Household…** for a household the tracker has no record of;
+then type or paste the rows). The workbook may be deleted once that is done.
 
 The status report is one web page with everything about that engagement on
 it: a **Summary**, a **Requests** section (the list with each row's status
@@ -571,7 +579,7 @@ changes nothing:
   "Tracker failed", and its details are saved only in a small error.log
   file in the app's own local folder, `%LOCALAPPDATA%\Tax Document Tracker
   Pilot` (it does not roam with a profile, and it is not the data folder),
-  never shown. Help, Open error log opens it.
+  never shown. Help, Open Error Log opens it.
   **The fallback error log's place (ruling 22):**
   `%LOCALAPPDATA%\Tax Document Tracker Pilot\error.log`, normally
   `C:\Users\<user>\AppData\Local\Tax Document Tracker Pilot\`, with one
@@ -591,7 +599,7 @@ command read that one value afterwards. From a terminal the same thing is
 `python -m tracker.settings <folder>`.
 
 **One machine per clients root — today's rule.** The schedule,
-**Sort & Scan**, filing, every save in the app and **Roll forward** happen
+the app's **Sort**, filing, every save in the app and **Roll Forward…** happen
 on the designated machine (the table at the top of §1) and nowhere else. The only
 thing that stops a scheduled pass and a click in the app from moving the
 same client's files at once is a lock file
@@ -689,7 +697,7 @@ earlier pass, is taken whatever the time. A household out of time stops taking
 files, records what it did, drafts nothing this pass and says on every
 return *this household's time for this pass ran out after N file(s); the
 rest wait for the next pass* — nothing to do; the next pass carries on,
-and drafts the week's letter if it is owed. **Run now** (Sort & Scan) is
+and drafts the week's letter if it is owed. The app's **Sort** icon (Run now) is
 the scheduled pass, started by the app for one household (decision 203):
 the same runner, the same fifteen minutes and the same sentence when they
 run out, and it leaves the same line in the run log and redraws the same
@@ -833,7 +841,7 @@ to a program, so the tracker cannot see a share and does not pretend to.
 Nothing about filing, scanning or drafting waits on it.
 
 Nothing is ever re-shared. A new year is a new folder under the same
-household, view-only through the same grant; **Roll forward** changes no
+household, view-only through the same grant; **Roll Forward…** changes no
 permission. A household's members list in the app is what the firm typed, not
 what Drive says: keep the two the same by hand.
 
@@ -887,12 +895,12 @@ What the tracker does and does not do:
   somebody here clicks, not on the next pass — until then that household's
   status does not count it and its drafted letter may still ask for it.
 - A feed is a **return line**, not a return: the household and the return's
-  name, the name it keeps every year. **Roll forward** carries nothing about
+  name, the name it keeps every year. **Roll Forward…** carries nothing about
   feeds, and a line the other household has retired is said on the card
   rather than quietly feeding nothing.
 - The card's *Also fed by* line is drawn from what this computer last
   read of every household: when the app last listed the clients, or a
-  Sort & Scan or a pass ran here. A feed a person added on another
+  a sort or a pass ran here. A feed a person added on another
   computer is named here after the next of those. The feeds a card
   lists as its own, and every click that files through a feed, read
   the other household's record at that moment.
@@ -1084,17 +1092,17 @@ puts them back.
 
 ### Rolling a household into the next year
 
-Rolling forward is done from the **household's card**, not from one return,
-and only once the year it rolls to has ended: the card then carries a folded
-line - from January 2028, say, **Roll forward to 2027**. Open it and it
-shows the open year's returns,
+Rolling forward is done from the **household** (Client, **Roll Forward…**
+with the household open), not from one return, and only once the year it
+rolls to has ended: from January 2028, say, it offers **Roll forward to
+2027**. It opens a dialog that shows the open year's returns,
 every one ticked, each with the people it carries and the form template it
 will be filled from, and the sentence saying what unticking does. The button
 names the year. It rolls each ticked return into that year - its list
 carried from last year, its greeting and its inbox link refilled from the
 household, its own folder made under the new year - and it can only roll the
-household whose card you are looking at. A household that is paused, or has
-two open years, shows no Roll forward line until that is dealt with.
+household you have open. A household that is paused, or has
+two open years, has **Roll Forward…** greyed until that is dealt with.
 
 A return left unticked is **retired for that year**: set inactive, and no
 longer chased. That is deliberate — it is how the household ends up with
@@ -1125,13 +1133,13 @@ Roll Forward refuses.
 household separates, the way to move one return into a household of its own
 is still to drag its folder there in Explorer. Its record goes on naming the
 old household, so the household it now sits in is **paused** (decision 188):
-Roll forward refuses it, with the pause sentence, before anything is
+Roll Forward refuses it, with the pause sentence, before anything is
 written. Open it in the app and press **Accept the folder's name**; then Roll
 forward puts next year's return in the household it now sits in, under its
 own folder name, and next year's record names that household, so the old
 household's client never sees its requests or its documents.
 
-Roll forward also refuses, before anything is written and with the pass's
+Roll Forward also refuses, before anything is written and with the pass's
 own sentence, a household that is **stopped** - its `_ledger.jsonl` gone, or
 two folders claiming it - and one whose client folder is gone when it had
 one (decision 188).
@@ -1146,6 +1154,24 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
 ```
 
 ## 2. Every morning
+
+**The app's window, in one paragraph.** A side panel on the left lists the
+four pages - **Overview**, **Needs Review**, **Reminders**, **Clients**
+(Ctrl+1 to Ctrl+4) - each with a count, and the last sort's time (or *Sort
+Failed*) at its foot. The path row above the page names where you are; a
+household or return name in it takes you there. A return or household name
+anywhere is a link that opens its page; a file name is a link that shows that
+working copy in File Explorer (an email or a zip is plain text, never
+opened). Right-click a row for its menu (Check…, Not Requested, Show in File
+Explorer, Unfile, Mark Missing, Edit Request…); the menu bar (File, Edit,
+Client, View, Tools, Help) appears when you press Alt. **Check…** and
+**Draft Reminder…** open the side sheet that older text here calls the
+review card and the Reminder card. The one **Sort** icon beside the search
+box sorts the open return's household (grey on the four pages: open a client
+first); the overnight sort is the schedule. A *Sort Failed* notice with no
+button shows on every page while the last **scheduled** sort failed, and
+clears when the next scheduled sort succeeds - the app's own Sort names one
+household and cannot clear it. **Unfile** asks for an optional reason first.
 
 1. **Read what the last pass did.** The status page every pass writes into
    the clients root (`tracker.runner.STATUS_PAGE_FILENAME`) is the one-screen
@@ -1506,7 +1532,7 @@ the firm's ask-by target. The **Filing Deadline** is the statutory date the
 return has to be filed by: a new engagement gets it from its form (weekends
 shifted forward the way the IRS shifts them) and the Due Date five days
 before that, and a holiday is yours to correct. A year rolled forward gets
-both the same way, whether it was rolled with **Roll forward** in the app
+both the same way, whether it was rolled with **Roll Forward…** in the app
 or with `python -m tracker.rollover` on the command line: the new year's
 Due Date and Filing Deadline come from the form's table, and you clear or
 change them in the editor like any other detail. Leave the Filing Deadline
@@ -2052,7 +2078,7 @@ exactly as it came.
      not help) it shows a red banner that stays, "Move the app to a shorter
      folder, for example C:\JPA Tracker; scans can't be read from here",
      and the scheduled pass puts the same sentence in its warnings once.
-6. Run one pass — **Sort & Scan** on a single engagement — and read the run
+6. Run one pass — the **Sort** icon on a single return — and read the run
    log before trusting the schedule.
 
 **Before the new machine's first pass**, turn the old machine's scheduled
@@ -2207,7 +2233,7 @@ version that holds decision 159, and again after moving machines):
 - **L2, a line from another machine is named.** On a second computer
   signed into the same Drive, make one small change to a test return
   through the app there (for example, edit its list and save). Let Drive
-  sync, then run one pass on the office machine (**Sort & Scan**). The
+  sync, then run one pass on the office machine (the **Sort** icon). The
   practice page's *Records that need a person* must name that return's
   line as *written on <the second computer>*. Acknowledge it with the
   command the page prints, and check the next pass no longer names it.
@@ -2493,7 +2519,7 @@ owner, decedent, trust or estate, fiduciary), *their name* as you would
 write it, and *the spellings a document might print it in*. The app
 proposes the obvious spellings — `John A. Park`, `John Park`, `Park, John
 A.`, `Park, John` — and **you tick the ones you want**; you can add any the
-app did not think of, one per line. **Add a return** and **New household**
+app did not think of, one per line. **Add a Return…** and **New Household…**
 ask for the first person when the return is made, and a return with nobody on it is refused. There
 is nothing to tick for a person who writes the family name first: because
 punctuation is ignored, `Park, John A.` already matches a page that prints
@@ -2544,7 +2570,7 @@ cannot confirm until you give it.
 
 A household's name and a return's name are folder names: every path under
 them carries them, in both trees, on every machine the Shared Drive syncs
-to. So one rule says what a name may be, and **New household**, **Add a
+to. So one rule says what a name may be, and **New Household…**, **Add a
 return**, a
 rolled return's new name and a feed all hold you to it with the same
 sentence — `'<what you typed>' is not a household name: <why>` (decision 188).

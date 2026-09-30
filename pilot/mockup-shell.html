@@ -366,14 +366,14 @@ const req = (name, detail, status, date = "") => ({ id: "q" + (++seq), kind: "re
 function smithReturn() {
   return {
     needs: [
-      file("scan0012.pdf", "W-2 - Acme Corp", "Could not tell", "Mar 3", { suggest: ["W-2 - Acme Corp", "1099-R - Evergreen Funds"], reasons: ["Name and year match", "Form number on page"] }),
-      file("IMG_2231.jpg", "1099-INT", "Fits two requests", "Mar 4", { suggest: ["1099-INT - Bluebird Credit Union", "1099-INT - Harbor Bank"], reasons: ["Form number on page", "Form number on page"] }),
+      file("scan0012.pdf", "W-2 - Acme Corp", "Could Not Sort", "Mar 3", { suggest: ["W-2 - Acme Corp", "1099-R - Evergreen Funds"], reasons: ["Name and year match", "Form number on page"] }),
+      file("IMG_2231.jpg", "1099-INT", "Fits Two Requests", "Mar 4", { suggest: ["1099-INT - Bluebird Credit Union", "1099-INT - Harbor Bank"], reasons: ["Form number on page", "Form number on page"] }),
       moved("northwind-2025.pdf", "1099-B - Northwind", "Mar 5"),
       req("1098 - Harbor Bank", "", "Could not use", "Mar 2"),
     ],
     waiting: [
       req("1099-B - Northwind Brokerage", "Dec 2025", "Outstanding"),
-      req("K-1 - Hillside Partners LP", "1 of 2", "Partly in"),
+      req("K-1 - Hillside Partners LP", "1 of 2", "Partly In"),
     ],
     received: [
       req("W-2 - Brightline Health", "w2-jane.pdf", "Received", "Mar 1"),
@@ -396,10 +396,10 @@ function smithReturn() {
 function genericReturn(counts, due) {
   const r = { needs: [], waiting: [], received: [], setAside: [], due, draft: null };
   const files = ["scan_0041.pdf", "IMG_4410.jpg", "statement.pdf", "k1-2025.pdf", "bank-mar.pdf"];
-  const reasons = ["Could not tell", "Fits two requests", "Scan not readable", "Names another return", "Wrong period"];
+  const reasons = ["Could Not Sort", "Fits Two Requests", "Scan Not Readable", "Names Another Return", "Wrong Period"];
   for (let i = 0; i < counts.need; i++) r.needs.push(file(files[i % 5], "", reasons[i % 5], "Mar " + (2 + i), { suggest: ["W-2", "1099-INT"], reasons: ["Name and year match"] }));
   const w = ["1099-INT - Harbor Bank", "1099-DIV - Evergreen Funds", "W-2 - Acme Corp", "1098 - Harbor Bank", "K-1 - Hillside Partners LP"];
-  for (let i = 0; i < counts.waiting; i++) r.waiting.push(req(w[i % 5], "", i % 3 === 2 ? "Partly in" : "Outstanding"));
+  for (let i = 0; i < counts.waiting; i++) r.waiting.push(req(w[i % 5], "", i % 3 === 2 ? "Partly In" : "Outstanding"));
   const g = ["W-2 - Acme Corp", "1099-INT - Bluebird Credit Union", "Property tax bill", "1098 - Harbor Bank", "Charitable letters", "1095-A - Marketplace"];
   for (let i = 0; i < counts.received; i++) r.received.push(req(g[i % 6], "received.pdf", "Received", "Feb " + (10 + i)));
   return r;

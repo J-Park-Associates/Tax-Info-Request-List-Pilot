@@ -43,6 +43,17 @@ source is [`mockup-shell.html`](mockup-shell.html) (open it in a browser).
 >   fallback-log and Title Case tests.
 > - **16** - S7 and S8a in the build table; the Windows check's added steps.
 > - **19** (new) - open for Jason.
+> - **Rulings 15-29 (2026-09-29 and 30), added by the fix pass:**
+>   **3.5, 8.4** - the failed-sort notice has no button and clears with the
+>   record (rulings 20, 28); **3.6, 6.4** - a return's or household's row
+>   wraps (rulings 21, 27); **3.9, 6.7** - an email or zip is plain text
+>   (ruling 24), several files under one request each get their own row
+>   (ruling 17); **5.2** - Unfile and Mark Missing open a small confirm box
+>   (ruling 16); **6.2, 9.2** - firm Needs Review names are links
+>   (ruling 15); **6.4, 9.2** - the paused marker (ruling 21); **6.7, 8.4** -
+>   a failed sort says "Sort Failed: {reason}" (rulings 25, 29);
+>   **11.4** - the Folders Skipped reasons (rulings 18, 18a) and the
+>   approved notice words (rulings 14, 23).
 >
 > The decision rows for these rulings are S6's to number and log; this SPEC
 > names rulings by their row in `shell-rulings.md`.
@@ -157,7 +168,7 @@ Verdict words: **Kept** (on screen, reworded to five words), **Tooltip**
 | E18 | `#btn-scan` Sort & Scan | Kept, as an icon | `#sort` at the path row's right end; F9 | tooltip "Sort now" |
 | E19 | `#btn-stop-pass` | Merged into E18 | `#sort` shows a stop icon while sorting | tooltip "Stop sorting" |
 | E20 | `#pass-progress` | Kept, one line | `#last-sort` at the side panel foot | "Sorting 3 of 40" |
-| E21 | (new) side panel sections | Kept | `#side-sections` | Overview, Needs review, Reminders, Clients |
+| E21 | (new) side panel sections | Kept | `#side-sections` | Overview, Needs Review, Reminders, Clients |
 | E22 | (new) search | Kept | `#find` in the path row; Ctrl+F | tooltip "Find a client" |
 
 ### 2.2 Notices and messages
@@ -221,7 +232,7 @@ Verdict words: **Kept** (on screen, reworded to five words), **Tooltip**
 | E62 | `#reminder-hint`; `#reminder-edited` | Hint removed; edited is one caption | sheet | "Edited by hand" |
 | E63 | `#btn-copy`, `#btn-approve`, `#btn-open-draft` | Copy and Approve kept; Open the draft file removed | sheet | "Copy", "Approve" |
 | E64 | `#moved-card` rows with paths | Needs you rows | return page | "Moved by hand" |
-| E65 | Put back / Keep here / Send to review / Mark missing (moved) | Put back and Keep here kept; Send to review removed | sheet; right-click | "Put back", "Keep here" |
+| E65 | Put back / Keep here / Send to review / Mark Missing (moved) | Put back and Keep here kept; Send to review removed | sheet; right-click | "Put back", "Keep here" |
 | E66 | `#review-card` heading, summary, `#review-mode` | Removed; rows in Needs you | - | - |
 | E67 | `#review-deck` (one at a time) | Removed (the sheet's next arrow does it) | - | - |
 | E68 | Bucket headings with descriptions | Group sub-headings only | return page | "Emails and zips", "Not documents" |
@@ -236,7 +247,7 @@ Verdict words: **Kept** (on screen, reworded to five words), **Tooltip**
 | E77 | Issuer box (K-1) | Label and button only | sheet | "Issuer name", "Add issuer" |
 | E78 | Keyword box, teach spelling, dismiss note | Folded under **More** in the sheet | sheet | "Keyword", "Spelling", "Reason" |
 | E79 | Skip for now | The sheet's next arrow | sheet | next icon, tooltip "Next" |
-| E80 | `#filed-card` rows, Unfile, Mark missing | Received rows; actions by right-click | return page | "Unfile", "Mark missing" |
+| E80 | `#filed-card` rows, Unfile, Mark Missing | Received rows; actions by right-click | return page | "Unfile", "Mark Missing" |
 | E81 | `#dismissed-card` (files set aside) | Set aside group | return page | "Not requested" |
 | E82 | `#rows-set-aside-group` | Set aside group | return page | "Set aside" |
 
@@ -319,7 +330,7 @@ Numbers are right-aligned in their column, with tabular figures.
 - Sections: 40px rows, 16px from the panel's edges (`margin-inline:
   var(--sp-2)`, `padding-inline: var(--sp-2)`), `--radius-control`. The name
   in body; the count right-aligned in caption, tabular, and shown only when
-  above zero (Needs review: files waiting; Reminders: drafts ready). Hover
+  above zero (Needs Review: files waiting; Reminders: drafts ready). Hover
   `--bg-nav-hover`, pressed `--bg-pressed`. **Selected:** `--bg-selected`
   fill, weight 600, and a 3 × 16px `--accent` pill at the row's left inside
   edge, centred (Fluent's selection indicator, not a border).
@@ -358,6 +369,16 @@ Failures and warnings stay until dismissed or fixed (decision 193
 unchanged). Notices never push the path row away: the page area scrolls,
 the bar and notices do not.
 
+**The failed-sort notice (rulings 20, 28).** While the record of the last
+scheduled sort says it failed, every page shows one notice, "Sort Failed"
+(the vocabulary's word), with **no button and no action**. It clears when
+the next scheduled overnight sort succeeds. The app's own Sort names one
+household and never writes that record, so nothing on a page could clear
+the notice, and nothing on a firm page may send a sort with no return
+chosen (ruling 28 supersedes ruling 26's greyed Retry). The side panel's
+last-sort line says the same. The notice is left as it is while a sort
+runs.
+
 ### 3.6 Rows and groups (one row style, every page; P71, P76)
 
 A **row** is 40px tall (`min-height: 40px`, `align-items: center`), a 1px
@@ -376,6 +397,15 @@ window: at 1100px the main area is 860 wide, and name (240) + 200 + 160 +
 144 + three 16px gaps + the 32px keylines on both sides is 856. The date
 stays in the row's accessible name while the step shows. A row with no
 step keeps its date on hover.
+
+**A row may wrap (rulings 21, 27).** A return's row, a household's row and
+any row with a marker let the name, detail and status wrap instead of ending
+in "…", so "{Return Name} ({Year})" always shows its year at the 1100px
+minimum and "Two Years Open; Sorting Paused" is always whole. A row grows
+only for a long name: one line stays 40px (the minimum), two lines are 48px
+and three 68px (a 20px line and 4px above and below, on the 4px grid, plus
+the 1px rule). A file's name keeps its "…" and tooltip. The link's tooltip
+stays "Navigate to Return" or "Navigate to Client".
 
 Hover `--bg-hover`; pressed `--bg-pressed`; the focused row gets the focus
 ring inset (`outline-offset: -2px`). An empty column keeps its width, so the
@@ -484,7 +514,7 @@ The last route is not remembered across launches.
 
 | Keys | Does |
 |---|---|
-| Ctrl+1 … Ctrl+4 | Overview, Needs review, Reminders, Clients |
+| Ctrl+1 … Ctrl+4 | Overview, Needs Review, Reminders, Clients |
 | Ctrl+F | focus `#find` |
 | F5 | Refresh |
 | F9 | Sort now (when enabled) |
@@ -592,6 +622,12 @@ keyboard, screen reader and dark support for free.
 
 The page sends the enable list with each popup, by the rules of 5.1 (a
 locked return greys the writing items).
+
+**Unfile and Mark Missing ask first (ruling 16).** Choosing **Unfile** opens
+a small confirm box with one field, "Reason (Optional)", and a confirm
+button; the reason is sent as the write's `note` and kept in the record as
+the old list kept it, and one press is one write. **Mark Missing** does the
+same when the wording table has a note word for it. Cancel writes nothing.
 
 ### 5.3 The page tells the menu what applies
 
@@ -717,7 +753,7 @@ renderer asks.
 
 Every page is drawn by `pages.js` into `#page` from data it is handed; it
 calls nothing itself. Words are `vocab.screen.*` (section 11.3) unless named.
-**Firm pages** (Overview, Needs review, Reminders, Clients) have no H1: the
+**Firm pages** (Overview, Needs Review, Reminders, Clients) have no H1: the
 path's one segment and the selected section name them, and a heading would
 say it a third time (P75). **Household, year and return pages** open with
 an H1, the level's full name (the path may have cut it).
@@ -773,7 +809,7 @@ Common states, used by every page below:
   under it "Next sort {time}" (caption) when the schedule has a next run.
 - **Right-click** on a row: the `return` menu.
 
-### 6.2 Needs review (firm)
+### 6.2 Needs Review (firm)
 
 - One group per return with files waiting: H2 is the return's name, a
   link reading "{Return Name} ({Year})" (3.9), its caption the household
@@ -784,7 +820,7 @@ Common states, used by every page below:
   label (11.4), `--st-attention`; date = received; step **Check** → the
   sheet (7.1), which loads that return's `state`. Right-click: `file`.
 - The sheet's next arrow walks every file on this page, group by group.
-- **Empty:** "Nothing needs review" and "Next sort {time}".
+- **Empty:** "Nothing Needs Review" and "Next sort {time}".
 - The side count is the number of files.
 
 ### 6.3 Reminders (firm)
@@ -866,7 +902,8 @@ that show their working copy in File Explorer, 3.9.)
   side is Us or Decide, in list order. Files the router set into buckets
   ("Emails and zips", "Not documents") sit under those two words as caption
   sub-headings, weight 600, inside the group.
-  - Every file name below is a link to its working copy (3.9, 5.7).
+  - Every file name below is a link to its working copy (3.9, 5.7), except
+    an email or a zip, which is plain text with no key (ruling 24).
   - Parked file: name = file name; detail = first suggestion or empty;
     status = short reason; date = received; step **Check** (7.1).
   - Moved by hand: name = file name; detail = its request; status "Moved by
@@ -880,8 +917,11 @@ that show their working copy in File Explorer, 3.9.)
   reminder** (7.2), the same as the group heading's, which shows it on hover
   or focus of the heading.
 - **Received** (`group == "received"`): request rows. Detail: the file's own
-  name (a link to that filed working copy, 3.9), or "{n} files". Status "Received" or "Accepted" (`--st-done`). Date:
-  received. No step; right-click: `received` (Unfile, Mark missing).
+  name (a link to that filed working copy, 3.9) when one file answers it, or
+  "{n} files". When several files answer one request, **each file gets its
+  own row** under the request (set in, not counted), with its own file link
+  and right-click (Show in File Explorer, Unfile) (ruling 17). Status "Received" or "Accepted" (`--st-done`). Date:
+  received. No step; right-click: `received` (Unfile, Mark Missing).
 - **Set aside** (`group == "set_aside"`): a `details` element, shut each
   time the page opens; its summary is the H2 with its count. Rows: not
   asked ("Not asked"), not applicable ("Not applicable {year}"), and files a
@@ -1004,12 +1044,24 @@ The file being read is never named (P63).
 ### 8.4 Notices
 
 One line each, the kind by fill and ink (err, warn, info tokens), at most
-one action. The list, with words from section 11: sort failed (Retry),
+one action. The list, with words from section 11: sort failed (no button,
+3.5; ruling 28),
 counts not available (Retry), in use on {host}, stuck lock from {host},
 setup needs attention, install folder name too long, drive not signed in
 and the other machine warnings, {n} folders skipped (Show), names
 shortened to fit, two years open, folder renamed (Accept), and the
 shell's own failures. The dismiss icon ends each.
+
+**A failed sort on the return's own banner (rulings 25, 29)** says "Sort
+Failed: {reason}", five words at most in all, Title Case, from the
+vocabulary (`vocab.scan.reasons`, keyed by the pass's own failure `code`),
+never a path: Another PC Sorting (a lock held elsewhere), Two Years Open
+(a paused household), Folder Not Found (the client folder or the return's
+folder is gone) and, for any other kind, Unexpected Error. The long detail
+stays in the error log. A command killed at the 30-minute cap says what it
+was: "Sort Stopped: Ran Too Long" for a sort, "Change Stopped: Ran Too Long"
+and "It May Be Partly Done." for a write, "Stopped: Ran Too Long" for a read
+(final review A, finding 5).
 
 ### 8.5 Tooltip (`tooltip.js`)
 
@@ -1475,7 +1527,7 @@ Where an existing key does the same job, the existing key is reworded
 | `figures.need` / `waiting` / `complete` | Need a Person / Waiting on Clients / Complete | Overview |
 | `work` | Work Waiting | Overview H2 |
 | `empty.overview` / `next_sort` | Nothing Is Waiting / Next Sort {time} | Overview empty |
-| `empty.needs_review` | Nothing Needs Review | Needs review empty |
+| `empty.needs_review` | Nothing Needs Review | Needs Review empty |
 | `empty.reminders` | No Drafts Ready | Reminders empty |
 | `empty.clients` | No Clients Yet | Clients empty |
 | `empty.work` | No Work Waiting | Clients, Work waiting empty |
@@ -1780,7 +1832,7 @@ names) and the vocabulary of section 11 in its key shape, so the renderer
 can be drawn before the engine part lands. `shoot.mjs` loads
 `app/renderer/index.html` in the cloud's Playwright Chromium with the stub
 injected (`addInitScript`) and saves every scenario in light and dark at
-1100 × 700 and 1400 × 900: Overview, Overview empty, Needs review,
+1100 × 700 and 1400 × 900: Overview, Overview empty, Needs Review,
 Reminders, Clients (work waiting, all), household, household with no
 returns, year, return, return with nothing received, the check sheet, the
 reminder sheet, setup, loading, sort running, sort failed, locked, a
@@ -1806,7 +1858,7 @@ start.
 
 | # | Question | Recommendation |
 |---|---|---|
-| Q1 | May the build add the read-only `firm` command and the three small fields of section 9 (files under `tracker/` beyond wording)? | **Yes.** Without it the Overview, Needs review, Reminders and Clients pages have no counts. Nothing is written; no filing or status logic changes. |
+| Q1 | May the build add the read-only `firm` command and the three small fields of section 9 (files under `tracker/` beyond wording)? | **Yes.** Without it the Overview, Needs Review, Reminders and Clients pages have no counts. Nothing is written; no filing or status logic changes. |
 | Q2 | On a firm page, no household is open, so Sort now has nothing to sort: grey the icon ("Open a client to sort"), or add a firm-wide Sort now (a new engine command that runs every household, as the schedule does)? | **Grey it in 0.2.** A firm-wide sort from the app is its own engine SPEC (locks across 500 households, a run of hours). |
 | Q3 | Help › Tester guide: the app has no copy (it is emailed). Leave it out, or ship the guide inside the app? | **Leave it out** for 0.2. |
 | Q4 | A row's second column: the brief says "from whom", but the record keeps no sender for a request. Show the detail the record has (period, "1 of 2", the file's own name, the likely request) instead? | **Yes**, the detail. |
@@ -1899,10 +1951,15 @@ None blocks a build; each is recorded rather than guessed.
 | O1 | Approve "Could Not Be Read" (`api.FIRM_UNREADABLE`), the Overview's line for a return whose record cannot be read (9.2, 11.4). | S1 added it; it is not in the approved wording table. |
 | O2 | A long name that is cut carries its full name as its tooltip (3.6, 6); a name that is a link carries "Show in File Explorer", "Navigate to Client" or "Navigate to Return" (3.9). One element has one tooltip: which wins when a link's name is cut? | Rulings 8-12 and the long-name rule meet on one element; neither says. |
 | O3 | How a keyboard user acts on a name link inside a row: the row is one `option` of a listbox and Enter runs the row's step (3.6). | Not ruled; S5 to propose (for example, the link's action as a right-click item, or Enter on the name). |
-| O4 | Does a right-click menu gain a "Show in File Explorer" item for a file row? | S8a's work in progress names the word for "the right-click item that does the same"; no ruling adds an item to 5.2. |
+| O4 | Does a right-click menu gain a "Show in File Explorer" item for a file row? | S8a's work in progress names the word for "the right-click item that does the same"; no ruling adds an item to 5.2. **Built without a ruling** (the final review found it in the menu). |
 | O5 | `triage.places.footer` ("In the Page {page} Footer") is a fragment joined into the side sheet's reason line, not a phrase of its own: Title Case it as the rule reads, or leave it lower case inside the line? | Ruling 10 speaks of phrases; this one is spliced into another. The table shows the Title Case form, flagged. |
 | O6 | Ruling 6 wrote "Tracker failed"; this SPEC draws it "Tracker Failed" (ruling 10). Confirm. | The rulings file says ruling 10 wins over the lower-case spellings of rows 8 and 13; row 6 is not named, but its words are drawn. |
 
 Pending other jobs, not Jason: S8a's key names (5.7, 9.3, 11.4) and its
 Title Case test's name are final with S8a's review; `year` and `handle` on
 `firm`'s rows (9.2) with S1 rebuild 3's review.
+
+Also open for Jason (the fix pass, 2026-09-30): "Bad Year" (ruling 18a) is a
+working word he may change; firm speed on Windows over a streamed Drive is
+unmeasured; the status word "Came in Email or Zip" is cut in the 160px status column (a file row keeps its ellipsis). The ruling
+25 reason words were approved as ruling 29.

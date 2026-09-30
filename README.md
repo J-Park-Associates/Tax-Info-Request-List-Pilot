@@ -112,12 +112,14 @@ parks for a person with the reason, and a document that came inside one is
 never filed into another household's return. The client README's list of
 what has arrived shows each attachment that filed, under its request.
 
-1. Roll a household's returns forward from last year on its card (**Roll
-   forward to `<year>`**, offered once that year has ended), or add a return
-   to it with **Add a return** - pick the tax form type, then the request
-   list; the catalog lives in `tracker/templates.py` and nowhere else. A
-   household the tracker has no record of is made with **New household**
-   on the toolbar. Its name is unique across both trees by how it reads,
+1. Roll a household's returns forward from last year with the Client menu's
+   **Roll Forward…** (offered once that year has ended), or add a return to
+   it with **Add a Return…** - pick the tax form type, then the request list;
+   the catalog lives in `tracker/templates.py` and nowhere else. A household
+   the tracker has no record of is made with File, **New Household…**. The
+   app is a side panel of four pages (Overview, Needs Review, Reminders,
+   Clients), right-click menus on rows, a menu bar behind Alt, a
+   **Folders Skipped** list for anything left alone, and one **Sort** icon. Its name is unique across both trees by how it reads,
    not how it is spelled: a name that reads as a household already in the
    list is refused and pointed at it there - add a first name or a middle
    initial, then the city, to tell two households apart (decision 188)
@@ -510,7 +512,7 @@ office.
 ## Form-type templates
 
 For a returning client the request list is last year's, rolled forward
-(**Roll forward** on the household's card, or `python -m tracker.rollover`). For a
+(Client, **Roll Forward…**, or `python -m tracker.rollover`). For a
 new client you choose the return type (1040, 1120, 1120-S, 1065, 1041, 990)
 and every form carries its own checklist in `tracker/templates.py`,
 the only place it lives. Every row of it goes on the return (decision 142);
