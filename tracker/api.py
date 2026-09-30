@@ -432,6 +432,12 @@ PROGRESS_STOPPING = "Stopping After This File\u2026"
 #: cannot start - learned from here, with pinned defaults for a first
 #: start (``app/main.js``).
 SHELL_KILLED = "Sort Stopped: Ran Too Long"
+#: A command killed at the same cap that is not a sort (final review A,
+#: finding 5): a write says part of it may have happened, a read only that it
+#: stopped. ``main.js`` tells them apart by :data:`WRITING_COMMANDS`.
+SHELL_KILLED_WRITE = "Change Stopped: Ran Too Long"
+SHELL_KILLED_WRITE_NOTE = "It May Be Partly Done."
+SHELL_KILLED_READ = "Stopped: Ran Too Long"
 SHELL_KILLED_AT = "It Was on {household}: {name}."
 SHELL_NO_REPLY = "No Reply From the Tracker"
 SHELL_COULD_NOT_START = "The Tracker Could Not Start"
@@ -1335,7 +1341,7 @@ SCREEN: dict = {
         "paused": "Two Years Open; Sorting Paused",
         "feed": "Prior Year Data Not Found",
         # The two short warnings beside a disabled Save in the request-list
-        # editor (S5 rebuild 1). PROPOSED for Jason: not yet ruled on.
+        # editor (S5 rebuild 1). Approved by Jason, ruling 23.
         "pick_request": "Pick a Request First",
         "name_requests": "Name Each Custom Request",
     },
@@ -1658,6 +1664,9 @@ def _vocab() -> dict:
         "example_root": EXAMPLE_ROOT,
         "engagement_flag": ENGAGEMENT_FLAG,
         "commands": sorted(COMMANDS),
+        # The commands that change something, so the shell can say a killed
+        # one may be partly done (SHELL_KILLED_WRITE); it types none itself.
+        "writing_commands": sorted(WRITING_COMMANDS - {PASS_COMMAND}),
         # The menu bar's words and the new screen's (SPEC-shell 11.3-11.4):
         # every label, heading and tooltip of the shell, five words or fewer.
         "menu": dict(MENU),
@@ -1675,6 +1684,8 @@ def _vocab() -> dict:
         # a failed child's stderr to: beside the tracker's database, a path
         # the shell never builds itself.
         "shell": {"not_opened": SHELL_NOT_OPENED, "killed": SHELL_KILLED,
+                  "killed_write": SHELL_KILLED_WRITE, "killed_write_note": SHELL_KILLED_WRITE_NOTE,
+                  "killed_read": SHELL_KILLED_READ,
                   "killed_at": SHELL_KILLED_AT, "no_reply": SHELL_NO_REPLY,
                   "could_not_start": SHELL_COULD_NOT_START,
                   "could_not_send": SHELL_COULD_NOT_SEND, "no_log": SHELL_NO_LOG,
@@ -2118,7 +2129,10 @@ def _shown_copy_key(entry: IndexEntry) -> str:
     in File Explorer, or ``""`` where the row has no copy. Reveal only,
     never Open (review 1, F2): it is what makes every file name a link,
     including the ones :func:`_review_copy_key` must not open (a set-aside
-    file, an email, a zip). A program has no working copy, so no key.
+    file). A program has no working copy, so no key. An email or a zip gets
+    no key either: its name is plain text (Jason, ruling 24), because one
+    more click on a revealed container would open it on the machine signed
+    in to Drive, which decision 190 never allows.
 
     A row whose copy opens (:func:`_review_copy_key`) is shown under that
     same key: the shell's allow-list is keyed by path, so a path reported
@@ -2126,6 +2140,8 @@ def _shown_copy_key(entry: IndexEntry) -> str:
     one and refuse the card's Open (review 2, F1). ``open(path, "reveal")``
     already shows a ``file``."""
     if entry.decision not in (NEEDS_REVIEW, NOT_REQUESTED) or not entry.prepared_location:
+        return ""
+    if review_bucket(entry) == BUCKET_CONTAINER:
         return ""
     return _review_copy_key(entry) or f"shown_copy {ledger_key(entry)}"
 
@@ -5317,7 +5333,7 @@ def _firm_draft(engagement: Path, due: dt.date | None, held_rows: int, today: dt
 
 #: A return the firm view could not read: a short line of the shell's, the
 #: detail going to the error log (SPEC-shell 9.2, 11.1).
-FIRM_UNREADABLE = "Could not be read"
+FIRM_UNREADABLE = "Could Not Be Read"
 
 
 def _firm_row(one, household: str, today: dt.date) -> tuple[dict, list[dict], dict[str, str]]:

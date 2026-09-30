@@ -2548,7 +2548,8 @@ const folder = given[given.indexOf("tracker.api") + 3];
 const say = (o) => process.stdout.write(JSON.stringify(o) + "\n");
 const line = (fields) => say({ progress: { v: 1, pass: 4242, at: "2026-01-02T03:04:05", ...fields } });
 if (command === "list") {
-  say({ vocab: { commands: ["list", "run-now", "scan", "state", "templates", "priors"],
+  say({ vocab: { commands: ["list", "run-now", "scan", "state", "rename", "templates", "priors"],
+                 writing_commands: ["rename"],
                  engagement_flag: "--engagement", pass_command: "run-now",
                  shell: { error_log: process.env.FAKE_LOG } } });
 } else if (command === "run-now" && folder === "/sample/return") {
@@ -2577,7 +2578,7 @@ if (command === "list") {
   say({ error: "refused", failure: { sentence: "refused", kind: "refused", seq: null, identifier: null },
         warnings: [] });
   process.exit(1);
-} else if (command === "state") {
+} else if (command === "state" || command === "rename") {
   line({ event: "started", limit_seconds: 1, households: 1 });
   line({ event: "household", household: "Sample Household", n: 1, of: 1 });
   line({ event: "file", step: "scan", name: "A01", household: "Sample Household" });
@@ -2756,9 +2757,26 @@ def test_the_shells_kill_follows_the_limit_the_pass_reported_and_says_where_it_w
     reply = killed["reply"]
     assert reply["killed"] is True and reply["failure"]["kind"] == "failed"
     assert reply["error"] == reply["failure"]["sentence"]
-    assert reply["error"] == (api.SHELL_KILLED.format(minutes=1) + " "
+    assert reply["error"] == (api.SHELL_KILLED_READ + " "
                               + api.SHELL_KILLED_AT.format(household="Sample Household", name="A01"))
     assert reply["progress"]["name"] == "A01"
+
+
+def test_a_command_killed_at_the_cap_says_whether_it_was_a_sort_a_change_or_a_read(tmp_path):
+    """Final review A, finding 5: only a sort is said to be a stopped sort; a
+    change that was killed says part of it may have happened; a read only that
+    it stopped. The shell learns which commands change things from the API."""
+    import tracker.api as api
+
+    ran = _run_the_shell(tmp_path, [["list"], ["rename", "--engagement", "/sample/return"],
+                                    ["state", "--engagement", "/sample/return"]])
+    at = " " + api.SHELL_KILLED_AT.format(household="Sample Household", name="A01")
+    assert ran["out"][1]["reply"]["error"] == f"{api.SHELL_KILLED_WRITE} {api.SHELL_KILLED_WRITE_NOTE}{at}"
+    assert ran["out"][2]["reply"]["error"] == f"{api.SHELL_KILLED_READ}{at}"
+    assert "rename" in api._vocab()["writing_commands"] and api.PASS_COMMAND not in api._vocab()["writing_commands"]
+    assert "state" not in api._vocab()["writing_commands"]
+    for said in (api.SHELL_KILLED_WRITE, api.SHELL_KILLED_WRITE_NOTE, api.SHELL_KILLED_READ):
+        assert len(said.split()) <= 5, said
 
 
 def test_the_shell_never_puts_stderr_on_screen_and_appends_it_to_the_error_log(tmp_path):
@@ -2916,6 +2934,9 @@ def test_the_shells_default_words_are_the_apis_word_for_word():
 
     assert default("killed") == api.SHELL_KILLED
     assert default("killedAt") == api.SHELL_KILLED_AT
+    assert default("killedWrite") == api.SHELL_KILLED_WRITE
+    assert default("killedWriteNote") == api.SHELL_KILLED_WRITE_NOTE
+    assert default("killedRead") == api.SHELL_KILLED_READ
     assert default("noReply") == api.SHELL_NO_REPLY
     assert default("couldNotStart") == api.SHELL_COULD_NOT_START
     assert default("couldNotSend") == api.SHELL_COULD_NOT_SEND

@@ -1940,13 +1940,19 @@ function noticeOf(done) {
 // computer runs the schedule, the page offers to move it here (the
 // review's S5) - the packaged app's only way to, in the API's words with
 // that computer's name filled in - and moves it only on yes.
+// The question before the schedule moves, with its warning under it (SPEC
+// 11.2, P77): a risky act keeps its warning, said in the API's words.
+function moveScheduleQuestion(host) {
+  return `${vocab.schedule.move_confirm}\n\n${vocab.schedule.move_warning}`.split("{host}").join(host);
+}
+
 async function repairSchedule() {
   if (!confirm(vocab.schedule.repair_confirm)) return;
   try {
     let result = await call(["install-schedule"], {});
     outcome(result.sentence, result.installed ? "ok" : "warn", { toasted: true });
     renderAfterInstall(noticeOf(result.after_install));
-    if (result.host && confirm(vocab.schedule.move_confirm.split("{host}").join(result.host))) {
+    if (result.host && confirm(moveScheduleQuestion(result.host))) {
       result = await call(["move-schedule-here"], {});
       outcome(result.moved ? `${result.sentence} ${result.schedule_sentence}` : result.sentence,
              result.installed ? "ok" : "warn", { toasted: true });

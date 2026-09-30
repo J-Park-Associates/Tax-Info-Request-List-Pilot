@@ -2537,6 +2537,7 @@ def test_move_schedule_here_moves_the_schedule_from_the_packaged_app(capsys, dem
     assert [command[1] for command in calls] == ["/create"]
     js = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(encoding="utf-8")
     assert 'call(["move-schedule-here"]' in js and "vocab.schedule.move_confirm" in js
+    assert "confirm(moveScheduleQuestion(result.host))" in js
     assert "front-desk" not in api.SCHEDULE_MOVE_CONFIRM and "{host}" in api.SCHEDULE_MOVE_CONFIRM
 
 
@@ -8423,7 +8424,7 @@ def test_firm_says_an_unreadable_record_as_its_own_row(capsys, demo_root, monkey
     code, firm = run(capsys, "firm")
     assert code == 0, firm
     rows = {one["path"]: one for one in firm["returns"]}
-    assert rows[str(mixed)]["problem"] == api.FIRM_UNREADABLE == "Could not be read"
+    assert rows[str(mixed)]["problem"] == api.FIRM_UNREADABLE == "Could Not Be Read"
     assert "record" not in api.FIRM_UNREADABLE.lower() and len(api.FIRM_UNREADABLE.split()) <= 5
     assert set(rows[str(mixed)]["counts"].values()) == {0}
     assert rows[str(quiet)]["problem"] == ""

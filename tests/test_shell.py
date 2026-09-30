@@ -1376,11 +1376,11 @@ def test_a_household_with_an_unreadable_return_is_never_complete_on_the_clients_
     ran = run_pages_dom("""
       households = [{ name: "Alpha Family", path: "a" }, { name: "Bravo Family", path: "b" }, { name: "Charlie Family", path: "c" }];
       const make = (household, counts, problem = "") => ({ path: household, household, counts: { needs_you: 0, waiting: 0, received: 0, set_aside: 0, ...counts }, problem });
-      const firm = { returns: [make("Alpha Family", {}, "Could not be read"), make("Bravo Family", { needs_you: 2 }), make("Charlie Family", {})] };
+      const firm = { returns: [make("Alpha Family", {}, "Could Not Be Read"), make("Bravo Family", { needs_you: 2 }), make("Charlie Family", {})] };
       const say = (all) => pagesClientSpecs(firm, all).map((one) => [one.name, one.status, one.tone]);
       return { work: say(false), all: say(true) };
     """, tmp_path)
-    assert ran["work"] == [["Alpha Family", "Could not be read", "needs"], ["Bravo Family", "2 need you", "needs"]]
+    assert ran["work"] == [["Alpha Family", "Could Not Be Read", "needs"], ["Bravo Family", "2 need you", "needs"]]
     assert ran["all"][2] == ["Charlie Family", "Complete", "done"], "only a household with nothing wrong says Complete"
 
 
@@ -1450,7 +1450,7 @@ def test_no_page_draws_a_path_as_text_or_as_a_tooltip(tmp_path):
       const counts = (n, w) => ({ needs_you: n, waiting: w, received: 1, set_aside: 0 });
       shellFirmData = { returns: [
         { path: known, household: "Smith Family", counts: counts(2, 1), files: 1, oldest: "2026-03-03", due: "2026-04-15", draft: { ready: true, stage: 1, held: 0, drafted: "2026-03-03" }, problem: "" },
-        { path: gone, household: "Gone Family", counts: counts(0, 0), files: 0, oldest: null, due: null, draft: { ready: true, stage: 1, held: 2, drafted: null }, problem: "Could not be read" } ],
+        { path: gone, household: "Gone Family", counts: counts(0, 0), files: 0, oldest: null, due: null, draft: { ready: true, stage: 1, held: 2, drafted: null }, problem: "Could Not Be Read" } ],
         files: [{ return: known, name: "scan0012.pdf", code: "unmatched", received: "2026-03-03", suggestion: "W-2 - Acme" },
                 { return: gone, name: "IMG_1.jpg", code: "unmatched", received: "2026-03-04", suggestion: "" }],
         totals: { need: 2, waiting: 0, complete: 0, files: 2, drafts: 2 }, next_sort: "18:00" };
@@ -2471,3 +2471,14 @@ def test_every_link_key_the_engine_sends_names_a_real_file_main_js_would_reveal(
         assert api.PATH_KINDS[key.split(" ")[0]] in ("file", "reveal"), key
     assert [word for word, kind in api.PATH_KINDS.items() if kind == "file" and word.endswith("_copy")] == ["review_copy"]
     assert not any(one["paused"] for one in firm["returns"])
+
+
+def test_the_move_schedule_question_carries_its_warning(tmp_path):
+    """Final review A finding 1 (SPEC 11.2, P77): the confirm before the
+    schedule is moved here says the question and, under it, the warning, each
+    with the other computer's name filled in - never the bare question."""
+    setup = """
+      const vocab = { schedule: { move_confirm: "Move Schedule Here From {host}?", move_warning: "Only If {host} Is Retired" } };
+    """
+    ran = run_shell(["moveScheduleQuestion"], setup, 'return moveScheduleQuestion("front-desk");', tmp_path, "app.js")
+    assert ran == "Move Schedule Here From front-desk?\n\nOnly If front-desk Is Retired"

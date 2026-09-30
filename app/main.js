@@ -91,6 +91,10 @@ let notOpened = "Not Opened; It Has Changed";
 // The shell's own sentences (decision 193): learned from vocab.shell, with
 // these defaults - word for word tracker.api's SHELL_* - for a first start.
 let killed = "Sort Stopped: Ran Too Long";
+let killedWrite = "Change Stopped: Ran Too Long";
+let killedWriteNote = "It May Be Partly Done.";
+let killedRead = "Stopped: Ran Too Long";
+let writingCommands = new Set();   // vocab.writing_commands, once seen
 let killedAt = "It Was on {household}: {name}.";
 let noReply = "No Reply From the Tracker";
 let couldNotStart = "The Tracker Could Not Start";
@@ -217,6 +221,10 @@ function learn(result) {
   if (vocab && vocab.shell && typeof vocab.shell.not_opened === "string") notOpened = vocab.shell.not_opened;
   const said = vocab && vocab.shell;
   if (said && typeof said.killed === "string") killed = said.killed;
+  if (said && typeof said.killed_write === "string") killedWrite = said.killed_write;
+  if (said && typeof said.killed_write_note === "string") killedWriteNote = said.killed_write_note;
+  if (said && typeof said.killed_read === "string") killedRead = said.killed_read;
+  if (vocab && Array.isArray(vocab.writing_commands)) writingCommands = new Set(vocab.writing_commands);
   if (said && typeof said.killed_at === "string") killedAt = said.killed_at;
   if (said && typeof said.no_reply === "string") noReply = said.no_reply;
   if (said && typeof said.could_not_start === "string") couldNotStart = said.could_not_start;
@@ -312,7 +320,12 @@ function spawnTracker(args, payload, onProgress, onEnded) {
       proc.kill();
       const minutes = Math.max(1, Math.round(limitMs / 60000));
       const where = last && last.name ? ` ${fill(killedAt, last)}` : "";
-      const failure = shellFailure(fill(killed, { minutes }) + where, "failed", { progress: last, killed: true });
+      // A sort says a sort stopped; a change says it may be partly done; any
+      // other command only that it stopped (final review A, finding 5).
+      const said = isPass ? fill(killed, { minutes })
+        : writingCommands.has(args[0]) ? `${fill(killedWrite, { minutes })} ${killedWriteNote}`
+        : fill(killedRead, { minutes });
+      const failure = shellFailure(said + where, "failed", { progress: last, killed: true });
       if (running) killedReply = failure;   // said when it closes, as its ending
       else settle(failure);
     };
