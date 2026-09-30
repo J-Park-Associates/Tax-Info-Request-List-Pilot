@@ -12,6 +12,11 @@ the client's folder for the year, renamed working copies sit side by side
 in one folder on the firm's side, each named by its request, and the return's own record holds
 every rename, every move and each request's validated status.
 
+**Looking after the program and not a programmer?** Start with
+[docs/maintenance-guide.md](docs/maintenance-guide.md): the safety walls,
+the schedule, Google Drive, building the installer and testing, in plain
+words.
+
 A client folder is a **household**, with one folder per **tax year** inside
 it and one folder per **return** inside that (decision 125). Two trees sit
 under the clients root: `Clients`, the only one a client is ever shared,

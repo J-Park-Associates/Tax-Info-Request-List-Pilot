@@ -93,9 +93,12 @@ UNMERGED_ADVICE = "Resolve these and `git add` them first"
 #: ``.yml``/``.yaml`` earns its place because CI config is part of how the repo
 #: works, not decoration around it — and an agent reading the map should know a
 #: workflow exists. Only tracked files are mapped, so gitignored runtime files
-#: (settings.json, drafts, logs) never appear.
+#: (settings.json, drafts, logs) never appear. ``.spec`` (the PyInstaller
+#: recipe) and ``.iss`` (the Inno Setup recipe) earn theirs for the same
+#: reason: they are where the engine becomes an executable and the package an
+#: installer, transition points a maintainer must be able to find.
 SOURCE_SUFFIXES = {".py", ".js", ".html", ".css", ".md", ".bat",
-                   ".json", ".txt", ".svg", ".yml", ".yaml"}
+                   ".json", ".txt", ".svg", ".yml", ".yaml", ".spec", ".iss"}
 
 #: The map's own output. Writing the map changes these files, so mapping them
 #: would leave the map permanently stale against itself. The curated file is

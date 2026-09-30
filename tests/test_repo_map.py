@@ -543,6 +543,8 @@ def test_node_builtins_are_not_dependencies_of_the_shell(repo):
     ("requirements.txt", ("doc", "docs")),
     ("Build App.bat", ("script", "root")),
     ("pyproject.toml", ("file", "root")),
+    ("api_entry.spec", ("file", "root")),
+    ("pilot/installer/setup.iss", ("file", "root")),
 ])
 def test_type_comes_from_the_suffix_and_layer_from_the_directory(path, expected):
     """A lockfile under app/ is a file, not an untested module."""

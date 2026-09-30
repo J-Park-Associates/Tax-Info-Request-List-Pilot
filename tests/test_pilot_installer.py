@@ -65,16 +65,37 @@ def test_uninstalling_removes_the_schedule_it_ran():
     assert "RunOnceId" in run
 
 
+def _api_name() -> str:
+    return json.loads((REPO / "app" / "package.json").read_text(encoding="utf-8"))["config"]["apiName"]
+
+
 def test_uninstalling_never_deletes_client_or_tracker_data():
     text = _setup()
     sections = _sections(text)
     assert "UninstallDelete" not in sections
-    assert "InstallDelete" not in sections
     # The comments may say what uninstall leaves alone; the script itself never names it.
-    code = "\n".join(sections.values())
+    # The upgrade's one deletion is held to its two code folders by the test below.
+    code = "\n".join(body for name, body in sections.items() if name != "InstallDelete")
     for name in ("tax-document-tracker-pilot", UPSTREAM_DATA_HOME_NAME, "settings.json"):
         assert name not in code, name
     assert not re.search(r"\bdel(ete)?\b", code.replace("/Delete /TN", ""), re.IGNORECASE)
+
+
+def test_an_upgrade_clears_only_the_old_program_code():
+    """P115: the old version's code goes before the new is copied, and nothing
+    else - not the folder above it, where the graphics card pack and
+    settings.json sit, and never a data or client folder."""
+    entries = _sections(_setup())["InstallDelete"].splitlines()
+    assert entries == [
+        'Type: filesandordirs; Name: "{app}\\resources\\app"',
+        f'Type: filesandordirs; Name: "{{app}}\\resources\\{_api_name()}\\_internal"',
+    ]
+
+
+def test_an_upgrade_asks_to_close_the_running_app_and_restarts_nothing():
+    setup = _sections(_setup())["Setup"]
+    assert re.search(r"^CloseApplications=yes$", setup, re.MULTILINE)
+    assert re.search(r"^RestartApplications=no$", setup, re.MULTILINE)
 
 
 def test_the_installer_needs_a_version_to_compile():

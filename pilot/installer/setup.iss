@@ -31,6 +31,24 @@ UninstallDisplayName=Tax Document Tracker Pilot {#AppVersion}
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 WizardStyle=modern
+; An upgrade while the app or a scheduled pass is running: Windows is asked
+; which programs hold the files being replaced, and the person is asked to
+; let the installer close them (P115). A pass closed half way is safe - every
+; write goes through a temp that the next pass sweeps. Nothing is restarted:
+; the schedule starts the next pass itself.
+CloseApplications=yes
+RestartApplications=no
+
+; An upgrade removes the old version's program code before copying the new
+; (P115, narrowing P12): only the Electron shell's code folder and the frozen
+; API's library folder, which the [Files] copy below replaces whole. Never the
+; folder above them: the optional graphics card pack (gpu-runtime) sits beside
+; tracker-api.exe and must survive an upgrade, and settings.json sits beside
+; the app's own executable. Client files and the tracker's data folder are
+; never under {app} at all.
+[InstallDelete]
+Type: filesandordirs; Name: "{app}\resources\app"
+Type: filesandordirs; Name: "{app}\resources\tracker-api\_internal"
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a &desktop icon"; GroupDescription: "Additional icons:"; Flags: unchecked
