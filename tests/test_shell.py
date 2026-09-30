@@ -22,10 +22,13 @@ import json
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
+import tracker.api as api
+from tests.test_api import demo_root, run, sample_engagement, scan  # noqa: F401  (fixtures and helpers)
 from tests.test_pilot_ui import (
     GRID_PROPS,
     GRID_TOKEN,
@@ -1150,7 +1153,7 @@ def run_notices(probe: str, tmp_path: Path, vocab_notices: str = "{}"):
     lifted = "\n".join([js_function(name, "app.js") for name in NOTICE_FUNCTIONS] + [js_function("shortNotice", "shell.js"),
                                                                                        js_function("pagesHouseholdNotices", "pages.js")])
     harness = (REPO / "pilot" / "harness" / "stub.js").read_text(encoding="utf-8")
-    mirror = (REPO / "pilot" / "harness" / "vocab-mirror.json").read_text(encoding="utf-8")
+    mirror = json.dumps(api._vocab())
     script = tmp_path / "notices_probe.js"
     script.write_text(f"""
 const vm = require("vm");
@@ -1622,8 +1625,7 @@ def test_no_toast_types_a_sentence_and_the_words_it_asks_for_are_five_title_case
     for name in ("app.js", "pages.js", "shell.js", "sheet.js"):
         text = stripped_js(name)
         assert not re.search(r"\btoast\(\s*[\"'`]", text), f"{name} types a toast"
-    mirror = json.loads((REPO / "pilot" / "harness" / "vocab-mirror.json").read_text(encoding="utf-8"))
-    notices = mirror["screen"]["notices"]
+    notices = api._vocab()["screen"]["notices"]
     keys = set(re.findall(r"toastWord\(\"(\w+)\"\)", stripped_js("app.js")))
     assert keys == {"pick_request", "name_requests"}, keys
     for key in keys | {"no_log"}:
@@ -2294,3 +2296,113 @@ def test_a_household_paused_for_two_open_years_is_marked_and_listed_from_the_fir
     assert ran["rows"] == [["Alpha Family", words, "household", "a"]] and ran["none"] == []
     assert ran["cell"][-1] == "row-mark is-attention" and ran["plainCell"] == 1
     assert "[...pagesPausedRows(firm), ...pagesWorkRows(firm.returns)]" in js_function("pagesOverview", "pages.js"), "Overview leads with the paused households"
+
+
+# ── the harness speaks the engine (S6b) ───────────────────────────────────
+# The harness stub is the renderer's stand-in for the tracker. Before the join
+# it drew on a snapshot of the vocabulary and on shapes written by hand; from
+# S6b it reads the API's own vocabulary and is held to the API's own replies.
+
+
+def _stub_replies(scenario: str) -> dict:
+    """The stub's ``list``, ``firm`` and first three ``state`` replies, run in node
+    on the live vocabulary, as the harness serves it."""
+    if NODE is None:
+        pytest.skip("node is not on PATH (CI installs it)")
+    stub = (REPO / "pilot" / "harness" / "stub.js").read_text(encoding="utf-8")
+    script = f"""
+const vm = require("vm");
+const window = {{ __VOCAB__: {json.dumps(api._vocab())} }};
+vm.runInContext({json.dumps(stub)}, vm.createContext({{ window, location: {{ search: "?scenario={scenario}" }}, URLSearchParams, setTimeout, console, Date, Intl }}));
+(async () => {{
+  const list = await window.tracker.call(["list"]);
+  const firm = await window.tracker.call(["firm"]);
+  const states = [];
+  for (const one of list.engagements.slice(0, 3)) states.push(await window.tracker.call(["state", "--engagement", one.path]));
+  console.log(JSON.stringify({{ list, firm, states }}));
+}})();
+"""
+    done = subprocess.run([NODE, "-e", script], capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+def _stub_code() -> str:
+    """The stub with its comments cut, so a word inside one is not read as code."""
+    text = (REPO / "pilot" / "harness" / "stub.js").read_text(encoding="utf-8")
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    return re.sub(r"(?m)^\s*//.*$", "", text)
+
+
+def test_the_harness_stub_speaks_the_apis_vocabulary(tmp_path):
+    """SPEC 14.1 and 14.4. No snapshot: ``make_vocab.py`` dumps
+    ``api._vocab()`` of this tree, the stub hands it on unchanged, and every
+    word the stub reads by name is a key the API has."""
+    assert not (REPO / "pilot" / "harness" / "vocab-mirror.json").exists()
+    live = json.loads(json.dumps(api._vocab()))
+    dumped = tmp_path / "vocab.json"
+    done = subprocess.run([sys.executable, str(REPO / "pilot" / "harness" / "make_vocab.py"), str(dumped)],
+                          capture_output=True, text=True, encoding="utf-8", timeout=60, check=False, cwd=REPO)
+    assert done.returncode == 0, done.stderr
+    assert json.loads(dumped.read_text(encoding="utf-8")) == live
+    read = set(re.findall(r"\bvocab((?:\.[A-Za-z_]\w*)+)", _stub_code()))
+    assert {".screen.moved", ".review_labels.dismiss", ".decisions.filed", ".shell.not_opened"} <= read
+    for path in sorted(read):
+        here = live
+        for part in path[1:].split("."):
+            assert isinstance(here, dict) and part in here, f"the stub reads vocab{path}, which the API lacks"
+            here = here[part]
+    assert _stub_replies("normal")["list"]["vocab"] == live
+
+
+def _keys(rows: list) -> set[str]:
+    return {key for row in rows for key in row}
+
+
+def test_the_harness_stub_replies_have_the_shape_of_the_engines(capsys, demo_root, tmp_path):
+    """The wire check (S6b): the real ``list``, ``firm`` and ``state`` of a
+    small scratch clients tree, and the stub's, name the same keys at every
+    level the renderer reads. The stub may add what the engine sends only
+    sometimes; it may not miss what it always sends nor invent a key."""
+    engagement = sample_engagement(capsys, demo_root, tmp_path)
+    assert scan(capsys, engagement)[0] == 0
+    (demo_root / "Clients" / "Stray Folder").mkdir()
+    real = {"list": run(capsys, "list")[1], "firm": run(capsys, "firm")[1],
+            "state": run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))[1]}
+    stub = _stub_replies("notices")
+
+    # list
+    assert set(stub["list"]) == set(real["list"]) - {"warnings"}
+    assert _keys(stub["list"]["engagements"]) == _keys(real["list"]["engagements"])
+    assert _keys(stub["list"]["households"]) == _keys(real["list"]["households"])
+    optional = {"form", "people", "rollable"}      # only while a roll is offered
+    real_returns = _keys(real["list"]["households"][0]["returns"])
+    assert real_returns <= _keys(stub["list"]["households"][0]["returns"]) <= real_returns | optional
+    assert _keys(stub["list"]["misfits"]) == _keys(real["list"]["misfits"]) == {"path", "sentence", "code", "where"}
+    codes = {row["code"] for row in stub["list"]["misfits"]} | {row["code"] for row in real["list"]["misfits"]}
+    # The stub sends one code the vocabulary has no word for, on purpose: the page draws the name alone.
+    assert codes - set(api._vocab()["screen"]["misfits"]["reasons"]) == {"unwritten_code"}, codes
+    assert {row["code"] for row in real["list"]["misfits"]} <= set(api._vocab()["screen"]["misfits"]["reasons"])
+    assert set(stub["list"]["paths"]) == set(real["list"]["paths"])
+
+    # firm: paused on every return, an open key on every file, one paths table
+    assert set(stub["firm"]) == set(real["firm"]) - {"warnings"}
+    assert _keys(stub["firm"]["returns"]) == _keys(real["firm"]["returns"])
+    assert all(isinstance(one["paused"], bool) for one in stub["firm"]["returns"] + real["firm"]["returns"])
+    assert _keys(stub["firm"]["files"]) == _keys(real["firm"]["files"])
+    assert set(stub["firm"]["totals"]) == set(real["firm"]["totals"])
+    for reply in (stub["firm"], real["firm"]):
+        opened = {one["open_key"] for one in reply["files"]} - {""}
+        assert opened and opened <= set(reply["paths"]), "every file's open key is a key of paths"
+        assert {key.split(" ")[0] for key in reply["paths"]} <= set(api.PATH_KINDS)
+
+    # state: the stub is a subset of the engine's, level by level
+    for reply in stub["states"]:
+        assert set(reply) <= set(real["state"])
+        for level in ("index", "review", "items"):
+            assert _keys(reply[level]) <= _keys(real["state"][level]), level
+        assert {key.split(" ")[0] for key in reply["paths"]} <= set(api.PATH_KINDS)
+    moved = [row for reply in stub["states"] for row in reply["moved"]]
+    assert moved and set(moved[0]) - {"named"} == {
+        "original_name", "pbc_location", "handle", "seq", "home", "now", "in_request", "gone",
+        "open_key", "identifier", "group"}

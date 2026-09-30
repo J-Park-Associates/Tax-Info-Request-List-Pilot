@@ -15,11 +15,9 @@
   const params = new URLSearchParams(location.search);
   const scenario = params.get("scenario") || "normal";
 
-  // The words are the joined engine's: S1's vocabulary blocks (`screen`, `menu`,
-  // the short reasons and stage names, the rules' short lines) and S8a's Title
-  // Case and link words, dumped from branch claude/shell-s8a-links (86569b0)
-  // into vocab-mirror.json and served as window.__VOCAB__ (make_vocab.py). The
-  // stub adds nothing to them; S6 joins the branches and drops the snapshot.
+  // The words are the engine's own: tracker.api._vocab() of this tree, dumped
+  // by make_vocab.py and served as window.__VOCAB__ (no snapshot since S6b).
+  // The stub adds nothing to them.
   const vocab = Object.assign({}, window.__VOCAB__);
   const SHORT = Object.fromEntries(Object.entries(vocab.reasons).map(([code, one]) => [code, typeof one === "object" ? one.short : one]));
   // The words a made-up row is authored in: the vocabulary's own (a short reason,
@@ -195,7 +193,7 @@
       if (one.kind === "moved") {
         const copy = keyOf("moved_copy", handle);
         keys[copy] = copyPath(path, "Prepared/Elsewhere", one.name);
-        movedList.push({ original_name: one.name, handle, seq: 1, home: "", now: "", in_request: "", gone: false, identifier: "", open_key: copy });
+        movedList.push({ original_name: one.name, handle, seq: 1, home: "", now: "", in_request: "", gone: false, identifier: "", open_key: copy, pbc_location: "", group: "needs_you" });
         if (one.inRequest) movedList[movedList.length - 1].named = one.inRequest;
         index.push({ handle, original_name: one.name, received: dayOf(one.date), decision: vocab.decisions.file_moved, group: "needs_you", identifier: "", code: "file-moved", answered: [], open_keys: [], seq: 1 });
         return;
@@ -284,9 +282,9 @@
         path: e.path, household: owner.name, label: e.name, year: e.year, counts: groupCounts(body), files: filesOf(body).length,
         oldest: days[0] || null, due: dueOf(body.due) || null,
         draft: body.draft || { ready: false, stage: 0, held: 0, drafted: null }, problem: "",
-        // The engine (S6, tracker/api.py firm) adds `paused: true` on each entry of a household paused for two open
-        // years; absent otherwise. The scenario "paused" pauses Okafor Family, which has no other work.
-        ...(scenario === "paused" && owner.name === "Okafor Family" ? { paused: true } : {}),
+        // The engine (tracker/api.py firm, ruling 21) sends `paused` on every entry: true for each return of a household
+        // paused for two open years. The scenario "paused" pauses Okafor Family, which has no other work.
+        paused: scenario === "paused" && owner.name === "Okafor Family",
       };
     });
     // Each file's key is that of the copy `state` names for it; the reply's
@@ -331,7 +329,9 @@
     reader_warning: LONG.reader,
     machine_warnings: LONG.machine,
     after_install: { failed: ["The daily job could not be registered."], findings: ["A household is malformed."], wait: LONG.findingsWait },
-    misfits: [{ path: "x", where: "Clients/Old Files", sentence: "Not a household.", code: "not_a_tree" }, { path: "y", where: "Clients/Scans", sentence: "Not a household.", code: "no_return" }, { path: "z", where: "Clients/Misc", sentence: "Not a household.", code: "not_a_year" }],
+    misfits: [{ path: "x", where: "Clients/Old Files", sentence: "Not a household.", code: "not_a_tree" }, { path: "y", where: "Clients/Scans", sentence: "Not a household.", code: "no_return" }, { path: "z", where: "Clients/Misc", sentence: "Not a household.", code: "bad_name" },
+      // The one code the vocabulary has no word for: the page must draw the name alone (the engine never sends one; the registry test sees to that).
+      { path: "w", where: "Clients/Loose", sentence: "Not a household.", code: "unwritten_code" }],
   } : {};
 
   // ── the writes the side sheet makes: they change the made-up return ───
@@ -367,7 +367,7 @@
       // The made-up return keeps its rows; the reply is the engine's shape, and the payload (with its note) is what the harness checks.
       const one = stateOf(path).index.find((row) => row.handle === payload.original);
       if (!one) return null;
-      return { state: stateOf(path), unfiled: { original_name: one.original_name, decision: vocab.decisions.unfiled, left_filed: "", scan_note: "" } };
+      return { state: stateOf(path), unfiled: { original_name: one.original_name, decision: vocab.decisions.needs_review, reason: "", prepared_location: "", moved_working_copy: false, left_filed: "", scan_note: "" } };
     }
     if (command === "approve") {
       approved[path] = { date: "2026-03-07", stage: payload.stage };
@@ -382,7 +382,7 @@
       calls.push(args[0]);
       const command = args[0];
       if (command === "list") {
-        const base = { engagements: rootSet ? engagements : [], households: rootSet ? households : [], misfits: loud.misfits || [], root: rootSet ? ROOT : "", needs_root: !rootSet, vocab,
+        const base = { engagements: rootSet ? engagements : [], households: rootSet ? households.map(({ rollYear, ...sent }) => sent) : [], misfits: loud.misfits || [], root: rootSet ? ROOT : "", needs_root: !rootSet, vocab,
           reader_warning: loud.reader_warning || "", last_pass: lastPass, after_install: loud.after_install || null, machine_warnings: loud.machine_warnings || [] };
         if (rootSet) base.paths = { clients_root: ROOT, status: `${ROOT}/status.html` };
         return wait(20, base);

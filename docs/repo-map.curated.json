@@ -484,7 +484,7 @@
       "notes": "SHELL_FILES and TITLE_FREE name the files a claim covers; S2 adds the menu half, S4 the pages' node tests and S5 the sheet's. The contrast table and the token values are the SPEC's section 10, copied as data."
     },
     "pilot/harness/make_vocab.py": {
-      "role": "Gives the screenshot harness the API's vocabulary as JSON: the snapshot of the joined engine's (vocab-mirror.json) until S6 joins the branches, this tree's own with HARNESS_LIVE_VOCAB=1.",
+      "role": "Gives the screenshot harness the API's vocabulary as JSON: tracker.api._vocab() of this tree, dumped live on every run (S6b removed the vocab-mirror.json snapshot).",
       "notes": "Part of pilot/harness/, which is never loaded by the app (a test holds it): a stand-in tracker with made-up names in the joined engine's shapes (firm with year, label, open_key and paths; state with the copies' keys and the reminder card; the sheet's writes), a double of app.js, and Playwright scripts that shoot every scenario, light and dark, at 1100x700 and 1400x900 (shoot.mjs) and drive the shell, the sheet, the links, the right-click menus and the dialogs (interact.mjs)."
     },
     "app/renderer/pages.js": {

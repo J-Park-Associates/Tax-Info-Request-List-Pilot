@@ -127,7 +127,7 @@ const crumbs = (page) => page.evaluate(() => [...document.querySelectorAll("#cru
     steps.push(await page.evaluate(() => document.querySelector("#pilot-tour p").textContent));
     await page.keyboard.press("ArrowRight");
   }
-  check("the tour says one short line per step", steps.every((s) => s.split(" ").length <= 5) && steps[0] === "Sorts what your clients send", steps);
+  check("the tour says one short line per step", steps.every((s) => s.split(" ").length <= 5) && steps[0] === "Sorts What Your Clients Send", steps);
   check("the tour ends", await page.evaluate(() => !document.getElementById("pilot-tour")), null);
   await page.hover("#sort");
   await page.waitForTimeout(700);
@@ -597,9 +597,9 @@ const settle = (page) => page.waitForTimeout(250);
   await page.click("#about-close");
   await page.click("#notices .notice-act[data-act=action]");
   const names = await page.evaluate(() => [...document.querySelectorAll("#misfits-list .misfit-name")].map((n) => n.textContent));
-  check("Show lists the folders skipped by their own names, never a path", names.join("|") === "Old Files|Scans|Misc", names);
+  check("Show lists the folders skipped by their own names, never a path", names.join("|") === "Old Files|Scans|Misc|Loose", names);
   const whys = await page.evaluate(() => [...document.querySelectorAll("#misfits-list li")].map((n) => n.textContent));
-  check("each skipped folder has the vocabulary's reason beside its name; a code without a word draws the name alone", whys.join("|") === "Old FilesUnknown Folder|ScansNo Return|Misc" && (await page.locator("#misfits-list .misfit-why").count()) === 2, whys);
+  check("each skipped folder has the vocabulary's reason beside its name; a code without a word draws the name alone", whys.join("|") === "Old FilesUnknown Folder|ScansNo Return|MiscName Refused|Loose" && (await page.locator("#misfits-list .misfit-why").count()) === 3, whys);
   await page.keyboard.press("Escape");
   await context.close();
 }
@@ -645,7 +645,7 @@ const settle = (page) => page.waitForTimeout(250);
   const icon = await page.evaluate(() => { const r = document.querySelector("#find-wrap .icon").getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
   await page.mouse.move(icon.x, icon.y);
   await page.waitForTimeout(700);
-  check("hover on the search icon shows the tip", (await tipShown()) && (await page.textContent("#tip")) === "Find a client", await page.textContent("#tip"));
+  check("hover on the search icon shows the tip", (await tipShown()) && (await page.textContent("#tip")) === "Find a Client", await page.textContent("#tip"));
   await page.mouse.move(0, 0);
   await page.waitForTimeout(100);
   check("moving away hides it", !(await tipShown()), null);
