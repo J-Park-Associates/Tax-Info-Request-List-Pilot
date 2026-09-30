@@ -28,7 +28,7 @@ from pathlib import Path
 import pytest
 
 import tracker.api as api
-from tests.test_api import demo_root, run, sample_engagement, scan  # noqa: F401  (fixtures and helpers)
+from tests.test_api import run, sample_engagement, scan
 from tests.test_pilot_ui import (
     GRID_PROPS,
     GRID_TOKEN,
@@ -2355,18 +2355,30 @@ def test_the_harness_stub_speaks_the_apis_vocabulary(tmp_path):
     assert _stub_replies("normal")["list"]["vocab"] == live
 
 
+@pytest.fixture
+def scratch_root(short_root, tmp_path, monkeypatch):
+    """A small clients root recorded the way the app records it (the fixture
+    ``test_api`` uses, spelled here so this file does not import a fixture)."""
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root, set_firm
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    set_clients_root(short_root)
+    set_firm("J Park & Associates, CPA")
+    return short_root
+
+
 def _keys(rows: list) -> set[str]:
     return {key for row in rows for key in row}
 
 
-def test_the_harness_stub_replies_have_the_shape_of_the_engines(capsys, demo_root, tmp_path):
+def test_the_harness_stub_replies_have_the_shape_of_the_engines(capsys, scratch_root, tmp_path):
     """The wire check (S6b): the real ``list``, ``firm`` and ``state`` of a
     small scratch clients tree, and the stub's, name the same keys at every
     level the renderer reads. The stub may add what the engine sends only
     sometimes; it may not miss what it always sends nor invent a key."""
-    engagement = sample_engagement(capsys, demo_root, tmp_path)
+    engagement = sample_engagement(capsys, scratch_root, tmp_path)
     assert scan(capsys, engagement)[0] == 0
-    (demo_root / "Clients" / "Stray Folder").mkdir()
+    (scratch_root / "Clients" / "Stray Folder").mkdir()
     real = {"list": run(capsys, "list")[1], "firm": run(capsys, "firm")[1],
             "state": run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))[1]}
     stub = _stub_replies("notices")
@@ -2434,3 +2446,28 @@ def test_every_word_index_html_types_is_in_title_case():
     assert "Retry" in texts and "Add a Custom Request" in texts
     bad = [(t, title_case(t)) for t in texts if len(t.split()) > 1 and title_case(t) != t]
     assert not bad, bad
+
+
+def test_every_link_key_the_engine_sends_names_a_real_file_main_js_would_reveal(capsys, scratch_root, tmp_path):
+    """The wire, engine to window (S6b, ruling 15): each key a row carries
+    (``shown_key``, ``open_keys[0]``, a firm file's ``open_key``) is a key of
+    the reply's ``paths``; its word is one the API names a kind for
+    (``PATH_KINDS``, which ``main.js`` learns from ``list``); the path is a
+    file that is really there, so ``open(path, "reveal")`` is answered; and
+    only a review copy is a plain-open kind."""
+    engagement = sample_engagement(capsys, scratch_root, tmp_path)
+    assert scan(capsys, engagement)[0] == 0
+    state = run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))[1]
+    firm = run(capsys, "firm")[1]
+    listed = run(capsys, "list")[1]
+    assert listed["vocab"]["path_kinds"] == api.PATH_KINDS
+    keys = [(state, row["shown_key"]) for row in state["index"] if row.get("shown_key")]
+    keys += [(state, row["open_keys"][0]) for row in state["index"] if row.get("open_keys")]
+    keys += [(firm, row["open_key"]) for row in firm["files"] if row["open_key"]]
+    assert {key.split(" ")[0] for _reply, key in keys} == {"review_copy", "shown_copy", "filed_copy"}
+    for reply, key in keys:
+        assert key in reply["paths"], key
+        assert Path(reply["paths"][key]).is_file(), key
+        assert api.PATH_KINDS[key.split(" ")[0]] in ("file", "reveal"), key
+    assert [word for word, kind in api.PATH_KINDS.items() if kind == "file" and word.endswith("_copy")] == ["review_copy"]
+    assert not any(one["paused"] for one in firm["returns"])

@@ -483,7 +483,7 @@ function pagesOverview() {
   return [figures, ...pagesGroup({ heading: words.work, first: true, blocks: [{ rows }] })];
 }
 
-// ── Needs Review (SPEC 6.2) ───────────────────────────────────────────
+// ── Needs review (SPEC 6.2) ───────────────────────────────────────────
 function pagesReviewGroups(firm) {
   const byReturn = new Map();
   for (const file of firm.files) {

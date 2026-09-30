@@ -1688,6 +1688,11 @@ Static (read the files):
   the terms or the tour are open (`test_pilot`'s
   `test_the_terms_cannot_be_escaped` pins the terms' one).
 - `test_the_harness_is_never_loaded_by_the_app`.
+- **Joined (S6b):** `test_the_harness_stub_speaks_the_apis_vocabulary`,
+  `test_the_harness_stub_replies_have_the_shape_of_the_engines`,
+  `test_every_link_key_the_engine_sends_names_a_real_file_main_js_would_reveal`,
+  `test_the_three_info_dialogs_close_with_the_apis_close_word` and
+  `test_every_word_index_html_types_is_in_title_case`.
 - **Tooltips (rulings 2, 5, 7):**
   `test_the_vendored_floating_ui_is_the_pinned_bytes_and_nothing_else`
   (the SHA-256 of every vendored file, no extra file, the README names the
@@ -1781,6 +1786,16 @@ returns, year, return, return with nothing received, the check sheet, the
 reminder sheet, setup, loading, sort running, sort failed, locked, a
 tooltip by mouse and by keyboard, contrast theme (`forced-colors`
 emulated). It is never loaded by the app, and pytest does not run it.
+
+**Joined (S6b).** The harness speaks the engine, not a copy of it: the
+vocabulary is `tracker.api._vocab()` of the tree, dumped on every run (no
+snapshot, no switch), and the stub's `list`, `firm` and `state` replies are
+held to the real ones of a scratch clients tree by
+`test_the_harness_stub_speaks_the_apis_vocabulary` and
+`test_the_harness_stub_replies_have_the_shape_of_the_engines`
+(`tests/test_shell.py`). The one code the stub sends that the vocabulary has
+no word for (`unwritten_code`, a folder skipped) is deliberate: the page
+draws the name alone.
 
 ## 15. Questions for Jason (before the build)
 
