@@ -84,14 +84,19 @@ not rerun. The run also builds the installer; note its SHA-256.
 12. **A failed scheduled sort.** The banner comes only from the overnight
     (scheduled) sort, never from the app's own Sort, so make the scheduled
     sort fail once, on purpose:
-    1. Close the app. In File Explorer rename the sample `Clients` folder to
-       `Clients-away`.
+    1. Close the app. In File Explorer rename **the folder you chose as the
+       Clients folder in step 2** (`%USERPROFILE%\PilotTest\Clients`, the
+       one that holds the two folders `Clients` and `J Park & Associates`) to
+       `Clients-away`. Rename that one and not the `Clients` folder inside it:
+       the scheduled sort is refused for certain when the chosen folder is
+       gone, but a household that was never sorted just gets its inside
+       folder made again and the sort succeeds, which would show no banner.
     2. Open the Start menu, type **Task Scheduler**, open it, click **Task
        Scheduler Library**, right-click the task named **Tax Document Tracker
        Pilot** and choose **Run**. Wait half a minute and press F5: **Last
        Run Result** is not `0x0`. (If there is no such task, open the app once
-       and choose **Repair the Schedule** in its menu, then come back.)
-    3. Rename the folder back to `Clients`, then open the app.
+       and choose **Repair Schedule** in the Tools menu, then come back.)
+    3. Rename `Clients-away` back to `Clients`, then open the app.
     What you must see, on every page (Overview, Needs Review, Reminders,
     Clients): a notice that says "Sort Failed" with **no Retry button and no
     other button** (only the small dismiss cross), and the side panel's
@@ -101,11 +106,15 @@ not rerun. The run also builds the installer; note its SHA-256.
     out and nothing on a firm page can start a sort. To clear it: in Task
     Scheduler run the task again (the folder is back), wait half a minute,
     press F5 in the app: the notice and the side panel's failed line are gone.
-13. **A return's failed-sort banner.** With a household's client folder
-    renamed (in `Clients`, rename that household's folder, keep the name in
-    your notes), press Sort on one of its returns. The banner reads "Sort
-    Failed: Folder Not Found" (five words at most, no folder path). Rename it
-    back.
+13. **A return's failed-sort banner.** Use a household the app or the
+    overnight sort has already sorted once (its client folder then exists;
+    a household never sorted just gets it made again). In the `Clients`
+    folder that sits inside the folder from step 2, rename that household's
+    folder (keep the name in your notes), open one of its returns and press
+    Sort. The banner's first line reads "Sort Failed: Folder Not Found"
+    (five words at most, no folder path). If the household has other returns,
+    each gets one more line, "{Return}: Sort Failed: Folder Not Found", and
+    never a folder path or a long sentence. Rename the folder back.
 14. **Paused marker.** In a household make two years open: Add a Return for
     the year before. Clients shows a marker beside the household reading
     "Two Years Open; Sorting Paused" **in full, on wrapped lines if needed,
