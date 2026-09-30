@@ -2585,3 +2585,55 @@ def test_a_return_or_household_row_wraps_so_its_year_and_its_paused_words_are_ne
     pages = read("pages.js")
     assert 'const wraps = Boolean(spec.mark || (spec.nameLink && spec.nameLink.kind !== "file"));' in pages
     assert '" row-wrap"' in pages
+
+
+def test_a_needs_review_group_that_cannot_be_built_is_named_by_its_return_and_never_its_folder(tmp_path):
+    """Final review B, finding 5 (P63): if a group's link words are missing
+    (an app and engine that disagree), the notice that names it uses the
+    return's label, not the folder path; the notices are scanned for a path as
+    the pages are."""
+    pages_text = read("pages.js")
+    functions = re.findall(r"^function (\w+)\(", pages_text, flags=re.M) + ["h", "icon", "screenWords", "folderName"]
+    ran = run_pages_dom(r"""
+      const known = "C:\\Clients\\J Park & Associates\\Smith Family\\2025\\1040 - John & Jane Smith";
+      shellReturn = (path) => (path === known ? { return_name: "1040 - John & Jane Smith", household: "Smith Family", year: 2025 } : null);
+      households = [{ name: "Smith Family", path: "C:\\Clients\\J Park & Associates\\Smith Family" }];
+      shellFirmData = { returns: [{ path: known, household: "Smith Family", year: 2025, counts: { needs_you: 1, waiting: 0, received: 0, set_aside: 0 }, files: 1, oldest: "2026-03-03", due: null,
+                                    draft: { ready: false, stage: 0, held: 0, drafted: null }, problem: "" }],
+        files: [{ return: known, year: 2025, name: "scan0012.pdf", code: "unmatched", received: "2026-03-03", suggestion: "", open_key: "" }],
+        paths: {}, totals: { need: 1, waiting: 0, complete: 0, files: 1, drafts: 0 }, next_sort: "" };
+      delete vocab.screen.navigate_return;            // the group's heading link cannot be built
+      pagesBroken = []; pagesUid = 0;
+      const nodes = pagesNeedsReview();
+      notices.length = 0;
+
+      pagesReportBroken();
+      return { drew: nodes.length, broken: pagesBroken.map((one) => one.name), notices: notices.flatMap(([, list]) => list.map((one) => one[1])) };
+    """, tmp_path, setup="""
+      let shellFirmData = null; const shellFirm = () => ({ data: shellFirmData });
+      Object.assign(vocab.screen, { navigate_client: "Navigate to Client", empty: { needs_review: "Nothing needs review", next_sort: "Next sort {time}" } });
+      vocab.shell = { page_error: "The App Hit an Error" }; vocab.notices = { about: "{label}: {sentence}" };
+      vocab.reasons = { unmatched: "No Match" };
+    """, functions=functions)
+    assert ran["broken"] == ["1040 - John & Jane Smith"], ran
+    assert ran["notices"] == ["1040 - John & Jane Smith: The App Hit an Error"]
+    assert not [text for text in ran["notices"] if re.search(r"[\\/]", text)], "a notice named a folder path"
+
+
+def test_a_link_differs_from_plain_text_by_more_than_its_colour():
+    """Final review B, finding 6 (WCAG 1.4.1): the link colour is 1.4 to 1.5
+    against the text in both themes, so a link is always underlined, and the
+    status words on a row ("3 Waiting") - close to the link colour - are not,
+    and do not look pressable. The contrast themes keep the underline and use
+    the system's link colour. The rendered claim is interact.mjs's."""
+    first = {}
+    for _media, selector, body in blocks(read("shell.css")):
+        for part in selector.split(","):
+            first.setdefault(" ".join(part.split()), dict(declarations(body)))
+    link = first[".row-link"]
+    assert link["text-decoration"] == "underline" and link["cursor"] == "pointer"
+    for status in (".is-waiting", ".is-attention", ".is-done", ".is-plain", ".row-status"):
+        assert "text-decoration" not in first[status] and "cursor" not in first[status], status
+    for theme in ("light", "dark"):
+        assert ratio("--link", "--text", theme) < 3, "the colour alone would not do: the underline is the cue"
+    assert ".row-link { color: LinkText; }" in read("shell.css")

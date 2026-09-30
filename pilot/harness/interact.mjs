@@ -742,6 +742,23 @@ const settle = (page) => page.waitForTimeout(250);
   await context.close();
 }
 
+{ // final review B finding 6: a link is underlined in light, dark and the contrast theme; a status such as "n Waiting" is not
+  for (const [name, opts, scheme] of [["light", {}, "light"], ["dark", {}, "dark"], ["contrast", { forcedColors: "active" }, "light"]]) {
+    const { context, page } = await open("", opts);
+    await page.emulateMedia({ colorScheme: scheme });
+    const seen = await page.evaluate(() => {
+      const line = (node) => getComputedStyle(node).textDecorationLine;
+      const links = [...document.querySelectorAll("#page .row-link")];
+      const waiting = [...document.querySelectorAll("#page .row-status.is-waiting")];
+      return { links: links.length, plainLinks: links.filter((l) => !line(l).includes("underline")).length, waiting: waiting.length,
+               underlinedWaiting: waiting.filter((w) => line(w).includes("underline") || getComputedStyle(w).cursor === "pointer").length };
+    });
+    check(`links are underlined in the ${name} theme`, seen.links > 3 && seen.plainLinks === 0, seen);
+    check(`a status such as n Waiting does not look like a link in the ${name} theme`, seen.waiting > 0 && seen.underlinedWaiting === 0, seen);
+    await context.close();
+  }
+}
+
 await browser.close();
 server.close();
 if (failures.length) {

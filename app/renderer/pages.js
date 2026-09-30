@@ -203,8 +203,10 @@ function pagesCounts(counts, problem) {
 // never blanks for one bad row, and nothing is guessed to fill its place.
 function pagesLabel(one) {
   try {
-    const name = typeof one === "string" ? one : one && (one.short_name || one.document || one.original_name || one.name || one.identifier || one.path);
-    return String(name || "");
+    // Never a path: a row or group with no name of its own is left unnamed
+    // rather than named by its folder (P63).
+    const name = typeof one === "string" ? one : one && (one.short_name || one.document || one.original_name || one.name || one.identifier);
+    return /[\\/]/.test(String(name || "")) ? "" : String(name || "");
   } catch (err) {
     return "";
   }
@@ -484,7 +486,8 @@ function pagesOverview() {
   const totals = firm.totals;
   const figures = h("div", { className: "figures" }, ...[[totals.need, words.figures.need], [totals.waiting, words.figures.waiting], [totals.complete, words.figures.complete]]
     .map(([n, label]) => h("div", { className: "figure" }, h("b", { className: "figure-number" }, String(n)), h("span", { className: "figure-label" }, label))));
-  const rows = pagesEach([...pagesPausedRows(firm), ...pagesWorkRows(firm.returns)], (spec) => spec.name, pagesRow);  if (!rows.length) return [figures, pagesEmpty(words.empty.overview, pagesNextSort(firm))];
+  const rows = pagesEach([...pagesPausedRows(firm), ...pagesWorkRows(firm.returns)], (spec) => spec.name, pagesRow);
+  if (!rows.length) return [figures, pagesEmpty(words.empty.overview, pagesNextSort(firm))];
   return [figures, ...pagesGroup({ heading: words.work, first: true, blocks: [{ rows }] })];
 }
 
@@ -506,7 +509,7 @@ function pagesNeedsReview() {
   const firm = pagesFirm();
   const groups = pagesReviewGroups(firm);
   if (!groups.length) return [pagesEmpty(words.empty.needs_review, pagesNextSort(firm))];
-  return groups.flatMap((group, i) => pagesSafe(group.path, () => {
+  return groups.flatMap((group, i) => pagesSafe(pagesReturnName(group.path), () => {
     const owner = pagesFirmReturn(group.path);
     // A file's name is a link to its working copy when the firm's reply names
     // one (`open_key` and the reply's `paths`, ruling 15); with none it is text.

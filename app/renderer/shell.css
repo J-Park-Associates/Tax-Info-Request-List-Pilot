@@ -406,13 +406,22 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   overflow-wrap: break-word;
   min-width: 0;
 }
-/* The three kinds of link (SPEC 3.9): a name that acts, in the link colour. */
-.row-link { color: var(--link); cursor: pointer; }
+/* The three kinds of link (SPEC 3.9): a name that acts. Its colour is close to
+   the plain text's (1.4:1), so colour alone would not tell a link from a name
+   (WCAG 1.4.1, final review B finding 6): a link is always underlined, and
+   nothing else on a row is - not a status such as "3 Waiting". */
+.row-link {
+  color: var(--link);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: var(--sp-1);
+}
 /* Beside a household's name: the marker for two open years (ruling 21). */
 .row-mark { margin-left: var(--sp-2); font-weight: var(--fw-regular); }
 /* One of several files that answer a request: its own row, set in from the request's (ruling 17). */
 .row-child .row-name { padding-left: var(--sp-4); font-weight: var(--fw-regular); }
-.row-link:hover { text-decoration: underline; }
+.row-link:hover { text-decoration-thickness: 2px; }
 .row-detail {
   color: var(--text-secondary);
   overflow: hidden;
