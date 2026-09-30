@@ -8204,7 +8204,9 @@ def test_firm_reply_names_its_fields_as_the_spec_does_and_carries_year_and_handl
     mixed, _quiet, _retired = _a_practice_for_the_firm_view(capsys, demo_root)
     _code, firm = run(capsys, "firm")
     [file] = firm["files"]
-    assert set(file) == {"return", "year", "name", "handle", "code", "received", "suggestion"}
+    assert set(file) == {"return", "year", "name", "handle", "code", "received", "suggestion", "open_key"}
+    assert file["open_key"] == "", "a program has no working copy, so no key (ruling 15)"
+    assert firm["paths"] == {}
     assert file["return"] == str(mixed) and file["year"] == 2025
     [parked] = [one for one in payload_of_state(capsys, mixed)["index"] if one["original_name"] == "setup.exe"]
     assert file["handle"] == parked["handle"] != ""
@@ -8213,6 +8215,96 @@ def test_firm_reply_names_its_fields_as_the_spec_does_and_carries_year_and_handl
         assert one["year"] == 2025 and set(one) == {
             "path", "household", "label", "year", "counts", "files", "oldest", "due", "draft", "problem"}
     assert set(firm["totals"]) == {"need", "waiting", "complete", "files", "drafts"}
+
+
+def _firm_of_a_scanned_pile(capsys, demo_root, tmp_path):
+    engagement = sample_engagement(capsys, demo_root, tmp_path)
+    code, payload = scan(capsys, engagement)
+    assert code == 0, payload
+    _code, firm = run(capsys, "firm")
+    return engagement, payload["state"], firm
+
+
+def test_a_parked_files_open_key_is_the_states_shown_key_and_names_its_copy(capsys, demo_root, tmp_path):
+    """Ruling 15: each firm file carries the key ``state`` gives the same row
+    (one file, one key, one kind), and ``firm.paths`` names its working copy."""
+    engagement, state, firm = _firm_of_a_scanned_pile(capsys, demo_root, tmp_path)
+    assert firm["files"]
+    keyed = 0
+    for one in firm["files"]:
+        [row] = [e for e in state["index"] if e["handle"] == one["handle"]]
+        assert one["open_key"] == row["shown_key"], one["name"]
+        if one["open_key"]:
+            keyed += 1
+            assert Path(firm["paths"][one["open_key"]]) == engagement / row["prepared_location"]
+            assert Path(firm["paths"][one["open_key"]]).is_file()
+            assert not [s for s in _walk_strings(one["open_key"]) if str(engagement) in s]
+    assert keyed and set(firm["paths"]) == {one["open_key"] for one in firm["files"] if one["open_key"]}
+
+
+def test_a_moved_files_open_key_is_where_it_is_now_and_empty_when_it_is_nowhere(capsys, demo_root, tmp_path):
+    engagement, _filed, target, state = a_moved_row(
+        capsys, demo_root, tmp_path, lambda eng, home: home.with_name("A01 - the 1098 I renamed.pdf"))
+    _code, firm = run(capsys, "firm")
+    [one] = firm["files"]
+    assert one["open_key"] == state["moved"][0]["open_key"]
+    assert one["open_key"].startswith("moved_copy ")
+    assert Path(firm["paths"][one["open_key"]]) == target
+    target.unlink()
+    code, _payload = scan(capsys, engagement)
+    assert code == 0
+    _code, firm = run(capsys, "firm")
+    [one] = firm["files"]
+    assert one["open_key"] == "" and firm["paths"] == {}
+
+
+def test_the_firms_paths_name_each_path_under_one_key_and_one_kind(capsys, demo_root, tmp_path):
+    _engagement, _state, firm = _firm_of_a_scanned_pile(capsys, demo_root, tmp_path)
+    kinds_of = {}
+    for key, path in firm["paths"].items():
+        assert api.PATH_KINDS[key.split(" ", 1)[0]] in ("file", "reveal"), key
+        kinds_of.setdefault(path, set()).add(api.PATH_KINDS[key.split(" ", 1)[0]])
+    assert all(len(kinds) == 1 for kinds in kinds_of.values()), kinds_of
+    assert len(firm["paths"]) == len(kinds_of), "one key per path"
+
+
+def test_a_real_firm_replys_paths_reveal_a_firm_file_and_refuse_an_unreported_one(
+        capsys, demo_root, tmp_path):
+    """Ruling 15 end to end: the firm reply's ``paths`` through the real
+    ``app/main.js`` under node (which learns a reply's top-level ``paths``)."""
+    from tests.test_shell import _run
+
+    engagement, _state, firm = _firm_of_a_scanned_pile(capsys, demo_root, tmp_path)
+    [one] = [f for f in firm["files"] if f["open_key"].startswith("shown_copy ")][:1]
+    path = firm["paths"][one["open_key"]]
+    stranger = str(engagement / "Prepared" / "never reported.pdf")
+    steps = [{"tracker": ["list"]}, {"open": [path, "reveal"]}, {"open": [path]},
+             {"open": [stranger, "reveal"]}]
+    ran = _run(tmp_path, steps, pathKinds=api.PATH_KINDS, paths=firm["paths"])
+    assert ran["revealed"] == [path] and ran["opened"] == []
+    assert ran["answers"][0] == "" and ran["answers"][1] != "" and ran["answers"][2] != ""
+
+
+def test_two_returns_spelling_one_key_for_different_paths_get_a_deterministic_suffix(capsys, demo_root):
+    from tests.conftest import seed_index
+    from tracker.filer import IndexEntry
+
+    homes = []
+    for name in ("First", "Second"):
+        folder = chased_engagement(capsys, demo_root, name=name)
+        copy = folder / "Prepared" / "a note.docx"
+        copy.parent.mkdir(parents=True, exist_ok=True)
+        copy.write_bytes(b"x")
+        seed_index(folder, [IndexEntry(
+            received="2026-02-01", original_name="a note.docx", size_kb=0.1, digest="7" * 64,
+            identifier="", prepared_location="Prepared/a note.docx", pbc_location="pbc/a note.docx",
+            decision=NEEDS_REVIEW, reason=reasons.NOT_A_DOCUMENT.format(), code=reasons.NOT_A_DOCUMENT.code)])
+        homes.append(copy)
+    _code, firm = run(capsys, "firm")
+    keys = sorted(f["open_key"] for f in firm["files"])
+    assert len(keys) == 2 and keys[1] == keys[0] + " #2"
+    assert {Path(firm["paths"][k]) for k in keys} == set(homes)
+    assert api._firm_key(firm["paths"], keys[0], firm["paths"][keys[0]]) == keys[0], "same path, same key"
 
 
 def test_list_state_and_firm_agree_on_a_returns_year(capsys, demo_root):

@@ -5293,7 +5293,7 @@ def _firm_draft(engagement: Path, due: dt.date | None, held_rows: int, today: dt
 FIRM_UNREADABLE = "Could not be read"
 
 
-def _firm_row(one, household: str, today: dt.date) -> tuple[dict, list[dict]]:
+def _firm_row(one, household: str, today: dt.date) -> tuple[dict, list[dict], dict[str, str]]:
     """One return's line of the firm view and its parked files: the counts by
     group (:func:`item_group`), the files a person must look at, the record's
     due date and the draft's state. The readers are the ones ``state`` uses,
@@ -5301,7 +5301,15 @@ def _firm_row(one, household: str, today: dt.date) -> tuple[dict, list[dict]]:
     lock is taken, no document is read). A record that cannot be read is its
     own row with ``problem`` set and zero counts, said in :data:`FIRM_UNREADABLE`
     with the detail in the error log (decision 189): it never fails the reply,
-    and the total counts it as needing a person, never as complete."""
+    and the total counts it as needing a person, never as complete.
+
+    The third value is the return's own ``paths`` for its files (ruling 15):
+    each file's ``open_key`` (``""`` where the row has no copy) names, in it,
+    the working copy a click shows in File Explorer. The keys are the ones
+    ``state`` builds (:func:`_shown_copy_key`, :func:`_moved_copy_key`), so one
+    file has one key and one kind everywhere. They and the paths come from the
+    record's ``prepared_location`` / ``moved_to`` alone: no path is stat-ed,
+    no document is read."""
     row = {"path": str(one.path), "household": household, "label": one.label,
            "year": one.tax_year if one.tax_year is not None else year_of(one.path),
            "counts": dict.fromkeys(GROUPS, 0), "files": 0, "oldest": None, "due": None,
@@ -5309,7 +5317,7 @@ def _firm_row(one, household: str, today: dt.date) -> tuple[dict, list[dict]]:
     if one.problem:
         errors.keep("api: firm", one.problem, name=one.path.name)
         row["problem"] = FIRM_UNREADABLE
-        return row, []
+        return row, [], {}
     try:
         items = load_manifest(one.path, follow=False)
         entries = read_index(one.path, follow=False)
@@ -5323,7 +5331,7 @@ def _firm_row(one, household: str, today: dt.date) -> tuple[dict, list[dict]]:
         errors.keep("api: firm", exc, name=one.path.name)
         log.warning("A return could not be read for the firm view (%s)", errors.error_class(exc))
         row["problem"] = FIRM_UNREADABLE
-        return row, []
+        return row, [], {}
     for item in items:
         row["counts"][item_group(item, placed)] += 1
     # The files count in their groups too (SPEC-shell 9.1): parked and moved
@@ -5336,13 +5344,22 @@ def _firm_row(one, household: str, today: dt.date) -> tuple[dict, list[dict]]:
         if group != GROUP_RECEIVED:
             row["counts"][group] += 1
     by_name = {item.identifier: item for item in items}
+    paths: dict[str, str] = {}
+
+    def shown(key: str, where: str) -> str:
+        if key:
+            paths[key] = str(locate(one.path, where))
+        return key
+
     files = [{"return": row["path"], "year": row["year"], "name": t.entry.original_name,
               "handle": handle_of(t.entry), "code": t.entry.code, "received": t.entry.received,
-              "suggestion": by_name[t.shortlist[0].identifier].label if t.shortlist else ""}
+              "suggestion": by_name[t.shortlist[0].identifier].label if t.shortlist else "",
+              "open_key": shown(_shown_copy_key(t.entry), t.entry.prepared_location)}
              for t in parked]
     files.extend({"return": row["path"], "year": row["year"], "name": entry.original_name,
                   "handle": handle_of(entry), "code": reasons.FILE_MOVED.code,
-                  "received": entry.received, "suggestion": ""}
+                  "received": entry.received, "suggestion": "",
+                  "open_key": shown(_moved_copy_key(entry), moved_to(entry))}
                  for entry in entries
                  if file_group(entry) == GROUP_NEEDS_YOU and entry.decision == FILE_MOVED)
     waiting_days = sorted(f["received"] for f in files)
@@ -5350,7 +5367,21 @@ def _firm_row(one, household: str, today: dt.date) -> tuple[dict, list[dict]]:
     row["oldest"] = waiting_days[0] if waiting_days else None
     row["due"] = info.due.isoformat() if info.due else None
     row["draft"] = draft
-    return row, files
+    return row, files, paths
+
+
+def _firm_key(paths: dict[str, str], key: str, path: str) -> str:
+    """``key`` as the firm's one ``paths`` map spells it: a row's key is only
+    its own return's (a preserved original's place in that record), so two
+    returns can spell one key for different paths. The later one is
+    suffixed `` #2``, `` #3``... (the kind is still the first word), and the
+    same key for the same path is the same key."""
+    spelled, n = key, 1
+    while paths.get(spelled, path) != path:
+        n += 1
+        spelled = f"{key} #{n}"
+    paths[spelled] = path
+    return spelled
 
 
 def _cmd_firm(argv: list[str]) -> dict:
@@ -5368,7 +5399,9 @@ def _cmd_firm(argv: list[str]) -> dict:
         raise ManifestError(str(exc)) from None
     reply = {"returns": [], "files": [], "totals": {"need": 0, "waiting": 0, "complete": 0,
                                                      "files": 0, "drafts": 0},
-             "next_sort": _next_sort()}
+             # Each parked or moved file's copy, for its name's link
+             # (ruling 15): the state's ``paths`` shape and kinds, reveal only.
+             "paths": {}, "next_sort": _next_sort()}
     if root is None or not root.is_dir():
         return reply
     try:
@@ -5385,7 +5418,11 @@ def _cmd_firm(argv: list[str]) -> dict:
     for one in registry.engagements:
         if runner.why_skipped(one)[0]:
             continue
-        row, files = _firm_row(one, names.get(one.household_path, ""), today)
+        row, files, own = _firm_row(one, names.get(one.household_path, ""), today)
+        for one_file in files:
+            if one_file["open_key"]:
+                one_file["open_key"] = _firm_key(reply["paths"], one_file["open_key"],
+                                                 own[one_file["open_key"]])
         reply["returns"].append(row)
         reply["files"].extend(files)
         counts = row["counts"]
