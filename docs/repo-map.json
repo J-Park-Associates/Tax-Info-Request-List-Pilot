@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 346,
     "edges": 1156,
-    "reused": 302
+    "reused": 303
   },
   "node_types": [
     "artifact",
@@ -4610,7 +4610,7 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "9b4bf1ccb09cd574",
+      "sha256": "201ddffe3f86934b",
       "lines": 124
     },
     {
