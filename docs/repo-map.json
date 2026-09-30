@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 289,
-    "edges": 1139,
-    "reused": 243
+    "nodes": 291,
+    "edges": 1140,
+    "reused": 249
   },
   "node_types": [
     "artifact",
@@ -262,8 +262,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "93db10933500ac8b",
-      "lines": 5574,
+      "sha256": "886d9172db8897a8",
+      "lines": 5588,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_FOLDER_NAME_HELP",
@@ -2516,8 +2516,8 @@
       "id": "tracker/registry.py",
       "type": "module",
       "layer": "core",
-      "sha256": "a9550b000cb9081e",
-      "lines": 901,
+      "sha256": "8a588bd23d693e5e",
+      "lines": 907,
       "cli": "python -m tracker.registry",
       "exports": [
         "EmptyRoot",
@@ -4762,11 +4762,25 @@
       "lines": 224
     },
     {
+      "id": "pilot/handoffs/shell-S8a-review-3.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "c9a16d8ceb991a87",
+      "lines": 146
+    },
+    {
       "id": "pilot/handoffs/shell-S8a.md",
       "type": "doc",
       "layer": "docs",
       "sha256": "8b702b45cbdce226",
       "lines": 218
+    },
+    {
+      "id": "pilot/handoffs/shell-S8b.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "3f692443a841a7fb",
+      "lines": 60
     },
     {
       "id": "pilot/reviews/review-1.md",
@@ -5504,8 +5518,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "07aafd0263d2abd8",
-      "lines": 8860,
+      "sha256": "27892350a01c5714",
+      "lines": 8872,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -5709,6 +5723,7 @@
         "test_item_from_spec_normalizes_extensions",
         "test_item_group_follows_its_table",
         "test_keep_it_here_is_offered_by_the_copys_name",
+        "test_list_carries_each_misfits_code_and_the_vocabulary_words_it",
         "test_list_reports_the_clients_root_and_the_firm_report_as_openable",
         "test_list_state_and_firm_agree_on_a_returns_year",
         "test_look_alike_spellings_of_one_name_are_refused_as_one_name",
@@ -7614,8 +7629,8 @@
       "id": "tests/test_registry.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "f0fb3c105e8c38cd",
-      "lines": 752,
+      "sha256": "a6819e0332b67b5a",
+      "lines": 800,
       "exports": [
         "ITEMS",
         "make",
@@ -7629,6 +7644,7 @@
         "test_a_household_folder_the_walk_cannot_list_is_a_misfit_not_a_silence",
         "test_a_household_or_return_folder_the_name_rule_refuses_is_a_misfit_with_the_reason",
         "test_a_household_with_no_return_anywhere_is_said_and_is_still_a_household",
+        "test_a_misfit_cannot_be_built_without_a_code",
         "test_a_rolled_forward_prior_is_retired_across_two_households_with_the_same_return_name",
         "test_a_rolled_forward_prior_stays_retired_when_the_clients_root_moves",
         "test_a_rolled_from_that_matches_nothing_is_a_warning_not_a_silence",
@@ -7641,6 +7657,7 @@
         "test_discovery_is_positional_and_finds_a_return_only_at_the_fourth_level",
         "test_discovery_retires_a_prior_by_the_layout_rule",
         "test_every_misfit_is_listed_once_with_its_sentence_and_walked_no_further",
+        "test_every_misfit_the_registry_builds_names_its_code_as_a_literal",
         "test_fed_by_lists_the_households_whose_feeds_name_this_one",
         "test_find_matches_label_or_path",
         "test_hidden_and_underscore_folders_are_skipped",
@@ -7649,6 +7666,7 @@
         "test_the_client_tree_is_never_walked",
         "test_the_engagement_details_drive_the_run",
         "test_the_label_is_the_household_the_year_and_the_return",
+        "test_the_misfit_codes_are_the_ones_the_app_words_in_two_title_case_words",
         "test_the_registry_command_line_prints_households_returns_and_misfits"
       ]
     },
@@ -12227,6 +12245,12 @@
     {
       "from": "tests/test_registry.py",
       "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_registry.py",
+      "to": "tracker/api.py",
       "type": "exercises",
       "source": "derived"
     },

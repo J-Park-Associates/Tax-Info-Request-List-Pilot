@@ -161,11 +161,17 @@ class EmptyRoot(RegistryError):
 
 @dataclass(frozen=True, slots=True)
 class Misfit:
-    """One folder that does not fit the layout, and the one sentence saying
-    why it is left alone."""
+    """One folder that does not fit the layout, the one sentence saying why
+    it is left alone, and a stable `code` naming the kind (a screen words the
+    code in two words; the sentence is never shortened or changed)."""
 
     path: Path
     sentence: str
+    code: str            # stable name of the kind of misfit; the app words it (MISFIT_CODES)
+
+    def __post_init__(self) -> None:
+        if not self.code:
+            raise ValueError(f"a misfit needs a code: {self.path}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -309,7 +315,7 @@ def _badly_named(folder: Path, found: _Walk) -> bool:
     reason = layout.segment_problem(folder.name)
     if reason is None:
         return False
-    found.misfits.append(Misfit(folder, MISFIT_BAD_NAME.format(reason=reason)))
+    found.misfits.append(Misfit(folder, MISFIT_BAD_NAME.format(reason=reason), "bad_name"))
     return True
 
 
@@ -341,7 +347,7 @@ def _children(folder: Path, found: _Walk) -> list[Path] | None:
         # reaches the app, the page and the run log. The whole of it is kept
         # on the debug log only (errors.keep).
         errors.keep("registry", exc, name=folder.name)
-        found.misfits.append(Misfit(folder, UNLISTED.format(error=errors.error_class(exc))))
+        found.misfits.append(Misfit(folder, UNLISTED.format(error=errors.error_class(exc)), "unlisted"))
         log.warning("Could not list a folder (%s)", errors.error_class(exc))
         return None
 
@@ -399,7 +405,7 @@ def _walk_root(root: Path) -> _Walk:
             continue
         if kind != layout.PRIVATE:
             found.misfits.append(Misfit(child, MISFIT_NOT_A_TREE.format(
-                clients=layout.CLIENTS_TREE, private=layout.PRIVATE_TREE)))
+                clients=layout.CLIENTS_TREE, private=layout.PRIVATE_TREE), "not_a_tree"))
             continue
         _walk_private(child, found)
     return found
@@ -454,7 +460,7 @@ def _walk_one_household(child: Path, found: _Walk) -> None:
     if returns := _returns_with_records(child):
         found.record_missing[child] = returns
         return
-    found.misfits.append(Misfit(child, MISFIT_NO_HOUSEHOLD_RECORD))
+    found.misfits.append(Misfit(child, MISFIT_NO_HOUSEHOLD_RECORD, "no_household_record"))
 
 
 def _walk_household(household: Path, found: _Walk) -> None:
@@ -469,14 +475,14 @@ def _walk_household(household: Path, found: _Walk) -> None:
         if record is None and _cannot_be_read(child, found):
             continue
         if record:
-            found.misfits.append(Misfit(child, MISFIT_RECORD_MISPLACED))
+            found.misfits.append(Misfit(child, MISFIT_RECORD_MISPLACED, "record_misplaced"))
             continue
         if not layout.is_year_folder(child.name):
-            found.misfits.append(Misfit(child, MISFIT_NOT_A_YEAR))
+            found.misfits.append(Misfit(child, MISFIT_NOT_A_YEAR, "not_a_year"))
             continue
         _walk_year(child, household, found)
     if not found.under.get(household):
-        found.misfits.append(Misfit(household, MISFIT_NO_RETURN))
+        found.misfits.append(Misfit(household, MISFIT_NO_RETURN, "no_return"))
 
 
 def _walk_year(year: Path, household: Path, found: _Walk) -> None:
@@ -496,9 +502,9 @@ def _walk_year(year: Path, household: Path, found: _Walk) -> None:
             found.under[household].append(child)
             continue
         if (child / LEGACY_MANIFEST_FILENAME).is_file():
-            found.misfits.append(Misfit(child, LEGACY_FOLDER.format(name=LEGACY_MANIFEST_FILENAME)))
+            found.misfits.append(Misfit(child, LEGACY_FOLDER.format(name=LEGACY_MANIFEST_FILENAME), "legacy_folder"))
             continue
-        found.misfits.append(Misfit(child, MISFIT_NO_RETURN))
+        found.misfits.append(Misfit(child, MISFIT_NO_RETURN, "no_return"))
 
 
 def engagement_dirs(root: Path | str, *, max_depth: int = MAX_DEPTH) -> list[Path]:
@@ -667,7 +673,7 @@ def _kept(found: _Walk) -> tuple[list[Household], list[Engagement], list[Misfit]
     for household in households:
         if household.problem == MISFIT_RECORD_MISPLACED:
             misfits = [m for m in misfits if m.path != household.path]
-            misfits.append(Misfit(household.path, MISFIT_RECORD_MISPLACED))
+            misfits.append(Misfit(household.path, MISFIT_RECORD_MISPLACED, "record_misplaced"))
             continue
         keep.append(household)
     running = {household.path for household in keep}
@@ -723,8 +729,8 @@ def discover_engagements(root: Path | str, *, max_depth: int = MAX_DEPTH) -> Reg
         if any(layout.names_one_folder(folder.name, name) for name in names):
             continue
         like = by_key.get(layout.name_key(folder.name))
-        misfits.append(Misfit(folder, MISFIT_CLIENT_LOOK_ALIKE.format(household=like)
-                              if like else MISFIT_CLIENT_NO_RECORD))
+        misfits.append(Misfit(folder, MISFIT_CLIENT_LOOK_ALIKE.format(household=like), "client_look_alike")
+                       if like else Misfit(folder, MISFIT_CLIENT_NO_RECORD, "client_no_record"))
     return Registry(
         source=root,
         engagements=engagements,

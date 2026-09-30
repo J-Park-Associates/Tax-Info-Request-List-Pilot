@@ -1331,6 +1331,19 @@ SCREEN: dict = {
     },
     "misfits": {
         "title": "Folders Skipped",
+        # A two-word reason beside each skipped folder's name, by the misfit's
+        # `code` (Jason, ruling 18). The app draws reasons[misfit.code].
+        "reasons": {
+            "not_a_tree": "Unknown Folder",
+            "record_misplaced": "Old Layout",
+            "no_household_record": "No Household",
+            "client_no_record": "Unowned Folder",
+            "bad_name": "Name Refused",
+            "no_return": "No Return",
+            "unlisted": "Cannot List",
+            "client_look_alike": "Look-Alike Folder",
+            "legacy_folder": "Old Workbook",
+        },
     },
     "safeguards": {
         "title": "Safeguards",
@@ -3462,6 +3475,7 @@ def _list_payload(root: Path, registry: Registry) -> dict:
         # Where each misfit is below the root, worded by the layout (decision
         # 188): the page never works out whether one path lies under another.
         "misfits": [{"path": str(misfit.path), "sentence": misfit.sentence,
+                     "code": misfit.code,
                      "where": str(Path(*below)) if (below := layout.parts_below(root, misfit.path))
                      else str(misfit.path)}
                     for misfit in registry.misfits],
