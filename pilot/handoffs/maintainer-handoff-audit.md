@@ -27,9 +27,10 @@ exit, Sort Failed notice, run log), never silently; the CSP lives in
 
 1. **Upgrade left orphaned files** (Jason approved, P115): `setup.iss` now
    clears only `{app}\resources\app` and `{app}\resources\tracker-api\_internal`
-   before copying, and closes a running app or pass
-   (`CloseApplications=force`, `RestartApplications=no`; the review showed
-   `yes` could leave a half-deleted install if the person declined). The GPU pack and
+   before copying, and asks to close a running app or pass, closing it
+   forcibly when allowed (`CloseApplications=force`, `RestartApplications=no`).
+   Residual risk, documented: a person who declines and then aborts leaves
+   a half-deleted install; running the installer again repairs it. The GPU pack and
    `settings.json` are outside those folders. Guard tests updated and two
    added in `tests/test_pilot_installer.py`; `pilot/SPEC.md` and
    `pilot/DECISIONS.md` (P115) updated.
@@ -51,8 +52,11 @@ ruff clean; `repo_map.py check` and `vocab_report.py check` current;
 
 ## Review
 
-One independent Opus review; its six findings (four guide facts, the
-force-close, the duplicate-section guard) are fixed in the second commit.
+Review 1 (Opus): six findings, fixed in the second commit. Review 2
+(Opus): the force-close wording overstated what `force` does (it still
+asks interactively); reworded by the lead in the third commit. Blocking
+the decline outright would need a `PrepareToInstall` check in `[Code]`,
+which cannot be tested off Windows - a candidate for the office PC lane.
 
 ## What is left
 

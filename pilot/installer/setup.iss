@@ -31,14 +31,17 @@ UninstallDisplayName=Tax Document Tracker Pilot {#AppVersion}
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 WizardStyle=modern
-; An upgrade while the app or a scheduled pass is running: Windows is asked
-; which programs hold the files being replaced, and they are closed - forced,
-; not merely asked (P115), because [InstallDelete] below has already removed
-; every unlocked file of the old code, and a locked one left behind would
-; stop the copy half way and leave neither version able to start. A pass
-; closed half way is safe - every write goes through a temp that the next
-; pass sweeps. Nothing is restarted: the schedule starts the next pass itself.
-; An upgrade aborted half way is repaired by running the installer again.
+; An upgrade while the app or a scheduled pass is running (P115): before
+; anything is deleted or copied, Windows is asked which programs hold the
+; files being replaced, and the person is asked to let Setup close them
+; (a silent install closes them without asking). "force" makes that close a
+; forced one, so a pass that does not answer a polite close still ends. If
+; the person declines, [InstallDelete] below still removes the old code's
+; unlocked files and the copy stops at the first locked one; aborting then
+; leaves neither version able to start, and running the installer again
+; with the app closed repairs it. A pass closed half way is safe - every
+; write goes through a temp that the next pass sweeps. Nothing is
+; restarted: the schedule starts the next pass itself.
 CloseApplications=force
 RestartApplications=no
 

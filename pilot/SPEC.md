@@ -667,9 +667,11 @@ installer; it is free and needs no admin rights to run the result (P4).
   left behind. Never the folders above them: the graphics card pack
   (`gpu-runtime`) sits beside `tracker-api.exe` and `settings.json` beside the
   app's executable. `CloseApplications=force` and `RestartApplications=no`:
-  a running app or pass is closed, not merely asked, since a locked old file
-  left after the deletion would stop the copy half way; nothing restarts. An
-  upgrade aborted half way is repaired by running the installer again.
+  the person is asked to let Setup close a running app or pass (a silent
+  install closes it without asking), and the close is a forced one, so a
+  pass that ignores a polite close still ends; nothing restarts. Declined, a
+  locked old file stops the copy after the deletion; an upgrade aborted
+  there is repaired by running the installer again with the app closed.
 
 ### `pilot/Build Pilot Installer.bat`
 

@@ -255,14 +255,15 @@ The recipe is `pilot\installer\setup.iss`.
 - Installs for one person only. It does **not** need an administrator.
 - Installs to `%LOCALAPPDATA%\Programs\Tax Document Tracker Pilot`.
 - **On an upgrade:** close the app first. If the app or a sorting pass is
-  still running, the installer closes it. It then removes only the old program code (two folders:
+  still running, the installer asks to close it. **Say yes.** It then
+  removes only the old program code (two folders:
   `resources\app` and `resources\tracker-api\_internal`) and copies in the
   new code, so no leftover old files stay behind. It never touches client
   files, the data folder, `settings.json`, or the optional graphics card
   pack (`gpu-runtime`).
-- **If an upgrade stops half way** (for example, you pressed Cancel or
-  Abort), the program may not start. Run the same installer again; it
-  finishes the job.
+- **If an upgrade stops half way** (for example, you said no to closing
+  the app, then pressed Abort), the program may not start. Close the app,
+  then run the same installer again; it finishes the job.
 - **On uninstall:** removes the program and the alarm clock. It never
   removes client files, the data folder or `settings.json`.
 - **Never change the `AppId` line.** It is how an upgrade finds the old

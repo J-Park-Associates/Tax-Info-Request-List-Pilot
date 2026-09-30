@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 348,
     "edges": 1162,
-    "reused": 299
+    "reused": 305
   },
   "node_types": [
     "artifact",
@@ -4538,8 +4538,8 @@
       "id": "docs/maintenance-guide.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "df3d2c34416a3115",
-      "lines": 418,
+      "sha256": "426b5836c4958ccd",
+      "lines": 419,
       "role": "The maintainer's handoff page, written for a reader who does not code: the security walls (sandbox, command allowlist, the openable path registry, the Content-Security-Policy) and why none may be loosened, the Task Scheduler job and what a failed night looks like, the Google Drive layout, building the installer, the hash-locked installs, local testing and the GitHub Actions cost rule, and the transition points this map marks.",
       "notes": "Links to the runbook, CLAUDE.md, pilot/RELEASE.md and the decision logs rather than repeating them. Change the security boundary, the schedule's command or the build and this page is part of the change."
     },
@@ -4547,7 +4547,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "0e3614feba9e86ef",
+      "sha256": "8771017952481e4f",
       "lines": 1168,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -4620,7 +4620,7 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "a08b3a757df0ffeb",
+      "sha256": "54dc2e17dc86edd9",
       "lines": 121
     },
     {
@@ -4683,8 +4683,8 @@
       "id": "pilot/SPEC.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "bffeb8fe26278ec9",
-      "lines": 1017
+      "sha256": "55e88623ddc70b0d",
+      "lines": 1019
     },
     {
       "id": "pilot/Tester Guide.md",
@@ -4697,8 +4697,8 @@
       "id": "pilot/handoffs/maintainer-handoff-audit.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "593b6b5d966eda16",
-      "lines": 70
+      "sha256": "9534eeadd79a7507",
+      "lines": 74
     },
     {
       "id": "pilot/handoffs/shell-S1-rebuild-1.md",
@@ -5519,9 +5519,9 @@
       "id": "pilot/installer/setup.iss",
       "type": "file",
       "layer": "root",
-      "sha256": "52236f6a1f26bacb",
-      "lines": 75,
-      "role": "The Inno Setup 6 recipe for the pilot's Windows installer: per-user install without administrator rights (P4), the fixed AppId an upgrade finds the old copy by, an upgrade that closes a running app or pass and clears only the old program code first (P115), and an uninstall that removes the scheduled task and the installed files and never client or tracker data (P12).",
+      "sha256": "9e3bdeb995372aed",
+      "lines": 78,
+      "role": "The Inno Setup 6 recipe for the pilot's Windows installer: per-user install without administrator rights (P4), the fixed AppId an upgrade finds the old copy by, an upgrade that asks to close a running app or pass (a forced close when allowed) and clears only the old program code first (P115), and an uninstall that removes the scheduled task and the installed files and never client or tracker data (P12).",
       "notes": "TRANSITION POINT: the packaged folder becomes the installer here. Compiled by pilot/Build Pilot Installer.bat with /DAppVersion and /DSourceDir. [InstallDelete] names only {app}\\resources\\app and {app}\\resources\\tracker-api\\_internal: the graphics card pack (gpu-runtime) sits beside tracker-api.exe and settings.json beside the app's executable, and both survive an upgrade. tests/test_pilot_installer.py reads it as text and pins each of these claims."
     },
     {
