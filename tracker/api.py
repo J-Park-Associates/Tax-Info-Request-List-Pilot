@@ -1475,9 +1475,9 @@ SCREEN: dict = {
         # all it does (pilot P154).
         "under_construction": "Under Construction",
         # A related link saved on the household edited, not yet on the
-        # other, whose sort holds it; saving again completes it (P170,
-        # the re-check's MUST-R1).
-        "related_pending": "Link Pending: {household} Is Sorting",
+        # other, whose lock another pass holds; saving again completes it
+        # (P170, the re-check's MUST-R1; Jason's words, P183).
+        "related_pending": "Link Pending: {household} Is Busy",
     },
     "misfits": {
         "title": "Folders Skipped",

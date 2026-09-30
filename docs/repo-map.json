@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 351,
+    "nodes": 352,
     "edges": 1156,
-    "reused": 304
+    "reused": 306
   },
   "node_types": [
     "artifact",
@@ -262,7 +262,7 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "ce2669d8a2ddea9b",
+      "sha256": "5c92489236522a8d",
       "lines": 5922,
       "cli": "python -m tracker.api",
       "exports": [
@@ -4677,7 +4677,7 @@
       "id": "pilot/SPEC-lists.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "891293dcaa493feb",
+      "sha256": "9a985407299bb247",
       "lines": 736
     },
     {
@@ -5148,6 +5148,13 @@
       "layer": "docs",
       "sha256": "6968d704ca55cea8",
       "lines": 123
+    },
+    {
+      "id": "pilot/reviews/lists-recheck-2.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "77f16bb5c495e9e5",
+      "lines": 50
     },
     {
       "id": "pilot/reviews/lists-recheck.md",
@@ -5972,7 +5979,7 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "1e12a561740d9704",
+      "sha256": "445d23799b6107c2",
       "lines": 9198,
       "exports": [
         "COUNTS",

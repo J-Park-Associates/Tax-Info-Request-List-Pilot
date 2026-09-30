@@ -407,7 +407,7 @@ color) have the linked to information appear when you click the tooltip."
   the contact never reaches a linked household. When another household's
   lock is held (its sort is running), the household edited is still saved
   and the reply exits 0 with the notice **"Link Pending: {household} Is
-  Sorting"** (`vocab.screen.notices.related_pending`); saving again after
+  Busy"** (Jason, P183: the lock may be something other than a sort) (`vocab.screen.notices.related_pending`); saving again after
   that sort writes the other side (re-check MUST-R1).
 - **Only households that exist.** Edit Household offers the other
   households of the `list` reply; the command refuses a name that is not a
@@ -729,8 +729,8 @@ Each is answerable by a letter; the recommendation is built meanwhile.
 | Q7 | The Return column orders by: A) the whole name as shown, form first; B) the name without its form ("John & Jane Smith"). | **Decided A** (Jason, 2026-09-30, P180: "a for the rest") |
 | Q9 | If a Needs Review reason is still cut at 200px on Windows: A) shorter reason words (lane 2's job); B) a wider Reason column, taken from the Return column (File names then cut sooner). | **Decided A** (Jason, 2026-09-30, P180: "a for the rest") |
 | Q8 | The return page's three sections: A) a coloured bar and icon on the heading, a tinted count badge and a matching edge down the rows; B) a tinted band behind each heading; C) the icon alone. | **A** (built in lane 4b, P176) |
-| Q10 | The kinds in the Linked Households panel: A) "Also Feeds" / "Fed By" / "Related"; B) "Feeds" / "Fed From" / "Related"; C) one word for all, "Linked". | **A** ("Also Feeds" is already the Edit Household word, so a person reads the same word in both places) |
-| Q11 | Rows per page on the four firm lists: A) 50; B) 100; C) 25. | **A** (a page of 50 fills about two screens at 1100 x 700 and keeps a draw quick) |
-| Q12 | The search box's words on Needs Review: A) "Search Files, Clients and Returns"; B) "Search Files and Clients"; C) the same "Search Clients and Returns" as every page. | **A** (it says everything the box finds there) |
-| Q13 | If a reason word is still cut at 1100px in the Windows check (16 measured none cut): A) shorter words (lane 2's job); B) a wider default Reason column. | **A** |
-| Q14 | The side panel's brand band: A) the logo (its wordmark is the firm's name) with "Tax Document Console" under it, the firm's name as words for a screen reader; B) a smaller logo with "J Park & Associates" and "Tax Document Console" written beside it (the wordmark would need a JP-only mark, which the firm does not have as a file yet). | **A** |
+| Q10 | The kinds in the Linked Households panel: A) "Also Feeds" / "Fed By" / "Related"; B) "Feeds" / "Fed From" / "Related"; C) one word for all, "Linked". | **Decided A** (Jason, 2026-09-30, P182) |
+| Q11 | Rows per page on the four firm lists: A) 50; B) 100; C) 25. | **Decided A** (Jason, 2026-09-30, P182) |
+| Q12 | The search box's words on Needs Review: A) "Search Files, Clients and Returns"; B) "Search Files and Clients"; C) the same "Search Clients and Returns" as every page. | **Decided A** (Jason, 2026-09-30, P182) |
+| Q13 | If a reason word is still cut at 1100px in the Windows check (16 measured none cut): A) shorter words (lane 2's job); B) a wider default Reason column. | **Decided A** (Jason, 2026-09-30, P182) |
+| Q14 | The side panel's brand band: A) the logo (its wordmark is the firm's name) with "Tax Document Console" under it, the firm's name as words for a screen reader; B) a smaller logo with "J Park & Associates" and "Tax Document Console" written beside it (the wordmark would need a JP-only mark, which the firm does not have as a file yet). | **Decided A** (Jason, 2026-09-30, P182) |

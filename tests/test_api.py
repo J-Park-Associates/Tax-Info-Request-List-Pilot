@@ -9190,8 +9190,8 @@ def test_a_link_to_a_household_being_sorted_saves_here_says_so_and_a_later_save_
     assert code == 0, payload
     assert load_household_info(park_dir).related == ("Lee Family",)
     assert load_household_info(lee_dir).related == ()
-    assert payload["warnings"] == ["Link Pending: Lee Family Is Sorting"]
-    assert api.SCREEN["notices"]["related_pending"] == "Link Pending: {household} Is Sorting"
+    assert payload["warnings"] == ["Link Pending: Lee Family Is Busy"]
+    assert api.SCREEN["notices"]["related_pending"] == "Link Pending: {household} Is Busy"
 
     code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park), stdin={"related": ["Lee Family"]})
     assert code == 0 and payload["warnings"] == [], payload
