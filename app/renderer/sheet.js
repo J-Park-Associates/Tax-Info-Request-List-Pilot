@@ -55,10 +55,9 @@ function sheetFrame(now, title) {
   sheetSet("reminder-actions", now.kind === "reminder");
   for (const id of ["sheet-open", "sheet-more", "sheet-next"]) sheetSet(id, false);
   sheetMore(false);
-  const rows = Array.from({ length: 3 }, () => h("div", { className: "row-skeleton", "aria-hidden": "true" }, h("i"), h("i")));
   if (now.kind === "check") {
     $("check-actions").replaceChildren();
-    $("sheet-check").replaceChildren(h("span", { className: "visually-hidden" }, words.loading), ...rows);
+    $("sheet-check").replaceChildren(h("span", { className: "visually-hidden" }, words.loading), ...shellSkeleton(3));
   }
   $("sheet-scrim").hidden = false;
   openDialog("sheet");
@@ -154,7 +153,9 @@ function sheetDrawCheck(handle) {
   const copy = $("sheet-open");
   copy.dataset.key = entry && entry.open_key && !notADocument(entry) ? entry.open_key : "";
   sheetSet("sheet-open", Boolean(copy.dataset.key));
-  sheetSet("sheet-more", Boolean(row.querySelector(".sheet-more")));
+  const fold = row.querySelector(".sheet-more");
+  if (fold) fold.id = "sheet-more-body";
+  sheetSet("sheet-more", Boolean(fold));
   sheetSet("sheet-next", sheetAfter(now).length > 0);
   sheetMore(false);
   applyLock();

@@ -168,10 +168,8 @@
           <select id="hh-edit-feed-pick"></select>
           <button type="button" id="hh-edit-feed-add" class="btn btn-small"></button>
         </div>
-        <p id="hh-edit-feeds-help" class="wiz-note"></p>
         <p id="hh-edit-feed-warning" class="rem-hold hidden" role="status"></p>
       </div>
-      <p id="hh-edit-note" class="wiz-note"></p>
       <div class="modal-actions">
         <button id="hh-edit-cancel" class="btn">Cancel</button>
         <span class="toolbar-spacer"></span>
@@ -218,7 +216,7 @@
   <div id="schedule-modal" class="modal-overlay hidden">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="sc-title">
       <h3 id="sc-title"></h3>
-      <p id="sc-loading" class="wiz-note hidden" role="status"></p>
+      <div id="sc-loading" class="sc-loading hidden" role="status"></div>
       <div id="sc-form">
         <fieldset class="sc-choice">
           <legend id="sc-enabled-label"></legend>
@@ -234,7 +232,6 @@
           <select id="sc-every"></select>
         </label>
         <p id="sc-next" class="wiz-note" role="status"></p>
-        <p id="sc-note" class="wiz-note"></p>
         <div id="sc-error" class="banner err hidden" role="alert"></div>
       </div>
       <div class="modal-actions">
@@ -264,9 +261,7 @@
            API's (vocab.household). -->
       <div id="wiz-household" class="hidden">
         <h3 id="household-title"></h3>
-        <p id="household-new-intro" class="wiz-sub"></p>
 
-        <div class="tmpl-head" id="hh-new-head"></div>
         <div class="roll-grid">
           <label class="field">
             <span id="hh-name-label"></span>
@@ -301,7 +296,6 @@
            second step. The title names the household a return is added to. -->
       <div id="wiz-form" class="hidden">
         <h3 id="form-title"></h3>
-        <p id="form-note" class="wiz-sub"></p>
         <div id="form-grid" class="form-grid"></div>
         <div class="modal-actions">
           <span class="toolbar-spacer"></span>
@@ -313,7 +307,6 @@
       <div id="wiz-items" class="hidden">
         <h3 id="items-title"></h3>
         <div class="form-chosen">
-          <span id="chosen-form" class="chosen-badge"></span>
           <button id="wi-back" class="wiz-back"></button>
           <button id="wi-household" class="wiz-back hidden"></button>
         </div>
@@ -327,15 +320,15 @@
         <p id="ne-return-warning" class="rem-hold" role="status"></p>
         <div class="roll-grid three">
           <label class="field">
-            <span>Client (greeting name)</span>
-            <input id="ne-client" type="text" placeholder="e.g. John Smith" />
+            <span>Client (Greeting Name)</span>
+            <input id="ne-client" type="text" placeholder="E.g. John Smith" />
           </label>
           <label class="field">
-            <span>Tax year</span>
+            <span>Tax Year</span>
             <input id="ne-year" type="number" />
           </label>
           <label class="field">
-            <span>Due date (optional)</span>
+            <span>Due Date (Optional)</span>
             <input id="ne-due" type="date" />
           </label>
         </div>
@@ -345,7 +338,6 @@
              types none of them, and no spelling is ever inferred from a
              document - the app proposes and a person ticks. -->
         <div class="tmpl-head" id="wp-head"></div>
-        <p id="wp-help" class="wiz-note"></p>
         <div id="wp-people" class="people-block"></div>
         <div class="editor-actions">
           <button type="button" id="wp-add" class="btn btn-small"></button>
@@ -355,10 +347,9 @@
              the return, and only the ticked ones are asked for and chased.
              The heading's last words and the note are the API's. -->
         <div class="tmpl-head" id="tmpl-head-label"></div>
-        <p id="tmpl-note" class="wiz-note"></p>
         <div id="tmpl-list" class="tmpl-list"></div>
 
-        <div class="tmpl-head">Add a custom request</div>
+        <div class="tmpl-head">Add a Custom Request</div>
         <!-- Drawn by the one row component (requestRows in app.js), which
              the request-list editor shares: the headings are the API's
              column labels, the identifiers are assigned as the rows are
@@ -402,21 +393,18 @@
              (decision 128): the return's own list, edited here and
              nowhere else. -->
         <div class="tmpl-head" id="ep-head"></div>
-        <p id="ep-help" class="wiz-note"></p>
         <div id="ep-people" class="people-block"></div>
         <div class="editor-actions">
           <button type="button" id="ep-add" class="btn btn-small"></button>
         </div>
       </fieldset>
-      <div id="ed-list-title" class="tmpl-head"></div>
       <div id="ed-rows" class="editor-rows"></div>
       <div class="editor-actions">
         <button id="ed-add" class="btn btn-small"></button>
       </div>
       <details class="ed-paste">
         <summary id="ed-paste-title"></summary>
-        <p id="ed-paste-hint" class="wiz-note"></p>
-        <textarea id="ed-paste" rows="4" aria-label="Rows to paste"></textarea>
+        <textarea id="ed-paste" rows="4" aria-label="Rows to Paste"></textarea>
         <div class="editor-actions">
           <button id="ed-paste-btn" class="btn btn-small"></button>
         </div>
@@ -425,7 +413,6 @@
            gives a request another identifier and moves its documents. -->
       <details class="ed-paste">
         <summary id="ed-rename-title"></summary>
-        <p id="ed-rename-hint" class="wiz-note"></p>
         <div class="editor-actions">
           <select id="ed-rename-from"></select>
           <input id="ed-rename-to" type="text">

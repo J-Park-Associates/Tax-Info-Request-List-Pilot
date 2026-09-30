@@ -567,13 +567,16 @@ function routeTitle() {
 
 // The loading state every page shares: the title, then outline rows in the
 // row grid; the word for a screen reader only (SPEC 6, states).
+function shellSkeleton(count) {
+  return Array.from({ length: count }, () => h("div", { className: "row-skeleton", "aria-hidden": "true" }, h("i"), h("i")));
+}
+
 function shellLoading(title) {
   const words = screenWords();
-  const rows = Array.from({ length: 6 }, () => h("div", { className: "row-skeleton", "aria-hidden": "true" }, h("i"), h("i")));
   return [
     ...(title ? [h("h1", { className: "page-title" }, title)] : []),
     h("div", { className: "group-head is-first" }, h("span", { className: "visually-hidden" }, words.loading)),
-    ...rows,
+    ...shellSkeleton(6),
   ];
 }
 

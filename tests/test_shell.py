@@ -40,9 +40,9 @@ from tests.test_pilot_ui import (
 REPO = Path(__file__).resolve().parent.parent
 
 #: The new renderer scripts. S5 adds sheet.js.
-SHELL_FILES = ("shell.js", "tooltip.js", "pages.js")
+SHELL_FILES = ("shell.js", "tooltip.js", "pages.js", "sheet.js")
 #: Files that hold no ``title`` attribute (SPEC 13): every tooltip is setTip().
-TITLE_FREE = ("shell.js", "tooltip.js", "pages.js", "shell.css", "pilot.js", "tour.js", "app.js", "index.html")
+TITLE_FREE = ("shell.js", "tooltip.js", "pages.js", "sheet.js", "shell.css", "pilot.js", "tour.js", "app.js", "index.html")
 
 
 
@@ -319,17 +319,18 @@ def test_the_loading_order_is_the_specs_and_the_csp_is_unchanged():
     html = read("index.html")
     styles = [html.index(f'href="{name}"') for name in ("style.css", "pilot-ui.css", "shell.css", "pilot-style.css")]
     assert styles == sorted(styles)
-    scripts = [html.index(f'src="{name}"') for name in ("app.js", "tooltip.js", "pages.js", "shell.js", "pilot-content.js", "pilot.js", "tour.js")]
+    scripts = [html.index(f'src="{name}"') for name in ("app.js", "tooltip.js", "pages.js", "sheet.js", "shell.js", "pilot-content.js", "pilot.js", "tour.js")]
     assert scripts == sorted(scripts)
     assert ("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'") in html
     assert "<style" not in html and not re.search(r"<script(?![^>]*\bsrc=)", html)
 
 
-def test_the_skeleton_is_the_specs_and_only_what_the_sheet_takes_over_is_kept_hidden():
+def test_the_skeleton_is_the_specs_and_the_legacy_box_holds_only_the_three_inputs_saveroot_reads():
     """SPEC 3.1 and 13. The pages took the toolbar, the banners, the request
-    table, the household card and the setup card; what #legacy still holds
-    is the reminder, moved, review and filed cards, the standing-rules
-    footer, the roll fold and the three boxes saveRoot() reads: all S5's."""
+    table, the household card and the setup card; the side sheet took the
+    reminder, moved, review and filed cards; the dialogs took the roll fold
+    and the standing rules. What #legacy still holds is the three boxes
+    saveRoot() reads."""
     html = read("index.html")
     for wanted in ('id="shell"', 'id="side"', 'id="side-brand"', 'id="side-sections"', 'id="side-foot"', 'id="last-sort"',
                    'id="main"', 'id="bar"', 'id="crumbs"', 'id="find-wrap"', 'id="find"', 'id="find-list"', 'id="sort"',
@@ -345,9 +346,18 @@ def test_the_skeleton_is_the_specs_and_only_what_the_sheet_takes_over_is_kept_hi
                  'id="rows"', 'id="summary"', 'id="pass-progress"', "btn-unlock", "btn-stop-pass", "household-returns",
                  "review-deck", "review-mode", "mode-toggle", "deck"):
         assert gone not in outside and gone not in legacy, gone
-    for kept in ('id="reminder-card"', 'id="moved-card"', 'id="review-card"', 'id="filed-card"', 'id="assurances"',
-                 'id="household-roll"', 'id="root-input"', 'id="firm-input"', 'id="phone-input"'):
+    for kept in ('id="root-input"', 'id="firm-input"', 'id="phone-input"'):
         assert kept in legacy, kept
+    for taken in ('id="reminder-card"', 'id="moved-card"', 'id="review-card"', 'id="filed-card"', 'id="assurances"', 'id="household-roll"',
+                  'id="dismissed-card"', 'id="btn-open-draft"', 'id="reminder-hint"', 'id="reminder-heading"'):
+        assert taken not in html, taken
+    # The sheet's frame (SPEC 7): the header's icons, the two bodies, the two footers, and the reminder's parts with the ids drawReminder() draws into.
+    for sheet in ('id="sheet-open"', 'id="sheet-more"', 'id="sheet-next"', 'id="sheet-close"', 'id="sheet-check"', 'id="sheet-reminder"',
+                  'id="check-actions"', 'id="reminder-actions"', 'id="reminder-status"', 'id="reminder-stages"', 'id="reminder-preview"',
+                  'id="btn-copy"', 'id="btn-approve"'):
+        assert sheet in html, sheet
+    for dialog in ("roll-modal", "safeguards-modal", "about-modal", "misfits-modal"):
+        assert f'id="{dialog}" class="modal-overlay hidden"' in html, dialog
     for symbol in ("search", "sort", "stop", "dismiss", "chev", "next", "done", "more", "open"):
         assert f'<symbol id="i-{symbol}"' in html, symbol
     assert 'role="alert" aria-live="polite"' in html[html.index('id="notices"'):html.index('id="notices"') + 120]
@@ -471,8 +481,9 @@ def test_the_harness_is_never_loaded_by_the_app():
 #: Rules of style.css that write a literal colour and whose elements the
 #: shell removes; each needs no dark value because nothing draws it. S4 took
 #: the toolbar, the chips, the request table, the household card and the
-#: setup card away; S5 deletes the review list and ends this list.
-RETIRED = (".review", ":root")
+#: setup card away; S5 deleted the review list, the reminder card, the
+#: assurances and their rules: only :root is left.
+RETIRED = (":root",)
 
 
 def family(prop: str) -> str:
@@ -732,7 +743,7 @@ def test_every_menu_id_the_page_answers_is_in_the_template_and_the_rest_are_the_
                 "edit_list", "draft_reminder", "open_client_folder", "open_inbox", "open_working", "overview", "needs_review",
                 "reminders", "clients", "find", "refresh", "sort_now", "stop_sorting", "schedule", "repair_schedule", "firm_report",
                 "clear_lock", "tour", "safeguards", "terms", "error_log", "about"}
-    rows = {"check", "not_requested", "another_return", "put_back", "keep_here", "edit_request", "unfile", "mark_missing"}
+    rows = {"check", "not_requested", "another_return", "put_back", "keep_here", "edit_request", "unfile", "mark_missing", "show_in_explorer"}
     text = read("shell.js")
     table = text[text.index("const MENU_ANSWERS = {"):]
     answered = set(re.findall(r"^  (\w+): ", table[:table.index("\n};\n")], flags=re.M))
@@ -754,7 +765,7 @@ def test_the_shell_sends_only_the_menu_channels_messages_and_no_path():
     key the page made, never a path."""
     text = stripped_js("shell.js")
     sends = re.findall(r"window\.tracker\.menu\.send\(([^;]*)\);", text)
-    assert sorted(sends) == sorted(["{ enable: shellEnabled() }", "{ popup: name, enable: shellEnabled(), token, x, y }"])
+    assert sorted(sends) == sorted(["{ enable: shellEnabled() }", "{ popup: name, enable: enable || shellEnabled(), token, x, y }"])
     assert 'shellPopup(one.popup, `crumb-${one.popup}`' in text, "a segment's token is its own name"
     assert "window.tracker.menu.onCommand(shellMenu)" in text
 
@@ -797,7 +808,14 @@ let locked = false;
 let lastState = null;
 const tips = [];
 const setTipIfCut = (node, words) => tips.push([node.className, words]);
+const setTip = (node, words) => tips.push([node.className, words]);
+const opened = []; const went = [];
+const openPath = (path, how) => opened.push([path, how]);
+const shellGo = (route) => went.push(route);
+const shellPopup = (name, token, x, y, enable) => {};
+const unanswered = (id) => failures.push(`unanswered ${id}`);
 let shellReturn = (path) => ({ return_name: "1040 - John & Jane Smith", household: "h1", year: 2025 });
+const PAGES_LINK_WORDS = { file: "show_in_explorer", household: "navigate_client", return: "navigate_return" };
 const PAGES_GROUPS = ["needs_you", "waiting", "received", "set_aside"];
 const PAGES_TONES = { needs: "is-attention", waiting: "is-waiting", done: "is-done", plain: "is-plain" };
 const PAGES_LATE = "9999-99-99";
@@ -819,6 +837,7 @@ const vocab = {
     groups: { needs_you: "Needs you", waiting: "Waiting on client", received: "Received", set_aside: "Set aside" },
     steps: { check: "Check", open: "Open", draft: "Draft reminder", edit: "Edit" },
     empty: { received: "Nothing received yet" }, moved: "Moved by hand", due: "Due {date}", partly: "{n} of {total}",
+    show_in_explorer: "Show in File Explorer", navigate_client: "Navigate to Client", navigate_return: "Navigate to Return",
     counts: { need: "{n} need you", waiting: "{n} waiting", complete: "Complete", files: "{n} files", one_return: "1 return", returns: "{n} returns" },
   },
 };
@@ -844,7 +863,9 @@ def run_pages_dom(probe: str, tmp_path: Path, setup: str = "", functions=None):
         "pagesHouseholdNotices", "pagesRoute", "pagesFiles", "h", "icon", "screenWords", "pagesSafe", "pagesEach", "pagesLabel",
         "pagesSafeName", "pagesTitleFor", "pagesReportBroken", "pagesRouteKey", "pagesDraw", "pagesBuild", "pagesYear", "pagesReturnSpecs",
         "pagesClientSpecs", "pagesRemember", "pagesRestore", "pagesFirmReturn", "pagesActivate", "pagesOverview", "pagesNeedsReview",
-        "pagesReminders", "pagesClients", "pagesHousehold", "folderName",
+        "pagesReminders", "pagesClients", "pagesHousehold", "folderName", "pagesLinkWords", "pagesReturnText", "pagesHouseholdPath",
+        "pagesPathOf", "pagesFileLink", "pagesRunLink", "pagesLinkNode", "pagesCell", "pagesHeadLink", "pagesRunRowLink", "pagesWhere",
+        "pagesSteps", "pagesDrafts", "pagesRunRow", "pagesRunStep", "pagesPopup", "pagesEnableFor", "pagesRowRoute", "pagesKey", "pagesTitle",
     ]
     shell = read("shell.js")
     consts = "\n".join(shell[shell.index(head):shell.index(");\n", shell.index(head)) + 3] if head.endswith("[") else shell[shell.index(head):shell.index("\n", shell.index(head))]
@@ -919,7 +940,7 @@ def test_the_overview_puts_each_return_in_one_bucket(tmp_path):
         make("e", {}, { problem: "Record unreadable" }), make("f", { waiting: 1 }, { due: "2026-04-01" }) ]);
       return rows.map((one) => [one.name, one.status, one.tone, one.date, one.step.kind]);
     """, tmp_path)
-    assert [one[0] for one in ran] == ["Echo", "Delta", "Alpha", "Foxtrot", "Bravo"], "Charlie is complete and is not listed"
+    assert [one[0] for one in ran] == ["Echo (2025)", "Delta (2025)", "Alpha (2025)", "Foxtrot (2025)", "Bravo (2025)"], "Charlie is complete and is not listed; a return reads with its year (ruling 13)"
     assert ran[0][1:3] == ["Record unreadable", "needs"]
     assert ran[2][1:3] == ["2 need you", "needs"], "a return with both counts is in the first bucket only"
     assert ran[3][2] == "waiting" and all(one[4] == "open" for one in ran)
@@ -1048,13 +1069,15 @@ def run_notices(probe: str, tmp_path: Path, vocab_notices: str = "{}"):
     lifted = "\n".join([js_function(name, "app.js") for name in NOTICE_FUNCTIONS] + [js_function("shortNotice", "shell.js"),
                                                                                        js_function("pagesHouseholdNotices", "pages.js")])
     harness = (REPO / "pilot" / "harness" / "stub.js").read_text(encoding="utf-8")
+    mirror = (REPO / "pilot" / "harness" / "vocab-mirror.json").read_text(encoding="utf-8")
     script = tmp_path / "notices_probe.js"
     script.write_text(f"""
 const vm = require("vm");
 const fill = (p, v) => p.replace(/\\{{(\\w+)\\}}/g, (_, k) => v[k] ?? "");
 const stubSource = {json.dumps(harness)};
+const mirror = JSON.parse({json.dumps(mirror)});
 async function replies(scenario) {{
-  const window = {{ __VOCAB__: {{ commands: [], reminder: {{ stages: [{{}}, {{}}, {{}}, {{}}] }} }} }};
+  const window = {{ __VOCAB__: mirror }};
   vm.runInContext(stubSource, vm.createContext({{ window, location: {{ search: `?scenario=${{scenario}}` }}, URLSearchParams, setTimeout, console, Date, Intl }}));
   const list = await window.tracker.call(["list"]);
   const state = await window.tracker.call(["state", "--engagement", list.engagements[0].path]);
@@ -1125,22 +1148,23 @@ def test_no_notice_draws_more_than_five_words_or_a_path_even_over_the_apis_long_
                 assert long in "\n".join(one["logged"]), "and it is in the error log"
     assert len(seen_long) == 4, "the stub sent the reader's, both machine warnings and the pause"
     locked = next(one for one in ran if one["scenario"] == "locked")
-    assert [sentence for key, sentence in locked["drawn"] if key == "lock"] == ["In use on OFFICE-PC"], "only the running line, not `on` or `greyed`"
+    assert [sentence for key, sentence in locked["drawn"] if key == "lock"] == ["In Use on OFFICE-PC"], "only the running line, not `on` or `greyed`"
 
 
 def test_a_notice_shows_the_vocabularys_short_word_when_it_has_one(tmp_path):
-    words = '{ reader: "Install folder name too long", machine: "Drive not signed in", renamed: "Folder renamed", paused: "Year mismatch", feed: "Feed not resolved" }'
+    words = '{ reader: "Install Folder Name Too Long", machine: "Machine Needs Attention", renamed: "Folder Renamed", paused: "Two Years Open; Sorting Paused", feed: "Prior Year Data Not Found" }'
     ran = {one["scenario"]: one for one in _every_notice(tmp_path, words)}
     shown = lambda name: [sentence for _key, sentence in ran[name]["drawn"]]  # noqa: E731
-    assert "Install folder name too long" in shown("notices") and "Drive not signed in" in shown("notices")
-    assert "Folder renamed" in shown("household-notices") and "Feed not resolved" in shown("household-notices")
-    assert "Setup needs attention" not in shown("notices")[:2], "the fallback is only for a word the vocabulary lacks"
+    assert "Install Folder Name Too Long" in shown("notices") and "Machine Needs Attention" in shown("notices")
+    assert "Folder Renamed" in shown("household-notices") and "Prior Year Data Not Found" in shown("household-notices")
+    assert "Setup Needs Attention" not in shown("notices")[:2], "the fallback is only for a word the vocabulary lacks"
 
 
 def test_a_notice_falls_back_to_the_setup_line_for_a_word_the_vocabulary_lacks(tmp_path):
-    ran = {one["scenario"]: one for one in _every_notice(tmp_path)}
+    lacking = '{ reader: "", machine: "", renamed: "", paused: "", feed: "" }'
+    ran = {one["scenario"]: one for one in _every_notice(tmp_path, lacking)}
     shown = [sentence for _key, sentence in ran["notices"]["drawn"]]
-    assert shown[0] == "Setup needs attention" and shown[1] == "Setup needs attention"
+    assert shown[0] == "Setup Needs Attention" and shown[1] == "Setup Needs Attention"
 
 
 def test_one_item_without_a_group_is_named_in_a_notice_and_every_other_row_is_drawn(tmp_path):
@@ -1182,8 +1206,8 @@ def test_a_row_that_cannot_be_built_is_left_out_and_named_on_every_page(tmp_path
       const specs = pagesReminderSpecs(firm);
       return { specs: specs.map((one) => [one.name, one.status]), broken: pagesBroken.map((one) => one.name) };
     """, tmp_path, functions=["pagesReminderSpecs", "pagesStage", "pagesSafe", "pagesEach", "pagesLabel", "pagesSafeName", "pagesReturnName",
-                              "pagesByName", "pagesDay", "screenWords"])
-    assert ran["specs"] == [["Alpha", "Heads up"]] and ran["broken"] == ["Bravo"]
+                              "pagesByName", "pagesDay", "screenWords", "pagesReturnText", "pagesHouseholdPath"])
+    assert ran["specs"] == [["Alpha (2025)", "Heads up"]] and ran["broken"] == ["Bravo"]
 
 
 def test_a_page_that_cannot_be_built_whole_keeps_what_it_held_or_draws_its_frame(tmp_path):

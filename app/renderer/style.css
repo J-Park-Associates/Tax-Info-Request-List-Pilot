@@ -94,8 +94,6 @@ body {
 .notice-warning { background: #fffbeb; border-color: #fde68a; color: #92400e; }
 /* The row a notice is about, outlined on every redraw until it is dismissed. */
 .refused { outline: 2px solid #b91c1c; outline-offset: -2px; }
-/* The Reminder card as one line: not scanned yet, or not readable (D7). */
-#reminder-card.line-only .reminder-body > :not(#reminder-status) { display: none; }
 
 .card {
   background: var(--card);
@@ -120,8 +118,6 @@ body {
    (tracker.page.PALETTE), and the renderer sets them as --stage-ink,
    --rem-ink, --rem-muted and --rem-paper on the elements below, so this
    file and the page alike stay free of a hex the design system owns. */
-
-.reminder-body { padding: 0 18px 16px; display: flex; flex-direction: column; gap: 14px; }
 
 .rem-status { font-size: 12.5px; color: var(--subtle); }
 .rem-hold { font-size: 13px; font-weight: 600; color: var(--stage-ink, var(--muted)); }
@@ -181,7 +177,6 @@ body {
 .rem-stage:disabled:hover { background: var(--card); border-color: var(--border); }
 .rem-stage[aria-pressed="true"]:disabled:hover { border-color: transparent; }
 
-.rem-hint { font-size: 12.5px; color: var(--subtle); }
 .rem-edited {
   font-size: 12.5px;
   color: var(--muted);
@@ -223,23 +218,6 @@ body {
 .rem-preview .rem-em-colour { color: var(--stage-ink, inherit); }
 .rem-preview .rem-em-bold { font-weight: bold; }
 
-.rem-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.rem-quiet {
-  border: 0;
-  background: none;
-  box-shadow: none;
-  padding: 6px 2px;
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--subtle);
-  cursor: pointer;
-  border-bottom: 1.5px solid transparent;
-  border-radius: 0;
-}
-.rem-quiet:hover { color: var(--navy); border-bottom-color: var(--navy); background: none; }
-.rem-quiet:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
-
 @media (max-width: 1100px) {
   .rem-stages { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -247,30 +225,6 @@ body {
 /* ── A request's identifier, in the editor ───────────────────────────── */
 
 .req-id { font-weight: 700; color: var(--navy); }
-
-/* ── Assurance bar ───────────────────────────────────────────────────── */
-
-.assurances {
-  margin-top: auto;
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-}
-
-.assure {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  padding: 12px 14px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--navy);
-}
-.assure div { display: flex; flex-direction: column; }
-.assure strong { font-size: 13px; }
-.assure span { font-size: 12px; color: var(--subtle); }
-.assure svg { flex-shrink: 0; margin-top: 2px; }
 
 /* ── Engagement picker ───────────────────────────────────────────────── */
 /* The status report's state, beside the engagement. One class per word
@@ -442,7 +396,6 @@ body {
 }
 .ed-fields .field { margin-bottom: 10px; }
 .ed-fields .wiz-check { margin: 4px 0 10px; }
-.ed-readonly { display: block; font-size: 14px; padding: 6px 0; color: var(--muted); }
 
 .ed-paste { margin-top: 14px; }
 .ed-paste summary { cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--muted); }
@@ -613,101 +566,7 @@ body {
 }
 .wiz-check input { margin-top: 3px; accent-color: var(--blue); }
 
-/* ── Needs review: file it from here ─────────────────────────────────── */
-
 .roll-grid.three { grid-template-columns: 1.2fr 1.6fr 1fr; margin-top: 0; }
-
-.review { list-style: none; padding: 0 18px 14px; }
-.review li {
-  display: grid;
-  grid-template-columns: 1fr auto auto auto auto;
-  grid-template-areas:
-    "name select keyword file dismiss"
-    "why select note file dismiss"
-    "reasons reasons reasons reasons reasons";
-  column-gap: 10px;
-  row-gap: 2px;
-  align-items: center;
-  padding: 10px 0;
-  border-top: 1px solid #eef2f7;
-  font-size: 13.5px;
-}
-.review li:first-child { border-top: none; }
-.review .r-name { grid-area: name; font-weight: 600; color: #b45309; }
-.review .r-why { grid-area: why; color: var(--subtle); font-size: 12.5px; }
-.r-subfolder { display: block; }
-/* Decision 190's buckets: a heading per bucket, a program's true type in
-   the place a picker would be, and Open beneath the row. */
-.review li.r-bucket { display: block; font-weight: 600; color: var(--subtle); padding-top: 14px; }
-.review .r-type { grid-area: select; font-weight: 600; }
-.review .r-open-copy { grid-column: 1; justify-self: start; }
-.review select, .review input {
-  font: inherit;
-  font-size: 13px;
-  padding: 7px 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #fbfcfe;
-  color: var(--text);
-}
-/* Why each suggestion is on the list, under the row that offers it: an
-   <option> carries no second line, and the reason is what is read first. */
-.review .r-reasons {
-  grid-area: reasons;
-  list-style: none;
-  margin: 4px 0 0;
-  padding: 0;
-  color: var(--subtle);
-  font-size: 12.5px;
-}
-.review .r-reasons li { padding: 1px 0 1px 14px; text-indent: -14px; }
-.review .r-reasons .r-nothing { font-style: italic; }
-.review select { grid-area: select; max-width: 300px; }
-/* Each box sits in its own label (decision 201, D11), so the label takes
-   the box's place in the grid and the box keeps its width. */
-.review .r-keyword-box { grid-area: keyword; margin: 0; }
-.review .r-note-box { grid-area: note; margin: 0; }
-.review .r-keyword-box span, .review .r-note-box span,
-.r-spelling-box span, .r-keyword-box span { margin-bottom: 2px; }
-.review .r-keyword { width: 190px; }
-.review .r-note { width: 190px; }
-.r-spelling-box { margin: 0; }
-/* The issuer's one box and one button on a card parked for an unnamed
-   issuer (decision 201): the whole width of the row, under its reasons. */
-.r-issuer { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
-.r-issuer .field { margin: 0; }
-.r-issuer .wiz-note { flex-basis: 100%; margin: 0; }
-.review .r-file { grid-area: file; }
-.review .r-unfile { grid-area: file; }
-.review .r-dismiss { grid-area: dismiss; }
-/* Moved by hand (decision 110): three answers rather than two, so this one
-   list takes the review grid with a column added for the third. The first
-   two sit in the areas the other cards' two buttons use. */
-.review .r-restore { grid-area: file; }
-.review .r-keep { grid-area: dismiss; }
-.review .r-review { grid-area: send; }
-#moved-list li {
-  grid-template-columns: 1fr auto auto auto auto auto;
-  grid-template-areas:
-    "name select keyword file dismiss send"
-    "why select keyword file dismiss send"
-    "reasons reasons reasons reasons reasons reasons";
-}
-.review select:focus-visible, .review input:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
-/* The row the card handed over to, in the app's own focus colour: a person
-   who asked for the full picker should not have to find the row again. */
-.review li.focused { outline: 2px solid var(--blue); outline-offset: -2px; border-radius: 8px; }
-
-/* Set aside, not gone: folded away under its own count, and re-openable. */
-.dismissed { padding: 0 18px 12px; }
-.dismissed > summary {
-  cursor: pointer;
-  padding: 8px 0;
-  color: var(--subtle);
-  font-size: 12.5px;
-}
-.dismissed > summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
-.dismissed .review { padding: 0; }
 
 /* ── Small buttons ───────────────────────────────────────────────────── */
 .btn-small { padding: 5px 10px; font-size: 12.5px; }
@@ -768,7 +627,6 @@ body {
 
   .btn:focus-visible,
   .rem-stage:focus-visible,
-  .rem-quiet:focus-visible,
   .form-card:focus-visible,
   .wiz-back:focus-visible,
   input:focus-visible,

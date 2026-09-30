@@ -224,8 +224,8 @@ button, input, select, textarea {
 .rem-hold, .rem-hold-rows li, .rem-subject,
 .editor-table,
 .field input, .field select, .tmpl-item, .form-who, .wiz-sub, .wiz-note,
-.wiz-check, .toast, .prior-item, .review li, .review select, .review input,
-.editor-table input, .editor-table select, .ed-paste textarea, .ed-readonly,
+.wiz-check, .toast, .prior-item,
+.editor-table input, .editor-table select, .ed-paste textarea,
 .sc-radio, .household-feeds li,
 .banner, .notice, .btn {
   font-size: var(--fs-body);
@@ -233,15 +233,14 @@ button, input, select, textarea {
 }
 
 /* Caption size: every 11, 11.5, 12 and 12.5px of style.css. */
-.btn-small, .summary, .rem-status, .rem-hint, .rem-edited, .rem-stage,
-.rem-quiet, .rem-hold-rows .rem-hold-why,
-.req-side, .assure, .assure strong, .assure span,
+.btn-small, .summary, .rem-status, .rem-edited, .rem-stage,
+.rem-hold-rows .rem-hold-why,
+.req-side,
 .field span, .tmpl-head, .tmpl-rules, .editor-table th,
 .editor-table .ed-learned, .editor-table .ed-unlearn,
 .ed-set-aside > summary, .ed-paste summary,
 .ed-engagement legend, .form-blurb, .chosen-badge, .wiz-back, .prior-meta,
-.roll-return .roll-form span, .review .r-why, .review .r-reasons,
-.dismissed > summary, .sc-choice legend {
+.roll-return .roll-form span, .sc-choice legend {
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
 }
@@ -339,8 +338,6 @@ th, legend, strong,
 /* Danger: removes, undoes or discards something. */
 .btn-danger,
 .dlg-discard,
-.r-unfile,
-.r-withdraw,
 .hh-feed-remove,
 .ed-unlearn,
 .ed-remove .btn,
@@ -369,10 +366,10 @@ th, legend, strong,
 
 /* Quiet links that are not .btn: the same subtle look at .btn-small metrics.
    Every property is set, because none of it comes from .btn. */
-.rem-quiet:not(.hidden), .wiz-back:not(.hidden) {
+.wiz-back:not(.hidden) {
   display: inline-flex;
 }
-.rem-quiet, .wiz-back {
+.wiz-back {
   align-items: center;
   justify-content: center;
   gap: var(--sp-1);
@@ -387,23 +384,22 @@ th, legend, strong,
   cursor: pointer;
   transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-.rem-quiet:hover, .wiz-back:hover {
+.wiz-back:hover {
   color: var(--accent);
   background: var(--bg-hover);
   border-color: transparent;
 }
-.rem-quiet:active, .wiz-back:active { background: var(--bg-pressed); }
+.wiz-back:active { background: var(--bg-pressed); }
 /* Disabled is drawn, not faded (SPEC 5.2, the subtle variant): transparent
    fill, the disabled text colour, the default cursor, and hover and press
-   change nothing. app.js disables #btn-open-draft until a draft file exists. */
-.rem-quiet:disabled, .rem-quiet:disabled:hover, .rem-quiet:disabled:active,
+   change nothing. */
 .wiz-back:disabled, .wiz-back:disabled:hover, .wiz-back:disabled:active {
   color: var(--text-disabled);
   background: transparent;
   border-color: transparent;
   cursor: default;
 }
-.rem-quiet:focus-visible, .wiz-back:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.wiz-back:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 /* ── Surfaces: page, cards, rows, tables (P52, section 7) ────────────────── */
 
@@ -423,14 +419,6 @@ th, legend, strong,
   padding: var(--sp-2) var(--sp-4);
 }
 
-/* Card bodies inset 16px on both sides (style.css's 18px), 16px at the foot. */
-.reminder-body, .review {
-  padding-left: var(--sp-4);
-  padding-right: var(--sp-4);
-}
-.reminder-body, .review { padding-bottom: var(--sp-4); }
-.dismissed { padding: 0 var(--sp-4) var(--sp-4); }
-.dismissed .review { padding: 0; }
 .editor-actions { gap: var(--sp-2); }
 
 /* The chosen form's header row: labels never wrap inside a pill or a link;
@@ -444,15 +432,6 @@ th, legend, strong,
   padding: 0 var(--sp-4);
 }
 
-/* The queue: the direct rows only (a reasons list holds li of its own). */
-ul.review > li {
-  padding: var(--sp-2) 0;
-  column-gap: var(--sp-2);
-  row-gap: var(--sp-1);
-  border-top: 1px solid var(--border);
-}
-ul.review > li:first-child { border-top: none; }
-ul.review > li.r-bucket { padding-top: var(--sp-4); }
 /* Two answers in two blocks: this one is set apart so its primary leads it
    (SPEC 5.7). Across the whole row, under the reasons. */
 .where-it-waits {
@@ -491,7 +470,7 @@ ul.review > li.r-bucket { padding-top: var(--sp-4); }
   min-height: 0;
   padding: var(--sp-2) var(--sp-2);
 }
-:is(.editor-table, .review) :is(input:not([type="checkbox"]):not([type="radio"]), select) {
+.editor-table :is(input:not([type="checkbox"]):not([type="radio"]), select) {
   min-height: 28px;
   padding: 0 var(--sp-2);
 }
@@ -575,10 +554,6 @@ input[type="checkbox"], input[type="radio"],
 /* The stage's count was drawn at 75% opacity, which puts it under 4.5:1. */
 .rem-stage .rem-stage-n { opacity: 1; }
 
-/* ── Assurances footer (section 7.7) ────────────────────────────────────── */
-
-.assure { gap: var(--sp-4); }
-
 /* ── Colours the original wrote as literals (SPEC-shell 10.4) ────────────
    style.css writes some colours outside its tokens. Each rule that still
    draws something after this work is restated here, selector for selector,
@@ -599,8 +574,6 @@ input[type="checkbox"], input[type="radio"],
 .prior-item:hover { background: var(--bg-hover); }
 .chosen-badge { background: var(--info-bg); border: 1px solid var(--info-border); }
 .wiz-back:hover { background: var(--bg-hover); }
-.review .r-name { color: var(--st-attention); }
-.review li { border-top: 1px solid var(--border); }
 
 /* ── Motion (SPEC-shell 8.6): 150ms for hover, press, the sheet and a
    notice's fade; a person who asks for less gets none. ───────────────── */
@@ -617,14 +590,12 @@ input[type="checkbox"], input[type="radio"],
    shell.css; this one covers the buttons and the dialogs. */
 
 @media (forced-colors: active) {
-  .btn, .btn-small, .rem-quiet, .wiz-back {
+  .btn, .btn-small, .wiz-back {
     border: 1px solid ButtonText;
   }
 
   .btn:disabled,
   .btn:disabled:hover,
-  .rem-quiet:disabled,
-  .rem-quiet:disabled:hover,
   .wiz-back:disabled,
   .wiz-back:disabled:hover {
     color: GrayText;
@@ -632,7 +603,6 @@ input[type="checkbox"], input[type="radio"],
   }
 
   .btn:focus-visible,
-  .rem-quiet:focus-visible,
   .wiz-back:focus-visible {
     outline: 2px solid Highlight;
   }

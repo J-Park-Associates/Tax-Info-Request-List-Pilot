@@ -671,7 +671,7 @@ function keywordBox() {
   const words = vocab.review_labels;
   return el("label", { className: "field r-keyword-box" },
     el("span", {}, words.keyword),
-    tipped(el("input", { type: "text", className: "r-keyword" }), words.keyword_help));
+    el("input", { type: "text", className: "r-keyword" }));
 }
 
 // A note a person may leave when setting a document aside or unfiling it, labelled with the
@@ -1432,12 +1432,10 @@ function openHouseholdEditor() {
   $("hh-edit-members-label").textContent = words.members_label;
   $("hh-edit-contact-label").textContent = words.contact_label;
   $("hh-edit-link-label").textContent = words.link_label;
-  $("hh-edit-note").textContent = words.members_help;
   $("hh-edit-members").value = hh.members.join("\n");
   $("hh-edit-contact").value = hh.contact || "";
   $("hh-edit-link").value = hh.link || "";
   $("hh-edit-feeds-label").textContent = words.feeds_label;
-  $("hh-edit-feeds-help").textContent = words.feeds_help;
   $("hh-edit-feed-add").textContent = words.add_feed;
   $("hh-edit-feed-warning").classList.add("hidden");
   editorFeeds = (hh.feeds || []).map((f) => ({ household: f.household, return_name: f.return_name,
@@ -1677,24 +1675,17 @@ function applyVocabulary() {
   document.querySelector("title").textContent = vocab.firm ? `${vocab.product} — ${vocab.firm}` : vocab.product;
   applyScheduleVocabulary(vocab.schedule);
   $("household-title").textContent = vocab.household.new;
-  $("hh-new-head").textContent = vocab.household.new;
-  // Add a return and New household (decision 196): the household step's
-  // sentence, the form step and the request list. The menu owns the words
-  // that open them (File > New household…).
-  $("household-new-intro").textContent = vocab.household.new_intro;
-  $("form-note").textContent = vocab.household.form_step_note;
+  // Add a return and New household (decision 196): the household step, the
+  // form step and the request list, with no help line of their own (SPEC
+  // 2.7). The menu owns the words that open them (File > New household…).
   $("wi-back").textContent = `\u2190 ${vocab.household.change_form}`;
   $("wi-household").textContent = `\u2190 ${vocab.household.change_household}`;
   $("ne-create").textContent = vocab.household.create_return;
   $("hh-name-label").textContent = vocab.household.name_label;
   $("hh-contact-label").textContent = vocab.household.contact_label;
-  setTip($("hh-contact"), vocab.household.contact_help);
   $("hh-members-label").textContent = vocab.household.members_label;
-  setTip($("hh-members"), vocab.household.members_help);
   $("hh-link-label").textContent = vocab.household.link_label;
-  setTip($("hh-link"), vocab.household.link_help);
   $("ne-name-label").textContent = vocab.household.return_name_label;
-  setTip($("ne-name"), vocab.household.return_name_help);
   // What adding a return to a household shows, said every time on both
   // pages that add one (decision 129).
   $("hh-return-warning").textContent = vocab.household.return_warning;
@@ -1706,19 +1697,15 @@ function applyVocabulary() {
   for (const id of ["ne-year"]) {
     $(id).min = vocab.year_min;
     $(id).max = vocab.year_max;
-    setTip($(id), vocab.year_note);
   }
   $("cu-add").textContent = vocab.editor.add_row;
   // The editor's every word: the two titles, the buttons, the paste hint.
   $("ed-title").textContent = vocab.editor.title;
   $("ed-engagement-title").textContent = vocab.editor.engagement_title;
-  $("ed-list-title").textContent = vocab.editor.title;
   $("ed-add").textContent = vocab.editor.add_row;
   $("ed-paste-title").textContent = vocab.editor.paste;
-  $("ed-paste-hint").textContent = vocab.editor.paste_hint;
   $("ed-paste-btn").textContent = vocab.editor.paste;
   $("ed-rename-title").textContent = vocab.editor.rename_title;
-  $("ed-rename-hint").textContent = vocab.editor.rename_hint;
   $("ed-rename-from").setAttribute("aria-label", vocab.editor.rename_from);
   $("ed-rename-to").setAttribute("aria-label", vocab.editor.rename_to);
   $("ed-rename-to").placeholder = vocab.editor.rename_to;
@@ -1908,13 +1895,11 @@ async function repairSchedule() {
 
 function applyScheduleVocabulary(words) {
   $("sc-title").textContent = words.title;
-  $("sc-loading").textContent = words.loading;
   $("sc-enabled-label").textContent = words.enabled_label;
   $("sc-on-label").textContent = words.on;
   $("sc-off-label").textContent = words.off;
   $("sc-start-label").textContent = words.start_label;
   $("sc-every-label").textContent = words.every_label;
-  $("sc-note").textContent = words.note;
   $("sc-save").textContent = words.save;
   $("sc-cancel").textContent = words.cancel;
   $("sc-every").replaceChildren(
@@ -1937,6 +1922,8 @@ function scheduleError(text) {
 // answers; a failed read closes it and says why, as any failed read does.
 async function openSchedule() {
   scheduleError("");
+  // The read is on its way: outline rows, and the one word for a screen reader.
+  $("sc-loading").replaceChildren(h("span", { className: "visually-hidden" }, screenWords().loading), ...shellSkeleton(3));
   $("sc-loading").classList.remove("hidden");
   $("sc-form").classList.add("hidden");
   $("sc-save").disabled = true;
@@ -2292,7 +2279,6 @@ function renderFormGrid() {
     el("button", { className: "form-card", dataset: { form: f.id } },
       el("span", { className: "form-num" }, f.label),
       el("span", { className: "form-who" }, f.who),
-      el("span", { className: "form-blurb" }, f.blurb),
     )));
 }
 
@@ -2303,9 +2289,7 @@ function chooseForm(formId) {
   templates = templatesByForm[formId] || [];
   customItems = [];
   $("items-title").textContent = fill(vocab.household.items_title, { form: form.label });
-  $("chosen-form").textContent = `${form.label} · ${form.who}`;
   $("tmpl-head-label").textContent = `${form.label} request list — ${vocab.ask_the_client}`;
-  $("tmpl-note").textContent = vocab.ask_the_client_note;
   $("ne-name").value = "";
   nameIsAuto = true;
   $("ne-year").value = defaultYear || "";
@@ -2316,7 +2300,7 @@ function chooseForm(formId) {
   // name pre-fills from the household's contact, because that is who the
   // household said the return is for.
   wizardPeople = [{ ...blankPerson(), name: householdContact() }];
-  labelPeopleBlock("wp-head", "wp-help", "wp-add");
+  labelPeopleBlock("wp-head", "wp-add");
   renderPeople("wp-people", wizardPeople, () => {});
   if (wizardPeople[0].name) refreshProposals(wizardPeople[0], () => renderPeople("wp-people", wizardPeople, () => {}));
   renderTemplateList();
@@ -2342,22 +2326,11 @@ function syncNameDefault() {
     : "";
 }
 
-function templateSummary(t) {
-  const bits = [];
-  if (t.extensions) bits.push(t.extensions);
-  if (t.required_keywords) bits.push(`must contain "${t.required_keywords}"`);
-  if (t.any_keywords) bits.push(`any of: ${t.any_keywords}`);
-  if (t.expected_count > 1) bits.push(fill(vocab.expected_pattern, { n: t.expected_count }));
-  return bits.join(" · ");
-}
-
 function renderTemplateList() {
   show("tmpl-list", templates.map((t, i) =>
     el("label", { className: "tmpl-item" },
       el("input", { type: "checkbox", dataset: { index: String(i) }, checked: Boolean(t.core) }),
-      el("span", { className: "tmpl-id" }, t.identifier),
-      el("span", { className: "tmpl-doc" }, t.document, " ",
-        el("span", { className: "tmpl-rules" }, templateSummary(t))),
+      el("span", { className: "tmpl-doc" }, t.document),
     )));
 }
 
@@ -2456,17 +2429,16 @@ function renderPeople(id, people, onChange) {
       el("label", { className: "field" }, el("span", {}, words.kind_label), kind),
       el("label", { className: "field" }, el("span", {}, words.name_label), name),
       el("div", { className: "person-spellings" },
-        tipped(el("span", { className: "tmpl-rules" }, words.spellings_label), words.spellings_help),
-        ticks.length ? ticks : el("span", { className: "wiz-note" }, words.help),
+        el("span", { className: "tmpl-rules" }, words.spellings_label),
+        ticks,
         own),
       el("div", { className: "editor-actions" }, remove));
   }));
 }
 
 // The block's headings and its Add button, wherever it is drawn.
-function labelPeopleBlock(headId, helpId, addId) {
+function labelPeopleBlock(headId, addId) {
   $(headId).textContent = vocab.people.label;
-  $(helpId).textContent = vocab.people.help;
   $(addId).textContent = vocab.people.add;
 }
 
@@ -2503,7 +2475,6 @@ function cellInput(row, column, onChange) {
     const select = el("select", { "aria-label": column.label },
       [vocab.editor.yes, vocab.editor.no].map((value) =>
         el("option", { value, selected: current === value }, value)));
-    setTip(select, column.help);
     select.addEventListener("change", () => { row[key] = select.value; onChange(); });
     return select;
   }
@@ -2519,7 +2490,6 @@ function cellInput(row, column, onChange) {
       vocab.override_reasons.map((value) =>
         el("option", { value, selected: current === value }, value)),
       el("option", { value: ownWords, selected: Boolean(current) && !listed }, ownWords));
-    setTip(select, column.help);
     const typed = el("input", {
       type: "text", className: "ed-reason-typed", value: listed ? "" : current,
       "aria-label": `${column.label} (${ownWords})`, placeholder: ownWords,
@@ -2544,7 +2514,6 @@ function cellInput(row, column, onChange) {
     // the API derived for the row it opened on, never one typed here.
     placeholder: key === "short_title" ? editorRowShortName(row) : undefined,
   });
-  setTip(input, column.help);
   if (minimum !== undefined) input.min = minimum;
   if (maximum !== undefined) input.max = maximum;
   input.addEventListener("input", () => { row[key] = input.value; onChange(); });
@@ -2605,8 +2574,8 @@ function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack,
     const nameOf = (row, custom) => (custom ? row.identifier || ""
       : `${row.identifier || ""}${vocab.triage.identifier_separator}${row.document || ""}`);
     head = el("tr", {},
-      tipped(el("th", {}, documentColumn.label), documentColumn.help),
-      plain.map((c) => tipped(el("th", {}, c.label), c.help)),
+      el("th", {}, documentColumn.label),
+      plain.map((c) => el("th", {}, c.label)),
       el("th", {}, ""),
       el("th", {}, ""));
     body = rows.flatMap((row, index) => {
@@ -2617,7 +2586,7 @@ function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack,
       const inFold = routing.filter((c) => !(custom && c.key === "document"));
       const cell = el("td", {}, el("div", { className: "ed-fields" },
         inFold.map((c) => el("label", { className: "field" },
-          tipped(el("span", {}, c.label), c.help), cellInput(row, c, changed))),
+          el("span", {}, c.label), cellInput(row, c, changed))),
         taught ? learnedBox("div", row) : null));
       cell.colSpan = plain.length + 3;
       const routingRow = el("tr", { className: open ? "ed-routing" : "ed-routing hidden",
@@ -2626,7 +2595,6 @@ function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack,
         type: "button", className: "btn btn-small ed-fold",
         "aria-expanded": String(open),
       }, vocab.editor.routing);
-      setTip(toggle, vocab.editor.routing_help);
       toggle.addEventListener("click", () => {
         const now = routingRow.classList.toggle("hidden") === false;
         toggle.setAttribute("aria-expanded", String(now));
@@ -2643,7 +2611,7 @@ function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack,
   } else {
     head = el("tr", {},
       keyed ? el("th", { className: "ed-id" }, columnsByKey(["identifier"])[0].label) : null,
-      columns.map((c) => tipped(el("th", {}, c.label), c.help)),
+      columns.map((c) => el("th", {}, c.label)),
       taught ? el("th", {}, "") : null,
       el("th", {}, ""));
     body = rows.map((row, index) => el("tr", { dataset: { index: String(index) } },
@@ -2681,7 +2649,7 @@ function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack,
 // Blank fields are sent blank: the catalog's item_from_spec() fills the
 // file types and the keyword (the document name) by the one rule, and the
 // editor shows the result afterwards.
-const CUSTOM_COLUMNS = ["document", "allowed_extensions", "required_keywords"];
+const CUSTOM_COLUMNS = ["document"];   // the rule columns are the editor's (SPEC 2.7, E90)
 
 function customIdentifier(position) {
   return `X${String(position).padStart(2, "0")}`;
@@ -2899,8 +2867,7 @@ function renderEditorRows() {
   const every = el("button", { type: "button", className: "btn btn-small ed-fold-all",
                                "aria-expanded": String(all) }, vocab.editor.routing_all);
   every.addEventListener("click", showEveryFold);
-  const above = el("div", { className: "editor-actions" }, every,
-    el("span", { className: "wiz-note" }, vocab.editor.routing_help));
+  const above = el("div", { className: "editor-actions" }, every);
   $("ed-rows").replaceChildren(...[above, activeBox, folded].filter(Boolean));
 }
 
@@ -2981,20 +2948,17 @@ function addEditorRow() {
 // box, so it is drawn where it can be edited rather than shown as one.
 function renderEngagementFields(info) {
   show("ed-fields", vocab.editor.engagement_fields
-    .filter((f) => f.key !== "name" && f.key !== "people")
+    .filter((f) => f.key !== "name" && f.key !== "people" && f.editable)   // the read-only fields are cut (SPEC 2.7, E91)
     .map((f) => {
       const value = info[f.key];
-      if (!f.editable) {
-        return el("label", { className: "field" }, el("span", {}, f.label),
-          tipped(el("span", { className: "ed-readonly" }, value === true ? vocab.editor.yes : value === false ? vocab.editor.no : value || "—"), f.help));
-      }
       if (typeof value === "boolean") {
+        // The one help kept: the warning before a risky act (P77), on Active.
         return el("label", { className: "wiz-check" },
           el("input", { type: "checkbox", checked: value, dataset: { field: f.key } }),
           el("span", {}, `${f.label} — ${f.help}`));
       }
-      return el("label", { className: "field" }, tipped(el("span", {}, f.label), f.help),
-        tipped(el("input", { type: vocab.editor.date_fields.includes(f.key) ? "date" : "text", value: value || "", dataset: { field: f.key } }), f.help));
+      return el("label", { className: "field" }, el("span", {}, f.label),
+        el("input", { type: vocab.editor.date_fields.includes(f.key) ? "date" : "text", value: value || "", dataset: { field: f.key } }));
     }));
 }
 
@@ -3054,7 +3018,7 @@ async function openEditor(focus) {
   // The return's people, as the record holds them (decision 128): edited
   // here and nowhere else, and saved with the rest of the details.
   editorPeople = ((editorState.engagement || {}).people || []).map(personFromRecord);
-  labelPeopleBlock("ep-head", "ep-help", "ep-add");
+  labelPeopleBlock("ep-head", "ep-add");
   renderPeople("ep-people", editorPeople, () => {});
   renderEditorRows();
   renameChoices();
@@ -3540,6 +3504,7 @@ $("ne-cancel").addEventListener("click", () => requestClose("modal"));
 // Every dialog the same way (decision 201): a click on the dim behind it
 // is Escape, and the bar's two answers are the only way past it.
 for (const id of Object.keys(DIALOGS)) {
+  if (id === "sheet") continue;   // its scrim is the click behind it (sheet.js)
   $(id).addEventListener("click", (e) => {
     if (e.target === $(id)) requestClose(id);
   });
