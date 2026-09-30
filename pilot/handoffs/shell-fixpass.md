@@ -67,3 +67,24 @@ See the last commit's message and the report: the files for what changed
 `test_manifest`. `ruff` clean; `repo_map.py check` current; `interact.mjs` and
 `shoot.mjs` run, and the shots at 1100px were looked at in light, dark and
 the contrast theme.
+
+# Fix pass 2
+
+Findings NEW 1-5 of `shell-final-rereview.md`, fixed on `claude/shell-join`.
+
+| Finding | Fix | Pinned by |
+|---|---|---|
+| N1 other returns' raw sentences | `scanSummary` draws, for every return in the reply, only the failure word with its approved reason (from `code`), or - only when `code` is `lock-held` - the approved word "Another PC Sorting" (asked return: "Nothing Done: Another PC Sorting."). Any other skip of the asked return is the bare "Nothing Done" (new word `scan.nothing_done_bare`, mine, Jason may change); any other skip of another return draws nothing. The long sentences stay in the error log. Other returns' own warnings are unchanged. | `test_shell::test_a_failed_or_locked_household_sort_draws_no_engine_sentence_and_no_path`: real `run-now` on a household of two returns, once with the client folder gone and once with one return's lock held; the final line's runs go through the page's own `scanSummary`; no path, backtick, "Clients", "missing", "another run" or "lock" reaches a drawn line. Mutation-checked both ways (raw sentence for the other return; raw skip for the asked return): each fails the test. |
+| N2 PROMPT step 12 | Says to rename the folder chosen as the Clients folder in step 2 (the one holding `Clients` and `J Park & Associates`). Verified on a scratch tree with the real runner: the scheduled pass with that folder gone is refused (`PassFailed`, non-zero); renaming the inner `Clients` fails only after the household has been sorted once (exit 1) and succeeds (exit 0, no banner) for a household never sorted. Menu word is "Repair Schedule" (Tools menu). Step 13 now says a household sorted once, which folder, and that other returns get their own short line. Step 11 (Unfile box) had no such problem. | PROMPT text |
+| N3 misfit rows | Nine rows say "Approved by Jason, ruling 30"; "Bad Year" says "Working word (ruling 18a), Jason may change". | TSV |
+| N4 30-minute cap | Each kill phrase ends in a full stop: "Sort Stopped: Ran Too Long." / "Change Stopped: Ran Too Long." "It May Be Partly Done." / "Stopped: Ran Too Long." then "It Was on {household}: {name}." Five words or fewer each. | `test_single_source` (literal joined lines) |
+| N5 README and runbook | README sentence split so "Its name" is the household's; the doubled "a" in the runbook is gone; "card" becomes row, page or side sheet in the runbook (the graphics card stays, and one quoted engine sentence, `reminder.py`'s "open it from its card", stays as the engine says it); "Routing rules fold" is the **Advanced** switch. Status names such as "Not asked" are unchanged. | `test_single_source` |
+
+Words for Jason: "Nothing Done" (bare, for a skipped return with no approved
+reason word). The reminder's own refusal in `tracker/reminder.py` still says
+"card"; not changed here (engine wording, outside this pass).
+
+Gate: ruff clean; `test_api`, `test_api_entry`, `test_shell`, `test_shell_menu`,
+`test_pilot_ui`, `test_single_source`, `test_layers`, `test_registry`,
+`test_vocab_report`, `test_repo_map`, each its own process, Python 3.11 then
+3.13; `interact.mjs` passes. `runner.py` was not touched.
