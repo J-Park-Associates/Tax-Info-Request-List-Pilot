@@ -23,6 +23,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -2331,7 +2332,13 @@ vm.runInContext({json.dumps(stub)}, vm.createContext({{ window, location: {{ sea
   console.log(JSON.stringify({{ list, firm, states }}));
 }})();
 """
-    done = subprocess.run([NODE, "-e", script], capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+    # From a file, never ``node -e``: the stub alone is longer than Windows'
+    # 32,767-character command line (the Windows check's A3, P129).
+    with tempfile.TemporaryDirectory() as folder:
+        probe = Path(folder) / "stub-replies.js"
+        probe.write_text(script, encoding="utf-8", newline="\n")
+        done = subprocess.run([NODE, str(probe)], capture_output=True, text=True, encoding="utf-8", timeout=60,
+                              check=False)
     assert done.returncode == 0, done.stderr
     return json.loads(done.stdout)
 
