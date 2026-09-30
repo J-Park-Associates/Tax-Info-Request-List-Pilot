@@ -253,7 +253,7 @@ After (three levels; links stay links - underlined, SPEC-shell 3.9):
   B) a light band (`--bg-nav`) behind each return heading, a stronger cue at
   the cost of reversing P71.
 
-## 6. The three sections of a return's page (P136; owner question Q8)
+## 6. The three sections of a return's page (P136, P176; Q8 built)
 
 Request relayed by the orchestrator, 2026-09-29, looking at a return's page
 (990 - Sunrise Community Arts Center): "please also distinguish between need
@@ -332,7 +332,7 @@ New tests in `tests/test_shell.py`, named as their claims:
 `test_the_header_row_and_grips_keep_the_rules_of_the_stylesheet`,
 `test_file_rows_are_ordinary_weight_and_the_household_beside_a_heading_is_secondary`.
 
-## 7. Docs made true in the same commit
+## 8. Docs made true in the same commit
 
 - `pilot/SPEC-shell.md` 3.6 gains a pointer: "Column headers, ordering and
   widths: `pilot/SPEC-lists.md`." (a one-line note; nothing re-opened).
@@ -343,7 +343,323 @@ New tests in `tests/test_shell.py`, named as their claims:
   tester guide is emailed and versioned at the landing (P140). No line of
   either becomes untrue.
 
-## 8. Open for Jason
+## 9. Linked households: the record (P141, P170, P172)
+
+Jason, 2026-09-29: "both, lets go with 1 (make the icon a medium standout
+color) have the linked to information appear when you click the tooltip."
+"Linked" means both kinds (P141):
+
+- **(a) Also Feeds** - a household whose `Drop files here` also feeds a
+  return line in another household (`HouseholdInfo.feeds`, decision 132).
+  It is shown on **both ends**: the feeding household says **Also Feeds**
+  the other; the fed household says **Fed By** the feeder. Nothing new is
+  stored for it; it is read from the feed list the record already holds.
+- **(b) Related** - households a person marks as related in Edit
+  Household. New.
+
+### 9.1 The field (P170)
+
+- `tracker/records.py`: `HouseholdInfo.related: tuple[str, ...] = ()` -
+  household **folder names**, last field, default empty. `HOUSEHOLD_FIELDS`
+  gains `("Related Households", "related")` and `HOUSEHOLD_EDITABLE` gains
+  `"related"`. `household_to_json` writes it as a JSON list;
+  `household_from_json` reads a list of names (a record written before
+  this field reads as none: **backward compatible**).
+- **Never inferred.** Only a person's save in Edit Household writes it;
+  nothing compares two households and suggests one.
+- **Symmetric.** Saving household A with B added writes B into A's record
+  and A into B's, each under its own household lock, **one after the
+  other, never two locks at once** (so no lock order is needed). Removing
+  it from either side removes it from both. The screen reads **either**
+  record (9.4), so a save that stopped between the two writes still shows
+  the link on both ends, and saving either household again completes it.
+- **Only households that exist.** Edit Household offers the other
+  households of the `list` reply; the command refuses a name that is not a
+  household under the clients root (`RELATED_UNKNOWN`), the household
+  itself, a blank, or a name twice (`RELATED_REFUSED`), each by name.
+- **A note, not a route.** Nothing files, feeds, shares or hands over
+  through a related link; decision 132's rule - only the drop point
+  crosses households - is unchanged. The standing rules hold: no document
+  is read, nothing is guessed, nothing is sent.
+
+### 9.2 The store (schema 20, admission 3)
+
+- `SCHEMA_VERSION` 19 -> 20: the household columns are the record's fields
+  (`_column_types(HouseholdInfo)`), so `related` is the new column
+  `engagements.household_related` (TEXT, a JSON list, in `_LIST_COLUMNS`).
+- **In place** (`_IN_PLACE[19]`): `ALTER TABLE engagements ADD COLUMN
+  "household_related" TEXT DEFAULT '[]'`. The default is what a rebuild
+  writes for a row whose lines never name the field (the record's own
+  default, `_new_engagement_defaults`), so `store check` finds nothing on
+  an upgraded file, and the verdict cache is kept.
+- **Admission 3** (`ADMISSION_VERSION`): `_refuse_a_malformed_line`
+  refuses a `household_changed` line whose `related` is not a list of
+  text, or names something that is not one folder name (`a_segment`), and
+  `records.household_problem` holds each name to the text rule. It refuses
+  something it used to admit, so every row judged by admission 2 is judged
+  again at its next sync (decision 209); `tests/test_store.py`'s pin moves
+  to 3.
+
+### 9.3 The command (`edit-household`)
+
+`tracker/api.py` `_cmd_edit_household`: JSON `related` is a list of
+household names; `_related_from_spec` refuses what 9.1 refuses, then the
+household is saved, then `_mirror_related` writes the change into each
+other household it added or removed (read fresh with
+`registry.households_named`, never from the store). The state's household
+gains `related` (its own record's list). Edit Household (`app.js`,
+`index.html`) gains a "Related Households" list with a picker of the other
+households and an "Add Related Household" button, shaped like Also Feeds.
+
+### 9.4 The reply fields (P172; additive, for lane 1's cache)
+
+| Reply | Field | Shape |
+|---|---|---|
+| `firm` `returns[]` | `links` | `[{"name", "path", "kind"}]` - the linked households of the return's household |
+| `firm` `returns[]` | `form` | the return's catalog id (`"1040"`, `"1120S"`, `"990"`, ...), `""` when not recorded |
+| `list` `households[]` | `links` | as above |
+| `list` `households[].returns[]` and `engagements[]` | `form` | as above |
+
+`kind` is `feeds` (this household's drop folder also feeds that one),
+`fed_by` (that household's drop folder feeds this one) or `related`
+(either record names the other). A pair linked two ways has an entry per
+kind. Worked out once per walk from the registry the command already
+holds (`_household_links`), no extra disk read; `path` is `""` for a name
+no household folder answers (a retired link), which the panel shows as
+text, not a link. `form` is the record's own (`EngagementInfo.form`),
+**never read from a folder name**; a blank form has no chip and belongs
+to no Client Type (15.3).
+
+**Owner test files:** `tests/test_records.py`, `tests/test_store.py`,
+`tests/test_households.py`, `tests/test_api.py`.
+
+## 10. Linked households: the mark and the panel (P141, P171)
+
+- **Where:** beside the household name in each of the four firm lists -
+  Overview's Client column, Needs Review's household under each return,
+  Reminders' Client column and Clients' Client Name column. Not on the
+  household, year or return pages (their own header already names the
+  household, and Edit Household lists the links).
+- **The icon:** `i-link` (two linked rings, drawn like the others, 16px,
+  1.5px stroke, `currentColor`) in **`--st-linked`**, a violet from the
+  firm's palette: not link blue, not one of the status colours (amber,
+  blue, green, red), 5.66:1 or more on every surface it sits on, light
+  and dark (16). In Windows High Contrast it is `ButtonText` on a button
+  with a `CanvasText` edge: the shape carries it, never colour alone.
+- **Words:** tooltip and accessible name "Linked Households"
+  (`vocab.screen.linked.tip`). Kinds: "Also Feeds", "Fed By", "Related"
+  (`vocab.screen.linked.feeds|fed_by|related`; owner question Q10).
+- **Opening:** a click, or Enter/Space when the icon has focus, opens a
+  small panel (`#link-panel`, `role="dialog"`, named "Linked Households")
+  under the icon: one line per link, the household's name as an
+  underlined link (`navigate_client`'s tooltip) and its kind in caption
+  grey. Choosing a name goes to that client's page. **Escape** or a
+  click outside closes it and returns focus to where it was opened from.
+  Motion: a 150ms fade (`--dur`); none under reduced motion.
+- **Inside a row list** (Overview, Reminders, Clients): a listbox is one
+  Tab stop that moves by `aria-activedescendant` (SPEC-shell 3.6), so the
+  icon there is a button with `tabindex="-1"` for the pointer; the row's
+  `aria-description` gains "Linked Households", and **Space** on the
+  active row opens its panel (Enter still runs the row's step). On
+  **Needs Review** the icon sits in a group heading, outside any list,
+  and is a normal Tab stop.
+
+## 11. Overview raised (P145)
+
+- **Summary cards:** the three counts ("Need a Person", "Waiting on
+  Clients", "Complete", unchanged words and meanings) each in a raised
+  card (`--bg-raised`, 1px `--border`, `--radius`), the number in the
+  figure type, the label in caption, and a small icon in the card's
+  status colour (`i-alert` amber, `i-clock` blue, `i-done` green).
+- **Title row:** "Work Waiting" (H2) with its count as secondary caption
+  text, and at its right three **filter tabs** - "All", "Need You ({n})",
+  "Waiting ({n})" - buttons with `aria-pressed`, in the switch's look. A
+  tab narrows the whole list, then the chosen order and the pages apply.
+  The tab is forgotten when Overview is left.
+- **The list:** muted Title Case column headers (lane 4's), row dividers,
+  subtle alternating shading (`--bg-band` on every second row), a form
+  chip ("1040", "1120S", "990", "1041", "1065", "1120") before each
+  return's name (caption, `--bg-hover` chip, `--text-secondary`), the
+  status as a **pill with a dot** that keeps the count ("2 Need You") in
+  the app's colours on the notice tints (`--warn-bg` / `--info-bg` /
+  `--ok-bg`).
+- **Not built:** monospace anywhere (digits use `tabular-nums`),
+  checkboxes, "Open" as a status, a version badge in the title, a
+  subtitle, "Complete Today", "active cases".
+
+## 12. Needs Review raised (P149)
+
+- **Title row:** "Needs Review" (H2) with the page's count as secondary
+  text ("13 Files", "1 File"), no alarm badge, no subtitle.
+- **Reason cards:** one raised card per reason present, its short reason
+  word, its icon and its count, each a **filter** (`aria-pressed`); an
+  "All" card clears. Choosing one narrows the whole list, then order and
+  pages apply; forgotten when the page is left.
+- **Each return is a card group** (`--bg-raised`, 1px `--border`,
+  `--radius`, 16px apart): a folder icon; the return's name (the H2 link,
+  unchanged); the household as the small grey secondary link with the
+  P141 icon when linked; the count "1 Document" / "{n} Documents"; and a
+  visible **More Actions** icon button (`i-more`, tooltip "More Actions")
+  that opens **the same native right-click menu** as the heading (the
+  `return` template, acting on that return; no new action). The heading
+  is right-clickable too.
+- **File rows** under the heading: a file icon, the file link (regular
+  weight), the request it most likely is as a **muted chip** (its short
+  title, the full title as its tooltip), the **reason as a pill**, and
+  the date.
+- **Reason pills are all the Need You amber**, told apart by a small icon
+  per reason family and by their words: can't tell (`i-question`), names
+  (`i-person`), the file itself (`i-file`), emails and zips (`i-box`),
+  moved or touched by a person (`i-hand`), anything else (`i-alert`).
+  Colour keeps one meaning across the app.
+- **Not built:** a brand change, extra pages, "Re-run Checks" (ruling 28,
+  P113), "Critical Only", a subtitle.
+
+## 13. Search (P173)
+
+The bar's one search box stays (SPEC-shell 8.2) and always searches the
+whole practice, never only the page shown. Its placeholder is **"Search
+Clients and Returns"** (`vocab.screen.find_placeholder`); on Needs Review
+it is **"Search Files, Clients and Returns"**
+(`find_placeholder_files`, owner question Q12) and the box also finds the
+waiting files by name - files first there, each noted with its return and
+year; choosing one opens Check on it. Up to eight options, as before.
+
+## 14. Page buttons (P152, P174)
+
+- Overview, Needs Review, Reminders and Clients show a footer,
+  **"Showing {from}-{to} of {total} {noun}"** (nouns Returns, Files,
+  Drafts, Clients), with **Previous** and **Next** buttons (disabled at
+  the ends). Digits are `tabular-nums`.
+- **50 rows per page** (`PAGES_PER_PAGE`; owner question Q11).
+- **Order, tabs, reason cards and the Clients type filter act on the
+  whole list first**; pages only divide the result. Any change of them
+  returns to page 1.
+- **Needs Review pages by whole return groups**: a page takes groups
+  while their files stay within 50 (a group larger than 50 is a page of
+  its own); the footer counts files.
+- The **column header row sticks** to the top of the page area while it
+  scrolls.
+- The page number is **not remembered**: leaving the page and coming
+  back starts at page 1.
+- Previous/Next keep keyboard focus on the button pressed (or the other
+  one when it becomes disabled) and scroll the page to its top.
+
+## 15. The side panel and Clients (P153, P154)
+
+### 15.1 The panel
+
+- **Brand band** (`--brand`, both themes): the JP logo, **"J Park &
+  Associates"** (body, 600) and **"Tax Document Console"** (caption) in
+  `--window-light`. New words name the app "Tax Document Console" (P155);
+  nothing existing is renamed and no version number changes (P140).
+- **Pages:** Overview, Needs Review, Reminders, Clients, each with an
+  icon, its count badge (Needs Review files waiting, **amber**:
+  `--st-attention` on `--warn-bg`; Reminders drafts ready, neutral:
+  `--text-secondary` on `--bg-pressed`), the current page highlighted as
+  today (`aria-current="page"`, the pill), Ctrl+1..4 kept.
+- **Under Construction** (P154): "Ready to Sign (Under Construction)" and
+  "Family Entities (Under Construction)" among the pages; section
+  **"Workspace"**: "Personal Trusts (Under Construction)", "Corporate
+  Entities (Under Construction)", "Portal Settings (Under Construction)".
+  Each muted but readable (`--text-secondary`, 7.58:1 on `--bg-nav`),
+  keyboard-reachable, `aria-disabled="true"`, tooltip "Under
+  Construction". Choosing one shows a short **"Under Construction"**
+  toast and opens nothing, calls no engine command.
+- **Client Types** (section heading): Individuals (1040), Businesses
+  (1120, 1120S, 1065), Trusts & Estates (1041), Nonprofits (990); the
+  forms are each item's tooltip. Each opens Clients filtered to the
+  households with a return of that form group (15.3).
+- **Settings** at the bottom opens the settings the app already has - the
+  settings page of File › Change Clients Folder (the folder, the firm's
+  name and phone) - through the same menu answer (`change_root`). No
+  user profile: the last-sort line and the version badge keep the corner.
+- **Height:** the item list scrolls (`overflow-y: auto`); at a 700px
+  window nothing is cut.
+
+### 15.2 Clients
+
+Headers **Client Name / Returns / Status** (Title Case; ordering and
+resizing as lane 4 built), row dividers and banding, the Work Waiting tab
+with its count beside "All", status pills in Overview's style, the page
+footer (14), the P141 icon beside a linked name, and the search
+placeholder of 13. Names stay underlined links. The name column's header
+word is "Client Name" on Clients only (`columns.client_name`).
+
+### 15.3 Client Types filter
+
+A type is shown on Clients as a **removable chip** (the type's word and a
+dismiss icon, tooltip "Remove Filter"); both tabs are narrowed by it. A
+household belongs to a type when one of its returns' recorded `form` is
+in the type's forms; a return with no recorded form belongs to none (the
+tracker never reads a form out of a folder name). The type is the
+renderer's filter only: nothing is written and no command is called. It
+is forgotten when Clients is left for another firm page.
+
+## 16. Tokens and contrast (P177)
+
+New tokens (in `pilot-ui.css`'s two `:root` blocks):
+
+| Token | Light | Dark | Use |
+|---|---|---|---|
+| `--st-linked` | `#7c3aad` | `#c4a0f0` | the link icon |
+| `--bg-band` | `#f8fafc` | `#1f232a` | every second row of a firm list |
+
+Every new pair, computed from the tokens (WCAG 2.2; text 4.5:1, non-text
+3:1):
+
+| Pair | Needs | Light | Dark |
+|---|---|---|---|
+| `--st-linked` on `--bg-page` (icon) | 3 | 6.85 | 7.66 |
+| `--st-linked` on `--bg-hover` | 3 | 6.25 | 6.62 |
+| `--st-linked` on `--bg-selected` | 3 | 5.66 | 6.11 |
+| `--st-linked` on `--bg-band` | 3 | 6.55 | 7.23 |
+| `--st-linked` on `--bg-raised` (Needs Review card) | 3 | 6.85 | 6.87 |
+| `--st-attention` on `--warn-bg` (Need You pill, reason pill, amber badge) | 4.5 | 7.52 | 8.05 |
+| `--st-waiting` on `--info-bg` (Waiting pill) | 4.5 | 9.52 | 7.85 |
+| `--st-done` on `--ok-bg` (Complete pill) | 4.5 | 7.25 | 9.07 |
+| `--st-attention` on `--bg-raised` (card icon) | 3 | 7.80 | 8.47 |
+| `--st-waiting` on `--bg-raised` (card icon) | 3 | 10.36 | 8.03 |
+| `--st-done` on `--bg-raised` (card icon) | 3 | 7.63 | 8.78 |
+| `--text` on `--bg-band` | 4.5 | 17.06 | 13.30 |
+| `--text-secondary` on `--bg-band` (detail, chips) | 4.5 | 7.91 | 8.84 |
+| `--text-caption` on `--bg-band` (date) | 4.5 | 5.68 | 6.37 |
+| `--link` on `--bg-band` | 4.5 | 12.11 | 8.85 |
+| `--link` on `--bg-raised` (Needs Review card links) | 4.5 | 12.67 | 8.41 |
+| `--focus` on `--bg-band` (focus ring) | 3 | 4.94 | 7.17 |
+| `--text-secondary` on `--bg-nav` (Under Construction, section words) | 4.5 | 7.58 | 10.05 |
+| `--text-secondary` on `--bg-nav-hover` | 4.5 | 6.97 | 8.84 |
+| `--text-secondary` on `--bg-pressed` (neutral badge, chips) | 4.5 | 6.71 | 7.13 |
+| `--window-light` on `--brand` (brand words) | 4.5 | 12.67 | 12.67 |
+
+The row band against the page is decoration, not a cue: the row dividers
+and the words carry the rows. **Windows High Contrast:** pills, chips,
+cards and badges take a `CanvasText` edge on `Canvas`; shadings go; the
+link icon is `ButtonText` on a `CanvasText`-edged button; section icons
+and words carry the sections; focus stays `CanvasText`.
+
+**1100px (ruling 27):** measured on this PC in Segoe UI Variable (the
+app's face) with `PIL.ImageFont` from `C:\Windows\Fonts\SegUIVar.ttf`:
+at the pills' 12px weight 600, "Looks Like Wrong Document" is 158px,
+"Names Another Household" 149px, "Claimed by Two Requests" 140px, "Came
+in Email or Zip" 113px; with the pill's 32px of padding, dot or icon and
+gap, the longest is 191px, inside Needs Review's 200px Reason column, so
+every reason shows whole at 1100px and Q9 no longer arises. "Two Years
+Open; Sorting Paused" (176px at 12px) wraps in its row, as ruling 21
+already allows. The usual widths still add to 856 of 860px. The rendered
+look is the Windows check's to confirm.
+
+## 17. The keyboard's status tooltip (P178)
+
+Rows move by `aria-activedescendant`, so a row made active by the
+keyboard (Up/Down, Home/End, PageUp/PageDown, or focus arriving on the
+list) shows its status cell's tooltip at once - the full words, for
+example "Came in Email or Zip" - through `tooltip.js`'s `showTipNow`,
+placed below the status cell; moving on, a click or leaving the list
+hides it. A pointer still shows it after 300ms, and only when the words
+are cut.
+
+## 18. Open for Jason
 
 Each is answerable by a letter; the recommendation is built meanwhile.
 
@@ -357,3 +673,8 @@ Each is answerable by a letter; the recommendation is built meanwhile.
 | Q6 | A band behind each Needs Review heading: A) no band; B) a light band. | **A** |
 | Q7 | The Return column orders by: A) the whole name as shown, form first; B) the name without its form ("John & Jane Smith"). | **A** |
 | Q9 | If a Needs Review reason is still cut at 200px on Windows: A) shorter reason words (lane 2's job); B) a wider Reason column, taken from the Return column (File names then cut sooner). | **A** (words that fit keep every column readable at 1100px) |
+| Q8 | The return page's three sections: A) a coloured bar and icon on the heading, a tinted count badge and a matching edge down the rows; B) a tinted band behind each heading; C) the icon alone. | **A** (built in lane 4b, P176) |
+| Q10 | The kinds in the Linked Households panel: A) "Also Feeds" / "Fed By" / "Related"; B) "Feeds" / "Fed From" / "Related"; C) one word for all, "Linked". | **A** ("Also Feeds" is already the Edit Household word, so a person reads the same word in both places) |
+| Q11 | Rows per page on the four firm lists: A) 50; B) 100; C) 25. | **A** (a page of 50 fills about two screens at 1100 x 700 and keeps a draw quick) |
+| Q12 | The search box's words on Needs Review: A) "Search Files, Clients and Returns"; B) "Search Files and Clients"; C) the same "Search Clients and Returns" as every page. | **A** (it says everything the box finds there) |
+| Q13 | If a reason word is still cut at 1100px in the Windows check (16 measured none cut): A) shorter words (lane 2's job); B) a wider default Reason column. | **A** |
