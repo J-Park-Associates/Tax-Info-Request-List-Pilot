@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "generated": "2026-09-29",
+  "generated": "2026-09-30",
   "generator": "tools/repo_map.py",
   "generator_sha256": "22c7b60a1d198289",
   "module_table_sha256": "7302db5ae8334be2",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 345,
+    "nodes": 346,
     "edges": 1156,
-    "reused": 302
+    "reused": 303
   },
   "node_types": [
     "artifact",
@@ -4689,6 +4689,13 @@
       "layer": "docs",
       "sha256": "6ec2ab88594a7e78",
       "lines": 82
+    },
+    {
+      "id": "pilot/handoffs/email-zip-tag-build.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "9ea999006f71b3b4",
+      "lines": 97
     },
     {
       "id": "pilot/handoffs/shell-S1-rebuild-1.md",
