@@ -70,10 +70,17 @@ function screenWords() {
 // yet, the approved short line of the setup notice stands in - never a word of
 // the page's own - and the long sentence goes to the error log, whatever is
 // shown. The keys asked for and still missing are listed in the S4 rebuild
-// handoff for S6.
+// handoff for S6. A missing word is loud, not silent: the key the vocabulary
+// lacks goes to the error log, once per key while the app runs (review 2, F1).
 function shortNotice(key) {
   const said = vocab && vocab.screen && vocab.screen.notices ? vocab.screen.notices[key] : "";
-  return said || vocab.after_install.wait;
+  if (said) return said;
+  shortNotice.missing = shortNotice.missing || new Set();
+  if (!shortNotice.missing.has(key)) {
+    shortNotice.missing.add(key);
+    window.tracker.logError(`vocab.screen.notices.${key}`);   // the key it lacks, as pagesReason throws `reasons.${code}`
+  }
+  return vocab.after_install.wait;
 }
 
 // A dotted key ("screen.sort.now") to its words, for data-tip-key.

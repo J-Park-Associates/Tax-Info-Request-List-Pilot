@@ -1012,19 +1012,25 @@ def test_the_household_pages_notices_are_two_years_folder_renamed_and_feeds(tmp_
 def test_a_notice_whose_short_word_the_vocabulary_lacks_falls_back_to_the_setup_line_and_logs_the_sentence(tmp_path):
     """No word is invented: with no `vocab.screen.notices.renamed` (and the
     others) the approved setup line stands in, and the long sentence still
-    reaches the error log. The keys asked of S6 are listed in the handoff."""
+    reaches the error log. The keys asked of S6 are listed in the handoff.
+    A missing word is loud: the key it lacks goes to the error log, once per
+    key however often the page is drawn (review 2, F1)."""
     ran = run_pages_dom("""
       const seen = [];
       syncNotices = (prefix, wanted) => seen.push(wanted.map((one) => [one.failure.sentence, one.detail || ""]));
       lastState = { household: { path: "h1", open_years: [2025], pause: { sentence: "PAUSED LONG", scope: "household" }, feeds: [{ warning: "FEED LONG" }] } };
       pagesHouseholdNotices({ level: "household", household: "h1" });
-      return seen;
+      pagesHouseholdNotices({ level: "household", household: "h1" });
+      return { seen, logged };
     """, tmp_path, setup="""
       vocab.household = { two_open_years: "Two years open; sorting paused", accept_folder_name: "Accept the folder's name" };
       vocab.after_install = { wait: "Setup needs attention" };
       const acceptFolderName = () => {};
+      const logged = [];
+      const window = { tracker: { logError: (text) => logged.push(text) } };
     """, functions=["pagesHouseholdNotices", "shortNotice"])
-    assert ran == [[["Setup needs attention", "PAUSED LONG"], ["Setup needs attention", "FEED LONG"]]]
+    assert ran["seen"][0] == [["Setup needs attention", "PAUSED LONG"], ["Setup needs attention", "FEED LONG"]]
+    assert ran["logged"] == ["vocab.screen.notices.renamed", "vocab.screen.notices.feed"], "each missing key once, never silent"
 
 
 #: The scenarios of the harness's stub that draw notices, and the pages' own functions that draw them.

@@ -68,7 +68,8 @@
   vocab.review_labels = Object.assign({}, vocab.review_labels, {
     buckets: { document: "Documents", container: "Emails and zips", not_a_document: "Not documents" },
   });
-  vocab.after_install = Object.assign({}, vocab.after_install, { heading: "After installing: needs a person", wait: "Setup needs attention" });
+  // S1 heads the after-install notice with the same words as its short setup line (api.py AFTER_INSTALL_HEADING).
+  vocab.after_install = Object.assign({}, vocab.after_install, { heading: "Setup needs attention", wait: "Setup needs attention" });
   vocab.lock = Object.assign({}, vocab.lock, {
     running: "In use on {host}", running_other: "{label} in use on {host}", on: "It is on {household}: {name}.",
     greyed: "This return's buttons are greyed while it runs and come back by themselves the moment it lets go.",
